@@ -1,14 +1,14 @@
 import { computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { PhysicPaintLaunchContext, PhysicPaintScriptLibraryRequest, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
 import { createPersistedRotoScript, normalizeRotoScriptName, persistedRotoScriptToRuntime, type RotoScriptLibraryRow } from './physicsPaintRotoScriptSchema';
-import type { RotoPaintScript, RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
+import type { PreparedRotoScriptLoadAndApply, RotoPaintScript, RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import type { PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
 
 export interface RotoScriptLibraryControllerPorts {
   request: (request: PhysicPaintScriptLibraryRequest) => Promise<PhysicPaintScriptLibraryResult>;
   capturePersistence: () => Promise<RotoScriptPersistenceCapture | null>;
   captureThumbnail: (scriptAlphaCanvas: HTMLCanvasElement) => Promise<PersistedRotoScriptThumbnailV1>;
-  replaceClipboard: (script: RotoPaintScript) => boolean;
+  replaceClipboard: (script: RotoPaintScript, preparation?: PreparedRotoScriptLoadAndApply) => boolean;
   getLaunchContext: () => PhysicPaintLaunchContext | null;
   log: (message: string, error?: boolean) => void;
 }
@@ -35,7 +35,7 @@ export interface RotoScriptLibraryController {
   enterScripts: () => Promise<void>;
   refresh: () => Promise<void>;
   saveActiveFrame: () => Promise<boolean>;
-  activateAndLoad: (id: string) => Promise<boolean>;
+  activateAndLoad: (id: string, preparation?: PreparedRotoScriptLoadAndApply) => Promise<boolean>;
   beginRename: () => void;
   updateRenameDraft: (draft: string) => void;
   commitRename: () => Promise<boolean>;
@@ -164,7 +164,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       return false;
     }
   }
-  async function activateAndLoad(id: string): Promise<boolean> {
+  async function activateAndLoad(id: string, preparation?: PreparedRotoScriptLoadAndApply): Promise<boolean> {
     const row = rows.peek().find((candidate) => candidate.id === id);
     if (!row || busy.peek()) return false;
     const previousSelectedId = selectedId.peek();
@@ -176,7 +176,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       return false;
     }
     try {
-      const loaded = ports.replaceClipboard(persistedRotoScriptToRuntime(result.script));
+      const loaded = ports.replaceClipboard(persistedRotoScriptToRuntime(result.script), preparation);
       if (!loaded) {
         selectedId.value = previousSelectedId;
         status.value = 'Loaded script could not replace the clipboard.';

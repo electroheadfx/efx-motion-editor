@@ -133,7 +133,8 @@ describe('PhysicsPaintStudio durable script library wiring', () => {
     const studio = readFileSync(sourcePath, 'utf8');
     expect(studio).toContain('captureScriptForPersistence');
     expect(studio).toContain('replaceClipboardFromPersisted');
-    expect(studio).toContain('applyScript');
+    expect(studio).toContain('activateAndLoad(selectedId, preparation)');
+    expect(studio).toContain('applyPreparedScript(preparation)');
     expect(studio).toContain('createRotoScriptThumbnail');
     expect(studio).not.toContain('renderFromStrokes');
   });

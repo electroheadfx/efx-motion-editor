@@ -263,7 +263,7 @@ export function PhysicsPaintStudio() {
     const preparation = rotoScript.prepareScriptLoadAndApply();
     if (!preparation) return;
     try {
-      const loaded = await rotoScriptLibrary.activateAndLoad(selectedId);
+      const loaded = await rotoScriptLibrary.activateAndLoad(selectedId, preparation);
       if (!loaded) return;
       const applied = await rotoScript.applyPreparedScript(preparation);
       if (applied) setLastError(null);

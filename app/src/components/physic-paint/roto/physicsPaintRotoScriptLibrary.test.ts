@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext, PhysicPaintScriptLibraryRequest, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
 import { createRotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
-import type { RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
+import type { PreparedRotoScriptLoadAndApply, RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import { createPersistedRotoScript, type PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
 
 const context = (): PhysicPaintLaunchContext => ({ operationId: 'launch', layerId: 'layer-1', layerName: 'Ink', startFrame: 4, width: 1600, height: 900, workflowMode: 'roto', project: { name: 'Project', saved: true, contextId: 'context-1' } });
@@ -15,7 +15,7 @@ function harness(saved = true) {
   const clipboard = { current: null as unknown };
   const capture: RotoScriptPersistenceCapture = { script: { provenance: { sessionId: 's', layerId: 'layer-1', sourceFrame: 4 }, sourceFrame: 4, sourceDisplayFrame: 4, sourceRevision: 1, brushes: [{ primary: { tool: 'paint', points: [{ x: 1, y: 2, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 }], color: '#000000', params: { size: 1, opacity: 100, pressure: 100, waterAmount: 0, dryAmount: 0, edgeDetail: 0, pickup: 0, eraseStrength: 0, antiAlias: 0 }, timestamp: 1 }, continuations: [] }] }, scriptAlphaCanvas: {} as HTMLCanvasElement };
   const thumbnail: PersistedRotoScriptThumbnailV1 = { mimeType: 'image/webp', width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' };
-  const replaceClipboard = vi.fn((value) => { clipboard.current = value; return true; });
+  const replaceClipboard = vi.fn((value, _preparation?: PreparedRotoScriptLoadAndApply) => { clipboard.current = value; return true; });
   const log = vi.fn();
   const controller = createRotoScriptLibraryController({ request, capturePersistence: vi.fn(async () => capture), captureThumbnail: vi.fn(async () => thumbnail), replaceClipboard, getLaunchContext: () => launch, log });
   return { controller, request, requests, clipboard, replaceClipboard, log, setLaunch: (value: PhysicPaintLaunchContext) => { launch = value; } };
@@ -119,7 +119,19 @@ describe('Roto script library controller', () => {
     expect(test.controller.status.value).toBe('Loaded A — 1 brushes');
   });
 
-  it('preserves the last successful selection and clipboard when request or replacement fails', async () => {
+  it('passes the exact preparation token only for transactional Load + Apply', async () => {
+    const test = harness();
+    await test.controller.refresh();
+    test.request.mockImplementation(async (input) => result(input, [row('b', 'B'), row('a', 'A')], { script: input.kind === 'load' ? loadedScript(input.scriptId as 'a' | 'b', 'A') : undefined }));
+    const preparation = { preparationId: Symbol('load-and-apply') };
+
+    await expect(test.controller.activateAndLoad('a', preparation)).resolves.toBe(true);
+    expect(test.replaceClipboard).toHaveBeenLastCalledWith(expect.any(Object), preparation);
+    await expect(test.controller.activateAndLoad('a')).resolves.toBe(true);
+    expect(test.replaceClipboard).toHaveBeenLastCalledWith(expect.any(Object), undefined);
+  });
+
+  it('preserves the last successful selection and clipboard when request, conversion, or replacement fails', async () => {
     const test = harness();
     await test.controller.refresh();
     test.request.mockImplementation(async (input) => {
@@ -141,6 +153,18 @@ describe('Roto script library controller', () => {
     expect(test.clipboard.current).toBe(acceptedClipboard);
     expect(test.controller.status.value).toBe('Unreadable preset');
     expect(test.log).toHaveBeenCalledWith('Unreadable preset', true);
+
+    test.request.mockImplementationOnce(async (input) => result(input, [row('b', 'B')], { script: { ...loadedScript('b', 'B'), brushes: [] } }));
+    await expect(test.controller.activateAndLoad('b')).resolves.toBe(false);
+    expect(test.controller.rows.value).toEqual(acceptedRows);
+    expect(test.controller.selectedId.value).toBe('a');
+    expect(test.clipboard.current).toBe(acceptedClipboard);
+
+    test.request.mockImplementationOnce(async (input) => result(input, [], { ok: false, rows: [] }));
+    await expect(test.controller.activateAndLoad('b')).resolves.toBe(false);
+    expect(test.controller.rows.value).toEqual(acceptedRows);
+    expect(test.controller.selectedId.value).toBe('a');
+    expect(test.clipboard.current).toBe(acceptedClipboard);
 
     test.replaceClipboard.mockImplementationOnce(() => false);
     await expect(test.controller.activateAndLoad('b')).resolves.toBe(false);

@@ -117,7 +117,7 @@ export interface RotoScriptClipboardController {
   mutationLocked: ReadonlySignal<boolean>;
   copyScript: () => Promise<boolean>;
   captureScriptForPersistence: () => Promise<RotoScriptPersistenceCapture | null>;
-  replaceClipboardFromPersisted: (script: RotoPaintScript) => boolean;
+  replaceClipboardFromPersisted: (script: RotoPaintScript, preparation?: PreparedRotoScriptLoadAndApply) => boolean;
   prepareScriptLoadAndApply: () => PreparedRotoScriptLoadAndApply | null;
   applyPreparedScript: (preparation: PreparedRotoScriptLoadAndApply) => Promise<boolean>;
   cancelPreparedScriptLoadAndApply: (preparation: PreparedRotoScriptLoadAndApply) => void;
@@ -441,6 +441,16 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       && left.displayFrame === right.displayFrame;
   }
 
+  function isPreparedScriptLoadAndApplyValid(preparation: ActivePreparedScriptLoadAndApply): boolean {
+    return !preparation.released
+      && !disposed
+      && !disposalRequested
+      && engineState.peek() === preparation.engine
+      && engineGeneration === preparation.engineGeneration
+      && launchGeneration === preparation.launchGeneration
+      && sameSourceIdentity(sourceState.peek(), preparation.source);
+  }
+
   function releasePreparedScriptLoadAndApply(preparation: ActivePreparedScriptLoadAndApply): void {
     if (preparation.released) return;
     preparation.released = true;
@@ -448,9 +458,18 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     endOperation(preparation.engine);
   }
 
-  function replaceClipboardFromPersisted(script: RotoPaintScript): boolean {
-    const preparedReplacement = preparedScriptLoadAndApply;
-    if (disposed || disposalRequested || (busy.peek() && !preparedReplacement) || !script.brushes.length) return false;
+  function invalidatePreparedScriptLoadAndApply(): void {
+    if (preparedScriptLoadAndApply) releasePreparedScriptLoadAndApply(preparedScriptLoadAndApply);
+  }
+
+  function replaceClipboardFromPersisted(script: RotoPaintScript, preparation?: PreparedRotoScriptLoadAndApply): boolean {
+    const activePreparation = preparedScriptLoadAndApply;
+    if (disposed || disposalRequested || !script.brushes.length) return false;
+    if (activePreparation) {
+      if (preparation !== activePreparation || !isPreparedScriptLoadAndApplyValid(activePreparation)) return false;
+    } else if (preparation || busy.peek()) {
+      return false;
+    }
     clipboard.value = deepFreezeScript({
       provenance: { ...script.provenance }, sourceFrame: script.sourceFrame, sourceDisplayFrame: script.sourceDisplayFrame,
       sourceRevision: ++sourceRevision,
@@ -485,12 +504,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   function applyPreparedScript(preparation: PreparedRotoScriptLoadAndApply): Promise<boolean> {
     const activePreparation = preparedScriptLoadAndApply;
     if (!activePreparation || activePreparation !== preparation) return Promise.resolve(false);
-    const valid = !disposed
-      && !disposalRequested
-      && engineState.peek() === activePreparation.engine
-      && engineGeneration === activePreparation.engineGeneration
-      && launchGeneration === activePreparation.launchGeneration
-      && sameSourceIdentity(sourceState.peek(), activePreparation.source);
+    const valid = isPreparedScriptLoadAndApplyValid(activePreparation);
     releasePreparedScriptLoadAndApply(activePreparation);
     if (!valid) return Promise.resolve(false);
     return applyScript();
@@ -688,6 +702,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   function updateEngine(engine: RotoScriptEnginePort | null): void {
     const previousEngine = engineState.peek();
     if (previousEngine === engine) return;
+    invalidatePreparedScriptLoadAndApply();
     engineGeneration += 1;
     engineState.value = engine;
     refreshSourceHasBrushes();
@@ -704,11 +719,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
 
   function updateSource(source: RotoScriptSourceSnapshot): void {
     const current = sourceState.peek();
-    if (current.workflowMode === source.workflowMode
-      && current.selectionKind === source.selectionKind
-      && current.layerId === source.layerId
-      && current.sourceFrame === source.sourceFrame
-      && current.displayFrame === source.displayFrame) return;
+    if (sameSourceIdentity(current, source)) return;
+    invalidatePreparedScriptLoadAndApply();
     sourceState.value = source;
   }
 
@@ -749,13 +761,15 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   }
 
   async function prepareLaunchReplacement(): Promise<void> {
+    launchGeneration += 1;
+    invalidatePreparedScriptLoadAndApply();
     const operation = activeApply;
     if (operation) {
+      operation.launchGeneration = launchGeneration;
       await operation.settled;
       await ports.flushSourcePublication?.(operation.destinationSourceFrame);
       return;
     }
-    launchGeneration += 1;
     const engine = engineState.peek();
     const source = sourceState.peek();
     if (engine && (engine.getStrokeCount?.() ?? engine.getStrokes().length) > 0) await drainAcceptedMutations(engine);
@@ -770,6 +784,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   }
 
   async function prepareEngineDisposal(engine: RotoScriptEnginePort): Promise<void> {
+    invalidatePreparedScriptLoadAndApply();
     if (activeApply?.engine === engine) {
       activeApply.cancelled = true;
       activeApply.cancellationReason = 'invalidated';
@@ -784,7 +799,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (disposalPromise) return disposalPromise;
     disposalRequested = true;
     launchGeneration += 1;
-    if (preparedScriptLoadAndApply) releasePreparedScriptLoadAndApply(preparedScriptLoadAndApply);
+    invalidatePreparedScriptLoadAndApply();
     const operation = activeApply;
     if (operation) {
       operation.cancelled = true;
