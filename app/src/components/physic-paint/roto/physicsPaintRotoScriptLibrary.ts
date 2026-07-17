@@ -71,6 +71,9 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
 
   function contextIdentity(context: PhysicPaintLaunchContext | null): string { return context?.project ? `${context.project.contextId}:${context.layerId}` : 'closed'; }
   function operationId(kind: string): string { return `roto-library-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
+  function publishDiagnostics(result: PhysicPaintScriptLibraryResult): void {
+    for (const diagnostic of result.diagnostics) ports.log(`${diagnostic.filename ? `${diagnostic.filename}: ` : ''}${diagnostic.message}`, true);
+  }
   function publishResult(result: PhysicPaintScriptLibraryResult, preferredId?: string, updateSelection = true): void {
     rows.value = [...result.rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
     skippedInvalidCount.value = result.skippedInvalidCount;
@@ -78,7 +81,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       if (preferredId && rows.value.some((row) => row.id === preferredId)) selectedId.value = preferredId;
       else if (selectedId.value && !rows.value.some((row) => row.id === selectedId.value)) selectedId.value = rows.value[0]?.id ?? null;
     }
-    for (const diagnostic of result.diagnostics) ports.log(`${diagnostic.filename ? `${diagnostic.filename}: ` : ''}${diagnostic.message}`, true);
+    publishDiagnostics(result);
   }
   async function execute(request: PhysicPaintScriptLibraryRequest, preferredId?: string, updateSelection = true): Promise<PhysicPaintScriptLibraryResult> {
     if (disposed || busy.peek()) return { operationId: request.operationId, kind: request.kind, ok: false, rows: [...rows.peek()], skippedInvalidCount: skippedInvalidCount.peek(), diagnostics: [], error: 'Finish the current script library operation.' };
@@ -92,8 +95,12 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
         if (!disposed) ports.log(error, true);
         return { ...result, ok: false, rows: [...rows.peek()], skippedInvalidCount: skippedInvalidCount.peek(), script: undefined, error };
       }
-      publishResult(result, preferredId, updateSelection);
-      if (!result.ok) ports.log(result.error ?? `${request.kind} failed`, true);
+      if (!result.ok) {
+        publishDiagnostics(result);
+        ports.log(result.error ?? `${request.kind} failed`, true);
+        return result;
+      }
+      if (updateSelection) publishResult(result, preferredId, true);
       return result;
     } finally {
       if (!disposed && acceptedOperationGeneration === operationGeneration) busy.value = false;
@@ -176,8 +183,9 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
         ports.log(status.value, true);
         return false;
       }
-      selectedId.value = row.id;
-      status.value = `Loaded ${row.name} — ${row.brushCount} brushes`;
+      publishResult(result, row.id, true);
+      const loadedRow = rows.peek().find((candidate) => candidate.id === row.id) ?? row;
+      status.value = `Loaded ${loadedRow.name} — ${loadedRow.brushCount} brushes`;
       return true;
     } catch (error) {
       selectedId.value = previousSelectedId;

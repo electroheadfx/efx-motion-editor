@@ -256,6 +256,65 @@ describe('Roto script clipboard controller', () => {
     test.controller.completeNavigation();
   });
 
+  it('binds deferred durable Load + Apply to one destination and transfers its lock into exactly one Apply', async () => {
+    const test = harness([]);
+    const persisted = {
+      provenance: { sessionId: 'persisted', layerId: 'layer-a', sourceFrame: 3 }, sourceFrame: 3, sourceDisplayFrame: 3, sourceRevision: 1,
+      brushes: [{ primary: stroke(7, 44), continuations: [] }],
+    };
+    let resolveLoad!: (script: typeof persisted) => void;
+    const deferredLoad = new Promise<typeof persisted>((resolve) => { resolveLoad = resolve; });
+    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 8, displayFrame: 8 });
+
+    const preparation = test.controller.prepareScriptLoadAndApply();
+    expect(preparation).not.toBeNull();
+    expect(test.controller.mutationLocked.value).toBe(true);
+    await expect(test.controller.prepareNavigation(9)).resolves.toBe(false);
+    const loaded = deferredLoad.then((script) => test.controller.replaceClipboardFromPersisted(script));
+    expect(test.engine.enqueueRecordedStroke).not.toHaveBeenCalled();
+    resolveLoad(persisted);
+    await expect(loaded).resolves.toBe(true);
+
+    const applying = test.controller.applyPreparedScript(preparation!);
+    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledOnce();
+    expect(test.controller.mutationLocked.value).toBe(true);
+    await expect(test.controller.applyPreparedScript(preparation!)).resolves.toBe(false);
+    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledOnce();
+    test.controller.observeCompletedMutation(test.engine, completion(100));
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.mutationLocked.value).toBe(false);
+    expect(test.locks[test.locks.length - 1]).toBe(false);
+  });
+
+  it('releases a prepared durable-load lock without applying when load fails or identity changes', async () => {
+    const failedLoad = harness([]);
+    const failedPreparation = failedLoad.controller.prepareScriptLoadAndApply();
+    expect(failedPreparation).not.toBeNull();
+    failedLoad.controller.cancelPreparedScriptLoadAndApply(failedPreparation!);
+    expect(failedLoad.controller.mutationLocked.value).toBe(false);
+    expect(failedLoad.engine.enqueueRecordedStroke).not.toHaveBeenCalled();
+
+    const changedSource = harness([]);
+    const persisted = {
+      provenance: { sessionId: 'persisted', layerId: 'layer-a', sourceFrame: 3 }, sourceFrame: 3, sourceDisplayFrame: 3, sourceRevision: 1,
+      brushes: [{ primary: stroke(7, 44), continuations: [] }],
+    };
+    changedSource.setSource({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 8, displayFrame: 8 });
+    const changedPreparation = changedSource.controller.prepareScriptLoadAndApply();
+    expect(changedPreparation).not.toBeNull();
+    let resolveLoad!: (script: typeof persisted) => void;
+    const deferredLoad = new Promise<typeof persisted>((resolve) => { resolveLoad = resolve; });
+    const loaded = deferredLoad.then((script) => changedSource.controller.replaceClipboardFromPersisted(script));
+    changedSource.setSource({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 12, displayFrame: 12 });
+    resolveLoad(persisted);
+    await expect(loaded).resolves.toBe(true);
+
+    await expect(changedSource.controller.applyPreparedScript(changedPreparation!)).resolves.toBe(false);
+    expect(changedSource.engine.enqueueRecordedStroke).not.toHaveBeenCalled();
+    expect(changedSource.controller.mutationLocked.value).toBe(false);
+    expect(changedSource.locks[changedSource.locks.length - 1]).toBe(false);
+  });
+
   it('rejects invalid sources and destinations with stable native reasons', async () => {
     const test = harness([]);
     expect(test.controller.availability.value.copyDisabledReason).toMatch(/Paint at least one brush/);

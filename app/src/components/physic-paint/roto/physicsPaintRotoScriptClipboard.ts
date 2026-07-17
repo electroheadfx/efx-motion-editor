@@ -100,6 +100,10 @@ export interface RotoScriptAcceptedTarget {
   publicationIdentity?: RotoScriptPublicationIdentity;
 }
 
+export interface PreparedRotoScriptLoadAndApply {
+  readonly preparationId: symbol;
+}
+
 export interface RotoScriptClipboardController {
   clipboard: Signal<RotoPaintScript | null>;
   hasCopiedScript: ReadonlySignal<boolean>;
@@ -114,6 +118,9 @@ export interface RotoScriptClipboardController {
   copyScript: () => Promise<boolean>;
   captureScriptForPersistence: () => Promise<RotoScriptPersistenceCapture | null>;
   replaceClipboardFromPersisted: (script: RotoPaintScript) => boolean;
+  prepareScriptLoadAndApply: () => PreparedRotoScriptLoadAndApply | null;
+  applyPreparedScript: (preparation: PreparedRotoScriptLoadAndApply) => Promise<boolean>;
+  cancelPreparedScriptLoadAndApply: (preparation: PreparedRotoScriptLoadAndApply) => void;
   applyScript: () => Promise<boolean>;
   discardScript: () => void;
   observeCompletedMutation: (engine: RotoScriptEnginePort, mutation: CompletedPaintMutation) => void;
@@ -157,6 +164,14 @@ interface CompletionWaiter {
   settle: () => void;
 }
 
+interface ActivePreparedScriptLoadAndApply extends PreparedRotoScriptLoadAndApply {
+  engine: RotoScriptEnginePort;
+  source: RotoScriptSourceSnapshot;
+  engineGeneration: number;
+  launchGeneration: number;
+  released: boolean;
+}
+
 const COPY_REASONS = {
   wrongMode: 'Copy Script is available only in Roto mode.',
   generated: 'Generated frames are render-only and cannot be copied as scripts.',
@@ -197,6 +212,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   let engineGeneration = 0;
   let launchGeneration = 0;
   let activeApply: ActiveApplyOperation | null = null;
+  let preparedScriptLoadAndApply: ActivePreparedScriptLoadAndApply | null = null;
   let disposed = false;
   let disposalRequested = false;
   let navigationLockHeld = false;
@@ -417,8 +433,24 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     } finally { endOperation(engine); }
   }
 
+  function sameSourceIdentity(left: RotoScriptSourceSnapshot, right: RotoScriptSourceSnapshot): boolean {
+    return left.workflowMode === right.workflowMode
+      && left.selectionKind === right.selectionKind
+      && left.layerId === right.layerId
+      && left.sourceFrame === right.sourceFrame
+      && left.displayFrame === right.displayFrame;
+  }
+
+  function releasePreparedScriptLoadAndApply(preparation: ActivePreparedScriptLoadAndApply): void {
+    if (preparation.released) return;
+    preparation.released = true;
+    if (preparedScriptLoadAndApply === preparation) preparedScriptLoadAndApply = null;
+    endOperation(preparation.engine);
+  }
+
   function replaceClipboardFromPersisted(script: RotoPaintScript): boolean {
-    if (disposed || disposalRequested || busy.peek() || !script.brushes.length) return false;
+    const preparedReplacement = preparedScriptLoadAndApply;
+    if (disposed || disposalRequested || (busy.peek() && !preparedReplacement) || !script.brushes.length) return false;
     clipboard.value = deepFreezeScript({
       provenance: { ...script.provenance }, sourceFrame: script.sourceFrame, sourceDisplayFrame: script.sourceDisplayFrame,
       sourceRevision: ++sourceRevision,
@@ -426,6 +458,42 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     });
     status.value = null; error.value = null;
     return true;
+  }
+
+  function prepareScriptLoadAndApply(): PreparedRotoScriptLoadAndApply | null {
+    if (disposed || disposalRequested || preparedScriptLoadAndApply || !availability.value.canApplyReplacement) return null;
+    const engine = engineState.peek();
+    if (!engine) return null;
+    const preparation: ActivePreparedScriptLoadAndApply = {
+      preparationId: Symbol('roto-script-load-and-apply'),
+      engine,
+      source: { ...sourceState.peek() },
+      engineGeneration,
+      launchGeneration,
+      released: false,
+    };
+    preparedScriptLoadAndApply = preparation;
+    beginOperation(engine);
+    return preparation;
+  }
+
+  function cancelPreparedScriptLoadAndApply(preparation: PreparedRotoScriptLoadAndApply): void {
+    if (preparedScriptLoadAndApply !== preparation) return;
+    releasePreparedScriptLoadAndApply(preparedScriptLoadAndApply);
+  }
+
+  function applyPreparedScript(preparation: PreparedRotoScriptLoadAndApply): Promise<boolean> {
+    const activePreparation = preparedScriptLoadAndApply;
+    if (!activePreparation || activePreparation !== preparation) return Promise.resolve(false);
+    const valid = !disposed
+      && !disposalRequested
+      && engineState.peek() === activePreparation.engine
+      && engineGeneration === activePreparation.engineGeneration
+      && launchGeneration === activePreparation.launchGeneration
+      && sameSourceIdentity(sourceState.peek(), activePreparation.source);
+    releasePreparedScriptLoadAndApply(activePreparation);
+    if (!valid) return Promise.resolve(false);
+    return applyScript();
   }
 
   function publishApplyStatus(operation: ActiveApplyOperation, terminalStatus: string): void {
@@ -716,6 +784,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (disposalPromise) return disposalPromise;
     disposalRequested = true;
     launchGeneration += 1;
+    if (preparedScriptLoadAndApply) releasePreparedScriptLoadAndApply(preparedScriptLoadAndApply);
     const operation = activeApply;
     if (operation) {
       operation.cancelled = true;
@@ -742,6 +811,9 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     copyScript,
     captureScriptForPersistence,
     replaceClipboardFromPersisted,
+    prepareScriptLoadAndApply,
+    applyPreparedScript,
+    cancelPreparedScriptLoadAndApply,
     applyScript,
     discardScript,
     observeCompletedMutation,

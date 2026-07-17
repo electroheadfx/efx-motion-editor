@@ -75,6 +75,30 @@ describe('Roto script library controller', () => {
     expect(test.controller.busy.value).toBe(false);
   });
 
+  it('preserves visible rows when scan, save, rename, or delete requests fail', async () => {
+    const test = harness();
+    await test.controller.refresh();
+    test.controller.select('a');
+    const acceptedRows = test.controller.rows.value;
+
+    test.request.mockImplementation(async (input) => result(input, [], { ok: false, error: `${input.kind} unavailable` }));
+    await test.controller.refresh();
+    expect(test.controller.rows.value).toEqual(acceptedRows);
+    expect(test.controller.selectedId.value).toBe('a');
+
+    await expect(test.controller.saveActiveFrame()).resolves.toBe(false);
+    expect(test.controller.rows.value).toEqual(acceptedRows);
+    test.controller.beginRename();
+    test.controller.updateRenameDraft('Renamed');
+    await expect(test.controller.commitRename()).resolves.toBe(false);
+    expect(test.controller.rows.value).toEqual(acceptedRows);
+    test.controller.cancelRename();
+    test.controller.requestDelete();
+    await expect(test.controller.confirmDelete()).resolves.toBe(false);
+    expect(test.controller.rows.value).toEqual(acceptedRows);
+    expect(test.controller.selected.value?.id).toBe('a');
+  });
+
   it('reloads every activation and commits selection only after immutable clipboard replacement', async () => {
     const test = harness();
     await test.controller.refresh();
@@ -106,16 +130,24 @@ describe('Roto script library controller', () => {
     await test.controller.activateAndLoad('a');
     const acceptedClipboard = test.clipboard.current;
 
-    test.request.mockImplementationOnce(async (input) => { test.requests.push(input); return result(input, [row('b', 'B'), row('a', 'A')], { ok: false, error: 'Unreadable preset' }); });
+    const acceptedRows = test.controller.rows.value;
+    const acceptedSkippedCount = test.controller.skippedInvalidCount.value;
+    test.request.mockImplementationOnce(async (input) => { test.requests.push(input); return result(input, [], { ok: false, error: 'Unreadable preset' }); });
     await expect(test.controller.activateAndLoad('b')).resolves.toBe(false);
+    expect(test.controller.rows.value).toEqual(acceptedRows);
+    expect(test.controller.skippedInvalidCount.value).toBe(acceptedSkippedCount);
     expect(test.controller.selectedId.value).toBe('a');
+    expect(test.controller.selected.value?.id).toBe('a');
     expect(test.clipboard.current).toBe(acceptedClipboard);
     expect(test.controller.status.value).toBe('Unreadable preset');
     expect(test.log).toHaveBeenCalledWith('Unreadable preset', true);
 
     test.replaceClipboard.mockImplementationOnce(() => false);
     await expect(test.controller.activateAndLoad('b')).resolves.toBe(false);
+    expect(test.controller.rows.value).toEqual(acceptedRows);
+    expect(test.controller.skippedInvalidCount.value).toBe(acceptedSkippedCount);
     expect(test.controller.selectedId.value).toBe('a');
+    expect(test.controller.selected.value?.id).toBe('a');
     expect(test.clipboard.current).toBe(acceptedClipboard);
     expect(test.controller.status.value).toBe('Loaded script could not replace the clipboard.');
     expect(test.log).toHaveBeenCalledWith('Loaded script could not replace the clipboard.', true);

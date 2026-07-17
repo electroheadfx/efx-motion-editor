@@ -260,13 +260,19 @@ export function PhysicsPaintStudio() {
   const handleSelectedScriptLoadAndApply = useCallback(async () => {
     const selectedId = rotoScriptLibrary.selectedId.peek();
     if (!selectedId) return;
-    const loaded = await rotoScriptLibrary.activateAndLoad(selectedId);
-    if (!loaded) return;
-    const applied = await rotoScript.applyScript();
-    if (applied) setLastError(null);
-    else {
-      const message = rotoScript.error.peek()?.message;
-      if (message) setLastError(message);
+    const preparation = rotoScript.prepareScriptLoadAndApply();
+    if (!preparation) return;
+    try {
+      const loaded = await rotoScriptLibrary.activateAndLoad(selectedId);
+      if (!loaded) return;
+      const applied = await rotoScript.applyPreparedScript(preparation);
+      if (applied) setLastError(null);
+      else {
+        const message = rotoScript.error.peek()?.message;
+        if (message) setLastError(message);
+      }
+    } finally {
+      rotoScript.cancelPreparedScriptLoadAndApply(preparation);
     }
   }, [rotoScript, rotoScriptLibrary]);
   const scriptLoadAndApplyDisabledReason = !rotoScriptLibrary.selected.value
