@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { GripHorizontal } from 'lucide-preact';
 import type { ToolType } from '@efxlab/efx-physic-paint';
 import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../../lib/colorUtils';
 import { loadFavoriteColors, loadRecentColors, saveFavoriteColors } from '../../../lib/paintPreferences';
@@ -284,7 +285,7 @@ export function PhysicsPaintRightPanel({
       <div
         ref={paneLayoutRef}
         class="physics-paint-right-pane-layout"
-        style={{ gridTemplateRows: `minmax(0, ${paneSplit}fr) 13px minmax(0, ${100 - paneSplit}fr)` }}
+        style={{ gridTemplateRows: `minmax(0, ${paneSplit}fr) 28px minmax(0, ${100 - paneSplit}fr)` }}
       >
         <div class="physics-paint-right-pane physics-paint-right-pane-primary">
           <section class="physics-paint-right-section physics-paint-single-tab-section">
@@ -458,7 +459,7 @@ export function PhysicsPaintRightPanel({
             setPaneSplit((split) => Math.max(20, Math.min(80, split + (event.key === 'ArrowDown' ? 5 : -5))));
           }}
         >
-          <span />
+          <GripHorizontal aria-hidden="true" size={18} strokeWidth={1.8} />
         </div>
 
         <div class="physics-paint-right-pane physics-paint-right-pane-secondary">

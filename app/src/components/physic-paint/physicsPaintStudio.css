@@ -776,28 +776,21 @@ button.destructive {
   align-items: center;
   justify-content: center;
   min-width: 0;
-  min-height: 13px;
+  min-height: 28px;
+  color: #9aa1aa;
   cursor: row-resize;
   touch-action: none;
 }
 
-.physics-paint-right-pane-resizer::before {
-  position: absolute;
-  inset: 0;
-  content: '';
+.physics-paint-right-pane-resizer svg {
+  pointer-events: none;
+  transition: color 0.12s, transform 0.12s;
 }
 
-.physics-paint-right-pane-resizer span {
-  width: calc(100% - 8px);
-  height: 1px;
-  background: #696d72;
-  transition: height 0.12s, background-color 0.12s;
-}
-
-.physics-paint-right-pane-resizer:hover span,
-.physics-paint-right-pane-resizer:focus-visible span {
-  height: 2px;
-  background: #8b9096;
+.physics-paint-right-pane-resizer:hover svg,
+.physics-paint-right-pane-resizer:focus-visible svg {
+  color: #d3d8de;
+  transform: scale(1.08);
 }
 
 .physics-paint-right-pane-resizer:focus-visible {
