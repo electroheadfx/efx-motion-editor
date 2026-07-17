@@ -262,7 +262,7 @@ export function PhysicsPaintRightPanel({
             aria-selected={colorTab === 'brush'}
             onClick={() => setColorTab('brush')}
           >
-            BRUSH COLOR
+            Brush color
           </button>
           {logVisible ? (
             <button
@@ -374,8 +374,7 @@ export function PhysicsPaintRightPanel({
         ) : null}
       </section>
 
-      <section class="physics-paint-right-section physics-paint-options-tabs-section">
-        <div class="physics-paint-options-tabs" role="tablist" aria-label="Physics Paint option panels">
+      <div class="physics-paint-options-tabs physics-paint-options-tabs-navigation" role="tablist" aria-label="Physics Paint option panels">
           <button
             type="button"
             class={`physics-paint-options-tab physics-paint-tab-tool ${optionsTab === 'tool' ? 'active' : ''}`}
@@ -383,7 +382,7 @@ export function PhysicsPaintRightPanel({
             aria-selected={optionsTab === 'tool'}
             onClick={() => setOptionsTab('tool')}
           >
-            TOOL
+            Tool
           </button>
           <button
             type="button"
@@ -392,7 +391,7 @@ export function PhysicsPaintRightPanel({
             aria-selected={optionsTab === 'onion'}
             onClick={() => setOptionsTab('onion')}
           >
-            ONION
+            Onion
           </button>
           <button
             type="button"
@@ -401,7 +400,7 @@ export function PhysicsPaintRightPanel({
             aria-selected={optionsTab === 'motion'}
             onClick={() => setOptionsTab('motion')}
           >
-            MOTION
+            Motion
           </button>
           <button
             type="button"
@@ -410,10 +409,11 @@ export function PhysicsPaintRightPanel({
             aria-selected={optionsTab === 'scripts'}
             onClick={() => { setOptionsTab('scripts'); void scripts.library.enterScripts(); }}
           >
-            SCRIPTS
+            Scripts
           </button>
-        </div>
+      </div>
 
+      <section class="physics-paint-right-section physics-paint-options-tabs-section">
         {optionsTab === 'tool' ? (
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Tool">
             <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} disabled={engineControlsDisabled} />

@@ -35,7 +35,7 @@ export interface RotoScriptLibraryController {
   enterScripts: () => Promise<void>;
   refresh: () => Promise<void>;
   saveActiveFrame: () => Promise<boolean>;
-  loadSelected: () => Promise<boolean>;
+  activateAndLoad: (id: string) => Promise<boolean>;
   beginRename: () => void;
   updateRenameDraft: (draft: string) => void;
   commitRename: () => Promise<boolean>;
@@ -71,22 +71,28 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
 
   function contextIdentity(context: PhysicPaintLaunchContext | null): string { return context?.project ? `${context.project.contextId}:${context.layerId}` : 'closed'; }
   function operationId(kind: string): string { return `roto-library-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
-  function publishResult(result: PhysicPaintScriptLibraryResult, preferredId?: string): void {
+  function publishResult(result: PhysicPaintScriptLibraryResult, preferredId?: string, updateSelection = true): void {
     rows.value = [...result.rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
     skippedInvalidCount.value = result.skippedInvalidCount;
-    if (preferredId && rows.value.some((row) => row.id === preferredId)) selectedId.value = preferredId;
-    else if (selectedId.value && !rows.value.some((row) => row.id === selectedId.value)) selectedId.value = rows.value[0]?.id ?? null;
+    if (updateSelection) {
+      if (preferredId && rows.value.some((row) => row.id === preferredId)) selectedId.value = preferredId;
+      else if (selectedId.value && !rows.value.some((row) => row.id === selectedId.value)) selectedId.value = rows.value[0]?.id ?? null;
+    }
     for (const diagnostic of result.diagnostics) ports.log(`${diagnostic.filename ? `${diagnostic.filename}: ` : ''}${diagnostic.message}`, true);
   }
-  async function execute(request: PhysicPaintScriptLibraryRequest, preferredId?: string): Promise<PhysicPaintScriptLibraryResult> {
+  async function execute(request: PhysicPaintScriptLibraryRequest, preferredId?: string, updateSelection = true): Promise<PhysicPaintScriptLibraryResult> {
     if (disposed || busy.peek()) return { operationId: request.operationId, kind: request.kind, ok: false, rows: [...rows.peek()], skippedInvalidCount: skippedInvalidCount.peek(), diagnostics: [], error: 'Finish the current script library operation.' };
     const acceptedContextGeneration = contextGeneration;
     const acceptedOperationGeneration = ++operationGeneration;
     busy.value = true;
     try {
       const result = await ports.request(request);
-      if (disposed || acceptedContextGeneration !== contextGeneration || acceptedOperationGeneration !== operationGeneration || result.operationId !== request.operationId || result.kind !== request.kind) return result;
-      publishResult(result, preferredId);
+      if (disposed || acceptedContextGeneration !== contextGeneration || acceptedOperationGeneration !== operationGeneration || result.operationId !== request.operationId || result.kind !== request.kind) {
+        const error = 'Script library operation became stale.';
+        if (!disposed) ports.log(error, true);
+        return { ...result, ok: false, rows: [...rows.peek()], skippedInvalidCount: skippedInvalidCount.peek(), script: undefined, error };
+      }
+      publishResult(result, preferredId, updateSelection);
       if (!result.ok) ports.log(result.error ?? `${request.kind} failed`, true);
       return result;
     } finally {
@@ -151,13 +157,35 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       return false;
     }
   }
-  async function loadSelected(): Promise<boolean> {
-    const row = selected.peek(); if (!row) return false;
-    const result = await execute({ kind: 'load', operationId: operationId('load'), scriptId: row.id }, row.id);
-    if (!result.ok || !result.script) { status.value = result.error ?? 'Load failed'; return false; }
-    const loaded = ports.replaceClipboard(persistedRotoScriptToRuntime(result.script));
-    status.value = loaded ? `Loaded ${row.name} — ${row.brushCount} brushes` : 'Loaded script could not replace the clipboard.';
-    return loaded;
+  async function activateAndLoad(id: string): Promise<boolean> {
+    const row = rows.peek().find((candidate) => candidate.id === id);
+    if (!row || busy.peek()) return false;
+    const previousSelectedId = selectedId.peek();
+    const result = await execute({ kind: 'load', operationId: operationId('load'), scriptId: row.id }, undefined, false);
+    if (!result.ok || !result.script) {
+      selectedId.value = previousSelectedId;
+      status.value = result.error ?? 'Load failed';
+      if (result.ok) ports.log(status.value, true);
+      return false;
+    }
+    try {
+      const loaded = ports.replaceClipboard(persistedRotoScriptToRuntime(result.script));
+      if (!loaded) {
+        selectedId.value = previousSelectedId;
+        status.value = 'Loaded script could not replace the clipboard.';
+        ports.log(status.value, true);
+        return false;
+      }
+      selectedId.value = row.id;
+      status.value = `Loaded ${row.name} — ${row.brushCount} brushes`;
+      return true;
+    } catch (error) {
+      selectedId.value = previousSelectedId;
+      const message = String(error);
+      status.value = message;
+      ports.log(message, true);
+      return false;
+    }
   }
   function beginRename(): void { const row = selected.peek(); if (row) rename.value = { id: row.id, draft: row.name, error: null }; }
   function updateRenameDraft(draft: string): void { if (rename.peek()) rename.value = { ...rename.peek()!, draft, error: null }; }
@@ -179,7 +207,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   }
   return {
     rows, selectedId, selected, busy, status, skippedInvalidCount, rename, deleteConfirmation, availability,
-    updateProjectContext: refresh, enterScripts: refresh, refresh, saveActiveFrame, loadSelected, beginRename, updateRenameDraft, commitRename,
+    updateProjectContext: refresh, enterScripts: refresh, refresh, saveActiveFrame, activateAndLoad, beginRename, updateRenameDraft, commitRename,
     cancelRename: () => { rename.value = null; }, requestDelete: () => { deleteConfirmation.value = selected.peek(); }, confirmDelete,
     cancelDelete: () => { deleteConfirmation.value = null; }, select: (id) => { if (rows.peek().some((row) => row.id === id)) selectedId.value = id; },
     dispose: () => { disposed = true; contextGeneration += 1; operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; rename.value = null; deleteConfirmation.value = null; },

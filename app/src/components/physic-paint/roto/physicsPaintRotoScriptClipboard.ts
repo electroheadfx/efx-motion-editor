@@ -37,8 +37,10 @@ export interface RotoPaintScript {
 export interface RotoScriptActionAvailability {
   canCopy: boolean;
   canApply: boolean;
+  canApplyReplacement: boolean;
   copyDisabledReason: string | null;
   applyDisabledReason: string | null;
+  replacementApplyDisabledReason: string | null;
   busy: boolean;
 }
 
@@ -218,16 +220,23 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
           : source.selectionKind !== 'real-key' || !hasBrushes
             ? COPY_REASONS.empty
             : null;
-    const applyDisabledReason = unavailable
+    const replacementApplyDisabledReason = unavailable
       ? APPLY_REASONS.busy
       : source.workflowMode !== 'roto'
         ? APPLY_REASONS.wrongMode
         : source.selectionKind === 'generated-interpolation'
           ? APPLY_REASONS.generated
-          : clipboard.value === null
-            ? APPLY_REASONS.missing
-            : null;
-    return { canCopy: copyDisabledReason === null, canApply: applyDisabledReason === null, copyDisabledReason, applyDisabledReason, busy: busy.value };
+          : null;
+    const applyDisabledReason = replacementApplyDisabledReason ?? (clipboard.value === null ? APPLY_REASONS.missing : null);
+    return {
+      canCopy: copyDisabledReason === null,
+      canApply: applyDisabledReason === null,
+      canApplyReplacement: replacementApplyDisabledReason === null,
+      copyDisabledReason,
+      applyDisabledReason,
+      replacementApplyDisabledReason,
+      busy: busy.value,
+    };
   });
 
   function refreshSourceHasBrushes(engine = engineState.peek()): void {

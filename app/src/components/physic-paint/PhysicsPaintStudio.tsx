@@ -254,6 +254,26 @@ export function PhysicsPaintStudio() {
     },
   );
   const mutationLocked = rotoScript.mutationLocked.value;
+  const handleScriptRowActivate = useCallback(async (id: string) => {
+    await rotoScriptLibrary.activateAndLoad(id);
+  }, [rotoScriptLibrary]);
+  const handleSelectedScriptLoadAndApply = useCallback(async () => {
+    const selectedId = rotoScriptLibrary.selectedId.peek();
+    if (!selectedId) return;
+    const loaded = await rotoScriptLibrary.activateAndLoad(selectedId);
+    if (!loaded) return;
+    const applied = await rotoScript.applyScript();
+    if (applied) setLastError(null);
+    else {
+      const message = rotoScript.error.peek()?.message;
+      if (message) setLastError(message);
+    }
+  }, [rotoScript, rotoScriptLibrary]);
+  const scriptLoadAndApplyDisabledReason = !rotoScriptLibrary.selected.value
+    ? 'Select a project script first.'
+    : rotoScriptLibrary.busy.value
+      ? 'Finish the current script library operation.'
+      : rotoScript.availability.value.replacementApplyDisabledReason;
   const rotoInputDisabled = currentFrameIsGeneratedRoto || mutationLocked;
   const {
     selectTool,
@@ -643,7 +663,14 @@ export function PhysicsPaintStudio() {
         onion, onionDisabled: isPlaying, engineControlsDisabled: mutationLocked, playWiggle: panelMotion, devExportEnabled: isPhysicsPaintDevExportEnabled(import.meta.env), devExportBusy: applyStatus === 'applying', applyStatus, applyMessage, error: lastError,
         onExportDebugProof: exportDebugProof, onColorChange: setBrushColor, onEdgeDetailChange: setEdgeDetail, onPickupChange: setPickup, onSpreadChange: setSpread, onSmoothingChange: setSmoothing, onEraseStrengthChange: setEraseStrength,
         onOnionChange: setOnion, onPlayWiggleChange: updatePanelMotion, onSaveState: saveEditableState, onLoadState: loadEditableState,
-        scripts: { library: rotoScriptLibrary, onSave: () => { void rotoScriptLibrary.saveActiveFrame(); }, onLoad: () => { void rotoScriptLibrary.loadSelected(); }, onRefresh: () => { void rotoScriptLibrary.refresh(); } },
+        scripts: {
+          library: rotoScriptLibrary,
+          loadAndApplyDisabledReason: scriptLoadAndApplyDisabledReason,
+          onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
+          onActivateRow: (id) => { void handleScriptRowActivate(id); },
+          onLoadAndApply: () => { void handleSelectedScriptLoadAndApply(); },
+          onRefresh: () => { void rotoScriptLibrary.refresh(); },
+        },
       },
     workflow: {
         mode: workflowMode, currentFrame, startFrame: launchContext?.startFrame ?? 0, frameCount: framesToApply, currentPreviewFrame: localPlayPreviewFrame, maxPlayFrameCount: launchContext?.maxPlayFrameCount, maxPlayFrameCountReason: launchContext?.maxPlayFrameCountReason,

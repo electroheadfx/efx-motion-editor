@@ -746,7 +746,7 @@ button.destructive {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 18px;
+  gap: 8px;
   min-width: 0;
   padding: 20px 10px 20px 10px;
   overflow-y: auto;
@@ -791,8 +791,9 @@ button.destructive {
   background: #343638;
 }
 
-.physics-paint-right-section + .physics-paint-right-section {
-  margin-top: 2px;
+.physics-paint-options-tabs-navigation {
+  flex: 0 0 auto;
+  margin-top: -4px;
 }
 
 .physics-paint-color-picker {
@@ -965,7 +966,7 @@ button.destructive {
   font-weight: 700;
   line-height: 35px;
   white-space: nowrap;
-  text-transform: uppercase;
+  text-transform: none;
   box-shadow: none !important;
 }
 
@@ -1099,10 +1100,13 @@ button.destructive {
   background: #3b3d3f;
   color: #eef1f4;
   text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, background-color 0.12s;
 }
+.physics-paint-script-row:hover { border-color: #747b83; background: #414447; }
+.physics-paint-script-row:focus-visible { outline: 2px solid var(--color-accent, #2d5be3); outline-offset: 2px; }
 .physics-paint-script-row.selected { border-color: #7e9cff; background: #454b5a; }
-.physics-paint-script-select { display: flex; width: 48px; height: 48px; padding: 0; border: 0; background: transparent; }
-.physics-paint-script-thumbnail { width: 48px; height: 48px; object-fit: contain; border-radius: 4px; background: #fff; }
+.physics-paint-script-thumbnail { width: 48px; height: 48px; object-fit: contain; border-radius: 4px; background: #fff; pointer-events: none; }
 .physics-paint-script-row-copy, .physics-paint-script-rename-wrap { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 .physics-paint-script-name, .physics-paint-script-provenance, .physics-paint-script-count { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .physics-paint-script-name { min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; font-size: 12px; font-weight: 700; }
@@ -2200,6 +2204,11 @@ button.destructive {
 
   .physics-paint-right-panel {
     padding: 14px 12px;
+  }
+
+  .physics-paint-options-tab {
+    padding-inline: 4px;
+    font-size: 11px;
   }
 }
 
