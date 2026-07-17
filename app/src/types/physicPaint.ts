@@ -204,8 +204,43 @@ export interface PhysicPaintReplaceRotoKeyFramesPayload {
   operationId: string;
   layerId: string;
   startFrame: number;
+  projectContextId?: string;
+  frameCount?: number;
+  expectedLayerEndExclusive?: number;
+  expectedRotoRevision?: string;
   frames: PhysicPaintRotoCacheFrame[];
   rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings;
+}
+
+export interface PhysicPaintRotoAuthorityRequest {
+  operationId: string;
+  projectContextId: string;
+  layerId: string;
+  canonicalStart: number;
+}
+
+export interface PhysicPaintRotoAuthorityResult {
+  operationId: string;
+  ok: boolean;
+  projectContextId: string;
+  layerId: string;
+  canonicalStart: number;
+  layerEndExclusive: number;
+  capacity: number;
+  rotoRevision: string;
+  frames: PhysicPaintRotoCacheFrame[];
+  interpolationSettings: PhysicPaintRotoInterpolationSettings;
+  error?: string;
+}
+
+export interface PhysicPaintRotoAuthorityRequestMessage {
+  type: 'physic-paint:roto-authority-request';
+  payload: PhysicPaintRotoAuthorityRequest;
+}
+
+export interface PhysicPaintRotoAuthorityResultMessage {
+  type: 'physic-paint:roto-authority-result';
+  payload: PhysicPaintRotoAuthorityResult;
 }
 
 export interface PhysicPaintApplyPlayCanvasPayload {
@@ -406,6 +441,10 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
   if (value.kind === 'replace-roto-key-frames') {
     return Array.isArray(value.frames) &&
       value.frames.every((frame) => isPhysicPaintRotoCacheFrame(frame) && frame.source === 'real-key') &&
+      (value.projectContextId === undefined || isNonEmptyString(value.projectContextId)) &&
+      (value.frameCount === undefined || optionalFrameCount(value.frameCount)) &&
+      optionalNonNegativeInteger(value.expectedLayerEndExclusive) &&
+      (value.expectedRotoRevision === undefined || isNonEmptyString(value.expectedRotoRevision)) &&
       optionalRotoInterpolationSettings(value.rotoInterpolationSettings);
   }
 

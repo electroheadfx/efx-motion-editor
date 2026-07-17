@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
+import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
 import { isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryResult, isPhysicPaintScriptLibraryResultMessage } from '../../../types/physicPaint';
-import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT } from '../../../lib/physicPaintBridge';
+import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT } from '../../../lib/physicPaintBridge';
 
 export type PhysicsPaintBridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 
@@ -131,6 +131,18 @@ export function usePhysicsPaintScriptLibraryResultBridge(handleResult: (result: 
       if (disposed) unlisten?.();
     }).catch(() => undefined);
     return () => { disposed = true; unlisten?.(); window.removeEventListener(PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT, custom); window.removeEventListener('message', message); };
+  }, []);
+}
+
+export function usePhysicsPaintRotoAuthorityResultBridge(handleResult: (result: PhysicPaintRotoAuthorityResult) => void): void {
+  const handleRef = useRef(handleResult); handleRef.current = handleResult;
+  useEffect(() => {
+    let disposed = false; let unlisten: (() => void) | undefined;
+    const accept = (value: unknown) => { if (value && typeof value === 'object' && typeof (value as PhysicPaintRotoAuthorityResult).operationId === 'string') handleRef.current(value as PhysicPaintRotoAuthorityResult); };
+    const message = (event: MessageEvent) => { if (event.origin === window.location.origin && event.data?.type === PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT) accept(event.data.payload); };
+    window.addEventListener('message', message);
+    void import('@tauri-apps/api/event').then(async (eventApi) => { unlisten = await eventApi.listen?.(PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, (event) => accept(event.payload)); if (disposed) unlisten?.(); }).catch(() => undefined);
+    return () => { disposed = true; unlisten?.(); window.removeEventListener('message', message); };
   }, []);
 }
 

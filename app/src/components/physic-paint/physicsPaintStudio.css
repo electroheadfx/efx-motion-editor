@@ -1204,7 +1204,8 @@ button.destructive {
 .physics-paint-script-provenance, .physics-paint-script-count, .physics-paint-scripts-status, .physics-paint-scripts-empty { margin: 0; color: #aeb5be; font-size: 10px; }
 .physics-paint-script-rename-wrap input { min-width: 0; width: 100%; box-sizing: border-box; }
 .physics-paint-script-inline-error { color: #ff8585; font-size: 10px; }
-.physics-paint-script-confirmation { position: absolute; inset: 44px 4px auto; z-index: 8; display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid #737980; border-radius: 7px; background: #292b2d; box-shadow: 0 12px 28px rgba(0,0,0,.45); font-size: 11px; }
+.physics-paint-script-confirmation { position: absolute; inset: 44px 4px auto; z-index: 8; display: flex; flex-direction: column; gap: 8px; max-height: calc(100% - 52px); padding: 12px; border: 1px solid #737980; border-radius: 7px; overflow: auto; background: #292b2d; box-shadow: 0 12px 28px rgba(0,0,0,.45); font-size: 11px; }
+.physics-paint-play-script-dialog input, .physics-paint-play-script-dialog progress { box-sizing: border-box; width: 100%; min-width: 0; }
 .physics-paint-script-confirmation > div { display: flex; justify-content: flex-end; gap: 6px; }
 .physics-paint-script-confirmation .danger { color: #fff; background: #a43d3d; }
 

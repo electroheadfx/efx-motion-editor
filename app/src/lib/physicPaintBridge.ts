@@ -1,6 +1,6 @@
 import type { Result } from './ipc';
 import type { Layer } from '../types/layer';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayScriptCacheStatus, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult, PhysicPaintWorkflowMode } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayScriptCacheStatus, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult, PhysicPaintWorkflowMode } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import { layerStore } from '../stores/layerStore';
@@ -21,6 +21,8 @@ export const PHYSIC_PAINT_APPLY_EVENT = 'physic-paint:apply';
 export const PHYSIC_PAINT_APPLY_RESULT_EVENT = 'physic-paint:apply-result';
 export const PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT = 'physic-paint:script-library-request';
 export const PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT = 'physic-paint:script-library-result';
+export const PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT = 'physic-paint:roto-authority-request';
+export const PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT = 'physic-paint:roto-authority-result';
 export const PHYSIC_PAINT_STATE_SAVE_REQUEST_EVENT = 'physic-paint:state-save-request';
 export const PHYSIC_PAINT_STATE_SAVE_RESULT_EVENT = 'physic-paint:state-save-result';
 export const PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT = 'physic-paint:thumbnail-encode-request';
@@ -115,6 +117,22 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
     } else if (payload.kind === 'delete-roto-frame') {
       result = physicPaintStore.deleteRotoFrame(payload);
     } else if (payload.kind === 'replace-roto-key-frames') {
+      if (payload.projectContextId && payload.frameCount !== undefined && payload.expectedLayerEndExclusive !== undefined && payload.expectedRotoRevision) {
+        const authority = getPhysicPaintRotoAuthority({
+          operationId: payload.operationId,
+          projectContextId: payload.projectContextId,
+          layerId: payload.layerId,
+          canonicalStart: payload.startFrame,
+        });
+        if (!authority.ok) return failureResult(payload, authority.error ?? 'Roto authority rejected the batch.');
+        if (authority.layerEndExclusive !== payload.expectedLayerEndExclusive || authority.rotoRevision !== payload.expectedRotoRevision) return failureResult(payload, 'Roto authority became stale before commit.');
+        if (payload.frameCount <= 0 || payload.frameCount > authority.capacity) return failureResult(payload, 'Play Script exceeds the current layer capacity.');
+        const incomingSources = payload.frames.map((frame) => frame.sourceFrame ?? frame.appFrame);
+        if (new Set(incomingSources).size !== incomingSources.length) return failureResult(payload, 'Play Script batch contains duplicate real keys.');
+        for (let index = 0; index < payload.frameCount; index += 1) {
+          if (!incomingSources.includes(payload.startFrame + index)) return failureResult(payload, 'Play Script batch is incomplete.');
+        }
+      }
       result = physicPaintStore.replaceRotoKeyFrames(payload);
     } else if (payload.kind === 'apply-play-canvas') {
       result = physicPaintStore.applySequence(payload);
@@ -130,6 +148,48 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
   } catch (error) {
     return failureResult(payload, `${APPLY_ERROR} ${String(error)}`);
   }
+}
+
+export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityRequest): PhysicPaintRotoAuthorityResult {
+  const failure = (error: string): PhysicPaintRotoAuthorityResult => ({
+    operationId: request.operationId,
+    ok: false,
+    projectContextId: request.projectContextId,
+    layerId: request.layerId,
+    canonicalStart: request.canonicalStart,
+    layerEndExclusive: request.canonicalStart,
+    capacity: 0,
+    rotoRevision: '',
+    frames: [],
+    interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId),
+    error,
+  });
+  if (request.projectContextId !== projectStore.projectContextId.peek()) return failure('Project context changed.');
+  const layer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find((candidate) => candidate.id === request.layerId || (candidate.type === 'physic-paint' && candidate.source.type === 'physic-paint' && candidate.source.layerId === request.layerId));
+  if (!layer || layer.type !== 'physic-paint') return failure('Physics Paint layer is unavailable.');
+  if (!Number.isInteger(request.canonicalStart) || request.canonicalStart < 0) return failure('Canonical Roto start is invalid.');
+  if (getGeneratedRotoMutationGuard(request.layerId, request.canonicalStart)) return failure('Select a real Roto key to generate a Play Script.');
+  const capacity = getTimelineRangeFrameCount(layer, request.canonicalStart) ?? PHYSIC_PAINT_MAX_APPLY_FRAMES;
+  const frames = physicPaintStore.getRotoCacheFrames(request.layerId).filter((frame) => frame.source === 'real-key');
+  return {
+    operationId: request.operationId,
+    ok: true,
+    projectContextId: request.projectContextId,
+    layerId: request.layerId,
+    canonicalStart: request.canonicalStart,
+    layerEndExclusive: request.canonicalStart + capacity,
+    capacity,
+    rotoRevision: buildRotoRevision(frames),
+    frames,
+    interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId),
+  };
+}
+
+function buildRotoRevision(frames: readonly { sourceFrame?: number; appFrame: number; dataUrl: string }[]): string {
+  const source = frames.map((frame) => `${frame.sourceFrame ?? frame.appFrame}:${frame.dataUrl.length}:${frame.dataUrl.slice(-24)}`).sort().join('|');
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) { hash ^= source.charCodeAt(index); hash = Math.imul(hash, 16777619); }
+  return `${frames.length}-${(hash >>> 0).toString(16)}`;
 }
 
 export async function applyPhysicPaintScriptLibraryRequest(value: unknown): Promise<PhysicPaintScriptLibraryResult> {
@@ -274,6 +334,29 @@ export async function installPhysicPaintScriptLibraryListener(): Promise<() => v
   window.addEventListener(PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT, custom);
   window.addEventListener('message', message);
   return () => { window.removeEventListener(PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT, custom); window.removeEventListener('message', message); };
+}
+
+export async function installPhysicPaintRotoAuthorityListener(): Promise<() => void> {
+  const emitResult = async (result: PhysicPaintRotoAuthorityResult, source?: Pick<Window, 'postMessage'> | null) => {
+    if (isTauriRuntime()) {
+      const eventApi = await import('@tauri-apps/api/event');
+      await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, result);
+    }
+    if (typeof window !== 'undefined') source?.postMessage?.({ type: PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, payload: result }, window.location.origin);
+  };
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    const unlisten = await eventApi.listen?.(PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, async (event) => emitResult(getPhysicPaintRotoAuthority(event.payload as PhysicPaintRotoAuthorityRequest)));
+    if (unlisten) return unlisten;
+  }
+  if (typeof window === 'undefined') return () => {};
+  const message = (event: MessageEvent) => {
+    if (event.origin !== window.location.origin || event.data?.type !== PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT) return;
+    const source = event.source && 'postMessage' in event.source ? event.source as Pick<Window, 'postMessage'> : undefined;
+    void emitResult(getPhysicPaintRotoAuthority(event.data.payload as PhysicPaintRotoAuthorityRequest), source);
+  };
+  window.addEventListener('message', message);
+  return () => window.removeEventListener('message', message);
 }
 
 export function handlePhysicPaintFrameSyncMessage(value: unknown): boolean {

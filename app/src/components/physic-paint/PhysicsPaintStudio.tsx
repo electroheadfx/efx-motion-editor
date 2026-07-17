@@ -42,6 +42,7 @@ import { useRotoInterpolationController } from './hooks/useRotoInterpolationCont
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
 import { claimRotoSelectedFrame } from './roto/rotoKeyTransactions';
 import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryController';
+import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import './physicsPaintStudio.css';
 const DEFAULT_PLAY_WIGGLE: AnimationWiggleConfig = { strokeDeformation: 0, strokePosition: 0 };
@@ -350,6 +351,26 @@ export function PhysicsPaintStudio() {
   const copyRotoFrame = rotoKeyUtilities.copyKey;
   const pasteRotoFrame = rotoKeyUtilities.pasteKey;
   const rotoCachedPlayback = rotoNavigation.playback;
+  const rotoPlayScript = useRotoPlayScriptController({
+    library: rotoScriptLibrary,
+    getLaunchContext: () => launchContext,
+    getSelection: () => ({ kind: currentFrameSelectionKind, sourceFrame: currentFrameOwnerSourceFrame ?? currentFrame, displayFrame: currentFrame }),
+    getMotion: () => launchContext ? {
+      deformation: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).deform,
+      position: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).position,
+    } : { deformation: 0, position: 0 },
+    getOperationLocked: () => rotoScript.mutationLocked.peek() || rotoScriptNavigationLocked,
+    getSize: () => ({ width: canvasWidth, height: canvasHeight }),
+    mirrorAccepted: (frames, firstSourceFrame) => {
+      if (!launchContext) return;
+      physicPaintStore.replaceRotoKeyFrames({ kind: 'replace-roto-key-frames', operationId: `mirror-${crypto.randomUUID()}`, layerId: launchContext.layerId, startFrame: firstSourceFrame, frames, rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) });
+      const refreshed = physicPaintStore.getRotoCacheFrames(launchContext.layerId);
+      latestRotoFramesRef.current = refreshed;
+      setLaunchContext((current) => current ? { ...current, startFrame: firstSourceFrame, cachedRotoFrames: refreshed } : current);
+    },
+    stopPlayback: rotoCachedPlayback.stop,
+    log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
+  }, bridgeMode);
   resetRotoKeySessionRef.current = rotoKeyUtilities.resetSession;
   resetRotoNavigationForLaunchRef.current = rotoNavigation.resetForLaunch;
   const rotoFrameEditing = useRotoFrameEditingController({
@@ -671,6 +692,7 @@ export function PhysicsPaintStudio() {
         onOnionChange: setOnion, onPlayWiggleChange: updatePanelMotion, onSaveState: saveEditableState, onLoadState: loadEditableState,
         scripts: {
           library: rotoScriptLibrary,
+          playScript: rotoPlayScript,
           loadAndApplyDisabledReason: scriptLoadAndApplyDisabledReason,
           onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
           onActivateRow: (id) => { void handleScriptRowActivate(id); },

@@ -23,6 +23,7 @@ export interface RotoPlayScriptRenderInput {
 }
 
 export interface StagedRotoPlayScriptFrame extends PhysicPaintRenderedFrame {
+  source: 'real-key';
   sourceFrame: number;
 }
 
@@ -69,7 +70,7 @@ export async function renderRotoPlayScriptFrames(input: RotoPlayScriptRenderInpu
       throwIfAborted(input.signal);
       const encoded = await encodeRotoFrameFromCanvas(merged, destination, input.size);
       throwIfAborted(input.signal);
-      staged.push({ ...encoded, frameIndex, sourceFrame: destination });
+      staged.push({ ...encoded, frameIndex, sourceFrame: destination, source: 'real-key' });
       releaseCanvas(scriptAlpha);
       releaseCanvas(merged);
       input.onProgress?.(frameIndex + 1, input.frameCount);

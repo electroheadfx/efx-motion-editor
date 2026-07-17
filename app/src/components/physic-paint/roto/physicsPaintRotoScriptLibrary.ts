@@ -38,6 +38,7 @@ export interface RotoScriptLibraryController {
   refresh: () => Promise<void>;
   saveActiveFrame: () => Promise<boolean>;
   activateAndLoad: (id: string, preparation?: PreparedRotoScriptLoadAndApply) => Promise<boolean>;
+  loadSnapshot: (id: string) => Promise<RotoPaintScript | null>;
   beginRename: () => void;
   updateRenameDraft: (draft: string) => void;
   commitRename: () => Promise<boolean>;
@@ -198,6 +199,24 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       return false;
     }
   }
+  async function loadSnapshot(id: string): Promise<RotoPaintScript | null> {
+    const row = rows.peek().find((candidate) => candidate.id === id);
+    if (!row || busy.peek()) return null;
+    const result = await execute({ kind: 'load', operationId: operationId('snapshot'), scriptId: row.id }, undefined, false);
+    if (!result.ok || !result.script) {
+      status.value = result.error ?? 'Load failed';
+      return null;
+    }
+    try {
+      const runtime = persistedRotoScriptToRuntime(result.script);
+      return deepFreezeSnapshot(runtime);
+    } catch (error) {
+      const message = String(error);
+      status.value = message;
+      ports.log(message, true);
+      return null;
+    }
+  }
   function beginRename(): void { const row = selected.peek(); if (row) rename.value = { id: row.id, draft: row.name, error: null }; }
   function updateRenameDraft(draft: string): void { if (rename.peek()) rename.value = { ...rename.peek()!, draft, error: null }; }
   async function commitRename(): Promise<boolean> {
@@ -218,9 +237,38 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   }
   return {
     rows, selectedId, selected, busy, status, skippedInvalidCount, rename, deleteConfirmation, availability,
-    updateProjectContext: refresh, enterScripts: refresh, refresh, saveActiveFrame, activateAndLoad, beginRename, updateRenameDraft, commitRename,
+    updateProjectContext: refresh, enterScripts: refresh, refresh, saveActiveFrame, activateAndLoad, loadSnapshot, beginRename, updateRenameDraft, commitRename,
     cancelRename: () => { rename.value = null; }, requestDelete: () => { deleteConfirmation.value = selected.peek(); }, confirmDelete,
     cancelDelete: () => { deleteConfirmation.value = null; }, select: (id) => { if (rows.peek().some((row) => row.id === id)) selectedId.value = id; },
     dispose: () => { disposed = true; contextGeneration += 1; operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; rename.value = null; deleteConfirmation.value = null; },
   };
+}
+
+function deepFreezeSnapshot(script: RotoPaintScript): RotoPaintScript {
+  const snapshot: RotoPaintScript = {
+    provenance: { ...script.provenance },
+    sourceFrame: script.sourceFrame,
+    sourceDisplayFrame: script.sourceDisplayFrame,
+    sourceRevision: script.sourceRevision,
+    brushes: script.brushes.map((brush) => ({
+      primary: cloneSnapshotStroke(brush.primary),
+      continuations: brush.continuations?.map(cloneSnapshotStroke),
+    })),
+  };
+  Object.freeze(snapshot.provenance);
+  for (const brush of snapshot.brushes) {
+    for (const point of brush.primary.points) Object.freeze(point);
+    Object.freeze(brush.primary.points); Object.freeze(brush.primary.params); Object.freeze(brush.primary);
+    for (const continuation of brush.continuations ?? []) {
+      Object.freeze(continuation.points); Object.freeze(continuation.params); Object.freeze(continuation);
+    }
+    if (brush.continuations) Object.freeze(brush.continuations);
+    Object.freeze(brush);
+  }
+  Object.freeze(snapshot.brushes);
+  return Object.freeze(snapshot);
+}
+
+function cloneSnapshotStroke(stroke: RotoPaintScript['brushes'][number]['primary']) {
+  return { ...stroke, points: stroke.points.map((point) => ({ ...point })), params: { ...stroke.params } };
 }
