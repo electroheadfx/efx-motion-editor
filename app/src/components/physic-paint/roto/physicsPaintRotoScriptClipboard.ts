@@ -6,7 +6,6 @@ import type { RotoSaveRealKeyTransaction, RotoSelectedFrameClaim } from './rotoK
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 
 export interface RotoScriptSourceSnapshot {
-  workflowMode: 'play' | 'roto';
   selectionKind: RotoTimelineSelectionKind;
   layerId?: string | null;
   sourceFrame: number;
@@ -235,20 +234,16 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const unavailable = disposalRequested || busy.value;
     const copyDisabledReason = unavailable
       ? COPY_REASONS.busy
-      : source.workflowMode !== 'roto'
-        ? COPY_REASONS.wrongMode
-        : source.selectionKind === 'generated-interpolation'
-          ? COPY_REASONS.generated
-          : source.selectionKind !== 'real-key' || !hasBrushes
-            ? COPY_REASONS.empty
-            : null;
+      : source.selectionKind === 'generated-interpolation'
+        ? COPY_REASONS.generated
+        : source.selectionKind !== 'real-key' || !hasBrushes
+          ? COPY_REASONS.empty
+          : null;
     const replacementApplyDisabledReason = unavailable
       ? APPLY_REASONS.busy
-      : source.workflowMode !== 'roto'
-        ? APPLY_REASONS.wrongMode
-        : source.selectionKind === 'generated-interpolation'
-          ? APPLY_REASONS.generated
-          : null;
+      : source.selectionKind === 'generated-interpolation'
+        ? APPLY_REASONS.generated
+        : null;
     const applyDisabledReason = replacementApplyDisabledReason ?? (clipboard.value === null ? APPLY_REASONS.missing : null);
     return {
       canCopy: copyDisabledReason === null,
@@ -440,8 +435,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   }
 
   function sameSourceIdentity(left: RotoScriptSourceSnapshot, right: RotoScriptSourceSnapshot): boolean {
-    return left.workflowMode === right.workflowMode
-      && left.selectionKind === right.selectionKind
+    return left.selectionKind === right.selectionKind
       && left.layerId === right.layerId
       && left.sourceFrame === right.sourceFrame
       && left.displayFrame === right.displayFrame;

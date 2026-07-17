@@ -1,5 +1,5 @@
 import type {MceAudioTrack} from './audio';
-import type {PhysicPaintPlayMotionSettings, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintWorkflowMetadata} from './physicPaint';
+import type {PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings} from './physicPaint';
 
 /** Legacy type -- used by project_get_default */
 export interface ProjectData {
@@ -50,13 +50,6 @@ export type McePhysicPaintRotoCachedFrame = Omit<PhysicPaintRotoCacheFrame, 'dat
 export interface McePhysicPaintOutput {
   layer_id: string;
   frames: McePhysicPaintCachedFrame[];
-  editable_state?: import('@efxlab/efx-physic-paint').SerializedProject;
-  play_script_ranges?: PhysicPaintPlayScriptRange[];
-  workflow_mode?: PhysicPaintWorkflowMetadata['workflowMode'];
-  play_start_frame?: number;
-  play_frame_count?: number;
-  editable_source?: PhysicPaintWorkflowMetadata['editableSource'];
-  play_motion?: PhysicPaintPlayMotionSettings;
   roto_cache_metadata?: McePhysicPaintRotoCachedFrame[];
   roto_interpolation_settings?: PhysicPaintRotoInterpolationSettings;
   roto_background?: PhysicPaintRotoBackgroundMetadata;

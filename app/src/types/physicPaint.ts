@@ -9,14 +9,7 @@ export const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
 const RENDERED_DATA_URL_PREFIX = 'data:image/png';
 const FORBIDDEN_APPLY_FIELDS = new Set(['engine', 'internals', 'strokes']);
 
-export type PhysicPaintApplyKind = 'apply-canvas' | 'delete-roto-frame' | 'replace-roto-key-frames' | 'apply-play-canvas' | 'convert-play-to-roto' | 'convert-roto-to-play' | 'update-play-render-options' | 'update-roto-interpolation-settings';
-export type PhysicPaintWorkflowMode = 'roto' | 'play';
-export type PhysicPaintEditableSource = 'roto' | 'play';
-
-export type PhysicPaintPlayScriptRangeSource = 'play';
-export type PhysicPaintPlayScriptCacheStatus = 'cached' | 'stale' | 'missing';
-export type PhysicPaintPlayRenderTool = 'normal-paint' | 'physics-paint' | 'erase';
-export type PhysicPaintPlayBackgroundMode = 'transparent' | 'white' | 'canvas1' | 'canvas2' | 'canvas3' | 'photo';
+export type PhysicPaintApplyKind = 'apply-canvas' | 'delete-roto-frame' | 'replace-roto-key-frames' | 'update-roto-interpolation-settings';
 export type PhysicPaintRotoFrameSource = 'real-key' | 'generated-interpolation' | 'background-only-support';
 export type PhysicPaintRotoInterpolationMode = 'duplicate' | 'blend';
 export type PhysicPaintRotoBackgroundMode = 'transparent' | 'white' | 'canvas1' | 'canvas2' | 'canvas3';
@@ -26,11 +19,6 @@ export interface PhysicPaintRotoBackgroundMetadata {
   paperGrain: string;
   grainStrength: number;
   color?: string;
-}
-
-export interface PhysicPaintPlayMotionSettings {
-  strokeDeformation: number;
-  strokePosition: number;
 }
 
 export interface PhysicPaintRotoSegmentSpacingOverride {
@@ -60,38 +48,6 @@ export interface PhysicPaintRotoCacheFrame extends PhysicPaintRenderedFrame {
   onionDataUrl?: string;
 }
 
-export interface PhysicPaintPlayRenderOptionsSnapshot {
-  tool: PhysicPaintPlayRenderTool;
-  color: string;
-  opacity: number;
-  brushSize: number;
-  background: PhysicPaintPlayBackgroundMode;
-  paperGrain: string;
-  grainStrength: number;
-  motion: PhysicPaintPlayMotionSettings;
-}
-
-export interface PhysicPaintPlayScriptRange {
-  id: string;
-  startFrame: number;
-  frameCount: number;
-  editableState: SerializedProject;
-  source?: PhysicPaintPlayScriptRangeSource;
-  cacheStatus?: PhysicPaintPlayScriptCacheStatus;
-  motion?: PhysicPaintPlayMotionSettings;
-  renderOptions?: PhysicPaintPlayRenderOptionsSnapshot;
-}
-
-export interface PhysicPaintWorkflowMetadata {
-  workflowMode: PhysicPaintWorkflowMode;
-  playStartFrame?: number;
-  playFrameCount?: number;
-  editableSource?: PhysicPaintEditableSource;
-  playScriptRanges?: PhysicPaintPlayScriptRange[];
-  playMotion?: PhysicPaintPlayMotionSettings;
-  rotoBackground?: PhysicPaintRotoBackgroundMetadata;
-}
-
 export interface PhysicPaintProjectContext {
   name: string;
   saved: boolean;
@@ -107,23 +63,10 @@ export interface PhysicPaintLaunchContext {
   width?: number;
   height?: number;
   fps?: number;
-  requestedWorkflowMode?: PhysicPaintWorkflowMode;
-  workflowMode?: PhysicPaintWorkflowMode;
-  playStartFrame?: number;
-  playFrameCount?: number;
-  editableSource?: PhysicPaintEditableSource;
   editableState?: SerializedProject;
-  selectedPlayScriptId?: string;
-  playCacheStatus?: PhysicPaintPlayScriptCacheStatus;
-  playMotion?: PhysicPaintPlayMotionSettings;
-  playRenderOptions?: PhysicPaintPlayRenderOptionsSnapshot;
   rotoBackground?: PhysicPaintRotoBackgroundMetadata;
-  previewFrame?: number;
-  cachedPlayFrames?: PhysicPaintRenderedFrame[];
   cachedRotoFrames?: PhysicPaintRotoCacheFrame[];
   rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings;
-  maxPlayFrameCount?: number;
-  maxPlayFrameCountReason?: string;
 }
 
 export interface PhysicPaintFrameSyncMessage {
@@ -243,50 +186,6 @@ export interface PhysicPaintRotoAuthorityResultMessage {
   payload: PhysicPaintRotoAuthorityResult;
 }
 
-export interface PhysicPaintApplyPlayCanvasPayload {
-  kind: 'apply-play-canvas';
-  operationId: string;
-  layerId: string;
-  startFrame: number;
-  frameCount: number;
-  frames: PhysicPaintRenderedFrame[];
-  editableState: SerializedProject;
-  playScriptId?: string;
-  playMotion?: PhysicPaintPlayMotionSettings;
-  renderOptions?: PhysicPaintPlayRenderOptionsSnapshot;
-}
-
-export interface PhysicPaintConvertPlayToRotoPayload {
-  kind: 'convert-play-to-roto';
-  operationId: string;
-  layerId: string;
-  startFrame: number;
-  frameCount: number;
-  frames: PhysicPaintRenderedFrame[];
-  editableState: SerializedProject;
-}
-
-export interface PhysicPaintConvertRotoToPlayPayload {
-  kind: 'convert-roto-to-play';
-  operationId: string;
-  layerId: string;
-  startFrame: number;
-  frameCount: number;
-  editableState: SerializedProject;
-  playScriptId?: string;
-  playMotion?: PhysicPaintPlayMotionSettings;
-  renderOptions?: PhysicPaintPlayRenderOptionsSnapshot;
-}
-
-export interface PhysicPaintUpdatePlayRenderOptionsPayload {
-  kind: 'update-play-render-options';
-  operationId: string;
-  layerId: string;
-  startFrame: number;
-  playScriptId: string;
-  renderOptions: PhysicPaintPlayRenderOptionsSnapshot;
-}
-
 export interface PhysicPaintUpdateRotoInterpolationSettingsPayload {
   kind: 'update-roto-interpolation-settings';
   operationId: string;
@@ -295,7 +194,7 @@ export interface PhysicPaintUpdateRotoInterpolationSettingsPayload {
   settings: PhysicPaintRotoInterpolationSettings;
 }
 
-export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintDeleteRotoFramePayload | PhysicPaintReplaceRotoKeyFramesPayload | PhysicPaintApplyPlayCanvasPayload | PhysicPaintConvertPlayToRotoPayload | PhysicPaintConvertRotoToPlayPayload | PhysicPaintUpdatePlayRenderOptionsPayload | PhysicPaintUpdateRotoInterpolationSettingsPayload;
+export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintDeleteRotoFramePayload | PhysicPaintReplaceRotoKeyFramesPayload | PhysicPaintUpdateRotoInterpolationSettingsPayload;
 
 export interface PhysicPaintApplyResult {
   operationId: string;
@@ -377,24 +276,11 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
     optionalNumber(value.width) &&
     optionalNumber(value.height) &&
     optionalPositiveNumber(value.fps) &&
-    optionalWorkflowMode(value.requestedWorkflowMode) &&
-    optionalWorkflowMode(value.workflowMode) &&
-    optionalNonNegativeInteger(value.playStartFrame) &&
-    optionalFrameCount(value.playFrameCount) &&
-    optionalEditableSource(value.editableSource) &&
-    optionalNonEmptyString(value.selectedPlayScriptId) &&
-    optionalPlayScriptCacheStatus(value.playCacheStatus) &&
-    optionalPlayMotion(value.playMotion) &&
-    optionalPlayRenderOptions(value.playRenderOptions) &&
+    (value.editableState === undefined || isSerializedProject(value.editableState)) &&
     optionalRotoBackgroundMetadata(value.rotoBackground) &&
-    optionalNonNegativeInteger(value.previewFrame) &&
-    optionalRenderedFrames(value.cachedPlayFrames) &&
     optionalRotoCacheFrames(value.cachedRotoFrames) &&
     optionalRotoInterpolationSettings(value.rotoInterpolationSettings) &&
-    optionalFrameCount(value.maxPlayFrameCount) &&
-    (value.maxPlayFrameCountReason === undefined || typeof value.maxPlayFrameCountReason === 'string') &&
-    (value.layerName === undefined || typeof value.layerName === 'string') &&
-    (value.editableState === undefined || isSerializedProject(value.editableState))
+    (value.layerName === undefined || typeof value.layerName === 'string')
   );
 }
 
@@ -406,31 +292,11 @@ export function isPhysicPaintFrameSyncMessage(value: unknown): value is PhysicPa
   );
 }
 
-export function isPhysicPaintPlayRenderOptionsSnapshot(value: unknown): value is PhysicPaintPlayRenderOptionsSnapshot {
-  if (!isRecord(value)) return false;
-  return (
-    (value.tool === 'normal-paint' || value.tool === 'physics-paint' || value.tool === 'erase') &&
-    isNonEmptyString(value.color) &&
-    isPercentInteger(value.opacity) &&
-    isPositiveInteger(value.brushSize) &&
-    optionalPlayBackgroundMode(value.background) &&
-    isNonEmptyString(value.paperGrain) &&
-    typeof value.grainStrength === 'number' &&
-    Number.isFinite(value.grainStrength) &&
-    value.grainStrength >= 0 &&
-    value.grainStrength <= 1 &&
-    optionalPlayMotion(value.motion)
-  );
-}
-
 export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintApplyPayload {
   if (!isRecord(value) || containsForbiddenApplyField(value)) return false;
 
   if (!isBaseApplyPayload(value)) return false;
 
-  if (value.kind === 'update-play-render-options') {
-    return isNonEmptyString(value.playScriptId) && isPhysicPaintPlayRenderOptionsSnapshot(value.renderOptions);
-  }
 
   if (value.kind === 'update-roto-interpolation-settings') {
     return isPhysicPaintRotoInterpolationSettings(value.settings);
@@ -461,68 +327,8 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
       (value.closeWindowAfterApply === undefined || typeof value.closeWindowAfterApply === 'boolean');
   }
 
-  if (!isSerializedProject(value.editableState)) return false;
-
-  if (value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto') {
-    const frameCount = value.frameCount;
-    const frames = value.frames;
-    if (typeof frameCount !== 'number' || !Number.isInteger(frameCount)) return false;
-    if (frameCount < PHYSIC_PAINT_MIN_APPLY_FRAMES || frameCount > PHYSIC_PAINT_MAX_APPLY_FRAMES) return false;
-    if (!Array.isArray(frames) || frames.length !== frameCount) return false;
-    return frames.every((frame, index) => isPhysicPaintRenderedFrame(frame, value.startFrame + index, index));
-  }
-
-  if (value.kind === 'convert-roto-to-play') {
-    const frameCount = value.frameCount;
-    if (typeof frameCount !== 'number' || !Number.isInteger(frameCount)) return false;
-    return frameCount >= PHYSIC_PAINT_MIN_APPLY_FRAMES && frameCount <= PHYSIC_PAINT_MAX_APPLY_FRAMES;
-  }
 
   return false;
-}
-
-export function normalizePhysicPaintPlayScriptRanges(value: unknown): PhysicPaintPlayScriptRange[] | null {
-  if (!Array.isArray(value)) return null;
-
-  const ranges: PhysicPaintPlayScriptRange[] = [];
-  const ids = new Set<string>();
-
-  for (const candidate of value) {
-    if (!isRecord(candidate)) return null;
-    if (!isNonEmptyString(candidate.id)) return null;
-    if (ids.has(candidate.id)) return null;
-    if (!isNonNegativeInteger(candidate.startFrame)) return null;
-    const frameCount = candidate.frameCount;
-    if (typeof frameCount !== 'number' || !Number.isInteger(frameCount)) return null;
-    if (frameCount < PHYSIC_PAINT_MIN_APPLY_FRAMES || frameCount > PHYSIC_PAINT_MAX_APPLY_FRAMES) return null;
-    if (!isSerializedProject(candidate.editableState)) return null;
-    if (candidate.source !== undefined && candidate.source !== 'play') return null;
-    if (candidate.cacheStatus !== undefined && candidate.cacheStatus !== 'cached' && candidate.cacheStatus !== 'stale' && candidate.cacheStatus !== 'missing') return null;
-    if (!optionalPlayMotion(candidate.motion)) return null;
-    if (!optionalPlayRenderOptions(candidate.renderOptions)) return null;
-
-    ids.add(candidate.id);
-    ranges.push({
-      id: candidate.id,
-      startFrame: candidate.startFrame,
-      frameCount,
-      editableState: structuredClone(candidate.editableState),
-      ...(candidate.source ? { source: candidate.source } : {}),
-      ...(candidate.cacheStatus ? { cacheStatus: candidate.cacheStatus } : {}),
-      ...(candidate.motion ? { motion: normalizePlayMotion(candidate.motion) } : {}),
-      ...(candidate.renderOptions ? { renderOptions: normalizePlayRenderOptions(candidate.renderOptions) } : {}),
-    });
-  }
-
-  ranges.sort((a, b) => a.startFrame - b.startFrame || a.id.localeCompare(b.id));
-
-  let previousEnd = -1;
-  for (const range of ranges) {
-    if (range.startFrame <= previousEnd) return null;
-    previousEnd = range.startFrame + range.frameCount - 1;
-  }
-
-  return ranges;
 }
 
 export function isPhysicPaintRotoCacheFrame(value: unknown): value is PhysicPaintRotoCacheFrame {
@@ -587,7 +393,7 @@ export function isPhysicPaintApplyResult(value: unknown): value is PhysicPaintAp
   if (!isRecord(value)) return false;
   return (
     isNonEmptyString(value.operationId) &&
-    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play' || value.kind === 'update-play-render-options' || value.kind === 'update-roto-interpolation-settings') &&
+    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'update-roto-interpolation-settings') &&
     isNonEmptyString(value.layerId) &&
     isNonNegativeInteger(value.startFrame) &&
     isNonNegativeInteger(value.appliedFrameCount) &&
@@ -662,13 +468,12 @@ function isBaseApplyPayload(value: Record<string, unknown>): value is Record<str
   startFrame: number;
 } {
   return (
-    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play' || value.kind === 'update-play-render-options' || value.kind === 'update-roto-interpolation-settings') &&
+    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'update-roto-interpolation-settings') &&
     isNonEmptyString(value.operationId) &&
     isNonEmptyString(value.layerId) &&
     isNonNegativeInteger(value.startFrame) &&
     optionalNonEmptyString(value.playScriptId) &&
-    optionalPlayMotion(value.playMotion) &&
-    optionalPlayRenderOptions(value.renderOptions)
+    true
   );
 }
 
@@ -774,28 +579,12 @@ function optionalProjectContext(value: unknown): boolean {
   return value === undefined || (isRecord(value) && isNonEmptyString(value.name) && typeof value.saved === 'boolean' && isNonEmptyString(value.contextId) && Object.keys(value).every((key) => key === 'name' || key === 'saved' || key === 'contextId'));
 }
 
-function optionalWorkflowMode(value: unknown): boolean {
-  return value === undefined || value === 'roto' || value === 'play';
-}
-
-function optionalEditableSource(value: unknown): boolean {
-  return value === undefined || value === 'roto' || value === 'play';
-}
-
-function optionalPlayScriptCacheStatus(value: unknown): boolean {
-  return value === undefined || value === 'cached' || value === 'stale' || value === 'missing';
-}
-
 function optionalNonEmptyString(value: unknown): boolean {
   return value === undefined || isNonEmptyString(value);
 }
 
 function optionalNonNegativeInteger(value: unknown): boolean {
   return value === undefined || isNonNegativeInteger(value);
-}
-
-function optionalRenderedFrames(value: unknown): boolean {
-  return value === undefined || (Array.isArray(value) && value.every((frame) => isPhysicPaintRenderedFrame(frame)));
 }
 
 function optionalRotoCacheFrames(value: unknown): boolean {
@@ -831,42 +620,8 @@ function optionalFrameCount(value: unknown): boolean {
   return value === undefined || (typeof value === 'number' && Number.isInteger(value) && value >= PHYSIC_PAINT_MIN_APPLY_FRAMES && value <= PHYSIC_PAINT_MAX_APPLY_FRAMES);
 }
 
-function optionalPlayMotion(value: unknown): value is PhysicPaintPlayMotionSettings | undefined {
-  if (value === undefined) return true;
-  if (!isRecord(value)) return false;
-  return isPercentInteger(value.strokeDeformation) && isPercentInteger(value.strokePosition);
-}
-
-function optionalPlayRenderOptions(value: unknown): value is PhysicPaintPlayRenderOptionsSnapshot | undefined {
-  return value === undefined || isPhysicPaintPlayRenderOptionsSnapshot(value);
-}
-
 function optionalRotoBackgroundMetadata(value: unknown): value is PhysicPaintRotoBackgroundMetadata | undefined {
   return value === undefined || isPhysicPaintRotoBackgroundMetadata(value);
-}
-
-function optionalPlayBackgroundMode(value: unknown): value is PhysicPaintPlayBackgroundMode {
-  return value === 'transparent' || value === 'white' || value === 'canvas1' || value === 'canvas2' || value === 'canvas3' || value === 'photo';
-}
-
-function normalizePlayMotion(value: PhysicPaintPlayMotionSettings): PhysicPaintPlayMotionSettings {
-  return {
-    strokeDeformation: clampPercentInteger(value.strokeDeformation),
-    strokePosition: clampPercentInteger(value.strokePosition),
-  };
-}
-
-function normalizePlayRenderOptions(value: PhysicPaintPlayRenderOptionsSnapshot): PhysicPaintPlayRenderOptionsSnapshot {
-  return {
-    tool: value.tool,
-    color: value.color,
-    opacity: value.opacity,
-    brushSize: value.brushSize,
-    background: value.background,
-    paperGrain: value.paperGrain,
-    grainStrength: value.grainStrength,
-    motion: normalizePlayMotion(value.motion),
-  };
 }
 
 function isPercentInteger(value: unknown): value is number {
@@ -875,15 +630,6 @@ function isPercentInteger(value: unknown): value is number {
 
 function isRotoInBetweenFrameCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= PHYSIC_PAINT_MAX_APPLY_FRAMES;
-}
-
-function isPositiveInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0;
-}
-
-function clampPercentInteger(value: unknown): number {
-  if (!isPercentInteger(value)) return 0;
-  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

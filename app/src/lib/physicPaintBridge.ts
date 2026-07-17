@@ -1,6 +1,6 @@
 import type { Result } from './ipc';
 import type { Layer } from '../types/layer';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayScriptCacheStatus, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult, PhysicPaintWorkflowMode } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import { layerStore } from '../stores/layerStore';
@@ -41,7 +41,6 @@ export interface PhysicPaintOpenRequest {
   frame: number | null | undefined;
   canvas?: PhysicPaintCanvasSize | null;
   fps?: number | null;
-  requestedWorkflowMode?: PhysicPaintWorkflowMode;
 }
 
 interface TauriEventApi {
@@ -105,7 +104,7 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
 
   try {
     if (deliveredOperationIds.has(payload.operationId)) {
-      return successResult(payload, payload.kind === 'apply-canvas' ? 1 : payload.kind === 'delete-roto-frame' ? 0 : payload.kind === 'replace-roto-key-frames' ? payload.frames.length : payload.kind === 'convert-roto-to-play' ? payload.frameCount : payload.kind === 'update-play-render-options' || payload.kind === 'update-roto-interpolation-settings' ? 0 : payload.frames.length);
+      return successResult(payload, payload.kind === 'apply-canvas' ? 1 : payload.kind === 'delete-roto-frame' ? 0 : payload.kind === 'replace-roto-key-frames' ? payload.frames.length : 0);
     }
 
     let result: PhysicPaintApplyResult;
@@ -134,14 +133,8 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
         }
       }
       result = physicPaintStore.replaceRotoKeyFrames(payload);
-    } else if (payload.kind === 'apply-play-canvas') {
-      result = physicPaintStore.applySequence(payload);
-    } else if (payload.kind === 'convert-play-to-roto') {
-      result = physicPaintStore.convertPlayToRoto(payload);
-    } else if (payload.kind === 'convert-roto-to-play') {
-      result = physicPaintStore.convertRotoToPlay(payload);
     } else {
-      result = physicPaintStore.updatePlayScriptRenderOptions(payload.layerId, payload.playScriptId, payload.renderOptions, payload.operationId);
+      result = failureResult(payload, 'Unsupported physics paint payload');
     }
     if (result.ok) deliveredOperationIds.add(payload.operationId);
     return result.ok ? result : { ...result, error: `${APPLY_ERROR} ${result.error ?? ''}`.trim() };
@@ -454,17 +447,7 @@ function resultBase(payload: unknown): Pick<PhysicPaintApplyResult, 'operationId
   const record = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
   return {
     operationId: typeof record.operationId === 'string' ? record.operationId : 'unknown-operation',
-    kind: record.kind === 'apply-play-canvas'
-      ? 'apply-play-canvas'
-      : record.kind === 'convert-play-to-roto'
-        ? 'convert-play-to-roto'
-        : record.kind === 'convert-roto-to-play'
-          ? 'convert-roto-to-play'
-          : record.kind === 'update-play-render-options'
-            ? 'update-play-render-options'
-            : record.kind === 'update-roto-interpolation-settings'
-              ? 'update-roto-interpolation-settings'
-              : 'apply-canvas',
+    kind: record.kind === 'delete-roto-frame' ? 'delete-roto-frame' : record.kind === 'replace-roto-key-frames' ? 'replace-roto-key-frames' : record.kind === 'update-roto-interpolation-settings' ? 'update-roto-interpolation-settings' : 'apply-canvas',
     layerId: typeof record.layerId === 'string' ? record.layerId : 'unknown-layer',
     startFrame: typeof record.startFrame === 'number' && Number.isFinite(record.startFrame) ? Math.max(0, Math.trunc(record.startFrame)) : 0,
   };
@@ -500,81 +483,24 @@ export function createPhysicPaintLaunchContext(
   frame: number,
   canvas?: PhysicPaintCanvasSize | null,
   fps?: number | null,
-  requestedWorkflowMode?: PhysicPaintWorkflowMode,
 ): PhysicPaintLaunchContext {
   const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-  const currentFrame = Math.max(0, Math.trunc(frame));
+  const startFrame = Math.max(0, Math.trunc(frame));
   const cachedRotoFrames = physicPaintStore.getRotoCacheFrames(layerId);
-  const currentRotoCacheFrame = cachedRotoFrames.find((candidate) => candidate.appFrame === currentFrame);
-  const generatedRenderOnlyStatus = requestedWorkflowMode !== 'play' && currentRotoCacheFrame?.source === 'generated-interpolation'
-    ? getGeneratedRotoRenderOnlyStatus(currentFrame)
-    : null;
-  const rotoLaunchFrame = currentFrame;
-  const containingRange = physicPaintStore.findPlayScriptRangeAtFrame(layerId, currentFrame);
-  const shouldOpenContainingPlay = Boolean(containingRange && requestedWorkflowMode !== 'roto');
-  const playLimitFrame = shouldOpenContainingPlay && containingRange ? containingRange.startFrame : rotoLaunchFrame;
-  const ignoredPlayScriptId = shouldOpenContainingPlay && containingRange ? containingRange.id : undefined;
-  const playFrameCountLimit = getPlayFrameCountLimit(layerId, playLimitFrame, layer, ignoredPlayScriptId);
-  const cachedPlayFrames = shouldOpenContainingPlay && containingRange
-    ? collectCompleteCachedPlayFrames(layerId, containingRange)
-    : [];
-  const playCacheStatus: PhysicPaintPlayScriptCacheStatus | undefined = shouldOpenContainingPlay && containingRange
-    ? cachedPlayFrames.length === containingRange.frameCount ? 'cached' : 'missing'
-    : undefined;
   const rotoInterpolationSettings = physicPaintStore.getRotoInterpolationSettings(layerId);
-  const rotoBackground = !shouldOpenContainingPlay && requestedWorkflowMode !== 'play'
-    ? physicPaintStore.getRotoBackgroundMetadata(layerId)
-    : null;
-  const editableState = shouldOpenContainingPlay && containingRange?.editableState
-    ? structuredClone(containingRange.editableState)
-    : null;
-  const launchSelection = shouldOpenContainingPlay && containingRange
-    ? {
-        workflowMode: 'play' as const,
-        startFrame: containingRange.startFrame,
-        playStartFrame: containingRange.startFrame,
-        playFrameCount: containingRange.frameCount,
-        editableSource: 'play' as const,
-        selectedPlayScriptId: containingRange.id,
-        playCacheStatus,
-        ...(containingRange.motion ? { playMotion: { ...containingRange.motion } } : {}),
-        ...(containingRange.renderOptions ? { playRenderOptions: structuredClone(containingRange.renderOptions) } : {}),
-        previewFrame: currentFrame - containingRange.startFrame,
-        cachedPlayFrames,
-        ...(playFrameCountLimit ? playFrameCountLimit : {}),
-      }
-    : requestedWorkflowMode === 'play'
-      ? {
-          workflowMode: 'play' as const,
-          startFrame: currentFrame,
-          playStartFrame: currentFrame,
-          playFrameCount: playFrameCountLimit?.maxPlayFrameCount ?? PHYSIC_PAINT_MAX_APPLY_FRAMES,
-          editableSource: 'play' as const,
-          previewFrame: 0,
-          ...(playFrameCountLimit ? playFrameCountLimit : {}),
-        }
-      : {
-          workflowMode: 'roto' as const,
-          startFrame: rotoLaunchFrame,
-          editableSource: 'roto' as const,
-          ...(playFrameCountLimit ? playFrameCountLimit : {}),
-        };
-
+  const rotoBackground = physicPaintStore.getRotoBackgroundMetadata(layerId);
   return {
     operationId: `physic-paint-${Date.now()}-${crypto.randomUUID()}`,
     layerId,
     project: { name: projectStore.name.peek(), saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()), contextId: projectStore.projectContextId.peek() },
     layerName: layer.name,
+    startFrame,
     ...(isFinitePositiveNumber(canvas?.width) ? { width: canvas.width } : {}),
     ...(isFinitePositiveNumber(canvas?.height) ? { height: canvas.height } : {}),
     ...(isFinitePositiveNumber(fps) ? { fps } : {}),
-    ...(requestedWorkflowMode ? { requestedWorkflowMode } : {}),
-    ...launchSelection,
-    ...(editableState ? { editableState } : {}),
     ...(cachedRotoFrames.length > 0 ? { cachedRotoFrames } : {}),
-    ...(rotoInterpolationSettings ? { rotoInterpolationSettings } : {}),
+    rotoInterpolationSettings,
     ...(rotoBackground ? { rotoBackground: structuredClone(rotoBackground) } : {}),
-    ...(generatedRenderOnlyStatus ? { maxPlayFrameCountReason: generatedRenderOnlyStatus } : {}),
   };
 }
 
@@ -583,7 +509,7 @@ export async function openPhysicPaintCanvas(request: PhysicPaintOpenRequest): Pr
     const validation = validateOpenRequest(request);
     if (!validation.ok) return validation;
 
-    const context = createPhysicPaintLaunchContext(validation.data.layer, validation.data.frame, request.canvas, request.fps, request.requestedWorkflowMode);
+    const context = createPhysicPaintLaunchContext(validation.data.layer, validation.data.frame, request.canvas, request.fps);
     if (!isPhysicPaintLaunchContext(context)) {
       return { ok: false, error: 'Invalid physics paint launch context' };
     }
@@ -615,10 +541,6 @@ function validateOpenRequest(request: PhysicPaintOpenRequest): Result<{ layer: L
   const frame = request.frame;
   if (typeof frame !== 'number' || !Number.isFinite(frame) || frame < 0) {
     return { ok: false, error: 'Select a valid frame before opening the physics paint canvas' };
-  }
-
-  if (request.requestedWorkflowMode !== undefined && request.requestedWorkflowMode !== 'roto' && request.requestedWorkflowMode !== 'play') {
-    return { ok: false, error: 'Invalid physics paint workflow mode' };
   }
 
   return { ok: true, data: { layer, frame: Math.trunc(frame) } };
@@ -654,11 +576,6 @@ function isTauriPhysicsPaintLaunchResult(value: unknown): value is TauriPhysicsP
   );
 }
 
-function collectCompleteCachedPlayFrames(layerId: string, range: { startFrame: number; frameCount: number }): NonNullable<ReturnType<typeof physicPaintStore.getFrame>>[] {
-  return Array.from({ length: range.frameCount }, (_, index) => physicPaintStore.getFrame(layerId, range.startFrame + index))
-    .filter((frame): frame is NonNullable<ReturnType<typeof physicPaintStore.getFrame>> => Boolean(frame));
-}
-
 function getTimelineRangeFrameCount(layer: Layer, frame: number): number | null {
   const sequence = sequenceStore.sequences.peek().find((candidate) => candidate.layers.some((candidateLayer) => candidateLayer.id === layer.id));
   if (!sequence) return null;
@@ -670,46 +587,6 @@ function getTimelineRangeFrameCount(layer: Layer, frame: number): number | null 
       : null;
   if (rangeEnd === null || rangeEnd <= frame) return null;
   return Math.max(1, rangeEnd - Math.max(frame, rangeStart));
-}
-
-function getPlayFrameCountLimit(layerId: string, frame: number, layer: Layer, ignoredPlayScriptId?: string): Pick<PhysicPaintLaunchContext, 'maxPlayFrameCount' | 'maxPlayFrameCountReason'> | null {
-  const maxPlayFrameCount = getMaxPlayFrameCount(layerId, frame, layer, ignoredPlayScriptId);
-  if (maxPlayFrameCount >= PHYSIC_PAINT_MAX_APPLY_FRAMES) return null;
-  return {
-    maxPlayFrameCount,
-    maxPlayFrameCountReason: buildMaxPlayFrameCountReason(layerId, frame, layer, ignoredPlayScriptId),
-  };
-}
-
-function getMaxPlayFrameCount(layerId: string, frame: number, layer: Layer, ignoredPlayScriptId?: string): number {
-  const gapLimit = getMaxPlayFrameCountFromGap(layerId, frame, ignoredPlayScriptId);
-  const timelineLimit = getTimelineRangeFrameCount(layer, frame);
-  return Math.min(gapLimit, timelineLimit ?? PHYSIC_PAINT_MAX_APPLY_FRAMES);
-}
-
-function getMaxPlayFrameCountFromGap(layerId: string, frame: number, ignoredPlayScriptId?: string): number {
-  if (!Number.isInteger(frame) || frame < 0) return PHYSIC_PAINT_MAX_APPLY_FRAMES;
-  const ranges = physicPaintStore.getPlayScriptRanges(layerId).filter((range) => range.id !== ignoredPlayScriptId);
-  const containing = ranges.find((range) => frame >= range.startFrame && frame < range.startFrame + range.frameCount);
-  if (containing) return 0;
-  const next = ranges.find((range) => range.startFrame > frame);
-  return next ? Math.max(0, next.startFrame - frame) : PHYSIC_PAINT_MAX_APPLY_FRAMES;
-}
-
-function buildMaxPlayFrameCountReason(layerId: string, frame: number, layer: Layer, ignoredPlayScriptId?: string): string {
-  const maxPlayFrameCount = getMaxPlayFrameCount(layerId, frame, layer, ignoredPlayScriptId);
-  const gapLimit = getMaxPlayFrameCountFromGap(layerId, frame, ignoredPlayScriptId);
-  const timelineLimit = getTimelineRangeFrameCount(layer, frame);
-  const nextRange = physicPaintStore.getPlayScriptRanges(layerId).find((range) => range.id !== ignoredPlayScriptId && range.startFrame > frame);
-  if (nextRange && maxPlayFrameCount === gapLimit) {
-    if (maxPlayFrameCount === 1) return `Only frame ${frame} is available before the next saved script.`;
-    return `Maximum Play duration from this frame: ${maxPlayFrameCount} frame(s), until the next saved script.`;
-  }
-  if (timelineLimit !== null && maxPlayFrameCount === timelineLimit) {
-    if (maxPlayFrameCount === 1) return `Only frame ${frame} is available in this timeline layer range.`;
-    return `Maximum Play duration from this timeline layer range: ${maxPlayFrameCount} frame(s).`;
-  }
-  return `Limited to the maximum allowed Play script duration of ${PHYSIC_PAINT_MAX_APPLY_FRAMES} frames.`;
 }
 
 function openBrowserFallback(context: PhysicPaintLaunchContext): Result<null> {

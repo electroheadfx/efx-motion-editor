@@ -33,20 +33,6 @@ pub struct McePhysicPaintOutput {
     pub layer_id: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub frames: Vec<McePhysicPaintCachedFrame>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub editable_state: Option<Value>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub play_script_ranges: Vec<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workflow_mode: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub play_start_frame: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub play_frame_count: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub editable_source: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub play_motion: Option<Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub roto_cache_metadata: Vec<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

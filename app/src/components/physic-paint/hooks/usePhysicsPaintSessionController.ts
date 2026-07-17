@@ -5,30 +5,12 @@ import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../.
 import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport, type PhysicsPaintDebugManifest, type PhysicsPaintStillExport } from '../engine/physicsPaintDevExport';
 import { resizePhysicsPaintState } from '../engine/physicsPaintCanvasSizing';
 import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from '../bridge/physicsPaintSessionFile';
-import { getPlayFrameCountFromAssignments, getPlayFrameEditAssignments } from '../play/playFrameTransactions';
-import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 
-type EditableState = ReturnType<EfxPaintEngine['save']>;
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 
 export interface PhysicsPaintDebugProof {
   still: PhysicsPaintStillExport;
   manifest: PhysicsPaintDebugManifest;
-}
-
-export function makeLoadedPlayLaunchContext(context: PhysicPaintLaunchContext, frameCount: number, previewFrame: number): PhysicPaintLaunchContext {
-  const next = { ...context };
-  delete next.maxPlayFrameCount;
-  delete next.maxPlayFrameCountReason;
-  return {
-    ...next,
-    workflowMode: 'play',
-    editableSource: 'play',
-    playFrameCount: frameCount,
-    playCacheStatus: 'stale',
-    cachedPlayFrames: [],
-    previewFrame,
-  };
 }
 
 export function buildPhysicsPaintDebugProof(input: {
@@ -51,21 +33,9 @@ export function buildPhysicsPaintDebugProof(input: {
 
 export interface PhysicsPaintSessionControllerInput {
   engine: EfxPaintEngine | null;
-  workflowMode: PhysicsPaintWorkflowMode;
-  framesToApply: number;
   canvasSize: { width: number; height: number };
   launchContext: PhysicPaintLaunchContext | null;
   currentFrame: number;
-  previewFps: number;
-  capturePendingPlayFrameEdits: () => void;
-  annotatePlayState: (state: EditableState) => EditableState;
-  restorePlayFrameEdits: (assignments: Map<number, number>, frame: number, strokeCount: number) => void;
-  clearLatestPlayFrames: () => void;
-  setCachedPlayPreviewUrl: (url: string | null) => void;
-  setSavedPlayCacheDirty: (dirty: boolean) => void;
-  setLocalPlayPreviewFrame: (frame: number) => void;
-  setFramesToApply: Dispatch<StateUpdater<number>>;
-  bumpPlayFramesVersion: () => void;
   setLaunchContext: Dispatch<StateUpdater<PhysicPaintLaunchContext | null>>;
   setApplyStatus: Dispatch<StateUpdater<ApplyStatus>>;
   setApplyMessage: Dispatch<StateUpdater<string | null>>;
@@ -99,11 +69,7 @@ export function createPhysicsPaintSessionController(
     const engine = input.engine;
     if (!engine || mutationLocked()) return;
     try {
-      if (input.workflowMode === 'play') input.capturePendingPlayFrameEdits();
-      const editableState = input.workflowMode === 'play'
-        ? input.annotatePlayState(engine.save())
-        : engine.save();
-      if (input.workflowMode === 'play') engine.load(editableState);
+      const editableState = engine.save();
       const result = await (dependencies.downloadState ?? downloadPhysicsPaintState)(editableState);
       if (result.status === 'cancelled') {
         input.setApplyStatus('idle');
@@ -127,21 +93,6 @@ export function createPhysicsPaintSessionController(
         input.canvasSize.height,
       );
       engine.load(state);
-      if (input.workflowMode === 'play') {
-        const assignments = getPlayFrameEditAssignments(state);
-        const frameCount = getPlayFrameCountFromAssignments(assignments, input.framesToApply);
-        const previewFrame = assignments.values().next().value ?? 0;
-        input.restorePlayFrameEdits(assignments, previewFrame, state.strokes.length);
-        input.clearLatestPlayFrames();
-        input.setCachedPlayPreviewUrl(null);
-        input.setSavedPlayCacheDirty(true);
-        input.setLocalPlayPreviewFrame(previewFrame);
-        input.setFramesToApply(frameCount);
-        input.bumpPlayFramesVersion();
-        input.setLaunchContext((current) => current
-          ? makeLoadedPlayLaunchContext(current, frameCount, previewFrame)
-          : current);
-      }
       setSuccess('Loaded editable JSON state.');
     } catch (error) {
       setFailure(error);
@@ -183,7 +134,7 @@ export function createPhysicsPaintSessionController(
         frame,
         layerId: launchContext.layerId,
         operationId: `${launchContext.operationId}:debug:${Date.now()}`,
-        fps: input.previewFps,
+        fps: launchContext.fps ?? 12,
       });
       setSuccess(`Debug proof ready: ${proof.still.file} and ${proof.manifest.file}.`);
     } catch (error) {

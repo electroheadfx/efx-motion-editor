@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
-import { resizePhysicsPaintState } from './physicsPaintCanvasSizing';
 import type { NativePenInputHandler } from './PhysicsPaintCanvasMount';
-import { applyPlayRenderOptionsToEngine, applyRotoBackgroundMetadataToEngine } from '../engine/physicsPaintStudioSettings';
+import { applyRotoBackgroundMetadataToEngine } from '../engine/physicsPaintStudioSettings';
 
-function getLaunchWorkflowMode(context: PhysicPaintLaunchContext | null): 'play' | 'roto' {
-  if (context?.workflowMode === 'play' || context?.editableSource === 'play') return 'play';
-  return 'roto';
-}
 
 export function usePhysicsPaintEngineLifecycle(input: {
   canvasKey: string;
@@ -61,24 +56,11 @@ export function usePhysicsPaintEngineLifecycle(input: {
   }, []);
 
   useEffect(() => {
-    if (!engine) return;
-    if (input.launchContext?.editableState) {
-      try {
-        engine.load(resizePhysicsPaintState(input.launchContext.editableState, input.canvasWidth, input.canvasHeight));
-      } catch (error) {
-        console.error('[PhysicsPaintStudio] failed to restore editable state', error);
-        input.setLastError('Could not restore the previous physics paint state for this layer.');
-      }
-    }
-    if (getLaunchWorkflowMode(input.launchContext) === 'roto' && input.launchContext?.rotoBackground) {
+    if (engine && input.launchContext?.rotoBackground) {
       applyRotoBackgroundMetadataToEngine(engine, input.launchContext.rotoBackground);
     }
-  }, [engine, input.canvasHeight, input.canvasWidth, input.launchContext?.editableState, input.launchContext?.rotoBackground, input.launchContext?.workflowMode, input.launchContext?.editableSource]);
+  }, [engine, input.launchContext?.rotoBackground]);
 
-  useEffect(() => {
-    if (!engine || !input.launchContext?.playRenderOptions) return;
-    applyPlayRenderOptionsToEngine(engine, input.launchContext.playRenderOptions);
-  }, [engine, input.launchContext?.playRenderOptions]);
 
   useEffect(() => input.clearExternalState, []);
 

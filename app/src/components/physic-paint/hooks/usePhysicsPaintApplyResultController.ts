@@ -17,7 +17,6 @@ interface GeneralResultPorts {
 
 export function usePhysicsPaintApplyResultController(input: {
   bridgeMode: PhysicsPaintBridgeMode;
-  canvasSize: { width: number; height: number };
   general: GeneralResultPorts;
 }) {
   const handleApplyResult = useCallback((detail: PhysicPaintApplyResult | null | undefined) => {
@@ -49,16 +48,6 @@ export function usePhysicsPaintApplyResultController(input: {
       input.general.pendingKeyActionMessageRef.current = null;
     } else if (detail.kind === 'update-roto-interpolation-settings') {
       input.general.setApplyMessage((message) => message || 'Generated in-between settings synced.');
-    } else if (detail.kind === 'update-play-render-options') {
-      input.general.setApplyMessage(detail.appliedFrameCount > 0 ? 'Play options updated. Cached frames cleared; use Render play.' : 'Play options already up to date.');
-    } else if (detail.kind === 'apply-play-canvas') {
-      const endFrame = detail.startFrame + Math.max(0, detail.appliedFrameCount - 1);
-      input.general.setApplyMessage(`Saved play range: ${detail.appliedFrameCount} frames from ${detail.startFrame} to ${endFrame} at ${input.canvasSize.width}×${input.canvasSize.height}.`);
-    } else if (detail.kind === 'convert-play-to-roto') {
-      input.general.setApplyMessage(`Converted ${detail.appliedFrameCount} Play frames to Roto frames.`);
-    } else if (detail.kind === 'convert-roto-to-play') {
-      const endFrame = detail.startFrame + Math.max(0, detail.appliedFrameCount - 1);
-      input.general.setApplyMessage(`Converted Roto frames ${detail.startFrame}–${endFrame} to the current Play canvas source.`);
     }
   }, [input]);
 

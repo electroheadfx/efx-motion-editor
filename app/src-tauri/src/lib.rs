@@ -71,38 +71,12 @@ struct PhysicsPaintLaunchContext {
     height: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     fps: Option<f64>,
-    #[serde(rename = "requestedWorkflowMode", skip_serializing_if = "Option::is_none")]
-    requested_workflow_mode: Option<String>,
-    #[serde(rename = "workflowMode", skip_serializing_if = "Option::is_none")]
-    workflow_mode: Option<String>,
-    #[serde(rename = "playStartFrame", skip_serializing_if = "Option::is_none")]
-    play_start_frame: Option<u32>,
-    #[serde(rename = "playFrameCount", skip_serializing_if = "Option::is_none")]
-    play_frame_count: Option<u32>,
-    #[serde(rename = "editableSource", skip_serializing_if = "Option::is_none")]
-    editable_source: Option<String>,
-    #[serde(rename = "editableState", skip_serializing_if = "Option::is_none")]
-    editable_state: Option<Value>,
-    #[serde(rename = "selectedPlayScriptId", skip_serializing_if = "Option::is_none")]
-    selected_play_script_id: Option<String>,
-    #[serde(rename = "playCacheStatus", skip_serializing_if = "Option::is_none")]
-    play_cache_status: Option<String>,
-    #[serde(rename = "playMotion", skip_serializing_if = "Option::is_none")]
-    play_motion: Option<Value>,
     #[serde(rename = "rotoBackground", skip_serializing_if = "Option::is_none")]
     roto_background: Option<Value>,
-    #[serde(rename = "previewFrame", skip_serializing_if = "Option::is_none")]
-    preview_frame: Option<u32>,
-    #[serde(rename = "cachedPlayFrames", default, skip_serializing_if = "Vec::is_empty")]
-    cached_play_frames: Vec<PhysicsPaintRenderedFrame>,
     #[serde(rename = "cachedRotoFrames", default, skip_serializing_if = "Vec::is_empty")]
     cached_roto_frames: Vec<PhysicsPaintRotoCacheFrame>,
     #[serde(rename = "rotoInterpolationSettings", skip_serializing_if = "Option::is_none")]
     roto_interpolation_settings: Option<Value>,
-    #[serde(rename = "maxPlayFrameCount", skip_serializing_if = "Option::is_none")]
-    max_play_frame_count: Option<u32>,
-    #[serde(rename = "maxPlayFrameCountReason", skip_serializing_if = "Option::is_none")]
-    max_play_frame_count_reason: Option<String>,
 }
 
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
@@ -228,22 +202,6 @@ fn physics_paint_url(context: &PhysicsPaintLaunchContext) -> String {
     if let Some(fps) = context.fps {
         url.push_str("&fps=");
         url.push_str(&fps.to_string());
-    }
-    if let Some(workflow_mode) = &context.workflow_mode {
-        url.push_str("&workflowMode=");
-        url.push_str(&percent_encoding::utf8_percent_encode(workflow_mode, percent_encoding::NON_ALPHANUMERIC).to_string());
-    }
-    if let Some(play_start_frame) = context.play_start_frame {
-        url.push_str("&playStartFrame=");
-        url.push_str(&play_start_frame.to_string());
-    }
-    if let Some(play_frame_count) = context.play_frame_count {
-        url.push_str("&playFrameCount=");
-        url.push_str(&play_frame_count.to_string());
-    }
-    if let Some(editable_source) = &context.editable_source {
-        url.push_str("&editableSource=");
-        url.push_str(&percent_encoding::utf8_percent_encode(editable_source, percent_encoding::NON_ALPHANUMERIC).to_string());
     }
     url
 }

@@ -1,5 +1,3 @@
-import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
-import { clampPhysicPaintFrameCount } from '../../../types/physicPaint';
 import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 import type { PhysicsPaintWorkflowMode } from './physicsPaintWorkflowPresentation';
 
@@ -23,34 +21,10 @@ export function selectPhysicsPaintMissingConditions(input: PhysicsPaintApplyRead
   return missing;
 }
 
-export function selectPlayConversionMissingFrames(input: {
-  hasLaunchContext: boolean;
-  currentFrame: number;
-  requestedFrameCount: number;
-  latestFrames: readonly Pick<PhysicPaintRenderedFrame, 'appFrame'>[];
-}): boolean {
-  if (!input.hasLaunchContext) return true;
-  const frameCount = clampPhysicPaintFrameCount(input.requestedFrameCount);
-  const framesByAppFrame = new Set(input.latestFrames.map((frame) => frame.appFrame));
-  return Array.from({ length: frameCount }, (_, index) => input.currentFrame + index).some((frame) => !framesByAppFrame.has(frame));
-}
-
-export type PlayCacheStatus = 'stale' | 'cached' | 'missing' | null;
-
-export function selectCurrentPlayCacheStatus(input: {
-  workflowMode: PhysicsPaintWorkflowMode;
-  cacheDirty: boolean;
-  hasCachedRange: boolean;
-}): PlayCacheStatus {
-  if (input.workflowMode !== 'play') return null;
-  if (input.cacheDirty) return 'stale';
-  return input.hasCachedRange ? 'cached' : 'missing';
-}
-
 export function selectRotoPlaybackAvailable(input: {
   workflowMode: PhysicsPaintWorkflowMode;
   hasLaunchContext: boolean;
   frames: readonly { frame: unknown }[];
 }): boolean {
-  return input.workflowMode === 'roto' && input.hasLaunchContext && input.frames.some(({ frame }) => Boolean(frame));
+  return input.hasLaunchContext && input.frames.some(({ frame }) => Boolean(frame));
 }

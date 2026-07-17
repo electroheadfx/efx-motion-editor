@@ -1,21 +1,13 @@
-import type { PhysicsPaintWorkflowMode } from './physicsPaintWorkflowPresentation';
 import type { PhysicsPaintWorkflowStripFrameMarker } from './PhysicsPaintWorkflowStrip';
 
 export interface PhysicsPaintStudioKeyboardState {
   currentFrame: number;
-  framesToApply: number;
   isPlaying: boolean;
-  savedPlayCacheDirty: boolean;
-  workflowMode: PhysicsPaintWorkflowMode;
   mutationLocked: boolean;
 }
 
 export interface PhysicsPaintStudioKeyboardActions {
-  findCachedPlayFrames: (frameCount: number) => unknown;
   navigateRotoFrame: (frame: number) => void;
-  playPreview: (frameCount: number) => void;
-  savePlay: () => void;
-  stopPreview: () => void;
   toggleOnion: () => void;
   adjustOnionCount: (delta: -1 | 1) => void;
   toggleRotoPlayback: () => void;
@@ -60,25 +52,12 @@ export function dispatchPhysicsPaintStudioKeyDown(
     actions.undo();
     return;
   }
-  if (event.key === 'Escape') {
-    if (state.isPlaying) {
-      event.preventDefault();
-      actions.stopPreview();
-    }
-    return;
-  }
-  if (meta && key === 's' && state.workflowMode === 'play') {
-    event.preventDefault();
-    actions.savePlay();
-    return;
-  }
   if (event.key === '?' || (event.shiftKey && event.key === '/')) {
     event.preventDefault();
     actions.toggleShortcuts();
     return;
   }
 
-  if (state.workflowMode === 'roto') {
     if (event.key === ' ') {
       event.preventDefault();
       actions.toggleRotoPlayback();
@@ -108,21 +87,10 @@ export function dispatchPhysicsPaintStudioKeyDown(
       actions.adjustOnionCount(event.key === ']' ? 1 : -1);
       return;
     }
-  }
-
-  if (state.workflowMode === 'play' && (event.key === ' ' || event.key === 'Enter')) {
-    event.preventDefault();
-    if (state.isPlaying) actions.stopPreview();
-    else if (!state.savedPlayCacheDirty && actions.findCachedPlayFrames(state.framesToApply)) actions.playPreview(state.framesToApply);
-    else actions.savePlay();
-  }
 }
 
 function findAdjacentSavedFrame(markers: PhysicsPaintWorkflowStripFrameMarker[], currentFrame: number, direction: -1 | 1): number | null {
-  const sorted = markers
-    .filter((marker) => marker.saved !== false)
-    .map((marker) => marker.frame)
-    .sort((a, b) => a - b);
+  const sorted = markers.filter((marker) => marker.saved !== false).map((marker) => marker.frame).sort((a, b) => a - b);
   if (direction < 0) return [...sorted].reverse().find((frame) => frame < currentFrame) ?? null;
   return sorted.find((frame) => frame > currentFrame) ?? null;
 }

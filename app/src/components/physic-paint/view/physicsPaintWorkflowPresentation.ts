@@ -1,6 +1,6 @@
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 
-export type PhysicsPaintWorkflowMode = 'roto' | 'play';
+export type PhysicsPaintWorkflowMode = 'roto';
 export type PhysicsPaintApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 export type PhysicsPaintEngineStatusTone = 'ready' | 'not-ready' | 'error';
 export type RotoCellFill = 'empty' | 'cached-only';
@@ -53,14 +53,6 @@ const ROTO_CELL_FILL_CLASSES: Record<RotoCellBaseMeaning, string> = {
 
 const EDITABLE_ROTO_CELL_MEANINGS = new Set<RotoCellBaseMeaning>(['empty', 'cached', 'background-only']);
 
-export type PhysicsPaintWorkflowAction =
-  | 'save-active-source'
-  | 'clear-active-source'
-  | 'convert-play-to-roto'
-  | 'convert-roto-to-play'
-  | 'inspect-play-range'
-  | 'move-play-marker';
-
 export interface PhysicsPaintOnionState {
   enabled: boolean;
   previous: boolean;
@@ -84,10 +76,6 @@ export function clampOnionOpacity(value: unknown): number {
   if (integer < 0) return 0;
   if (integer > 100) return 100;
   return integer;
-}
-
-export function getActivePrimaryActionLabel(mode: PhysicsPaintWorkflowMode): 'Automatic cache' | 'Save play' {
-  return mode === 'play' ? 'Save play' : 'Automatic cache';
 }
 
 export function getRotoCellFill(
@@ -157,16 +145,6 @@ export function getMissingRotoFrameStatusLabel({ frame, kind }: { frame: number;
 
 export function getRotoReplacementSuccessLabel(frame: number): string {
   return `Frame ${clampNonNegativeInteger(frame, 0)} saved as a real Roto key`;
-}
-
-export function getPhysicsPaintSourceLabel(mode: PhysicsPaintWorkflowMode): 'Roto #1' | 'Play #2' {
-  return mode === 'play' ? 'Play #2' : 'Roto #1';
-}
-
-export function requiresDestructiveConfirmation(action: PhysicsPaintWorkflowAction, mode: PhysicsPaintWorkflowMode): boolean {
-  if (action === 'convert-play-to-roto' || action === 'convert-roto-to-play') return true;
-  if (action === 'clear-active-source') return mode === 'play';
-  return false;
 }
 
 export function getPhysicsPaintEngineStatusTone({

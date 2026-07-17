@@ -6,19 +6,17 @@ import { buildRotoBackgroundMetadata } from '../engine/physicsPaintStudioSetting
 
 export function persistRotoBackgroundMetadata(
   launchContext: PhysicPaintLaunchContext | null,
-  workflowMode: 'play' | 'roto',
   settings: PhysicsPaintStudioSettings,
 ): void {
-  if (!launchContext || workflowMode !== 'roto') return;
+  if (!launchContext) return;
   physicPaintStore.setRotoBackgroundMetadata(launchContext.layerId, buildRotoBackgroundMetadata(settings));
 }
 
 export function useRotoBackgroundMetadataSync(input: {
   launchContext: PhysicPaintLaunchContext | null;
-  workflowMode: 'play' | 'roto';
   settings: PhysicsPaintStudioSettings;
 }): void {
   useEffect(() => {
-    persistRotoBackgroundMetadata(input.launchContext, input.workflowMode, input.settings);
-  }, [input.launchContext, input.settings, input.workflowMode]);
+    persistRotoBackgroundMetadata(input.launchContext, input.settings);
+  }, [input.launchContext, input.settings]);
 }

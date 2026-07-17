@@ -1,26 +1,20 @@
 import { Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, RotateCcw, Square } from 'lucide-preact';
 
-// Source contract: a one-frame Play gap opened at frame 11 yields buildPlayFrameCells(11, 1) === [11].
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
-  getPhysicsPaintSourceLabel, getRotoCellFill, getRotoCellViewModel,
+  getRotoCellFill, getRotoCellViewModel,
   getMissingRotoFrameStatusLabel,
-  type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode,
+  type PhysicsPaintOnionState,
   type RotoCellViewModel, type RotoMissingFrameStatusKind,
 } from './physicsPaintWorkflowPresentation';
-import { PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE, getPlayRangeMarker } from '../play/physicsPaintPlayWorkflow';
 import {
-  PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_MIN_APPLY_FRAMES,
+  PHYSIC_PAINT_MAX_APPLY_FRAMES,
   getExpandedRotoRealKeyFrames, getRotoInterpolationSpanFrames, type RotoInterpolationSettings,
 } from '../roto/physicsPaintRotoWorkflow';
-import { clampPhysicPaintFrameCount, type PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
+import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type { RotoKeyUtilityActionState } from '../roto/physicsPaintRotoKeyController';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 
-const RENDER_ACTION_LABEL = 'Render play';
-const RENDER_ACTION_HELP = 'Preview cached Play frames, or render and save the Play cache when it is stale.';
-const CONVERT_PLAY_TO_ROTO_LABEL = 'Convert Play to Roto?';
-const CONVERT_ROTO_TO_PLAY_LABEL = 'Convert Roto to Play?';
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
 const GENERATED_ROTO_DISABLED_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
 const INTERPOLATION_ENABLED_STATUS = 'Generated in-betweens on — render-only frames refresh from real keys.';
@@ -61,31 +55,23 @@ export interface PhysicsPaintWorkflowOnionPreviewFrame {
   dataUrl: string;
   direction: 'previous' | 'next';
   distance: number;
-  source: 'roto' | 'play';
+  source: 'roto';
   kind?: 'stroke-preview' | 'cached-composite';
 }
 
-export type PhysicsPaintWorkflowConfirmation = 'convert-play-to-roto' | 'convert-roto-to-play';
-
 export interface PhysicsPaintWorkflowStripProps {
-  mode: PhysicsPaintWorkflowMode;
   currentFrame: number;
-  startFrame: number;
-  frameCount: number;
   isPlaying: boolean;
   ready?: boolean;
   occupiedRotoFrames?: number[];
   savedRotoFrames?: PhysicsPaintWorkflowStripFrameMarker[];
   cachedRotoFrames?: PhysicPaintRotoCacheFrame[];
   rotoInterpolationSettings?: RotoInterpolationSettings;
-  playPublicationSummary?: string | null;
   statusMessage?: string | null;
-  sameModeReplacementMessage?: string | null;
   rotoMissingFrameStatusKind?: RotoMissingFrameStatusKind | null;
   onion: PhysicsPaintOnionState;
   onionPreviewFrames?: PhysicsPaintWorkflowOnionPreviewFrame[];
   showOnionHiddenDuringPreview?: boolean;
-  missingPlayFramesForConversion?: boolean;
   rotoCachedPlaybackAvailable?: boolean;
   rotoCachedPlaybackStatus?: string | null;
   rotoCachedPlaybackLoop?: boolean;
@@ -97,7 +83,6 @@ export interface PhysicsPaintWorkflowStripProps {
   isRotoCachedPlaybackActive?: boolean;
   onRotoInterpolationEnabledChange?: (enabled: boolean) => void;
   onRotoInterpolationCountChange?: (count: number) => void;
-  onRotoInterpolationMotionChange?: (motion: Pick<RotoInterpolationSettings, 'deform' | 'position'>) => void;
   onDuplicateRotoKey?: () => void;
   onInsertRotoFrame?: () => void;
   onDeleteRotoFrame?: () => void;
@@ -111,31 +96,16 @@ export interface PhysicsPaintWorkflowStripProps {
   onCopyRotoScript?: () => void;
   onApplyRotoScript?: () => void;
   onDiscardRotoScript?: () => void;
-  onSavePlay: () => void;
-  onUpdatePlayOptions?: () => void;
-  currentPreviewFrame?: number;
-  maxPlayFrameCount?: number;
-  maxPlayFrameCountReason?: string;
-  playCacheStatus?: 'cached' | 'stale' | 'missing' | null;
-  onPlayLimit?: (message: string) => void;
-  onFrameCountChange: (frameCount: number) => void;
-  onPlayPreview: (frameCount: number) => void;
-  onStopPreview: () => void;
-  onPreviewPlayFrame?: (frame: number) => void;
   onNavigateToSyncedFrame: (frame: number) => void;
   onGoToFirstFrame: () => void;
   onGoToPreviousFrame: () => void;
   onGoToNextFrame: () => void;
   onGoToLastFrame: () => void;
-  onInspectPlayFrame: (frame: number) => void;
   onOnionChange: (onion: PhysicsPaintOnionState) => void;
-  onConvertPlayToRoto?: () => void;
-  onConvertRotoToPlay?: () => void;
 }
 
 const VIRTUAL_TIMELINE_FRAME_COUNT = 120;
 const RULER_STEP = 3;
-const PLAY_TIMELINE_CELL_WIDTH = 15;
 
 function buildFrameCells(currentFrame: number): number[] {
   const visibleCount = VIRTUAL_TIMELINE_FRAME_COUNT;
@@ -148,18 +118,7 @@ function buildRulerTicks(frameCells: number[]): number[] {
   return frameCells.filter((frame) => frame % RULER_STEP === 0);
 }
 
-function getPlayRulerStep(frameCount: number): number {
-  if (frameCount <= 6) return 1;
-  if (frameCount <= 12) return 2;
-  if (frameCount <= 24) return 4;
-  return 6;
-}
 
-function buildPlayFrameCells(startFrame: number, frameCount: number): number[] {
-  const safeStartFrame = Number.isInteger(startFrame) && startFrame >= 0 ? startFrame : 0;
-  const safeFrameCount = clampPhysicPaintFrameCount(frameCount || PHYSIC_PAINT_DEFAULT_APPLY_FRAMES);
-  return Array.from({ length: safeFrameCount }, (_, index) => safeStartFrame + index);
-}
 
 function isOccupiedFrame(frames: number[] | undefined, frame: number): boolean {
   return Boolean(frames?.includes(frame));
@@ -204,14 +163,9 @@ function getRotoFillClass(fill: ReturnType<typeof getRotoCellFill>): string {
 }
 
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
-  const [confirmation, setConfirmation] = useState<PhysicsPaintWorkflowConfirmation | null>(null);
   const [pressedRotoKeyAction, setPressedRotoKeyAction] = useState<RotoKeyUtilityAction | null>(null);
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
   const timelineScrollRef = useRef<HTMLDivElement>(null);
-  const playRange = useMemo(
-    () => getPlayRangeMarker(props.startFrame, props.frameCount, props.currentFrame),
-    [props.currentFrame, props.frameCount, props.startFrame]
-  );
   const interpolationSettings = props.rotoInterpolationSettings ?? { enabled: false, inBetweenCount: 1, mode: 'duplicate' as const, deform: 0, position: 0 };
   const interpolationEnabled = interpolationSettings.enabled === true;
   const displayCachedRotoFrames = useMemo(() => getDisplayRotoCacheFrames(props.cachedRotoFrames, interpolationEnabled), [interpolationEnabled, props.cachedRotoFrames]);
@@ -228,22 +182,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const expandedCurrentFrame = expandedRealRotoFrames.find(key => key.sourceFrame === props.currentFrame)?.frame ?? props.currentFrame;
   const frameCells = useMemo(() => buildFrameCells(expandedCurrentFrame), [expandedCurrentFrame]);
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
-  const getMaxFrameCount = useCallback(() => (
-    props.maxPlayFrameCount !== undefined
-      ? Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, props.maxPlayFrameCount)
-      : PHYSIC_PAINT_MAX_APPLY_FRAMES
-  ), [props.maxPlayFrameCount]);
-  const maxFrameCount = getMaxFrameCount();
-  const safeFrameCount = Math.min(clampPhysicPaintFrameCount(props.frameCount || PHYSIC_PAINT_DEFAULT_APPLY_FRAMES), maxFrameCount);
-  const playFrameCells = useMemo(() => buildPlayFrameCells(props.startFrame, safeFrameCount), [props.startFrame, safeFrameCount]);
-  const currentRotoCell = getRotoCellViewModel({
-    frame: props.currentFrame,
-    currentFrame: props.currentFrame,
-    cachedFrames: displayCachedRotoFrames,
-  });
-  const rotoMissingStatusLabel = props.rotoMissingFrameStatusKind
-    ? getMissingRotoFrameStatusLabel({ frame: props.currentFrame, kind: props.rotoMissingFrameStatusKind })
-    : null;
+  const visibleInBetweenCount = Math.max(1, Math.trunc(Number(interpolationSettings.inBetweenCount) || 1));
+  const hasGeneratedInBetweens = interpolationConnectors.length > 0;
+  const interpolationStatus = interpolationSettings.enabled
+    ? hasGeneratedInBetweens
+      ? INTERPOLATION_ENABLED_STATUS
+      : 'Generated in-betweens on — save at least two real Roto keys.'
+    : INTERPOLATION_DISABLED_STATUS;
+  const currentRotoCell = getRotoCellViewModel({ frame: props.currentFrame, currentFrame: props.currentFrame, cachedFrames: displayCachedRotoFrames });
+  const rotoMissingStatusLabel = props.rotoMissingFrameStatusKind ? getMissingRotoFrameStatusLabel({ frame: props.currentFrame, kind: props.rotoMissingFrameStatusKind }) : null;
   const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames);
   const isCurrentRealRotoKey = realRotoFrames.includes(props.currentFrame) && currentRotoCell.isEditableTarget !== false;
   const sessionKeyAvailability = props.rotoKeyState?.actionAvailability;
@@ -252,47 +199,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy);
   const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked);
   const canUseSourceRotoKey = isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState;
-  const canUseVisibleSourceRotoKey = canUseSourceRotoKey || (Boolean(sessionKeyAvailability) && isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState);
-  const canInsertRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canInsert || canUseVisibleSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
-  const canDuplicateRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canDuplicate || canUseVisibleSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
-  const canCopyRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canCopy || canUseVisibleSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
+  const canInsertRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canInsert || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
+  const canDuplicateRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canDuplicate || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
+  const canCopyRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canCopy || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
   const canPasteRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canPaste && props.ready !== false : Boolean(props.hasCopiedRotoKey) && !keyUtilitiesDisabledByBusyState;
-  const canDeleteRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canDelete || canUseVisibleSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
-  const playRulerStep = getPlayRulerStep(safeFrameCount);
-  const playRulerTicks = playFrameCells.filter((_, index) => index % playRulerStep === 0 || index === playFrameCells.length - 1);
-  const rulerTicks = props.mode === 'play' ? playRulerTicks : rotoRulerTicks;
-  const rulerWidth = props.mode === 'play' ? Math.max(180, safeFrameCount * PLAY_TIMELINE_CELL_WIDTH) : 1800;
-  const clampedPreviewFrame = Math.max(0, Math.min(safeFrameCount - 1, Math.trunc(props.currentPreviewFrame ?? 0)));
-  const playLimitMessage = props.maxPlayFrameCount !== undefined
-    ? props.maxPlayFrameCountReason ?? `Play duration limited to ${props.maxPlayFrameCount} frames before the next saved Play script.`
-    : null;
-  const visibleInBetweenCount = Math.max(1, Math.trunc(Number(interpolationSettings.inBetweenCount) || 1));
-  const hasGeneratedInBetweens = interpolationConnectors.length > 0;
-  const interpolationStatus = interpolationSettings.enabled
-    ? hasGeneratedInBetweens
-      ? INTERPOLATION_ENABLED_STATUS
-      : 'Generated in-betweens on — save at least two real Roto keys.'
-    : INTERPOLATION_DISABLED_STATUS;
-  function renderPlayFrames() {
-    if (props.playCacheStatus === 'cached') props.onPlayPreview(safeFrameCount);
-    else props.onSavePlay();
-  }
-
-  function handleFrameCountInput(event: Event) {
-    const value = Number((event.currentTarget as HTMLInputElement).value);
-    const clampedFrameCount = Math.min(clampPhysicPaintFrameCount(value), maxFrameCount);
-    if (Number.isFinite(value) && value > maxFrameCount && playLimitMessage) {
-      props.onPlayLimit?.(playLimitMessage);
-    }
-    props.onFrameCountChange(clampedFrameCount);
-  }
-
-  function previewPlayFrame(frame: number) {
-    const nextFrame = Math.max(0, Math.min(safeFrameCount - 1, Math.trunc(frame)));
-    props.onPreviewPlayFrame?.(nextFrame);
-    props.onInspectPlayFrame(nextFrame);
-  }
-
+  const canDeleteRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canDelete || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
   function handleRotoPlaybackFpsInput(event: Event) {
     const value = Number((event.currentTarget as HTMLInputElement).value);
     if (Number.isFinite(value)) props.onRotoPlaybackFpsChange?.(value);
@@ -367,18 +278,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     };
   }
 
-  function getConfirmationCopy(kind: PhysicsPaintWorkflowConfirmation): string {
-    if (kind === 'convert-play-to-roto') {
-      return `Convert Play to Roto? This turns ${playRange.frameCount} rendered Play frames into roto frames and deletes the editable Play source for this range.`;
-    }
-    return `Convert Roto to Play? This replaces roto frames ${playRange.startFrame}–${playRange.endFrame} with one Play paint source and removes those roto images.`;
-  }
-
-  function getConfirmationTitle(kind: PhysicsPaintWorkflowConfirmation): string {
-    if (kind === 'convert-play-to-roto') return CONVERT_PLAY_TO_ROTO_LABEL;
-    return CONVERT_ROTO_TO_PLAY_LABEL;
-  }
-
   const updateScrollbar = useCallback(() => {
     const el = timelineScrollRef.current;
     if (!el) return;
@@ -406,7 +305,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     observer.observe(el);
     if (el.firstElementChild) observer.observe(el.firstElementChild);
     return () => observer.disconnect();
-  }, [frameCells, props.mode, updateScrollbar]);
+  }, [frameCells, updateScrollbar]);
 
   function handleTimelineScrollbarPointerDown(event: PointerEvent) {
     const el = timelineScrollRef.current;
@@ -438,24 +337,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     target.addEventListener('pointercancel', handlePointerUp);
   }
 
-  function confirmDestructiveAction() {
-    if (confirmation === 'convert-play-to-roto') {
-      if (!props.missingPlayFramesForConversion) props.onConvertPlayToRoto?.();
-    } else if (confirmation === 'convert-roto-to-play') {
-      props.onConvertRotoToPlay?.();
-    }
-    setConfirmation(null);
-  }
-
   return (
     <section class="physics-paint-workflow-strip" aria-label="Physics Paint workflow strip">
       <div class="physics-paint-workflow-header">
         <div class="physics-paint-mode-label" aria-label="Selected Physics Paint mode">
-          {getPhysicsPaintSourceLabel(props.mode)}
+          Roto #1
         </div>
 
         <div class="physics-paint-workflow-animation">
-          {props.mode === 'roto' ? (
             <div class="physics-paint-mode-controls">
               <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={props.onGoToFirstFrame}><ChevronFirst size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={props.onGoToPreviousFrame}><ChevronsLeft size={15} /></button>
@@ -483,44 +372,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <input type="number" min="1" max="60" step="0.5" value={props.rotoCachedPlaybackFps ?? props.projectFps ?? 1} aria-label="Cached Roto playback frames per second" disabled={props.ready === false} onInput={handleRotoPlaybackFpsInput} />
               </label>
             </div>
-          ) : (
-            <div class="physics-paint-mode-controls physics-paint-play-controls">
-              <label class="physics-paint-play-frame-count" for="physics-play-duration">
-                <span>Duration</span>
-                <input
-                  id="physics-play-duration"
-                  type="number"
-                  min={PHYSIC_PAINT_MIN_APPLY_FRAMES}
-                  max={PHYSIC_PAINT_MAX_APPLY_FRAMES}
-                  value={safeFrameCount}
-                  aria-label="Play frame count"
-                  onInput={handleFrameCountInput}
-                />
-                <output>{safeFrameCount}</output>
-              </label>
-              <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={() => previewPlayFrame(0)}><ChevronFirst size={15} /></button>
-              <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={() => previewPlayFrame(Math.max(0, clampedPreviewFrame - 1))}><ChevronsLeft size={15} /></button>
-              <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={() => previewPlayFrame(Math.min(safeFrameCount - 1, clampedPreviewFrame + 1))}><ChevronsRight size={15} /></button>
-              <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={() => previewPlayFrame(safeFrameCount - 1)}><ChevronLast size={15} /></button>
-              <button type="button" class="physics-paint-primary-action" title={RENDER_ACTION_HELP} aria-label="Render play" disabled={props.ready === false || props.isPlaying} onClick={renderPlayFrames}>{RENDER_ACTION_LABEL}</button>
-              <button type="button" class="physics-paint-render-action" aria-label="Update Play options" disabled={props.ready === false || props.isPlaying || !props.onUpdatePlayOptions} onClick={props.onUpdatePlayOptions}>Update</button>
-              <button type="button" class="physics-paint-nav-button" aria-label="Stop preview" disabled={!props.isPlaying} onClick={props.onStopPreview}><Square size={15} /></button>
-            </div>
-          )}
-        </div>
-
+          </div>
         <div class="physics-paint-state-actions" aria-hidden="true" />
       </div>
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">
         <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" onScroll={updateScrollbar}>
-          <div class="physics-paint-ruler" style={{ width: `${rulerWidth}px`, minWidth: `${rulerWidth}px` }} aria-hidden="true">
-            {rulerTicks.map(frame => (
+          <div class="physics-paint-ruler" style={{ width: '1800px', minWidth: '1800px' }} aria-hidden="true">
+            {rotoRulerTicks.map(frame => (
               <span key={frame} class="physics-paint-ruler-tick">{frame}</span>
             ))}
           </div>
 
-          {props.mode === 'roto' ? (
             <div class="physics-paint-lane">
               <div class="physics-paint-roto-cells" role="row">
                 {frameCells.map(frame => {
@@ -572,22 +435,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <button type="button" class="physics-paint-roto-key-button destructive" aria-label="Discard copied Roto paint script" title="Discard the copied Roto paint script" disabled={!props.rotoScript?.hasCopiedScript.value || Boolean(scriptAvailability?.busy)} onClick={props.onDiscardRotoScript}>Discard Script</button>
               </div>
             </div>
-          ) : (
-            <div class="physics-paint-lane physics-paint-play-lane" style={{ width: `${rulerWidth}px`, minWidth: `${rulerWidth}px` }}>
-              <div class="physics-paint-roto-cells physics-paint-play-cells" role="row" style={{ gridTemplateColumns: `repeat(${playFrameCells.length}, 13px)` }}>
-                {playFrameCells.map((frame, index) => (
-                  <button
-                    key={frame}
-                    class={`physics-paint-roto-cell physics-paint-play-cell ${props.playCacheStatus === 'cached' ? 'cached' : ''} ${props.playCacheStatus === 'stale' ? 'stale' : ''} ${index === clampedPreviewFrame ? 'current' : ''}`}
-                    aria-label={`Play frame ${frame}`}
-                    onClick={() => previewPlayFrame(index)}
-                  >
-                    <span>{frame}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
         {scrollbar.visible ? (
           <div class="physics-paint-timeline-scrollbar" onPointerDown={(event) => handleTimelineScrollbarPointerDown(event as unknown as PointerEvent)}>
@@ -599,7 +446,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         ) : null}
       </div>
 
-      {props.mode === 'roto' ? (
         <div class="physics-paint-roto-status-stack">
           <div class="physics-paint-roto-cell-legend" aria-label="Roto cell states">
             <span class="physics-paint-roto-cell-legend-title">Roto cell states</span>
@@ -622,29 +468,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <p class="physics-paint-roto-interpolation-status">Cached reference: repaintable, not stroke-editable.</p>
             </>
           ) : null}
-          {props.playPublicationSummary ? <p class="physics-paint-roto-interpolation-status">{props.playPublicationSummary}</p> : null}
           {props.statusMessage ? <p class="physics-paint-roto-interpolation-status">{props.statusMessage}</p> : null}
           {scriptStatus ? <p class="physics-paint-roto-interpolation-status">{scriptStatus}</p> : null}
           {props.rotoCachedPlaybackStatus ? <p class="physics-paint-roto-playback-status">{props.rotoCachedPlaybackStatus}</p> : null}
         </div>
-      ) : null}
 
-      {confirmation ? (
-        <div class="physics-paint-confirmation" role="dialog" aria-modal="true" aria-labelledby="physics-paint-confirmation-title">
-          <div class="physics-paint-confirmation-card">
-            <h2 id="physics-paint-confirmation-title">{getConfirmationTitle(confirmation)}</h2>
-            {confirmation === 'convert-play-to-roto' && props.missingPlayFramesForConversion ? (
-              <p class="physics-paint-confirmation-warning">Missing rendered frames for Play→Roto. {PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE}</p>
-            ) : (
-              <p>{getConfirmationCopy(confirmation)}</p>
-            )}
-            <div class="physics-paint-confirmation-actions">
-              <button class="physics-paint-text-button" onClick={() => setConfirmation(null)}>Cancel</button>
-              <button class="physics-paint-text-button destructive" disabled={confirmation === 'convert-play-to-roto' && props.missingPlayFramesForConversion} onClick={confirmDestructiveAction}>Continue</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </section>
+   </section>
   );
 }

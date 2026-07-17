@@ -1,7 +1,6 @@
 import {computed} from '@preact/signals';
 import {sequenceStore} from '../stores/sequenceStore';
 import {audioStore} from '../stores/audioStore';
-import {currentFrame as timelineCurrentFrame} from '../stores/timelineFrameSignal';
 import {physicPaintStore, physicPaintVersion} from '../stores/physicPaintStore';
 import {audioPeaksCache, peaksCacheRevision} from './audioPeaksCache';
 import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange} from '../types/timeline';
@@ -171,7 +170,6 @@ function getThumbnailImageId(layer: Layer | undefined): string | undefined {
 /** FX track layout data for timeline rendering (one track per FX or content-overlay sequence) */
 export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
   physicPaintVersion.value;
-  const currentFrame = timelineCurrentFrame.value;
   const layouts: FxTrackLayout[] = [];
   for (const seq of sequenceStore.sequences.value) {
     if (seq.kind === 'content') continue; // content sequences render via trackLayouts
@@ -194,14 +192,6 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       visible: seq.visible !== false,
       thumbnailImageId: seq.kind === 'content-overlay' ? getThumbnailImageId(primaryLayer) : undefined,
       layerType: primaryLayer?.type,
-      playScriptMarkers: primaryLayer?.type === 'physic-paint' && primaryLayer.source.type === 'physic-paint'
-        ? physicPaintStore.getPlayScriptRanges(primaryLayer.source.layerId).map((range) => ({
-            id: range.id,
-            startFrame: range.startFrame,
-            frameCount: range.frameCount,
-            active: currentFrame >= range.startFrame && currentFrame < range.startFrame + range.frameCount,
-          }))
-        : undefined,
       fadeIn: seq.fadeIn ? { duration: seq.fadeIn.duration } : undefined,
       fadeOut: seq.fadeOut ? { duration: seq.fadeOut.duration } : undefined,
     });

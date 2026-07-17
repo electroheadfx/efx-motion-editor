@@ -106,8 +106,6 @@ function resolveMissingRotoFrameDrawForLayer(layer: Layer, frame: number) {
 }
 
 function isRotoWorkflowLayer(layerId: string): boolean {
-  const metadata = physicPaintStore.getWorkflowMetadata(layerId);
-  if (metadata) return metadata.workflowMode === 'roto' || metadata.editableSource === 'roto';
   return physicPaintStore.getRealRotoKeyFrames(layerId).length > 0;
 }
 

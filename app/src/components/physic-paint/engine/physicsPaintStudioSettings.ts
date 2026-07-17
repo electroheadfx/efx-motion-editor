@@ -1,7 +1,5 @@
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
-import type { AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
-import type { PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
-import { normalizePlayWiggle } from '../play/playFrameTransactions';
+import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 
 export type PhysicsPaintStudioSettings = {
   tool: ToolType;
@@ -39,23 +37,6 @@ export function makeInitialPhysicsPaintStudioSettings(): PhysicsPaintStudioSetti
   };
 }
 
-export function getPhysicsPaintRenderTool(settings: PhysicsPaintStudioSettings): PhysicPaintPlayRenderOptionsSnapshot['tool'] {
-  if (settings.tool === 'erase') return 'erase';
-  return settings.physicsMode === 'local' ? 'physics-paint' : 'normal-paint';
-}
-
-export function buildPlayRenderOptionsSnapshot(settings: PhysicsPaintStudioSettings, motion: AnimationWiggleConfig): PhysicPaintPlayRenderOptionsSnapshot {
-  return {
-    tool: getPhysicsPaintRenderTool(settings),
-    color: settings.color,
-    opacity: settings.opacity,
-    brushSize: settings.size,
-    background: settings.background,
-    paperGrain: settings.paperGrain,
-    grainStrength: settings.grainStrength,
-    motion: normalizePlayWiggle(motion),
-  };
-}
 
 export function buildRotoBackgroundMetadata(settings: PhysicsPaintStudioSettings): PhysicPaintRotoBackgroundMetadata {
   const background = settings.background === 'photo' ? 'transparent' : settings.background;
@@ -64,20 +45,6 @@ export function buildRotoBackgroundMetadata(settings: PhysicsPaintStudioSettings
     paperGrain: settings.paperGrain,
     grainStrength: settings.grainStrength,
     ...(background === 'white' ? { color: '#ffffff' } : {}),
-  };
-}
-
-export function applyPlayRenderOptionsSnapshotToSettings(snapshot: PhysicPaintPlayRenderOptionsSnapshot): PhysicsPaintStudioSettings {
-  return {
-    ...makeInitialPhysicsPaintStudioSettings(),
-    tool: snapshot.tool === 'erase' ? 'erase' : 'paint',
-    physicsMode: snapshot.tool === 'physics-paint' ? 'local' : null,
-    color: snapshot.color,
-    opacity: snapshot.opacity,
-    size: snapshot.brushSize,
-    background: snapshot.background,
-    paperGrain: snapshot.paperGrain,
-    grainStrength: snapshot.grainStrength,
   };
 }
 
@@ -94,15 +61,4 @@ export function applyRotoBackgroundMetadataToEngine(engine: EfxPaintEngine, meta
   engine.setBgMode(metadata.background);
   engine.setPaperGrain(metadata.paperGrain);
   engine.setEmbossStrength(metadata.grainStrength);
-}
-
-export function applyPlayRenderOptionsToEngine(engine: EfxPaintEngine, options: PhysicPaintPlayRenderOptionsSnapshot): void {
-  engine.setTool(options.tool === 'erase' ? 'erase' : 'paint');
-  engine.setPhysicsMode(options.tool === 'physics-paint' ? 'local' : null);
-  engine.setColorHex(options.color);
-  engine.setBrushOpacity(options.opacity);
-  engine.setBrushSize(options.brushSize);
-  engine.setBgMode(options.background);
-  engine.setPaperGrain(options.paperGrain);
-  engine.setEmbossStrength(options.grainStrength);
 }

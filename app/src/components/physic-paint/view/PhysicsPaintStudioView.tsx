@@ -10,7 +10,6 @@ import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
 
 interface PhysicsPaintCanvasStackViewProps {
   children: ComponentChildren;
-  cachedPlayPreviewUrl?: string | null;
   cachedRotoReferenceUrl?: string | null;
   cachedRotoPlaybackUrl?: string | null;
   cachedRotoPlaybackActive?: boolean;
@@ -81,7 +80,6 @@ function PhysicsPaintCanvasStack(props: PhysicsPaintCanvasStackViewProps) {
           style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
         >
           {!props.cachedRotoPlaybackActive && props.cachedRotoReferenceUrl ? <img class="physics-paint-cached-roto-reference" src={props.cachedRotoReferenceUrl} alt="" /> : null}
-          {!props.cachedRotoPlaybackActive && props.cachedPlayPreviewUrl ? <img class="physics-paint-cached-play-preview" src={props.cachedPlayPreviewUrl} alt="" /> : null}
           {props.cachedRotoPlaybackActive && props.cachedRotoPlaybackComposition ? (
             <PhysicsPaintRotoPlaybackBackground
               width={props.cachedRotoPlaybackComposition.width}
@@ -106,8 +104,6 @@ export interface PhysicsPaintStudioViewProps {
   topBar: ComponentProps<typeof PhysicsPaintTopBar>;
   toolRail: ComponentProps<typeof PhysicsPaintToolRail>;
   canvas: Omit<PhysicsPaintCanvasStackViewProps, 'children'> & {
-    toastMessage: string | null;
-    onDismissToast: () => void;
     canvasKey: string;
     mount: ComponentProps<typeof PhysicsPaintCanvasMount>;
   };
@@ -132,14 +128,7 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         <PhysicsPaintToolRail {...toolRail} />
 
         <section class="physics-paint-main physics-paint-canvas-region" aria-label="Physics Paint canvas">
-          {canvas.toastMessage ? (
-            <div class="physics-paint-canvas-toast" role="status" aria-live="polite">
-              <span>{canvas.toastMessage}</span>
-              <button type="button" aria-label="Dismiss Play duration warning" onClick={canvas.onDismissToast}>×</button>
-            </div>
-          ) : null}
           <PhysicsPaintCanvasStack
-            cachedPlayPreviewUrl={canvas.cachedPlayPreviewUrl}
             cachedRotoReferenceUrl={canvas.cachedRotoReferenceUrl}
             cachedRotoPlaybackUrl={canvas.cachedRotoPlaybackUrl}
             cachedRotoPlaybackActive={canvas.cachedRotoPlaybackActive}
@@ -171,7 +160,6 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
             <strong>Physics Paint shortcuts</strong>
             <span>Cmd+Z undo · Cmd+Shift+Z / Ctrl+Y redo · Esc stop preview · ? help</span>
             <span>Roto: arrows navigate · O onion · [ ] onion count · completed paint caches automatically</span>
-            <span>Play: Space/Enter preview · Cmd+S save play</span>
           </aside>
         ) : null}
       </section>
