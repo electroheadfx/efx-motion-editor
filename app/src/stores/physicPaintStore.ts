@@ -768,6 +768,9 @@ export const physicPaintStore = {
     }
 
     const previousGenerated = _removeGeneratedRotoCache(payload.layerId);
+    if (payload.rotoBackground) {
+      _rotoBackgroundMetadata.set(payload.layerId, { ...payload.rotoBackground });
+    }
     if (payload.rotoInterpolationSettings) {
       _rotoInterpolationSettings.set(payload.layerId, _normalizeRotoInterpolationSettings(payload.rotoInterpolationSettings));
     }

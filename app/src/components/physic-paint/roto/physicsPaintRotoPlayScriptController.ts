@@ -1,5 +1,5 @@
 import { computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
-import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult, PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
+import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type { RotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 import { renderRotoPlayScriptFrames } from './physicsPaintRotoPlayScriptRenderer';
@@ -11,15 +11,17 @@ export interface RotoPlayScriptControllerPorts {
   getLaunchContext: () => PhysicPaintLaunchContext | null;
   getSelection: () => { kind: RotoTimelineSelectionKind; sourceFrame: number; displayFrame: number };
   getMotion: () => { deformation: number; position: number };
+  getBackground: () => PhysicPaintRotoBackgroundMetadata;
   getOperationLocked: () => boolean;
   getSize: () => { width: number; height: number };
   requestAuthority: (operationId: string, start: number) => Promise<PhysicPaintRotoAuthorityResult>;
   commit: (payload: {
     operationId: string; projectContextId: string; layerId: string; startFrame: number; frameCount: number;
     expectedLayerEndExclusive: number; expectedRotoRevision: string; frames: PhysicPaintRotoCacheFrame[];
+    rotoBackground: PhysicPaintRotoBackgroundMetadata;
     rotoInterpolationSettings: PhysicPaintRotoAuthorityResult['interpolationSettings'];
   }) => Promise<PhysicPaintApplyResult>;
-  mirrorAccepted: (frames: PhysicPaintRotoCacheFrame[], firstSourceFrame: number) => void;
+  mirrorAccepted: (frames: PhysicPaintRotoCacheFrame[], firstSourceFrame: number, background: PhysicPaintRotoBackgroundMetadata) => void;
   stopPlayback: () => void;
   log: (message: string, error?: boolean) => void;
 }
@@ -111,6 +113,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       assertCurrent(acceptedGeneration);
       if (!snapshot || ports.library.selectedId.peek() !== selectedId) throw new Error('Selected script changed or could not be reloaded.');
       const motion = { ...ports.getMotion() };
+      const rotoBackground = { ...ports.getBackground() };
       const existingFrames = new Map(authority.frames.map((frame) => [frame.sourceFrame ?? frame.appFrame, frame]));
       phase.value = 'rendering'; progress.value = { completed: 0, total: count }; status.value = `Rendering 0 / ${count}`;
       const staged = await renderRotoPlayScriptFrames({
@@ -129,12 +132,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const result = await ports.commit({
         operationId, projectContextId: context.project.contextId, layerId: context.layerId, startFrame: start, frameCount: count,
         expectedLayerEndExclusive: commitAuthority.layerEndExclusive, expectedRotoRevision: commitAuthority.rotoRevision,
-        frames: completeFrames, rotoInterpolationSettings: commitAuthority.interpolationSettings,
+        frames: completeFrames, rotoBackground, rotoInterpolationSettings: commitAuthority.interpolationSettings,
       });
       assertCurrent(acceptedGeneration);
       if (!result.ok || result.operationId !== operationId) throw new Error(result.error ?? 'Parent rejected the Play Script batch.');
       phase.value = 'regenerating'; status.value = 'Regenerating interpolation…';
-      ports.mirrorAccepted(completeFrames, start);
+      ports.mirrorAccepted(completeFrames, start, rotoBackground);
       ports.stopPlayback();
       phase.value = 'complete'; progress.value = { completed: count, total: count }; status.value = `Play Script complete · ${count} frames`;
       confirmationOpen.value = false; ports.log(status.value); return true;

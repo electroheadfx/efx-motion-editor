@@ -152,6 +152,7 @@ export interface PhysicPaintReplaceRotoKeyFramesPayload {
   expectedLayerEndExclusive?: number;
   expectedRotoRevision?: string;
   frames: PhysicPaintRotoCacheFrame[];
+  rotoBackground?: PhysicPaintRotoBackgroundMetadata;
   rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings;
 }
 
@@ -311,6 +312,7 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
       (value.frameCount === undefined || optionalFrameCount(value.frameCount)) &&
       optionalNonNegativeInteger(value.expectedLayerEndExclusive) &&
       (value.expectedRotoRevision === undefined || isNonEmptyString(value.expectedRotoRevision)) &&
+      optionalRotoBackgroundMetadata(value.rotoBackground) &&
       optionalRotoInterpolationSettings(value.rotoInterpolationSettings);
   }
 
