@@ -745,13 +745,64 @@ button.destructive {
 .physics-paint-right-panel {
   display: flex;
   flex: 1 1 auto;
-  flex-direction: column;
-  gap: 8px;
   min-width: 0;
-  padding: 20px 10px 20px 10px;
-  overflow-y: auto;
+  min-height: 0;
+  padding: 20px 10px;
+  overflow: hidden;
   background: #3e3f41;
   color: var(--sidebar-text-primary, #e5edf8);
+}
+
+.physics-paint-right-pane-layout {
+  display: grid;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.physics-paint-right-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.physics-paint-right-pane-resizer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 13px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.physics-paint-right-pane-resizer::before {
+  position: absolute;
+  inset: 0;
+  content: '';
+}
+
+.physics-paint-right-pane-resizer span {
+  width: calc(100% - 8px);
+  height: 1px;
+  background: #696d72;
+  transition: height 0.12s, background-color 0.12s;
+}
+
+.physics-paint-right-pane-resizer:hover span,
+.physics-paint-right-pane-resizer:focus-visible span {
+  height: 2px;
+  background: #8b9096;
+}
+
+.physics-paint-right-pane-resizer:focus-visible {
+  outline: 2px solid var(--color-accent, #2d5be3);
+  outline-offset: -2px;
 }
 
 .physics-paint-panel-toggle {
@@ -793,7 +844,6 @@ button.destructive {
 
 .physics-paint-options-tabs-navigation {
   flex: 0 0 auto;
-  margin-top: -4px;
 }
 
 .physics-paint-color-picker {
@@ -2238,12 +2288,10 @@ button.destructive {
   }
 
   .physics-paint-right-panel {
-    display: flex;
-    flex-direction: column;
     min-width: 0;
+    height: 260px;
     max-height: 260px;
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: hidden;
   }
 
   .physics-paint-right-section,

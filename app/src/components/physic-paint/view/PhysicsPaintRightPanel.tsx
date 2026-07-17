@@ -144,7 +144,9 @@ export function PhysicsPaintRightPanel({
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
   const [primaryTab, setPrimaryTab] = useState<'brush' | 'tool' | 'log'>('brush');
   const [optionsTab, setOptionsTab] = useState<'onion' | 'motion' | 'scripts'>('onion');
+  const [paneSplit, setPaneSplit] = useState(50);
   const previousColorRef = useRef(color);
+  const paneLayoutRef = useRef<HTMLDivElement>(null);
   const colorBoxRef = useRef<HTMLCanvasElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
   const draggingColorBox = useRef(false);
@@ -230,6 +232,32 @@ export function PhysicsPaintRightPanel({
     });
   }, [currentHex]);
 
+  const handlePaneResizeStart = useCallback((event: PointerEvent) => {
+    event.preventDefault();
+    const layout = paneLayoutRef.current;
+    if (!layout) return;
+    const target = event.currentTarget as HTMLElement;
+    const rect = layout.getBoundingClientRect();
+    target.setPointerCapture(event.pointerId);
+
+    const resize = (clientY: number) => {
+      const split = ((clientY - rect.top) / rect.height) * 100;
+      setPaneSplit(Math.max(20, Math.min(80, split)));
+    };
+    const handleMove = (moveEvent: PointerEvent) => resize(moveEvent.clientY);
+    const handleEnd = (endEvent: PointerEvent) => {
+      if (target.hasPointerCapture(endEvent.pointerId)) target.releasePointerCapture(endEvent.pointerId);
+      target.removeEventListener('pointermove', handleMove);
+      target.removeEventListener('pointerup', handleEnd);
+      target.removeEventListener('pointercancel', handleEnd);
+    };
+
+    resize(event.clientY);
+    target.addEventListener('pointermove', handleMove);
+    target.addEventListener('pointerup', handleEnd);
+    target.addEventListener('pointercancel', handleEnd);
+  }, []);
+
   const swatches = [...DEFAULT_PALETTE, ...favoriteColors, ...recentColors]
     .filter((item, index, source) => source.indexOf(item) === index)
     .slice(0, 24);
@@ -253,7 +281,13 @@ export function PhysicsPaintRightPanel({
 
   return (
     <aside class="physics-paint-right-panel" aria-label="Physics Paint color and tool options">
-      <section class="physics-paint-right-section physics-paint-single-tab-section">
+      <div
+        ref={paneLayoutRef}
+        class="physics-paint-right-pane-layout"
+        style={{ gridTemplateRows: `minmax(0, ${paneSplit}fr) 13px minmax(0, ${100 - paneSplit}fr)` }}
+      >
+        <div class="physics-paint-right-pane physics-paint-right-pane-primary">
+          <section class="physics-paint-right-section physics-paint-single-tab-section">
         <div class="physics-paint-options-tabs physics-paint-single-tab" role="tablist" aria-label="Brush color and tool panels">
           <button
             type="button"
@@ -405,9 +439,30 @@ export function PhysicsPaintRightPanel({
             ) : null}
           </div>
         ) : null}
-      </section>
+          </section>
+        </div>
 
-      <div class="physics-paint-options-tabs physics-paint-options-tabs-navigation" role="tablist" aria-label="Physics Paint option panels">
+        <div
+          class="physics-paint-right-pane-resizer"
+          role="separator"
+          aria-label="Resize Physics Paint sidebar panels"
+          aria-orientation="horizontal"
+          aria-valuemin={20}
+          aria-valuemax={80}
+          aria-valuenow={Math.round(paneSplit)}
+          tabIndex={0}
+          onPointerDown={(event) => handlePaneResizeStart(event as unknown as PointerEvent)}
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+            event.preventDefault();
+            setPaneSplit((split) => Math.max(20, Math.min(80, split + (event.key === 'ArrowDown' ? 5 : -5))));
+          }}
+        >
+          <span />
+        </div>
+
+        <div class="physics-paint-right-pane physics-paint-right-pane-secondary">
+          <div class="physics-paint-options-tabs physics-paint-options-tabs-navigation" role="tablist" aria-label="Physics Paint option panels">
           <button
             type="button"
             class={`physics-paint-options-tab physics-paint-tab-onion ${optionsTab === 'onion' ? 'active' : ''}`}
@@ -467,7 +522,9 @@ export function PhysicsPaintRightPanel({
         ) : (
           <PhysicsPaintScriptsPanel {...scripts} />
         )}
-      </section>
+          </section>
+        </div>
+      </div>
     </aside>
   );
 }
