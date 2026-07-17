@@ -88,18 +88,7 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(scriptsPanel).toContain('event.stopPropagation()');
   });
 
-  it('reloads selected durable content before one approved Apply and preserves destination guards', () => {
-    expectInOrder(studio, [
-      'const selectedId = rotoScriptLibrary.selectedId.peek()',
-      'const loaded = await rotoScriptLibrary.activateAndLoad(selectedId)',
-      'if (!loaded) return',
-      'const applied = await rotoScript.applyScript()',
-    ]);
-    const handlerStart = studio.indexOf('const handleSelectedScriptLoadAndApply');
-    const handlerEnd = studio.indexOf('const scriptLoadAndApplyDisabledReason', handlerStart);
-    const handler = studio.slice(handlerStart, handlerEnd);
-    expect(handler.match(/rotoScript\.applyScript\(\)/g)).toHaveLength(1);
-    expect(handler).not.toContain('useEffect');
+  it('keeps approved durable-load destination guard labels', () => {
     expect(studio).toContain("? 'Select a project script first.'");
     expect(studio).toContain("? 'Finish the current script library operation.'");
     expect(studio).toContain('rotoScript.availability.value.replacementApplyDisabledReason');

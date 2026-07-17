@@ -54,6 +54,33 @@ export function getPhysicsPaintSessionControlState(mutationLocked: boolean) {
   };
 }
 
+export function createPhysicsPaintPaneResizeDrag(options: {
+  target: HTMLElement;
+  pointerId: number;
+  resize: (clientY: number) => void;
+}): () => void {
+  const { target, pointerId, resize } = options;
+  let active = true;
+  const cleanup = () => {
+    if (!active) return;
+    active = false;
+    target.removeEventListener('pointermove', handleMove);
+    target.removeEventListener('pointerup', handleEnd);
+    target.removeEventListener('pointercancel', handleEnd);
+    target.removeEventListener('lostpointercapture', cleanup);
+  };
+  const handleMove = (event: PointerEvent) => resize(event.clientY);
+  const handleEnd = () => {
+    if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+    cleanup();
+  };
+  target.addEventListener('pointermove', handleMove);
+  target.addEventListener('pointerup', handleEnd);
+  target.addEventListener('pointercancel', handleEnd);
+  target.addEventListener('lostpointercapture', cleanup);
+  return cleanup;
+}
+
 function normalizeHexInput(value: string): string | null {
   const match = value.trim().match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/);
   if (!match) return null;
@@ -148,6 +175,7 @@ export function PhysicsPaintRightPanel({
   const [paneSplit, setPaneSplit] = useState(50);
   const previousColorRef = useRef(color);
   const paneLayoutRef = useRef<HTMLDivElement>(null);
+  const activePaneResizeCleanupRef = useRef<(() => void) | null>(null);
   const colorBoxRef = useRef<HTMLCanvasElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
   const draggingColorBox = useRef(false);
@@ -158,6 +186,11 @@ export function PhysicsPaintRightPanel({
   useEffect(() => {
     void loadRecentColors().then(setRecentColors);
     void loadFavoriteColors().then(setFavoriteColors);
+  }, []);
+
+  useEffect(() => () => {
+    activePaneResizeCleanupRef.current?.();
+    activePaneResizeCleanupRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -237,6 +270,7 @@ export function PhysicsPaintRightPanel({
     event.preventDefault();
     const layout = paneLayoutRef.current;
     if (!layout) return;
+    activePaneResizeCleanupRef.current?.();
     const target = event.currentTarget as HTMLElement;
     const rect = layout.getBoundingClientRect();
     target.setPointerCapture(event.pointerId);
@@ -245,18 +279,12 @@ export function PhysicsPaintRightPanel({
       const split = ((clientY - rect.top) / rect.height) * 100;
       setPaneSplit(Math.max(20, Math.min(80, split)));
     };
-    const handleMove = (moveEvent: PointerEvent) => resize(moveEvent.clientY);
-    const handleEnd = (endEvent: PointerEvent) => {
-      if (target.hasPointerCapture(endEvent.pointerId)) target.releasePointerCapture(endEvent.pointerId);
-      target.removeEventListener('pointermove', handleMove);
-      target.removeEventListener('pointerup', handleEnd);
-      target.removeEventListener('pointercancel', handleEnd);
-    };
-
     resize(event.clientY);
-    target.addEventListener('pointermove', handleMove);
-    target.addEventListener('pointerup', handleEnd);
-    target.addEventListener('pointercancel', handleEnd);
+    const cleanup = createPhysicsPaintPaneResizeDrag({ target, pointerId: event.pointerId, resize });
+    activePaneResizeCleanupRef.current = () => {
+      cleanup();
+      if (activePaneResizeCleanupRef.current) activePaneResizeCleanupRef.current = null;
+    };
   }, []);
 
   const swatches = [...DEFAULT_PALETTE, ...favoriteColors, ...recentColors]
