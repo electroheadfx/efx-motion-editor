@@ -142,8 +142,8 @@ export function PhysicsPaintRightPanel({
   const [hexInput, setHexInput] = useState(color);
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
-  const [colorTab, setColorTab] = useState<'brush' | 'log'>('brush');
-  const [optionsTab, setOptionsTab] = useState<'tool' | 'onion' | 'motion' | 'scripts'>('tool');
+  const [primaryTab, setPrimaryTab] = useState<'brush' | 'tool' | 'log'>('brush');
+  const [optionsTab, setOptionsTab] = useState<'onion' | 'motion' | 'scripts'>('onion');
   const previousColorRef = useRef(color);
   const colorBoxRef = useRef<HTMLCanvasElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
@@ -164,8 +164,8 @@ export function PhysicsPaintRightPanel({
   }, [color]);
 
   useEffect(() => {
-    if (!logVisible && colorTab === 'log') setColorTab('brush');
-  }, [colorTab, logVisible]);
+    if (!logVisible && primaryTab === 'log') setPrimaryTab('brush');
+  }, [logVisible, primaryTab]);
 
   const currentRgb = useMemo(() => hexToRgba(color), [color]);
   const currentHex = useMemo(() => rgbaToHex(currentRgb.r, currentRgb.g, currentRgb.b), [currentRgb.b, currentRgb.g, currentRgb.r]);
@@ -254,29 +254,38 @@ export function PhysicsPaintRightPanel({
   return (
     <aside class="physics-paint-right-panel" aria-label="Physics Paint color and tool options">
       <section class="physics-paint-right-section physics-paint-single-tab-section">
-        <div class="physics-paint-options-tabs physics-paint-single-tab" role="tablist" aria-label="Brush color panel">
+        <div class="physics-paint-options-tabs physics-paint-single-tab" role="tablist" aria-label="Brush color and tool panels">
           <button
             type="button"
-            class={`physics-paint-options-tab physics-paint-tab-brush ${colorTab === 'brush' ? 'active' : ''}`}
+            class={`physics-paint-options-tab physics-paint-tab-brush ${primaryTab === 'brush' ? 'active' : ''}`}
             role="tab"
-            aria-selected={colorTab === 'brush'}
-            onClick={() => setColorTab('brush')}
+            aria-selected={primaryTab === 'brush'}
+            onClick={() => setPrimaryTab('brush')}
           >
             Brush color
+          </button>
+          <button
+            type="button"
+            class={`physics-paint-options-tab physics-paint-tab-tool ${primaryTab === 'tool' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={primaryTab === 'tool'}
+            onClick={() => setPrimaryTab('tool')}
+          >
+            Tool
           </button>
           {logVisible ? (
             <button
               type="button"
-              class={`physics-paint-options-tab physics-paint-tab-log ${colorTab === 'log' ? 'active' : ''}`}
+              class={`physics-paint-options-tab physics-paint-tab-log ${primaryTab === 'log' ? 'active' : ''}`}
               role="tab"
-              aria-selected={colorTab === 'log'}
-              onClick={() => setColorTab('log')}
+              aria-selected={primaryTab === 'log'}
+              onClick={() => setPrimaryTab('log')}
             >
               LOG
             </button>
           ) : null}
         </div>
-        {colorTab === 'brush' ? (
+        {primaryTab === 'brush' ? (
           <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel" role="tabpanel" aria-label="Brush color">
             <div class="physics-paint-color-picker" aria-label="Brush color picker">
               <canvas
@@ -357,6 +366,30 @@ export function PhysicsPaintRightPanel({
               ))}
             </div>
           </div>
+        ) : primaryTab === 'tool' ? (
+          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Tool">
+            <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} disabled={engineControlsDisabled} />
+            {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Color blending" min={0} max={100} value={pickup} onChange={onPickupChange} disabled={engineControlsDisabled} /> : null}
+            {physicsMode === 'local' ? <PanelSlider id="physics-spread" label="Spread" min={0} max={100} value={spread} onChange={onSpreadChange} disabled={engineControlsDisabled} /> : null}
+            {activeTool === 'erase' ? <PanelSlider id="physics-erase-strength" label="Erase strength" min={0} max={100} value={eraseStrength} onChange={onEraseStrengthChange} disabled={engineControlsDisabled} /> : null}
+
+            <div class="physics-paint-option-group">
+              <span class="physics-paint-right-label">Brush smoothing</span>
+              <div class="physics-paint-segmented-row" role="group" aria-label="Brush smoothing">
+                <SmoothingButton label="Off" value={0} disabled={engineControlsDisabled} active={smoothing === 0} onSelect={onSmoothingChange} />
+                <SmoothingButton label="Soft" value={1} disabled={engineControlsDisabled} active={smoothing === 1} onSelect={onSmoothingChange} />
+                <SmoothingButton label="Med" value={2} disabled={engineControlsDisabled} active={smoothing === 2} onSelect={onSmoothingChange} />
+                <SmoothingButton label="High" value={3} disabled={engineControlsDisabled} active={smoothing === 3} onSelect={onSmoothingChange} />
+              </div>
+            </div>
+            <div class="physics-paint-option-actions">
+              <button class="physics-paint-text-button" disabled={sessionControls.saveDisabled} onClick={onSaveState}>Save state</button>
+              <label class={sessionControls.loadClass} aria-disabled={sessionControls.loadDisabled}>
+                Load state
+                <input type="file" accept=".json" disabled={sessionControls.loadDisabled} onChange={onLoadState} />
+              </label>
+            </div>
+          </div>
         ) : logVisible ? (
           <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel physics-paint-log-tab-panel" role="tabpanel" aria-label="Log">
             <span class="physics-paint-right-label">Log</span>
@@ -375,15 +408,6 @@ export function PhysicsPaintRightPanel({
       </section>
 
       <div class="physics-paint-options-tabs physics-paint-options-tabs-navigation" role="tablist" aria-label="Physics Paint option panels">
-          <button
-            type="button"
-            class={`physics-paint-options-tab physics-paint-tab-tool ${optionsTab === 'tool' ? 'active' : ''}`}
-            role="tab"
-            aria-selected={optionsTab === 'tool'}
-            onClick={() => setOptionsTab('tool')}
-          >
-            Tool
-          </button>
           <button
             type="button"
             class={`physics-paint-options-tab physics-paint-tab-onion ${optionsTab === 'onion' ? 'active' : ''}`}
@@ -414,31 +438,7 @@ export function PhysicsPaintRightPanel({
       </div>
 
       <section class="physics-paint-right-section physics-paint-options-tabs-section">
-        {optionsTab === 'tool' ? (
-          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Tool">
-            <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} disabled={engineControlsDisabled} />
-            {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Color blending" min={0} max={100} value={pickup} onChange={onPickupChange} disabled={engineControlsDisabled} /> : null}
-            {physicsMode === 'local' ? <PanelSlider id="physics-spread" label="Spread" min={0} max={100} value={spread} onChange={onSpreadChange} disabled={engineControlsDisabled} /> : null}
-            {activeTool === 'erase' ? <PanelSlider id="physics-erase-strength" label="Erase strength" min={0} max={100} value={eraseStrength} onChange={onEraseStrengthChange} disabled={engineControlsDisabled} /> : null}
-
-            <div class="physics-paint-option-group">
-              <span class="physics-paint-right-label">Brush smoothing</span>
-              <div class="physics-paint-segmented-row" role="group" aria-label="Brush smoothing">
-                <SmoothingButton label="Off" value={0} disabled={engineControlsDisabled} active={smoothing === 0} onSelect={onSmoothingChange} />
-                <SmoothingButton label="Soft" value={1} disabled={engineControlsDisabled} active={smoothing === 1} onSelect={onSmoothingChange} />
-                <SmoothingButton label="Med" value={2} disabled={engineControlsDisabled} active={smoothing === 2} onSelect={onSmoothingChange} />
-                <SmoothingButton label="High" value={3} disabled={engineControlsDisabled} active={smoothing === 3} onSelect={onSmoothingChange} />
-              </div>
-            </div>
-            <div class="physics-paint-option-actions">
-              <button class="physics-paint-text-button" disabled={sessionControls.saveDisabled} onClick={onSaveState}>Save state</button>
-              <label class={sessionControls.loadClass} aria-disabled={sessionControls.loadDisabled}>
-                Load state
-                <input type="file" accept=".json" disabled={sessionControls.loadDisabled} onChange={onLoadState} />
-              </label>
-            </div>
-          </div>
-        ) : optionsTab === 'onion' ? (
+        {optionsTab === 'onion' ? (
           <div class={`physics-paint-options-tab-panel physics-paint-options-tab-panel-onion physics-paint-onion-tab-panel${onionDisabled ? ' disabled-control' : ''}`} role="tabpanel" aria-label="Onion skin controls">
             <label class="physics-paint-onion-toggle-row">
               <input type="checkbox" checked={onion.enabled} disabled={onionDisabled} onChange={(event) => updateOnion({ enabled: (event.currentTarget as HTMLInputElement).checked })} />
