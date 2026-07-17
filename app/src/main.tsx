@@ -11,7 +11,7 @@ import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
-import {installPhysicPaintApplyListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
+import {installPhysicPaintApplyListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
 
 const root = document.getElementById('app')!;
 
@@ -30,6 +30,7 @@ if (window.location.pathname === '/physics-paint') {
     mountShortcuts(); // Mount keyboard shortcuts globally
     await installPhysicPaintApplyListener();
     await installPhysicPaintScriptLibraryListener();
+    await installPhysicPaintRotoAuthorityListener();
     await installPhysicPaintStateSaveListener();
     await installPhysicPaintThumbnailEncodeListener();
 
