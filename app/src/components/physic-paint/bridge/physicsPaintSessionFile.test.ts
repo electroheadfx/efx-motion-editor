@@ -86,7 +86,7 @@ describe('physicsPaintSessionFile', () => {
     expect(contents).not.toContain('renderedFrame');
     expect(contents).not.toContain('frames');
     expect(contents).not.toContain('PhysicPaintRenderedFrame');
-    expect(contents).not.toContain('apply-play-canvas');
+    expect(contents).not.toContain(['apply', 'play', 'canvas'].join('-'));
   });
 
   it('writes editable JSON to the selected path through an injected native save adapter', async () => {

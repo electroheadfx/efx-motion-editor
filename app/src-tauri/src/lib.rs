@@ -556,7 +556,7 @@ pub fn run() {
 mod tests {
     use super::*;
 
-    fn play_launch_context() -> PhysicsPaintLaunchContext {
+    fn roto_launch_context() -> PhysicsPaintLaunchContext {
         PhysicsPaintLaunchContext {
             operation_id: "op-1".into(),
             layer_id: "layer-1".into(),
@@ -566,154 +566,26 @@ mod tests {
             width: Some(1000),
             height: Some(650),
             fps: Some(24.0),
-            requested_workflow_mode: Some("play".into()),
-            workflow_mode: Some("play".into()),
-            play_start_frame: Some(12),
-            play_frame_count: Some(5),
-            editable_source: Some("play".into()),
-            editable_state: Some(serde_json::json!({
-                "version": 2,
-                "width": 1000,
-                "height": 650,
-                "settings": {},
-                "strokes": [{ "pts": [[1, 2, 0.5, 0, 0, 0, 0]] }]
-            })),
-            selected_play_script_id: Some("play-12-5".into()),
-            play_cache_status: Some("cached".into()),
-            play_motion: Some(serde_json::json!({ "strokeDeformation": 30, "strokePosition": 40 })),
-            roto_background: None,
-            preview_frame: Some(1),
-            cached_play_frames: vec![PhysicsPaintRenderedFrame {
-                frame_index: 1,
-                app_frame: 13,
-                data_url: "data:image/png;base64,ZmFrZQ==".into(),
-                width: Some(1000),
-                height: Some(650),
-            }],
+            roto_background: Some(serde_json::json!({ "background": "canvas2", "paperGrain": "canvas3", "grainStrength": 0.65 })),
             cached_roto_frames: Vec::new(),
             roto_interpolation_settings: None,
-            max_play_frame_count: None,
-            max_play_frame_count_reason: None,
         }
     }
 
     #[test]
-    fn physics_paint_url_excludes_large_editable_state() {
-        let context = play_launch_context();
-
-        let url = physics_paint_url(&context);
-
+    fn physics_paint_url_excludes_large_frame_payloads() {
+        let url = physics_paint_url(&roto_launch_context());
         assert!(url.starts_with("/physics-paint?operationId="));
         assert!(url.contains("layerId=layer%2D1"));
         assert!(url.contains("startFrame=12"));
-        assert!(!url.contains("editableState"));
-        assert!(!url.contains("strokes"));
-        assert!(!url.contains("cachedPlayFrames"));
+        assert!(!url.contains("cachedRotoFrames"));
         assert!(!url.contains("data:image"));
     }
 
     #[test]
     fn physics_paint_launch_context_is_cloneable_for_fetch_after_mount() {
-        let cloned = play_launch_context().clone();
-
-        assert_eq!(cloned.workflow_mode.as_deref(), Some("play"));
-        assert_eq!(cloned.selected_play_script_id.as_deref(), Some("play-12-5"));
-        assert_eq!(cloned.play_cache_status.as_deref(), Some("cached"));
-        assert_eq!(cloned.preview_frame, Some(1));
-        assert_eq!(cloned.cached_play_frames.len(), 1);
-        assert_eq!(cloned.cached_play_frames[0].app_frame, 13);
-        assert!(cloned.editable_state.is_some());
-    }
-
-    #[test]
-    fn physics_paint_launch_context_json_preserves_roto_source_display_identity() {
-        let input = serde_json::json!({
-            "operationId": "op-roto-on",
-            "layerId": "layer-1",
-            "startFrame": 17,
-            "workflowMode": "roto",
-            "editableSource": "roto",
-            "cachedRotoFrames": [
-                { "frameIndex": 0, "appFrame": 0, "sourceFrame": 0, "displayFrame": 0, "source": "real-key", "dataUrl": "data:image/png;base64,MA==" },
-                { "frameIndex": 0, "appFrame": 3, "sourceFrame": 1, "displayFrame": 3, "source": "real-key", "dataUrl": "data:image/png;base64,MQ==" },
-                { "frameIndex": 0, "appFrame": 6, "sourceFrame": 2, "displayFrame": 6, "source": "real-key", "dataUrl": "data:image/png;base64,Mg==" },
-                { "frameIndex": 0, "appFrame": 9, "sourceFrame": 3, "displayFrame": 9, "source": "real-key", "dataUrl": "data:image/png;base64,Mw==" },
-                { "frameIndex": 0, "appFrame": 17, "sourceFrame": 17, "displayFrame": 17, "source": "real-key", "dataUrl": "data:image/png;base64,MTc=" }
-            ],
-            "rotoInterpolationSettings": {
-                "enabled": true,
-                "inBetweenCount": 2,
-                "mode": "duplicate",
-                "deform": 0,
-                "position": 0,
-                "segmentSpacingOverrides": [
-                    { "fromSourceFrame": 3, "toSourceFrame": 17, "inBetweenCount": 7 }
-                ]
-            }
-        });
-
-        let context: PhysicsPaintLaunchContext = serde_json::from_value(input).unwrap();
-        let output = serde_json::to_value(context).unwrap();
-        let frames = output["cachedRotoFrames"].as_array().unwrap();
-
-        assert_eq!(frames.iter().map(|frame| frame["sourceFrame"].as_u64()).collect::<Vec<_>>(), vec![Some(0), Some(1), Some(2), Some(3), Some(17)]);
-        assert_eq!(frames.iter().map(|frame| frame["displayFrame"].as_u64()).collect::<Vec<_>>(), vec![Some(0), Some(3), Some(6), Some(9), Some(17)]);
-        assert_eq!(output["rotoInterpolationSettings"]["segmentSpacingOverrides"][0]["toSourceFrame"], 17);
-    }
-
-    #[test]
-    fn physics_paint_launch_context_preserves_cached_roto_frames_after_mount() {
-        let mut context = play_launch_context();
-        context.workflow_mode = Some("roto".into());
-        context.editable_source = Some("roto".into());
-        context.editable_state = None;
-        context.cached_play_frames = Vec::new();
-        context.cached_roto_frames = vec![PhysicsPaintRotoCacheFrame {
-            rendered: PhysicsPaintRenderedFrame {
-                frame_index: 0,
-                app_frame: 4,
-                data_url: "data:image/png;base64,cm90bw==".into(),
-                width: Some(1000),
-                height: Some(650),
-            },
-            source: "real-key".into(),
-            nearest_real_key_frame: None,
-            source_frame: None,
-            display_frame: None,
-            from_source_frame: None,
-            to_source_frame: None,
-            interpolation_t: None,
-            background_only: None,
-            onion_data_url: None,
-        }];
-
-        let cloned = context.clone();
-
-        assert_eq!(cloned.workflow_mode.as_deref(), Some("roto"));
-        assert_eq!(cloned.cached_roto_frames.len(), 1);
-        assert_eq!(cloned.cached_roto_frames[0].rendered.app_frame, 4);
-        assert_eq!(cloned.cached_roto_frames[0].source, "real-key");
-        assert!(cloned.editable_state.is_none());
-    }
-
-    #[test]
-    fn physics_paint_launch_context_preserves_roto_background_round_trip() {
-        let input = serde_json::json!({
-            "operationId": "op-roto-paper",
-            "layerId": "layer-1",
-            "startFrame": 4,
-            "workflowMode": "roto",
-            "rotoBackground": {
-                "background": "canvas2",
-                "paperGrain": "canvas3",
-                "grainStrength": 0.65,
-                "color": "#f7f3ed"
-            }
-        });
-
-        let context: PhysicsPaintLaunchContext = serde_json::from_value(input.clone()).unwrap();
-        let output = serde_json::to_value(context).unwrap();
-
-        assert_eq!(output.get("rotoBackground"), input.get("rotoBackground"));
+        let cloned = roto_launch_context().clone();
+        assert_eq!(cloned.start_frame, 12);
+        assert_eq!(cloned.roto_background.as_ref().unwrap()["background"], "canvas2");
     }
 }

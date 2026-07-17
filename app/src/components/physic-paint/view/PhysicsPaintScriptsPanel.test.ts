@@ -23,8 +23,21 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(panel).toContain('title={props.title}');
     expect(controller).toContain("saveDisabledReason: !projectSaved.value ? 'Save the project first.'");
     expect(panel).toContain('availability.saveDisabledReason');
-    expect(panel).toContain('Script playback is unavailable');
+    expect(panel).toContain("playScript.disabledReason.value ?? 'Generate progressive real Roto keys'");
     expect(panel).not.toContain('Import Script');
+  });
+
+  it('provides an accessible Play Script dialog distinct from cached Roto playback', () => {
+    expect(panel).toContain('role="dialog"');
+    expect(panel).toContain('aria-labelledby="physics-play-script-title"');
+    expect(panel).toContain('Max {playScript.capacity.value}');
+    expect(panel).toContain('Enter a positive integer or Max.');
+    expect(panel).toContain("if (event.key === 'Escape')");
+    expect(panel).toContain("if (event.key === 'Enter' && !playScript.validationError.value");
+    expect(panel).toContain("event.key !== 'Tab'");
+    expect(panel).toContain('playInputRef.current?.focus()');
+    expect(panel).toContain('playButtonRef.current?.focus()');
+    expect(panel).not.toContain('toggleRotoPlayback');
   });
 
   it('provides load-only focusable rows, inline rename isolation, and focus-contained deletion', () => {

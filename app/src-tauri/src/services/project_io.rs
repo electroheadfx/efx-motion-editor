@@ -192,39 +192,6 @@ mod tests {
                     width: Some(1000),
                     height: Some(650),
                 }],
-                editable_state: Some(serde_json::json!({
-                    "version": 2,
-                    "width": 1000,
-                    "height": 650,
-                    "settings": {},
-                    "strokes": []
-                })),
-                play_script_ranges: vec![serde_json::json!({
-                    "id": "play-12-4",
-                    "startFrame": 12,
-                    "frameCount": 4,
-                    "editableState": {
-                        "version": 2,
-                        "width": 1000,
-                        "height": 650,
-                        "settings": {},
-                        "strokes": []
-                    },
-                    "source": "play",
-                    "cacheStatus": "cached",
-                    "motion": {
-                        "strokeDeformation": 30,
-                        "strokePosition": 40
-                    }
-                })],
-                workflow_mode: Some("play".into()),
-                play_start_frame: Some(12),
-                play_frame_count: Some(4),
-                editable_source: Some("play".into()),
-                play_motion: Some(serde_json::json!({
-                    "strokeDeformation": 30,
-                    "strokePosition": 40
-                })),
                 roto_cache_metadata: vec![serde_json::json!({
                     "frameIndex": 0,
                     "appFrame": 12,
@@ -262,15 +229,6 @@ mod tests {
         assert_eq!(loaded.physic_paint_outputs[0].layer_id, "phys-layer-1");
         assert_eq!(loaded.physic_paint_outputs[0].frames[0].app_frame, 12);
         assert_eq!(loaded.physic_paint_outputs[0].frames[0].cache_path, "cache/physic-paint/phys-layer-1/frame-000012-0000.png");
-        assert!(loaded.physic_paint_outputs[0].editable_state.is_some());
-        assert_eq!(loaded.physic_paint_outputs[0].workflow_mode.as_deref(), Some("play"));
-        assert_eq!(loaded.physic_paint_outputs[0].play_start_frame, Some(12));
-        assert_eq!(loaded.physic_paint_outputs[0].play_frame_count, Some(4));
-        assert_eq!(loaded.physic_paint_outputs[0].editable_source.as_deref(), Some("play"));
-        assert_eq!(loaded.physic_paint_outputs[0].play_script_ranges.len(), 1);
-        assert_eq!(loaded.physic_paint_outputs[0].play_script_ranges[0]["id"], "play-12-4");
-        assert_eq!(loaded.physic_paint_outputs[0].play_script_ranges[0]["motion"]["strokePosition"], 40);
-        assert_eq!(loaded.physic_paint_outputs[0].play_motion.as_ref().unwrap()["strokeDeformation"], 30);
         assert_eq!(loaded.physic_paint_outputs[0].roto_cache_metadata[0]["source"], "real-key");
         assert_eq!(loaded.physic_paint_outputs[0].roto_interpolation_settings.as_ref().unwrap()["enabled"], true);
         assert_eq!(loaded.physic_paint_outputs[0].roto_interpolation_settings.as_ref().unwrap()["inBetweenCount"], 3);

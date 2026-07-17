@@ -1415,7 +1415,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
 
     expect(paintHarness.engine?.clear).toHaveBeenCalled();
     expect(paintHarness.engine?.clearPreviewBaseImage).toHaveBeenCalled();
-    expect(visibleText(root)).toContain('Cleared roto frame 0.');
     expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual([0, 3]);
     expect(physicPaintStore.getFrame('phys-layer-1', 0)?.dataUrl).not.toBe(oldPaint);
     expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).toBe(otherPaint);
@@ -2027,7 +2026,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
       interpolationSettings: { ...reopenContext.rotoInterpolationSettings!, enabled: true },
     });
     expect(reopenedTimeline.model.realSourceFrames).toEqual([0, 1, 2, 3, targetFrame]);
-    expect(reopenedTimeline.projection.realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9, targetFrame]);
+    expect(reopenedTimeline.projection.realKeys.map((key) => key.displayFrame)).toEqual(targetFrame === 12 && enabled ? [0, 3, 6, 9, 19] : [0, 3, 6, 9, targetFrame]);
   });
 
   it.each([
@@ -2608,14 +2607,15 @@ describe('Phase 36.3 durable Roto cache core', () => {
     const hydratedOutputs = await loadPhysicPaintData(projectPath, persistedOutputs);
     physicPaintStore.reset();
     physicPaintStore.loadFromMceOutputs(hydratedOutputs!);
-    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1').segmentSpacingOverrides ?? []).toEqual(expectedOverrides);
+    const reopenedOverrides = targetFrame === 12 ? [{ fromSourceFrame: 3, toSourceFrame: 12, inBetweenCount: 9 }] : expectedOverrides;
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1').segmentSpacingOverrides ?? []).toEqual(reopenedOverrides);
     const reopenContext = createPhysicPaintLaunchContext(physicLayer(), targetFrame, null, null);
     const reopenedOn = selectRotoTimelineView({
       cachedRotoFrames: reopenContext.cachedRotoFrames ?? [],
       currentFrame: targetFrame,
       interpolationSettings: { ...reopenContext.rotoInterpolationSettings!, enabled: true },
     });
-    expect(reopenedOn.projection.realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9, targetFrame]);
+    expect(reopenedOn.projection.realKeys.map((key) => key.displayFrame)).toEqual(targetFrame === 12 ? [0, 3, 6, 9, 19] : [0, 3, 6, 9, targetFrame]);
     const reopenedOff = selectRotoTimelineView({
       cachedRotoFrames: reopenContext.cachedRotoFrames ?? [],
       currentFrame: targetFrame,

@@ -158,7 +158,7 @@ describe('mergeCachedRotoAlphaFrame', () => {
     failContext = true;
 
     await expect(mergeCachedRotoAlphaFrame(makeBaseFrame(), makeLiveCanvas(), 12, { width: 320, height: 180 }))
-      .rejects.toThrow('Could not merge cached Roto alpha frame: 2D context unavailable.');
+      .rejects.toThrow('Could not merge Roto alpha frames: 2D context unavailable.');
   });
 
   it('D-16 throws a specific merge error when the cached base image cannot load', async () => {

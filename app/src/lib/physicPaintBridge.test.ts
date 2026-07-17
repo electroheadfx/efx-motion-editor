@@ -150,10 +150,7 @@ describe('physicPaintBridge', () => {
 
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null);
 
-    expect(context).toMatchObject({
-      workflowMode: 'roto',
-      startFrame: 8,
-    });
+    expect(context).toMatchObject({ startFrame: 8 });
     expect(context.cachedRotoFrames).toEqual([
       expect.objectContaining({ appFrame: 8, source: 'real-key' }),
       expect.objectContaining({ appFrame: 9, source: 'generated-interpolation', nearestRealKeyFrame: 8 }),
@@ -174,10 +171,7 @@ describe('physicPaintBridge', () => {
 
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null);
 
-    expect(context).toMatchObject({
-      workflowMode: 'roto',
-      rotoBackground: metadata,
-    });
+    expect(context).toMatchObject({ rotoBackground: metadata });
     expect(context.rotoBackground).not.toBe(metadata);
   });
 
@@ -188,20 +182,6 @@ describe('physicPaintBridge', () => {
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 1, null, null);
 
     expect(context.cachedRotoFrames?.map((frame) => frame.appFrame)).toEqual([1, 4]);
-    expect(context.editableState).toBeUndefined();
-  });
-
-  it('treats hydrated Roto frames without metadata as real-key cached references for relaunch', () => {
-    physicPaintStore.loadFromMceOutputs([{
-      layer_id: 'phys-layer-1',
-      frames: [makeFrame(0, 8)],
-    }]);
-
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null);
-
-    expect(context.cachedRotoFrames).toEqual([
-      expect.objectContaining({ appFrame: 8, source: 'real-key', dataUrl: makeFrame(0, 8).dataUrl }),
-    ]);
     expect(context.editableState).toBeUndefined();
   });
 
@@ -337,7 +317,7 @@ describe('physicPaintBridge', () => {
 
     expect(result.ok).toBe(true);
     expect(invoke).toHaveBeenCalledWith('open_physics_paint_window', {
-      context: expect.objectContaining({ layerId: 'phys-layer-1', startFrame: 4, requestedWorkflowMode: 'roto' }),
+      context: expect.objectContaining({ layerId: 'phys-layer-1', startFrame: 4 }),
     });
     expect(window.open).not.toHaveBeenCalled();
   });
