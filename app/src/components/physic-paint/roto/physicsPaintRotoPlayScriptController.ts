@@ -63,8 +63,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const context = ports.getLaunchContext();
     if (!context?.project?.saved) return 'Save the project first.';
     const selection = ports.getSelection();
-    if (selection.kind === 'generated-interpolation') return `Generated frame ${selection.displayFrame} is render-only. Select a real Roto key to generate a Play Script.`;
-    if (selection.kind !== 'real-key') return 'Select a real Roto key to generate a Play Script.';
+    if (selection.kind === 'generated-interpolation') return `Generated frame ${selection.displayFrame} is render-only. Select an empty frame or a real Roto key to generate a Play Script.`;
     return null;
   });
   const parsedCount = computed(() => parseCount(countText.value, capacity.value));
@@ -122,7 +121,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const commitAuthority = await ports.requestAuthority(nextOperationId('commit-check'), start);
       assertCurrent(acceptedGeneration);
       if (!commitAuthority.ok || commitAuthority.capacity < count || commitAuthority.rotoRevision !== authority.rotoRevision || commitAuthority.layerEndExclusive !== authority.layerEndExclusive) throw new Error('Roto authority changed before commit.');
-      if (ports.library.selectedId.peek() !== selectedId || ports.getSelection().kind !== 'real-key' || ports.getSelection().sourceFrame !== start) throw new Error('Play Script start or selected preset changed before commit.');
+      const currentSelection = ports.getSelection();
+      if (ports.library.selectedId.peek() !== selectedId || currentSelection.kind === 'generated-interpolation' || currentSelection.sourceFrame !== start) throw new Error('Play Script start or selected preset changed before commit.');
       const completeFrames = mergeCompleteRealKeys(commitAuthority.frames, staged);
       phase.value = 'committing'; status.value = 'Committing Play Script…'; abortController = null;
       const operationId = nextOperationId('commit');
