@@ -231,6 +231,31 @@ describe('Roto script clipboard controller', () => {
     expect(test.controller.availability.value.canCopy).toBe(false);
   });
 
+  it('permits replacement Apply on real and empty Roto targets without a clipboard and rejects guarded destinations', async () => {
+    const test = harness([]);
+    expect(test.controller.clipboard.value).toBeNull();
+    expect(test.controller.availability.value).toMatchObject({
+      canApply: false,
+      canApplyReplacement: true,
+      applyDisabledReason: 'Copy a Roto paint script before applying it.',
+      replacementApplyDisabledReason: null,
+    });
+
+    test.setSource({ workflowMode: 'roto', selectionKind: 'empty', sourceFrame: 8, displayFrame: 8 });
+    expect(test.controller.availability.value.canApplyReplacement).toBe(true);
+
+    test.setSource({ workflowMode: 'play', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    expect(test.controller.availability.value.replacementApplyDisabledReason).toBe('Apply Script is available only in Roto mode.');
+
+    test.setSource({ workflowMode: 'roto', selectionKind: 'generated-interpolation', sourceFrame: 8, displayFrame: 9 });
+    expect(test.controller.availability.value.replacementApplyDisabledReason).toBe('Generated frames are render-only and cannot receive a script.');
+
+    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    expect(await test.controller.prepareNavigation(9)).toBe(true);
+    expect(test.controller.availability.value.replacementApplyDisabledReason).toBe('Finish the current script operation before applying another script.');
+    test.controller.completeNavigation();
+  });
+
   it('rejects invalid sources and destinations with stable native reasons', async () => {
     const test = harness([]);
     expect(test.controller.availability.value.copyDisabledReason).toMatch(/Paint at least one brush/);

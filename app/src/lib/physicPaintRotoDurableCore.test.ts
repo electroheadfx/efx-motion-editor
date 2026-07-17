@@ -2686,7 +2686,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
       });
       const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
       await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
-      fire(findButton(root, 'ONION')!, 'Click');
+      fire(findButton(root, 'Onion')!, 'Click');
       await act(async () => { await flushPreact(); });
       const findOnionToggles = () => {
         const onionPanel = queryAll(root, (element) => hasClass(element, 'physics-paint-onion-tab-panel'))[0];
