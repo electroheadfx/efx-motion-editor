@@ -5,10 +5,10 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: ready_to_plan
-stopped_at: Quick 260716-dby complete, verified, and native-approved; Phase 36.14 UI-only integration unblocked
-last_updated: "2026-07-16T21:46:19Z"
-last_activity: 2026-07-16
-last_activity_desc: Completed and verified durable project-scoped Physics Paint Roto script library
+stopped_at: Quick 260717-9hw complete, native-approved, reviewed, and verified; Phase 36.14 UI-only integration ready to plan
+last_updated: "2026-07-17T09:50:50Z"
+last_activity: 2026-07-17
+last_activity_desc: Completed and verified Physics Paint right-sidebar and durable Scripts interaction polish
 progress:
   total_phases: 17
   completed_phases: 16
@@ -31,9 +31,9 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 Phase: 36.14 — Physics Paint Roto Timeline UI Integration
 Previous phase: Pre-36.14 quick sequence complete
 Plan: Not yet created
-Status: Ready to plan; durable project-scoped Roto script library is native-approved and independently verified
-Last activity: 2026-07-16 — Quick 260716-dby closed with native A–M approval, all 47 mapped regressions, and 11/11 verifier must-haves passed
-Next recommended action: Plan Phase 36.14 as the final UI-only v0.8.0 phase using the approved durable SCRIPTS controller/view-model contract
+Status: Ready to plan; durable Roto Scripts and final right-sidebar interaction contracts are native-approved, reviewed, and independently verified
+Last activity: 2026-07-17 — Quick 260717-9hw closed with native approval, 865 passing app regressions, a clean deep review, and 6/6 verifier must-haves passed
+Next recommended action: Plan Phase 36.14 as the final UI-only v0.8.0 phase using the approved durable SCRIPTS and split right-sidebar contracts
 
 Progress: [███████████████████░] 92/92 existing plans executed; 16/17 phases complete (94%)
 
@@ -142,6 +142,7 @@ None yet.
 - Quick 260715-j3q exact 10-level per-brush Undo/Redo and reactive availability badges passed native UAT on 2026-07-15.
 - Quick 260715-kgf functional Roto Copy Script / Apply Script passed native UAT on 2026-07-16. The approved contract uses an immutable reusable clipboard until Copy/Discard/disposal, exact selected-frame targeting with distant spacing preservation, deterministic Roto Motion, per-brush Undo/Redo, and one final composite cache publication.
 - Quick 260716-dby durable project-scoped Roto script library passed native UAT A–M and independent verification on 2026-07-16. Autonomous UUID JSON presets, strict WebP thumbnails, parent/native filesystem authority, Save As lifecycle, explicit immutable Load, and the existing Apply path are locked by 47 mapped regressions. Phase 36.14 is unblocked.
+- Quick 260717-9hw right-sidebar and SCRIPTS polish passed native UAT, deep review, and 6/6 verification on 2026-07-17. The approved layout uses separate Brush color/Tool/LOG and Onion/Motion/Scripts panes with a 50/50 GripHorizontal split; durable row selection is transactional load-only, and Paintbrush performs token-bound authoritative Load + exactly one existing Apply with complete stale lifecycle protection.
 
 ### Quick Tasks Completed
 
@@ -157,6 +158,7 @@ None yet.
 | 260715-j3q | Add exact 10-level Physics Paint per-brush Undo/Redo | 2026-07-15 | cf0a336f | [260715-j3q-add-exact-10-level-physics-paint-per-bru](./quick/260715-j3q-add-exact-10-level-physics-paint-per-bru/) |
 | 260715-kgf | Implement reusable Physics Paint Roto Copy Script / Apply Script | 2026-07-16 | 543780bf | [260715-kgf-implement-functional-physics-paint-roto-](./quick/260715-kgf-implement-functional-physics-paint-roto-/) |
 | 260716-dby | Implement durable project-scoped Physics Paint Roto script library | 2026-07-16 | f92366bb | [260716-dby-implement-durable-project-scoped-physics](./quick/260716-dby-implement-durable-project-scoped-physics/) |
+| 260717-9hw | Polish Physics Paint right sidebar tabs and Scripts interactions | 2026-07-17 | 96ee16df | [260717-9hw-polish-physics-paint-right-sidebar-tabs-](./quick/260717-9hw-polish-physics-paint-right-sidebar-tabs-/) |
 
 ### Roadmap Evolution
 
@@ -185,6 +187,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-16T21:46:19Z
-Stopped at: Quick 260716-dby complete, native-approved, and verified; Phase 36.14 unblocked
-Resume file: Plan `.planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/` as the final UI-only v0.8.0 phase using the durable SCRIPTS contract
+Last session: 2026-07-17T09:50:50Z
+Stopped at: Quick 260717-9hw complete, native-approved, reviewed, and verified; Phase 36.14 ready to plan
+Resume file: Plan `.planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/` as the final UI-only v0.8.0 phase using the durable SCRIPTS and split right-sidebar contracts
