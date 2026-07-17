@@ -37,6 +37,14 @@ export async function saveFavoriteColors(colors: string[]): Promise<void> {
   await store.set('favoriteColors', colors);
 }
 
+export async function loadHiddenPaletteColors(): Promise<string[]> {
+  return (await store.get<string[]>('hiddenPaletteColors')) ?? [];
+}
+
+export async function saveHiddenPaletteColors(colors: string[]): Promise<void> {
+  await store.set('hiddenPaletteColors', colors);
+}
+
 export async function savePaintMode(mode: string): Promise<void> {
   await store.set('activePaintMode', mode);
 }

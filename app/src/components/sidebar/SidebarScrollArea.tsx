@@ -4,43 +4,116 @@ import type { ComponentChildren } from 'preact';
 interface SidebarScrollAreaProps {
   children: ComponentChildren;
   class?: string;
+  interactive?: boolean;
 }
 
+interface ScrollThumbGeometry {
+  top: number;
+  height: number;
+  scrollable: boolean;
+}
+
+const MIN_THUMB_HEIGHT = 24;
+
 /**
- * Custom scroll area that hides the native scrollbar and renders a 4px gray thumb.
- * Works reliably in Tauri WKWebView (macOS) where ::-webkit-scrollbar is ignored.
+ * Custom vertical scroll area for Tauri WKWebView. It preserves native wheel and
+ * trackpad scrolling while replacing the native scrollbar with an EFX thumb.
  */
-export function SidebarScrollArea({ children, class: className }: SidebarScrollAreaProps) {
+export function SidebarScrollArea({ children, class: className, interactive = false }: SidebarScrollAreaProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [thumbTop, setThumbTop] = useState(0);
-  const [thumbHeight, setThumbHeight] = useState(0);
-  const [isScrollable, setIsScrollable] = useState(false);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  const [thumb, setThumb] = useState<ScrollThumbGeometry>({ top: 0, height: 0, scrollable: false });
   const [isHovering, setIsHovering] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const updateThumb = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
     const { scrollTop, scrollHeight, clientHeight } = el;
     const scrollable = scrollHeight > clientHeight + 1;
-    setIsScrollable(scrollable);
-    if (!scrollable) return;
-    const ratio = clientHeight / scrollHeight;
-    const th = Math.max(24, ratio * clientHeight);
-    setThumbHeight(th);
+    if (!scrollable) {
+      setThumb({ top: 0, height: 0, scrollable: false });
+      return;
+    }
+    const height = Math.min(clientHeight, Math.max(MIN_THUMB_HEIGHT, (clientHeight / scrollHeight) * clientHeight));
     const scrollRange = scrollHeight - clientHeight;
-    const thumbRange = clientHeight - th;
-    setThumbTop(scrollRange > 0 ? (scrollTop / scrollRange) * thumbRange : 0);
+    const thumbRange = clientHeight - height;
+    setThumb({
+      top: scrollRange > 0 ? (scrollTop / scrollRange) * thumbRange : 0,
+      height,
+      scrollable: true,
+    });
   }, []);
 
-  // Track content size changes
+  const scrollToTrackPosition = useCallback((clientY: number) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const thumbRange = el.clientHeight - thumb.height;
+    const scrollRange = el.scrollHeight - el.clientHeight;
+    if (thumbRange <= 0 || scrollRange <= 0) return;
+    const nextThumbTop = Math.max(0, Math.min(thumbRange, clientY - rect.top - thumb.height / 2));
+    el.scrollTop = (nextThumbTop / thumbRange) * scrollRange;
+  }, [thumb.height]);
+
+  const handleThumbPointerDown = useCallback((event: PointerEvent) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragCleanupRef.current?.();
+    const target = event.currentTarget as HTMLElement;
+    const pointerId = event.pointerId;
+    const startY = event.clientY;
+    const startScrollTop = el.scrollTop;
+    target.setPointerCapture(pointerId);
+    setIsDragging(true);
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      const thumbRange = el.clientHeight - thumb.height;
+      const scrollRange = el.scrollHeight - el.clientHeight;
+      if (thumbRange <= 0 || scrollRange <= 0) return;
+      el.scrollTop = startScrollTop + ((moveEvent.clientY - startY) / thumbRange) * scrollRange;
+    };
+    const cleanup = () => {
+      target.removeEventListener('pointermove', handleMove);
+      target.removeEventListener('pointerup', handleEnd);
+      target.removeEventListener('pointercancel', handleEnd);
+      target.removeEventListener('lostpointercapture', cleanup);
+      if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+      dragCleanupRef.current = null;
+      setIsDragging(false);
+    };
+    const handleEnd = (endEvent: PointerEvent) => {
+      if (endEvent.pointerId === pointerId) cleanup();
+    };
+    target.addEventListener('pointermove', handleMove);
+    target.addEventListener('pointerup', handleEnd);
+    target.addEventListener('pointercancel', handleEnd);
+    target.addEventListener('lostpointercapture', cleanup);
+    dragCleanupRef.current = cleanup;
+  }, [thumb.height]);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(updateThumb);
-    ro.observe(el);
-    // Also observe the first child (content) if it exists
-    if (el.firstElementChild) ro.observe(el.firstElementChild);
-    return () => ro.disconnect();
+    const resizeObserver = new ResizeObserver(updateThumb);
+    const mutationObserver = new MutationObserver(() => {
+      resizeObserver.disconnect();
+      resizeObserver.observe(el);
+      if (el.firstElementChild) resizeObserver.observe(el.firstElementChild);
+      updateThumb();
+    });
+    resizeObserver.observe(el);
+    if (el.firstElementChild) resizeObserver.observe(el.firstElementChild);
+    mutationObserver.observe(el, { childList: true, subtree: true });
+    updateThumb();
+    return () => {
+      dragCleanupRef.current?.();
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+    };
   }, [updateThumb]);
 
   return (
@@ -57,19 +130,33 @@ export function SidebarScrollArea({ children, class: className }: SidebarScrollA
       >
         {children}
       </div>
-      {/* Custom 4px scroll thumb */}
-      {isScrollable && (
+      {thumb.scrollable && (
         <div
-          class="absolute right-0 top-0 pointer-events-none transition-opacity duration-150"
+          class="absolute right-0 top-0 bottom-0"
           style={{
-            width: '4px',
-            height: `${thumbHeight}px`,
-            transform: `translateY(${thumbTop}px)`,
-            backgroundColor: 'var(--sidebar-scrollbar-thumb)',
-            borderRadius: '2px',
-            opacity: isHovering ? 0.7 : 0,
+            width: '10px',
+            opacity: isHovering || isDragging ? 1 : 0,
+            transition: 'opacity 150ms',
+            pointerEvents: interactive ? 'auto' : 'none',
+            touchAction: interactive ? 'none' : undefined,
           }}
-        />
+          onPointerDown={interactive ? (event) => scrollToTrackPosition(event.clientY) : undefined}
+        >
+          <div
+            class="absolute right-0 top-0"
+            style={{
+              width: '4px',
+              height: `${thumb.height}px`,
+              transform: `translateY(${thumb.top}px)`,
+              backgroundColor: 'var(--sidebar-scrollbar-thumb)',
+              borderRadius: '2px',
+              opacity: 0.7,
+              cursor: interactive ? 'grab' : undefined,
+              touchAction: interactive ? 'none' : undefined,
+            }}
+            onPointerDown={interactive ? (event) => handleThumbPointerDown(event as unknown as PointerEvent) : undefined}
+          />
+        </div>
       )}
     </div>
   );

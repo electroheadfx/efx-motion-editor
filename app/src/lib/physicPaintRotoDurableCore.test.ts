@@ -603,6 +603,11 @@ class TestResizeObserver {
   disconnect() {}
 }
 
+class TestMutationObserver {
+  observe() {}
+  disconnect() {}
+}
+
 const mountedRoots = new Set<TestElement>();
 
 function createTestRoot(): TestElement {
@@ -634,6 +639,7 @@ function installDom(encodedContext: string, onParentMessage: (message: { type?: 
   vi.stubGlobal('Image', TestImage);
   vi.stubGlobal('FileReader', TestFileReader);
   vi.stubGlobal('ResizeObserver', TestResizeObserver);
+  vi.stubGlobal('MutationObserver', TestMutationObserver);
   vi.stubGlobal('CustomEvent', class extends TestEvent {
     constructor(type: string, init: { detail?: unknown } = {}) {
       super(type, { detail: init.detail });

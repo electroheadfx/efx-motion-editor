@@ -6,6 +6,9 @@ const rightPanel = readFileSync(fileURLToPath(new URL('./PhysicsPaintRightPanel.
 const scriptsPanel = readFileSync(fileURLToPath(new URL('./PhysicsPaintScriptsPanel.tsx', import.meta.url)), 'utf8');
 const studio = readFileSync(fileURLToPath(new URL('../PhysicsPaintStudio.tsx', import.meta.url)), 'utf8');
 const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
+const capability = readFileSync(fileURLToPath(new URL('../../../../src-tauri/capabilities/physics-paint.json', import.meta.url)), 'utf8');
+const scrollArea = readFileSync(fileURLToPath(new URL('../../sidebar/SidebarScrollArea.tsx', import.meta.url)), 'utf8');
+const leftPanel = readFileSync(fileURLToPath(new URL('../../layout/LeftPanel.tsx', import.meta.url)), 'utf8');
 
 function expectInOrder(source: string, tokens: readonly string[]) {
   let cursor = -1;
@@ -48,15 +51,41 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rightPanel).toContain('const [paneSplit, setPaneSplit] = useState(50)');
     expect(rightPanel).toContain('gridTemplateRows: `minmax(0, ${paneSplit}fr) 28px minmax(0, ${100 - paneSplit}fr)`');
     expect(rightPanel.match(/class="physics-paint-right-pane /g)).toHaveLength(2);
+    expect(rightPanel.match(/<SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>/g)).toHaveLength(2);
     const pane = rule('.physics-paint-right-pane');
     expect(pane).toMatch(/min-height:\s*0/);
-    expect(pane).toMatch(/overflow-x:\s*hidden/);
-    expect(pane).toMatch(/overflow-y:\s*auto/);
+    expect(pane).toMatch(/overflow:\s*hidden/);
     expect(rule('.physics-paint-right-pane-layout')).toMatch(/overflow:\s*hidden/);
+    expect(rule('.physics-paint-right-pane-content')).toMatch(/padding-right:\s*6px/);
+  });
+
+  it('scopes interactive custom scrollbars to Physics Paint panes and preserves default consumers', () => {
+    expect(scrollArea).toContain('interactive = false');
+    expect(scrollArea).toContain("pointerEvents: interactive ? 'auto' : 'none'");
+    expect(scrollArea).toContain('onPointerDown={interactive ? (event) => scrollToTrackPosition(event.clientY) : undefined}');
+    expect(rightPanel.match(/<SidebarScrollArea[^>]*interactive>/g)).toHaveLength(2);
+    expect(leftPanel).toContain('<SidebarScrollArea>');
+    expect(leftPanel).not.toMatch(/<SidebarScrollArea[^>]*interactive/);
+  });
+
+  it('grants the standalone Physics Paint window access to the shared preference store', () => {
+    const parsed = JSON.parse(capability) as { windows: string[]; permissions: string[] };
+    expect(parsed.windows).toContain('efx-physic-paint');
+    expect(parsed.permissions).toContain('store:default');
+  });
+
+  it('locks the approved eight-column three-row palette and outside top-left removal offset', () => {
+    expect(rule('.physics-paint-swatch-grid')).toMatch(/grid-template-columns:\s*repeat\(8,\s*minmax\(0,\s*1fr\)\)/);
+    expect(rule('.physics-paint-swatch-grid')).toMatch(/grid-auto-rows:\s*32px/);
+    expect(rule('.physics-paint-swatch-grid')).toMatch(/gap:\s*7px/);
+    expect(rule('.physics-paint-swatch-grid')).toMatch(/min-height:\s*110px/);
+    expect(rule('.physics-paint-swatch-cell')).toMatch(/height:\s*32px/);
+    expect(rule('.physics-paint-swatch-remove')).toMatch(/top:\s*-5px/);
+    expect(rule('.physics-paint-swatch-remove')).toMatch(/left:\s*-5px/);
   });
 
   it('uses the Lucide horizontal grip in a 28px keyboard and pointer resize band clamped to 20-80', () => {
-    expect(rightPanel).toContain("import { GripHorizontal } from 'lucide-preact'");
+    expect(rightPanel).toContain("import { GripHorizontal, X } from 'lucide-preact'");
     expect(rightPanel).toContain('role="separator"');
     expect(rightPanel).toContain('aria-orientation="horizontal"');
     expect(rightPanel).toContain('aria-valuemin={20}');

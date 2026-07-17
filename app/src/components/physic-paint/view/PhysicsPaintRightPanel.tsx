@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { GripHorizontal } from 'lucide-preact';
+import { GripHorizontal, X } from 'lucide-preact';
 import type { ToolType } from '@efxlab/efx-physic-paint';
 import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../../lib/colorUtils';
-import { loadFavoriteColors, loadRecentColors, saveFavoriteColors } from '../../../lib/paintPreferences';
+import {
+  loadFavoriteColors,
+  loadHiddenPaletteColors,
+  loadRecentColors,
+  saveFavoriteColors,
+  saveHiddenPaletteColors,
+  saveRecentColors,
+} from '../../../lib/paintPreferences';
 import { clampOnionCount, clampOnionOpacity, type PhysicsPaintApplyStatus, type PhysicsPaintOnionState } from './physicsPaintWorkflowPresentation';
+import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { PhysicsPaintScriptsPanel, type PhysicsPaintScriptsPanelProps } from './PhysicsPaintScriptsPanel';
 
 export interface PhysicsPaintPlayWiggleSettings {
@@ -172,6 +180,7 @@ export function PhysicsPaintRightPanel({
   const [hexInput, setHexInput] = useState(color);
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
+  const [hiddenPaletteColors, setHiddenPaletteColors] = useState<string[]>([]);
   const [primaryTab, setPrimaryTab] = useState<'brush' | 'tool' | 'log'>('brush');
   const [optionsTab, setOptionsTab] = useState<'onion' | 'motion' | 'scripts'>('onion');
   const [paneSplit, setPaneSplit] = useState(50);
@@ -186,8 +195,15 @@ export function PhysicsPaintRightPanel({
   const sessionControls = getPhysicsPaintSessionControlState(engineControlsDisabled);
 
   useEffect(() => {
-    void loadRecentColors().then(setRecentColors);
-    void loadFavoriteColors().then(setFavoriteColors);
+    void loadRecentColors()
+      .then((colors) => setRecentColors(colors.map(normalizeHexInput).filter((item): item is string => item !== null)))
+      .catch((loadError) => console.error('Failed to load recent colors', loadError));
+    void loadFavoriteColors()
+      .then((colors) => setFavoriteColors(colors.map(normalizeHexInput).filter((item): item is string => item !== null)))
+      .catch((loadError) => console.error('Failed to load favorite colors', loadError));
+    void loadHiddenPaletteColors()
+      .then((colors) => setHiddenPaletteColors(colors.map(normalizeHexInput).filter((item): item is string => item !== null)))
+      .catch((loadError) => console.error('Failed to load hidden palette colors', loadError));
   }, []);
 
   useEffect(() => () => {
@@ -260,13 +276,48 @@ export function PhysicsPaintRightPanel({
   }, [commitHsv, currentHsv.s, currentHsv.v]);
 
   const addFavorite = useCallback(() => {
-    void loadFavoriteColors().then((colors) => {
-      if (colors.includes(currentHex)) return;
-      const updated = [...colors, currentHex].slice(-24);
-      void saveFavoriteColors(updated);
-      setFavoriteColors(updated);
+    const nextHex = normalizeHexInput(hexInput) ?? currentHex;
+    if (nextHex !== currentHex) commitColor(nextHex);
+    setHiddenPaletteColors((colors) => {
+      const updated = colors.filter((item) => item !== nextHex);
+      if (updated.length !== colors.length) {
+        void saveHiddenPaletteColors(updated).catch((saveError) => console.error('Failed to restore palette color', saveError));
+      }
+      return updated;
     });
-  }, [currentHex]);
+    setFavoriteColors((colors) => {
+      const normalized = colors.map(normalizeHexInput).filter((item): item is string => item !== null);
+      if (normalized.includes(nextHex)) return normalized;
+      const updated = [...normalized, nextHex];
+      void saveFavoriteColors(updated).catch((saveError) => console.error('Failed to save favorite colors', saveError));
+      return updated;
+    });
+  }, [commitColor, currentHex, hexInput]);
+
+  const removePaletteColor = useCallback((swatch: string) => {
+    setFavoriteColors((colors) => {
+      const updated = colors
+        .map(normalizeHexInput)
+        .filter((item): item is string => item !== null && item !== swatch);
+      void saveFavoriteColors(updated).catch((saveError) => console.error('Failed to remove favorite color', saveError));
+      return updated;
+    });
+    setRecentColors((colors) => {
+      const updated = colors
+        .map(normalizeHexInput)
+        .filter((item): item is string => item !== null && item !== swatch);
+      void saveRecentColors(updated).catch((saveError) => console.error('Failed to remove recent color', saveError));
+      return updated;
+    });
+    if (DEFAULT_PALETTE.includes(swatch)) {
+      setHiddenPaletteColors((colors) => {
+        if (colors.includes(swatch)) return colors;
+        const updated = [...colors, swatch];
+        void saveHiddenPaletteColors(updated).catch((saveError) => console.error('Failed to hide palette color', saveError));
+        return updated;
+      });
+    }
+  }, []);
 
   const handlePaneResizeStart = useCallback((event: PointerEvent) => {
     event.preventDefault();
@@ -289,9 +340,15 @@ export function PhysicsPaintRightPanel({
     };
   }, []);
 
-  const swatches = [...DEFAULT_PALETTE, ...favoriteColors, ...recentColors]
+  const normalizedFavoriteColors = favoriteColors
+    .map(normalizeHexInput)
+    .filter((item): item is string => item !== null);
+  const hiddenPaletteColorSet = new Set(hiddenPaletteColors);
+  const swatches = [...normalizedFavoriteColors].reverse().concat(DEFAULT_PALETTE, recentColors)
+    .map(normalizeHexInput)
+    .filter((item): item is string => item !== null)
     .filter((item, index, source) => source.indexOf(item) === index)
-    .slice(0, 24);
+    .filter((item) => !hiddenPaletteColorSet.has(item));
 
   const onionCount = clampOnionCount(onion.count);
   const onionOpacity = clampOnionOpacity(onion.opacity);
@@ -318,6 +375,8 @@ export function PhysicsPaintRightPanel({
         style={{ gridTemplateRows: `minmax(0, ${paneSplit}fr) 28px minmax(0, ${100 - paneSplit}fr)` }}
       >
         <div class="physics-paint-right-pane physics-paint-right-pane-primary">
+          <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
+            <div class="physics-paint-right-pane-content">
           <section class="physics-paint-right-section physics-paint-single-tab-section">
         <div class="physics-paint-options-tabs physics-paint-single-tab" role="tablist" aria-label="Brush color and tool panels">
           <button
@@ -418,16 +477,27 @@ export function PhysicsPaintRightPanel({
 
             <div class="physics-paint-swatch-grid" aria-label="Color palette">
               {swatches.map((swatch) => (
-                <button
-                  key={swatch}
-                  type="button"
-                  class="physics-paint-swatch"
-                  style={{ backgroundColor: swatch }}
-                  title={swatch}
-                  aria-label={`Use ${swatch}`}
-                  disabled={engineControlsDisabled}
-                  onClick={() => commitColor(swatch)}
-                />
+                <div key={swatch} class="physics-paint-swatch-cell">
+                  <button
+                    type="button"
+                    class="physics-paint-swatch"
+                    style={{ backgroundColor: swatch }}
+                    title={swatch}
+                    aria-label={`Use ${swatch}`}
+                    disabled={engineControlsDisabled}
+                    onClick={() => commitColor(swatch)}
+                  />
+                  <button
+                    type="button"
+                    class="physics-paint-swatch-remove"
+                    title={`Remove ${swatch} from palette`}
+                    aria-label={`Remove ${swatch} from palette`}
+                    disabled={engineControlsDisabled}
+                    onClick={() => removePaletteColor(swatch)}
+                  >
+                    <X aria-hidden="true" size={10} strokeWidth={2.4} />
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -471,6 +541,8 @@ export function PhysicsPaintRightPanel({
           </div>
         ) : null}
           </section>
+            </div>
+          </SidebarScrollArea>
         </div>
 
         <div
@@ -493,6 +565,8 @@ export function PhysicsPaintRightPanel({
         </div>
 
         <div class="physics-paint-right-pane physics-paint-right-pane-secondary">
+          <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
+            <div class="physics-paint-right-pane-content">
           <div class="physics-paint-options-tabs physics-paint-options-tabs-navigation" role="tablist" aria-label="Physics Paint option panels">
           <button
             type="button"
@@ -554,6 +628,8 @@ export function PhysicsPaintRightPanel({
           <PhysicsPaintScriptsPanel {...scripts} />
         )}
           </section>
+            </div>
+          </SidebarScrollArea>
         </div>
       </div>
     </aside>
