@@ -68,11 +68,13 @@ export function createPhysicsPaintPaneResizeDrag(options: {
     target.removeEventListener('pointerup', handleEnd);
     target.removeEventListener('pointercancel', handleEnd);
     target.removeEventListener('lostpointercapture', cleanup);
-  };
-  const handleMove = (event: PointerEvent) => resize(event.clientY);
-  const handleEnd = () => {
     if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
-    cleanup();
+  };
+  const handleMove = (event: PointerEvent) => {
+    if (event.pointerId === pointerId) resize(event.clientY);
+  };
+  const handleEnd = (event: PointerEvent) => {
+    if (event.pointerId === pointerId) cleanup();
   };
   target.addEventListener('pointermove', handleMove);
   target.addEventListener('pointerup', handleEnd);

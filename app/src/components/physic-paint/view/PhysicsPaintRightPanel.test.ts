@@ -9,9 +9,12 @@ class PointerTarget extends EventTarget {
   releasePointerCapture(pointerId: number) { this.released.push(pointerId); this.captured = false; }
 }
 
-function pointerEvent(type: string, clientY = 0): PointerEvent {
+function pointerEvent(type: string, clientY = 0, pointerId = 7): PointerEvent {
   const event = new Event(type) as PointerEvent;
-  Object.defineProperty(event, 'clientY', { value: clientY });
+  Object.defineProperties(event, {
+    clientY: { value: clientY },
+    pointerId: { value: pointerId },
+  });
   return event;
 }
 
@@ -30,13 +33,28 @@ describe('Physics Paint right panel session controls', () => {
     expect(target.released).toEqual([7]);
   });
 
-  it('removes resize listeners on lost pointer capture and explicit unmount cleanup', () => {
+  it('ignores move and end events from another pointer', () => {
+    const target = new PointerTarget();
+    const resize = vi.fn();
+    createPhysicsPaintPaneResizeDrag({ target: target as unknown as HTMLElement, pointerId: 7, resize });
+
+    target.dispatchEvent(pointerEvent('pointermove', 44, 8));
+    target.dispatchEvent(pointerEvent('pointerup', 0, 8));
+    target.dispatchEvent(pointerEvent('pointermove', 55, 7));
+
+    expect(resize).toHaveBeenCalledOnce();
+    expect(resize).toHaveBeenCalledWith(55);
+    expect(target.released).toEqual([]);
+  });
+
+  it('removes resize listeners and releases capture on lost capture and explicit unmount cleanup', () => {
     const lostTarget = new PointerTarget();
     const lostResize = vi.fn();
     createPhysicsPaintPaneResizeDrag({ target: lostTarget as unknown as HTMLElement, pointerId: 7, resize: lostResize });
     lostTarget.dispatchEvent(new Event('lostpointercapture'));
     lostTarget.dispatchEvent(pointerEvent('pointermove', 44));
     expect(lostResize).not.toHaveBeenCalled();
+    expect(lostTarget.released).toEqual([7]);
 
     const unmountedTarget = new PointerTarget();
     const unmountedResize = vi.fn();
@@ -45,7 +63,28 @@ describe('Physics Paint right panel session controls', () => {
     unmountedTarget.dispatchEvent(pointerEvent('pointermove', 55));
     unmountedTarget.dispatchEvent(pointerEvent('pointerup'));
     expect(unmountedResize).not.toHaveBeenCalled();
-    expect(unmountedTarget.released).toEqual([]);
+    expect(unmountedTarget.released).toEqual([8]);
+    cleanup();
+    expect(unmountedTarget.released).toEqual([8]);
+  });
+
+  it('releases the previous drag before a replacement drag captures the same handle', () => {
+    const target = new PointerTarget();
+    const firstResize = vi.fn();
+    const firstCleanup = createPhysicsPaintPaneResizeDrag({ target: target as unknown as HTMLElement, pointerId: 7, resize: firstResize });
+
+    firstCleanup();
+    target.captured = true;
+    const secondResize = vi.fn();
+    createPhysicsPaintPaneResizeDrag({ target: target as unknown as HTMLElement, pointerId: 8, resize: secondResize });
+    target.dispatchEvent(pointerEvent('pointermove', 66, 7));
+    target.dispatchEvent(pointerEvent('pointermove', 77, 8));
+    target.dispatchEvent(pointerEvent('pointercancel', 0, 8));
+
+    expect(target.released).toEqual([7, 8]);
+    expect(firstResize).not.toHaveBeenCalled();
+    expect(secondResize).toHaveBeenCalledOnce();
+    expect(secondResize).toHaveBeenCalledWith(77);
   });
 
   it('disables visible Save and Load controls only for the mutation lock duration', () => {
