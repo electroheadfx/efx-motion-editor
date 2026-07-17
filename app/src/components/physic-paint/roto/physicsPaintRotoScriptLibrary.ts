@@ -1,14 +1,14 @@
 import { computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { PhysicPaintLaunchContext, PhysicPaintScriptLibraryRequest, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
 import { createPersistedRotoScript, normalizeRotoScriptName, persistedRotoScriptToRuntime, type RotoScriptLibraryRow } from './physicsPaintRotoScriptSchema';
-import type { PreparedRotoScriptLoadAndApply, RotoPaintScript, RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
+import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoPaintScript, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import type { PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
 
 export interface RotoScriptLibraryControllerPorts {
   request: (request: PhysicPaintScriptLibraryRequest) => Promise<PhysicPaintScriptLibraryResult>;
   capturePersistence: () => Promise<RotoScriptPersistenceCapture | null>;
   captureThumbnail: (scriptAlphaCanvas: HTMLCanvasElement) => Promise<PersistedRotoScriptThumbnailV1>;
-  replaceClipboard: (script: RotoPaintScript, preparation?: PreparedRotoScriptLoadAndApply) => boolean;
+  replaceClipboard: (script: RotoPaintScript, preparation?: PreparedRotoScriptLoadAndApply) => RotoScriptClipboardReplacementOutcome;
   getLaunchContext: () => PhysicPaintLaunchContext | null;
   log: (message: string, error?: boolean) => void;
 }
@@ -20,6 +20,8 @@ export interface RotoScriptLibraryAvailability {
   canRename: boolean;
   canDelete: boolean;
 }
+
+type RotoScriptLibraryExecutionResult = PhysicPaintScriptLibraryResult & { stale?: true };
 
 export interface RotoScriptLibraryController {
   rows: Signal<readonly RotoScriptLibraryRow[]>;
@@ -83,7 +85,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     }
     publishDiagnostics(result);
   }
-  async function execute(request: PhysicPaintScriptLibraryRequest, preferredId?: string, updateSelection = true): Promise<PhysicPaintScriptLibraryResult> {
+  async function execute(request: PhysicPaintScriptLibraryRequest, preferredId?: string, updateSelection = true): Promise<RotoScriptLibraryExecutionResult> {
     if (disposed || busy.peek()) return { operationId: request.operationId, kind: request.kind, ok: false, rows: [...rows.peek()], skippedInvalidCount: skippedInvalidCount.peek(), diagnostics: [], error: 'Finish the current script library operation.' };
     const acceptedContextGeneration = contextGeneration;
     const acceptedOperationGeneration = ++operationGeneration;
@@ -92,8 +94,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       const result = await ports.request(request);
       if (disposed || acceptedContextGeneration !== contextGeneration || acceptedOperationGeneration !== operationGeneration || result.operationId !== request.operationId || result.kind !== request.kind) {
         const error = 'Script library operation became stale.';
-        if (!disposed) ports.log(error, true);
-        return { ...result, ok: false, rows: [...rows.peek()], skippedInvalidCount: skippedInvalidCount.peek(), script: undefined, error };
+        return { ...result, ok: false, rows: [...rows.peek()], skippedInvalidCount: skippedInvalidCount.peek(), script: undefined, error, stale: true };
       }
       if (!result.ok) {
         publishDiagnostics(result);
@@ -170,14 +171,16 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     const previousSelectedId = selectedId.peek();
     const result = await execute({ kind: 'load', operationId: operationId('load'), scriptId: row.id }, undefined, false);
     if (!result.ok || !result.script) {
+      if (result.stale) return false;
       selectedId.value = previousSelectedId;
       status.value = result.error ?? 'Load failed';
       if (result.ok) ports.log(status.value, true);
       return false;
     }
     try {
-      const loaded = ports.replaceClipboard(persistedRotoScriptToRuntime(result.script), preparation);
-      if (!loaded) {
+      const replacement = ports.replaceClipboard(persistedRotoScriptToRuntime(result.script), preparation);
+      if (replacement === RotoScriptClipboardReplacementOutcome.Stale) return false;
+      if (replacement !== RotoScriptClipboardReplacementOutcome.Replaced) {
         selectedId.value = previousSelectedId;
         status.value = 'Loaded script could not replace the clipboard.';
         ports.log(status.value, true);

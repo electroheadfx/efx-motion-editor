@@ -104,6 +104,12 @@ export interface PreparedRotoScriptLoadAndApply {
   readonly preparationId: symbol;
 }
 
+export enum RotoScriptClipboardReplacementOutcome {
+  Replaced = 'replaced',
+  Rejected = 'rejected',
+  Stale = 'stale',
+}
+
 export interface RotoScriptClipboardController {
   clipboard: Signal<RotoPaintScript | null>;
   hasCopiedScript: ReadonlySignal<boolean>;
@@ -117,7 +123,7 @@ export interface RotoScriptClipboardController {
   mutationLocked: ReadonlySignal<boolean>;
   copyScript: () => Promise<boolean>;
   captureScriptForPersistence: () => Promise<RotoScriptPersistenceCapture | null>;
-  replaceClipboardFromPersisted: (script: RotoPaintScript, preparation?: PreparedRotoScriptLoadAndApply) => boolean;
+  replaceClipboardFromPersisted: (script: RotoPaintScript, preparation?: PreparedRotoScriptLoadAndApply) => RotoScriptClipboardReplacementOutcome;
   prepareScriptLoadAndApply: () => PreparedRotoScriptLoadAndApply | null;
   applyPreparedScript: (preparation: PreparedRotoScriptLoadAndApply) => Promise<boolean>;
   cancelPreparedScriptLoadAndApply: (preparation: PreparedRotoScriptLoadAndApply) => void;
@@ -462,13 +468,16 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (preparedScriptLoadAndApply) releasePreparedScriptLoadAndApply(preparedScriptLoadAndApply);
   }
 
-  function replaceClipboardFromPersisted(script: RotoPaintScript, preparation?: PreparedRotoScriptLoadAndApply): boolean {
+  function replaceClipboardFromPersisted(script: RotoPaintScript, preparation?: PreparedRotoScriptLoadAndApply): RotoScriptClipboardReplacementOutcome {
     const activePreparation = preparedScriptLoadAndApply;
-    if (disposed || disposalRequested || !script.brushes.length) return false;
+    if (preparation && (preparation !== activePreparation || !activePreparation || !isPreparedScriptLoadAndApplyValid(activePreparation))) {
+      return RotoScriptClipboardReplacementOutcome.Stale;
+    }
+    if (disposed || disposalRequested || !script.brushes.length) return RotoScriptClipboardReplacementOutcome.Rejected;
     if (activePreparation) {
-      if (preparation !== activePreparation || !isPreparedScriptLoadAndApplyValid(activePreparation)) return false;
-    } else if (preparation || busy.peek()) {
-      return false;
+      if (preparation !== activePreparation) return RotoScriptClipboardReplacementOutcome.Rejected;
+    } else if (busy.peek()) {
+      return RotoScriptClipboardReplacementOutcome.Rejected;
     }
     clipboard.value = deepFreezeScript({
       provenance: { ...script.provenance }, sourceFrame: script.sourceFrame, sourceDisplayFrame: script.sourceDisplayFrame,
@@ -476,7 +485,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       brushes: script.brushes.map((brush) => ({ primary: cloneStroke(brush.primary), continuations: brush.continuations?.map(cloneStroke) })),
     });
     status.value = null; error.value = null;
-    return true;
+    return RotoScriptClipboardReplacementOutcome.Replaced;
   }
 
   function prepareScriptLoadAndApply(): PreparedRotoScriptLoadAndApply | null {

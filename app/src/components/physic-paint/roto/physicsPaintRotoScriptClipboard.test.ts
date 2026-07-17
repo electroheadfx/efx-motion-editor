@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
-import { createRotoScriptClipboardController, type RecordedStrokeGroup, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
+import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, type RecordedStrokeGroup, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
 import type { RotoSaveRealKeyTransaction } from './rotoKeyTransactions';
 import { createPhysicsPaintEngineActions } from '../engine/usePhysicsPaintEngineActions';
 import { makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
@@ -185,7 +185,7 @@ describe('Roto script clipboard controller', () => {
       brushes: [{ primary: stroke(7, 44), continuations: [] }],
     };
 
-    expect(test.controller.replaceClipboardFromPersisted(persisted)).toBe(true);
+    expect(test.controller.replaceClipboardFromPersisted(persisted)).toBe(RotoScriptClipboardReplacementOutcome.Replaced);
     const loaded = test.controller.clipboard.value;
     persisted.brushes[0].primary.points[0].x = 999;
     expect(loaded?.brushes[0].primary.points[0].x).toBe(44);
@@ -273,7 +273,7 @@ describe('Roto script clipboard controller', () => {
     const loaded = deferredLoad.then((script) => test.controller.replaceClipboardFromPersisted(script, preparation!));
     expect(test.engine.enqueueRecordedStroke).not.toHaveBeenCalled();
     resolveLoad(persisted);
-    await expect(loaded).resolves.toBe(true);
+    await expect(loaded).resolves.toBe(RotoScriptClipboardReplacementOutcome.Replaced);
 
     const applying = test.controller.applyPreparedScript(preparation!);
     expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledOnce();
@@ -296,10 +296,10 @@ describe('Roto script clipboard controller', () => {
     expect(preparation).not.toBeNull();
     const wrongPreparation = { preparationId: Symbol('wrong') };
 
-    expect(test.controller.replaceClipboardFromPersisted(persisted)).toBe(false);
-    expect(test.controller.replaceClipboardFromPersisted(persisted, wrongPreparation)).toBe(false);
+    expect(test.controller.replaceClipboardFromPersisted(persisted)).toBe(RotoScriptClipboardReplacementOutcome.Rejected);
+    expect(test.controller.replaceClipboardFromPersisted(persisted, wrongPreparation)).toBe(RotoScriptClipboardReplacementOutcome.Stale);
     expect(test.controller.clipboard.value).toBeNull();
-    expect(test.controller.replaceClipboardFromPersisted(persisted, preparation!)).toBe(true);
+    expect(test.controller.replaceClipboardFromPersisted(persisted, preparation!)).toBe(RotoScriptClipboardReplacementOutcome.Replaced);
     expect(test.controller.clipboard.value?.brushes[0].primary.points[0].x).toBe(44);
     test.controller.cancelPreparedScriptLoadAndApply(preparation!);
   });
@@ -329,7 +329,7 @@ describe('Roto script clipboard controller', () => {
     changedSource.setSource({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 12, displayFrame: 12 });
     expect(changedSource.controller.mutationLocked.value).toBe(false);
     resolveLoad(persisted);
-    await expect(loaded).resolves.toBe(false);
+    await expect(loaded).resolves.toBe(RotoScriptClipboardReplacementOutcome.Stale);
 
     expect(changedSource.controller.clipboard.value).toBe(previousClipboard);
     expect(changedSource.controller.status.value).toBe(previousStatus);
@@ -345,7 +345,7 @@ describe('Roto script clipboard controller', () => {
       provenance: { sessionId: 'persisted', layerId: 'layer-a', sourceFrame: 3 }, sourceFrame: 3, sourceDisplayFrame: 3, sourceRevision: 1,
       brushes: [{ primary: stroke(7, 44), continuations: [] }],
     };
-    expect(test.controller.replaceClipboardFromPersisted(persisted)).toBe(true);
+    expect(test.controller.replaceClipboardFromPersisted(persisted)).toBe(RotoScriptClipboardReplacementOutcome.Replaced);
     const previousClipboard = test.controller.clipboard.value;
     const preparation = test.controller.prepareScriptLoadAndApply();
     expect(preparation).not.toBeNull();
@@ -358,7 +358,7 @@ describe('Roto script clipboard controller', () => {
     else invalidationPromise = test.controller.dispose();
 
     expect(test.controller.mutationLocked.value).toBe(false);
-    expect(test.controller.replaceClipboardFromPersisted({ ...persisted, sourceFrame: 9 }, preparation!)).toBe(false);
+    expect(test.controller.replaceClipboardFromPersisted({ ...persisted, sourceFrame: 9 }, preparation!)).toBe(RotoScriptClipboardReplacementOutcome.Stale);
     if (invalidation === 'dispose') expect(test.controller.clipboard.value).toBeNull();
     else expect(test.controller.clipboard.value).toBe(previousClipboard);
     await invalidationPromise;

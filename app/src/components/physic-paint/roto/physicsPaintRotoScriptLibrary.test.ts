@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext, PhysicPaintScriptLibraryRequest, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
 import { createRotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
-import type { PreparedRotoScriptLoadAndApply, RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
+import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import { createPersistedRotoScript, type PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
 
 const context = (): PhysicPaintLaunchContext => ({ operationId: 'launch', layerId: 'layer-1', layerName: 'Ink', startFrame: 4, width: 1600, height: 900, workflowMode: 'roto', project: { name: 'Project', saved: true, contextId: 'context-1' } });
@@ -15,7 +15,7 @@ function harness(saved = true) {
   const clipboard = { current: null as unknown };
   const capture: RotoScriptPersistenceCapture = { script: { provenance: { sessionId: 's', layerId: 'layer-1', sourceFrame: 4 }, sourceFrame: 4, sourceDisplayFrame: 4, sourceRevision: 1, brushes: [{ primary: { tool: 'paint', points: [{ x: 1, y: 2, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 }], color: '#000000', params: { size: 1, opacity: 100, pressure: 100, waterAmount: 0, dryAmount: 0, edgeDetail: 0, pickup: 0, eraseStrength: 0, antiAlias: 0 }, timestamp: 1 }, continuations: [] }] }, scriptAlphaCanvas: {} as HTMLCanvasElement };
   const thumbnail: PersistedRotoScriptThumbnailV1 = { mimeType: 'image/webp', width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' };
-  const replaceClipboard = vi.fn((value, _preparation?: PreparedRotoScriptLoadAndApply) => { clipboard.current = value; return true; });
+  const replaceClipboard = vi.fn((value, _preparation?: PreparedRotoScriptLoadAndApply) => { clipboard.current = value; return RotoScriptClipboardReplacementOutcome.Replaced; });
   const log = vi.fn();
   const controller = createRotoScriptLibraryController({ request, capturePersistence: vi.fn(async () => capture), captureThumbnail: vi.fn(async () => thumbnail), replaceClipboard, getLaunchContext: () => launch, log });
   return { controller, request, requests, clipboard, replaceClipboard, log, setLaunch: (value: PhysicPaintLaunchContext) => { launch = value; } };
@@ -166,7 +166,7 @@ describe('Roto script library controller', () => {
     expect(test.controller.selectedId.value).toBe('a');
     expect(test.clipboard.current).toBe(acceptedClipboard);
 
-    test.replaceClipboard.mockImplementationOnce(() => false);
+    test.replaceClipboard.mockImplementationOnce(() => RotoScriptClipboardReplacementOutcome.Rejected);
     await expect(test.controller.activateAndLoad('b')).resolves.toBe(false);
     expect(test.controller.rows.value).toEqual(acceptedRows);
     expect(test.controller.skippedInvalidCount.value).toBe(acceptedSkippedCount);

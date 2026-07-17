@@ -4,37 +4,109 @@ import { sendPhysicPaintScriptLibraryRequest } from '../bridge/physicsPaintBridg
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintScriptLibraryResultBridge, type PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 import { createRotoScriptLibraryController, type RotoScriptLibraryController, type RotoScriptLibraryControllerPorts } from '../roto/physicsPaintRotoScriptLibrary';
 
+type PendingScriptLibraryRequest = {
+  request: PhysicPaintScriptLibraryRequest;
+  resolve: (result: PhysicPaintScriptLibraryResult) => void;
+  timeout: ReturnType<typeof setTimeout>;
+};
+
+interface RotoScriptLibraryRequestLifecyclePorts {
+  getBridgeMode: () => PhysicsPaintBridgeMode;
+  detectBridgeMode: () => Promise<PhysicsPaintBridgeMode>;
+  sendRequest: (request: PhysicPaintScriptLibraryRequest, bridgeMode: PhysicsPaintBridgeMode) => Promise<void>;
+  setRequestTimeout?: (callback: () => void, delay: number) => ReturnType<typeof setTimeout>;
+  clearRequestTimeout?: (timeout: ReturnType<typeof setTimeout>) => void;
+}
+
+export interface RotoScriptLibraryRequestLifecycle {
+  request: (request: PhysicPaintScriptLibraryRequest) => Promise<PhysicPaintScriptLibraryResult>;
+  handleResult: (result: PhysicPaintScriptLibraryResult) => void;
+  dispose: () => void;
+  pendingCount: () => number;
+}
+
+function failedResult(request: PhysicPaintScriptLibraryRequest, error: string): PhysicPaintScriptLibraryResult {
+  return { operationId: request.operationId, kind: request.kind, ok: false, rows: [], skippedInvalidCount: 0, diagnostics: [], error };
+}
+
+export function createRotoScriptLibraryRequestLifecycle(ports: RotoScriptLibraryRequestLifecyclePorts): RotoScriptLibraryRequestLifecycle {
+  const pending = new Map<string, PendingScriptLibraryRequest>();
+  const setRequestTimeout = ports.setRequestTimeout ?? setTimeout;
+  const clearRequestTimeout = ports.clearRequestTimeout ?? clearTimeout;
+  let disposed = false;
+
+  function settle(operationId: string, result: PhysicPaintScriptLibraryResult): void {
+    const operation = pending.get(operationId);
+    if (!operation) return;
+    pending.delete(operationId);
+    clearRequestTimeout(operation.timeout);
+    operation.resolve(result);
+  }
+
+  function request(input: PhysicPaintScriptLibraryRequest): Promise<PhysicPaintScriptLibraryResult> {
+    if (disposed) return Promise.resolve(failedResult(input, 'Script library request was disposed.'));
+    return new Promise((resolve) => {
+      const timeout = setRequestTimeout(() => settle(input.operationId, failedResult(input, 'Script library request timed out.')), 15_000);
+      pending.set(input.operationId, { request: input, resolve, timeout });
+      void (async () => {
+        const configuredMode = ports.getBridgeMode();
+        const currentBridgeMode = configuredMode === 'Unavailable' ? await ports.detectBridgeMode() : configuredMode;
+        await ports.sendRequest(input, currentBridgeMode);
+      })().catch((error) => settle(input.operationId, failedResult(input, String(error))));
+    });
+  }
+
+  function dispose(): void {
+    if (disposed) return;
+    disposed = true;
+    for (const operation of [...pending.values()]) {
+      settle(operation.request.operationId, failedResult(operation.request, 'Script library request was disposed.'));
+    }
+  }
+
+  return {
+    request,
+    handleResult: (result) => settle(result.operationId, result),
+    dispose,
+    pendingCount: () => pending.size,
+  };
+}
+
+export function createRotoScriptLibraryControllerAdapter(
+  getPorts: () => RotoScriptLibraryControllerPorts,
+  request: RotoScriptLibraryControllerPorts['request'],
+): RotoScriptLibraryControllerPorts {
+  return {
+    request,
+    capturePersistence: () => getPorts().capturePersistence(),
+    captureThumbnail: (canvas) => getPorts().captureThumbnail(canvas),
+    replaceClipboard: (script, preparation) => getPorts().replaceClipboard(script, preparation),
+    getLaunchContext: () => getPorts().getLaunchContext(),
+    log: (message, error) => getPorts().log(message, error),
+  };
+}
+
 export function useRotoScriptLibraryController(ports: RotoScriptLibraryControllerPorts, bridgeMode: PhysicsPaintBridgeMode): RotoScriptLibraryController {
   const portsRef = useRef(ports); portsRef.current = ports;
   const bridgeModeRef = useRef(bridgeMode); bridgeModeRef.current = bridgeMode;
-  const pending = useRef(new Map<string, { resolve: (result: PhysicPaintScriptLibraryResult) => void; timeout: ReturnType<typeof setTimeout> }>());
-  usePhysicsPaintScriptLibraryResultBridge((result) => {
-    const operation = pending.current.get(result.operationId);
-    if (!operation) return;
-    clearTimeout(operation.timeout); pending.current.delete(result.operationId); operation.resolve(result);
-  });
-  const controllerRef = useRef<RotoScriptLibraryController | null>(null);
-  if (!controllerRef.current) {
-    controllerRef.current = createRotoScriptLibraryController({
-      ...ports,
-      request: (request: PhysicPaintScriptLibraryRequest) => new Promise((resolve) => {
-        const timeout = setTimeout(() => { pending.current.delete(request.operationId); resolve({ operationId: request.operationId, kind: request.kind, ok: false, rows: [], skippedInvalidCount: 0, diagnostics: [], error: 'Script library request timed out.' }); }, 15_000);
-        pending.current.set(request.operationId, { resolve, timeout });
-        void (async () => {
-          const currentBridgeMode = bridgeModeRef.current === 'Unavailable'
-            ? await detectPhysicsPaintBridgeMode()
-            : bridgeModeRef.current;
-          await sendPhysicPaintScriptLibraryRequest(request, currentBridgeMode);
-        })().catch((error) => {
-          clearTimeout(timeout); pending.current.delete(request.operationId);
-          resolve({ operationId: request.operationId, kind: request.kind, ok: false, rows: [], skippedInvalidCount: 0, diagnostics: [], error: String(error) });
-        });
-      }),
-      capturePersistence: () => portsRef.current.capturePersistence(), captureThumbnail: (canvas) => portsRef.current.captureThumbnail(canvas),
-      replaceClipboard: (script) => portsRef.current.replaceClipboard(script), getLaunchContext: () => portsRef.current.getLaunchContext(),
-      log: (message, error) => portsRef.current.log(message, error),
+  const lifecycleRef = useRef<RotoScriptLibraryRequestLifecycle | null>(null);
+  if (!lifecycleRef.current) {
+    lifecycleRef.current = createRotoScriptLibraryRequestLifecycle({
+      getBridgeMode: () => bridgeModeRef.current,
+      detectBridgeMode: detectPhysicsPaintBridgeMode,
+      sendRequest: sendPhysicPaintScriptLibraryRequest,
     });
   }
-  useEffect(() => () => { for (const operation of pending.current.values()) clearTimeout(operation.timeout); pending.current.clear(); controllerRef.current?.dispose(); }, []);
+  usePhysicsPaintScriptLibraryResultBridge((result) => lifecycleRef.current?.handleResult(result));
+  const controllerRef = useRef<RotoScriptLibraryController | null>(null);
+  if (!controllerRef.current) {
+    controllerRef.current = createRotoScriptLibraryController(
+      createRotoScriptLibraryControllerAdapter(() => portsRef.current, lifecycleRef.current.request),
+    );
+  }
+  useEffect(() => () => {
+    lifecycleRef.current?.dispose();
+    controllerRef.current?.dispose();
+  }, []);
   return controllerRef.current;
 }
