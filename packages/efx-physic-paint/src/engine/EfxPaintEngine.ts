@@ -1066,7 +1066,7 @@ export class EfxPaintEngine {
     this.animationMode = mode
   }
 
-  /** Render strokes up to specified point counts — used by AnimationPlayer for progressive frame rendering (per D-02) */
+  /** Render strokes up to specified point counts — used by progressive playback consumers. */
   renderPartialStrokes(strokeData: Array<{ stroke: PaintStroke; pointCount: number }>): void {
     this.flushPendingStrokeFinalizations()
     this.resetReplaySurface(true)
@@ -1074,7 +1074,6 @@ export class EfxPaintEngine {
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
 
     for (const { stroke: a, pointCount } of strokeData) {
-      // Slice points to the requested count (progressive rendering per D-02)
       const pts = pointCount >= a.points.length ? a.points : a.points.slice(0, pointCount)
       const completeStroke = pointCount >= a.points.length
       this.applyStrokeToEngine(a.tool, pts, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode })
@@ -1082,6 +1081,12 @@ export class EfxPaintEngine {
     }
 
     this.renderVisibleWetLayer()
+  }
+
+  /** Render a progressive frame and return paint alpha without paper or preview background. */
+  renderProgressiveAlphaFrame(strokeData: Array<{ stroke: PaintStroke; pointCount: number }>): HTMLCanvasElement {
+    this.renderPartialStrokes(strokeData)
+    return this.copyLiveAlphaCanvas()
   }
 
   // ================================================================

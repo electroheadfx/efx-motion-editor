@@ -13,20 +13,28 @@ export async function mergeCachedRotoAlphaFrame(
   size: RotoAlphaMergeSize,
   mutationId?: number,
 ): Promise<PhysicPaintRenderedFrame> {
+  const output = await mergeRotoAlphaCanvases(baseFrame, liveAlphaCanvas, size);
+  return encodeRotoFrameFromCanvas(output, appFrame, undefined, mutationId);
+}
+
+export async function mergeRotoAlphaCanvases(
+  baseFrame: Pick<PhysicPaintRenderedFrame, 'dataUrl'> | null,
+  scriptAlphaCanvas: HTMLCanvasElement,
+  size: RotoAlphaMergeSize,
+): Promise<HTMLCanvasElement> {
   const output = document.createElement('canvas');
   output.width = size.width;
   output.height = size.height;
   const context = output.getContext('2d');
-  if (!context) {
-    throw new Error('Could not merge cached Roto alpha frame: 2D context unavailable.');
-  }
+  if (!context) throw new Error('Could not merge Roto alpha frames: 2D context unavailable.');
 
-  const baseImage = await loadCachedRotoBaseImage(baseFrame.dataUrl);
   context.clearRect(0, 0, size.width, size.height);
-  context.drawImage(baseImage, 0, 0, size.width, size.height);
-  context.drawImage(liveAlphaCanvas, 0, 0, size.width, size.height);
-
-  return encodeRotoFrameFromCanvas(output, appFrame, undefined, mutationId);
+  if (baseFrame) {
+    const baseImage = await loadCachedRotoBaseImage(baseFrame.dataUrl);
+    context.drawImage(baseImage, 0, 0, size.width, size.height);
+  }
+  context.drawImage(scriptAlphaCanvas, 0, 0, size.width, size.height);
+  return output;
 }
 
 function loadCachedRotoBaseImage(dataUrl: string): Promise<HTMLImageElement> {
