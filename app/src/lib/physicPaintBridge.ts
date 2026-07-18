@@ -73,12 +73,20 @@ function shouldCloseNativeWindowAfterApply(payload: PhysicPaintApplyPayload): bo
 }
 
 const APPLY_ERROR = 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.';
-const deliveredOperationIds = new Set<string>();
+const deliveredOperations = new Map<string, { fingerprint: string; result: PhysicPaintApplyResult }>();
 
 export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResult {
   const base = resultBase(payload);
   if (!isPhysicPaintApplyPayload(payload)) {
     return failureResult(base, 'Invalid physics paint apply payload');
+  }
+
+  const fingerprint = fingerprintApplyPayload(payload);
+  const prior = deliveredOperations.get(payload.operationId);
+  if (prior) {
+    return prior.fingerprint === fingerprint
+      ? prior.result
+      : failureResult(payload, 'Operation ID was already used for a different payload.');
   }
 
   const targetLayer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find(layer => {
@@ -105,10 +113,6 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
   }
 
   try {
-    if (deliveredOperationIds.has(payload.operationId)) {
-      return successResult(payload, payload.kind === 'apply-canvas' ? 1 : payload.kind === 'delete-roto-frame' ? 0 : payload.kind === 'replace-roto-key-frames' ? payload.frames.length : 0);
-    }
-
     let result: PhysicPaintApplyResult;
     if (payload.kind === 'apply-canvas') {
       result = physicPaintStore.applyCanvas(payload);
@@ -150,7 +154,7 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
     } else {
       result = failureResult(payload, 'Unsupported physics paint payload');
     }
-    if (result.ok) deliveredOperationIds.add(payload.operationId);
+    if (result.ok) deliveredOperations.set(payload.operationId, { fingerprint, result });
     return result.ok ? result : { ...result, error: `${APPLY_ERROR} ${result.error ?? ''}`.trim() };
   } catch (error) {
     return failureResult(payload, `${APPLY_ERROR} ${String(error)}`);
@@ -191,6 +195,23 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     frames,
     interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId),
   };
+}
+
+function fingerprintApplyPayload(payload: PhysicPaintApplyPayload): string {
+  return stableSerialize(payload, new WeakSet<object>());
+}
+
+function stableSerialize(value: unknown, seen: WeakSet<object>): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'undefined';
+  if (seen.has(value)) throw new TypeError('Physics Paint payload contains a cyclic value.');
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) return `[${value.map((entry) => stableSerialize(entry, seen)).join(',')}]`;
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key], seen)}`).join(',')}}`;
+  } finally {
+    seen.delete(value);
+  }
 }
 
 function sameDurableRealKey(left: PhysicPaintRotoAuthorityResult['frames'][number], right: PhysicPaintRotoAuthorityResult['frames'][number]): boolean {

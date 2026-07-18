@@ -111,6 +111,23 @@ describe('Play Script parent authority and complete-set bridge', () => {
     expect(applyPhysicPaintPayload(batch(base))).toMatchObject({ ok: true, appliedFrameCount: 4 });
   });
 
+  it('returns the original result for an exact retry and rejects altered operation ID collisions', () => {
+    const operationId = 'stable-operation-id';
+    const original = batch({ operationId });
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoKeyFrames');
+    const first = applyPhysicPaintPayload(original);
+    const retry = applyPhysicPaintPayload(original);
+
+    expect(first).toMatchObject({ ok: true, operationId, appliedFrameCount: 3 });
+    expect(retry).toEqual(first);
+    expect(replace).toHaveBeenCalledOnce();
+    expect(applyPhysicPaintPayload({ ...original, frames: original.frames.map((candidate) => candidate.sourceFrame === 4 ? { ...candidate, dataUrl: 'data:image/png;base64,collision' } : candidate) })).toMatchObject({ ok: false, error: 'Operation ID was already used for a different payload.' });
+    expect(applyPhysicPaintPayload({ ...original, layerId: 'other-layer' })).toMatchObject({ ok: false, error: 'Operation ID was already used for a different payload.' });
+    expect(applyPhysicPaintPayload({ ...original, startFrame: 3 })).toMatchObject({ ok: false, error: 'Operation ID was already used for a different payload.' });
+    expect(applyPhysicPaintPayload({ kind: 'delete-roto-frame', operationId, layerId: 'layer-1', startFrame: 4 })).toMatchObject({ ok: false, error: 'Operation ID was already used for a different payload.' });
+    expect(replace).toHaveBeenCalledOnce();
+  });
+
   it('replaces the whole real-key set, retains untouched keys, regenerates once, and persists background', () => {
     const replace = vi.spyOn(physicPaintStore, 'replaceRotoKeyFrames');
     const result = applyPhysicPaintPayload(batch());
