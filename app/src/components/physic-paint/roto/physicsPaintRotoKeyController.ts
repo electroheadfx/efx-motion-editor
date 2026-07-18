@@ -1,6 +1,12 @@
-import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoSegmentSpacingOverride } from '../../../types/physicPaint';
+import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoSegmentSpacingOverride } from '../../../types/physicPaint';
+import {
+  createRotoSourceDisplayModel,
+  getRotoDisplayProjection,
+  resolveRotoRealKeySaveTarget,
+} from './rotoSourceDisplayModel';
 
 export type RotoKeyUtilityOperation = 'copy' | 'duplicate' | 'insert' | 'delete' | 'paste';
+export type RotoKeyTransactionOperation = Exclude<RotoKeyUtilityOperation, 'copy'> | 'move';
 export type RotoKeyUtilityActionStateExposure =
   | RotoKeyUtilityOperation
   | 'dirty-save-before-action'
@@ -49,7 +55,7 @@ export interface RotoKeyUtilityFrameMapping {
 }
 
 export interface RotoKeyUtilityTransaction {
-  operation: Exclude<RotoKeyUtilityOperation, 'copy'>;
+  operation: RotoKeyTransactionOperation;
   realKeyFrames: PhysicPaintRotoCacheFrame[];
   realKeyFrameNumbers: number[];
   removedFrames: number[];
@@ -91,6 +97,25 @@ export interface RotoKeyUtilityTransactionInput {
   buildBlankRotoFrame: (appFrame: number) => PhysicPaintRotoCacheFrame;
 }
 
+export interface RotoKeyMoveTransactionInput {
+  fromDisplayFrame: number;
+  toDisplayFrame: number;
+  sourceFrame: number;
+  realKeyFrames: readonly PhysicPaintRotoCacheFrame[];
+  cachedRotoFrames?: readonly PhysicPaintRotoCacheFrame[];
+  interpolationSettings: PhysicPaintRotoInterpolationSettings;
+  canvasSize?: { width: number; height: number };
+}
+
+export interface RotoKeyMoveTransaction extends RotoKeyUtilityTransaction {
+  operation: 'move';
+  sourceDisplayFrame: number;
+  destinationDisplayFrame: number;
+  sourceFrame: number;
+  destinationSourceFrame: number;
+  interpolationSettings: PhysicPaintRotoInterpolationSettings;
+}
+
 export interface ApplyRotoKeyUtilityTransactionToLocalStateInput<TEditable = unknown, TPreview extends { appFrame: number } = PhysicPaintRotoCacheFrame> {
   editableStates: ReadonlyMap<number, TEditable>;
   previewFrames: ReadonlyMap<number, TPreview>;
@@ -104,6 +129,103 @@ export interface ApplyRotoKeyUtilityTransactionToLocalStateResult<TEditable = un
 }
 
 export const GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
+
+export function buildRotoKeyMoveTransaction(input: RotoKeyMoveTransactionInput): RotoKeyMoveTransaction {
+  const fromDisplayFrame = normalizeFrame(input.fromDisplayFrame);
+  const toDisplayFrame = normalizeFrame(input.toDisplayFrame);
+  const sourceFrame = normalizeFrame(input.sourceFrame);
+  if (fromDisplayFrame === null || toDisplayFrame === null || sourceFrame === null) throw new Error('Choose valid Roto key frames to move.');
+  if (fromDisplayFrame === toDisplayFrame) throw new Error('Move the Roto key to a different frame.');
+
+  const canvasSize = normalizeCanvasSize(input.canvasSize);
+  const realKeyFrames = normalizeMoveRealKeyFrames(input.realKeyFrames, canvasSize);
+  const realFramesBySource = new Map(realKeyFrames.map((frame) => [frame.sourceFrame ?? frame.appFrame, frame]));
+  const realSourceFrames = Array.from(realFramesBySource.keys()).sort((a, b) => a - b);
+  const latestModel = createRotoSourceDisplayModel({
+    realSourceFrames,
+    settings: input.interpolationSettings,
+  });
+  const latestProjection = getRotoDisplayProjection(latestModel);
+  const projectedSource = latestProjection.realKeys.find((cell) => cell.displayFrame === fromDisplayFrame);
+  if (!projectedSource || projectedSource.sourceFrame !== sourceFrame || !realFramesBySource.has(sourceFrame)) {
+    throw new Error('The dragged Roto key is no longer available.');
+  }
+  const projectedDestination = latestProjection.cells.find((cell) => cell.displayFrame === toDisplayFrame);
+  if (projectedDestination?.kind === 'generated-interpolation') throw new Error(`Generated frame ${toDisplayFrame} is render-only.`);
+  if (projectedDestination?.kind === 'real-key') throw new Error(`Frame ${toDisplayFrame} already contains a real Roto key.`);
+
+  const remainingSourceFrames = realSourceFrames.filter((frame) => frame !== sourceFrame);
+  const hypotheticalModel = createRotoSourceDisplayModel({
+    realSourceFrames: remainingSourceFrames,
+    settings: input.interpolationSettings,
+  });
+  const target = resolveRotoRealKeySaveTarget(hypotheticalModel, toDisplayFrame);
+  const destinationSourceFrame = normalizeFrame(target.sourceFrame);
+  if (destinationSourceFrame === null || destinationSourceFrame === sourceFrame) throw new Error('The Roto key move has no canonical destination.');
+  if (remainingSourceFrames.includes(destinationSourceFrame)) throw new Error(`Frame ${toDisplayFrame} already contains a real Roto key.`);
+
+  const frameMapping: RotoKeyUtilityFrameMapping = { fromFrame: sourceFrame, toFrame: destinationSourceFrame, mode: 'move' };
+  const rebasedOverrides = rebaseRotoSegmentSpacingOverrides({
+    overrides: input.interpolationSettings.segmentSpacingOverrides,
+    frameMappings: [frameMapping],
+    deletedFrame: null,
+    replacementOverride: target.previousSegmentOverride
+      ? { ...target.previousSegmentOverride, toSourceFrame: destinationSourceFrame }
+      : null,
+  });
+  const finalModel = createRotoSourceDisplayModel({
+    realSourceFrames: [...remainingSourceFrames, destinationSourceFrame],
+    settings: {
+      ...input.interpolationSettings,
+      segmentSpacingOverrides: rebasedOverrides,
+    },
+  });
+  const finalProjection = getRotoDisplayProjection(finalModel);
+  const movedProjection = finalProjection.realKeys.find((cell) => cell.sourceFrame === destinationSourceFrame);
+  if (!movedProjection || movedProjection.displayFrame !== toDisplayFrame) {
+    throw new Error(`Frame ${toDisplayFrame} cannot preserve canonical Roto timing.`);
+  }
+
+  const sourcePayload = realFramesBySource.get(sourceFrame);
+  if (!sourcePayload) throw new Error(`No cached payload for source frame ${sourceFrame}.`);
+  const nextRealKeyFrames = remainingSourceFrames.map((frame) => {
+    const payload = realFramesBySource.get(frame);
+    if (!payload) throw new Error(`No cached payload for real key ${frame}.`);
+    return normalizeMoveRealKeyFrame(payload, frame, canvasSize);
+  });
+  nextRealKeyFrames.push(normalizeMoveRealKeyFrame(sourcePayload, destinationSourceFrame, canvasSize));
+
+  const generatedFrames = collectGeneratedFrames(input.cachedRotoFrames);
+  const referenceFrames = normalizeFrameNumbers((input.cachedRotoFrames ?? [])
+    .filter((frame) => frame.source === 'generated-interpolation' || frame.nearestRealKeyFrame !== undefined)
+    .map((frame) => frame.appFrame));
+  const backgroundOnlySupportFrames = collectBackgroundOnlySupportFrames(input.cachedRotoFrames);
+  const interpolationSettings: PhysicPaintRotoInterpolationSettings = {
+    ...input.interpolationSettings,
+    segmentSpacingOverrides: finalModel.settings.segmentSpacingOverrides?.map((override) => ({ ...override })) ?? [],
+  };
+  const transaction = makeTransaction({
+    operation: 'move',
+    realKeyFrames: nextRealKeyFrames,
+    activeFrame: toDisplayFrame,
+    activeRestore: { kind: 'load-real-key', frame: toDisplayFrame },
+    cleanup: cleanup(generatedFrames, referenceFrames, backgroundOnlySupportFrames, [sourceFrame]),
+    frameMappings: [frameMapping],
+    changedFrames: [sourceFrame, destinationSourceFrame],
+    removedFrames: normalizeFrameNumbers([sourceFrame, ...generatedFrames]),
+    segmentSpacingOverrides: interpolationSettings.segmentSpacingOverrides ?? [],
+    successMessage: `Moved key ${fromDisplayFrame} to frame ${toDisplayFrame}.`,
+  });
+  return {
+    ...transaction,
+    operation: 'move',
+    sourceDisplayFrame: fromDisplayFrame,
+    destinationDisplayFrame: toDisplayFrame,
+    sourceFrame,
+    destinationSourceFrame,
+    interpolationSettings,
+  };
+}
 
 const SOURCE_OPERATIONS: RotoKeyUtilityOperation[] = ['copy', 'duplicate', 'insert', 'delete'];
 const EXPOSURES: RotoKeyUtilityActionStateExposure[] = [
@@ -428,6 +550,33 @@ function normalizeRotoSegmentSpacingOverride(value: PhysicPaintRotoSegmentSpacin
   if (fromSourceFrame === null || toSourceFrame === null || toSourceFrame <= fromSourceFrame) return null;
   if (!Number.isInteger(value.inBetweenCount) || value.inBetweenCount < 1) return null;
   return { fromSourceFrame, toSourceFrame, inBetweenCount: value.inBetweenCount };
+}
+
+function normalizeMoveRealKeyFrames(frames: readonly PhysicPaintRotoCacheFrame[], canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame[] {
+  const byFrame = new Map<number, PhysicPaintRotoCacheFrame>();
+  for (const frame of frames) {
+    const sourceFrame = normalizeFrame(frame.sourceFrame ?? frame.appFrame);
+    if (sourceFrame === null || frame.source !== 'real-key') continue;
+    byFrame.set(sourceFrame, normalizeMoveRealKeyFrame(frame, sourceFrame, canvasSize));
+  }
+  return Array.from(byFrame.values()).sort((a, b) => a.appFrame - b.appFrame);
+}
+
+function normalizeMoveRealKeyFrame(frame: PhysicPaintRotoCacheFrame, appFrame: number, canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame {
+  const next: PhysicPaintRotoCacheFrame = {
+    ...frame,
+    appFrame,
+    frameIndex: 0,
+    source: 'real-key',
+    sourceFrame: appFrame,
+    displayFrame: appFrame,
+    ...(canvasSize ? { width: canvasSize.width, height: canvasSize.height } : {}),
+  };
+  delete next.nearestRealKeyFrame;
+  delete next.fromSourceFrame;
+  delete next.toSourceFrame;
+  delete next.interpolationT;
+  return next;
 }
 
 function normalizeRealKeyFrames(frames: readonly PhysicPaintRotoCacheFrame[], canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame[] {

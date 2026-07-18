@@ -2,7 +2,8 @@ import { useCallback, type Dispatch, type MutableRef, type StateUpdater } from '
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
-import type { RotoKeyUtilityActiveRestore, RotoKeyUtilityTransaction } from '../roto/physicsPaintRotoKeyController';
+import type { RotoKeyMoveTransaction, RotoKeyUtilityActiveRestore, RotoKeyUtilityTransaction } from '../roto/physicsPaintRotoKeyController';
+import type { RotoMoveSettlementOutcome } from './useRotoApplyLifecycle';
 import type { RotoSessionEffect } from '../roto/physicsPaintRotoSession';
 import { sendPhysicPaintApplyPayload, sendPhysicPaintFrameSyncMessage } from '../bridge/physicsPaintBridgeTransport';
 import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
@@ -37,6 +38,11 @@ export interface UseRotoPersistenceIntegrationInput {
   action: {
     bridgeMode: PhysicsPaintBridgeMode;
     registerPendingApply: (payload: PhysicPaintApplyPayload) => void;
+    registerMoveSettlement: (
+      payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-key-frames' }>,
+      settle: (outcome: RotoMoveSettlementOutcome) => void,
+    ) => void;
+    settleMoveTransportFailure: (operationId: string, error: unknown) => boolean;
     startApplyTimeout: (operationId: string) => void;
   };
   frame: {
@@ -66,6 +72,23 @@ export interface UseRotoPersistenceIntegrationInput {
     setApplyStatus: (status: ApplyStatus) => void;
     setApplyMessage: (message: string | null) => void;
   };
+}
+
+export interface RotoKeyMovePersistenceIdentity {
+  launchOperationId: string;
+  layerId: string;
+}
+
+export interface RotoKeyMoveReplacement {
+  activeFrame: number;
+  realKeyFrames: readonly PhysicPaintRotoCacheFrame[];
+  interpolationSettings: PhysicPaintRotoInterpolationSettings;
+}
+
+export interface CommitRotoKeyMoveInput {
+  identity: RotoKeyMovePersistenceIdentity;
+  transaction: RotoKeyMoveTransaction;
+  onSettlement: (outcome: RotoMoveSettlementOutcome) => void | Promise<void>;
 }
 
 export function useRotoPersistenceIntegration(input: UseRotoPersistenceIntegrationInput) {
@@ -102,6 +125,74 @@ export function useRotoPersistenceIntegration(input: UseRotoPersistenceIntegrati
     input.cache.confirmedFramesRef.current = new Map(sortedFrames.filter((frame) => frame.source === 'real-key').map((frame) => [frame.appFrame, frame]));
     input.frame.setLaunchContext((current) => current ? { ...current, cachedRotoFrames: sortedFrames } : current);
   }, [input.cache.confirmedFramesRef, input.cache.latestFramesRef, input.frame.setLaunchContext]);
+
+  const replaceRotoKeyMoveLocal = useCallback((
+    replacement: RotoKeyMoveReplacement,
+    identity: RotoKeyMovePersistenceIdentity,
+  ): PhysicPaintRotoCacheFrame[] => {
+    const current = input.launchContext;
+    if (!current || current.layerId !== identity.layerId || current.operationId !== identity.launchOperationId) {
+      throw new Error('The Physics Paint launch changed before the Roto key move could be applied.');
+    }
+    physicPaintStore.replaceRotoKeyFrames({
+      operationId: `${identity.launchOperationId}:local-roto-key-move:${crypto.randomUUID()}`,
+      kind: 'replace-roto-key-frames',
+      layerId: identity.layerId,
+      startFrame: replacement.activeFrame,
+      frames: replacement.realKeyFrames.map((frame) => ({ ...frame })),
+      rotoInterpolationSettings: {
+        ...replacement.interpolationSettings,
+        segmentSpacingOverrides: replacement.interpolationSettings.segmentSpacingOverrides?.map((override) => ({ ...override })) ?? [],
+      },
+    });
+    const refreshedFrames = physicPaintStore.getRotoCacheFrames(identity.layerId);
+    syncKeyFrameLists(refreshedFrames);
+    return refreshedFrames;
+  }, [input.launchContext, syncKeyFrameLists]);
+
+  const commitRotoKeyMove = useCallback(async ({ identity, transaction, onSettlement }: CommitRotoKeyMoveInput): Promise<boolean> => {
+    const current = input.launchContext;
+    if (!current || current.layerId !== identity.layerId || current.operationId !== identity.launchOperationId) return false;
+    if (input.action.bridgeMode === 'Unavailable') return false;
+    const operationId = `${identity.launchOperationId}:roto-key-move:${crypto.randomUUID()}`;
+    const payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-key-frames' }> = {
+      operationId,
+      kind: 'replace-roto-key-frames',
+      layerId: identity.layerId,
+      startFrame: transaction.activeFrame,
+      frames: transaction.realKeyFrames.map((frame) => ({ ...frame })),
+      rotoInterpolationSettings: {
+        ...transaction.interpolationSettings,
+        segmentSpacingOverrides: transaction.interpolationSettings.segmentSpacingOverrides?.map((override) => ({ ...override })) ?? [],
+      },
+    };
+    let resolveSettlement: (accepted: boolean) => void = () => {};
+    const settlement = new Promise<boolean>((resolve) => { resolveSettlement = resolve; });
+    input.action.registerMoveSettlement(payload, (outcome) => {
+      void Promise.resolve(onSettlement(outcome))
+        .then(() => resolveSettlement(outcome.type === 'accepted'))
+        .catch((error) => {
+          console.error('[PhysicsPaintStudio] Roto key move settlement failed', error);
+          resolveSettlement(false);
+        });
+    });
+    try {
+      replaceRotoKeyMoveLocal({
+        activeFrame: transaction.activeFrame,
+        realKeyFrames: transaction.realKeyFrames,
+        interpolationSettings: transaction.interpolationSettings,
+      }, identity);
+      input.lifecycle.pendingKeyActionMessageRef.current = transaction.successMessage;
+      input.status.setApplyStatus('applying');
+      input.status.setApplyMessage('Moving Roto key...');
+      await sendPhysicPaintApplyPayload(payload, input.action.bridgeMode);
+      input.action.startApplyTimeout(operationId);
+    } catch (error) {
+      input.lifecycle.pendingKeyActionMessageRef.current = null;
+      if (!input.action.settleMoveTransportFailure(operationId, error)) resolveSettlement(false);
+    }
+    return settlement;
+  }, [input, replaceRotoKeyMoveLocal]);
 
   const applyKeyFrames = useCallback((transaction: RotoKeyUtilityTransaction) => {
     if (!input.launchContext) return [];
@@ -151,4 +242,9 @@ export function useRotoPersistenceIntegration(input: UseRotoPersistenceIntegrati
     clearCachedReferenceFrame: input.cache.removeFrame,
   });
   input.navigation.configureRuntimePort({ navigateToSyncedFrame });
+
+  return {
+    replaceRotoKeyMoveLocal,
+    commitRotoKeyMove,
+  };
 }

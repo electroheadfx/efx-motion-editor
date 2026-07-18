@@ -114,7 +114,17 @@ export function PhysicsPaintStudio() {
   const syncPendingRotoFrames = useCallback(() => {
     resetRotoKeySessionRef.current({ clearClipboard: false });
   }, []);
-  const { activeOperationIdRef, pendingApplyRef, registerPendingApply, matchApplyResult, startApplyTimeout } = useRotoApplyLifecycle({
+  const {
+    activeOperationIdRef,
+    pendingApplyRef,
+    registerPendingApply,
+    registerMoveSettlement,
+    settleMoveTransportFailure,
+    cancelMoveForLaunchReplacement,
+    disposeMoveSettlement,
+    matchApplyResult,
+    startApplyTimeout,
+  } = useRotoApplyLifecycle({
     onTimeout: (transition) => {
       setApplyStatus('error');
       setApplyMessage(transition.message);
@@ -410,7 +420,7 @@ export function PhysicsPaintStudio() {
     engine?.forceDry();
   }, [engine, rotoScript]);
   useRotoPersistenceIntegration({
-    action: { bridgeMode, registerPendingApply, startApplyTimeout },
+    action: { bridgeMode, registerPendingApply, registerMoveSettlement, settleMoveTransportFailure, startApplyTimeout },
     frame: { current: currentFrame, source: currentFrameOwnerSourceFrame ?? currentFrame, setLaunchContext },
     engine,
     launchContext,
@@ -430,6 +440,8 @@ export function PhysicsPaintStudio() {
       activeOperationIdRef,
       prepareScriptLaunchReplacement: rotoScript.prepareLaunchReplacement,
       completeScriptLaunchReplacement: rotoScript.completeLaunchReplacement,
+      cancelMoveForLaunchReplacement,
+      disposeMoveSettlement,
     },
     state: {
       setLaunchContext, setSettings, setApplyStatus, setApplyMessage, setLastError,
