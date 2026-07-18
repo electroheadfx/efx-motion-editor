@@ -64,16 +64,21 @@ export async function renderRotoPlayScriptFrames(input: RotoPlayScriptRenderInpu
             position: input.motion.position,
           })
       ));
-      const scriptAlpha = engine.renderProgressiveAlphaFrame(progressive);
-      throwIfAborted(input.signal);
-      const merged = await mergeRotoAlphaCanvases(input.existingFrames.get(destination) ?? null, scriptAlpha, input.size);
-      throwIfAborted(input.signal);
-      const encoded = await encodeRotoFrameFromCanvas(merged, destination, input.size);
-      throwIfAborted(input.signal);
-      staged.push({ ...encoded, frameIndex, sourceFrame: destination, source: 'real-key' });
-      releaseCanvas(scriptAlpha);
-      releaseCanvas(merged);
-      input.onProgress?.(frameIndex + 1, input.frameCount);
+      let scriptAlpha: HTMLCanvasElement | null = null;
+      let merged: HTMLCanvasElement | null = null;
+      try {
+        scriptAlpha = engine.renderProgressiveAlphaFrame(progressive);
+        throwIfAborted(input.signal);
+        merged = await mergeRotoAlphaCanvases(input.existingFrames.get(destination) ?? null, scriptAlpha, input.size);
+        throwIfAborted(input.signal);
+        const encoded = await encodeRotoFrameFromCanvas(merged, destination, input.size);
+        throwIfAborted(input.signal);
+        staged.push({ ...encoded, frameIndex, sourceFrame: destination, source: 'real-key' });
+        input.onProgress?.(frameIndex + 1, input.frameCount);
+      } finally {
+        if (scriptAlpha) releaseCanvas(scriptAlpha);
+        if (merged) releaseCanvas(merged);
+      }
       await yieldToBrowser(input.signal);
     }
 
