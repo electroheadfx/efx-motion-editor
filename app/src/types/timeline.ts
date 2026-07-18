@@ -45,6 +45,7 @@ export interface TrackLayout {
 export interface FxTrackLayout {
   sequenceId: string;
   sequenceName: string;
+  headerLabel: string;
   kind: 'fx' | 'content-overlay';
   inFrame: number;
   outFrame: number;  // exclusive

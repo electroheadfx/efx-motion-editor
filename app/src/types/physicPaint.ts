@@ -60,6 +60,7 @@ export interface PhysicPaintLaunchContext {
   project?: PhysicPaintProjectContext;
   startFrame: number;
   layerName?: string;
+  workflowLabel?: string;
   width?: number;
   height?: number;
   fps?: number;
@@ -281,6 +282,7 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
     optionalRotoBackgroundMetadata(value.rotoBackground) &&
     optionalRotoCacheFrames(value.cachedRotoFrames) &&
     optionalRotoInterpolationSettings(value.rotoInterpolationSettings) &&
+    optionalNonEmptyString(value.workflowLabel) &&
     (value.layerName === undefined || typeof value.layerName === 'string')
   );
 }

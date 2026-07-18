@@ -171,6 +171,7 @@ function getThumbnailImageId(layer: Layer | undefined): string | undefined {
 export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
   physicPaintVersion.value;
   const layouts: FxTrackLayout[] = [];
+  let physicPaintOrdinal = 0;
   for (const seq of sequenceStore.sequences.value) {
     if (seq.kind === 'content') continue; // content sequences render via trackLayouts
     const primaryLayer = seq.layers[0];
@@ -185,6 +186,7 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
     layouts.push({
       sequenceId: seq.id,
       sequenceName: seq.name,
+      headerLabel: primaryLayer?.type === 'physic-paint' ? `PPaint #${++physicPaintOrdinal}` : seq.name,
       kind: seq.kind as 'fx' | 'content-overlay',
       inFrame: seq.inFrame ?? 0,
       outFrame: getTimelineOverlaySequenceOutFrame(seq, 100),

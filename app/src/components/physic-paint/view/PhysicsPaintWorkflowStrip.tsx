@@ -60,6 +60,7 @@ export interface PhysicsPaintWorkflowOnionPreviewFrame {
 }
 
 export interface PhysicsPaintWorkflowStripProps {
+  workflowLabel?: string;
   currentFrame: number;
   isPlaying: boolean;
   ready?: boolean;
@@ -341,7 +342,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     <section class="physics-paint-workflow-strip" aria-label="Physics Paint workflow strip">
       <div class="physics-paint-workflow-header">
         <div class="physics-paint-mode-label" aria-label="Selected Physics Paint mode">
-          PPaint #1
+          {props.workflowLabel ?? 'PPaint'}
         </div>
 
         <div class="physics-paint-workflow-animation">

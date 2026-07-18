@@ -63,6 +63,8 @@ struct PhysicsPaintLaunchContext {
     project: Option<PhysicsPaintProjectContext>,
     #[serde(rename = "layerName", skip_serializing_if = "Option::is_none")]
     layer_name: Option<String>,
+    #[serde(rename = "workflowLabel", skip_serializing_if = "Option::is_none")]
+    workflow_label: Option<String>,
     #[serde(rename = "startFrame")]
     start_frame: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -190,6 +192,10 @@ fn physics_paint_url(context: &PhysicsPaintLaunchContext) -> String {
     if let Some(layer_name) = &context.layer_name {
         url.push_str("&layerName=");
         url.push_str(&percent_encoding::utf8_percent_encode(layer_name, percent_encoding::NON_ALPHANUMERIC).to_string());
+    }
+    if let Some(workflow_label) = &context.workflow_label {
+        url.push_str("&workflowLabel=");
+        url.push_str(&percent_encoding::utf8_percent_encode(workflow_label, percent_encoding::NON_ALPHANUMERIC).to_string());
     }
     if let Some(width) = context.width {
         url.push_str("&width=");

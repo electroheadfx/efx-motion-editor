@@ -31,8 +31,10 @@ export function getTimelinePlayScriptMarkerGeometry(
   };
 }
 
-export function getTimelineFxHeaderLabel(fxTrack: Pick<FxTrackLayout, 'layerType' | 'sequenceName'>): string {
-  return fxTrack.layerType === 'physic-paint' ? 'PPaint #1' : fxTrack.sequenceName;
+export function getTimelineFxHeaderLabel(
+  fxTrack: Pick<FxTrackLayout, 'sequenceName' | 'layerType'> & Partial<Pick<FxTrackLayout, 'headerLabel'>>,
+): string {
+  return fxTrack.headerLabel ?? fxTrack.sequenceName;
 }
 
 export function getTimelinePlayScriptLabel(index: number): string {
@@ -239,7 +241,7 @@ export class TimelineRenderer {
         ctx.fillStyle = colors.trackName;
         ctx.font = '9px system-ui, sans-serif';
         ctx.textBaseline = 'middle';
-        const ghostName = this.truncateText(ctx, ghostTrack.sequenceName, TRACK_HEADER_WIDTH - 16);
+        const ghostName = this.truncateText(ctx, getTimelineFxHeaderLabel(ghostTrack), TRACK_HEADER_WIDTH - 16);
         ctx.fillText(ghostName, 16, ghostY + FX_TRACK_HEIGHT / 2);
       }
       ctx.fillStyle = colors.fxTrackBg;

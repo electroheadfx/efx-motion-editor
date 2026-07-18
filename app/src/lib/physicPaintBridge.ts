@@ -41,6 +41,7 @@ export interface PhysicPaintOpenRequest {
   frame: number | null | undefined;
   canvas?: PhysicPaintCanvasSize | null;
   fps?: number | null;
+  workflowLabel?: string;
 }
 
 interface TauriEventApi {
@@ -536,6 +537,7 @@ export function createPhysicPaintLaunchContext(
   frame: number,
   canvas?: PhysicPaintCanvasSize | null,
   fps?: number | null,
+  workflowLabel?: string,
 ): PhysicPaintLaunchContext {
   const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   const startFrame = Math.max(0, Math.trunc(frame));
@@ -547,6 +549,7 @@ export function createPhysicPaintLaunchContext(
     layerId,
     project: { name: projectStore.name.peek(), saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()), contextId: projectStore.projectContextId.peek() },
     layerName: layer.name,
+    ...(workflowLabel ? { workflowLabel } : {}),
     startFrame,
     ...(isFinitePositiveNumber(canvas?.width) ? { width: canvas.width } : {}),
     ...(isFinitePositiveNumber(canvas?.height) ? { height: canvas.height } : {}),
@@ -562,7 +565,13 @@ export async function openPhysicPaintCanvas(request: PhysicPaintOpenRequest): Pr
     const validation = validateOpenRequest(request);
     if (!validation.ok) return validation;
 
-    const context = createPhysicPaintLaunchContext(validation.data.layer, validation.data.frame, request.canvas, request.fps);
+    const context = createPhysicPaintLaunchContext(
+      validation.data.layer,
+      validation.data.frame,
+      request.canvas,
+      request.fps,
+      validation.data.workflowLabel,
+    );
     if (!isPhysicPaintLaunchContext(context)) {
       return { ok: false, error: 'Invalid physics paint launch context' };
     }
@@ -585,7 +594,7 @@ export async function openPhysicPaintCanvas(request: PhysicPaintOpenRequest): Pr
   }
 }
 
-function validateOpenRequest(request: PhysicPaintOpenRequest): Result<{ layer: Layer; frame: number }> {
+function validateOpenRequest(request: PhysicPaintOpenRequest): Result<{ layer: Layer; frame: number; workflowLabel?: string }> {
   const layer = request.layer;
   if (!layer || layer.type !== 'physic-paint' || layer.source.type !== 'physic-paint') {
     return { ok: false, error: 'Select a physic-paint layer before opening the physics paint canvas' };
@@ -596,7 +605,19 @@ function validateOpenRequest(request: PhysicPaintOpenRequest): Result<{ layer: L
     return { ok: false, error: 'Select a valid frame before opening the physics paint canvas' };
   }
 
-  return { ok: true, data: { layer, frame: Math.trunc(frame) } };
+  const workflowLabel = request.workflowLabel;
+  if (workflowLabel !== undefined && (typeof workflowLabel !== 'string' || workflowLabel.trim().length === 0)) {
+    return { ok: false, error: 'Physics paint workflow label must be a non-empty string' };
+  }
+
+  return {
+    ok: true,
+    data: {
+      layer,
+      frame: Math.trunc(frame),
+      ...(workflowLabel !== undefined ? { workflowLabel: workflowLabel.trim() } : {}),
+    },
+  };
 }
 
 async function tryOpenTauriPhysicPaintWindow(context: PhysicPaintLaunchContext): Promise<Result<TauriPhysicsPaintLaunchResult>> {

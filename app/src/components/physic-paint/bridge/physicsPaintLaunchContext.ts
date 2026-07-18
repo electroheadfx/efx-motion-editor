@@ -65,6 +65,7 @@ export function parsePhysicsPaintLaunchContext(location: Location): PhysicPaintL
     },
     startFrame,
     layerName: nonEmptyParam(params, 'layerName', 'name') ?? undefined,
+    workflowLabel: nonEmptyParam(params, 'workflowLabel') ?? undefined,
     width: Number.isFinite(width) && width > 0 ? width : undefined,
     height: Number.isFinite(height) && height > 0 ? height : undefined,
     fps: Number.isFinite(fps) && fps > 0 ? fps : undefined,

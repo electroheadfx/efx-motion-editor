@@ -3,11 +3,13 @@ import { ChevronDown } from 'lucide-preact';
 import type { BlendMode, Layer } from '../../types/layer';
 import type { PhysicPaintApplyResult } from '../../types/physicPaint';
 import { layerStore } from '../../stores/layerStore';
+import { sequenceStore } from '../../stores/sequenceStore';
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { timelineStore } from '../../stores/timelineStore';
 import { projectStore } from '../../stores/projectStore';
 import { openPhysicPaintCanvas, PHYSIC_PAINT_APPLY_RESULT_EVENT } from '../../lib/physicPaintBridge';
+import { fxTrackLayouts } from '../../lib/frameMap';
 import { SectionLabel } from '../shared/SectionLabel';
 
 interface PhysicPaintPropertiesProps {
@@ -52,8 +54,15 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
   }, [sourceLayerId]);
 
   const handleOpenCanvas = async () => {
-    const currentFrame = timelineStore.currentFrame.value;
+    const currentFrame = timelineStore.currentFrame.peek();
     if (!validContext || opening) return;
+
+    const parentSequence = sequenceStore.sequences.peek().find((sequence) => (
+      sequence.layers.some((candidate) => candidate.id === layer.id)
+    ));
+    const fxLayout = parentSequence
+      ? fxTrackLayouts.peek().find((layout) => layout.sequenceId === parentSequence.id)
+      : undefined;
 
     setOpening(true);
     setStatusMessage('Opening Roto paint...');
@@ -64,10 +73,11 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
       layer,
       frame: currentFrame,
       canvas: {
-        width: projectStore.width.value,
-        height: projectStore.height.value,
+        width: projectStore.width.peek(),
+        height: projectStore.height.peek(),
       },
-      fps: projectStore.fps.value,
+      fps: projectStore.fps.peek(),
+      workflowLabel: fxLayout?.headerLabel,
     });
 
     console.info('[PhysicPaintProperties] open canvas result', result);
