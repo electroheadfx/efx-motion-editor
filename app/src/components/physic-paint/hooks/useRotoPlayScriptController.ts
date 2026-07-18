@@ -1,3 +1,4 @@
+import { signal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
 import type { PhysicPaintApplyResult, PhysicPaintRotoAuthorityResult } from '../../../types/physicPaint';
 import { createRotoPlayScriptController, type RotoPlayScriptController, type RotoPlayScriptControllerPorts } from '../roto/physicsPaintRotoPlayScriptController';
@@ -7,6 +8,8 @@ import { detectPhysicsPaintBridgeMode, usePhysicsPaintApplyResultBridge, usePhys
 export function useRotoPlayScriptController(ports: Omit<RotoPlayScriptControllerPorts, 'requestAuthority' | 'commit'>, bridgeMode: PhysicsPaintBridgeMode): RotoPlayScriptController {
   const portsRef = useRef(ports); portsRef.current = ports;
   const modeRef = useRef(bridgeMode); modeRef.current = bridgeMode;
+  const availabilityRevision = useRef(signal(0));
+  availabilityRevision.current.value += 1;
   const authorityPending = useRef(new Map<string, (result: PhysicPaintRotoAuthorityResult) => void>());
   const commitPending = useRef(new Map<string, (result: PhysicPaintApplyResult) => void>());
   usePhysicsPaintRotoAuthorityResultBridge((result) => { authorityPending.current.get(result.operationId)?.(result); authorityPending.current.delete(result.operationId); });
@@ -15,7 +18,17 @@ export function useRotoPlayScriptController(ports: Omit<RotoPlayScriptController
   const controllerRef = useRef<RotoPlayScriptController | null>(null);
   if (!controllerRef.current) {
     controllerRef.current = createRotoPlayScriptController({
-      ...ports,
+      library: ports.library,
+      getLaunchContext: () => portsRef.current.getLaunchContext(),
+      getSelection: () => portsRef.current.getSelection(),
+      getMotion: () => portsRef.current.getMotion(),
+      getBackground: () => portsRef.current.getBackground(),
+      getOperationLocked: () => portsRef.current.getOperationLocked(),
+      getSize: () => portsRef.current.getSize(),
+      availabilityRevision: availabilityRevision.current,
+      mirrorAccepted: (...args) => portsRef.current.mirrorAccepted(...args),
+      stopPlayback: () => portsRef.current.stopPlayback(),
+      log: (...args) => portsRef.current.log(...args),
       requestAuthority: (operationId, start) => requestWithTimeout(authorityPending.current, operationId, async () => {
         const context = portsRef.current.getLaunchContext();
         if (!context?.project) throw new Error('Project authority is unavailable.');

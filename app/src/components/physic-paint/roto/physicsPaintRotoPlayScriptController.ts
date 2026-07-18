@@ -14,6 +14,7 @@ export interface RotoPlayScriptControllerPorts {
   getBackground: () => PhysicPaintRotoBackgroundMetadata;
   getOperationLocked: () => boolean;
   getSize: () => { width: number; height: number };
+  availabilityRevision?: ReadonlySignal<number>;
   requestAuthority: (operationId: string, start: number) => Promise<PhysicPaintRotoAuthorityResult>;
   commit: (payload: {
     operationId: string; projectContextId: string; layerId: string; startFrame: number; frameCount: number;
@@ -59,6 +60,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   let disposed = false;
 
   const disabledReason = computed(() => {
+    ports.availabilityRevision?.value;
     if (!ports.library.selected.value) return 'Select a project script first.';
     if (ports.library.busy.value) return 'Finish the current script library operation.';
     if (ports.getOperationLocked() || isBusyPhase(phase.value)) return 'Finish the current Roto operation.';
