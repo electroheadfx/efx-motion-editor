@@ -47,6 +47,7 @@ export interface RotoReferenceLoaderInput<Frame extends RotoReferenceFrame> {
   getSettingsBackground: () => BgMode;
   dirtyFrames: Set<number>;
   liveOverlayActionCounts: Map<number, number>;
+  replaceDirtyOverlay?: boolean;
   getReferenceFrame: (appFrame: number) => Frame | null;
   setReferenceUrl: (value: string | null) => void;
   setRepaintBaseFrame: (value: Frame | null | ((current: Frame | null) => Frame | null)) => void;
@@ -61,7 +62,7 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
       input.setRepaintBaseFrame(null);
       return false;
     }
-    if (input.dirtyFrames.has(appFrame)) {
+    if (!input.replaceDirtyOverlay && input.dirtyFrames.has(appFrame)) {
       input.setReferenceUrl(null);
       input.setRepaintBaseFrame((current) => current?.appFrame === appFrame ? current : null);
       return false;
@@ -123,6 +124,7 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
       getSettingsBackground: () => currentInput.settingsBackground,
       dirtyFrames: currentInput.dirtyFrames,
       liveOverlayActionCounts: currentInput.liveOverlayActionCounts,
+      replaceDirtyOverlay: refreshedFrame !== undefined,
       getReferenceFrame: (frame) => frame === appFrame && explicitRestoration !== undefined ? explicitRestoration : findReferenceFrame(frame),
       setReferenceUrl: setCachedRotoReferenceUrl,
       setRepaintBaseFrame: setCachedRotoRepaintBaseFrame,
