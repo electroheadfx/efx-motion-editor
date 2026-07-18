@@ -588,7 +588,7 @@ describe('physicPaintStore', () => {
     ]);
   });
 
-  it('D-01/D-02 infers custom spacing from distant source-key gaps while compact segments stay global-controlled on load', () => {
+  it('D-01/D-02 restores only persisted spacing while compact and distant segments stay global-controlled on load', () => {
     const realZero = makeAlphaFrame(0, 0, 'source-zero');
     const realOne = makeAlphaFrame(0, 1, 'source-one');
     const realTwo = makeAlphaFrame(0, 2, 'source-two');
@@ -613,7 +613,6 @@ describe('physicPaintStore', () => {
       mode: 'duplicate',
       deform: 0,
       position: 0,
-      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
     });
     expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual(expect.arrayContaining([
       expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0 }),
@@ -625,11 +624,9 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 6, source: 'real-key', sourceFrame: 2, displayFrame: 6 }),
       expect.objectContaining({ appFrame: 7, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
       expect.objectContaining({ appFrame: 8, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
-      expect.objectContaining({ appFrame: 9, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
-      expect.objectContaining({ appFrame: 10, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
-      expect.objectContaining({ appFrame: 11, source: 'real-key', sourceFrame: 6, displayFrame: 11 }),
+      expect.objectContaining({ appFrame: 9, source: 'real-key', sourceFrame: 6, displayFrame: 9 }),
     ]));
-    expect(physicPaintStore.getRotoFrame('layer-1', 11)).toEqual(expect.objectContaining({ appFrame: 11, source: 'real-key', sourceFrame: 6, dataUrl: realSix.dataUrl }));
+    expect(physicPaintStore.getRotoFrame('layer-1', 9)).toEqual(expect.objectContaining({ appFrame: 9, source: 'real-key', sourceFrame: 6, dataUrl: realSix.dataUrl }));
     expect(physicPaintStore.getRotoFrame('layer-1', 4)).toEqual(expect.objectContaining({ appFrame: 4, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 2, dataUrl: realOne.dataUrl }));
   });
 

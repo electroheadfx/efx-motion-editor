@@ -2026,7 +2026,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
       interpolationSettings: { ...reopenContext.rotoInterpolationSettings!, enabled: true },
     });
     expect(reopenedTimeline.model.realSourceFrames).toEqual([0, 1, 2, 3, targetFrame]);
-    expect(reopenedTimeline.projection.realKeys.map((key) => key.displayFrame)).toEqual(targetFrame === 12 && enabled ? [0, 3, 6, 9, 19] : [0, 3, 6, 9, targetFrame]);
+    expect(reopenedTimeline.projection.realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9, targetFrame]);
   });
 
   it.each([
