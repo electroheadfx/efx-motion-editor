@@ -341,7 +341,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     <section class="physics-paint-workflow-strip" aria-label="Physics Paint workflow strip">
       <div class="physics-paint-workflow-header">
         <div class="physics-paint-mode-label" aria-label="Selected Physics Paint mode">
-          Roto #1
+          PPaint #1
         </div>
 
         <div class="physics-paint-workflow-animation">
