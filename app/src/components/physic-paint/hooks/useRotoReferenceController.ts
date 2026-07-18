@@ -70,6 +70,7 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
     const cachedFrame = input.getReferenceFrame(appFrame);
     input.setReferenceUrl(null);
     input.setRepaintBaseFrame(cachedFrame);
+    if (input.replaceDirtyOverlay) engine.clearPreviewBaseImage();
     engine.setBgMode(input.getSettingsBackground());
     engine.clear();
     if (cachedFrame?.dataUrl) {
