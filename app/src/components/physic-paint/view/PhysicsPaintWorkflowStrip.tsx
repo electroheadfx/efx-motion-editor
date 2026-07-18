@@ -89,6 +89,8 @@ export interface PhysicsPaintWorkflowStripProps {
   onDeleteRotoFrame?: () => void;
   onCopyRotoFrame?: () => void;
   onPasteRotoFrame?: () => void;
+  onMoveRotoKey?: (fromDisplayFrame: number, toDisplayFrame: number) => Promise<boolean>;
+  rotoDragContextKey?: string;
   hasCopiedRotoKey?: boolean;
   keyActionInFlight?: boolean;
   mutationLocked?: boolean;
@@ -108,7 +110,7 @@ export interface PhysicsPaintWorkflowStripProps {
 const VIRTUAL_TIMELINE_FRAME_COUNT = 120;
 const RULER_STEP = 3;
 
-function buildFrameCells(currentFrame: number): number[] {
+export function buildPhysicsPaintRotoFrameCells(currentFrame: number): number[] {
   const visibleCount = VIRTUAL_TIMELINE_FRAME_COUNT;
   const maxStart = Math.max(0, currentFrame - Math.floor(visibleCount / 2));
   const start = Math.max(0, Math.min(maxStart, currentFrame));
@@ -163,10 +165,45 @@ function getRotoFillClass(fill: ReturnType<typeof getRotoCellFill>): string {
   return fill === 'cached-only' ? 'roto-fill-cached-only' : 'roto-fill-empty';
 }
 
+type RotoDragCandidateKind = 'empty' | 'real-key' | 'generated' | 'outside' | 'locked';
+interface RotoDragPreviewState {
+  sourceFrame: number;
+  candidateFrame: number | null;
+  candidateKind: RotoDragCandidateKind;
+  candidateValid: boolean;
+  pendingFrame: number | null;
+}
+
+interface RotoDragGestureSession {
+  pointerId: number;
+  sourceFrame: number;
+  sourceElement: HTMLButtonElement;
+  originX: number;
+  originY: number;
+  latestX: number;
+  latestY: number;
+  started: boolean;
+  candidateFrame: number | null;
+  candidateValid: boolean;
+  rafId: number | null;
+  lastRafTime: number | null;
+  validityKey: string;
+  cleanup: () => void;
+}
+
+const ROTO_DRAG_THRESHOLD_PX = 6;
+const ROTO_EDGE_SCROLL_ZONE_PX = 32;
+const ROTO_EDGE_SCROLL_MIN_PX_PER_SECOND = 40;
+const ROTO_EDGE_SCROLL_MAX_PX_PER_SECOND = 160;
+
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   const [pressedRotoKeyAction, setPressedRotoKeyAction] = useState<RotoKeyUtilityAction | null>(null);
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
+  const [rotoDragPreview, setRotoDragPreview] = useState<RotoDragPreviewState | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
+  const suppressNextRotoClickRef = useRef(false);
+  const mountedRef = useRef(true);
   const interpolationSettings = props.rotoInterpolationSettings ?? { enabled: false, inBetweenCount: 1, mode: 'duplicate' as const, deform: 0, position: 0 };
   const interpolationEnabled = interpolationSettings.enabled === true;
   const displayCachedRotoFrames = useMemo(() => getDisplayRotoCacheFrames(props.cachedRotoFrames, interpolationEnabled), [interpolationEnabled, props.cachedRotoFrames]);
@@ -181,7 +218,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const interpolationConnectors = useMemo(() => hasMaterializedGeneratedRotoFrames ? [] : getRotoInterpolationSpanFrames(realRotoFrames, interpolationSettings), [hasMaterializedGeneratedRotoFrames, interpolationSettings, realRotoFrames]);
   const generatedRotoFrames = useMemo(() => hasMaterializedGeneratedRotoFrames ? materializedGeneratedRotoFrames : interpolationConnectors.map(connector => connector.frame), [hasMaterializedGeneratedRotoFrames, interpolationConnectors, materializedGeneratedRotoFrames]);
   const expandedCurrentFrame = expandedRealRotoFrames.find(key => key.sourceFrame === props.currentFrame)?.frame ?? props.currentFrame;
-  const frameCells = useMemo(() => buildFrameCells(expandedCurrentFrame), [expandedCurrentFrame]);
+  const frameCells = useMemo(() => buildPhysicsPaintRotoFrameCells(expandedCurrentFrame), [expandedCurrentFrame]);
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
   const visibleInBetweenCount = Math.max(1, Math.trunc(Number(interpolationSettings.inBetweenCount) || 1));
   const hasGeneratedInBetweens = interpolationConnectors.length > 0;
@@ -197,7 +234,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const sessionKeyAvailability = props.rotoKeyState?.actionAvailability;
   const scriptAvailability = props.rotoScript?.availability.value;
   const scriptStatus = props.rotoScript?.status.value ?? null;
-  const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy);
+  const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy) || rotoDragPreview?.pendingFrame !== null && rotoDragPreview?.pendingFrame !== undefined;
   const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked);
   const canUseSourceRotoKey = isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState;
   const canInsertRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canInsert || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
@@ -205,6 +242,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const canCopyRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canCopy || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
   const canPasteRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canPaste && props.ready !== false : Boolean(props.hasCopiedRotoKey) && !keyUtilitiesDisabledByBusyState;
   const canDeleteRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canDelete || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
+  const rotoDragLocked = keyUtilitiesDisabledByBusyState || !props.onMoveRotoKey;
+  const rotoDragValidityKey = `${props.rotoDragContextKey ?? 'none'}:${frameCells[0] ?? -1}:${frameCells[frameCells.length - 1] ?? -1}:${realCachedRotoFrameNumbers.join(',')}:${generatedRotoFrames.join(',')}:${rotoDragLocked ? 1 : 0}`;
   function handleRotoPlaybackFpsInput(event: Event) {
     const value = Number((event.currentTarget as HTMLInputElement).value);
     if (Number.isFinite(value)) props.onRotoPlaybackFpsChange?.(value);
@@ -217,6 +256,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }
 
   function handleRotoCellClick(frame: number, vm: RotoCellViewModel) {
+    if (suppressNextRotoClickRef.current) {
+      suppressNextRotoClickRef.current = false;
+      return;
+    }
     if (vm.baseMeaning === 'generated' || vm.isEditableTarget === false) {
       props.onNavigateToSyncedFrame(frame);
       return;
@@ -296,6 +339,190 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       width: thumbWidth,
       visible,
     });
+  }, []);
+
+  const classifyRotoDragCandidate = useCallback((clientX: number, clientY: number) => {
+    const scroller = timelineScrollRef.current;
+    if (!scroller || rotoDragLocked) return { frame: null, kind: 'locked' as const, valid: false };
+    const rect = scroller.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
+      return { frame: null, kind: 'outside' as const, valid: false };
+    }
+    const hit = document.elementFromPoint(clientX, clientY);
+    const cell = hit instanceof Element ? hit.closest<HTMLElement>('[data-roto-display-frame]') : null;
+    if (!cell || !scroller.contains(cell)) return { frame: null, kind: 'outside' as const, valid: false };
+    const frame = Number(cell.dataset.rotoDisplayFrame);
+    const kind = cell.dataset.rotoKind;
+    if (!Number.isInteger(frame) || !frameCells.includes(frame)) return { frame: null, kind: 'outside' as const, valid: false };
+    if (kind === 'empty') return { frame, kind: 'empty' as const, valid: true };
+    if (kind === 'generated') return { frame, kind: 'generated' as const, valid: false };
+    return { frame, kind: 'real-key' as const, valid: false };
+  }, [frameCells, rotoDragLocked]);
+
+  const updateRotoDragCandidate = useCallback((session: RotoDragGestureSession) => {
+    const candidate = classifyRotoDragCandidate(session.latestX, session.latestY);
+    session.candidateFrame = candidate.frame;
+    session.candidateValid = candidate.valid && candidate.frame !== session.sourceFrame;
+    if (!session.started) return;
+    setRotoDragPreview({
+      sourceFrame: session.sourceFrame,
+      candidateFrame: candidate.frame,
+      candidateKind: candidate.frame === session.sourceFrame ? 'real-key' : candidate.kind,
+      candidateValid: session.candidateValid,
+      pendingFrame: null,
+    });
+  }, [classifyRotoDragCandidate]);
+
+  const startRotoEdgeScroll = useCallback((session: RotoDragGestureSession) => {
+    if (session.rafId !== null) return;
+    const tick = (timestamp: number) => {
+      const active = rotoDragGestureRef.current;
+      if (!active || active !== session || !active.started) return;
+      const scroller = timelineScrollRef.current;
+      if (!scroller) {
+        active.cleanup();
+        return;
+      }
+      const rect = scroller.getBoundingClientRect();
+      const leftDepth = Math.max(0, Math.min(ROTO_EDGE_SCROLL_ZONE_PX, rect.left + ROTO_EDGE_SCROLL_ZONE_PX - active.latestX));
+      const rightDepth = Math.max(0, Math.min(ROTO_EDGE_SCROLL_ZONE_PX, active.latestX - (rect.right - ROTO_EDGE_SCROLL_ZONE_PX)));
+      const direction = leftDepth > 0 ? -1 : rightDepth > 0 ? 1 : 0;
+      const depth = Math.max(leftDepth, rightDepth);
+      const previousTime = active.lastRafTime ?? timestamp;
+      active.lastRafTime = timestamp;
+      if (direction !== 0 && depth > 0) {
+        const ratio = depth / ROTO_EDGE_SCROLL_ZONE_PX;
+        const speed = ROTO_EDGE_SCROLL_MIN_PX_PER_SECOND + (ROTO_EDGE_SCROLL_MAX_PX_PER_SECOND - ROTO_EDGE_SCROLL_MIN_PX_PER_SECOND) * ratio;
+        const maxScroll = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+        const nextScroll = Math.max(0, Math.min(maxScroll, scroller.scrollLeft + direction * speed * Math.min(0.05, (timestamp - previousTime) / 1000)));
+        if (nextScroll !== scroller.scrollLeft) {
+          scroller.scrollLeft = nextScroll;
+          updateScrollbar();
+          updateRotoDragCandidate(active);
+        }
+      }
+      active.rafId = window.requestAnimationFrame(tick);
+    };
+    session.rafId = window.requestAnimationFrame(tick);
+  }, [updateRotoDragCandidate, updateScrollbar]);
+
+  const handleRotoCellPointerDown = useCallback((event: PointerEvent, sourceFrame: number) => {
+    if (!event.isPrimary || event.button !== 0 || rotoDragLocked || !props.onMoveRotoKey || rotoDragGestureRef.current) return;
+    const sourceElement = event.currentTarget as HTMLButtonElement;
+    let active = true;
+    const session: RotoDragGestureSession = {
+      pointerId: event.pointerId,
+      sourceFrame,
+      sourceElement,
+      originX: event.clientX,
+      originY: event.clientY,
+      latestX: event.clientX,
+      latestY: event.clientY,
+      started: false,
+      candidateFrame: null,
+      candidateValid: false,
+      rafId: null,
+      lastRafTime: null,
+      validityKey: rotoDragValidityKey,
+      cleanup: () => {},
+    };
+    const clearSuppressionSoon = () => window.setTimeout(() => { suppressNextRotoClickRef.current = false; }, 0);
+    const cleanup = () => {
+      if (!active) return;
+      active = false;
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerCancel);
+      window.removeEventListener('keydown', handleEscape, true);
+      sourceElement.removeEventListener('lostpointercapture', handleLostPointerCapture);
+      if (session.rafId !== null) window.cancelAnimationFrame(session.rafId);
+      session.rafId = null;
+      if (sourceElement.hasPointerCapture(session.pointerId)) sourceElement.releasePointerCapture(session.pointerId);
+      if (rotoDragGestureRef.current === session) rotoDragGestureRef.current = null;
+      if (mountedRef.current) setRotoDragPreview(null);
+    };
+    const beginDrag = () => {
+      if (session.started) return;
+      session.started = true;
+      try {
+        sourceElement.setPointerCapture(session.pointerId);
+      } catch {
+        session.started = false;
+        cleanup();
+        return;
+      }
+      suppressNextRotoClickRef.current = true;
+      updateRotoDragCandidate(session);
+      startRotoEdgeScroll(session);
+    };
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== session.pointerId || rotoDragGestureRef.current !== session) return;
+      session.latestX = moveEvent.clientX;
+      session.latestY = moveEvent.clientY;
+      if (!session.started && Math.hypot(session.latestX - session.originX, session.latestY - session.originY) >= ROTO_DRAG_THRESHOLD_PX) beginDrag();
+      if (session.started) {
+        moveEvent.preventDefault();
+        updateRotoDragCandidate(session);
+      }
+    };
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId !== session.pointerId || rotoDragGestureRef.current !== session) return;
+      session.latestX = upEvent.clientX;
+      session.latestY = upEvent.clientY;
+      if (!session.started) {
+        cleanup();
+        return;
+      }
+      upEvent.preventDefault();
+      updateRotoDragCandidate(session);
+      const destinationFrame = session.candidateValid ? session.candidateFrame : null;
+      cleanup();
+      clearSuppressionSoon();
+      if (destinationFrame === null || destinationFrame === sourceFrame) return;
+      if (mountedRef.current) setRotoDragPreview({ sourceFrame, candidateFrame: destinationFrame, candidateKind: 'empty', candidateValid: true, pendingFrame: destinationFrame });
+      void props.onMoveRotoKey?.(sourceFrame, destinationFrame).then((accepted) => {
+        if (!mountedRef.current) return;
+        setRotoDragPreview(null);
+        if (!accepted) return;
+        timelineScrollRef.current?.querySelector<HTMLElement>(`[data-roto-display-frame="${destinationFrame}"]`)?.focus();
+      }).catch(() => {
+        if (mountedRef.current) setRotoDragPreview(null);
+      });
+    };
+    const handlePointerCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId !== session.pointerId) return;
+      cleanup();
+      clearSuppressionSoon();
+    };
+    const handleLostPointerCapture = () => {
+      if (rotoDragGestureRef.current !== session) return;
+      cleanup();
+      clearSuppressionSoon();
+    };
+    const handleEscape = (keyEvent: KeyboardEvent) => {
+      if (keyEvent.key !== 'Escape' || rotoDragGestureRef.current !== session || !session.started) return;
+      keyEvent.preventDefault();
+      keyEvent.stopImmediatePropagation();
+      cleanup();
+      clearSuppressionSoon();
+    };
+    session.cleanup = cleanup;
+    rotoDragGestureRef.current = session;
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerCancel);
+    window.addEventListener('keydown', handleEscape, true);
+    sourceElement.addEventListener('lostpointercapture', handleLostPointerCapture);
+  }, [props.onMoveRotoKey, rotoDragLocked, rotoDragValidityKey, startRotoEdgeScroll, updateRotoDragCandidate]);
+
+  useEffect(() => {
+    const active = rotoDragGestureRef.current;
+    if (active && active.validityKey !== rotoDragValidityKey) active.cleanup();
+  }, [rotoDragValidityKey]);
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+    rotoDragGestureRef.current?.cleanup();
   }, []);
 
   useEffect(() => {
@@ -399,13 +626,24 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   });
                   const fill = getRotoCellFill(frame, realCachedRotoFrames);
                   const isDisplayRealKey = realCachedRotoFrameNumbers.includes(frame);
-                  const generatedTitle = vm.baseMeaning === 'generated' || vm.isEditableTarget === false ? getGeneratedRotoTitle(frame) : null;
+                  const isGenerated = vm.baseMeaning === 'generated' || vm.isEditableTarget === false;
+                  const semanticKind = isGenerated ? 'generated' : isDisplayRealKey ? 'real-key' : 'empty';
+                  const generatedTitle = isGenerated ? getGeneratedRotoTitle(frame) : null;
+                  const dragEligible = isDisplayRealKey && !rotoDragLocked;
+                  const isDragSource = rotoDragPreview?.sourceFrame === frame;
+                  const isDragTarget = rotoDragPreview?.candidateFrame === frame && rotoDragPreview.pendingFrame === null;
+                  const isPendingDestination = rotoDragPreview?.pendingFrame === frame;
+                  const dragLabel = dragEligible ? `${vm.ariaLabel} Drag this real Roto key to an empty frame.` : generatedTitle ?? vm.ariaLabel;
+                  const dragTitle = dragEligible ? `${vm.title} Drag to move this real Roto key.` : generatedTitle ?? vm.title;
                   return (
                     <button
                       key={frame}
-                      class={`physics-paint-roto-cell ${getRotoFillClass(fill)} ${vm.fillClass} ${isDisplayRealKey || isOccupiedFrame(displayOccupiedRotoFrames, frame) ? 'occupied' : ''} ${isDisplayRealKey || isSavedFrame(displaySavedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''}`}
-                      aria-label={generatedTitle ?? vm.ariaLabel}
-                      title={generatedTitle ?? vm.title}
+                      class={`physics-paint-roto-cell ${getRotoFillClass(fill)} ${vm.fillClass} ${isDisplayRealKey || isOccupiedFrame(displayOccupiedRotoFrames, frame) ? 'occupied' : ''} ${isDisplayRealKey || isSavedFrame(displaySavedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragTarget && rotoDragPreview?.candidateValid ? 'roto-drag-target-valid' : ''} ${isDragTarget && !rotoDragPreview?.candidateValid ? 'roto-drag-target-invalid' : ''} ${isPendingDestination ? 'roto-drag-committing' : ''}`}
+                      data-roto-display-frame={frame}
+                      data-roto-kind={semanticKind}
+                      aria-label={dragLabel}
+                      title={dragTitle}
+                      onPointerDown={dragEligible ? (event) => handleRotoCellPointerDown(event as unknown as PointerEvent, frame) : undefined}
                       onClick={() => handleRotoCellClick(frame, vm)}
                     >
                       <span>{frame}</span>
