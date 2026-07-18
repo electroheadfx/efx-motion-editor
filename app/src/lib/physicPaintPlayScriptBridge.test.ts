@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultTransform, type Layer } from '../types/layer';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../types/physicPaint';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
 import { projectStore } from '../stores/projectStore';
@@ -53,6 +54,30 @@ describe('Play Script parent authority and complete-set bridge', () => {
     expect(physicPaintStore.getRotoFrame('layer-1', 1)).toMatchObject({ appFrame: 1, source: 'generated-interpolation' });
     expect(physicPaintStore.getRotoFrame('layer-1', 3)).toMatchObject({ appFrame: 3, sourceFrame: 1, source: 'real-key' });
     expect(getPhysicPaintRotoAuthority({ operationId: 'canonical-source-1', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 1 })).toMatchObject({ ok: true, canonicalStart: 1 });
+  });
+
+  it('fails closed without positive remaining sequence capacity and caps large valid ranges', () => {
+    const authority = (operationId: string, canonicalStart: number) => getPhysicPaintRotoAuthority({
+      operationId,
+      projectContextId: '11111111-1111-4111-8111-111111111111',
+      layerId: 'layer-1',
+      canonicalStart,
+    });
+
+    sequenceStore.sequences.value = [];
+    expect(authority('missing-sequence', 4)).toMatchObject({ ok: false, capacity: 0 });
+
+    sequenceStore.add({ id: 'seq-no-boundary', kind: 'fx', name: 'FX', fps: 24, width: 100, height: 100, keyPhotos: [], layers: [layer()], inFrame: 0 });
+    expect(authority('missing-boundary', 4)).toMatchObject({ ok: false, capacity: 0 });
+
+    sequenceStore.sequences.value = [];
+    sequenceStore.add({ id: 'seq-boundary', kind: 'fx', name: 'FX', fps: 24, width: 100, height: 100, keyPhotos: [], layers: [layer()], inFrame: 0, outFrame: 10 });
+    expect(authority('at-boundary', 10)).toMatchObject({ ok: false, capacity: 0 });
+    expect(authority('beyond-boundary', 11)).toMatchObject({ ok: false, capacity: 0 });
+
+    sequenceStore.sequences.value = [];
+    sequenceStore.add({ id: 'seq-large', kind: 'fx', name: 'FX', fps: 24, width: 100, height: 100, keyPhotos: [], layers: [layer()], inFrame: 0, outFrame: PHYSIC_PAINT_MAX_APPLY_FRAMES + 100 });
+    expect(authority('large-valid-range', 4)).toMatchObject({ ok: true, capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES, layerEndExclusive: 4 + PHYSIC_PAINT_MAX_APPLY_FRAMES });
   });
 
   it('rejects stale project, generated display mutations, stale revisions, duplicate, incomplete, and over-capacity batches', () => {

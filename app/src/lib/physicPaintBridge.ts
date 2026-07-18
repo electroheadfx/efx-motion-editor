@@ -163,7 +163,9 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
   const layer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find((candidate) => candidate.id === request.layerId || (candidate.type === 'physic-paint' && candidate.source.type === 'physic-paint' && candidate.source.layerId === request.layerId));
   if (!layer || layer.type !== 'physic-paint') return failure('Physics Paint layer is unavailable.');
   if (!Number.isInteger(request.canonicalStart) || request.canonicalStart < 0) return failure('Canonical Roto start is invalid.');
-  const capacity = getTimelineRangeFrameCount(layer, request.canonicalStart) ?? PHYSIC_PAINT_MAX_APPLY_FRAMES;
+  const remainingCapacity = getTimelineRangeFrameCount(layer, request.canonicalStart);
+  if (remainingCapacity === null) return failure('No remaining Physics Paint sequence capacity is available.');
+  const capacity = Math.min(remainingCapacity, PHYSIC_PAINT_MAX_APPLY_FRAMES);
   const frames = physicPaintStore.getRotoCacheFrames(request.layerId).filter((frame) => frame.source === 'real-key');
   return {
     operationId: request.operationId,
@@ -586,8 +588,9 @@ function getTimelineRangeFrameCount(layer: Layer, frame: number): number | null 
     : sequence.kind === 'content'
       ? sequence.keyPhotos.reduce((total, photo) => total + Math.max(0, photo.holdFrames), 0)
       : null;
-  if (rangeEnd === null || rangeEnd <= frame) return null;
-  return Math.max(1, rangeEnd - Math.max(frame, rangeStart));
+  if (rangeEnd === null) return null;
+  const remaining = rangeEnd - Math.max(frame, rangeStart);
+  return remaining > 0 ? remaining : null;
 }
 
 function openBrowserFallback(context: PhysicPaintLaunchContext): Result<null> {
