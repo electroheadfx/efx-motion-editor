@@ -5,10 +5,10 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: ready_to_plan
-stopped_at: Quick 260717-9hw complete, native-approved, reviewed, and verified; Phase 36.14 UI-only integration ready to plan
-last_updated: "2026-07-17T09:50:50Z"
-last_activity: 2026-07-17
-last_activity_desc: Completed and verified Physics Paint right-sidebar and durable Scripts interaction polish
+stopped_at: Quick 260717-m9k complete, native-approved, deeply reviewed, and verified; Phase 36.14 UI-only integration ready to plan
+last_updated: "2026-07-18T07:30:00Z"
+last_activity: 2026-07-18
+last_activity_desc: Completed and verified Roto Play Script generation and obsolete Play workflow removal
 progress:
   total_phases: 17
   completed_phases: 16
@@ -31,9 +31,9 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 Phase: 36.14 — Physics Paint Roto Timeline UI Integration
 Previous phase: Pre-36.14 quick sequence complete
 Plan: Not yet created
-Status: Ready to plan; durable Roto Scripts and final right-sidebar interaction contracts are native-approved, reviewed, and independently verified
-Last activity: 2026-07-17 — Quick 260717-9hw closed with native approval, 865 passing app regressions, a clean deep review, and 6/6 verifier must-haves passed
-Next recommended action: Plan Phase 36.14 as the final UI-only v0.8.0 phase using the approved durable SCRIPTS and split right-sidebar contracts
+Status: Ready to plan; durable Roto Scripts, multi-frame Play Script generation, and final right-sidebar contracts are native-approved, deeply reviewed, and independently verified
+Last activity: 2026-07-18 — Quick 260717-m9k closed with native approval, 783 passing app regressions, 89 package regressions, 12 Rust tests, a clean definitive review, and 13/13 verifier must-haves passed
+Next recommended action: Plan Phase 36.14 as the final UI-only v0.8.0 phase using the approved durable SCRIPTS, Play Script generation, and split right-sidebar contracts
 
 Progress: [███████████████████░] 92/92 existing plans executed; 16/17 phases complete (94%)
 
@@ -143,6 +143,7 @@ None yet.
 - Quick 260715-kgf functional Roto Copy Script / Apply Script passed native UAT on 2026-07-16. The approved contract uses an immutable reusable clipboard until Copy/Discard/disposal, exact selected-frame targeting with distant spacing preservation, deterministic Roto Motion, per-brush Undo/Redo, and one final composite cache publication.
 - Quick 260716-dby durable project-scoped Roto script library passed native UAT A–M and independent verification on 2026-07-16. Autonomous UUID JSON presets, strict WebP thumbnails, parent/native filesystem authority, Save As lifecycle, explicit immutable Load, and the existing Apply path are locked by 47 mapped regressions. Phase 36.14 is unblocked.
 - Quick 260717-9hw right-sidebar and SCRIPTS polish passed native UAT, deep review, and 6/6 verification on 2026-07-17. The approved layout uses separate Brush color/Tool/LOG and Onion/Motion/Scripts panes with a 50/50 GripHorizontal split; durable row selection is transactional load-only, and Paintbrush performs token-bound authoritative Load + exactly one existing Apply with complete stale lifecycle protection.
+- Quick 260717-m9k merged the former Play Paint algorithm into durable Roto SCRIPTS and passed native UAT, definitive deep review, and 13/13 verification on 2026-07-18. Play Script accepts integer/Max duration, reloads the selected durable preset, stages deterministic progressive alpha, publishes one parent-authoritative real-key batch with background parity, preserves interpolation/source-display timing across reopen, and removes the obsolete dual Play workflow cleanly.
 
 ### Quick Tasks Completed
 
@@ -159,6 +160,7 @@ None yet.
 | 260715-kgf | Implement reusable Physics Paint Roto Copy Script / Apply Script | 2026-07-16 | 543780bf | [260715-kgf-implement-functional-physics-paint-roto-](./quick/260715-kgf-implement-functional-physics-paint-roto-/) |
 | 260716-dby | Implement durable project-scoped Physics Paint Roto script library | 2026-07-16 | f92366bb | [260716-dby-implement-durable-project-scoped-physics](./quick/260716-dby-implement-durable-project-scoped-physics/) |
 | 260717-9hw | Polish Physics Paint right sidebar tabs and Scripts interactions | 2026-07-17 | 96ee16df | [260717-9hw-polish-physics-paint-right-sidebar-tabs-](./quick/260717-9hw-polish-physics-paint-right-sidebar-tabs-/) |
+| 260717-m9k | Merge Physics Paint Play into Roto SCRIPTS and implement multi-frame Play Script | 2026-07-18 | cbe38e5a | [260717-m9k-merge-physics-paint-play-into-the-roto-s](./quick/260717-m9k-merge-physics-paint-play-into-the-roto-s/) |
 
 ### Roadmap Evolution
 
@@ -187,6 +189,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-17T09:50:50Z
-Stopped at: Quick 260717-9hw complete, native-approved, reviewed, and verified; Phase 36.14 ready to plan
-Resume file: Plan `.planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/` as the final UI-only v0.8.0 phase using the durable SCRIPTS and split right-sidebar contracts
+Last session: 2026-07-18T07:30:00Z
+Stopped at: Quick 260717-m9k complete, native-approved, deeply reviewed, and verified; Phase 36.14 ready to plan
+Resume file: Plan `.planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/` as the final UI-only v0.8.0 phase using durable SCRIPTS, multi-frame Play Script generation, and the split right-sidebar contracts
