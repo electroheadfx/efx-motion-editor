@@ -870,16 +870,110 @@ describe('physicPaintStore', () => {
   it('clears one layer and resets all output with version bumps', () => {
     physicPaintStore.setFrame('layer-1', 1, makeFrame(0, 1));
     physicPaintStore.setFrame('layer-2', 1, makeFrame(0, 1));
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
+    physicPaintStore.setRotoBackgroundMetadata('layer-2', { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
     const afterSet = physicPaintVersion.value;
 
     physicPaintStore.clearLayer('layer-1');
     expect(physicPaintStore.hasOutput('layer-1')).toBe(false);
+    expect(physicPaintStore.getRotoBackgroundMetadata('layer-1')).toBeNull();
     expect(physicPaintStore.hasOutput('layer-2')).toBe(true);
+    expect(physicPaintStore.getRotoBackgroundMetadata('layer-2')).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
     expect(physicPaintVersion.value).toBe(afterSet + 1);
 
     physicPaintStore.reset();
     expect(physicPaintStore.hasOutput('layer-2')).toBe(false);
+    expect(physicPaintStore.getRotoBackgroundMetadata('layer-2')).toBeNull();
     expect(physicPaintVersion.value).toBe(afterSet + 2);
+  });
+
+  it('clears and restores interpolation failure status with the layer snapshot', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, makeAlphaFrame(0, 1, 'failure-one'));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, makeAlphaFrame(0, 4, 'failure-four'));
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 });
+    const originalAtob = globalThis.atob;
+    vi.stubGlobal('atob', () => { throw new Error('decode failed'); });
+    try {
+      physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, makeAlphaFrame(0, 4, 'failure-four-updated'));
+    } finally {
+      vi.stubGlobal('atob', originalAtob);
+    }
+    expect(physicPaintStore.getRotoInterpolationFailureStatus('layer-1')).toBe('Generated in-betweens could not regenerate. Real keys were kept.');
+    const snapshot = physicPaintStore.snapshotLayer('layer-1');
+    expect(snapshot).not.toBeNull();
+
+    physicPaintStore.clearLayer('layer-1');
+    expect(physicPaintStore.getRotoInterpolationFailureStatus('layer-1')).toBeNull();
+
+    physicPaintStore.restoreLayer(snapshot!);
+    expect(physicPaintStore.getRotoInterpolationFailureStatus('layer-1')).toBe('Generated in-betweens could not regenerate. Real keys were kept.');
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([1, 4]);
+  });
+
+  it('restores complete layer state without replacing a shared alpha canvas', () => {
+    const originalDocument = globalThis.document;
+    const drawCalls: string[] = [];
+    const outputCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({
+        globalAlpha: 1,
+        clearRect: vi.fn(),
+        drawImage(source: { id: string }) {
+          drawCalls.push(source.id);
+        },
+      }),
+      toDataURL: () => 'data:image/png;base64,restored-alpha-blend',
+    } as unknown as HTMLCanvasElement;
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: {
+        createElement: (tagName: string) => {
+          if (tagName !== 'canvas') throw new Error(`Unexpected element ${tagName}`);
+          return outputCanvas;
+        },
+      },
+    });
+    const targetOnly = makeAlphaFrame(0, 0, 'target-only-alpha');
+    const shared = makeAlphaFrame(0, 2, 'shared-alpha');
+    const survivorOnly = makeAlphaFrame(0, 4, 'survivor-only-alpha');
+    registerRotoAlphaCanvasFrame(targetOnly.dataUrl, { id: 'target-original', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(shared.dataUrl, { id: 'shared-at-snapshot', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    physicPaintStore.upsertRealRotoKeyFrame('target-layer', 0, targetOnly);
+    physicPaintStore.upsertRealRotoKeyFrame('target-layer', 2, shared);
+    physicPaintStore.setRotoInterpolationSettings('target-layer', { enabled: true, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
+    physicPaintStore.setRotoBackgroundMetadata('target-layer', { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    const outputBefore = physicPaintStore.toMceOutputs().find(output => output.layer_id === 'target-layer');
+    const cacheBefore = physicPaintStore.getRotoCacheFrames('target-layer');
+    const snapshot = physicPaintStore.snapshotLayer('target-layer');
+    expect(snapshot).not.toBeNull();
+
+    physicPaintStore.upsertRealRotoKeyFrame('survivor-layer', 2, shared);
+    physicPaintStore.upsertRealRotoKeyFrame('survivor-layer', 4, survivorOnly);
+    registerRotoAlphaCanvasFrame(shared.dataUrl, { id: 'shared-current', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(survivorOnly.dataUrl, { id: 'survivor-current', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+
+    try {
+      physicPaintStore.clearLayer('target-layer');
+
+      expect(physicPaintStore.toMceOutputs().find(output => output.layer_id === 'target-layer')).toBeUndefined();
+      expect(physicPaintStore.getRotoCacheFrames('target-layer')).toEqual([]);
+      drawCalls.length = 0;
+      expect(renderBlendedRotoInterpolationFrame(shared, survivorOnly, 3, 0.5, { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 }).dataUrl).toBe('data:image/png;base64,restored-alpha-blend');
+      expect(drawCalls).toEqual(['shared-current', 'survivor-current']);
+
+      physicPaintStore.restoreLayer(snapshot!);
+
+      expect(physicPaintStore.toMceOutputs().find(output => output.layer_id === 'target-layer')).toEqual(outputBefore);
+      expect(physicPaintStore.getRotoCacheFrames('target-layer')).toEqual(cacheBefore);
+      expect(physicPaintStore.getRotoInterpolationSettings('target-layer')).toEqual({ enabled: true, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
+      expect(physicPaintStore.getRotoBackgroundMetadata('target-layer')).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+      drawCalls.length = 0;
+      expect(renderBlendedRotoInterpolationFrame(targetOnly, shared, 1, 0.5, { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 }).dataUrl).toBe('data:image/png;base64,restored-alpha-blend');
+      expect(drawCalls).toEqual(['target-original', 'shared-current']);
+    } finally {
+      Object.defineProperty(globalThis, 'document', { configurable: true, value: originalDocument });
+    }
   });
 
   it('preserves real Roto keys while toggling interpolation generated frames on and off', () => {

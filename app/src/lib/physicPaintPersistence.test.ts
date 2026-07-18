@@ -59,6 +59,18 @@ describe('physicPaintPersistence', () => {
     expect(files.has('/project/cache/physic-paint/physic_layer_1/frame-000012-0000.png')).toBe(true);
   });
 
+  it('removes the project Physics Paint cache when no outputs remain', async () => {
+    await savePhysicPaintData('/project', makeOutput());
+    expect(dirs.has('/project/cache/physic-paint')).toBe(true);
+    expect(Array.from(files.keys())).toContain('/project/cache/physic-paint/physic_layer_1/frame-000012-0000.png');
+
+    const persisted = await savePhysicPaintData('/project', []);
+
+    expect(persisted).toEqual([]);
+    expect(dirs.has('/project/cache/physic-paint')).toBe(false);
+    expect(Array.from(files.keys()).some(path => path.startsWith('/project/cache/physic-paint/'))).toBe(false);
+  });
+
   it('hydrates cached frames back to runtime data URLs', async () => {
     const persisted = await savePhysicPaintData('/project', makeOutput());
 

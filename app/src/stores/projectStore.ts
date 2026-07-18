@@ -81,7 +81,6 @@ function getActivePhysicPaintLayerIds(): Set<string> {
   for (const sequence of sequenceStore.sequences.value) {
     for (const layer of sequence.layers) {
       if (layer.type !== 'physic-paint' || layer.source.type !== 'physic-paint') continue;
-      ids.add(layer.id);
       ids.add(layer.source.layerId);
     }
   }

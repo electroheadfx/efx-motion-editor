@@ -20,6 +20,17 @@ type PhysicPaintMceOutput = {
 
 type PhysicPaintMceOutputInput = PhysicPaintMceOutput;
 
+export type PhysicPaintLayerSnapshot = {
+  layerId: string;
+  frames?: Array<[number, PhysicPaintRenderedFrame]>;
+  rotoBackground?: PhysicPaintRotoBackgroundMetadata;
+  rotoCacheMetadata?: Array<[number, PhysicPaintRotoCacheFrame]>;
+  rotoGeneratedCacheMetadata?: Array<[number, PhysicPaintRotoCacheFrame]>;
+  rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings;
+  rotoInterpolationFailureStatus?: string;
+  alphaCanvases: Array<[string, HTMLCanvasElement]>;
+};
+
 const DEFAULT_ROTO_INTERPOLATION_SETTINGS: PhysicPaintRotoInterpolationSettings = {
   enabled: false,
   inBetweenCount: 1,
@@ -45,6 +56,50 @@ const ROTO_INTERPOLATION_FAILURE_STATUS = 'Generated in-betweens could not regen
 let _serializationRevision = 0;
 let _cachedSerializationRevision = -1;
 let _cachedMceOutputs: PhysicPaintMceOutput[] = [];
+
+function _collectFrameDataUrls(frames: Iterable<PhysicPaintRenderedFrame>, target: Set<string>): void {
+  for (const frame of frames) {
+    target.add(frame.dataUrl);
+    const onionDataUrl = (frame as { onionDataUrl?: unknown }).onionDataUrl;
+    if (typeof onionDataUrl === 'string') target.add(onionDataUrl);
+  }
+}
+
+function _getLayerDataUrls(layerId: string): Set<string> {
+  const dataUrls = new Set<string>();
+  _collectFrameDataUrls(_frames.get(layerId)?.values() ?? [], dataUrls);
+  _collectFrameDataUrls(_rotoCacheMetadata.get(layerId)?.values() ?? [], dataUrls);
+  _collectFrameDataUrls(_rotoGeneratedCacheMetadata.get(layerId)?.values() ?? [], dataUrls);
+  return dataUrls;
+}
+
+function _isDataUrlReferenced(dataUrl: string): boolean {
+  const referencesDataUrl = (frames: Iterable<PhysicPaintRenderedFrame>): boolean => {
+    for (const frame of frames) {
+      if (frame.dataUrl === dataUrl || (frame as { onionDataUrl?: unknown }).onionDataUrl === dataUrl) return true;
+    }
+    return false;
+  };
+  for (const layerFrames of _frames.values()) if (referencesDataUrl(layerFrames.values())) return true;
+  for (const metadata of _rotoCacheMetadata.values()) if (referencesDataUrl(metadata.values())) return true;
+  for (const metadata of _rotoGeneratedCacheMetadata.values()) if (referencesDataUrl(metadata.values())) return true;
+  return false;
+}
+
+function _clearLayerState(layerId: string): boolean {
+  const dataUrls = _getLayerDataUrls(layerId);
+  let changed = false;
+  changed = _frames.delete(layerId) || changed;
+  changed = _rotoBackgroundMetadata.delete(layerId) || changed;
+  changed = _rotoCacheMetadata.delete(layerId) || changed;
+  changed = _rotoGeneratedCacheMetadata.delete(layerId) || changed;
+  changed = _rotoInterpolationSettings.delete(layerId) || changed;
+  changed = _rotoInterpolationFailureStatus.delete(layerId) || changed;
+  for (const dataUrl of dataUrls) {
+    if (!_isDataUrlReferenced(dataUrl)) changed = _rotoAlphaCanvasRegistry.delete(dataUrl) || changed;
+  }
+  return changed;
+}
 
 function _invalidateSerializationCache(): void {
   _serializationRevision++;
@@ -794,23 +849,58 @@ export const physicPaintStore = {
     };
   },
 
+  snapshotLayer(layerId: string): PhysicPaintLayerSnapshot | null {
+    const frames = _frames.get(layerId);
+    const rotoBackground = _rotoBackgroundMetadata.get(layerId);
+    const rotoCacheMetadata = _rotoCacheMetadata.get(layerId);
+    const rotoGeneratedCacheMetadata = _rotoGeneratedCacheMetadata.get(layerId);
+    const rotoInterpolationSettings = _rotoInterpolationSettings.get(layerId);
+    const rotoInterpolationFailureStatus = _rotoInterpolationFailureStatus.get(layerId);
+    const alphaCanvases: Array<[string, HTMLCanvasElement]> = [];
+    for (const dataUrl of _getLayerDataUrls(layerId)) {
+      const canvas = _rotoAlphaCanvasRegistry.get(dataUrl);
+      if (canvas) alphaCanvases.push([dataUrl, canvas]);
+    }
+    if (!frames && !rotoBackground && !rotoCacheMetadata && !rotoGeneratedCacheMetadata && !rotoInterpolationSettings && !rotoInterpolationFailureStatus && alphaCanvases.length === 0) return null;
+    return {
+      layerId,
+      ...(frames ? { frames: Array.from(frames, ([frame, value]) => [frame, { ...value }]) } : {}),
+      ...(rotoBackground ? { rotoBackground: { ...rotoBackground } } : {}),
+      ...(rotoCacheMetadata ? { rotoCacheMetadata: Array.from(rotoCacheMetadata, ([frame, value]) => [frame, { ...value }]) } : {}),
+      ...(rotoGeneratedCacheMetadata ? { rotoGeneratedCacheMetadata: Array.from(rotoGeneratedCacheMetadata, ([frame, value]) => [frame, { ...value }]) } : {}),
+      ...(rotoInterpolationSettings ? { rotoInterpolationSettings: _cloneRotoInterpolationSettings(rotoInterpolationSettings) } : {}),
+      ...(rotoInterpolationFailureStatus ? { rotoInterpolationFailureStatus } : {}),
+      alphaCanvases,
+    };
+  },
+
+  restoreLayer(snapshot: PhysicPaintLayerSnapshot): void {
+    const { layerId } = snapshot;
+    _clearLayerState(layerId);
+    if (snapshot.frames) _frames.set(layerId, new Map(snapshot.frames.map(([frame, value]) => [frame, { ...value }])));
+    if (snapshot.rotoBackground) _rotoBackgroundMetadata.set(layerId, { ...snapshot.rotoBackground });
+    if (snapshot.rotoCacheMetadata) _rotoCacheMetadata.set(layerId, new Map(snapshot.rotoCacheMetadata.map(([frame, value]) => [frame, { ...value }])));
+    if (snapshot.rotoGeneratedCacheMetadata) _rotoGeneratedCacheMetadata.set(layerId, new Map(snapshot.rotoGeneratedCacheMetadata.map(([frame, value]) => [frame, { ...value }])));
+    if (snapshot.rotoInterpolationSettings) _rotoInterpolationSettings.set(layerId, _cloneRotoInterpolationSettings(snapshot.rotoInterpolationSettings));
+    if (snapshot.rotoInterpolationFailureStatus) _rotoInterpolationFailureStatus.set(layerId, snapshot.rotoInterpolationFailureStatus);
+    for (const [dataUrl, canvas] of snapshot.alphaCanvases) {
+      if (!_rotoAlphaCanvasRegistry.has(dataUrl)) _rotoAlphaCanvasRegistry.set(dataUrl, canvas);
+    }
+    _notifyVisualChange();
+  },
+
   hasOutput(layerId: string): boolean {
     return (_frames.get(layerId)?.size ?? 0) > 0;
   },
 
   clearLayer(layerId: string): void {
-    if (!_frames.has(layerId) && !_rotoBackgroundMetadata.has(layerId) && !_rotoCacheMetadata.has(layerId) && !_rotoGeneratedCacheMetadata.has(layerId) && !_rotoInterpolationSettings.has(layerId)) return;
-    _frames.delete(layerId);
-    _rotoBackgroundMetadata.delete(layerId);
-    _rotoCacheMetadata.delete(layerId);
-    _rotoGeneratedCacheMetadata.delete(layerId);
-    _rotoInterpolationSettings.delete(layerId);
-    _notifyVisualChange();
+    if (_clearLayerState(layerId)) _notifyVisualChange();
   },
 
   reset(): void {
-    if (_frames.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoAlphaCanvasRegistry.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && _rotoAlphaCanvasRegistry.size === 0) return;
     _frames.clear();
+    _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
     _rotoGeneratedCacheMetadata.clear();
     _rotoInterpolationSettings.clear();

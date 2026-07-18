@@ -119,6 +119,13 @@ describe('projectStore audio persistence', () => {
         width: 100,
         height: 50,
       });
+      physicPaintStore.setFrame('active-layer', 1, {
+        frameIndex: 0,
+        appFrame: 1,
+        dataUrl: 'data:image/png;base64,AwQF',
+        width: 100,
+        height: 50,
+      });
       physicPaintStore.setFrame('deleted-cache', 1, {
         frameIndex: 0,
         appFrame: 1,

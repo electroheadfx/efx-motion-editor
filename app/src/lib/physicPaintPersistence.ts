@@ -51,12 +51,15 @@ async function ensureDir(path: string): Promise<void> {
 }
 
 export async function savePhysicPaintData(projectDir: string, outputs: RuntimePhysicPaintOutput[] | undefined): Promise<McePhysicPaintOutput[]> {
-  if (!outputs || outputs.length === 0) return [];
+  const rootDir = `${projectDir}/${PHYSIC_PAINT_CACHE_DIR}`;
+  if (!outputs || outputs.length === 0) {
+    if (await exists(rootDir)) await remove(rootDir, { recursive: true });
+    return [];
+  }
 
   const cached = savedOutputCache.get(outputs);
   if (cached?.projectDir === projectDir) return cached.persisted;
 
-  const rootDir = `${projectDir}/${PHYSIC_PAINT_CACHE_DIR}`;
   if (await exists(rootDir)) {
     await remove(rootDir, { recursive: true });
   }

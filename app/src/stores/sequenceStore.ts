@@ -4,6 +4,7 @@ import type {Layer} from '../types/layer';
 import {createBaseLayer} from '../types/layer';
 import {pushAction} from '../lib/history';
 import {isolationStore} from './isolationStore';
+import {physicPaintStore, type PhysicPaintLayerSnapshot} from './physicPaintStore';
 
 const sequences = signal<Sequence[]>([]);
 const activeSequenceId = signal<string | null>(null);
@@ -42,6 +43,45 @@ function restore(snap: {seqs: Sequence[]; active: string | null}) {
     activeSequenceId.value = snap.active;
   });
   markDirty();
+}
+
+type PhysicPaintDeletionState = {
+  layerIds: string[];
+  snapshots: Map<string, PhysicPaintLayerSnapshot>;
+};
+
+function getCanonicalPhysicPaintLayerIds(layers: readonly Layer[]): string[] {
+  const layerIds = new Set<string>();
+  for (const layer of layers) {
+    if (layer.type === 'physic-paint' && layer.source.type === 'physic-paint') layerIds.add(layer.source.layerId);
+  }
+  return Array.from(layerIds);
+}
+
+function capturePhysicPaintDeletionState(layers: readonly Layer[]): PhysicPaintDeletionState {
+  const layerIds = getCanonicalPhysicPaintLayerIds(layers);
+  const snapshots = new Map<string, PhysicPaintLayerSnapshot>();
+  for (const layerId of layerIds) {
+    const layerSnapshot = physicPaintStore.snapshotLayer(layerId);
+    if (layerSnapshot) snapshots.set(layerId, layerSnapshot);
+  }
+  return { layerIds, snapshots };
+}
+
+function getOrphanedPhysicPaintLayerIds(layerIds: readonly string[]): string[] {
+  const activeLayerIds = new Set(getCanonicalPhysicPaintLayerIds(sequences.peek().flatMap((sequence) => sequence.layers)));
+  return layerIds.filter((layerId) => !activeLayerIds.has(layerId));
+}
+
+function clearPhysicPaintLayers(layerIds: readonly string[]): void {
+  for (const layerId of layerIds) physicPaintStore.clearLayer(layerId);
+}
+
+function restorePhysicPaintLayers(state: PhysicPaintDeletionState, layerIds: readonly string[]): void {
+  for (const layerId of layerIds) {
+    const layerSnapshot = state.snapshots.get(layerId);
+    if (layerSnapshot) physicPaintStore.restoreLayer(layerSnapshot);
+  }
 }
 
 export const sequenceStore = {
@@ -88,6 +128,8 @@ export const sequenceStore = {
 
   /** Remove a sequence by ID */
   remove(id: string) {
+    const targetSequence = sequences.peek().find((sequence) => sequence.id === id);
+    const physicPaintDeletion = capturePhysicPaintDeletionState(targetSequence?.layers ?? []);
     const before = snapshot();
 
     sequences.value = sequences.value.filter((s) => s.id !== id);
@@ -96,6 +138,8 @@ export const sequenceStore = {
     if (activeSequenceId.value === id) {
       activeSequenceId.value = sequences.value[0]?.id ?? null;
     }
+    const orphanedPhysicPaintLayerIds = getOrphanedPhysicPaintLayerIds(physicPaintDeletion.layerIds);
+    clearPhysicPaintLayers(orphanedPhysicPaintLayerIds);
     markDirty();
 
     const after = snapshot();
@@ -103,8 +147,14 @@ export const sequenceStore = {
       id: crypto.randomUUID(),
       description: 'Delete sequence',
       timestamp: Date.now(),
-      undo: () => restore(before),
-      redo: () => restore(after),
+      undo: () => {
+        restore(before);
+        restorePhysicPaintLayers(physicPaintDeletion, orphanedPhysicPaintLayerIds);
+      },
+      redo: () => {
+        restore(after);
+        clearPhysicPaintLayers(orphanedPhysicPaintLayerIds);
+      },
     });
   },
 
@@ -666,6 +716,8 @@ export const sequenceStore = {
     const activeId = activeSequenceId.peek();
     if (!activeId) return;
 
+    const targetLayer = sequences.peek().find((sequence) => sequence.id === activeId)?.layers.find((layer) => layer.id === layerId);
+    const physicPaintDeletion = capturePhysicPaintDeletionState(targetLayer ? [targetLayer] : []);
     const before = snapshot();
 
     sequences.value = sequences.value.map((s) =>
@@ -673,6 +725,8 @@ export const sequenceStore = {
         ? {...s, layers: s.layers.filter((l) => l.id !== layerId)}
         : s,
     );
+    const orphanedPhysicPaintLayerIds = getOrphanedPhysicPaintLayerIds(physicPaintDeletion.layerIds);
+    clearPhysicPaintLayers(orphanedPhysicPaintLayerIds);
     markDirty();
 
     const after = snapshot();
@@ -680,8 +734,14 @@ export const sequenceStore = {
       id: crypto.randomUUID(),
       description: 'Remove layer',
       timestamp: Date.now(),
-      undo: () => restore(before),
-      redo: () => restore(after),
+      undo: () => {
+        restore(before);
+        restorePhysicPaintLayers(physicPaintDeletion, orphanedPhysicPaintLayerIds);
+      },
+      redo: () => {
+        restore(after);
+        clearPhysicPaintLayers(orphanedPhysicPaintLayerIds);
+      },
     });
   },
 
@@ -801,6 +861,7 @@ export const sequenceStore = {
     const targetLayer = ownerSeq.layers.find(l => l.id === layerId);
     if (targetLayer?.isBase) return;
 
+    const physicPaintDeletion = capturePhysicPaintDeletionState(targetLayer ? [targetLayer] : []);
     const before = snapshot();
 
     const remainingLayers = ownerSeq.layers.filter(l => l.id !== layerId);
@@ -817,6 +878,8 @@ export const sequenceStore = {
           : s,
       );
     }
+    const orphanedPhysicPaintLayerIds = getOrphanedPhysicPaintLayerIds(physicPaintDeletion.layerIds);
+    clearPhysicPaintLayers(orphanedPhysicPaintLayerIds);
     markDirty();
 
     const after = snapshot();
@@ -824,8 +887,14 @@ export const sequenceStore = {
       id: crypto.randomUUID(),
       description: 'Remove layer',
       timestamp: Date.now(),
-      undo: () => restore(before),
-      redo: () => restore(after),
+      undo: () => {
+        restore(before);
+        restorePhysicPaintLayers(physicPaintDeletion, orphanedPhysicPaintLayerIds);
+      },
+      redo: () => {
+        restore(after);
+        clearPhysicPaintLayers(orphanedPhysicPaintLayerIds);
+      },
     });
   },
 
