@@ -15,6 +15,13 @@ function getWorkflowStripPropsInterface(code: string): string {
 }
 
 describe('PhysicsPaintWorkflowStrip source contract', () => {
+  it('renders an optional supplied workflow label with a non-ordinal fallback', () => {
+    const code = source();
+    expect(getWorkflowStripPropsInterface(code)).toContain('workflowLabel?: string');
+    expect(code).toContain("{props.workflowLabel ?? 'PPaint'}");
+    expect(code).not.toContain('PPaint #1');
+  });
+
   it('keeps the Roto-only timeline and removes separate Play save controls', () => {
     const code = source();
     expect(code).toContain('physics-paint-roto-cell');

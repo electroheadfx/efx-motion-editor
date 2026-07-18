@@ -134,6 +134,19 @@ describe('physicPaintBridge', () => {
     expect(context.operationId).toMatch(/^physic-paint-/);
   });
 
+  it('propagates the presentation workflow label without replacing the persisted layer name', () => {
+    const context = createPhysicPaintLaunchContext(
+      physicLayer({ name: 'Water smoke' }),
+      12,
+      null,
+      null,
+      'PPaint #2',
+    );
+
+    expect(context.workflowLabel).toBe('PPaint #2');
+    expect(context.layerName).toBe('Water smoke');
+  });
+
   it('hydrates every cached Roto frame summary into launch context', () => {
     physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 8, makeFrame(0, 8));
     physicPaintStore.replaceGeneratedRotoCache('phys-layer-1', [{
@@ -236,17 +249,27 @@ describe('physicPaintBridge', () => {
     const focus = vi.fn();
     const open = vi.spyOn(window, 'open').mockReturnValue({ focus } as unknown as Window);
 
-    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 4, canvas: { width: 1280, height: 720 } });
+    const result = await openPhysicPaintCanvas({
+      layer: physicLayer({ name: 'Water smoke' }),
+      frame: 4,
+      canvas: { width: 1280, height: 720 },
+      workflowLabel: ' PPaint #3 ',
+    });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.layerId).toBe('phys-layer-1');
+      expect(result.data.layerName).toBe('Water smoke');
+      expect(result.data.workflowLabel).toBe('PPaint #3');
       expect(result.data.startFrame).toBe(4);
     }
     expect(open).toHaveBeenCalledTimes(1);
     const url = String(open.mock.calls[0][0]);
     expect(url).toContain('/physics-paint');
     expect(url).toContain('context=');
+    const parsed = new URL(url, 'http://localhost:1420');
+    const context = JSON.parse(decodeURIComponent(parsed.searchParams.get('context') ?? ''));
+    expect(context).toMatchObject({ layerName: 'Water smoke', workflowLabel: 'PPaint #3' });
     expect(focus).toHaveBeenCalled();
     open.mockRestore();
   });

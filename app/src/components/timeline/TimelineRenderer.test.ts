@@ -20,17 +20,23 @@ const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'TimelineRen
 const source = () => readFileSync(sourcePath, 'utf8');
 
 describe('TimelineRenderer play script marker geometry', () => {
-  it('labels the physics paint bar and each Play script marker independently', async () => {
+  it('uses the derived FX header label with sequence-name fallback and matching reorder ghost', async () => {
     const { getTimelineFxHeaderLabel, getTimelinePlayScriptLabel } = await import('./TimelineRenderer');
 
     expect(getTimelineFxHeaderLabel({
       layerType: 'physic-paint',
       sequenceName: 'Physic Paint',
-    })).toBe('PPaint #1');
+      headerLabel: 'PPaint #2',
+    })).toBe('PPaint #2');
+    expect(getTimelineFxHeaderLabel({
+      layerType: 'physic-paint',
+      sequenceName: 'Physic Paint',
+    })).toBe('Physic Paint');
     expect(getTimelineFxHeaderLabel({
       layerType: 'paint',
       sequenceName: 'Paint',
     })).toBe('Paint');
+    expect(source()).toContain('getTimelineFxHeaderLabel(ghostTrack)');
     expect(getTimelinePlayScriptLabel(0)).toBe('Play #2');
     expect(getTimelinePlayScriptLabel(1)).toBe('Play #3');
   });

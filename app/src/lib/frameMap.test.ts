@@ -1,6 +1,6 @@
 import {describe, it, expect, beforeEach} from 'vitest';
 import {sequenceStore} from '../stores/sequenceStore';
-import {defaultTransform} from '../types/layer';
+import {defaultTransform, type Layer} from '../types/layer';
 import {frameMap, fxTrackLayouts} from './frameMap';
 import {physicPaintStore} from '../stores/physicPaintStore';
 import type {Sequence} from '../types/sequence';
@@ -18,6 +18,21 @@ function makeSequence(overrides: Partial<Sequence> & { keyPhotos: any[] }): Sequ
     layers: [],
     ...overrides,
   } as Sequence;
+}
+
+function makeFxSequence(id: string, name: string, layer: Layer): Sequence {
+  return {
+    id,
+    name,
+    kind: 'fx',
+    fps: 24,
+    width: 1920,
+    height: 1080,
+    keyPhotos: [],
+    layers: [layer],
+    inFrame: 0,
+    outFrame: 24,
+  };
 }
 
 describe('frameMap solid/transparent entries', () => {
@@ -126,5 +141,69 @@ describe('frameMap solid/transparent entries', () => {
     expect(entries.slice(0, 3).map((entry) => entry.imageId)).toEqual(['circle', 'square', 'crossed']);
     expect(entries.slice(3).every((entry) => entry.imageId === 'crossed')).toBe(true);
     expect(fxTrackLayouts.value[0]).toEqual(expect.objectContaining({ sequenceId: 'fx-roto', inFrame: 0, outFrame: 9 }));
+  });
+
+  it('renumbers only Physics Paint FX tracks after mixed-order reorder and deletion without changing sequence names', () => {
+    const physicLayer = (id: string): Layer => ({
+      id,
+      name: 'Physic Paint',
+      type: 'physic-paint',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'physic-paint', layerId: id },
+    });
+    const grainLayer: Layer = {
+      id: 'grain-layer',
+      name: 'Film Grain',
+      type: 'generator-grain',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'generator-grain', density: 0.3, size: 1, intensity: 0.5, lockSeed: true, seed: 42 },
+    };
+    const paintLayer: Layer = {
+      id: 'paint-layer',
+      name: 'Paint',
+      type: 'paint',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'paint', layerId: 'paint-layer' },
+    };
+    const physicsA = makeFxSequence('physics-a', 'Persisted Physics A', physicLayer('physics-layer-a'));
+    const grain = makeFxSequence('grain', 'Film Grain Sequence', grainLayer);
+    const physicsB = makeFxSequence('physics-b', 'Persisted Physics B', physicLayer('physics-layer-b'));
+    const paint = makeFxSequence('paint', 'Paint Sequence', paintLayer);
+    const physicsC = makeFxSequence('physics-c', 'Persisted Physics C', physicLayer('physics-layer-c'));
+
+    sequenceStore.sequences.value = [physicsA, grain, physicsB, paint, physicsC];
+    expect(fxTrackLayouts.value.map(({ sequenceId, sequenceName, headerLabel }) => ({ sequenceId, sequenceName, headerLabel }))).toEqual([
+      { sequenceId: 'physics-a', sequenceName: 'Persisted Physics A', headerLabel: 'PPaint #1' },
+      { sequenceId: 'grain', sequenceName: 'Film Grain Sequence', headerLabel: 'Film Grain Sequence' },
+      { sequenceId: 'physics-b', sequenceName: 'Persisted Physics B', headerLabel: 'PPaint #2' },
+      { sequenceId: 'paint', sequenceName: 'Paint Sequence', headerLabel: 'Paint Sequence' },
+      { sequenceId: 'physics-c', sequenceName: 'Persisted Physics C', headerLabel: 'PPaint #3' },
+    ]);
+
+    sequenceStore.sequences.value = [physicsC, grain, physicsA, paint, physicsB];
+    expect(fxTrackLayouts.value.map(({ sequenceId, sequenceName, headerLabel }) => ({ sequenceId, sequenceName, headerLabel }))).toEqual([
+      { sequenceId: 'physics-c', sequenceName: 'Persisted Physics C', headerLabel: 'PPaint #1' },
+      { sequenceId: 'grain', sequenceName: 'Film Grain Sequence', headerLabel: 'Film Grain Sequence' },
+      { sequenceId: 'physics-a', sequenceName: 'Persisted Physics A', headerLabel: 'PPaint #2' },
+      { sequenceId: 'paint', sequenceName: 'Paint Sequence', headerLabel: 'Paint Sequence' },
+      { sequenceId: 'physics-b', sequenceName: 'Persisted Physics B', headerLabel: 'PPaint #3' },
+    ]);
+
+    sequenceStore.sequences.value = [physicsC, grain, paint, physicsB];
+    expect(fxTrackLayouts.value.map(({ sequenceId, sequenceName, headerLabel }) => ({ sequenceId, sequenceName, headerLabel }))).toEqual([
+      { sequenceId: 'physics-c', sequenceName: 'Persisted Physics C', headerLabel: 'PPaint #1' },
+      { sequenceId: 'grain', sequenceName: 'Film Grain Sequence', headerLabel: 'Film Grain Sequence' },
+      { sequenceId: 'paint', sequenceName: 'Paint Sequence', headerLabel: 'Paint Sequence' },
+      { sequenceId: 'physics-b', sequenceName: 'Persisted Physics B', headerLabel: 'PPaint #2' },
+    ]);
   });
 });

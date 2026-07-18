@@ -13,12 +13,13 @@ describe('PhysicPaintProperties source contract', () => {
     expect(source).not.toContain('activePlayRange');
   });
 
-  it('passes current frame and project canvas size to the Roto bridge', () => {
+  it('passes the current frame, project canvas size, and derived workflow label to the Roto bridge', () => {
     const handler = source.slice(source.indexOf('const handleOpenCanvas'), source.indexOf('const deleteCurrentRotoFrame'));
-    expect(handler).toContain('const currentFrame = timelineStore.currentFrame.value');
+    expect(handler).toContain('const currentFrame = timelineStore.currentFrame.peek()');
     expect(handler).toContain('frame: currentFrame');
-    expect(handler).toContain('width: projectStore.width.value');
-    expect(handler).toContain('height: projectStore.height.value');
+    expect(handler).toContain('width: projectStore.width.peek()');
+    expect(handler).toContain('height: projectStore.height.peek()');
+    expect(handler).toContain('workflowLabel: fxLayout?.headerLabel');
     expect(handler).not.toContain('requestedWorkflowMode');
   });
 

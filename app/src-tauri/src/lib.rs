@@ -568,6 +568,7 @@ mod tests {
             layer_id: "layer-1".into(),
             project: None,
             layer_name: Some("Layer".into()),
+            workflow_label: Some("PPaint #2 / Selected".into()),
             start_frame: 12,
             width: Some(1000),
             height: Some(650),
@@ -584,6 +585,7 @@ mod tests {
         assert!(url.starts_with("/physics-paint?operationId="));
         assert!(url.contains("layerId=layer%2D1"));
         assert!(url.contains("startFrame=12"));
+        assert!(url.contains("workflowLabel=PPaint%20%232%20%2F%20Selected"));
         assert!(!url.contains("cachedRotoFrames"));
         assert!(!url.contains("data:image"));
     }
@@ -592,6 +594,7 @@ mod tests {
     fn physics_paint_launch_context_is_cloneable_for_fetch_after_mount() {
         let cloned = roto_launch_context().clone();
         assert_eq!(cloned.start_frame, 12);
+        assert_eq!(cloned.workflow_label.as_deref(), Some("PPaint #2 / Selected"));
         assert_eq!(cloned.roto_background.as_ref().unwrap()["background"], "canvas2");
     }
 }
