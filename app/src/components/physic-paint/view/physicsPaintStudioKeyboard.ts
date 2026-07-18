@@ -14,6 +14,7 @@ export interface PhysicsPaintStudioKeyboardActions {
   toggleShortcuts: () => void;
   undo: () => void;
   redo: () => void;
+  deleteRotoKey?: () => void;
 }
 
 export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
@@ -22,6 +23,35 @@ export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolea
   if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return false;
   if (target.isContentEditable) return false;
   return !Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+}
+
+function isPhysicsPaintRotoDeleteTarget(target: EventTarget | null): boolean {
+  if (!isPhysicsPaintShortcutTarget(target)) return false;
+  if (!(target instanceof Element)) return true;
+  if (target.ownerDocument.querySelector('[role="dialog"], [aria-modal="true"]')) return false;
+  if (target.closest('.physics-paint-roto-cell.current')) return true;
+  return !Boolean(target.closest([
+    'button',
+    'a[href]',
+    'area[href]',
+    '[role="button"]',
+    '[role="checkbox"]',
+    '[role="combobox"]',
+    '[role="link"]',
+    '[role="listbox"]',
+    '[role="menuitem"]',
+    '[role="menuitemcheckbox"]',
+    '[role="menuitemradio"]',
+    '[role="option"]',
+    '[role="radio"]',
+    '[role="searchbox"]',
+    '[role="slider"]',
+    '[role="spinbutton"]',
+    '[role="switch"]',
+    '[role="tab"]',
+    '[role="textbox"]',
+    '[role="treeitem"]',
+  ].join(', ')));
 }
 
 export function dispatchPhysicsPaintStudioKeyDown(
@@ -55,6 +85,19 @@ export function dispatchPhysicsPaintStudioKeyDown(
   if (event.key === '?' || (event.shiftKey && event.key === '/')) {
     event.preventDefault();
     actions.toggleShortcuts();
+    return;
+  }
+  if (
+    (event.key === 'Backspace' || event.key === 'Delete')
+    && !event.repeat
+    && !event.metaKey
+    && !event.ctrlKey
+    && !event.altKey
+    && !event.shiftKey
+  ) {
+    if (!actions.deleteRotoKey || !isPhysicsPaintRotoDeleteTarget(event.target)) return;
+    event.preventDefault();
+    actions.deleteRotoKey();
     return;
   }
 

@@ -457,6 +457,7 @@ export function PhysicsPaintStudio() {
     actions: {
       undo,
       redo,
+      deleteRotoKey: rotoKeyUtilities.deleteKey,
       toggleShortcuts: () => setShortcutsVisible((visible) => !visible),
       toggleRotoPlayback: rotoCachedPlayback.toggle,
       navigateRotoFrame: (frame) => { void requestRotoFrameNavigation(frame); },
