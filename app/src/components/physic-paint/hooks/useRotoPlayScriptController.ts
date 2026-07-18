@@ -9,7 +9,13 @@ export function useRotoPlayScriptController(ports: Omit<RotoPlayScriptController
   const portsRef = useRef(ports); portsRef.current = ports;
   const modeRef = useRef(bridgeMode); modeRef.current = bridgeMode;
   const availabilityRevision = useRef(signal(0));
-  availabilityRevision.current.value += 1;
+  const nextAvailabilitySnapshot = readAvailabilitySnapshot(ports);
+  const availabilitySnapshot = useRef(nextAvailabilitySnapshot);
+  useEffect(() => {
+    if (sameAvailabilitySnapshot(availabilitySnapshot.current, nextAvailabilitySnapshot)) return;
+    availabilitySnapshot.current = nextAvailabilitySnapshot;
+    availabilityRevision.current.value += 1;
+  }, [nextAvailabilitySnapshot.operationLocked, nextAvailabilitySnapshot.projectSaved, nextAvailabilitySnapshot.selectionKind, nextAvailabilitySnapshot.sourceFrame, nextAvailabilitySnapshot.displayFrame]);
   const authorityPending = useRef(new Map<string, (result: PhysicPaintRotoAuthorityResult) => void>());
   const commitPending = useRef(new Map<string, (result: PhysicPaintApplyResult) => void>());
   usePhysicsPaintRotoAuthorityResultBridge((result) => { authorityPending.current.get(result.operationId)?.(result); authorityPending.current.delete(result.operationId); });
@@ -46,6 +52,26 @@ export function useRotoPlayScriptController(ports: Omit<RotoPlayScriptController
     authorityPending.current.clear(); commitPending.current.clear();
   }, []);
   return controllerRef.current;
+}
+
+function readAvailabilitySnapshot(ports: Pick<RotoPlayScriptControllerPorts, 'getLaunchContext' | 'getSelection' | 'getOperationLocked'>) {
+  const context = ports.getLaunchContext();
+  const selection = ports.getSelection();
+  return {
+    operationLocked: ports.getOperationLocked(),
+    projectSaved: context?.project?.saved ?? false,
+    selectionKind: selection.kind,
+    sourceFrame: selection.sourceFrame,
+    displayFrame: selection.displayFrame,
+  };
+}
+
+function sameAvailabilitySnapshot(left: ReturnType<typeof readAvailabilitySnapshot>, right: ReturnType<typeof readAvailabilitySnapshot>): boolean {
+  return left.operationLocked === right.operationLocked
+    && left.projectSaved === right.projectSaved
+    && left.selectionKind === right.selectionKind
+    && left.sourceFrame === right.sourceFrame
+    && left.displayFrame === right.displayFrame;
 }
 
 function requestWithTimeout<T>(pending: Map<string, (result: T) => void>, operationId: string, send: () => Promise<void>, fallback: T): Promise<T> {

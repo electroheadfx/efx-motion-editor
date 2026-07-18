@@ -7,7 +7,7 @@ const hookState = vi.hoisted(() => ({ refs: [] as Array<{ current: unknown }>, c
 const captured = vi.hoisted(() => ({ ports: null as RotoPlayScriptControllerPorts | null }));
 
 vi.mock('preact/hooks', () => ({
-  useEffect: vi.fn(),
+  useEffect: vi.fn((effect: () => void | (() => void)) => { effect(); }),
   useRef: <T,>(initial: T) => {
     const index = hookState.cursor++;
     if (!hookState.refs[index]) hookState.refs[index] = { current: initial };
@@ -88,6 +88,10 @@ describe('useRotoPlayScriptController', () => {
 
     expect(controller.disabledReason.value).toBeNull();
     expect(stablePorts.getSelection()).toMatchObject({ kind: 'real-key', sourceFrame: 4 });
+    const initialAvailabilityRevision = stablePorts.availabilityRevision?.value;
+
+    expect(renderHook(ports(1, firstMirror))).toBe(controller);
+    expect(stablePorts.availabilityRevision?.value).toBe(initialAvailabilityRevision);
 
     const rerendered = renderHook(ports(2, secondMirror));
 

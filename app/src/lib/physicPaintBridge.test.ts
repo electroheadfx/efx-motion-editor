@@ -48,7 +48,7 @@ const makeFrame = (frameIndex: number, appFrame: number) => ({
 function applyCanvasPayload(overrides: Partial<PhysicPaintApplyPayload> = {}): PhysicPaintApplyPayload {
   return {
     kind: 'apply-canvas',
-    operationId: 'apply-still-1',
+    operationId: `apply-still-${crypto.randomUUID()}`,
     layerId: 'phys-layer-1',
     startFrame: 8,
     renderedFrame: makeFrame(0, 8),
@@ -352,7 +352,7 @@ describe('physicPaintBridge', () => {
   it('applies a still payload at the start frame and returns operation-matched success', () => {
     mockLayers([physicLayer()]);
 
-    const result = applyPhysicPaintPayload(applyCanvasPayload());
+    const result = applyPhysicPaintPayload(applyCanvasPayload({ operationId: 'apply-still-1' }));
 
     expect(result).toMatchObject({
       ok: true,
@@ -613,11 +613,11 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.getFrame('hydrated-phys-layer', 12)?.dataUrl).toContain('data:image/png');
 
     mockLayers([hydratedLayer as Layer]);
-    const result = applyPhysicPaintPayload(applyCanvasPayload({ layerId: 'hydrated-phys-layer' }));
+    const result = applyPhysicPaintPayload(applyCanvasPayload({ operationId: 'apply-still-hydrated', layerId: 'hydrated-phys-layer' }));
 
     expect(result.ok).toBe(true);
     expect(result).toMatchObject({
-      operationId: 'apply-still-1',
+      operationId: 'apply-still-hydrated',
       layerId: 'hydrated-phys-layer',
       appliedFrameCount: 1,
     });
