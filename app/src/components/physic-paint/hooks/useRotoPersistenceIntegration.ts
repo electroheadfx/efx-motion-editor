@@ -11,6 +11,12 @@ import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBrid
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type PreviewBackgroundEngine = EfxPaintEngine & { resetBackground: () => void };
 
+export function clearRotoEngineCanvas(engine: PreviewBackgroundEngine): void {
+  engine.clearPreviewBaseImage();
+  engine.resetBackground();
+  engine.clear();
+}
+
 interface RotoNavigationIntegrationPort {
   playback: { stop: () => void };
   configurePersistencePort: (port: {
@@ -128,9 +134,7 @@ export function useRotoPersistenceIntegration(input: UseRotoPersistenceIntegrati
     const refreshedFrame = refreshedCacheFrames?.find((frame) => (frame.displayFrame ?? frame.appFrame) === restore.frame) ?? null;
     if ((restore.kind === 'load-real-key' || restore.kind === 'blank-real-key') && input.engine) input.reference.loadFrame(restore.frame, input.engine as PreviewBackgroundEngine, refreshedFrame);
     else if (restore.kind === 'clear-blank' && input.engine) {
-      input.engine.clearPreviewBaseImage();
-      (input.engine as PreviewBackgroundEngine).resetBackground();
-      input.engine.clear();
+      clearRotoEngineCanvas(input.engine as PreviewBackgroundEngine);
     }
   }, [input]);
 
@@ -140,9 +144,7 @@ export function useRotoPersistenceIntegration(input: UseRotoPersistenceIntegrati
     clearCanvas: (frame) => {
       input.reference.setUrl(null);
       if (input.engine && frame === input.frame.current) {
-        input.engine.clearPreviewBaseImage();
-        (input.engine as PreviewBackgroundEngine).resetBackground();
-        input.engine.clear();
+        clearRotoEngineCanvas(input.engine as PreviewBackgroundEngine);
       }
     },
     navigate: navigateToSyncedFrame,

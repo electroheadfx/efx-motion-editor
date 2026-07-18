@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const studio = readFileSync(fileURLToPath(new URL('./PhysicsPaintStudio.tsx', import.meta.url)), 'utf8');
+const studioView = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintStudioView.tsx', import.meta.url)), 'utf8');
 const main = readFileSync(fileURLToPath(new URL('../../main.tsx', import.meta.url)), 'utf8');
 const scriptsPanel = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintScriptsPanel.tsx', import.meta.url)), 'utf8');
 const bridge = readFileSync(fileURLToPath(new URL('../../lib/physicPaintBridge.ts', import.meta.url)), 'utf8');
@@ -53,5 +54,17 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(types).toContain("kind: 'replace-roto-key-frames'");
     expect(studio).toContain('rotoPlayScript');
     expect(studio).toContain('rotoCachedPlayback');
+  });
+});
+
+describe('Physics Paint Roto delete shortcut wiring', () => {
+  it('shares the exact key utility delete reference with keyboard and visible-button paths', () => {
+    expect(studio).toContain('const deleteRotoFrame = rotoKeyUtilities.deleteKey;');
+    expect(studio).toContain('deleteRotoKey: rotoKeyUtilities.deleteKey,');
+    expect(studio).toContain('onDeleteRotoFrame: deleteRotoFrame');
+  });
+
+  it('advertises the approved Backspace and Delete shortcut copy', () => {
+    expect(studioView).toContain('Backspace / Delete remove selected real key');
   });
 });

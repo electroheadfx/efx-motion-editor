@@ -469,6 +469,41 @@ describe('physicsPaintRotoKeyController transaction coherence', () => {
     ]));
   });
 
+  it('keeps delete unavailable for an empty selection and every in-flight persistence state', () => {
+    const empty = deriveRotoKeyUtilityActionState({
+      currentFrame: 5,
+      realKeyFrameNumbers: [2],
+      hasCopiedRotoKey: false,
+    });
+
+    expect(empty).toMatchObject({
+      canDelete: false,
+      currentIsRealKey: false,
+      busy: false,
+      disabledReason: 'Select a real Roto key to use key tools.',
+    });
+
+    for (const busyState of [
+      { keyActionInFlight: true },
+      { applyStatus: 'applying' as const },
+      { flushInFlight: true },
+    ]) {
+      const state = deriveRotoKeyUtilityActionState({
+        currentFrame: 5,
+        realKeyFrameNumbers: [5],
+        hasCopiedRotoKey: false,
+        ...busyState,
+      });
+
+      expect(state).toMatchObject({
+        canDelete: false,
+        currentIsRealKey: true,
+        busy: true,
+        disabledReason: 'Finish saving frame 5 before using key tools.',
+      });
+    }
+  });
+
   it('36.8-REG-01/36.8-REG-02/36.8-REG-03/36.8-REG-04/36.8-REG-05/36.8-REG-06/36.8-REG-07 keeps Phase 36.8 source contracts searchable in focused gates', () => {
     const controller = controllerSource();
 
