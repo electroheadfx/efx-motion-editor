@@ -2607,15 +2607,14 @@ describe('Phase 36.3 durable Roto cache core', () => {
     const hydratedOutputs = await loadPhysicPaintData(projectPath, persistedOutputs);
     physicPaintStore.reset();
     physicPaintStore.loadFromMceOutputs(hydratedOutputs!);
-    const reopenedOverrides = targetFrame === 12 ? [{ fromSourceFrame: 3, toSourceFrame: 12, inBetweenCount: 9 }] : expectedOverrides;
-    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1').segmentSpacingOverrides ?? []).toEqual(reopenedOverrides);
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1').segmentSpacingOverrides ?? []).toEqual(expectedOverrides);
     const reopenContext = createPhysicPaintLaunchContext(physicLayer(), targetFrame, null, null);
     const reopenedOn = selectRotoTimelineView({
       cachedRotoFrames: reopenContext.cachedRotoFrames ?? [],
       currentFrame: targetFrame,
       interpolationSettings: { ...reopenContext.rotoInterpolationSettings!, enabled: true },
     });
-    expect(reopenedOn.projection.realKeys.map((key) => key.displayFrame)).toEqual(targetFrame === 12 ? [0, 3, 6, 9, 19] : [0, 3, 6, 9, targetFrame]);
+    expect(reopenedOn.projection.realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9, targetFrame]);
     const reopenedOff = selectRotoTimelineView({
       cachedRotoFrames: reopenContext.cachedRotoFrames ?? [],
       currentFrame: targetFrame,
