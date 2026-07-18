@@ -130,8 +130,20 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
         if (payload.frameCount <= 0 || payload.frameCount > authority.capacity) return failureResult(payload, 'Play Script exceeds the current layer capacity.');
         const incomingSources = payload.frames.map((frame) => frame.sourceFrame ?? frame.appFrame);
         if (new Set(incomingSources).size !== incomingSources.length) return failureResult(payload, 'Play Script batch contains duplicate real keys.');
-        for (let index = 0; index < payload.frameCount; index += 1) {
-          if (!incomingSources.includes(payload.startFrame + index)) return failureResult(payload, 'Play Script batch is incomplete.');
+        const affectedSources = new Set(Array.from({ length: payload.frameCount }, (_, index) => payload.startFrame + index));
+        const incomingBySource = new Map(payload.frames.map((frame) => [frame.sourceFrame ?? frame.appFrame, frame]));
+        for (const source of affectedSources) {
+          if (!incomingBySource.has(source)) return failureResult(payload, 'Play Script batch is incomplete.');
+        }
+        for (const existing of authority.frames) {
+          const source = existing.sourceFrame ?? existing.appFrame;
+          if (affectedSources.has(source)) continue;
+          const candidate = incomingBySource.get(source);
+          if (!candidate || !sameDurableRealKey(candidate, existing)) return failureResult(payload, 'Play Script batch changed or omitted an unrelated real key.');
+        }
+        const existingSources = new Set(authority.frames.map((frame) => frame.sourceFrame ?? frame.appFrame));
+        for (const source of incomingSources) {
+          if (!affectedSources.has(source) && !existingSources.has(source)) return failureResult(payload, 'Play Script batch contains an unexpected out-of-range real key.');
         }
       }
       result = physicPaintStore.replaceRotoKeyFrames(payload);
@@ -179,6 +191,23 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     frames,
     interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId),
   };
+}
+
+function sameDurableRealKey(left: PhysicPaintRotoAuthorityResult['frames'][number], right: PhysicPaintRotoAuthorityResult['frames'][number]): boolean {
+  return (left.sourceFrame ?? left.appFrame) === (right.sourceFrame ?? right.appFrame)
+    && left.appFrame === right.appFrame
+    && left.frameIndex === right.frameIndex
+    && left.dataUrl === right.dataUrl
+    && left.width === right.width
+    && left.height === right.height
+    && left.source === right.source
+    && left.nearestRealKeyFrame === right.nearestRealKeyFrame
+    && left.displayFrame === right.displayFrame
+    && left.fromSourceFrame === right.fromSourceFrame
+    && left.toSourceFrame === right.toSourceFrame
+    && left.interpolationT === right.interpolationT
+    && left.backgroundOnly === right.backgroundOnly
+    && left.onionDataUrl === right.onionDataUrl;
 }
 
 function buildRotoRevision(frames: readonly { sourceFrame?: number; appFrame: number; dataUrl: string }[]): string {

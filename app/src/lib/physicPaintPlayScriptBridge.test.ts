@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultTransform, type Layer } from '../types/layer';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, type PhysicPaintRotoCacheFrame } from '../types/physicPaint';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
 import { projectStore } from '../stores/projectStore';
@@ -14,6 +14,7 @@ import {
 } from './physicPaintBridge';
 
 const frame = (sourceFrame: number, dataUrl = `data:image/png;base64,${sourceFrame}`) => ({ frameIndex: 0, appFrame: sourceFrame, sourceFrame, dataUrl, source: 'real-key' as const, width: 10, height: 10 });
+const currentFrame = (sourceFrame: number, dataUrl?: string) => ({ ...frame(sourceFrame, dataUrl), ...physicPaintStore.getRotoFrame('layer-1', sourceFrame) });
 const layer = (): Layer => ({ id: 'layer-1', name: 'Physics Paint', type: 'physic-paint', visible: true, opacity: 1, blendMode: 'normal', transform: defaultTransform(), source: { type: 'physic-paint', layerId: 'layer-1' } });
 
 function installProject() {
@@ -29,7 +30,7 @@ function batch(overrides: Record<string, unknown> = {}) {
   return {
     kind: 'replace-roto-key-frames' as const, operationId: `commit-${crypto.randomUUID()}`, projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', startFrame: 4,
     frameCount: 2, expectedLayerEndExclusive: 10, expectedRotoRevision: getPhysicPaintRotoAuthority({ operationId: 'revision', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4 }).rotoRevision,
-    frames: [frame(1, 'data:image/png;base64,untouched'), frame(4, 'data:image/png;base64,new-4'), frame(5, 'data:image/png;base64,new-5')],
+    frames: [currentFrame(1, 'data:image/png;base64,untouched'), frame(4, 'data:image/png;base64,new-4'), frame(5, 'data:image/png;base64,new-5')],
     rotoBackground: { background: 'canvas2' as const, paperGrain: 'canvas3', grainStrength: 0.65 },
     rotoInterpolationSettings: { enabled: true, inBetweenCount: 1, mode: 'duplicate' as const, deform: 0, position: 0 },
     ...overrides,
@@ -89,6 +90,25 @@ describe('Play Script parent authority and complete-set bridge', () => {
     expect(applyPhysicPaintPayload(batch({ frames: [frame(1), frame(4), frame(4)] }))).toMatchObject({ ok: false, error: 'Play Script batch contains duplicate real keys.' });
     expect(applyPhysicPaintPayload(batch({ frames: [frame(1), frame(4)] }))).toMatchObject({ ok: false, error: 'Play Script batch is incomplete.' });
     expect(applyPhysicPaintPayload(batch({ frameCount: 7 }))).toMatchObject({ ok: false, error: 'Play Script exceeds the current layer capacity.' });
+  });
+
+  it('rejects omission, modification, and injection outside the affected destination range', () => {
+    const farKey: PhysicPaintRotoCacheFrame = {
+      ...frame(20, 'data:image/png;base64,far-key'),
+      backgroundOnly: true,
+      onionDataUrl: 'data:image/png;base64,onion',
+    };
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 20, farKey);
+    const authority = getPhysicPaintRotoAuthority({ operationId: 'complete-set', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4 });
+    const untouchedFarKey = authority.frames.find((candidate) => candidate.sourceFrame === 20)!;
+    const base = { expectedRotoRevision: authority.rotoRevision, frames: [authority.frames[0], frame(4, 'data:image/png;base64,new-4'), frame(5, 'data:image/png;base64,new-5'), untouchedFarKey] };
+
+    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.filter((candidate) => candidate.sourceFrame !== 20) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
+    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.map((candidate) => candidate.sourceFrame === 20 ? { ...candidate, dataUrl: 'data:image/png;base64,changed' } : candidate) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
+    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.map((candidate) => candidate.sourceFrame === 20 ? { ...candidate, onionDataUrl: 'data:image/png;base64,changed-onion' } : candidate) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
+    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.map((candidate) => candidate.sourceFrame === 20 ? { ...candidate, sourceFrame: 21, appFrame: 21 } : candidate) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
+    expect(applyPhysicPaintPayload(batch({ ...base, frames: [...base.frames, frame(30, 'data:image/png;base64,injected')] }))).toMatchObject({ ok: false, error: 'Play Script batch contains an unexpected out-of-range real key.' });
+    expect(applyPhysicPaintPayload(batch(base))).toMatchObject({ ok: true, appliedFrameCount: 4 });
   });
 
   it('replaces the whole real-key set, retains untouched keys, regenerates once, and persists background', () => {
