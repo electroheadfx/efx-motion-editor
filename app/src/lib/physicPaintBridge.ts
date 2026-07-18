@@ -97,7 +97,9 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
   const mutationDisplayFrame = payload.kind === 'apply-canvas'
     ? payload.displayFrame ?? payload.startFrame
     : payload.startFrame;
-  const generatedGuard = payload.kind === 'update-roto-interpolation-settings' ? null : getGeneratedRotoMutationGuard(payload.layerId, mutationDisplayFrame);
+  const generatedGuard = payload.kind === 'update-roto-interpolation-settings' || payload.kind === 'replace-roto-key-frames'
+    ? null
+    : getGeneratedRotoDisplayMutationGuard(payload.layerId, mutationDisplayFrame);
   if (generatedGuard) {
     return failureResult(payload, generatedGuard);
   }
@@ -161,7 +163,6 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
   const layer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find((candidate) => candidate.id === request.layerId || (candidate.type === 'physic-paint' && candidate.source.type === 'physic-paint' && candidate.source.layerId === request.layerId));
   if (!layer || layer.type !== 'physic-paint') return failure('Physics Paint layer is unavailable.');
   if (!Number.isInteger(request.canonicalStart) || request.canonicalStart < 0) return failure('Canonical Roto start is invalid.');
-  if (getGeneratedRotoMutationGuard(request.layerId, request.canonicalStart)) return failure('Select a real Roto key to generate a Play Script.');
   const capacity = getTimelineRangeFrameCount(layer, request.canonicalStart) ?? PHYSIC_PAINT_MAX_APPLY_FRAMES;
   const frames = physicPaintStore.getRotoCacheFrames(request.layerId).filter((frame) => frame.source === 'real-key');
   return {
@@ -472,10 +473,10 @@ function getGeneratedRotoRenderOnlyStatus(frame: number): string {
   return GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE.replace('{frame}', String(frame));
 }
 
-function getGeneratedRotoMutationGuard(layerId: string, startFrame: number): string | null {
-  const target = physicPaintStore.getRotoCacheFrames(layerId).find((candidate) => candidate.appFrame === startFrame);
+function getGeneratedRotoDisplayMutationGuard(layerId: string, displayFrame: number): string | null {
+  const target = physicPaintStore.getRotoCacheFrames(layerId).find((candidate) => candidate.appFrame === displayFrame);
   if (target?.source !== 'generated-interpolation') return null;
-  return getGeneratedRotoRenderOnlyStatus(startFrame);
+  return getGeneratedRotoRenderOnlyStatus(displayFrame);
 }
 
 export function createPhysicPaintLaunchContext(

@@ -46,10 +46,19 @@ describe('Play Script parent authority and complete-set bridge', () => {
     expect(result.frames).toEqual([expect.objectContaining({ sourceFrame: 1, source: 'real-key' })]);
   });
 
-  it('rejects stale project, generated starts, stale revisions, duplicate, incomplete, and over-capacity batches', () => {
+  it('authorizes canonical source ownership when the same numbered display frame is generated', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 0, frame(0));
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 });
+
+    expect(physicPaintStore.getRotoFrame('layer-1', 1)).toMatchObject({ appFrame: 1, source: 'generated-interpolation' });
+    expect(physicPaintStore.getRotoFrame('layer-1', 3)).toMatchObject({ appFrame: 3, sourceFrame: 1, source: 'real-key' });
+    expect(getPhysicPaintRotoAuthority({ operationId: 'canonical-source-1', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 1 })).toMatchObject({ ok: true, canonicalStart: 1 });
+  });
+
+  it('rejects stale project, generated display mutations, stale revisions, duplicate, incomplete, and over-capacity batches', () => {
     expect(getPhysicPaintRotoAuthority({ operationId: 'wrong-project', projectContextId: 'other', layerId: 'layer-1', canonicalStart: 4 }).ok).toBe(false);
     physicPaintStore.replaceGeneratedRotoCache('layer-1', [{ ...frame(4), source: 'generated-interpolation', nearestRealKeyFrame: 1 }]);
-    expect(getPhysicPaintRotoAuthority({ operationId: 'generated', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4 }).ok).toBe(false);
+    expect(applyPhysicPaintPayload({ kind: 'delete-roto-frame', operationId: 'generated-display-delete', layerId: 'layer-1', startFrame: 4 })).toMatchObject({ ok: false });
     physicPaintStore.replaceGeneratedRotoCache('layer-1', []);
     expect(applyPhysicPaintPayload(batch({ expectedRotoRevision: 'stale' }))).toMatchObject({ ok: false });
     expect(applyPhysicPaintPayload(batch({ frames: [frame(1), frame(4), frame(4)] }))).toMatchObject({ ok: false, error: 'Play Script batch contains duplicate real keys.' });
