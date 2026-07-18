@@ -5,10 +5,10 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: ready_to_plan
-stopped_at: Quick 260718-fp9 complete, native-approved, and regression-covered; Phase 36.14 UI-only integration ready to plan
-last_updated: "2026-07-18T10:18:16Z"
+stopped_at: Quick 260718-j3h complete, native-approved, and regression-covered; Phase 36.14 UI-only integration ready to plan
+last_updated: "2026-07-18T13:43:20Z"
 last_activity: 2026-07-18
-last_activity_desc: Completed dynamic Physics Paint track labels and standalone identity
+last_activity_desc: Completed Physics Paint Roto Backspace/Delete shortcuts and clear-blank canvas refresh
 progress:
   total_phases: 17
   completed_phases: 16
@@ -31,9 +31,9 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 Phase: 36.14 — Physics Paint Roto Timeline UI Integration
 Previous phase: Pre-36.14 quick sequence complete
 Plan: Not yet created
-Status: Ready to plan; durable Roto Scripts, multi-frame Play Script generation, final right-sidebar contracts, and dynamic Physics Paint track identity are native-approved and regression-covered
-Last activity: 2026-07-18 — Quick 260718-fp9 closed with approved dynamic `PPaint #n` timeline ordering, matching standalone identity, 787 passing app regressions, and passing TypeScript/Rust gates
-Next recommended action: Plan Phase 36.14 as the final UI-only v0.8.0 phase using the approved durable SCRIPTS, Play Script generation, split right-sidebar contracts, and dynamic Physics Paint labels
+Status: Ready to plan; durable Roto Scripts, multi-frame Play Script generation, final right-sidebar contracts, dynamic Physics Paint track identity, and Roto key deletion shortcuts are native-approved and regression-covered
+Last activity: 2026-07-18 — Quick 260718-j3h closed with approved Backspace/Delete real-key deletion, immediate clear-blank canvas refresh, 101 focused regressions, and passing typecheck/build gates
+Next recommended action: Plan Phase 36.14 as the final UI-only v0.8.0 phase using the approved durable SCRIPTS, Play Script generation, split right-sidebar contracts, dynamic Physics Paint labels, and finalized Roto keyboard interactions
 
 Progress: [███████████████████░] 92/92 existing plans executed; 16/17 phases complete (94%)
 
@@ -145,6 +145,7 @@ None yet.
 - Quick 260717-9hw right-sidebar and SCRIPTS polish passed native UAT, deep review, and 6/6 verification on 2026-07-17. The approved layout uses separate Brush color/Tool/LOG and Onion/Motion/Scripts panes with a 50/50 GripHorizontal split; durable row selection is transactional load-only, and Paintbrush performs token-bound authoritative Load + exactly one existing Apply with complete stale lifecycle protection.
 - Quick 260717-m9k merged the former Play Paint algorithm into durable Roto SCRIPTS and passed native UAT, definitive deep review, and 13/13 verification on 2026-07-18. Play Script accepts integer/Max duration, reloads the selected durable preset, stages deterministic progressive alpha, publishes one parent-authoritative real-key batch with background parity, preserves interpolation/source-display timing across reopen, and removes the obsolete dual Play workflow cleanly.
 - Quick 260718-fp9 dynamic Physics Paint labels passed renewed native UAT on 2026-07-18. Timeline headers derive consecutive `PPaint #n` labels from current top-to-bottom Physics Paint order, reorder/delete renumber immediately, and the standalone receives the selected track label without changing persisted names or Roto script provenance.
+- Quick 260718-j3h Physics Paint Roto Backspace/Delete shortcuts passed native UAT on 2026-07-18. Both keys reuse the visible Delete transaction, preserve real/generated/empty/busy guards and existing shortcuts, and clear the preview base before blank-canvas restoration so deleted paint refreshes immediately.
 
 ### Quick Tasks Completed
 
@@ -163,6 +164,7 @@ None yet.
 | 260717-9hw | Polish Physics Paint right sidebar tabs and Scripts interactions | 2026-07-17 | 96ee16df | [260717-9hw-polish-physics-paint-right-sidebar-tabs-](./quick/260717-9hw-polish-physics-paint-right-sidebar-tabs-/) |
 | 260717-m9k | Merge Physics Paint Play into Roto SCRIPTS and implement multi-frame Play Script | 2026-07-18 | cbe38e5a | [260717-m9k-merge-physics-paint-play-into-the-roto-s](./quick/260717-m9k-merge-physics-paint-play-into-the-roto-s/) |
 | 260718-fp9 | Derive dynamic Physics Paint track labels and standalone identity | 2026-07-18 | b1ad99c4 | [260718-fp9-rename-the-visible-physics-paint-standal](./quick/260718-fp9-rename-the-visible-physics-paint-standal/) |
+| 260718-j3h | Add Backspace/Delete shortcuts for selected real Physics Paint Roto keys | 2026-07-18 | f9a4cede | [260718-j3h-add-backspace-and-delete-keyboard-shortc](./quick/260718-j3h-add-backspace-and-delete-keyboard-shortc/) |
 
 ### Roadmap Evolution
 
@@ -191,6 +193,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-18T10:18:16Z
-Stopped at: Quick 260718-fp9 complete, native-approved, and regression-covered; Phase 36.14 ready to plan
-Resume file: Plan `.planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/` as the final UI-only v0.8.0 phase using durable SCRIPTS, multi-frame Play Script generation, split right-sidebar contracts, and dynamic Physics Paint labels
+Last session: 2026-07-18T13:43:20Z
+Stopped at: Quick 260718-j3h complete, native-approved, and regression-covered; Phase 36.14 ready to plan
+Resume file: Plan `.planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/` as the final UI-only v0.8.0 phase using durable SCRIPTS, multi-frame Play Script generation, split right-sidebar contracts, dynamic Physics Paint labels, and finalized Roto keyboard interactions
