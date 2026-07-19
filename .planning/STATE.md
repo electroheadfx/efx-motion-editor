@@ -5,10 +5,10 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: ready_to_plan
-stopped_at: Quick 260718-j3h complete, native-approved, and regression-covered; Phase 36.14 UI-only integration ready to plan
-last_updated: "2026-07-18T13:43:20Z"
-last_activity: 2026-07-18
-last_activity_desc: Completed Physics Paint Roto Backspace/Delete shortcuts and clear-blank canvas refresh
+stopped_at: Quick 260718-m2f complete, native-approved, and verified; next quick reviews interpolation architecture and deterministic coverage
+last_updated: "2026-07-19T09:37:37Z"
+last_activity: 2026-07-19
+last_activity_desc: Completed single-key Physics Paint Roto drag movement with canonical timing and authoritative preview feedback
 progress:
   total_phases: 17
   completed_phases: 16
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.14 final UI-only timeline integration using the approved durable Roto script library
+**Current focus:** Review Physics Paint Roto interpolation architecture and add deterministic move-timing coverage before Phase 36.14
 
 ## Current Position
 
 Phase: 36.14 — Physics Paint Roto Timeline UI Integration
 Previous phase: Pre-36.14 quick sequence complete
 Plan: Not yet created
-Status: Ready to plan; durable Roto Scripts, multi-frame Play Script generation, final right-sidebar contracts, dynamic Physics Paint track identity, and Roto key deletion shortcuts are native-approved and regression-covered
-Last activity: 2026-07-18 — Quick 260718-j3h closed with approved Backspace/Delete real-key deletion, immediate clear-blank canvas refresh, 101 focused regressions, and passing typecheck/build gates
-Next recommended action: Plan Phase 36.14 as the final UI-only v0.8.0 phase using the approved durable SCRIPTS, Play Script generation, split right-sidebar contracts, dynamic Physics Paint labels, and finalized Roto keyboard interactions
+Status: Single-key Roto drag is native-approved and verified; interpolation architecture review and deterministic coverage are intentionally assigned to the next quick
+Last activity: 2026-07-19 — Quick 260718-m2f closed with canonical single-key drag movement, generated/empty destination resolution, rebuilt adjacent timing, authoritative preview feedback, and 7/7 verification
+Next recommended action: Run a full quick to review the existing interpolation architecture and add deterministic coverage for closer/farther/generated/minimum-spacing movement before planning Phase 36.14
 
 Progress: [███████████████████░] 92/92 existing plans executed; 16/17 phases complete (94%)
 
@@ -120,6 +120,8 @@ Recent decisions affecting current work:
 - [Phase 36.9]: Cached Roto playback sequences only real cached Roto key frames from launch context, excluding current/occupied/saved/background fallback frames that caused empty trailing frames.
 - [Phase 36.11]: Cached real-key repaint uses the cached alpha as a non-editable engine preview base and merges new live alpha additively on save; preview base stays out of export/cache serialization.
 - [Superseded by quick 260714-ail] Phase 36.11 same-session post-Save navigation is replaced by immediate automatic live-pixel commits through the same cached-frame source.
+- [Quick 260718-m2f]: Single-key Roto drag uses one non-ripple canonical move transaction; generated/empty cells are valid requested destinations when Studio's resolver finds a legal effective frame, occupied real keys remain invalid, and move-specific timing rebuilds only affected adjacent spans.
+- [Quick 260718-m2f]: Drag preview validity is Studio-authoritative and shares requested/effective destination semantics with commit; the existing interpolation-number control remains unchanged pending the next dedicated interpolation review.
 
 ### Pending Todos
 
@@ -146,25 +148,27 @@ None yet.
 - Quick 260717-m9k merged the former Play Paint algorithm into durable Roto SCRIPTS and passed native UAT, definitive deep review, and 13/13 verification on 2026-07-18. Play Script accepts integer/Max duration, reloads the selected durable preset, stages deterministic progressive alpha, publishes one parent-authoritative real-key batch with background parity, preserves interpolation/source-display timing across reopen, and removes the obsolete dual Play workflow cleanly.
 - Quick 260718-fp9 dynamic Physics Paint labels passed renewed native UAT on 2026-07-18. Timeline headers derive consecutive `PPaint #n` labels from current top-to-bottom Physics Paint order, reorder/delete renumber immediately, and the standalone receives the selected track label without changing persisted names or Roto script provenance.
 - Quick 260718-j3h Physics Paint Roto Backspace/Delete shortcuts passed native UAT on 2026-07-18. Both keys reuse the visible Delete transaction, preserve real/generated/empty/busy guards and existing shortcuts, and clear the preview base before blank-canvas restoration so deleted paint refreshes immediately.
+- Quick 260718-m2f single-real-key Roto drag passed native UAT and 7/7 verification on 2026-07-19. Pointer capture, atomic publication/rollback, local Undo/Redo, canonical closer/farther/generated timing, effective destination feedback, persistence, and payload metadata preservation are approved. Regression tests remain intentionally deferred to the next interpolation-review quick.
 
 ### Quick Tasks Completed
 
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260614-ujc | Phase 36.1 script play canvas update options | 2026-06-14 | 34fd228 | [260614-ujc-phase-36-1-i-would-like-to-be-able-with-](./quick/260614-ujc-phase-36-1-i-would-like-to-be-able-with-/) |
-| 260615-c4t | solidify phase 36.1 | 2026-06-15 | 29969ee | [260615-c4t-solidify-phase-36-1-fix-the-version-numb](./quick/260615-c4t-solidify-phase-36-1-fix-the-version-numb/) |
-| 260615-dpz | Phase 36.1 consolidation naming fix | 2026-06-15 | 410ac50 | [260615-dpz-phase-36-1-consolidation-image-9-there-i](./quick/260615-dpz-phase-36-1-consolidation-image-9-there-i/) |
-| 260615-iui | Phase 36.1 Consolidation play canvas brush cache fix | 2026-06-15 | be8f6e8 | [260615-iui-phase-36-1-consolidation-when-i-add-brus](./quick/260615-iui-phase-36-1-consolidation-when-i-add-brus/) |
-| 260626-dja | Set up Vitest coverage for app tests and run the coverage report | 2026-06-26 | 966c76ec | [260626-dja-set-up-vitest-coverage-for-app-tests-and](./quick/260626-dja-set-up-vitest-coverage-for-app-tests-and/) |
-| 260714-9es | Fix Clear current Roto frame cache reset | 2026-07-14 | 82ebc620 | [260714-9es-fix-the-clear-current-roto-frame-button-](./quick/260714-9es-fix-the-clear-current-roto-frame-button-/) |
-| 260714-ail | Replace manual Roto save with automatic live pixel caching | 2026-07-14 | f5ad4212 | [260714-ail-replace-manual-save-on-leave-rendering-w](./quick/260714-ail-replace-manual-save-on-leave-rendering-w/) |
-| 260715-j3q | Add exact 10-level Physics Paint per-brush Undo/Redo | 2026-07-15 | cf0a336f | [260715-j3q-add-exact-10-level-physics-paint-per-bru](./quick/260715-j3q-add-exact-10-level-physics-paint-per-bru/) |
-| 260715-kgf | Implement reusable Physics Paint Roto Copy Script / Apply Script | 2026-07-16 | 543780bf | [260715-kgf-implement-functional-physics-paint-roto-](./quick/260715-kgf-implement-functional-physics-paint-roto-/) |
-| 260716-dby | Implement durable project-scoped Physics Paint Roto script library | 2026-07-16 | f92366bb | [260716-dby-implement-durable-project-scoped-physics](./quick/260716-dby-implement-durable-project-scoped-physics/) |
-| 260717-9hw | Polish Physics Paint right sidebar tabs and Scripts interactions | 2026-07-17 | 96ee16df | [260717-9hw-polish-physics-paint-right-sidebar-tabs-](./quick/260717-9hw-polish-physics-paint-right-sidebar-tabs-/) |
-| 260717-m9k | Merge Physics Paint Play into Roto SCRIPTS and implement multi-frame Play Script | 2026-07-18 | cbe38e5a | [260717-m9k-merge-physics-paint-play-into-the-roto-s](./quick/260717-m9k-merge-physics-paint-play-into-the-roto-s/) |
-| 260718-fp9 | Derive dynamic Physics Paint track labels and standalone identity | 2026-07-18 | b1ad99c4 | [260718-fp9-rename-the-visible-physics-paint-standal](./quick/260718-fp9-rename-the-visible-physics-paint-standal/) |
-| 260718-j3h | Add Backspace/Delete shortcuts for selected real Physics Paint Roto keys | 2026-07-18 | f9a4cede | [260718-j3h-add-backspace-and-delete-keyboard-shortc](./quick/260718-j3h-add-backspace-and-delete-keyboard-shortc/) |
+| # | Description | Date | Commit | Status | Directory |
+|---|-------------|------|--------|--------|-----------|
+| 260614-ujc | Phase 36.1 script play canvas update options | 2026-06-14 | 34fd228 |  | [260614-ujc-phase-36-1-i-would-like-to-be-able-with-](./quick/260614-ujc-phase-36-1-i-would-like-to-be-able-with-/) |
+| 260615-c4t | solidify phase 36.1 | 2026-06-15 | 29969ee |  | [260615-c4t-solidify-phase-36-1-fix-the-version-numb](./quick/260615-c4t-solidify-phase-36-1-fix-the-version-numb/) |
+| 260615-dpz | Phase 36.1 consolidation naming fix | 2026-06-15 | 410ac50 |  | [260615-dpz-phase-36-1-consolidation-image-9-there-i](./quick/260615-dpz-phase-36-1-consolidation-image-9-there-i/) |
+| 260615-iui | Phase 36.1 Consolidation play canvas brush cache fix | 2026-06-15 | be8f6e8 |  | [260615-iui-phase-36-1-consolidation-when-i-add-brus](./quick/260615-iui-phase-36-1-consolidation-when-i-add-brus/) |
+| 260626-dja | Set up Vitest coverage for app tests and run the coverage report | 2026-06-26 | 966c76ec |  | [260626-dja-set-up-vitest-coverage-for-app-tests-and](./quick/260626-dja-set-up-vitest-coverage-for-app-tests-and/) |
+| 260714-9es | Fix Clear current Roto frame cache reset | 2026-07-14 | 82ebc620 |  | [260714-9es-fix-the-clear-current-roto-frame-button-](./quick/260714-9es-fix-the-clear-current-roto-frame-button-/) |
+| 260714-ail | Replace manual Roto save with automatic live pixel caching | 2026-07-14 | f5ad4212 |  | [260714-ail-replace-manual-save-on-leave-rendering-w](./quick/260714-ail-replace-manual-save-on-leave-rendering-w/) |
+| 260715-j3q | Add exact 10-level Physics Paint per-brush Undo/Redo | 2026-07-15 | cf0a336f |  | [260715-j3q-add-exact-10-level-physics-paint-per-bru](./quick/260715-j3q-add-exact-10-level-physics-paint-per-bru/) |
+| 260715-kgf | Implement reusable Physics Paint Roto Copy Script / Apply Script | 2026-07-16 | 543780bf |  | [260715-kgf-implement-functional-physics-paint-roto-](./quick/260715-kgf-implement-functional-physics-paint-roto-/) |
+| 260716-dby | Implement durable project-scoped Physics Paint Roto script library | 2026-07-16 | f92366bb |  | [260716-dby-implement-durable-project-scoped-physics](./quick/260716-dby-implement-durable-project-scoped-physics/) |
+| 260717-9hw | Polish Physics Paint right sidebar tabs and Scripts interactions | 2026-07-17 | 96ee16df |  | [260717-9hw-polish-physics-paint-right-sidebar-tabs-](./quick/260717-9hw-polish-physics-paint-right-sidebar-tabs-/) |
+| 260717-m9k | Merge Physics Paint Play into Roto SCRIPTS and implement multi-frame Play Script | 2026-07-18 | cbe38e5a |  | [260717-m9k-merge-physics-paint-play-into-the-roto-s](./quick/260717-m9k-merge-physics-paint-play-into-the-roto-s/) |
+| 260718-fp9 | Derive dynamic Physics Paint track labels and standalone identity | 2026-07-18 | b1ad99c4 |  | [260718-fp9-rename-the-visible-physics-paint-standal](./quick/260718-fp9-rename-the-visible-physics-paint-standal/) |
+| 260718-j3h | Add Backspace/Delete shortcuts for selected real Physics Paint Roto keys | 2026-07-18 | f9a4cede |  | [260718-j3h-add-backspace-and-delete-keyboard-shortc](./quick/260718-j3h-add-backspace-and-delete-keyboard-shortc/) |
+| 260718-m2f | Add single-real-key drag movement for Physics Paint Roto timeline | 2026-07-19 | 53c23549 | Verified | [260718-m2f-add-single-real-physics-paint-roto-key-d](./quick/260718-m2f-add-single-real-physics-paint-roto-key-d/) |
 
 ### Roadmap Evolution
 
@@ -193,6 +197,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-18T13:43:20Z
-Stopped at: Quick 260718-j3h complete, native-approved, and regression-covered; Phase 36.14 ready to plan
-Resume file: Plan `.planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/` as the final UI-only v0.8.0 phase using durable SCRIPTS, multi-frame Play Script generation, split right-sidebar contracts, dynamic Physics Paint labels, and finalized Roto keyboard interactions
+Last session: 2026-07-19T09:37:37Z
+Stopped at: Quick 260718-m2f complete, native-approved, and verified; deterministic regression tests intentionally deferred
+Resume file: Start a full quick to review Physics Paint Roto interpolation architecture and add deterministic closer/farther/generated/minimum-spacing coverage before planning Phase 36.14
