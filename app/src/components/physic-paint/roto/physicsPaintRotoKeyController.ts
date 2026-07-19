@@ -597,7 +597,9 @@ export function applyRotoKeyUtilityTransactionToLocalState<TEditable = unknown, 
 }
 
 function makeTransaction(input: Omit<RotoKeyUtilityTransaction, 'realKeyFrameNumbers'>): RotoKeyUtilityTransaction {
-  const realKeyFrames = normalizeRealKeyFrames(input.realKeyFrames);
+  const realKeyFrames = input.operation === 'move'
+    ? normalizeMoveRealKeyFrames(input.realKeyFrames)
+    : normalizeRealKeyFrames(input.realKeyFrames);
   return {
     ...input,
     realKeyFrames,
