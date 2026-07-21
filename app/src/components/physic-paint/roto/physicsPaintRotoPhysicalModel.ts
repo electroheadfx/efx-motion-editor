@@ -190,3 +190,286 @@ export const PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO: PhysicPaintRotoScriptMotionSe
 export function createPhysicPaintRotoKeyId(): string {
   return crypto.randomUUID();
 }
+
+// ---------------------------------------------------------------------------
+// Fail-closed validators and reconstructing parsers (Task 2).
+//
+// Every guard below uses an exact allowlist: it rejects unknown members and
+// removed timing/projection members (`inBetweenCount`, `mode`, `deform`,
+// `position` outside the separate Motion contract, `sourceFrame`,
+// `displayFrame`, `segmentSpacingOverrides`, etc.). It requires bounded
+// non-empty IDs and nonnegative integer frames, valid rendered payload/data
+// dimensions under the existing limits, and finite in-range Motion values.
+//
+// Reconstructing parsers (`parsePhysicPaintRotoRealKeyRecordCollection`,
+// `parsePhysicPaintRotoPhysicalState`) construct fresh immutable records from
+// allowlisted fields only. They never delete unknown properties, normalize an
+// old shape, allocate an ID, or mutate caller-owned data. Invalid input throws
+// a closed validation failure and leaves caller-owned data untouched.
+//
+// These validators are pure and inactive in Plan 01: they perform no project,
+// bridge, persistence, store, launch, Script schema, Clipboard, Play Script,
+// or Studio wiring. Owning consumer plans (36.14-02 through 36.14-10) call
+// this exact module when they replace their complete consumer slice.
+// ---------------------------------------------------------------------------
+
+const PHYSIC_PAINT_ROTO_KEY_ID_MAX_LENGTH = 256;
+const RENDERED_DATA_URL_PREFIX = 'data:image/png';
+
+const PHYSIC_PAINT_ROTO_KEY_IDENTITY_KEYS = new Set(['keyId', 'appFrame']);
+const PHYSIC_PAINT_ROTO_REAL_KEY_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'dataUrl', 'width', 'height']);
+const PHYSIC_PAINT_ROTO_REAL_KEY_RECORD_KEYS = new Set(['kind', 'keyId', 'appFrame', 'payload']);
+const PHYSIC_PAINT_ROTO_GENERATED_CELL_KEYS = new Set(['kind', 'appFrame', 'leftKeyId', 'rightKeyId']);
+const PHYSIC_PAINT_ROTO_INTERPOLATION_STATE_KEYS = new Set(['enabled']);
+const PHYSIC_PAINT_ROTO_SCRIPT_MOTION_KEYS = new Set(['deformation', 'position']);
+const PHYSIC_PAINT_ROTO_PHYSICAL_STATE_KEYS = new Set(['realKeyRecords', 'interpolation', 'scriptMotion']);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isBoundedKeyId(value: unknown): value is string {
+  return isNonEmptyString(value) && value.length <= PHYSIC_PAINT_ROTO_KEY_ID_MAX_LENGTH;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isPercentInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100;
+}
+
+function isRenderedPngDataUrl(value: unknown): value is string {
+  return typeof value === 'string' && value.startsWith(RENDERED_DATA_URL_PREFIX) && value.includes(',');
+}
+
+function optionalNumber(value: unknown): boolean {
+  return value === undefined || (typeof value === 'number' && Number.isFinite(value));
+}
+
+function hasOnlyAllowedKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
+  return Object.keys(value).every((key) => allowed.has(key));
+}
+
+/**
+ * Strict guard for {@link PhysicPaintRotoKeyIdentity}.
+ *
+ * Rejects non-records, unknown members, empty/oversized `keyId`, and
+ * non-integer or negative `appFrame`.
+ */
+export function isPhysicPaintRotoKeyIdentity(value: unknown): value is PhysicPaintRotoKeyIdentity {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_KEY_IDENTITY_KEYS)) return false;
+  return isBoundedKeyId(value.keyId) && isNonNegativeInteger(value.appFrame);
+}
+
+/**
+ * Strict guard for {@link PhysicPaintRotoRealKeyPayload}.
+ *
+ * Rejects unknown members, non-PNG data URLs, non-integer or negative frame
+ * indices/frames, and non-finite width/height. Composed from the existing
+ * rendered-frame allowlist; `source` and `nearestRealKeyFrame` are excluded
+ * so a payload cannot carry source/display or generated-cell provenance.
+ */
+export function isPhysicPaintRotoRealKeyPayload(value: unknown): value is PhysicPaintRotoRealKeyPayload {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_REAL_KEY_PAYLOAD_KEYS)) return false;
+  if (!isNonNegativeInteger(value.frameIndex)) return false;
+  if (!isNonNegativeInteger(value.appFrame)) return false;
+  if (!isRenderedPngDataUrl(value.dataUrl)) return false;
+  return optionalNumber(value.width) && optionalNumber(value.height);
+}
+
+/**
+ * Strict guard for {@link PhysicPaintRotoRealKeyRecord}.
+ *
+ * Rejects non-records, unknown members, wrong `kind`, partial identity, and
+ * malformed payloads. A generated descriptor (`kind: 'generated-interpolation'`)
+ * cannot satisfy this guard, keeping the two interfaces structurally distinct.
+ */
+export function isPhysicPaintRotoRealKeyRecord(value: unknown): value is PhysicPaintRotoRealKeyRecord {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_REAL_KEY_RECORD_KEYS)) return false;
+  if (value.kind !== 'real-key') return false;
+  if (!isBoundedKeyId(value.keyId)) return false;
+  if (!isNonNegativeInteger(value.appFrame)) return false;
+  return isPhysicPaintRotoRealKeyPayload(value.payload);
+}
+
+/**
+ * Strict guard for {@link PhysicPaintRotoGeneratedCell}.
+ *
+ * Rejects non-records, unknown members, wrong `kind`, non-integer or negative
+ * `appFrame`, and invalid adjacent key IDs. A generated cell carries no
+ * durable payload or identity and cannot satisfy the real-key record guard.
+ */
+export function isPhysicPaintRotoGeneratedCell(value: unknown): value is PhysicPaintRotoGeneratedCell {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_GENERATED_CELL_KEYS)) return false;
+  if (value.kind !== 'generated-interpolation') return false;
+  if (!isNonNegativeInteger(value.appFrame)) return false;
+  return isBoundedKeyId(value.leftKeyId) && isBoundedKeyId(value.rightKeyId);
+}
+
+/**
+ * Strict guard for {@link PhysicPaintRotoInterpolationState}.
+ *
+ * Rejects non-records, unknown members (including removed timing/projection
+ * fields like `inBetweenCount`, `mode`, `deform`, `position`, and
+ * `segmentSpacingOverrides`), and non-boolean `enabled`.
+ */
+export function isPhysicPaintRotoInterpolationState(value: unknown): value is PhysicPaintRotoInterpolationState {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_INTERPOLATION_STATE_KEYS)) return false;
+  return typeof value.enabled === 'boolean';
+}
+
+/**
+ * Strict guard for {@link PhysicPaintRotoScriptMotionSettings}.
+ *
+ * Rejects non-records, unknown members, and Motion values that are not bounded
+ * integer percentages (0-100). Motion lives in this separate sibling contract,
+ * never inside interpolation timing state (D-04).
+ */
+export function isPhysicPaintRotoScriptMotionSettings(value: unknown): value is PhysicPaintRotoScriptMotionSettings {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_SCRIPT_MOTION_KEYS)) return false;
+  return isPercentInteger(value.deformation) && isPercentInteger(value.position);
+}
+
+/**
+ * Reconstruct a fresh, deterministically sorted, deeply immutable real-key
+ * record collection from untrusted input.
+ *
+ * Rejects:
+ * - non-array input;
+ * - malformed real-key records (including generated descriptors, which fail
+ *   the `kind: 'real-key'` check);
+ * - duplicate `keyId`;
+ * - duplicate `appFrame`;
+ * - partial identity (caught by the record guard);
+ * - out-of-capacity `appFrame` when `capacity` is supplied.
+ *
+ * Only after full validation does it construct a fresh array of fresh frozen
+ * records, sorted deterministically by `appFrame`. Caller-owned input is
+ * never mutated; unknown properties are never deleted or normalized; no ID is
+ * ever allocated by this parser.
+ *
+ * Throws a closed validation failure on any invalid input.
+ */
+export function parsePhysicPaintRotoRealKeyRecordCollection(
+  value: unknown,
+  capacity?: number,
+): readonly PhysicPaintRotoRealKeyRecord[] {
+  if (!Array.isArray(value)) {
+    throw new Error('PhysicPaintRotoRealKeyRecordCollection: expected an array of real-key records.');
+  }
+  if (capacity !== undefined && (!Number.isInteger(capacity) || capacity < 0)) {
+    throw new Error('PhysicPaintRotoRealKeyRecordCollection: capacity must be a nonnegative integer.');
+  }
+
+  const records: PhysicPaintRotoRealKeyRecord[] = [];
+  const seenKeyIds = new Set<string>();
+  const seenAppFrames = new Set<number>();
+
+  for (const entry of value) {
+    if (!isPhysicPaintRotoRealKeyRecord(entry)) {
+      throw new Error('PhysicPaintRotoRealKeyRecordCollection: malformed real-key record.');
+    }
+    if (seenKeyIds.has(entry.keyId)) {
+      throw new Error(`PhysicPaintRotoRealKeyRecordCollection: duplicate keyId "${entry.keyId}".`);
+    }
+    if (seenAppFrames.has(entry.appFrame)) {
+      throw new Error(`PhysicPaintRotoRealKeyRecordCollection: duplicate appFrame ${entry.appFrame}.`);
+    }
+    if (capacity !== undefined && entry.appFrame >= capacity) {
+      throw new Error(`PhysicPaintRotoRealKeyRecordCollection: appFrame ${entry.appFrame} exceeds capacity ${capacity}.`);
+    }
+    seenKeyIds.add(entry.keyId);
+    seenAppFrames.add(entry.appFrame);
+    records.push(cloneAndFreezeRealKeyRecord(entry));
+  }
+
+  records.sort((a, b) => a.appFrame - b.appFrame);
+  return Object.freeze(records);
+}
+
+/**
+ * Reconstruct the aggregate {@link PhysicPaintRotoPhysicalState} successor
+ * schema from untrusted input.
+ *
+ * Rejects:
+ * - non-records;
+ * - unknown or legacy siblings (`sourceFrame`, `displayFrame`, generated
+ *   cells, count, overrides, etc.);
+ * - invalid real-key records (delegates to
+ *   {@link parsePhysicPaintRotoRealKeyRecordCollection});
+ * - invalid enabled-only interpolation state;
+ * - invalid separate Script Motion settings.
+ *
+ * Reconstructs exactly the validated real-key collection, enabled-only
+ * interpolation, and separate Motion state. No generated records or legacy
+ * siblings survive. Caller-owned input is never mutated; unknown properties
+ * are never deleted or normalized; no ID is ever allocated by this parser.
+ *
+ * Throws a closed validation failure on any invalid input.
+ */
+export function parsePhysicPaintRotoPhysicalState(
+  value: unknown,
+  capacity?: number,
+): PhysicPaintRotoPhysicalState {
+  if (!isRecord(value)) {
+    throw new Error('PhysicPaintRotoPhysicalState: expected a record.');
+  }
+  if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_PHYSICAL_STATE_KEYS)) {
+    throw new Error('PhysicPaintRotoPhysicalState: unknown members; expected exactly realKeyRecords, interpolation, scriptMotion.');
+  }
+  if (!isPhysicPaintRotoInterpolationState(value.interpolation)) {
+    throw new Error('PhysicPaintRotoPhysicalState: invalid enabled-only interpolation state.');
+  }
+  if (!isPhysicPaintRotoScriptMotionSettings(value.scriptMotion)) {
+    throw new Error('PhysicPaintRotoPhysicalState: invalid Script Motion settings.');
+  }
+  if (!Array.isArray(value.realKeyRecords)) {
+    throw new Error('PhysicPaintRotoPhysicalState: realKeyRecords must be an array.');
+  }
+
+  const realKeyRecords = parsePhysicPaintRotoRealKeyRecordCollection(value.realKeyRecords, capacity);
+  const interpolation = Object.freeze<PhysicPaintRotoInterpolationState>({
+    enabled: value.interpolation.enabled,
+  });
+  const scriptMotion = Object.freeze<PhysicPaintRotoScriptMotionSettings>({
+    deformation: value.scriptMotion.deformation,
+    position: value.scriptMotion.position,
+  });
+
+  return Object.freeze<PhysicPaintRotoPhysicalState>({
+    realKeyRecords,
+    interpolation,
+    scriptMotion,
+  });
+}
+
+function cloneAndFreezeRealKeyPayload(payload: PhysicPaintRotoRealKeyPayload): PhysicPaintRotoRealKeyPayload {
+  return Object.freeze({
+    frameIndex: payload.frameIndex,
+    appFrame: payload.appFrame,
+    dataUrl: payload.dataUrl,
+    ...(payload.width !== undefined ? { width: payload.width } : {}),
+    ...(payload.height !== undefined ? { height: payload.height } : {}),
+  }) as PhysicPaintRotoRealKeyPayload;
+}
+
+function cloneAndFreezeRealKeyRecord(record: PhysicPaintRotoRealKeyRecord): PhysicPaintRotoRealKeyRecord {
+  return Object.freeze({
+    kind: 'real-key',
+    keyId: record.keyId,
+    appFrame: record.appFrame,
+    payload: cloneAndFreezeRealKeyPayload(record.payload),
+  }) as PhysicPaintRotoRealKeyRecord;
+}
