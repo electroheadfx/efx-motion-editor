@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
-stopped_at: Completed 36.14-09-PLAN.md
-last_updated: "2026-07-21T20:35:39.632Z"
+stopped_at: Completed 36.14-10-PLAN.md
+last_updated: "2026-07-21T21:57:21.376Z"
 last_activity: 2026-07-21
-last_activity_desc: Completed Plan 36.14-09 canonical physical persistence and launch gate
+last_activity_desc: Completed Plan 36.14-10 physical downstream ownership and rendering cutover
 progress:
   total_phases: 17
   completed_phases: 16
   total_plans: 110
-  completed_plans: 101
-  percent: 92
+  completed_plans: 102
+  percent: 93
 ---
 
 # Project State
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 10 of 18
+Plan: 11 of 18
 Status: Ready to execute
-Last activity: 2026-07-21 — Completed Plan 36.14-09 canonical physical persistence and launch gate
-Next recommended action: Execute Plan 36.14-10 via /gsd-execute-phase 36.14 --wave 10
+Last activity: 2026-07-21 — Completed Plan 36.14-10 physical downstream ownership and rendering cutover
+Next recommended action: Execute Plan 36.14-11 via /gsd-execute-phase 36.14 --wave 11
 
-Progress: [██████████████████░░] 101/110 plans ready; 16/17 phases complete ([█████████░] 92%)
+Progress: [██████████████████░░] 102/110 plans ready; 16/17 phases complete ([█████████░] 93%)
 
 ## Performance Metrics
 
@@ -98,6 +98,7 @@ Progress: [██████████████████░░] 101/110
 | Phase 36.14 P07 | PT2H | 3 tasks | 6 files |
 | Phase 36.14 P08 | 7min | 3 tasks | 2 files |
 | Phase 36.14 P09 | 47min | 3 tasks | 13 files |
+| Phase 36.14 P10 | 40min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -160,6 +161,10 @@ Recent decisions affecting current work:
 - [Phase ?]: Plan 09 closes with canonical persistence/open/bridge/launch ownership complete while wrapper retirement is rescheduled rather than partially implemented
 - [Phase ?]: Plan 10 migrates remaining cache, live-pixel, navigation, and visual responsibilities plus production importers out of useRotoPersistenceIntegration.ts
 - [Phase ?]: After byte-exact Plan 12 approval, Plan 13 transfers valid assertions and deletes useRotoPersistenceIntegration.ts, rotoSaveTransactions.ts, and their obsolete tests without compatibility forwarding
+- [Phase 36.14 Plan 10]: Stable keyId plus direct appFrame is the sole durable Roto ownership coordinate; accepted edits rebuild frame-indexed child state by identity.
+- [Phase 36.14 Plan 10]: Preview and export share the physical render-source resolver and revision-aware cache identity; export owns no independent Roto timing path.
+- [Phase 36.14 Plan 10]: Physical contentRevision validates cache ownership while physicPaintVersion remains monotonic visual invalidation only.
+- [Phase 36.14 Plan 10]: Approval-gated regression inputs retain temporary type compatibility only; production paths use physical contracts.
 
 ### Pending Todos
 
@@ -236,6 +241,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-21T20:34:31.180Z
-Stopped at: Completed 36.14-09-PLAN.md
+Last session: 2026-07-21T21:57:21.369Z
+Stopped at: Completed 36.14-10-PLAN.md
 Resume file: None
