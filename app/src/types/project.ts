@@ -1,5 +1,10 @@
 import type {MceAudioTrack} from './audio';
 import type {PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings} from './physicPaint';
+import type {
+  PhysicPaintRotoInterpolationState,
+  PhysicPaintRotoPhysicalDocument,
+  PhysicPaintRotoScriptMotionSettings,
+} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
 /** Legacy type -- used by project_get_default */
 export interface ProjectData {
@@ -47,16 +52,42 @@ export type McePhysicPaintRotoCachedFrame = Omit<PhysicPaintRotoCacheFrame, 'dat
   onion_cache_path?: string;
 };
 
+export interface McePhysicPaintRotoPhysicalRecord {
+  readonly kind: 'real-key';
+  readonly keyId: string;
+  readonly appFrame: number;
+  readonly payload: {
+    readonly frameIndex: number;
+    readonly appFrame: number;
+    readonly cache_path: string;
+    readonly width?: number;
+    readonly height?: number;
+  };
+}
+
+export interface McePhysicPaintRotoPhysicalDocument {
+  readonly capacity: number;
+  readonly realKeyRecords: readonly McePhysicPaintRotoPhysicalRecord[];
+  readonly interpolation: PhysicPaintRotoInterpolationState;
+  readonly scriptMotion: PhysicPaintRotoScriptMotionSettings;
+  readonly background: PhysicPaintRotoBackgroundMetadata | null;
+  readonly selectedKeyId: string | null;
+  readonly cursorAppFrame: number;
+  readonly revision: string;
+}
+
 export interface McePhysicPaintOutput {
   layer_id: string;
   frames: McePhysicPaintCachedFrame[];
+  roto_physical?: McePhysicPaintRotoPhysicalDocument;
   roto_cache_metadata?: McePhysicPaintRotoCachedFrame[];
   roto_interpolation_settings?: PhysicPaintRotoInterpolationSettings;
   roto_background?: PhysicPaintRotoBackgroundMetadata;
 }
 
-export type RuntimePhysicPaintOutput = Omit<McePhysicPaintOutput, 'frames' | 'roto_cache_metadata'> & {
+export type RuntimePhysicPaintOutput = Omit<McePhysicPaintOutput, 'frames' | 'roto_physical' | 'roto_cache_metadata'> & {
   frames: PhysicPaintRenderedFrame[];
+  roto_physical?: PhysicPaintRotoPhysicalDocument;
   roto_cache_metadata?: PhysicPaintRotoCacheFrame[];
 };
 

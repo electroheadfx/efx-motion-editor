@@ -304,6 +304,21 @@ export interface PhysicPaintProjectContext {
   contextId: string;
 }
 
+/** Closed plain-data physical document carried by launch and bridge envelopes. */
+export interface PhysicPaintRotoPhysicalDocumentPayload {
+  readonly capacity: number;
+  readonly records: readonly PhysicPaintRotoPhysicalEditRecord[];
+  readonly interpolationEnabled: boolean;
+  readonly scriptMotion: {
+    readonly deformation: number;
+    readonly position: number;
+  };
+  readonly background: PhysicPaintRotoBackgroundMetadata | null;
+  readonly selectedKeyId: string | null;
+  readonly cursorAppFrame: number;
+  readonly revision: string;
+}
+
 export interface PhysicPaintLaunchContext {
   operationId: string;
   layerId: string;
@@ -315,6 +330,7 @@ export interface PhysicPaintLaunchContext {
   height?: number;
   fps?: number;
   editableState?: SerializedProject;
+  rotoPhysical?: PhysicPaintRotoPhysicalDocumentPayload;
   rotoBackground?: PhysicPaintRotoBackgroundMetadata;
   cachedRotoFrames?: PhysicPaintRotoCacheFrame[];
   rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings;

@@ -34,7 +34,10 @@
  * Studio, or any Script controller.
  */
 
-import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
+import type {
+  PhysicPaintRenderedFrame,
+  PhysicPaintRotoBackgroundMetadata,
+} from '../../../types/physicPaint';
 
 /**
  * Stable durable real-key identity.
@@ -157,6 +160,19 @@ export interface PhysicPaintRotoPhysicalState {
 }
 
 /**
+ * Complete durable physical layer document used by project persistence and
+ * standalone launch reconstruction. Generated interpolation cells and runtime
+ * cache objects are deliberately absent.
+ */
+export interface PhysicPaintRotoPhysicalDocument extends PhysicPaintRotoPhysicalState {
+  readonly capacity: number;
+  readonly background: PhysicPaintRotoBackgroundMetadata | null;
+  readonly selectedKeyId: string | null;
+  readonly cursorAppFrame: number;
+  readonly revision: string;
+}
+
+/**
  * Immutable disabled interpolation default.
  *
  * Per D-02: enabled-only state, no count/override/mode fields.
@@ -214,7 +230,9 @@ export function createPhysicPaintRotoKeyId(): string {
 // ---------------------------------------------------------------------------
 
 const PHYSIC_PAINT_ROTO_KEY_ID_MAX_LENGTH = 256;
-const RENDERED_DATA_URL_PREFIX = 'data:image/png';
+const PHYSIC_PAINT_ROTO_REVISION_MAX_LENGTH = 256;
+const PHYSIC_PAINT_ROTO_MAX_PNG_DATA_URL_LENGTH = 64 * 1024 * 1024;
+const RENDERED_DATA_URL_PREFIX = 'data:image/png;base64,';
 
 const PHYSIC_PAINT_ROTO_KEY_IDENTITY_KEYS = new Set(['keyId', 'appFrame']);
 const PHYSIC_PAINT_ROTO_REAL_KEY_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'dataUrl', 'width', 'height']);
@@ -223,9 +241,22 @@ const PHYSIC_PAINT_ROTO_GENERATED_CELL_KEYS = new Set(['kind', 'appFrame', 'left
 const PHYSIC_PAINT_ROTO_INTERPOLATION_STATE_KEYS = new Set(['enabled']);
 const PHYSIC_PAINT_ROTO_SCRIPT_MOTION_KEYS = new Set(['deformation', 'position']);
 const PHYSIC_PAINT_ROTO_PHYSICAL_STATE_KEYS = new Set(['realKeyRecords', 'interpolation', 'scriptMotion']);
+const PHYSIC_PAINT_ROTO_PHYSICAL_DOCUMENT_KEYS = new Set([
+  'capacity',
+  'realKeyRecords',
+  'interpolation',
+  'scriptMotion',
+  'background',
+  'selectedKeyId',
+  'cursorAppFrame',
+  'revision',
+]);
+const PHYSIC_PAINT_ROTO_BACKGROUND_KEYS = new Set(['background', 'paperGrain', 'grainStrength', 'color']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -245,11 +276,22 @@ function isPercentInteger(value: unknown): value is number {
 }
 
 function isRenderedPngDataUrl(value: unknown): value is string {
-  return typeof value === 'string' && value.startsWith(RENDERED_DATA_URL_PREFIX) && value.includes(',');
+  if (typeof value !== 'string' || !value.startsWith(RENDERED_DATA_URL_PREFIX)) return false;
+  if (value.length <= RENDERED_DATA_URL_PREFIX.length || value.length > PHYSIC_PAINT_ROTO_MAX_PNG_DATA_URL_LENGTH) return false;
+  const encoded = value.slice(RENDERED_DATA_URL_PREFIX.length);
+  return encoded.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(encoded);
 }
 
-function optionalNumber(value: unknown): boolean {
-  return value === undefined || (typeof value === 'number' && Number.isFinite(value));
+function optionalDimension(value: unknown): boolean {
+  return value === undefined || (typeof value === 'number' && Number.isInteger(value) && value > 0);
+}
+
+function isPhysicPaintRotoBackground(value: unknown): value is PhysicPaintRotoBackgroundMetadata {
+  if (!isRecord(value) || !hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_BACKGROUND_KEYS)) return false;
+  if (value.background !== 'transparent' && value.background !== 'white' && value.background !== 'canvas1' && value.background !== 'canvas2' && value.background !== 'canvas3') return false;
+  if (!isNonEmptyString(value.paperGrain)) return false;
+  if (typeof value.grainStrength !== 'number' || !Number.isFinite(value.grainStrength) || value.grainStrength < 0 || value.grainStrength > 1) return false;
+  return value.color === undefined || typeof value.color === 'string';
 }
 
 function hasOnlyAllowedKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
@@ -282,7 +324,8 @@ export function isPhysicPaintRotoRealKeyPayload(value: unknown): value is Physic
   if (!isNonNegativeInteger(value.frameIndex)) return false;
   if (!isNonNegativeInteger(value.appFrame)) return false;
   if (!isRenderedPngDataUrl(value.dataUrl)) return false;
-  return optionalNumber(value.width) && optionalNumber(value.height);
+  if (!optionalDimension(value.width) || !optionalDimension(value.height)) return false;
+  return (value.width === undefined) === (value.height === undefined);
 }
 
 /**
@@ -380,6 +423,9 @@ export function parsePhysicPaintRotoRealKeyRecordCollection(
   for (const entry of value) {
     if (!isPhysicPaintRotoRealKeyRecord(entry)) {
       throw new Error('PhysicPaintRotoRealKeyRecordCollection: malformed real-key record.');
+    }
+    if (entry.payload.appFrame !== entry.appFrame) {
+      throw new Error(`PhysicPaintRotoRealKeyRecordCollection: payload appFrame ${entry.payload.appFrame} does not match record appFrame ${entry.appFrame}.`);
     }
     if (seenKeyIds.has(entry.keyId)) {
       throw new Error(`PhysicPaintRotoRealKeyRecordCollection: duplicate keyId "${entry.keyId}".`);
@@ -524,31 +570,138 @@ export function buildPhysicPaintRotoPhysicalRevision(
   records: unknown,
   interpolation: unknown,
 ): string {
+  const source = encodePhysicPaintRotoPhysicalContent(records, interpolation);
+  return `physical-${hashCanonicalPhysicalValue(source)}`;
+}
+
+/**
+ * Canonical allowlisted encoding shared by content revision and persisted
+ * project equality. Strings are length-prefixed, so payload text cannot create
+ * delimiter collisions. Records are ordered by stable identity, not input or
+ * presentation order.
+ */
+export function encodePhysicPaintRotoPhysicalContent(
+  records: unknown,
+  interpolation: unknown,
+): string {
   const validated = parsePhysicPaintRotoRealKeyRecordCollection(records);
   if (!isPhysicPaintRotoInterpolationState(interpolation)) {
     throw new Error('PhysicPaintRotoPhysicalRevision: invalid enabled-only interpolation state.');
   }
+  const orderedByIdentity = [...validated].sort((a, b) => a.keyId.localeCompare(b.keyId));
+  const encodedRecords = orderedByIdentity.map((record) => [
+    encodeCanonicalString(record.keyId),
+    encodeCanonicalNumber(record.appFrame),
+    encodeCanonicalNumber(record.payload.frameIndex),
+    encodeCanonicalNumber(record.payload.appFrame),
+    encodeCanonicalString(record.payload.dataUrl),
+    encodeCanonicalOptionalNumber(record.payload.width),
+    encodeCanonicalOptionalNumber(record.payload.height),
+  ].join('')).join('');
+  return `records:${orderedByIdentity.length}:${encodedRecords}interpolation:${validatedBoolean(interpolation.enabled)}`;
+}
 
-  const orderedByIdentity = [...validated].sort((a, b) => {
-    if (a.keyId < b.keyId) return -1;
-    if (a.keyId > b.keyId) return 1;
-    return 0;
-  });
+/** Build the broader persisted equality fingerprint for one complete layer. */
+export function buildPhysicPaintRotoProjectEquality(value: unknown): string {
+  const document = parsePhysicPaintRotoPhysicalDocument(value);
+  const source = [
+    encodePhysicPaintRotoPhysicalContent(document.realKeyRecords, document.interpolation),
+    `capacity:${encodeCanonicalNumber(document.capacity)}`,
+    `motion:${encodeCanonicalNumber(document.scriptMotion.deformation)}${encodeCanonicalNumber(document.scriptMotion.position)}`,
+    `background:${encodeCanonicalBackground(document.background)}`,
+    `selection:${document.selectedKeyId === null ? 'null;' : encodeCanonicalString(document.selectedKeyId)}`,
+    `cursor:${encodeCanonicalNumber(document.cursorAppFrame)}`,
+  ].join('');
+  return `project-${hashCanonicalPhysicalValue(source)}`;
+}
 
-  const payloadSegments: string[] = [];
-  for (const record of orderedByIdentity) {
-    payloadSegments.push(
-      `${record.keyId}:${record.appFrame}:${record.payload.frameIndex}:${record.payload.dataUrl}:${record.payload.width ?? ''}:${record.payload.height ?? ''}`,
-    );
+/**
+ * Reconstruct and freeze one complete physical layer document. The persisted
+ * revision is checked against canonical content before any caller can publish
+ * the candidate.
+ */
+export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPaintRotoPhysicalDocument {
+  if (!isRecord(value) || !hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_PHYSICAL_DOCUMENT_KEYS)) {
+    throw new Error('PhysicPaintRotoPhysicalDocument: unknown or missing document members.');
   }
-  const payloadFingerprint = payloadSegments.join('|');
-  const interpolationFingerprint = interpolation.enabled ? 'enabled' : 'disabled';
+  if (!Number.isInteger(value.capacity) || (value.capacity as number) < 1) {
+    throw new Error('PhysicPaintRotoPhysicalDocument: capacity must be a positive integer.');
+  }
+  const capacity = value.capacity as number;
+  const state = parsePhysicPaintRotoPhysicalState({
+    realKeyRecords: value.realKeyRecords,
+    interpolation: value.interpolation,
+    scriptMotion: value.scriptMotion,
+  }, capacity);
+  if (value.background !== null && !isPhysicPaintRotoBackground(value.background)) {
+    throw new Error('PhysicPaintRotoPhysicalDocument: invalid background metadata.');
+  }
+  if (value.selectedKeyId !== null && !isBoundedKeyId(value.selectedKeyId)) {
+    throw new Error('PhysicPaintRotoPhysicalDocument: selectedKeyId must be null or a bounded identity.');
+  }
+  if (!isNonNegativeInteger(value.cursorAppFrame) || value.cursorAppFrame >= capacity) {
+    throw new Error('PhysicPaintRotoPhysicalDocument: cursorAppFrame is outside physical capacity.');
+  }
+  if (!isNonEmptyString(value.revision) || value.revision.length > PHYSIC_PAINT_ROTO_REVISION_MAX_LENGTH) {
+    throw new Error('PhysicPaintRotoPhysicalDocument: revision must be a bounded non-empty string.');
+  }
+  const selectedRecord = value.selectedKeyId === null
+    ? null
+    : state.realKeyRecords.find((record) => record.keyId === value.selectedKeyId) ?? null;
+  if (value.selectedKeyId !== null && selectedRecord === null) {
+    throw new Error('PhysicPaintRotoPhysicalDocument: selectedKeyId does not exist in realKeyRecords.');
+  }
+  if (selectedRecord && selectedRecord.appFrame !== value.cursorAppFrame) {
+    throw new Error('PhysicPaintRotoPhysicalDocument: selected identity and cursorAppFrame disagree.');
+  }
+  const revision = buildPhysicPaintRotoPhysicalRevision(state.realKeyRecords, state.interpolation);
+  if (value.revision !== revision) {
+    throw new Error('PhysicPaintRotoPhysicalDocument: canonical revision mismatch.');
+  }
+  const background = value.background === null ? null : Object.freeze({ ...value.background }) as PhysicPaintRotoBackgroundMetadata;
+  return Object.freeze({
+    capacity,
+    realKeyRecords: state.realKeyRecords,
+    interpolation: state.interpolation,
+    scriptMotion: state.scriptMotion,
+    background,
+    selectedKeyId: value.selectedKeyId,
+    cursorAppFrame: value.cursorAppFrame,
+    revision,
+  });
+}
 
+function encodeCanonicalString(value: string): string {
+  return `s${value.length}:${value};`;
+}
+
+function encodeCanonicalNumber(value: number): string {
+  return `n${String(value)};`;
+}
+
+function encodeCanonicalOptionalNumber(value: number | undefined): string {
+  return value === undefined ? 'u;' : encodeCanonicalNumber(value);
+}
+
+function validatedBoolean(value: boolean): string {
+  return value ? '1;' : '0;';
+}
+
+function encodeCanonicalBackground(value: PhysicPaintRotoBackgroundMetadata | null): string {
+  if (value === null) return 'null;';
+  return [
+    encodeCanonicalString(value.background),
+    encodeCanonicalString(value.paperGrain),
+    encodeCanonicalNumber(value.grainStrength),
+    value.color === undefined ? 'u;' : encodeCanonicalString(value.color),
+  ].join('');
+}
+
+function hashCanonicalPhysicalValue(source: string): string {
   let hash = 2166136261;
-  const source = `${payloadFingerprint}#${interpolationFingerprint}`;
   for (let index = 0; index < source.length; index += 1) {
     hash ^= source.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-  return `${orderedByIdentity.length}-${(hash >>> 0).toString(16)}`;
+  return `${source.length}-${(hash >>> 0).toString(16)}`;
 }
