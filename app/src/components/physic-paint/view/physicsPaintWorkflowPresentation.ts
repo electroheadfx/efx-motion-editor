@@ -284,6 +284,13 @@ export interface RotoDragPreviewViewModel {
   readonly targetKind: 'physical-cell' | 'before-key' | 'after-key';
   readonly targetKeyId: string | null;
   readonly targetAppFrame: number | null;
+  /**
+   * Pre-drag appFrame of the occupied target identity, used for concise
+   * before/after status copy that references the frame the user is currently
+   * pointing at (D-21). Falls back to the post-proposal appFrame when the
+   * target is unchanged.
+   */
+  readonly targetPreDragAppFrame: number | null;
   readonly boundary: 'before' | 'after' | null;
   readonly cellsByAppFrame: ReadonlyMap<number, RotoDragCellPreviewViewModel>;
   readonly conciseStatus: string;
@@ -320,12 +327,18 @@ export function getRotoDragPreviewViewModel(
   const targetKind = drag.targetKind;
   const targetKeyId = drag.targetKeyId;
   const targetAppFrame = targetKeyId === null ? null : (proposal.mapping.get(targetKeyId) ?? null);
-  const boundary: 'before' | 'after' | null = targetKind === 'before-key' ? 'before' : targetKind === 'after-key' ? 'after' : null;
 
   const changesByKeyId = new Map<string, PhysicPaintRotoPhysicalIdentityChange>();
   for (const change of proposal.changes) {
     changesByKeyId.set(change.keyId, change);
   }
+  // Pre-drag appFrame of the target identity (D-21). When the target shifted
+  // because of the ripple, use its `beforeAppFrame`; otherwise fall back to
+  // its post-proposal appFrame (unchanged target).
+  const targetPreDragAppFrame = targetKeyId === null
+    ? null
+    : changesByKeyId.get(targetKeyId)?.beforeAppFrame ?? targetAppFrame;
+  const boundary: 'before' | 'after' | null = targetKind === 'before-key' ? 'before' : targetKind === 'after-key' ? 'after' : null;
 
   const cellsByAppFrame = new Map<number, RotoDragCellPreviewViewModel>();
   for (const cell of proposal.cells) {
@@ -336,10 +349,13 @@ export function getRotoDragPreviewViewModel(
       keyId = cell.keyId;
       if (cell.keyId === movedKeyId) {
         role = 'moved';
+      } else if (targetKeyId !== null && cell.keyId === targetKeyId) {
+        // Occupied target identity takes precedence over shifted (D-07/D-21).
+        // The target may shift its appFrame because of the ripple, but it is
+        // never overwritten, replaced, or swapped.
+        role = 'target';
       } else if (changesByKeyId.has(cell.keyId)) {
         role = 'shifted';
-      } else if (targetKeyId !== null && cell.keyId === targetKeyId) {
-        role = 'target';
       }
     } else if (cell.kind === 'generated') {
       role = 'generated';
@@ -363,13 +379,14 @@ export function getRotoDragPreviewViewModel(
     });
   }
 
-  const conciseStatus = buildDragConciseStatus(targetKind, movedAppFrame, boundary);
+  const conciseStatus = buildDragConciseStatus(targetKind, movedAppFrame, targetPreDragAppFrame, boundary);
   return {
     movedKeyId,
     movedAppFrame,
     targetKind,
     targetKeyId,
     targetAppFrame,
+    targetPreDragAppFrame,
     boundary,
     cellsByAppFrame,
     conciseStatus,
@@ -380,15 +397,21 @@ export function getRotoDragPreviewViewModel(
 function buildDragConciseStatus(
   targetKind: 'physical-cell' | 'before-key' | 'after-key',
   movedAppFrame: number,
+  targetPreDragAppFrame: number | null,
   boundary: 'before' | 'after' | null,
 ): string {
   if (targetKind === 'physical-cell') {
     return DRAG_MOVED_LABEL_TEMPLATE.replace('{frame}', String(movedAppFrame));
   }
+  // Occupied before/after boundary text references the target identity's
+  // current (pre-drag) frame so the copy matches the cell the user is
+  // pointing at (D-21). Fall back to the moved appFrame if the target's
+  // pre-drag frame is unavailable.
+  const frame = targetPreDragAppFrame ?? movedAppFrame;
   if (boundary === 'before') {
-    return DRAG_MOVED_BEFORE_OCCUPIED_LABEL_TEMPLATE.replace('{frame}', String(movedAppFrame));
+    return DRAG_MOVED_BEFORE_OCCUPIED_LABEL_TEMPLATE.replace('{frame}', String(frame));
   }
-  return DRAG_MOVED_AFTER_OCCUPIED_LABEL_TEMPLATE.replace('{frame}', String(movedAppFrame));
+  return DRAG_MOVED_AFTER_OCCUPIED_LABEL_TEMPLATE.replace('{frame}', String(frame));
 }
 
 function buildDragCellLabel(
