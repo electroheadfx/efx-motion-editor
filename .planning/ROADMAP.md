@@ -452,7 +452,7 @@ Use `SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md` and th
 **Mode:** mvp
 **Requirements:** 36.14-PHYSICAL-IDENTITY, 36.14-DERIVED-INTERPOLATION, 36.14-ATOMIC-FRAME-MAPPING, 36.14-RIPPLE-INSERT-DELETE, 36.14-RIPPLE-DRAG, 36.14-FORCE-SPACING, 36.14-DOWNSTREAM-PARITY, 36.14-UI-INTEGRATION, 36.14-UAT-THEN-REGRESSION
 **Depends on:** Phase 36.13 and native-UAT approval of the dedicated ROTO-SCRIPT-COPY / ROTO-SCRIPT-APPLY GSD quick
-**Plans:** 5/18 plans executed
+**Plans:** 6/18 plans executed
 
 **Success Criteria**:
 
@@ -498,7 +498,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5)*
 
-- [ ] 36.14-06-PLAN.md — Deliver ripple Insert Frame and Delete Frame through the pure resolver and acknowledged coordinator.
+- [x] 36.14-06-PLAN.md — Deliver ripple Insert Frame and Delete Frame through the pure resolver and acknowledged coordinator.
 
 **Wave 7** *(blocked on Wave 6)*
 
@@ -883,4 +883,4 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
 | 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 6/6 | Complete | 2026-07-13 |
-| 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 5/18 | In Progress|  |
+| 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 6/18 | In Progress|  |

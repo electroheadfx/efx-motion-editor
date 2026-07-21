@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
-stopped_at: Completed 36.14-05-PLAN.md
-last_updated: "2026-07-21T17:30:00.000Z"
+stopped_at: Completed 36.14-06-PLAN.md
+last_updated: "2026-07-21T15:58:31.696Z"
 last_activity: 2026-07-21
-last_activity_desc: Completed 36.14-05 (wave 5) — accepted-only physical history, Undo/Redo through shared coordinator
+last_activity_desc: Completed 36.14-05 (accepted-only physical history, Undo/Redo through shared coordinator)
 progress:
   total_phases: 17
   completed_phases: 16
   total_plans: 110
-  completed_plans: 96
-  percent: 87
+  completed_plans: 98
+  percent: 89
 ---
 
 # Project State
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 5 of 18
-Status: Executing Phase 36.14 — Wave 5 complete
+Plan: 6 of 18
+Status: Ready to execute
 Last activity: 2026-07-21 — Completed 36.14-05 (accepted-only physical history, Undo/Redo through shared coordinator)
 Next recommended action: Execute Plan 36.14-06 via `/gsd-execute-phase 36.14 --wave 6`
 
-Progress: [███████████████████░] 92/110 plans ready; 16/17 phases complete ([█████████░] 87%)
+Progress: [███████████████████░] 92/110 plans ready; 16/17 phases complete ([█████████░] 89%)
 
 ## Performance Metrics
 
@@ -94,6 +94,7 @@ Progress: [███████████████████░] 92/110 
 | Phase 36.14 P03 | PT1H | 3 tasks | 14 files |
 | Phase 36.14 P04 | 95min | 3 tasks | 11 files |
 | Phase 36.14 P05 | 90min | 3 tasks | 8 files |
+| Phase 36.14 P06 | ~75min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -141,6 +142,9 @@ Recent decisions affecting current work:
 - [Phase ?]: Coordinator owns physical-edit snapshot/stage/send/match/restore; Studio no longer captures local move snapshots
 - [Phase ?]: Bridge routes replace-roto-physical-map results to coordinator.consumeBridgeApplyResult; other kinds use matchApplyResult
 - [Phase ?]: History fed via effect on coordinator.acceptedOutput; Plan 05 replaces with generic accepted-only history
+- [Phase ?]: One stable RotoPhysicalTimelineActionBundle owns Insert/Delete actions, reactive availability, and extension points for Plans 07-08
+- [Phase ?]: Retained Duplicate/Paste/Save helpers migrated to physicsPaintRotoKeyController; rotoKeyTransactions.ts deleted without forwarding export
+- [Phase ?]: Toolbar and keyboard call the same insertRotoFrame/deleteRotoFrame references; presentation files contain no physical business logic
 
 ### Pending Todos
 
@@ -217,6 +221,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-21T17:30:00.000Z
-Stopped at: Completed 36.14-05-PLAN.md
+Last session: 2026-07-21T15:58:31.689Z
+Stopped at: Completed 36.14-06-PLAN.md
 Resume file: None
