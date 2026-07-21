@@ -7,6 +7,15 @@ import type { RotoApplyResultTransition } from '../roto/rotoApplyTransactions';
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type ApplyTransition = RotoApplyResultTransition;
 
+/**
+ * Coordinator handle subset used by the apply result controller to route
+ * `replace-roto-physical-map` results to the generic acknowledged
+ * physical-edit coordinator (Plan 36.14-04 Task 3).
+ */
+interface PhysicalEditCoordinatorRoute {
+  consumeBridgeApplyResult: (detail: PhysicPaintApplyResult | null | undefined) => 'ignore' | 'mismatch' | 'accepted';
+}
+
 interface GeneralResultPorts {
   matchApplyResult: (detail: PhysicPaintApplyResult | null | undefined) => ApplyTransition;
   pendingKeyActionMessageRef: MutableRef<string | null>;
@@ -18,8 +27,23 @@ interface GeneralResultPorts {
 export function usePhysicsPaintApplyResultController(input: {
   bridgeMode: PhysicsPaintBridgeMode;
   general: GeneralResultPorts;
+  physicalEditCoordinator: PhysicalEditCoordinatorRoute;
 }) {
   const handleApplyResult = useCallback((detail: PhysicPaintApplyResult | null | undefined) => {
+    if (detail && detail.kind === 'replace-roto-physical-map') {
+      const routed = input.physicalEditCoordinator.consumeBridgeApplyResult(detail);
+      if (routed !== 'ignore') {
+        // Coordinator owns the full pending/settle/restore lifecycle and
+        // concise-vs-LOG routing for physical edits. Compact status is
+        // driven by the coordinator's presentation Signal in Studio; here
+        // we only surface mismatched-result diagnostics to LOG.
+        if (routed === 'mismatch') {
+          input.general.setLastError('Ignored mismatched physics paint physical edit result. Try the action again.');
+        }
+      }
+      return;
+    }
+
     const transition = input.general.matchApplyResult(detail);
     if (transition.type === 'ignore') return;
     if (transition.type === 'mismatch') {

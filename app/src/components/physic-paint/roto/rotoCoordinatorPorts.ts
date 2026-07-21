@@ -87,9 +87,9 @@ export interface RotoPhysicalEditSnapshot<EngineState> {
   readonly dirtyFrames: ReadonlySet<number>;
   readonly editableFrames: readonly number[];
   readonly liveOverlayActionCounts: ReadonlyMap<number, number>;
-  readonly frameStates: ReadonlyMap<number, RenderedFramePayload>;
-  readonly previewFrames: ReadonlyMap<number, RenderedFramePayload>;
-  readonly capturedFrames: ReadonlyMap<number, RenderedFramePayload>;
+  readonly frameStates: ReadonlyMap<number, unknown>;
+  readonly previewFrames: ReadonlyMap<number, unknown>;
+  readonly capturedFrames: ReadonlyMap<number, unknown>;
   readonly cachedReference: { url: string | null; cachedRepaintBase: RenderedFramePayload | null };
   readonly engineState: EngineState | null;
 }
@@ -147,15 +147,15 @@ export interface RotoPhysicalEditRecordsPort {
  * dirty frames, live-overlay action counts, and editable-frame list.
  */
 export interface RotoPhysicalEditBufferPort {
-  readonly frameStates: ReadonlyMap<number, RenderedFramePayload>;
-  readonly previewFrames: ReadonlyMap<number, RenderedFramePayload>;
-  readonly capturedFrames: ReadonlyMap<number, RenderedFramePayload>;
+  readonly frameStates: ReadonlyMap<number, unknown>;
+  readonly previewFrames: ReadonlyMap<number, unknown>;
+  readonly capturedFrames: ReadonlyMap<number, unknown>;
   readonly dirtyFrames: ReadonlySet<number>;
   readonly liveOverlayActionCounts: ReadonlyMap<number, number>;
   readonly editableFrames: readonly number[];
-  replaceFrameStates: (frames: ReadonlyMap<number, RenderedFramePayload>) => void;
-  replacePreviewFrames: (frames: ReadonlyMap<number, RenderedFramePayload>) => void;
-  replaceCapturedFrames: (frames: ReadonlyMap<number, RenderedFramePayload>) => void;
+  replaceFrameStates: (frames: ReadonlyMap<number, unknown>) => void;
+  replacePreviewFrames: (frames: ReadonlyMap<number, unknown>) => void;
+  replaceCapturedFrames: (frames: ReadonlyMap<number, unknown>) => void;
   replaceDirtyFrames: (frames: ReadonlySet<number>) => void;
   replaceLiveOverlayActionCounts: (counts: ReadonlyMap<number, number>) => void;
   setEditableFrameList: (frames: readonly number[]) => void;

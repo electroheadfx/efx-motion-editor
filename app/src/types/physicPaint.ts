@@ -188,7 +188,7 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
 const RENDERED_DATA_URL_PREFIX = 'data:image/png';
 const FORBIDDEN_APPLY_FIELDS = new Set(['engine', 'internals', 'strokes']);
 
-export type PhysicPaintApplyKind = 'apply-canvas' | 'delete-roto-frame' | 'replace-roto-key-frames' | 'update-roto-interpolation-settings';
+export type PhysicPaintApplyKind = 'apply-canvas' | 'delete-roto-frame' | 'replace-roto-key-frames' | 'replace-roto-physical-map' | 'update-roto-interpolation-settings';
 export type PhysicPaintRotoFrameSource = 'real-key' | 'generated-interpolation' | 'background-only-support';
 export type PhysicPaintRotoInterpolationMode = 'duplicate' | 'blend';
 export type PhysicPaintRotoBackgroundMode = 'transparent' | 'white' | 'canvas1' | 'canvas2' | 'canvas3';
@@ -375,7 +375,33 @@ export interface PhysicPaintUpdateRotoInterpolationSettingsPayload {
   settings: PhysicPaintRotoInterpolationSettings;
 }
 
-export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintDeleteRotoFramePayload | PhysicPaintReplaceRotoKeyFramesPayload | PhysicPaintUpdateRotoInterpolationSettingsPayload;
+/**
+ * Active apply payload for the generic acknowledged physical-edit
+ * transaction (Plan 36.14-04 Task 3). Replaces the move-era use of
+ * `replace-roto-key-frames` for the acknowledged move path; non-acknowledged
+ * insert/delete/duplicate/paste operations continue to use
+ * `replace-roto-key-frames` until Plans 36.14-06 through 36.14-08 migrate
+ * them. The parent revalidates project/launch/layer identity, expected
+ * revision, complete records, unique identity/frame placement, payload
+ * ownership, capacity, interpolation, and selected identity before one
+ * store replacement.
+ */
+export interface PhysicPaintReplaceRotoPhysicalMapPayload {
+  kind: 'replace-roto-physical-map';
+  operationId: string;
+  operationKind: PhysicPaintRotoPhysicalEditOperationKind;
+  layerId: string;
+  startFrame: number;
+  launchOperationId: string;
+  projectContextId?: string;
+  expectedRevision: string;
+  records: readonly PhysicPaintRotoPhysicalEditRecord[];
+  interpolationEnabled: boolean;
+  selectedKeyId: string | null;
+  selectedAppFrame: number | null;
+}
+
+export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintDeleteRotoFramePayload | PhysicPaintReplaceRotoKeyFramesPayload | PhysicPaintReplaceRotoPhysicalMapPayload | PhysicPaintUpdateRotoInterpolationSettingsPayload;
 
 export interface PhysicPaintApplyResult {
   operationId: string;
@@ -510,6 +536,21 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
       (value.closeWindowAfterApply === undefined || typeof value.closeWindowAfterApply === 'boolean');
   }
 
+  if (value.kind === 'replace-roto-physical-map') {
+    return isNonEmptyString(value.operationId)
+      && (value.operationKind === 'insert-slot' || value.operationKind === 'delete-key' || value.operationKind === 'move-key' || value.operationKind === 'force-spacing')
+      && isNonEmptyString(value.layerId)
+      && isNonNegativeInteger(value.startFrame)
+      && isNonEmptyString(value.launchOperationId)
+      && (value.projectContextId === undefined || isNonEmptyString(value.projectContextId))
+      && isNonEmptyString(value.expectedRevision)
+      && Array.isArray(value.records)
+      && value.records.every(isPhysicPaintRotoPhysicalEditRecord)
+      && typeof value.interpolationEnabled === 'boolean'
+      && (value.selectedKeyId === null || isNonEmptyString(value.selectedKeyId))
+      && (value.selectedAppFrame === null || isNonNegativeInteger(value.selectedAppFrame));
+  }
+
 
   return false;
 }
@@ -576,7 +617,7 @@ export function isPhysicPaintApplyResult(value: unknown): value is PhysicPaintAp
   if (!isRecord(value)) return false;
   return (
     isNonEmptyString(value.operationId) &&
-    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'update-roto-interpolation-settings') &&
+    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'replace-roto-physical-map' || value.kind === 'update-roto-interpolation-settings') &&
     isNonEmptyString(value.layerId) &&
     isNonNegativeInteger(value.startFrame) &&
     isNonNegativeInteger(value.appliedFrameCount) &&
@@ -651,7 +692,7 @@ function isBaseApplyPayload(value: Record<string, unknown>): value is Record<str
   startFrame: number;
 } {
   return (
-    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'update-roto-interpolation-settings') &&
+    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'replace-roto-physical-map' || value.kind === 'update-roto-interpolation-settings') &&
     isNonEmptyString(value.operationId) &&
     isNonEmptyString(value.layerId) &&
     isNonNegativeInteger(value.startFrame) &&

@@ -62,8 +62,8 @@ interface LaunchLifecyclePorts {
   activeOperationIdRef: MutableRef<string | null>;
   prepareScriptLaunchReplacement: () => Promise<void>;
   completeScriptLaunchReplacement: () => void;
-  cancelMoveForLaunchReplacement: () => void;
-  disposeMoveSettlement: () => void;
+  cancelPhysicalEditForLaunch: () => void;
+  disposePhysicalEditSettlement: () => void;
 }
 
 interface LaunchStatePorts {
@@ -88,7 +88,7 @@ export function usePhysicsPaintLaunchIntegration(input: {
 
   const resetRotoSessionForLaunch = useCallback((context: PhysicPaintLaunchContext) => {
     input.lifecycle.completeScriptLaunchReplacement();
-    input.lifecycle.cancelMoveForLaunchReplacement();
+    input.lifecycle.cancelPhysicalEditForLaunch();
     input.resetPersistenceForLaunch(context.cachedRotoFrames);
     input.lifecycle.pendingApplyRef.current = null;
     input.resetNavigationForLaunchRef.current();
@@ -128,8 +128,8 @@ export function usePhysicsPaintLaunchIntegration(input: {
   }
   useEffect(() => () => {
     coordinatorRef.current?.dispose();
-    input.lifecycle.disposeMoveSettlement();
-  }, [input.lifecycle.disposeMoveSettlement]);
+    input.lifecycle.disposePhysicalEditSettlement();
+  }, [input.lifecycle.disposePhysicalEditSettlement]);
   const applyIncomingLaunchContext = useCallback((context: PhysicPaintLaunchContext) => {
     coordinatorRef.current?.request(context);
   }, []);

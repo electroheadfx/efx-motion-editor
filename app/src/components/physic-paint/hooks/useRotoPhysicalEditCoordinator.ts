@@ -41,6 +41,7 @@ import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { computed, signal, type ReadonlySignal } from '@preact/signals';
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
 import type {
+  PhysicPaintApplyResult,
   PhysicPaintRotoPhysicalEditApplyPayload,
   PhysicPaintRotoPhysicalEditApplyResult,
 } from '../../../types/physicPaint';
@@ -127,6 +128,10 @@ export interface RotoPhysicalEditCoordinatorHandle<EngineState = SerializedProje
   /** Consume one raw apply result from the bridge. Returns the transition classification. */
   consumePhysicalEditResult: (
     detail: PhysicPaintRotoPhysicalEditApplyResult | null | undefined,
+  ) => 'ignore' | 'mismatch' | 'accepted';
+  /** Consume one bridge-broadcast apply result (PhysicPaintApplyResult). */
+  consumeBridgeApplyResult: (
+    detail: PhysicPaintApplyResult | null | undefined,
   ) => 'ignore' | 'mismatch' | 'accepted';
   /** Cancel the pending edit for launch replacement or disposal. Idempotent. */
   cancelPhysicalEdit: (reason: 'launch-replacement' | 'disposal') => void;
@@ -331,6 +336,31 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
     [finalizeAccepted, finalizeFailed],
   );
 
+  const consumeBridgeApplyResult = useCallback(
+    (detail: PhysicPaintApplyResult | null | undefined): 'ignore' | 'mismatch' | 'accepted' => {
+      const pending = pendingRef.current;
+      if (!pending || !detail || detail.kind !== 'replace-roto-physical-map' || detail.operationId !== pending.operationId) {
+        return 'ignore';
+      }
+      const fullResult: PhysicPaintRotoPhysicalEditApplyResult = {
+        operationId: detail.operationId,
+        kind: 'replace-roto-physical-map',
+        operationKind: pending.operationKind,
+        layerId: pending.layerId,
+        startFrame: pending.startFrame,
+        launchOperationId: pending.launchOperationId,
+        ...(pending.projectContextId !== null ? { projectContextId: pending.projectContextId } : {}),
+        expectedRevision: pending.expectedRevision,
+        stagedRevision: pending.stagedRevision,
+        acceptedRevision: detail.ok ? pending.stagedRevision : null,
+        ok: detail.ok,
+        ...(detail.error !== undefined ? { error: detail.error } : {}),
+      };
+      return consumePhysicalEditResult(fullResult);
+    },
+    [consumePhysicalEditResult],
+  );
+
   const cancelPhysicalEdit = useCallback((reason: 'launch-replacement' | 'disposal') => {
     const pending = pendingRef.current;
     const before = beforeRef.current;
@@ -480,6 +510,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
   return {
     executePhysicalEdit,
     consumePhysicalEditResult,
+    consumeBridgeApplyResult,
     cancelPhysicalEdit,
     presentation,
     acceptedOutput,
