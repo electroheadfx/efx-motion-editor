@@ -1,4 +1,4 @@
-import { Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, RotateCcw, Square } from 'lucide-preact';
+import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, RotateCcw, Square } from 'lucide-preact';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
@@ -11,7 +11,6 @@ import {
   type RotoDragPreviewViewModel,
 } from './physicsPaintWorkflowPresentation';
 import {
-  PHYSIC_PAINT_MAX_APPLY_FRAMES,
   getExpandedRotoRealKeyFrames, getRotoInterpolationSpanFrames, type RotoInterpolationSettings,
 } from '../roto/physicsPaintRotoWorkflow';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
@@ -284,7 +283,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const expandedCurrentFrame = expandedRealRotoFrames.find(key => key.sourceFrame === props.currentFrame)?.frame ?? props.currentFrame;
   const frameCells = useMemo(() => buildPhysicsPaintRotoFrameCells(expandedCurrentFrame), [expandedCurrentFrame]);
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
-  const visibleInBetweenCount = Math.max(1, Math.trunc(Number(interpolationSettings.inBetweenCount) || 1));
   const hasGeneratedInBetweens = interpolationConnectors.length > 0;
   const interpolationStatus = interpolationSettings.enabled
     ? hasGeneratedInBetweens
@@ -336,12 +334,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   function handleRotoPlaybackFpsInput(event: Event) {
     const value = Number((event.currentTarget as HTMLInputElement).value);
     if (Number.isFinite(value)) props.onRotoPlaybackFpsChange?.(value);
-  }
-
-  function handleRotoInterpolationCountInput(event: Event) {
-    if (props.mutationLocked) return;
-    const value = Number((event.currentTarget as HTMLInputElement).value);
-    if (Number.isFinite(value)) props.onRotoInterpolationCountChange?.(Math.max(1, Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, Math.trunc(value))));
   }
 
   function handleForceSpacingInput(event: Event) {
@@ -812,10 +804,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       if (props.mutationLocked) return;
                       props.onRotoInterpolationEnabledChange?.((event.currentTarget as HTMLInputElement).checked);
                     }} />
-                  </label>
-                  <label class="physics-paint-roto-interpolation-count" title="Generated in-betweens">
-                    <Blend size={14} aria-hidden="true" />
-                    <input type="number" min="1" max={PHYSIC_PAINT_MAX_APPLY_FRAMES} step="1" value={visibleInBetweenCount} aria-label="Generated in-between frames per real-key pair" disabled={interpolationControlsDisabled || !interpolationSettings.enabled} onInput={handleRotoInterpolationCountInput} />
                   </label>
                   {physicalActions ? (
                     <form class="physics-paint-roto-interpolation-count" title={forceSpacingDisabledReason ?? 'Set empty physical frames between real Roto keys'} onSubmit={handleForceSpacingSubmit}>
