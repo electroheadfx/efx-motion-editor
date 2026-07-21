@@ -6,6 +6,185 @@ export const PHYSIC_PAINT_MAX_APPLY_FRAMES = 600;
 export const PHYSIC_PAINT_DEFAULT_APPLY_FRAMES = 4;
 
 export const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
+
+// ---------------------------------------------------------------------------
+// Standalone generic physical-edit request/result envelope (Plan 36.14-04
+// Task 1). These successor interfaces are INACTIVE additions: they are NOT
+// members of the active `PhysicPaintApplyPayload` union or `PhysicPaintApplyResult`
+// below, and they are NOT routed through `isPhysicPaintApplyPayload` bridge
+// validation. Plan 36.14-04 Task 3 will activate them as the sole physical
+// branch and remove the current `replace-roto-key-frames` move-era branch in
+// the same atomic cutover; until then the current move path remains the only
+// live transaction route.
+//
+// Locked decisions honored:
+// - D-01/D-03: payload remains owned by stable `keyId` while a complete
+//   validated map changes direct physical `appFrame` placement; no
+//   source/display alias, migration adapter, generated durable record,
+//   fallback transaction, or dual publication path participates.
+// - D-09: the request carries the complete immutable final records, enabled
+//   interpolation state, selected identity, and selected direct frame; the
+//   result echoes the exact settlement tuple and carries accepted revision
+//   only on success.
+// - D-10: direct physical downstream authority; no source/display coordinate
+//   translation.
+// ---------------------------------------------------------------------------
+
+/**
+ * Operation kind literal for the generic acknowledged physical-edit
+ * transaction. Plan 36.14-06 through 36.14-08 will route Insert, Delete,
+ * Drag, and Force Spacing intents through this single kind after the Task 3
+ * cutover.
+ */
+export type PhysicPaintRotoPhysicalEditOperationKind =
+  | 'insert-slot'
+  | 'delete-key'
+  | 'move-key'
+  | 'force-spacing';
+
+/**
+ * Standalone generic physical-edit apply payload (inactive successor of the
+ * current `replace-roto-key-frames` move-era branch).
+ *
+ * Per D-09: the request carries operation ID, operation kind, layer,
+ * launch/project context identity, expected revision, immutable complete
+ * final records, enabled-only interpolation state, selected `keyId | null`,
+ * and selected direct `appFrame`. The parent independently revalidates every
+ * field before one store replacement.
+ *
+ * This interface is NOT a member of `PhysicPaintApplyPayload`. It is the one
+ * successor contract that Plan 36.14-04 Task 3 activates while removing the
+ * old `replace-roto-key-frames` branch.
+ */
+export interface PhysicPaintRotoPhysicalEditApplyPayload {
+  readonly kind: 'replace-roto-physical-map';
+  readonly operationId: string;
+  readonly operationKind: PhysicPaintRotoPhysicalEditOperationKind;
+  readonly layerId: string;
+  readonly startFrame: number;
+  readonly launchOperationId: string;
+  readonly projectContextId?: string;
+  readonly expectedRevision: string;
+  readonly records: readonly PhysicPaintRotoPhysicalEditRecord[];
+  readonly interpolationEnabled: boolean;
+  readonly selectedKeyId: string | null;
+  readonly selectedAppFrame: number | null;
+}
+
+/**
+ * Immutable real-key record carried by the generic apply payload. Composed
+ * from the same strict allowlisted fields as the canonical physical model:
+ * stable `keyId`, direct `appFrame`, and the rendered payload (`frameIndex`,
+ * `appFrame`, `dataUrl`, `width`, `height`). No source/display provenance,
+ * generated-cell discriminator, or timing override survives.
+ */
+export interface PhysicPaintRotoPhysicalEditRecord {
+  readonly keyId: string;
+  readonly appFrame: number;
+  readonly payload: {
+    readonly frameIndex: number;
+    readonly appFrame: number;
+    readonly dataUrl: string;
+    readonly width?: number;
+    readonly height?: number;
+  };
+}
+
+/**
+ * Standalone generic physical-edit apply result (inactive successor of the
+ * current move-era apply result). The result echoes the exact settlement
+ * tuple (operation ID, kind, layer, launch/project context) and carries the
+ * accepted revision only on success.
+ *
+ * This interface is NOT a member of `PhysicPaintApplyResult`. The active
+ * apply result contract remains unchanged until Plan 36.14-04 Task 3
+ * activates this successor.
+ */
+export interface PhysicPaintRotoPhysicalEditApplyResult {
+  readonly operationId: string;
+  readonly kind: 'replace-roto-physical-map';
+  readonly operationKind: PhysicPaintRotoPhysicalEditOperationKind;
+  readonly layerId: string;
+  readonly startFrame: number;
+  readonly launchOperationId: string;
+  readonly projectContextId?: string;
+  readonly expectedRevision: string;
+  readonly stagedRevision: string;
+  readonly acceptedRevision: string | null;
+  readonly ok: boolean;
+  readonly error?: string;
+}
+
+const PHYSIC_PAINT_ROTO_PHYSICAL_EDIT_RECORD_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'dataUrl', 'width', 'height']);
+
+/**
+ * Strict guard for {@link PhysicPaintRotoPhysicalEditRecord}. Rejects
+ * non-records, unknown members, malformed identity, and malformed payload
+ * (composed from the existing rendered-frame allowlist).
+ */
+export function isPhysicPaintRotoPhysicalEditRecord(value: unknown): value is PhysicPaintRotoPhysicalEditRecord {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyKeys(value, ['keyId', 'appFrame', 'payload'])) return false;
+  if (!isNonEmptyString(value.keyId)) return false;
+  if (!isNonNegativeInteger(value.appFrame)) return false;
+  const payload = value.payload;
+  if (!isRecord(payload)) return false;
+  if (!hasOnlyKeys(payload, [...PHYSIC_PAINT_ROTO_PHYSICAL_EDIT_RECORD_PAYLOAD_KEYS])) return false;
+  if (!isNonNegativeInteger(payload.frameIndex)) return false;
+  if (!isNonNegativeInteger(payload.appFrame)) return false;
+  if (!isRenderedPngDataUrl(payload.dataUrl)) return false;
+  return optionalNumber(payload.width) && optionalNumber(payload.height);
+}
+
+/**
+ * Strict guard for {@link PhysicPaintRotoPhysicalEditApplyPayload}. Rejects
+ * non-records, unknown members, wrong kind, malformed operation/layer IDs,
+ * missing expected revision, malformed records, and invalid selection
+ * state. This is a closed allowlist validator: it does not normalize, alias,
+ * or fall back to any move-era shape.
+ */
+export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value is PhysicPaintRotoPhysicalEditApplyPayload {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'selectedKeyId', 'selectedAppFrame'])) return false;
+  if (value.kind !== 'replace-roto-physical-map') return false;
+  if (!isNonEmptyString(value.operationId)) return false;
+  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing') return false;
+  if (!isNonEmptyString(value.layerId)) return false;
+  if (!isNonNegativeInteger(value.startFrame)) return false;
+  if (!isNonEmptyString(value.launchOperationId)) return false;
+  if (value.projectContextId !== undefined && !isNonEmptyString(value.projectContextId)) return false;
+  if (!isNonEmptyString(value.expectedRevision)) return false;
+  if (!Array.isArray(value.records) || !value.records.every(isPhysicPaintRotoPhysicalEditRecord)) return false;
+  if (typeof value.interpolationEnabled !== 'boolean') return false;
+  if (value.selectedKeyId !== null && !isNonEmptyString(value.selectedKeyId)) return false;
+  if (value.selectedAppFrame !== null && !isNonNegativeInteger(value.selectedAppFrame)) return false;
+  return true;
+}
+
+/**
+ * Strict guard for {@link PhysicPaintRotoPhysicalEditApplyResult}. Rejects
+ * non-records, unknown members, wrong kind, malformed settlement tuple, and
+ * missing accepted revision on success.
+ */
+export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value is PhysicPaintRotoPhysicalEditApplyResult {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'ok', 'error'])) return false;
+  if (value.kind !== 'replace-roto-physical-map') return false;
+  if (!isNonEmptyString(value.operationId)) return false;
+  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing') return false;
+  if (!isNonEmptyString(value.layerId)) return false;
+  if (!isNonNegativeInteger(value.startFrame)) return false;
+  if (!isNonEmptyString(value.launchOperationId)) return false;
+  if (value.projectContextId !== undefined && !isNonEmptyString(value.projectContextId)) return false;
+  if (!isNonEmptyString(value.expectedRevision)) return false;
+  if (!isNonEmptyString(value.stagedRevision)) return false;
+  if (value.acceptedRevision !== null && !isNonEmptyString(value.acceptedRevision)) return false;
+  if (typeof value.ok !== 'boolean') return false;
+  if (value.error !== undefined && typeof value.error !== 'string') return false;
+  if (value.ok && value.acceptedRevision === null) return false;
+  if (!value.ok && value.acceptedRevision !== null) return false;
+  return true;
+}
 const RENDERED_DATA_URL_PREFIX = 'data:image/png';
 const FORBIDDEN_APPLY_FIELDS = new Set(['engine', 'internals', 'strokes']);
 

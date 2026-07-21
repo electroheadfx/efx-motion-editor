@@ -473,3 +473,82 @@ function cloneAndFreezeRealKeyRecord(record: PhysicPaintRotoRealKeyRecord): Phys
     payload: cloneAndFreezeRealKeyPayload(record.payload),
   }) as PhysicPaintRotoRealKeyRecord;
 }
+
+// ---------------------------------------------------------------------------
+// Deterministic physical content revision (Plan 36.14-04 Task 1).
+//
+// Per D-09: the parent and child agree on expected/staged/accepted physical
+// revisions before acceptance. The revision is a deterministic fingerprint of
+// the validated authoritative real-key records plus enabled-only
+// interpolation state; it is distinct from `physicPaintVersion`, which
+// remains a monotonic visual invalidation signal.
+//
+// The revision is computed only from a validated immutable real-key
+// collection plus enabled-only interpolation state. Canonicalization is
+// performed in stable `keyId` order so equal content produces equal
+// revisions regardless of input order. The fingerprint covers every durable
+// payload field and the direct `appFrame`. Malformed, duplicate, generated,
+// or removed-shape input is rejected via the existing validators rather than
+// normalized.
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute the deterministic physical content revision for a validated
+ * immutable real-key collection plus enabled-only interpolation state.
+ *
+ * Per D-09: this revision is the canonical expected/staged/accepted
+ * fingerprint used by the generic acknowledged physical-edit transaction. It
+ * is independent from `physicPaintVersion` (a monotonic visual invalidation
+ * signal) and contains no source/display, generated-cell, or timing-override
+ * metadata.
+ *
+ * Canonicalization:
+ * - records are sorted by stable `keyId` so equal content produces equal
+ *   revisions regardless of input order;
+ * - every durable payload field (`frameIndex`, `appFrame`, `dataUrl`,
+ *   `width`, `height`) and the direct `appFrame` contribute to the
+ *   fingerprint;
+ * - the enabled-only interpolation flag contributes as a single boolean.
+ *
+ * Rejection:
+ * - non-array input;
+ * - duplicate `keyId`;
+ * - malformed real-key records (including generated descriptors, which fail
+ *   the `kind: 'real-key'` check);
+ * - invalid enabled-only interpolation state.
+ *
+ * Throws a closed validation failure on any invalid input; caller-owned data
+ * is never mutated.
+ */
+export function buildPhysicPaintRotoPhysicalRevision(
+  records: unknown,
+  interpolation: unknown,
+): string {
+  const validated = parsePhysicPaintRotoRealKeyRecordCollection(records);
+  if (!isPhysicPaintRotoInterpolationState(interpolation)) {
+    throw new Error('PhysicPaintRotoPhysicalRevision: invalid enabled-only interpolation state.');
+  }
+
+  const orderedByIdentity = [...validated].sort((a, b) => {
+    if (a.keyId < b.keyId) return -1;
+    if (a.keyId > b.keyId) return 1;
+    return 0;
+  });
+
+  const payloadSegments: string[] = [];
+  for (const record of orderedByIdentity) {
+    payloadSegments.push(
+      `${record.keyId}:${record.appFrame}:${record.payload.frameIndex}:${record.payload.dataUrl}:${record.payload.width ?? ''}:${record.payload.height ?? ''}`,
+    );
+  }
+  const payloadFingerprint = payloadSegments.join('|');
+  const interpolationFingerprint = interpolation.enabled ? 'enabled' : 'disabled';
+
+  let hash = 2166136261;
+  const source = `${payloadFingerprint}#${interpolationFingerprint}`;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${orderedByIdentity.length}-${(hash >>> 0).toString(16)}`;
+}
