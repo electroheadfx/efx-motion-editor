@@ -4,17 +4,17 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
-status: ready_for_execution
-stopped_at: Phase 36.14 planning finalized; 18 plans verified by gsd-plan-checker
-last_updated: "2026-07-21T00:00:00.000Z"
+status: executing
+stopped_at: Completed 36.14-01-PLAN.md (production-gate ready)
+last_updated: "2026-07-21T06:50:34.245Z"
 last_activity: 2026-07-21
-last_activity_desc: Phase 36.14 planning finalized — 18 chunked plans (01-18) verified by gsd-plan-checker (VERIFICATION PASSED); ROADMAP and STATE updated to ready-for-execution
+last_activity_desc: Phase 36.14 execution started
 progress:
   total_phases: 17
   completed_phases: 16
   total_plans: 110
-  completed_plans: 92
-  percent: 94
+  completed_plans: 93
+  percent: 85
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Review Physics Paint Roto interpolation architecture and add deterministic move-timing coverage before Phase 36.14
+**Current focus:** Phase 36.14 — physics-paint-roto-timeline-ui-from-pencil
 
 ## Current Position
 
-Phase: 36.14 — Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration
+Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 36.14-01 of 18 — ready for execution
-Status: 18 chunked plans (01-18) generated, revised through two checker cycles, and verified by gsd-plan-checker (VERIFICATION PASSED). ROADMAP and STATE updated to ready-for-execution.
-Last activity: 2026-07-21 — Phase 36.14 planning finalized; 18 plans committed; ROADMAP/STATE synchronized
+Plan: 2 of 18
+Status: Ready to execute
+Last activity: 2026-07-21 — Phase 36.14 execution started
 Next recommended action: Execute Plan 36.14-01 via `/gsd-execute-phase 36.14`
 
-Progress: [███████████████████░] 92/110 plans ready; 16/17 phases complete (94%)
+Progress: [███████████████████░] 92/110 plans ready; 16/17 phases complete ([█████████░] 85%)
 
 ## Performance Metrics
 
@@ -85,6 +85,11 @@ Progress: [███████████████████░] 92/110 
 | Phase 36.5 P03 | 34min | 3 tasks + visual fix | 4 files |
 | Phase 36.6 P01 | 42min | 3 tasks | 2 files |
 | Phase 36.6 P02 | 25min | 3 tasks | 5 files |
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 36.14 P01 | 4min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -122,6 +127,7 @@ Recent decisions affecting current work:
 - [Superseded by quick 260714-ail] Phase 36.11 same-session post-Save navigation is replaced by immediate automatic live-pixel commits through the same cached-frame source.
 - [Quick 260718-m2f]: Single-key Roto drag uses one non-ripple canonical move transaction; generated/empty cells are valid requested destinations when Studio's resolver finds a legal effective frame, occupied real keys remain invalid, and move-specific timing rebuilds only affected adjacent spans.
 - [Quick 260718-m2f]: Drag preview validity is Studio-authoritative and shares requested/effective destination semantics with commit; the existing interpolation-number control remains unchanged pending the next dedicated interpolation review.
+- [Phase ?]: Plan 01 ships an additive inactive canonical physical Roto model: stable keyId, direct appFrame, enabled-only interpolation, separate Script Motion, and fail-closed reconstructing validators. No shared live contract is edited, removed, or dual-written.
 
 ### Pending Todos
 
@@ -198,6 +204,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-21T00:00:00.000Z
-Stopped at: Phase 36.14 planning finalized; 18 plans verified by gsd-plan-checker and committed; ready for `/gsd-execute-phase 36.14`
-Resume file: .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-PLAN-OUTLINE.md
+Last session: 2026-07-21T06:50:34.238Z
+Stopped at: Completed 36.14-01-PLAN.md (production-gate ready)
+Resume file: .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-02-PLAN.md
