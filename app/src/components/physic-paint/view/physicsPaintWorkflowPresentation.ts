@@ -1,4 +1,9 @@
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
+import type {
+  PhysicPaintRotoPhysicalCell,
+  PhysicPaintRotoPhysicalEditProposal,
+  PhysicPaintRotoPhysicalIdentityChange,
+} from '../roto/physicsPaintRotoPhysicalResolver';
 
 export type PhysicsPaintWorkflowMode = 'roto';
 export type PhysicsPaintApplyStatus = 'idle' | 'applying' | 'success' | 'error';
@@ -216,4 +221,226 @@ function clampNonNegativeInteger(value: unknown, fallback: number): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.max(0, Math.trunc(numeric));
+}
+
+// ---------------------------------------------------------------------------
+// Single-key ripple Drag presentation helpers (Plan 36.14-07).
+//
+// Per D-22: the preview must render the complete resolver-proposed mapping —
+// moved identity, every shifted real key, and re-derived generated cells —
+// rather than a destination-only marker. Per D-21/D-23: occupied targets
+// expose a transient before/after caret, while empty/generated destinations
+// use whole-cell target treatment. Per D-24: selection and focus follow the
+// moved identity at its proposed appFrame.
+//
+// These helpers are pure: they take a resolver proposal plus the current
+// physical cells and produce cell-level presentation metadata. They never
+// calculate edit semantics, destination frames, or ripple mappings.
+// ---------------------------------------------------------------------------
+
+/**
+ * Role of a visible physical cell within an active Drag preview.
+ * - `moved`: the dragged identity at its proposed final appFrame.
+ * - `shifted`: a real key whose appFrame changed because of the ripple.
+ * - `target`: the occupied target identity (preserved, not overwritten).
+ * - `generated`: a strict-interior generated cell from the proposal.
+ * - `vacated`: a cell emptied by the cut (no longer real or generated).
+ * - `idle`: unchanged by this proposal.
+ */
+export type RotoDragCellRole =
+  | 'moved'
+  | 'shifted'
+  | 'target'
+  | 'generated'
+  | 'vacated'
+  | 'idle';
+
+/**
+ * Presentation view model for one visible cell during an active Drag preview.
+ * The `role` drives CSS state; `targetBoundary` adds the before/after caret
+ * direction for occupied targets; `ariaLabel`/`title` carry concise accessible
+ * copy that agrees with the proposal metadata.
+ */
+export interface RotoDragCellPreviewViewModel {
+  readonly appFrame: number;
+  readonly kind: PhysicPaintRotoPhysicalCell['kind'];
+  readonly keyId: string | null;
+  readonly role: RotoDragCellRole;
+  readonly targetBoundary: 'before' | 'after' | null;
+  readonly ariaLabel: string;
+  readonly title: string;
+}
+
+/**
+ * Presentation view model for the active Drag preview, derived solely from
+ * the retained resolver proposal. The view consumes `cellsByAppFrame` to
+ * render each visible cell's final kind/keyId, `movedKeyId`/`targetKeyId` for
+ * identity-based focus and caret placement, and `boundary` for concise
+ * status copy.
+ */
+export interface RotoDragPreviewViewModel {
+  readonly movedKeyId: string;
+  readonly movedAppFrame: number;
+  readonly targetKind: 'physical-cell' | 'before-key' | 'after-key';
+  readonly targetKeyId: string | null;
+  readonly targetAppFrame: number | null;
+  readonly boundary: 'before' | 'after' | null;
+  readonly cellsByAppFrame: ReadonlyMap<number, RotoDragCellPreviewViewModel>;
+  readonly conciseStatus: string;
+  readonly committing: boolean;
+}
+
+const DRAG_MOVED_LABEL_TEMPLATE = 'Moving Roto key to frame {frame}.';
+const DRAG_MOVED_AFTER_OCCUPIED_LABEL_TEMPLATE = 'Insert Roto key after the key at frame {frame}.';
+const DRAG_MOVED_BEFORE_OCCUPIED_LABEL_TEMPLATE = 'Insert Roto key before the key at frame {frame}.';
+const DRAG_SHIFTED_LABEL_TEMPLATE = 'Ripple-shifted to frame {frame}.';
+const DRAG_VACATED_LABEL_TEMPLATE = 'Vacated frame {frame}.';
+const DRAG_GENERATED_LABEL_TEMPLATE = 'Generated frame {frame}.';
+
+/**
+ * Project the retained resolver proposal into a pure Drag preview view model.
+ * The result is consumed by the workflow strip to render the complete proposed
+ * physical cells, moved/shifted identities, occupied target caret, and concise
+ * accessible status copy without re-deriving edit semantics.
+ *
+ * `committing` flags the pending state where the proposal is still visible
+ * while the coordinator acknowledges the mutation; the caller sets it from
+ * the strip's pointer-up lifecycle, not from the proposal itself.
+ */
+export function getRotoDragPreviewViewModel(
+  proposal: PhysicPaintRotoPhysicalEditProposal,
+  options: { committing?: boolean } = {},
+): RotoDragPreviewViewModel {
+  const drag = proposal.drag;
+  if (!drag) {
+    throw new Error('RotoDragPreviewViewModel requires a move-key proposal with drag metadata.');
+  }
+  const movedKeyId = drag.movedKeyId;
+  const movedAppFrame = proposal.mapping.get(movedKeyId) ?? drag.resolvedInsertionAppFrame;
+  const targetKind = drag.targetKind;
+  const targetKeyId = drag.targetKeyId;
+  const targetAppFrame = targetKeyId === null ? null : (proposal.mapping.get(targetKeyId) ?? null);
+  const boundary: 'before' | 'after' | null = targetKind === 'before-key' ? 'before' : targetKind === 'after-key' ? 'after' : null;
+
+  const changesByKeyId = new Map<string, PhysicPaintRotoPhysicalIdentityChange>();
+  for (const change of proposal.changes) {
+    changesByKeyId.set(change.keyId, change);
+  }
+
+  const cellsByAppFrame = new Map<number, RotoDragCellPreviewViewModel>();
+  for (const cell of proposal.cells) {
+    const appFrame = cell.appFrame;
+    let role: RotoDragCellRole = 'idle';
+    let keyId: string | null = null;
+    if (cell.kind === 'real') {
+      keyId = cell.keyId;
+      if (cell.keyId === movedKeyId) {
+        role = 'moved';
+      } else if (changesByKeyId.has(cell.keyId)) {
+        role = 'shifted';
+      } else if (targetKeyId !== null && cell.keyId === targetKeyId) {
+        role = 'target';
+      }
+    } else if (cell.kind === 'generated') {
+      role = 'generated';
+    } else if (cell.kind === 'empty') {
+      // A cell that was real/generated in the current state but is empty in
+      // the proposal is vacated. The caller's current cells drive that
+      // comparison; here we mark proposal-only empties as idle and let the
+      // strip mark vacated cells by diffing against current cells.
+      role = 'idle';
+    }
+    const targetBoundary = role === 'target' ? boundary : null;
+    const label = buildDragCellLabel(role, appFrame, targetBoundary);
+    cellsByAppFrame.set(appFrame, {
+      appFrame,
+      kind: cell.kind,
+      keyId,
+      role,
+      targetBoundary,
+      ariaLabel: label,
+      title: label,
+    });
+  }
+
+  const conciseStatus = buildDragConciseStatus(targetKind, movedAppFrame, boundary);
+  return {
+    movedKeyId,
+    movedAppFrame,
+    targetKind,
+    targetKeyId,
+    targetAppFrame,
+    boundary,
+    cellsByAppFrame,
+    conciseStatus,
+    committing: Boolean(options.committing),
+  };
+}
+
+function buildDragConciseStatus(
+  targetKind: 'physical-cell' | 'before-key' | 'after-key',
+  movedAppFrame: number,
+  boundary: 'before' | 'after' | null,
+): string {
+  if (targetKind === 'physical-cell') {
+    return DRAG_MOVED_LABEL_TEMPLATE.replace('{frame}', String(movedAppFrame));
+  }
+  if (boundary === 'before') {
+    return DRAG_MOVED_BEFORE_OCCUPIED_LABEL_TEMPLATE.replace('{frame}', String(movedAppFrame));
+  }
+  return DRAG_MOVED_AFTER_OCCUPIED_LABEL_TEMPLATE.replace('{frame}', String(movedAppFrame));
+}
+
+function buildDragCellLabel(
+  role: RotoDragCellRole,
+  appFrame: number,
+  targetBoundary: 'before' | 'after' | null,
+): string {
+  if (role === 'moved') {
+    return DRAG_MOVED_LABEL_TEMPLATE.replace('{frame}', String(appFrame));
+  }
+  if (role === 'shifted') {
+    return DRAG_SHIFTED_LABEL_TEMPLATE.replace('{frame}', String(appFrame));
+  }
+  if (role === 'vacated') {
+    return DRAG_VACATED_LABEL_TEMPLATE.replace('{frame}', String(appFrame));
+  }
+  if (role === 'generated') {
+    return DRAG_GENERATED_LABEL_TEMPLATE.replace('{frame}', String(appFrame));
+  }
+  if (role === 'target') {
+    return targetBoundary === 'before'
+      ? DRAG_MOVED_BEFORE_OCCUPIED_LABEL_TEMPLATE.replace('{frame}', String(appFrame))
+      : DRAG_MOVED_AFTER_OCCUPIED_LABEL_TEMPLATE.replace('{frame}', String(appFrame));
+  }
+  return `Frame ${appFrame}`;
+}
+
+/**
+ * Diff the current physical cells against the proposal to mark vacated cells.
+ * A cell that was `real` or `generated` in the current state but is `empty` in
+ * the proposal is vacated by the cut-and-insert ripple. Returns a set of
+ * appFrames to mark as vacated in the strip's rendering.
+ */
+export function collectRotoDragVacatedAppFrames(
+  currentCells: readonly PhysicPaintRotoPhysicalCell[],
+  proposal: PhysicPaintRotoPhysicalEditProposal,
+): Set<number> {
+  const currentOccupied = new Set<number>();
+  for (const cell of currentCells) {
+    if (cell.kind === 'real' || cell.kind === 'generated') {
+      currentOccupied.add(cell.appFrame);
+    }
+  }
+  const proposalOccupied = new Set<number>();
+  for (const cell of proposal.cells) {
+    if (cell.kind === 'real' || cell.kind === 'generated') {
+      proposalOccupied.add(cell.appFrame);
+    }
+  }
+  const vacated = new Set<number>();
+  for (const frame of currentOccupied) {
+    if (!proposalOccupied.has(frame)) vacated.add(frame);
+  }
+  return vacated;
 }

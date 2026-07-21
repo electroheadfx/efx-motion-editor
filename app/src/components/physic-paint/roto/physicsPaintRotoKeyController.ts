@@ -5,10 +5,8 @@ import {
   type PhysicPaintRotoSegmentSpacingOverride,
 } from '../../../types/physicPaint';
 import {
-  getExpandedRotoRealKeyFrames,
   normalizeRotoSegmentSpacingOverrides,
   resolveRotoFarEmptyDisplaySaveTarget,
-  type RotoExpandedRealKeyFrame,
   type RotoFarEmptyDisplaySaveTarget,
   type RotoInterpolationSettings,
   type RotoSegmentSpacingOverride,
@@ -23,12 +21,6 @@ export interface RotoSourceDisplayModel {
   settings: RotoInterpolationSettings;
 }
 
-interface RotoDisplayProjection {
-  cells: RotoExpandedRealKeyFrame[];
-  realKeys: Extract<RotoExpandedRealKeyFrame, { kind: 'real-key' }>[];
-  generatedFrames: Extract<RotoExpandedRealKeyFrame, { kind: 'generated-interpolation' }>[];
-}
-
 function normalizeRealSourceFrames(frames: readonly number[]): number[] {
   return Array.from(new Set(frames.filter((frame) => Number.isInteger(frame) && frame >= 0))).sort((a, b) => a - b);
 }
@@ -40,28 +32,6 @@ function createRotoSourceDisplayModelLegacy(input: { realSourceFrames: readonly 
     segmentSpacingOverrides: normalizeRotoSegmentSpacingOverrides(input.settings.segmentSpacingOverrides, realSourceFrames),
   };
   return { realSourceFrames, settings };
-}
-
-function getRotoDisplayProjectionLegacy(
-  model: RotoSourceDisplayModel,
-  settingsPatch: Partial<RotoInterpolationSettings> = {},
-): RotoDisplayProjection {
-  const settings: RotoInterpolationSettings = {
-    ...model.settings,
-    ...settingsPatch,
-    segmentSpacingOverrides: normalizeRotoSegmentSpacingOverrides(
-      settingsPatch.segmentSpacingOverrides ?? model.settings.segmentSpacingOverrides,
-      model.realSourceFrames,
-    ),
-  };
-  const cells = settings.enabled === true
-    ? getExpandedRotoRealKeyFrames(model.realSourceFrames, settings)
-    : model.realSourceFrames.map((sourceFrame) => ({ sourceFrame, frame: sourceFrame, displayFrame: sourceFrame, kind: 'real-key' as const }));
-  return {
-    cells,
-    realKeys: cells.filter((cell): cell is Extract<RotoExpandedRealKeyFrame, { kind: 'real-key' }> => cell.kind === 'real-key'),
-    generatedFrames: cells.filter((cell): cell is Extract<RotoExpandedRealKeyFrame, { kind: 'generated-interpolation' }> => cell.kind === 'generated-interpolation'),
-  };
 }
 
 function resolveRotoRealKeySaveTargetLegacy(
@@ -175,45 +145,6 @@ export interface RotoKeyUtilityTransactionInput {
   buildBlankRotoFrame: (appFrame: number) => PhysicPaintRotoCacheFrame;
 }
 
-export interface RotoKeyMoveTimingInput {
-  fromDisplayFrame: number;
-  toDisplayFrame: number;
-  sourceFrame: number;
-  realSourceFrames: readonly number[];
-  interpolationSettings: RotoInterpolationSettings;
-}
-
-export interface RotoKeyMoveTimingPlan {
-  destinationSourceFrame: number;
-  requestedDestinationDisplayFrame: number;
-  effectiveDestinationDisplayFrame: number;
-  segmentSpacingOverrides: PhysicPaintRotoSegmentSpacingOverride[];
-}
-
-export type RotoKeyMoveTimingResolution =
-  | { valid: true; plan: RotoKeyMoveTimingPlan }
-  | { valid: false; error: string };
-
-export interface RotoKeyMoveTransactionInput {
-  fromDisplayFrame: number;
-  toDisplayFrame: number;
-  sourceFrame: number;
-  realKeyFrames: readonly PhysicPaintRotoCacheFrame[];
-  cachedRotoFrames?: readonly PhysicPaintRotoCacheFrame[];
-  interpolationSettings: PhysicPaintRotoInterpolationSettings;
-  canvasSize?: { width: number; height: number };
-}
-
-export interface RotoKeyMoveTransaction extends RotoKeyUtilityTransaction {
-  operation: 'move';
-  sourceDisplayFrame: number;
-  requestedDestinationDisplayFrame: number;
-  destinationDisplayFrame: number;
-  sourceFrame: number;
-  destinationSourceFrame: number;
-  interpolationSettings: PhysicPaintRotoInterpolationSettings;
-}
-
 export interface ApplyRotoKeyUtilityTransactionToLocalStateInput<TEditable = unknown, TPreview extends { appFrame: number } = PhysicPaintRotoCacheFrame> {
   editableStates: ReadonlyMap<number, TEditable>;
   previewFrames: ReadonlyMap<number, TPreview>;
@@ -227,199 +158,6 @@ export interface ApplyRotoKeyUtilityTransactionToLocalStateResult<TEditable = un
 }
 
 export const GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
-
-export function resolveRotoKeyMoveTiming(input: RotoKeyMoveTimingInput): RotoKeyMoveTimingResolution {
-  const fromDisplayFrame = normalizeFrame(input.fromDisplayFrame);
-  const requestedDestinationDisplayFrame = normalizeFrame(input.toDisplayFrame);
-  const sourceFrame = normalizeFrame(input.sourceFrame);
-  if (fromDisplayFrame === null || requestedDestinationDisplayFrame === null || sourceFrame === null) {
-    return { valid: false, error: 'Choose valid Roto key frames to move.' };
-  }
-  if (fromDisplayFrame === requestedDestinationDisplayFrame) {
-    return { valid: false, error: 'Move the Roto key to a different frame.' };
-  }
-
-  const realSourceFrames = normalizeFrameNumbers(input.realSourceFrames);
-  if (!realSourceFrames.includes(sourceFrame)) return { valid: false, error: 'The dragged Roto key is no longer available.' };
-  const latestModel = createRotoSourceDisplayModelLegacy({ realSourceFrames, settings: input.interpolationSettings });
-  const currentProjection = getRotoDisplayProjectionLegacy(latestModel);
-  const projectedSource = currentProjection.realKeys.find((cell) => cell.displayFrame === fromDisplayFrame);
-  if (!projectedSource || projectedSource.sourceFrame !== sourceFrame) {
-    return { valid: false, error: 'The dragged Roto key is no longer available.' };
-  }
-  const occupiedDestination = currentProjection.realKeys.find((cell) => cell.displayFrame === requestedDestinationDisplayFrame);
-  if (occupiedDestination) {
-    return { valid: false, error: `Frame ${requestedDestinationDisplayFrame} already contains a real Roto key.` };
-  }
-
-  const timingModel = createRotoSourceDisplayModelLegacy({
-    realSourceFrames,
-    settings: { ...input.interpolationSettings, enabled: true },
-  });
-  const intendedDisplays = new Map(getRotoDisplayProjectionLegacy(timingModel).realKeys.map((cell) => [cell.sourceFrame, cell.displayFrame]));
-  const globalInBetweenCount = normalizeMoveInBetweenCount(input.interpolationSettings.inBetweenCount);
-  const existingOverrides = new Map((timingModel.settings.segmentSpacingOverrides ?? []).map((override) => [`${override.fromSourceFrame}:${override.toSourceFrame}`, override]));
-  const remainingSourceFrames = realSourceFrames.filter((frame) => frame !== sourceFrame);
-  const remainingOverrideResult = buildMoveSpacingOverrides({
-    sourceFrames: remainingSourceFrames,
-    intendedDisplays,
-    globalInBetweenCount,
-    existingOverrides,
-  });
-  if (!remainingOverrideResult.valid) return remainingOverrideResult;
-
-  const destinationModel = createRotoSourceDisplayModelLegacy({
-    realSourceFrames: remainingSourceFrames,
-    settings: {
-      ...input.interpolationSettings,
-      segmentSpacingOverrides: remainingOverrideResult.overrides,
-    },
-  });
-  const target = resolveRotoRealKeySaveTargetLegacy(destinationModel, requestedDestinationDisplayFrame);
-  const destinationSourceFrame = normalizeFrame(target.sourceFrame);
-  if (destinationSourceFrame === null || destinationSourceFrame === sourceFrame) {
-    return { valid: false, error: 'The Roto key move has no canonical destination.' };
-  }
-  if (remainingSourceFrames.includes(destinationSourceFrame)) {
-    return { valid: false, error: `Frame ${requestedDestinationDisplayFrame} already contains a real Roto key.` };
-  }
-
-  const finalSourceFrames = normalizeFrameNumbers([...remainingSourceFrames, destinationSourceFrame]);
-  if (finalSourceFrames.length !== realSourceFrames.length) {
-    return { valid: false, error: 'The Roto key move has no canonical destination.' };
-  }
-  const destinationIndex = finalSourceFrames.indexOf(destinationSourceFrame);
-  const previousSourceFrame = destinationIndex > 0 ? finalSourceFrames[destinationIndex - 1] : null;
-  const nextSourceFrame = destinationIndex < finalSourceFrames.length - 1 ? finalSourceFrames[destinationIndex + 1] : null;
-  const previousDisplay = previousSourceFrame === null ? null : intendedDisplays.get(previousSourceFrame) ?? null;
-  const nextDisplay = nextSourceFrame === null ? null : intendedDisplays.get(nextSourceFrame) ?? null;
-  if (previousSourceFrame !== null && previousDisplay === null) return { valid: false, error: 'The previous Roto key timing is unavailable.' };
-  if (nextSourceFrame !== null && nextDisplay === null) return { valid: false, error: 'The next Roto key timing is unavailable.' };
-
-  const lowerBound = previousDisplay === null ? null : previousDisplay + 2;
-  const upperBound = nextDisplay === null ? null : nextDisplay - 2;
-  if (lowerBound !== null && upperBound !== null && lowerBound > upperBound) {
-    return { valid: false, error: `Frame ${requestedDestinationDisplayFrame} has no legal Roto timing interval.` };
-  }
-  const firstDisplayFrame = finalSourceFrames[0] ?? 0;
-  let effectiveDestinationDisplayFrame = destinationIndex === 0
-    ? firstDisplayFrame
-    : requestedDestinationDisplayFrame;
-  if (lowerBound !== null) effectiveDestinationDisplayFrame = Math.max(effectiveDestinationDisplayFrame, lowerBound);
-  if (upperBound !== null) effectiveDestinationDisplayFrame = Math.min(effectiveDestinationDisplayFrame, upperBound);
-  if (destinationIndex === 0 && effectiveDestinationDisplayFrame !== firstDisplayFrame) {
-    return { valid: false, error: `Frame ${requestedDestinationDisplayFrame} cannot preserve first-key Roto timing.` };
-  }
-
-  const finalIntendedDisplays = new Map(intendedDisplays);
-  finalIntendedDisplays.delete(sourceFrame);
-  finalIntendedDisplays.set(destinationSourceFrame, effectiveDestinationDisplayFrame);
-  const finalOverrideResult = buildMoveSpacingOverrides({
-    sourceFrames: finalSourceFrames,
-    intendedDisplays: finalIntendedDisplays,
-    globalInBetweenCount,
-    existingOverrides,
-  });
-  if (!finalOverrideResult.valid) return finalOverrideResult;
-
-  const finalModel = createRotoSourceDisplayModelLegacy({
-    realSourceFrames: finalSourceFrames,
-    settings: {
-      ...input.interpolationSettings,
-      enabled: true,
-      segmentSpacingOverrides: finalOverrideResult.overrides,
-    },
-  });
-  const finalProjection = getRotoDisplayProjectionLegacy(finalModel);
-  const movedProjection = finalProjection.realKeys.find((cell) => cell.sourceFrame === destinationSourceFrame);
-  if (!movedProjection || movedProjection.displayFrame !== effectiveDestinationDisplayFrame) {
-    return { valid: false, error: `Frame ${requestedDestinationDisplayFrame} cannot preserve canonical Roto timing.` };
-  }
-  for (const frame of remainingSourceFrames) {
-    if (finalProjection.realKeys.find((cell) => cell.sourceFrame === frame)?.displayFrame !== intendedDisplays.get(frame)) {
-      return { valid: false, error: `Frame ${requestedDestinationDisplayFrame} would move an unaffected Roto key.` };
-    }
-  }
-
-  return {
-    valid: true,
-    plan: {
-      destinationSourceFrame,
-      requestedDestinationDisplayFrame,
-      effectiveDestinationDisplayFrame,
-      segmentSpacingOverrides: finalModel.settings.segmentSpacingOverrides?.map((override) => ({ ...override })) ?? [],
-    },
-  };
-}
-
-export function buildRotoKeyMoveTransaction(input: RotoKeyMoveTransactionInput): RotoKeyMoveTransaction {
-  const canvasSize = normalizeCanvasSize(input.canvasSize);
-  const realKeyFrames = normalizeMoveRealKeyFrames(input.realKeyFrames, canvasSize);
-  const realFramesBySource = new Map(realKeyFrames.map((frame) => [frame.sourceFrame ?? frame.appFrame, frame]));
-  const realSourceFrames = Array.from(realFramesBySource.keys()).sort((a, b) => a - b);
-  const timing = resolveRotoKeyMoveTiming({
-    fromDisplayFrame: input.fromDisplayFrame,
-    toDisplayFrame: input.toDisplayFrame,
-    sourceFrame: input.sourceFrame,
-    realSourceFrames,
-    interpolationSettings: input.interpolationSettings,
-  });
-  if (!timing.valid) throw new Error(timing.error);
-
-  const fromDisplayFrame = normalizeFrame(input.fromDisplayFrame) ?? 0;
-  const sourceFrame = normalizeFrame(input.sourceFrame) ?? 0;
-  const {
-    destinationSourceFrame,
-    requestedDestinationDisplayFrame,
-    effectiveDestinationDisplayFrame,
-    segmentSpacingOverrides,
-  } = timing.plan;
-  const remainingSourceFrames = realSourceFrames.filter((frame) => frame !== sourceFrame);
-  const frameMapping: RotoKeyUtilityFrameMapping = { fromFrame: sourceFrame, toFrame: destinationSourceFrame, mode: 'move' };
-  const sourcePayload = realFramesBySource.get(sourceFrame);
-  if (!sourcePayload) throw new Error(`No cached payload for source frame ${sourceFrame}.`);
-  const nextRealKeyFrames = remainingSourceFrames.map((frame) => {
-    const payload = realFramesBySource.get(frame);
-    if (!payload) throw new Error(`No cached payload for real key ${frame}.`);
-    return normalizeMoveRealKeyFrame(payload, frame, canvasSize);
-  });
-  nextRealKeyFrames.push(normalizeMoveRealKeyFrame(sourcePayload, destinationSourceFrame, canvasSize));
-
-  const generatedFrames = collectGeneratedFrames(input.cachedRotoFrames);
-  const referenceFrames = normalizeFrameNumbers((input.cachedRotoFrames ?? [])
-    .filter((frame) => frame.source === 'generated-interpolation' || frame.nearestRealKeyFrame !== undefined)
-    .map((frame) => frame.appFrame));
-  const backgroundOnlySupportFrames = collectBackgroundOnlySupportFrames(input.cachedRotoFrames);
-  const interpolationSettings: PhysicPaintRotoInterpolationSettings = {
-    ...input.interpolationSettings,
-    segmentSpacingOverrides,
-  };
-  const destinationWasClamped = requestedDestinationDisplayFrame !== effectiveDestinationDisplayFrame;
-  const transaction = makeTransaction({
-    operation: 'move',
-    realKeyFrames: nextRealKeyFrames,
-    activeFrame: effectiveDestinationDisplayFrame,
-    activeRestore: { kind: 'load-real-key', frame: effectiveDestinationDisplayFrame },
-    cleanup: cleanup(generatedFrames, referenceFrames, backgroundOnlySupportFrames, [sourceFrame]),
-    frameMappings: [frameMapping],
-    changedFrames: [sourceFrame, destinationSourceFrame],
-    removedFrames: normalizeFrameNumbers([sourceFrame, ...generatedFrames]),
-    segmentSpacingOverrides,
-    successMessage: destinationWasClamped
-      ? `Moved key ${fromDisplayFrame} to frame ${effectiveDestinationDisplayFrame} (requested ${requestedDestinationDisplayFrame}).`
-      : `Moved key ${fromDisplayFrame} to frame ${effectiveDestinationDisplayFrame}.`,
-  });
-  return {
-    ...transaction,
-    operation: 'move',
-    sourceDisplayFrame: fromDisplayFrame,
-    requestedDestinationDisplayFrame,
-    destinationDisplayFrame: effectiveDestinationDisplayFrame,
-    sourceFrame,
-    destinationSourceFrame,
-    interpolationSettings,
-  };
-}
 
 const SOURCE_OPERATIONS: RotoKeyUtilityOperation[] = ['copy', 'duplicate'];
 const EXPOSURES: RotoKeyUtilityActionStateExposure[] = [
@@ -630,63 +368,6 @@ function cleanup(generatedFrames: readonly number[], referenceFrames: readonly n
     backgroundOnlySupportFrames: normalizeFrameNumbers(backgroundOnlySupportFrames),
     deletedFrames: normalizeFrameNumbers(deletedFrames),
   };
-}
-
-interface BuildMoveSpacingOverridesInput {
-  sourceFrames: readonly number[];
-  intendedDisplays: ReadonlyMap<number, number>;
-  globalInBetweenCount: number;
-  existingOverrides: ReadonlyMap<string, PhysicPaintRotoSegmentSpacingOverride>;
-}
-
-type BuildMoveSpacingOverridesResult =
-  | { valid: true; overrides: PhysicPaintRotoSegmentSpacingOverride[] }
-  | { valid: false; error: string };
-
-function buildMoveSpacingOverrides({
-  sourceFrames,
-  intendedDisplays,
-  globalInBetweenCount,
-  existingOverrides,
-}: BuildMoveSpacingOverridesInput): BuildMoveSpacingOverridesResult {
-  if (sourceFrames.length === 0) return { valid: true, overrides: [] };
-  const firstSourceFrame = sourceFrames[0];
-  const firstDisplayFrame = intendedDisplays.get(firstSourceFrame);
-  const canonicalFirstDisplayFrame = firstSourceFrame > 0 ? firstSourceFrame : 0;
-  if (firstDisplayFrame !== canonicalFirstDisplayFrame) {
-    return { valid: false, error: `Frame ${firstSourceFrame} cannot preserve first-key Roto timing.` };
-  }
-
-  const overrides: PhysicPaintRotoSegmentSpacingOverride[] = [];
-  for (let index = 0; index < sourceFrames.length - 1; index++) {
-    const fromSourceFrame = sourceFrames[index];
-    const toSourceFrame = sourceFrames[index + 1];
-    const leftDisplay = intendedDisplays.get(fromSourceFrame);
-    const rightDisplay = intendedDisplays.get(toSourceFrame);
-    if (leftDisplay === undefined || rightDisplay === undefined) {
-      return { valid: false, error: 'The Roto key timing anchors are incomplete.' };
-    }
-    const inBetweenCount = rightDisplay - leftDisplay - 1;
-    if (inBetweenCount < 1) {
-      return { valid: false, error: `Frames ${leftDisplay} and ${rightDisplay} are too close for Roto interpolation.` };
-    }
-    if (inBetweenCount > PHYSIC_PAINT_MAX_APPLY_FRAMES) {
-      return { valid: false, error: `Frames ${leftDisplay} and ${rightDisplay} exceed the maximum Roto interpolation span.` };
-    }
-    if (inBetweenCount === globalInBetweenCount) continue;
-    const key = `${fromSourceFrame}:${toSourceFrame}`;
-    const existing = existingOverrides.get(key);
-    overrides.push(existing?.inBetweenCount === inBetweenCount
-      ? { ...existing }
-      : { fromSourceFrame, toSourceFrame, inBetweenCount });
-  }
-  return { valid: true, overrides };
-}
-
-function normalizeMoveInBetweenCount(value: unknown): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) return 1;
-  return Math.max(1, Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, Math.trunc(numeric)));
 }
 
 interface RebaseRotoSegmentSpacingOverridesInput {
