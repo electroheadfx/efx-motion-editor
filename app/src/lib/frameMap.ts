@@ -120,9 +120,7 @@ function getLayerId(layer: Layer): string {
 }
 
 function getPhysicPaintRotoDisplayEndFrame(layerId: string): number | null {
-  const frames = physicPaintStore.getRotoCacheFrames(layerId);
-  if (frames.length === 0) return null;
-  return Math.max(...frames.map((frame) => frame.appFrame)) + 1;
+  return physicPaintStore.getRotoPhysicalEndFrame(layerId);
 }
 
 function getTimelineRequiredFrameCount(sequences: readonly Sequence[], contentFrameCount: number): number {

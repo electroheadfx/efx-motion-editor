@@ -1,4 +1,4 @@
-import {PreviewRenderer, type PreviewPhysicPaintFrameSource} from './previewRenderer';
+import {getPreviewPhysicPaintFrameCacheKey, PreviewRenderer, type PreviewPhysicPaintFrameSource} from './previewRenderer';
 import {interpolateAt} from './keyframeEngine';
 import {computeFadeOpacity, computeSolidFadeAlpha, computeCrossDissolveOpacity, computeTransitionProgress} from './transitionEngine';
 import {renderGlslTransition} from './glslRuntime';
@@ -65,7 +65,7 @@ function collectExportPhysicPaintFrameSources(renderer: PreviewRenderer, fm: Fra
   const frameSources = new Map<string, PreviewPhysicPaintFrameSource>();
   const addSources = (layers: ReturnType<typeof interpolateLayers>, frame: number) => {
     for (const source of renderer.collectPhysicPaintFrameSources(layers, frame)) {
-      frameSources.set(`${source.layerId}:${source.frame}:${source.renderedFrame.dataUrl.length}:${source.renderedFrame.dataUrl.slice(0, 96)}`, source);
+      frameSources.set(getPreviewPhysicPaintFrameCacheKey(source), source);
     }
   };
 

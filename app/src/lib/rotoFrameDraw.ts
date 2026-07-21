@@ -1,4 +1,5 @@
 import type { PhysicPaintRotoBackgroundMetadata } from '../types/physicPaint';
+import type { PhysicPaintRotoRealKeyRecord } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
 export type MissingRotoFrameBackgroundState =
   | { mode: 'transparent' }
@@ -15,6 +16,8 @@ export type MissingRotoFrameSpan =
 
 export interface MissingRotoFrameResolveInput {
   backgroundState: MissingRotoFrameBackgroundState;
+  realKeyRecords?: readonly PhysicPaintRotoRealKeyRecord[];
+  /** Type-compatible legacy regression input; production supplies physical records. */
   realKeyFrames?: readonly number[];
 }
 
@@ -22,9 +25,12 @@ export type MissingRotoFrameDrawInstruction =
   | { kind: 'transparent'; span: MissingRotoFrameSpan; materialize: false }
   | { kind: 'background-only'; color: string; paperTexture?: string; paperGrain?: string; grainStrength?: number; span: MissingRotoFrameSpan; materialize: boolean };
 
-export function getMissingRotoFrameSpan(frame: number, realKeyFrames: readonly number[] = []): MissingRotoFrameSpan {
+export function getMissingRotoFrameSpan(frame: number, realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[] | readonly number[] = []): MissingRotoFrameSpan {
   const requestedFrame = Math.floor(frame);
-  const sortedKeys = Array.from(new Set(realKeyFrames.filter((key) => Number.isInteger(key) && key >= 0))).sort((a, b) => a - b);
+  const sortedKeys = Array.from(new Set(realKeyRecords
+    .map((record) => typeof record === 'number' ? record : record.appFrame)
+    .filter((appFrame) => Number.isInteger(appFrame) && appFrame >= 0)))
+    .sort((a, b) => a - b);
   if (sortedKeys.length === 0) return { kind: 'no-real-keys' };
 
   let previousRealKeyFrame: number | undefined;
@@ -51,7 +57,8 @@ export function resolveMissingRotoFrameDraw(
   input: MissingRotoFrameBackgroundState | MissingRotoFrameResolveInput,
 ): MissingRotoFrameDrawInstruction {
   const backgroundState = 'backgroundState' in input ? input.backgroundState : input;
-  const span = getMissingRotoFrameSpan(frame, 'backgroundState' in input ? input.realKeyFrames : []);
+  const placement = 'backgroundState' in input ? input.realKeyRecords ?? input.realKeyFrames ?? [] : [];
+  const span = getMissingRotoFrameSpan(frame, placement);
   const materialize = span.kind === 'interior';
   if (backgroundState.mode === 'transparent') return { kind: 'transparent', span, materialize: false };
   if (backgroundState.mode === 'color') return { kind: 'background-only', color: backgroundState.color, span, materialize };

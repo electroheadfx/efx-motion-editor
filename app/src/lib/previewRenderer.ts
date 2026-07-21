@@ -97,42 +97,61 @@ function getMissingRotoBackgroundState(layer: Layer): MissingRotoFrameBackground
   return { mode: 'color', color };
 }
 
+function isPhysicalRotoWorkflowLayer(layerId: string): boolean {
+  return physicPaintStore.getRotoPhysicalContentRevision(layerId) !== null;
+}
+
 function resolveMissingRotoFrameDrawForLayer(layer: Layer, frame: number) {
   const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   return resolveMissingRotoFrameDraw(paintLayerId, frame, {
     backgroundState: getMissingRotoBackgroundState(layer),
-    realKeyFrames: physicPaintStore.getRealRotoKeyFrames(paintLayerId),
+    realKeyRecords: physicPaintStore.getRotoRealKeyRecords(paintLayerId),
   });
-}
-
-function isRotoWorkflowLayer(layerId: string): boolean {
-  return physicPaintStore.getRealRotoKeyFrames(layerId).length > 0;
 }
 
 export interface PreviewPhysicPaintFrameSource {
   layerId: string;
   frame: number;
+  /** Production physical sources always provide a revision-aware cache key. */
+  cacheKey?: string;
   renderedFrame: PhysicPaintRenderedFrame;
 }
 
-function getPhysicPaintFrameForLayer(layerId: string, frame: number): PhysicPaintRenderedFrame | null {
-  if (isRotoWorkflowLayer(layerId)) return physicPaintStore.getRotoFrame(layerId, frame);
-  return physicPaintStore.getFrame(layerId, frame);
+export function getPreviewPhysicPaintFrameCacheKey(source: PreviewPhysicPaintFrameSource): string {
+  return source.cacheKey ?? `physic-paint:${source.layerId}:${source.frame}:${source.renderedFrame.dataUrl.slice(0, 96)}:${source.renderedFrame.dataUrl.length}`;
 }
 
-function getPhysicPaintFrameCacheKey(layerId: string, frame: number, renderedFrame: PhysicPaintRenderedFrame): string {
-  return `physic-paint:${layerId}:${frame}:${renderedFrame.dataUrl.slice(0, 96)}:${renderedFrame.dataUrl.length}`;
+/** Resolve one exact physical Roto cell, or preserve the non-Roto Physics Paint lookup. */
+function resolvePhysicPaintFrameSource(layerId: string, frame: number): PreviewPhysicPaintFrameSource | null {
+  if (isPhysicalRotoWorkflowLayer(layerId)) {
+    const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, frame);
+    if (!source || source.layerId !== layerId || source.appFrame !== frame) return null;
+    return {
+      layerId,
+      frame,
+      cacheKey: `physic-paint:${layerId}:physical:${source.cacheRevision}`,
+      renderedFrame: source.renderedFrame,
+    };
+  }
+  const renderedFrame = physicPaintStore.getFrame(layerId, frame);
+  if (!renderedFrame) return null;
+  return {
+    layerId,
+    frame,
+    cacheKey: `physic-paint:${layerId}:${frame}:${renderedFrame.dataUrl.slice(0, 96)}:${renderedFrame.dataUrl.length}`,
+    renderedFrame,
+  };
 }
 
 function hasMissingRotoBackground(layer: Layer, frame = 0): boolean {
   const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-  if (!isRotoWorkflowLayer(paintLayerId)) return false;
+  if (!isPhysicalRotoWorkflowLayer(paintLayerId)) return false;
   return resolveMissingRotoFrameDrawForLayer(layer, frame).kind === 'background-only';
 }
 
-function resolveRealRotoFrameBackgroundDrawForLayer(layer: Layer): Extract<ReturnType<typeof resolveMissingRotoFrameDraw>, { kind: 'background-only' }> | null {
+function resolvePhysicalRotoFrameBackgroundDrawForLayer(layer: Layer): Extract<ReturnType<typeof resolveMissingRotoFrameDraw>, { kind: 'background-only' }> | null {
   const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-  if (!isRotoWorkflowLayer(paintLayerId)) return null;
+  if (!isPhysicalRotoWorkflowLayer(paintLayerId)) return null;
   const backgroundState = getMissingRotoBackgroundState(layer);
   if (backgroundState.mode !== 'paper') return null;
   const instruction = resolveMissingRotoFrameDraw(paintLayerId, 0, backgroundState);
@@ -222,20 +241,18 @@ export class PreviewRenderer {
     for (const layer of layers) {
       if (!layer.visible || layer.type !== 'physic-paint') continue;
       const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-      const renderedFrame = getPhysicPaintFrameForLayer(layerId, frame);
-      if (renderedFrame) frameSources.push({ layerId, frame, renderedFrame });
+      const source = resolvePhysicPaintFrameSource(layerId, frame);
+      if (source) frameSources.push(source);
     }
     return frameSources;
   }
 
   preloadPhysicPaintFrames(frames: readonly PreviewPhysicPaintFrameSource[]): void {
-    for (const frame of frames) {
-      this.getPhysicPaintImageSource(frame.layerId, frame.frame, frame.renderedFrame);
-    }
+    for (const frame of frames) this.getPhysicPaintImageSource(frame);
   }
 
   isPhysicPaintFrameResolved(frame: PreviewPhysicPaintFrameSource): boolean {
-    const cacheKey = getPhysicPaintFrameCacheKey(frame.layerId, frame.frame, frame.renderedFrame);
+    const cacheKey = getPreviewPhysicPaintFrameCacheKey(frame);
     return this.imageCache.has(cacheKey) || this.failedImages.has(cacheKey);
   }
 
@@ -298,8 +315,8 @@ export class PreviewRenderer {
           continue;
         } else if (layer.type === 'physic-paint') {
           const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-          const renderedFrame = getPhysicPaintFrameForLayer(paintLayerId, paintLookupFrame);
-          if (renderedFrame || hasMissingRotoBackground(layer, paintLookupFrame)) {
+          const frameSource = resolvePhysicPaintFrameSource(paintLayerId, paintLookupFrame);
+          if (frameSource || hasMissingRotoBackground(layer, paintLookupFrame)) {
             hasDrawable = true;
             break;
           }
@@ -401,11 +418,11 @@ export class PreviewRenderer {
         this.drawAdjustmentLayer(layer, logicalW, logicalH, sequenceOpacity);
       } else if (layer.type === 'physic-paint') {
         const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-        const renderedFrame = getPhysicPaintFrameForLayer(paintLayerId, paintLookupFrame);
-        const missingDraw = isRotoWorkflowLayer(paintLayerId) ? resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame) : null;
-        const realKeyBackgroundDraw = renderedFrame ? resolveRealRotoFrameBackgroundDrawForLayer(layer) : null;
-        const source = renderedFrame ? this.getPhysicPaintImageSource(paintLayerId, paintLookupFrame, renderedFrame) : null;
-        const backgroundDraw = realKeyBackgroundDraw ?? (missingDraw?.kind === 'background-only' ? missingDraw : null);
+        const frameSource = resolvePhysicPaintFrameSource(paintLayerId, paintLookupFrame);
+        const missingDraw = isPhysicalRotoWorkflowLayer(paintLayerId) ? resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame) : null;
+        const physicalBackgroundDraw = frameSource ? resolvePhysicalRotoFrameBackgroundDrawForLayer(layer) : null;
+        const source = frameSource ? this.getPhysicPaintImageSource(frameSource) : null;
+        const backgroundDraw = physicalBackgroundDraw ?? (missingDraw?.kind === 'background-only' ? missingDraw : null);
         if (backgroundDraw || source) {
           const paperCanvas = backgroundDraw ? getProjectPaperCanvas(backgroundDraw.paperTexture, projectStore.width.peek(), projectStore.height.peek()) : null;
           ctx.save();
@@ -615,8 +632,8 @@ export class PreviewRenderer {
     }
   }
 
-  private getPhysicPaintImageSource(layerId: string, frame: number, renderedFrame: PhysicPaintRenderedFrame): HTMLImageElement | null {
-    const cacheKey = getPhysicPaintFrameCacheKey(layerId, frame, renderedFrame);
+  private getPhysicPaintImageSource(frame: PreviewPhysicPaintFrameSource): HTMLImageElement | null {
+    const cacheKey = getPreviewPhysicPaintFrameCacheKey(frame);
     const cached = this.imageCache.get(cacheKey);
     if (cached) return cached;
     if (this.loadingImages.has(cacheKey) || this.failedImages.has(cacheKey)) return null;
@@ -631,10 +648,10 @@ export class PreviewRenderer {
     img.onerror = () => {
       this.loadingImages.delete(cacheKey);
       this.failedImages.add(cacheKey);
-      console.warn(`[PreviewRenderer] Failed to load physics paint frame: ${layerId}@${frame}`);
+      console.warn(`[PreviewRenderer] Failed to load physics paint frame: ${frame.layerId}@${frame.frame}`);
       this.onImageLoaded?.();
     };
-    img.src = renderedFrame.dataUrl;
+    img.src = frame.renderedFrame.dataUrl;
     return null;
   }
 
