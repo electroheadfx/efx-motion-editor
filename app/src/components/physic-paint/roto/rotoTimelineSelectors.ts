@@ -1,11 +1,70 @@
 import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowStripFrameMarker } from '../view/PhysicsPaintWorkflowStrip';
 import {
-  createRotoSourceDisplayModel,
-  getRotoDisplayProjection,
-  type RotoDisplayProjection,
-  type RotoSourceDisplayModel,
-} from '../roto/rotoSourceDisplayModel';
+  getExpandedRotoRealKeyFrames,
+  normalizeRotoSegmentSpacingOverrides,
+  type RotoExpandedRealKeyFrame,
+  type RotoInterpolationSettings,
+} from './physicsPaintRotoWorkflow';
+import type {
+  PhysicPaintRotoRealKeyRecord,
+  PhysicPaintRotoInterpolationState,
+} from './physicsPaintRotoPhysicalModel';
+import {
+  projectPhysicPaintRotoPhysicalTimeline,
+  type PhysicPaintRotoPhysicalTimelineProjection,
+} from './physicsPaintRotoPhysicalResolver';
+import type { RotoPhysicalTimelineCell } from './rotoPhysicalTimelinePorts';
+
+// Inlined source/display model helpers (formerly from rotoSourceDisplayModel.ts).
+// These remain temporarily for the legacy selectRotoTimelineView function and
+// will be removed when all callers migrate to selectRotoPhysicalTimelineView.
+
+interface RotoSourceDisplayModel {
+  realSourceFrames: number[];
+  settings: RotoInterpolationSettings;
+}
+
+interface RotoDisplayProjection {
+  cells: RotoExpandedRealKeyFrame[];
+  realKeys: Extract<RotoExpandedRealKeyFrame, { kind: 'real-key' }>[];
+  generatedFrames: Extract<RotoExpandedRealKeyFrame, { kind: 'generated-interpolation' }>[];
+}
+
+function normalizeRealSourceFrames(frames: readonly number[]): number[] {
+  return Array.from(new Set(frames.filter((frame) => Number.isInteger(frame) && frame >= 0))).sort((a, b) => a - b);
+}
+
+function createRotoSourceDisplayModelLegacy(input: { realSourceFrames: readonly number[]; settings: RotoInterpolationSettings }): RotoSourceDisplayModel {
+  const realSourceFrames = normalizeRealSourceFrames(input.realSourceFrames);
+  const settings: RotoInterpolationSettings = {
+    ...input.settings,
+    segmentSpacingOverrides: normalizeRotoSegmentSpacingOverrides(input.settings.segmentSpacingOverrides, realSourceFrames),
+  };
+  return { realSourceFrames, settings };
+}
+
+function getRotoDisplayProjectionLegacy(
+  model: RotoSourceDisplayModel,
+  settingsPatch: Partial<RotoInterpolationSettings> = {},
+): RotoDisplayProjection {
+  const settings: RotoInterpolationSettings = {
+    ...model.settings,
+    ...settingsPatch,
+    segmentSpacingOverrides: normalizeRotoSegmentSpacingOverrides(
+      settingsPatch.segmentSpacingOverrides ?? model.settings.segmentSpacingOverrides,
+      model.realSourceFrames,
+    ),
+  };
+  const cells = settings.enabled === true
+    ? getExpandedRotoRealKeyFrames(model.realSourceFrames, settings)
+    : model.realSourceFrames.map((sourceFrame) => ({ sourceFrame, frame: sourceFrame, displayFrame: sourceFrame, kind: 'real-key' as const }));
+  return {
+    cells,
+    realKeys: cells.filter((cell): cell is Extract<RotoExpandedRealKeyFrame, { kind: 'real-key' }> => cell.kind === 'real-key'),
+    generatedFrames: cells.filter((cell): cell is Extract<RotoExpandedRealKeyFrame, { kind: 'generated-interpolation' }> => cell.kind === 'generated-interpolation'),
+  };
+}
 
 export interface RotoTimelineSelectorInput {
   cachedRotoFrames?: readonly PhysicPaintRotoCacheFrame[];
@@ -56,11 +115,11 @@ export function selectRealCachedRotoSourceFrameNumbers(contextCachedRotoFrames: 
 }
 
 export function selectRotoTimelineView(input: RotoTimelineSelectorInput): RotoTimelineView {
-  const model = createRotoSourceDisplayModel({
+  const model = createRotoSourceDisplayModelLegacy({
     realSourceFrames: selectRealSourceFrames(input.cachedRotoFrames),
     settings: normalizeTimelineSettings(input.interpolationSettings),
   });
-  const projection = getRotoDisplayProjection(model);
+  const projection = getRotoDisplayProjectionLegacy(model);
   const realKeyDisplayFrames = projection.realKeys.map((key) => key.displayFrame);
   const occupiedRotoFrames = normalizeFrameNumbers(realKeyDisplayFrames);
   const savedRotoFrames = realKeyDisplayFrames.map((frame) => ({ frame, saved: true, label: `Frame ${frame}` }));
@@ -115,5 +174,111 @@ function normalizeTimelineSettings(settings: Partial<PhysicPaintRotoInterpolatio
     deform: Number.isInteger(deform) && deform !== undefined ? deform : 0,
     position: Number.isInteger(position) && position !== undefined ? position : 0,
     ...(settings?.segmentSpacingOverrides ? { segmentSpacingOverrides: settings.segmentSpacingOverrides } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Physical timeline view (D-01/D-02/D-10/D-12).
+//
+// These selectors source all state from the store's validated physical records
+// and the shared `projectPhysicPaintRotoPhysicalTimeline` seam. They expose
+// semantic current-cell state for real, generated, and empty physical cells
+// without source/display projection, owner-source fields, or cached-frame
+// ownership authority.
+// ---------------------------------------------------------------------------
+
+/**
+ * Input for the physical timeline view selector.
+ */
+export interface RotoPhysicalTimelineViewSelectorInput {
+  /** Ordered real-key records from the store's physical record ownership. */
+  readonly realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  /** Enabled-only interpolation state from the store. */
+  readonly interpolation: PhysicPaintRotoInterpolationState;
+  /** Bounded physical frame capacity. */
+  readonly capacity: number;
+  /** Current direct physical navigation frame. */
+  readonly currentAppFrame: number;
+  /** Selected stable `keyId`, or null when no real key is selected. */
+  readonly selectedKeyId: string | null;
+}
+
+/**
+ * Physical timeline view: semantic current-cell state, selected identity/record/
+ * frame, ordered real records, exact generated cells, bounded physical cells,
+ * and marker presentation derived from one projection.
+ */
+export interface RotoPhysicalTimelineView {
+  readonly orderedRealKeyRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly physicalCells: readonly RotoPhysicalTimelineCell[];
+  readonly generatedCells: readonly RotoPhysicalTimelineCell[];
+  readonly orderedKeyIds: readonly string[];
+  readonly currentCell: RotoPhysicalTimelineCell;
+  readonly selectedKeyId: string | null;
+  readonly selectedRealKey: PhysicPaintRotoRealKeyRecord | null;
+  readonly selectedAppFrame: number | null;
+  readonly currentAppFrame: number;
+  readonly interpolation: PhysicPaintRotoInterpolationState;
+  readonly capacity: number;
+  readonly projection: PhysicPaintRotoPhysicalTimelineProjection | null;
+}
+
+/**
+ * Select the physical timeline view from the store's validated physical records,
+ * enabled-only interpolation state, bounded capacity, current navigation frame,
+ * and selected keyId. Derives semantic cells, selection, and ordered records from
+ * one shared projection seam.
+ */
+export function selectRotoPhysicalTimelineView(input: RotoPhysicalTimelineViewSelectorInput): RotoPhysicalTimelineView {
+  const { realKeyRecords, interpolation, capacity, currentAppFrame, selectedKeyId } = input;
+
+  const identities = realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
+  const projectionResult = projectPhysicPaintRotoPhysicalTimeline({
+    identities,
+    capacity,
+    interpolationEnabled: interpolation.enabled,
+  });
+
+  if (!projectionResult.ok) {
+    // Fail closed: return an empty physical view with no projection.
+    const emptyCell: RotoPhysicalTimelineCell = { kind: 'empty', appFrame: currentAppFrame };
+    return {
+      orderedRealKeyRecords: realKeyRecords,
+      physicalCells: [],
+      generatedCells: [],
+      orderedKeyIds: [],
+      currentCell: emptyCell,
+      selectedKeyId: null,
+      selectedRealKey: null,
+      selectedAppFrame: null,
+      currentAppFrame,
+      interpolation,
+      capacity,
+      projection: null,
+    };
+  }
+
+  const projection = projectionResult.projection;
+  const currentCell = projection.cells.find((cell) => cell.appFrame === currentAppFrame)
+    ?? { kind: 'empty' as const, appFrame: currentAppFrame };
+
+  const selectedRealKey = selectedKeyId !== null
+    ? realKeyRecords.find((record) => record.keyId === selectedKeyId) ?? null
+    : null;
+  const selectedAppFrame = selectedRealKey?.appFrame ?? null;
+
+  return {
+    orderedRealKeyRecords: realKeyRecords,
+    physicalCells: projection.cells,
+    generatedCells: projection.generatedCells,
+    orderedKeyIds: projection.orderedKeyIds,
+    currentCell,
+    selectedKeyId,
+    selectedRealKey,
+    selectedAppFrame,
+    currentAppFrame,
+    interpolation,
+    capacity,
+    projection,
   };
 }

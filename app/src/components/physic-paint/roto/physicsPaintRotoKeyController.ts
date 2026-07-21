@@ -5,11 +5,82 @@ import {
   type PhysicPaintRotoSegmentSpacingOverride,
 } from '../../../types/physicPaint';
 import {
-  createRotoSourceDisplayModel,
-  getRotoDisplayProjection,
-  resolveRotoRealKeySaveTarget,
-} from './rotoSourceDisplayModel';
-import type { RotoInterpolationSettings } from './physicsPaintRotoWorkflow';
+  getExpandedRotoRealKeyFrames,
+  normalizeRotoSegmentSpacingOverrides,
+  resolveRotoFarEmptyDisplaySaveTarget,
+  type RotoExpandedRealKeyFrame,
+  type RotoFarEmptyDisplaySaveTarget,
+  type RotoInterpolationSettings,
+} from './physicsPaintRotoWorkflow';
+
+// Inlined source/display model helpers (formerly from rotoSourceDisplayModel.ts).
+// These remain temporarily for legacy operation delivery and will be removed
+// when 36.14-06 through 36.14-08 migrate these modules to the physical resolver.
+
+interface RotoSourceDisplayModel {
+  realSourceFrames: number[];
+  settings: RotoInterpolationSettings;
+}
+
+interface RotoDisplayProjection {
+  cells: RotoExpandedRealKeyFrame[];
+  realKeys: Extract<RotoExpandedRealKeyFrame, { kind: 'real-key' }>[];
+  generatedFrames: Extract<RotoExpandedRealKeyFrame, { kind: 'generated-interpolation' }>[];
+}
+
+function normalizeRealSourceFrames(frames: readonly number[]): number[] {
+  return Array.from(new Set(frames.filter((frame) => Number.isInteger(frame) && frame >= 0))).sort((a, b) => a - b);
+}
+
+function createRotoSourceDisplayModelLegacy(input: { realSourceFrames: readonly number[]; settings: RotoInterpolationSettings }): RotoSourceDisplayModel {
+  const realSourceFrames = normalizeRealSourceFrames(input.realSourceFrames);
+  const settings: RotoInterpolationSettings = {
+    ...input.settings,
+    segmentSpacingOverrides: normalizeRotoSegmentSpacingOverrides(input.settings.segmentSpacingOverrides, realSourceFrames),
+  };
+  return { realSourceFrames, settings };
+}
+
+function getRotoDisplayProjectionLegacy(
+  model: RotoSourceDisplayModel,
+  settingsPatch: Partial<RotoInterpolationSettings> = {},
+): RotoDisplayProjection {
+  const settings: RotoInterpolationSettings = {
+    ...model.settings,
+    ...settingsPatch,
+    segmentSpacingOverrides: normalizeRotoSegmentSpacingOverrides(
+      settingsPatch.segmentSpacingOverrides ?? model.settings.segmentSpacingOverrides,
+      model.realSourceFrames,
+    ),
+  };
+  const cells = settings.enabled === true
+    ? getExpandedRotoRealKeyFrames(model.realSourceFrames, settings)
+    : model.realSourceFrames.map((sourceFrame) => ({ sourceFrame, frame: sourceFrame, displayFrame: sourceFrame, kind: 'real-key' as const }));
+  return {
+    cells,
+    realKeys: cells.filter((cell): cell is Extract<RotoExpandedRealKeyFrame, { kind: 'real-key' }> => cell.kind === 'real-key'),
+    generatedFrames: cells.filter((cell): cell is Extract<RotoExpandedRealKeyFrame, { kind: 'generated-interpolation' }> => cell.kind === 'generated-interpolation'),
+  };
+}
+
+function resolveRotoRealKeySaveTargetLegacy(
+  model: RotoSourceDisplayModel,
+  displayFrame: number,
+): RotoFarEmptyDisplaySaveTarget {
+  const projected = resolveRotoFarEmptyDisplaySaveTarget(displayFrame, model.realSourceFrames, {
+    ...model.settings,
+    enabled: true,
+  });
+  const previousSourceFrame = [...model.realSourceFrames].reverse().find((sourceFrame) => sourceFrame < displayFrame);
+  const isAdjacentOffSave = model.settings.enabled !== true && previousSourceFrame !== undefined && displayFrame === previousSourceFrame + 1;
+  return {
+    ...projected,
+    sourceFrame: projected.displayFrame,
+    previousSegmentOverride: projected.previousSegmentOverride && !isAdjacentOffSave
+      ? { ...projected.previousSegmentOverride, toSourceFrame: projected.displayFrame }
+      : null,
+  };
+}
 
 export type RotoKeyUtilityOperation = 'copy' | 'duplicate' | 'insert' | 'delete' | 'paste';
 export type RotoKeyTransactionOperation = Exclude<RotoKeyUtilityOperation, 'copy'> | 'move';
@@ -169,8 +240,8 @@ export function resolveRotoKeyMoveTiming(input: RotoKeyMoveTimingInput): RotoKey
 
   const realSourceFrames = normalizeFrameNumbers(input.realSourceFrames);
   if (!realSourceFrames.includes(sourceFrame)) return { valid: false, error: 'The dragged Roto key is no longer available.' };
-  const latestModel = createRotoSourceDisplayModel({ realSourceFrames, settings: input.interpolationSettings });
-  const currentProjection = getRotoDisplayProjection(latestModel);
+  const latestModel = createRotoSourceDisplayModelLegacy({ realSourceFrames, settings: input.interpolationSettings });
+  const currentProjection = getRotoDisplayProjectionLegacy(latestModel);
   const projectedSource = currentProjection.realKeys.find((cell) => cell.displayFrame === fromDisplayFrame);
   if (!projectedSource || projectedSource.sourceFrame !== sourceFrame) {
     return { valid: false, error: 'The dragged Roto key is no longer available.' };
@@ -180,11 +251,11 @@ export function resolveRotoKeyMoveTiming(input: RotoKeyMoveTimingInput): RotoKey
     return { valid: false, error: `Frame ${requestedDestinationDisplayFrame} already contains a real Roto key.` };
   }
 
-  const timingModel = createRotoSourceDisplayModel({
+  const timingModel = createRotoSourceDisplayModelLegacy({
     realSourceFrames,
     settings: { ...input.interpolationSettings, enabled: true },
   });
-  const intendedDisplays = new Map(getRotoDisplayProjection(timingModel).realKeys.map((cell) => [cell.sourceFrame, cell.displayFrame]));
+  const intendedDisplays = new Map(getRotoDisplayProjectionLegacy(timingModel).realKeys.map((cell) => [cell.sourceFrame, cell.displayFrame]));
   const globalInBetweenCount = normalizeMoveInBetweenCount(input.interpolationSettings.inBetweenCount);
   const existingOverrides = new Map((timingModel.settings.segmentSpacingOverrides ?? []).map((override) => [`${override.fromSourceFrame}:${override.toSourceFrame}`, override]));
   const remainingSourceFrames = realSourceFrames.filter((frame) => frame !== sourceFrame);
@@ -196,14 +267,14 @@ export function resolveRotoKeyMoveTiming(input: RotoKeyMoveTimingInput): RotoKey
   });
   if (!remainingOverrideResult.valid) return remainingOverrideResult;
 
-  const destinationModel = createRotoSourceDisplayModel({
+  const destinationModel = createRotoSourceDisplayModelLegacy({
     realSourceFrames: remainingSourceFrames,
     settings: {
       ...input.interpolationSettings,
       segmentSpacingOverrides: remainingOverrideResult.overrides,
     },
   });
-  const target = resolveRotoRealKeySaveTarget(destinationModel, requestedDestinationDisplayFrame);
+  const target = resolveRotoRealKeySaveTargetLegacy(destinationModel, requestedDestinationDisplayFrame);
   const destinationSourceFrame = normalizeFrame(target.sourceFrame);
   if (destinationSourceFrame === null || destinationSourceFrame === sourceFrame) {
     return { valid: false, error: 'The Roto key move has no canonical destination.' };
@@ -250,7 +321,7 @@ export function resolveRotoKeyMoveTiming(input: RotoKeyMoveTimingInput): RotoKey
   });
   if (!finalOverrideResult.valid) return finalOverrideResult;
 
-  const finalModel = createRotoSourceDisplayModel({
+  const finalModel = createRotoSourceDisplayModelLegacy({
     realSourceFrames: finalSourceFrames,
     settings: {
       ...input.interpolationSettings,
@@ -258,7 +329,7 @@ export function resolveRotoKeyMoveTiming(input: RotoKeyMoveTimingInput): RotoKey
       segmentSpacingOverrides: finalOverrideResult.overrides,
     },
   });
-  const finalProjection = getRotoDisplayProjection(finalModel);
+  const finalProjection = getRotoDisplayProjectionLegacy(finalModel);
   const movedProjection = finalProjection.realKeys.find((cell) => cell.sourceFrame === destinationSourceFrame);
   if (!movedProjection || movedProjection.displayFrame !== effectiveDestinationDisplayFrame) {
     return { valid: false, error: `Frame ${requestedDestinationDisplayFrame} cannot preserve canonical Roto timing.` };

@@ -252,6 +252,57 @@ export type PhysicPaintRotoPhysicalEditResolution =
   | { readonly ok: false; readonly failure: PhysicPaintRotoPhysicalEditFailure };
 
 // ---------------------------------------------------------------------------
+// Shared read-only physical timeline projection seam (Task 1).
+//
+// `projectPhysicPaintRotoPhysicalTimeline` is the one exported read-only
+// projection from validated physical identity placement, bounded capacity, and
+// enabled-only interpolation state to deterministic ordered assignments, exact
+// runtime generated interiors, and bounded real/generated/empty physical cells.
+// The edit resolver's `finalizeProposal` reuses the same private
+// `buildProjectionFromMapping` helper so current display and edit proposals can
+// never diverge on ordering, occupancy, or exact interiors.
+// ---------------------------------------------------------------------------
+
+/**
+ * Immutable physical timeline projection: the shared read-only result shape
+ * consumed by current-state callers (store, selectors, ports) and reused
+ * internally by the edit resolver's finalizer.
+ */
+export interface PhysicPaintRotoPhysicalTimelineProjection {
+  /** Identity IDs in deterministic ascending physical-frame order. */
+  readonly orderedKeyIds: readonly string[];
+  /** Sorted {@link PhysicPaintRotoPhysicalFrameAssignment} view of the mapping. */
+  readonly assignments: readonly PhysicPaintRotoPhysicalFrameAssignment[];
+  /** Bounded `0 .. capacity - 1` physical cell projection (real/generated/empty). */
+  readonly cells: readonly PhysicPaintRotoPhysicalCell[];
+  /** Strict-interior generated cells only; empty when interpolation is disabled. */
+  readonly generatedCells: readonly PhysicPaintRotoPhysicalCell[];
+  /** Direct lookup from `keyId` to physical `appFrame`. */
+  readonly framesByKeyId: ReadonlyMap<string, number>;
+}
+
+/**
+ * Closed success/failure projection resolution. The success branch carries one
+ * internally consistent immutable projection; the failure branch carries a
+ * stable code and concise text, never a partial projection.
+ */
+export type PhysicPaintRotoPhysicalTimelineProjectionResolution =
+  | { readonly ok: true; readonly projection: PhysicPaintRotoPhysicalTimelineProjection }
+  | { readonly ok: false; readonly failure: PhysicPaintRotoPhysicalEditFailure };
+
+/**
+ * Read-only projection input: immutable physical identity placement (stable
+ * `keyId` plus direct `appFrame`), bounded capacity, and enabled-only
+ * interpolation state. No payload, store handle, bridge, or edit intent is
+ * accepted.
+ */
+export interface PhysicPaintRotoPhysicalTimelineProjectionInput {
+  readonly identities: readonly PhysicPaintRotoKeyIdentity[];
+  readonly capacity: number;
+  readonly interpolationEnabled: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Private helpers.
 // ---------------------------------------------------------------------------
 
@@ -756,6 +807,86 @@ interface FinalizedFailure {
   readonly resolution: PhysicPaintRotoPhysicalEditResolution;
 }
 
+/**
+ * Shared private helper: derive the immutable physical timeline projection from
+ * a validated `keyId -> appFrame` mapping. Used by both the public
+ * {@link projectPhysicPaintRotoPhysicalTimeline} seam and the edit resolver's
+ * {@link finalizeProposal}, so current display and edit proposals can never
+ * diverge on ordering, occupancy, or exact interiors.
+ *
+ * Caller is responsible for proving identity-set coverage and frame uniqueness
+ * before calling this helper; it only derives the projection from the
+ * validated mapping.
+ */
+function buildProjectionFromMapping(
+  mapping: ReadonlyMap<string, number>,
+  capacity: number,
+  interpolationEnabled: boolean,
+): PhysicPaintRotoPhysicalTimelineProjection {
+  // 1. Deterministic ascending physical order.
+  const orderedPairs = Array.from(mapping.entries()).sort((a, b) => a[1] - b[1]);
+  const orderedKeyIds = Object.freeze(orderedPairs.map((pair) => pair[0])) as readonly string[];
+  const assignments = Object.freeze(
+    orderedPairs.map((pair) =>
+      Object.freeze({ keyId: pair[0], appFrame: pair[1] }) as PhysicPaintRotoPhysicalFrameAssignment,
+    ),
+  ) as readonly PhysicPaintRotoPhysicalFrameAssignment[];
+
+  // 2. Derive generated cells per D-02: strict interiors only, no leading/trailing.
+  const generatedCells: PhysicPaintRotoPhysicalCell[] = [];
+  if (interpolationEnabled && orderedPairs.length >= 2) {
+    for (let i = 0; i < orderedPairs.length - 1; i += 1) {
+      const left = orderedPairs[i];
+      const right = orderedPairs[i + 1];
+      const start = left[1] + 1;
+      const end = right[1] - 1;
+      for (let frame = start; frame <= end; frame += 1) {
+        generatedCells.push(
+          Object.freeze({
+            kind: 'generated',
+            appFrame: frame,
+            leftKeyId: left[0],
+            rightKeyId: right[0],
+          }) as PhysicPaintRotoPhysicalCell,
+        );
+      }
+    }
+  }
+  const generatedCellsFrozen = Object.freeze(generatedCells) as readonly PhysicPaintRotoPhysicalCell[];
+
+  // 3. Derive bounded physical cells for `0 .. capacity - 1`.
+  const frameToRealKeyId = new Map<number, string>();
+  const frameToGenerated = new Map<number, PhysicPaintRotoPhysicalCell>();
+  for (const pair of orderedPairs) frameToRealKeyId.set(pair[1], pair[0]);
+  for (const cell of generatedCellsFrozen) frameToGenerated.set(cell.appFrame, cell);
+
+  const cells: PhysicPaintRotoPhysicalCell[] = [];
+  for (let frame = 0; frame < capacity; frame += 1) {
+    const realKeyId = frameToRealKeyId.get(frame);
+    if (realKeyId !== undefined) {
+      cells.push(
+        Object.freeze({ kind: 'real', appFrame: frame, keyId: realKeyId }) as PhysicPaintRotoPhysicalCell,
+      );
+      continue;
+    }
+    const generated = frameToGenerated.get(frame);
+    if (generated !== undefined) {
+      cells.push(generated);
+      continue;
+    }
+    cells.push(Object.freeze({ kind: 'empty', appFrame: frame }) as PhysicPaintRotoPhysicalCell);
+  }
+  const cellsFrozen = Object.freeze(cells) as readonly PhysicPaintRotoPhysicalCell[];
+
+  return Object.freeze({
+    orderedKeyIds,
+    assignments,
+    cells: cellsFrozen,
+    generatedCells: generatedCellsFrozen,
+    framesByKeyId: new Map<string, number>(mapping) as ReadonlyMap<string, number>,
+  }) as PhysicPaintRotoPhysicalTimelineProjection;
+}
+
 function finalizeProposal(
   candidate: Candidate,
   identities: ValidatedIdentities,
@@ -806,62 +937,11 @@ function finalizeProposal(
     seenFrames.add(frame);
   }
 
-  // 3. Deterministic ascending physical order.
-  const orderedPairs = Array.from(mapping.entries()).sort((a, b) => a[1] - b[1]);
-  const orderedKeyIds = Object.freeze(orderedPairs.map((pair) => pair[0])) as readonly string[];
-  const assignments = Object.freeze(
-    orderedPairs.map((pair) =>
-      Object.freeze({ keyId: pair[0], appFrame: pair[1] }) as PhysicPaintRotoPhysicalFrameAssignment,
-    ),
-  ) as readonly PhysicPaintRotoPhysicalFrameAssignment[];
+  // 3. Derive the shared physical projection (ordering, interiors, cells).
+  const projection = buildProjectionFromMapping(mapping, capacity, interpolationEnabled);
+  const { orderedKeyIds, assignments, cells: cellsFrozen, generatedCells: generatedCellsFrozen } = projection;
 
-  // 4. Derive generated cells per D-02: strict interiors only, no leading/trailing.
-  const generatedCells: PhysicPaintRotoPhysicalCell[] = [];
-  if (interpolationEnabled && orderedPairs.length >= 2) {
-    for (let i = 0; i < orderedPairs.length - 1; i += 1) {
-      const left = orderedPairs[i];
-      const right = orderedPairs[i + 1];
-      const start = left[1] + 1;
-      const end = right[1] - 1;
-      for (let frame = start; frame <= end; frame += 1) {
-        generatedCells.push(
-          Object.freeze({
-            kind: 'generated',
-            appFrame: frame,
-            leftKeyId: left[0],
-            rightKeyId: right[0],
-          }) as PhysicPaintRotoPhysicalCell,
-        );
-      }
-    }
-  }
-  const generatedCellsFrozen = Object.freeze(generatedCells) as readonly PhysicPaintRotoPhysicalCell[];
-
-  // 5. Derive bounded physical cells for `0 .. capacity - 1`.
-  const frameToRealKeyId = new Map<number, string>();
-  const frameToGenerated = new Map<number, PhysicPaintRotoPhysicalCell>();
-  for (const pair of orderedPairs) frameToRealKeyId.set(pair[1], pair[0]);
-  for (const cell of generatedCellsFrozen) frameToGenerated.set(cell.appFrame, cell);
-
-  const cells: PhysicPaintRotoPhysicalCell[] = [];
-  for (let frame = 0; frame < capacity; frame += 1) {
-    const realKeyId = frameToRealKeyId.get(frame);
-    if (realKeyId !== undefined) {
-      cells.push(
-        Object.freeze({ kind: 'real', appFrame: frame, keyId: realKeyId }) as PhysicPaintRotoPhysicalCell,
-      );
-      continue;
-    }
-    const generated = frameToGenerated.get(frame);
-    if (generated !== undefined) {
-      cells.push(generated);
-      continue;
-    }
-    cells.push(Object.freeze({ kind: 'empty', appFrame: frame }) as PhysicPaintRotoPhysicalCell);
-  }
-  const cellsFrozen = Object.freeze(cells) as readonly PhysicPaintRotoPhysicalCell[];
-
-  // 6. Derive identity changes from the validated before/after frames.
+  // 4. Derive identity changes from the validated before/after frames.
   const changes: PhysicPaintRotoPhysicalIdentityChange[] = [];
   for (const keyId of orderedKeyIds) {
     const before = identities.framesByKeyId.get(keyId);
@@ -880,18 +960,18 @@ function finalizeProposal(
   }
   const changesFrozen = Object.freeze(changes) as readonly PhysicPaintRotoPhysicalIdentityChange[];
 
-  // 7. Resolve deterministic selection.
+  // 5. Resolve deterministic selection.
   const selectedKeyId = candidate.selectedKeyId;
   const selectedAppFrame = selectedKeyId === null ? null : mapping.get(selectedKeyId) ?? null;
 
-  // 8. Build affectedKeyIds: shifted identities plus removed identity.
+  // 6. Build affectedKeyIds: shifted identities plus removed identity.
   const affectedList: string[] = changesFrozen.map((change) => change.keyId);
   if (candidate.removedKeyId !== null && !affectedList.includes(candidate.removedKeyId)) {
     affectedList.push(candidate.removedKeyId);
   }
   const affectedKeyIds = Object.freeze(affectedList) as readonly string[];
 
-  // 9. Build concise status.
+  // 7. Build concise status.
   const code: 'ok' | 'ok-no-change' = candidate.changed ? 'ok' : 'ok-no-change';
   const text = buildStatusText(operationKind, candidate.changed, selectedAppFrame, candidate.removedKeyId);
 
@@ -953,6 +1033,63 @@ function buildStatusText(
 // ---------------------------------------------------------------------------
 // Sole exported behavior seam.
 // ---------------------------------------------------------------------------
+
+/**
+ * Project the current physical timeline from validated identity placement,
+ * bounded capacity, and enabled-only interpolation state.
+ *
+ * This is the one shared read-only projection seam consumed by current-state
+ * callers (store, selectors, `rotoPhysicalTimelinePorts`) and reused internally
+ * by the edit resolver's finalizer. Its closed result either contains
+ * deterministic ordered assignments/key IDs, exact runtime generated interiors,
+ * and bounded real/generated/empty physical cells, or a typed failure with no
+ * partial projection.
+ *
+ * Validation: capacity is bounded; every identity has a bounded non-empty
+ * `keyId` and an integer `appFrame` in `0 .. capacity - 1`; IDs and frames are
+ * unique. No invalid collection is silently filtered, sorted into validity,
+ * deduplicated, clamped, or translated.
+ */
+export function projectPhysicPaintRotoPhysicalTimeline(
+  input: PhysicPaintRotoPhysicalTimelineProjectionInput,
+): PhysicPaintRotoPhysicalTimelineProjectionResolution {
+  if (!isRecord(input)) {
+    return projectionFailure('malformed-target', null, 'Projection input must be a record.');
+  }
+
+  if (!validateCapacity(input.capacity)) {
+    return projectionFailure('invalid-capacity', null, 'Capacity must be an integer from 1 through PHYSIC_PAINT_MAX_APPLY_FRAMES.');
+  }
+
+  const identitiesResult = validateIdentities(input.identities, input.capacity, null);
+  if (!identitiesResult.ok) {
+    const failure = (identitiesResult.resolution as { ok: false; failure: PhysicPaintRotoPhysicalEditFailure }).failure;
+    return projectionFailure(failure.code, failure.operationKind, failure.text);
+  }
+  const identities = identitiesResult.value;
+
+  const mapping = new Map<string, number>();
+  for (const identity of identities.ordered) {
+    mapping.set(identity.keyId, identity.appFrame);
+  }
+
+  const projection = buildProjectionFromMapping(mapping, input.capacity, input.interpolationEnabled);
+  return Object.freeze({
+    ok: true as const,
+    projection,
+  }) as PhysicPaintRotoPhysicalTimelineProjectionResolution;
+}
+
+function projectionFailure(
+  code: PhysicPaintRotoPhysicalEditFailureCode,
+  operationKind: PhysicPaintRotoPhysicalEditOperationKind | null,
+  text: string,
+): PhysicPaintRotoPhysicalTimelineProjectionResolution {
+  return Object.freeze({
+    ok: false as const,
+    failure: Object.freeze({ code, operationKind, text }) as PhysicPaintRotoPhysicalEditFailure,
+  }) as PhysicPaintRotoPhysicalTimelineProjectionResolution;
+}
 
 /**
  * Resolve a single physical timeline edit intent into one immutable complete

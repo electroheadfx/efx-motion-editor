@@ -4,6 +4,17 @@ import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaint
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 import type { PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
+import {
+  PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+  isPhysicPaintRotoInterpolationState,
+  parsePhysicPaintRotoRealKeyRecordCollection,
+  type PhysicPaintRotoInterpolationState,
+  type PhysicPaintRotoRealKeyRecord,
+} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import {
+  projectPhysicPaintRotoPhysicalTimeline,
+  type PhysicPaintRotoPhysicalTimelineProjection,
+} from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 
 let _markProjectDirty: (() => void) | null = null;
 export function _setPhysicPaintMarkDirtyCallback(cb: () => void) { _markProjectDirty = cb; }
@@ -53,6 +64,16 @@ const _rotoGeneratedCacheMetadata = new Map<string, Map<number, PhysicPaintRotoC
 const _rotoInterpolationSettings = new Map<string, PhysicPaintRotoInterpolationSettings>();
 const _rotoInterpolationFailureStatus = new Map<string, string>();
 const ROTO_INTERPOLATION_FAILURE_STATUS = 'Generated in-betweens could not regenerate. Real keys were kept.';
+
+// --- Physical record ownership (D-01/D-02/D-03) ---
+// Stable keyId -> direct appFrame real-key records plus enabled-only
+// interpolation state. These maps are the sole durable Roto timing/identity
+// authority; generated cells are runtime-derived via the shared projection seam
+// and never stored as durable records.
+const _rotoRealKeyRecords = new Map<string, Map<string, PhysicPaintRotoRealKeyRecord>>();
+const _rotoPhysicalInterpolationState = new Map<string, PhysicPaintRotoInterpolationState>();
+const _rotoPhysicalCapacity = new Map<string, number>();
+export const rotoPhysicalRevision = signal(0);
 let _serializationRevision = 0;
 let _cachedSerializationRevision = -1;
 let _cachedMceOutputs: PhysicPaintMceOutput[] = [];
@@ -95,6 +116,9 @@ function _clearLayerState(layerId: string): boolean {
   changed = _rotoGeneratedCacheMetadata.delete(layerId) || changed;
   changed = _rotoInterpolationSettings.delete(layerId) || changed;
   changed = _rotoInterpolationFailureStatus.delete(layerId) || changed;
+  changed = _rotoRealKeyRecords.delete(layerId) || changed;
+  changed = _rotoPhysicalInterpolationState.delete(layerId) || changed;
+  changed = _rotoPhysicalCapacity.delete(layerId) || changed;
   for (const dataUrl of dataUrls) {
     if (!_isDataUrlReferenced(dataUrl)) changed = _rotoAlphaCanvasRegistry.delete(dataUrl) || changed;
   }
@@ -898,7 +922,7 @@ export const physicPaintStore = {
   },
 
   reset(): void {
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && _rotoAlphaCanvasRegistry.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && _rotoAlphaCanvasRegistry.size === 0 && _rotoRealKeyRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalCapacity.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
@@ -906,6 +930,9 @@ export const physicPaintStore = {
     _rotoInterpolationSettings.clear();
     _rotoInterpolationFailureStatus.clear();
     _rotoAlphaCanvasRegistry.clear();
+    _rotoRealKeyRecords.clear();
+    _rotoPhysicalInterpolationState.clear();
+    _rotoPhysicalCapacity.clear();
     _notifyVisualChange();
   },
 
@@ -919,5 +946,162 @@ export const physicPaintStore = {
 
   _debugInvalidateSerializationCache(): void {
     _invalidateSerializationCache();
+  },
+
+  // -------------------------------------------------------------------------
+  // Physical record ownership (D-01/D-02/D-03/D-10).
+  //
+  // These ports own the validated per-layer physical real-key records and
+  // enabled-only interpolation state. Complete replacement validates the whole
+  // collection and the derived projection before any mutation; failure leaves
+  // records, interpolation, generated render artifacts, project-dirty state,
+  // and physicPaintVersion unchanged. An accepted visible change follows the
+  // established dirty/version convention exactly once after the complete
+  // replacement.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Validate and replace the complete per-layer physical real-key record
+   * collection and enabled-only interpolation state atomically. Returns a
+   * closed success/failure result; failure changes nothing.
+   */
+  replaceRotoPhysicalRecords(
+    layerId: string,
+    records: unknown,
+    interpolation: unknown,
+    capacity: number,
+  ): { ok: true } | { ok: false; error: string } {
+    if (!layerId || typeof layerId !== 'string') {
+      return { ok: false, error: 'Layer ID must be a non-empty string.' };
+    }
+    if (!Number.isInteger(capacity) || capacity < 1 || capacity > PHYSIC_PAINT_MAX_APPLY_FRAMES) {
+      return { ok: false, error: 'Capacity must be an integer from 1 through PHYSIC_PAINT_MAX_APPLY_FRAMES.' };
+    }
+    if (!isPhysicPaintRotoInterpolationState(interpolation)) {
+      return { ok: false, error: 'Interpolation state must be enabled-only (D-02).' };
+    }
+
+    let validatedRecords: readonly PhysicPaintRotoRealKeyRecord[];
+    try {
+      validatedRecords = parsePhysicPaintRotoRealKeyRecordCollection(records, capacity);
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Invalid real-key record collection.' };
+    }
+
+    // Validate the derived projection before any mutation.
+    const identities = validatedRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
+    const projectionResult = projectPhysicPaintRotoPhysicalTimeline({
+      identities,
+      capacity,
+      interpolationEnabled: interpolation.enabled,
+    });
+    if (!projectionResult.ok) {
+      return { ok: false, error: projectionResult.failure.text };
+    }
+
+    // Atomically replace the record set and indexes.
+    const recordMap = new Map<string, PhysicPaintRotoRealKeyRecord>();
+    for (const record of validatedRecords) {
+      recordMap.set(record.keyId, record);
+    }
+    _rotoRealKeyRecords.set(layerId, recordMap);
+    _rotoPhysicalInterpolationState.set(layerId, Object.freeze({ enabled: interpolation.enabled }) as PhysicPaintRotoInterpolationState);
+    _rotoPhysicalCapacity.set(layerId, capacity);
+    rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
+    _notifyVisualChange();
+    return { ok: true };
+  },
+
+  /**
+   * Read all ordered real-key records for a layer. Returns a fresh array sorted
+   * by ascending physical `appFrame`.
+   */
+  getRotoRealKeyRecords(layerId: string): PhysicPaintRotoRealKeyRecord[] {
+    const recordMap = _rotoRealKeyRecords.get(layerId);
+    if (!recordMap) return [];
+    return Array.from(recordMap.values()).sort((a, b) => a.appFrame - b.appFrame);
+  },
+
+  /**
+   * Read a single real-key record by stable `keyId`. Returns null when absent.
+   */
+  getRotoRealKeyRecord(layerId: string, keyId: string): PhysicPaintRotoRealKeyRecord | null {
+    const record = _rotoRealKeyRecords.get(layerId)?.get(keyId);
+    return record ?? null;
+  },
+
+  /**
+   * Read a single real-key record by direct `appFrame`. Returns null when no
+   * real key occupies that frame.
+   */
+  getRotoRealKeyRecordByAppFrame(layerId: string, appFrame: number): PhysicPaintRotoRealKeyRecord | null {
+    const recordMap = _rotoRealKeyRecords.get(layerId);
+    if (!recordMap) return null;
+    for (const record of recordMap.values()) {
+      if (record.appFrame === appFrame) return record;
+    }
+    return null;
+  },
+
+  /**
+   * Read the enabled-only interpolation state for a layer. Returns the
+   * immutable disabled default when no physical state has been published.
+   */
+  getRotoPhysicalInterpolationState(layerId: string): PhysicPaintRotoInterpolationState {
+    const state = _rotoPhysicalInterpolationState.get(layerId);
+    return state ?? PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED;
+  },
+
+  /**
+   * Set the enabled-only interpolation state for a layer. Validates the state
+   * and publishes one visible change. Per D-02, this cannot move real keys or
+   * touch Script Motion.
+   */
+  setRotoPhysicalInterpolationState(layerId: string, state: unknown): { ok: true } | { ok: false; error: string } {
+    if (!isPhysicPaintRotoInterpolationState(state)) {
+      return { ok: false, error: 'Interpolation state must be enabled-only (D-02).' };
+    }
+    _rotoPhysicalInterpolationState.set(layerId, Object.freeze({ enabled: state.enabled }) as PhysicPaintRotoInterpolationState);
+    rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
+    _notifyVisualChange();
+    return { ok: true };
+  },
+
+  /**
+   * Read the bounded physical frame capacity for a layer.
+   */
+  getRotoPhysicalCapacity(layerId: string): number {
+    return _rotoPhysicalCapacity.get(layerId) ?? PHYSIC_PAINT_MAX_APPLY_FRAMES;
+  },
+
+  /**
+   * Read the current physical timeline projection for a layer. Derives ordered
+   * assignments, exact runtime generated interiors, and bounded
+   * real/generated/empty physical cells from the validated record set and
+   * enabled-only interpolation state using the shared projection seam.
+   */
+  getRotoPhysicalProjection(layerId: string): PhysicPaintRotoPhysicalTimelineProjection | null {
+    const records = this.getRotoRealKeyRecords(layerId);
+    const capacity = this.getRotoPhysicalCapacity(layerId);
+    const interpolation = this.getRotoPhysicalInterpolationState(layerId);
+    if (records.length === 0 && !_rotoRealKeyRecords.has(layerId)) return null;
+    const identities = records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
+    const result = projectPhysicPaintRotoPhysicalTimeline({
+      identities,
+      capacity,
+      interpolationEnabled: interpolation.enabled,
+    });
+    if (!result.ok) return null;
+    return result.projection;
+  },
+
+  /**
+   * Clear the physical record ownership for a layer. Used during layer
+   * replacement/disposal.
+   */
+  clearRotoPhysicalRecords(layerId: string): void {
+    _rotoRealKeyRecords.delete(layerId);
+    _rotoPhysicalInterpolationState.delete(layerId);
+    _rotoPhysicalCapacity.delete(layerId);
   },
 };

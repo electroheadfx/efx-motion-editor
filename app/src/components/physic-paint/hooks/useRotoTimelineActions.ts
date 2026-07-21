@@ -1,8 +1,14 @@
 import { useCallback } from 'preact/hooks';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
-import { getSourceRotoFrameForDisplayFrame } from '../roto/physicsPaintRotoWorkflow';
+import { getSourceRotoFrameForDisplayFrame, type RotoInterpolationSettings } from '../roto/physicsPaintRotoWorkflow';
 import { saveRotoRealKeyTransaction, updateRotoInterpolationSettingsTransaction } from '../roto/rotoKeyTransactions';
-import type { RotoSourceDisplayModel } from '../roto/rotoSourceDisplayModel';
+
+// Local type alias for the legacy source/display model shape. Task 3 will
+// replace this with direct physical record/projection ports.
+interface RotoSourceDisplayModel {
+  realSourceFrames: number[];
+  settings: RotoInterpolationSettings;
+}
 
 export interface RotoTimelineActionsInput {
   getModel: () => RotoSourceDisplayModel;

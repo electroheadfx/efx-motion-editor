@@ -1,9 +1,84 @@
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, type PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, type PhysicPaintRotoInterpolationSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../../../types/physicPaint';
 import {
-  resolveRotoRealKeySaveTarget,
-  upsertRotoRealKeySource,
-  type RotoSourceDisplayModel,
-} from '../roto/rotoSourceDisplayModel';
+  normalizeRotoSegmentSpacingOverrides,
+  resolveRotoFarEmptyDisplaySaveTarget,
+  type RotoFarEmptyDisplaySaveTarget,
+  type RotoInterpolationSettings,
+  type RotoSegmentSpacingOverride,
+} from './physicsPaintRotoWorkflow';
+
+// Inlined source/display model helpers (formerly from rotoSourceDisplayModel.ts).
+// These remain temporarily for legacy operation delivery and will be removed
+// when 36.14-06 through 36.14-08 migrate these modules to the physical resolver.
+
+interface RotoSourceDisplayModel {
+  realSourceFrames: number[];
+  settings: RotoInterpolationSettings;
+}
+
+function normalizeRealSourceFrames(frames: readonly number[]): number[] {
+  return Array.from(new Set(frames.filter((frame) => Number.isInteger(frame) && frame >= 0))).sort((a, b) => a - b);
+}
+
+function createRotoSourceDisplayModelLegacy(input: { realSourceFrames: readonly number[]; settings: RotoInterpolationSettings }): RotoSourceDisplayModel {
+  const realSourceFrames = normalizeRealSourceFrames(input.realSourceFrames);
+  const settings: RotoInterpolationSettings = {
+    ...input.settings,
+    segmentSpacingOverrides: normalizeRotoSegmentSpacingOverrides(input.settings.segmentSpacingOverrides, realSourceFrames),
+  };
+  return { realSourceFrames, settings };
+}
+
+function resolveRotoRealKeySaveTargetLegacy(
+  model: RotoSourceDisplayModel,
+  displayFrame: number,
+): RotoFarEmptyDisplaySaveTarget {
+  const projected = resolveRotoFarEmptyDisplaySaveTarget(displayFrame, model.realSourceFrames, {
+    ...model.settings,
+    enabled: true,
+  });
+  const previousSourceFrame = [...model.realSourceFrames].reverse().find((sourceFrame) => sourceFrame < displayFrame);
+  const isAdjacentOffSave = model.settings.enabled !== true && previousSourceFrame !== undefined && displayFrame === previousSourceFrame + 1;
+  return {
+    ...projected,
+    sourceFrame: projected.displayFrame,
+    previousSegmentOverride: projected.previousSegmentOverride && !isAdjacentOffSave
+      ? { ...projected.previousSegmentOverride, toSourceFrame: projected.displayFrame }
+      : null,
+  };
+}
+
+function upsertRotoRealKeySourceLegacy(
+  model: RotoSourceDisplayModel,
+  target: Pick<RotoFarEmptyDisplaySaveTarget, 'sourceFrame' | 'previousSegmentOverride'>,
+): RotoSourceDisplayModel {
+  const realSourceFrames = normalizeRealSourceFrames([...model.realSourceFrames, target.sourceFrame]);
+  const segmentSpacingOverrides = mergeRotoSegmentSpacingOverrideLegacy(
+    model.settings.segmentSpacingOverrides,
+    target.previousSegmentOverride,
+    realSourceFrames,
+  );
+  return createRotoSourceDisplayModelLegacy({
+    realSourceFrames,
+    settings: { ...model.settings, segmentSpacingOverrides },
+  });
+}
+
+function mergeRotoSegmentSpacingOverrideLegacy(
+  existing: RotoInterpolationSettings['segmentSpacingOverrides'],
+  override: RotoSegmentSpacingOverride | PhysicPaintRotoSegmentSpacingOverride | null,
+  realSourceFrames: readonly number[],
+): RotoSegmentSpacingOverride[] {
+  const withoutReplacement = (existing ?? []).filter((candidate) => (
+    override === null
+      || candidate.fromSourceFrame !== override.fromSourceFrame
+      || candidate.toSourceFrame !== override.toSourceFrame
+  ));
+  return normalizeRotoSegmentSpacingOverrides(
+    override ? [...withoutReplacement, override] : withoutReplacement,
+    realSourceFrames,
+  );
+}
 
 export interface RotoSaveRealKeyTransactionInput {
   model: RotoSourceDisplayModel;
@@ -12,7 +87,7 @@ export interface RotoSaveRealKeyTransactionInput {
 }
 
 export interface RotoSaveRealKeyTransaction {
-  target: ReturnType<typeof resolveRotoRealKeySaveTarget>;
+  target: ReturnType<typeof resolveRotoRealKeySaveTargetLegacy>;
   model: RotoSourceDisplayModel;
   sourceFrameOverride: number;
   interpolationSettings: PhysicPaintRotoInterpolationSettings;
@@ -49,8 +124,8 @@ export interface RotoInterpolationToggleTransaction {
 
 export function claimRotoSelectedFrame(input: RotoSelectedFrameClaimInput): RotoSelectedFrameClaim {
   const selectedFrame = Math.max(0, Math.trunc(input.selectedFrame));
-  const target = resolveRotoRealKeySaveTarget(input.model, selectedFrame);
-  const model = upsertRotoRealKeySource(input.model, {
+  const target = resolveRotoRealKeySaveTargetLegacy(input.model, selectedFrame);
+  const model = upsertRotoRealKeySourceLegacy(input.model, {
     sourceFrame: selectedFrame,
     previousSegmentOverride: target.previousSegmentOverride
       ? { ...target.previousSegmentOverride, toSourceFrame: selectedFrame }
@@ -64,8 +139,8 @@ export function claimRotoSelectedFrame(input: RotoSelectedFrameClaimInput): Roto
 }
 
 export function saveRotoRealKeyTransaction(input: RotoSaveRealKeyTransactionInput): RotoSaveRealKeyTransaction {
-  const target = resolveRotoRealKeySaveTarget(input.model, input.displayFrame);
-  const model = upsertRotoRealKeySource(input.model, target);
+  const target = resolveRotoRealKeySaveTargetLegacy(input.model, input.displayFrame);
+  const model = upsertRotoRealKeySourceLegacy(input.model, target);
   return {
     target,
     model,
