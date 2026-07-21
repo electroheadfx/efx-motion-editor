@@ -14,6 +14,7 @@ import {
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type { RotoKeyMoveTimingResolution, RotoKeyUtilityActionState } from '../roto/physicsPaintRotoKeyController';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
+import type { RotoPhysicalTimelineActionBundle } from '../hooks/useRotoTimelineActions';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
 const GENERATED_ROTO_DISABLED_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
@@ -87,6 +88,8 @@ export interface PhysicsPaintWorkflowStripProps {
   onDuplicateRotoKey?: () => void;
   onInsertRotoFrame?: () => void;
   onDeleteRotoFrame?: () => void;
+  /** Stable physical timeline action bundle (D-05/D-06/D-09). */
+  rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
   onCopyRotoFrame?: () => void;
   onPasteRotoFrame?: () => void;
   onResolveRotoKeyMoveCandidate?: (fromDisplayFrame: number, requestedDisplayFrame: number) => RotoKeyMoveTimingResolution;
@@ -248,16 +251,21 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames);
   const isCurrentRealRotoKey = realRotoFrames.includes(props.currentFrame) && currentRotoCell.isEditableTarget !== false;
   const sessionKeyAvailability = props.rotoKeyState?.actionAvailability;
+  const physicalActions = props.rotoPhysicalActions;
+  const physicalInsertAvailable = physicalActions?.canInsertFrame.value ?? false;
+  const physicalDeleteAvailable = physicalActions?.canDeleteFrame.value ?? false;
+  const physicalInsertDisabledReason = physicalActions?.insertDisabledReason.value ?? null;
+  const physicalDeleteDisabledReason = physicalActions?.deleteDisabledReason.value ?? null;
   const scriptAvailability = props.rotoScript?.availability.value;
   const scriptStatus = props.rotoScript?.status.value ?? null;
   const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy) || rotoDragPreview?.pendingFrame !== null && rotoDragPreview?.pendingFrame !== undefined;
   const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked);
   const canUseSourceRotoKey = isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState;
-  const canInsertRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canInsert || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
+  const canInsertRotoKey = physicalActions ? physicalInsertAvailable && props.ready !== false : (sessionKeyAvailability ? (sessionKeyAvailability.canInsert || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey);
   const canDuplicateRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canDuplicate || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
   const canCopyRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canCopy || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
   const canPasteRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canPaste && props.ready !== false : Boolean(props.hasCopiedRotoKey) && !keyUtilitiesDisabledByBusyState;
-  const canDeleteRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canDelete || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
+  const canDeleteRotoKey = physicalActions ? physicalDeleteAvailable && props.ready !== false : (sessionKeyAvailability ? (sessionKeyAvailability.canDelete || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey);
   const rotoDragLocked = keyUtilitiesDisabledByBusyState || !props.onResolveRotoKeyMoveCandidate || !props.onMoveRotoKey;
   const rotoDragValidityKey = `${props.rotoDragContextKey ?? 'none'}:${frameCells[0] ?? -1}:${frameCells[frameCells.length - 1] ?? -1}:${realCachedRotoFrameNumbers.join(',')}:${generatedRotoFrames.join(',')}:${interpolationEnabled ? 1 : 0}:${interpolationSettings.inBetweenCount ?? 1}:${(interpolationSettings.segmentSpacingOverrides ?? []).map((override) => `${override.fromSourceFrame}-${override.toSourceFrame}-${override.inBetweenCount}`).join(',')}:${rotoDragLocked ? 1 : 0}`;
   const rotoDragFeedback = getRotoDragFeedback(rotoDragPreview);
@@ -298,6 +306,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }
 
   function getRotoKeyUtilityDisabledMessage(action: RotoKeyUtilityAction): string {
+    if (action === 'insert' && physicalActions) return physicalInsertDisabledReason ?? 'Insert is unavailable.';
+    if (action === 'delete' && physicalActions) return physicalDeleteDisabledReason ?? 'Delete is unavailable.';
     if (sessionKeyAvailability?.busy) return sessionKeyAvailability.disabledReason ?? 'Finish the current key action before using key tools.'.replace('{frame}', String(props.currentFrame));
     if (keyUtilitiesDisabledByBusyState) return 'Finish the current key action before using key tools.'.replace('{frame}', String(props.currentFrame));
     if (currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false) return 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.'.replace('{frame}', String(currentRotoCell.frame));
@@ -714,7 +724,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               </div>
               <div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key utilities for frame ${props.currentFrame}`}>
                 <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
-                <button type="button" class="physics-paint-roto-key-button" aria-label={`Insert blank Roto key before frame ${props.currentFrame}`} disabled={!canInsertRotoKey} {...getRotoKeyButtonPressProps('insert')} onClick={() => runRotoKeyUtilityAction('insert', canInsertRotoKey, props.onInsertRotoFrame)}>Insert</button>
+                <button type="button" class="physics-paint-roto-key-button" aria-label={`Insert empty Roto frame before frame ${props.currentFrame}`} disabled={!canInsertRotoKey} {...getRotoKeyButtonPressProps('insert')} onClick={() => runRotoKeyUtilityAction('insert', canInsertRotoKey, props.onInsertRotoFrame)}>Insert</button>
                 <button type="button" class="physics-paint-roto-key-button" aria-label={`Duplicate Roto key at frame ${props.currentFrame}`} disabled={!canDuplicateRotoKey} {...getRotoKeyButtonPressProps('duplicate')} onClick={() => runRotoKeyUtilityAction('duplicate', canDuplicateRotoKey, props.onDuplicateRotoKey)}>Dup</button>
                 <button type="button" class="physics-paint-roto-key-button" aria-label={`Copy Roto key at frame ${props.currentFrame}`} disabled={!canCopyRotoKey} {...getRotoKeyButtonPressProps('copy')} onClick={() => runRotoKeyUtilityAction('copy', canCopyRotoKey, props.onCopyRotoFrame)}>Copy</button>
                 <button type="button" class="physics-paint-roto-key-button" aria-label={`Paste Roto key to frame ${props.currentFrame}`} disabled={!canPasteRotoKey} {...getRotoKeyButtonPressProps('paste')} onClick={() => runRotoKeyUtilityAction('paste', canPasteRotoKey, props.onPasteRotoFrame)}>Paste</button>
