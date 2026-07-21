@@ -154,6 +154,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
   const timeoutRef = useRef<number | null>(null);
   const inFlightRef = useRef<boolean>(false);
   const cancelledRef = useRef<boolean>(false);
+  const pendingHistoryProvenanceRef = useRef<import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditReplayProvenance | null>(null);
 
   const presentationSignal = signal<RotoPhysicalEditPresentation>({ status: 'idle', conciseMessage: null });
   const acceptedSignal = signal<RotoPhysicalEditAcceptedOutput<EngineState> | null>(null);
@@ -176,6 +177,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
     afterRef.current = null;
     inFlightRef.current = false;
     cancelledRef.current = false;
+    pendingHistoryProvenanceRef.current = null;
     pendingOperationIdSignal.value = null;
     portsRef.current.settlement.clearPendingSettlement();
     clearTimeoutOnce();
@@ -262,6 +264,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         acceptedRevision,
         operationId: pending.operationId,
         operationKind: pending.operationKind,
+        historyProvenance: pendingHistoryProvenanceRef.current,
       };
       failureSignal.value = null;
       presentationSignal.value = { status: 'accepted', conciseMessage: PHYSICAL_EDIT_ACCEPTED_MESSAGE };
@@ -447,6 +450,11 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         }
 
         const operationId = `${launch.operationId}:roto-physical-edit:${crypto.randomUUID()}`;
+        const isReplay = input.operationKind === 'undo' || input.operationKind === 'redo';
+        if (isReplay && !input.historyProvenance) {
+          portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+          return false;
+        }
         const payload: PhysicPaintRotoPhysicalEditApplyPayload = {
           kind: 'replace-roto-physical-map',
           operationId,
@@ -460,7 +468,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           interpolationEnabled: stagedInterpolation.enabled,
           selectedKeyId: input.selectedKeyId,
           selectedAppFrame: input.selectedAppFrame,
+          ...(input.historyProvenance ? { historyProvenance: input.historyProvenance } : {}),
         };
+        pendingHistoryProvenanceRef.current = input.historyProvenance ?? null;
         const pending = createPendingPhysicPaintRotoPhysicalEdit(payload, stagedRevision);
         beforeRef.current = before;
         pendingRef.current = pending;

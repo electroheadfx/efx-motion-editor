@@ -48,6 +48,26 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'redo';
 
 /**
+ * Replay provenance for Undo/Redo physical-edit requests (Plan 36.14-05
+ * Task 2). Per D-05/D-06/D-08/D-09: attached to the closed physical apply
+ * envelope only when `operationKind === 'undo' | 'redo'`. The parent
+ * authority retains a canonical accepted-operation ledger keyed by
+ * `historyCommandId` (the original accepted operation ID); on replay, it
+ * requires the current authoritative state to match `sourceRevision` and
+ * the submitted complete target state to match `targetRevision` before
+ * one store replacement. Undo carries `historyDirection: 'undo'`,
+ * `sourceRevision = original.acceptedRevision`, `targetRevision =
+ * revision(original.before)`; Redo is the inverse. Forbidden on ordinary
+ * kinds; required on replay kinds; no second transport branch.
+ */
+export interface PhysicPaintRotoPhysicalEditReplayProvenance {
+  readonly historyCommandId: string;
+  readonly historyDirection: 'undo' | 'redo';
+  readonly sourceRevision: string;
+  readonly targetRevision: string;
+}
+
+/**
  * Standalone generic physical-edit apply payload (inactive successor of the
  * current `replace-roto-key-frames` move-era branch).
  *
@@ -56,6 +76,11 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
  * final records, enabled-only interpolation state, selected `keyId | null`,
  * and selected direct `appFrame`. The parent independently revalidates every
  * field before one store replacement.
+ *
+ * Per D-05/D-06/D-08/D-09 (Plan 36.14-05 Task 2): the request carries
+ * `historyProvenance` only when `operationKind` is `'undo'` or `'redo'`,
+ * and the parent revalidates it against the accepted-operation ledger
+ * before authorizing an identity-set replay.
  *
  * This interface is NOT a member of `PhysicPaintApplyPayload`. It is the one
  * successor contract that Plan 36.14-04 Task 3 activates while removing the
@@ -74,6 +99,7 @@ export interface PhysicPaintRotoPhysicalEditApplyPayload {
   readonly interpolationEnabled: boolean;
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
+  readonly historyProvenance?: PhysicPaintRotoPhysicalEditReplayProvenance;
 }
 
 /**
@@ -118,6 +144,7 @@ export interface PhysicPaintRotoPhysicalEditApplyResult {
   readonly acceptedRevision: string | null;
   readonly ok: boolean;
   readonly error?: string;
+  readonly historyProvenance?: PhysicPaintRotoPhysicalEditReplayProvenance;
 }
 
 const PHYSIC_PAINT_ROTO_PHYSICAL_EDIT_RECORD_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'dataUrl', 'width', 'height']);
@@ -142,15 +169,36 @@ export function isPhysicPaintRotoPhysicalEditRecord(value: unknown): value is Ph
 }
 
 /**
+ * Strict guard for {@link PhysicPaintRotoPhysicalEditReplayProvenance}.
+ * Rejects non-records, unknown members, malformed identifiers, and
+ * unknown directions. Used by the payload/result validators to authorize
+ * identity-changing Undo/Redo against the original accepted command.
+ */
+export function isPhysicPaintRotoPhysicalEditReplayProvenance(value: unknown): value is PhysicPaintRotoPhysicalEditReplayProvenance {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyKeys(value, ['historyCommandId', 'historyDirection', 'sourceRevision', 'targetRevision'])) return false;
+  if (!isNonEmptyString(value.historyCommandId)) return false;
+  if (value.historyDirection !== 'undo' && value.historyDirection !== 'redo') return false;
+  if (!isNonEmptyString(value.sourceRevision)) return false;
+  if (!isNonEmptyString(value.targetRevision)) return false;
+  return true;
+}
+
+/**
  * Strict guard for {@link PhysicPaintRotoPhysicalEditApplyPayload}. Rejects
  * non-records, unknown members, wrong kind, malformed operation/layer IDs,
  * missing expected revision, malformed records, and invalid selection
  * state. This is a closed allowlist validator: it does not normalize, alias,
  * or fall back to any move-era shape.
+ *
+ * Per Plan 36.14-05 Task 2: replay provenance is required when
+ * `operationKind` is `'undo'` or `'redo'` and forbidden on ordinary
+ * kinds; the validator rejects unknown fields and accepts only the two
+ * directions.
  */
 export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value is PhysicPaintRotoPhysicalEditApplyPayload {
   if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'selectedKeyId', 'selectedAppFrame'])) return false;
+  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'selectedKeyId', 'selectedAppFrame', 'historyProvenance'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
   if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
@@ -163,6 +211,13 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (typeof value.interpolationEnabled !== 'boolean') return false;
   if (value.selectedKeyId !== null && !isNonEmptyString(value.selectedKeyId)) return false;
   if (value.selectedAppFrame !== null && !isNonNegativeInteger(value.selectedAppFrame)) return false;
+  const isReplay = value.operationKind === 'undo' || value.operationKind === 'redo';
+  if (isReplay) {
+    if (!isPhysicPaintRotoPhysicalEditReplayProvenance(value.historyProvenance)) return false;
+    if (value.historyProvenance.historyDirection !== value.operationKind) return false;
+  } else {
+    if (value.historyProvenance !== undefined) return false;
+  }
   return true;
 }
 
@@ -170,10 +225,14 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
  * Strict guard for {@link PhysicPaintRotoPhysicalEditApplyResult}. Rejects
  * non-records, unknown members, wrong kind, malformed settlement tuple, and
  * missing accepted revision on success.
+ *
+ * Per Plan 36.14-05 Task 2: replay provenance is required on the result
+ * when `operationKind` is `'undo'` or `'redo'` and forbidden on ordinary
+ * kinds; the validator mirrors the payload contract.
  */
 export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value is PhysicPaintRotoPhysicalEditApplyResult {
   if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'ok', 'error'])) return false;
+  if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'ok', 'error', 'historyProvenance'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
   if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
@@ -188,6 +247,13 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
   if (value.error !== undefined && typeof value.error !== 'string') return false;
   if (value.ok && value.acceptedRevision === null) return false;
   if (!value.ok && value.acceptedRevision !== null) return false;
+  const isReplay = value.operationKind === 'undo' || value.operationKind === 'redo';
+  if (isReplay) {
+    if (!isPhysicPaintRotoPhysicalEditReplayProvenance(value.historyProvenance)) return false;
+    if (value.historyProvenance.historyDirection !== value.operationKind) return false;
+  } else {
+    if (value.historyProvenance !== undefined) return false;
+  }
   return true;
 }
 const RENDERED_DATA_URL_PREFIX = 'data:image/png';
@@ -404,6 +470,17 @@ export interface PhysicPaintReplaceRotoPhysicalMapPayload {
   interpolationEnabled: boolean;
   selectedKeyId: string | null;
   selectedAppFrame: number | null;
+  /**
+   * Replay provenance (Plan 36.14-05 Task 2). Required when `operationKind`
+   * is `'undo'` or `'redo'`; forbidden for ordinary kinds. Carries the
+   * original accepted operation ID, the replay direction, the source
+   * revision (the original command's accepted `after` for undo, its
+   * `before` for redo), and the target revision (the original command's
+   * `before` for undo, its `after` for redo). The parent authority looks
+   * up `historyCommandId` in its accepted-operation ledger and validates
+   * both revisions against the stored canonical states before mutation.
+   */
+  historyProvenance?: PhysicPaintRotoPhysicalEditReplayProvenance;
 }
 
 export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintDeleteRotoFramePayload | PhysicPaintReplaceRotoKeyFramesPayload | PhysicPaintReplaceRotoPhysicalMapPayload | PhysicPaintUpdateRotoInterpolationSettingsPayload;
@@ -542,6 +619,7 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
   }
 
   if (value.kind === 'replace-roto-physical-map') {
+    const isReplay = value.operationKind === 'undo' || value.operationKind === 'redo';
     return isNonEmptyString(value.operationId)
       && (value.operationKind === 'insert-slot' || value.operationKind === 'delete-key' || value.operationKind === 'move-key' || value.operationKind === 'force-spacing' || value.operationKind === 'undo' || value.operationKind === 'redo')
       && isNonEmptyString(value.layerId)
@@ -553,7 +631,11 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
       && value.records.every(isPhysicPaintRotoPhysicalEditRecord)
       && typeof value.interpolationEnabled === 'boolean'
       && (value.selectedKeyId === null || isNonEmptyString(value.selectedKeyId))
-      && (value.selectedAppFrame === null || isNonNegativeInteger(value.selectedAppFrame));
+      && (value.selectedAppFrame === null || isNonNegativeInteger(value.selectedAppFrame))
+      && (isReplay
+        ? (isPhysicPaintRotoPhysicalEditReplayProvenance(value.historyProvenance)
+          && value.historyProvenance.historyDirection === value.operationKind)
+        : value.historyProvenance === undefined);
   }
 
 

@@ -1,6 +1,6 @@
 import type { Result } from './ipc';
 import type { Layer } from '../types/layer';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -76,6 +76,25 @@ function shouldCloseNativeWindowAfterApply(payload: PhysicPaintApplyPayload): bo
 
 const APPLY_ERROR = 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.';
 const deliveredOperations = new Map<string, { fingerprint: string; result: PhysicPaintApplyResult }>();
+
+/**
+ * Parent-authoritative accepted-operation ledger for the generic physical-edit
+ * transaction (Plan 36.14-05 Task 2). Records one immutable canonical entry per
+ * accepted ordinary physical command, keyed by the original operationId. Undo
+ * and Redo replays look up `historyCommandId` here and validate both the
+ * current store state plus the submitted target state against the stored
+ * `before`/`after` revisions before any mutation. Replay acceptances are NOT
+ * recorded as new commands — they only consume the existing entry.
+ */
+interface AcceptedPhysicalCommandEntry {
+  readonly operationId: string;
+  readonly beforeRecords: readonly PhysicPaintRotoPhysicalEditRecord[];
+  readonly beforeInterpolation: { enabled: boolean };
+  readonly afterRecords: readonly PhysicPaintRotoPhysicalEditRecord[];
+  readonly afterInterpolation: { enabled: boolean };
+  readonly acceptedRevision: string;
+}
+const acceptedPhysicalCommands = new Map<string, AcceptedPhysicalCommandEntry>();
 
 export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResult {
   const base = resultBase(payload);
@@ -248,6 +267,14 @@ function buildRotoRevision(frames: readonly { sourceFrame?: number; appFrame: nu
  * revision, complete records, capacity, and selected identity before one
  * store replacement; identical replay is idempotent, changed-content ID
  * reuse fails, and rejection mutates no state.
+ *
+ * Plan 36.14-05 Task 2: for ordinary kinds, on a successful mutation the
+ * parent records one immutable canonical entry in the accepted-operation
+ * ledger keyed by `operationId`. For Undo/Redo replays, the parent looks
+ * up `historyProvenance.historyCommandId` in the ledger, requires the
+ * current canonical revision to equal `sourceRevision` and the submitted
+ * target revision to equal `targetRevision`, then mutates once. Replay
+ * acceptances are NOT recorded as new commands.
  */
 function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>): PhysicPaintApplyResult {
   const base = resultBase(payload);
@@ -277,6 +304,49 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     seenKeyIds.add(record.keyId);
     seenAppFrames.add(record.appFrame);
   }
+
+  const isReplay = payload.operationKind === 'undo' || payload.operationKind === 'redo';
+  if (isReplay) {
+    const provenance = payload.historyProvenance;
+    if (!provenance) {
+      return failureResult(base, 'Roto physical replay is missing history provenance.');
+    }
+    if (provenance.historyDirection !== payload.operationKind) {
+      return failureResult(base, 'Roto physical replay provenance direction mismatch.');
+    }
+    const original = acceptedPhysicalCommands.get(provenance.historyCommandId);
+    if (!original) {
+      return failureResult(base, 'Roto physical replay targets an unknown accepted command.');
+    }
+    if (currentRevision !== provenance.sourceRevision) {
+      return failureResult(base, 'Roto physical replay source revision does not match the current state.');
+    }
+    const targetRevision = buildPhysicPaintRotoPhysicalRevision(payload.records, { enabled: payload.interpolationEnabled });
+    if (targetRevision !== provenance.targetRevision) {
+      return failureResult(base, 'Roto physical replay target revision does not match the original command.');
+    }
+    // For undo: sourceRevision must equal the original command's acceptedRevision (after);
+    // targetRevision must equal the original command's before revision.
+    // For redo: inverse — sourceRevision must equal the original command's before revision;
+    // targetRevision must equal the original command's acceptedRevision (after).
+    const originalBeforeRevision = buildPhysicPaintRotoPhysicalRevision(original.beforeRecords, original.beforeInterpolation);
+    if (provenance.historyDirection === 'undo') {
+      if (provenance.sourceRevision !== original.acceptedRevision) {
+        return failureResult(base, 'Roto physical undo source revision does not match the original accepted state.');
+      }
+      if (provenance.targetRevision !== originalBeforeRevision) {
+        return failureResult(base, 'Roto physical undo target revision does not match the original before state.');
+      }
+    } else {
+      if (provenance.sourceRevision !== originalBeforeRevision) {
+        return failureResult(base, 'Roto physical redo source revision does not match the original before state.');
+      }
+      if (provenance.targetRevision !== original.acceptedRevision) {
+        return failureResult(base, 'Roto physical redo target revision does not match the original accepted state.');
+      }
+    }
+  }
+
   const replaceResult = physicPaintStore.replaceRotoPhysicalRecords(
     payload.layerId,
     payload.records,
@@ -286,6 +356,27 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   if (!replaceResult.ok) {
     return failureResult(base, replaceResult.error);
   }
+
+  if (!isReplay) {
+    const afterRecords = payload.records.map((record) => ({
+      keyId: record.keyId,
+      appFrame: record.appFrame,
+      payload: record.payload,
+    }));
+    acceptedPhysicalCommands.set(payload.operationId, {
+      operationId: payload.operationId,
+      beforeRecords: currentRecords.map((record) => ({
+        keyId: record.keyId,
+        appFrame: record.appFrame,
+        payload: record.payload,
+      })),
+      beforeInterpolation: { enabled: currentInterpolation.enabled },
+      afterRecords,
+      afterInterpolation: { enabled: payload.interpolationEnabled },
+      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(payload.records, { enabled: payload.interpolationEnabled }),
+    });
+  }
+
   return {
     operationId: payload.operationId,
     kind: 'replace-roto-physical-map',

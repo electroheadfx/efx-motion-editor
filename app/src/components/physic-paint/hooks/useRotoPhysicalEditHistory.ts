@@ -232,10 +232,16 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
 
     if (!isOrdinaryOperationKind(accepted.operationKind)) {
       // Replay acceptance — move the pending replay command between stacks
-      // instead of appending a new command.
+      // instead of appending a new command. The coordinator's echoed
+      // provenance must match the pending command's operationId and the
+      // pending replay direction; otherwise the acceptance is ignored and
+      // both stacks stay untouched.
       const pending = pendingReplayRef.current;
       pendingReplayRef.current = null;
       if (!pending) return;
+      if (!accepted.historyProvenance) return;
+      if (accepted.historyProvenance.historyCommandId !== pending.command.operationId) return;
+      if (accepted.historyProvenance.historyDirection !== pending.direction) return;
       if (pending.direction === 'undo') {
         const top = appliedRef.current[appliedRef.current.length - 1];
         if (top !== pending.command || top.kind !== 'physical') return;
@@ -327,6 +333,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     }
     pendingReplayRef.current = { direction: 'undo', command: entry };
     const proposal = buildReplayProposal(entry.before);
+    const beforeTargetRevision = buildPhysicPaintRotoPhysicalRevision(entry.before.records, entry.before.interpolation);
     const accepted = await coordinator.executePhysicalEdit({
       proposal,
       expectedLaunch: { operationId: identity.launchOperationId, layerId: identity.layerId },
@@ -335,6 +342,12 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       selectedAppFrame: entry.before.selectedAppFrame,
       replayRecords: entry.before.records,
       replayInterpolation: entry.before.interpolation,
+      historyProvenance: {
+        historyCommandId: entry.operationId,
+        historyDirection: 'undo',
+        sourceRevision: entry.acceptedRevision,
+        targetRevision: beforeTargetRevision,
+      },
     });
     if (!accepted) {
       pendingReplayRef.current = null;
@@ -376,6 +389,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     }
     pendingReplayRef.current = { direction: 'redo', command: entry };
     const proposal = buildReplayProposal(entry.after);
+    const afterTargetRevision = buildPhysicPaintRotoPhysicalRevision(entry.after.records, entry.after.interpolation);
     const accepted = await coordinator.executePhysicalEdit({
       proposal,
       expectedLaunch: { operationId: identity.launchOperationId, layerId: identity.layerId },
@@ -384,6 +398,12 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       selectedAppFrame: entry.after.selectedAppFrame,
       replayRecords: entry.after.records,
       replayInterpolation: entry.after.interpolation,
+      historyProvenance: {
+        historyCommandId: entry.operationId,
+        historyDirection: 'redo',
+        sourceRevision: beforeRevision,
+        targetRevision: afterTargetRevision,
+      },
     });
     if (!accepted) {
       pendingReplayRef.current = null;

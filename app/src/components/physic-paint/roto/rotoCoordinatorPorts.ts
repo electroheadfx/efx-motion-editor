@@ -100,6 +100,11 @@ export interface RotoPhysicalEditSnapshot<EngineState> {
  * accepted-only history without re-deriving from the store. The `operationId`
  * and `operationKind` allow the history hook to dedupe accepted callbacks
  * and distinguish ordinary edits from Undo/Redo replay acceptances.
+ *
+ * Plan 36.14-05 Task 2: `historyProvenance` echoes the parent-authoritative
+ * replay provenance for undo/redo acceptances. The history hook validates
+ * that `historyCommandId` matches the pending replay command before moving
+ * it between stacks. Ordinary acceptances carry `historyProvenance: null`.
  */
 export interface RotoPhysicalEditAcceptedOutput<EngineState> {
   readonly before: RotoPhysicalEditSnapshot<EngineState>;
@@ -107,6 +112,7 @@ export interface RotoPhysicalEditAcceptedOutput<EngineState> {
   readonly acceptedRevision: string;
   readonly operationId: string;
   readonly operationKind: import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditOperationKind;
+  readonly historyProvenance: import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditReplayProvenance | null;
 }
 
 /**
@@ -267,9 +273,14 @@ export interface RotoPhysicalEditCoordinatorPorts<EngineState = SerializedProjec
  * snapshot so the coordinator stages the complete target state directly
  * rather than joining the proposal mapping with the current store. This
  * preserves identity-owned payload for Delete Undo/Redo and avoids
- * re-deriving records from current state. Plan 36.14-05 Task 2 adds
- * provenance fields that authorize this replay against the original
- * accepted command.
+ * re-deriving records from current state.
+ *
+ * Plan 36.14-05 Task 2: `historyProvenance` is required for replay kinds
+ * and forbidden for ordinary kinds. The coordinator forwards it to the
+ * parent authority in the apply payload and revalidates the echoed
+ * provenance on the accepted result to confirm the parent authorized
+ * the replay against the original accepted command recorded in the
+ * parent-side accepted-operation ledger.
  */
 export interface RotoPhysicalEditExecuteInput<Proposal> {
   readonly proposal: Proposal;
@@ -279,4 +290,5 @@ export interface RotoPhysicalEditExecuteInput<Proposal> {
   readonly selectedAppFrame: number | null;
   readonly replayRecords?: readonly PhysicPaintRotoRealKeyRecord[];
   readonly replayInterpolation?: PhysicPaintRotoInterpolationState;
+  readonly historyProvenance?: import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditReplayProvenance;
 }
