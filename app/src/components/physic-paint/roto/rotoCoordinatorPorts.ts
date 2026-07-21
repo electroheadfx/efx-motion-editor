@@ -97,12 +97,16 @@ export interface RotoPhysicalEditSnapshot<EngineState> {
 /**
  * Immutable accepted edit output exposed by the coordinator on successful
  * settlement. Carries the before/after snapshots so Plan 36.14-05 can record
- * accepted-only history without re-deriving from the store.
+ * accepted-only history without re-deriving from the store. The `operationId`
+ * and `operationKind` allow the history hook to dedupe accepted callbacks
+ * and distinguish ordinary edits from Undo/Redo replay acceptances.
  */
 export interface RotoPhysicalEditAcceptedOutput<EngineState> {
   readonly before: RotoPhysicalEditSnapshot<EngineState>;
   readonly after: RotoPhysicalEditSnapshot<EngineState>;
   readonly acceptedRevision: string;
+  readonly operationId: string;
+  readonly operationKind: import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditOperationKind;
 }
 
 /**
@@ -257,6 +261,15 @@ export interface RotoPhysicalEditCoordinatorPorts<EngineState = SerializedProjec
  * validated identity-to-frame mapping; `expectedLaunch` is the launch
  * context identity at dispatch time; `selectedKeyId`/`selectedAppFrame`
  * are the post-edit selection state the parent will acknowledge.
+ *
+ * For replay (`operationKind === 'undo' | 'redo'`), the caller supplies
+ * `replayRecords` and `replayInterpolation` from the stored target
+ * snapshot so the coordinator stages the complete target state directly
+ * rather than joining the proposal mapping with the current store. This
+ * preserves identity-owned payload for Delete Undo/Redo and avoids
+ * re-deriving records from current state. Plan 36.14-05 Task 2 adds
+ * provenance fields that authorize this replay against the original
+ * accepted command.
  */
 export interface RotoPhysicalEditExecuteInput<Proposal> {
   readonly proposal: Proposal;
@@ -264,4 +277,6 @@ export interface RotoPhysicalEditExecuteInput<Proposal> {
   readonly operationKind: PhysicPaintRotoPhysicalEditApplyPayload['operationKind'];
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
+  readonly replayRecords?: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly replayInterpolation?: PhysicPaintRotoInterpolationState;
 }

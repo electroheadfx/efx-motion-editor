@@ -256,7 +256,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         return;
       }
       const acceptedRevision = detail.acceptedRevision ?? pending.stagedRevision;
-      acceptedSignal.value = { before, after, acceptedRevision };
+      acceptedSignal.value = {
+        before,
+        after,
+        acceptedRevision,
+        operationId: pending.operationId,
+        operationKind: pending.operationKind,
+      };
       failureSignal.value = null;
       presentationSignal.value = { status: 'accepted', conciseMessage: PHYSICAL_EDIT_ACCEPTED_MESSAGE };
       portsRef.current.status.setApplyStatus('success');
@@ -390,12 +396,22 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       const currentInterpolation = portsRef.current.records.getInterpolation(launch.layerId);
       const capacity = portsRef.current.records.getCapacity(launch.layerId);
       const expectedRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation);
-      const stagedRecords = buildStagedRecords(currentRecords, proposal, capacity);
+      const isReplay = input.operationKind === 'undo' || input.operationKind === 'redo';
+      // For replay, stage the stored target snapshot records directly so
+      // identity-set changes (Delete Undo/Redo) restore the original
+      // identity-owned payload without joining against the current store.
+      // For ordinary edits, join the proposal mapping with the current
+      // records by stable keyId.
+      const stagedRecords = isReplay && input.replayRecords
+        ? buildReplayRecords(input.replayRecords, capacity)
+        : buildStagedRecords(currentRecords, proposal, capacity);
       if (stagedRecords === null) {
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
-      const stagedInterpolation = { enabled: currentInterpolation.enabled };
+      const stagedInterpolation = isReplay && input.replayInterpolation
+        ? { enabled: input.replayInterpolation.enabled }
+        : { enabled: currentInterpolation.enabled };
       const stagedRevision = buildPhysicPaintRotoPhysicalRevision(stagedRecords, stagedInterpolation);
 
       const before = captureSnapshot(expectedRevision, stagedRevision);
@@ -557,5 +573,49 @@ function buildStagedRecords(
     if (seenFrames.has(record.appFrame)) return null;
     seenFrames.add(record.appFrame);
   }
+  return staged;
+}
+
+/**
+ * Build the staged real-key records for an Undo/Redo replay from the stored
+ * target snapshot's immutable records. The snapshot's records already carry
+ * each identity-owned payload; this function revalidates capacity, unique
+ * keyIds/appFrames, and in-range placement, then returns a fresh sorted
+ * array. Returns null when the stored snapshot cannot be replayed against
+ * the current capacity; the coordinator treats null as a pre-stage barrier
+ * failure with no snapshot publication or parent request.
+ *
+ * Plan 36.14-05 Task 2 will add parent-side provenance validation that
+ * authorizes this replay against the original accepted command before
+ * the parent mutates state.
+ */
+function buildReplayRecords(
+  replayRecords: readonly PhysicPaintRotoRealKeyRecord[],
+  capacity: number,
+): PhysicPaintRotoRealKeyRecord[] | null {
+  if (replayRecords.length > capacity) return null;
+  const seenKeyIds = new Set<string>();
+  const seenAppFrames = new Set<number>();
+  const staged: PhysicPaintRotoRealKeyRecord[] = [];
+  for (const record of replayRecords) {
+    if (!Number.isInteger(record.appFrame) || record.appFrame < 0 || record.appFrame >= capacity) return null;
+    if (seenKeyIds.has(record.keyId)) return null;
+    if (seenAppFrames.has(record.appFrame)) return null;
+    seenKeyIds.add(record.keyId);
+    seenAppFrames.add(record.appFrame);
+    staged.push({
+      kind: 'real-key',
+      keyId: record.keyId,
+      appFrame: record.appFrame,
+      payload: {
+        frameIndex: record.payload.frameIndex,
+        appFrame: record.payload.appFrame,
+        dataUrl: record.payload.dataUrl,
+        ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
+        ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
+      },
+    });
+  }
+  staged.sort((a, b) => a.appFrame - b.appFrame);
   return staged;
 }

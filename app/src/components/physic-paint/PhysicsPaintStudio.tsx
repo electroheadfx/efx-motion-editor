@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import type { EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample, SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
@@ -38,11 +38,8 @@ import { useRotoInterpolationController } from './hooks/useRotoInterpolationCont
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
 import { claimRotoSelectedFrame } from './roto/rotoKeyTransactions';
 import { resolveRotoKeyMoveTiming, type RotoKeyMoveTimingResolution } from './roto/physicsPaintRotoKeyController';
-import { useRotoKeyMoveHistory, type RotoKeyMoveSnapshot } from './hooks/useRotoKeyMoveHistory';
-import type { PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
+import { useRotoPhysicalEditHistory } from './hooks/useRotoPhysicalEditHistory';
 import { resolvePhysicPaintRotoPhysicalEdit, type PhysicPaintRotoPhysicalEditIntent } from './roto/physicsPaintRotoPhysicalResolver';
-import type { RotoPhysicalEditAcceptedOutput } from './roto/rotoCoordinatorPorts';
-import { effect } from '@preact/signals';
 import { buildPhysicsPaintRotoFrameCells } from './view/PhysicsPaintWorkflowStrip';
 import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryController';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
@@ -51,14 +48,6 @@ import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
-
-function cloneRotoValue<T>(value: T): T {
-  return structuredClone(value);
-}
-
-function cloneRotoFrameMap<T>(frames: ReadonlyMap<number, T>): Map<number, T> {
-  return new Map([...frames].map(([frame, value]) => [frame, cloneRotoValue(value)]));
-}
 
 function resolveStudioRotoKeyMoveTiming(input: {
   fromDisplayFrame: number;
@@ -569,93 +558,23 @@ export function PhysicsPaintStudio() {
     },
   });
 
-  const replayRotoMoveSnapshot = useCallback(async (snapshot: RotoKeyMoveSnapshot<SerializedProject>, label: string): Promise<boolean> => {
-    const current = launchContextRef.current;
-    if (!current || current.layerId !== snapshot.identity.layerId || current.operationId !== snapshot.identity.launchOperationId || bridgeModeRef.current === 'Unavailable') return false;
-    rotoCachedPlayback.stop();
-    const currentRecords = physicPaintStore.getRotoRealKeyRecords(current.layerId);
-    const currentById = new Map<string, PhysicPaintRotoRealKeyRecord>();
-    for (const record of currentRecords) currentById.set(record.keyId, record);
-    // Pragmatic replay (Plan 04): snapshot stores real-key cache frames without
-    // keyId. We look up the current keyId at each appFrame and rebuild the
-    // resolver identities. Plan 05 will replace this consumer with generic
-    // accepted-only history keyed by stable identity.
-    const targetAppFrameByKeyId = new Map<string, number>();
-    for (const frame of snapshot.realKeyFrames) {
-      if (frame.source !== 'real-key') continue;
-      const appFrame = frame.sourceFrame ?? frame.appFrame;
-      const match = currentRecords.find((record) => record.appFrame === appFrame);
-      if (!match) return false;
-      targetAppFrameByKeyId.set(match.keyId, snapshot.selectedDisplayFrame);
-    }
-    if (targetAppFrameByKeyId.size === 0) return false;
-    const movedKeyId = [...targetAppFrameByKeyId.keys()][0];
-    const targetAppFrame = targetAppFrameByKeyId.get(movedKeyId) ?? snapshot.selectedDisplayFrame;
-    const identities = currentRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
-    const intent: PhysicPaintRotoPhysicalEditIntent = { kind: 'move-key', movedKeyId, target: { kind: 'physical-cell', appFrame: targetAppFrame } };
-    const resolution = resolvePhysicPaintRotoPhysicalEdit({ identities, intent, capacity: physicPaintStore.getRotoPhysicalCapacity(current.layerId), interpolationEnabled: physicPaintStore.getRotoPhysicalInterpolationState(current.layerId).enabled });
-    if (!resolution.ok) return false;
-    const accepted = await physicalEditCoordinator.executePhysicalEdit({
-      proposal: resolution.proposal,
-      expectedLaunch: { operationId: snapshot.identity.launchOperationId, layerId: snapshot.identity.layerId },
-      operationKind: 'move-key',
-      selectedKeyId: resolution.proposal.selectedKeyId,
-      selectedAppFrame: resolution.proposal.selectedAppFrame,
-    });
-    if (accepted) {
-      setApplyMessage(label);
-      rotoScript.notifySourceRevision();
-    }
-    return accepted;
-  }, [physicalEditCoordinator, rotoCachedPlayback, rotoScript]);
-
-  const rotoMoveHistory = useRotoKeyMoveHistory<SerializedProject>({
+  const rotoMoveHistory = useRotoPhysicalEditHistory<SerializedProject>({
     identity: launchContext ? { launchOperationId: launchContext.operationId, layerId: launchContext.layerId } : null,
     availability: historyAvailability,
-    replaySnapshot: replayRotoMoveSnapshot,
+    coordinator: {
+      executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
+      pendingOperationId: physicalEditCoordinator.pendingOperationId,
+      acceptedOutput: physicalEditCoordinator.acceptedOutput,
+    },
+    recordsPort: {
+      getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId),
+      getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId),
+      getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId),
+      replaceRecords: (layerId, records, interpolation) => physicPaintStore.replaceRotoPhysicalRecords(layerId, records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId)),
+    },
     undoPaint: rotoFrameEditing.undo,
     redoPaint: rotoFrameEditing.redo,
   });
-
-  // Plan 04: feed coordinator accepted output to the existing accepted-only
-  // move-history consumer. Plan 05 replaces this with generic accepted-only
-  // history keyed by stable identity. The effect translates the coordinator's
-  // `RotoPhysicalEditSnapshot` (records-based) to `RotoKeyMoveSnapshot`
-  // (cache-frames-based) by deriving cache frames from the store after the
-  // coordinator has replaced records and updated launch cached frames.
-  useEffect(() => {
-    let lastAccepted: RotoPhysicalEditAcceptedOutput<SerializedProject> | null = null;
-    const dispose = effect(() => {
-      const accepted = physicalEditCoordinator.acceptedOutput.value;
-      if (!accepted || accepted === lastAccepted) return;
-      lastAccepted = accepted;
-      const identity = { launchOperationId: accepted.after.launchOperationId, layerId: accepted.after.layerId };
-      const buildSnapshot = (snapshot: typeof accepted.before): RotoKeyMoveSnapshot<SerializedProject> => {
-        const cacheFrames = physicPaintStore.getRotoCacheFrames(snapshot.layerId);
-        const realKeyFrames = cacheFrames.filter((frame) => frame.source === 'real-key');
-        const buffer = rotoEditBuffer.bufferRef.current;
-        return {
-          identity,
-          realKeyFrames: realKeyFrames.map((frame) => cloneRotoValue(frame)),
-          cachedRotoFrames: cacheFrames.map((frame) => cloneRotoValue(frame)),
-          interpolationSettings: { ...physicPaintStore.getRotoInterpolationSettings(snapshot.layerId), segmentSpacingOverrides: physicPaintStore.getRotoInterpolationSettings(snapshot.layerId).segmentSpacingOverrides?.map((override) => ({ ...override })) ?? [] },
-          frameStates: cloneRotoFrameMap(buffer.frameStates),
-          previewFrames: cloneRotoFrameMap(buffer.previewFrames),
-          capturedFrames: cloneRotoFrameMap(buffer.capturedFrames),
-          dirtyFrames: new Set(buffer.dirtyFrames),
-          liveOverlayActionCounts: new Map(buffer.liveOverlayActionCounts),
-          editableFrames: [...rotoEditableFramesRef.current],
-          selectedSourceFrame: snapshot.selectedAppFrame ?? snapshot.currentAppFrame,
-          selectedDisplayFrame: snapshot.selectedAppFrame ?? snapshot.currentAppFrame,
-          engineState: snapshot.engineState,
-          cachedReferenceUrl: snapshot.cachedReference.url,
-          cachedRepaintBaseFrame: snapshot.cachedReference.cachedRepaintBase ? cloneRotoValue(snapshot.cachedReference.cachedRepaintBase) : null,
-        };
-      };
-      rotoMoveHistory.recordAcceptedMove(buildSnapshot(accepted.before), buildSnapshot(accepted.after));
-    });
-    return () => dispose();
-  }, [physicalEditCoordinator, rotoEditBuffer.bufferRef, rotoMoveHistory]);
 
   const undo = useCallback(async () => {
     const changed = await rotoMoveHistory.undo();
@@ -681,7 +600,7 @@ export function PhysicsPaintStudio() {
 
   const moveRotoKey = useCallback(async (fromDisplayFrame: number, toDisplayFrame: number): Promise<number | null> => {
     const expectedLaunch = launchContextRef.current;
-    if (!expectedLaunch || rotoMoveInFlightRef.current || rotoMoveHistory.busyRef.current) return null;
+    if (!expectedLaunch || rotoMoveInFlightRef.current) return null;
     if (physicalEditCoordinator.pendingOperationId.value !== null) return null;
     rotoMoveInFlightRef.current = true;
     rotoCachedPlayback.stop();

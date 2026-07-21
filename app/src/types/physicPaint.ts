@@ -34,13 +34,18 @@ export const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
  * Operation kind literal for the generic acknowledged physical-edit
  * transaction. Plan 36.14-06 through 36.14-08 will route Insert, Delete,
  * Drag, and Force Spacing intents through this single kind after the Task 3
- * cutover.
+ * cutover. Plan 36.14-05 Task 1 adds the `undo` and `redo` replay kinds so
+ * the generic physical history hook can route Undo/Redo through the same
+ * coordinator execute seam; Task 2 attaches replay provenance to these
+ * kinds only.
  */
 export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-slot'
   | 'delete-key'
   | 'move-key'
-  | 'force-spacing';
+  | 'force-spacing'
+  | 'undo'
+  | 'redo';
 
 /**
  * Standalone generic physical-edit apply payload (inactive successor of the
@@ -148,7 +153,7 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'selectedKeyId', 'selectedAppFrame'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
-  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing') return false;
+  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
   if (!isNonEmptyString(value.layerId)) return false;
   if (!isNonNegativeInteger(value.startFrame)) return false;
   if (!isNonEmptyString(value.launchOperationId)) return false;
@@ -171,7 +176,7 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
   if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'ok', 'error'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
-  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing') return false;
+  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
   if (!isNonEmptyString(value.layerId)) return false;
   if (!isNonNegativeInteger(value.startFrame)) return false;
   if (!isNonEmptyString(value.launchOperationId)) return false;
@@ -538,7 +543,7 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
 
   if (value.kind === 'replace-roto-physical-map') {
     return isNonEmptyString(value.operationId)
-      && (value.operationKind === 'insert-slot' || value.operationKind === 'delete-key' || value.operationKind === 'move-key' || value.operationKind === 'force-spacing')
+      && (value.operationKind === 'insert-slot' || value.operationKind === 'delete-key' || value.operationKind === 'move-key' || value.operationKind === 'force-spacing' || value.operationKind === 'undo' || value.operationKind === 'redo')
       && isNonEmptyString(value.layerId)
       && isNonNegativeInteger(value.startFrame)
       && isNonEmptyString(value.launchOperationId)
