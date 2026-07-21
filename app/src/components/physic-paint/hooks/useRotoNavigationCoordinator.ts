@@ -5,6 +5,7 @@ import { createRotoFrameDisplayPort, createRotoKeyPersistencePort } from '../rot
 import { createRotoNavigationActions, getRotoNavigationTargets } from '../roto/rotoNavigationActions';
 import { useRotoCachedPlayback, type RotoCachedPlaybackFrame } from './useRotoCachedPlayback';
 import { useRotoKeyUtilities, type RotoKeyUtilitiesInput } from './useRotoKeyUtilities';
+import type { PhysicPaintRotoPhysicalTimelineProjection } from '../roto/physicsPaintRotoPhysicalResolver';
 
 interface RotoNavigationRuntimePort {
   navigateToSyncedFrame: (frame: number) => Promise<boolean>;
@@ -17,6 +18,7 @@ export interface UseRotoNavigationCoordinatorInput<TPreview extends { appFrame: 
   keyUtilities: Omit<RotoKeyUtilitiesInput<TPreview>, 'syncRotoKeyFrameLists' | 'applyRotoKeyFrames' | 'persistRotoKeyFrameTransaction' | 'restoreFrame' | 'clearCanvas' | 'navigate' | 'clearCachedReferenceFrame'>;
   playback: {
     initialFps: number;
+    getProjection: () => PhysicPaintRotoPhysicalTimelineProjection | null;
     getFrame: (appFrame: number) => TPreview | null;
     onStart: (frameCount: number) => void;
     onFrame: (frameIndex: number, appFrame: number) => void;
@@ -47,10 +49,16 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
   const playback = useRotoCachedPlayback({
     initialFps: input.playback.initialFps,
     workflowMode: input.workflowMode,
-    getFrames: () => keyUtilities.session.playbackFrameNumbers.value.map((appFrame): RotoCachedPlaybackFrame<TPreview> => ({
-      appFrame,
-      frame: input.playback.getFrame(appFrame),
-    })),
+    getFrames: () => {
+      const projection = input.playback.getProjection();
+      const assignments = projection?.assignments ?? [];
+      const lastRealFrame = assignments.length > 0 ? assignments[assignments.length - 1].appFrame : undefined;
+      if (lastRealFrame === undefined) return [];
+      return Array.from({ length: lastRealFrame + 1 }, (_, appFrame): RotoCachedPlaybackFrame<TPreview> => ({
+        appFrame,
+        frame: input.playback.getFrame(appFrame),
+      }));
+    },
     onStart: input.playback.onStart,
     onFrame: input.playback.onFrame,
     setIsPlaying: input.playback.setIsPlaying,

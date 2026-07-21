@@ -2,6 +2,9 @@ import type { PhysicPaintRotoRealKeyRecord } from './physicsPaintRotoPhysicalMod
 
 export interface RotoPhysicalOwnedFrame {
   readonly appFrame: number;
+  readonly keyId?: string;
+  readonly contentRevision?: string;
+  readonly cacheRevision?: string;
 }
 
 export interface RotoPhysicalReferenceState<TFrame extends RotoPhysicalOwnedFrame> {
@@ -61,7 +64,7 @@ function remapOwnedMap<T>(
   source: ReadonlyMap<number, T>,
   ownerByOldFrame: ReadonlyMap<number, string>,
   frameByIdentity: ReadonlyMap<string, number>,
-  project: (value: T, appFrame: number) => T,
+  project: (value: T, appFrame: number, keyId: string) => T,
 ): Map<number, T> | null {
   const result = new Map<number, T>();
   for (const [oldFrame, value] of source) {
@@ -70,7 +73,7 @@ function remapOwnedMap<T>(
     const nextFrame = frameByIdentity.get(keyId);
     if (nextFrame === undefined) continue;
     if (result.has(nextFrame)) return null;
-    result.set(nextFrame, project(value, nextFrame));
+    result.set(nextFrame, project(value, nextFrame, keyId));
   }
   return result;
 }
@@ -104,13 +107,21 @@ function remapOwnedSet(
 export function rebuildRotoPhysicalOwnership<TState, TFrame extends RotoPhysicalOwnedFrame>(input: {
   readonly beforeRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly afterRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly contentRevision: string;
   readonly snapshot: RotoPhysicalOwnershipSnapshot<TState, TFrame>;
 }): RotoPhysicalOwnershipResolution<TState, TFrame> {
   const ownerByOldFrame = buildIdentityByFrame(input.beforeRecords);
   const frameByIdentity = buildFrameByIdentity(input.afterRecords);
   if (!ownerByOldFrame || !frameByIdentity) return { ok: false, error: 'Physical ownership records contain duplicate identity or frame.' };
+  if (!input.contentRevision) return { ok: false, error: 'Physical ownership rebuild requires the accepted content revision.' };
 
-  const remapFrame = (frame: TFrame, appFrame: number): TFrame => ({ ...frame, appFrame });
+  const remapFrame = (frame: TFrame, appFrame: number, keyId: string): TFrame => ({
+    ...frame,
+    appFrame,
+    keyId,
+    contentRevision: input.contentRevision,
+    cacheRevision: `${input.contentRevision}:real:${keyId}`,
+  });
   const frameStates = remapOwnedMap(input.snapshot.frameStates, ownerByOldFrame, frameByIdentity, (value) => value);
   const previewFrames = remapOwnedMap(input.snapshot.previewFrames, ownerByOldFrame, frameByIdentity, remapFrame);
   const capturedFrames = remapOwnedMap(input.snapshot.capturedFrames, ownerByOldFrame, frameByIdentity, remapFrame);
@@ -128,7 +139,7 @@ export function rebuildRotoPhysicalOwnership<TState, TFrame extends RotoPhysical
     const owner = ownerByOldFrame.get(repaintBase.appFrame);
     if (!owner) return { ok: false, error: 'Cached reference is not owned by a pre-state real key.' };
     const nextFrame = frameByIdentity.get(owner);
-    if (nextFrame !== undefined) nextRepaintBase = remapFrame(repaintBase, nextFrame);
+    if (nextFrame !== undefined) nextRepaintBase = remapFrame(repaintBase, nextFrame, owner);
   }
 
   return {

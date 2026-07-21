@@ -1,9 +1,14 @@
 import { useCallback, useRef, useState } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintRotoCacheFrame, PhysicPaintRenderedFrame } from '../../../types/physicPaint';
+import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
+import type { PhysicPaintRotoPhysicalRenderSource } from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 
-export type RotoReferenceFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'source' | 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl'>>;
+export type RotoReferenceFrame = PhysicPaintRenderedFrame & {
+  readonly keyId?: string;
+  readonly contentRevision?: string;
+  readonly cacheRevision?: string;
+};
 
 export interface RotoReferenceEngine {
   setBgMode: (mode: BgMode) => void;
@@ -13,33 +18,42 @@ export interface RotoReferenceEngine {
   resetBackground: () => void;
 }
 
-interface RotoDisplayLookupInput<Frame extends RotoReferenceFrame> {
+interface RotoPhysicalLookupInput<Frame extends RotoReferenceFrame> {
+  getPhysicalRenderSource?: (appFrame: number) => PhysicPaintRotoPhysicalRenderSource | null;
+  previewFrames?: ReadonlyMap<number, Frame>;
+  dirtyFrames?: ReadonlySet<number>;
+  /** Type-only legacy regression inputs; production lookup ignores them. */
   cachedRotoFrames?: readonly Frame[];
-  previewFrames: ReadonlyMap<number, Frame>;
-  confirmedFrames: ReadonlyMap<number, Frame>;
-  getRotoFrame: (appFrame: number) => Frame | null;
+  confirmedFrames?: ReadonlyMap<number, Frame>;
+  getRotoFrame?: (appFrame: number) => Frame | null;
+  getFrame?: (appFrame: number) => Frame | null;
 }
 
-interface RotoReferenceLookupInput<Frame extends RotoReferenceFrame> extends RotoDisplayLookupInput<Frame> {
-  getFrame: (appFrame: number) => Frame | null;
+function projectPhysicalSource<Frame extends RotoReferenceFrame>(source: PhysicPaintRotoPhysicalRenderSource): Frame {
+  return {
+    ...source.renderedFrame,
+    appFrame: source.appFrame,
+    ...(source.kind === 'real' ? { keyId: source.keyId } : {}),
+    contentRevision: source.contentRevision,
+    cacheRevision: source.cacheRevision,
+  } as Frame;
 }
 
-export function findCachedRotoDisplayFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoDisplayLookupInput<Frame>): Frame | null {
-  const generatedFrame = input.cachedRotoFrames?.find((frame) => frame.appFrame === appFrame && frame.source === 'generated-interpolation');
-  if (generatedFrame) return generatedFrame;
-  const previewFrame = input.previewFrames.get(appFrame);
-  if (previewFrame) return previewFrame;
-  const launchOrStoreRealFrame = input.cachedRotoFrames?.find((frame) => frame.appFrame === appFrame && frame.source === 'real-key')
-    ?? input.getRotoFrame(appFrame);
-  if (launchOrStoreRealFrame) return launchOrStoreRealFrame;
-  for (const confirmedFrame of input.confirmedFrames.values()) {
-    if ((confirmedFrame.displayFrame ?? confirmedFrame.appFrame) === appFrame) return confirmedFrame;
+/** Exact physical-cell lookup. No generic frame or neighboring-key fallback. */
+export function findCachedRotoDisplayFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoPhysicalLookupInput<Frame>): Frame | null {
+  const source = input.getPhysicalRenderSource?.(appFrame) ?? null;
+  if (!source) return null;
+  if (source.kind === 'real' && input.dirtyFrames?.has(appFrame)) {
+    const preview = input.previewFrames?.get(appFrame);
+    if (preview?.appFrame === appFrame
+      && preview.keyId === source.keyId
+      && preview.contentRevision === source.contentRevision) return preview;
   }
-  return null;
+  return projectPhysicalSource<Frame>(source);
 }
 
-export function findCachedRotoReferenceFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoReferenceLookupInput<Frame>): Frame | null {
-  return findCachedRotoDisplayFrame(appFrame, input) ?? input.getFrame(appFrame);
+export function findCachedRotoReferenceFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoPhysicalLookupInput<Frame>): Frame | null {
+  return findCachedRotoDisplayFrame(appFrame, input);
 }
 
 export interface RotoReferenceLoaderInput<Frame extends RotoReferenceFrame> {
@@ -76,7 +90,7 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
       const wasDirty = input.dirtyFrames.delete(appFrame);
       const hadLiveOverlay = input.liveOverlayActionCounts.delete(appFrame);
       if (wasDirty || hadLiveOverlay) input.syncPending();
-      input.setApplyMessage(`Cached key base loaded — visible and non-editable. Add paint to update frame ${appFrame}.`);
+      input.setApplyMessage(`Cached physical base loaded for frame ${appFrame}. Add paint to update this key.`);
     } else {
       engine.clearPreviewBaseImage();
       engine.resetBackground();
@@ -90,13 +104,10 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
 export interface UseRotoReferenceControllerInput<Frame extends RotoReferenceFrame> {
   workflowMode: PhysicsPaintWorkflowMode;
   settingsBackground: BgMode;
-  getCachedRotoFrames: () => readonly Frame[] | undefined;
+  getPhysicalRenderSource: (appFrame: number) => PhysicPaintRotoPhysicalRenderSource | null;
   previewFrames: ReadonlyMap<number, Frame>;
-  confirmedFrames: ReadonlyMap<number, Frame>;
   dirtyFrames: Set<number>;
   liveOverlayActionCounts: Map<number, number>;
-  getRotoFrame: (appFrame: number) => Frame | null;
-  getFrame: (appFrame: number) => Frame | null;
   syncPending: () => void;
   setApplyMessage: (message: string) => void;
 }
@@ -107,12 +118,13 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
   const inputRef = useRef(input);
   const explicitRestorationRef = useRef<{ appFrame: number; frame: Frame | null } | null>(null);
   inputRef.current = input;
-  const getDisplayLookup = () => ({
-    ...inputRef.current,
-    cachedRotoFrames: inputRef.current.getCachedRotoFrames(),
+  const getLookup = () => ({
+    getPhysicalRenderSource: inputRef.current.getPhysicalRenderSource,
+    previewFrames: inputRef.current.previewFrames,
+    dirtyFrames: inputRef.current.dirtyFrames,
   });
-  const findDisplayFrame = useCallback((appFrame: number) => findCachedRotoDisplayFrame(appFrame, getDisplayLookup()), []);
-  const findReferenceFrame = useCallback((appFrame: number) => findCachedRotoReferenceFrame(appFrame, getDisplayLookup()), []);
+  const findDisplayFrame = useCallback((appFrame: number) => findCachedRotoDisplayFrame(appFrame, getLookup()), []);
+  const findReferenceFrame = useCallback((appFrame: number) => findCachedRotoReferenceFrame(appFrame, getLookup()), []);
   const loadCachedRotoReferenceFrame = useCallback((appFrame: number, engine: RotoReferenceEngine | null, refreshedFrame?: Frame | null) => {
     const currentInput = inputRef.current;
     if (refreshedFrame !== undefined) explicitRestorationRef.current = { appFrame, frame: refreshedFrame };
