@@ -566,6 +566,24 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       cleanup: () => {},
     };
     const clearSuppressionSoon = () => window.setTimeout(() => { suppressNextRotoClickRef.current = false; }, 0);
+    // Focus restoration helpers (D-24). On cancellation or failed settlement,
+    // restore focus to the source keyId when it still exists after rollback;
+    // if it no longer exists (launch replaced), leave focus on the timeline
+    // container rather than guessing a nearest frame.
+    const restoreSourceFocus = () => {
+      if (!mountedRef.current) return;
+      const scroller = timelineScrollRef.current;
+      if (!scroller) return;
+      const selector = `[data-roto-key-id="${cssEscape(session.movedKeyId)}"]`;
+      const sourceCell = scroller.querySelector<HTMLElement>(selector);
+      if (sourceCell) {
+        sourceCell.focus();
+      } else {
+        // Source identity no longer mounted (launch replaced/disposed). Leave
+        // focus on the stable timeline container rather than guessing.
+        scroller.focus();
+      }
+    };
     const cleanup = () => {
       if (!active) return;
       active = false;
@@ -578,7 +596,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       session.rafId = null;
       if (sourceElement.hasPointerCapture(session.pointerId)) sourceElement.releasePointerCapture(session.pointerId);
       if (rotoDragGestureRef.current === session) rotoDragGestureRef.current = null;
-      if (mountedRef.current && !session.publication) setRotoDragPreview(null);
+      // Always clear the transient preview on cleanup. The valid-release
+      // pointer-up path sets its pending preview AFTER cleanup so the
+      // committing state survives. Every other path (invalid release,
+      // Escape, pointercancel, lostpointercapture, validity-key change,
+      // unmount) clears the preview here. Idempotent across repeat calls.
+      if (mountedRef.current) setRotoDragPreview(null);
     };
     const beginDrag = () => {
       if (session.started) return;
@@ -623,10 +646,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       if (!releaseMatchesRetained) {
         cleanup();
         clearSuppressionSoon();
+        // Restore focus to the source identity (D-24). No coordinator call.
+        restoreSourceFocus();
         return;
       }
       // Keep the exact complete proposal visible as committing while the
-      // coordinator acknowledges the mutation (D-09/D-24).
+      // coordinator acknowledges the mutation (D-09/D-24). Set the pending
+      // preview AFTER cleanup so it survives cleanup's preview clear.
+      cleanup();
       if (mountedRef.current) {
         setRotoDragPreview({
           movedKeyId: session.movedKeyId,
@@ -638,13 +665,19 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           pending: true,
         });
       }
-      cleanup();
       clearSuppressionSoon();
       void physicalActions!.commitRotoKeyDrag(retainedPublication!).then((accepted) => {
         if (!mountedRef.current) return;
         setRotoDragPreview(null);
-        if (!accepted) return;
+        if (!accepted) {
+          // Failed settlement: restore focus to the source identity after
+          // complete rollback (D-24). No history command is recorded.
+          restoreSourceFocus();
+          return;
+        }
         // Focus follows the moved identity at its accepted appFrame (D-24).
+        // The proposal IS the accepted state (coordinator revalidates and
+        // accepts it unchanged), so proposal.mapping is authoritative.
         const movedAppFrame = retainedPublication!.proposal.mapping.get(session.movedKeyId) ?? null;
         if (movedAppFrame === null) return;
         const selector = `[data-roto-key-id="${cssEscape(session.movedKeyId)}"]`;
@@ -656,18 +689,25 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           timelineScrollRef.current?.querySelector<HTMLElement>(`[data-roto-app-frame="${movedAppFrame}"]`)?.focus();
         }
       }).catch(() => {
-        if (mountedRef.current) setRotoDragPreview(null);
+        if (mountedRef.current) {
+          setRotoDragPreview(null);
+          restoreSourceFocus();
+        }
       });
     };
     const handlePointerCancel = (cancelEvent: PointerEvent) => {
       if (cancelEvent.pointerId !== session.pointerId) return;
       cleanup();
       clearSuppressionSoon();
+      // pointercancel is a non-committing cancellation (D-24).
+      restoreSourceFocus();
     };
     const handleLostPointerCapture = () => {
       if (rotoDragGestureRef.current !== session) return;
       cleanup();
       clearSuppressionSoon();
+      // lostpointercapture is a non-committing cancellation (D-24).
+      restoreSourceFocus();
     };
     const handleEscape = (keyEvent: KeyboardEvent) => {
       if (keyEvent.key !== 'Escape' || rotoDragGestureRef.current !== session || !session.started) return;
@@ -675,6 +715,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       keyEvent.stopImmediatePropagation();
       cleanup();
       clearSuppressionSoon();
+      // Escape is a non-committing cancellation (D-24).
+      restoreSourceFocus();
     };
     session.cleanup = cleanup;
     rotoDragGestureRef.current = session;
