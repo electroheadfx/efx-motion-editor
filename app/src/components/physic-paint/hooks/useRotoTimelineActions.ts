@@ -1,8 +1,12 @@
 import { useCallback, useMemo } from 'preact/hooks';
 import { computed, signal, type ReadonlySignal } from '@preact/signals';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
-import { getSourceRotoFrameForDisplayFrame, type RotoInterpolationSettings } from '../roto/physicsPaintRotoWorkflow';
-import { saveRotoRealKeyTransaction, updateRotoInterpolationSettingsTransaction } from '../roto/rotoKeyTransactions';
+import { getSourceRotoFrameForDisplayFrame } from '../roto/physicsPaintRotoWorkflow';
+import {
+  saveRotoRealKeyTransaction,
+  updateRotoInterpolationSettingsTransaction,
+  type RotoSourceDisplayModel,
+} from '../roto/physicsPaintRotoKeyController';
 import type { PhysicPaintRotoRealKeyRecord, PhysicPaintRotoInterpolationState } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import {
@@ -12,14 +16,6 @@ import {
   type PhysicPaintRotoPhysicalEditResolution,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import type { RotoPhysicalEditExecuteInput } from '../roto/rotoCoordinatorPorts';
-
-// Local type alias for the legacy source/display model shape. Operation delivery
-// modules (36.14-06 through 36.14-08) will replace this with direct physical
-// record/projection ports.
-interface RotoSourceDisplayModel {
-  realSourceFrames: number[];
-  settings: RotoInterpolationSettings;
-}
 
 /**
  * Stable physical timeline action bundle exposed by {@link useRotoTimelineActions}.
@@ -43,6 +39,12 @@ export interface RotoPhysicalTimelineActionBundle {
   readonly canInsertFrame: ReadonlySignal<boolean>;
   /** Reactive Insert disabled reason, or null when eligible. */
   readonly insertDisabledReason: ReadonlySignal<string | null>;
+  /** Delete exactly the selected stable key and its slot (D-06). */
+  readonly deleteRotoFrame: () => Promise<boolean>;
+  /** Reactive Delete availability derived from selection + pending authority. */
+  readonly canDeleteFrame: ReadonlySignal<boolean>;
+  /** Reactive Delete disabled reason, or null when eligible. */
+  readonly deleteDisabledReason: ReadonlySignal<string | null>;
   /** Reactive pending physical operation id, or null when idle. */
   readonly pendingOperationId: ReadonlySignal<string | null>;
 }
@@ -78,11 +80,12 @@ export interface RotoTimelineActionsInput {
 
 interface PhysicalActionRunnerInput {
   readonly intent: PhysicPaintRotoPhysicalEditIntent;
-  readonly operationKind: 'insert-slot';
+  readonly operationKind: 'insert-slot' | 'delete-key';
   readonly successMessage: string;
 }
 
 const INSERT_SUCCESS_MESSAGE = 'Inserted an empty Roto frame before the selected key.';
+const DELETE_SUCCESS_MESSAGE = 'Deleted the selected Roto key.';
 
 export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const saveRealKeyAtDisplayFrame = useCallback((displayFrame: number) => (
@@ -128,6 +131,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   // readiness, and the coordinator's one pending Signal/computed output.
   const canInsertFrame = computed(() => computeInsertAvailability(input).eligible);
   const insertDisabledReason = computed(() => computeInsertAvailability(input).reason);
+  const canDeleteFrame = computed(() => computeDeleteAvailability(input).eligible);
+  const deleteDisabledReason = computed(() => computeDeleteAvailability(input).reason);
   const pendingOperationIdSignal = input.pendingOperationId ?? signal<string | null>(null);
 
   const runPhysicalAction = useCallback(async (runnerInput: PhysicalActionRunnerInput): Promise<boolean> => {
@@ -190,12 +195,23 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     })
   ), [runPhysicalAction, input]);
 
+  const deleteRotoFrame = useCallback((): Promise<boolean> => (
+    runPhysicalAction({
+      intent: { kind: 'delete-key', selectedKeyId: ensureSelectedKeyId(input) },
+      operationKind: 'delete-key',
+      successMessage: DELETE_SUCCESS_MESSAGE,
+    })
+  ), [runPhysicalAction, input]);
+
   const physicalActions: RotoPhysicalTimelineActionBundle = useMemo(() => ({
     insertRotoFrame,
     canInsertFrame,
     insertDisabledReason,
+    deleteRotoFrame,
+    canDeleteFrame,
+    deleteDisabledReason,
     pendingOperationId: pendingOperationIdSignal,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, pendingOperationIdSignal]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, pendingOperationIdSignal]);
 
   return { saveRealKeyAtDisplayFrame, updateInterpolationSettings, physicalActions };
 }
@@ -223,6 +239,25 @@ function computeInsertAvailability(input: RotoTimelineActionsInput): ActionAvail
   const selectedKeyId = input.getSelectedKeyId?.() ?? null;
   if (!selectedKeyId) {
     return { eligible: false, reason: 'Select a real Roto key to insert.' };
+  }
+  const records = input.getRotoKeyRecords?.() ?? [];
+  const selectedRecord = records.find((record) => record.keyId === selectedKeyId);
+  if (!selectedRecord) {
+    return { eligible: false, reason: 'The selected Roto key is no longer available.' };
+  }
+  return { eligible: true, reason: null };
+}
+
+function computeDeleteAvailability(input: RotoTimelineActionsInput): ActionAvailability {
+  if (!input.getLaunchContext || !input.getLaunchContext()) {
+    return { eligible: false, reason: 'Select a real Roto key before editing the timeline.' };
+  }
+  if (input.pendingOperationId && input.pendingOperationId.value !== null) {
+    return { eligible: false, reason: 'A Roto physical edit is already in flight.' };
+  }
+  const selectedKeyId = input.getSelectedKeyId?.() ?? null;
+  if (!selectedKeyId) {
+    return { eligible: false, reason: 'Select a real Roto key to delete.' };
   }
   const records = input.getRotoKeyRecords?.() ?? [];
   const selectedRecord = records.find((record) => record.keyId === selectedKeyId);

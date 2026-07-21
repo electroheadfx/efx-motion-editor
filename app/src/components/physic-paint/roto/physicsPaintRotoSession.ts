@@ -12,7 +12,7 @@ import { getRotoReplacementSuccessLabel } from '../view/physicsPaintWorkflowPres
 import type { PhysicPaintRotoRealKeyRecord, PhysicPaintRotoInterpolationState } from './physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalTimelineCell } from './rotoPhysicalTimelinePorts';
 
-export type RotoSessionActionName = 'duplicateKey' | 'insertBlankKey' | 'deleteKey' | 'copyKey' | 'pasteKey' | 'requestFrame' | 'markDirty' | 'markCachedBaseLoaded' | 'markLiveOverlayDirty' | 'markLiveOverlayEmpty';
+export type RotoSessionActionName = 'duplicateKey' | 'copyKey' | 'pasteKey' | 'requestFrame' | 'markDirty' | 'markCachedBaseLoaded' | 'markLiveOverlayDirty' | 'markLiveOverlayEmpty';
 export type RotoSessionRestoreIntent = RotoKeyUtilityActiveRestore;
 
 export interface RotoSessionCopiedKey {
@@ -82,8 +82,6 @@ export interface RotoSession {
   currentFrameIsDirty: Signal<boolean>;
   actionAvailability: Signal<RotoKeyUtilityActionState>;
   duplicateKey: () => RotoSessionActionResult;
-  insertBlankKey: () => RotoSessionActionResult;
-  deleteKey: () => RotoSessionActionResult;
   copyKey: () => RotoSessionActionResult;
   pasteKey: () => RotoSessionActionResult;
   requestFrame: (frame: number) => RotoSessionActionResult;
@@ -180,14 +178,6 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     return applyTransaction('duplicateKey', 'duplicate');
   }
 
-  function insertBlankKey(): RotoSessionActionResult {
-    return applyTransaction('insertBlankKey', 'insert');
-  }
-
-  function deleteKey(): RotoSessionActionResult {
-    return applyTransaction('deleteKey', 'delete');
-  }
-
   function pasteKey(): RotoSessionActionResult {
     return applyTransaction('pasteKey', 'paste');
   }
@@ -221,9 +211,7 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
         canvasSize: input.canvasSize,
         buildBlankRotoFrame: input.buildBlankRotoFrame,
       });
-      const activeDisplayFrame = operation === 'insert'
-        ? displayFrame
-        : operation === 'duplicate' && displayFrame !== transaction.activeFrame
+      const activeDisplayFrame = operation === 'duplicate' && displayFrame !== transaction.activeFrame
           ? input.resolveDisplayFrameForSourceFrame?.(transaction.activeFrame, transaction) ?? transaction.activeFrame
           : transaction.activeFrame;
       const activeRestore = activeDisplayFrame === transaction.activeFrame
@@ -260,8 +248,6 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     currentFrameIsDirty,
     actionAvailability,
     duplicateKey,
-    insertBlankKey,
-    deleteKey,
     copyKey,
     pasteKey,
     requestFrame,

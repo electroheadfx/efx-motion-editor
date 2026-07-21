@@ -42,8 +42,6 @@ export interface RotoKeyUtilities {
   executeSessionEffects: (effects: readonly RotoSessionEffect[]) => Promise<void>;
   runSessionResult: (result: RotoSessionActionResult, sourceSession?: RotoSession) => Promise<void>;
   duplicateKey: () => void;
-  insertBlankKey: () => void;
-  deleteKey: () => void;
   copyKey: () => void;
   pasteKey: () => void;
 }
@@ -193,16 +191,6 @@ export function useRotoKeyUtilities<TPreview extends { appFrame: number }>(input
     void runSessionResult(session.duplicateKey());
   }, [blocked, input, requireCurrentRealKey, runSessionResult, session]);
 
-  const insertBlankKey = useCallback(() => {
-    if (blocked || !requireCurrentRealKey()) return;
-    void runSessionResult(session.insertBlankKey());
-  }, [blocked, input, requireCurrentRealKey, runSessionResult, session]);
-
-  const deleteKey = useCallback(() => {
-    if (blocked || !requireCurrentRealKey()) return;
-    void runSessionResult(session.deleteKey());
-  }, [blocked, input, requireCurrentRealKey, runSessionResult, session]);
-
   const copyKey = useCallback(() => {
     if (blocked) return;
     const actionState = session.actionAvailability.value;
@@ -225,8 +213,6 @@ export function useRotoKeyUtilities<TPreview extends { appFrame: number }>(input
     executeSessionEffects,
     runSessionResult,
     duplicateKey,
-    insertBlankKey,
-    deleteKey,
     copyKey,
     pasteKey,
   };

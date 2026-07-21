@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
-import { saveRotoRealKeyTransaction } from './rotoKeyTransactions';
+import { saveRotoRealKeyTransaction } from './physicsPaintRotoKeyController';
 import { selectProjectedRealCachedRotoFrames, selectRealCachedRotoFrames, selectRotoTimelineView } from './rotoTimelineSelectors';
 import { createRotoTimelineModel } from '../hooks/useRotoTimelineModel';
 

@@ -2,7 +2,7 @@ import { computed, signal, type ReadonlySignal, type Signal } from '@preact/sign
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
 import { transformRecordedStrokeForHeldPose } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
-import type { RotoSaveRealKeyTransaction, RotoSelectedFrameClaim } from './rotoKeyTransactions';
+import type { RotoSaveRealKeyTransaction, RotoSelectedFrameClaim } from './physicsPaintRotoKeyController';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 
 export interface RotoScriptSourceSnapshot {

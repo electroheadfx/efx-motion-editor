@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
 import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, type RecordedStrokeGroup, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
-import type { RotoSaveRealKeyTransaction } from './rotoKeyTransactions';
+import type { RotoSaveRealKeyTransaction } from './physicsPaintRotoKeyController';
 import { createPhysicsPaintEngineActions } from '../engine/usePhysicsPaintEngineActions';
 import { makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { createPhysicsPaintSessionController, type PhysicsPaintSessionControllerInput } from '../hooks/usePhysicsPaintSessionController';
