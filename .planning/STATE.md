@@ -8,7 +8,7 @@ status: executing
 stopped_at: Completed 36.14-06-PLAN.md
 last_updated: "2026-07-21T15:58:31.696Z"
 last_activity: 2026-07-21
-last_activity_desc: Completed 36.14-05 (accepted-only physical history, Undo/Redo through shared coordinator)
+last_activity_desc: Completed 36.14-06 (ripple Insert/Delete through resolver, coordinator, and accepted-only history)
 progress:
   total_phases: 17
   completed_phases: 16
@@ -31,11 +31,11 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
 Plan: 6 of 18
-Status: Ready to execute
-Last activity: 2026-07-21 — Completed 36.14-05 (accepted-only physical history, Undo/Redo through shared coordinator)
-Next recommended action: Execute Plan 36.14-06 via `/gsd-execute-phase 36.14 --wave 6`
+Status: Wave 6 complete — ready for Wave 7
+Last activity: 2026-07-21 — Completed 36.14-06 (ripple Insert/Delete through resolver, coordinator, and accepted-only history)
+Next recommended action: Execute Plan 36.14-07 via `/gsd-execute-phase 36.14 --wave 7`
 
-Progress: [███████████████████░] 92/110 plans ready; 16/17 phases complete ([█████████░] 89%)
+Progress: [███████████████████░] 98/110 plans ready; 16/17 phases complete ([█████████░] 89%)
 
 ## Performance Metrics
 
