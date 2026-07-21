@@ -62,12 +62,12 @@ These functional requirements are owned by a dedicated GSD quick that must pass 
 
 The former active Phase 36.14 UI-only contract (`36.14-PENCIL-LAYOUT`, `36.14-CONTROL-GROUPING`, `36.14-VISUAL-STATES`, `36.14-LOG-ROUTING`, `36.14-SELECTION-GUARD`, and `36.14-REGRESSION`) is superseded by the single physical-model contract below; its still-valid UI and regression outcomes are retained under `36.14-UI-INTEGRATION` and `36.14-UAT-THEN-REGRESSION`.
 
-- [ ] **36.14-PHYSICAL-IDENTITY**: Every durable real Roto key has one stable `keyId`, one direct physical `appFrame`, and identity-owned payload that stays together across edits, persistence, cache publication, reopen, preview, export, rollback, Undo, and Redo; no source/display compatibility or migration authority remains.
-- [ ] **36.14-DERIVED-INTERPOLATION**: Roto persists only interpolation enabled state and derives exactly `max(0, rightFrame - leftFrame - 1)` strict interior generated cells from adjacent physical real keys, with no leading/trailing generation and no timing effect on real keys.
-- [ ] **36.14-ATOMIC-FRAME-MAPPING**: Insert, Delete, Drag, Force Spacing, Undo, and Redo use one complete validated `keyId -> appFrame` transaction with immutable snapshot staging, one parent publication, exact matching acknowledgement, accepted-only history, and complete rollback on rejection, timeout, transport failure, launch replacement, or disposal.
-- [ ] **36.14-RIPPLE-INSERT-DELETE**: Insert Frame shifts the selected identity and all later real keys right by one physical slot without creating a key, while Delete Frame removes the selected identity and slot and shifts later survivors left by one; both preserve surviving identity-owned payload, validate capacity before mutation, select deterministically, and record one accepted Undo/Redo action.
-- [ ] **36.14-RIPPLE-DRAG**: Drag performs deterministic ripple cut-and-insert by stable identity, accepts empty/generated whole-cell destinations and occupied before/after boundaries without overwriting real keys, and uses the same complete-map resolver for preview and acknowledged commit.
-- [ ] **36.14-FORCE-SPACING**: A session-only nonnegative integer `N` plus explicit **Apply** action creates exactly `N` empty physical slots between adjacent ordered real keys, anchors the first key, accepts `N = 0`, rejects invalid or over-capacity results without state/history changes, and records one accepted Undo/Redo action on success.
+- [x] **36.14-PHYSICAL-IDENTITY**: Every durable real Roto key has one stable `keyId`, one direct physical `appFrame`, and identity-owned payload that stays together across edits, persistence, cache publication, reopen, preview, export, rollback, Undo, and Redo; no source/display compatibility or migration authority remains.
+- [x] **36.14-DERIVED-INTERPOLATION**: Roto persists only interpolation enabled state and derives exactly `max(0, rightFrame - leftFrame - 1)` strict interior generated cells from adjacent physical real keys, with no leading/trailing generation and no timing effect on real keys.
+- [x] **36.14-ATOMIC-FRAME-MAPPING**: Insert, Delete, Drag, Force Spacing, Undo, and Redo use one complete validated `keyId -> appFrame` transaction with immutable snapshot staging, one parent publication, exact matching acknowledgement, accepted-only history, and complete rollback on rejection, timeout, transport failure, launch replacement, or disposal.
+- [x] **36.14-RIPPLE-INSERT-DELETE**: Insert Frame shifts the selected identity and all later real keys right by one physical slot without creating a key, while Delete Frame removes the selected identity and slot and shifts later survivors left by one; both preserve surviving identity-owned payload, validate capacity before mutation, select deterministically, and record one accepted Undo/Redo action.
+- [x] **36.14-RIPPLE-DRAG**: Drag performs deterministic ripple cut-and-insert by stable identity, accepts empty/generated whole-cell destinations and occupied before/after boundaries without overwriting real keys, and uses the same complete-map resolver for preview and acknowledged commit.
+- [x] **36.14-FORCE-SPACING**: A session-only nonnegative integer `N` plus explicit **Apply** action creates exactly `N` empty physical slots between adjacent ordered real keys, anchors the first key, accepts `N = 0`, rejects invalid or over-capacity results without state/history changes, and records one accepted Undo/Redo action on success.
 - [ ] **36.14-DOWNSTREAM-PARITY**: Persistence, launch/reopen, live cache publication, playback, onion/reference, preview, export, missing/background rendering, and timeline length consume stable identities, direct physical frames, and runtime-derived interiors without reviving source/display ownership.
 - [ ] **36.14-UI-INTEGRATION**: The final Roto timeline follows the corrected compact reference with fixed ruler/cell proportions and synchronized horizontal scrolling; keeps transport, quick key actions, interpolation/Force Spacing, cadence, and `Copy Script | Apply Script` in distinct visible groups; omits Tools/header Log/obsolete Save controls and a permanent developer legend; clearly presents real, generated, empty/background, current, disabled, active, destructive, and complete ripple-preview states; routes concise latest-operation status to the header capsule and full detail to the existing right-panel LOG; keeps unavailable script controls focusable with controller-supplied reasons; relocates Discard Script to the Scripts toolbar; and prevents accidental chrome text selection while preserving inputs, editable fields, and LOG text selection.
 - [ ] **36.14-UAT-THEN-REGRESSION**: Production physical-model implementation and legacy-field deletion are followed by typecheck/build and a hard stop for user-owned native UAT; regression files are neither added nor run until explicit approval, after which focused and full `pnpm --dir app exec vitest run` cover the approved physical model, deferred deterministic drag cases, Phase 36.9–36.13 behavior, exact Undo/Redo, the approved script workflow, and rapid-stroke/cooperative-finalization contracts before final native UI validation.
@@ -126,12 +126,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EDIT-01 through EDIT-05 | Phases 36.1–36.13 | Complete |
 | ROTO-SCRIPT-COPY | Dedicated pre-36.14 GSD quick | Pending |
 | ROTO-SCRIPT-APPLY | Dedicated pre-36.14 GSD quick | Pending |
-| 36.14-PHYSICAL-IDENTITY | Phase 36.14 | Pending |
-| 36.14-DERIVED-INTERPOLATION | Phase 36.14 | Pending |
-| 36.14-ATOMIC-FRAME-MAPPING | Phase 36.14 | Pending |
-| 36.14-RIPPLE-INSERT-DELETE | Phase 36.14 | Pending |
-| 36.14-RIPPLE-DRAG | Phase 36.14 | Pending |
-| 36.14-FORCE-SPACING | Phase 36.14 | Pending |
+| 36.14-PHYSICAL-IDENTITY | Phase 36.14 | Complete |
+| 36.14-DERIVED-INTERPOLATION | Phase 36.14 | Complete |
+| 36.14-ATOMIC-FRAME-MAPPING | Phase 36.14 | Complete |
+| 36.14-RIPPLE-INSERT-DELETE | Phase 36.14 | Complete |
+| 36.14-RIPPLE-DRAG | Phase 36.14 | Complete |
+| 36.14-FORCE-SPACING | Phase 36.14 | Complete |
 | 36.14-DOWNSTREAM-PARITY | Phase 36.14 | Pending |
 | 36.14-UI-INTEGRATION | Phase 36.14 | Pending |
 | 36.14-UAT-THEN-REGRESSION | Phase 36.14 | Pending |

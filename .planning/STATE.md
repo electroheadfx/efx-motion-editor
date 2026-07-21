@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
-stopped_at: Completed 36.14-01-PLAN.md (production-gate ready)
-last_updated: "2026-07-21T06:50:34.245Z"
+stopped_at: Completed 36.14-02-PLAN.md (production-gate ready)
+last_updated: "2026-07-21T07:25:44.569Z"
 last_activity: 2026-07-21
 last_activity_desc: Phase 36.14 execution started
 progress:
   total_phases: 17
   completed_phases: 16
   total_plans: 110
-  completed_plans: 93
+  completed_plans: 94
   percent: 85
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 2 of 18
+Plan: 3 of 18
 Status: Ready to execute
 Last activity: 2026-07-21 — Phase 36.14 execution started
 Next recommended action: Execute Plan 36.14-01 via `/gsd-execute-phase 36.14`
@@ -90,6 +90,7 @@ Progress: [███████████████████░] 92/110 
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 36.14 P01 | 4min | 2 tasks | 1 files |
+| Phase 36.14 P02 | 8min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -128,6 +129,9 @@ Recent decisions affecting current work:
 - [Quick 260718-m2f]: Single-key Roto drag uses one non-ripple canonical move transaction; generated/empty cells are valid requested destinations when Studio's resolver finds a legal effective frame, occupied real keys remain invalid, and move-specific timing rebuilds only affected adjacent spans.
 - [Quick 260718-m2f]: Drag preview validity is Studio-authoritative and shares requested/effective destination semantics with commit; the existing interpolation-number control remains unchanged pending the next dedicated interpolation review.
 - [Phase ?]: Plan 01 ships an additive inactive canonical physical Roto model: stable keyId, direct appFrame, enabled-only interpolation, separate Script Motion, and fail-closed reconstructing validators. No shared live contract is edited, removed, or dual-written.
+- [Phase ?]: One exported resolver is the sole behavior seam for Insert/Delete/Move/Force-Spacing; complete mapping is the authority and pairwise deltas are presentation metadata only
+- [Phase ?]: Cut-first Drag resolves occupied before/after boundaries by stable identity against the post-cut map; direct cells occupied by another real key are invalid
+- [Phase ?]: Force Spacing anchors the first ordered real key and maps identity i to first + i * (N + 1); N = 0 produces adjacent ordered keys
 
 ### Pending Todos
 
@@ -204,6 +208,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-21T06:50:34.238Z
-Stopped at: Completed 36.14-01-PLAN.md (production-gate ready)
-Resume file: .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-02-PLAN.md
+Last session: 2026-07-21T07:25:44.562Z
+Stopped at: Completed 36.14-02-PLAN.md (production-gate ready)
+Resume file: None
