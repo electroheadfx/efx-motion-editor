@@ -218,8 +218,14 @@ Plans:
   5. User can produce a frame-sequence or cache-manifest proof from the live engine for future editor consumption.
   6. The rebuilt package UI remains standalone-package-first and does not add editor integration scope beyond rendered-output proof artifacts.
 
-**Plans**: 7 plans
+**Plans**: 11/11 plans complete
 Plans:
+
+- [x] 36-08-PLAN.md
+- [x] 36-09-PLAN.md
+- [x] 36-10-PLAN.md
+- [x] 36-11-PLAN.md
+
 **Wave 1**
 
 - [x] 36-01-PLAN.md — Define tested workflow-state predicates for Roto/Play modes, destructive confirmations, onion count, and dev export gating.
