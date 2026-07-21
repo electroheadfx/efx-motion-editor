@@ -4,15 +4,15 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
-status: ready_to_plan
-stopped_at: Quick 260718-m2f complete, native-approved, and verified; next quick reviews interpolation architecture and deterministic coverage
-last_updated: "2026-07-19T09:37:37Z"
-last_activity: 2026-07-19
-last_activity_desc: Completed single-key Physics Paint Roto drag movement with canonical timing and authoritative preview feedback
+status: ready_for_execution
+stopped_at: Phase 36.14 planning finalized; 18 plans verified by gsd-plan-checker
+last_updated: "2026-07-21T00:00:00.000Z"
+last_activity: 2026-07-21
+last_activity_desc: Phase 36.14 planning finalized — 18 chunked plans (01-18) verified by gsd-plan-checker (VERIFICATION PASSED); ROADMAP and STATE updated to ready-for-execution
 progress:
   total_phases: 17
   completed_phases: 16
-  total_plans: 92
+  total_plans: 110
   completed_plans: 92
   percent: 94
 ---
@@ -28,14 +28,14 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 ## Current Position
 
-Phase: 36.14 — Physics Paint Roto Timeline UI Integration
+Phase: 36.14 — Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration
 Previous phase: Pre-36.14 quick sequence complete
-Plan: Not yet created
-Status: Single-key Roto drag is native-approved and verified; interpolation architecture review and deterministic coverage are intentionally assigned to the next quick
-Last activity: 2026-07-19 — Quick 260718-m2f closed with canonical single-key drag movement, generated/empty destination resolution, rebuilt adjacent timing, authoritative preview feedback, and 7/7 verification
-Next recommended action: Run a full quick to review the existing interpolation architecture and add deterministic coverage for closer/farther/generated/minimum-spacing movement before planning Phase 36.14
+Plan: 36.14-01 of 18 — ready for execution
+Status: 18 chunked plans (01-18) generated, revised through two checker cycles, and verified by gsd-plan-checker (VERIFICATION PASSED). ROADMAP and STATE updated to ready-for-execution.
+Last activity: 2026-07-21 — Phase 36.14 planning finalized; 18 plans committed; ROADMAP/STATE synchronized
+Next recommended action: Execute Plan 36.14-01 via `/gsd-execute-phase 36.14`
 
-Progress: [███████████████████░] 92/92 existing plans executed; 16/17 phases complete (94%)
+Progress: [███████████████████░] 92/110 plans ready; 16/17 phases complete (94%)
 
 ## Performance Metrics
 
@@ -185,6 +185,7 @@ None yet.
 - Phase 36.x order updated: inserted Phase 36.13 Dynamic Interpolation Spacing and shifted Timeline UI From Pencil to 36.14.
 - Phases 36.15 State Machine Readiness and 37 Future Integration Contract were removed after the stabilized controller/bridge implementation made their planned scope obsolete.
 - Functional active-session Copy Script / Apply Script reuse was extracted from Phase 36.14 into a dedicated prerequisite quick; Phase 36.14 now owns only final UI presentation and wiring.
+- Phase 36.14 edited: edited fields: title, goal, requirements, success_criteria, planning notes
 
 ## Deferred Items
 
@@ -197,6 +198,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-19T09:37:37Z
-Stopped at: Quick 260718-m2f complete, native-approved, and verified; deterministic regression tests intentionally deferred
-Resume file: Start a full quick to review Physics Paint Roto interpolation architecture and add deterministic closer/farther/generated/minimum-spacing coverage before planning Phase 36.14
+Last session: 2026-07-21T00:00:00.000Z
+Stopped at: Phase 36.14 planning finalized; 18 plans verified by gsd-plan-checker and committed; ready for `/gsd-execute-phase 36.14`
+Resume file: .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-PLAN-OUTLINE.md

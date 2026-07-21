@@ -139,7 +139,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36.11: Physics Paint Roto Repaint Cached Real Key** - Existing cached real Roto keys reopen with their alpha paint as an additive base layer for repainting without restoring old stroke scripts. (completed 2026-06-29)
 - [x] **Phase 36.12: Physics Paint Roto Generated Interpolation** - Animators can generate render-only in-between Roto frames between real keys without making generated frames editable. (completed 2026-07-02)
 - [x] **Phase 36.13: Physics Paint Roto Dynamic Interpolation Spacing** - MVP slice for per-segment interpolation spacing overrides so intentionally distant real keys keep custom spans across toggle, save/load, preview, export, and real-key-depth onion skinning. (completed 2026-07-13)
-- [ ] **Phase 36.14: Physics Paint Roto Timeline UI Integration** - Finalize the corrected Roto timeline UI and integrate the already-approved Copy Script / Apply Script controller contract. (planned; final v0.8.0 phase)
+- [ ] **Phase 36.14: Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration** - Cut every real Roto key, generated in-between, timeline edit, persisted frame, and rendered output over to one deterministic physical-frame authority, then integrate the approved timeline UI and Copy Script / Apply Script controller contract. (planned; final v0.8.0 phase)
 
 ## Phase Details
 
@@ -433,32 +433,114 @@ Plans:
 
 - [x] 36.13-06-PLAN.md — Run final automated gate and user-owned live UAT.
 
-### Phase 36.14: Physics Paint Roto Timeline UI Integration
+### Phase 36.14: Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration
 
-Use `SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md` and the corrected TSX/HTML timeline references as the source of truth for this phase.
+Use the following aborted-quick artifacts as restructuring inputs, not as an executable monolithic plan:
 
-**Goal:** As a stop-motion animator, I want a polished Roto timeline that exposes established key and paint-script actions clearly without duplicating their business logic.
+- `.planning/quick/260719-gmn-new-deterministic-physical-frame-roto-in/260719-gmn-RESEARCH.md`
+- `.planning/quick/260719-gmn-new-deterministic-physical-frame-roto-in/260719-gmn-PLAN.md`
+
+Use `SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md` and the corrected TSX/HTML references as the source of truth for the final UI integration after the physical-frame cutover passes native UAT.
+
+**Goal:** As a stop-motion animator, I want every real Roto key, generated in-between, timeline edit, persisted frame, and rendered output to use one deterministic physical-frame authority, followed by a polished timeline UI that exposes the approved behavior without duplicating business logic.
 **Mode:** mvp
-**Requirements**: 36.14-PENCIL-LAYOUT, 36.14-CONTROL-GROUPING, 36.14-VISUAL-STATES, 36.14-LOG-ROUTING, 36.14-SELECTION-GUARD, 36.14-REGRESSION
+**Requirements:** 36.14-PHYSICAL-IDENTITY, 36.14-DERIVED-INTERPOLATION, 36.14-ATOMIC-FRAME-MAPPING, 36.14-RIPPLE-INSERT-DELETE, 36.14-RIPPLE-DRAG, 36.14-FORCE-SPACING, 36.14-DOWNSTREAM-PARITY, 36.14-UI-INTEGRATION, 36.14-UAT-THEN-REGRESSION
 **Depends on:** Phase 36.13 and native-UAT approval of the dedicated ROTO-SCRIPT-COPY / ROTO-SCRIPT-APPLY GSD quick
-**Plans:** 0 plans
+**Plans:** 18 plans
+
+**Success Criteria**:
+
+1. Every durable real key has one stable identity and one physical frame; obsolete count, projection, segment-spacing, moved-spacing, and compatibility timing paths are removed. Interpolation persists only its enabled state and renders exactly the physical empty slots between adjacent real keys, without moving keys or extrapolating before or after them.
+2. Insert Frame, Delete Frame, ripple Drag & Drop, Force Spacing, Undo, and Redo use one validated complete identity-to-frame mapping transaction with one optimistic stage, one parent publication, one acknowledgement, complete rollback on failure, and one accepted history action.
+3. Insert/Delete ripple semantics, occupied-key-safe cut-and-insert drag semantics, generated-cell drag destinations, and Force Spacing `N` semantics preserve key identity and payload while satisfying the locked physical-frame examples and layer-capacity constraints.
+4. Cache publication, persistence, reopen, playback, onion/reference, preview, timeline length, missing-frame rendering, and export all consume the same physical positions and runtime-derived interior gaps with no stale projected or durable generated timing truth.
+5. Production typecheck/build pass before user-owned native UAT. Only after explicit UAT approval are regression tests added and run with `vitest run`, including the Drag & Drop coverage intentionally omitted from quick `260719-gmn`; the final polished timeline UI is then integrated and validated without starting the application server.
 
 Planning notes:
 
-- This is the final v0.8.0 phase and a UI-only integration pass.
-- Apply the corrected timeline colors, proportions, grouping, fit-content action row, and visual hierarchy after core Roto and script behavior is stable.
-- Remove the permanent developer legend/status stack, obsolete `Save current`, and the unassigned Tools/header Log controls.
-- Route concise latest-operation status to the header capsule and errors/details to the existing right-panel `LOG` tab.
-- Keep transport, interpolation, and fps visibly separate; place the interpolation icon before its checkbox/count.
-- Preserve the accepted Phase 36.13 source/display projection; static reference ruler values are visual examples only.
-- Place `Copy Script` and `Apply Script` after Delete and consume the prerequisite quick's callbacks, availability, disabled reasons, status, and errors.
-- Do not implement clipboard lifetime, source mutation tracking, replay, Motion Deform/Move, Undo/Redo, empty-frame promotion, or cache publication in this phase.
-- Add a global application-chrome selection guard while preserving selectable inputs, editable fields, and Log text.
-- Do not reopen interpolation, cache, onion, preview/export, key ownership, Play persistence, or pointer-latency behavior.
+- This is the final v0.8.0 phase and must be planned as bounded sequential plans rather than executing the rejected quick plan.
+- Plan the work in separate boundaries for: physical real-key identity and distance-derived interpolation; the shared atomic batch mapping transaction; ripple Insert/Delete; cut-and-insert Drag & Drop; Force Spacing; downstream cache/persistence/render parity; post-UAT regression tests; and final timeline UI integration.
+- Insert Frame adds one empty physical slot immediately before the selected real key and shifts that key and every later key right. Delete Frame removes the selected key and its physical slot and shifts every later survivor left.
+- Generated cells remain render-only but are valid physical drag destinations. Dragging across occupied keys reorders identities through before/after boundaries and never overwrites a destination key.
+- Force Spacing value `N` creates exactly `N` physical empty slots between adjacent ordered real keys while anchoring the first key; `N = 0` makes keys adjacent.
+- Production implementation and static/build gates come first. Stop for user-owned native UAT, and do not add or run regression tests until the user explicitly approves the physical model.
+- After approval, add deterministic physical-model regression coverage and the Drag & Drop tests omitted from quick `260719-gmn`, using `vitest run`.
+- Finish with the corrected timeline colors, proportions, grouping, fit-content action row, visual hierarchy, status/log routing, selection guard, and approved Script controls from the existing UI specification.
+- Do not add legacy project migration, compatibility timing aliases, multi-selection, or group movement.
 
 Plans:
 
-- [ ] TBD after the dedicated script quick passes native UAT (then run /gsd-discuss-phase 36.14, /gsd-ui-phase 36.14, and /gsd-plan-phase 36.14 --tdd --mvp)
+**Wave 1**
+
+- [ ] 36.14-01-PLAN.md — Establish the production-only pre-UAT boundary; replace the durable Roto timing schema with stable `keyId` plus direct physical `appFrame`, persisted interpolation enabled state, and a separate Script Motion contract; remove compatibility/migration paths (no regression files touched until 36.14-12 approval).
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 36.14-02-PLAN.md — Implement the pure physical timeline resolver (ordering, exact interior derived cells, Insert/Delete/Drag/Force Spacing proposal resolution, uniqueness/range/capacity validation, deterministic selection/presentation metadata) used by preview and commit.
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 36.14-03-PLAN.md — Cut store, hydration, layer initialization, selection, and shared workflow callers over to physical records and runtime-derived cells.
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 36.14-04-PLAN.md — Build the single acknowledged physical-edit coordinator with pending-operation serialization, revalidation, immutable snapshots, optimistic publication, exact acknowledgement matching, and fail-closed restoration.
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [ ] 36.14-05-PLAN.md — Route accepted-only physical history, Undo, and Redo through the shared coordinator.
+
+**Wave 6** *(blocked on Wave 5)*
+
+- [ ] 36.14-06-PLAN.md — Deliver ripple Insert Frame and Delete Frame through the pure resolver and acknowledged coordinator.
+
+**Wave 7** *(blocked on Wave 6)*
+
+- [ ] 36.14-07-PLAN.md — Deliver single-key ripple Drag as complete cut-and-insert proposals for empty/generated destinations and occupied before/after boundaries.
+
+**Wave 8** *(blocked on Wave 7)*
+
+- [ ] 36.14-08-PLAN.md — Deliver Force Spacing through the same resolver and coordinator for every nonnegative integer `N`.
+
+**Wave 9** *(blocked on Wave 8)*
+
+- [ ] 36.14-09-PLAN.md — Reconstruct persistence, reopen hydration, bridge payloads/revisions, editable and live caches, dirty state, and project equality from immutable physical records.
+
+**Wave 10** *(blocked on Wave 9)*
+
+- [ ] 36.14-10-PLAN.md — Cut playback, onion/reference, preview, export, missing/background rendering, and timeline-length consumers over to direct physical positions.
+
+**Wave 11** *(blocked on Wave 10)*
+
+- [ ] 36.14-11-PLAN.md — Binary production cleanup of legacy timing fields, aliases, readers, and operation-specific transaction paths; run `pnpm --dir app typecheck` and `pnpm --dir app build` before the native gate.
+
+**Wave 12** *(blocked on Wave 11)* — Native UAT checkpoint
+
+- [ ] 36.14-12-PLAN.md — Stop at the blocking user-owned native physical-model UAT checkpoint; no regression test work until explicit user approval and byte-verified `36.14-12-APPROVAL.txt`.
+
+**Wave 13** *(blocked on Wave 12 approval evidence)* — Post-UAT regression unlock
+
+- [ ] 36.14-13-PLAN.md — Add deterministic regression coverage for physical identity, exact interiors, complete-map validation, Insert/Delete, Drag, Force Spacing, acknowledgement matching, serialization, rollback, and accepted-only history; delete six obsolete wrapper tests after behavior transfer; rewrite `useRotoInterpolationController.test.ts`.
+
+**Wave 14** *(blocked on Wave 13)*
+
+- [ ] 36.14-14-PLAN.md — Add post-approval regression coverage for persistence/reopen, bridge/cache publication, playback, onion/reference, preview/export, missing/background rendering, timeline length, script behavior, and physical equality/encoding; run the full `vitest run` suite.
+
+**Wave 15** *(blocked on Wave 14)* — Final UI integration
+
+- [ ] 36.14-15-PLAN.md — Integrate the approved `155px` workflow-strip geometry, non-wrapping header hierarchy, fixed abutting timeline cells, ordered bottom action row, Force Spacing controls, Discard relocation, obsolete-control removal, and concise status-vs-LOG routing.
+
+**Wave 16** *(blocked on Wave 15)*
+
+- [ ] 36.14-16-PLAN.md — Integrate complete-map drag presentation, whole-cell and occupied-boundary targets, identity-following selection/focus, minimal final-cell auto-scroll, and approved pointer cancellation/edge-scroll behavior.
+
+**Wave 17** *(blocked on Wave 16)*
+
+- [ ] 36.14-17-PLAN.md — Finish guarded focusable Script controls with controller-supplied reasons, shell-level non-selection with text-selection exceptions, UI accessibility/status details, and post-approval UI regression coverage; run focused tests, full `vitest run`, typecheck, and build without starting the application server.
+
+**Wave 18** *(blocked on Wave 17)* — Final native UAT
+
+- [ ] 36.14-18-PLAN.md — Stop at the final blocking user-owned native visual and interaction UAT checkpoint; byte-verify `36.14-18-APPROVAL.txt` before phase acceptance.
 
 ### Phase 36.8: Physics Paint Roto State Refactor
 
@@ -795,4 +877,4 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
 | 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 6/6 | Complete | 2026-07-13 |
-| 36.14. Physics Paint Roto Timeline UI Integration | v0.8.0 | 0/TBD | Blocked on script quick native UAT | - |
+| 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 0/18 | Ready for execution | - |
