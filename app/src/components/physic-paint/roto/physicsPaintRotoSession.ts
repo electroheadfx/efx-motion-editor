@@ -9,6 +9,8 @@ import {
   type RotoKeyUtilityTransaction,
 } from '../roto/physicsPaintRotoKeyController';
 import { getRotoReplacementSuccessLabel } from '../view/physicsPaintWorkflowPresentation';
+import type { PhysicPaintRotoRealKeyRecord, PhysicPaintRotoInterpolationState } from './physicsPaintRotoPhysicalModel';
+import type { RotoPhysicalTimelineCell } from './rotoPhysicalTimelinePorts';
 
 export type RotoSessionActionName = 'duplicateKey' | 'insertBlankKey' | 'deleteKey' | 'copyKey' | 'pasteKey' | 'requestFrame' | 'markDirty' | 'markCachedBaseLoaded' | 'markLiveOverlayDirty' | 'markLiveOverlayEmpty';
 export type RotoSessionRestoreIntent = RotoKeyUtilityActiveRestore;
@@ -54,6 +56,14 @@ export interface RotoSessionInput {
   keyActionInFlight?: boolean;
   applyStatus?: 'idle' | 'applying' | 'success' | 'error';
   flushInFlight?: boolean;
+  /** Physical real-key records from the store (D-01/D-10). */
+  rotoKeyRecords?: readonly PhysicPaintRotoRealKeyRecord[];
+  /** Enabled-only interpolation state from the store (D-02). */
+  rotoInterpolationState?: PhysicPaintRotoInterpolationState;
+  /** Current physical semantic cell (D-10). Real/generated/empty at the navigation frame. */
+  currentCell?: RotoPhysicalTimelineCell;
+  /** Selected stable keyId (D-01). */
+  selectedKeyId?: string | null;
 }
 
 export interface RotoSession {

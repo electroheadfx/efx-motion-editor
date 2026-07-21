@@ -295,6 +295,8 @@ export function PhysicsPaintStudio() {
     currentFrame,
     rotoKeyRecords,
     rotoInterpolationState,
+    capacity: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 1,
+    selectedKeyId: selectedKeyId.value,
   });
   const rotoTimelineActions = useRotoTimelineActions({
     getModel: () => rotoTimelineModel.view.value.model,
@@ -307,6 +309,11 @@ export function PhysicsPaintStudio() {
     },
     getStoreRotoFrames: () => launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId) : [],
     getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId) : null,
+    getRotoKeyRecords: () => rotoKeyRecords,
+    getRotoInterpolationState: () => rotoInterpolationState,
+    getPhysicalCells: () => rotoTimelineModel.physicalCells.value,
+    getSelectedKeyId: () => selectedKeyId.value,
+    getCurrentAppFrame: () => currentFrame,
   });
   const timelineOccupiedRotoFrames = rotoTimelineModel.occupiedRotoFrames.value;
   const timelineSavedRotoFrames = rotoTimelineModel.savedRotoFrames.value;
@@ -505,7 +512,10 @@ export function PhysicsPaintStudio() {
   resetRotoNavigationForLaunchRef.current = rotoNavigation.resetForLaunch;
   const rotoFrameEditing = useRotoFrameEditingController({
     workflowMode, currentFrame, currentFrameSourceFrame: currentFrameOwnerSourceFrame, currentFrameSelectionKind,
-    canvasSize: { width: canvasWidth, height: canvasHeight }, engine, launchContext, selectedKeyId: selectedKeyId.value,
+    canvasSize: { width: canvasWidth, height: canvasHeight }, engine, launchContext,
+    selectedKeyId: selectedKeyId.value,
+    selectedRealKey: rotoTimelineModel.selectedRealKey.value,
+    currentCell: rotoTimelineModel.currentCell.value,
     editBuffer: {
       dirtyFramesRef: dirtyRotoFramesRef, markDirty: rotoEditBuffer.markDirty,
       undoOverlay: rotoEditBuffer.undoOverlay, redoOverlay: rotoEditBuffer.redoOverlay, clearCachedOverlay: rotoEditBuffer.clearCachedOverlay,

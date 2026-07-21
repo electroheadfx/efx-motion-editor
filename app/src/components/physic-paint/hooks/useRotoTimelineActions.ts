@@ -2,9 +2,12 @@ import { useCallback } from 'preact/hooks';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import { getSourceRotoFrameForDisplayFrame, type RotoInterpolationSettings } from '../roto/physicsPaintRotoWorkflow';
 import { saveRotoRealKeyTransaction, updateRotoInterpolationSettingsTransaction } from '../roto/rotoKeyTransactions';
+import type { PhysicPaintRotoRealKeyRecord, PhysicPaintRotoInterpolationState } from '../roto/physicsPaintRotoPhysicalModel';
+import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 
-// Local type alias for the legacy source/display model shape. Task 3 will
-// replace this with direct physical record/projection ports.
+// Local type alias for the legacy source/display model shape. Operation delivery
+// modules (36.14-06 through 36.14-08) will replace this with direct physical
+// record/projection ports.
 interface RotoSourceDisplayModel {
   realSourceFrames: number[];
   settings: RotoInterpolationSettings;
@@ -17,6 +20,16 @@ export interface RotoTimelineActionsInput {
   getStoreRotoFrames?: () => PhysicPaintRotoCacheFrame[];
   getFailureStatus?: () => string | null;
   setInterpolationSettings?: (settings: PhysicPaintRotoInterpolationSettings) => PhysicPaintRotoInterpolationSettings;
+  /** Physical real-key records from the store (D-01/D-10). */
+  getRotoKeyRecords?: () => readonly PhysicPaintRotoRealKeyRecord[];
+  /** Enabled-only interpolation state from the store (D-02). */
+  getRotoInterpolationState?: () => PhysicPaintRotoInterpolationState;
+  /** Current physical projection cells (D-10). */
+  getPhysicalCells?: () => readonly RotoPhysicalTimelineCell[];
+  /** Selected stable keyId (D-01). */
+  getSelectedKeyId?: () => string | null;
+  /** Current direct physical navigation frame. */
+  getCurrentAppFrame?: () => number;
 }
 
 export function useRotoTimelineActions(input: RotoTimelineActionsInput) {

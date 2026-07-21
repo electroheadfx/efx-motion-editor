@@ -66,8 +66,12 @@ export interface UseRotoFrameEditingControllerInput<TEditable extends RotoEditab
   syncPendingFrames: () => void;
   status: RotoEditingStatusPort;
   isMutationLocked?: () => boolean;
-  /** Physical selected keyId (D-01/D-10). Consumed by Task 3 identity-based editing cutover. */
+  /** Physical selected keyId (D-01/D-10). Identity-based editing cutover. */
   selectedKeyId?: string | null;
+  /** Physical selected real-key record (D-01). Re-read at action time for stale-identity guard. */
+  selectedRealKey?: { keyId: string; appFrame: number } | null;
+  /** Physical current semantic cell (D-10). Real/generated/empty cell at the navigation frame. */
+  currentCell?: { kind: string; appFrame: number; keyId?: string } | null;
 }
 
 export function useRotoFrameEditingController<TEditable extends RotoEditableState>(input: UseRotoFrameEditingControllerInput<TEditable>) {
