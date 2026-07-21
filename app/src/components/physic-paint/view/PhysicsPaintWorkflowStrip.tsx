@@ -301,6 +301,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const physicalDeleteAvailable = physicalActions?.canDeleteFrame.value ?? false;
   const physicalInsertDisabledReason = physicalActions?.insertDisabledReason.value ?? null;
   const physicalDeleteDisabledReason = physicalActions?.deleteDisabledReason.value ?? null;
+  const forceSpacingInput = physicalActions?.forceSpacingInput.value ?? '1';
+  const forceSpacingAvailable = physicalActions?.canApplyForceSpacing.value ?? false;
+  const forceSpacingDisabledReason = physicalActions?.forceSpacingDisabledReason.value ?? null;
   const scriptAvailability = props.rotoScript?.availability.value;
   const scriptStatus = props.rotoScript?.status.value ?? null;
   const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy) || Boolean(rotoDragPreview?.pending);
@@ -339,6 +342,16 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (props.mutationLocked) return;
     const value = Number((event.currentTarget as HTMLInputElement).value);
     if (Number.isFinite(value)) props.onRotoInterpolationCountChange?.(Math.max(1, Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, Math.trunc(value))));
+  }
+
+  function handleForceSpacingInput(event: Event) {
+    physicalActions?.setForceSpacingInput((event.currentTarget as HTMLInputElement).value);
+  }
+
+  function handleForceSpacingSubmit(event: Event) {
+    event.preventDefault();
+    if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;
+    void physicalActions?.applyForceSpacing();
   }
 
   function handleRotoCellClick(frame: number, vm: RotoCellViewModel) {
@@ -804,6 +817,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     <Blend size={14} aria-hidden="true" />
                     <input type="number" min="1" max={PHYSIC_PAINT_MAX_APPLY_FRAMES} step="1" value={visibleInBetweenCount} aria-label="Generated in-between frames per real-key pair" disabled={interpolationControlsDisabled || !interpolationSettings.enabled} onInput={handleRotoInterpolationCountInput} />
                   </label>
+                  {physicalActions ? (
+                    <form class="physics-paint-roto-interpolation-count" title={forceSpacingDisabledReason ?? 'Set empty physical frames between real Roto keys'} onSubmit={handleForceSpacingSubmit}>
+                      <input type="number" min="0" step="1" value={forceSpacingInput} aria-label="Empty frames between real keys" disabled={interpolationControlsDisabled || !forceSpacingAvailable} onInput={handleForceSpacingInput} />
+                      <button type="submit" class="physics-paint-nav-button" disabled={interpolationControlsDisabled || !forceSpacingAvailable}>Apply</button>
+                    </form>
+                  ) : null}
                 </div>
               ) : null}
               <button type="button" class={`physics-paint-nav-button physics-paint-roto-loop-toggle ${props.rotoCachedPlaybackLoop ? 'active' : ''}`} aria-label="Loop cached Roto playback" aria-pressed={Boolean(props.rotoCachedPlaybackLoop)} disabled={props.ready === false || !props.onRotoPlaybackLoopChange} onClick={() => props.onRotoPlaybackLoopChange?.(!props.rotoCachedPlaybackLoop)}><RotateCcw size={15} /></button>
