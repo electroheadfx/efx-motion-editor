@@ -59,21 +59,38 @@ import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
 // ---------------------------------------------------------------------------
 
 /**
+ * Discriminated physical edit target for Drag. Direct cells name a desired
+ * final `appFrame`; occupied boundaries name a stable target `keyId` resolved
+ * after the source slot closes.
+ */
+export type PhysicPaintRotoPhysicalEditTarget =
+  | { readonly kind: 'physical-cell'; readonly appFrame: number }
+  | { readonly kind: 'before-key'; readonly targetKeyId: string }
+  | { readonly kind: 'after-key'; readonly targetKeyId: string };
+
+/**
  * Closed physical edit intent union. Grows across tasks 1-3; the final union
  * contains exactly Insert, Delete, Move, and Force Spacing.
  *
- * Task 1: `insert-slot` and `delete-key` only.
+ * Task 1: `insert-slot` and `delete-key`.
+ * Task 2: adds `move-key` with a discriminated {@link PhysicPaintRotoPhysicalEditTarget}.
  */
 export type PhysicPaintRotoPhysicalEditIntent =
   | { readonly kind: 'insert-slot'; readonly selectedKeyId: string }
-  | { readonly kind: 'delete-key'; readonly selectedKeyId: string };
+  | { readonly kind: 'delete-key'; readonly selectedKeyId: string }
+  | {
+      readonly kind: 'move-key';
+      readonly movedKeyId: string;
+      readonly target: PhysicPaintRotoPhysicalEditTarget;
+    };
 
 /**
  * Operation kind literal union, grows alongside {@link PhysicPaintRotoPhysicalEditIntent}.
  */
 export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-slot'
-  | 'delete-key';
+  | 'delete-key'
+  | 'move-key';
 
 /**
  * Immutable resolver input: stable identities, typed intent, bounded capacity,
@@ -123,6 +140,19 @@ export interface PhysicPaintRotoPhysicalIdentityChange {
 }
 
 /**
+ * Drag presentation metadata. Names the original target kind, target identity
+ * when present, before/after boundary when present, and the resolved final
+ * insertion frame. The {@link movedKeyId} is repeated here for presentation
+ * convenience; the authoritative mapping remains the proposal's `mapping`.
+ */
+export interface PhysicPaintRotoPhysicalDragPresentation {
+  readonly targetKind: 'physical-cell' | 'before-key' | 'after-key';
+  readonly targetKeyId: string | null;
+  readonly resolvedInsertionAppFrame: number;
+  readonly movedKeyId: string;
+}
+
+/**
  * Concise operation status derived from the validated complete map. The
  * `affectedKeyIds` array includes every identity whose frame changed plus the
  * removed identity when applicable; the `code` distinguishes a genuine change
@@ -161,6 +191,8 @@ export interface PhysicPaintRotoPhysicalEditProposal {
   readonly changes: readonly PhysicPaintRotoPhysicalIdentityChange[];
   /** Removed identity for Delete, null for every other operation. */
   readonly removedKeyId: string | null;
+  /** Drag presentation metadata for Move, null for every other operation. */
+  readonly drag: PhysicPaintRotoPhysicalDragPresentation | null;
   /** Concise status derived from the validated map. */
   readonly status: PhysicPaintRotoPhysicalEditStatus;
 }
@@ -305,7 +337,7 @@ interface Candidate {
   readonly mapping: Map<string, number>;
   /** Expected survivor identity set; the finalizer verifies set equality. */
   readonly expectedKeyIds: ReadonlySet<string>;
-  /** Removed identity for Delete, null for Insert. */
+  /** Removed identity for Delete, null for every other operation. */
   readonly removedKeyId: string | null;
   /** Selected identity after the operation, or null when nothing remains. */
   readonly selectedKeyId: string | null;
@@ -313,6 +345,8 @@ interface Candidate {
   readonly changed: boolean;
   /** Per-identity role for change metadata. */
   readonly roleByKeyId: ReadonlyMap<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>;
+  /** Drag presentation metadata for Move, null for every other operation. */
+  readonly drag: PhysicPaintRotoPhysicalDragPresentation | null;
 }
 
 /**
@@ -352,6 +386,7 @@ function buildInsertCandidate(
     operationKind: 'insert-slot',
     changed: true,
     roleByKeyId,
+    drag: null,
   };
 }
 
@@ -401,11 +436,231 @@ function buildDeleteCandidate(
     operationKind: 'delete-key',
     changed: true,
     roleByKeyId,
+    drag: null,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Common complete-map finalizer, derivation, and immutable proposal builder.
+// D-07 Drag (move-key) candidate builder: cut-and-insert for direct cells and
+// occupied identity boundaries. The moved identity is removed first, its
+// source slot is closed by shifting every later survivor left by one, the
+// target is resolved by stable identity against the post-cut map, and the
+// destination is opened by shifting every remaining identity at or after the
+// insertion frame right by one before reinserting the moved identity. The
+// operation never overwrites or replaces an occupied target.
+// ---------------------------------------------------------------------------
+
+type MoveBuilderResult =
+  | { readonly ok: true; readonly candidate: Candidate }
+  | { readonly ok: false; readonly resolution: PhysicPaintRotoPhysicalEditResolution };
+
+function buildMoveCandidate(
+  identities: ValidatedIdentities,
+  movedKeyId: string,
+  target: PhysicPaintRotoPhysicalEditTarget,
+  capacity: number,
+): MoveBuilderResult {
+  const movedFrame = identities.framesByKeyId.get(movedKeyId) as number;
+
+  if (target.kind === 'physical-cell') {
+    if (!isNonNegativeInteger(target.appFrame) || target.appFrame >= capacity) {
+      return {
+        ok: false,
+        resolution: fail('out-of-range-frame', 'move-key', `Direct target frame ${target.appFrame} is outside capacity ${capacity}.`),
+      };
+    }
+
+    // Moved key's own current physical cell: valid immutable no-change.
+    if (target.appFrame === movedFrame) {
+      return { ok: true, candidate: buildMoveNoChangeCandidate(identities, movedKeyId, movedFrame, target) };
+    }
+
+    // A direct cell occupied in the original input by another real key is
+    // invalid: occupied keys require an identity boundary, never an overwrite.
+    for (const identity of identities.ordered) {
+      if (identity.keyId !== movedKeyId && identity.appFrame === target.appFrame) {
+        return {
+          ok: false,
+          resolution: fail('malformed-target', 'move-key', `Direct cell frame ${target.appFrame} is occupied by another real key; use before-key or after-key.`),
+        };
+      }
+    }
+
+    return { ok: true, candidate: cutAndInsert(identities, movedKeyId, movedFrame, target.appFrame, target) };
+  }
+
+  if (target.kind === 'before-key' || target.kind === 'after-key') {
+    if (!isBoundedKeyId(target.targetKeyId)) {
+      return {
+        ok: false,
+        resolution: fail('malformed-target', 'move-key', 'Drag target keyId must be a bounded non-empty string.'),
+      };
+    }
+    if (!identities.keyIds.has(target.targetKeyId)) {
+      return {
+        ok: false,
+        resolution: fail('unknown-target-identity', 'move-key', `Drag target identity "${target.targetKeyId}" does not exist.`),
+      };
+    }
+    if (target.targetKeyId === movedKeyId) {
+      return {
+        ok: false,
+        resolution: fail('moved-as-target', 'move-key', 'Moved identity cannot be its own before/after boundary; the boundary disappears during cut.'),
+      };
+    }
+
+    // Cut first: remove moved, close source slot.
+    const postCut = cutSource(identities, movedKeyId, movedFrame);
+    // Resolve the target by stable identity against the post-cut map.
+    const targetPostCutFrame = postCut.get(target.targetKeyId) as number;
+    const insertionFrame = target.kind === 'before-key' ? targetPostCutFrame : targetPostCutFrame + 1;
+    if (insertionFrame >= capacity) {
+      return {
+        ok: false,
+        resolution: fail('over-capacity', 'move-key', `Resolved insertion frame ${insertionFrame} is outside capacity ${capacity}.`),
+      };
+    }
+    return { ok: true, candidate: openAndInsert(identities, postCut, movedKeyId, insertionFrame, target) };
+  }
+
+  return {
+    ok: false,
+    resolution: fail('malformed-target', 'move-key', 'Unknown drag target kind.'),
+  };
+}
+
+/**
+ * Build the no-change candidate for a Drag back to the moved identity's own
+ * current physical cell. The complete mapping equals the input mapping; the
+ * drag presentation still records the original target and resolved frame.
+ */
+function buildMoveNoChangeCandidate(
+  identities: ValidatedIdentities,
+  movedKeyId: string,
+  movedFrame: number,
+  target: PhysicPaintRotoPhysicalEditTarget,
+): Candidate {
+  const mapping = new Map<string, number>();
+  for (const identity of identities.ordered) {
+    mapping.set(identity.keyId, identity.appFrame);
+  }
+  return {
+    mapping,
+    expectedKeyIds: identities.keyIds,
+    removedKeyId: null,
+    selectedKeyId: movedKeyId,
+    operationKind: 'move-key',
+    changed: false,
+    roleByKeyId: new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>(),
+    drag: Object.freeze({
+      targetKind: target.kind,
+      targetKeyId: target.kind === 'physical-cell' ? null : target.targetKeyId,
+      resolvedInsertionAppFrame: movedFrame,
+      movedKeyId,
+    }) as PhysicPaintRotoPhysicalDragPresentation,
+  };
+}
+
+/**
+ * Cut the moved identity and close its source slot by shifting every
+ * remaining key originally after the moved frame left by exactly one slot.
+ * Returns the post-cut identity-to-frame map.
+ */
+function cutSource(
+  identities: ValidatedIdentities,
+  movedKeyId: string,
+  movedFrame: number,
+): Map<string, number> {
+  const postCut = new Map<string, number>();
+  for (const identity of identities.ordered) {
+    if (identity.keyId === movedKeyId) continue;
+    if (identity.appFrame > movedFrame) {
+      postCut.set(identity.keyId, identity.appFrame - 1);
+    } else {
+      postCut.set(identity.keyId, identity.appFrame);
+    }
+  }
+  return postCut;
+}
+
+/**
+ * Open the destination slot by shifting every remaining identity at or after
+ * the insertion frame right by exactly one, then reinsert the moved identity
+ * at the insertion frame. Computes deterministic roles for change metadata:
+ * the moved identity is `moved`; other identities whose frame increased are
+ * `ripple-right`; those whose frame decreased are `ripple-left`.
+ */
+function openAndInsert(
+  identities: ValidatedIdentities,
+  postCut: Map<string, number>,
+  movedKeyId: string,
+  insertionFrame: number,
+  target: PhysicPaintRotoPhysicalEditTarget,
+): Candidate {
+  const mapping = new Map<string, number>();
+  for (const [keyId, frame] of postCut) {
+    mapping.set(keyId, frame >= insertionFrame ? frame + 1 : frame);
+  }
+  mapping.set(movedKeyId, insertionFrame);
+
+  const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+  for (const identity of identities.ordered) {
+    if (identity.keyId === movedKeyId) {
+      roleByKeyId.set(movedKeyId, 'moved');
+      continue;
+    }
+    const before = identity.appFrame;
+    const after = mapping.get(identity.keyId) as number;
+    if (after > before) roleByKeyId.set(identity.keyId, 'ripple-right');
+    else if (after < before) roleByKeyId.set(identity.keyId, 'ripple-left');
+  }
+
+  return {
+    mapping,
+    expectedKeyIds: identities.keyIds,
+    removedKeyId: null,
+    selectedKeyId: movedKeyId,
+    operationKind: 'move-key',
+    changed: computeChanged(identities, mapping),
+    roleByKeyId,
+    drag: Object.freeze({
+      targetKind: target.kind,
+      targetKeyId: target.kind === 'physical-cell' ? null : target.targetKeyId,
+      resolvedInsertionAppFrame: insertionFrame,
+      movedKeyId,
+    }) as PhysicPaintRotoPhysicalDragPresentation,
+  };
+}
+
+/**
+ * Direct-cell variant: cut, then open the requested final frame. Closing the
+ * source may cause a survivor to occupy the requested final cell; opening that
+ * exact final cell shifts the survivor and preserves the destination.
+ */
+function cutAndInsert(
+  identities: ValidatedIdentities,
+  movedKeyId: string,
+  movedFrame: number,
+  insertionFrame: number,
+  target: PhysicPaintRotoPhysicalEditTarget,
+): Candidate {
+  const postCut = cutSource(identities, movedKeyId, movedFrame);
+  return openAndInsert(identities, postCut, movedKeyId, insertionFrame, target);
+}
+
+/**
+ * Compute whether the final mapping differs from the input. Used by Drag and
+ * Force Spacing so an already-exact request yields a valid no-change proposal.
+ */
+function computeChanged(
+  identities: ValidatedIdentities,
+  mapping: Map<string, number>,
+): boolean {
+  for (const identity of identities.ordered) {
+    if (mapping.get(identity.keyId) !== identity.appFrame) return true;
+  }
+  return false;
+}
 // ---------------------------------------------------------------------------
 
 interface FinalizedProposal {
@@ -575,6 +830,7 @@ function finalizeProposal(
     selectedAppFrame,
     changes: changesFrozen,
     removedKeyId: candidate.removedKeyId,
+    drag: candidate.drag,
     status,
   }) as PhysicPaintRotoPhysicalEditProposal;
 
@@ -596,6 +852,12 @@ function buildStatusText(
   if (operationKind === 'delete-key') {
     if (removedKeyId === null) return 'No change';
     return 'Deleted key';
+  }
+  if (operationKind === 'move-key') {
+    if (!changed) return 'No change';
+    return selectedAppFrame === null
+      ? 'Moved key'
+      : `Moved key to frame ${selectedAppFrame}`;
   }
   return 'No change';
 }
@@ -670,6 +932,26 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     const candidate = buildDeleteCandidate(identities, intent.selectedKeyId);
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled);
+    if (!finalized.ok) return finalized.resolution;
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'move-key') {
+    if (!isBoundedKeyId(intent.movedKeyId)) {
+      return fail('malformed-identity', operationKind, 'Move requires a bounded movedKeyId.');
+    }
+    if (identities.ordered.length === 0) {
+      return fail('empty-key-set', operationKind, 'Move requires at least one real key.');
+    }
+    if (!identities.keyIds.has(intent.movedKeyId)) {
+      return fail('unknown-operation-identity', operationKind, `Move targets unknown moved identity "${intent.movedKeyId}".`);
+    }
+    if (intent.target === null || typeof intent.target !== 'object') {
+      return fail('malformed-target', operationKind, 'Move target must be a discriminated record.');
+    }
+    const moveResult = buildMoveCandidate(identities, intent.movedKeyId, intent.target, input.capacity);
+    if (!moveResult.ok) return moveResult.resolution;
+    const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
