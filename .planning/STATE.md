@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
-stopped_at: Completed 36.14-03-PLAN.md
-last_updated: "2026-07-21T10:09:35.869Z"
+stopped_at: Completed 36.14-04-PLAN.md
+last_updated: "2026-07-21T11:12:33.017Z"
 last_activity: 2026-07-21
 last_activity_desc: Phase 36.14 execution started
 progress:
   total_phases: 17
   completed_phases: 16
   total_plans: 110
-  completed_plans: 95
-  percent: 86
+  completed_plans: 96
+  percent: 87
 ---
 
 # Project State
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 4 of 18
+Plan: 2 of 18
 Status: Ready to execute
 Last activity: 2026-07-21 — Phase 36.14 execution started
 Next recommended action: Execute Plan 36.14-01 via `/gsd-execute-phase 36.14`
 
-Progress: [███████████████████░] 92/110 plans ready; 16/17 phases complete ([█████████░] 86%)
+Progress: [███████████████████░] 92/110 plans ready; 16/17 phases complete ([█████████░] 87%)
 
 ## Performance Metrics
 
@@ -92,6 +92,7 @@ Progress: [███████████████████░] 92/110 
 | Phase 36.14 P01 | 4min | 2 tasks | 1 files |
 | Phase 36.14 P02 | 8min | 3 tasks | 1 files |
 | Phase 36.14 P03 | PT1H | 3 tasks | 14 files |
+| Phase 36.14 P04 | 95min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -136,6 +137,9 @@ Recent decisions affecting current work:
 - [Phase ?]: One shared physical projection seam (projectPhysicPaintRotoPhysicalTimeline) owns validation, ordering, exact interiors, and bounded cells; edit resolver reuses it.
 - [Phase ?]: Store physical record ownership requires stable unique keyId and unique direct appFrame; complete replacement validates before mutation.
 - [Phase ?]: Interpolation toggling changes only enabled state and runtime cell derivation; cannot move records, selection, navigation, or Script Motion.
+- [Phase ?]: Coordinator owns physical-edit snapshot/stage/send/match/restore; Studio no longer captures local move snapshots
+- [Phase ?]: Bridge routes replace-roto-physical-map results to coordinator.consumeBridgeApplyResult; other kinds use matchApplyResult
+- [Phase ?]: History fed via effect on coordinator.acceptedOutput; Plan 05 replaces with generic accepted-only history
 
 ### Pending Todos
 
@@ -212,6 +216,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-21T10:09:31.001Z
-Stopped at: Completed 36.14-03-PLAN.md
+Last session: 2026-07-21T11:12:33.010Z
+Stopped at: Completed 36.14-04-PLAN.md
 Resume file: None
