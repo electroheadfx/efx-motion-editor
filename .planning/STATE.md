@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
-stopped_at: Completed 36.14-07-PLAN.md
-last_updated: "2026-07-21T16:27:23.852Z"
+stopped_at: Completed 36.14-08-PLAN.md
+last_updated: "2026-07-21T19:37:57.770Z"
 last_activity: 2026-07-21
-last_activity_desc: Phase 36.14 execution started
+last_activity_desc: Completed Plan 36.14-08 Force Spacing production gate
 progress:
   total_phases: 17
   completed_phases: 16
   total_plans: 110
-  completed_plans: 99
-  percent: 90
+  completed_plans: 100
+  percent: 91
 ---
 
 # Project State
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 2 of 18
+Plan: 9 of 18
 Status: Ready to execute
-Last activity: 2026-07-21 — Phase 36.14 execution started
-Next recommended action: Execute Plan 36.14-07 via `/gsd-execute-phase 36.14 --wave 7`
+Last activity: 2026-07-21 — Completed Plan 36.14-08 Force Spacing production gate
+Next recommended action: Execute Plan 36.14-09 via /gsd-execute-phase 36.14 --wave 9
 
-Progress: [███████████████████░] 98/110 plans ready; 16/17 phases complete ([█████████░] 90%)
+Progress: [██████████████████░░] 100/110 plans ready; 16/17 phases complete ([█████████░] 91%)
 
 ## Performance Metrics
 
@@ -96,6 +96,7 @@ Progress: [███████████████████░] 98/110 
 | Phase 36.14 P05 | 90min | 3 tasks | 8 files |
 | Phase 36.14 P06 | ~75min | 3 tasks | 9 files |
 | Phase 36.14 P07 | PT2H | 3 tasks | 6 files |
+| Phase 36.14 P08 | 7min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -150,6 +151,11 @@ Recent decisions affecting current work:
 - [Phase ?]: D-22 preview renders complete resolver-proposed mapping (moved, shifted, generated, vacated) rather than destination-only marker
 - [Phase ?]: D-24 focus follows moved identity at accepted appFrame on success; cancellation/failure restores source keyId focus or falls back to timeline container
 - [Phase ?]: Legacy move route fully removed: resolveRotoKeyMoveTiming/buildRotoKeyMoveTransaction/RotoKeyMove* types and onResolveRotoKeyMoveCandidate/onMoveRotoKey/moveRotoKey cut over to identity-based resolver/coordinator path
+- [Phase ?]: Force Spacing input is session-local Signal state and never durable timing authority.
+- [Phase ?]: Canonical parsing accepts only exact nonnegative base-10 safe integers, including zero.
+- [Phase ?]: The physical resolver exclusively owns Force Spacing ordering, anchoring, exact gaps, generated interiors, uniqueness, range, capacity, and no-change detection.
+- [Phase ?]: Changed Force Spacing proposals pass unchanged through the generic coordinator and accepted-only history path.
+- [Phase ?]: The interpolation enabled toggle remains active while the rendered live count mutation route is removed.
 
 ### Pending Todos
 
@@ -226,6 +232,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-21T16:27:19.404Z
-Stopped at: Completed 36.14-07-PLAN.md
+Last session: 2026-07-21T19:37:11.681Z
+Stopped at: Completed 36.14-08-PLAN.md
 Resume file: None
