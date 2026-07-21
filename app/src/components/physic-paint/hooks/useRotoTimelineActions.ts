@@ -385,35 +385,54 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       return false;
     }
 
+    // Capture one action-time snapshot. The resolver alone validates identity
+    // completeness/uniqueness, orders stable keys, anchors the first frame,
+    // derives exact interiors, and rejects an over-capacity complete map.
     const records = input.getRotoKeyRecords();
+    const selectedKeyId = input.getSelectedKeyId?.() ?? null;
     const interpolation = input.getRotoInterpolationState();
+    const capacity = input.getCapacity();
+    const expectedLaunch = {
+      operationId: launch.operationId,
+      layerId: launch.layerId,
+    } as const;
+    const identities = records.map((record) => ({
+      keyId: record.keyId,
+      appFrame: record.appFrame,
+    }));
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
-      identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+      identities,
       intent: {
         kind: 'force-spacing',
         emptyFrames,
-        selectedKeyId: input.getSelectedKeyId?.() ?? null,
+        selectedKeyId,
       },
-      capacity: input.getCapacity(),
+      capacity,
       interpolationEnabled: interpolation.enabled,
     });
     if (!resolution.ok) {
       input.publishStatus?.(resolution.failure.text || 'Force Spacing is invalid.');
       return false;
     }
-    if (!resolution.proposal.status.changed) {
-      input.publishStatus?.(resolution.proposal.status.text);
+    const proposal = resolution.proposal;
+    if (!proposal.status.changed) {
+      // Zero-key failures are handled above; one key and already-exact spacing
+      // end here without coordinator execution or accepted-history output.
+      input.publishStatus?.(proposal.status.text);
       return false;
     }
 
+    // Submit the exact resolver-owned proposal. The generic coordinator owns
+    // post-barrier revision validation, staging, settlement, rollback, and the
+    // accepted-only history handoff; this action does not recompute the map.
     const accepted = await input.executePhysicalEdit({
-      proposal: resolution.proposal,
-      expectedLaunch: { operationId: launch.operationId, layerId: launch.layerId },
+      proposal,
+      expectedLaunch,
       operationKind: 'force-spacing',
-      selectedKeyId: resolution.proposal.selectedKeyId,
-      selectedAppFrame: resolution.proposal.selectedAppFrame,
+      selectedKeyId: proposal.selectedKeyId,
+      selectedAppFrame: proposal.selectedAppFrame,
     });
-    if (accepted) input.publishStatus?.(resolution.proposal.status.text);
+    if (accepted) input.publishStatus?.(proposal.status.text);
     return accepted;
   }, [forceSpacingInput, input]);
 
