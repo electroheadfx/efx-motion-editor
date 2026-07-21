@@ -66,6 +66,8 @@ export interface UseRotoFrameEditingControllerInput<TEditable extends RotoEditab
   syncPendingFrames: () => void;
   status: RotoEditingStatusPort;
   isMutationLocked?: () => boolean;
+  /** Physical selected keyId (D-01/D-10). Consumed by Task 3 identity-based editing cutover. */
+  selectedKeyId?: string | null;
 }
 
 export function useRotoFrameEditingController<TEditable extends RotoEditableState>(input: UseRotoFrameEditingControllerInput<TEditable>) {

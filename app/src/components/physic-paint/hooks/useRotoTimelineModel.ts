@@ -2,11 +2,16 @@ import { computed, signal, type Signal } from '@preact/signals';
 import { useMemo } from 'preact/hooks';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import { selectRotoTimelineView, type RotoTimelineSelectionKind, type RotoTimelineView } from '../roto/rotoTimelineSelectors';
+import type { PhysicPaintRotoRealKeyRecord, PhysicPaintRotoInterpolationState } from '../roto/physicsPaintRotoPhysicalModel';
 
 export interface RotoTimelineModelInput {
   cachedRotoFrames?: readonly PhysicPaintRotoCacheFrame[];
   interpolationSettings?: Partial<PhysicPaintRotoInterpolationSettings> | null;
   currentFrame: number;
+  /** Physical real-key records from the store (D-01/D-10). Consumed by Task 3 migration. */
+  rotoKeyRecords?: readonly PhysicPaintRotoRealKeyRecord[];
+  /** Enabled-only interpolation state from the store (D-02). Consumed by Task 3 migration. */
+  rotoInterpolationState?: PhysicPaintRotoInterpolationState;
 }
 
 export interface RotoTimelineModel {
