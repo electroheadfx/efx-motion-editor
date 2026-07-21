@@ -14,6 +14,8 @@ import {
   parsePhysicPaintRotoRealKeyRecordCollection,
   type PhysicPaintRotoInterpolationState,
   type PhysicPaintRotoPhysicalDocument,
+  type PhysicPaintRotoPhysicalRenderSource,
+  type PhysicPaintRotoRealKeyPayload,
   type PhysicPaintRotoRealKeyRecord,
   type PhysicPaintRotoScriptMotionSettings,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -212,12 +214,12 @@ function _makeRotoCacheFrame(
   };
 }
 
-function _notifyVisualChange(diagnostics?: { mutationId?: number; record: (sample: PhysicsPaintPerformanceSample) => void }): void {
+function _notifyVisualChange(diagnostics?: { mutationId?: number; record: (sample: PhysicsPaintPerformanceSample) => void }, markDirty = true): void {
   const notificationStartedAt = diagnostics ? performance.now() : 0;
   _invalidateSerializationCache();
   physicPaintVersion.value++;
   const dirtyStartedAt = diagnostics ? performance.now() : 0;
-  _markProjectDirty?.();
+  if (markDirty) _markProjectDirty?.();
   if (diagnostics) {
     const completedAt = performance.now();
     diagnostics.record({ stage: 'store-project-dirty', category: 'sync-cpu', durationMs: completedAt - dirtyStartedAt, timestamp: completedAt, mutationId: diagnostics.mutationId });
@@ -869,12 +871,33 @@ export const physicPaintStore = {
       return _errorResult(payload, 'Expected apply-canvas payload');
     }
 
-    const rotoBackground = payload.rotoBackground ?? null;
-    if (rotoBackground) {
-      _rotoBackgroundMetadata.set(payload.layerId, { ...rotoBackground });
+    const physicalRecord = this.getRotoRealKeyRecordByAppFrame(payload.layerId, payload.startFrame);
+    if (physicalRecord) {
+      const currentRevision = this.getRotoPhysicalContentRevision(payload.layerId);
+      if (!currentRevision) return _errorResult(payload, 'Physical Roto content revision is unavailable');
+      const previousBackground = _rotoBackgroundMetadata.get(payload.layerId) ?? null;
+      const nextBackground = payload.rotoBackground ?? previousBackground;
+      if (nextBackground) _rotoBackgroundMetadata.set(payload.layerId, { ...nextBackground });
+      else _rotoBackgroundMetadata.delete(payload.layerId);
+      const update = this.updateRotoPhysicalRealKeyPayload(payload.layerId, physicalRecord.keyId, currentRevision, {
+        frameIndex: payload.renderedFrame.frameIndex,
+        appFrame: physicalRecord.appFrame,
+        dataUrl: payload.renderedFrame.dataUrl,
+        ...(payload.renderedFrame.width !== undefined ? { width: payload.renderedFrame.width } : {}),
+        ...(payload.renderedFrame.height !== undefined ? { height: payload.renderedFrame.height } : {}),
+      });
+      if (!update.ok) {
+        if (previousBackground) _rotoBackgroundMetadata.set(payload.layerId, previousBackground);
+        else _rotoBackgroundMetadata.delete(payload.layerId);
+        return _errorResult(payload, update.error);
+      }
+      if (!update.changed && JSON.stringify(previousBackground) !== JSON.stringify(nextBackground)) _notifyVisualChange();
+    } else {
+      const rotoBackground = payload.rotoBackground ?? null;
+      if (rotoBackground) _rotoBackgroundMetadata.set(payload.layerId, { ...rotoBackground });
+      this.upsertRealRotoKeyFrame(payload.layerId, payload.sourceFrame ?? payload.startFrame, { ...payload.renderedFrame, ...(payload.onionDataUrl ? { onionDataUrl: payload.onionDataUrl } : {}) }, payload.backgroundOnly === true);
+      if (payload.rotoInterpolationSettings) this.setRotoInterpolationSettings(payload.layerId, payload.rotoInterpolationSettings);
     }
-    this.upsertRealRotoKeyFrame(payload.layerId, payload.sourceFrame ?? payload.startFrame, { ...payload.renderedFrame, ...(payload.onionDataUrl ? { onionDataUrl: payload.onionDataUrl } : {}) }, payload.backgroundOnly === true);
-    if (payload.rotoInterpolationSettings) this.setRotoInterpolationSettings(payload.layerId, payload.rotoInterpolationSettings);
     return {
       operationId: payload.operationId,
       kind: payload.kind,
@@ -1078,11 +1101,15 @@ export const physicPaintStore = {
       return { ok: false, error: projectionResult.failure.text };
     }
 
-    // Atomically replace the record set and indexes.
+    const previousRecords = this.getRotoRealKeyRecords(layerId);
+    const previousInterpolation = this.getRotoPhysicalInterpolationState(layerId);
+    const previousRevision = buildPhysicPaintRotoPhysicalRevision(previousRecords, previousInterpolation);
+    const nextRevision = buildPhysicPaintRotoPhysicalRevision(validatedRecords, interpolation);
+    if (_rotoRealKeyRecords.has(layerId) && previousRevision === nextRevision) return { ok: true };
+
+    // Atomically replace the complete record set and indexes.
     const recordMap = new Map<string, PhysicPaintRotoRealKeyRecord>();
-    for (const record of validatedRecords) {
-      recordMap.set(record.keyId, record);
-    }
+    for (const record of validatedRecords) recordMap.set(record.keyId, record);
     _rotoRealKeyRecords.set(layerId, recordMap);
     _rotoPhysicalInterpolationState.set(layerId, Object.freeze({ enabled: interpolation.enabled }) as PhysicPaintRotoInterpolationState);
     if (!_rotoPhysicalScriptMotion.has(layerId)) _rotoPhysicalScriptMotion.set(layerId, PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO);
@@ -1125,7 +1152,7 @@ export const physicPaintStore = {
     if (document.background) _rotoBackgroundMetadata.set(layerId, { ...document.background });
     else _rotoBackgroundMetadata.delete(layerId);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
-    _notifyVisualChange();
+    _notifyVisualChange(undefined, false);
     return { ok: true, document };
   },
 
@@ -1225,6 +1252,7 @@ export const physicPaintStore = {
     if (!isPhysicPaintRotoInterpolationState(state)) {
       return { ok: false, error: 'Interpolation state must be enabled-only (D-02).' };
     }
+    if (this.getRotoPhysicalInterpolationState(layerId).enabled === state.enabled) return { ok: true };
     _rotoPhysicalInterpolationState.set(layerId, Object.freeze({ enabled: state.enabled }) as PhysicPaintRotoInterpolationState);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     _notifyVisualChange();
@@ -1257,6 +1285,91 @@ export const physicPaintStore = {
     });
     if (!result.ok) return null;
     return result.projection;
+  },
+
+  getRotoPhysicalContentRevision(layerId: string): string | null {
+    if (!_rotoRealKeyRecords.has(layerId)) return null;
+    return buildPhysicPaintRotoPhysicalRevision(
+      this.getRotoRealKeyRecords(layerId),
+      this.getRotoPhysicalInterpolationState(layerId),
+    );
+  },
+
+  getRotoPhysicalEndFrame(layerId: string): number | null {
+    const records = this.getRotoRealKeyRecords(layerId);
+    return records.length === 0 ? null : records[records.length - 1].appFrame + 1;
+  },
+
+  /** Resolve one exact real/generated runtime paint source from the validated projection. */
+  getRotoPhysicalRenderSource(layerId: string, appFrame: number): PhysicPaintRotoPhysicalRenderSource | null {
+    if (!Number.isInteger(appFrame) || appFrame < 0) return null;
+    const projection = this.getRotoPhysicalProjection(layerId);
+    const contentRevision = this.getRotoPhysicalContentRevision(layerId);
+    if (!projection || !contentRevision) return null;
+    const cell = projection.cells[appFrame];
+    if (!cell || cell.appFrame !== appFrame || cell.kind === 'empty') return null;
+    if (cell.kind === 'real') {
+      const record = this.getRotoRealKeyRecord(layerId, cell.keyId);
+      if (!record || record.appFrame !== appFrame || record.payload.appFrame !== appFrame) return null;
+      return {
+        kind: 'real',
+        layerId,
+        appFrame,
+        keyId: record.keyId,
+        contentRevision,
+        cacheRevision: `${contentRevision}:real:${record.keyId}`,
+        renderedFrame: record.payload,
+      };
+    }
+    const left = this.getRotoRealKeyRecord(layerId, cell.leftKeyId);
+    const right = this.getRotoRealKeyRecord(layerId, cell.rightKeyId);
+    if (!left || !right || !(left.appFrame < appFrame && appFrame < right.appFrame)) return null;
+    const distance = right.appFrame - left.appFrame;
+    const rendered = renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, (appFrame - left.appFrame) / distance, DEFAULT_ROTO_INTERPOLATION_SETTINGS);
+    const renderedFrame: PhysicPaintRotoRealKeyPayload = {
+      frameIndex: rendered.frameIndex,
+      appFrame,
+      dataUrl: rendered.dataUrl,
+      ...(rendered.width !== undefined ? { width: rendered.width } : {}),
+      ...(rendered.height !== undefined ? { height: rendered.height } : {}),
+    };
+    return {
+      kind: 'generated',
+      layerId,
+      appFrame,
+      leftKeyId: left.keyId,
+      rightKeyId: right.keyId,
+      contentRevision,
+      cacheRevision: `${contentRevision}:generated:${left.keyId}:${right.keyId}:${appFrame}`,
+      renderedFrame,
+    };
+  },
+
+  /** Publish live pixels only when the stable key and source content revision still match. */
+  updateRotoPhysicalRealKeyPayload(
+    layerId: string,
+    keyId: string,
+    expectedContentRevision: string,
+    payload: PhysicPaintRotoRealKeyPayload,
+    diagnostics?: { mutationId?: number; record: (sample: PhysicsPaintPerformanceSample) => void },
+  ): { ok: true; changed: boolean; contentRevision: string } | { ok: false; error: string } {
+    const currentRevision = this.getRotoPhysicalContentRevision(layerId);
+    const current = this.getRotoRealKeyRecord(layerId, keyId);
+    if (!currentRevision || currentRevision !== expectedContentRevision || !current) return { ok: false, error: 'Physical identity or content revision changed.' };
+    if (payload.appFrame !== current.appFrame) return { ok: false, error: 'Rendered payload does not match the current physical placement.' };
+    const records = this.getRotoRealKeyRecords(layerId);
+    let validated: readonly PhysicPaintRotoRealKeyRecord[];
+    try {
+      validated = parsePhysicPaintRotoRealKeyRecordCollection(records.map((record) => record.keyId === keyId ? { ...record, payload } : record), this.getRotoPhysicalCapacity(layerId));
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Invalid physical render payload.' };
+    }
+    const nextRevision = buildPhysicPaintRotoPhysicalRevision(validated, this.getRotoPhysicalInterpolationState(layerId));
+    if (nextRevision === currentRevision) return { ok: true, changed: false, contentRevision: currentRevision };
+    _rotoRealKeyRecords.set(layerId, new Map(validated.map((record) => [record.keyId, record])));
+    rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
+    _notifyVisualChange(diagnostics);
+    return { ok: true, changed: true, contentRevision: nextRevision };
   },
 
   /**

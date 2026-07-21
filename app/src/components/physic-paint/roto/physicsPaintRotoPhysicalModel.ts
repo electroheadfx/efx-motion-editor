@@ -117,6 +117,28 @@ export interface PhysicPaintRotoGeneratedCell {
   readonly rightKeyId: string;
 }
 
+/** Identity/revision-aware runtime render source shared by Studio, preview, and export. */
+export type PhysicPaintRotoPhysicalRenderSource =
+  | {
+      readonly kind: 'real';
+      readonly layerId: string;
+      readonly appFrame: number;
+      readonly keyId: string;
+      readonly contentRevision: string;
+      readonly cacheRevision: string;
+      readonly renderedFrame: PhysicPaintRotoRealKeyPayload;
+    }
+  | {
+      readonly kind: 'generated';
+      readonly layerId: string;
+      readonly appFrame: number;
+      readonly leftKeyId: string;
+      readonly rightKeyId: string;
+      readonly contentRevision: string;
+      readonly cacheRevision: string;
+      readonly renderedFrame: PhysicPaintRotoRealKeyPayload;
+    };
+
 /**
  * Enabled-only interpolation state.
  *
