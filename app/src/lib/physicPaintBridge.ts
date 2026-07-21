@@ -1,9 +1,16 @@
 import type { Result } from './ipc';
 import type { Layer } from '../types/layer';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
-import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import {
+  PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+  PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
+  buildPhysicPaintRotoPhysicalRevision,
+  encodePhysicPaintRotoPhysicalContent,
+  parsePhysicPaintRotoPhysicalDocument,
+} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { parseCanonicalPhysicsPaintLaunchValue } from '../components/physic-paint/bridge/physicsPaintLaunchContext';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
 import { sequenceStore } from '../stores/sequenceStore';
@@ -76,6 +83,7 @@ function shouldCloseNativeWindowAfterApply(payload: PhysicPaintApplyPayload): bo
 
 const APPLY_ERROR = 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.';
 const deliveredOperations = new Map<string, { fingerprint: string; result: PhysicPaintApplyResult }>();
+const activeLaunchOperationByLayer = new Map<string, string>();
 
 /**
  * Parent-authoritative accepted-operation ledger for the generic physical-edit
@@ -98,11 +106,19 @@ const acceptedPhysicalCommands = new Map<string, AcceptedPhysicalCommandEntry>()
 
 export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResult {
   const base = resultBase(payload);
-  if (!isPhysicPaintApplyPayload(payload)) {
+  if (!isStructuredClonePlainData(payload) || !isPhysicPaintApplyPayload(payload)) {
     return failureResult(base, 'Invalid physics paint apply payload');
   }
+  if (payload.kind === 'replace-roto-physical-map' && !isPhysicPaintRotoPhysicalEditApplyPayload(payload)) {
+    return failureResult(base, 'Invalid closed physical Roto apply payload');
+  }
 
-  const fingerprint = fingerprintApplyPayload(payload);
+  let fingerprint: string;
+  try {
+    fingerprint = fingerprintApplyPayload(payload);
+  } catch (error) {
+    return failureResult(base, `Invalid canonical physics paint payload: ${String(error)}`);
+  }
   const prior = deliveredOperations.get(payload.operationId);
   if (prior) {
     return prior.fingerprint === fingerprint
@@ -221,7 +237,49 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
 }
 
 function fingerprintApplyPayload(payload: PhysicPaintApplyPayload): string {
+  if (payload.kind === 'replace-roto-physical-map') {
+    const canonicalRecords = payload.records.map((record) => ({
+      kind: 'real-key' as const,
+      keyId: record.keyId,
+      appFrame: record.appFrame,
+      payload: record.payload,
+    }));
+    const content = encodePhysicPaintRotoPhysicalContent(canonicalRecords, { enabled: payload.interpolationEnabled });
+    const provenance = payload.historyProvenance
+      ? `${payload.historyProvenance.historyCommandId}:${payload.historyProvenance.historyDirection}:${payload.historyProvenance.sourceRevision}:${payload.historyProvenance.targetRevision}`
+      : 'ordinary';
+    return [
+      payload.kind,
+      payload.operationId,
+      payload.operationKind,
+      payload.layerId,
+      String(payload.startFrame),
+      payload.launchOperationId,
+      payload.projectContextId ?? '',
+      payload.expectedRevision,
+      content,
+      payload.selectedKeyId ?? '',
+      payload.selectedAppFrame === null ? 'null' : String(payload.selectedAppFrame),
+      provenance,
+    ].map((segment) => `${segment.length}:${segment}`).join('|');
+  }
   return stableSerialize(payload, new WeakSet<object>());
+}
+
+function isStructuredClonePlainData(value: unknown, seen = new WeakSet<object>()): boolean {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value !== 'object') return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) return value.every((entry) => isStructuredClonePlainData(entry, seen));
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return false;
+    return Object.values(value as Record<string, unknown>).every((entry) => isStructuredClonePlainData(entry, seen));
+  } finally {
+    seen.delete(value);
+  }
 }
 
 function stableSerialize(value: unknown, seen: WeakSet<object>): string {
@@ -285,8 +343,12 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   if (!layer || layer.type !== 'physic-paint') {
     return failureResult(base, 'Physics Paint layer is unavailable for the physical edit.');
   }
+  if (activeLaunchOperationByLayer.get(payload.layerId) !== payload.launchOperationId) {
+    return failureResult(base, 'Physics Paint launch context changed before the physical edit could be applied.');
+  }
   const currentRecords = physicPaintStore.getRotoRealKeyRecords(payload.layerId);
   const currentInterpolation = physicPaintStore.getRotoPhysicalInterpolationState(payload.layerId);
+  const currentDocument = physicPaintStore.getRotoPhysicalDocument(payload.layerId);
   const currentRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation);
   if (currentRevision !== payload.expectedRevision) {
     return failureResult(base, 'Roto physical revision became stale before commit.');
@@ -295,6 +357,12 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   if (payload.records.length > capacity) {
     return failureResult(base, 'Roto physical edit exceeds the current layer capacity.');
   }
+  const proposedRecords = payload.records.map((record) => ({
+    kind: 'real-key' as const,
+    keyId: record.keyId,
+    appFrame: record.appFrame,
+    payload: record.payload,
+  }));
   const seenKeyIds = new Set<string>();
   const seenAppFrames = new Set<number>();
   for (const record of payload.records) {
@@ -303,6 +371,15 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     if (record.appFrame >= capacity) return failureResult(base, 'Roto physical edit places a key outside the layer capacity.');
     seenKeyIds.add(record.keyId);
     seenAppFrames.add(record.appFrame);
+  }
+  if ((payload.selectedKeyId === null) !== (payload.selectedAppFrame === null)) {
+    return failureResult(base, 'Roto physical selection identity and frame must both be null or both be present.');
+  }
+  if (payload.selectedKeyId !== null) {
+    const selectedRecord = proposedRecords.find((record) => record.keyId === payload.selectedKeyId);
+    if (!selectedRecord || selectedRecord.appFrame !== payload.selectedAppFrame) {
+      return failureResult(base, 'Roto physical selection does not match the submitted identity set.');
+    }
   }
 
   const isReplay = payload.operationKind === 'undo' || payload.operationKind === 'redo';
@@ -321,7 +398,7 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     if (currentRevision !== provenance.sourceRevision) {
       return failureResult(base, 'Roto physical replay source revision does not match the current state.');
     }
-    const targetRevision = buildPhysicPaintRotoPhysicalRevision(payload.records, { enabled: payload.interpolationEnabled });
+    const targetRevision = buildPhysicPaintRotoPhysicalRevision(proposedRecords, { enabled: payload.interpolationEnabled });
     if (targetRevision !== provenance.targetRevision) {
       return failureResult(base, 'Roto physical replay target revision does not match the original command.');
     }
@@ -347,15 +424,20 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     }
   }
 
-  const replaceResult = physicPaintStore.replaceRotoPhysicalRecords(
-    payload.layerId,
-    payload.records,
-    { enabled: payload.interpolationEnabled },
+  const stagedRevision = buildPhysicPaintRotoPhysicalRevision(proposedRecords, { enabled: payload.interpolationEnabled });
+  const cursorAppFrame = payload.selectedAppFrame ?? Math.max(0, Math.min(capacity - 1, payload.startFrame));
+  const stagedDocument = parsePhysicPaintRotoPhysicalDocument({
     capacity,
-  );
-  if (!replaceResult.ok) {
-    return failureResult(base, replaceResult.error);
-  }
+    realKeyRecords: proposedRecords,
+    interpolation: { enabled: payload.interpolationEnabled },
+    scriptMotion: currentDocument?.scriptMotion ?? PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
+    background: currentDocument?.background ?? physicPaintStore.getRotoBackgroundMetadata(payload.layerId),
+    selectedKeyId: payload.selectedKeyId,
+    cursorAppFrame,
+    revision: stagedRevision,
+  });
+  const replaceResult = physicPaintStore.replaceRotoPhysicalDocument(payload.layerId, stagedDocument);
+  if (!replaceResult.ok) return failureResult(base, replaceResult.error);
 
   if (!isReplay) {
     const afterRecords = payload.records.map((record) => ({
@@ -373,7 +455,7 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
       beforeInterpolation: { enabled: currentInterpolation.enabled },
       afterRecords,
       afterInterpolation: { enabled: payload.interpolationEnabled },
-      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(payload.records, { enabled: payload.interpolationEnabled }),
+      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(proposedRecords, { enabled: payload.interpolationEnabled }),
     });
   }
 
@@ -688,24 +770,51 @@ export function createPhysicPaintLaunchContext(
   workflowLabel?: string,
 ): PhysicPaintLaunchContext {
   const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-  const startFrame = Math.max(0, Math.trunc(frame));
-  const cachedRotoFrames = physicPaintStore.getRotoCacheFrames(layerId);
-  const rotoInterpolationSettings = physicPaintStore.getRotoInterpolationSettings(layerId);
-  const rotoBackground = physicPaintStore.getRotoBackgroundMetadata(layerId);
-  return {
+  const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId);
+  const requestedFrame = Math.max(0, Math.min(capacity - 1, Math.trunc(frame)));
+  const storedDocument = physicPaintStore.getRotoPhysicalDocument(layerId);
+  const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, requestedFrame);
+  const document = parsePhysicPaintRotoPhysicalDocument(storedDocument
+    ? {
+        ...storedDocument,
+        selectedKeyId: selectedRecord?.keyId ?? null,
+        cursorAppFrame: requestedFrame,
+      }
+    : {
+        capacity,
+        realKeyRecords: [],
+        interpolation: PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+        scriptMotion: PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
+        background: physicPaintStore.getRotoBackgroundMetadata(layerId),
+        selectedKeyId: null,
+        cursorAppFrame: requestedFrame,
+        revision: buildPhysicPaintRotoPhysicalRevision([], PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED),
+      });
+  if (storedDocument) physicPaintStore.setRotoPhysicalSelection(layerId, document.selectedKeyId, document.cursorAppFrame);
+  const context: PhysicPaintLaunchContext = {
     operationId: `physic-paint-${Date.now()}-${crypto.randomUUID()}`,
     layerId,
     project: { name: projectStore.name.peek(), saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()), contextId: projectStore.projectContextId.peek() },
     layerName: layer.name,
     ...(workflowLabel ? { workflowLabel } : {}),
-    startFrame,
+    startFrame: document.cursorAppFrame,
     ...(isFinitePositiveNumber(canvas?.width) ? { width: canvas.width } : {}),
     ...(isFinitePositiveNumber(canvas?.height) ? { height: canvas.height } : {}),
     ...(isFinitePositiveNumber(fps) ? { fps } : {}),
-    ...(cachedRotoFrames.length > 0 ? { cachedRotoFrames } : {}),
-    rotoInterpolationSettings,
-    ...(rotoBackground ? { rotoBackground: structuredClone(rotoBackground) } : {}),
+    rotoPhysical: {
+      capacity: document.capacity,
+      records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
+      interpolationEnabled: document.interpolation.enabled,
+      scriptMotion: document.scriptMotion,
+      background: document.background,
+      selectedKeyId: document.selectedKeyId,
+      cursorAppFrame: document.cursorAppFrame,
+      revision: document.revision,
+    },
   };
+  const validated = parseCanonicalPhysicsPaintLaunchValue(context);
+  if (!validated) throw new Error('Could not construct a canonical physical launch context.');
+  return validated;
 }
 
 export async function openPhysicPaintCanvas(request: PhysicPaintOpenRequest): Promise<Result<PhysicPaintLaunchContext>> {
@@ -720,8 +829,8 @@ export async function openPhysicPaintCanvas(request: PhysicPaintOpenRequest): Pr
       request.fps,
       validation.data.workflowLabel,
     );
-    if (!isPhysicPaintLaunchContext(context)) {
-      return { ok: false, error: 'Invalid physics paint launch context' };
+    if (!parseCanonicalPhysicsPaintLaunchValue(context)) {
+      return { ok: false, error: 'Invalid canonical physical launch context' };
     }
 
     const tauriRuntime = await detectTauriRuntime();
@@ -729,12 +838,14 @@ export async function openPhysicPaintCanvas(request: PhysicPaintOpenRequest): Pr
     if (tauriRuntime) {
       const tauriResult = await tryOpenTauriPhysicPaintWindow(context);
       if (!tauriResult.ok) return tauriResult;
+      activeLaunchOperationByLayer.set(context.layerId, context.operationId);
       console.info('[physicPaintBridge] native launch result', tauriResult.data);
       return { ok: true, data: context };
     }
 
     const browserResult = openBrowserFallback(context);
     if (!browserResult.ok) return browserResult;
+    activeLaunchOperationByLayer.set(context.layerId, context.operationId);
 
     return { ok: true, data: context };
   } catch (error) {
@@ -827,11 +938,10 @@ function openBrowserFallback(context: PhysicPaintLaunchContext): Result<null> {
 }
 
 function buildPhysicsPaintUrl(context: PhysicPaintLaunchContext): string {
-  const encodedContext = encodeURIComponent(JSON.stringify(context));
   const baseUrl = typeof window !== 'undefined' && window.location?.origin
     ? new URL(PHYSIC_PAINT_FALLBACK_PATH, window.location.origin)
     : new URL(PHYSIC_PAINT_FALLBACK_PATH, 'http://localhost');
-  baseUrl.searchParams.set('context', encodedContext);
+  baseUrl.searchParams.set('context', JSON.stringify(context));
   return `${baseUrl.pathname}${baseUrl.search}`;
 }
 

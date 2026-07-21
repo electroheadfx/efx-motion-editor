@@ -754,22 +754,20 @@ export const projectStore = {
 
   /** Open a project from an .mce file */
   async openProject(openFilePath: string) {
-    // Close any existing project first (resets all stores, stops engines/timers)
-    projectStore.closeProject();
-    rotateProjectContext();
-
     const result = await ipcProjectOpen(openFilePath);
     if (!result.ok) {
       throw new Error(result.error);
     }
 
-    // Derive dirPath from filePath's parent
+    // Decode every required Physics Paint sidecar and validate the complete
+    // physical candidates before replacing the currently open project.
     const projectRoot = openFilePath.substring(0, openFilePath.lastIndexOf('/'));
     const runtimeProject: RuntimeMceProject = {
       ...result.data,
       physic_paint_outputs: await loadPhysicPaintData(projectRoot, result.data.physic_paint_outputs),
     };
 
+    projectStore.closeProject();
     batch(() => {
       filePath.value = openFilePath;
       dirPath.value = projectRoot;

@@ -5,7 +5,7 @@ import type { PendingPhysicPaintApply } from './usePhysicsPaintApplyResultContro
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { applyPhysicsPaintLaunchContext } from '../bridge/physicsPaintLaunchContext';
 import { applyRotoBackgroundMetadataToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
-import { hydrateRotoLaunchContext } from '../roto/rotoLaunchHydration';
+import { hydrateRotoPhysicalLaunchContext } from '../roto/rotoLaunchHydration';
 import { usePhysicsPaintLaunchBridge, usePhysicsPaintProjectContextBridge } from '../bridge/usePhysicsPaintParentBridge';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
@@ -86,33 +86,39 @@ export function usePhysicsPaintLaunchIntegration(input: {
 }) {
   const getStrokeMetadata = useCallback(() => null, []);
 
-  const resetRotoSessionForLaunch = useCallback((context: PhysicPaintLaunchContext) => {
-    input.lifecycle.completeScriptLaunchReplacement();
-    input.lifecycle.cancelPhysicalEditForLaunch();
-    input.resetPersistenceForLaunch(context.cachedRotoFrames);
+  const resetRotoSessionForLaunch = useCallback(() => {
+    input.resetPersistenceForLaunch(undefined);
     input.lifecycle.pendingApplyRef.current = null;
     input.resetNavigationForLaunchRef.current();
     input.resetCachedReference();
   }, [input]);
 
   const applySettledLaunchContext = useCallback((context: PhysicPaintLaunchContext) => {
-    const pendingFrame = input.lifecycle.pendingFrameSyncRef.current;
     input.lifecycle.pendingFrameSyncRef.current = null;
-    const incomingContext = pendingFrame !== null ? { ...context, startFrame: pendingFrame } : context;
-    const hydratedContext = hydrateRotoLaunchContext(incomingContext, physicPaintStore);
-    resetRotoSessionForLaunch(hydratedContext);
-    applyPhysicsPaintLaunchContext(hydratedContext, input.state, (launch) => {
-      if (launch.rotoBackground) return applyRotoBackgroundMetadataToSettings(launch.rotoBackground);
-      return null;
+    input.lifecycle.completeScriptLaunchReplacement();
+    input.lifecycle.cancelPhysicalEditForLaunch();
+
+    const hydration = hydrateRotoPhysicalLaunchContext(context, physicPaintStore);
+    if (!hydration.ok) {
+      input.state.setLastError(hydration.error);
+      input.state.setApplyStatus('error');
+      input.state.setApplyMessage(hydration.error);
+      return;
+    }
+
+    resetRotoSessionForLaunch();
+    applyPhysicsPaintLaunchContext(hydration.context, input.state, (launch) => {
+      const background = launch.rotoPhysical?.background;
+      return background ? applyRotoBackgroundMetadataToSettings(background) : null;
     });
     const readyEngine = input.engineRef.current;
-    if (readyEngine) input.loadCachedReferenceFrame(hydratedContext.startFrame, readyEngine as PreviewBackgroundEngine);
+    if (readyEngine) input.loadCachedReferenceFrame(hydration.document.cursorAppFrame, readyEngine as PreviewBackgroundEngine);
     input.state.setApplyStatus('idle');
     input.state.setApplyMessage(null);
     input.state.setLastError(null);
     input.lifecycle.activeOperationIdRef.current = null;
     input.lifecycle.pendingApplyRef.current = null;
-    input.onSettledLaunchContext?.(hydratedContext);
+    input.onSettledLaunchContext?.(hydration.context);
   }, [input, resetRotoSessionForLaunch]);
 
   const prepareReplacementRef = useRef(input.lifecycle.prepareScriptLaunchReplacement);

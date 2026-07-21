@@ -1,25 +1,42 @@
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
-import { isPhysicPaintLaunchContext } from '../../../types/physicPaint';
+import {
+  isPhysicPaintLaunchContext,
+  isPhysicPaintRotoPhysicalEditRecord,
+} from '../../../types/physicPaint';
+import { parsePhysicPaintRotoPhysicalDocument } from '../roto/physicsPaintRotoPhysicalModel';
 
 export interface PhysicsPaintLaunchStateSetters<Settings> {
   setLaunchContext: (context: PhysicPaintLaunchContext) => void;
   setSettings: (settings: Settings) => void;
 }
 
-const nonEmptyParam = (params: URLSearchParams, ...keys: string[]) => {
-  for (const key of keys) {
-    const value = params.get(key);
-    if (value && value.trim().length > 0) return value.trim();
-  }
-  return null;
-};
+const LAUNCH_KEYS = new Set(['operationId', 'layerId', 'project', 'startFrame', 'layerName', 'workflowLabel', 'width', 'height', 'fps', 'rotoPhysical']);
+const PHYSICAL_KEYS = new Set(['capacity', 'records', 'interpolationEnabled', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision']);
 
-const appendParams = (target: URLSearchParams, raw: string) => {
-  const trimmed = raw.replace(/^[?#]/, '');
-  if (!trimmed) return;
-  const params = new URLSearchParams(trimmed);
-  params.forEach((value, key) => target.set(key, value));
-};
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
+  return Object.keys(value).every((key) => allowed.has(key));
+}
+
+function isStructuredClonePlainData(value: unknown, seen = new WeakSet<object>()): boolean {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value !== 'object') return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) return value.every((entry) => isStructuredClonePlainData(entry, seen));
+    if (!isPlainRecord(value)) return false;
+    return Object.values(value).every((entry) => isStructuredClonePlainData(entry, seen));
+  } finally {
+    seen.delete(value);
+  }
+}
 
 export function applyPhysicsPaintLaunchContext<Settings>(
   context: PhysicPaintLaunchContext,
@@ -31,43 +48,56 @@ export function applyPhysicsPaintLaunchContext<Settings>(
   if (settings) setters.setSettings(settings);
 }
 
-export function parsePhysicsPaintLaunchContext(location: Location): PhysicPaintLaunchContext | null {
-  const params = new URLSearchParams(location.search);
-  appendParams(params, location.hash);
-
-  const encodedContext = nonEmptyParam(params, 'context');
-  if (encodedContext) {
-    try {
-      const parsed = JSON.parse(encodedContext);
-      if (isPhysicPaintLaunchContext(parsed)) return parsed;
-    } catch {
-      // Continue with flat query/hash parameters.
-    }
+/** Parse and reconstruct only the canonical complete physical launch envelope. */
+export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPaintLaunchContext | null {
+  if (!isStructuredClonePlainData(value) || !isPlainRecord(value) || !hasOnlyKeys(value, LAUNCH_KEYS)) return null;
+  if (!isPhysicPaintLaunchContext(value) || !isPlainRecord(value.project) || !isPlainRecord(value.rotoPhysical)) return null;
+  if (!hasOnlyKeys(value.rotoPhysical, PHYSICAL_KEYS) || !Array.isArray(value.rotoPhysical.records)) return null;
+  if (!value.rotoPhysical.records.every(isPhysicPaintRotoPhysicalEditRecord)) return null;
+  try {
+    const document = parsePhysicPaintRotoPhysicalDocument({
+      capacity: value.rotoPhysical.capacity,
+      realKeyRecords: value.rotoPhysical.records.map((record) => ({ ...record, kind: 'real-key' as const })),
+      interpolation: { enabled: value.rotoPhysical.interpolationEnabled },
+      scriptMotion: value.rotoPhysical.scriptMotion,
+      background: value.rotoPhysical.background,
+      selectedKeyId: value.rotoPhysical.selectedKeyId,
+      cursorAppFrame: value.rotoPhysical.cursorAppFrame,
+      revision: value.rotoPhysical.revision,
+    });
+    if (value.startFrame !== document.cursorAppFrame) return null;
+    return {
+      operationId: value.operationId,
+      layerId: value.layerId,
+      project: { ...value.project },
+      startFrame: document.cursorAppFrame,
+      ...(value.layerName !== undefined ? { layerName: value.layerName } : {}),
+      ...(value.workflowLabel !== undefined ? { workflowLabel: value.workflowLabel } : {}),
+      ...(value.width !== undefined ? { width: value.width } : {}),
+      ...(value.height !== undefined ? { height: value.height } : {}),
+      ...(value.fps !== undefined ? { fps: value.fps } : {}),
+      rotoPhysical: {
+        capacity: document.capacity,
+        records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
+        interpolationEnabled: document.interpolation.enabled,
+        scriptMotion: document.scriptMotion,
+        background: document.background,
+        selectedKeyId: document.selectedKeyId,
+        cursorAppFrame: document.cursorAppFrame,
+        revision: document.revision,
+      },
+    };
+  } catch {
+    return null;
   }
+}
 
-  const layerId = nonEmptyParam(params, 'layerId', 'layer', 'physicPaintLayerId');
-  const operationId = nonEmptyParam(params, 'operationId', 'op', 'requestId');
-  const startFrameRaw = nonEmptyParam(params, 'startFrame', 'frame', 'currentFrame');
-  const startFrame = Number(startFrameRaw);
-  if (!layerId || !operationId || !Number.isInteger(startFrame) || startFrame < 0) return null;
-
-  const width = Number(nonEmptyParam(params, 'width', 'w'));
-  const height = Number(nonEmptyParam(params, 'height', 'h'));
-  const fps = Number(nonEmptyParam(params, 'fps'));
-
-  return {
-    layerId,
-    operationId,
-    project: {
-      name: nonEmptyParam(params, 'projectName') ?? 'Untitled Project',
-      saved: nonEmptyParam(params, 'projectSaved') === 'true',
-      contextId: nonEmptyParam(params, 'projectContextId') ?? operationId,
-    },
-    startFrame,
-    layerName: nonEmptyParam(params, 'layerName', 'name') ?? undefined,
-    workflowLabel: nonEmptyParam(params, 'workflowLabel') ?? undefined,
-    width: Number.isFinite(width) && width > 0 ? width : undefined,
-    height: Number.isFinite(height) && height > 0 ? height : undefined,
-    fps: Number.isFinite(fps) && fps > 0 ? fps : undefined,
-  };
+export function parsePhysicsPaintLaunchContext(location: Location): PhysicPaintLaunchContext | null {
+  const encodedContext = new URLSearchParams(location.search).get('context');
+  if (!encodedContext || encodedContext.trim().length === 0) return null;
+  try {
+    return parseCanonicalPhysicsPaintLaunchValue(JSON.parse(encodedContext));
+  } catch {
+    return null;
+  }
 }
