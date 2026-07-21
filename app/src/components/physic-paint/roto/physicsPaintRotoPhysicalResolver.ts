@@ -24,6 +24,12 @@
  *   every later survivor left by exactly one, preserves survivor payload/
  *   identity, selects deterministically, and returns one immutable complete
  *   proposal.
+ * - D-07: single-key Drag is one cut-and-insert operation for empty/generated
+ *   physical cells and occupied before/after identity boundaries, never an
+ *   overwrite.
+ * - D-08: Force Spacing accepts every nonnegative integer `N`, anchors the
+ *   first ordered real key, preserves deterministic identity order, and places
+ *   key `i` at `first + i * (N + 1)`; `N = 0` produces adjacent keys.
  * - D-09: every successful intent returns one immutable complete identity-to-frame
  *   proposal used unchanged by later preview and commit callers; every invalid
  *   intent returns no proposal.
@@ -69,11 +75,13 @@ export type PhysicPaintRotoPhysicalEditTarget =
   | { readonly kind: 'after-key'; readonly targetKeyId: string };
 
 /**
- * Closed physical edit intent union. Grows across tasks 1-3; the final union
- * contains exactly Insert, Delete, Move, and Force Spacing.
+ * Closed physical edit intent union. The final union contains exactly Insert,
+ * Delete, Move, and Force Spacing.
  *
  * Task 1: `insert-slot` and `delete-key`.
  * Task 2: adds `move-key` with a discriminated {@link PhysicPaintRotoPhysicalEditTarget}.
+ * Task 3: adds `force-spacing` with `emptyFrames` and an optional preserved
+ * selection identity.
  */
 export type PhysicPaintRotoPhysicalEditIntent =
   | { readonly kind: 'insert-slot'; readonly selectedKeyId: string }
@@ -82,6 +90,11 @@ export type PhysicPaintRotoPhysicalEditIntent =
       readonly kind: 'move-key';
       readonly movedKeyId: string;
       readonly target: PhysicPaintRotoPhysicalEditTarget;
+    }
+  | {
+      readonly kind: 'force-spacing';
+      readonly emptyFrames: number;
+      readonly selectedKeyId: string | null;
     };
 
 /**
@@ -90,7 +103,8 @@ export type PhysicPaintRotoPhysicalEditIntent =
 export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-slot'
   | 'delete-key'
-  | 'move-key';
+  | 'move-key'
+  | 'force-spacing';
 
 /**
  * Immutable resolver input: stable identities, typed intent, bounded capacity,
@@ -661,6 +675,76 @@ function computeChanged(
   }
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// D-08 Force Spacing candidate builder: anchor the first ordered key, preserve
+// deterministic identity order, and map identity at index `i` to
+// `firstAppFrame + i * (emptyFrames + 1)`. Accepts `N = 0` (adjacent keys).
+// Rejects invalid spacing values, empty input, and unknown non-null selection
+// before any proposal exists. Over-capacity outcomes fail at the common
+// finalizer with no partial proposal.
+// ---------------------------------------------------------------------------
+
+function buildForceSpacingCandidate(
+  identities: ValidatedIdentities,
+  emptyFrames: number,
+  selectedKeyId: string | null,
+): MoveBuilderResult {
+  if (
+    typeof emptyFrames !== 'number' ||
+    !Number.isFinite(emptyFrames) ||
+    !Number.isInteger(emptyFrames) ||
+    emptyFrames < 0
+  ) {
+    return {
+      ok: false,
+      resolution: fail('invalid-spacing', 'force-spacing', 'emptyFrames must be a finite nonnegative integer.'),
+    };
+  }
+  if (identities.ordered.length === 0) {
+    return {
+      ok: false,
+      resolution: fail('empty-key-set', 'force-spacing', 'Force Spacing requires at least one real key to anchor.'),
+    };
+  }
+  if (selectedKeyId !== null) {
+    if (!isBoundedKeyId(selectedKeyId) || !identities.keyIds.has(selectedKeyId)) {
+      return {
+        ok: false,
+        resolution: fail('unknown-operation-identity', 'force-spacing', `Selection identity "${selectedKeyId}" does not exist.`),
+      };
+    }
+  }
+
+  const firstAppFrame = identities.ordered[0].appFrame;
+  const step = emptyFrames + 1;
+  const mapping = new Map<string, number>();
+  const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+
+  for (let i = 0; i < identities.ordered.length; i += 1) {
+    const identity = identities.ordered[i];
+    const next = firstAppFrame + i * step;
+    mapping.set(identity.keyId, next);
+    if (next !== identity.appFrame) {
+      roleByKeyId.set(identity.keyId, 'reanchored');
+    }
+  }
+
+  return {
+    ok: true as const,
+    candidate: {
+      mapping,
+      expectedKeyIds: identities.keyIds,
+      removedKeyId: null,
+      selectedKeyId,
+      operationKind: 'force-spacing',
+      changed: computeChanged(identities, mapping),
+      roleByKeyId,
+      drag: null,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 
 interface FinalizedProposal {
@@ -859,6 +943,10 @@ function buildStatusText(
       ? 'Moved key'
       : `Moved key to frame ${selectedAppFrame}`;
   }
+  if (operationKind === 'force-spacing') {
+    if (!changed) return 'No change';
+    return 'Force Spacing applied';
+  }
   return 'No change';
 }
 
@@ -952,6 +1040,14 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     const moveResult = buildMoveCandidate(identities, intent.movedKeyId, intent.target, input.capacity);
     if (!moveResult.ok) return moveResult.resolution;
     const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled);
+    if (!finalized.ok) return finalized.resolution;
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'force-spacing') {
+    const spacingResult = buildForceSpacingCandidate(identities, intent.emptyFrames, intent.selectedKeyId);
+    if (!spacingResult.ok) return spacingResult.resolution;
+    const finalized = finalizeProposal(spacingResult.candidate, identities, input.capacity, input.interpolationEnabled);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
