@@ -48,13 +48,8 @@ import type {
 import type { PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoPhysicalEditProposal } from '../roto/physicsPaintRotoPhysicalResolver';
-import {
-  createPendingPhysicPaintRotoPhysicalEdit,
-  transitionPhysicPaintRotoPhysicalEditResult,
-  transitionPhysicPaintRotoPhysicalEditTimeout,
-  type PendingPhysicPaintRotoPhysicalEdit,
-} from '../roto/rotoApplyTransactions';
 import type {
+  PendingPhysicPaintRotoPhysicalEdit,
   RotoPhysicalEditAcceptedOutput,
   RotoPhysicalEditCoordinatorPorts,
   RotoPhysicalEditExecuteInput,
@@ -72,6 +67,38 @@ const PHYSICAL_EDIT_TIMEOUT_MESSAGE = 'Roto physical edit timed out. The previou
 const PHYSICAL_EDIT_MISMATCH_MESSAGE = 'Roto physical edit settlement mismatch. The previous state was restored.';
 const PHYSICAL_EDIT_BARRIER_MESSAGE = 'Roto physical edit barriers failed. No state was changed.';
 const PHYSICAL_EDIT_SERIALIZE_MESSAGE = 'A Roto physical edit is already in flight.';
+const PHYSICAL_EDIT_RESULT_MISMATCH_MESSAGE = 'Ignored mismatched physics paint physical edit result. Try the action again.';
+
+/**
+ * Inline result transition (Plan 36.14-05 Task 3 moved from the deleted
+ * `rotoApplyTransactions.ts`). The coordinator classifies a closed
+ * physical apply result against its pending tuple without clearing pending
+ * ownership — only a matching terminal result settles.
+ */
+type PhysicalEditResultTransition =
+  | { readonly type: 'ignore' }
+  | { readonly type: 'mismatch'; readonly message: string }
+  | { readonly type: 'accepted'; readonly ok: boolean; readonly detail: PhysicPaintRotoPhysicalEditApplyResult };
+
+function transitionPhysicalEditResult(
+  pending: PendingPhysicPaintRotoPhysicalEdit | null,
+  detail: PhysicPaintRotoPhysicalEditApplyResult | null | undefined,
+): PhysicalEditResultTransition {
+  if (!detail || !pending) return { type: 'ignore' };
+  if (detail.operationId !== pending.operationId) return { type: 'ignore' };
+  if (
+    detail.kind !== 'replace-roto-physical-map'
+    || detail.operationKind !== pending.operationKind
+    || detail.layerId !== pending.layerId
+    || detail.startFrame !== pending.startFrame
+    || detail.launchOperationId !== pending.launchOperationId
+    || (pending.projectContextId === null ? detail.projectContextId !== undefined : detail.projectContextId !== pending.projectContextId)
+    || detail.expectedRevision !== pending.expectedRevision
+  ) {
+    return { type: 'mismatch', message: PHYSICAL_EDIT_RESULT_MISMATCH_MESSAGE };
+  }
+  return { type: 'accepted', ok: detail.ok, detail };
+}
 
 function cloneRecords(records: readonly PhysicPaintRotoRealKeyRecord[]): PhysicPaintRotoRealKeyRecord[] {
   return records.map((record) => ({
@@ -116,6 +143,28 @@ function recordsToApplyPayloadRecords(records: readonly PhysicPaintRotoRealKeyRe
       ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
     },
   }));
+}
+
+/**
+ * Inline pending-record constructor (Plan 36.14-05 Task 3 moved from the
+ * deleted `rotoApplyTransactions.ts`). Captures the complete pending tuple
+ * from a validated apply payload and the staged revision computed from the
+ * payload's complete records.
+ */
+function createPendingPhysicalEdit(
+  payload: PhysicPaintRotoPhysicalEditApplyPayload,
+  stagedRevision: string,
+): PendingPhysicPaintRotoPhysicalEdit {
+  return {
+    operationId: payload.operationId,
+    operationKind: payload.operationKind,
+    layerId: payload.layerId,
+    startFrame: payload.startFrame,
+    launchOperationId: payload.launchOperationId,
+    projectContextId: payload.projectContextId ?? null,
+    expectedRevision: payload.expectedRevision,
+    stagedRevision,
+  };
 }
 
 /**
@@ -316,7 +365,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       if (!pending || !before || cancelledRef.current) {
         return 'ignore';
       }
-      const transition = transitionPhysicPaintRotoPhysicalEditResult(pending, detail);
+      const transition = transitionPhysicalEditResult(pending, detail);
       if (transition.type === 'ignore') return 'ignore';
       if (transition.type === 'mismatch') {
         portsRef.current.status.logDiagnostic(`Roto physical edit result mismatch: ${transition.message}`);
@@ -471,7 +520,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           ...(input.historyProvenance ? { historyProvenance: input.historyProvenance } : {}),
         };
         pendingHistoryProvenanceRef.current = input.historyProvenance ?? null;
-        const pending = createPendingPhysicPaintRotoPhysicalEdit(payload, stagedRevision);
+        const pending = createPendingPhysicalEdit(payload, stagedRevision);
         beforeRef.current = before;
         pendingRef.current = pending;
         pendingOperationIdSignal.value = operationId;
@@ -502,10 +551,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
 
         clearTimeoutOnce();
         timeoutRef.current = window.setTimeout(() => {
-          const timeoutTransition = transitionPhysicPaintRotoPhysicalEditTimeout(pendingRef.current, operationId);
-          if (!timeoutTransition || !pendingRef.current || !beforeRef.current) return;
-          finalizeFailed(pendingRef.current, beforeRef.current, 'timeout', timeoutTransition.message);
-          portsRef.current.status.setConciseMessage(timeoutTransition.message);
+          const pending = pendingRef.current;
+          if (!pending || pending.operationId !== operationId || !beforeRef.current) return;
+          finalizeFailed(pending, beforeRef.current, 'timeout', PHYSICAL_EDIT_TIMEOUT_MESSAGE);
+          portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_TIMEOUT_MESSAGE);
         }, PHYSICAL_EDIT_TIMEOUT_MS);
         return true;
       } catch (error) {

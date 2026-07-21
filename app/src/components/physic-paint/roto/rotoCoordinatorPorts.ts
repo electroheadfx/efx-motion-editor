@@ -1,12 +1,42 @@
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintRotoCacheFrame, PhysicPaintLaunchContext, PhysicPaintRotoPhysicalEditApplyPayload } from '../../../types/physicPaint';
+import type { PhysicPaintRotoCacheFrame, PhysicPaintLaunchContext, PhysicPaintRotoPhysicalEditApplyPayload, PhysicPaintRotoPhysicalEditOperationKind } from '../../../types/physicPaint';
 import type { RotoKeyUtilityTransaction } from '../roto/physicsPaintRotoKeyController';
 import type { RotoSessionEffect } from '../roto/physicsPaintRotoSession';
 import type { PhysicPaintRotoRealKeyRecord, PhysicPaintRotoInterpolationState } from './physicsPaintRotoPhysicalModel';
 import type { RenderedFramePayload } from './rotoCanvasFrames';
-import type { PendingPhysicPaintRotoPhysicalEdit } from './rotoApplyTransactions';
 import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
+
+/**
+ * Immutable pending physical-edit settlement record (Plan 36.14-04 Task 1;
+ * moved into `rotoCoordinatorPorts.ts` in Plan 36.14-05 Task 3 when the
+ * retired `rotoApplyTransactions.ts` was deleted). The pending tuple is the
+ * complete set of identity members the parent echoes back on acknowledgement;
+ * any mismatch means the result is not for this operation.
+ *
+ * Members:
+ * - `operationId`: bounded unique operation ID allocated by the coordinator;
+ * - `operationKind`: the generic physical-edit operation kind (insert-slot,
+ *   delete-key, move-key, force-spacing, undo, redo);
+ * - `layerId`: the affected Physics Paint layer;
+ * - `launchOperationId`: the launch context identity at dispatch time;
+ * - `projectContextId`: the project context identity at dispatch time
+ *   (optional but echoed back when present);
+ * - `expectedRevision`: the parent-confirmed authoritative revision the
+ *   coordinator used for its pre-stage revalidation;
+ * - `stagedRevision`: the deterministic content revision computed from the
+ *   staged immutable complete records plus enabled interpolation state.
+ */
+export interface PendingPhysicPaintRotoPhysicalEdit {
+  readonly operationId: string;
+  readonly operationKind: PhysicPaintRotoPhysicalEditOperationKind;
+  readonly layerId: string;
+  readonly startFrame: number;
+  readonly launchOperationId: string;
+  readonly projectContextId: string | null;
+  readonly expectedRevision: string;
+  readonly stagedRevision: string;
+}
 
 export interface RotoKeyPersistencePort {
   syncKeyFrameLists: (cacheFrames?: readonly PhysicPaintRotoCacheFrame[]) => void;

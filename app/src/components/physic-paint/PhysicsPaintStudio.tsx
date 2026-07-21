@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import type { EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample, SerializedProject } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
+import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED } from './roto/physicsPaintRotoPhysicalModel';
 import { paintStore } from '../../stores/paintStore';
@@ -15,7 +15,6 @@ import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
 import { selectProjectedRealCachedRotoFrames, selectRealCachedRotoSourceFrameNumbers, selectRotoTimelineView } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
 import { useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
-import { useRotoApplyLifecycle } from './hooks/useRotoApplyLifecycle';
 import { useRotoFrameEditingController } from './hooks/useRotoFrameEditingController';
 import { useRotoPersistenceIntegration } from './hooks/useRotoPersistenceIntegration';
 import { useRotoPhysicalEditCoordinator } from './hooks/useRotoPhysicalEditCoordinator';
@@ -158,20 +157,26 @@ export function PhysicsPaintStudio() {
   const syncPendingRotoFrames = useCallback(() => {
     resetRotoKeySessionRef.current({ clearClipboard: false });
   }, []);
+  const physicalEditCoordinatorRouteRef = useRef<{ consumeBridgeApplyResult: (detail: PhysicPaintApplyResult | null | undefined) => 'ignore' | 'mismatch' | 'accepted' } | null>(null);
+  const applyResultController = usePhysicsPaintApplyResultController({
+    bridgeMode,
+    general: { pendingKeyActionMessageRef: pendingRotoKeyActionMessageRef, setApplyStatus, setApplyMessage, setLastError },
+    physicalEditCoordinator: { consumeBridgeApplyResult: (detail) => physicalEditCoordinatorRouteRef.current!.consumeBridgeApplyResult(detail) },
+    timeout: {
+      onTimeout: (message) => {
+        setApplyStatus('error');
+        setApplyMessage(message);
+        setLastError(message);
+        pendingRotoKeyActionMessageRef.current = null;
+      },
+    },
+  });
   const {
     activeOperationIdRef,
     pendingApplyRef,
     registerPendingApply,
-    matchApplyResult,
     startApplyTimeout,
-  } = useRotoApplyLifecycle({
-    onTimeout: (transition) => {
-      setApplyStatus('error');
-      setApplyMessage(transition.message);
-      setLastError(transition.message);
-      pendingRotoKeyActionMessageRef.current = null;
-    },
-  });
+  } = applyResultController;
   const projectCanvasWidth = launchContext?.width ?? DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH;
   const projectCanvasHeight = launchContext?.height ?? DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT;
   const workingCanvasSize = getPhysicsPaintWorkingSize(projectCanvasWidth, projectCanvasHeight);
@@ -671,11 +676,9 @@ export function PhysicsPaintStudio() {
       isMutationLocked: () => rotoScript.mutationLocked.peek(),
     },
   });
-  usePhysicsPaintApplyResultController({
-    bridgeMode,
-    general: { matchApplyResult, pendingKeyActionMessageRef: pendingRotoKeyActionMessageRef, setApplyStatus, setApplyMessage, setLastError },
-    physicalEditCoordinator: { consumeBridgeApplyResult: (detail) => physicalEditCoordinator.consumeBridgeApplyResult(detail) },
-  });
+  physicalEditCoordinatorRouteRef.current = {
+    consumeBridgeApplyResult: (detail) => physicalEditCoordinator.consumeBridgeApplyResult(detail),
+  };
   const handlePhysicsPaintKeyDown = usePhysicsPaintStudioKeyboard({
     state: { currentFrame, isPlaying, mutationLocked },
     savedRotoFrames: timelineSavedRotoFrames,
