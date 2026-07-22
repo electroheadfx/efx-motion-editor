@@ -1,9 +1,12 @@
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintLaunchContext, PhysicPaintRotoPhysicalEditApplyPayload, PhysicPaintRotoPhysicalEditOperationKind } from '../../../types/physicPaint';
-import type { RotoKeyUtilityTransaction } from '../roto/physicsPaintRotoKeyController';
 import type { RotoSessionEffect } from '../roto/physicsPaintRotoSession';
-import type { PhysicPaintRotoRealKeyRecord, PhysicPaintRotoInterpolationState } from './physicsPaintRotoPhysicalModel';
+import type {
+  PhysicPaintRotoInterpolationState,
+  PhysicPaintRotoRealKeyPayload,
+  PhysicPaintRotoRealKeyRecord,
+} from './physicsPaintRotoPhysicalModel';
 import type { RenderedFramePayload } from './rotoCanvasFrames';
 import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 
@@ -38,19 +41,18 @@ export interface PendingPhysicPaintRotoPhysicalEdit {
   readonly stagedRevision: string;
 }
 
-export interface RotoKeyPersistencePort {
-  syncKeyFrameLists: (cacheFrames?: readonly PhysicPaintRotoCacheFrame[]) => void;
-  applyKeyFrames: (transaction: RotoKeyUtilityTransaction) => readonly PhysicPaintRotoCacheFrame[];
-  persistKeyFrameTransaction: (transaction: RotoKeyUtilityTransaction) => Promise<void>;
-}
-
 /**
- * Narrow semantic utility boundary. Callers provide only the accepted stable
- * source identity; the physical resolver/coordinator own destination, records,
- * staging, settlement, rollback, and history.
+ * Narrow semantic utility boundary. Callers provide only stable physical
+ * identity, direct destination, and immutable copied paint; the physical
+ * resolver/coordinator own records, staging, settlement, rollback, and history.
  */
 export interface RotoPhysicalKeyUtilityPort {
   duplicateKey: (sourceKeyId: string) => Promise<boolean>;
+  pasteKey: (
+    destinationAppFrame: number,
+    clipboardPayload: PhysicPaintRotoRealKeyPayload,
+    destinationKeyId: string | null,
+  ) => Promise<boolean>;
 }
 
 export interface RotoFrameDisplayPort {
@@ -58,14 +60,6 @@ export interface RotoFrameDisplayPort {
   clearCanvas: (frame: number) => void;
   navigate: (frame: number) => Promise<void | boolean>;
   clearCachedReferenceFrame: (frame: number) => void;
-}
-
-export function createRotoKeyPersistencePort(): RotoKeyPersistencePort {
-  return {
-    syncKeyFrameLists: () => {},
-    applyKeyFrames: () => [],
-    persistKeyFrameTransaction: async () => {},
-  };
 }
 
 export function createRotoFrameDisplayPort(): RotoFrameDisplayPort {

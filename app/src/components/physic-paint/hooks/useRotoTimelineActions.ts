@@ -7,11 +7,16 @@ import {
   updateRotoInterpolationSettingsTransaction,
   type RotoSourceDisplayModel,
 } from '../roto/physicsPaintRotoKeyController';
-import type { PhysicPaintRotoRealKeyRecord, PhysicPaintRotoInterpolationState } from '../roto/physicsPaintRotoPhysicalModel';
+import type {
+  PhysicPaintRotoInterpolationState,
+  PhysicPaintRotoRealKeyPayload,
+  PhysicPaintRotoRealKeyRecord,
+} from '../roto/physicsPaintRotoPhysicalModel';
 import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import {
   createPhysicPaintRotoDuplicateKeyIntent,
+  createPhysicPaintRotoPasteKeyIntent,
   resolvePhysicPaintRotoPhysicalEdit,
   type PhysicPaintRotoPhysicalEditIntent,
   type PhysicPaintRotoPhysicalEditProposal,
@@ -166,7 +171,7 @@ export interface RotoTimelineActionsInput {
 
 interface PhysicalActionRunnerInput {
   readonly intent: PhysicPaintRotoPhysicalEditIntent;
-  readonly operationKind: 'insert-slot' | 'delete-key' | 'duplicate-key';
+  readonly operationKind: 'insert-slot' | 'delete-key' | 'duplicate-key' | 'paste-key';
   readonly requiredKeyId: string | null;
   readonly successMessage: string;
 }
@@ -174,6 +179,7 @@ interface PhysicalActionRunnerInput {
 const INSERT_SUCCESS_MESSAGE = 'Inserted an empty Roto frame before the selected key.';
 const DELETE_SUCCESS_MESSAGE = 'Deleted the selected Roto key.';
 const DUPLICATE_SUCCESS_MESSAGE = 'Duplicated the selected Roto key.';
+const PASTE_SUCCESS_MESSAGE = 'Pasted the copied paint into the Roto timeline.';
 const INVALID_FORCE_SPACING_MESSAGE = 'Enter a whole number of empty frames (0 or more).';
 
 export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
@@ -310,6 +316,36 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       requiredKeyId: sourceKeyId,
       successMessage: DUPLICATE_SUCCESS_MESSAGE,
     });
+  }, [input, runPhysicalAction]);
+
+  const pasteKey = useCallback((
+    destinationAppFrame: number,
+    clipboardPayload: PhysicPaintRotoRealKeyPayload,
+    destinationKeyId: string | null,
+  ): Promise<boolean> => {
+    if (!Number.isInteger(destinationAppFrame) || destinationAppFrame < 0) {
+      input.publishStatus?.('Select a valid Roto frame before pasting.');
+      return Promise.resolve(false);
+    }
+    if (destinationKeyId !== null && !isBoundedKeyId(destinationKeyId)) {
+      input.publishStatus?.('The destination Roto key identity is malformed.');
+      return Promise.resolve(false);
+    }
+    try {
+      return runPhysicalAction({
+        intent: createPhysicPaintRotoPasteKeyIntent(
+          destinationAppFrame,
+          clipboardPayload,
+          destinationKeyId,
+        ),
+        operationKind: 'paste-key',
+        requiredKeyId: destinationKeyId,
+        successMessage: PASTE_SUCCESS_MESSAGE,
+      });
+    } catch {
+      input.publishStatus?.('The copied Roto paint is unavailable.');
+      return Promise.resolve(false);
+    }
   }, [input, runPhysicalAction]);
 
   const prepareRotoKeyDrag = useCallback((movedKeyId: string, target: RotoDragTarget): RotoDragPreparationResult => {
@@ -478,7 +514,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,
-  }), [duplicateKey]);
+    pasteKey,
+  }), [duplicateKey, pasteKey]);
 
   return {
     saveRealKeyAtDisplayFrame,

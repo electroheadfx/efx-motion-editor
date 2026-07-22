@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'preact/hooks';
 import type { PhysicsPaintWorkflowStripFrameMarker } from '../view/PhysicsPaintWorkflowStrip';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
-import { createRotoFrameDisplayPort, createRotoKeyPersistencePort } from '../roto/rotoCoordinatorPorts';
+import { createRotoFrameDisplayPort } from '../roto/rotoCoordinatorPorts';
 import { createRotoNavigationActions, getRotoNavigationTargets } from '../roto/rotoNavigationActions';
 import { useRotoCachedPlayback, type RotoCachedPlaybackFrame } from './useRotoCachedPlayback';
 import { useRotoKeyUtilities, type RotoKeyUtilitiesInput } from './useRotoKeyUtilities';
@@ -15,7 +15,7 @@ export interface UseRotoNavigationCoordinatorInput<TPreview extends { appFrame: 
   workflowMode: PhysicsPaintWorkflowMode;
   beforeNavigation?: (targetFrame: number) => Promise<boolean>;
   afterNavigation?: () => void;
-  keyUtilities: Omit<RotoKeyUtilitiesInput<TPreview>, 'syncRotoKeyFrameLists' | 'applyRotoKeyFrames' | 'persistRotoKeyFrameTransaction' | 'restoreFrame' | 'clearCanvas' | 'navigate' | 'clearCachedReferenceFrame'>;
+  keyUtilities: Omit<RotoKeyUtilitiesInput<TPreview>, 'restoreFrame' | 'clearCanvas' | 'navigate' | 'clearCachedReferenceFrame'>;
   playback: {
     initialFps: number;
     getProjection: () => PhysicPaintRotoPhysicalTimelineProjection | null;
@@ -29,7 +29,6 @@ export interface UseRotoNavigationCoordinatorInput<TPreview extends { appFrame: 
 export function useRotoNavigationCoordinator<TPreview extends { appFrame: number }>(input: UseRotoNavigationCoordinatorInput<TPreview>) {
   const inputRef = useRef(input);
   inputRef.current = input;
-  const persistencePortRef = useRef(createRotoKeyPersistencePort());
   const displayPortRef = useRef(createRotoFrameDisplayPort());
   const runtimePortRef = useRef<RotoNavigationRuntimePort>({
     navigateToSyncedFrame: async () => false,
@@ -38,9 +37,6 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
   const keyUtilities = useRotoKeyUtilities({
     ...input.keyUtilities,
     physicalKeyUtilities: input.keyUtilities.physicalKeyUtilities,
-    syncRotoKeyFrameLists: (frames) => persistencePortRef.current.syncKeyFrameLists(frames),
-    applyRotoKeyFrames: (transaction) => persistencePortRef.current.applyKeyFrames(transaction),
-    persistRotoKeyFrameTransaction: (transaction) => persistencePortRef.current.persistKeyFrameTransaction(transaction),
     restoreFrame: (effect, refreshedCacheFrames) => displayPortRef.current.restoreFrame(effect, refreshedCacheFrames),
     clearCanvas: (frame) => displayPortRef.current.clearCanvas(frame),
     navigate: (frame) => displayPortRef.current.navigate(frame),
@@ -95,7 +91,6 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
       playback.resetForLaunch();
       keyUtilities.resetSession();
     },
-    configurePersistencePort: (port: typeof persistencePortRef.current) => { persistencePortRef.current = port; },
     configureDisplayPort: (port: typeof displayPortRef.current) => { displayPortRef.current = port; },
     configureRuntimePort: (port: RotoNavigationRuntimePort) => { runtimePortRef.current = port; },
   };

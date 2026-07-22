@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoSegmentSpacingOverride } from '../../../types/physicPaint';
-import { applyRotoKeyUtilityTransactionToLocalState, type RotoKeyUtilityTransaction } from '../roto/physicsPaintRotoKeyController';
 import { createRotoSession, type RotoSession, type RotoSessionActionResult, type RotoSessionCopiedKey, type RotoSessionEffect } from '../roto/physicsPaintRotoSession';
+import type { RotoKeyUtilityTransaction } from '../roto/physicsPaintRotoKeyController';
+import type { PhysicPaintRotoRealKeyPayload } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalKeyUtilityPort } from '../roto/rotoCoordinatorPorts';
 
 export interface RotoKeyUtilitiesInput<TPreview extends { appFrame: number }> {
@@ -23,9 +24,6 @@ export interface RotoKeyUtilitiesInput<TPreview extends { appFrame: number }> {
   setPreviewFrames: (frames: Map<number, TPreview | PhysicPaintRotoCacheFrame>) => void;
   setDirtyFrames: (frames: Set<number>) => void;
   syncPendingRotoFrames: () => void;
-  syncRotoKeyFrameLists: (cacheFrames?: readonly PhysicPaintRotoCacheFrame[]) => void;
-  applyRotoKeyFrames: (transaction: RotoKeyUtilityTransaction) => readonly PhysicPaintRotoCacheFrame[];
-  persistRotoKeyFrameTransaction: (transaction: RotoKeyUtilityTransaction) => Promise<void>;
   restoreFrame: (effect: Extract<RotoSessionEffect, { type: 'restoreFrame' }>, refreshedCacheFrames?: readonly PhysicPaintRotoCacheFrame[]) => void;
   clearCanvas: (frame: number) => void;
   showCachedReference: (frame: PhysicPaintRotoCacheFrame) => void;
@@ -93,37 +91,13 @@ export function useRotoKeyUtilities<TPreview extends { appFrame: number }>(input
     setSessionVersion((version) => version + 1);
   }, []);
 
-  const applyTransaction = useCallback((transaction: RotoKeyUtilityTransaction): readonly PhysicPaintRotoCacheFrame[] => {
-    const nextLocalState = applyRotoKeyUtilityTransactionToLocalState({
-      editableStates: new Map(),
-      previewFrames: input.getPreviewFrames(),
-      transaction,
-    });
-    input.setPreviewFrames(nextLocalState.previewFrames as Map<number, TPreview | PhysicPaintRotoCacheFrame>);
-    const refreshedCacheFrames = input.applyRotoKeyFrames(transaction);
-    const publishedFrames = refreshedCacheFrames.length > 0 ? refreshedCacheFrames : transaction.realKeyFrames;
-    input.syncRotoKeyFrameLists(publishedFrames);
-    return publishedFrames;
-  }, [input]);
-
   const executeSessionEffects = useCallback(async (effects: readonly RotoSessionEffect[]) => {
-    let replacedRotoKeys = false;
-    let refreshedCacheFrames: readonly PhysicPaintRotoCacheFrame[] | undefined;
     for (const effect of effects) {
       switch (effect.type) {
         case 'replaceKeys':
-          refreshedCacheFrames = applyTransaction(effect.transaction);
-          replacedRotoKeys = true;
-          void input.persistRotoKeyFrameTransaction(effect.transaction).catch((error) => {
-            const detail = error instanceof Error ? error.message : String(error);
-            const message = `Could not persist Roto key changes. ${detail}`;
-            input.setApplyStatus('error');
-            input.setApplyMessage(message);
-            input.setLastError(message);
-          });
-          break;
+          throw new Error('Roto key replacement requires the physical edit coordinator.');
         case 'restoreFrame':
-          input.restoreFrame(effect, refreshedCacheFrames);
+          input.restoreFrame(effect);
           break;
         case 'clearCanvas':
           input.clearCanvas(effect.frame);
@@ -135,14 +109,14 @@ export function useRotoKeyUtilities<TPreview extends { appFrame: number }>(input
           await input.navigate(effect.frame);
           break;
         case 'clearGeneratedFrames':
-          if (!replacedRotoKeys) for (const frame of effect.frames) input.clearGeneratedFrame(frame);
+          for (const frame of effect.frames) input.clearGeneratedFrame(frame);
           break;
         case 'clearCachedReferences':
         case 'clearBackgroundOnlySupport':
-          if (!replacedRotoKeys) for (const frame of effect.frames) input.clearCachedReferenceFrame(frame);
+          for (const frame of effect.frames) input.clearCachedReferenceFrame(frame);
           break;
         case 'clearDeletedFrames':
-          if (!replacedRotoKeys) for (const frame of effect.frames) input.clearDeletedFrame(frame);
+          for (const frame of effect.frames) input.clearDeletedFrame(frame);
           break;
         default: {
           const exhaustive: never = effect;
@@ -150,7 +124,7 @@ export function useRotoKeyUtilities<TPreview extends { appFrame: number }>(input
         }
       }
     }
-  }, [applyTransaction, input, session]);
+  }, [input]);
 
   const runSessionResult = useCallback(async (result: RotoSessionActionResult, sourceSession = session) => {
     if (!result.ok) {
@@ -197,7 +171,12 @@ export function useRotoKeyUtilities<TPreview extends { appFrame: number }>(input
       return;
     }
     setKeyActionInFlight(true);
-    void input.physicalKeyUtilities.duplicateKey(sourceKeyId).finally(() => {
+    void input.physicalKeyUtilities.duplicateKey(sourceKeyId).catch((error) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      input.setApplyStatus('error');
+      input.setApplyMessage('Could not duplicate the Roto key.');
+      input.setLastError(detail);
+    }).finally(() => {
       setKeyActionInFlight(false);
     });
   }, [blocked, input, requireCurrentRealKey]);
@@ -214,8 +193,31 @@ export function useRotoKeyUtilities<TPreview extends { appFrame: number }>(input
 
   const pasteKey = useCallback(() => {
     if (blocked) return;
-    void runSessionResult(session.pasteKey());
-  }, [blocked, input, runSessionResult, session]);
+    const actionState = session.actionAvailability.value;
+    if (!actionState.canPaste) {
+      input.setApplyMessage(actionState.pasteDisabledReason ?? 'Copy a real Roto key before pasting.');
+      return;
+    }
+    const copiedKey = session.copiedKey.value;
+    if (!copiedKey) {
+      input.setApplyMessage('Copy a real Roto key before pasting.');
+      return;
+    }
+    const clipboardPayload = toClipboardPayload(copiedKey);
+    setKeyActionInFlight(true);
+    void input.physicalKeyUtilities.pasteKey(
+      input.currentFrame,
+      clipboardPayload,
+      input.currentKeyId,
+    ).catch((error) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      input.setApplyStatus('error');
+      input.setApplyMessage('Could not paste the copied Roto paint.');
+      input.setLastError(detail);
+    }).finally(() => {
+      setKeyActionInFlight(false);
+    });
+  }, [blocked, input, session]);
 
   return {
     session,
@@ -227,4 +229,15 @@ export function useRotoKeyUtilities<TPreview extends { appFrame: number }>(input
     copyKey,
     pasteKey,
   };
+}
+
+function toClipboardPayload(copiedKey: RotoSessionCopiedKey): PhysicPaintRotoRealKeyPayload {
+  const frame = copiedKey.cachedFrame;
+  return Object.freeze({
+    frameIndex: frame.frameIndex,
+    appFrame: copiedKey.frame,
+    dataUrl: frame.dataUrl,
+    ...(frame.width !== undefined ? { width: frame.width } : {}),
+    ...(frame.height !== undefined ? { height: frame.height } : {}),
+  }) as PhysicPaintRotoRealKeyPayload;
 }
