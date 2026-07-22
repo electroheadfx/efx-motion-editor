@@ -518,7 +518,7 @@ Plans:
 
 **Wave 11** *(blocked on Wave 10)*
 
-- [ ] 36.14-20-PLAN.md — Extend exactly four foundation owners with explicit ordinary Duplicate/Paste kinds, complete validated next-record proposals, centralized coordinator staging and exact acknowledgement, and accepted-only ordinary history; run typecheck only.
+- [ ] 36.14-20-PLAN.md — Extend exactly five foundation owners—`app/src/types/physicPaint.ts`, `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts`, `app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.ts`, `app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.ts`, and `app/src/lib/physicPaintBridge.ts`—with explicit ordinary Duplicate/Paste kinds, complete validated next-record proposals, centralized coordinator staging and exact acknowledgement, and accepted-only ordinary history; run typecheck only.
 
 **Wave 12** *(blocked on Wave 11)*
 
