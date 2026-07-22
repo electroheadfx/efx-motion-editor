@@ -526,15 +526,15 @@ Plans:
 
 **Wave 13** *(blocked on Wave 12)*
 
-- [x] 36.14-11-PLAN.md — Audit Plan 20 semantic ownership, Plan 19 composition ownership, current callers, and stable-identity Clear through `useRotoFrameEditingController.ts`; run `pnpm --dir app typecheck` and `pnpm --dir app build` before the native gate.
+- [x] 36.14-11-PLAN.md — Audit Plan 20 semantic ownership, Plan 19 composition ownership, current callers, and stable-identity Clear through `useRotoFrameEditingController.ts`; close on bounded static production evidence after the single typecheck attempt exposed obsolete pre-UAT test contracts, with build and the full compile proof deferred to Plan 13 by explicit user decision.
 
 **Wave 14** *(blocked on Wave 13)* — Native UAT checkpoint
 
-- [ ] 36.14-12-PLAN.md — Stop at the blocking user-owned native physical-model UAT checkpoint; no regression test work until explicit user approval and byte-verified `36.14-12-APPROVAL.txt`.
+- [ ] 36.14-12-PLAN.md — Stop at the blocking user-owned native physical-model UAT checkpoint after verifying Plan 11's bounded static production evidence and transparent compile deferral; do not rerun typecheck/build or begin regression work until explicit user approval and byte-verified `36.14-12-APPROVAL.txt`.
 
 **Wave 15** *(blocked on Wave 14 approval evidence)* — Post-UAT regression unlock
 
-- [ ] 36.14-13-PLAN.md — After byte-exact Plan 12 approval, transfer valid wrapper assertions into final-owner regressions, delete six obsolete wrapper tests plus `useRotoPersistenceIntegration.ts` and `rotoSaveTransactions.ts` in one clean cutover, and rewrite `useRotoInterpolationController.test.ts`.
+- [ ] 36.14-13-PLAN.md — After byte-exact Plan 12 approval, transfer valid wrapper assertions into final-owner regressions, delete six obsolete wrapper tests plus the three dormant production modules in one clean cutover, rewrite `useRotoInterpolationController.test.ts`, run the focused matrix, then supply the deferred full typecheck/build proof.
 
 **Wave 16** *(blocked on Wave 15)*
 
