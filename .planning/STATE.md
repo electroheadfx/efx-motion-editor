@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
-stopped_at: Completed 36.14-19-PLAN.md; ready for 36.14-11-PLAN.md at Wave 13
-last_updated: "2026-07-22T12:11:17.830Z"
+stopped_at: Completed 36.14-11-PLAN.md
+last_updated: "2026-07-22T13:59:29.542Z"
 last_activity: 2026-07-22
-last_activity_desc: Completed five-owner physical key-utility cutover Plan 36.14-19; ready for Plan 11
+last_activity_desc: Completed Plan 36.14-11; ready for blocking Plan 12 native UAT
 progress:
   total_phases: 17
   completed_phases: 16
   total_plans: 112
-  completed_plans: 104
-  percent: 93
+  completed_plans: 105
+  percent: 94
 ---
 
 # Project State
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 11 of 20
+Plan: 12 of 20
 Status: Ready to execute
-Last activity: 2026-07-22 — Completed five-owner physical key-utility cutover Plan 36.14-19
-Next recommended action: Execute Plan 36.14-11 via /gsd-execute-phase 36.14 --wave 13
+Last activity: 2026-07-22 — Completed Plan 36.14-11; ready for blocking Plan 12 native UAT
+Next recommended action: Execute Plan 36.14-12 blocking native UAT
 
-Progress: [██████████████████░░] 104/112 plans complete; 16/17 phases complete ([█████████░] 93%)
+Progress: [███████████████████░] 105/112 plans complete; 16/17 phases complete ([█████████░] 94%)
 
 ## Performance Metrics
 
@@ -101,6 +101,7 @@ Progress: [██████████████████░░] 104/112
 | Phase 36.14 P10 | 40min | 3 tasks | 15 files |
 | Phase 36.14 P20 | 10min | 2 tasks | 5 files |
 | Phase 36.14 P19 | 14min | 3 tasks | 5 files |
+| Phase 36.14 P11 | 30min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -174,6 +175,10 @@ Recent decisions affecting current work:
 - [Phase 36.14 Plan 19]: Paste carries direct destination appFrame, existing destination keyId or null, and a frozen reusable copied-paint payload through Plan 20's semantic seam.
 - [Phase 36.14 Plan 19]: The production key-utility route has no local frame-list staging, fire-and-forget persistence, or configurable generic persistence port.
 - [Phase 36.14 Plan 19]: Studio composes timeline actions before navigation and passes the semantic utility port directly without a ref or effect mirror.
+- [Phase ?]: Plan 11 closes on bounded static production audits and does not claim successful typecheck or build.
+- [Phase ?]: The complete typecheck and build proof moves to Plan 13 after byte-exact Plan 12 approval and stale-test contract transfer.
+- [Phase ?]: No source/display compatibility field, forwarding wrapper, alias, TypeScript exclusion, test workaround, or second transaction authority is introduced.
+- [Phase ?]: Approval-gated dormant persistence and cache modules remain production-unreachable until Plan 13 deletes them with obsolete tests.
 
 ### Pending Todos
 
@@ -201,6 +206,7 @@ None yet.
 - Quick 260718-fp9 dynamic Physics Paint labels passed renewed native UAT on 2026-07-18. Timeline headers derive consecutive `PPaint #n` labels from current top-to-bottom Physics Paint order, reorder/delete renumber immediately, and the standalone receives the selected track label without changing persisted names or Roto script provenance.
 - Quick 260718-j3h Physics Paint Roto Backspace/Delete shortcuts passed native UAT on 2026-07-18. Both keys reuse the visible Delete transaction, preserve real/generated/empty/busy guards and existing shortcuts, and clear the preview base before blank-canvas restoration so deleted paint refreshes immediately.
 - Quick 260718-m2f single-real-key Roto drag passed native UAT and 7/7 verification on 2026-07-19. Pointer capture, atomic publication/rollback, local Undo/Redo, canonical closer/farther/generated timing, effective destination feedback, persistence, and payload metadata preservation are approved. Regression tests remain intentionally deferred to the next interpolation-review quick.
+- Plan 36.14-11 Task 3 final typecheck is blocked because existing pre-UAT regression files still instantiate the removed source/display Script contracts. Plan 11 forbids test edits, test config changes, compatibility adapters, and a second final gate invocation; build did not run after typecheck failed.
 
 ### Quick Tasks Completed
 
@@ -250,6 +256,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-22T12:11:17.818Z
-Stopped at: Completed 36.14-19-PLAN.md; ready for 36.14-11-PLAN.md at Wave 13
-Resume file: .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-11-PLAN.md
+Last session: 2026-07-22T13:57:26.483Z
+Stopped at: Completed 36.14-11-PLAN.md
+Resume file: None

@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 0
+open_count: 2
 waived_count: 0
 fixed_count: 3
-total_count: 3
-last_updated: 2026-07-22T10:53:08.869Z
+total_count: 5
+last_updated: 2026-07-22T13:56:41.382Z
 ---
 
 # Broken Windows Ledger
@@ -18,6 +18,8 @@ last_updated: 2026-07-22T10:53:08.869Z
 | 1 | 36.14 | deviation | app/src/lib/physicPaintBridge.ts |  | Valid physical failures now use the exact parent acknowledgement shape. | fixed |  | 2026-07-22T10:48:07.831Z | 2026-07-22T10:53:08.172Z |
 | 2 | 36.14 | deviation | app/src/lib/physicPaintBridge.ts |  | Complete physical-map edits bypass the legacy generated display mutation guard and use authoritative semantic validation. | fixed |  | 2026-07-22T10:48:07.922Z | 2026-07-22T10:53:08.534Z |
 | 3 | 36.14 | deviation | app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts |  | Malformed resolver intents are rejected before reading their discriminator. | fixed |  | 2026-07-22T10:48:08.016Z | 2026-07-22T10:53:08.869Z |
+| 4 | 36.14 | deviation | .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-11-SUMMARY.md |  | Compile proof deferred to Plan 13 after byte-exact native UAT approval | open |  | 2026-07-22T13:56:41.272Z |  |
+| 5 | 36.14 | unrun-verify | .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-11-SUMMARY.md |  | Build did not run because the chained typecheck failed on obsolete pre-UAT Script tests | open |  | 2026-07-22T13:56:41.382Z |  |
 
 ````json
 [
@@ -56,6 +58,30 @@ last_updated: 2026-07-22T10:53:08.869Z
     "reason": "",
     "recorded_at": "2026-07-22T10:48:08.016Z",
     "resolved_at": "2026-07-22T10:53:08.869Z"
+  },
+  {
+    "id": 4,
+    "kind": "deviation",
+    "phase": "36.14",
+    "file": ".planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-11-SUMMARY.md",
+    "line": null,
+    "description": "Compile proof deferred to Plan 13 after byte-exact native UAT approval",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-07-22T13:56:41.272Z",
+    "resolved_at": null
+  },
+  {
+    "id": 5,
+    "kind": "unrun-verify",
+    "phase": "36.14",
+    "file": ".planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-11-SUMMARY.md",
+    "line": null,
+    "description": "Build did not run because the chained typecheck failed on obsolete pre-UAT Script tests",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-07-22T13:56:41.382Z",
+    "resolved_at": null
   }
 ]
 ````
