@@ -53,7 +53,6 @@ type UndoRedoEngine = EfxPaintEngine & {
 export interface UseRotoFrameEditingControllerInput<TEditable extends RotoEditableState> {
   workflowMode: PhysicsPaintWorkflowMode;
   currentFrame: number;
-  currentFrameSourceFrame?: number | null;
   currentFrameSelectionKind: RotoTimelineSelectionKind;
   canvasSize: { width: number; height: number };
   engine: EfxPaintEngine | null;
@@ -61,7 +60,7 @@ export interface UseRotoFrameEditingControllerInput<TEditable extends RotoEditab
   editBuffer: RotoEditBufferPort<TEditable>;
   session: RotoSessionEditingPort;
   reference: RotoReferenceEditingPort;
-  clearCachedFrame: (sourceFrame: number, size: { width: number; height: number }, displayFrame: number) => void;
+  clearCachedFrame: (keyId: string, appFrame: number, size: { width: number; height: number }) => boolean;
   playback: { stop: () => void };
   syncPendingFrames: () => void;
   status: RotoEditingStatusPort;
@@ -152,19 +151,36 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
   }, [input]);
 
   const clearCurrentFrame = useCallback(() => {
-    if (input.isMutationLocked?.() || !input.engine || !input.launchContext || input.workflowMode !== 'roto' || input.currentFrameSelectionKind !== 'real-key') return false;
+    const selectedKeyId = input.selectedKeyId;
+    const selectedRealKey = input.selectedRealKey;
+    const currentCell = input.currentCell;
+    if (
+      input.isMutationLocked?.()
+      || !input.engine
+      || !input.launchContext
+      || input.workflowMode !== 'roto'
+      || input.currentFrameSelectionKind !== 'real-key'
+      || !selectedKeyId
+      || !selectedRealKey
+      || selectedRealKey.keyId !== selectedKeyId
+      || selectedRealKey.appFrame !== input.currentFrame
+      || currentCell?.kind !== 'real'
+      || currentCell.keyId !== selectedKeyId
+      || currentCell.appFrame !== selectedRealKey.appFrame
+    ) return false;
+
+    const appFrame = selectedRealKey.appFrame;
     input.playback.stop();
     input.engine.clear();
     (input.engine as PreviewBackgroundEngine).clearPreviewBaseImage();
     (input.engine as PreviewBackgroundEngine).resetBackground();
-    const sourceFrame = input.currentFrameSourceFrame ?? input.currentFrame;
     input.reference.resetReference();
-    input.editBuffer.clearFrame(sourceFrame);
-    input.session.markLiveOverlayEmpty(sourceFrame);
-    input.clearCachedFrame(sourceFrame, input.canvasSize, input.currentFrame);
+    input.editBuffer.clearFrame(appFrame);
+    input.session.markLiveOverlayEmpty(appFrame);
+    if (!input.clearCachedFrame(selectedKeyId, appFrame, input.canvasSize)) return false;
     input.syncPendingFrames();
     input.status.setApplyStatus('success');
-    input.status.setApplyMessage(`Cleared roto frame ${input.currentFrame}.`);
+    input.status.setApplyMessage(`Cleared roto frame ${appFrame}.`);
     return true;
   }, [input]);
 

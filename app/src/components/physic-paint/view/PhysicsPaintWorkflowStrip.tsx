@@ -10,13 +10,10 @@ import {
   type RotoCellViewModel, type RotoMissingFrameStatusKind,
   type RotoDragPreviewViewModel,
 } from './physicsPaintWorkflowPresentation';
-import {
-  getExpandedRotoRealKeyFrames, getRotoInterpolationSpanFrames, type RotoInterpolationSettings,
-} from '../roto/physicsPaintRotoWorkflow';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type { RotoKeyUtilityActionState } from '../roto/physicsPaintRotoKeyController';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
-import type { PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoInterpolationState, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import type {
   RotoDragPublication,
@@ -78,7 +75,7 @@ export interface PhysicsPaintWorkflowStripProps {
   occupiedRotoFrames?: number[];
   savedRotoFrames?: PhysicsPaintWorkflowStripFrameMarker[];
   cachedRotoFrames?: PhysicPaintRotoCacheFrame[];
-  rotoInterpolationSettings?: RotoInterpolationSettings;
+  rotoInterpolationSettings?: PhysicPaintRotoInterpolationState;
   statusMessage?: string | null;
   rotoMissingFrameStatusKind?: RotoMissingFrameStatusKind | null;
   onion: PhysicsPaintOnionState;
@@ -94,7 +91,6 @@ export interface PhysicsPaintWorkflowStripProps {
   onRotoPlaybackFpsChange?: (fps: number) => void;
   isRotoCachedPlaybackActive?: boolean;
   onRotoInterpolationEnabledChange?: (enabled: boolean) => void;
-  onRotoInterpolationCountChange?: (count: number) => void;
   onDuplicateRotoKey?: () => void;
   onInsertRotoFrame?: () => void;
   onDeleteRotoFrame?: () => void;
@@ -139,42 +135,8 @@ function buildRulerTicks(frameCells: number[]): number[] {
 
 
 
-function isOccupiedFrame(frames: number[] | undefined, frame: number): boolean {
-  return Boolean(frames?.includes(frame));
-}
-
 function isSavedFrame(markers: PhysicsPaintWorkflowStripFrameMarker[] | undefined, frame: number): boolean {
   return Boolean(markers?.some(marker => marker.frame === frame && marker.saved !== false && marker.source !== 'generated-interpolation'));
-}
-
-function getRealRotoFrames(occupiedFrames: number[] | undefined, savedFrames: PhysicsPaintWorkflowStripFrameMarker[] | undefined, cachedFrames: PhysicPaintRotoCacheFrame[] | undefined): number[] {
-  return Array.from(new Set([
-    ...(occupiedFrames ?? []),
-    ...(savedFrames ?? []).filter(marker => marker.source !== 'generated-interpolation').map(marker => marker.frame),
-    ...(cachedFrames ?? []).filter(marker => marker.source !== 'generated-interpolation').map(marker => marker.appFrame),
-  ])).filter(frame => Number.isInteger(frame) && frame >= 0).sort((a, b) => a - b);
-}
-
-function normalizeRotoCacheForDisabledInterpolation(cachedFrames: PhysicPaintRotoCacheFrame[] | undefined): PhysicPaintRotoCacheFrame[] {
-  return (cachedFrames ?? [])
-    .filter(frame => frame.source !== 'generated-interpolation')
-    .map((frame) => {
-      if (frame.source !== 'real-key') return { ...frame };
-      const sourceFrame = frame.sourceFrame ?? frame.appFrame;
-      return { ...frame, appFrame: sourceFrame, sourceFrame, displayFrame: sourceFrame };
-    })
-    .sort((a, b) => a.appFrame - b.appFrame || a.frameIndex - b.frameIndex);
-}
-
-function getDisplayRotoCacheFrames(cachedFrames: PhysicPaintRotoCacheFrame[] | undefined, interpolationEnabled: boolean): PhysicPaintRotoCacheFrame[] {
-  return interpolationEnabled ? [...(cachedFrames ?? [])] : normalizeRotoCacheForDisabledInterpolation(cachedFrames);
-}
-
-function getSelectedRotoCustomSpanStatus(currentFrame: number, settings: RotoInterpolationSettings): string | null {
-  const customSpan = settings.segmentSpacingOverrides?.find((override) => (
-    currentFrame >= override.fromSourceFrame && currentFrame <= override.toSourceFrame
-  ));
-  return customSpan ? `Custom span: ${customSpan.inBetweenCount} in-betweens` : null;
 }
 
 function getRotoFillClass(fill: ReturnType<typeof getRotoCellFill>): string {
@@ -267,32 +229,38 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
   const suppressNextRotoClickRef = useRef(false);
   const mountedRef = useRef(true);
-  const interpolationSettings = props.rotoInterpolationSettings ?? { enabled: false, inBetweenCount: 1, mode: 'duplicate' as const, deform: 0, position: 0 };
+  const interpolationSettings = props.rotoInterpolationSettings ?? { enabled: false };
   const interpolationEnabled = interpolationSettings.enabled === true;
-  const displayCachedRotoFrames = useMemo(() => getDisplayRotoCacheFrames(props.cachedRotoFrames, interpolationEnabled), [interpolationEnabled, props.cachedRotoFrames]);
-  const materializedGeneratedRotoFrames = useMemo(() => interpolationEnabled ? displayCachedRotoFrames.filter(frame => frame.source === 'generated-interpolation').map(frame => frame.appFrame) : [], [displayCachedRotoFrames, interpolationEnabled]);
-  const hasMaterializedGeneratedRotoFrames = interpolationEnabled && materializedGeneratedRotoFrames.length > 0;
-  const realCachedRotoFrames = useMemo(() => displayCachedRotoFrames.filter(frame => frame.source === 'real-key'), [displayCachedRotoFrames]);
-  const realCachedRotoFrameNumbers = useMemo(() => realCachedRotoFrames.map(frame => frame.appFrame), [realCachedRotoFrames]);
-  const displayOccupiedRotoFrames = useMemo(() => !interpolationEnabled && realCachedRotoFrames.length > 0 ? realCachedRotoFrameNumbers : props.occupiedRotoFrames, [interpolationEnabled, props.occupiedRotoFrames, realCachedRotoFrameNumbers, realCachedRotoFrames.length]);
-  const displaySavedRotoFrames = useMemo(() => !interpolationEnabled && realCachedRotoFrames.length > 0 ? realCachedRotoFrameNumbers.map((frame) => ({ frame, saved: true, label: `Frame ${frame}` })) : props.savedRotoFrames, [interpolationEnabled, props.savedRotoFrames, realCachedRotoFrameNumbers, realCachedRotoFrames.length]);
-  const realRotoFrames = useMemo(() => (hasMaterializedGeneratedRotoFrames || (!interpolationEnabled && realCachedRotoFrames.length > 0)) ? realCachedRotoFrameNumbers : getRealRotoFrames(displayOccupiedRotoFrames, displaySavedRotoFrames, displayCachedRotoFrames), [displayCachedRotoFrames, displayOccupiedRotoFrames, displaySavedRotoFrames, hasMaterializedGeneratedRotoFrames, interpolationEnabled, realCachedRotoFrameNumbers, realCachedRotoFrames.length]);
-  const expandedRealRotoFrames = useMemo(() => hasMaterializedGeneratedRotoFrames ? realRotoFrames.map(frame => ({ sourceFrame: frame, frame })) : getExpandedRotoRealKeyFrames(realRotoFrames, interpolationSettings), [hasMaterializedGeneratedRotoFrames, interpolationSettings, realRotoFrames]);
-  const interpolationConnectors = useMemo(() => hasMaterializedGeneratedRotoFrames ? [] : getRotoInterpolationSpanFrames(realRotoFrames, interpolationSettings), [hasMaterializedGeneratedRotoFrames, interpolationSettings, realRotoFrames]);
-  const generatedRotoFrames = useMemo(() => hasMaterializedGeneratedRotoFrames ? materializedGeneratedRotoFrames : interpolationConnectors.map(connector => connector.frame), [hasMaterializedGeneratedRotoFrames, interpolationConnectors, materializedGeneratedRotoFrames]);
-  const expandedCurrentFrame = expandedRealRotoFrames.find(key => key.sourceFrame === props.currentFrame)?.frame ?? props.currentFrame;
-  const frameCells = useMemo(() => buildPhysicsPaintRotoFrameCells(expandedCurrentFrame), [expandedCurrentFrame]);
+  const currentPhysicalCells = props.rotoPhysicalCells ?? [];
+  const physicalCellByAppFrame = useMemo(
+    () => new Map(currentPhysicalCells.map((cell) => [cell.appFrame, cell])),
+    [currentPhysicalCells],
+  );
+  const generatedRotoFrames = useMemo(
+    () => currentPhysicalCells.filter((cell) => cell.kind === 'generated').map((cell) => cell.appFrame),
+    [currentPhysicalCells],
+  );
+  const cachedRotoFrames = props.cachedRotoFrames ?? [];
+  const realCachedRotoFrames = useMemo(
+    () => cachedRotoFrames.filter((frame) => frame.source === 'real-key'),
+    [cachedRotoFrames],
+  );
+  const frameCells = useMemo(() => buildPhysicsPaintRotoFrameCells(props.currentFrame), [props.currentFrame]);
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
-  const hasGeneratedInBetweens = interpolationConnectors.length > 0;
-  const interpolationStatus = interpolationSettings.enabled
+  const hasGeneratedInBetweens = generatedRotoFrames.length > 0;
+  const interpolationStatus = interpolationEnabled
     ? hasGeneratedInBetweens
       ? INTERPOLATION_ENABLED_STATUS
       : 'Generated in-betweens on — save at least two real Roto keys.'
     : INTERPOLATION_DISABLED_STATUS;
-  const currentRotoCell = getRotoCellViewModel({ frame: props.currentFrame, currentFrame: props.currentFrame, cachedFrames: displayCachedRotoFrames });
+  const currentSemanticCell = physicalCellByAppFrame.get(props.currentFrame) ?? null;
+  const currentCellFrames = currentSemanticCell?.kind === 'generated'
+    ? [...cachedRotoFrames, { frameIndex: 0, appFrame: props.currentFrame, dataUrl: 'data:image/png;base64,', source: 'generated-interpolation' as const }]
+    : cachedRotoFrames;
+  const currentRotoCell = getRotoCellViewModel({ frame: props.currentFrame, currentFrame: props.currentFrame, cachedFrames: currentCellFrames });
   const rotoMissingStatusLabel = props.rotoMissingFrameStatusKind ? getMissingRotoFrameStatusLabel({ frame: props.currentFrame, kind: props.rotoMissingFrameStatusKind }) : null;
   const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames);
-  const isCurrentRealRotoKey = realRotoFrames.includes(props.currentFrame) && currentRotoCell.isEditableTarget !== false;
+  const isCurrentRealRotoKey = currentSemanticCell?.kind === 'real';
   const sessionKeyAvailability = props.rotoKeyState?.actionAvailability;
   const physicalActions = props.rotoPhysicalActions;
   const physicalInsertAvailable = physicalActions?.canInsertFrame.value ?? false;
@@ -320,8 +288,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     for (const record of rotoKeyRecords) map.set(record.appFrame, record.keyId);
     return map;
   }, [rotoKeyRecords]);
-  const currentPhysicalCells = props.rotoPhysicalCells ?? [];
-  const rotoDragValidityKey = `${props.rotoDragContextKey ?? 'none'}:${frameCells[0] ?? -1}:${frameCells[frameCells.length - 1] ?? -1}:${realCachedRotoFrameNumbers.join(',')}:${generatedRotoFrames.join(',')}:${interpolationEnabled ? 1 : 0}:${interpolationSettings.inBetweenCount ?? 1}:${(interpolationSettings.segmentSpacingOverrides ?? []).map((override) => `${override.fromSourceFrame}-${override.toSourceFrame}-${override.inBetweenCount}`).join(',')}:${rotoDragLocked ? 1 : 0}:${rotoKeyRecords.map((record) => `${record.keyId}@${record.appFrame}`).join(',')}`;
+  const rotoDragValidityKey = `${props.rotoDragContextKey ?? 'none'}:${frameCells[0] ?? -1}:${frameCells[frameCells.length - 1] ?? -1}:${currentPhysicalCells.map((cell) => `${cell.kind}@${cell.appFrame}`).join(',')}:${rotoDragLocked ? 1 : 0}:${rotoKeyRecords.map((record) => `${record.keyId}@${record.appFrame}`).join(',')}`;
   const rotoDragFeedback = getRotoDragFeedback(rotoDragPreview);
   const resolverApprovedGeneratedTarget = Boolean(rotoDragPreview?.candidateValid && rotoDragPreview.candidateKind === 'generated');
   const rotoDragPreviewViewModel: RotoDragPreviewViewModel | null = rotoDragPreview?.publication
@@ -834,23 +801,23 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             <div class="physics-paint-lane">
               <div class="physics-paint-roto-cells" role="row">
                 {frameCells.map(frame => {
-                  const syntheticGeneratedFrame = generatedRotoFrames.includes(frame)
-                    ? [{ frameIndex: 0, appFrame: frame, dataUrl: 'data:image/png;base64,', source: 'generated-interpolation' as const }]
-                    : [];
-                  const cachedFramesForDisplay = syntheticGeneratedFrame.length > 0 && !displayCachedRotoFrames.some(candidate => candidate.appFrame === frame) ? syntheticGeneratedFrame : displayCachedRotoFrames;
+                  const semanticCell = physicalCellByAppFrame.get(frame) ?? null;
+                  const isGenerated = semanticCell?.kind === 'generated';
+                  const cachedFramesForCell = isGenerated && !cachedRotoFrames.some((candidate) => candidate.appFrame === frame)
+                    ? [...cachedRotoFrames, { frameIndex: 0, appFrame: frame, dataUrl: 'data:image/png;base64,', source: 'generated-interpolation' as const }]
+                    : cachedRotoFrames;
                   const vm = getRotoCellViewModel({
                     frame,
-                    currentFrame: expandedCurrentFrame,
-                    cachedFrames: cachedFramesForDisplay,
+                    currentFrame: props.currentFrame,
+                    cachedFrames: cachedFramesForCell,
                   });
                   const fill = getRotoCellFill(frame, realCachedRotoFrames);
-                  const isDisplayRealKey = realCachedRotoFrameNumbers.includes(frame);
-                  const isGenerated = vm.baseMeaning === 'generated' || vm.isEditableTarget === false;
-                  const isOccupiedRealKey = isDisplayRealKey || isOccupiedFrame(displayOccupiedRotoFrames, frame);
+                  const isPhysicalRealKey = semanticCell?.kind === 'real';
+                  const isOccupiedRealKey = isPhysicalRealKey;
                   const semanticKind = isGenerated ? 'generated' : isOccupiedRealKey ? 'real-key' : 'empty';
                   const generatedTitle = isGenerated ? getGeneratedRotoTitle(frame) : null;
-                  const cellKeyId = keyIdByAppFrame.get(frame) ?? null;
-                  const dragEligible = isDisplayRealKey && !rotoDragLocked;
+                  const cellKeyId = semanticCell?.kind === 'real' ? semanticCell.keyId : keyIdByAppFrame.get(frame) ?? null;
+                  const dragEligible = isPhysicalRealKey && !rotoDragLocked;
                   // Identity-based Drag preview (D-07/D-21/D-22/D-23/D-24).
                   const previewCell = rotoDragPreviewViewModel?.cellsByAppFrame.get(frame) ?? null;
                   const isDragSource = rotoDragPreview?.sourceAppFrame === frame && rotoDragPreview?.movedKeyId === cellKeyId;
@@ -867,12 +834,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   const dragTitle = hasTargetFeedback
                     ? (previewCell?.title ?? rotoDragFeedback ?? vm.title)
                     : dragEligible ? `${vm.title} Drag to move this real Roto key.` : generatedTitle ?? vm.title;
-                  const cellClass = `physics-paint-roto-cell ${getRotoFillClass(fill)} ${vm.fillClass} ${isOccupiedRealKey ? 'occupied' : ''} ${isDisplayRealKey || isSavedFrame(displaySavedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
+                  const cellClass = `physics-paint-roto-cell ${getRotoFillClass(fill)} ${vm.fillClass} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
                   return (
                     <button
                       key={frame}
                       class={cellClass}
-                      data-roto-display-frame={frame}
                       data-roto-app-frame={frame}
                       data-roto-kind={semanticKind}
                       data-roto-key-id={cellKeyId ?? undefined}
@@ -885,17 +851,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     </button>
                   );
                 })}
-                {interpolationConnectors.map(connector => (
-                  <span
-                    key={`${connector.fromFrame}-${connector.toFrame}-${connector.ordinal}`}
-                    class={`physics-paint-roto-interpolation-connector connector-count-${connector.total}`}
-                    data-from-frame={connector.fromFrame}
-                    data-to-frame={connector.toFrame}
-                    data-generated-frame={connector.frame}
-                    aria-hidden="true"
-                  />
-                ))}
-
               </div>
               <div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key utilities for frame ${props.currentFrame}`}>
                 <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
@@ -933,7 +888,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           <p class="physics-paint-roto-status">{rotoMissingStatusLabel ?? currentRotoCell.label}</p>
           {rotoDragFeedback ? <p class="physics-paint-roto-interpolation-status" role="status" aria-live="polite">{rotoDragFeedback}</p> : null}
           {props.onRotoInterpolationEnabledChange ? <p class="physics-paint-roto-interpolation-status">{interpolationStatus}</p> : null}
-          {getSelectedRotoCustomSpanStatus(props.currentFrame, interpolationSettings) ? <p class="physics-paint-roto-custom-span-status">{getSelectedRotoCustomSpanStatus(props.currentFrame, interpolationSettings)}</p> : null}
           {!resolverApprovedGeneratedTarget ? <p class="physics-paint-roto-interpolation-status">{'Generated frame {frame} is render-only. Completed real-key paint is cached automatically.'}</p> : null}
           {!resolverApprovedGeneratedTarget && (currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false) ? <p class="physics-paint-roto-key-status">{getGeneratedRotoDisabledStatus(currentRotoCell.frame)}</p> : null}
           {keyUtilitiesDisabledByBusyState ? <p class="physics-paint-roto-key-status">{getRotoKeyBusyStatus(props.currentFrame)}</p> : null}

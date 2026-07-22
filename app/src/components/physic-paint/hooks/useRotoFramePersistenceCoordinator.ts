@@ -225,15 +225,15 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     reference.clearCachedRotoReferenceUrl();
   }, [reference.clearCachedRotoReferenceUrl]);
 
-  const clearCurrentFrame = useCallback((appFrame: number, size: { width: number; height: number }) => {
+  const clearCurrentFrame = useCallback((keyId: string, appFrame: number, size: { width: number; height: number }) => {
     const launch = inputRef.current.launchContext;
     if (!launch) return false;
-    const record = inputRef.current.store.getRotoRealKeyRecordByAppFrame(launch.layerId, appFrame);
+    const record = inputRef.current.store.getRotoRealKeyRecord(launch.layerId, keyId);
     const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(launch.layerId);
-    if (!record || !contentRevision) return false;
-    livePixelTransactionsRef.current.invalidate({ launchId: launch.operationId, layerId: launch.layerId, keyId: record.keyId });
+    if (!record || record.appFrame !== appFrame || !contentRevision) return false;
+    livePixelTransactionsRef.current.invalidate({ launchId: launch.operationId, layerId: launch.layerId, keyId });
     const blank = buildBlankRotoFrame(size.width, size.height, appFrame);
-    return upsertCachedFrame(blank, true, undefined, undefined, launch.layerId, undefined, launch.operationId, inputRef.current.getBackgroundMetadata(), record.keyId, contentRevision);
+    return upsertCachedFrame(blank, true, undefined, undefined, launch.layerId, undefined, launch.operationId, inputRef.current.getBackgroundMetadata(), keyId, contentRevision);
   }, [upsertCachedFrame]);
 
   const flushLivePixels = useCallback(async (appFrame?: number): Promise<void> => {
