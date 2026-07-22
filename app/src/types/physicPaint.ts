@@ -170,45 +170,50 @@ export interface PhysicPaintRotoPhysicalEditApplyResult {
 }
 
 const PHYSIC_PAINT_ROTO_PHYSICAL_EDIT_RECORD_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'dataUrl', 'width', 'height']);
+const PHYSIC_PAINT_ROTO_PHYSICAL_KEY_ID_MAX_LENGTH = 256;
+
+function isBoundedPhysicalKeyId(value: unknown): value is string {
+  return isNonEmptyString(value) && value.length <= PHYSIC_PAINT_ROTO_PHYSICAL_KEY_ID_MAX_LENGTH;
+}
+
+function isPhysicPaintRotoPhysicalEditPayload(value: unknown): value is PhysicPaintRotoPhysicalEditRecord['payload'] {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyKeys(value, [...PHYSIC_PAINT_ROTO_PHYSICAL_EDIT_RECORD_PAYLOAD_KEYS])) return false;
+  if (!isNonNegativeInteger(value.frameIndex)) return false;
+  if (!isNonNegativeInteger(value.appFrame)) return false;
+  if (!isRenderedPngDataUrl(value.dataUrl)) return false;
+  return optionalNumber(value.width) && optionalNumber(value.height);
+}
 
 /**
  * Strict guard for {@link PhysicPaintRotoPhysicalEditRecord}. Rejects
- * non-records, unknown members, malformed identity, and malformed payload
- * (composed from the existing rendered-frame allowlist).
+ * non-records, unknown members, overlong identity, malformed payload, and a
+ * payload placement that disagrees with the record's direct physical frame.
  */
 export function isPhysicPaintRotoPhysicalEditRecord(value: unknown): value is PhysicPaintRotoPhysicalEditRecord {
   if (!isRecord(value)) return false;
   if (!hasOnlyKeys(value, ['keyId', 'appFrame', 'payload'])) return false;
-  if (!isNonEmptyString(value.keyId)) return false;
+  if (!isBoundedPhysicalKeyId(value.keyId)) return false;
   if (!isNonNegativeInteger(value.appFrame)) return false;
-  const payload = value.payload;
-  if (!isRecord(payload)) return false;
-  if (!hasOnlyKeys(payload, [...PHYSIC_PAINT_ROTO_PHYSICAL_EDIT_RECORD_PAYLOAD_KEYS])) return false;
-  if (!isNonNegativeInteger(payload.frameIndex)) return false;
-  if (!isNonNegativeInteger(payload.appFrame)) return false;
-  if (!isRenderedPngDataUrl(payload.dataUrl)) return false;
-  return optionalNumber(payload.width) && optionalNumber(payload.height);
+  if (!isPhysicPaintRotoPhysicalEditPayload(value.payload)) return false;
+  return value.payload.appFrame === value.appFrame;
 }
 
 export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): value is PhysicPaintRotoPhysicalEditSemanticDelta {
   if (!isRecord(value)) return false;
   if (value.kind === 'duplicate-key') {
     return hasOnlyKeys(value, ['kind', 'sourceKeyId', 'newKeyId'])
-      && isNonEmptyString(value.sourceKeyId)
-      && isNonEmptyString(value.newKeyId)
+      && isBoundedPhysicalKeyId(value.sourceKeyId)
+      && isBoundedPhysicalKeyId(value.newKeyId)
       && value.sourceKeyId !== value.newKeyId;
   }
   if (value.kind === 'paste-key') {
     if (!hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload'])) return false;
     if (!isNonNegativeInteger(value.destinationAppFrame)) return false;
-    if (value.destinationKeyId !== null && !isNonEmptyString(value.destinationKeyId)) return false;
-    if (value.newKeyId !== null && !isNonEmptyString(value.newKeyId)) return false;
+    if (value.destinationKeyId !== null && !isBoundedPhysicalKeyId(value.destinationKeyId)) return false;
+    if (value.newKeyId !== null && !isBoundedPhysicalKeyId(value.newKeyId)) return false;
     if ((value.destinationKeyId === null) === (value.newKeyId === null)) return false;
-    return isPhysicPaintRotoPhysicalEditRecord({
-      keyId: value.destinationKeyId ?? value.newKeyId,
-      appFrame: value.destinationAppFrame,
-      payload: value.clipboardPayload,
-    });
+    return isPhysicPaintRotoPhysicalEditPayload(value.clipboardPayload);
   }
   return false;
 }
@@ -266,7 +271,7 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (!isNonEmptyString(value.expectedRevision)) return false;
   if (!Array.isArray(value.records) || !value.records.every(isPhysicPaintRotoPhysicalEditRecord)) return false;
   if (typeof value.interpolationEnabled !== 'boolean') return false;
-  if (value.selectedKeyId !== null && !isNonEmptyString(value.selectedKeyId)) return false;
+  if (value.selectedKeyId !== null && !isBoundedPhysicalKeyId(value.selectedKeyId)) return false;
   if (value.selectedAppFrame !== null && !isNonNegativeInteger(value.selectedAppFrame)) return false;
   if ((value.selectedKeyId === null) !== (value.selectedAppFrame === null)) return false;
   if (!operationSemanticDeltaIsValid(value.operationKind, value.semanticDelta)) return false;
@@ -302,7 +307,7 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
   if (!isNonEmptyString(value.expectedRevision)) return false;
   if (!isNonEmptyString(value.stagedRevision)) return false;
   if (value.acceptedRevision !== null && !isNonEmptyString(value.acceptedRevision)) return false;
-  if (value.selectedKeyId !== null && !isNonEmptyString(value.selectedKeyId)) return false;
+  if (value.selectedKeyId !== null && !isBoundedPhysicalKeyId(value.selectedKeyId)) return false;
   if (value.selectedAppFrame !== null && !isNonNegativeInteger(value.selectedAppFrame)) return false;
   if ((value.selectedKeyId === null) !== (value.selectedAppFrame === null)) return false;
   if (!isNonNegativeInteger(value.appliedFrameCount)) return false;
@@ -714,7 +719,7 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
       && Array.isArray(value.records)
       && value.records.every(isPhysicPaintRotoPhysicalEditRecord)
       && typeof value.interpolationEnabled === 'boolean'
-      && (value.selectedKeyId === null || isNonEmptyString(value.selectedKeyId))
+      && (value.selectedKeyId === null || isBoundedPhysicalKeyId(value.selectedKeyId))
       && (value.selectedAppFrame === null || isNonNegativeInteger(value.selectedAppFrame))
       && ((value.selectedKeyId === null) === (value.selectedAppFrame === null))
       && operationSemanticDeltaIsValid(value.operationKind, value.semanticDelta)
