@@ -1,14 +1,16 @@
 import type { Result } from './ipc';
 import type { Layer } from '../types/layer';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
+import { validatePhysicPaintRotoPhysicalEditSemanticDelta } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPhysicalRevision,
   encodePhysicPaintRotoPhysicalContent,
   parsePhysicPaintRotoPhysicalDocument,
+  parsePhysicPaintRotoRealKeyRecordCollection,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { parseCanonicalPhysicsPaintLaunchValue } from '../components/physic-paint/bridge/physicsPaintLaunchContext';
 import { layerStore } from '../stores/layerStore';
@@ -123,7 +125,7 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
   if (prior) {
     return prior.fingerprint === fingerprint
       ? prior.result
-      : failureResult(payload, 'Operation ID was already used for a different payload.');
+      : applyFailureResult(payload, 'Operation ID was already used for a different payload.');
   }
 
   const targetLayer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find(layer => {
@@ -134,19 +136,21 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
     return sourceLayerId === payload.layerId || layer.id === payload.layerId;
   });
   if (!targetLayer) {
-    return failureResult(payload, `Unknown physics paint layer: ${payload.layerId}`);
+    return applyFailureResult(payload, `Unknown physics paint layer: ${payload.layerId}`);
   }
   if (!Number.isInteger(payload.startFrame) || payload.startFrame < 0) {
-    return failureResult(payload, 'Invalid physics paint start frame');
+    return applyFailureResult(payload, 'Invalid physics paint start frame');
   }
   const mutationDisplayFrame = payload.kind === 'apply-canvas'
     ? payload.displayFrame ?? payload.startFrame
     : payload.startFrame;
-  const generatedGuard = payload.kind === 'update-roto-interpolation-settings' || payload.kind === 'replace-roto-key-frames'
+  const generatedGuard = payload.kind === 'update-roto-interpolation-settings'
+    || payload.kind === 'replace-roto-key-frames'
+    || payload.kind === 'replace-roto-physical-map'
     ? null
     : getGeneratedRotoDisplayMutationGuard(payload.layerId, mutationDisplayFrame);
   if (generatedGuard) {
-    return failureResult(payload, generatedGuard);
+    return applyFailureResult(payload, generatedGuard);
   }
 
   try {
@@ -166,37 +170,37 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
           layerId: payload.layerId,
           canonicalStart: payload.startFrame,
         });
-        if (!authority.ok) return failureResult(payload, authority.error ?? 'Roto authority rejected the batch.');
-        if (authority.layerEndExclusive !== payload.expectedLayerEndExclusive || authority.rotoRevision !== payload.expectedRotoRevision) return failureResult(payload, 'Roto authority became stale before commit.');
-        if (payload.frameCount <= 0 || payload.frameCount > authority.capacity) return failureResult(payload, 'Play Script exceeds the current layer capacity.');
+        if (!authority.ok) return applyFailureResult(payload, authority.error ?? 'Roto authority rejected the batch.');
+        if (authority.layerEndExclusive !== payload.expectedLayerEndExclusive || authority.rotoRevision !== payload.expectedRotoRevision) return applyFailureResult(payload, 'Roto authority became stale before commit.');
+        if (payload.frameCount <= 0 || payload.frameCount > authority.capacity) return applyFailureResult(payload, 'Play Script exceeds the current layer capacity.');
         const incomingSources = payload.frames.map((frame) => frame.sourceFrame ?? frame.appFrame);
-        if (new Set(incomingSources).size !== incomingSources.length) return failureResult(payload, 'Play Script batch contains duplicate real keys.');
+        if (new Set(incomingSources).size !== incomingSources.length) return applyFailureResult(payload, 'Play Script batch contains duplicate real keys.');
         const affectedSources = new Set(Array.from({ length: payload.frameCount }, (_, index) => payload.startFrame + index));
         const incomingBySource = new Map(payload.frames.map((frame) => [frame.sourceFrame ?? frame.appFrame, frame]));
         for (const source of affectedSources) {
-          if (!incomingBySource.has(source)) return failureResult(payload, 'Play Script batch is incomplete.');
+          if (!incomingBySource.has(source)) return applyFailureResult(payload, 'Play Script batch is incomplete.');
         }
         for (const existing of authority.frames) {
           const source = existing.sourceFrame ?? existing.appFrame;
           if (affectedSources.has(source)) continue;
           const candidate = incomingBySource.get(source);
-          if (!candidate || !sameDurableRealKey(candidate, existing)) return failureResult(payload, 'Play Script batch changed or omitted an unrelated real key.');
+          if (!candidate || !sameDurableRealKey(candidate, existing)) return applyFailureResult(payload, 'Play Script batch changed or omitted an unrelated real key.');
         }
         const existingSources = new Set(authority.frames.map((frame) => frame.sourceFrame ?? frame.appFrame));
         for (const source of incomingSources) {
-          if (!affectedSources.has(source) && !existingSources.has(source)) return failureResult(payload, 'Play Script batch contains an unexpected out-of-range real key.');
+          if (!affectedSources.has(source) && !existingSources.has(source)) return applyFailureResult(payload, 'Play Script batch contains an unexpected out-of-range real key.');
         }
       }
       result = physicPaintStore.replaceRotoKeyFrames(payload);
     } else if (payload.kind === 'replace-roto-physical-map') {
       result = applyPhysicPaintRotoPhysicalMap(payload);
     } else {
-      result = failureResult(payload, 'Unsupported physics paint payload');
+      result = applyFailureResult(payload, 'Unsupported physics paint payload');
     }
     if (result.ok) deliveredOperations.set(payload.operationId, { fingerprint, result });
     return result.ok ? result : { ...result, error: `${APPLY_ERROR} ${result.error ?? ''}`.trim() };
   } catch (error) {
-    return failureResult(payload, `${APPLY_ERROR} ${String(error)}`);
+    return applyFailureResult(payload, `${APPLY_ERROR} ${String(error)}`);
   }
 }
 
@@ -260,6 +264,7 @@ function fingerprintApplyPayload(payload: PhysicPaintApplyPayload): string {
       content,
       payload.selectedKeyId ?? '',
       payload.selectedAppFrame === null ? 'null' : String(payload.selectedAppFrame),
+      payload.semanticDelta ? stableSerialize(payload.semanticDelta, new WeakSet<object>()) : 'mapping-only',
       provenance,
     ].map((segment) => `${segment.length}:${segment}`).join('|');
   }
@@ -334,97 +339,131 @@ function buildRotoRevision(frames: readonly { sourceFrame?: number; appFrame: nu
  * target revision to equal `targetRevision`, then mutates once. Replay
  * acceptances are NOT recorded as new commands.
  */
-function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>): PhysicPaintApplyResult {
-  const base = resultBase(payload);
+function physicalEditResult(
+  payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>,
+  options: {
+    readonly ok: boolean;
+    readonly stagedRevision?: string;
+    readonly acceptedRevision?: string | null;
+    readonly selectedKeyId?: string | null;
+    readonly selectedAppFrame?: number | null;
+    readonly error?: string;
+  },
+): PhysicPaintRotoPhysicalEditApplyResult {
+  let stagedRevision = options.stagedRevision;
+  if (!stagedRevision) {
+    try {
+      const records = payload.records.map((record) => ({ kind: 'real-key' as const, ...record }));
+      stagedRevision = buildPhysicPaintRotoPhysicalRevision(records, { enabled: payload.interpolationEnabled });
+    } catch {
+      stagedRevision = 'invalid-physical-revision';
+    }
+  }
+  if (options.ok && !options.acceptedRevision) {
+    throw new Error('Physical edit success requires the parent accepted revision.');
+  }
+  return {
+    operationId: payload.operationId,
+    kind: 'replace-roto-physical-map',
+    operationKind: payload.operationKind,
+    layerId: payload.layerId,
+    startFrame: payload.startFrame,
+    launchOperationId: payload.launchOperationId,
+    ...(payload.projectContextId !== undefined ? { projectContextId: payload.projectContextId } : {}),
+    expectedRevision: payload.expectedRevision,
+    stagedRevision,
+    acceptedRevision: options.ok ? options.acceptedRevision as string : null,
+    selectedKeyId: options.selectedKeyId === undefined ? payload.selectedKeyId : options.selectedKeyId,
+    selectedAppFrame: options.selectedAppFrame === undefined ? payload.selectedAppFrame : options.selectedAppFrame,
+    appliedFrameCount: options.ok ? payload.records.length : 0,
+    ok: options.ok,
+    ...(options.error !== undefined ? { error: options.error } : {}),
+    ...(payload.semanticDelta ? { semanticDelta: payload.semanticDelta } : {}),
+    ...(payload.historyProvenance ? { historyProvenance: payload.historyProvenance } : {}),
+  };
+}
+
+function applyFailureResult(payload: PhysicPaintApplyPayload, error: string): PhysicPaintApplyResult {
+  return payload.kind === 'replace-roto-physical-map'
+    ? physicalEditResult(payload, { ok: false, error })
+    : failureResult(payload, error);
+}
+
+function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>): PhysicPaintRotoPhysicalEditApplyResult {
+  const reject = (error: string, stagedRevision?: string) => physicalEditResult(payload, { ok: false, error, stagedRevision });
   if (payload.projectContextId && payload.projectContextId !== projectStore.projectContextId.peek()) {
-    return failureResult(base, 'Project context changed before the physical edit could be applied.');
+    return reject('Project context changed before the physical edit could be applied.');
   }
   const layer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find((candidate) => candidate.id === payload.layerId || (candidate.type === 'physic-paint' && candidate.source.type === 'physic-paint' && candidate.source.layerId === payload.layerId));
   if (!layer || layer.type !== 'physic-paint') {
-    return failureResult(base, 'Physics Paint layer is unavailable for the physical edit.');
+    return reject('Physics Paint layer is unavailable for the physical edit.');
   }
   if (activeLaunchOperationByLayer.get(payload.layerId) !== payload.launchOperationId) {
-    return failureResult(base, 'Physics Paint launch context changed before the physical edit could be applied.');
+    return reject('Physics Paint launch context changed before the physical edit could be applied.');
   }
   const currentRecords = physicPaintStore.getRotoRealKeyRecords(payload.layerId);
   const currentInterpolation = physicPaintStore.getRotoPhysicalInterpolationState(payload.layerId);
   const currentDocument = physicPaintStore.getRotoPhysicalDocument(payload.layerId);
   const currentRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation);
   if (currentRevision !== payload.expectedRevision) {
-    return failureResult(base, 'Roto physical revision became stale before commit.');
+    return reject('Roto physical revision became stale before commit.');
   }
   const capacity = physicPaintStore.getRotoPhysicalCapacity(payload.layerId);
   if (payload.records.length > capacity) {
-    return failureResult(base, 'Roto physical edit exceeds the current layer capacity.');
+    return reject('Roto physical edit exceeds the current layer capacity.');
   }
-  const proposedRecords = payload.records.map((record) => ({
-    kind: 'real-key' as const,
-    keyId: record.keyId,
-    appFrame: record.appFrame,
-    payload: record.payload,
-  }));
-  const seenKeyIds = new Set<string>();
-  const seenAppFrames = new Set<number>();
-  for (const record of payload.records) {
-    if (seenKeyIds.has(record.keyId)) return failureResult(base, 'Roto physical edit contains a duplicate keyId.');
-    if (seenAppFrames.has(record.appFrame)) return failureResult(base, 'Roto physical edit contains a duplicate appFrame.');
-    if (record.appFrame >= capacity) return failureResult(base, 'Roto physical edit places a key outside the layer capacity.');
-    seenKeyIds.add(record.keyId);
-    seenAppFrames.add(record.appFrame);
+  let proposedRecords: readonly import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord[];
+  try {
+    proposedRecords = parsePhysicPaintRotoRealKeyRecordCollection(
+      payload.records.map((record) => ({ kind: 'real-key' as const, ...record })),
+      capacity,
+    );
+  } catch (error) {
+    return reject(error instanceof Error ? error.message : 'Roto physical records are malformed.');
   }
   if ((payload.selectedKeyId === null) !== (payload.selectedAppFrame === null)) {
-    return failureResult(base, 'Roto physical selection identity and frame must both be null or both be present.');
+    return reject('Roto physical selection identity and frame must both be null or both be present.');
   }
   if (payload.selectedKeyId !== null) {
     const selectedRecord = proposedRecords.find((record) => record.keyId === payload.selectedKeyId);
     if (!selectedRecord || selectedRecord.appFrame !== payload.selectedAppFrame) {
-      return failureResult(base, 'Roto physical selection does not match the submitted identity set.');
+      return reject('Roto physical selection does not match the submitted identity set.');
     }
+  }
+
+  const stagedRevision = buildPhysicPaintRotoPhysicalRevision(proposedRecords, { enabled: payload.interpolationEnabled });
+  if (payload.operationKind === 'duplicate-key' || payload.operationKind === 'paste-key') {
+    const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
+      operationKind: payload.operationKind,
+      currentRecords,
+      nextRecords: proposedRecords,
+      semanticDelta: payload.semanticDelta,
+      capacity,
+      selectedKeyId: payload.selectedKeyId,
+      selectedAppFrame: payload.selectedAppFrame,
+    });
+    if (!semanticValidation.ok) return reject(semanticValidation.error, stagedRevision);
   }
 
   const isReplay = payload.operationKind === 'undo' || payload.operationKind === 'redo';
   if (isReplay) {
     const provenance = payload.historyProvenance;
-    if (!provenance) {
-      return failureResult(base, 'Roto physical replay is missing history provenance.');
-    }
-    if (provenance.historyDirection !== payload.operationKind) {
-      return failureResult(base, 'Roto physical replay provenance direction mismatch.');
-    }
+    if (!provenance) return reject('Roto physical replay is missing history provenance.', stagedRevision);
+    if (provenance.historyDirection !== payload.operationKind) return reject('Roto physical replay provenance direction mismatch.', stagedRevision);
     const original = acceptedPhysicalCommands.get(provenance.historyCommandId);
-    if (!original) {
-      return failureResult(base, 'Roto physical replay targets an unknown accepted command.');
-    }
-    if (currentRevision !== provenance.sourceRevision) {
-      return failureResult(base, 'Roto physical replay source revision does not match the current state.');
-    }
-    const targetRevision = buildPhysicPaintRotoPhysicalRevision(proposedRecords, { enabled: payload.interpolationEnabled });
-    if (targetRevision !== provenance.targetRevision) {
-      return failureResult(base, 'Roto physical replay target revision does not match the original command.');
-    }
-    // For undo: sourceRevision must equal the original command's acceptedRevision (after);
-    // targetRevision must equal the original command's before revision.
-    // For redo: inverse — sourceRevision must equal the original command's before revision;
-    // targetRevision must equal the original command's acceptedRevision (after).
+    if (!original) return reject('Roto physical replay targets an unknown accepted command.', stagedRevision);
+    if (currentRevision !== provenance.sourceRevision) return reject('Roto physical replay source revision does not match the current state.', stagedRevision);
+    if (stagedRevision !== provenance.targetRevision) return reject('Roto physical replay target revision does not match the original command.', stagedRevision);
     const originalBeforeRevision = buildPhysicPaintRotoPhysicalRevision(original.beforeRecords, original.beforeInterpolation);
     if (provenance.historyDirection === 'undo') {
-      if (provenance.sourceRevision !== original.acceptedRevision) {
-        return failureResult(base, 'Roto physical undo source revision does not match the original accepted state.');
-      }
-      if (provenance.targetRevision !== originalBeforeRevision) {
-        return failureResult(base, 'Roto physical undo target revision does not match the original before state.');
-      }
+      if (provenance.sourceRevision !== original.acceptedRevision) return reject('Roto physical undo source revision does not match the original accepted state.', stagedRevision);
+      if (provenance.targetRevision !== originalBeforeRevision) return reject('Roto physical undo target revision does not match the original before state.', stagedRevision);
     } else {
-      if (provenance.sourceRevision !== originalBeforeRevision) {
-        return failureResult(base, 'Roto physical redo source revision does not match the original before state.');
-      }
-      if (provenance.targetRevision !== original.acceptedRevision) {
-        return failureResult(base, 'Roto physical redo target revision does not match the original accepted state.');
-      }
+      if (provenance.sourceRevision !== originalBeforeRevision) return reject('Roto physical redo source revision does not match the original before state.', stagedRevision);
+      if (provenance.targetRevision !== original.acceptedRevision) return reject('Roto physical redo target revision does not match the original accepted state.', stagedRevision);
     }
   }
 
-  const stagedRevision = buildPhysicPaintRotoPhysicalRevision(proposedRecords, { enabled: payload.interpolationEnabled });
   const cursorAppFrame = payload.selectedAppFrame ?? Math.max(0, Math.min(capacity - 1, payload.startFrame));
   const stagedDocument = parsePhysicPaintRotoPhysicalDocument({
     capacity,
@@ -437,10 +476,13 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     revision: stagedRevision,
   });
   const replaceResult = physicPaintStore.replaceRotoPhysicalDocument(payload.layerId, stagedDocument);
-  if (!replaceResult.ok) return failureResult(base, replaceResult.error);
+  if (!replaceResult.ok) return reject(replaceResult.error, stagedRevision);
+  const acceptedDocument = replaceResult.document;
+  const acceptedSelectedKeyId = acceptedDocument.selectedKeyId;
+  const acceptedSelectedAppFrame = acceptedSelectedKeyId === null ? null : acceptedDocument.cursorAppFrame;
 
   if (!isReplay) {
-    const afterRecords = payload.records.map((record) => ({
+    const afterRecords = acceptedDocument.realKeyRecords.map((record) => ({
       keyId: record.keyId,
       appFrame: record.appFrame,
       payload: record.payload,
@@ -454,19 +496,18 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
       })),
       beforeInterpolation: { enabled: currentInterpolation.enabled },
       afterRecords,
-      afterInterpolation: { enabled: payload.interpolationEnabled },
-      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(proposedRecords, { enabled: payload.interpolationEnabled }),
+      afterInterpolation: { enabled: acceptedDocument.interpolation.enabled },
+      acceptedRevision: acceptedDocument.revision,
     });
   }
 
-  return {
-    operationId: payload.operationId,
-    kind: 'replace-roto-physical-map',
-    layerId: payload.layerId,
-    startFrame: payload.startFrame,
-    appliedFrameCount: payload.records.length,
+  return physicalEditResult(payload, {
     ok: true,
-  };
+    stagedRevision,
+    acceptedRevision: acceptedDocument.revision,
+    selectedKeyId: acceptedSelectedKeyId,
+    selectedAppFrame: acceptedSelectedAppFrame,
+  });
 }
 
 export async function applyPhysicPaintScriptLibraryRequest(value: unknown): Promise<PhysicPaintScriptLibraryResult> {

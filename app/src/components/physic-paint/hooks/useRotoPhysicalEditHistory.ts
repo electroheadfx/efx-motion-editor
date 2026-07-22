@@ -118,7 +118,12 @@ interface PendingReplay<EngineState> {
 }
 
 function isOrdinaryOperationKind(kind: PhysicPaintRotoPhysicalEditOperationKind): boolean {
-  return kind === 'insert-slot' || kind === 'delete-key' || kind === 'move-key' || kind === 'force-spacing';
+  return kind === 'insert-slot'
+    || kind === 'delete-key'
+    || kind === 'move-key'
+    || kind === 'force-spacing'
+    || kind === 'duplicate-key'
+    || kind === 'paste-key';
 }
 
 function snapshotRecordsEqual(
@@ -163,6 +168,8 @@ function buildReplayProposal(target: RotoPhysicalEditSnapshot<unknown>): PhysicP
     changes: [],
     removedKeyId: null,
     drag: null,
+    nextRecords: null,
+    semanticDelta: null,
     status: {
       operationKind: 'move-key',
       changed: true,

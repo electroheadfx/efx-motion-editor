@@ -56,8 +56,18 @@
  * Preact/hook module.
  */
 
-import type { PhysicPaintRotoKeyIdentity } from './physicsPaintRotoPhysicalModel';
-import { isPhysicPaintRotoKeyIdentity } from './physicsPaintRotoPhysicalModel';
+import type {
+  PhysicPaintRotoKeyIdentity,
+  PhysicPaintRotoRealKeyPayload,
+  PhysicPaintRotoRealKeyRecord,
+} from './physicsPaintRotoPhysicalModel';
+import {
+  createPhysicPaintRotoKeyId,
+  isPhysicPaintRotoKeyIdentity,
+  isPhysicPaintRotoRealKeyPayload,
+  parsePhysicPaintRotoRealKeyRecordCollection,
+} from './physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoPhysicalEditSemanticDelta } from '../../../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
 
 // ---------------------------------------------------------------------------
@@ -95,6 +105,18 @@ export type PhysicPaintRotoPhysicalEditIntent =
       readonly kind: 'force-spacing';
       readonly emptyFrames: number;
       readonly selectedKeyId: string | null;
+    }
+  | {
+      readonly kind: 'duplicate-key';
+      readonly sourceKeyId: string;
+      readonly newKeyId: string;
+    }
+  | {
+      readonly kind: 'paste-key';
+      readonly destinationAppFrame: number;
+      readonly destinationKeyId: string | null;
+      readonly newKeyId: string | null;
+      readonly clipboardPayload: PhysicPaintRotoRealKeyPayload;
     };
 
 /**
@@ -104,7 +126,9 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-slot'
   | 'delete-key'
   | 'move-key'
-  | 'force-spacing';
+  | 'force-spacing'
+  | 'duplicate-key'
+  | 'paste-key';
 
 /**
  * Immutable resolver input: stable identities, typed intent, bounded capacity,
@@ -113,6 +137,8 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
  */
 export interface PhysicPaintRotoPhysicalEditInput {
   readonly identities: readonly PhysicPaintRotoKeyIdentity[];
+  /** Required for identity/payload-changing Duplicate and Paste operations. */
+  readonly records?: readonly PhysicPaintRotoRealKeyRecord[];
   readonly intent: PhysicPaintRotoPhysicalEditIntent;
   readonly capacity: number;
   readonly interpolationEnabled: boolean;
@@ -207,6 +233,10 @@ export interface PhysicPaintRotoPhysicalEditProposal {
   readonly removedKeyId: string | null;
   /** Drag presentation metadata for Move, null for every other operation. */
   readonly drag: PhysicPaintRotoPhysicalDragPresentation | null;
+  /** Complete canonical next records for Duplicate/Paste; null for mapping-only edits and replay. */
+  readonly nextRecords: readonly PhysicPaintRotoRealKeyRecord[] | null;
+  /** Declared operation-specific delta validated against current and next records. */
+  readonly semanticDelta: PhysicPaintRotoPhysicalEditSemanticDelta | null;
   /** Concise status derived from the validated map. */
   readonly status: PhysicPaintRotoPhysicalEditStatus;
 }
@@ -230,7 +260,10 @@ export type PhysicPaintRotoPhysicalEditFailureCode =
   | 'incomplete-mapping'
   | 'duplicate-destination-frame'
   | 'over-capacity'
-  | 'moved-as-target';
+  | 'moved-as-target'
+  | 'malformed-records'
+  | 'malformed-payload'
+  | 'invalid-semantic-delta';
 
 /**
  * Discriminated failure result. The failure branch cannot carry a partial
@@ -316,8 +349,209 @@ function isBoundedKeyId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= KEY_ID_MAX_LENGTH;
 }
 
-function operationKindOf(intent: PhysicPaintRotoPhysicalEditIntent): PhysicPaintRotoPhysicalEditOperationKind {
-  return intent.kind;
+function clonePayloadAtFrame(
+  payload: PhysicPaintRotoRealKeyPayload,
+  appFrame: number,
+): PhysicPaintRotoRealKeyPayload {
+  return Object.freeze({
+    frameIndex: payload.frameIndex,
+    appFrame,
+    dataUrl: payload.dataUrl,
+    ...(payload.width !== undefined ? { width: payload.width } : {}),
+    ...(payload.height !== undefined ? { height: payload.height } : {}),
+  }) as PhysicPaintRotoRealKeyPayload;
+}
+
+function payloadEqualsAtFrame(
+  actual: PhysicPaintRotoRealKeyPayload,
+  expected: PhysicPaintRotoRealKeyPayload,
+  appFrame: number,
+): boolean {
+  return actual.frameIndex === expected.frameIndex
+    && actual.appFrame === appFrame
+    && actual.dataUrl === expected.dataUrl
+    && actual.width === expected.width
+    && actual.height === expected.height;
+}
+
+function recordsEqual(left: PhysicPaintRotoRealKeyRecord, right: PhysicPaintRotoRealKeyRecord): boolean {
+  return left.keyId === right.keyId
+    && left.appFrame === right.appFrame
+    && payloadEqualsAtFrame(left.payload, right.payload, right.appFrame);
+}
+
+function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const allowed = new Set(keys);
+  return Object.keys(value).length === allowed.size && Object.keys(value).every((key) => allowed.has(key));
+}
+
+export function createPhysicPaintRotoDuplicateKeyIntent(sourceKeyId: string): Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'duplicate-key' }> {
+  if (!isBoundedKeyId(sourceKeyId)) throw new Error('Duplicate requires a bounded source key identity.');
+  const newKeyId = createPhysicPaintRotoKeyId();
+  return Object.freeze({ kind: 'duplicate-key', sourceKeyId, newKeyId });
+}
+
+export function createPhysicPaintRotoPasteKeyIntent(
+  destinationAppFrame: number,
+  clipboardPayload: PhysicPaintRotoRealKeyPayload,
+  destinationKeyId: string | null,
+): Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key' }> {
+  if (!isNonNegativeInteger(destinationAppFrame)) throw new Error('Paste requires a nonnegative destination frame.');
+  if (destinationKeyId !== null && !isBoundedKeyId(destinationKeyId)) throw new Error('Paste destination identity is malformed.');
+  if (!isPhysicPaintRotoRealKeyPayload(clipboardPayload)) throw new Error('Paste clipboard payload is malformed.');
+  const newKeyId = destinationKeyId === null ? createPhysicPaintRotoKeyId() : null;
+  return Object.freeze({
+    kind: 'paste-key',
+    destinationAppFrame,
+    destinationKeyId,
+    newKeyId,
+    clipboardPayload: clonePayloadAtFrame(clipboardPayload, clipboardPayload.appFrame),
+  });
+}
+
+export interface PhysicPaintRotoPhysicalEditSemanticDeltaValidationInput {
+  readonly operationKind: 'duplicate-key' | 'paste-key';
+  readonly currentRecords: unknown;
+  readonly nextRecords: unknown;
+  readonly semanticDelta: unknown;
+  readonly capacity: number;
+  readonly selectedKeyId: string | null;
+  readonly selectedAppFrame: number | null;
+}
+
+export type PhysicPaintRotoPhysicalEditSemanticDeltaValidation =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly error: string };
+
+/**
+ * Pure shared proof for identity/payload-changing ordinary edits. Structural
+ * record validation is necessary but insufficient: this function proves the
+ * complete declared Duplicate or Paste delta and rejects every extra change.
+ */
+export function validatePhysicPaintRotoPhysicalEditSemanticDelta(
+  input: PhysicPaintRotoPhysicalEditSemanticDeltaValidationInput,
+): PhysicPaintRotoPhysicalEditSemanticDeltaValidation {
+  if (!validateCapacity(input.capacity)) return { ok: false, error: 'Semantic delta capacity is invalid.' };
+  let current: readonly PhysicPaintRotoRealKeyRecord[];
+  let next: readonly PhysicPaintRotoRealKeyRecord[];
+  try {
+    current = parsePhysicPaintRotoRealKeyRecordCollection(input.currentRecords, input.capacity);
+    next = parsePhysicPaintRotoRealKeyRecordCollection(input.nextRecords, input.capacity);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Semantic delta records are malformed.' };
+  }
+  if ((input.selectedKeyId === null) !== (input.selectedAppFrame === null)) {
+    return { ok: false, error: 'Semantic delta selection identity and frame disagree.' };
+  }
+  if (!isRecord(input.semanticDelta) || input.semanticDelta.kind !== input.operationKind) {
+    return { ok: false, error: 'Semantic delta kind does not match the operation.' };
+  }
+  const currentById = new Map(current.map((record) => [record.keyId, record]));
+  const nextById = new Map(next.map((record) => [record.keyId, record]));
+
+  if (input.operationKind === 'duplicate-key') {
+    const delta = input.semanticDelta;
+    if (!hasExactKeys(delta, ['kind', 'sourceKeyId', 'newKeyId'])
+      || !isBoundedKeyId(delta.sourceKeyId)
+      || !isBoundedKeyId(delta.newKeyId)
+      || delta.sourceKeyId === delta.newKeyId) {
+      return { ok: false, error: 'Duplicate semantic declaration is malformed.' };
+    }
+    const source = currentById.get(delta.sourceKeyId);
+    if (!source) return { ok: false, error: 'Duplicate source identity does not exist.' };
+    if (currentById.has(delta.newKeyId)) return { ok: false, error: 'Duplicate new identity is not fresh.' };
+    const destination = source.appFrame + 1;
+    if (destination >= input.capacity) return { ok: false, error: 'Duplicate destination exceeds capacity.' };
+    if (next.length !== current.length + 1) return { ok: false, error: 'Duplicate must add exactly one record.' };
+    if (input.selectedKeyId !== delta.newKeyId || input.selectedAppFrame !== destination) {
+      return { ok: false, error: 'Duplicate must select the fresh destination identity.' };
+    }
+    for (const record of current) {
+      const proposed = nextById.get(record.keyId);
+      if (!proposed) return { ok: false, error: `Duplicate omitted identity "${record.keyId}".` };
+      const expectedFrame = record.appFrame >= destination ? record.appFrame + 1 : record.appFrame;
+      if (proposed.appFrame !== expectedFrame || !payloadEqualsAtFrame(proposed.payload, record.payload, expectedFrame)) {
+        return { ok: false, error: `Duplicate changed identity or paint ownership for "${record.keyId}".` };
+      }
+    }
+    const duplicate = nextById.get(delta.newKeyId);
+    if (!duplicate || duplicate.appFrame !== destination || !payloadEqualsAtFrame(duplicate.payload, source.payload, destination)) {
+      return { ok: false, error: 'Duplicate record is not an immutable retargeted source clone.' };
+    }
+    for (const record of next) {
+      if (record.keyId !== delta.newKeyId && !currentById.has(record.keyId)) {
+        return { ok: false, error: 'Duplicate introduced an undeclared identity.' };
+      }
+    }
+    return { ok: true };
+  }
+
+  const delta = input.semanticDelta;
+  if (!hasExactKeys(delta, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload'])
+    || !isNonNegativeInteger(delta.destinationAppFrame)
+    || delta.destinationAppFrame >= input.capacity
+    || (delta.destinationKeyId !== null && !isBoundedKeyId(delta.destinationKeyId))
+    || (delta.newKeyId !== null && !isBoundedKeyId(delta.newKeyId))
+    || ((delta.destinationKeyId === null) === (delta.newKeyId === null))
+    || !isPhysicPaintRotoRealKeyPayload(delta.clipboardPayload)) {
+    return { ok: false, error: 'Paste semantic declaration is malformed.' };
+  }
+  const retargetedClipboard = clonePayloadAtFrame(delta.clipboardPayload, delta.destinationAppFrame);
+  if (delta.destinationKeyId === null) {
+    const newKeyId = delta.newKeyId as string;
+    if (currentById.has(newKeyId)) return { ok: false, error: 'Paste new identity is not fresh.' };
+    if (current.some((record) => record.appFrame === delta.destinationAppFrame)) {
+      return { ok: false, error: 'Paste-to-empty destination is occupied.' };
+    }
+    if (next.length !== current.length + 1) return { ok: false, error: 'Paste-to-empty must add exactly one record.' };
+    if (input.selectedKeyId !== newKeyId || input.selectedAppFrame !== delta.destinationAppFrame) {
+      return { ok: false, error: 'Paste-to-empty must select the fresh destination identity.' };
+    }
+    for (const record of current) {
+      const proposed = nextById.get(record.keyId);
+      if (!proposed || !recordsEqual(proposed, record)) return { ok: false, error: `Paste-to-empty changed existing identity "${record.keyId}".` };
+    }
+    const pasted = nextById.get(newKeyId);
+    if (!pasted || pasted.appFrame !== delta.destinationAppFrame || !payloadEqualsAtFrame(pasted.payload, retargetedClipboard, delta.destinationAppFrame)) {
+      return { ok: false, error: 'Paste-to-empty record does not match the retargeted clipboard.' };
+    }
+    for (const record of next) {
+      if (record.keyId !== newKeyId && !currentById.has(record.keyId)) return { ok: false, error: 'Paste-to-empty introduced an undeclared identity.' };
+    }
+    return { ok: true };
+  }
+
+  const destination = currentById.get(delta.destinationKeyId);
+  if (!destination || destination.appFrame !== delta.destinationAppFrame) {
+    return { ok: false, error: 'Paste-to-existing destination identity and frame disagree.' };
+  }
+  if (next.length !== current.length || delta.newKeyId !== null) {
+    return { ok: false, error: 'Paste-to-existing must preserve the complete identity set.' };
+  }
+  if (input.selectedKeyId !== destination.keyId || input.selectedAppFrame !== destination.appFrame) {
+    return { ok: false, error: 'Paste-to-existing must preserve and select the destination identity.' };
+  }
+  for (const record of current) {
+    const proposed = nextById.get(record.keyId);
+    if (!proposed || proposed.appFrame !== record.appFrame) return { ok: false, error: 'Paste-to-existing changed the identity/frame set.' };
+    if (record.keyId === destination.keyId) {
+      if (!payloadEqualsAtFrame(proposed.payload, retargetedClipboard, destination.appFrame)) {
+        return { ok: false, error: 'Paste-to-existing destination payload does not match the retargeted clipboard.' };
+      }
+    } else if (!recordsEqual(proposed, record)) {
+      return { ok: false, error: `Paste-to-existing changed unrelated identity "${record.keyId}".` };
+    }
+  }
+  return { ok: true };
+}
+
+function isResolverOperationKind(value: unknown): value is PhysicPaintRotoPhysicalEditOperationKind {
+  return value === 'insert-slot'
+    || value === 'delete-key'
+    || value === 'move-key'
+    || value === 'force-spacing'
+    || value === 'duplicate-key'
+    || value === 'paste-key';
 }
 
 function fail(
@@ -412,6 +646,8 @@ interface Candidate {
   readonly roleByKeyId: ReadonlyMap<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>;
   /** Drag presentation metadata for Move, null for every other operation. */
   readonly drag: PhysicPaintRotoPhysicalDragPresentation | null;
+  readonly nextRecords?: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly semanticDelta?: PhysicPaintRotoPhysicalEditSemanticDelta;
 }
 
 /**
@@ -502,6 +738,103 @@ function buildDeleteCandidate(
     changed: true,
     roleByKeyId,
     drag: null,
+  };
+}
+
+function buildDuplicateCandidate(
+  identities: ValidatedIdentities,
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  sourceKeyId: string,
+  newKeyId: string,
+): Candidate {
+  const source = records.find((record) => record.keyId === sourceKeyId) as PhysicPaintRotoRealKeyRecord;
+  const destination = source.appFrame + 1;
+  const nextRecords = records.map((record) => {
+    const nextFrame = record.appFrame >= destination ? record.appFrame + 1 : record.appFrame;
+    return Object.freeze({
+      kind: 'real-key' as const,
+      keyId: record.keyId,
+      appFrame: nextFrame,
+      payload: clonePayloadAtFrame(record.payload, nextFrame),
+    }) as PhysicPaintRotoRealKeyRecord;
+  });
+  nextRecords.push(Object.freeze({
+    kind: 'real-key',
+    keyId: newKeyId,
+    appFrame: destination,
+    payload: clonePayloadAtFrame(source.payload, destination),
+  }) as PhysicPaintRotoRealKeyRecord);
+  nextRecords.sort((left, right) => left.appFrame - right.appFrame);
+  const mapping = new Map(nextRecords.map((record) => [record.keyId, record.appFrame]));
+  const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+  for (const identity of identities.ordered) {
+    if (identity.appFrame >= destination) roleByKeyId.set(identity.keyId, 'ripple-right');
+  }
+  const expectedKeyIds = new Set(identities.keyIds);
+  expectedKeyIds.add(newKeyId);
+  return {
+    mapping,
+    expectedKeyIds,
+    removedKeyId: null,
+    selectedKeyId: newKeyId,
+    operationKind: 'duplicate-key',
+    changed: true,
+    roleByKeyId,
+    drag: null,
+    nextRecords: Object.freeze(nextRecords),
+    semanticDelta: Object.freeze({ kind: 'duplicate-key', sourceKeyId, newKeyId }),
+  };
+}
+
+function buildPasteCandidate(
+  identities: ValidatedIdentities,
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  intent: Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key' }>,
+): Candidate {
+  const selectedKeyId = intent.destinationKeyId ?? (intent.newKeyId as string);
+  const nextRecords = records.map((record) => {
+    if (record.keyId !== intent.destinationKeyId) return record;
+    return Object.freeze({
+      kind: 'real-key' as const,
+      keyId: record.keyId,
+      appFrame: record.appFrame,
+      payload: clonePayloadAtFrame(intent.clipboardPayload, record.appFrame),
+    }) as PhysicPaintRotoRealKeyRecord;
+  });
+  if (intent.destinationKeyId === null) {
+    nextRecords.push(Object.freeze({
+      kind: 'real-key',
+      keyId: intent.newKeyId as string,
+      appFrame: intent.destinationAppFrame,
+      payload: clonePayloadAtFrame(intent.clipboardPayload, intent.destinationAppFrame),
+    }) as PhysicPaintRotoRealKeyRecord);
+  }
+  nextRecords.sort((left, right) => left.appFrame - right.appFrame);
+  const mapping = new Map(nextRecords.map((record) => [record.keyId, record.appFrame]));
+  const expectedKeyIds = new Set(identities.keyIds);
+  if (intent.newKeyId !== null) expectedKeyIds.add(intent.newKeyId);
+  const destinationRecord = intent.destinationKeyId === null
+    ? null
+    : records.find((record) => record.keyId === intent.destinationKeyId) ?? null;
+  const changed = destinationRecord === null
+    || !payloadEqualsAtFrame(destinationRecord.payload, intent.clipboardPayload, destinationRecord.appFrame);
+  return {
+    mapping,
+    expectedKeyIds,
+    removedKeyId: null,
+    selectedKeyId,
+    operationKind: 'paste-key',
+    changed,
+    roleByKeyId: new Map(),
+    drag: null,
+    nextRecords: Object.freeze(nextRecords),
+    semanticDelta: Object.freeze({
+      kind: 'paste-key',
+      destinationAppFrame: intent.destinationAppFrame,
+      destinationKeyId: intent.destinationKeyId,
+      newKeyId: intent.newKeyId,
+      clipboardPayload: clonePayloadAtFrame(intent.clipboardPayload, intent.clipboardPayload.appFrame),
+    }),
   };
 }
 
@@ -937,6 +1270,27 @@ function finalizeProposal(
     seenFrames.add(frame);
   }
 
+  const semanticSelectedAppFrame = candidate.selectedKeyId === null ? null : mapping.get(candidate.selectedKeyId) ?? null;
+  if ((candidate.nextRecords === undefined) !== (candidate.semanticDelta === undefined)) {
+    return {
+      ok: false,
+      resolution: fail('invalid-semantic-delta', operationKind, 'Semantic operations require both complete next records and a declared delta.'),
+    };
+  }
+  if (candidate.nextRecords && candidate.semanticDelta) {
+    // Operation builders validate against their authoritative current records
+    // before finalization. This branch independently proves that the complete
+    // next-record collection and the final mapping describe the same exact
+    // identity/frame set before projection metadata is derived.
+    if (candidate.nextRecords.length !== mapping.size
+      || candidate.nextRecords.some((record) => mapping.get(record.keyId) !== record.appFrame)) {
+      return {
+        ok: false,
+        resolution: fail('invalid-semantic-delta', operationKind, 'Complete next records disagree with the final mapping.'),
+      };
+    }
+  }
+
   // 3. Derive the shared physical projection (ordering, interiors, cells).
   const projection = buildProjectionFromMapping(mapping, capacity, interpolationEnabled);
   const { orderedKeyIds, assignments, cells: cellsFrozen, generatedCells: generatedCellsFrozen } = projection;
@@ -962,12 +1316,19 @@ function finalizeProposal(
 
   // 5. Resolve deterministic selection.
   const selectedKeyId = candidate.selectedKeyId;
-  const selectedAppFrame = selectedKeyId === null ? null : mapping.get(selectedKeyId) ?? null;
+  const selectedAppFrame = semanticSelectedAppFrame;
 
   // 6. Build affectedKeyIds: shifted identities plus removed identity.
   const affectedList: string[] = changesFrozen.map((change) => change.keyId);
   if (candidate.removedKeyId !== null && !affectedList.includes(candidate.removedKeyId)) {
     affectedList.push(candidate.removedKeyId);
+  }
+  if (candidate.semanticDelta?.kind === 'duplicate-key' && !affectedList.includes(candidate.semanticDelta.newKeyId)) {
+    affectedList.push(candidate.semanticDelta.newKeyId);
+  }
+  if (candidate.semanticDelta?.kind === 'paste-key') {
+    const affectedKeyId = candidate.semanticDelta.destinationKeyId ?? candidate.semanticDelta.newKeyId;
+    if (affectedKeyId !== null && !affectedList.includes(affectedKeyId)) affectedList.push(affectedKeyId);
   }
   const affectedKeyIds = Object.freeze(affectedList) as readonly string[];
 
@@ -995,6 +1356,8 @@ function finalizeProposal(
     changes: changesFrozen,
     removedKeyId: candidate.removedKeyId,
     drag: candidate.drag,
+    nextRecords: candidate.nextRecords ?? null,
+    semanticDelta: candidate.semanticDelta ?? null,
     status,
   }) as PhysicPaintRotoPhysicalEditProposal;
 
@@ -1027,7 +1390,36 @@ function buildStatusText(
     if (!changed) return 'No change';
     return 'Force Spacing applied';
   }
+  if (operationKind === 'duplicate-key') {
+    return selectedAppFrame === null ? 'Duplicated key' : `Duplicated key to frame ${selectedAppFrame}`;
+  }
+  if (operationKind === 'paste-key') {
+    return selectedAppFrame === null ? 'Pasted key' : `Pasted key at frame ${selectedAppFrame}`;
+  }
   return 'No change';
+}
+
+function validateSemanticInputRecords(
+  input: unknown,
+  identities: ValidatedIdentities,
+  capacity: number,
+  operationKind: 'duplicate-key' | 'paste-key',
+): { ok: true; records: readonly PhysicPaintRotoRealKeyRecord[] } | { ok: false; resolution: PhysicPaintRotoPhysicalEditResolution } {
+  let records: readonly PhysicPaintRotoRealKeyRecord[];
+  try {
+    records = parsePhysicPaintRotoRealKeyRecordCollection(input, capacity);
+  } catch (error) {
+    return { ok: false, resolution: fail('malformed-records', operationKind, error instanceof Error ? error.message : 'Physical records are malformed.') };
+  }
+  if (records.length !== identities.ordered.length) {
+    return { ok: false, resolution: fail('malformed-records', operationKind, 'Physical records and identities have different sizes.') };
+  }
+  for (const record of records) {
+    if (identities.framesByKeyId.get(record.keyId) !== record.appFrame) {
+      return { ok: false, resolution: fail('malformed-records', operationKind, 'Physical records and identities disagree.') };
+    }
+  }
+  return { ok: true, records };
 }
 
 // ---------------------------------------------------------------------------
@@ -1114,14 +1506,16 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     return fail('malformed-target', null, 'Resolver input must be a record.');
   }
 
-  const operationKind = operationKindOf(input.intent);
+  if (!isRecord(input.intent)) {
+    return fail('malformed-target', null, 'Intent must be a discriminated record.');
+  }
+  const operationKind = isResolverOperationKind(input.intent.kind) ? input.intent.kind : null;
+  if (operationKind === null) {
+    return fail('malformed-target', null, 'Unknown physical edit intent kind.');
+  }
 
   if (!validateCapacity(input.capacity)) {
     return fail('invalid-capacity', operationKind, 'Capacity must be an integer from 1 through PHYSIC_PAINT_MAX_APPLY_FRAMES.');
-  }
-
-  if (input.intent === null || typeof input.intent !== 'object') {
-    return fail('malformed-target', operationKind, 'Intent must be a discriminated record.');
   }
 
   const identitiesResult = validateIdentities(input.identities, input.capacity, operationKind);
@@ -1158,6 +1552,78 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     const candidate = buildDeleteCandidate(identities, intent.selectedKeyId);
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled);
     if (!finalized.ok) return finalized.resolution;
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'duplicate-key') {
+    if (!isBoundedKeyId(intent.sourceKeyId) || !isBoundedKeyId(intent.newKeyId) || intent.sourceKeyId === intent.newKeyId) {
+      return fail('malformed-identity', operationKind, 'Duplicate source and fresh identities must be distinct bounded IDs.');
+    }
+    if (!identities.keyIds.has(intent.sourceKeyId)) {
+      return fail('unknown-operation-identity', operationKind, `Duplicate source identity "${intent.sourceKeyId}" does not exist.`);
+    }
+    if (identities.keyIds.has(intent.newKeyId)) {
+      return fail('duplicate-id', operationKind, `Duplicate new identity "${intent.newKeyId}" is not fresh.`);
+    }
+    const recordsResult = validateSemanticInputRecords(input.records, identities, input.capacity, 'duplicate-key');
+    if (!recordsResult.ok) return recordsResult.resolution;
+    const candidate = buildDuplicateCandidate(identities, recordsResult.records, intent.sourceKeyId, intent.newKeyId);
+    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled);
+    if (!finalized.ok) return finalized.resolution;
+    const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
+      operationKind: 'duplicate-key',
+      currentRecords: recordsResult.records,
+      nextRecords: finalized.proposal.nextRecords,
+      semanticDelta: finalized.proposal.semanticDelta,
+      capacity: input.capacity,
+      selectedKeyId: finalized.proposal.selectedKeyId,
+      selectedAppFrame: finalized.proposal.selectedAppFrame,
+    });
+    if (!semanticValidation.ok) return fail('invalid-semantic-delta', operationKind, semanticValidation.error);
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'paste-key') {
+    if (!isNonNegativeInteger(intent.destinationAppFrame) || intent.destinationAppFrame >= input.capacity) {
+      return fail('out-of-range-frame', operationKind, 'Paste destination is outside capacity.');
+    }
+    if (!isPhysicPaintRotoRealKeyPayload(intent.clipboardPayload)) {
+      return fail('malformed-payload', operationKind, 'Paste clipboard payload is malformed.');
+    }
+    if ((intent.destinationKeyId === null) === (intent.newKeyId === null)) {
+      return fail('invalid-semantic-delta', operationKind, 'Paste must declare either one existing destination identity or one fresh identity.');
+    }
+    const recordsResult = validateSemanticInputRecords(input.records, identities, input.capacity, 'paste-key');
+    if (!recordsResult.ok) return recordsResult.resolution;
+    if (intent.destinationKeyId === null) {
+      if (!isBoundedKeyId(intent.newKeyId) || identities.keyIds.has(intent.newKeyId)) {
+        return fail('duplicate-id', operationKind, 'Paste-to-empty requires one fresh bounded identity.');
+      }
+      if (recordsResult.records.some((record) => record.appFrame === intent.destinationAppFrame)) {
+        return fail('duplicate-destination-frame', operationKind, 'Paste-to-empty destination is occupied.');
+      }
+    } else {
+      if (!isBoundedKeyId(intent.destinationKeyId) || intent.newKeyId !== null) {
+        return fail('malformed-identity', operationKind, 'Paste-to-existing destination identity is malformed.');
+      }
+      const destination = recordsResult.records.find((record) => record.keyId === intent.destinationKeyId);
+      if (!destination || destination.appFrame !== intent.destinationAppFrame) {
+        return fail('unknown-operation-identity', operationKind, 'Paste-to-existing destination identity and frame disagree.');
+      }
+    }
+    const candidate = buildPasteCandidate(identities, recordsResult.records, intent);
+    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled);
+    if (!finalized.ok) return finalized.resolution;
+    const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
+      operationKind: 'paste-key',
+      currentRecords: recordsResult.records,
+      nextRecords: finalized.proposal.nextRecords,
+      semanticDelta: finalized.proposal.semanticDelta,
+      capacity: input.capacity,
+      selectedKeyId: finalized.proposal.selectedKeyId,
+      selectedAppFrame: finalized.proposal.selectedAppFrame,
+    });
+    if (!semanticValidation.ok) return fail('invalid-semantic-delta', operationKind, semanticValidation.error);
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
 

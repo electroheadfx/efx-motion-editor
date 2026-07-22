@@ -44,8 +44,29 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'delete-key'
   | 'move-key'
   | 'force-spacing'
+  | 'duplicate-key'
+  | 'paste-key'
   | 'undo'
   | 'redo';
+
+/**
+ * Declared semantic delta for ordinary identity/payload-changing edits.
+ * The parent validates this declaration against its authoritative current
+ * records and the submitted complete next records before mutation.
+ */
+export type PhysicPaintRotoPhysicalEditSemanticDelta =
+  | {
+      readonly kind: 'duplicate-key';
+      readonly sourceKeyId: string;
+      readonly newKeyId: string;
+    }
+  | {
+      readonly kind: 'paste-key';
+      readonly destinationAppFrame: number;
+      readonly destinationKeyId: string | null;
+      readonly newKeyId: string | null;
+      readonly clipboardPayload: PhysicPaintRotoPhysicalEditRecord['payload'];
+    };
 
 /**
  * Replay provenance for Undo/Redo physical-edit requests (Plan 36.14-05
@@ -68,8 +89,8 @@ export interface PhysicPaintRotoPhysicalEditReplayProvenance {
 }
 
 /**
- * Standalone generic physical-edit apply payload (inactive successor of the
- * current `replace-roto-key-frames` move-era branch).
+ * Active generic physical-edit apply payload for the closed
+ * `replace-roto-physical-map` branch.
  *
  * Per D-09: the request carries operation ID, operation kind, layer,
  * launch/project context identity, expected revision, immutable complete
@@ -82,9 +103,8 @@ export interface PhysicPaintRotoPhysicalEditReplayProvenance {
  * and the parent revalidates it against the accepted-operation ledger
  * before authorizing an identity-set replay.
  *
- * This interface is NOT a member of `PhysicPaintApplyPayload`. It is the one
- * successor contract that Plan 36.14-04 Task 3 activates while removing the
- * old `replace-roto-key-frames` branch.
+ * This interface is the exact physical branch carried by
+ * `PhysicPaintApplyPayload`; unrelated apply kinds retain their generic shape.
  */
 export interface PhysicPaintRotoPhysicalEditApplyPayload {
   readonly kind: 'replace-roto-physical-map';
@@ -99,6 +119,7 @@ export interface PhysicPaintRotoPhysicalEditApplyPayload {
   readonly interpolationEnabled: boolean;
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
+  readonly semanticDelta?: PhysicPaintRotoPhysicalEditSemanticDelta;
   readonly historyProvenance?: PhysicPaintRotoPhysicalEditReplayProvenance;
 }
 
@@ -122,14 +143,11 @@ export interface PhysicPaintRotoPhysicalEditRecord {
 }
 
 /**
- * Standalone generic physical-edit apply result (inactive successor of the
- * current move-era apply result). The result echoes the exact settlement
- * tuple (operation ID, kind, layer, launch/project context) and carries the
- * accepted revision only on success.
- *
- * This interface is NOT a member of `PhysicPaintApplyResult`. The active
- * apply result contract remains unchanged until Plan 36.14-04 Task 3
- * activates this successor.
+ * Active parent-authoritative physical-edit acknowledgement. The result
+ * echoes the exact settlement tuple (operation ID, kind, layer,
+ * launch/project context), staged and accepted revisions, selection, outcome,
+ * semantic declaration for Duplicate/Paste, and replay provenance only for
+ * Undo/Redo.
  */
 export interface PhysicPaintRotoPhysicalEditApplyResult {
   readonly operationId: string;
@@ -142,8 +160,12 @@ export interface PhysicPaintRotoPhysicalEditApplyResult {
   readonly expectedRevision: string;
   readonly stagedRevision: string;
   readonly acceptedRevision: string | null;
+  readonly selectedKeyId: string | null;
+  readonly selectedAppFrame: number | null;
+  readonly appliedFrameCount: number;
   readonly ok: boolean;
   readonly error?: string;
+  readonly semanticDelta?: PhysicPaintRotoPhysicalEditSemanticDelta;
   readonly historyProvenance?: PhysicPaintRotoPhysicalEditReplayProvenance;
 }
 
@@ -166,6 +188,41 @@ export function isPhysicPaintRotoPhysicalEditRecord(value: unknown): value is Ph
   if (!isNonNegativeInteger(payload.appFrame)) return false;
   if (!isRenderedPngDataUrl(payload.dataUrl)) return false;
   return optionalNumber(payload.width) && optionalNumber(payload.height);
+}
+
+export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): value is PhysicPaintRotoPhysicalEditSemanticDelta {
+  if (!isRecord(value)) return false;
+  if (value.kind === 'duplicate-key') {
+    return hasOnlyKeys(value, ['kind', 'sourceKeyId', 'newKeyId'])
+      && isNonEmptyString(value.sourceKeyId)
+      && isNonEmptyString(value.newKeyId)
+      && value.sourceKeyId !== value.newKeyId;
+  }
+  if (value.kind === 'paste-key') {
+    if (!hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload'])) return false;
+    if (!isNonNegativeInteger(value.destinationAppFrame)) return false;
+    if (value.destinationKeyId !== null && !isNonEmptyString(value.destinationKeyId)) return false;
+    if (value.newKeyId !== null && !isNonEmptyString(value.newKeyId)) return false;
+    if ((value.destinationKeyId === null) === (value.newKeyId === null)) return false;
+    return isPhysicPaintRotoPhysicalEditRecord({
+      keyId: value.destinationKeyId ?? value.newKeyId,
+      appFrame: value.destinationAppFrame,
+      payload: value.clipboardPayload,
+    });
+  }
+  return false;
+}
+
+function operationSemanticDeltaIsValid(
+  operationKind: PhysicPaintRotoPhysicalEditOperationKind,
+  semanticDelta: unknown,
+  allowMissingOnFailure = false,
+): boolean {
+  if (operationKind === 'duplicate-key' || operationKind === 'paste-key') {
+    if (semanticDelta === undefined) return allowMissingOnFailure;
+    return isPhysicPaintRotoPhysicalEditSemanticDelta(semanticDelta) && semanticDelta.kind === operationKind;
+  }
+  return semanticDelta === undefined;
 }
 
 /**
@@ -198,10 +255,10 @@ export function isPhysicPaintRotoPhysicalEditReplayProvenance(value: unknown): v
  */
 export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value is PhysicPaintRotoPhysicalEditApplyPayload {
   if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'selectedKeyId', 'selectedAppFrame', 'historyProvenance'])) return false;
+  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'selectedKeyId', 'selectedAppFrame', 'semanticDelta', 'historyProvenance'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
-  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
+  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'duplicate-key' && value.operationKind !== 'paste-key' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
   if (!isNonEmptyString(value.layerId)) return false;
   if (!isNonNegativeInteger(value.startFrame)) return false;
   if (!isNonEmptyString(value.launchOperationId)) return false;
@@ -211,6 +268,8 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (typeof value.interpolationEnabled !== 'boolean') return false;
   if (value.selectedKeyId !== null && !isNonEmptyString(value.selectedKeyId)) return false;
   if (value.selectedAppFrame !== null && !isNonNegativeInteger(value.selectedAppFrame)) return false;
+  if ((value.selectedKeyId === null) !== (value.selectedAppFrame === null)) return false;
+  if (!operationSemanticDeltaIsValid(value.operationKind, value.semanticDelta)) return false;
   const isReplay = value.operationKind === 'undo' || value.operationKind === 'redo';
   if (isReplay) {
     if (!isPhysicPaintRotoPhysicalEditReplayProvenance(value.historyProvenance)) return false;
@@ -232,10 +291,10 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
  */
 export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value is PhysicPaintRotoPhysicalEditApplyResult {
   if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'ok', 'error', 'historyProvenance'])) return false;
+  if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'selectedKeyId', 'selectedAppFrame', 'appliedFrameCount', 'ok', 'error', 'semanticDelta', 'historyProvenance'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
-  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
+  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'duplicate-key' && value.operationKind !== 'paste-key' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
   if (!isNonEmptyString(value.layerId)) return false;
   if (!isNonNegativeInteger(value.startFrame)) return false;
   if (!isNonEmptyString(value.launchOperationId)) return false;
@@ -243,10 +302,15 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
   if (!isNonEmptyString(value.expectedRevision)) return false;
   if (!isNonEmptyString(value.stagedRevision)) return false;
   if (value.acceptedRevision !== null && !isNonEmptyString(value.acceptedRevision)) return false;
+  if (value.selectedKeyId !== null && !isNonEmptyString(value.selectedKeyId)) return false;
+  if (value.selectedAppFrame !== null && !isNonNegativeInteger(value.selectedAppFrame)) return false;
+  if ((value.selectedKeyId === null) !== (value.selectedAppFrame === null)) return false;
+  if (!isNonNegativeInteger(value.appliedFrameCount)) return false;
   if (typeof value.ok !== 'boolean') return false;
   if (value.error !== undefined && typeof value.error !== 'string') return false;
   if (value.ok && value.acceptedRevision === null) return false;
   if (!value.ok && value.acceptedRevision !== null) return false;
+  if (!operationSemanticDeltaIsValid(value.operationKind, value.semanticDelta, !value.ok)) return false;
   const isReplay = value.operationKind === 'undo' || value.operationKind === 'redo';
   if (isReplay) {
     if (!isPhysicPaintRotoPhysicalEditReplayProvenance(value.historyProvenance)) return false;
@@ -486,6 +550,7 @@ export interface PhysicPaintReplaceRotoPhysicalMapPayload {
   interpolationEnabled: boolean;
   selectedKeyId: string | null;
   selectedAppFrame: number | null;
+  semanticDelta?: PhysicPaintRotoPhysicalEditSemanticDelta;
   /**
    * Replay provenance (Plan 36.14-05 Task 2). Required when `operationKind`
    * is `'undo'` or `'redo'`; forbidden for ordinary kinds. Carries the
@@ -501,7 +566,7 @@ export interface PhysicPaintReplaceRotoPhysicalMapPayload {
 
 export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintDeleteRotoFramePayload | PhysicPaintReplaceRotoKeyFramesPayload | PhysicPaintReplaceRotoPhysicalMapPayload | PhysicPaintUpdateRotoInterpolationSettingsPayload;
 
-export interface PhysicPaintApplyResult {
+export interface PhysicPaintGenericApplyResult {
   operationId: string;
   kind: PhysicPaintApplyKind;
   layerId: string;
@@ -510,6 +575,9 @@ export interface PhysicPaintApplyResult {
   ok: boolean;
   error?: string;
 }
+
+/** Physical results use the exact parent-authoritative acknowledgement shape. */
+export type PhysicPaintApplyResult = PhysicPaintGenericApplyResult | PhysicPaintRotoPhysicalEditApplyResult;
 
 export interface PhysicPaintApplyResultMessage {
   type: 'physic-paint:apply-result';
@@ -637,7 +705,7 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
   if (value.kind === 'replace-roto-physical-map') {
     const isReplay = value.operationKind === 'undo' || value.operationKind === 'redo';
     return isNonEmptyString(value.operationId)
-      && (value.operationKind === 'insert-slot' || value.operationKind === 'delete-key' || value.operationKind === 'move-key' || value.operationKind === 'force-spacing' || value.operationKind === 'undo' || value.operationKind === 'redo')
+      && (value.operationKind === 'insert-slot' || value.operationKind === 'delete-key' || value.operationKind === 'move-key' || value.operationKind === 'force-spacing' || value.operationKind === 'duplicate-key' || value.operationKind === 'paste-key' || value.operationKind === 'undo' || value.operationKind === 'redo')
       && isNonEmptyString(value.layerId)
       && isNonNegativeInteger(value.startFrame)
       && isNonEmptyString(value.launchOperationId)
@@ -648,6 +716,8 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
       && typeof value.interpolationEnabled === 'boolean'
       && (value.selectedKeyId === null || isNonEmptyString(value.selectedKeyId))
       && (value.selectedAppFrame === null || isNonNegativeInteger(value.selectedAppFrame))
+      && ((value.selectedKeyId === null) === (value.selectedAppFrame === null))
+      && operationSemanticDeltaIsValid(value.operationKind, value.semanticDelta)
       && (isReplay
         ? (isPhysicPaintRotoPhysicalEditReplayProvenance(value.historyProvenance)
           && value.historyProvenance.historyDirection === value.operationKind)
@@ -718,9 +788,12 @@ export function isPhysicPaintRotoBackgroundMetadata(value: unknown): value is Ph
 
 export function isPhysicPaintApplyResult(value: unknown): value is PhysicPaintApplyResult {
   if (!isRecord(value)) return false;
+  if (value.kind === 'replace-roto-physical-map') {
+    return isPhysicPaintRotoPhysicalEditApplyResult(value);
+  }
   return (
     isNonEmptyString(value.operationId) &&
-    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'replace-roto-physical-map' || value.kind === 'update-roto-interpolation-settings') &&
+    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'update-roto-interpolation-settings') &&
     isNonEmptyString(value.layerId) &&
     isNonNegativeInteger(value.startFrame) &&
     isNonNegativeInteger(value.appliedFrameCount) &&
