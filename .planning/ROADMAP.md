@@ -452,7 +452,7 @@ Use `SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md` and th
 **Mode:** mvp
 **Requirements:** 36.14-PHYSICAL-IDENTITY, 36.14-DERIVED-INTERPOLATION, 36.14-ATOMIC-FRAME-MAPPING, 36.14-RIPPLE-INSERT-DELETE, 36.14-RIPPLE-DRAG, 36.14-FORCE-SPACING, 36.14-DOWNSTREAM-PARITY, 36.14-UI-INTEGRATION, 36.14-UAT-THEN-REGRESSION
 **Depends on:** Phase 36.13 and native-UAT approval of the dedicated ROTO-SCRIPT-COPY / ROTO-SCRIPT-APPLY GSD quick
-**Plans:** 10/19 plans executed
+**Plans:** 10/20 plans executed
 
 **Success Criteria**:
 
@@ -518,37 +518,41 @@ Plans:
 
 **Wave 11** *(blocked on Wave 10)*
 
-- [ ] 36.14-19-PLAN.md — Cut the production-reachable Studio/navigation/key-utility route over to explicit stable-identity physical ports, remove the temporal save bridge and legacy utility transaction/persistence authority from exactly five approved owners, and run bounded static/typecheck verification without tests or build.
+- [ ] 36.14-20-PLAN.md — Extend exactly four foundation owners with explicit ordinary Duplicate/Paste kinds, complete validated next-record proposals, centralized coordinator staging and exact acknowledgement, and accepted-only ordinary history; run typecheck only.
 
 **Wave 12** *(blocked on Wave 11)*
 
-- [ ] 36.14-11-PLAN.md — Binary production cleanup of legacy timing fields, aliases, readers, and operation-specific transaction paths; run `pnpm --dir app typecheck` and `pnpm --dir app build` before the native gate.
+- [ ] 36.14-19-PLAN.md — Compose Plan 20's Duplicate/Paste seams through exactly five Studio/navigation/key-utility owners, remove the temporal save bridge and legacy utility authority, preserve immutable Copy, direct navigation, and unchanged Clear, and run bounded static/typecheck verification without tests or build.
 
-**Wave 13** *(blocked on Wave 12)* — Native UAT checkpoint
+**Wave 13** *(blocked on Wave 12)*
+
+- [ ] 36.14-11-PLAN.md — Audit Plan 20 semantic ownership, Plan 19 composition ownership, current callers, and stable-identity Clear through `useRotoFrameEditingController.ts`; run `pnpm --dir app typecheck` and `pnpm --dir app build` before the native gate.
+
+**Wave 14** *(blocked on Wave 13)* — Native UAT checkpoint
 
 - [ ] 36.14-12-PLAN.md — Stop at the blocking user-owned native physical-model UAT checkpoint; no regression test work until explicit user approval and byte-verified `36.14-12-APPROVAL.txt`.
 
-**Wave 14** *(blocked on Wave 13 approval evidence)* — Post-UAT regression unlock
+**Wave 15** *(blocked on Wave 14 approval evidence)* — Post-UAT regression unlock
 
 - [ ] 36.14-13-PLAN.md — After byte-exact Plan 12 approval, transfer valid wrapper assertions into final-owner regressions, delete six obsolete wrapper tests plus `useRotoPersistenceIntegration.ts` and `rotoSaveTransactions.ts` in one clean cutover, and rewrite `useRotoInterpolationController.test.ts`.
 
-**Wave 15** *(blocked on Wave 14)*
+**Wave 16** *(blocked on Wave 15)*
 
 - [ ] 36.14-14-PLAN.md — Add post-approval regression coverage for persistence/reopen, bridge/cache publication, playback, onion/reference, preview/export, missing/background rendering, timeline length, script behavior, and physical equality/encoding; run the full `vitest run` suite.
 
-**Wave 16** *(blocked on Wave 15)* — Final UI integration
+**Wave 17** *(blocked on Wave 16)* — Final UI integration
 
 - [ ] 36.14-15-PLAN.md — Integrate the approved `155px` workflow-strip geometry, non-wrapping header hierarchy, fixed abutting timeline cells, ordered bottom action row, Force Spacing controls, Discard relocation, obsolete-control removal, and concise status-vs-LOG routing.
 
-**Wave 17** *(blocked on Wave 16)*
+**Wave 18** *(blocked on Wave 17)*
 
 - [ ] 36.14-16-PLAN.md — Integrate complete-map drag presentation, whole-cell and occupied-boundary targets, identity-following selection/focus, minimal final-cell auto-scroll, and approved pointer cancellation/edge-scroll behavior.
 
-**Wave 18** *(blocked on Wave 17)*
+**Wave 19** *(blocked on Wave 18)*
 
 - [ ] 36.14-17-PLAN.md — Finish guarded focusable Script controls with controller-supplied reasons, shell-level non-selection with text-selection exceptions, UI accessibility/status details, and post-approval UI regression coverage; run focused tests, full `vitest run`, typecheck, and build without starting the application server.
 
-**Wave 19** *(blocked on Wave 18)* — Final native UAT
+**Wave 20** *(blocked on Wave 19)* — Final native UAT
 
 - [ ] 36.14-18-PLAN.md — Stop at the final blocking user-owned native visual and interaction UAT checkpoint; byte-verify `36.14-18-APPROVAL.txt` before phase acceptance.
 
@@ -887,4 +891,4 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
 | 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 6/6 | Complete | 2026-07-13 |
-| 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 10/18 | In Progress|  |
+| 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 10/20 | In Progress|  |
