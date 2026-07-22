@@ -2,9 +2,12 @@ import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoSegmentSpacingOverride } from '../../../types/physicPaint';
 import { applyRotoKeyUtilityTransactionToLocalState, type RotoKeyUtilityTransaction } from '../roto/physicsPaintRotoKeyController';
 import { createRotoSession, type RotoSession, type RotoSessionActionResult, type RotoSessionCopiedKey, type RotoSessionEffect } from '../roto/physicsPaintRotoSession';
+import type { RotoPhysicalKeyUtilityPort } from '../roto/rotoCoordinatorPorts';
 
 export interface RotoKeyUtilitiesInput<TPreview extends { appFrame: number }> {
   currentFrame: number;
+  currentKeyId: string | null;
+  physicalKeyUtilities: RotoPhysicalKeyUtilityPort;
   realKeyFrames: readonly PhysicPaintRotoCacheFrame[];
   cachedRotoFrames?: readonly PhysicPaintRotoCacheFrame[];
   dirtyFrames: ReadonlySet<number>;
@@ -188,8 +191,16 @@ export function useRotoKeyUtilities<TPreview extends { appFrame: number }>(input
 
   const duplicateKey = useCallback(() => {
     if (blocked || !requireCurrentRealKey()) return;
-    void runSessionResult(session.duplicateKey());
-  }, [blocked, input, requireCurrentRealKey, runSessionResult, session]);
+    const sourceKeyId = input.currentKeyId;
+    if (!sourceKeyId) {
+      input.setApplyMessage('The selected Roto key is no longer available.');
+      return;
+    }
+    setKeyActionInFlight(true);
+    void input.physicalKeyUtilities.duplicateKey(sourceKeyId).finally(() => {
+      setKeyActionInFlight(false);
+    });
+  }, [blocked, input, requireCurrentRealKey]);
 
   const copyKey = useCallback(() => {
     if (blocked) return;

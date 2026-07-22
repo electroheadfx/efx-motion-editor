@@ -11,13 +11,17 @@ import type { PhysicPaintRotoRealKeyRecord, PhysicPaintRotoInterpolationState } 
 import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import {
+  createPhysicPaintRotoDuplicateKeyIntent,
   resolvePhysicPaintRotoPhysicalEdit,
   type PhysicPaintRotoPhysicalEditIntent,
   type PhysicPaintRotoPhysicalEditProposal,
   type PhysicPaintRotoPhysicalEditResolution,
   type PhysicPaintRotoPhysicalEditTarget,
 } from '../roto/physicsPaintRotoPhysicalResolver';
-import type { RotoPhysicalEditExecuteInput } from '../roto/rotoCoordinatorPorts';
+import type {
+  RotoPhysicalEditExecuteInput,
+  RotoPhysicalKeyUtilityPort,
+} from '../roto/rotoCoordinatorPorts';
 
 /**
  * Stable physical timeline action bundle exposed by {@link useRotoTimelineActions}.
@@ -162,12 +166,14 @@ export interface RotoTimelineActionsInput {
 
 interface PhysicalActionRunnerInput {
   readonly intent: PhysicPaintRotoPhysicalEditIntent;
-  readonly operationKind: 'insert-slot' | 'delete-key';
+  readonly operationKind: 'insert-slot' | 'delete-key' | 'duplicate-key';
+  readonly requiredKeyId: string | null;
   readonly successMessage: string;
 }
 
 const INSERT_SUCCESS_MESSAGE = 'Inserted an empty Roto frame before the selected key.';
 const DELETE_SUCCESS_MESSAGE = 'Deleted the selected Roto key.';
+const DUPLICATE_SUCCESS_MESSAGE = 'Duplicated the selected Roto key.';
 const INVALID_FORCE_SPACING_MESSAGE = 'Enter a whole number of empty frames (0 or more).';
 
 export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
@@ -229,7 +235,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       input.publishStatus?.('Select a real Roto key before editing the timeline.');
       return false;
     }
-    if (!input.executePhysicalEdit || !input.getRotoKeyRecords || !input.getRotoInterpolationState || !input.getCapacity || !input.getSelectedKeyId) {
+    if (!input.executePhysicalEdit || !input.getRotoKeyRecords || !input.getRotoInterpolationState || !input.getCapacity) {
       input.publishStatus?.('Timeline editing is unavailable.');
       return false;
     }
@@ -237,22 +243,20 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       input.publishStatus?.('A Roto physical edit is already in flight.');
       return false;
     }
-    const selectedKeyId = input.getSelectedKeyId();
-    if (!selectedKeyId) {
-      input.publishStatus?.('Select a real Roto key before editing the timeline.');
-      return false;
-    }
     const records = input.getRotoKeyRecords();
     const interpolation = input.getRotoInterpolationState();
     const capacity = input.getCapacity();
-    const selectedRecord = records.find((record) => record.keyId === selectedKeyId);
-    if (!selectedRecord) {
+    if (
+      runnerInput.requiredKeyId !== null
+      && records.filter((record) => record.keyId === runnerInput.requiredKeyId).length !== 1
+    ) {
       input.publishStatus?.('The selected Roto key is no longer available.');
       return false;
     }
     const identities = records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
     const resolution: PhysicPaintRotoPhysicalEditResolution = resolvePhysicPaintRotoPhysicalEdit({
       identities,
+      records,
       intent: runnerInput.intent,
       capacity,
       interpolationEnabled: interpolation.enabled,
@@ -275,21 +279,38 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     return accepted;
   }, [input]);
 
-  const insertRotoFrame = useCallback((): Promise<boolean> => (
-    runPhysicalAction({
-      intent: { kind: 'insert-slot', selectedKeyId: ensureSelectedKeyId(input) },
+  const insertRotoFrame = useCallback((): Promise<boolean> => {
+    const selectedKeyId = ensureSelectedKeyId(input);
+    return runPhysicalAction({
+      intent: { kind: 'insert-slot', selectedKeyId },
       operationKind: 'insert-slot',
+      requiredKeyId: selectedKeyId,
       successMessage: INSERT_SUCCESS_MESSAGE,
-    })
-  ), [runPhysicalAction, input]);
+    });
+  }, [runPhysicalAction, input]);
 
-  const deleteRotoFrame = useCallback((): Promise<boolean> => (
-    runPhysicalAction({
-      intent: { kind: 'delete-key', selectedKeyId: ensureSelectedKeyId(input) },
+  const deleteRotoFrame = useCallback((): Promise<boolean> => {
+    const selectedKeyId = ensureSelectedKeyId(input);
+    return runPhysicalAction({
+      intent: { kind: 'delete-key', selectedKeyId },
       operationKind: 'delete-key',
+      requiredKeyId: selectedKeyId,
       successMessage: DELETE_SUCCESS_MESSAGE,
-    })
-  ), [runPhysicalAction, input]);
+    });
+  }, [runPhysicalAction, input]);
+
+  const duplicateKey = useCallback((sourceKeyId: string): Promise<boolean> => {
+    if (!isBoundedKeyId(sourceKeyId)) {
+      input.publishStatus?.('The selected Roto key identity is malformed.');
+      return Promise.resolve(false);
+    }
+    return runPhysicalAction({
+      intent: createPhysicPaintRotoDuplicateKeyIntent(sourceKeyId),
+      operationKind: 'duplicate-key',
+      requiredKeyId: sourceKeyId,
+      successMessage: DUPLICATE_SUCCESS_MESSAGE,
+    });
+  }, [input, runPhysicalAction]);
 
   const prepareRotoKeyDrag = useCallback((movedKeyId: string, target: RotoDragTarget): RotoDragPreparationResult => {
     const launch = input.getLaunchContext?.() ?? null;
@@ -455,7 +476,16 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     forceSpacingDisabledReason,
   }), [insertRotoFrame, canInsertFrame, insertDisabledReason, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason]);
 
-  return { saveRealKeyAtDisplayFrame, updateInterpolationSettings, physicalActions };
+  const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
+    duplicateKey,
+  }), [duplicateKey]);
+
+  return {
+    saveRealKeyAtDisplayFrame,
+    updateInterpolationSettings,
+    physicalActions,
+    physicalKeyUtilities,
+  };
 }
 
 function parseCanonicalForceSpacing(rawValue: string): number | null {

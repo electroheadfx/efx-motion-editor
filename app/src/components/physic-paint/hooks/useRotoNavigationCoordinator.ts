@@ -37,6 +37,7 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
 
   const keyUtilities = useRotoKeyUtilities({
     ...input.keyUtilities,
+    physicalKeyUtilities: input.keyUtilities.physicalKeyUtilities,
     syncRotoKeyFrameLists: (frames) => persistencePortRef.current.syncKeyFrameLists(frames),
     applyRotoKeyFrames: (transaction) => persistencePortRef.current.applyKeyFrames(transaction),
     persistRotoKeyFrameTransaction: (transaction) => persistencePortRef.current.persistKeyFrameTransaction(transaction),

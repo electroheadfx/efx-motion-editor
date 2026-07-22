@@ -44,6 +44,15 @@ export interface RotoKeyPersistencePort {
   persistKeyFrameTransaction: (transaction: RotoKeyUtilityTransaction) => Promise<void>;
 }
 
+/**
+ * Narrow semantic utility boundary. Callers provide only the accepted stable
+ * source identity; the physical resolver/coordinator own destination, records,
+ * staging, settlement, rollback, and history.
+ */
+export interface RotoPhysicalKeyUtilityPort {
+  duplicateKey: (sourceKeyId: string) => Promise<boolean>;
+}
+
 export interface RotoFrameDisplayPort {
   restoreFrame: (effect: Extract<RotoSessionEffect, { type: 'restoreFrame' }>, refreshedCacheFrames?: readonly PhysicPaintRotoCacheFrame[]) => void;
   clearCanvas: (frame: number) => void;

@@ -307,12 +307,152 @@ export function PhysicsPaintStudio() {
     startPhysics,
     stopPhysics,
   } = usePhysicsPaintEngineActions({ engine, settings, setSettings, isMutationLocked: rotoScript.mutationLocked.peek });
+  const replacePhysicalRecordsWithOwnership = (
+    layerId: string,
+    records: readonly PhysicPaintRotoRealKeyRecord[],
+    interpolation: PhysicPaintRotoInterpolationState,
+  ) => {
+    const beforeRecords = physicPaintStore.getRotoRealKeyRecords(layerId);
+    const nextRevision = buildPhysicPaintRotoPhysicalRevision(records, interpolation);
+    if (buildPhysicPaintRotoPhysicalRevision(beforeRecords, physicPaintStore.getRotoPhysicalInterpolationState(layerId)) === nextRevision) {
+      return physicPaintStore.replaceRotoPhysicalRecords(layerId, records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId));
+    }
+    const ownership = rebuildRotoPhysicalOwnership({
+      beforeRecords,
+      afterRecords: records,
+      contentRevision: nextRevision,
+      snapshot: {
+        frameStates: rotoEditBuffer.bufferRef.current.frameStates,
+        previewFrames: rotoEditBuffer.bufferRef.current.previewFrames,
+        capturedFrames: rotoEditBuffer.bufferRef.current.capturedFrames,
+        confirmedFrames: rotoPersistence.confirmedFramesRef.current,
+        dirtyFrames: rotoEditBuffer.bufferRef.current.dirtyFrames,
+        liveOverlayActionCounts: rotoEditBuffer.bufferRef.current.liveOverlayActionCounts,
+        editableFrames: rotoEditableFramesRef.current,
+        reference: { url: cachedRotoReferenceUrlRef.current, cachedRepaintBase: cachedRotoRepaintBaseFrameRef.current },
+      },
+    });
+    if (!ownership.ok) return { ok: false as const, error: ownership.error };
+    const result = physicPaintStore.replaceRotoPhysicalRecords(layerId, records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId));
+    if (!result.ok) return result;
+    const next = ownership.value;
+    rotoEditBuffer.replaceFrameStates(next.frameStates);
+    rotoEditBuffer.replacePreviewFrames(next.previewFrames);
+    rotoEditBuffer.bufferRef.current.capturedFrames = next.capturedFrames;
+    rotoEditBuffer.replaceDirtyFrames(next.dirtyFrames);
+    rotoEditBuffer.bufferRef.current.liveOverlayActionCounts = next.liveOverlayActionCounts;
+    rotoEditableFramesRef.current = next.editableFrames;
+    rotoEditBuffer.setEditableFrameList(() => next.editableFrames);
+    rotoPersistence.confirmedFramesRef.current = next.confirmedFrames;
+    cachedRotoReferenceUrlRef.current = next.reference.url;
+    cachedRotoRepaintBaseFrameRef.current = next.reference.cachedRepaintBase;
+    setCachedRotoReferenceUrl(next.reference.url);
+    setCachedRotoRepaintBaseFrame(next.reference.cachedRepaintBase);
+    return result;
+  };
+  const physicalEditCoordinator = useRotoPhysicalEditCoordinator<SerializedProject>({
+    engine,
+    records: {
+      getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId),
+      getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId),
+      getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId),
+      replaceRecords: replacePhysicalRecordsWithOwnership,
+    },
+    buffer: {
+      get frameStates() { return rotoEditBuffer.bufferRef.current.frameStates; },
+      get previewFrames() { return rotoEditBuffer.bufferRef.current.previewFrames; },
+      get capturedFrames() { return rotoEditBuffer.bufferRef.current.capturedFrames; },
+      get dirtyFrames() { return rotoEditBuffer.bufferRef.current.dirtyFrames; },
+      get liveOverlayActionCounts() { return rotoEditBuffer.bufferRef.current.liveOverlayActionCounts; },
+      get editableFrames() { return rotoEditableFramesRef.current; },
+      replaceFrameStates: (frames) => { rotoEditBuffer.replaceFrameStates(frames as Map<number, SerializedProject>); },
+      replacePreviewFrames: (frames) => { rotoEditBuffer.replacePreviewFrames(frames as Map<number, RenderedFramePayload>); },
+      replaceCapturedFrames: (frames) => { rotoEditBuffer.bufferRef.current.capturedFrames = frames as Map<number, RenderedFramePayload>; },
+      replaceDirtyFrames: (frames) => { rotoEditBuffer.replaceDirtyFrames(new Set(frames)); },
+      replaceLiveOverlayActionCounts: (counts) => { rotoEditBuffer.bufferRef.current.liveOverlayActionCounts = new Map(counts); },
+      setEditableFrameList: (frames) => { rotoEditableFramesRef.current = [...frames]; rotoEditBuffer.setEditableFrameList(() => [...frames]); },
+    },
+    selection: {
+      getSelectedKeyId: () => selectedKeyId.value,
+      setSelectedKeyId: (keyId) => { selectedKeyId.value = keyId; },
+      getCurrentAppFrame: () => currentFrame,
+      setCurrentAppFrame: (frame) => {
+        const launch = launchContextRef.current;
+        if (launch) physicPaintStore.setRotoPhysicalSelection(launch.layerId, selectedKeyId.value, frame);
+        setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
+      },
+    },
+    reference: {
+      getCachedReference: () => ({ url: cachedRotoReferenceUrlRef.current, cachedRepaintBase: cachedRotoRepaintBaseFrameRef.current }),
+      setCachedReference: (reference) => {
+        cachedRotoReferenceUrlRef.current = reference.url;
+        cachedRotoRepaintBaseFrameRef.current = reference.cachedRepaintBase;
+        setCachedRotoReferenceUrl(reference.url);
+        setCachedRotoRepaintBaseFrame(reference.cachedRepaintBase);
+      },
+    },
+    engineState: {
+      saveEngineState: () => engineRef.current?.save() ?? null,
+      loadEngineState: (state) => { engineRef.current?.load(state); },
+    },
+    launch: {
+      getLaunchContext: () => launchContextRef.current,
+      setLaunchContextStartFrame: (frame) => { setLaunchContext((current) => current ? { ...current, startFrame: frame } : current); },
+      setLaunchContextCachedFrames: () => { rotoPersistence.syncCurrentPhysicalDocument(); },
+    },
+    paint: {
+      flushPendingStrokeFinalizations: () => { engineRef.current?.flushPendingStrokeFinalizations(); },
+      flushLivePixels: (sourceFrame) => rotoPersistence.flushLivePixels(sourceFrame),
+    },
+    bridge: {
+      getBridgeMode: () => bridgeModeRef.current,
+      sendPhysicalEditPayload: async (payload) => { await sendPhysicPaintApplyPayload(payload, bridgeModeRef.current); },
+    },
+    settlement: {
+      registerPendingSettlement: () => {},
+      clearPendingSettlement: () => {},
+    },
+    status: {
+      setApplyStatus,
+      setConciseMessage: (message) => { setApplyMessage(message); },
+      setLastError,
+      logDiagnostic: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
+    },
+  });
+
+  const rotoTimelineActions = useRotoTimelineActions({
+    getModel: () => rotoTimelineModel.view.value.model,
+    getStoreRealKeyFrames: () => launchContext ? selectRealCachedRotoSourceFrameNumbers(latestRotoFramesRef.current) : [],
+    getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
+    setInterpolationSettings: (settings) => {
+      if (!launchContext) return settings;
+      physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, settings);
+      return physicPaintStore.getRotoInterpolationSettings(launchContext.layerId);
+    },
+    getStoreRotoFrames: () => launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId) : [],
+    getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId) : null,
+    getRotoKeyRecords: () => rotoKeyRecords,
+    getRotoInterpolationState: () => rotoInterpolationState,
+    getPhysicalCells: () => rotoTimelineModel.physicalCells.value,
+    getSelectedKeyId: () => selectedKeyId.value,
+    getCurrentAppFrame: () => currentFrame,
+    getLaunchContext: () => launchContextRef.current,
+    getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 1,
+    executePhysicalEdit: (executeInput) => physicalEditCoordinator.executePhysicalEdit(executeInput),
+    pendingOperationId: physicalEditCoordinator.pendingOperationId,
+    publishStatus: (message) => { setApplyMessage(message); },
+  });
+  rotoTimelineActionsRef.current = rotoTimelineActions;
+  const rotoPhysicalActions = rotoTimelineActions.physicalActions;
+
   const rotoNavigation = useRotoNavigationCoordinator<RenderedFramePayload>({
     workflowMode,
     beforeNavigation: rotoScript.prepareNavigation,
     afterNavigation: rotoScript.completeNavigation,
     keyUtilities: {
       currentFrame,
+      currentKeyId: currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null,
+      physicalKeyUtilities: rotoTimelineActions.physicalKeyUtilities,
       canvasSize: { width: canvasWidth, height: canvasHeight },
       realKeyFrames: selectProjectedRealCachedRotoFrames(latestRotoFramesRef.current, rotoTimelineModel.view.value.projection),
       cachedRotoFrames: latestRotoFramesRef.current,
@@ -470,144 +610,6 @@ export function PhysicsPaintStudio() {
     navigate: navigateToSyncedPhysicalFrame,
     clearCachedReferenceFrame: rotoPersistence.removeCachedFrame,
   });
-  const replacePhysicalRecordsWithOwnership = (
-    layerId: string,
-    records: readonly PhysicPaintRotoRealKeyRecord[],
-    interpolation: PhysicPaintRotoInterpolationState,
-  ) => {
-    const beforeRecords = physicPaintStore.getRotoRealKeyRecords(layerId);
-    const nextRevision = buildPhysicPaintRotoPhysicalRevision(records, interpolation);
-    if (buildPhysicPaintRotoPhysicalRevision(beforeRecords, physicPaintStore.getRotoPhysicalInterpolationState(layerId)) === nextRevision) {
-      return physicPaintStore.replaceRotoPhysicalRecords(layerId, records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId));
-    }
-    const ownership = rebuildRotoPhysicalOwnership({
-      beforeRecords,
-      afterRecords: records,
-      contentRevision: nextRevision,
-      snapshot: {
-        frameStates: rotoEditBuffer.bufferRef.current.frameStates,
-        previewFrames: rotoEditBuffer.bufferRef.current.previewFrames,
-        capturedFrames: rotoEditBuffer.bufferRef.current.capturedFrames,
-        confirmedFrames: rotoPersistence.confirmedFramesRef.current,
-        dirtyFrames: rotoEditBuffer.bufferRef.current.dirtyFrames,
-        liveOverlayActionCounts: rotoEditBuffer.bufferRef.current.liveOverlayActionCounts,
-        editableFrames: rotoEditableFramesRef.current,
-        reference: { url: cachedRotoReferenceUrlRef.current, cachedRepaintBase: cachedRotoRepaintBaseFrameRef.current },
-      },
-    });
-    if (!ownership.ok) return { ok: false as const, error: ownership.error };
-    const result = physicPaintStore.replaceRotoPhysicalRecords(layerId, records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId));
-    if (!result.ok) return result;
-    const next = ownership.value;
-    rotoEditBuffer.replaceFrameStates(next.frameStates);
-    rotoEditBuffer.replacePreviewFrames(next.previewFrames);
-    rotoEditBuffer.bufferRef.current.capturedFrames = next.capturedFrames;
-    rotoEditBuffer.replaceDirtyFrames(next.dirtyFrames);
-    rotoEditBuffer.bufferRef.current.liveOverlayActionCounts = next.liveOverlayActionCounts;
-    rotoEditableFramesRef.current = next.editableFrames;
-    rotoEditBuffer.setEditableFrameList(() => next.editableFrames);
-    rotoPersistence.confirmedFramesRef.current = next.confirmedFrames;
-    cachedRotoReferenceUrlRef.current = next.reference.url;
-    cachedRotoRepaintBaseFrameRef.current = next.reference.cachedRepaintBase;
-    setCachedRotoReferenceUrl(next.reference.url);
-    setCachedRotoRepaintBaseFrame(next.reference.cachedRepaintBase);
-    return result;
-  };
-  const physicalEditCoordinator = useRotoPhysicalEditCoordinator<SerializedProject>({
-    engine,
-    records: {
-      getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId),
-      getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId),
-      getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId),
-      replaceRecords: replacePhysicalRecordsWithOwnership,
-    },
-    buffer: {
-      get frameStates() { return rotoEditBuffer.bufferRef.current.frameStates; },
-      get previewFrames() { return rotoEditBuffer.bufferRef.current.previewFrames; },
-      get capturedFrames() { return rotoEditBuffer.bufferRef.current.capturedFrames; },
-      get dirtyFrames() { return rotoEditBuffer.bufferRef.current.dirtyFrames; },
-      get liveOverlayActionCounts() { return rotoEditBuffer.bufferRef.current.liveOverlayActionCounts; },
-      get editableFrames() { return rotoEditableFramesRef.current; },
-      replaceFrameStates: (frames) => { rotoEditBuffer.replaceFrameStates(frames as Map<number, SerializedProject>); },
-      replacePreviewFrames: (frames) => { rotoEditBuffer.replacePreviewFrames(frames as Map<number, RenderedFramePayload>); },
-      replaceCapturedFrames: (frames) => { rotoEditBuffer.bufferRef.current.capturedFrames = frames as Map<number, RenderedFramePayload>; },
-      replaceDirtyFrames: (frames) => { rotoEditBuffer.replaceDirtyFrames(new Set(frames)); },
-      replaceLiveOverlayActionCounts: (counts) => { rotoEditBuffer.bufferRef.current.liveOverlayActionCounts = new Map(counts); },
-      setEditableFrameList: (frames) => { rotoEditableFramesRef.current = [...frames]; rotoEditBuffer.setEditableFrameList(() => [...frames]); },
-    },
-    selection: {
-      getSelectedKeyId: () => selectedKeyId.value,
-      setSelectedKeyId: (keyId) => { selectedKeyId.value = keyId; },
-      getCurrentAppFrame: () => currentFrame,
-      setCurrentAppFrame: (frame) => {
-        const launch = launchContextRef.current;
-        if (launch) physicPaintStore.setRotoPhysicalSelection(launch.layerId, selectedKeyId.value, frame);
-        setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
-      },
-    },
-    reference: {
-      getCachedReference: () => ({ url: cachedRotoReferenceUrlRef.current, cachedRepaintBase: cachedRotoRepaintBaseFrameRef.current }),
-      setCachedReference: (reference) => {
-        cachedRotoReferenceUrlRef.current = reference.url;
-        cachedRotoRepaintBaseFrameRef.current = reference.cachedRepaintBase;
-        setCachedRotoReferenceUrl(reference.url);
-        setCachedRotoRepaintBaseFrame(reference.cachedRepaintBase);
-      },
-    },
-    engineState: {
-      saveEngineState: () => engineRef.current?.save() ?? null,
-      loadEngineState: (state) => { engineRef.current?.load(state); },
-    },
-    launch: {
-      getLaunchContext: () => launchContextRef.current,
-      setLaunchContextStartFrame: (frame) => { setLaunchContext((current) => current ? { ...current, startFrame: frame } : current); },
-      setLaunchContextCachedFrames: () => { rotoPersistence.syncCurrentPhysicalDocument(); },
-    },
-    paint: {
-      flushPendingStrokeFinalizations: () => { engineRef.current?.flushPendingStrokeFinalizations(); },
-      flushLivePixels: (sourceFrame) => rotoPersistence.flushLivePixels(sourceFrame),
-    },
-    bridge: {
-      getBridgeMode: () => bridgeModeRef.current,
-      sendPhysicalEditPayload: async (payload) => { await sendPhysicPaintApplyPayload(payload, bridgeModeRef.current); },
-    },
-    settlement: {
-      registerPendingSettlement: () => {},
-      clearPendingSettlement: () => {},
-    },
-    status: {
-      setApplyStatus,
-      setConciseMessage: (message) => { setApplyMessage(message); },
-      setLastError,
-      logDiagnostic: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
-    },
-  });
-
-  const rotoTimelineActions = useRotoTimelineActions({
-    getModel: () => rotoTimelineModel.view.value.model,
-    getStoreRealKeyFrames: () => launchContext ? selectRealCachedRotoSourceFrameNumbers(latestRotoFramesRef.current) : [],
-    getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
-    setInterpolationSettings: (settings) => {
-      if (!launchContext) return settings;
-      physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, settings);
-      return physicPaintStore.getRotoInterpolationSettings(launchContext.layerId);
-    },
-    getStoreRotoFrames: () => launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId) : [],
-    getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId) : null,
-    getRotoKeyRecords: () => rotoKeyRecords,
-    getRotoInterpolationState: () => rotoInterpolationState,
-    getPhysicalCells: () => rotoTimelineModel.physicalCells.value,
-    getSelectedKeyId: () => selectedKeyId.value,
-    getCurrentAppFrame: () => currentFrame,
-    getLaunchContext: () => launchContextRef.current,
-    getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 1,
-    executePhysicalEdit: (executeInput) => physicalEditCoordinator.executePhysicalEdit(executeInput),
-    pendingOperationId: physicalEditCoordinator.pendingOperationId,
-    publishStatus: (message) => { setApplyMessage(message); },
-  });
-  rotoTimelineActionsRef.current = rotoTimelineActions;
-  const rotoPhysicalActions = rotoTimelineActions.physicalActions;
-
   const rotoMoveHistory = useRotoPhysicalEditHistory<SerializedProject>({
     identity: launchContext ? { launchOperationId: launchContext.operationId, layerId: launchContext.layerId } : null,
     availability: historyAvailability,
