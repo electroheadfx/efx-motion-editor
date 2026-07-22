@@ -2,14 +2,18 @@ import { computed, signal, type ReadonlySignal, type Signal } from '@preact/sign
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
 import { transformRecordedStrokeForHeldPose } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
-import type { RotoSaveRealKeyTransaction, RotoSelectedFrameClaim } from './physicsPaintRotoKeyController';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 
 export interface RotoScriptSourceSnapshot {
   selectionKind: RotoTimelineSelectionKind;
-  layerId?: string | null;
-  sourceFrame: number;
-  displayFrame: number;
+  layerId: string | null;
+  keyId: string | null;
+  appFrame: number;
+}
+
+export interface RotoScriptPhysicalTarget {
+  keyId: string;
+  appFrame: number;
 }
 
 export interface RotoScriptSourceProvenance {
@@ -21,7 +25,7 @@ export interface RotoScriptSourceProvenance {
 export interface RotoScriptPublicationIdentity {
   operationId: string;
   layerId: string;
-  cachedBase: (PhysicPaintRenderedFrame & { sourceFrame?: number }) | null;
+  cachedBase: PhysicPaintRenderedFrame | null;
   background: PhysicPaintRotoBackgroundMetadata;
 }
 
@@ -84,18 +88,14 @@ export interface RotoScriptClipboardControllerPorts {
   getSource: () => RotoScriptSourceSnapshot;
   getMotion: () => { deformation: number; position: number };
   getPublicationIdentity?: () => RotoScriptPublicationIdentity | null;
-  claimEmptyTarget?: () => RotoSelectedFrameClaim | null;
-  prepareEmptyTarget?: () => RotoSelectedFrameClaim | RotoSaveRealKeyTransaction | null;
-  flushSourcePublication?: (sourceFrame: number) => Promise<void>;
+  prepareTarget: (source: RotoScriptSourceSnapshot) => Promise<RotoScriptPhysicalTarget | null>;
+  flushSourcePublication?: (appFrame: number) => Promise<void>;
   onFirstAcceptedBrush?: () => void;
   setNavigationLocked?: (locked: boolean) => void;
 }
 
-export interface RotoScriptAcceptedTarget {
-  sourceFrame: number;
-  displayFrame: number;
+export interface RotoScriptAcceptedTarget extends RotoScriptPhysicalTarget {
   publishPixels: boolean;
-  interpolationSettings?: RotoSelectedFrameClaim['interpolationSettings'];
   publicationIdentity?: RotoScriptPublicationIdentity;
 }
 
@@ -112,7 +112,7 @@ export enum RotoScriptClipboardReplacementOutcome {
 export interface RotoScriptClipboardController {
   clipboard: Signal<RotoPaintScript | null>;
   hasCopiedScript: ReadonlySignal<boolean>;
-  copiedSourceFrame: ReadonlySignal<number | null>;
+  copiedAppFrame: ReadonlySignal<number | null>;
   copiedStrokeCount: ReadonlySignal<number>;
   applying: ReadonlySignal<boolean>;
   applyProgress: ReadonlySignal<{ completed: number; total: number } | null>;
@@ -147,10 +147,9 @@ interface ActiveApplyOperation {
   engine: RotoScriptEnginePort;
   launchGeneration: number;
   script: RotoPaintScript;
-  destinationSourceFrame: number;
-  destinationDisplayFrame: number;
+  destinationKeyId: string;
+  destinationAppFrame: number;
   publicationIdentity: RotoScriptPublicationIdentity | null;
-  preparedTarget: RotoSelectedFrameClaim | null;
   expectedMutationIds: Set<number>;
   consumedMutationIds: Set<number>;
   completed: number;
@@ -196,7 +195,7 @@ const APPLY_REASONS = {
 export function createRotoScriptClipboardController(ports: RotoScriptClipboardControllerPorts): RotoScriptClipboardController {
   const clipboard = signal<RotoPaintScript | null>(null);
   const hasCopiedScript = computed(() => clipboard.value !== null);
-  const copiedSourceFrame = computed(() => clipboard.value?.sourceFrame ?? null);
+  const copiedAppFrame = computed(() => clipboard.value?.sourceFrame ?? null);
   const copiedStrokeCount = computed(() => clipboard.value?.brushes.length ?? 0);
   const applyProgressState = signal<{ completed: number; total: number } | null>(null);
   const applying = computed(() => applyProgressState.value !== null);
@@ -261,11 +260,11 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   }
 
   function sourceLayerId(source: RotoScriptSourceSnapshot): string {
-    return source.layerId ?? 'legacy-mounted-layer';
+    return source.layerId ?? 'unmounted-layer';
   }
 
   function provenanceFor(source: RotoScriptSourceSnapshot): RotoScriptSourceProvenance {
-    return { sessionId, layerId: sourceLayerId(source), sourceFrame: source.sourceFrame };
+    return { sessionId, layerId: sourceLayerId(source), sourceFrame: source.appFrame };
   }
 
   function errorCause(cause: unknown): string | undefined {
@@ -374,7 +373,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const brushes = normalizeLogicalBrushes(engine.getStrokes());
     if (brushes.length === 0) return false;
     sourceRevision += 1;
-    clipboard.value = deepFreezeScript({ provenance, sourceFrame: source.sourceFrame, sourceDisplayFrame: source.displayFrame, sourceRevision, brushes });
+    clipboard.value = deepFreezeScript({ provenance, sourceFrame: source.appFrame, sourceDisplayFrame: source.appFrame, sourceRevision, brushes });
     if (publishCopiedStatus) status.value = `Copied ${brushes.length}`;
     return true;
   }
@@ -390,7 +389,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     beginOperation(engine);
     try {
       await drainAcceptedMutations(engine);
-      await ports.flushSourcePublication?.(source.sourceFrame);
+      await ports.flushSourcePublication?.(source.appFrame);
       if (disposed || disposalRequested || engineState.peek() !== engine || engineGeneration !== acceptedEngineGeneration || launchGeneration !== acceptedLaunchGeneration) {
         if (!disposalRequested && launchGeneration === acceptedLaunchGeneration) {
           status.value = 'Failed';
@@ -422,11 +421,11 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     beginOperation(engine);
     try {
       await drainAcceptedMutations(engine);
-      await ports.flushSourcePublication?.(source.sourceFrame);
+      await ports.flushSourcePublication?.(source.appFrame);
       if (disposed || disposalRequested || engineState.peek() !== engine || engineGeneration !== acceptedEngineGeneration || launchGeneration !== acceptedLaunchGeneration) return null;
       const brushes = normalizeLogicalBrushes(engine.getStrokes());
       if (brushes.length === 0 || !engine.copyLiveAlphaCanvas) return null;
-      const script = deepFreezeScript({ provenance: provenanceFor(source), sourceFrame: source.sourceFrame, sourceDisplayFrame: source.displayFrame, sourceRevision: sourceRevision + 1, brushes });
+      const script = deepFreezeScript({ provenance: provenanceFor(source), sourceFrame: source.appFrame, sourceDisplayFrame: source.appFrame, sourceRevision: sourceRevision + 1, brushes });
       return { script, scriptAlphaCanvas: engine.copyLiveAlphaCanvas() };
     } catch (cause) {
       error.value = operationError('copy', 'copy-drain-failed', 'Save Script could not finish accepted paint work', cause);
@@ -437,8 +436,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   function sameSourceIdentity(left: RotoScriptSourceSnapshot, right: RotoScriptSourceSnapshot): boolean {
     return left.selectionKind === right.selectionKind
       && left.layerId === right.layerId
-      && left.sourceFrame === right.sourceFrame
-      && left.displayFrame === right.displayFrame;
+      && left.keyId === right.keyId
+      && left.appFrame === right.appFrame;
   }
 
   function isPreparedScriptLoadAndApplyValid(preparation: ActivePreparedScriptLoadAndApply): boolean {
@@ -523,7 +522,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const complete = async () => {
       let applied = success && !operation.cancelled;
       try {
-        if (applied) await ports.flushSourcePublication?.(operation.destinationSourceFrame);
+        if (applied) await ports.flushSourcePublication?.(operation.destinationAppFrame);
       } catch (cause) {
         applied = false;
         operation.failure = operationError('apply', 'apply-partial-failure', `Apply Script pixels could not be published after ${operation.completed} brushes`, cause);
@@ -569,7 +568,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const motion = ports.getMotion();
     const transformed: RecordedStrokeGroup = {
       primary: transformRecordedStrokeForHeldPose(brush.primary, {
-        destinationSourceFrame: operation.destinationSourceFrame,
+        destinationSourceFrame: operation.destinationAppFrame,
         strokeIndex: brushIndex,
         deformation: motion.deformation,
         position: motion.position,
@@ -593,10 +592,9 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         acceptedTargets.set(operation.engine, targets);
       }
       targets.set(mutationId, {
-        sourceFrame: operation.destinationSourceFrame,
-        displayFrame: operation.destinationDisplayFrame,
+        keyId: operation.destinationKeyId,
+        appFrame: operation.destinationAppFrame,
         publishPixels: operation.nextBrushIndex === operation.script.brushes.length,
-        interpolationSettings: operation.preparedTarget?.interpolationSettings,
         publicationIdentity: operation.publicationIdentity ?? undefined,
       });
     } catch (cause) {
@@ -619,52 +617,63 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     error.value = null;
   }
 
-  function applyScript(): Promise<boolean> {
-    if (disposed || disposalRequested || !availability.value.canApply) return Promise.resolve(false);
+  async function applyScript(): Promise<boolean> {
+    if (disposed || disposalRequested || !availability.value.canApply) return false;
     const engine = engineState.peek();
     const script = clipboard.value;
     const source = sourceState.value;
-    if (!engine || !script || source.selectionKind === 'generated-interpolation') return Promise.resolve(false);
+    if (!engine || !script || source.selectionKind === 'generated-interpolation') return false;
+    const acceptedEngineGeneration = engineGeneration;
+    const acceptedLaunchGeneration = launchGeneration;
     error.value = null;
-    let preparedTarget: RotoSelectedFrameClaim | null = null;
-    if (source.selectionKind === 'empty') {
-      try {
-        const claimedTarget = ports.claimEmptyTarget?.() ?? ports.prepareEmptyTarget?.() ?? null;
-        preparedTarget = claimedTarget && 'target' in claimedTarget
-          ? {
-            sourceFrame: claimedTarget.sourceFrameOverride,
-            displayFrame: claimedTarget.target.displayFrame,
-            interpolationSettings: claimedTarget.interpolationSettings,
-          }
-          : claimedTarget;
-      } catch (cause) {
-        status.value = 'Failed';
-        error.value = operationError('apply', 'apply-empty-target-failed', 'Apply Script could not prepare the empty destination', cause);
-        return Promise.resolve(false);
-      }
-      if (!preparedTarget) {
-        status.value = 'Failed';
-        error.value = operationError('apply', 'apply-empty-target-failed', 'Apply Script could not prepare the empty destination as a real Roto key.');
-        return Promise.resolve(false);
-      }
-    }
-    const destinationSourceFrame = preparedTarget?.sourceFrame ?? source.sourceFrame;
-    const destinationDisplayFrame = preparedTarget?.displayFrame ?? source.displayFrame;
     beginOperation(engine);
+
+    let target: RotoScriptPhysicalTarget | null = null;
+    try {
+      target = await ports.prepareTarget(source);
+    } catch (cause) {
+      status.value = 'Failed';
+      error.value = operationError('apply', 'apply-empty-target-failed', 'Apply Script could not prepare the physical destination', cause);
+    }
+    const currentSource = sourceState.peek();
+    const targetIsCurrent = Boolean(
+      target
+      && target.appFrame === source.appFrame
+      && currentSource.layerId === source.layerId
+      && currentSource.appFrame === target.appFrame
+      && currentSource.selectionKind !== 'generated-interpolation'
+      && (currentSource.selectionKind !== 'real-key' || currentSource.keyId === target.keyId),
+    );
+    if (
+      !target
+      || !targetIsCurrent
+      || disposed
+      || disposalRequested
+      || engineState.peek() !== engine
+      || engineGeneration !== acceptedEngineGeneration
+      || launchGeneration !== acceptedLaunchGeneration
+    ) {
+      if (!error.peek()) {
+        status.value = 'Failed';
+        error.value = operationError('apply', 'apply-empty-target-failed', 'Apply Script could not prepare the destination as an accepted physical Roto key.');
+      }
+      endOperation(engine);
+      return false;
+    }
+
     applyProgressState.value = { completed: 0, total: script.brushes.length };
     status.value = `Applying 0/${script.brushes.length}`;
     return new Promise((resolve) => {
       let settleOperation = () => {};
       const settled = new Promise<void>((settle) => { settleOperation = settle; });
       const operation: ActiveApplyOperation = {
-        id: engineGeneration,
+        id: acceptedEngineGeneration,
         engine,
-        launchGeneration,
+        launchGeneration: acceptedLaunchGeneration,
         script,
-        destinationSourceFrame,
-        destinationDisplayFrame,
+        destinationKeyId: target.keyId,
+        destinationAppFrame: target.appFrame,
         publicationIdentity: ports.getPublicationIdentity?.() ?? null,
-        preparedTarget,
         expectedMutationIds: new Set(),
         consumedMutationIds: new Set(),
         completed: 0,
@@ -733,7 +742,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
 
   async function prepareNavigation(targetFrame: number): Promise<boolean> {
     if (disposed || disposalRequested || !Number.isInteger(targetFrame) || targetFrame < 0 || activeApply || busy.peek()) return false;
-    if (targetFrame === sourceState.peek().displayFrame) return true;
+    if (targetFrame === sourceState.peek().appFrame) return true;
     const engine = engineState.peek();
     if (!engine) return true;
     navigationLockHeld = true;
@@ -770,13 +779,13 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (operation) {
       operation.launchGeneration = launchGeneration;
       await operation.settled;
-      await ports.flushSourcePublication?.(operation.destinationSourceFrame);
+      await ports.flushSourcePublication?.(operation.destinationAppFrame);
       return;
     }
     const engine = engineState.peek();
     const source = sourceState.peek();
     if (engine && (engine.getStrokeCount?.() ?? engine.getStrokes().length) > 0) await drainAcceptedMutations(engine);
-    await ports.flushSourcePublication?.(source.sourceFrame);
+    await ports.flushSourcePublication?.(source.appFrame);
   }
 
   function completeLaunchReplacement(): void {
@@ -795,7 +804,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     }
     const source = sourceState.peek();
     if ((engine.getStrokeCount?.() ?? engine.getStrokes().length) > 0) await drainAcceptedMutations(engine);
-    await ports.flushSourcePublication?.(source.sourceFrame);
+    await ports.flushSourcePublication?.(source.appFrame);
   }
 
   function dispose(): Promise<void> {
@@ -818,7 +827,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   return {
     clipboard,
     hasCopiedScript,
-    copiedSourceFrame,
+    copiedAppFrame,
     copiedStrokeCount,
     applying,
     applyProgress,

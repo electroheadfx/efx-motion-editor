@@ -1,26 +1,19 @@
 import { batch, computed, signal, type Signal } from '@preact/signals';
-import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoSegmentSpacingOverride } from '../../../types/physicPaint';
+import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import {
-  buildRotoKeyUtilityTransaction,
   deriveRotoKeyUtilityActionState,
   type RotoKeyUtilityActionState,
   type RotoKeyUtilityActiveRestore,
-  type RotoKeyUtilityOperation,
   type RotoKeyUtilityTransaction,
 } from '../roto/physicsPaintRotoKeyController';
-import { getRotoReplacementSuccessLabel } from '../view/physicsPaintWorkflowPresentation';
-import type { PhysicPaintRotoRealKeyRecord, PhysicPaintRotoInterpolationState } from './physicsPaintRotoPhysicalModel';
-import type { RotoPhysicalTimelineCell } from './rotoPhysicalTimelinePorts';
 
-export type RotoSessionActionName = 'duplicateKey' | 'copyKey' | 'pasteKey' | 'requestFrame' | 'markDirty' | 'markCachedBaseLoaded' | 'markLiveOverlayDirty' | 'markLiveOverlayEmpty';
+export type RotoSessionActionName = 'copyKey' | 'requestFrame' | 'markDirty' | 'markCachedBaseLoaded' | 'markLiveOverlayDirty' | 'markLiveOverlayEmpty';
 export type RotoSessionRestoreIntent = RotoKeyUtilityActiveRestore;
 
 export interface RotoSessionCopiedKey {
   frame: number;
   cachedFrame: PhysicPaintRotoCacheFrame;
 }
-
-export type RotoSessionPendingKeyAction = Exclude<RotoKeyUtilityOperation, 'copy'>;
 
 export type RotoSessionEffect =
   | { type: 'replaceKeys'; frames: PhysicPaintRotoCacheFrame[]; changedFrames: number[]; removedFrames: number[]; transaction: RotoKeyUtilityTransaction }
@@ -38,7 +31,6 @@ export interface RotoSessionActionResult {
   ok: boolean;
   message: string | null;
   effects: RotoSessionEffect[];
-  transaction?: RotoKeyUtilityTransaction;
 }
 
 export interface RotoSessionInput {
@@ -49,21 +41,9 @@ export interface RotoSessionInput {
   copiedKey?: RotoSessionCopiedKey | null;
   canvasSize?: { width: number; height: number };
   buildBlankRotoFrame: (appFrame: number) => PhysicPaintRotoCacheFrame;
-  resolveSourceFrameForDisplayFrame?: (displayFrame: number) => number | null;
-  resolveDisplayFrameForSourceFrame?: (sourceFrame: number, transaction: RotoKeyUtilityTransaction) => number | null;
-  resolvePasteTargetForDisplayFrame?: (displayFrame: number) => { displayFrame: number; sourceFrame: number; previousSegmentOverride: PhysicPaintRotoSegmentSpacingOverride | null } | null;
-  segmentSpacingOverrides?: readonly PhysicPaintRotoSegmentSpacingOverride[];
   keyActionInFlight?: boolean;
   applyStatus?: 'idle' | 'applying' | 'success' | 'error';
   flushInFlight?: boolean;
-  /** Physical real-key records from the store (D-01/D-10). */
-  rotoKeyRecords?: readonly PhysicPaintRotoRealKeyRecord[];
-  /** Enabled-only interpolation state from the store (D-02). */
-  rotoInterpolationState?: PhysicPaintRotoInterpolationState;
-  /** Current physical semantic cell (D-10). Real/generated/empty at the navigation frame. */
-  currentCell?: RotoPhysicalTimelineCell;
-  /** Selected stable keyId (D-01). */
-  selectedKeyId?: string | null;
 }
 
 export interface RotoSession {
@@ -81,9 +61,7 @@ export interface RotoSession {
   feedback: Signal<string | null>;
   currentFrameIsDirty: Signal<boolean>;
   actionAvailability: Signal<RotoKeyUtilityActionState>;
-  duplicateKey: () => RotoSessionActionResult;
   copyKey: () => RotoSessionActionResult;
-  pasteKey: () => RotoSessionActionResult;
   requestFrame: (frame: number) => RotoSessionActionResult;
   markDirty: (frame?: number) => RotoSessionActionResult;
   markCachedBaseLoaded: (frame?: number) => RotoSessionActionResult;
@@ -163,73 +141,14 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
   }
 
   function copyKey(): RotoSessionActionResult {
-    const displayFrame = currentFrame.peek();
-    const sourcePayload = realKeyFrames.peek().find((frame) => frame.appFrame === displayFrame);
+    const appFrame = currentFrame.peek();
+    const sourcePayload = realKeyFrames.peek().find((frame) => frame.appFrame === appFrame);
     if (!sourcePayload) return failed('copyKey', actionAvailability.peek().disabledReason ?? 'Select a real Roto key to copy.');
-    const sourceFrame = sourcePayload.sourceFrame ?? sourcePayload.appFrame;
-    const normalized = normalizeRealKeyFrame(sourcePayload, sourceFrame, input.canvasSize);
-    copiedKey.value = { frame: sourceFrame, cachedFrame: normalized };
-    const message = `Copied key ${sourceFrame}.`;
+    const normalized = normalizeRealKeyFrame(sourcePayload, appFrame, input.canvasSize);
+    copiedKey.value = { frame: appFrame, cachedFrame: normalized };
+    const message = `Copied key ${appFrame}.`;
     feedback.value = message;
     return { action: 'copyKey', ok: true, message, effects: [] };
-  }
-
-  function duplicateKey(): RotoSessionActionResult {
-    return applyTransaction('duplicateKey', 'duplicate');
-  }
-
-  function pasteKey(): RotoSessionActionResult {
-    return applyTransaction('pasteKey', 'paste');
-  }
-
-  function applyTransaction(action: RotoSessionActionName, operation: Exclude<RotoKeyUtilityOperation, 'copy'>): RotoSessionActionResult {
-    const sourceFrame = currentFrame.peek();
-    const actionState = actionAvailability.peek();
-    const hasRealSource = realKeyFrames.peek().some((frame) => frame.appFrame === sourceFrame);
-    if (operation !== 'paste' && !hasRealSource) {
-      return failed(action, actionState.disabledReason ?? 'Select a real Roto key to use key tools.');
-    }
-    if (operation === 'paste' && !actionState.canPaste) {
-      return failed(action, actionState.pasteDisabledReason ?? 'Copy a real Roto key before pasting.');
-    }
-    return runKeyTransaction(action, operation);
-  }
-
-  function runKeyTransaction(action: RotoSessionActionName, operation: RotoSessionPendingKeyAction): RotoSessionActionResult {
-    const displayFrame = currentFrame.peek();
-    const pasteTarget = operation === 'paste' ? input.resolvePasteTargetForDisplayFrame?.(displayFrame) ?? null : null;
-    const effects: RotoSessionEffect[] = [];
-    try {
-      const transaction = buildRotoKeyUtilityTransaction({
-        operation,
-        currentFrame: displayFrame,
-        realKeyFrames: realKeyFrames.peek(),
-        cachedRotoFrames: cachedRotoFrames.peek(),
-        copiedKeyFrame: copiedKey.peek()?.cachedFrame ?? null,
-        pasteTarget,
-        segmentSpacingOverrides: input.segmentSpacingOverrides,
-        canvasSize: input.canvasSize,
-        buildBlankRotoFrame: input.buildBlankRotoFrame,
-      });
-      const activeDisplayFrame = operation === 'duplicate' && displayFrame !== transaction.activeFrame
-          ? input.resolveDisplayFrameForSourceFrame?.(transaction.activeFrame, transaction) ?? transaction.activeFrame
-          : transaction.activeFrame;
-      const activeRestore = activeDisplayFrame === transaction.activeFrame
-        ? transaction.activeRestore
-        : { ...transaction.activeRestore, frame: activeDisplayFrame };
-      batch(() => {
-        realKeyFrames.value = transaction.realKeyFrames;
-        cachedRotoFrames.value = mergeCachedFrames(cachedRotoFrames.peek(), transaction);
-        dirtyFrames.value = removeFrames(dirtyFrames.peek(), transaction.removedFrames);
-        currentFrame.value = activeDisplayFrame;
-        restoreIntent.value = activeRestore;
-        feedback.value = getTransactionSuccessMessage(transaction);
-        });
-      effects.push(...effectsForTransaction(transaction, activeRestore));
-      return { action, ok: true, message: getTransactionSuccessMessage(transaction), effects, transaction };
-    } catch (error) {
-      return failed(action, error instanceof Error ? error.message : String(error));
-    }
   }
 
   return {
@@ -247,9 +166,7 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     feedback,
     currentFrameIsDirty,
     actionAvailability,
-    duplicateKey,
     copyKey,
-    pasteKey,
     requestFrame,
     markDirty,
     markCachedBaseLoaded,
@@ -263,68 +180,22 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
   }
 }
 
-function effectsForTransaction(
-  transaction: RotoKeyUtilityTransaction,
-  activeRestore: RotoSessionRestoreIntent = transaction.activeRestore,
-): RotoSessionEffect[] {
-  const effects: RotoSessionEffect[] = [
-    {
-      type: 'replaceKeys',
-      frames: transaction.realKeyFrames,
-      changedFrames: transaction.changedFrames,
-      removedFrames: transaction.removedFrames,
-      transaction,
-    },
-  ];
-
-  if (activeRestore.kind === 'clear-blank') {
-    effects.push({ type: 'clearCanvas', frame: activeRestore.frame });
-  }
-  effects.push({ type: 'restoreFrame', frame: activeRestore.frame, restore: activeRestore });
-
-  if (transaction.cleanup.generatedFrames.length > 0) effects.push({ type: 'clearGeneratedFrames', frames: transaction.cleanup.generatedFrames });
-  if (transaction.cleanup.referenceFrames.length > 0) effects.push({ type: 'clearCachedReferences', frames: transaction.cleanup.referenceFrames });
-  if (transaction.cleanup.backgroundOnlySupportFrames.length > 0) effects.push({ type: 'clearBackgroundOnlySupport', frames: transaction.cleanup.backgroundOnlySupportFrames });
-  if (transaction.cleanup.deletedFrames.length > 0) effects.push({ type: 'clearDeletedFrames', frames: transaction.cleanup.deletedFrames });
-
-  return effects;
-}
-
-function getTransactionSuccessMessage(transaction: RotoKeyUtilityTransaction): string {
-  if (transaction.operation === 'paste' && transaction.cleanup.backgroundOnlySupportFrames.includes(transaction.activeFrame)) {
-    return getRotoReplacementSuccessLabel(transaction.activeFrame);
-  }
-  return transaction.successMessage;
-}
-
-function mergeCachedFrames(existing: readonly PhysicPaintRotoCacheFrame[], transaction: RotoKeyUtilityTransaction): PhysicPaintRotoCacheFrame[] {
-  const removeSet = new Set([...transaction.removedFrames, ...transaction.cleanup.generatedFrames, ...transaction.cleanup.referenceFrames, ...transaction.cleanup.backgroundOnlySupportFrames, ...transaction.cleanup.deletedFrames]);
-  const byFrame = new Map<number, PhysicPaintRotoCacheFrame>();
-  for (const frame of existing) {
-    if (!removeSet.has(frame.appFrame)) byFrame.set(frame.appFrame, { ...frame });
-  }
-  for (const frame of transaction.realKeyFrames) {
-    byFrame.set(frame.appFrame, { ...frame });
-  }
-  return Array.from(byFrame.values()).sort((a, b) => a.appFrame - b.appFrame);
-}
-
 function normalizeCachedFrames(frames: readonly PhysicPaintRotoCacheFrame[] | undefined, canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame[] {
   return (frames ?? [])
-    .map((frame) => frame.source === 'real-key' ? normalizeRealKeyFrameForDisplay(frame, canvasSize) : { ...frame })
+    .map((frame) => frame.source === 'real-key' ? normalizeRealKeyFrame(frame, frame.appFrame, canvasSize) : { ...frame })
     .filter((frame) => normalizeFrame(frame.appFrame) !== null)
     .sort((a, b) => a.appFrame - b.appFrame);
 }
 
 function normalizeRealKeyFrames(frames: readonly PhysicPaintRotoCacheFrame[], canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame[] {
-  const byDisplayFrame = new Map<number, PhysicPaintRotoCacheFrame>();
+  const byAppFrame = new Map<number, PhysicPaintRotoCacheFrame>();
   for (const frame of frames) {
     if (frame.source !== 'real-key') continue;
-    const displayFrame = normalizeFrame(frame.displayFrame ?? frame.appFrame);
-    if (displayFrame === null) continue;
-    byDisplayFrame.set(displayFrame, normalizeRealKeyFrameForDisplay(frame, canvasSize));
+    const appFrame = normalizeFrame(frame.appFrame);
+    if (appFrame === null) continue;
+    byAppFrame.set(appFrame, normalizeRealKeyFrame(frame, appFrame, canvasSize));
   }
-  return Array.from(byDisplayFrame.values()).sort((a, b) => a.appFrame - b.appFrame);
+  return Array.from(byAppFrame.values()).sort((a, b) => a.appFrame - b.appFrame);
 }
 
 function normalizeRealKeyFrame(frame: PhysicPaintRotoCacheFrame, appFrame: number, canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame {
@@ -333,29 +204,10 @@ function normalizeRealKeyFrame(frame: PhysicPaintRotoCacheFrame, appFrame: numbe
     appFrame,
     frameIndex: 0,
     source: 'real-key',
-    sourceFrame: appFrame,
-    displayFrame: appFrame,
     ...(canvasSize ? { width: canvasSize.width, height: canvasSize.height } : {}),
   };
-  delete next.nearestRealKeyFrame;
-  delete next.backgroundOnly;
-  return next;
-}
-
-function normalizeRealKeyFrameForDisplay(frame: PhysicPaintRotoCacheFrame, canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame {
-  const displayFrame = normalizeFrame(frame.displayFrame ?? frame.appFrame);
-  const sourceFrame = normalizeFrame(frame.sourceFrame ?? frame.appFrame);
-  const appFrame = displayFrame ?? sourceFrame ?? 0;
-  const source = sourceFrame ?? appFrame;
-  const next: PhysicPaintRotoCacheFrame = {
-    ...frame,
-    appFrame,
-    frameIndex: 0,
-    source: 'real-key',
-    sourceFrame: source,
-    displayFrame: appFrame,
-    ...(canvasSize ? { width: canvasSize.width, height: canvasSize.height } : {}),
-  };
+  delete next.sourceFrame;
+  delete next.displayFrame;
   delete next.nearestRealKeyFrame;
   delete next.backgroundOnly;
   return next;

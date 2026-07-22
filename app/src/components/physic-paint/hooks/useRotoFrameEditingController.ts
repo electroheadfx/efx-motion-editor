@@ -170,6 +170,7 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
     ) return false;
 
     const appFrame = selectedRealKey.appFrame;
+    if (!input.clearCachedFrame(selectedKeyId, appFrame, input.canvasSize)) return false;
     input.playback.stop();
     input.engine.clear();
     (input.engine as PreviewBackgroundEngine).clearPreviewBaseImage();
@@ -177,7 +178,6 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
     input.reference.resetReference();
     input.editBuffer.clearFrame(appFrame);
     input.session.markLiveOverlayEmpty(appFrame);
-    if (!input.clearCachedFrame(selectedKeyId, appFrame, input.canvasSize)) return false;
     input.syncPendingFrames();
     input.status.setApplyStatus('success');
     input.status.setApplyMessage(`Cleared roto frame ${appFrame}.`);

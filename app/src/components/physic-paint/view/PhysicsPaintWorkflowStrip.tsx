@@ -37,7 +37,7 @@ export interface PhysicsPaintWorkflowRotoKeyState {
 export type PhysicsPaintWorkflowRotoScriptState = Pick<RotoScriptClipboardController,
   | 'availability'
   | 'hasCopiedScript'
-  | 'copiedSourceFrame'
+  | 'copiedAppFrame'
   | 'copiedStrokeCount'
   | 'applying'
   | 'applyProgress'

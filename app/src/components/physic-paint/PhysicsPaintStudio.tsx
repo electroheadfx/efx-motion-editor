@@ -34,7 +34,7 @@ import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '.
 import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkflowIntegration';
 import { useRotoInterpolationController } from './hooks/useRotoInterpolationController';
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
-import { claimRotoSelectedFrame } from './roto/physicsPaintRotoKeyController';
+import type { RotoScriptPhysicalTarget, RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
 import { useRotoPhysicalEditHistory } from './hooks/useRotoPhysicalEditHistory';
 import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryController';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
@@ -130,6 +130,7 @@ export function PhysicsPaintStudio() {
   const pendingFrameSyncRef = useRef<number | null>(null);
   const resetRotoNavigationForLaunchRef = useRef<() => void>(() => {});
   const acceptRotoScriptBrushRef = useRef<() => void>(() => {});
+  const prepareRotoScriptTargetRef = useRef<(source: RotoScriptSourceSnapshot) => Promise<RotoScriptPhysicalTarget | null>>(async () => null);
   const syncPendingRotoFrames = useCallback(() => {
     resetRotoKeySessionRef.current({ clearClipboard: false });
   }, []);
@@ -200,10 +201,8 @@ export function PhysicsPaintStudio() {
     getSource: () => ({
       selectionKind: currentFrameSelectionKind,
       layerId: launchContext?.layerId ?? null,
-      sourceFrame: currentFrameSelectionKind === 'real-key'
-        ? (currentFrame)
-        : currentFrame,
-      displayFrame: currentFrame,
+      keyId: currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null,
+      appFrame: currentFrame,
     }),
     getMotion: () => ({
       deformation: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).deform : 0,
@@ -215,12 +214,8 @@ export function PhysicsPaintStudio() {
       cachedBase: cachedRotoRepaintBaseFrame,
       background: buildRotoBackgroundMetadata(settings),
     } : null,
-    claimEmptyTarget: () => launchContext ? claimRotoSelectedFrame({
-      model: rotoTimelineModel.view.value.model,
-      selectedFrame: currentFrame,
-      currentSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId),
-    }) : null,
-    flushSourcePublication: (sourceFrame) => rotoPersistence.flushLivePixels(sourceFrame),
+    prepareTarget: (source) => prepareRotoScriptTargetRef.current(source),
+    flushSourcePublication: (appFrame) => rotoPersistence.flushLivePixels(appFrame),
     onFirstAcceptedBrush: () => acceptRotoScriptBrushRef.current(),
     setNavigationLocked: setRotoScriptNavigationLocked,
   });
@@ -228,10 +223,8 @@ export function PhysicsPaintStudio() {
   rotoScript.updateSource({
     selectionKind: currentFrameSelectionKind,
     layerId: launchContext?.layerId ?? null,
-    sourceFrame: currentFrameSelectionKind === 'real-key'
-      ? (currentFrame)
-      : currentFrame,
-    displayFrame: currentFrame,
+    keyId: currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null,
+    appFrame: currentFrame,
   });
   const rotoScriptLibrary = useRotoScriptLibraryController({
     request: async () => { throw new Error('Bridge request adapter is installed by the library hook.'); },
@@ -397,7 +390,7 @@ export function PhysicsPaintStudio() {
     },
     paint: {
       flushPendingStrokeFinalizations: () => { engineRef.current?.flushPendingStrokeFinalizations(); },
-      flushLivePixels: (sourceFrame) => rotoPersistence.flushLivePixels(sourceFrame),
+      flushLivePixels: (appFrame) => rotoPersistence.flushLivePixels(appFrame),
     },
     bridge: {
       getBridgeMode: () => bridgeModeRef.current,
@@ -438,6 +431,51 @@ export function PhysicsPaintStudio() {
     publishStatus: (message) => { setApplyMessage(message); },
   });
   const rotoPhysicalActions = rotoTimelineActions.physicalActions;
+  prepareRotoScriptTargetRef.current = async (source) => {
+    const launch = launchContextRef.current;
+    if (
+      !launch
+      || source.layerId !== launch.layerId
+      || source.appFrame !== launch.startFrame
+      || source.selectionKind === 'generated-interpolation'
+    ) return null;
+
+    if (source.selectionKind === 'real-key') {
+      if (!source.keyId) return null;
+      const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, source.keyId);
+      return record?.appFrame === source.appFrame
+        ? { keyId: record.keyId, appFrame: record.appFrame }
+        : null;
+    }
+    if (source.keyId !== null) return null;
+
+    const blank = buildBlankRotoFrame(canvasWidth, canvasHeight, source.appFrame);
+    const accepted = await dispatchAndWaitForAcceptedRotoPhysicalEdit(
+      physicalEditCoordinator.pendingOperationId,
+      physicalEditCoordinator.acceptedOutput,
+      () => rotoTimelineActions.physicalKeyUtilities.pasteKey(
+        source.appFrame,
+        {
+          frameIndex: blank.frameIndex,
+          appFrame: source.appFrame,
+          dataUrl: blank.dataUrl,
+          ...(blank.width !== undefined ? { width: blank.width } : {}),
+          ...(blank.height !== undefined ? { height: blank.height } : {}),
+        },
+        null,
+      ),
+    );
+    if (
+      accepted?.operationKind !== 'paste-key'
+      || accepted.after.layerId !== launch.layerId
+      || accepted.after.selectedAppFrame !== source.appFrame
+      || !accepted.after.selectedKeyId
+    ) return null;
+    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, accepted.after.selectedKeyId);
+    return record?.appFrame === source.appFrame
+      ? { keyId: record.keyId, appFrame: record.appFrame }
+      : null;
+  };
 
   const rotoNavigation = useRotoNavigationCoordinator<RenderedFramePayload>({
     workflowMode,
@@ -777,16 +815,12 @@ export function PhysicsPaintStudio() {
               && Boolean(launchContext);
             if (kind === 'clear' || (!canPublishCapturedApply && !canPublishCurrentEngine) || !launchContext) return;
             if (acceptedTarget && !acceptedTarget.publishPixels) return;
-            const emptyTarget = !acceptedTarget && currentFrameSelectionKind === 'empty'
-              ? claimRotoSelectedFrame({
-                model: rotoTimelineModel.view.value.model,
-                selectedFrame: currentFrame,
-                currentSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId),
-              })
-              : null;
-            const appFrame = acceptedTarget?.displayFrame ?? emptyTarget?.displayFrame ?? currentFrame;
-            const physicalRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, appFrame);
-            if (!physicalRecord) return;
+            const appFrame = acceptedTarget?.appFrame ?? currentFrame;
+            const keyId = acceptedTarget?.keyId
+              ?? (currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null);
+            if (!keyId) return;
+            const physicalRecord = physicPaintStore.getRotoRealKeyRecord(launchContext.layerId, keyId);
+            if (!physicalRecord || physicalRecord.appFrame !== appFrame) return;
             const cachedBaseAppFrame = cachedRotoRepaintBaseFrame?.appFrame ?? null;
             if (isEmpty) {
               if (cachedRotoRepaintBaseFrame && cachedBaseAppFrame === appFrame) {
@@ -814,7 +848,6 @@ export function PhysicsPaintStudio() {
               background: publicationIdentity?.background,
               size: { width: canvasWidth, height: canvasHeight },
               mutationId,
-              interpolationSettings: acceptedTarget?.interpolationSettings ?? emptyTarget?.interpolationSettings,
             });
             if (profilePerformance) recordPhysicsPaintPerformance({ stage: 'snapshot-handoff', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAt, timestamp: performance.now(), mutationId, sourceFrame: appFrame });
             void capture.catch((error) => {
@@ -853,4 +886,32 @@ export function PhysicsPaintStudio() {
     status: { shortcutsVisible },
   });
   return <PhysicsPaintStudioView {...viewModel} />;
+}
+
+async function dispatchAndWaitForAcceptedRotoPhysicalEdit<T extends { operationId: string }>(
+  pendingOperationId: {
+    peek: () => string | null;
+    subscribe: (listener: (operationId: string | null) => void) => () => void;
+  },
+  acceptedOutput: { peek: () => T | null },
+  dispatch: () => Promise<boolean>,
+): Promise<T | null> {
+  let expectedOperationId = pendingOperationId.peek();
+  const unsubscribe = pendingOperationId.subscribe((operationId) => {
+    if (expectedOperationId === null && operationId !== null) expectedOperationId = operationId;
+  });
+  try {
+    if (!await dispatch() || expectedOperationId === null) return null;
+    const deadline = performance.now() + 5_500;
+    while (performance.now() < deadline) {
+      const accepted = acceptedOutput.peek();
+      if (accepted?.operationId === expectedOperationId) return accepted;
+      if (pendingOperationId.peek() === null) return null;
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 16));
+    }
+    const accepted = acceptedOutput.peek();
+    return accepted?.operationId === expectedOperationId ? accepted : null;
+  } finally {
+    unsubscribe();
+  }
 }
