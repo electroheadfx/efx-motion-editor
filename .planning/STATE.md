@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
-stopped_at: Completed 36.14-20-PLAN.md; ready for 36.14-19-PLAN.md at Wave 12
-last_updated: "2026-07-22T10:45:45.410Z"
+stopped_at: Completed 36.14-19-PLAN.md; ready for 36.14-11-PLAN.md at Wave 13
+last_updated: "2026-07-22T12:11:17.830Z"
 last_activity: 2026-07-22
-last_activity_desc: Completed five-owner Duplicate/Paste physical protocol Plan 36.14-20; ready for Plan 19
+last_activity_desc: Completed five-owner physical key-utility cutover Plan 36.14-19; ready for Plan 11
 progress:
   total_phases: 17
   completed_phases: 16
   total_plans: 112
-  completed_plans: 103
-  percent: 92
+  completed_plans: 104
+  percent: 93
 ---
 
 # Project State
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 19 of 20
+Plan: 11 of 20
 Status: Ready to execute
-Last activity: 2026-07-22 — Completed five-owner Duplicate/Paste physical protocol Plan 36.14-20
-Next recommended action: Execute Plan 36.14-19 via /gsd-execute-phase 36.14 --wave 12
+Last activity: 2026-07-22 — Completed five-owner physical key-utility cutover Plan 36.14-19
+Next recommended action: Execute Plan 36.14-11 via /gsd-execute-phase 36.14 --wave 13
 
-Progress: [██████████████████░░] 103/112 plans complete; 16/17 phases complete ([█████████░] 92%)
+Progress: [██████████████████░░] 104/112 plans complete; 16/17 phases complete ([█████████░] 93%)
 
 ## Performance Metrics
 
@@ -100,6 +100,7 @@ Progress: [██████████████████░░] 103/112
 | Phase 36.14 P09 | 47min | 3 tasks | 13 files |
 | Phase 36.14 P10 | 40min | 3 tasks | 15 files |
 | Phase 36.14 P20 | 10min | 2 tasks | 5 files |
+| Phase 36.14 P19 | 14min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -169,6 +170,10 @@ Recent decisions affecting current work:
 - [Phase 36.14 planning revision]: Plan 20 is the exact four-owner semantic Duplicate/Paste foundation at Wave 11; Plan 19 composes it through exactly five utility owners at Wave 12 while preserving Clear; Plan 11 audits both owner sets read-only, cleans stable-identity Clear through useRotoFrameEditingController.ts, and owns the sole pre-UAT typecheck/build gate at Wave 13.
 - [Phase 36.14 Plan 20]: Duplicate and Paste are explicit ordinary replace-roto-physical-map operations using complete semantic proposals, not replay aliases or generic utility transactions.
 - [Phase 36.14 Plan 20]: Resolver, coordinator, and parent independently validate one shared Duplicate/Paste semantic delta before exact parent acknowledgement can reach accepted-only history.
+- [Phase 36.14 Plan 19]: Duplicate crosses the utility boundary by stable source keyId only; Plan 20 owns destination, ripple, fresh identity, complete proposal, settlement, rollback, and history.
+- [Phase 36.14 Plan 19]: Paste carries direct destination appFrame, existing destination keyId or null, and a frozen reusable copied-paint payload through Plan 20's semantic seam.
+- [Phase 36.14 Plan 19]: The production key-utility route has no local frame-list staging, fire-and-forget persistence, or configurable generic persistence port.
+- [Phase 36.14 Plan 19]: Studio composes timeline actions before navigation and passes the semantic utility port directly without a ref or effect mirror.
 
 ### Pending Todos
 
@@ -245,6 +250,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-22T10:45:45.397Z
-Stopped at: Completed 36.14-20-PLAN.md; ready for 36.14-19-PLAN.md at Wave 12
-Resume file: .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-19-PLAN.md
+Last session: 2026-07-22T12:11:17.818Z
+Stopped at: Completed 36.14-19-PLAN.md; ready for 36.14-11-PLAN.md at Wave 13
+Resume file: .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-11-PLAN.md
