@@ -164,7 +164,7 @@ Recent decisions affecting current work:
 - [Phase 36.14 Plan 10]: Stable keyId plus direct appFrame is the sole durable Roto ownership coordinate; accepted edits rebuild frame-indexed child state by identity.
 - [Phase 36.14 Plan 10]: Preview and export share the physical render-source resolver and revision-aware cache identity; export owns no independent Roto timing path.
 - [Phase 36.14 Plan 10]: Physical contentRevision validates cache ownership while physicPaintVersion remains monotonic visual invalidation only.
-- [Phase 36.14 Plan 10]: Approval-gated regression inputs retain temporary type compatibility only; production paths use physical contracts.
+- [Phase 36.14 Plan 10]: Approval-gated persistence/cache modules remain exact dormant sources with zero non-test production importers; active edit-buffer types and persistence classification live in rotoEditBufferTransactions, with paired module/test deletion reserved for Plan 13.
 
 ### Pending Todos
 
@@ -241,6 +241,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-21T21:57:21.369Z
-Stopped at: Completed 36.14-10-PLAN.md
-Resume file: None
+Last session: 2026-07-22T05:37:33.864Z
+Stopped at: Session resumed after GSD 1.8.0 update; Plan 10 ownership correction committed, proceeding to 36.14-11
+Resume file: .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/.continue-here.md
