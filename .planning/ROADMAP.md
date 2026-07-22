@@ -452,7 +452,7 @@ Use `SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md` and th
 **Mode:** mvp
 **Requirements:** 36.14-PHYSICAL-IDENTITY, 36.14-DERIVED-INTERPOLATION, 36.14-ATOMIC-FRAME-MAPPING, 36.14-RIPPLE-INSERT-DELETE, 36.14-RIPPLE-DRAG, 36.14-FORCE-SPACING, 36.14-DOWNSTREAM-PARITY, 36.14-UI-INTEGRATION, 36.14-UAT-THEN-REGRESSION
 **Depends on:** Phase 36.13 and native-UAT approval of the dedicated ROTO-SCRIPT-COPY / ROTO-SCRIPT-APPLY GSD quick
-**Plans:** 10/20 plans executed
+**Plans:** 11/20 plans executed
 
 **Success Criteria**:
 
@@ -518,7 +518,7 @@ Plans:
 
 **Wave 11** *(blocked on Wave 10)*
 
-- [ ] 36.14-20-PLAN.md — Extend exactly five foundation owners—`app/src/types/physicPaint.ts`, `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts`, `app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.ts`, `app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.ts`, and `app/src/lib/physicPaintBridge.ts`—with explicit ordinary Duplicate/Paste kinds, complete validated next-record proposals, centralized coordinator staging and exact acknowledgement, and accepted-only ordinary history; run typecheck only.
+- [x] 36.14-20-PLAN.md — Extend exactly five foundation owners—`app/src/types/physicPaint.ts`, `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts`, `app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.ts`, `app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.ts`, and `app/src/lib/physicPaintBridge.ts`—with explicit ordinary Duplicate/Paste kinds, complete validated next-record proposals, centralized coordinator staging and exact acknowledgement, and accepted-only ordinary history; run typecheck only.
 
 **Wave 12** *(blocked on Wave 11)*
 
@@ -891,4 +891,4 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
 | 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 6/6 | Complete | 2026-07-13 |
-| 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 10/20 | In Progress|  |
+| 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 11/20 | In Progress|  |
