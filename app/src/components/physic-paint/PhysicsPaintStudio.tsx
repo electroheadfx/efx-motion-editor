@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import type { EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample, SerializedProject } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoSegmentSpacingOverride } from '../../types/physicPaint';
+import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
@@ -12,7 +12,7 @@ import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyb
 import { usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
 import { useRotoTimelineActions } from './hooks/useRotoTimelineActions';
 import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
-import { selectProjectedRealCachedRotoFrames, selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
+import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
 import { useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
 import { useRotoFrameEditingController } from './hooks/useRotoFrameEditingController';
@@ -179,11 +179,6 @@ export function PhysicsPaintStudio() {
     capacity: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 1,
     selectedKeyId: selectedKeyId.value,
   });
-  // `useRotoTimelineActions` is constructed once after the physical-edit
-  // coordinator (D-09: one composition, no operation-specific reassembly). The
-  // `saveRealKeyAtDisplayFrame` callback is forwarded via a ref so the earlier
-  // `rotoNavigation` composition can consume it before the hook call resolves.
-  const rotoTimelineActionsRef = useRef<{ saveRealKeyAtDisplayFrame: (displayFrame: number) => { target: { displayFrame: number; sourceFrame: number; previousSegmentOverride: PhysicPaintRotoSegmentSpacingOverride | null } } } | null>(null);
   const timelineOccupiedRotoFrames = rotoTimelineModel.occupiedRotoFrames.value;
   const timelineSavedRotoFrames = rotoTimelineModel.savedRotoFrames.value;
   const timelineCachedRotoFrames = rotoTimelineModel.cachedRotoFrames.value;
@@ -442,7 +437,6 @@ export function PhysicsPaintStudio() {
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     publishStatus: (message) => { setApplyMessage(message); },
   });
-  rotoTimelineActionsRef.current = rotoTimelineActions;
   const rotoPhysicalActions = rotoTimelineActions.physicalActions;
 
   const rotoNavigation = useRotoNavigationCoordinator<RenderedFramePayload>({
@@ -454,18 +448,15 @@ export function PhysicsPaintStudio() {
       currentKeyId: currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null,
       physicalKeyUtilities: rotoTimelineActions.physicalKeyUtilities,
       canvasSize: { width: canvasWidth, height: canvasHeight },
-      realKeyFrames: selectProjectedRealCachedRotoFrames(latestRotoFramesRef.current, rotoTimelineModel.view.value.projection),
+      realKeyFrames: rotoKeyRecords.map((record): PhysicPaintRotoCacheFrame => ({
+        ...record.payload,
+        source: 'real-key',
+      })),
       cachedRotoFrames: latestRotoFramesRef.current,
       dirtyFrames: dirtyRotoFramesRef.current,
-        applyStatus,
+      applyStatus,
       flushInFlight: false,
       buildBlankRotoFrame: (frame): PhysicPaintRotoCacheFrame => ({ ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame), source: 'real-key' }),
-      resolveSourceFrameForDisplayFrame: (appFrame) => appFrame,
-      resolveDisplayFrameForSourceFrame: (appFrame) => appFrame,
-      resolvePasteTargetForDisplayFrame: (displayFrame) => launchContext ? rotoTimelineActionsRef.current!.saveRealKeyAtDisplayFrame(displayFrame).target : null,
-      segmentSpacingOverrides: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).segmentSpacingOverrides : undefined,
-      getPreviewFrames: () => rotoPreviewFramesRef.current,
-      setPreviewFrames: (frames) => { rotoPreviewFramesRef.current = frames as Map<number, RenderedFramePayload>; },
       setDirtyFrames: (frames) => { dirtyRotoFramesRef.current = frames; },
       syncPendingRotoFrames,
       showCachedReference: (frame) => setCachedRotoReferenceUrl(frame.dataUrl),

@@ -3,7 +3,6 @@ import { computed, signal, type ReadonlySignal } from '@preact/signals';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import { getSourceRotoFrameForDisplayFrame } from '../roto/physicsPaintRotoWorkflow';
 import {
-  saveRotoRealKeyTransaction,
   updateRotoInterpolationSettingsTransaction,
   type RotoSourceDisplayModel,
 } from '../roto/physicsPaintRotoKeyController';
@@ -184,13 +183,6 @@ const INVALID_FORCE_SPACING_MESSAGE = 'Enter a whole number of empty frames (0 o
 
 export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const forceSpacingInput = useMemo(() => signal('1'), []);
-  const saveRealKeyAtDisplayFrame = useCallback((displayFrame: number) => (
-    saveRotoRealKeyTransaction({
-      model: input.getModel(),
-      displayFrame,
-      currentSettings: input.getCurrentSettings?.() ?? toPhysicPaintRotoInterpolationSettings(input.getModel().settings),
-    })
-  ), [input]);
 
   const updateInterpolationSettings = useCallback((currentFrame: number, patch: Partial<PhysicPaintRotoInterpolationSettings>) => {
     const currentSettings = input.getCurrentSettings?.() ?? toPhysicPaintRotoInterpolationSettings(input.getModel().settings);
@@ -518,7 +510,6 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   }), [duplicateKey, pasteKey]);
 
   return {
-    saveRealKeyAtDisplayFrame,
     updateInterpolationSettings,
     physicalActions,
     physicalKeyUtilities,

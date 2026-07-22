@@ -15,7 +15,7 @@ export interface UseRotoNavigationCoordinatorInput<TPreview extends { appFrame: 
   workflowMode: PhysicsPaintWorkflowMode;
   beforeNavigation?: (targetFrame: number) => Promise<boolean>;
   afterNavigation?: () => void;
-  keyUtilities: Omit<RotoKeyUtilitiesInput<TPreview>, 'restoreFrame' | 'clearCanvas' | 'navigate' | 'clearCachedReferenceFrame'>;
+  keyUtilities: Omit<RotoKeyUtilitiesInput, 'restoreFrame' | 'clearCanvas' | 'navigate' | 'clearCachedReferenceFrame'>;
   playback: {
     initialFps: number;
     getProjection: () => PhysicPaintRotoPhysicalTimelineProjection | null;

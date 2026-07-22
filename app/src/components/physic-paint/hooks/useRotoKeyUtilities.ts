@@ -1,11 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
-import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoSegmentSpacingOverride } from '../../../types/physicPaint';
+import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import { createRotoSession, type RotoSession, type RotoSessionActionResult, type RotoSessionCopiedKey, type RotoSessionEffect } from '../roto/physicsPaintRotoSession';
-import type { RotoKeyUtilityTransaction } from '../roto/physicsPaintRotoKeyController';
 import type { PhysicPaintRotoRealKeyPayload } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalKeyUtilityPort } from '../roto/rotoCoordinatorPorts';
 
-export interface RotoKeyUtilitiesInput<TPreview extends { appFrame: number }> {
+export interface RotoKeyUtilitiesInput {
   currentFrame: number;
   currentKeyId: string | null;
   physicalKeyUtilities: RotoPhysicalKeyUtilityPort;
@@ -16,12 +15,6 @@ export interface RotoKeyUtilitiesInput<TPreview extends { appFrame: number }> {
   applyStatus: 'idle' | 'applying' | 'success' | 'error';
   flushInFlight: boolean;
   buildBlankRotoFrame: (frame: number) => PhysicPaintRotoCacheFrame;
-  resolveSourceFrameForDisplayFrame: (displayFrame: number) => number | null;
-  resolveDisplayFrameForSourceFrame?: (sourceFrame: number, transaction: RotoKeyUtilityTransaction) => number | null;
-  resolvePasteTargetForDisplayFrame: (displayFrame: number) => { displayFrame: number; sourceFrame: number; previousSegmentOverride: PhysicPaintRotoSegmentSpacingOverride | null } | null;
-  segmentSpacingOverrides?: readonly PhysicPaintRotoSegmentSpacingOverride[];
-  getPreviewFrames: () => ReadonlyMap<number, TPreview>;
-  setPreviewFrames: (frames: Map<number, TPreview | PhysicPaintRotoCacheFrame>) => void;
   setDirtyFrames: (frames: Set<number>) => void;
   syncPendingRotoFrames: () => void;
   restoreFrame: (effect: Extract<RotoSessionEffect, { type: 'restoreFrame' }>, refreshedCacheFrames?: readonly PhysicPaintRotoCacheFrame[]) => void;
@@ -47,7 +40,7 @@ export interface RotoKeyUtilities {
   pasteKey: () => void;
 }
 
-export function useRotoKeyUtilities<TPreview extends { appFrame: number }>(input: RotoKeyUtilitiesInput<TPreview>): RotoKeyUtilities {
+export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilities {
   const [keyActionInFlight, setKeyActionInFlight] = useState(false);
   const [sessionVersion, setSessionVersion] = useState(0);
   const copiedKeyRef = useRef<RotoSessionCopiedKey | null>(null);
@@ -63,10 +56,6 @@ export function useRotoKeyUtilities<TPreview extends { appFrame: number }>(input
     applyStatus: input.applyStatus,
     flushInFlight: input.flushInFlight,
     buildBlankRotoFrame: input.buildBlankRotoFrame,
-    resolveSourceFrameForDisplayFrame: input.resolveSourceFrameForDisplayFrame,
-    resolveDisplayFrameForSourceFrame: input.resolveDisplayFrameForSourceFrame,
-    resolvePasteTargetForDisplayFrame: input.resolvePasteTargetForDisplayFrame,
-    segmentSpacingOverrides: input.segmentSpacingOverrides,
   }), [
     input.currentFrame,
     input.realKeyFrames,
@@ -77,10 +66,6 @@ export function useRotoKeyUtilities<TPreview extends { appFrame: number }>(input
     input.applyStatus,
     input.flushInFlight,
     input.buildBlankRotoFrame,
-    input.resolveSourceFrameForDisplayFrame,
-    input.resolveDisplayFrameForSourceFrame,
-    input.resolvePasteTargetForDisplayFrame,
-    input.segmentSpacingOverrides,
     sessionVersion,
   ]);
 
