@@ -9,7 +9,7 @@ export type RotoPlayScriptPhase = 'idle' | 'preparing' | 'rendering' | 'committi
 export interface RotoPlayScriptControllerPorts {
   library: RotoScriptLibraryController;
   getLaunchContext: () => PhysicPaintLaunchContext | null;
-  getSelection: () => { kind: RotoTimelineSelectionKind; sourceFrame: number; displayFrame: number };
+  getSelection: () => { kind: RotoTimelineSelectionKind; keyId: string | null; appFrame: number };
   getMotion: () => { deformation: number; position: number };
   getBackground: () => PhysicPaintRotoBackgroundMetadata;
   getOperationLocked: () => boolean;
@@ -22,7 +22,7 @@ export interface RotoPlayScriptControllerPorts {
     rotoBackground: PhysicPaintRotoBackgroundMetadata;
     rotoInterpolationSettings: PhysicPaintRotoAuthorityResult['interpolationSettings'];
   }) => Promise<PhysicPaintApplyResult>;
-  mirrorAccepted: (frames: PhysicPaintRotoCacheFrame[], firstSourceFrame: number, background: PhysicPaintRotoBackgroundMetadata) => void;
+  mirrorAccepted: (frames: PhysicPaintRotoCacheFrame[], firstAppFrame: number, background: PhysicPaintRotoBackgroundMetadata) => void;
   stopPlayback: () => void;
   log: (message: string, error?: boolean) => void;
 }
@@ -67,7 +67,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const context = ports.getLaunchContext();
     if (!context?.project?.saved) return 'Save the project first.';
     const selection = ports.getSelection();
-    if (selection.kind === 'generated-interpolation') return `Generated frame ${selection.displayFrame} is render-only. Select an empty frame or a real Roto key to generate a Play Script.`;
+    if (selection.kind === 'generated-interpolation') return `Generated frame ${selection.appFrame} is render-only. Select an empty frame or a real Roto key to generate a Play Script.`;
     return null;
   });
   const parsedCount = computed(() => parseCount(countText.value, capacity.value));
@@ -86,7 +86,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const operationId = nextOperationId('authority');
     phase.value = 'preparing'; status.value = 'Preparing Play Script…'; error.value = null;
     try {
-      const authority = await ports.requestAuthority(operationId, selected.sourceFrame);
+      const authority = await ports.requestAuthority(operationId, selected.appFrame);
       if (!authority.ok) throw new Error(authority.error ?? 'Parent authority is unavailable.');
       canonicalStart.value = authority.canonicalStart;
       capacity.value = authority.capacity;
@@ -101,7 +101,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const context = ports.getLaunchContext();
     const start = canonicalStart.peek();
     const count = parsedCount.peek().count;
-    if (disposed || !selectedId || !context?.project || start === null || count === null || disabledReason.peek()) return false;
+    const startingSelection = ports.getSelection();
+    if (disposed || !selectedId || !context?.project || start === null || count === null || disabledReason.peek() || startingSelection.appFrame !== start) return false;
 
     const acceptedGeneration = ++generation;
     abortController = new AbortController();
@@ -116,7 +117,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       if (!snapshot || ports.library.selectedId.peek() !== selectedId) throw new Error('Selected script changed or could not be reloaded.');
       const motion = { ...ports.getMotion() };
       const rotoBackground = { ...ports.getBackground() };
-      const existingFrames = new Map(authority.frames.map((frame) => [frame.sourceFrame ?? frame.appFrame, frame]));
+      const existingFrames = new Map(authority.frames.map((frame) => [frame.appFrame, frame]));
       phase.value = 'rendering'; progress.value = { completed: 0, total: count }; status.value = `Rendering 0 / ${count}`;
       const staged = await renderRotoPlayScriptFrames({
         script: snapshot, frameCount: count, canonicalStart: start, motion, existingFrames, size: ports.getSize(), signal: abortController.signal,
@@ -127,7 +128,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       assertCurrent(acceptedGeneration);
       if (!commitAuthority.ok || commitAuthority.capacity < count || commitAuthority.rotoRevision !== authority.rotoRevision || commitAuthority.layerEndExclusive !== authority.layerEndExclusive) throw new Error('Roto authority changed before commit.');
       const currentSelection = ports.getSelection();
-      if (ports.library.selectedId.peek() !== selectedId || currentSelection.kind === 'generated-interpolation' || currentSelection.sourceFrame !== start) throw new Error('Play Script start or selected preset changed before commit.');
+      if (
+        ports.library.selectedId.peek() !== selectedId
+        || currentSelection.kind === 'generated-interpolation'
+        || currentSelection.appFrame !== start
+        || currentSelection.keyId !== startingSelection.keyId
+      ) throw new Error('Play Script start, physical key identity, or selected preset changed before commit.');
       const completeFrames = mergeCompleteRealKeys(commitAuthority.frames, staged);
       phase.value = 'committing'; status.value = 'Committing Play Script…'; abortController = null;
       const operationId = nextOperationId('commit');
@@ -170,10 +176,10 @@ function parseCount(value: string, capacity: number): { count: number | null; er
   return { count, error: null };
 }
 
-function mergeCompleteRealKeys(existing: readonly PhysicPaintRotoCacheFrame[], staged: readonly (PhysicPaintRotoCacheFrame & { sourceFrame: number })[]): PhysicPaintRotoCacheFrame[] {
-  const frames = new Map(existing.filter((frame) => frame.source === 'real-key').map((frame) => [frame.sourceFrame ?? frame.appFrame, frame]));
-  for (const frame of staged) frames.set(frame.sourceFrame, { ...frame, appFrame: frame.sourceFrame, source: 'real-key' });
-  return [...frames.values()].sort((a, b) => (a.sourceFrame ?? a.appFrame) - (b.sourceFrame ?? b.appFrame));
+function mergeCompleteRealKeys(existing: readonly PhysicPaintRotoCacheFrame[], staged: readonly PhysicPaintRotoCacheFrame[]): PhysicPaintRotoCacheFrame[] {
+  const frames = new Map(existing.filter((frame) => frame.source === 'real-key').map((frame) => [frame.appFrame, frame]));
+  for (const frame of staged) frames.set(frame.appFrame, { ...frame, source: 'real-key' });
+  return [...frames.values()].sort((a, b) => a.appFrame - b.appFrame);
 }
 function isBusyPhase(phase: RotoPlayScriptPhase): boolean { return phase === 'preparing' || phase === 'rendering' || phase === 'committing' || phase === 'regenerating'; }
 function isAbort(error: unknown): boolean { return error instanceof DOMException && error.name === 'AbortError'; }

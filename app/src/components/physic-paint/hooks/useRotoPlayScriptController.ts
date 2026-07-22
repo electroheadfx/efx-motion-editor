@@ -15,7 +15,7 @@ export function useRotoPlayScriptController(ports: Omit<RotoPlayScriptController
     if (sameAvailabilitySnapshot(availabilitySnapshot.current, nextAvailabilitySnapshot)) return;
     availabilitySnapshot.current = nextAvailabilitySnapshot;
     availabilityRevision.current.value += 1;
-  }, [nextAvailabilitySnapshot.operationLocked, nextAvailabilitySnapshot.projectSaved, nextAvailabilitySnapshot.selectionKind, nextAvailabilitySnapshot.sourceFrame, nextAvailabilitySnapshot.displayFrame]);
+  }, [nextAvailabilitySnapshot.operationLocked, nextAvailabilitySnapshot.projectSaved, nextAvailabilitySnapshot.selectionKind, nextAvailabilitySnapshot.keyId, nextAvailabilitySnapshot.appFrame]);
   const authorityPending = useRef(new Map<string, (result: PhysicPaintRotoAuthorityResult) => void>());
   const commitPending = useRef(new Map<string, (result: PhysicPaintApplyResult) => void>());
   usePhysicsPaintRotoAuthorityResultBridge((result) => { authorityPending.current.get(result.operationId)?.(result); authorityPending.current.delete(result.operationId); });
@@ -61,8 +61,8 @@ function readAvailabilitySnapshot(ports: Pick<RotoPlayScriptControllerPorts, 'ge
     operationLocked: ports.getOperationLocked(),
     projectSaved: context?.project?.saved ?? false,
     selectionKind: selection.kind,
-    sourceFrame: selection.sourceFrame,
-    displayFrame: selection.displayFrame,
+    keyId: selection.keyId,
+    appFrame: selection.appFrame,
   };
 }
 
@@ -70,8 +70,8 @@ function sameAvailabilitySnapshot(left: ReturnType<typeof readAvailabilitySnapsh
   return left.operationLocked === right.operationLocked
     && left.projectSaved === right.projectSaved
     && left.selectionKind === right.selectionKind
-    && left.sourceFrame === right.sourceFrame
-    && left.displayFrame === right.displayFrame;
+    && left.keyId === right.keyId
+    && left.appFrame === right.appFrame;
 }
 
 function requestWithTimeout<T>(pending: Map<string, (result: T) => void>, operationId: string, send: () => Promise<void>, fallback: T): Promise<T> {
@@ -83,7 +83,7 @@ function requestWithTimeout<T>(pending: Map<string, (result: T) => void>, operat
 }
 function authorityFailure(operationId: string, ports: Pick<RotoPlayScriptControllerPorts, 'getLaunchContext' | 'getSelection'>): PhysicPaintRotoAuthorityResult {
   const context = ports.getLaunchContext(); const selection = ports.getSelection();
-  return { operationId, ok: false, projectContextId: context?.project?.contextId ?? '', layerId: context?.layerId ?? '', canonicalStart: selection.sourceFrame, layerEndExclusive: selection.sourceFrame, capacity: 0, rotoRevision: '', frames: [], interpolationSettings: { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 }, error: 'Roto authority request timed out.' };
+  return { operationId, ok: false, projectContextId: context?.project?.contextId ?? '', layerId: context?.layerId ?? '', canonicalStart: selection.appFrame, layerEndExclusive: selection.appFrame, capacity: 0, rotoRevision: '', frames: [], interpolationSettings: { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 }, error: 'Roto authority request timed out.' };
 }
 function commitFailure(payload: { operationId: string; layerId: string; startFrame: number }): PhysicPaintApplyResult {
   return { operationId: payload.operationId, kind: 'replace-roto-key-frames', layerId: payload.layerId, startFrame: payload.startFrame, appliedFrameCount: 0, ok: false, error: 'Play Script commit timed out.' };

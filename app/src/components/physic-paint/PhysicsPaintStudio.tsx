@@ -486,7 +486,11 @@ export function PhysicsPaintStudio() {
   const rotoPlayScript = useRotoPlayScriptController({
     library: rotoScriptLibrary,
     getLaunchContext: () => launchContext,
-    getSelection: () => ({ kind: currentFrameSelectionKind, sourceFrame: currentFrame, displayFrame: currentFrame }),
+    getSelection: () => ({
+      kind: currentFrameSelectionKind,
+      keyId: currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null,
+      appFrame: currentFrame,
+    }),
     getMotion: () => launchContext ? {
       deformation: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).deform,
       position: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).position,
@@ -494,12 +498,12 @@ export function PhysicsPaintStudio() {
     getBackground: () => buildRotoBackgroundMetadata(settings),
     getOperationLocked: () => rotoScript.mutationLocked.peek() || rotoScriptNavigationLocked,
     getSize: () => ({ width: canvasWidth, height: canvasHeight }),
-    mirrorAccepted: (frames, firstSourceFrame, rotoBackground) => {
+    mirrorAccepted: (frames, firstAppFrame, rotoBackground) => {
       if (!launchContext) return;
-      physicPaintStore.replaceRotoKeyFrames({ kind: 'replace-roto-key-frames', operationId: `mirror-${crypto.randomUUID()}`, layerId: launchContext.layerId, startFrame: firstSourceFrame, frames, rotoBackground, rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) });
+      physicPaintStore.replaceRotoKeyFrames({ kind: 'replace-roto-key-frames', operationId: `mirror-${crypto.randomUUID()}`, layerId: launchContext.layerId, startFrame: firstAppFrame, frames, rotoBackground, rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) });
       const refreshed = physicPaintStore.getRotoCacheFrames(launchContext.layerId);
       latestRotoFramesRef.current = refreshed;
-      setLaunchContext((current) => current ? { ...current, startFrame: firstSourceFrame, cachedRotoFrames: refreshed, rotoBackground } : current);
+      setLaunchContext((current) => current ? { ...current, startFrame: firstAppFrame, cachedRotoFrames: refreshed, rotoBackground } : current);
     },
     stopPlayback: rotoCachedPlayback.stop,
     log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
