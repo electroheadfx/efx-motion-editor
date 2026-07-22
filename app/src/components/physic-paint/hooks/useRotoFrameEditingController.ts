@@ -3,7 +3,7 @@ import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 import { buildBlankRotoFrame, buildRotoFrameFromCanvas, exportTransparentStrokeCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
-import { shouldPersistRotoFrame, type RotoEditableState } from '../roto/rotoSaveTransactions';
+import { shouldPersistRotoFrame, type RotoEditableState } from '../roto/rotoEditBufferTransactions';
 import type { RotoTimelineSelectionKind } from '../roto/rotoTimelineSelectors';
 
 interface RotoEditBufferPort<TEditable> {
