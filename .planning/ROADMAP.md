@@ -460,7 +460,7 @@ Use `SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md` and th
 2. Insert Frame, Delete Frame, ripple Drag & Drop, Force Spacing, Undo, and Redo use one validated complete identity-to-frame mapping transaction with one optimistic stage, one parent publication, one acknowledgement, complete rollback on failure, and one accepted history action.
 3. Insert/Delete ripple semantics, occupied-key-safe cut-and-insert drag semantics, generated-cell drag destinations, and Force Spacing `N` semantics preserve key identity and payload while satisfying the locked physical-frame examples and layer-capacity constraints.
 4. Cache publication, persistence, reopen, playback, onion/reference, preview, timeline length, missing-frame rendering, and export all consume the same physical positions and runtime-derived interior gaps with no stale projected or durable generated timing truth.
-5. Production typecheck/build pass before user-owned native UAT. Only after explicit UAT approval are regression tests added and run with `vitest run`, including the Drag & Drop coverage intentionally omitted from quick `260719-gmn`; the final polished timeline UI is then integrated and validated without starting the application server.
+5. Under D-30's current rejected-UAT recovery track, Plans 21-27 complete production gap fixes with bounded static checks only, Plan 28 performs integrated bounded static read-only review, and Plan 29 is the user-owned native UAT gate. Only after the user's exact native approval may separate later regression/typecheck/build planning become eligible; Plans 13-18 remain locked and `36.14-12-APPROVAL.txt` is not created in this sequence.
 
 Planning notes:
 
@@ -469,9 +469,9 @@ Planning notes:
 - Insert Frame adds one empty physical slot immediately before the selected real key and shifts that key and every later key right. Delete Frame removes the selected key and its physical slot and shifts every later survivor left.
 - Generated cells remain render-only but are valid physical drag destinations. Dragging across occupied keys reorders identities through before/after boundaries and never overwrites a destination key.
 - Force Spacing value `N` creates exactly `N` physical empty slots between adjacent ordered real keys while anchoring the first key; `N = 0` makes keys adjacent.
-- Production implementation and static/build gates come first. Stop for user-owned native UAT, and do not add or run regression tests until the user explicitly approves the physical model.
-- After approval, add deterministic physical-model regression coverage and the Drag & Drop tests omitted from quick `260719-gmn`, using `vitest run`.
-- Finish with the corrected timeline colors, proportions, grouping, fit-content action row, visual hierarchy, status/log routing, selection guard, and approved Script controls from the existing UI specification.
+- D-30 supersedes D-12 only for the current rejected-UAT recovery track: Plans 21-27 production fixes use bounded static checks only, Plan 28 performs integrated bounded static read-only review, and Plan 29 stops for user-owned native UAT.
+- Only after the user's exact native approval may separate later regression/typecheck/build planning become eligible. That approval does not automatically execute or unlock Plans 13-18, create an approval TXT, change Validation flags, or complete the phase.
+- Any later approved planning must preserve the corrected timeline colors, proportions, grouping, fit-content action row, visual hierarchy, status/log routing, selection guard, and approved Script controls from the existing UI specification.
 - Do not add legacy project migration, compatibility timing aliases, multi-selection, or group movement.
 
 Plans:
@@ -526,43 +526,27 @@ Plans:
 
 **Wave 13** *(blocked on Wave 12)*
 
-- [x] 36.14-11-PLAN.md — Audit Plan 20 semantic ownership, Plan 19 composition ownership, current callers, and stable-identity Clear through `useRotoFrameEditingController.ts`; close on bounded static production evidence after the single typecheck attempt exposed obsolete pre-UAT test contracts, with build and the full compile proof deferred to Plan 13 by explicit user decision.
+- [x] 36.14-11-PLAN.md — Historical pre-recovery record: audit Plan 20 semantic ownership, Plan 19 composition ownership, current callers, and stable-identity Clear through `useRotoFrameEditingController.ts`; close on bounded static production evidence after the single typecheck attempt exposed obsolete test contracts. Its former Plan 13 compile transition is superseded and non-executable under D-30.
 
-**Wave 14** *(blocked on Wave 13)* — Native UAT checkpoint
+<!-- D-30-HISTORICAL-START: original Plans 12-18 sequence; superseded and non-executable in the current rejected-UAT recovery track -->
+**Historical Waves 14-20 — original D-12 sequence, retained as non-executable evidence**
 
-- [ ] 36.14-12-PLAN.md — Stop at the blocking user-owned native physical-model UAT checkpoint after verifying Plan 11's bounded static production evidence and transparent compile deferral; do not rerun typecheck/build or begin regression work until explicit user approval and byte-verified `36.14-12-APPROVAL.txt`.
+- [ ] 36.14-12-PLAN.md — Historical rejected native-UAT checkpoint. Its approval-file transition is not used by the D-30 recovery track.
+- [ ] 36.14-13-PLAN.md — Historical post-Plan-12 regression/compile plan; remains locked and is not eligible in the D-30 recovery track.
+- [ ] 36.14-14-PLAN.md — Historical downstream regression plan; remains locked and is not eligible in the D-30 recovery track.
+- [ ] 36.14-15-PLAN.md — Historical final UI integration plan; remains locked and is not eligible in the D-30 recovery track.
+- [ ] 36.14-16-PLAN.md — Historical drag-presentation integration plan; remains locked and is not eligible in the D-30 recovery track.
+- [ ] 36.14-17-PLAN.md — Historical accessibility/regression/compile plan; remains locked and is not eligible in the D-30 recovery track.
+- [ ] 36.14-18-PLAN.md — Historical final native-UAT/approval-artifact plan; remains locked and is not eligible in the D-30 recovery track.
+<!-- D-30-HISTORICAL-END -->
 
-**Wave 15** *(blocked on Wave 14 approval evidence)* — Post-UAT regression unlock
-
-- [ ] 36.14-13-PLAN.md — After byte-exact Plan 12 approval, transfer valid wrapper assertions into final-owner regressions, delete six obsolete wrapper tests plus the three dormant production modules in one clean cutover, rewrite `useRotoInterpolationController.test.ts`, run the focused matrix, then supply the deferred full typecheck/build proof.
-
-**Wave 16** *(blocked on Wave 15)*
-
-- [ ] 36.14-14-PLAN.md — Add post-approval regression coverage for persistence/reopen, bridge/cache publication, playback, onion/reference, preview/export, missing/background rendering, timeline length, script behavior, and physical equality/encoding; run the full `vitest run` suite.
-
-**Wave 17** *(blocked on Wave 16)* — Final UI integration
-
-- [ ] 36.14-15-PLAN.md — Integrate the approved `155px` workflow-strip geometry, non-wrapping header hierarchy, fixed abutting timeline cells, ordered bottom action row, Force Spacing controls, Discard relocation, obsolete-control removal, and concise status-vs-LOG routing.
-
-**Wave 18** *(blocked on Wave 17)*
-
-- [ ] 36.14-16-PLAN.md — Integrate complete-map drag presentation, whole-cell and occupied-boundary targets, identity-following selection/focus, minimal final-cell auto-scroll, and approved pointer cancellation/edge-scroll behavior.
-
-**Wave 19** *(blocked on Wave 18)*
-
-- [ ] 36.14-17-PLAN.md — Finish guarded focusable Script controls with controller-supplied reasons, shell-level non-selection with text-selection exceptions, UI accessibility/status details, and post-approval UI regression coverage; run focused tests, full `vitest run`, typecheck, and build without starting the application server.
-
-**Wave 20** *(blocked on Wave 19)* — Final native UAT
-
-- [ ] 36.14-18-PLAN.md — Stop at the final blocking user-owned native visual and interaction UAT checkpoint; byte-verify `36.14-18-APPROVAL.txt` before phase acceptance.
-
-Gap-closure recovery track: execute only with `/gsd-execute-phase 36.14 --gaps-only`. This track repairs the rejected native UAT without creating `36.14-12-APPROVAL.txt`, marking Plan 12 passed, or unlocking/executing Plans 13-18. Tests, typecheck, build, and later-plan transitions remain deferred until the renewed user-owned native gap UAT resolves and the user separately authorizes follow-up planning.
+D-30 gap-closure recovery track: execute only with `/gsd-execute-phase 36.14 --gaps-only`. The active order is Plans 21-27 production gap fixes with bounded static checks only, Plan 28 integrated bounded static read-only review, then Plan 29 user-owned native UAT. Only the user's exact native approval may make separate later regression/typecheck/build planning eligible. This track never creates `36.14-12-APPROVAL.txt`, marks Plan 12 passed, or unlocks/executes Plans 13-18.
 
 **Wave 21** *(gap closure; blocked on completed Plan 11 baseline)*
 
 - [ ] 36.14-21-PLAN.md — Preserve hook-stable coordinator Signals and complete accepted-only multi-level Undo/Redo by replaying immutable child snapshots including confirmed frames.
 - [ ] 36.14-23-PLAN.md — Replace invalid generated-image fallback with canonical PNG decode/registration and valid strict-interior compositing.
-- [ ] 36.14-24-PLAN.md — Record D-29 and implement occupied-boundary no-source-gap Drag with exact `A@1,C@5,D@8,B@9`, preserving empty/generated Drag.
+- [ ] 36.14-24-PLAN.md — Record D-29 and D-30, align all recovery authority/supporting artifacts, and implement occupied-boundary no-source-gap Drag with exact `A@1,C@5,D@8,B@9`, preserving empty/generated Drag.
 - [ ] 36.14-27-PLAN.md — Gate export notification APIs to the authorized main window without broadening child capabilities.
 
 **Wave 22** *(gap closure; blocked on Plan 21)*
@@ -579,11 +563,11 @@ Gap-closure recovery track: execute only with `/gsd-execute-phase 36.14 --gaps-o
 
 **Wave 25** *(gap closure; blocked on Plans 21-27)*
 
-- [ ] 36.14-28-PLAN.md — Perform bounded static integration review only and hand off readiness for user-owned native gap UAT.
+- [ ] 36.14-28-PLAN.md — Perform D-29/D-30 integrated bounded static read-only review and hand off readiness for user-owned native gap UAT.
 
 **Wave 26** *(gap closure; blocked on Plan 28)* — Renewed native gap UAT
 
-- [ ] 36.14-29-PLAN.md — Stop at the blocking user-owned native gap UAT; record pass/rejection in the normal summary only and do not create approval evidence or advance locked plans.
+- [ ] 36.14-29-PLAN.md — Stop at D-30's blocking user-owned native gap UAT; record pass/rejection in the normal summary only and do not create approval evidence or advance locked plans.
 
 ### Phase 36.8: Physics Paint Roto State Refactor
 
