@@ -452,7 +452,7 @@ Use `SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md` and th
 **Mode:** mvp
 **Requirements:** 36.14-PHYSICAL-IDENTITY, 36.14-DERIVED-INTERPOLATION, 36.14-ATOMIC-FRAME-MAPPING, 36.14-RIPPLE-INSERT-DELETE, 36.14-RIPPLE-DRAG, 36.14-FORCE-SPACING, 36.14-DOWNSTREAM-PARITY, 36.14-UI-INTEGRATION, 36.14-UAT-THEN-REGRESSION
 **Depends on:** Phase 36.13 and native-UAT approval of the dedicated ROTO-SCRIPT-COPY / ROTO-SCRIPT-APPLY GSD quick
-**Plans:** 13/20 plans executed
+**Plans:** 13/29 plans executed
 
 **Success Criteria**:
 
@@ -555,6 +555,35 @@ Plans:
 **Wave 20** *(blocked on Wave 19)* — Final native UAT
 
 - [ ] 36.14-18-PLAN.md — Stop at the final blocking user-owned native visual and interaction UAT checkpoint; byte-verify `36.14-18-APPROVAL.txt` before phase acceptance.
+
+Gap-closure recovery track: execute only with `/gsd-execute-phase 36.14 --gaps-only`. This track repairs the rejected native UAT without creating `36.14-12-APPROVAL.txt`, marking Plan 12 passed, or unlocking/executing Plans 13-18. Tests, typecheck, build, and later-plan transitions remain deferred until the renewed user-owned native gap UAT resolves and the user separately authorizes follow-up planning.
+
+**Wave 21** *(gap closure; blocked on completed Plan 11 baseline)*
+
+- [ ] 36.14-21-PLAN.md — Preserve hook-stable coordinator Signals and complete accepted-only multi-level Undo/Redo by replaying immutable child snapshots including confirmed frames.
+- [ ] 36.14-23-PLAN.md — Replace invalid generated-image fallback with canonical PNG decode/registration and valid strict-interior compositing.
+- [ ] 36.14-24-PLAN.md — Record D-29 and implement occupied-boundary no-source-gap Drag with exact `A@1,C@5,D@8,B@9`, preserving empty/generated Drag.
+- [ ] 36.14-27-PLAN.md — Gate export notification APIs to the authorized main window without broadening child capabilities.
+
+**Wave 22** *(gap closure; blocked on Plan 21)*
+
+- [ ] 36.14-22-PLAN.md — Make enabled-only canonical physical interpolation the sole acknowledged control authority and restore visible first-click state.
+
+**Wave 23** *(gap closure; blocked on Plan 22)*
+
+- [ ] 36.14-25-PLAN.md — Hoist Play Script to a Studio-level full-height light dialog while preserving the fused Scripts workflow and controller behavior.
+
+**Wave 24** *(gap closure; blocked on Plans 22, 23, and 25)*
+
+- [ ] 36.14-26-PLAN.md — Publish Play Script output through the canonical physical-map coordinator with stable identities and durable PNG payloads.
+
+**Wave 25** *(gap closure; blocked on Plans 21-27)*
+
+- [ ] 36.14-28-PLAN.md — Perform bounded static integration review only and hand off readiness for user-owned native gap UAT.
+
+**Wave 26** *(gap closure; blocked on Plan 28)* — Renewed native gap UAT
+
+- [ ] 36.14-29-PLAN.md — Stop at the blocking user-owned native gap UAT; record pass/rejection in the normal summary only and do not create approval evidence or advance locked plans.
 
 ### Phase 36.8: Physics Paint Roto State Refactor
 
