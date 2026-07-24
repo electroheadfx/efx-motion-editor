@@ -967,6 +967,10 @@ export function PhysicsPaintStudio() {
           onRefresh: () => { void rotoScriptLibrary.refresh(); },
         },
       },
+    playScriptDialog: {
+        playScript: rotoPlayScript,
+        returnFocusRef: playButtonRef,
+      },
     workflow: {
         workflowLabel: launchContext?.workflowLabel,
         currentFrame, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames,

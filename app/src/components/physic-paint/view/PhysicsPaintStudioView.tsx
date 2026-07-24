@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import { subscribeProjectPaperCanvas } from '../../../lib/projectPaperRaster';
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
+import { PhysicsPaintPlayScriptDialog } from './PhysicsPaintPlayScriptDialog';
 import { PhysicsPaintRightPanel } from './PhysicsPaintRightPanel';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
 import { PhysicsPaintTopBar } from './PhysicsPaintTopBar';
@@ -108,6 +109,7 @@ export interface PhysicsPaintStudioViewProps {
     mount: ComponentProps<typeof PhysicsPaintCanvasMount>;
   };
   rightPanel: ComponentProps<typeof PhysicsPaintRightPanel>;
+  playScriptDialog: ComponentProps<typeof PhysicsPaintPlayScriptDialog>;
   workflow: ComponentProps<typeof PhysicsPaintWorkflowStrip>;
   status: {
     shortcutsVisible: boolean;
@@ -115,7 +117,7 @@ export interface PhysicsPaintStudioViewProps {
 }
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
-  const { layout, topBar, toolRail, canvas, rightPanel, workflow, status } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, workflow, status } = props;
   return (
     <main class="demo-shell">
       <section
@@ -152,6 +154,8 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
             <PhysicsPaintRightPanel {...rightPanel} />
           </div>
         )}
+
+        <PhysicsPaintPlayScriptDialog {...playScriptDialog} />
 
         <PhysicsPaintWorkflowStrip {...workflow} />
 
