@@ -771,19 +771,23 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   data-pending={props.rotoInterpolationPending ? 'true' : 'false'}
                   title={interpolationStatus}
                 >
-                  <label class="physics-paint-roto-interpolation-toggle">
-                    <input
-                      type="checkbox"
-                      aria-label="Enable generated in-betweens"
-                      aria-busy={props.rotoInterpolationPending ? 'true' : undefined}
-                      checked={interpolationEnabled}
-                      disabled={interpolationControlsDisabled}
-                      onChange={(event) => {
-                        if (props.mutationLocked || props.rotoInterpolationPending) return;
-                        props.onRotoInterpolationEnabledChange?.((event.currentTarget as HTMLInputElement).checked);
-                      }}
-                    />
-                  </label>
+                  <button
+                    type="button"
+                    class={`physics-paint-roto-interpolation-toggle ${interpolationEnabled ? 'active' : ''}`}
+                    aria-label={interpolationEnabled ? 'Disable generated in-betweens' : 'Enable generated in-betweens'}
+                    aria-pressed={interpolationEnabled}
+                    aria-busy={props.rotoInterpolationPending ? 'true' : undefined}
+                    disabled={interpolationControlsDisabled}
+                    onClick={() => {
+                      if (props.mutationLocked || props.rotoInterpolationPending) return;
+                      props.onRotoInterpolationEnabledChange?.(!interpolationEnabled);
+                    }}
+                  >
+                    <span>Interpolation</span>
+                    <span class="physics-paint-roto-interpolation-toggle-state">
+                      {props.rotoInterpolationPending ? 'Pending' : interpolationEnabled ? 'On' : 'Off'}
+                    </span>
+                  </button>
                   {physicalActions ? (
                     <form class="physics-paint-roto-interpolation-count" title={forceSpacingDisabledReason ?? 'Set empty physical frames between real Roto keys'} onSubmit={handleForceSpacingSubmit}>
                       <input type="number" min="0" step="1" value={forceSpacingInput} aria-label="Empty frames between real keys" disabled={interpolationControlsDisabled || !forceSpacingAvailable} onInput={handleForceSpacingInput} />
