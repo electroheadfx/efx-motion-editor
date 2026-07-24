@@ -90,8 +90,9 @@ const activeLaunchOperationByLayer = new Map<string, string>();
 /**
  * Parent-authoritative accepted-operation ledger for the generic physical-edit
  * transaction (Plan 36.14-05 Task 2). Records one immutable canonical entry per
- * accepted ordinary physical command, keyed by the original operationId. Undo
- * and Redo replays look up `historyCommandId` here and validate both the
+ * accepted history-bearing physical command, keyed by the original operationId.
+ * Enabled-only interpolation is acknowledged but intentionally not recorded.
+ * Undo and Redo replays look up `historyCommandId` here and validate both the
  * current store state plus the submitted target state against the stored
  * `before`/`after` revisions before any mutation. Replay acceptances are NOT
  * recorded as new commands — they only consume the existing entry.

@@ -3,7 +3,8 @@
  * completed by Plan 36.14-21 exact snapshot replay).
  *
  * This is the sole active physical-edit transaction authority for Insert,
- * Delete, Move, Force Spacing, Duplicate, Paste, Undo, and Redo.
+ * Delete, Move, Force Spacing, Duplicate, Paste, enabled-only interpolation,
+ * Undo, and Redo.
  *
  * Per D-09/D-10: the coordinator owns one serialized acknowledged
  * physical-edit lifecycle:
@@ -15,9 +16,9 @@
  * - capture one deeply immutable complete snapshot of every affected
  *   store, cache, edit-buffer, engine, reference, selection, cursor, and
  *   context category;
- * - identity-keyed complete rebuild: stage the validated resolver proposal
- *   locally via one store replacement, one edit-buffer replacement, one
- *   reference update, one selection update;
+ * - identity-keyed complete rebuild: stage ordinary/replay proposals locally;
+ *   the enabled-only interpolation operation defers its unchanged-record target
+ *   until exact parent acceptance so accepted UI state never changes early;
  * - register one generic settlement and send one parent payload;
  * - start one timeout;
  * - on matching result: revalidate current launch and staged revision, then

@@ -37,7 +37,8 @@ export const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
  * cutover. Plan 36.14-05 Task 1 adds the `undo` and `redo` replay kinds so
  * the generic physical history hook can route Undo/Redo through the same
  * coordinator execute seam; Task 2 attaches replay provenance to these
- * kinds only.
+ * kinds only. Plan 36.14-22 adds the non-history enabled-only interpolation
+ * operation to that same acknowledged envelope.
  */
 export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-slot'
