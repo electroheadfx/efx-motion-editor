@@ -1,0 +1,66 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-07-24T19:36:42.246Z",
+  "phase": "36.14",
+  "phase_name": "physics-paint-roto-timeline-ui-from-pencil",
+  "phase_dir": ".planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil",
+  "plan": 29,
+  "task": 2,
+  "total_tasks": 2,
+  "status": "paused",
+  "completed_tasks": [
+    {
+      "id": 1,
+      "name": "Close the Phase 36.14 native Roto UAT regressions",
+      "status": "done",
+      "commit": "d6169775"
+    },
+    {
+      "id": 2,
+      "name": "Record the approved Plan 29 user-owned native gap UAT",
+      "status": "done",
+      "commit": "5ca0ca8b"
+    }
+  ],
+  "remaining_tasks": [
+    {
+      "id": 3,
+      "name": "Finalize Phase 36.14 tracking and routing without reviving historical Plans 13-18",
+      "status": "not_started"
+    },
+    {
+      "id": 4,
+      "name": "Decide separately whether to authorize final Pencil UI integration and deferred executable gates",
+      "status": "not_started"
+    }
+  ],
+  "blockers": [],
+  "async_jobs": [],
+  "human_actions_pending": [
+    {
+      "action": "Choose the next separately authorized scope after resuming",
+      "context": "Native UAT is approved, but final Pencil UI integration and tests/typecheck/build remain separate decisions under D-30.",
+      "blocking": false
+    }
+  ],
+  "decisions": [
+    {
+      "decision": "Treat the user's explicit final confirmation that all UAT works and is approved as the accepted Plan 29 native result.",
+      "rationale": "The user repeatedly tested the repaired native surface and explicitly approved all UAT.",
+      "phase": "36.14"
+    },
+    {
+      "decision": "Keep rejected Plan 12 and Plans 13-18 historical and non-executable.",
+      "rationale": "D-30 supersedes the obsolete approval-token recovery sequence and Plan 29 forbids reviving it.",
+      "phase": "36.14"
+    },
+    {
+      "decision": "Do not claim Phase 36.14 complete from Plan 29 alone.",
+      "rationale": "Plan 29 closes native gap UAT only; final routing, deferred gates, and separately authorized Pencil work remain distinct.",
+      "phase": "36.14"
+    }
+  ],
+  "uncommitted_files": [],
+  "next_action": "Read 36.14-29-SUMMARY.md and this handoff, then finalize Phase 36.14 tracking/routing without resuming Plans 13-18. Ask before running tests/typecheck/build or beginning final Pencil UI integration.",
+  "context_notes": "The final mount-race repair observes the delayed dry engine canvas with MutationObserver and ResizeObserver, binds playback to that exact rectangle, and hides static canvases only after cached-roto-playback-ready. The user confirmed the complete repaired surface works. No tests, typecheck, build, server, browser automation, Tauri, or assistant-owned native execution occurred under D-30."
+}
