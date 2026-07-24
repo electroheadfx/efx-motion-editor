@@ -95,6 +95,7 @@ function _getLayerDataUrls(layerId: string): Set<string> {
   _collectFrameDataUrls(_frames.get(layerId)?.values() ?? [], dataUrls);
   _collectFrameDataUrls(_rotoCacheMetadata.get(layerId)?.values() ?? [], dataUrls);
   _collectFrameDataUrls(_rotoGeneratedCacheMetadata.get(layerId)?.values() ?? [], dataUrls);
+  for (const record of _rotoRealKeyRecords.get(layerId)?.values() ?? []) dataUrls.add(record.payload.dataUrl);
   return dataUrls;
 }
 
@@ -108,7 +109,16 @@ function _isDataUrlReferenced(dataUrl: string): boolean {
   for (const layerFrames of _frames.values()) if (referencesDataUrl(layerFrames.values())) return true;
   for (const metadata of _rotoCacheMetadata.values()) if (referencesDataUrl(metadata.values())) return true;
   for (const metadata of _rotoGeneratedCacheMetadata.values()) if (referencesDataUrl(metadata.values())) return true;
+  for (const records of _rotoRealKeyRecords.values()) {
+    for (const record of records.values()) if (record.payload.dataUrl === dataUrl) return true;
+  }
   return false;
+}
+
+function _pruneUnreferencedRotoAlphaCanvases(dataUrls: Iterable<string>): void {
+  for (const dataUrl of dataUrls) {
+    if (!_isDataUrlReferenced(dataUrl)) _rotoAlphaCanvasRegistry.delete(dataUrl);
+  }
 }
 
 function _clearLayerState(layerId: string): boolean {
@@ -672,6 +682,7 @@ export const physicPaintStore = {
   },
 
   loadFromMceOutputs(outputs: PhysicPaintMceOutputInput[] | null | undefined): void {
+    const previousDataUrls = new Set(_rotoAlphaCanvasRegistry.keys());
     const nextFrames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
     const nextBackground = new Map<string, PhysicPaintRotoBackgroundMetadata>();
     const nextCache = new Map<string, Map<number, PhysicPaintRotoCacheFrame>>();
@@ -747,6 +758,7 @@ export const physicPaintStore = {
     for (const [layerId, value] of nextPhysicalSelection) _rotoPhysicalSelectedKeyId.set(layerId, value);
     for (const [layerId, value] of nextPhysicalCursor) _rotoPhysicalCursorAppFrame.set(layerId, value);
     for (const [layerId, value] of nextPhysicalCapacity) _rotoPhysicalCapacity.set(layerId, value);
+    _pruneUnreferencedRotoAlphaCanvases(previousDataUrls);
     _invalidateSerializationCache();
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     physicPaintVersion.value++;
@@ -1085,6 +1097,7 @@ export const physicPaintStore = {
     }
 
     const previousRecords = this.getRotoRealKeyRecords(layerId);
+    const previousPayloadDataUrls = new Set(previousRecords.map((record) => record.payload.dataUrl));
     const previousInterpolation = this.getRotoPhysicalInterpolationState(layerId);
     const previousRevision = buildPhysicPaintRotoPhysicalRevision(previousRecords, previousInterpolation);
     const nextRevision = buildPhysicPaintRotoPhysicalRevision(validatedRecords, interpolation);
@@ -1101,6 +1114,7 @@ export const physicPaintStore = {
     _rotoPhysicalSelectedKeyId.set(layerId, selectedRecord?.keyId ?? null);
     _rotoPhysicalCursorAppFrame.set(layerId, selectedRecord?.appFrame ?? Math.min(_rotoPhysicalCursorAppFrame.get(layerId) ?? 0, capacity - 1));
     _rotoPhysicalCapacity.set(layerId, capacity);
+    _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     _notifyVisualChange();
     return { ok: true };
@@ -1126,6 +1140,7 @@ export const physicPaintStore = {
     });
     if (!projection.ok) return { ok: false, error: projection.failure.text };
 
+    const previousPayloadDataUrls = new Set(this.getRotoRealKeyRecords(layerId).map((record) => record.payload.dataUrl));
     _rotoRealKeyRecords.set(layerId, new Map(document.realKeyRecords.map((record) => [record.keyId, record])));
     _rotoPhysicalInterpolationState.set(layerId, document.interpolation);
     _rotoPhysicalScriptMotion.set(layerId, document.scriptMotion);
@@ -1134,6 +1149,7 @@ export const physicPaintStore = {
     _rotoPhysicalCapacity.set(layerId, document.capacity);
     if (document.background) _rotoBackgroundMetadata.set(layerId, { ...document.background });
     else _rotoBackgroundMetadata.delete(layerId);
+    _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     _notifyVisualChange(undefined, false);
     return { ok: true, document };
@@ -1339,18 +1355,23 @@ export const physicPaintStore = {
   ): { ok: true; changed: boolean; contentRevision: string } | { ok: false; error: string } {
     const currentRevision = this.getRotoPhysicalContentRevision(layerId);
     const current = this.getRotoRealKeyRecord(layerId, keyId);
-    if (!currentRevision || currentRevision !== expectedContentRevision || !current) return { ok: false, error: 'Physical identity or content revision changed.' };
-    if (payload.appFrame !== current.appFrame) return { ok: false, error: 'Rendered payload does not match the current physical placement.' };
+    const reject = (error: string): { ok: false; error: string } => {
+      _pruneUnreferencedRotoAlphaCanvases([payload.dataUrl]);
+      return { ok: false, error };
+    };
+    if (!currentRevision || currentRevision !== expectedContentRevision || !current) return reject('Physical identity or content revision changed.');
+    if (payload.appFrame !== current.appFrame) return reject('Rendered payload does not match the current physical placement.');
     const records = this.getRotoRealKeyRecords(layerId);
     let validated: readonly PhysicPaintRotoRealKeyRecord[];
     try {
       validated = parsePhysicPaintRotoRealKeyRecordCollection(records.map((record) => record.keyId === keyId ? { ...record, payload } : record), this.getRotoPhysicalCapacity(layerId));
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : 'Invalid physical render payload.' };
+      return reject(error instanceof Error ? error.message : 'Invalid physical render payload.');
     }
     const nextRevision = buildPhysicPaintRotoPhysicalRevision(validated, this.getRotoPhysicalInterpolationState(layerId));
     if (nextRevision === currentRevision) return { ok: true, changed: false, contentRevision: currentRevision };
     _rotoRealKeyRecords.set(layerId, new Map(validated.map((record) => [record.keyId, record])));
+    _pruneUnreferencedRotoAlphaCanvases([current.payload.dataUrl]);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     _notifyVisualChange(diagnostics);
     return { ok: true, changed: true, contentRevision: nextRevision };
@@ -1361,12 +1382,14 @@ export const physicPaintStore = {
    * replacement/disposal.
    */
   clearRotoPhysicalRecords(layerId: string): void {
+    const previousPayloadDataUrls = new Set(this.getRotoRealKeyRecords(layerId).map((record) => record.payload.dataUrl));
     _rotoRealKeyRecords.delete(layerId);
     _rotoPhysicalInterpolationState.delete(layerId);
     _rotoPhysicalScriptMotion.delete(layerId);
     _rotoPhysicalSelectedKeyId.delete(layerId);
     _rotoPhysicalCursorAppFrame.delete(layerId);
     _rotoPhysicalCapacity.delete(layerId);
+    _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
     _invalidateSerializationCache();
   },
 };

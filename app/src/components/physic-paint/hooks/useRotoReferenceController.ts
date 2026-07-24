@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import type { PhysicPaintRotoPhysicalRenderSource } from '../roto/physicsPaintRotoPhysicalModel';
+import { isRotoPngDataUrl } from '../roto/rotoCanvasFrames';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 
 export type RotoReferenceFrame = PhysicPaintRenderedFrame & {
@@ -39,10 +40,17 @@ function projectPhysicalSource<Frame extends RotoReferenceFrame>(source: PhysicP
   } as Frame;
 }
 
+function isCurrentGeneratedPngSource(source: PhysicPaintRotoPhysicalRenderSource): boolean {
+  if (source.kind !== 'generated') return true;
+  return source.renderedFrame.appFrame === source.appFrame
+    && source.cacheRevision === `${source.contentRevision}:generated:${source.leftKeyId}:${source.rightKeyId}:${source.appFrame}`
+    && isRotoPngDataUrl(source.renderedFrame.dataUrl);
+}
+
 /** Exact physical-cell lookup. No generic frame or neighboring-key fallback. */
 export function findCachedRotoDisplayFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoPhysicalLookupInput<Frame>): Frame | null {
   const source = input.getPhysicalRenderSource?.(appFrame) ?? null;
-  if (!source) return null;
+  if (!source || !isCurrentGeneratedPngSource(source)) return null;
   if (source.kind === 'real' && input.dirtyFrames?.has(appFrame)) {
     const preview = input.previewFrames?.get(appFrame);
     if (preview?.appFrame === appFrame
