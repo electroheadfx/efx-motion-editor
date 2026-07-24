@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import type { EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample, SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
@@ -131,6 +131,12 @@ export function PhysicsPaintStudio() {
   const resetRotoNavigationForLaunchRef = useRef<() => void>(() => {});
   const acceptRotoScriptBrushRef = useRef<() => void>(() => {});
   const prepareRotoScriptTargetRef = useRef<(source: RotoScriptSourceSnapshot) => Promise<RotoScriptPhysicalTarget | null>>(async () => null);
+  const pendingFirstPaintTargetRef = useRef<{
+    launchOperationId: string;
+    layerId: string;
+    appFrame: number;
+    promise: Promise<RotoScriptPhysicalTarget | null>;
+  } | null>(null);
   const syncPendingRotoFrames = useCallback(() => {
     resetRotoKeySessionRef.current({ clearClipboard: false });
   }, []);
@@ -167,6 +173,7 @@ export function PhysicsPaintStudio() {
     setLastError,
     clearExternalState: () => {
       pendingFrameSyncRef.current = null;
+      pendingFirstPaintTargetRef.current = null;
     },
   });
   const currentFrame = launchContext?.startFrame ?? 0;
@@ -189,6 +196,7 @@ export function PhysicsPaintStudio() {
     : currentPhysicalCell.kind === 'generated'
       ? 'generated-interpolation' as const
       : 'empty' as const;
+  const currentCellKeyId = currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null;
   const currentFrameIsGeneratedRoto = workflowMode === 'roto' && currentFrameSelectionKind === 'generated-interpolation';
   const [rotoScriptNavigationLocked, setRotoScriptNavigationLocked] = useState(false);
   const { cachedRotoReferenceUrl, cachedRotoRepaintBaseFrame, setCachedRotoReferenceUrl, setCachedRotoRepaintBaseFrame, clearCachedRotoReferenceUrl, resetCachedRotoReference, findCachedRotoDisplayFrame, loadCachedRotoReferenceFrame } = rotoPersistence.reference;
@@ -350,12 +358,14 @@ export function PhysicsPaintStudio() {
       get frameStates() { return rotoEditBuffer.bufferRef.current.frameStates; },
       get previewFrames() { return rotoEditBuffer.bufferRef.current.previewFrames; },
       get capturedFrames() { return rotoEditBuffer.bufferRef.current.capturedFrames; },
+      get confirmedFrames() { return rotoPersistence.confirmedFramesRef.current; },
       get dirtyFrames() { return rotoEditBuffer.bufferRef.current.dirtyFrames; },
       get liveOverlayActionCounts() { return rotoEditBuffer.bufferRef.current.liveOverlayActionCounts; },
       get editableFrames() { return rotoEditableFramesRef.current; },
       replaceFrameStates: (frames) => { rotoEditBuffer.replaceFrameStates(frames as Map<number, SerializedProject>); },
       replacePreviewFrames: (frames) => { rotoEditBuffer.replacePreviewFrames(frames as Map<number, RenderedFramePayload>); },
-      replaceCapturedFrames: (frames) => { rotoEditBuffer.bufferRef.current.capturedFrames = frames as Map<number, RenderedFramePayload>; },
+      replaceCapturedFrames: (frames) => { rotoEditBuffer.bufferRef.current.capturedFrames = new Map(frames) as Map<number, RenderedFramePayload>; },
+      replaceConfirmedFrames: (frames) => { rotoPersistence.confirmedFramesRef.current = new Map(frames) as Map<number, RenderedFramePayload>; },
       replaceDirtyFrames: (frames) => { rotoEditBuffer.replaceDirtyFrames(new Set(frames)); },
       replaceLiveOverlayActionCounts: (counts) => { rotoEditBuffer.bufferRef.current.liveOverlayActionCounts = new Map(counts); },
       setEditableFrameList: (frames) => { rotoEditableFramesRef.current = [...frames]; rotoEditBuffer.setEditableFrameList(() => [...frames]); },
@@ -570,7 +580,40 @@ export function PhysicsPaintStudio() {
     status: { setApplyStatus, setApplyMessage },
     isMutationLocked: () => rotoScript.mutationLocked.peek(),
   });
-  const beginRotoFrameEdit = rotoFrameEditing.beginFrameEdit;
+  const beginRotoFrameEdit = useCallback(() => {
+    const launch = launchContextRef.current;
+    if (currentFrameSelectionKind !== 'empty' || !launch) {
+      pendingFirstPaintTargetRef.current = null;
+      rotoFrameEditing.beginFrameEdit();
+      return;
+    }
+    if (pendingFirstPaintTargetRef.current) return;
+
+    const request = prepareRotoScriptTargetRef.current({
+      selectionKind: 'empty',
+      layerId: launch.layerId,
+      keyId: null,
+      appFrame: currentFrame,
+    });
+    const pending = {
+      launchOperationId: launch.operationId,
+      layerId: launch.layerId,
+      appFrame: currentFrame,
+      promise: request,
+    };
+    pendingFirstPaintTargetRef.current = pending;
+    void request.then((target) => {
+      if (pendingFirstPaintTargetRef.current !== pending) return;
+      if (!target) {
+        pendingFirstPaintTargetRef.current = null;
+        return;
+      }
+      rotoFrameEditing.beginFrameEdit();
+    }).catch((error) => {
+      if (pendingFirstPaintTargetRef.current === pending) pendingFirstPaintTargetRef.current = null;
+      console.error('[PhysicsPaintStudio] Could not create the first Roto key', error);
+    });
+  }, [currentFrame, currentFrameSelectionKind, rotoFrameEditing]);
   acceptRotoScriptBrushRef.current = rotoFrameEditing.acceptScriptBrush;
   useRotoBackgroundMetadataSync({ launchContext, settings });
   const getRotoCachedPlaybackFrames = () => rotoSession.playbackFrameNumbers.value.map((appFrame) => ({ appFrame, frame: findCachedRotoDisplayFrame(appFrame) }));
@@ -701,7 +744,31 @@ export function PhysicsPaintStudio() {
     },
   });
   physicalEditCoordinatorRouteRef.current = {
-    consumeBridgeApplyResult: (detail) => physicalEditCoordinator.consumeBridgeApplyResult(detail),
+    consumeBridgeApplyResult: (detail) => {
+      const transition = physicalEditCoordinator.consumeBridgeApplyResult(detail);
+      const accepted = physicalEditCoordinator.acceptedOutput.peek();
+      const currentLaunch = launchContextRef.current;
+      const currentEngine = engineRef.current;
+      const selectedKeyId = accepted?.after.selectedKeyId ?? null;
+      const selectedAppFrame = accepted?.after.selectedAppFrame ?? null;
+      const createdSelectedDestination = accepted?.operationKind === 'paste-key'
+        && selectedKeyId !== null
+        && selectedAppFrame !== null
+        && !accepted.before.records.some((record) => record.keyId === selectedKeyId)
+        && accepted.after.records.some((record) => record.keyId === selectedKeyId && record.appFrame === selectedAppFrame);
+      if (
+        transition === 'accepted'
+        && accepted?.operationId === detail?.operationId
+        && createdSelectedDestination
+        && currentLaunch?.operationId === accepted.after.launchOperationId
+        && currentLaunch.layerId === accepted.after.layerId
+        && currentLaunch.startFrame === selectedAppFrame
+        && currentEngine
+      ) {
+        loadCachedRotoReferenceFrame(selectedAppFrame, currentEngine as PreviewBackgroundEngine);
+      }
+      return transition;
+    },
   };
   const handlePhysicsPaintKeyDown = usePhysicsPaintStudioKeyboard({
     state: { currentFrame, isPlaying, mutationLocked },
@@ -816,42 +883,67 @@ export function PhysicsPaintStudio() {
             if (kind === 'clear' || (!canPublishCapturedApply && !canPublishCurrentEngine) || !launchContext) return;
             if (acceptedTarget && !acceptedTarget.publishPixels) return;
             const appFrame = acceptedTarget?.appFrame ?? currentFrame;
-            const keyId = acceptedTarget?.keyId
-              ?? (currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null);
-            if (!keyId) return;
-            const physicalRecord = physicPaintStore.getRotoRealKeyRecord(launchContext.layerId, keyId);
-            if (!physicalRecord || physicalRecord.appFrame !== appFrame) return;
-            const cachedBaseAppFrame = cachedRotoRepaintBaseFrame?.appFrame ?? null;
-            if (isEmpty) {
-              if (cachedRotoRepaintBaseFrame && cachedBaseAppFrame === appFrame) {
-                rotoPersistence.invalidateLivePixels(appFrame);
-                rotoPersistence.upsertCachedFrame(cachedRotoRepaintBaseFrame, false);
-              } else {
-                rotoPersistence.removeCachedFrame(appFrame);
+            const initialKeyId = acceptedTarget?.keyId ?? currentCellKeyId;
+            const pendingFirstPaintTarget = pendingFirstPaintTargetRef.current;
+            const liveAlphaCanvas = isEmpty ? null : mutationEngine.copyLiveAlphaCanvas();
+            void (async () => {
+              let keyId = initialKeyId;
+              if (!keyId) {
+                if (
+                  !pendingFirstPaintTarget
+                  || pendingFirstPaintTarget.launchOperationId !== launchContext.operationId
+                  || pendingFirstPaintTarget.layerId !== launchContext.layerId
+                  || pendingFirstPaintTarget.appFrame !== appFrame
+                ) return;
+                const firstPaintTarget = await pendingFirstPaintTarget.promise;
+                if (!firstPaintTarget || firstPaintTarget.appFrame !== appFrame) return;
+                keyId = firstPaintTarget.keyId;
               }
-              return;
-            }
-            const snapshotStartedAt = profilePerformance ? performance.now() : 0;
-            const liveAlphaCanvas = mutationEngine.copyLiveAlphaCanvas();
-            const capturedBase = publicationIdentity?.cachedBase ?? null;
-            const capturedBaseAppFrame = capturedBase?.appFrame ?? null;
-            const cachedBase = publicationIdentity
-              ? capturedBaseAppFrame === appFrame ? capturedBase : null
-              : cachedBaseAppFrame === appFrame ? cachedRotoRepaintBaseFrame : null;
-            const capture = rotoPersistence.captureLivePixels({
-              layerId: publicationIdentity?.layerId ?? launchContext.layerId,
-              operationId: publicationIdentity?.operationId,
-              keyId: physicalRecord.keyId,
-              appFrame,
-              liveAlphaCanvas,
-              cachedBase,
-              background: publicationIdentity?.background,
-              size: { width: canvasWidth, height: canvasHeight },
-              mutationId,
-            });
-            if (profilePerformance) recordPhysicsPaintPerformance({ stage: 'snapshot-handoff', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAt, timestamp: performance.now(), mutationId, sourceFrame: appFrame });
-            void capture.catch((error) => {
+
+              const currentLaunch = launchContextRef.current;
+              if (
+                !currentLaunch
+                || currentLaunch.operationId !== launchContext.operationId
+                || currentLaunch.layerId !== launchContext.layerId
+              ) return;
+              const physicalRecord = physicPaintStore.getRotoRealKeyRecord(currentLaunch.layerId, keyId);
+              if (!physicalRecord || physicalRecord.appFrame !== appFrame) return;
+              const cachedBaseAppFrame = cachedRotoRepaintBaseFrame?.appFrame ?? null;
+              if (isEmpty) {
+                if (cachedRotoRepaintBaseFrame && cachedBaseAppFrame === appFrame) {
+                  rotoPersistence.invalidateLivePixels(appFrame);
+                  rotoPersistence.upsertCachedFrame(cachedRotoRepaintBaseFrame, false);
+                } else {
+                  rotoPersistence.removeCachedFrame(appFrame);
+                }
+                return;
+              }
+              if (!liveAlphaCanvas) return;
+              const capturedBase = publicationIdentity?.cachedBase ?? null;
+              const capturedBaseAppFrame = capturedBase?.appFrame ?? null;
+              const cachedBase = publicationIdentity
+                ? capturedBaseAppFrame === appFrame ? capturedBase : null
+                : cachedBaseAppFrame === appFrame ? cachedRotoRepaintBaseFrame : null;
+              const snapshotStartedAt = profilePerformance ? performance.now() : 0;
+              const capture = rotoPersistence.captureLivePixels({
+                layerId: publicationIdentity?.layerId ?? currentLaunch.layerId,
+                operationId: publicationIdentity?.operationId,
+                keyId: physicalRecord.keyId,
+                appFrame,
+                liveAlphaCanvas,
+                cachedBase,
+                background: publicationIdentity?.background,
+                size: { width: canvasWidth, height: canvasHeight },
+                mutationId,
+              });
+              if (profilePerformance) recordPhysicsPaintPerformance({ stage: 'snapshot-handoff', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAt, timestamp: performance.now(), mutationId, sourceFrame: appFrame });
+              await capture;
+            })().catch((error) => {
               console.error('[PhysicsPaintStudio] Automatic Roto pixel cache failed', error);
+            }).finally(() => {
+              if (pendingFirstPaintTargetRef.current === pendingFirstPaintTarget) {
+                pendingFirstPaintTargetRef.current = null;
+              }
             });
           },
           getStrokeMetadata,

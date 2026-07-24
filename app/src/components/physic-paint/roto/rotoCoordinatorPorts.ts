@@ -123,6 +123,7 @@ export interface RotoPhysicalEditSnapshot<EngineState> {
   readonly frameStates: ReadonlyMap<number, unknown>;
   readonly previewFrames: ReadonlyMap<number, unknown>;
   readonly capturedFrames: ReadonlyMap<number, unknown>;
+  readonly confirmedFrames: ReadonlyMap<number, unknown>;
   readonly cachedReference: { url: string | null; cachedRepaintBase: RenderedFramePayload | null };
   readonly engineState: EngineState | null;
 }
@@ -187,18 +188,20 @@ export interface RotoPhysicalEditRecordsPort {
 
 /**
  * Edit-buffer ownership: editable state, preview frames, captured frames,
- * dirty frames, live-overlay action counts, and editable-frame list.
+ * confirmed frames, dirty frames, live-overlay action counts, and editable-frame list.
  */
 export interface RotoPhysicalEditBufferPort {
   readonly frameStates: ReadonlyMap<number, unknown>;
   readonly previewFrames: ReadonlyMap<number, unknown>;
   readonly capturedFrames: ReadonlyMap<number, unknown>;
+  readonly confirmedFrames: ReadonlyMap<number, unknown>;
   readonly dirtyFrames: ReadonlySet<number>;
   readonly liveOverlayActionCounts: ReadonlyMap<number, number>;
   readonly editableFrames: readonly number[];
   replaceFrameStates: (frames: ReadonlyMap<number, unknown>) => void;
   replacePreviewFrames: (frames: ReadonlyMap<number, unknown>) => void;
   replaceCapturedFrames: (frames: ReadonlyMap<number, unknown>) => void;
+  replaceConfirmedFrames: (frames: ReadonlyMap<number, unknown>) => void;
   replaceDirtyFrames: (frames: ReadonlySet<number>) => void;
   replaceLiveOverlayActionCounts: (counts: ReadonlyMap<number, number>) => void;
   setEditableFrameList: (frames: readonly number[]) => void;
@@ -302,11 +305,10 @@ export interface RotoPhysicalEditCoordinatorPorts<EngineState = SerializedProjec
  * are the post-edit selection state the parent will acknowledge.
  *
  * For replay (`operationKind === 'undo' | 'redo'`), the caller supplies
- * `replayRecords` and `replayInterpolation` from the stored target
- * snapshot so the coordinator stages the complete target state directly
- * rather than joining the proposal mapping with the current store. This
- * preserves identity-owned payload for Delete Undo/Redo and avoids
- * re-deriving records from current state.
+ * `replayTargetSnapshot` as the stored immutable target snapshot. The
+ * coordinator validates its canonical records/interpolation/revision against
+ * replay provenance, then stages every child-owned category directly while
+ * sending only parent-authoritative canonical fields across the bridge.
  *
  * Plan 36.14-05 Task 2: `historyProvenance` is required for replay kinds
  * and forbidden for ordinary kinds. The coordinator forwards it to the
@@ -315,13 +317,12 @@ export interface RotoPhysicalEditCoordinatorPorts<EngineState = SerializedProjec
  * the replay against the original accepted command recorded in the
  * parent-side accepted-operation ledger.
  */
-export interface RotoPhysicalEditExecuteInput<Proposal> {
+export interface RotoPhysicalEditExecuteInput<Proposal, EngineState = unknown> {
   readonly proposal: Proposal;
   readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
   readonly operationKind: PhysicPaintRotoPhysicalEditApplyPayload['operationKind'];
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
-  readonly replayRecords?: readonly PhysicPaintRotoRealKeyRecord[];
-  readonly replayInterpolation?: PhysicPaintRotoInterpolationState;
+  readonly replayTargetSnapshot?: RotoPhysicalEditSnapshot<EngineState>;
   readonly historyProvenance?: import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditReplayProvenance;
 }

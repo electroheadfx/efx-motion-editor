@@ -27,7 +27,7 @@
  * layer plus the current accepted physical state matches the command's
  * `after` side, construct a replay proposal from the command's `before`
  * records, and call `coordinator.executePhysicalEdit` with `operationKind:
- * 'undo'` and the `before` records/interpolation as the replay target.
+ * 'undo'` and the complete immutable `before` snapshot as the replay target.
  * Only matching acceptance moves the command from `applied` to `redo`;
  * every other result leaves both stacks untouched.
  *
@@ -52,9 +52,8 @@
  * Plan 36.14-05 Task 2 will add replay provenance validation in the
  * closed physical request/result branch and in the parent authority so
  * identity-set Undo/Redo can be authorized against the original accepted
- * command. Task 1 supports identity-preserving replay plus identity-set
- * staging through `replayRecords`; parent-side provenance is added in
- * Task 2.
+ * command. Replay stages the complete target snapshot locally while parent
+ * provenance continues to authorize only canonical records/interpolation.
  */
 
 import { useCallback, useEffect, useRef } from 'preact/hooks';
@@ -97,7 +96,7 @@ type RotoPhysicalEditHistoryEntry<EngineState> =
 
 interface RotoPhysicalEditCoordinatorRoute<EngineState> {
   executePhysicalEdit: (
-    input: RotoPhysicalEditExecuteInput<PhysicPaintRotoPhysicalEditProposal>,
+    input: RotoPhysicalEditExecuteInput<PhysicPaintRotoPhysicalEditProposal, EngineState>,
   ) => Promise<boolean>;
   pendingOperationId: ReadonlySignal<string | null>;
   acceptedOutput: ReadonlySignal<RotoPhysicalEditAcceptedOutput<EngineState> | null>;
@@ -347,8 +346,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       operationKind: 'undo',
       selectedKeyId: entry.before.selectedKeyId,
       selectedAppFrame: entry.before.selectedAppFrame,
-      replayRecords: entry.before.records,
-      replayInterpolation: entry.before.interpolation,
+      replayTargetSnapshot: entry.before,
       historyProvenance: {
         historyCommandId: entry.operationId,
         historyDirection: 'undo',
@@ -403,8 +401,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       operationKind: 'redo',
       selectedKeyId: entry.after.selectedKeyId,
       selectedAppFrame: entry.after.selectedAppFrame,
-      replayRecords: entry.after.records,
-      replayInterpolation: entry.after.interpolation,
+      replayTargetSnapshot: entry.after,
       historyProvenance: {
         historyCommandId: entry.operationId,
         historyDirection: 'redo',
