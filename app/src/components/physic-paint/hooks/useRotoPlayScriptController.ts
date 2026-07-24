@@ -1,11 +1,26 @@
-import { signal } from '@preact/signals';
+import { signal, type ReadonlySignal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
-import type { PhysicPaintApplyResult, PhysicPaintRotoAuthorityResult } from '../../../types/physicPaint';
-import { createRotoPlayScriptController, type RotoPlayScriptController, type RotoPlayScriptControllerPorts } from '../roto/physicsPaintRotoPlayScriptController';
-import { sendPhysicPaintApplyPayload, sendPhysicPaintRotoAuthorityRequest } from '../bridge/physicsPaintBridgeTransport';
-import { detectPhysicsPaintBridgeMode, usePhysicsPaintApplyResultBridge, usePhysicsPaintRotoAuthorityResultBridge, type PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
+import type { PhysicPaintRotoAuthorityResult } from '../../../types/physicPaint';
+import {
+  createRotoPlayScriptController,
+  type RotoPlayScriptController,
+  type RotoPlayScriptControllerPorts,
+} from '../roto/physicsPaintRotoPlayScriptController';
+import type { RotoPhysicalEditAcceptedOutput } from '../roto/rotoCoordinatorPorts';
+import type { RotoPlayScriptExecuteInput } from './useRotoPhysicalEditCoordinator';
+import { sendPhysicPaintRotoAuthorityRequest } from '../bridge/physicsPaintBridgeTransport';
+import { detectPhysicsPaintBridgeMode, usePhysicsPaintRotoAuthorityResultBridge, type PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 
-export function useRotoPlayScriptController(ports: Omit<RotoPlayScriptControllerPorts, 'requestAuthority' | 'commit'>, bridgeMode: PhysicsPaintBridgeMode): RotoPlayScriptController {
+interface RotoPlayScriptCoordinatorPort<EngineState> {
+  executePhysicalEdit: (input: RotoPlayScriptExecuteInput) => Promise<boolean>;
+  readonly pendingOperationId: ReadonlySignal<string | null>;
+  readonly acceptedOutput: ReadonlySignal<RotoPhysicalEditAcceptedOutput<EngineState> | null>;
+}
+
+export function useRotoPlayScriptController<EngineState = unknown>(
+  ports: Omit<RotoPlayScriptControllerPorts, 'requestAuthority' | 'commit'> & RotoPlayScriptCoordinatorPort<EngineState>,
+  bridgeMode: PhysicsPaintBridgeMode,
+): RotoPlayScriptController {
   const portsRef = useRef(ports); portsRef.current = ports;
   const modeRef = useRef(bridgeMode); modeRef.current = bridgeMode;
   const availabilityRevision = useRef(signal(0));
@@ -17,9 +32,7 @@ export function useRotoPlayScriptController(ports: Omit<RotoPlayScriptController
     availabilityRevision.current.value += 1;
   }, [nextAvailabilitySnapshot.operationLocked, nextAvailabilitySnapshot.projectSaved, nextAvailabilitySnapshot.selectionKind, nextAvailabilitySnapshot.keyId, nextAvailabilitySnapshot.appFrame]);
   const authorityPending = useRef(new Map<string, (result: PhysicPaintRotoAuthorityResult) => void>());
-  const commitPending = useRef(new Map<string, (result: PhysicPaintApplyResult) => void>());
   usePhysicsPaintRotoAuthorityResultBridge((result) => { authorityPending.current.get(result.operationId)?.(result); authorityPending.current.delete(result.operationId); });
-  usePhysicsPaintApplyResultBridge(bridgeMode, (result) => { commitPending.current.get(result.operationId)?.(result); commitPending.current.delete(result.operationId); });
 
   const controllerRef = useRef<RotoPlayScriptController | null>(null);
   if (!controllerRef.current) {
@@ -28,11 +41,9 @@ export function useRotoPlayScriptController(ports: Omit<RotoPlayScriptController
       getLaunchContext: () => portsRef.current.getLaunchContext(),
       getSelection: () => portsRef.current.getSelection(),
       getMotion: () => portsRef.current.getMotion(),
-      getBackground: () => portsRef.current.getBackground(),
       getOperationLocked: () => portsRef.current.getOperationLocked(),
       getSize: () => portsRef.current.getSize(),
       availabilityRevision: availabilityRevision.current,
-      mirrorAccepted: (...args) => portsRef.current.mirrorAccepted(...args),
       stopPlayback: () => portsRef.current.stopPlayback(),
       log: (...args) => portsRef.current.log(...args),
       requestAuthority: (operationId, start) => requestWithTimeout(authorityPending.current, operationId, async () => {
@@ -41,15 +52,38 @@ export function useRotoPlayScriptController(ports: Omit<RotoPlayScriptController
         const mode = modeRef.current === 'Unavailable' ? await detectPhysicsPaintBridgeMode() : modeRef.current;
         await sendPhysicPaintRotoAuthorityRequest({ operationId, projectContextId: context.project.contextId, layerId: context.layerId, canonicalStart: start }, mode);
       }, authorityFailure(operationId, portsRef.current)),
-      commit: (payload) => requestWithTimeout(commitPending.current, payload.operationId, async () => {
-        const mode = modeRef.current === 'Unavailable' ? await detectPhysicsPaintBridgeMode() : modeRef.current;
-        await sendPhysicPaintApplyPayload({ kind: 'replace-roto-key-frames', ...payload }, mode);
-      }, commitFailure(payload)),
+      commit: async (publication) => {
+        const accepted = await dispatchAndWaitForAcceptedPlayScript(
+          portsRef.current.pendingOperationId,
+          portsRef.current.acceptedOutput,
+          () => portsRef.current.executePhysicalEdit({
+            operationKind: 'play-script',
+            expectedLaunch: publication.expectedLaunch,
+            expectedRevision: publication.expectedRevision,
+            records: publication.records,
+            interpolationEnabled: publication.interpolationEnabled,
+            semanticDelta: publication.semanticDelta,
+            selectedKeyId: publication.selectedKeyId,
+            selectedAppFrame: publication.selectedAppFrame,
+          }),
+        );
+        if (!accepted || accepted.operationKind !== 'play-script') {
+          return { ok: false, error: 'Play Script physical commit was rejected or timed out.' };
+        }
+        return {
+          ok: true,
+          operationId: accepted.operationId,
+          acceptedRevision: accepted.acceptedRevision,
+          records: accepted.after.records,
+          selectedKeyId: accepted.after.selectedKeyId ?? publication.selectedKeyId,
+          selectedAppFrame: accepted.after.selectedAppFrame ?? publication.selectedAppFrame,
+        };
+      },
     });
   }
   useEffect(() => () => {
     controllerRef.current?.dispose();
-    authorityPending.current.clear(); commitPending.current.clear();
+    authorityPending.current.clear();
   }, []);
   return controllerRef.current;
 }
@@ -83,8 +117,46 @@ function requestWithTimeout<T>(pending: Map<string, (result: T) => void>, operat
 }
 function authorityFailure(operationId: string, ports: Pick<RotoPlayScriptControllerPorts, 'getLaunchContext' | 'getSelection'>): PhysicPaintRotoAuthorityResult {
   const context = ports.getLaunchContext(); const selection = ports.getSelection();
-  return { operationId, ok: false, projectContextId: context?.project?.contextId ?? '', layerId: context?.layerId ?? '', canonicalStart: selection.appFrame, layerEndExclusive: selection.appFrame, capacity: 0, rotoRevision: '', frames: [], interpolationSettings: { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 }, error: 'Roto authority request timed out.' };
+  return {
+    operationId,
+    ok: false,
+    projectContextId: context?.project?.contextId ?? '',
+    layerId: context?.layerId ?? '',
+    canonicalStart: selection.appFrame,
+    layerEndExclusive: selection.appFrame,
+    capacity: 0,
+    physicalCapacity: 0,
+    rotoRevision: '',
+    physicalRevision: '',
+    physicalRecords: [],
+    interpolationEnabled: false,
+    frames: [],
+    interpolationSettings: { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
+    error: 'Roto authority request timed out.',
+  };
 }
-function commitFailure(payload: { operationId: string; layerId: string; startFrame: number }): PhysicPaintApplyResult {
-  return { operationId: payload.operationId, kind: 'replace-roto-key-frames', layerId: payload.layerId, startFrame: payload.startFrame, appliedFrameCount: 0, ok: false, error: 'Play Script commit timed out.' };
+
+async function dispatchAndWaitForAcceptedPlayScript<EngineState>(
+  pendingOperationId: ReadonlySignal<string | null>,
+  acceptedOutput: ReadonlySignal<RotoPhysicalEditAcceptedOutput<EngineState> | null>,
+  dispatch: () => Promise<boolean>,
+): Promise<RotoPhysicalEditAcceptedOutput<EngineState> | null> {
+  let expectedOperationId = pendingOperationId.peek();
+  const unsubscribe = pendingOperationId.subscribe((operationId) => {
+    if (expectedOperationId === null && operationId !== null) expectedOperationId = operationId;
+  });
+  try {
+    if (!await dispatch() || expectedOperationId === null) return null;
+    const deadline = performance.now() + 5_500;
+    while (performance.now() < deadline) {
+      const accepted = acceptedOutput.peek();
+      if (accepted?.operationId === expectedOperationId) return accepted;
+      if (pendingOperationId.peek() === null) return null;
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 16));
+    }
+    const accepted = acceptedOutput.peek();
+    return accepted?.operationId === expectedOperationId ? accepted : null;
+  } finally {
+    unsubscribe();
+  }
 }

@@ -47,6 +47,7 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'force-spacing'
   | 'duplicate-key'
   | 'paste-key'
+  | 'play-script'
   | 'set-interpolation-enabled'
   | 'undo'
   | 'redo';
@@ -68,6 +69,15 @@ export type PhysicPaintRotoPhysicalEditSemanticDelta =
       readonly destinationKeyId: string | null;
       readonly newKeyId: string | null;
       readonly clipboardPayload: PhysicPaintRotoPhysicalEditRecord['payload'];
+    }
+  | {
+      readonly kind: 'play-script';
+      readonly affectedStartAppFrame: number;
+      readonly affectedEndAppFrame: number;
+      readonly expectedLayerCapacity: number;
+      readonly expectedLayerEndExclusive: number;
+      readonly proposedRecords: readonly PhysicPaintRotoPhysicalEditRecord[];
+      readonly freshKeyIds: readonly string[];
     };
 
 /**
@@ -217,6 +227,16 @@ export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): valu
     if ((value.destinationKeyId === null) === (value.newKeyId === null)) return false;
     return isPhysicPaintRotoPhysicalEditPayload(value.clipboardPayload);
   }
+  if (value.kind === 'play-script') {
+    if (!hasOnlyKeys(value, ['kind', 'affectedStartAppFrame', 'affectedEndAppFrame', 'expectedLayerCapacity', 'expectedLayerEndExclusive', 'proposedRecords', 'freshKeyIds'])) return false;
+    if (!isNonNegativeInteger(value.affectedStartAppFrame) || !isNonNegativeInteger(value.affectedEndAppFrame)) return false;
+    if (value.affectedEndAppFrame < value.affectedStartAppFrame) return false;
+    if (!isNonNegativeInteger(value.expectedLayerCapacity) || value.expectedLayerCapacity <= 0) return false;
+    if (!isNonNegativeInteger(value.expectedLayerEndExclusive) || value.expectedLayerEndExclusive <= value.affectedEndAppFrame || value.expectedLayerEndExclusive > value.expectedLayerCapacity) return false;
+    if (!Array.isArray(value.proposedRecords) || !value.proposedRecords.every(isPhysicPaintRotoPhysicalEditRecord)) return false;
+    if (!Array.isArray(value.freshKeyIds) || !value.freshKeyIds.every(isBoundedPhysicalKeyId)) return false;
+    return new Set(value.freshKeyIds).size === value.freshKeyIds.length;
+  }
   return false;
 }
 
@@ -225,7 +245,7 @@ function operationSemanticDeltaIsValid(
   semanticDelta: unknown,
   allowMissingOnFailure = false,
 ): boolean {
-  if (operationKind === 'duplicate-key' || operationKind === 'paste-key') {
+  if (operationKind === 'duplicate-key' || operationKind === 'paste-key' || operationKind === 'play-script') {
     if (semanticDelta === undefined) return allowMissingOnFailure;
     return isPhysicPaintRotoPhysicalEditSemanticDelta(semanticDelta) && semanticDelta.kind === operationKind;
   }
@@ -265,7 +285,7 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'selectedKeyId', 'selectedAppFrame', 'semanticDelta', 'historyProvenance'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
-  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'duplicate-key' && value.operationKind !== 'paste-key' && value.operationKind !== 'set-interpolation-enabled' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
+  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'duplicate-key' && value.operationKind !== 'paste-key' && value.operationKind !== 'play-script' && value.operationKind !== 'set-interpolation-enabled' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
   if (!isNonEmptyString(value.layerId)) return false;
   if (!isNonNegativeInteger(value.startFrame)) return false;
   if (!isNonEmptyString(value.launchOperationId)) return false;
@@ -301,7 +321,7 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
   if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'selectedKeyId', 'selectedAppFrame', 'appliedFrameCount', 'ok', 'error', 'semanticDelta', 'historyProvenance'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
-  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'duplicate-key' && value.operationKind !== 'paste-key' && value.operationKind !== 'set-interpolation-enabled' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
+  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'duplicate-key' && value.operationKind !== 'paste-key' && value.operationKind !== 'play-script' && value.operationKind !== 'set-interpolation-enabled' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
   if (!isNonEmptyString(value.layerId)) return false;
   if (!isNonNegativeInteger(value.startFrame)) return false;
   if (!isNonEmptyString(value.launchOperationId)) return false;
@@ -509,7 +529,11 @@ export interface PhysicPaintRotoAuthorityResult {
   canonicalStart: number;
   layerEndExclusive: number;
   capacity: number;
+  physicalCapacity: number;
   rotoRevision: string;
+  physicalRevision: string;
+  physicalRecords: readonly PhysicPaintRotoPhysicalEditRecord[];
+  interpolationEnabled: boolean;
   frames: PhysicPaintRotoCacheFrame[];
   interpolationSettings: PhysicPaintRotoInterpolationSettings;
   error?: string;

@@ -4,6 +4,7 @@ import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunch
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import { validatePhysicPaintRotoPhysicalEditSemanticDelta } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
+import { isRotoPngDataUrl } from '../components/physic-paint/roto/rotoCanvasFrames';
 import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
@@ -214,7 +215,11 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     canonicalStart: request.canonicalStart,
     layerEndExclusive: request.canonicalStart,
     capacity: 0,
+    physicalCapacity: 0,
     rotoRevision: '',
+    physicalRevision: '',
+    physicalRecords: [],
+    interpolationEnabled: false,
     frames: [],
     interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId),
     error,
@@ -223,10 +228,20 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
   const layer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find((candidate) => candidate.id === request.layerId || (candidate.type === 'physic-paint' && candidate.source.type === 'physic-paint' && candidate.source.layerId === request.layerId));
   if (!layer || layer.type !== 'physic-paint') return failure('Physics Paint layer is unavailable.');
   if (!Number.isInteger(request.canonicalStart) || request.canonicalStart < 0) return failure('Canonical Roto start is invalid.');
+  const physicalCapacity = physicPaintStore.getRotoPhysicalCapacity(request.layerId);
   const remainingCapacity = getTimelineRangeFrameCount(layer, request.canonicalStart);
-  if (remainingCapacity === null) return failure('No remaining Physics Paint sequence capacity is available.');
-  const capacity = Math.min(remainingCapacity, PHYSIC_PAINT_MAX_APPLY_FRAMES);
-  const frames = physicPaintStore.getRotoCacheFrames(request.layerId).filter((frame) => frame.source === 'real-key');
+  const physicalRemaining = physicalCapacity - request.canonicalStart;
+  if (remainingCapacity === null || physicalRemaining <= 0) return failure('No remaining Physics Paint sequence capacity is available.');
+  const capacity = Math.min(remainingCapacity, physicalRemaining, PHYSIC_PAINT_MAX_APPLY_FRAMES);
+  const records = physicPaintStore.getRotoRealKeyRecords(request.layerId);
+  const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(request.layerId);
+  const physicalRevision = buildPhysicPaintRotoPhysicalRevision(records, interpolation);
+  const physicalRecords = records.map((record) => ({
+    keyId: record.keyId,
+    appFrame: record.appFrame,
+    payload: record.payload,
+  }));
+  const frames = records.map((record) => ({ ...record.payload, source: 'real-key' as const }));
   return {
     operationId: request.operationId,
     ok: true,
@@ -235,7 +250,11 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     canonicalStart: request.canonicalStart,
     layerEndExclusive: request.canonicalStart + capacity,
     capacity,
-    rotoRevision: buildRotoRevision(frames),
+    physicalCapacity,
+    rotoRevision: physicalRevision,
+    physicalRevision,
+    physicalRecords,
+    interpolationEnabled: interpolation.enabled,
     frames,
     interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId),
   };
@@ -337,6 +356,100 @@ function sameCompletePhysicalRecords(
 ): boolean {
   return left.length === right.length
     && left.every((record, index) => samePhysicalRecord(record, right[index]));
+}
+
+function sameApplyPayloadRecords(
+  left: readonly PhysicPaintRotoPhysicalEditRecord[],
+  right: readonly PhysicPaintRotoPhysicalEditRecord[],
+): boolean {
+  return left.length === right.length && left.every((record, index) => {
+    const candidate = right[index];
+    return candidate !== undefined
+      && record.keyId === candidate.keyId
+      && record.appFrame === candidate.appFrame
+      && record.payload.frameIndex === candidate.payload.frameIndex
+      && record.payload.appFrame === candidate.payload.appFrame
+      && record.payload.dataUrl === candidate.payload.dataUrl
+      && record.payload.width === candidate.payload.width
+      && record.payload.height === candidate.payload.height;
+  });
+}
+
+function validatePlayScriptPhysicalDelta(input: {
+  readonly payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>;
+  readonly layer: Layer;
+  readonly currentRecords: readonly import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord[];
+  readonly proposedRecords: readonly import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord[];
+  readonly capacity: number;
+  readonly currentInterpolationEnabled: boolean;
+}): string | null {
+  const { payload, layer, currentRecords, proposedRecords, capacity, currentInterpolationEnabled } = input;
+  const delta = payload.semanticDelta;
+  if (!delta || delta.kind !== 'play-script') return 'Play Script physical edit is missing its exact semantic declaration.';
+  const remainingCapacity = getTimelineRangeFrameCount(layer, delta.affectedStartAppFrame);
+  const expectedLayerEndExclusive = remainingCapacity === null
+    ? null
+    : delta.affectedStartAppFrame + Math.min(remainingCapacity, capacity - delta.affectedStartAppFrame, PHYSIC_PAINT_MAX_APPLY_FRAMES);
+  if (payload.historyProvenance !== undefined
+    || payload.interpolationEnabled !== currentInterpolationEnabled
+    || payload.startFrame !== delta.affectedStartAppFrame
+    || delta.expectedLayerCapacity !== capacity
+    || expectedLayerEndExclusive === null
+    || delta.expectedLayerEndExclusive !== expectedLayerEndExclusive
+    || delta.affectedEndAppFrame < delta.affectedStartAppFrame
+    || delta.affectedEndAppFrame >= delta.expectedLayerEndExclusive) return 'Play Script range, capacity, interpolation, or history metadata is invalid.';
+
+  const proposedPayloadRecords = proposedRecords.map((record) => ({
+    keyId: record.keyId,
+    appFrame: record.appFrame,
+    payload: record.payload,
+  }));
+  if (!sameApplyPayloadRecords(proposedPayloadRecords, delta.proposedRecords)) return 'Play Script semantic records do not match the submitted complete physical map.';
+
+  const currentByFrame = new Map(currentRecords.map((record) => [record.appFrame, record]));
+  const currentKeyIds = new Set(currentRecords.map((record) => record.keyId));
+  const proposedByFrame = new Map<number, (typeof proposedRecords)[number]>();
+  const proposedKeyIds = new Set<string>();
+  for (const record of proposedRecords) {
+    if (proposedByFrame.has(record.appFrame)
+      || proposedKeyIds.has(record.keyId)
+      || record.payload.appFrame !== record.appFrame) return 'Play Script proposed duplicate or misplaced physical identity.';
+    proposedByFrame.set(record.appFrame, record);
+    proposedKeyIds.add(record.keyId);
+  }
+
+  for (const current of currentRecords) {
+    if (current.appFrame >= delta.affectedStartAppFrame && current.appFrame <= delta.affectedEndAppFrame) continue;
+    const proposed = proposedByFrame.get(current.appFrame);
+    if (!proposed || !samePhysicalRecord(current, proposed)) return 'Play Script changed or omitted an unrelated physical record.';
+  }
+  for (const proposed of proposedRecords) {
+    if (proposed.appFrame < delta.affectedStartAppFrame || proposed.appFrame > delta.affectedEndAppFrame) {
+      const current = currentByFrame.get(proposed.appFrame);
+      if (!current || !samePhysicalRecord(current, proposed)) return 'Play Script introduced an unexpected out-of-range physical record.';
+    }
+  }
+
+  const expectedFreshKeyIds: string[] = [];
+  for (let appFrame = delta.affectedStartAppFrame; appFrame <= delta.affectedEndAppFrame; appFrame += 1) {
+    const proposed = proposedByFrame.get(appFrame);
+    if (!proposed || !isRotoPngDataUrl(proposed.payload.dataUrl)) return 'Play Script is missing a valid PNG destination record.';
+    const current = currentByFrame.get(appFrame);
+    if (current) {
+      if (proposed.keyId !== current.keyId) return 'Play Script changed an occupied destination keyId.';
+    } else {
+      if (currentKeyIds.has(proposed.keyId)) return 'Play Script reused an existing keyId at an empty destination.';
+      expectedFreshKeyIds.push(proposed.keyId);
+    }
+  }
+  if (expectedFreshKeyIds.length !== delta.freshKeyIds.length
+    || expectedFreshKeyIds.some((keyId, index) => keyId !== delta.freshKeyIds[index])
+    || new Set(delta.freshKeyIds).size !== delta.freshKeyIds.length) return 'Play Script fresh key declarations do not match the affected empty destinations.';
+  const selected = proposedByFrame.get(delta.affectedStartAppFrame);
+  if (!selected
+    || payload.selectedKeyId !== selected.keyId
+    || payload.selectedAppFrame !== delta.affectedStartAppFrame) return 'Play Script selection does not match the accepted start destination.';
+  return null;
 }
 
 function buildRotoRevision(frames: readonly { sourceFrame?: number; appFrame: number; dataUrl: string }[]): string {
@@ -474,6 +587,19 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     }
   }
 
+  const isPlayScript = payload.operationKind === 'play-script';
+  if (isPlayScript) {
+    const playScriptValidationError = validatePlayScriptPhysicalDelta({
+      payload,
+      layer,
+      currentRecords,
+      proposedRecords,
+      capacity,
+      currentInterpolationEnabled: currentInterpolation.enabled,
+    });
+    if (playScriptValidationError) return reject(playScriptValidationError);
+  }
+
   const stagedRevision = buildPhysicPaintRotoPhysicalRevision(proposedRecords, { enabled: payload.interpolationEnabled });
   if (payload.operationKind === 'duplicate-key' || payload.operationKind === 'paste-key') {
     const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
@@ -524,7 +650,7 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   const acceptedSelectedKeyId = acceptedDocument.selectedKeyId;
   const acceptedSelectedAppFrame = acceptedSelectedKeyId === null ? null : acceptedDocument.cursorAppFrame;
 
-  if (!isReplay && !isInterpolationToggle) {
+  if (!isReplay && !isInterpolationToggle && !isPlayScript) {
     const afterRecords = acceptedDocument.realKeyRecords.map((record) => ({
       keyId: record.keyId,
       appFrame: record.appFrame,
