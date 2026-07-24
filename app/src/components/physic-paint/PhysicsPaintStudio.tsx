@@ -799,12 +799,13 @@ export function PhysicsPaintStudio() {
     frames: getRotoCachedPlaybackFrames(),
   });
   const { updateRotoInterpolationSettings } = useRotoInterpolationController({
-    launchContext, bridgeMode,
-    setRotoPhysicalInterpolationState: (layerId, state) => physicPaintStore.setRotoPhysicalInterpolationState(layerId, state),
-    getRotoPhysicalInterpolationState: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId),
-    getRotoKeyRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId),
-    sendApplyPayload: sendPhysicPaintApplyPayload,
-    setApplyStatus, setApplyMessage, setLastError, setPlaybackStatus: rotoCachedPlayback.setStatus,
+    launchContext,
+    interpolation: rotoInterpolationState,
+    records: rotoKeyRecords,
+    selectedKeyId: selectedKeyId.value,
+    selectedAppFrame: selectedKeyId.value === null ? null : currentFrame,
+    pendingOperationId: physicalEditCoordinator.pendingOperationId,
+    executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
     isMutationLocked: () => rotoScript.mutationLocked.peek(),
   });
   const rotoNavigationActions = rotoNavigation.createNavigationActions({

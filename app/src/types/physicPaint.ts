@@ -46,6 +46,7 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'force-spacing'
   | 'duplicate-key'
   | 'paste-key'
+  | 'set-interpolation-enabled'
   | 'undo'
   | 'redo';
 
@@ -263,7 +264,7 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'selectedKeyId', 'selectedAppFrame', 'semanticDelta', 'historyProvenance'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
-  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'duplicate-key' && value.operationKind !== 'paste-key' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
+  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'duplicate-key' && value.operationKind !== 'paste-key' && value.operationKind !== 'set-interpolation-enabled' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
   if (!isNonEmptyString(value.layerId)) return false;
   if (!isNonNegativeInteger(value.startFrame)) return false;
   if (!isNonEmptyString(value.launchOperationId)) return false;
@@ -299,7 +300,7 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
   if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'selectedKeyId', 'selectedAppFrame', 'appliedFrameCount', 'ok', 'error', 'semanticDelta', 'historyProvenance'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
-  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'duplicate-key' && value.operationKind !== 'paste-key' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
+  if (value.operationKind !== 'insert-slot' && value.operationKind !== 'delete-key' && value.operationKind !== 'move-key' && value.operationKind !== 'force-spacing' && value.operationKind !== 'duplicate-key' && value.operationKind !== 'paste-key' && value.operationKind !== 'set-interpolation-enabled' && value.operationKind !== 'undo' && value.operationKind !== 'redo') return false;
   if (!isNonEmptyString(value.layerId)) return false;
   if (!isNonNegativeInteger(value.startFrame)) return false;
   if (!isNonEmptyString(value.launchOperationId)) return false;
@@ -710,7 +711,7 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
   if (value.kind === 'replace-roto-physical-map') {
     const isReplay = value.operationKind === 'undo' || value.operationKind === 'redo';
     return isNonEmptyString(value.operationId)
-      && (value.operationKind === 'insert-slot' || value.operationKind === 'delete-key' || value.operationKind === 'move-key' || value.operationKind === 'force-spacing' || value.operationKind === 'duplicate-key' || value.operationKind === 'paste-key' || value.operationKind === 'undo' || value.operationKind === 'redo')
+      && (value.operationKind === 'insert-slot' || value.operationKind === 'delete-key' || value.operationKind === 'move-key' || value.operationKind === 'force-spacing' || value.operationKind === 'duplicate-key' || value.operationKind === 'paste-key' || value.operationKind === 'set-interpolation-enabled' || value.operationKind === 'undo' || value.operationKind === 'redo')
       && isNonEmptyString(value.layerId)
       && isNonNegativeInteger(value.startFrame)
       && isNonEmptyString(value.launchOperationId)

@@ -317,6 +317,27 @@ function sameDurableRealKey(left: PhysicPaintRotoAuthorityResult['frames'][numbe
     && left.onionDataUrl === right.onionDataUrl;
 }
 
+function samePhysicalRecord(
+  left: import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord,
+  right: import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord,
+): boolean {
+  return left.keyId === right.keyId
+    && left.appFrame === right.appFrame
+    && left.payload.frameIndex === right.payload.frameIndex
+    && left.payload.appFrame === right.payload.appFrame
+    && left.payload.dataUrl === right.payload.dataUrl
+    && left.payload.width === right.payload.width
+    && left.payload.height === right.payload.height;
+}
+
+function sameCompletePhysicalRecords(
+  left: readonly import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord[],
+  right: readonly import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord[],
+): boolean {
+  return left.length === right.length
+    && left.every((record, index) => samePhysicalRecord(record, right[index]));
+}
+
 function buildRotoRevision(frames: readonly { sourceFrame?: number; appFrame: number; dataUrl: string }[]): string {
   const source = frames.map((frame) => `${frame.sourceFrame ?? frame.appFrame}:${frame.dataUrl.length}:${frame.dataUrl.slice(-24)}`).sort().join('|');
   let hash = 2166136261;
@@ -431,6 +452,27 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     }
   }
 
+  const isInterpolationToggle = payload.operationKind === 'set-interpolation-enabled';
+  if (isInterpolationToggle) {
+    if (!sameCompletePhysicalRecords(currentRecords, proposedRecords)) {
+      return reject('Interpolation toggle must preserve every physical real-key record exactly.');
+    }
+    if (payload.interpolationEnabled === currentInterpolation.enabled) {
+      return reject('Interpolation toggle must change the accepted enabled state exactly once.');
+    }
+    if (payload.semanticDelta !== undefined || payload.historyProvenance !== undefined) {
+      return reject('Interpolation toggle cannot carry semantic or history metadata.');
+    }
+    const currentSelectedKeyId = currentDocument?.selectedKeyId ?? null;
+    const currentSelectedAppFrame = currentSelectedKeyId === null
+      ? null
+      : currentRecords.find((record) => record.keyId === currentSelectedKeyId)?.appFrame ?? null;
+    if (payload.selectedKeyId !== currentSelectedKeyId
+      || payload.selectedAppFrame !== currentSelectedAppFrame) {
+      return reject('Interpolation toggle must preserve the accepted physical selection.');
+    }
+  }
+
   const stagedRevision = buildPhysicPaintRotoPhysicalRevision(proposedRecords, { enabled: payload.interpolationEnabled });
   if (payload.operationKind === 'duplicate-key' || payload.operationKind === 'paste-key') {
     const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
@@ -481,7 +523,7 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   const acceptedSelectedKeyId = acceptedDocument.selectedKeyId;
   const acceptedSelectedAppFrame = acceptedSelectedKeyId === null ? null : acceptedDocument.cursorAppFrame;
 
-  if (!isReplay) {
+  if (!isReplay && !isInterpolationToggle) {
     const afterRecords = acceptedDocument.realKeyRecords.map((record) => ({
       keyId: record.keyId,
       appFrame: record.appFrame,
