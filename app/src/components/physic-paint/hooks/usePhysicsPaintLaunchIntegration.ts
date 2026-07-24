@@ -132,10 +132,12 @@ export function usePhysicsPaintLaunchIntegration(input: {
       applyLatest: (context) => applySettledLaunchContextRef.current(context),
     });
   }
+  const disposePhysicalEditSettlementRef = useRef(input.lifecycle.disposePhysicalEditSettlement);
+  disposePhysicalEditSettlementRef.current = input.lifecycle.disposePhysicalEditSettlement;
   useEffect(() => () => {
     coordinatorRef.current?.dispose();
-    input.lifecycle.disposePhysicalEditSettlement();
-  }, [input.lifecycle.disposePhysicalEditSettlement]);
+    disposePhysicalEditSettlementRef.current();
+  }, []);
   const applyIncomingLaunchContext = useCallback((context: PhysicPaintLaunchContext) => {
     coordinatorRef.current?.request(context);
   }, []);

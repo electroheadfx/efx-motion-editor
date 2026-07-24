@@ -44,7 +44,9 @@ export const frameMap = computed<FrameEntry[]>(() => {
 });
 
 /** Total number of frames across all sequences */
-export const totalFrames = computed(() => frameMap.value.length);
+export const totalFrames = computed(() =>
+  getTimelineRequiredFrameCount(sequenceStore.sequences.value, frameMap.value.length),
+);
 
 /** Frame entries for only the active sequence (used by preview renderer) */
 export const activeSequenceFrames = computed<FrameEntry[]>(() => {

@@ -73,7 +73,7 @@ struct PhysicsPaintLaunchContext {
     height: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     fps: Option<f64>,
-    #[serde(rename = "rotoBackground", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "rotoPhysical", skip_serializing_if = "Option::is_none")]
     roto_background: Option<Value>,
     #[serde(rename = "cachedRotoFrames", default, skip_serializing_if = "Vec::is_empty")]
     cached_roto_frames: Vec<PhysicsPaintRotoCacheFrame>,

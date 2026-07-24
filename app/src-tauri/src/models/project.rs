@@ -31,14 +31,10 @@ pub struct MceProject {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McePhysicPaintOutput {
     pub layer_id: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub frames: Vec<McePhysicPaintCachedFrame>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub roto_cache_metadata: Vec<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub roto_interpolation_settings: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub roto_background: Option<Value>,
+    pub roto_physical: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
