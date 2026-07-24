@@ -43,7 +43,7 @@ function projectPhysicalSource<Frame extends RotoReferenceFrame>(source: PhysicP
 function isCurrentGeneratedPngSource(source: PhysicPaintRotoPhysicalRenderSource): boolean {
   if (source.kind !== 'generated') return true;
   return source.renderedFrame.appFrame === source.appFrame
-    && source.cacheRevision === `${source.contentRevision}:generated:${source.leftKeyId}:${source.rightKeyId}:${source.appFrame}`
+    && source.cacheRevision === `${source.contentRevision}:generated:${source.interpolationMode}:${source.leftKeyId}:${source.rightKeyId}:${source.appFrame}`
     && isRotoPngDataUrl(source.renderedFrame.dataUrl);
 }
 
@@ -113,9 +113,9 @@ export interface UseRotoReferenceControllerInput<Frame extends RotoReferenceFram
   workflowMode: PhysicsPaintWorkflowMode;
   settingsBackground: BgMode;
   getPhysicalRenderSource: (appFrame: number) => PhysicPaintRotoPhysicalRenderSource | null;
-  previewFrames: ReadonlyMap<number, Frame>;
-  dirtyFrames: Set<number>;
-  liveOverlayActionCounts: Map<number, number>;
+  getPreviewFrames: () => ReadonlyMap<number, Frame>;
+  getDirtyFrames: () => Set<number>;
+  getLiveOverlayActionCounts: () => Map<number, number>;
   syncPending: () => void;
   setApplyMessage: (message: string) => void;
 }
@@ -128,8 +128,8 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
   inputRef.current = input;
   const getLookup = () => ({
     getPhysicalRenderSource: inputRef.current.getPhysicalRenderSource,
-    previewFrames: inputRef.current.previewFrames,
-    dirtyFrames: inputRef.current.dirtyFrames,
+    previewFrames: inputRef.current.getPreviewFrames(),
+    dirtyFrames: inputRef.current.getDirtyFrames(),
   });
   const findDisplayFrame = useCallback((appFrame: number) => findCachedRotoDisplayFrame(appFrame, getLookup()), []);
   const findReferenceFrame = useCallback((appFrame: number) => findCachedRotoReferenceFrame(appFrame, getLookup()), []);
@@ -141,8 +141,8 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
     return createRotoReferenceLoader({
       getWorkflowMode: () => currentInput.workflowMode,
       getSettingsBackground: () => currentInput.settingsBackground,
-      dirtyFrames: currentInput.dirtyFrames,
-      liveOverlayActionCounts: currentInput.liveOverlayActionCounts,
+      dirtyFrames: currentInput.getDirtyFrames(),
+      liveOverlayActionCounts: currentInput.getLiveOverlayActionCounts(),
       getReferenceFrame: (frame) => frame === appFrame && explicitRestoration !== undefined ? explicitRestoration : findReferenceFrame(frame),
       setReferenceUrl: setCachedRotoReferenceUrl,
       setRepaintBaseFrame: setCachedRotoRepaintBaseFrame,

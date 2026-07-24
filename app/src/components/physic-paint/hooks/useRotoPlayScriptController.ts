@@ -62,6 +62,7 @@ export function useRotoPlayScriptController<EngineState = unknown>(
             expectedRevision: publication.expectedRevision,
             records: publication.records,
             interpolationEnabled: publication.interpolationEnabled,
+            interpolationMode: publication.interpolationMode,
             semanticDelta: publication.semanticDelta,
             selectedKeyId: publication.selectedKeyId,
             selectedAppFrame: publication.selectedAppFrame,
@@ -75,6 +76,7 @@ export function useRotoPlayScriptController<EngineState = unknown>(
           operationId: accepted.operationId,
           acceptedRevision: accepted.acceptedRevision,
           records: accepted.after.records,
+          interpolationMode: accepted.after.interpolation.mode,
           selectedKeyId: accepted.after.selectedKeyId ?? publication.selectedKeyId,
           selectedAppFrame: accepted.after.selectedAppFrame ?? publication.selectedAppFrame,
         };
@@ -130,6 +132,7 @@ function authorityFailure(operationId: string, ports: Pick<RotoPlayScriptControl
     physicalRevision: '',
     physicalRecords: [],
     interpolationEnabled: false,
+    interpolationMode: 'duplicate',
     frames: [],
     interpolationSettings: { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
     error: 'Roto authority request timed out.',

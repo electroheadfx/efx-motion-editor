@@ -10,8 +10,8 @@ export interface PhysicsPaintLaunchStateSetters<Settings> {
   setSettings: (settings: Settings) => void;
 }
 
-const LAUNCH_KEYS = new Set(['operationId', 'layerId', 'project', 'startFrame', 'layerName', 'workflowLabel', 'width', 'height', 'fps', 'rotoPhysical']);
-const PHYSICAL_KEYS = new Set(['capacity', 'records', 'interpolationEnabled', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision']);
+const LAUNCH_KEYS = new Set(['operationId', 'layerId', 'project', 'startFrame', 'layerName', 'workflowLabel', 'width', 'height', 'fps', 'rotoPhysical', 'rotoPlayback']);
+const PHYSICAL_KEYS = new Set(['capacity', 'records', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision']);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -58,7 +58,10 @@ export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPai
     const document = parsePhysicPaintRotoPhysicalDocument({
       capacity: value.rotoPhysical.capacity,
       realKeyRecords: value.rotoPhysical.records.map((record) => ({ ...record, kind: 'real-key' as const })),
-      interpolation: { enabled: value.rotoPhysical.interpolationEnabled },
+      interpolation: {
+        enabled: value.rotoPhysical.interpolationEnabled,
+        mode: value.rotoPhysical.interpolationMode,
+      },
       scriptMotion: value.rotoPhysical.scriptMotion,
       background: value.rotoPhysical.background,
       selectedKeyId: value.rotoPhysical.selectedKeyId,
@@ -76,10 +79,12 @@ export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPai
       ...(value.width !== undefined ? { width: value.width } : {}),
       ...(value.height !== undefined ? { height: value.height } : {}),
       ...(value.fps !== undefined ? { fps: value.fps } : {}),
+      ...(value.rotoPlayback !== undefined ? { rotoPlayback: { ...value.rotoPlayback } } : {}),
       rotoPhysical: {
         capacity: document.capacity,
         records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
         interpolationEnabled: document.interpolation.enabled,
+        interpolationMode: document.interpolation.mode,
         scriptMotion: document.scriptMotion,
         background: document.background,
         selectedKeyId: document.selectedKeyId,

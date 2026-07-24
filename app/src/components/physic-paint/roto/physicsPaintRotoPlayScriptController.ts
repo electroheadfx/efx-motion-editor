@@ -27,6 +27,7 @@ export interface RotoPlayScriptPhysicalPublication {
   readonly expectedRevision: string;
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
   readonly interpolationEnabled: boolean;
+  readonly interpolationMode: PhysicPaintRotoAuthorityResult['interpolationMode'];
   readonly semanticDelta: RotoPlayScriptSemanticDelta;
   readonly selectedKeyId: string;
   readonly selectedAppFrame: number;
@@ -38,6 +39,7 @@ export type RotoPlayScriptCommitResult =
       readonly operationId: string;
       readonly acceptedRevision: string;
       readonly records: readonly PhysicPaintRotoRealKeyRecord[];
+      readonly interpolationMode: PhysicPaintRotoAuthorityResult['interpolationMode'];
       readonly selectedKeyId: string;
       readonly selectedAppFrame: number;
     }
@@ -178,7 +180,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const result = await ports.commit(publication);
       assertCurrent(acceptedGeneration);
       if (!result.ok) throw new Error(result.error || 'Parent rejected the Play Script batch.');
-      if (result.selectedKeyId !== publication.selectedKeyId
+      if (result.interpolationMode !== publication.interpolationMode
+        || result.selectedKeyId !== publication.selectedKeyId
         || result.selectedAppFrame !== publication.selectedAppFrame
         || !samePhysicalRecords(result.records, publication.records)) throw new Error('Parent returned a mismatched Play Script acknowledgement.');
       phase.value = 'regenerating'; status.value = 'Regenerating interpolation…';
@@ -283,6 +286,7 @@ function buildPhysicalPublication(input: {
     expectedRevision: authority.physicalRevision,
     records,
     interpolationEnabled: authority.interpolationEnabled,
+    interpolationMode: authority.interpolationMode,
     semanticDelta: {
       kind: 'play-script',
       affectedStartAppFrame: start,

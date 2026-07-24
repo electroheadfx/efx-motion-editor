@@ -1,6 +1,11 @@
 import type { BgMode, EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
-import { registerRotoAlphaCanvasFrame } from '../../../stores/physicPaintStore';
+import { hasRotoAlphaCanvasFrame, registerRotoAlphaCanvasFrame } from '../../../stores/physicPaintStore';
+import {
+  parsePhysicPaintRotoPhysicalDocument,
+  type PhysicPaintRotoPhysicalDocument,
+  type PhysicPaintRotoRealKeyRecord,
+} from './physicsPaintRotoPhysicalModel';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
 
 export type RenderedFramePayload = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl'>>;
@@ -29,6 +34,7 @@ export async function registerRotoAlphaCanvasFrameFromDataUrl(
   if (expectedSize && (!Number.isInteger(expectedSize.width) || expectedSize.width <= 0 || !Number.isInteger(expectedSize.height) || expectedSize.height <= 0)) {
     throw new Error('Canonical Roto payload dimensions must be positive integers.');
   }
+  if (hasRotoAlphaCanvasFrame(dataUrl, expectedSize)) return;
 
   const image = new Image();
   try {
@@ -55,6 +61,38 @@ export async function registerRotoAlphaCanvasFrameFromDataUrl(
     image.onerror = null;
     image.src = '';
   }
+}
+
+export async function prepareRotoPhysicalRealKeyPngs(
+  records: readonly Pick<PhysicPaintRotoRealKeyRecord, 'keyId' | 'payload'>[],
+): Promise<void> {
+  const uniquePayloads = new Map<string, { width: number; height: number } | undefined>();
+  for (const record of records) {
+    const { dataUrl, width, height } = record.payload;
+    if (!isRotoPngDataUrl(dataUrl)) {
+      throw new Error(`Canonical Roto key "${record.keyId}" does not contain a valid PNG payload.`);
+    }
+    const size = width !== undefined && height !== undefined ? { width, height } : undefined;
+    const priorSize = uniquePayloads.get(dataUrl);
+    if (priorSize && size && (priorSize.width !== size.width || priorSize.height !== size.height)) {
+      throw new Error('Canonical Roto keys disagree about shared PNG payload dimensions.');
+    }
+    if (!uniquePayloads.has(dataUrl) || (!priorSize && size)) uniquePayloads.set(dataUrl, size);
+  }
+  const results = await Promise.allSettled(Array.from(
+    uniquePayloads,
+    ([dataUrl, size]) => registerRotoAlphaCanvasFrameFromDataUrl(dataUrl, size),
+  ));
+  const failure = results.find((result) => result.status === 'rejected');
+  if (failure?.status === 'rejected') throw failure.reason;
+}
+
+export async function prepareRotoPhysicalDocumentPngs(
+  value: unknown,
+): Promise<PhysicPaintRotoPhysicalDocument> {
+  const document = parsePhysicPaintRotoPhysicalDocument(value);
+  await prepareRotoPhysicalRealKeyPngs(document.realKeyRecords);
+  return document;
 }
 
 export function addOccupiedRotoFrame(frames: number[], frame: number): number[] {

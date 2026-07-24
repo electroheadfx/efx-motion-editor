@@ -210,6 +210,7 @@ mod tests {
                     "paperGrain": "canvas3",
                     "grainStrength": 0.65
                 })),
+                roto_playback: None,
             }],
         };
 

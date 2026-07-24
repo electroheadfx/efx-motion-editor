@@ -56,10 +56,9 @@ export function usePhysicsPaintEngineLifecycle(input: {
   }, []);
 
   useEffect(() => {
-    if (engine && input.launchContext?.rotoBackground) {
-      applyRotoBackgroundMetadataToEngine(engine, input.launchContext.rotoBackground);
-    }
-  }, [engine, input.launchContext?.rotoBackground]);
+    const background = input.launchContext?.rotoPhysical?.background;
+    if (engine && background) applyRotoBackgroundMetadataToEngine(engine, background);
+  }, [engine, input.launchContext?.rotoPhysical?.background]);
 
 
   useEffect(() => input.clearExternalState, []);

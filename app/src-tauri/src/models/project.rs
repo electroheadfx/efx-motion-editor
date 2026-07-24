@@ -35,6 +35,15 @@ pub struct McePhysicPaintOutput {
     pub frames: Vec<McePhysicPaintCachedFrame>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub roto_physical: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub roto_playback: Option<McePhysicPaintRotoPlaybackSettings>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McePhysicPaintRotoPlaybackSettings {
+    #[serde(rename = "loop")]
+    pub r#loop: bool,
+    pub fps: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

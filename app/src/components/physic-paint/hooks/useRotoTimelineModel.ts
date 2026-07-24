@@ -3,7 +3,11 @@ import { useMemo } from 'preact/hooks';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import { selectRotoTimelineView, type RotoTimelineSelectionKind, type RotoTimelineView } from '../roto/rotoTimelineSelectors';
 import { selectRotoPhysicalTimelineView, type RotoPhysicalTimelineView } from '../roto/rotoTimelineSelectors';
-import type { PhysicPaintRotoRealKeyRecord, PhysicPaintRotoInterpolationState } from '../roto/physicsPaintRotoPhysicalModel';
+import {
+  PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+  type PhysicPaintRotoRealKeyRecord,
+  type PhysicPaintRotoInterpolationState,
+} from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 
 export interface RotoTimelineModelInput {
@@ -12,7 +16,7 @@ export interface RotoTimelineModelInput {
   currentFrame: number;
   /** Physical real-key records from the store (D-01/D-10). */
   rotoKeyRecords?: readonly PhysicPaintRotoRealKeyRecord[];
-  /** Enabled-only interpolation state from the store (D-02). */
+  /** Canonical interpolation state from the store (D-02). */
   rotoInterpolationState?: PhysicPaintRotoInterpolationState;
   /** Bounded physical frame capacity. */
   capacity?: number;
@@ -45,7 +49,7 @@ export function createRotoTimelineModel(input: RotoTimelineModelInput): RotoTime
   const view = computed(() => selectRotoTimelineView(source.value));
   const physicalView = computed(() => selectRotoPhysicalTimelineView({
     realKeyRecords: source.value.rotoKeyRecords ?? [],
-    interpolation: source.value.rotoInterpolationState ?? { enabled: false },
+    interpolation: source.value.rotoInterpolationState ?? PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
     capacity: source.value.capacity ?? 1,
     currentAppFrame: source.value.currentFrame,
     selectedKeyId: source.value.selectedKeyId ?? null,

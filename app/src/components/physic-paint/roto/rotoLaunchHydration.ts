@@ -9,7 +9,7 @@ import {
   type PhysicPaintRotoPhysicalDocument,
 } from './physicsPaintRotoPhysicalModel';
 import { projectPhysicPaintRotoPhysicalTimeline } from './physicsPaintRotoPhysicalResolver';
-import { isRotoPngDataUrl, registerRotoAlphaCanvasFrameFromDataUrl } from './rotoCanvasFrames';
+import { prepareRotoPhysicalRealKeyPngs } from './rotoCanvasFrames';
 
 export interface RotoPhysicalLaunchHydrationStore {
   replaceRotoPhysicalDocument(
@@ -45,7 +45,10 @@ export function prepareRotoPhysicalLaunch(
         appFrame: record.appFrame,
         payload: record.payload,
       })),
-      interpolation: { enabled: physical.interpolationEnabled },
+      interpolation: {
+        enabled: physical.interpolationEnabled,
+        mode: physical.interpolationMode,
+      },
       scriptMotion: physical.scriptMotion,
       background: physical.background,
       selectedKeyId: physical.selectedKeyId,
@@ -75,22 +78,8 @@ export async function hydrateRotoPhysicalLaunchContext(
   const prepared = prepareRotoPhysicalLaunch(context);
   if (!prepared.ok) return prepared;
 
-  const uniquePayloads = new Map<string, { width: number; height: number } | undefined>();
-  for (const record of prepared.document.realKeyRecords) {
-    const { dataUrl, width, height } = record.payload;
-    if (!isRotoPngDataUrl(dataUrl)) {
-      return { ok: false, error: `Canonical Roto key "${record.keyId}" does not contain a valid PNG payload.` };
-    }
-    const size = width !== undefined && height !== undefined ? { width, height } : undefined;
-    const priorSize = uniquePayloads.get(dataUrl);
-    if (priorSize && size && (priorSize.width !== size.width || priorSize.height !== size.height)) {
-      return { ok: false, error: 'Canonical Roto keys disagree about shared PNG payload dimensions.' };
-    }
-    if (!uniquePayloads.has(dataUrl) || (!priorSize && size)) uniquePayloads.set(dataUrl, size);
-  }
-
   try {
-    await Promise.all(Array.from(uniquePayloads, ([dataUrl, size]) => registerRotoAlphaCanvasFrameFromDataUrl(dataUrl, size)));
+    await prepareRotoPhysicalRealKeyPngs(prepared.document.realKeyRecords);
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Canonical Roto PNG hydration failed.' };
   }

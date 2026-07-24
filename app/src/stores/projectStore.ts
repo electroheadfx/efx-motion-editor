@@ -27,6 +27,7 @@ import {motionBlurStore} from './motionBlurStore';
 import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
 import {loadPhysicPaintData, savePhysicPaintData} from '../lib/physicPaintPersistence';
+import {prepareRotoPhysicalDocumentPngs} from '../components/physic-paint/roto/rotoCanvasFrames';
 import {readFile} from '@tauri-apps/plugin-fs';
 
 // --- Signals ---
@@ -762,12 +763,18 @@ export const projectStore = {
     // Decode every required Physics Paint sidecar and validate the complete
     // physical candidates before replacing the currently open project.
     const projectRoot = openFilePath.substring(0, openFilePath.lastIndexOf('/'));
+    const decodedPhysicPaintOutputs = await loadPhysicPaintData(projectRoot, result.data.physic_paint_outputs) ?? [];
+    const preparedPhysicPaintOutputs = await Promise.all(decodedPhysicPaintOutputs.map(async (output) => (
+      output.roto_physical
+        ? { ...output, roto_physical: await prepareRotoPhysicalDocumentPngs(output.roto_physical) }
+        : output
+    )));
     const runtimeProject: RuntimeMceProject = {
       ...result.data,
-      physic_paint_outputs: await loadPhysicPaintData(projectRoot, result.data.physic_paint_outputs),
+      physic_paint_outputs: preparedPhysicPaintOutputs,
     };
 
-    projectStore.closeProject();
+    projectStore.closeProject({ preservePreparedRotoCanvases: true });
     batch(() => {
       filePath.value = openFilePath;
       dirPath.value = projectRoot;
@@ -793,7 +800,7 @@ export const projectStore = {
   },
 
   /** Close the current project and reset all stores */
-  closeProject() {
+  closeProject(options?: { preservePreparedRotoCanvases?: boolean }) {
     rotateProjectContext();
     clearScriptLibraryAuthority();
     // 1. Stop engines and timers FIRST (prevents orphaned operations)
@@ -815,7 +822,7 @@ export const projectStore = {
     imageStore.reset();
     audioStore.reset();
     paintStore.reset();
-    physicPaintStore.reset();
+    physicPaintStore.reset({ preserveRotoAlphaCanvases: options?.preservePreparedRotoCanvases });
     motionBlurStore.reset();
     audioPeaksCache.clear();
     audioEngine.stopAll();

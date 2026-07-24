@@ -28,7 +28,8 @@ import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBrid
  * - `expectedRevision`: the parent-confirmed authoritative revision the
  *   coordinator used for its pre-stage revalidation;
  * - `stagedRevision`: the deterministic content revision computed from the
- *   staged immutable complete records plus enabled interpolation state.
+ *   staged immutable complete records plus canonical interpolation state;
+ * - `interpolationMode`: the exact staged render mode echoed by the parent.
  */
 export interface PendingPhysicPaintRotoPhysicalEdit {
   readonly operationId: string;
@@ -39,6 +40,7 @@ export interface PendingPhysicPaintRotoPhysicalEdit {
   readonly projectContextId: string | null;
   readonly expectedRevision: string;
   readonly stagedRevision: string;
+  readonly interpolationMode: PhysicPaintRotoInterpolationState['mode'];
 }
 
 /**
@@ -226,6 +228,7 @@ export interface RotoPhysicalEditSelectionPort {
 export interface RotoPhysicalEditReferencePort {
   getCachedReference: () => { url: string | null; cachedRepaintBase: RenderedFramePayload | null };
   setCachedReference: (reference: { url: string | null; cachedRepaintBase: RenderedFramePayload | null }) => void;
+  reconcileCurrentFrame: (appFrame: number) => void;
 }
 
 /**
@@ -242,7 +245,10 @@ export interface RotoPhysicalEditEnginePort<EngineState> {
 export interface RotoPhysicalEditLaunchPort {
   getLaunchContext: () => PhysicPaintLaunchContext | null;
   setLaunchContextStartFrame: (frame: number) => void;
-  setLaunchContextCachedFrames: (frames: readonly PhysicPaintRotoRealKeyRecord[]) => void;
+  setLaunchContextCachedFrames: (
+    frames: readonly PhysicPaintRotoRealKeyRecord[],
+    options?: { preserveRuntimeCaches?: boolean },
+  ) => void;
 }
 
 /**

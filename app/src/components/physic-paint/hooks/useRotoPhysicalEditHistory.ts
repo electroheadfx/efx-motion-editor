@@ -149,6 +149,7 @@ function snapshotRecordsEqual(
     if (left.payload.height !== right.payload.height) return false;
   }
   if (before.interpolation.enabled !== after.interpolation.enabled) return false;
+  if (before.interpolation.mode !== after.interpolation.mode) return false;
   if (before.selectedKeyId !== after.selectedKeyId) return false;
   if (before.selectedAppFrame !== after.selectedAppFrame) return false;
   return true;

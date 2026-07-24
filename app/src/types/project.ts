@@ -1,5 +1,5 @@
 import type {MceAudioTrack} from './audio';
-import type {PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings} from './physicPaint';
+import type {PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings} from './physicPaint';
 import type {
   PhysicPaintRotoInterpolationState,
   PhysicPaintRotoPhysicalDocument,
@@ -80,6 +80,7 @@ export interface McePhysicPaintOutput {
   layer_id: string;
   frames: McePhysicPaintCachedFrame[];
   roto_physical?: McePhysicPaintRotoPhysicalDocument;
+  roto_playback?: PhysicPaintRotoPlaybackSettings;
   roto_cache_metadata?: McePhysicPaintRotoCachedFrame[];
   roto_interpolation_settings?: PhysicPaintRotoInterpolationSettings;
   roto_background?: PhysicPaintRotoBackgroundMetadata;

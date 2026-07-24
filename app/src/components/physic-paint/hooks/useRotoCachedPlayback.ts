@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import type { PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 
 const MIN_ROTO_PLAYBACK_FPS = 1;
@@ -10,7 +11,7 @@ export interface RotoCachedPlaybackFrame<Frame> {
 }
 
 export interface UseRotoCachedPlaybackInput<Frame> {
-  initialFps: number;
+  initialSettings: PhysicPaintRotoPlaybackSettings;
   workflowMode: PhysicsPaintWorkflowMode;
   getFrames: () => RotoCachedPlaybackFrame<Frame>[];
   onStart: (frameCount: number) => void;
@@ -26,11 +27,13 @@ export interface RotoCachedPlayback<Frame> {
   loop: boolean;
   fps: number;
   setLoop: (loop: boolean) => void;
+  getSettings: () => PhysicPaintRotoPlaybackSettings;
+  replaceSettings: (settings: PhysicPaintRotoPlaybackSettings) => void;
   start: (fps?: number) => void;
   stop: () => void;
   toggle: () => void;
   updateFps: (fps: number) => void;
-  resetForLaunch: () => void;
+  resetForLaunch: (settings: PhysicPaintRotoPlaybackSettings) => void;
 }
 
 export function clampRotoPlaybackFps(value: number): number {
@@ -39,11 +42,16 @@ export function clampRotoPlaybackFps(value: number): number {
 }
 
 export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<Frame>): RotoCachedPlayback<Frame> {
+  const initialSettings = {
+    loop: input.initialSettings.loop,
+    fps: clampRotoPlaybackFps(input.initialSettings.fps),
+  };
   const [isActive, setIsActive] = useState(false);
   const [frame, setFrame] = useState<Frame | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [loop, setLoop] = useState(false);
-  const [fps, setFps] = useState(() => input.initialFps);
+  const [loop, setLoopState] = useState(initialSettings.loop);
+  const [fps, setFps] = useState(initialSettings.fps);
+  const settingsRef = useRef<PhysicPaintRotoPlaybackSettings>(initialSettings);
   const timerRef = useRef<number | null>(null);
   const inputRef = useRef(input);
   inputRef.current = input;
@@ -64,11 +72,19 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     finishPlayback();
   }, [finishPlayback]);
 
-  const resetForLaunch = useCallback(() => {
-    finishPlayback();
-  }, [finishPlayback]);
+  const replaceSettings = useCallback((settings: PhysicPaintRotoPlaybackSettings) => {
+    const next = { loop: settings.loop, fps: clampRotoPlaybackFps(settings.fps) };
+    settingsRef.current = next;
+    setLoopState(next.loop);
+    setFps(next.fps);
+  }, []);
 
-  const start = useCallback((requestedFps = fps) => {
+  const resetForLaunch = useCallback((settings: PhysicPaintRotoPlaybackSettings) => {
+    finishPlayback();
+    replaceSettings(settings);
+  }, [finishPlayback, replaceSettings]);
+
+  const start = useCallback((requestedFps = settingsRef.current.fps) => {
     const currentInput = inputRef.current;
     const cachedFrames = currentInput.getFrames();
     if (cachedFrames.length === 0) {
@@ -86,21 +102,21 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
       ? `Playing cached Roto frames at ${playbackFps} fps. ${missingCount} missing frame(s). Missing frames play transparent/background.`
       : `Playing ${cachedFrames.length} cached Roto frame(s) at ${playbackFps} fps. Missing frames play transparent/background.`);
     const showNextFrame = () => {
+      if (frameIndex >= cachedFrames.length) {
+        if (!settingsRef.current.loop) {
+          finishPlayback();
+          return;
+        }
+        frameIndex = 0;
+      }
       const cachedFrame = cachedFrames[frameIndex];
       setFrame(cachedFrame.frame ?? null);
       inputRef.current.onFrame(frameIndex, cachedFrame.appFrame);
       frameIndex += 1;
-      if (frameIndex >= cachedFrames.length) {
-        if (loop) {
-          frameIndex = 0;
-          return;
-        }
-        finishPlayback();
-      }
     };
     showNextFrame();
-    if (cachedFrames.length > 1) timerRef.current = window.setInterval(showNextFrame, 1000 / playbackFps);
-  }, [clearTimer, finishPlayback, fps, loop]);
+    timerRef.current = window.setInterval(showNextFrame, 1000 / playbackFps);
+  }, [clearTimer, finishPlayback]);
 
   const toggle = useCallback(() => {
     if (isActive) {
@@ -111,11 +127,19 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     start();
   }, [isActive, start, stop]);
 
+  const setLoop = useCallback((nextLoop: boolean) => {
+    settingsRef.current = { ...settingsRef.current, loop: nextLoop };
+    setLoopState(nextLoop);
+  }, []);
+
   const updateFps = useCallback((nextValue: number) => {
     const nextFps = clampRotoPlaybackFps(nextValue);
+    settingsRef.current = { ...settingsRef.current, fps: nextFps };
     setFps(nextFps);
     if (isActive) start(nextFps);
   }, [isActive, start]);
+
+  const getSettings = useCallback(() => ({ ...settingsRef.current }), []);
 
   useEffect(() => () => clearTimer(), [clearTimer]);
 
@@ -123,5 +147,20 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     if (input.workflowMode !== 'roto') stop();
   }, [input.workflowMode, stop]);
 
-  return { isActive, frame, status, setStatus, loop, fps, setLoop, start, stop, toggle, updateFps, resetForLaunch };
+  return {
+    isActive,
+    frame,
+    status,
+    setStatus,
+    loop,
+    fps,
+    setLoop,
+    getSettings,
+    replaceSettings,
+    start,
+    stop,
+    toggle,
+    updateFps,
+    resetForLaunch,
+  };
 }

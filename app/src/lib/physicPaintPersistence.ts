@@ -10,11 +10,11 @@ import type {
   McePhysicPaintRotoPhysicalRecord,
   RuntimePhysicPaintOutput,
 } from '../types/project';
-import { isPhysicPaintRenderedFrame, type PhysicPaintRenderedFrame } from '../types/physicPaint';
+import { isPhysicPaintRenderedFrame, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRenderedFrame } from '../types/physicPaint';
 
 const PHYSIC_PAINT_CACHE_DIR = 'cache/physic-paint';
 const DATA_URL_PREFIX = 'data:image/png;base64,';
-const OUTPUT_KEYS = new Set(['layer_id', 'frames', 'roto_physical']);
+const OUTPUT_KEYS = new Set(['layer_id', 'frames', 'roto_physical', 'roto_playback']);
 const PERSISTED_DOCUMENT_KEYS = new Set(['capacity', 'realKeyRecords', 'interpolation', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision']);
 const PERSISTED_RECORD_KEYS = new Set(['kind', 'keyId', 'appFrame', 'payload']);
 const PERSISTED_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'cache_path', 'width', 'height']);
@@ -95,8 +95,9 @@ async function ensureDir(path: string): Promise<void> {
 function buildSaveCacheKey(projectDir: string, outputs: readonly RuntimePhysicPaintOutput[]): string {
   const segments = outputs.map((output) => {
     const physical = output.roto_physical ? buildPhysicPaintRotoProjectEquality(output.roto_physical) : 'none';
+    const playback = output.roto_playback ? `${output.roto_playback.loop ? 1 : 0}:${output.roto_playback.fps}` : 'none';
     const frames = output.frames.map((frame) => `${frame.appFrame}:${frame.frameIndex}:${frame.dataUrl.length}:${frame.dataUrl}`).join('|');
-    return `${output.layer_id.length}:${output.layer_id}:${physical}:${frames}`;
+    return `${output.layer_id.length}:${output.layer_id}:${physical}:${playback}:${frames}`;
   }).sort();
   return `${projectDir}\0${segments.join('\0')}`;
 }
@@ -121,6 +122,9 @@ function validateRuntimeOutputs(outputs: readonly RuntimePhysicPaintOutput[]): r
       seenFrames.add(frame.appFrame);
     }
     if (output.roto_physical !== undefined) parsePhysicPaintRotoPhysicalDocument(output.roto_physical);
+    if (output.roto_playback !== undefined && !isPhysicPaintRotoPlaybackSettings(output.roto_playback)) {
+      throw new Error(`Invalid Roto playback settings in layer "${output.layer_id}".`);
+    }
   }
   return outputs;
 }
@@ -184,7 +188,12 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
         revision: physical.revision,
       };
     }
-    persistedOutputs.push({ layer_id: output.layer_id, frames, ...(rotoPhysical ? { roto_physical: rotoPhysical } : {}) });
+    persistedOutputs.push({
+      layer_id: output.layer_id,
+      frames,
+      ...(rotoPhysical ? { roto_physical: rotoPhysical } : {}),
+      ...(output.roto_playback ? { roto_playback: { ...output.roto_playback } } : {}),
+    });
   }
 
   if (await exists(rootDir)) await remove(rootDir, { recursive: true });
@@ -292,7 +301,15 @@ export async function loadPhysicPaintData(projectDir: string, outputs: McePhysic
     }
 
     const physical = output.roto_physical === undefined ? undefined : await hydratePhysicalDocument(projectDir, output.roto_physical);
-    hydratedOutputs.push({ layer_id: output.layer_id, frames, ...(physical ? { roto_physical: physical } : {}) });
+    if (output.roto_playback !== undefined && !isPhysicPaintRotoPlaybackSettings(output.roto_playback)) {
+      throw new Error(`Persisted Roto playback settings in layer "${output.layer_id}" are malformed.`);
+    }
+    hydratedOutputs.push({
+      layer_id: output.layer_id,
+      frames,
+      ...(physical ? { roto_physical: physical } : {}),
+      ...(output.roto_playback ? { roto_playback: { ...output.roto_playback } } : {}),
+    });
   }
   validateRuntimeOutputs(hydratedOutputs);
   return hydratedOutputs;

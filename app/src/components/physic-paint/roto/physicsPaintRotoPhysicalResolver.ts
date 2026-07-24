@@ -295,7 +295,7 @@ export type PhysicPaintRotoPhysicalEditResolution =
 //
 // `projectPhysicPaintRotoPhysicalTimeline` is the one exported read-only
 // projection from validated physical identity placement, bounded capacity, and
-// enabled-only interpolation state to deterministic ordered assignments, exact
+// the interpolation-enabled projection flag to deterministic ordered assignments, exact
 // runtime generated interiors, and bounded real/generated/empty physical cells.
 // The edit resolver's `finalizeProposal` reuses the same private
 // `buildProjectionFromMapping` helper so current display and edit proposals can
@@ -331,8 +331,8 @@ export type PhysicPaintRotoPhysicalTimelineProjectionResolution =
 
 /**
  * Read-only projection input: immutable physical identity placement (stable
- * `keyId` plus direct `appFrame`), bounded capacity, and enabled-only
- * interpolation state. No payload, store handle, bridge, or edit intent is
+ * `keyId` plus direct `appFrame`), bounded capacity, and the interpolation-
+ * enabled projection flag. No payload, store handle, bridge, or edit intent is
  * accepted.
  */
 export interface PhysicPaintRotoPhysicalTimelineProjectionInput {
@@ -1450,7 +1450,7 @@ function validateSemanticInputRecords(
 
 /**
  * Project the current physical timeline from validated identity placement,
- * bounded capacity, and enabled-only interpolation state.
+ * bounded capacity, and the interpolation-enabled projection flag.
  *
  * This is the one shared read-only projection seam consumed by current-state
  * callers (store, selectors, `rotoPhysicalTimelinePorts`) and reused internally

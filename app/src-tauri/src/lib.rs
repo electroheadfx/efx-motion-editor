@@ -54,6 +54,13 @@ struct PhysicsPaintRotoCacheFrame {
 }
 
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
+struct PhysicsPaintRotoPlaybackSettings {
+    #[serde(rename = "loop")]
+    r#loop: bool,
+    fps: f64,
+}
+
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
 struct PhysicsPaintLaunchContext {
     #[serde(rename = "operationId")]
     operation_id: String,
@@ -75,6 +82,8 @@ struct PhysicsPaintLaunchContext {
     fps: Option<f64>,
     #[serde(rename = "rotoPhysical", skip_serializing_if = "Option::is_none")]
     roto_background: Option<Value>,
+    #[serde(rename = "rotoPlayback", skip_serializing_if = "Option::is_none")]
+    roto_playback: Option<PhysicsPaintRotoPlaybackSettings>,
     #[serde(rename = "cachedRotoFrames", default, skip_serializing_if = "Vec::is_empty")]
     cached_roto_frames: Vec<PhysicsPaintRotoCacheFrame>,
     #[serde(rename = "rotoInterpolationSettings", skip_serializing_if = "Option::is_none")]
@@ -574,6 +583,7 @@ mod tests {
             height: Some(650),
             fps: Some(24.0),
             roto_background: Some(serde_json::json!({ "background": "canvas2", "paperGrain": "canvas3", "grainStrength": 0.65 })),
+            roto_playback: None,
             cached_roto_frames: Vec::new(),
             roto_interpolation_settings: None,
         }

@@ -2,7 +2,7 @@
  * Canonical physical Roto model — stable key identity plus direct physical frame.
  *
  * This module is intentionally INACTIVE after Plan 01. It defines the closed
- * physical identity, real-key payload, generated-cell, enabled-only
+ * physical identity, real-key payload, generated-cell, canonical
  * interpolation, separate Script Motion, aggregate durable successor state,
  * ID creation, and (in Task 2) fail-closed validation interfaces that later
  * plans adopt directly. The current shared live timing contract in
@@ -17,9 +17,10 @@
  *   `appFrame`. Source, stored, displayed, selected, cached, reopened,
  *   previewed, and exported position are the same coordinate; every
  *   key-owned payload moves with the identity.
- * - D-02: automatic interpolation persists only `enabled` state and derives
- *   exactly `max(0, rightFrame - leftFrame - 1)` interior frames at runtime.
- *   Generated cells are runtime-only derived values and never durable records.
+ * - D-02: automatic interpolation persists `enabled` plus canonical render
+ *   `mode` and derives exactly `max(0, rightFrame - leftFrame - 1)` interior
+ *   frames at runtime. Generated cells are runtime-only derived values and
+ *   never durable records.
  * - D-04: Script Motion `deformation` and `position` are a separate sibling
  *   Script Motion settings contract, never members of interpolation timing
  *   state.
@@ -134,21 +135,26 @@ export type PhysicPaintRotoPhysicalRenderSource =
       readonly appFrame: number;
       readonly leftKeyId: string;
       readonly rightKeyId: string;
+      readonly interpolationMode: PhysicPaintRotoInterpolationMode;
       readonly contentRevision: string;
       readonly cacheRevision: string;
       readonly renderedFrame: PhysicPaintRotoRealKeyPayload;
     };
 
+/** Canonical render behavior for runtime-derived interpolation cells. */
+export type PhysicPaintRotoInterpolationMode = 'duplicate' | 'blend';
+
 /**
- * Enabled-only interpolation state.
+ * Canonical physical interpolation state.
  *
- * Per D-02, this is exactly one durable member: `enabled`. There is no
- * persisted `inBetweenCount`, `mode`, `deform`, `position`, or spacing
- * override. Interiors are runtime-derived from adjacent physical real keys.
- * Toggling `enabled` cannot move real keys.
+ * Interiors are runtime-derived from adjacent physical real keys. The durable
+ * state controls whether those interiors exist and how they render; it carries
+ * no count, Motion values, or spacing override. Changing either field cannot
+ * move real keys.
  */
 export interface PhysicPaintRotoInterpolationState {
   readonly enabled: boolean;
+  readonly mode: PhysicPaintRotoInterpolationMode;
 }
 
 /**
@@ -158,7 +164,7 @@ export interface PhysicPaintRotoInterpolationState {
  * bounded integer percentages (0-100). They are NOT members of
  * {@link PhysicPaintRotoInterpolationState}; they move into this separate
  * contract so the physical interpolation contract can collapse to
- * enabled-only without losing the approved held-pose behavior.
+ * focused on render behavior without losing the approved held-pose behavior.
  */
 export interface PhysicPaintRotoScriptMotionSettings {
   readonly deformation: number;
@@ -166,7 +172,7 @@ export interface PhysicPaintRotoScriptMotionSettings {
 }
 
 /**
- * Aggregate durable successor schema: real-key records, enabled-only
+ * Aggregate durable successor schema: real-key records, canonical
  * interpolation, and separate Script Motion.
  *
  * There is no generated-cell member (generated cells are runtime-derived
@@ -194,13 +200,10 @@ export interface PhysicPaintRotoPhysicalDocument extends PhysicPaintRotoPhysical
   readonly revision: string;
 }
 
-/**
- * Immutable disabled interpolation default.
- *
- * Per D-02: enabled-only state, no count/override/mode fields.
- */
+/** Immutable disabled interpolation default. */
 export const PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED: PhysicPaintRotoInterpolationState = Object.freeze({
   enabled: false,
+  mode: 'duplicate',
 });
 
 /**
@@ -260,7 +263,7 @@ const PHYSIC_PAINT_ROTO_KEY_IDENTITY_KEYS = new Set(['keyId', 'appFrame']);
 const PHYSIC_PAINT_ROTO_REAL_KEY_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'dataUrl', 'width', 'height']);
 const PHYSIC_PAINT_ROTO_REAL_KEY_RECORD_KEYS = new Set(['kind', 'keyId', 'appFrame', 'payload']);
 const PHYSIC_PAINT_ROTO_GENERATED_CELL_KEYS = new Set(['kind', 'appFrame', 'leftKeyId', 'rightKeyId']);
-const PHYSIC_PAINT_ROTO_INTERPOLATION_STATE_KEYS = new Set(['enabled']);
+const PHYSIC_PAINT_ROTO_INTERPOLATION_STATE_KEYS = new Set(['enabled', 'mode']);
 const PHYSIC_PAINT_ROTO_SCRIPT_MOTION_KEYS = new Set(['deformation', 'position']);
 const PHYSIC_PAINT_ROTO_PHYSICAL_STATE_KEYS = new Set(['realKeyRecords', 'interpolation', 'scriptMotion']);
 const PHYSIC_PAINT_ROTO_PHYSICAL_DOCUMENT_KEYS = new Set([
@@ -384,14 +387,14 @@ export function isPhysicPaintRotoGeneratedCell(value: unknown): value is PhysicP
 /**
  * Strict guard for {@link PhysicPaintRotoInterpolationState}.
  *
- * Rejects non-records, unknown members (including removed timing/projection
- * fields like `inBetweenCount`, `mode`, `deform`, `position`, and
- * `segmentSpacingOverrides`), and non-boolean `enabled`.
+ * Rejects non-records, unknown members, missing fields, removed timing/Motion
+ * fields, non-boolean `enabled`, and unknown render modes.
  */
 export function isPhysicPaintRotoInterpolationState(value: unknown): value is PhysicPaintRotoInterpolationState {
   if (!isRecord(value)) return false;
   if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_INTERPOLATION_STATE_KEYS)) return false;
-  return typeof value.enabled === 'boolean';
+  return typeof value.enabled === 'boolean'
+    && (value.mode === 'duplicate' || value.mode === 'blend');
 }
 
 /**
@@ -477,10 +480,10 @@ export function parsePhysicPaintRotoRealKeyRecordCollection(
  *   cells, count, overrides, etc.);
  * - invalid real-key records (delegates to
  *   {@link parsePhysicPaintRotoRealKeyRecordCollection});
- * - invalid enabled-only interpolation state;
+ * - invalid canonical interpolation state;
  * - invalid separate Script Motion settings.
  *
- * Reconstructs exactly the validated real-key collection, enabled-only
+ * Reconstructs exactly the validated real-key collection, canonical
  * interpolation, and separate Motion state. No generated records or legacy
  * siblings survive. Caller-owned input is never mutated; unknown properties
  * are never deleted or normalized; no ID is ever allocated by this parser.
@@ -498,7 +501,7 @@ export function parsePhysicPaintRotoPhysicalState(
     throw new Error('PhysicPaintRotoPhysicalState: unknown members; expected exactly realKeyRecords, interpolation, scriptMotion.');
   }
   if (!isPhysicPaintRotoInterpolationState(value.interpolation)) {
-    throw new Error('PhysicPaintRotoPhysicalState: invalid enabled-only interpolation state.');
+    throw new Error('PhysicPaintRotoPhysicalState: invalid canonical interpolation state.');
   }
   if (!isPhysicPaintRotoScriptMotionSettings(value.scriptMotion)) {
     throw new Error('PhysicPaintRotoPhysicalState: invalid Script Motion settings.');
@@ -510,6 +513,7 @@ export function parsePhysicPaintRotoPhysicalState(
   const realKeyRecords = parsePhysicPaintRotoRealKeyRecordCollection(value.realKeyRecords, capacity);
   const interpolation = Object.freeze<PhysicPaintRotoInterpolationState>({
     enabled: value.interpolation.enabled,
+    mode: value.interpolation.mode,
   });
   const scriptMotion = Object.freeze<PhysicPaintRotoScriptMotionSettings>({
     deformation: value.scriptMotion.deformation,
@@ -547,12 +551,12 @@ function cloneAndFreezeRealKeyRecord(record: PhysicPaintRotoRealKeyRecord): Phys
 //
 // Per D-09: the parent and child agree on expected/staged/accepted physical
 // revisions before acceptance. The revision is a deterministic fingerprint of
-// the validated authoritative real-key records plus enabled-only
-// interpolation state; it is distinct from `physicPaintVersion`, which
+// the validated authoritative real-key records plus canonical interpolation
+// state; it is distinct from `physicPaintVersion`, which
 // remains a monotonic visual invalidation signal.
 //
 // The revision is computed only from a validated immutable real-key
-// collection plus enabled-only interpolation state. Canonicalization is
+// collection plus canonical interpolation state. Canonicalization is
 // performed in stable `keyId` order so equal content produces equal
 // revisions regardless of input order. The fingerprint covers every durable
 // payload field and the direct `appFrame`. Malformed, duplicate, generated,
@@ -562,7 +566,7 @@ function cloneAndFreezeRealKeyRecord(record: PhysicPaintRotoRealKeyRecord): Phys
 
 /**
  * Compute the deterministic physical content revision for a validated
- * immutable real-key collection plus enabled-only interpolation state.
+ * immutable real-key collection plus canonical interpolation state.
  *
  * Per D-09: this revision is the canonical expected/staged/accepted
  * fingerprint used by the generic acknowledged physical-edit transaction. It
@@ -576,14 +580,14 @@ function cloneAndFreezeRealKeyRecord(record: PhysicPaintRotoRealKeyRecord): Phys
  * - every durable payload field (`frameIndex`, `appFrame`, `dataUrl`,
  *   `width`, `height`) and the direct `appFrame` contribute to the
  *   fingerprint;
- * - the enabled-only interpolation flag contributes as a single boolean.
+ * - interpolation `enabled` and `mode` both contribute.
  *
  * Rejection:
  * - non-array input;
  * - duplicate `keyId`;
  * - malformed real-key records (including generated descriptors, which fail
  *   the `kind: 'real-key'` check);
- * - invalid enabled-only interpolation state.
+ * - invalid canonical interpolation state.
  *
  * Throws a closed validation failure on any invalid input; caller-owned data
  * is never mutated.
@@ -608,7 +612,7 @@ export function encodePhysicPaintRotoPhysicalContent(
 ): string {
   const validated = parsePhysicPaintRotoRealKeyRecordCollection(records);
   if (!isPhysicPaintRotoInterpolationState(interpolation)) {
-    throw new Error('PhysicPaintRotoPhysicalRevision: invalid enabled-only interpolation state.');
+    throw new Error('PhysicPaintRotoPhysicalRevision: invalid canonical interpolation state.');
   }
   const orderedByIdentity = [...validated].sort((a, b) => a.keyId.localeCompare(b.keyId));
   const encodedRecords = orderedByIdentity.map((record) => [
@@ -620,7 +624,11 @@ export function encodePhysicPaintRotoPhysicalContent(
     encodeCanonicalOptionalNumber(record.payload.width),
     encodeCanonicalOptionalNumber(record.payload.height),
   ].join('')).join('');
-  return `records:${orderedByIdentity.length}:${encodedRecords}interpolation:${validatedBoolean(interpolation.enabled)}`;
+  return [
+    `records:${orderedByIdentity.length}:${encodedRecords}`,
+    `interpolation:${validatedBoolean(interpolation.enabled)}`,
+    `mode:${encodeCanonicalString(interpolation.mode)}`,
+  ].join('');
 }
 
 /** Build the broader persisted equality fingerprint for one complete layer. */

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, type Dispatch, type MutableRef, type StateUpdater } from 'preact/hooks';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
+import type { PhysicPaintLaunchContext, PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
 import type { PendingPhysicPaintApply } from './usePhysicsPaintApplyResultController';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { applyPhysicsPaintLaunchContext } from '../bridge/physicsPaintLaunchContext';
@@ -61,6 +61,7 @@ interface LaunchLifecyclePorts {
   pendingApplyRef: MutableRef<PendingPhysicPaintApply | null>;
   activeOperationIdRef: MutableRef<string | null>;
   prepareScriptLaunchReplacement: () => Promise<void>;
+  preparePlaybackSettingsLaunchReplacement: () => Promise<void>;
   completeScriptLaunchReplacement: () => void;
   cancelPhysicalEditForLaunch: () => void;
   disposePhysicalEditSettlement: () => void;
@@ -79,17 +80,23 @@ export function usePhysicsPaintLaunchIntegration(input: {
   lifecycle: LaunchLifecyclePorts;
   state: LaunchStatePorts;
   resetPersistenceForLaunch: (frames: PhysicPaintLaunchContext['cachedRotoFrames']) => void;
-  resetNavigationForLaunchRef: MutableRef<() => void>;
+  resetNavigationForLaunchRef: MutableRef<(settings: PhysicPaintRotoPlaybackSettings) => void>;
+  hydratePlaybackSettingsForLaunch: (context: PhysicPaintLaunchContext, settings: PhysicPaintRotoPlaybackSettings) => void;
   resetCachedReference: () => void;
   loadCachedReferenceFrame: (frame: number, engine?: PreviewBackgroundEngine) => void;
   onSettledLaunchContext?: (context: PhysicPaintLaunchContext) => void;
 }) {
   const getStrokeMetadata = useCallback(() => null, []);
 
-  const resetRotoSessionForLaunch = useCallback(() => {
+  const resetRotoSessionForLaunch = useCallback((context: PhysicPaintLaunchContext) => {
+    const playbackSettings = context.rotoPlayback ?? {
+      loop: false,
+      fps: Math.max(1, Math.min(60, context.fps ?? 12)),
+    };
     input.resetPersistenceForLaunch(undefined);
     input.lifecycle.pendingApplyRef.current = null;
-    input.resetNavigationForLaunchRef.current();
+    input.resetNavigationForLaunchRef.current(playbackSettings);
+    input.hydratePlaybackSettingsForLaunch(context, playbackSettings);
     input.resetCachedReference();
   }, [input]);
 
@@ -106,7 +113,7 @@ export function usePhysicsPaintLaunchIntegration(input: {
       return;
     }
 
-    resetRotoSessionForLaunch();
+    resetRotoSessionForLaunch(hydration.context);
     applyPhysicsPaintLaunchContext(hydration.context, input.state, (launch) => {
       const background = launch.rotoPhysical?.background;
       return background ? applyRotoBackgroundMetadataToSettings(background) : null;
@@ -121,9 +128,15 @@ export function usePhysicsPaintLaunchIntegration(input: {
     input.onSettledLaunchContext?.(hydration.context);
   }, [input, resetRotoSessionForLaunch]);
 
-  const prepareReplacementRef = useRef(input.lifecycle.prepareScriptLaunchReplacement);
+  const prepareReplacementRef = useRef(async () => {
+    await input.lifecycle.prepareScriptLaunchReplacement();
+    await input.lifecycle.preparePlaybackSettingsLaunchReplacement();
+  });
   const applySettledLaunchContextRef = useRef(applySettledLaunchContext);
-  prepareReplacementRef.current = input.lifecycle.prepareScriptLaunchReplacement;
+  prepareReplacementRef.current = async () => {
+    await input.lifecycle.prepareScriptLaunchReplacement();
+    await input.lifecycle.preparePlaybackSettingsLaunchReplacement();
+  };
   applySettledLaunchContextRef.current = applySettledLaunchContext;
   const coordinatorRef = useRef<PhysicsPaintLaunchReplacementCoordinator | null>(null);
   if (!coordinatorRef.current) {

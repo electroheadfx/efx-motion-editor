@@ -7,6 +7,7 @@ import type {
 } from '../roto/physicsPaintRotoPhysicalModel';
 import type {
   RotoInterpolationEnabledExecuteInput,
+  RotoInterpolationModeExecuteInput,
   RotoPhysicalEditCoordinatorHandle,
 } from './useRotoPhysicalEditCoordinator';
 
@@ -28,24 +29,50 @@ export function useRotoInterpolationController(input: {
   executePhysicalEdit: RotoPhysicalEditCoordinatorHandle['executePhysicalEdit'];
   isMutationLocked?: () => boolean;
 }) {
-  const updateRotoInterpolationSettings = useCallback(async (patch: { enabled?: boolean }) => {
+  const updateRotoInterpolationSettings = useCallback(async (patch: {
+    enabled?: boolean;
+    mode?: PhysicPaintRotoInterpolationState['mode'];
+  }) => {
     if (input.isMutationLocked?.() || input.pendingOperationId.peek() !== null) return false;
     const launchContext = input.launchContext;
     if (!launchContext) return false;
+    if (patch.enabled !== undefined && patch.mode !== undefined) return false;
+
+    const expectedLaunch = {
+      operationId: launchContext.operationId,
+      layerId: launchContext.layerId,
+    };
+    const selection = {
+      selectedKeyId: input.selectedKeyId,
+      selectedAppFrame: input.selectedKeyId === null ? null : input.selectedAppFrame,
+    };
+
+    if (patch.mode !== undefined) {
+      if (patch.mode === input.interpolation.mode) return false;
+      const executeInput: RotoInterpolationModeExecuteInput = {
+        operationKind: 'set-interpolation-mode',
+        expectedLaunch,
+        records: input.records,
+        targetInterpolation: {
+          enabled: input.interpolation.enabled,
+          mode: patch.mode,
+        },
+        ...selection,
+      };
+      return input.executePhysicalEdit(executeInput);
+    }
 
     const enabled = patch.enabled ?? !input.interpolation.enabled;
     if (enabled === input.interpolation.enabled) return false;
-
     const executeInput: RotoInterpolationEnabledExecuteInput = {
       operationKind: 'set-interpolation-enabled',
-      expectedLaunch: {
-        operationId: launchContext.operationId,
-        layerId: launchContext.layerId,
-      },
+      expectedLaunch,
       records: input.records,
-      targetInterpolation: { enabled },
-      selectedKeyId: input.selectedKeyId,
-      selectedAppFrame: input.selectedKeyId === null ? null : input.selectedAppFrame,
+      targetInterpolation: {
+        enabled,
+        mode: input.interpolation.mode,
+      },
+      ...selection,
     };
     return input.executePhysicalEdit(executeInput);
   }, [input]);

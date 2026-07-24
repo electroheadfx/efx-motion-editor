@@ -74,6 +74,10 @@ interface PhysicalEditCoordinatorRoute {
   consumeBridgeApplyResult: (detail: PhysicPaintApplyResult | null | undefined) => 'ignore' | 'mismatch' | 'accepted';
 }
 
+interface PlaybackSettingsRoute {
+  consumeBridgeApplyResult: (detail: PhysicPaintApplyResult | null | undefined) => boolean;
+}
+
 interface GeneralResultPorts {
   pendingKeyActionMessageRef: MutableRef<string | null>;
   setApplyStatus: (status: ApplyStatus) => void;
@@ -89,6 +93,7 @@ export interface UsePhysicsPaintApplyResultControllerInput {
   bridgeMode: PhysicsPaintBridgeMode;
   general: GeneralResultPorts;
   physicalEditCoordinator: PhysicalEditCoordinatorRoute;
+  playbackSettings: PlaybackSettingsRoute;
   timeout: TimeoutPorts;
 }
 
@@ -116,6 +121,8 @@ export function usePhysicsPaintApplyResultController(input: UsePhysicsPaintApply
   timeoutRef.current = input.timeout;
   const coordinatorRef = useRef(input.physicalEditCoordinator);
   coordinatorRef.current = input.physicalEditCoordinator;
+  const playbackSettingsRef = useRef(input.playbackSettings);
+  playbackSettingsRef.current = input.playbackSettings;
 
   const clearApplyTimeout = useCallback(() => {
     if (applyTimeoutRef.current === null) return;
@@ -156,6 +163,10 @@ export function usePhysicsPaintApplyResultController(input: UsePhysicsPaintApply
   }, [clearActiveApply, clearApplyTimeout]);
 
   const handleApplyResult = useCallback((detail: PhysicPaintApplyResult | null | undefined) => {
+    if (detail?.kind === 'update-roto-playback-settings') {
+      playbackSettingsRef.current.consumeBridgeApplyResult(detail);
+      return;
+    }
     if (detail && detail.kind === 'replace-roto-physical-map') {
       const routed = coordinatorRef.current.consumeBridgeApplyResult(detail);
       if (routed !== 'ignore') {

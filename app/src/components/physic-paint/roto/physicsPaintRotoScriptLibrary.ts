@@ -152,7 +152,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
           projectName: context.project.name, layerId: context.layerId, layerName: context.layerName ?? context.layerId,
           sourceFrame: scriptSnapshot.sourceFrame, displayFrame: scriptSnapshot.sourceDisplayFrame,
           width: context.width ?? 1000, height: context.height ?? 650,
-          background: context.rotoBackground ?? { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 },
+          background: context.rotoPhysical?.background ?? { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 },
         },
         thumbnail, brushes: scriptSnapshot.brushes,
       });

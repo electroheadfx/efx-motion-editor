@@ -51,11 +51,19 @@ function PhysicsPaintCanvasStack(props: PhysicsPaintCanvasStackViewProps) {
   useEffect(() => {
     const stack = stackRef.current;
     if (!stack) return;
+    let observedCanvas: HTMLCanvasElement | null = null;
     const updateCanvasBounds = () => {
-      const canvas = stack.querySelector('canvas');
-      if (!(canvas instanceof HTMLCanvasElement)) return;
+      const canvases = stack.querySelectorAll('.paint-canvas > canvas');
+      const staticCanvas = canvases[1] ?? canvases[0];
+      if (!(staticCanvas instanceof HTMLCanvasElement)) return;
+      if (observedCanvas !== staticCanvas) {
+        if (observedCanvas) resizeObserver.unobserve(observedCanvas);
+        observedCanvas = staticCanvas;
+        resizeObserver.observe(staticCanvas);
+      }
       const stackRect = stack.getBoundingClientRect();
-      const canvasRect = canvas.getBoundingClientRect();
+      const canvasRect = staticCanvas.getBoundingClientRect();
+      if (canvasRect.width <= 0 || canvasRect.height <= 0) return;
       setCanvasBounds({
         left: canvasRect.left - stackRect.left,
         top: canvasRect.top - stackRect.top,
@@ -63,16 +71,22 @@ function PhysicsPaintCanvasStack(props: PhysicsPaintCanvasStackViewProps) {
         height: canvasRect.height,
       });
     };
-    updateCanvasBounds();
     const resizeObserver = new ResizeObserver(updateCanvasBounds);
     resizeObserver.observe(stack);
-    const canvas = stack.querySelector('canvas');
-    if (canvas) resizeObserver.observe(canvas);
-    return () => resizeObserver.disconnect();
+    const mutationObserver = new MutationObserver(updateCanvasBounds);
+    mutationObserver.observe(stack, { childList: true, subtree: true });
+    const frame = window.requestAnimationFrame(updateCanvasBounds);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
+    };
   }, []);
 
+  const playbackReady = Boolean(props.cachedRotoPlaybackActive && props.cachedRotoPlaybackComposition && canvasBounds);
+
   return (
-    <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={props.onInputIntent}>
+    <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={props.onInputIntent}>
       {props.children}
       {canvasBounds ? (
         <div

@@ -48,6 +48,7 @@ function encodeLaunchPhysical(document: PhysicPaintRotoPhysicalDocument) {
     capacity: document.capacity,
     records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
     interpolationEnabled: document.interpolation.enabled,
+    interpolationMode: document.interpolation.mode,
     scriptMotion: document.scriptMotion,
     background: document.background,
     selectedKeyId: document.selectedKeyId,
@@ -110,12 +111,18 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     return { launchId, layerId, keyId, contentRevision, appFrame: record.appFrame };
   }, []);
 
-  const publishCurrentDocument = useCallback((layerId: string, launchId: string) => {
+  const publishCurrentDocument = useCallback((
+    layerId: string,
+    launchId: string,
+    options?: { preserveRuntimeCaches?: boolean },
+  ) => {
     const document = inputRef.current.store.getRotoPhysicalDocument(layerId);
     if (!document) return;
     const frames = recordsAsRuntimeFrames(document);
     inputRef.current.latestFramesRef.current = frames;
-    confirmedFramesRef.current = new Map(frames.map((frame) => [frame.appFrame, frame]));
+    if (!options?.preserveRuntimeCaches) {
+      confirmedFramesRef.current = new Map(frames.map((frame) => [frame.appFrame, frame]));
+    }
     inputRef.current.setLaunchContext((current) => current && current.layerId === layerId && current.operationId === launchId
       ? { ...current, startFrame: document.cursorAppFrame, rotoPhysical: encodeLaunchPhysical(document), cachedRotoFrames: frames }
       : current);
@@ -127,9 +134,9 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     getPhysicalRenderSource: (appFrame) => inputRef.current.launchContext
       ? inputRef.current.store.getRotoPhysicalRenderSource(inputRef.current.launchContext.layerId, appFrame)
       : null,
-    previewFrames: buffer.previewFrames,
-    dirtyFrames: buffer.dirtyFrames,
-    liveOverlayActionCounts: buffer.liveOverlayActionCounts,
+    getPreviewFrames: () => editBuffer.bufferRef.current.previewFrames,
+    getDirtyFrames: () => editBuffer.bufferRef.current.dirtyFrames,
+    getLiveOverlayActionCounts: () => editBuffer.bufferRef.current.liveOverlayActionCounts,
     syncPending: () => inputRef.current.syncPending(),
     setApplyMessage: (message) => inputRef.current.setApplyMessage(message),
   });
@@ -262,9 +269,9 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     }
   }, [getCurrentIdentity, queueParentPayload]);
 
-  const syncCurrentPhysicalDocument = useCallback(() => {
+  const syncCurrentPhysicalDocument = useCallback((options?: { preserveRuntimeCaches?: boolean }) => {
     const launch = inputRef.current.launchContext;
-    if (launch) publishCurrentDocument(launch.layerId, launch.operationId);
+    if (launch) publishCurrentDocument(launch.layerId, launch.operationId, options);
   }, [publishCurrentDocument]);
 
   const resetForLaunch = useCallback(() => {

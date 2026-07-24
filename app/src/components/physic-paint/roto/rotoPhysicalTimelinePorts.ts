@@ -4,7 +4,7 @@
  * This module defines the stable read/selection/projection boundary consumed by
  * Studio and later action bundles. It exposes immutable getters/Signals for
  * ordered real records, semantic cells, selected keyId/current record/current
- * appFrame, enabled interpolation, physical content revision, and launch/layer
+ * appFrame, canonical interpolation, physical content revision, and launch/layer
  * context.
  *
  * Per D-01/D-10: Studio and later action plans consume this one port bundle
@@ -15,7 +15,7 @@
  *
  * Locked decisions honored:
  * - D-01: stable `keyId` plus direct `appFrame` is the only real-key authority.
- * - D-02: enabled-only interpolation state; generated cells are runtime-derived.
+ * - D-02: canonical interpolation state; generated cells are runtime-derived.
  * - D-03: no source/display projection, compatibility alias, or fallback.
  * - D-10: one shared physical projection for all current-state consumers.
  * - D-11/D-12: production-only pre-UAT; no regression artifact or server process.
@@ -59,7 +59,7 @@ export interface RotoPhysicalTimelineView {
   readonly selectedAppFrame: number | null;
   /** Current direct physical navigation frame. */
   readonly currentAppFrame: number;
-  /** Enabled-only interpolation state. */
+  /** Canonical interpolation state. */
   readonly interpolation: PhysicPaintRotoInterpolationState;
   /** Bounded physical frame capacity. */
   readonly capacity: number;
@@ -77,7 +77,7 @@ export interface RotoPhysicalTimelinePorts {
   readonly selectedKeyId: ReadonlySignal<string | null>;
   /** Reactive current physical navigation frame Signal. */
   readonly currentAppFrame: ReadonlySignal<number>;
-  /** Reactive enabled-only interpolation state Signal. */
+  /** Reactive canonical interpolation state Signal. */
   readonly interpolation: ReadonlySignal<PhysicPaintRotoInterpolationState>;
   /** Reactive physical content revision Signal (bumps on accepted store replacement). */
   readonly revision: ReadonlySignal<number>;

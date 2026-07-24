@@ -1,7 +1,7 @@
 import { signal } from '@preact/signals';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings } from '../types/physicPaint';
 import type { RuntimePhysicPaintOutput } from '../types/project';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRenderedFrame, isPhysicPaintRotoBackgroundMetadata, isPhysicPaintRotoCacheFrame, isPhysicPaintRotoInterpolationSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRenderedFrame, isPhysicPaintRotoBackgroundMetadata, isPhysicPaintRotoCacheFrame, isPhysicPaintRotoInterpolationSettings, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 import type { PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
@@ -40,6 +40,7 @@ export type PhysicPaintLayerSnapshot = {
   rotoGeneratedCacheMetadata?: Array<[number, PhysicPaintRotoCacheFrame]>;
   rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings;
   rotoInterpolationFailureStatus?: string;
+  rotoPlaybackSettings?: PhysicPaintRotoPlaybackSettings;
   alphaCanvases: Array<[string, HTMLCanvasElement]>;
 };
 
@@ -58,6 +59,16 @@ export function registerRotoAlphaCanvasFrame(dataUrl: string, canvas: HTMLCanvas
   _rotoAlphaCanvasRegistry.set(dataUrl, canvas);
 }
 
+export function hasRotoAlphaCanvasFrame(
+  dataUrl: string,
+  expectedSize?: { width: number; height: number },
+): boolean {
+  const canvas = _rotoAlphaCanvasRegistry.get(dataUrl);
+  if (!canvas) return false;
+  return !expectedSize
+    || (canvas.width === expectedSize.width && canvas.height === expectedSize.height);
+}
+
 const _frames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
 const _rotoBackgroundMetadata = new Map<string, PhysicPaintRotoBackgroundMetadata>();
 const _rotoCacheMetadata = new Map<string, Map<number, PhysicPaintRotoCacheFrame>>();
@@ -67,7 +78,7 @@ const _rotoInterpolationFailureStatus = new Map<string, string>();
 const ROTO_INTERPOLATION_FAILURE_STATUS = 'Generated in-betweens could not regenerate. Real keys were kept.';
 
 // --- Physical record ownership (D-01/D-02/D-03) ---
-// Stable keyId -> direct appFrame real-key records plus enabled-only
+// Stable keyId -> direct appFrame real-key records plus canonical
 // interpolation state. These maps are the sole durable Roto timing/identity
 // authority; generated cells are runtime-derived via the shared projection seam
 // and never stored as durable records.
@@ -77,6 +88,7 @@ const _rotoPhysicalScriptMotion = new Map<string, PhysicPaintRotoScriptMotionSet
 const _rotoPhysicalSelectedKeyId = new Map<string, string | null>();
 const _rotoPhysicalCursorAppFrame = new Map<string, number>();
 const _rotoPhysicalCapacity = new Map<string, number>();
+const _rotoPlaybackSettings = new Map<string, PhysicPaintRotoPlaybackSettings>();
 export const rotoPhysicalRevision = signal(0);
 let _serializationRevision = 0;
 let _cachedSerializationRevision = -1;
@@ -136,6 +148,7 @@ function _clearLayerState(layerId: string): boolean {
   changed = _rotoPhysicalSelectedKeyId.delete(layerId) || changed;
   changed = _rotoPhysicalCursorAppFrame.delete(layerId) || changed;
   changed = _rotoPhysicalCapacity.delete(layerId) || changed;
+  changed = _rotoPlaybackSettings.delete(layerId) || changed;
   for (const dataUrl of dataUrls) {
     if (!_isDataUrlReferenced(dataUrl)) changed = _rotoAlphaCanvasRegistry.delete(dataUrl) || changed;
   }
@@ -583,6 +596,21 @@ export const physicPaintStore = {
     _notifyVisualChange();
   },
 
+  getRotoPlaybackSettings(layerId: string): PhysicPaintRotoPlaybackSettings | null {
+    const settings = _rotoPlaybackSettings.get(layerId);
+    return settings ? { ...settings } : null;
+  },
+
+  setRotoPlaybackSettings(layerId: string, settings: PhysicPaintRotoPlaybackSettings): boolean {
+    if (!isPhysicPaintRotoPlaybackSettings(settings)) return false;
+    const current = _rotoPlaybackSettings.get(layerId);
+    if (current?.loop === settings.loop && current.fps === settings.fps) return false;
+    _rotoPlaybackSettings.set(layerId, { ...settings });
+    _invalidateSerializationCache();
+    _markProjectDirty?.();
+    return true;
+  },
+
   getFrames(layerId: string): Map<number, PhysicPaintRenderedFrame> {
     return new Map(_frames.get(layerId) ?? []);
   },
@@ -645,7 +673,7 @@ export const physicPaintStore = {
 
   toMceOutputs(): PhysicPaintMceOutput[] {
     if (_cachedSerializationRevision === _serializationRevision) return structuredClone(_cachedMceOutputs);
-    const layerIds = new Set([..._frames.keys(), ..._rotoCacheMetadata.keys(), ..._rotoInterpolationSettings.keys(), ..._rotoBackgroundMetadata.keys(), ..._rotoRealKeyRecords.keys()]);
+    const layerIds = new Set([..._frames.keys(), ..._rotoCacheMetadata.keys(), ..._rotoInterpolationSettings.keys(), ..._rotoBackgroundMetadata.keys(), ..._rotoRealKeyRecords.keys(), ..._rotoPlaybackSettings.keys()]);
     const outputs = Array.from(layerIds).map((layerId): PhysicPaintMceOutput => {
       if (_rotoRealKeyRecords.has(layerId)) {
         const realKeyRecords = this.getRotoRealKeyRecords(layerId);
@@ -666,7 +694,12 @@ export const physicPaintStore = {
           cursorAppFrame,
           revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation),
         });
-        return { layer_id: layerId, frames: [], roto_physical: rotoPhysical };
+        return {
+          layer_id: layerId,
+          frames: [],
+          roto_physical: rotoPhysical,
+          ...(_rotoPlaybackSettings.has(layerId) ? { roto_playback: { ..._rotoPlaybackSettings.get(layerId)! } } : {}),
+        };
       }
       return {
         layer_id: layerId,
@@ -674,8 +707,9 @@ export const physicPaintStore = {
         ...(_rotoCacheMetadata.has(layerId) ? { roto_cache_metadata: Array.from(_rotoCacheMetadata.get(layerId)!.values()).sort((a, b) => a.appFrame - b.appFrame) } : {}),
         ...(_rotoInterpolationSettings.has(layerId) ? { roto_interpolation_settings: _serializeRotoInterpolationSettings(_rotoInterpolationSettings.get(layerId)!) } : {}),
         ...(_rotoBackgroundMetadata.has(layerId) ? { roto_background: { ..._rotoBackgroundMetadata.get(layerId)! } } : {}),
+        ...(_rotoPlaybackSettings.has(layerId) ? { roto_playback: { ..._rotoPlaybackSettings.get(layerId)! } } : {}),
       };
-    }).filter((output) => output.frames.length > 0 || output.roto_physical || output.roto_cache_metadata || output.roto_interpolation_settings || output.roto_background);
+    }).filter((output) => output.frames.length > 0 || output.roto_physical || output.roto_playback || output.roto_cache_metadata || output.roto_interpolation_settings || output.roto_background);
     _cachedMceOutputs = structuredClone(outputs);
     _cachedSerializationRevision = _serializationRevision;
     return outputs;
@@ -693,6 +727,7 @@ export const physicPaintStore = {
     const nextPhysicalSelection = new Map<string, string | null>();
     const nextPhysicalCursor = new Map<string, number>();
     const nextPhysicalCapacity = new Map<string, number>();
+    const nextPlaybackSettings = new Map<string, PhysicPaintRotoPlaybackSettings>();
     const seenLayerIds = new Set<string>();
 
     for (const output of outputs ?? []) {
@@ -700,6 +735,10 @@ export const physicPaintStore = {
         throw new Error('Physics Paint store installation requires unique non-empty layer IDs.');
       }
       seenLayerIds.add(output.layer_id);
+      if (output.roto_playback !== undefined) {
+        if (!isPhysicPaintRotoPlaybackSettings(output.roto_playback)) throw new Error(`Invalid Roto playback settings for layer "${output.layer_id}".`);
+        nextPlaybackSettings.set(output.layer_id, { ...output.roto_playback });
+      }
       if (output.roto_physical) {
         const physical = parsePhysicPaintRotoPhysicalDocument(output.roto_physical);
         const projection = projectPhysicPaintRotoPhysicalTimeline({
@@ -748,6 +787,7 @@ export const physicPaintStore = {
     _rotoPhysicalSelectedKeyId.clear();
     _rotoPhysicalCursorAppFrame.clear();
     _rotoPhysicalCapacity.clear();
+    _rotoPlaybackSettings.clear();
     for (const [layerId, value] of nextFrames) _frames.set(layerId, value);
     for (const [layerId, value] of nextBackground) _rotoBackgroundMetadata.set(layerId, value);
     for (const [layerId, value] of nextCache) _rotoCacheMetadata.set(layerId, value);
@@ -758,6 +798,7 @@ export const physicPaintStore = {
     for (const [layerId, value] of nextPhysicalSelection) _rotoPhysicalSelectedKeyId.set(layerId, value);
     for (const [layerId, value] of nextPhysicalCursor) _rotoPhysicalCursorAppFrame.set(layerId, value);
     for (const [layerId, value] of nextPhysicalCapacity) _rotoPhysicalCapacity.set(layerId, value);
+    for (const [layerId, value] of nextPlaybackSettings) _rotoPlaybackSettings.set(layerId, value);
     _pruneUnreferencedRotoAlphaCanvases(previousDataUrls);
     _invalidateSerializationCache();
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
@@ -974,12 +1015,13 @@ export const physicPaintStore = {
     const rotoGeneratedCacheMetadata = _rotoGeneratedCacheMetadata.get(layerId);
     const rotoInterpolationSettings = _rotoInterpolationSettings.get(layerId);
     const rotoInterpolationFailureStatus = _rotoInterpolationFailureStatus.get(layerId);
+    const rotoPlaybackSettings = _rotoPlaybackSettings.get(layerId);
     const alphaCanvases: Array<[string, HTMLCanvasElement]> = [];
     for (const dataUrl of _getLayerDataUrls(layerId)) {
       const canvas = _rotoAlphaCanvasRegistry.get(dataUrl);
       if (canvas) alphaCanvases.push([dataUrl, canvas]);
     }
-    if (!frames && !rotoBackground && !rotoCacheMetadata && !rotoGeneratedCacheMetadata && !rotoInterpolationSettings && !rotoInterpolationFailureStatus && alphaCanvases.length === 0) return null;
+    if (!frames && !rotoBackground && !rotoCacheMetadata && !rotoGeneratedCacheMetadata && !rotoInterpolationSettings && !rotoInterpolationFailureStatus && !rotoPlaybackSettings && alphaCanvases.length === 0) return null;
     return {
       layerId,
       ...(frames ? { frames: Array.from(frames, ([frame, value]) => [frame, { ...value }]) } : {}),
@@ -988,6 +1030,7 @@ export const physicPaintStore = {
       ...(rotoGeneratedCacheMetadata ? { rotoGeneratedCacheMetadata: Array.from(rotoGeneratedCacheMetadata, ([frame, value]) => [frame, { ...value }]) } : {}),
       ...(rotoInterpolationSettings ? { rotoInterpolationSettings: _cloneRotoInterpolationSettings(rotoInterpolationSettings) } : {}),
       ...(rotoInterpolationFailureStatus ? { rotoInterpolationFailureStatus } : {}),
+      ...(rotoPlaybackSettings ? { rotoPlaybackSettings: { ...rotoPlaybackSettings } } : {}),
       alphaCanvases,
     };
   },
@@ -1001,6 +1044,7 @@ export const physicPaintStore = {
     if (snapshot.rotoGeneratedCacheMetadata) _rotoGeneratedCacheMetadata.set(layerId, new Map(snapshot.rotoGeneratedCacheMetadata.map(([frame, value]) => [frame, { ...value }])));
     if (snapshot.rotoInterpolationSettings) _rotoInterpolationSettings.set(layerId, _cloneRotoInterpolationSettings(snapshot.rotoInterpolationSettings));
     if (snapshot.rotoInterpolationFailureStatus) _rotoInterpolationFailureStatus.set(layerId, snapshot.rotoInterpolationFailureStatus);
+    if (snapshot.rotoPlaybackSettings) _rotoPlaybackSettings.set(layerId, { ...snapshot.rotoPlaybackSettings });
     for (const [dataUrl, canvas] of snapshot.alphaCanvases) {
       if (!_rotoAlphaCanvasRegistry.has(dataUrl)) _rotoAlphaCanvasRegistry.set(dataUrl, canvas);
     }
@@ -1015,22 +1059,28 @@ export const physicPaintStore = {
     if (_clearLayerState(layerId)) _notifyVisualChange();
   },
 
-  reset(): void {
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && _rotoAlphaCanvasRegistry.size === 0 && _rotoRealKeyRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0) return;
+  reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
+    const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
     _rotoGeneratedCacheMetadata.clear();
     _rotoInterpolationSettings.clear();
     _rotoInterpolationFailureStatus.clear();
-    _rotoAlphaCanvasRegistry.clear();
+    if (resetAlphaCanvases) _rotoAlphaCanvasRegistry.clear();
     _rotoRealKeyRecords.clear();
     _rotoPhysicalInterpolationState.clear();
     _rotoPhysicalScriptMotion.clear();
     _rotoPhysicalSelectedKeyId.clear();
     _rotoPhysicalCursorAppFrame.clear();
     _rotoPhysicalCapacity.clear();
+    _rotoPlaybackSettings.clear();
     _notifyVisualChange();
+  },
+
+  pruneUnreferencedRotoAlphaCanvases(dataUrls: Iterable<string>): void {
+    _pruneUnreferencedRotoAlphaCanvases(dataUrls);
   },
 
   _debugSerializationRevision(): number {
@@ -1049,7 +1099,7 @@ export const physicPaintStore = {
   // Physical record ownership (D-01/D-02/D-03/D-10).
   //
   // These ports own the validated per-layer physical real-key records and
-  // enabled-only interpolation state. Complete replacement validates the whole
+  // canonical interpolation state. Complete replacement validates the whole
   // collection and the derived projection before any mutation; failure leaves
   // records, interpolation, generated render artifacts, project-dirty state,
   // and physicPaintVersion unchanged. An accepted visible change follows the
@@ -1059,7 +1109,7 @@ export const physicPaintStore = {
 
   /**
    * Validate and replace the complete per-layer physical real-key record
-   * collection and enabled-only interpolation state atomically. Returns a
+   * collection and canonical interpolation state atomically. Returns a
    * closed success/failure result; failure changes nothing.
    */
   replaceRotoPhysicalRecords(
@@ -1075,7 +1125,7 @@ export const physicPaintStore = {
       return { ok: false, error: 'Capacity must be an integer from 1 through PHYSIC_PAINT_MAX_APPLY_FRAMES.' };
     }
     if (!isPhysicPaintRotoInterpolationState(interpolation)) {
-      return { ok: false, error: 'Interpolation state must be enabled-only (D-02).' };
+      return { ok: false, error: 'Interpolation state must include canonical enabled and mode fields.' };
     }
 
     let validatedRecords: readonly PhysicPaintRotoRealKeyRecord[];
@@ -1107,7 +1157,10 @@ export const physicPaintStore = {
     const recordMap = new Map<string, PhysicPaintRotoRealKeyRecord>();
     for (const record of validatedRecords) recordMap.set(record.keyId, record);
     _rotoRealKeyRecords.set(layerId, recordMap);
-    _rotoPhysicalInterpolationState.set(layerId, Object.freeze({ enabled: interpolation.enabled }) as PhysicPaintRotoInterpolationState);
+    _rotoPhysicalInterpolationState.set(layerId, Object.freeze({
+      enabled: interpolation.enabled,
+      mode: interpolation.mode,
+    }) as PhysicPaintRotoInterpolationState);
     if (!_rotoPhysicalScriptMotion.has(layerId)) _rotoPhysicalScriptMotion.set(layerId, PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO);
     const previousSelectedKeyId = _rotoPhysicalSelectedKeyId.get(layerId) ?? null;
     const selectedRecord = previousSelectedKeyId === null ? null : recordMap.get(previousSelectedKeyId) ?? null;
@@ -1151,7 +1204,7 @@ export const physicPaintStore = {
     else _rotoBackgroundMetadata.delete(layerId);
     _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
-    _notifyVisualChange(undefined, false);
+    _notifyVisualChange();
     return { ok: true, document };
   },
 
@@ -1234,7 +1287,7 @@ export const physicPaintStore = {
   },
 
   /**
-   * Read the enabled-only interpolation state for a layer. Returns the
+   * Read the canonical interpolation state for a layer. Returns the
    * immutable disabled default when no physical state has been published.
    */
   getRotoPhysicalInterpolationState(layerId: string): PhysicPaintRotoInterpolationState {
@@ -1243,16 +1296,20 @@ export const physicPaintStore = {
   },
 
   /**
-   * Set the enabled-only interpolation state for a layer. Validates the state
+   * Set the canonical interpolation state for a layer. Validates the state
    * and publishes one visible change. Per D-02, this cannot move real keys or
    * touch Script Motion.
    */
   setRotoPhysicalInterpolationState(layerId: string, state: unknown): { ok: true } | { ok: false; error: string } {
     if (!isPhysicPaintRotoInterpolationState(state)) {
-      return { ok: false, error: 'Interpolation state must be enabled-only (D-02).' };
+      return { ok: false, error: 'Interpolation state must include canonical enabled and mode fields.' };
     }
-    if (this.getRotoPhysicalInterpolationState(layerId).enabled === state.enabled) return { ok: true };
-    _rotoPhysicalInterpolationState.set(layerId, Object.freeze({ enabled: state.enabled }) as PhysicPaintRotoInterpolationState);
+    const current = this.getRotoPhysicalInterpolationState(layerId);
+    if (current.enabled === state.enabled && current.mode === state.mode) return { ok: true };
+    _rotoPhysicalInterpolationState.set(layerId, Object.freeze({
+      enabled: state.enabled,
+      mode: state.mode,
+    }) as PhysicPaintRotoInterpolationState);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     _notifyVisualChange();
     return { ok: true };
@@ -1269,7 +1326,7 @@ export const physicPaintStore = {
    * Read the current physical timeline projection for a layer. Derives ordered
    * assignments, exact runtime generated interiors, and bounded
    * real/generated/empty physical cells from the validated record set and
-   * enabled-only interpolation state using the shared projection seam.
+   * canonical interpolation state using the shared projection seam.
    */
   getRotoPhysicalProjection(layerId: string): PhysicPaintRotoPhysicalTimelineProjection | null {
     const records = this.getRotoRealKeyRecords(layerId);
@@ -1323,8 +1380,12 @@ export const physicPaintStore = {
     const left = this.getRotoRealKeyRecord(layerId, cell.leftKeyId);
     const right = this.getRotoRealKeyRecord(layerId, cell.rightKeyId);
     if (!left || !right || !(left.appFrame < appFrame && appFrame < right.appFrame)) return null;
+    const interpolation = this.getRotoPhysicalInterpolationState(layerId);
+    const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode: interpolation.mode };
     const distance = right.appFrame - left.appFrame;
-    const rendered = renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, (appFrame - left.appFrame) / distance, DEFAULT_ROTO_INTERPOLATION_SETTINGS);
+    const rendered = interpolation.mode === 'duplicate'
+      ? renderDuplicateRotoInterpolationFrame(left.payload, appFrame, settings)
+      : renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, (appFrame - left.appFrame) / distance, settings);
     if (!rendered) return null;
     const renderedFrame: PhysicPaintRotoRealKeyPayload = {
       frameIndex: rendered.frameIndex,
@@ -1339,8 +1400,9 @@ export const physicPaintStore = {
       appFrame,
       leftKeyId: left.keyId,
       rightKeyId: right.keyId,
+      interpolationMode: interpolation.mode,
       contentRevision,
-      cacheRevision: `${contentRevision}:generated:${left.keyId}:${right.keyId}:${appFrame}`,
+      cacheRevision: `${contentRevision}:generated:${interpolation.mode}:${left.keyId}:${right.keyId}:${appFrame}`,
       renderedFrame,
     };
   },

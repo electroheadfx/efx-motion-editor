@@ -148,7 +148,7 @@ export interface RotoTimelineActionsInput {
   setInterpolationSettings?: (settings: PhysicPaintRotoInterpolationSettings) => PhysicPaintRotoInterpolationSettings;
   /** Physical real-key records from the store (D-01/D-10). */
   getRotoKeyRecords?: () => readonly PhysicPaintRotoRealKeyRecord[];
-  /** Enabled-only interpolation state from the store (D-02). */
+  /** Canonical interpolation state from the store (D-02). */
   getRotoInterpolationState?: () => PhysicPaintRotoInterpolationState;
   /** Current physical projection cells (D-10). */
   getPhysicalCells?: () => readonly RotoPhysicalTimelineCell[];

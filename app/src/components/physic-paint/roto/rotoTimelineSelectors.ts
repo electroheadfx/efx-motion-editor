@@ -193,7 +193,7 @@ function normalizeTimelineSettings(settings: Partial<PhysicPaintRotoInterpolatio
 export interface RotoPhysicalTimelineViewSelectorInput {
   /** Ordered real-key records from the store's physical record ownership. */
   readonly realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[];
-  /** Enabled-only interpolation state from the store. */
+  /** Canonical interpolation state from the store. */
   readonly interpolation: PhysicPaintRotoInterpolationState;
   /** Bounded physical frame capacity. */
   readonly capacity: number;
@@ -225,7 +225,7 @@ export interface RotoPhysicalTimelineView {
 
 /**
  * Select the physical timeline view from the store's validated physical records,
- * enabled-only interpolation state, bounded capacity, current navigation frame,
+ * canonical interpolation state, bounded capacity, current navigation frame,
  * and selected keyId. Derives semantic cells, selection, and ordered records from
  * one shared projection seam.
  */
