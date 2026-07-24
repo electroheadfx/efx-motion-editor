@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
-stopped_at: Completed 36.14-21-PLAN.md
-last_updated: "2026-07-24T06:03:26.169Z"
+stopped_at: Completed 36.14-23-PLAN.md
+last_updated: "2026-07-24T06:23:18.679Z"
 last_activity: 2026-07-24
 last_activity_desc: Phase 36.14 execution started
 progress:
   total_phases: 17
   completed_phases: 16
   total_plans: 121
-  completed_plans: 107
-  percent: 88
+  completed_plans: 108
+  percent: 89
 ---
 
 # Project State
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 1 of 29
-Status: Executing Phase 36.14
+Plan: 2 of 29
+Status: Ready to execute
 Last activity: 2026-07-24 — Phase 36.14 execution started
-Next recommended action: Execute Plan 36.14-12 blocking native UAT
+Next recommended action: Continue the authorized D-30 gap-closure sequence with the next incomplete Plan 24-27; Plans 12-18 remain non-executable.
 
-Progress: [███████████████████░] 105/112 plans complete; 16/17 phases complete ([█████████░] 88%)
+Progress: [███████████████████░] 105/112 plans complete; 16/17 phases complete ([█████████░] 89%)
 
 ## Performance Metrics
 
@@ -103,6 +103,7 @@ Progress: [███████████████████░] 105/112
 | Phase 36.14 P19 | 14min | 3 tasks | 5 files |
 | Phase 36.14 P11 | 30min | 3 tasks | 10 files |
 | Phase 36.14 P21 | 5min | 2 tasks | 4 files |
+| Phase 36.14 P23 | 5min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -183,6 +184,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 36.14 Plan 21]: All six ordinary physical operations share one narrowed immutable history command type; Undo and Redo remain replay-only.
 - [Phase ?]: [Phase 36.14 Plan 21]: Replay stages the stored child snapshot locally while the parent receives only canonical records, interpolation, selection, revision, and provenance.
 - [Phase ?]: [Phase 36.14 Plan 21]: History stacks move only after exact accepted command, direction, source/target revision, launch, layer, project, capacity, selection, and current-frame matching.
+- [Phase ?]: [Phase 36.14 Plan 23]: Canonical real-key PNGs decode and register before physical document publication so generated reads remain synchronous and effect-free.
+- [Phase ?]: [Phase 36.14 Plan 23]: Strict-interior generation publishes only adjacent-key canvas PNG composites or no image; pseudo-PNG, neighbor substitution, and durable generated authority remain excluded.
+- [Phase ?]: [Phase 36.14 Plan 23]: Generated references require exact appFrame, contentRevision-derived cache identity, and the shared PNG signature guard.
 
 ### Pending Todos
 
@@ -260,6 +264,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-24T06:03:26.155Z
-Stopped at: Completed 36.14-21-PLAN.md
+Last session: 2026-07-24T06:23:18.666Z
+Stopped at: Completed 36.14-23-PLAN.md
 Resume file: None
