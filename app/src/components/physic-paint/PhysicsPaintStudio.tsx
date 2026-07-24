@@ -85,6 +85,7 @@ export function PhysicsPaintStudio() {
   const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => makeInitialPhysicsPaintStudioSettings());
   const workflowMode = 'roto' as const;
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  const playButtonRef = useRef<HTMLButtonElement>(null);
   const historyAvailability = useSignal<PaintHistoryAvailability>({ undo: 0, redo: 0 });
   const [onion, setOnionState] = useState<PhysicsPaintOnionState>(() => ({
     ...DEFAULT_ONION_STATE,
@@ -958,6 +959,7 @@ export function PhysicsPaintStudio() {
         scripts: {
           library: rotoScriptLibrary,
           playScript: rotoPlayScript,
+          playButtonRef,
           loadAndApplyDisabledReason: scriptLoadAndApplyDisabledReason,
           onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
           onActivateRow: (id) => { void handleScriptRowActivate(id); },

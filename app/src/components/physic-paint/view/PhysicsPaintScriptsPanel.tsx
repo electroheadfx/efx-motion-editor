@@ -1,5 +1,5 @@
 import { Paintbrush, Pencil, Play, RefreshCw, Save, Trash2 } from 'lucide-preact';
-import type { ComponentChildren, Ref } from 'preact';
+import type { ComponentChildren, Ref, RefObject } from 'preact';
 import { useEffect, useId, useRef } from 'preact/hooks';
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
@@ -7,6 +7,7 @@ import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScrip
 export interface PhysicsPaintScriptsPanelProps {
   library: RotoScriptLibraryController;
   playScript: RotoPlayScriptController;
+  playButtonRef: RefObject<HTMLButtonElement>;
   loadAndApplyDisabledReason: string | null;
   onSave: () => void;
   onActivateRow: (id: string) => void;
@@ -17,6 +18,7 @@ export interface PhysicsPaintScriptsPanelProps {
 export function PhysicsPaintScriptsPanel({
   library,
   playScript,
+  playButtonRef,
   loadAndApplyDisabledReason,
   onSave,
   onActivateRow,
@@ -31,10 +33,6 @@ export function PhysicsPaintScriptsPanel({
   const confirmationRef = useRef<HTMLDivElement>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const previousConfirmation = useRef(false);
-  const playButtonRef = useRef<HTMLButtonElement>(null);
-  const playDialogRef = useRef<HTMLDivElement>(null);
-  const playInputRef = useRef<HTMLInputElement>(null);
-  const previousPlayConfirmation = useRef(false);
   const saveReasonId = useId();
   const loadAndApplyReasonId = useId();
   const playReasonId = useId();
@@ -43,11 +41,6 @@ export function PhysicsPaintScriptsPanel({
     else if (previousConfirmation.current) deleteButtonRef.current?.focus();
     previousConfirmation.current = Boolean(confirmation);
   }, [confirmation]);
-  useEffect(() => {
-    if (playScript.confirmationOpen.value) playInputRef.current?.focus();
-    else if (previousPlayConfirmation.current) playButtonRef.current?.focus();
-    previousPlayConfirmation.current = playScript.confirmationOpen.value;
-  }, [playScript.confirmationOpen.value]);
   const stopRowPointerActivation = (event: { stopPropagation: () => void }) => event.stopPropagation();
   const stopRowKeyboardActivation = (event: { key: string; stopPropagation: () => void }) => {
     if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
@@ -105,32 +98,6 @@ export function PhysicsPaintScriptsPanel({
         {!rows.length ? <p class="physics-paint-scripts-empty">No project scripts yet.</p> : null}
       </div>
       <p class="physics-paint-scripts-status" aria-live="polite">{playScript.status.value ?? library.status.value}{library.skippedInvalidCount.value ? ` · Skipped ${library.skippedInvalidCount.value} invalid files` : ''}</p>
-      {playScript.confirmationOpen.value ? (
-        <div ref={playDialogRef} class="physics-paint-script-confirmation physics-paint-play-script-dialog" role="dialog" aria-modal="true" aria-labelledby="physics-play-script-title"
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') { event.preventDefault(); playScript.cancel(); return; }
-            if (event.key === 'Enter' && !playScript.validationError.value && !playScript.canCancel.value) { event.preventDefault(); void playScript.confirm(); return; }
-            if (event.key !== 'Tab') return;
-            const controls = Array.from(playDialogRef.current?.querySelectorAll<HTMLElement>('input:not(:disabled), button:not(:disabled), [tabindex]:not([tabindex="-1"])') ?? []);
-            if (!controls.length) return;
-            const first = controls[0]; const last = controls[controls.length - 1];
-            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-          }}>
-          <strong id="physics-play-script-title">Play Script</strong>
-          <span>Max {playScript.capacity.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>
-          <label for="physics-play-script-count">Frames</label>
-          <input ref={playInputRef} id="physics-play-script-count" inputMode="numeric" value={playScript.countText.value} disabled={playScript.canCancel.value} aria-invalid={Boolean(playScript.validationError.value)} aria-describedby="physics-play-script-help physics-play-script-error" onInput={(event) => { playScript.countText.value = (event.currentTarget as HTMLInputElement).value; }} />
-          <span id="physics-play-script-help">Enter a positive integer or Max.</span>
-          {playScript.validationError.value ? <span id="physics-play-script-error" class="physics-paint-script-inline-error">{playScript.validationError.value}</span> : null}
-          {playScript.progress.value ? <progress max={playScript.progress.value.total} value={playScript.progress.value.completed}>{playScript.progress.value.completed}/{playScript.progress.value.total}</progress> : null}
-          {playScript.error.value ? <span class="physics-paint-script-inline-error">{playScript.error.value}</span> : null}
-          <div>
-            <button type="button" onClick={playScript.cancel}>{playScript.canCancel.value ? 'Cancel generation' : 'Cancel'}</button>
-            {!playScript.canCancel.value ? <button type="button" disabled={Boolean(playScript.validationError.value)} onClick={() => { void playScript.confirm(); }}>Generate</button> : null}
-          </div>
-        </div>
-      ) : null}
       {confirmation ? (
         <div ref={confirmationRef} class="physics-paint-script-confirmation" role="dialog" aria-modal="true" aria-label={`Delete ${confirmation.name}`}
           onKeyDown={(event) => {
