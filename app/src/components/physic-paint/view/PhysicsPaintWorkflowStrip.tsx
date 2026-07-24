@@ -13,7 +13,7 @@ import {
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type { RotoKeyUtilityActionState } from '../roto/physicsPaintRotoKeyController';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
-import type { PhysicPaintRotoInterpolationState, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import type {
   RotoDragPublication,
@@ -75,7 +75,8 @@ export interface PhysicsPaintWorkflowStripProps {
   occupiedRotoFrames?: number[];
   savedRotoFrames?: PhysicsPaintWorkflowStripFrameMarker[];
   cachedRotoFrames?: PhysicPaintRotoCacheFrame[];
-  rotoInterpolationSettings?: PhysicPaintRotoInterpolationState;
+  rotoInterpolationEnabled?: boolean;
+  rotoInterpolationPending?: boolean;
   statusMessage?: string | null;
   rotoMissingFrameStatusKind?: RotoMissingFrameStatusKind | null;
   onion: PhysicsPaintOnionState;
@@ -229,8 +230,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
   const suppressNextRotoClickRef = useRef(false);
   const mountedRef = useRef(true);
-  const interpolationSettings = props.rotoInterpolationSettings ?? { enabled: false };
-  const interpolationEnabled = interpolationSettings.enabled === true;
+  const interpolationEnabled = props.rotoInterpolationEnabled === true;
   const currentPhysicalCells = props.rotoPhysicalCells ?? [];
   const physicalCellByAppFrame = useMemo(
     () => new Map(currentPhysicalCells.map((cell) => [cell.appFrame, cell])),
@@ -273,7 +273,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const scriptAvailability = props.rotoScript?.availability.value;
   const scriptStatus = props.rotoScript?.status.value ?? null;
   const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy) || Boolean(rotoDragPreview?.pending);
-  const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked);
+  const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.rotoInterpolationPending);
   const canUseSourceRotoKey = isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState;
   const canInsertRotoKey = physicalActions ? physicalInsertAvailable && props.ready !== false : (sessionKeyAvailability ? (sessionKeyAvailability.canInsert || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey);
   const canDuplicateRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canDuplicate || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
@@ -765,12 +765,24 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
               {props.onRotoInterpolationEnabledChange ? (
-                <div class="physics-paint-roto-interpolation-controls" title={interpolationStatus}>
+                <div
+                  class="physics-paint-roto-interpolation-controls"
+                  data-enabled={interpolationEnabled ? 'true' : 'false'}
+                  data-pending={props.rotoInterpolationPending ? 'true' : 'false'}
+                  title={interpolationStatus}
+                >
                   <label class="physics-paint-roto-interpolation-toggle">
-                    <input type="checkbox" aria-label="Enable generated in-betweens" checked={Boolean(interpolationSettings.enabled)} disabled={interpolationControlsDisabled} onChange={(event) => {
-                      if (props.mutationLocked) return;
-                      props.onRotoInterpolationEnabledChange?.((event.currentTarget as HTMLInputElement).checked);
-                    }} />
+                    <input
+                      type="checkbox"
+                      aria-label="Enable generated in-betweens"
+                      aria-busy={props.rotoInterpolationPending ? 'true' : undefined}
+                      checked={interpolationEnabled}
+                      disabled={interpolationControlsDisabled}
+                      onChange={(event) => {
+                        if (props.mutationLocked || props.rotoInterpolationPending) return;
+                        props.onRotoInterpolationEnabledChange?.((event.currentTarget as HTMLInputElement).checked);
+                      }}
+                    />
                   </label>
                   {physicalActions ? (
                     <form class="physics-paint-roto-interpolation-count" title={forceSpacingDisabledReason ?? 'Set empty physical frames between real Roto keys'} onSubmit={handleForceSpacingSubmit}>

@@ -1521,6 +1521,19 @@ button.destructive {
   border: 1px solid rgba(111, 144, 255, 0.34);
   border-radius: 7px;
   background: rgba(12, 18, 32, 0.34);
+  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.physics-paint-roto-interpolation-controls[data-enabled="true"] {
+  border-color: rgba(105, 217, 166, 0.8);
+  background: rgba(28, 92, 67, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(105, 217, 166, 0.14);
+}
+
+.physics-paint-roto-interpolation-controls[data-pending="true"] {
+  border-color: rgba(143, 182, 255, 0.5);
+  background: rgba(35, 50, 78, 0.46);
+  box-shadow: none;
 }
 
 .physics-paint-roto-interpolation-toggle,
@@ -1537,10 +1550,54 @@ button.destructive {
 }
 
 .physics-paint-roto-interpolation-toggle input {
-  width: 13px;
-  height: 13px;
+  appearance: none;
+  display: grid;
+  place-content: center;
+  width: 14px;
+  height: 14px;
   margin: 0;
-  accent-color: #6f90ff;
+  border: 1px solid #7f8da3;
+  border-radius: 3px;
+  background: #222b36;
+  color: #10251d;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.physics-paint-roto-interpolation-toggle input::before {
+  width: 8px;
+  height: 5px;
+  border-bottom: 2px solid currentColor;
+  border-left: 2px solid currentColor;
+  content: "";
+  opacity: 0;
+  transform: translateY(-1px) rotate(-45deg) scale(0.6);
+  transition: opacity 100ms ease, transform 100ms ease;
+}
+
+.physics-paint-roto-interpolation-toggle input:checked {
+  border-color: #79ddb0;
+  background: #69d9a6;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32);
+}
+
+.physics-paint-roto-interpolation-toggle input:checked::before {
+  opacity: 1;
+  transform: translateY(-1px) rotate(-45deg) scale(1);
+}
+
+.physics-paint-roto-interpolation-toggle input:focus-visible {
+  outline: 2px solid #9bb7ff;
+  outline-offset: 2px;
+}
+
+.physics-paint-roto-interpolation-toggle input:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.physics-paint-roto-interpolation-controls[data-pending="true"] .physics-paint-roto-interpolation-toggle input {
+  cursor: wait;
 }
 
 .physics-paint-roto-interpolation-count input {
