@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 2
 waived_count: 0
-fixed_count: 8
-total_count: 10
-last_updated: 2026-07-24T09:41:05.837Z
+fixed_count: 9
+total_count: 11
+last_updated: 2026-07-24T09:57:16.430Z
 ---
 
 # Broken Windows Ledger
@@ -25,6 +25,7 @@ last_updated: 2026-07-24T09:41:05.837Z
 | 8 | 36.14 | deviation | .planning/STATE.md |  | Corrected stale Plan 22 activity, Plan 28 next action, and 111-plan prose count left by state handlers after Plan 25 closure | fixed |  | 2026-07-24T07:53:03.816Z | 2026-07-24T07:54:09.840Z |
 | 9 | 36.14 | deviation | app/src/types/physicPaint.ts | 739 | The active apply-payload allowlist omitted the valid play-script physical operation. | fixed |  | 2026-07-24T09:36:17.277Z | 2026-07-24T09:37:35.662Z |
 | 10 | 36.14 | deviation | .planning/STATE.md |  | Corrected stale Plan 25 activity, Plan 26 next action, and 112-plan prose count after the non-linear Plan 26 state update. | fixed |  | 2026-07-24T09:40:48.530Z | 2026-07-24T09:41:05.837Z |
+| 11 | 36.14 | deviation | .planning/STATE.md |  | Corrected stale non-linear recovery position after generic state advancement | fixed |  | 2026-07-24T09:56:45.875Z | 2026-07-24T09:57:16.430Z |
 
 ````json
 [
@@ -147,6 +148,18 @@ last_updated: 2026-07-24T09:41:05.837Z
     "reason": "",
     "recorded_at": "2026-07-24T09:40:48.530Z",
     "resolved_at": "2026-07-24T09:41:05.837Z"
+  },
+  {
+    "id": 11,
+    "kind": "deviation",
+    "phase": "36.14",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Corrected stale non-linear recovery position after generic state advancement",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-07-24T09:56:45.875Z",
+    "resolved_at": "2026-07-24T09:57:16.430Z"
   }
 ]
 ````
