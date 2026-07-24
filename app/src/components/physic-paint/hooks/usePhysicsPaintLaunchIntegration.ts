@@ -18,7 +18,7 @@ export interface PhysicsPaintLaunchReplacementCoordinator {
 
 export function createPhysicsPaintLaunchReplacementCoordinator(input: {
   prepareReplacement: () => Promise<void>;
-  applyLatest: (context: PhysicPaintLaunchContext) => void;
+  applyLatest: (context: PhysicPaintLaunchContext) => void | Promise<void>;
 }): PhysicsPaintLaunchReplacementCoordinator {
   let latest: PhysicPaintLaunchContext | null = null;
   let running = false;
@@ -33,7 +33,7 @@ export function createPhysicsPaintLaunchReplacementCoordinator(input: {
       if (disposed) return;
       const context = latest;
       latest = null;
-      if (context) input.applyLatest(context);
+      if (context) await input.applyLatest(context);
     } catch (error) {
       if (latest === requestedContext) latest = null;
       console.error('[PhysicsPaintStudio] launch replacement handoff failed', error);
@@ -93,12 +93,12 @@ export function usePhysicsPaintLaunchIntegration(input: {
     input.resetCachedReference();
   }, [input]);
 
-  const applySettledLaunchContext = useCallback((context: PhysicPaintLaunchContext) => {
+  const applySettledLaunchContext = useCallback(async (context: PhysicPaintLaunchContext) => {
     input.lifecycle.pendingFrameSyncRef.current = null;
     input.lifecycle.completeScriptLaunchReplacement();
     input.lifecycle.cancelPhysicalEditForLaunch();
 
-    const hydration = hydrateRotoPhysicalLaunchContext(context, physicPaintStore);
+    const hydration = await hydrateRotoPhysicalLaunchContext(context, physicPaintStore);
     if (!hydration.ok) {
       input.state.setLastError(hydration.error);
       input.state.setApplyStatus('error');

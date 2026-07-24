@@ -421,19 +421,6 @@ function _withGeneratedAppFrame(frame: PhysicPaintRenderedFrame, appFrame: numbe
   return { ...frame, appFrame, frameIndex: 0, source: 'generated-interpolation' };
 }
 
-function _decodeAlphaSource(dataUrl: string): string {
-  const payload = dataUrl.split(',')[1] ?? '';
-  if (typeof atob === 'function') return atob(payload);
-  return payload;
-}
-
-function _encodeAlphaSource(source: string): string {
-  const encoded = typeof btoa === 'function'
-    ? btoa(source)
-    : Buffer.from(source, 'utf8').toString('base64');
-  return `data:image/png;base64,${encoded}`;
-}
-
 function _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): string | null {
   if (typeof document === 'undefined') return null;
   const firstCanvas = _rotoAlphaCanvasRegistry.get(firstKeyFrame.dataUrl);
@@ -455,15 +442,8 @@ function _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame: PhysicPaintRenderedFr
   return output.toDataURL('image/png');
 }
 
-function _blendAlphaDataUrl(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): string {
-  const canvasBlend = _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame, secondKeyFrame, t);
-  if (canvasBlend) return canvasBlend;
-  const firstAlpha = 1 - t;
-  const secondAlpha = t;
-  const firstSource = _decodeAlphaSource(firstKeyFrame.dataUrl);
-  const secondSource = _decodeAlphaSource(secondKeyFrame.dataUrl);
-  const blendedSource = `roto-alpha:${firstAlpha.toFixed(6)}:${firstSource}:${secondAlpha.toFixed(6)}:${secondSource}`;
-  return _encodeAlphaSource(blendedSource);
+function _blendAlphaDataUrl(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): string | null {
+  return _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame, secondKeyFrame, t);
 }
 
 export function renderDuplicateRotoInterpolationFrame(sourceKeyFrame: PhysicPaintRenderedFrame, targetFrame: number, _settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRenderedFrame {
@@ -476,11 +456,13 @@ export function renderDuplicateRotoInterpolationFrame(sourceKeyFrame: PhysicPain
   }, targetFrame);
 }
 
-export function renderBlendedRotoInterpolationFrame(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, targetFrame: number, t: number, _settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRenderedFrame {
+export function renderBlendedRotoInterpolationFrame(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, targetFrame: number, t: number, _settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRenderedFrame | null {
+  const dataUrl = _blendAlphaDataUrl(firstKeyFrame, secondKeyFrame, t);
+  if (!dataUrl) return null;
   return _withGeneratedAppFrame({
     frameIndex: 0,
     appFrame: targetFrame,
-    dataUrl: _blendAlphaDataUrl(firstKeyFrame, secondKeyFrame, t),
+    dataUrl,
     width: firstKeyFrame.width ?? secondKeyFrame.width,
     height: firstKeyFrame.height ?? secondKeyFrame.height,
   }, targetFrame);
@@ -534,6 +516,7 @@ function _regenerateGeneratedRotoCache(layerId: string, settings: PhysicPaintRot
     const rendered = settings.mode === 'duplicate'
       ? renderDuplicateRotoInterpolationFrame(from, targetFrame, settings)
       : renderBlendedRotoInterpolationFrame(from, to, targetFrame, displayEntry.t, settings);
+    if (!rendered) throw new Error('Generated Roto alpha sources are unavailable.');
     const generatedFrame = {
       ...rendered,
       nearestRealKeyFrame: displayEntry.fromSourceFrame,
@@ -1326,6 +1309,7 @@ export const physicPaintStore = {
     if (!left || !right || !(left.appFrame < appFrame && appFrame < right.appFrame)) return null;
     const distance = right.appFrame - left.appFrame;
     const rendered = renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, (appFrame - left.appFrame) / distance, DEFAULT_ROTO_INTERPOLATION_SETTINGS);
+    if (!rendered) return null;
     const renderedFrame: PhysicPaintRotoRealKeyPayload = {
       frameIndex: rendered.frameIndex,
       appFrame,

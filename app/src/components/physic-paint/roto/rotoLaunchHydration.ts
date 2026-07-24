@@ -9,6 +9,7 @@ import {
   type PhysicPaintRotoPhysicalDocument,
 } from './physicsPaintRotoPhysicalModel';
 import { projectPhysicPaintRotoPhysicalTimeline } from './physicsPaintRotoPhysicalResolver';
+import { isRotoPngDataUrl, registerRotoAlphaCanvasFrameFromDataUrl } from './rotoCanvasFrames';
 
 export interface RotoPhysicalLaunchHydrationStore {
   replaceRotoPhysicalDocument(
@@ -66,13 +67,34 @@ export function prepareRotoPhysicalLaunch(
   }
 }
 
-/** Validate first, then install exactly one complete physical document. */
-export function hydrateRotoPhysicalLaunchContext(
+/** Decode canonical PNG sources first, then install exactly one complete physical document. */
+export async function hydrateRotoPhysicalLaunchContext(
   context: PhysicPaintLaunchContext,
   store: RotoPhysicalLaunchHydrationStore,
-): RotoPhysicalLaunchHydrationResult {
+): Promise<RotoPhysicalLaunchHydrationResult> {
   const prepared = prepareRotoPhysicalLaunch(context);
   if (!prepared.ok) return prepared;
+
+  const uniquePayloads = new Map<string, { width: number; height: number } | undefined>();
+  for (const record of prepared.document.realKeyRecords) {
+    const { dataUrl, width, height } = record.payload;
+    if (!isRotoPngDataUrl(dataUrl)) {
+      return { ok: false, error: `Canonical Roto key "${record.keyId}" does not contain a valid PNG payload.` };
+    }
+    const size = width !== undefined && height !== undefined ? { width, height } : undefined;
+    const priorSize = uniquePayloads.get(dataUrl);
+    if (priorSize && size && (priorSize.width !== size.width || priorSize.height !== size.height)) {
+      return { ok: false, error: 'Canonical Roto keys disagree about shared PNG payload dimensions.' };
+    }
+    if (!uniquePayloads.has(dataUrl) || (!priorSize && size)) uniquePayloads.set(dataUrl, size);
+  }
+
+  try {
+    await Promise.all(Array.from(uniquePayloads, ([dataUrl, size]) => registerRotoAlphaCanvasFrameFromDataUrl(dataUrl, size)));
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Canonical Roto PNG hydration failed.' };
+  }
+
   const replacement = store.replaceRotoPhysicalDocument(context.layerId, prepared.document);
   if (!replacement.ok) return replacement;
   return { ok: true, context, document: replacement.document };
