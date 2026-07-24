@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
-stopped_at: Completed 36.14-27-PLAN.md
-last_updated: "2026-07-24T06:56:51.591Z"
+stopped_at: Completed 36.14-22-PLAN.md
+last_updated: "2026-07-24T07:32:08.894Z"
 last_activity: 2026-07-24
-last_activity_desc: Completed Plan 24 bounded static occupied Drag recovery
+last_activity_desc: Completed Plan 22 canonical physical interpolation authority
 progress:
   total_phases: 17
   completed_phases: 16
   total_plans: 121
-  completed_plans: 110
-  percent: 91
+  completed_plans: 111
+  percent: 92
 ---
 
 # Project State
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 18 of 29
+Plan: 19 of 29
 Status: Ready to execute
-Last activity: 2026-07-24 — Completed Plan 27 bounded static export notification guard
+Last activity: 2026-07-24 — Completed Plan 22 canonical physical interpolation authority
 Next recommended action: Continue D-30 with Plan 28 integrated bounded static read-only review; Plans 12-18 remain non-executable.
 
-Progress: [██████████████████░░] 110/121 plans complete; 16/17 phases complete ([█████████░] 91%)
+Progress: [██████████████████░░] 111/121 plans complete; 16/17 phases complete ([█████████░] 92%)
 
 ## Performance Metrics
 
@@ -106,6 +106,7 @@ Progress: [██████████████████░░] 110/121
 | Phase 36.14 P23 | 5min | 2 tasks | 5 files |
 | Phase 36.14 P24 | 13min | 2 tasks | 9 files |
 | Phase 36.14 P27 | 2min | 1 tasks | 2 files |
+| Phase 36.14 P22 | 26m 19s | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -195,6 +196,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 36.14 Plan 27]: Only the exact main window may load or invoke export notification APIs; child windows return before the dynamic plugin import.
 - [Phase ?]: [Phase 36.14 Plan 27]: Export completion remains authoritative and notification lookup, permission, and awaited dispatch stay contained as post-success best effort.
 - [Phase ?]: [Phase 36.14 Plan 27]: Physics Paint notification permission is not broadened and remains separate from Play Script presentation and cache root causes.
+- [Phase ?]: Use set-interpolation-enabled on the existing replace-roto-physical-map transaction rather than adding a second transport or coordinator.
+- [Phase ?]: Defer the child interpolation document update until exact parent acceptance so the controlled checkbox never presents provisional state as accepted.
+- [Phase ?]: Keep interpolation toggles outside the physical Undo/Redo command ledger while preserving Script Motion deform/position as a separate legacy contract.
 
 ### Pending Todos
 
@@ -272,6 +276,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-24T06:56:51.577Z
-Stopped at: Completed 36.14-27-PLAN.md
+Last session: 2026-07-24T07:32:08.881Z
+Stopped at: Completed 36.14-22-PLAN.md
 Resume file: None

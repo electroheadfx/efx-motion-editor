@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 2
 waived_count: 0
-fixed_count: 4
-total_count: 6
-last_updated: 2026-07-24T06:25:00.079Z
+fixed_count: 5
+total_count: 7
+last_updated: 2026-07-24T07:34:22.331Z
 ---
 
 # Broken Windows Ledger
@@ -21,6 +21,7 @@ last_updated: 2026-07-24T06:25:00.079Z
 | 4 | 36.14 | deviation | .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-11-SUMMARY.md |  | Compile proof deferred to Plan 13 after byte-exact native UAT approval | open |  | 2026-07-22T13:56:41.272Z |  |
 | 5 | 36.14 | unrun-verify | .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-11-SUMMARY.md |  | Build did not run because the chained typecheck failed on obsolete pre-UAT Script tests | open |  | 2026-07-22T13:56:41.382Z |  |
 | 6 | 36.14 | deviation | app/src/components/physic-paint/hooks/usePhysicsPaintLaunchIntegration.ts | 21 | Plan 23 hydration became asynchronous, so the existing launch replacement owner was updated to await the canonical PNG publication barrier. | fixed |  | 2026-07-24T06:23:36.118Z | 2026-07-24T06:25:00.079Z |
+| 7 | 36.14 | deviation | .planning/STATE.md |  | Corrected stale latest-activity text and mismatched prose completed-plan count after Plan 22 state update | fixed |  | 2026-07-24T07:33:38.997Z | 2026-07-24T07:34:22.331Z |
 
 ````json
 [
@@ -95,6 +96,18 @@ last_updated: 2026-07-24T06:25:00.079Z
     "reason": "",
     "recorded_at": "2026-07-24T06:23:36.118Z",
     "resolved_at": "2026-07-24T06:25:00.079Z"
+  },
+  {
+    "id": 7,
+    "kind": "deviation",
+    "phase": "36.14",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Corrected stale latest-activity text and mismatched prose completed-plan count after Plan 22 state update",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-07-24T07:33:38.997Z",
+    "resolved_at": "2026-07-24T07:34:22.331Z"
   }
 ]
 ````
