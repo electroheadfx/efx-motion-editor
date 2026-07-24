@@ -10,6 +10,7 @@ import { audioEngine } from './audioEngine';
 import { exportCreateDir, exportWritePng, exportCheckFfmpeg, exportDownloadFfmpeg, exportEncodeVideo, exportCleanupPngs, exportCleanupFile } from './ipc';
 import { generateJsonSidecar, generateFcpxml } from './exportSidecar';
 import { renderMixedAudio } from './audioExportMixer';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 /**
  * Convert canvas to PNG blob, then to Uint8Array for IPC.
@@ -371,6 +372,9 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     // 9. macOS notification if app is in background (D-31)
     if (document.hidden) {
       try {
+        const currentWindowLabel = getCurrentWindow().label;
+        if (currentWindowLabel !== 'main') return;
+
         const { isPermissionGranted, requestPermission, sendNotification } =
           await import('@tauri-apps/plugin-notification');
         let granted = await isPermissionGranted();
@@ -379,7 +383,7 @@ export async function startExport(startFromFrame = 0): Promise<void> {
           granted = permission === 'granted';
         }
         if (granted) {
-          sendNotification({
+          await sendNotification({
             title: 'Export Complete',
             body: `${projectName} exported ${total} frames to ${exportDir}`,
           });
