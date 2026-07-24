@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
-stopped_at: Completed 36.14-11-PLAN.md
-last_updated: "2026-07-22T13:59:29.542Z"
-last_activity: 2026-07-22
-last_activity_desc: Completed Plan 36.14-11; ready for blocking Plan 12 native UAT
+stopped_at: Completed 36.14-21-PLAN.md
+last_updated: "2026-07-24T06:03:26.169Z"
+last_activity: 2026-07-24
+last_activity_desc: Phase 36.14 execution started
 progress:
   total_phases: 17
   completed_phases: 16
-  total_plans: 112
-  completed_plans: 105
-  percent: 94
+  total_plans: 121
+  completed_plans: 107
+  percent: 88
 ---
 
 # Project State
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 12 of 20
-Status: Ready to execute
-Last activity: 2026-07-22 — Completed Plan 36.14-11; ready for blocking Plan 12 native UAT
+Plan: 1 of 29
+Status: Executing Phase 36.14
+Last activity: 2026-07-24 — Phase 36.14 execution started
 Next recommended action: Execute Plan 36.14-12 blocking native UAT
 
-Progress: [███████████████████░] 105/112 plans complete; 16/17 phases complete ([█████████░] 94%)
+Progress: [███████████████████░] 105/112 plans complete; 16/17 phases complete ([█████████░] 88%)
 
 ## Performance Metrics
 
@@ -102,6 +102,7 @@ Progress: [███████████████████░] 105/112
 | Phase 36.14 P20 | 10min | 2 tasks | 5 files |
 | Phase 36.14 P19 | 14min | 3 tasks | 5 files |
 | Phase 36.14 P11 | 30min | 3 tasks | 10 files |
+| Phase 36.14 P21 | 5min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -179,6 +180,9 @@ Recent decisions affecting current work:
 - [Phase ?]: The complete typecheck and build proof moves to Plan 13 after byte-exact Plan 12 approval and stale-test contract transfer.
 - [Phase ?]: No source/display compatibility field, forwarding wrapper, alias, TypeScript exclusion, test workaround, or second transaction authority is introduced.
 - [Phase ?]: Approval-gated dormant persistence and cache modules remain production-unreachable until Plan 13 deletes them with obsolete tests.
+- [Phase ?]: [Phase 36.14 Plan 21]: All six ordinary physical operations share one narrowed immutable history command type; Undo and Redo remain replay-only.
+- [Phase ?]: [Phase 36.14 Plan 21]: Replay stages the stored child snapshot locally while the parent receives only canonical records, interpolation, selection, revision, and provenance.
+- [Phase ?]: [Phase 36.14 Plan 21]: History stacks move only after exact accepted command, direction, source/target revision, launch, layer, project, capacity, selection, and current-frame matching.
 
 ### Pending Todos
 
@@ -256,6 +260,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-22T13:57:26.483Z
-Stopped at: Completed 36.14-11-PLAN.md
+Last session: 2026-07-24T06:03:26.155Z
+Stopped at: Completed 36.14-21-PLAN.md
 Resume file: None
