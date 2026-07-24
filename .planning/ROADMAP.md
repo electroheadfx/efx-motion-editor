@@ -452,7 +452,7 @@ Use `SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md` and th
 **Mode:** mvp
 **Requirements:** 36.14-PHYSICAL-IDENTITY, 36.14-DERIVED-INTERPOLATION, 36.14-ATOMIC-FRAME-MAPPING, 36.14-RIPPLE-INSERT-DELETE, 36.14-RIPPLE-DRAG, 36.14-FORCE-SPACING, 36.14-DOWNSTREAM-PARITY, 36.14-UI-INTEGRATION, 36.14-UAT-THEN-REGRESSION
 **Depends on:** Phase 36.13 and native-UAT approval of the dedicated ROTO-SCRIPT-COPY / ROTO-SCRIPT-APPLY GSD quick
-**Plans:** 19/29 plans executed
+**Plans:** 20/29 plans executed
 
 **Success Criteria**:
 
@@ -556,7 +556,7 @@ D-30 gap-closure recovery track: execute only with `/gsd-execute-phase 36.14 --g
 
 **Wave 23** *(gap closure; blocked on Plan 22)*
 
-- [ ] 36.14-25-PLAN.md — Hoist Play Script to a Studio-level full-height light dialog while preserving the fused Scripts workflow and controller behavior.
+- [x] 36.14-25-PLAN.md — Hoist Play Script to a Studio-level full-height light dialog while preserving the fused Scripts workflow and controller behavior.
 
 **Wave 24** *(gap closure; blocked on Plans 22, 23, and 25)*
 
@@ -905,4 +905,4 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
 | 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 6/6 | Complete | 2026-07-13 |
-| 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 19/29 | In Progress|  |
+| 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 20/29 | In Progress|  |

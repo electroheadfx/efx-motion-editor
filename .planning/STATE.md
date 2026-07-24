@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
-stopped_at: Completed 36.14-22-PLAN.md
-last_updated: "2026-07-24T07:32:08.894Z"
+stopped_at: Completed 36.14-25-PLAN.md
+last_updated: "2026-07-24T07:51:42.213Z"
 last_activity: 2026-07-24
-last_activity_desc: Completed Plan 22 canonical physical interpolation authority
+last_activity_desc: Completed Plan 25 full-height Play Script presentation
 progress:
   total_phases: 17
   completed_phases: 16
   total_plans: 121
-  completed_plans: 111
-  percent: 92
+  completed_plans: 112
+  percent: 93
 ---
 
 # Project State
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 19 of 29
+Plan: 20 of 29
 Status: Ready to execute
-Last activity: 2026-07-24 — Completed Plan 22 canonical physical interpolation authority
-Next recommended action: Continue D-30 with Plan 28 integrated bounded static read-only review; Plans 12-18 remain non-executable.
+Last activity: 2026-07-24 — Completed Plan 25 full-height Play Script presentation
+Next recommended action: Continue D-30 with Plan 26 canonical physical Play Script cache publication; Plans 12-18 remain non-executable.
 
-Progress: [██████████████████░░] 111/121 plans complete; 16/17 phases complete ([█████████░] 92%)
+Progress: [██████████████████░░] 112/121 plans complete; 16/17 phases complete ([█████████░] 93%)
 
 ## Performance Metrics
 
@@ -107,6 +107,7 @@ Progress: [██████████████████░░] 111/121
 | Phase 36.14 P24 | 13min | 2 tasks | 9 files |
 | Phase 36.14 P27 | 2min | 1 tasks | 2 files |
 | Phase 36.14 P22 | 26m 19s | 3 tasks | 7 files |
+| Phase 36.14 P25 | 8min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -199,6 +200,10 @@ Recent decisions affecting current work:
 - [Phase ?]: Use set-interpolation-enabled on the existing replace-roto-physical-map transaction rather than adding a second transport or coordinator.
 - [Phase ?]: Defer the child interpolation document update until exact parent acceptance so the controlled checkbox never presents provisional state as accepted.
 - [Phase ?]: Keep interpolation toggles outside the physical Undo/Redo command ledger while preserving Script Motion deform/position as a separate legacy contract.
+- [Phase ?]: [Phase 36.14 Plan 25]: Keep RotoPlayScriptController as the sole Play validation, generation, progress, and cancellation authority; move presentation only.
+- [Phase ?]: [Phase 36.14 Plan 25]: Share one Studio-owned Play-button ref between the Scripts toolbar and Studio-level dialog for exact focus restoration.
+- [Phase ?]: [Phase 36.14 Plan 25]: Mount exactly one Play Script dialog in the Studio canvas grid with standalone full-height light styles isolated from compact pane constraints.
+- [Phase ?]: [Phase 36.14 Plan 25]: Defer canonical physical Play cache publication to Plan 26 and native visible acceptance to Plan 29.
 
 ### Pending Todos
 
@@ -276,6 +281,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-24T07:32:08.881Z
-Stopped at: Completed 36.14-22-PLAN.md
+Last session: 2026-07-24T07:51:42.201Z
+Stopped at: Completed 36.14-25-PLAN.md
 Resume file: None
