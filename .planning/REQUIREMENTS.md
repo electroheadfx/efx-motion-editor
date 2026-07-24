@@ -70,7 +70,7 @@ The former active Phase 36.14 UI-only contract (`36.14-PENCIL-LAYOUT`, `36.14-CO
 - [x] **36.14-FORCE-SPACING**: A session-only nonnegative integer `N` plus explicit **Apply** action creates exactly `N` empty physical slots between adjacent ordered real keys, anchors the first key, accepts `N = 0`, rejects invalid or over-capacity results without state/history changes, and records one accepted Undo/Redo action on success.
 - [x] **36.14-DOWNSTREAM-PARITY**: Persistence, launch/reopen, live cache publication, playback, onion/reference, preview, export, missing/background rendering, and timeline length consume stable identities, direct physical frames, and runtime-derived interiors without reviving source/display ownership.
 - [ ] **36.14-UI-INTEGRATION**: The final Roto timeline follows the corrected compact reference with fixed ruler/cell proportions and synchronized horizontal scrolling; keeps transport, quick key actions, interpolation/Force Spacing, cadence, and `Copy Script | Apply Script` in distinct visible groups; omits Tools/header Log/obsolete Save controls and a permanent developer legend; clearly presents real, generated, empty/background, current, disabled, active, destructive, and complete ripple-preview states; routes concise latest-operation status to the header capsule and full detail to the existing right-panel LOG; keeps unavailable script controls focusable with controller-supplied reasons; relocates Discard Script to the Scripts toolbar; and prevents accidental chrome text selection while preserving inputs, editable fields, and LOG text selection.
-- [ ] **36.14-UAT-THEN-REGRESSION**: Under D-30's current rejected-UAT recovery track, Plans 21-27 complete production gap fixes using bounded static checks only, Plan 28 performs integrated bounded static read-only review, and Plan 29 is the user-owned native UAT gate. No tests, test discovery, typecheck, build, package command, server, browser, or native process is run by Plans 21-28. Only after the user's exact native approval may separate later regression/typecheck/build planning become eligible; that approval does not automatically execute or unlock Plans 13-18, create `36.14-12-APPROVAL.txt`, alter Validation flags, or complete the phase.
+- [x] **36.14-UAT-THEN-REGRESSION**: Under D-30's current rejected-UAT recovery track, Plans 21-27 complete production gap fixes using bounded static checks only, Plan 28 performs integrated bounded static read-only review, and Plan 29 is the user-owned native UAT gate. No tests, test discovery, typecheck, build, package command, server, browser, or native process is run by Plans 21-28. Only after the user's exact native approval may separate later regression/typecheck/build planning become eligible; that approval does not automatically execute or unlock Plans 13-18, create `36.14-12-APPROVAL.txt`, alter Validation flags, or complete the phase.
 
 ## Implemented Integration Baseline
 
@@ -134,7 +134,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | 36.14-FORCE-SPACING | Phase 36.14 | Complete |
 | 36.14-DOWNSTREAM-PARITY | Phase 36.14 | Complete |
 | 36.14-UI-INTEGRATION | Phase 36.14 | Pending |
-| 36.14-UAT-THEN-REGRESSION | Phase 36.14 | Pending |
+| 36.14-UAT-THEN-REGRESSION | Phase 36.14 | Complete |
 
 **Coverage:**
 

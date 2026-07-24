@@ -452,7 +452,7 @@ Use `SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md` and th
 **Mode:** mvp
 **Requirements:** 36.14-PHYSICAL-IDENTITY, 36.14-DERIVED-INTERPOLATION, 36.14-ATOMIC-FRAME-MAPPING, 36.14-RIPPLE-INSERT-DELETE, 36.14-RIPPLE-DRAG, 36.14-FORCE-SPACING, 36.14-DOWNSTREAM-PARITY, 36.14-UI-INTEGRATION, 36.14-UAT-THEN-REGRESSION
 **Depends on:** Phase 36.13 and native-UAT approval of the dedicated ROTO-SCRIPT-COPY / ROTO-SCRIPT-APPLY GSD quick
-**Plans:** 17/29 plans executed
+**Plans:** 18/29 plans executed
 
 **Success Criteria**:
 
@@ -548,7 +548,7 @@ D-30 gap-closure recovery track: execute only with `/gsd-execute-phase 36.14 --g
 - [x] 36.14-21-PLAN.md — Preserve hook-stable coordinator Signals and complete accepted-only multi-level Undo/Redo by replaying immutable child snapshots including confirmed frames.
 - [x] 36.14-23-PLAN.md — Replace invalid generated-image fallback with canonical PNG decode/registration and valid strict-interior compositing.
 - [x] 36.14-24-PLAN.md — Record D-29 and D-30, align all recovery authority/supporting artifacts, and implement occupied-boundary no-source-gap Drag with exact `A@1,C@5,D@8,B@9`, preserving empty/generated Drag.
-- [ ] 36.14-27-PLAN.md — Gate export notification APIs to the authorized main window without broadening child capabilities.
+- [x] 36.14-27-PLAN.md — Gate export notification APIs to the authorized main window without broadening child capabilities.
 
 **Wave 22** *(gap closure; blocked on Plan 21)*
 
@@ -905,4 +905,4 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
 | 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 6/6 | Complete | 2026-07-13 |
-| 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 17/29 | In Progress|  |
+| 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 18/29 | In Progress|  |
