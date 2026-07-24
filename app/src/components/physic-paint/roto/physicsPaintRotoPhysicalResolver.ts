@@ -28,7 +28,9 @@
  *   source-closing cut-and-insert at the direct requested appFrame. Occupied
  *   before/after identity boundaries remove only the moved identity, preserve
  *   every survivor's source frame, resolve the stable target identity, and
- *   ripple only at the destination boundary; neither path overwrites a key.
+ *   ripple only at the destination boundary. From A@1,B@3,C@5,D@8, moving B
+ *   before D yields A@1,C@5,B@8,D@9, while moving B after D yields
+ *   A@1,C@5,D@8,B@9; neither path overwrites a key.
  * - D-08: Force Spacing accepts every nonnegative integer `N`, anchors the
  *   first ordered real key, preserves deterministic identity order, and places
  *   key `i` at `first + i * (N + 1)`; `N = 0` produces adjacent keys.
