@@ -12,8 +12,9 @@
  * Command shape (D-09):
  * - `operationId`: the coordinator's accepted operation ID (dedupe key);
  * - `operationKind`: the original ordinary kind (`insert-slot`,
- *   `delete-key`, `move-key`, `force-spacing`); replay kinds (`undo`,
- *   `redo`) are never recorded as new commands;
+ *   `delete-key`, `move-key`, `force-spacing`, `duplicate-key`, or
+ *   `paste-key`); replay kinds (`undo`, `redo`) are never recorded as new
+ *   commands;
  * - `before`/`after`: immutable complete `RotoPhysicalEditSnapshot`
  *   captured by the coordinator at acceptance, including records,
  *   interpolation, capacity, revisions, selection, buffers, reference,
@@ -49,11 +50,10 @@
  * - one Signal effect inside a useEffect subscribes to the coordinator's
  *   `acceptedOutput` and tears down on disposal (subscription cleanup).
  *
- * Plan 36.14-05 Task 2 will add replay provenance validation in the
- * closed physical request/result branch and in the parent authority so
- * identity-set Undo/Redo can be authorized against the original accepted
- * command. Replay stages the complete target snapshot locally while parent
- * provenance continues to authorize only canonical records/interpolation.
+ * Replay provenance is validated in the closed physical request/result
+ * branch, the parent authority, and again before the history cursor moves.
+ * Replay stages the complete target snapshot locally while the parent
+ * continues to authorize only canonical records/interpolation.
  */
 
 import { useCallback, useEffect, useRef } from 'preact/hooks';
@@ -74,10 +74,15 @@ export interface RotoPhysicalEditHistoryIdentity {
   layerId: string;
 }
 
+type RotoPhysicalEditOrdinaryOperationKind = Exclude<
+  PhysicPaintRotoPhysicalEditOperationKind,
+  'undo' | 'redo'
+>;
+
 interface RotoPhysicalEditCommand<EngineState> {
   readonly kind: 'physical';
   readonly operationId: string;
-  readonly operationKind: PhysicPaintRotoPhysicalEditOperationKind;
+  readonly operationKind: RotoPhysicalEditOrdinaryOperationKind;
   readonly before: RotoPhysicalEditSnapshot<EngineState>;
   readonly after: RotoPhysicalEditSnapshot<EngineState>;
   readonly acceptedRevision: string;
@@ -116,7 +121,9 @@ interface PendingReplay<EngineState> {
   readonly command: RotoPhysicalEditCommand<EngineState>;
 }
 
-function isOrdinaryOperationKind(kind: PhysicPaintRotoPhysicalEditOperationKind): boolean {
+function isOrdinaryOperationKind(
+  kind: PhysicPaintRotoPhysicalEditOperationKind,
+): kind is RotoPhysicalEditOrdinaryOperationKind {
   return kind === 'insert-slot'
     || kind === 'delete-key'
     || kind === 'move-key'
@@ -145,6 +152,49 @@ function snapshotRecordsEqual(
   if (before.selectedKeyId !== after.selectedKeyId) return false;
   if (before.selectedAppFrame !== after.selectedAppFrame) return false;
   return true;
+}
+
+function snapshotRevision(snapshot: RotoPhysicalEditSnapshot<unknown>): string {
+  return buildPhysicPaintRotoPhysicalRevision(snapshot.records, snapshot.interpolation);
+}
+
+function snapshotReplayAuthorityEqual(
+  actual: RotoPhysicalEditSnapshot<unknown>,
+  expected: RotoPhysicalEditSnapshot<unknown>,
+): boolean {
+  return actual.launchOperationId === expected.launchOperationId
+    && actual.layerId === expected.layerId
+    && actual.projectContextId === expected.projectContextId
+    && actual.capacity === expected.capacity
+    && actual.currentAppFrame === expected.currentAppFrame
+    && snapshotRecordsEqual(actual, expected);
+}
+
+function replayAcceptanceMatchesPending<EngineState>(
+  accepted: RotoPhysicalEditAcceptedOutput<EngineState>,
+  pending: PendingReplay<EngineState>,
+): boolean {
+  const beforeRevision = snapshotRevision(pending.command.before);
+  const source = pending.direction === 'undo' ? pending.command.after : pending.command.before;
+  const target = pending.direction === 'undo' ? pending.command.before : pending.command.after;
+  const sourceRevision = pending.direction === 'undo'
+    ? pending.command.acceptedRevision
+    : beforeRevision;
+  const targetRevision = pending.direction === 'undo'
+    ? beforeRevision
+    : pending.command.acceptedRevision;
+  const provenance = accepted.historyProvenance;
+
+  return accepted.operationKind === pending.direction
+    && provenance?.historyCommandId === pending.command.operationId
+    && provenance.historyDirection === pending.direction
+    && provenance.sourceRevision === sourceRevision
+    && provenance.targetRevision === targetRevision
+    && snapshotRevision(accepted.before) === sourceRevision
+    && snapshotRevision(accepted.after) === targetRevision
+    && accepted.acceptedRevision === targetRevision
+    && snapshotReplayAuthorityEqual(accepted.before, source)
+    && snapshotReplayAuthorityEqual(accepted.after, target);
 }
 
 function buildReplayProposal(target: RotoPhysicalEditSnapshot<unknown>): PhysicPaintRotoPhysicalEditProposal {
@@ -238,16 +288,13 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
 
     if (!isOrdinaryOperationKind(accepted.operationKind)) {
       // Replay acceptance — move the pending replay command between stacks
-      // instead of appending a new command. The coordinator's echoed
-      // provenance must match the pending command's operationId and the
-      // pending replay direction; otherwise the acceptance is ignored and
-      // both stacks stay untouched.
+      // instead of appending a new command. The complete accepted source and
+      // target authority plus command ID, direction, and both revisions must
+      // match the pending immutable command before either stack can move.
       const pending = pendingReplayRef.current;
-      pendingReplayRef.current = null;
       if (!pending) return;
-      if (!accepted.historyProvenance) return;
-      if (accepted.historyProvenance.historyCommandId !== pending.command.operationId) return;
-      if (accepted.historyProvenance.historyDirection !== pending.direction) return;
+      pendingReplayRef.current = null;
+      if (!replayAcceptanceMatchesPending(accepted, pending)) return;
       if (pending.direction === 'undo') {
         const top = appliedRef.current[appliedRef.current.length - 1];
         if (top !== pending.command || top.kind !== 'physical') return;

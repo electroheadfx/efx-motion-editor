@@ -1,9 +1,9 @@
 /**
- * Generic acknowledged physical-edit coordinator (Plan 36.14-04 Task 2).
+ * Generic acknowledged physical-edit coordinator (Plan 36.14-04 Task 2,
+ * completed by Plan 36.14-21 exact snapshot replay).
  *
- * This hook is INACTIVE in this task: no production caller imports it. The
- * current move-era snapshot/publication flow remains solely active until
- * Task 3 rewires every live consumer in one atomic cutover.
+ * This is the sole active physical-edit transaction authority for Insert,
+ * Delete, Move, Force Spacing, Duplicate, Paste, Undo, and Redo.
  *
  * Per D-09/D-10: the coordinator owns one serialized acknowledged
  * physical-edit lifecycle:
