@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
-stopped_at: Completed 36.14-23-PLAN.md
-last_updated: "2026-07-24T06:23:18.679Z"
+stopped_at: Completed 36.14-24-PLAN.md
+last_updated: "2026-07-24T06:51:40.190Z"
 last_activity: 2026-07-24
-last_activity_desc: Phase 36.14 execution started
+last_activity_desc: Completed Plan 24 bounded static occupied Drag recovery
 progress:
   total_phases: 17
   completed_phases: 16
   total_plans: 121
-  completed_plans: 108
-  percent: 89
+  completed_plans: 109
+  percent: 90
 ---
 
 # Project State
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 2 of 29
+Plan: 3 of 29
 Status: Ready to execute
-Last activity: 2026-07-24 — Phase 36.14 execution started
-Next recommended action: Continue the authorized D-30 gap-closure sequence with the next incomplete Plan 24-27; Plans 12-18 remain non-executable.
+Last activity: 2026-07-24 — Completed Plan 24 bounded static occupied Drag recovery
+Next recommended action: Continue the authorized D-30 gap-closure sequence with the next incomplete production gap plan; Plans 12-18 remain non-executable.
 
-Progress: [███████████████████░] 105/112 plans complete; 16/17 phases complete ([█████████░] 89%)
+Progress: [███████████████████░] 105/112 plans complete; 16/17 phases complete ([█████████░] 90%)
 
 ## Performance Metrics
 
@@ -104,6 +104,7 @@ Progress: [███████████████████░] 105/112
 | Phase 36.14 P11 | 30min | 3 tasks | 10 files |
 | Phase 36.14 P21 | 5min | 2 tasks | 4 files |
 | Phase 36.14 P23 | 5min | 2 tasks | 5 files |
+| Phase 36.14 P24 | 13min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -187,6 +188,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 36.14 Plan 23]: Canonical real-key PNGs decode and register before physical document publication so generated reads remain synchronous and effect-free.
 - [Phase ?]: [Phase 36.14 Plan 23]: Strict-interior generation publishes only adjacent-key canvas PNG composites or no image; pseudo-PNG, neighbor substitution, and durable generated authority remain excluded.
 - [Phase ?]: [Phase 36.14 Plan 23]: Generated references require exact appFrame, contentRevision-derived cache identity, and the shared PNG signature guard.
+- [Phase ?]: D-29: occupied before/after Drag preserves the source gap and ripples only at the stable-identity destination boundary.
+- [Phase ?]: Empty/generated physical-cell Drag remains source-closing at the requested direct appFrame.
+- [Phase ?]: D-30 keeps Plans 21-27 bounded-static, Plan 28 read-only static review, and Plan 29 user-owned native UAT; exact approval only enables separate later planning.
 
 ### Pending Todos
 
@@ -264,6 +268,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-24T06:23:18.666Z
-Stopped at: Completed 36.14-23-PLAN.md
+Last session: 2026-07-24T06:51:40.177Z
+Stopped at: Completed 36.14-24-PLAN.md
 Resume file: None
