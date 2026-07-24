@@ -24,17 +24,20 @@
  *   every later survivor left by exactly one, preserves survivor payload/
  *   identity, selects deterministically, and returns one immutable complete
  *   proposal.
- * - D-07: single-key Drag is one cut-and-insert operation for empty/generated
- *   physical cells and occupied before/after identity boundaries, never an
- *   overwrite.
+ * - D-07/D-29: single-key Drag to an empty/generated physical cell remains a
+ *   source-closing cut-and-insert at the direct requested appFrame. Occupied
+ *   before/after identity boundaries remove only the moved identity, preserve
+ *   every survivor's source frame, resolve the stable target identity, and
+ *   ripple only at the destination boundary; neither path overwrites a key.
  * - D-08: Force Spacing accepts every nonnegative integer `N`, anchors the
  *   first ordered real key, preserves deterministic identity order, and places
  *   key `i` at `first + i * (N + 1)`; `N = 0` produces adjacent keys.
  * - D-09: every successful intent returns one immutable complete identity-to-frame
  *   proposal used unchanged by later preview and commit callers; every invalid
  *   intent returns no proposal.
- * - D-11/D-12: this pre-UAT production plan changes no regression artifact and
- *   uses only the bounded production typecheck gate.
+ * - D-30: the current rejected-UAT recovery uses bounded static production
+ *   checks only; later regression/typecheck/build work requires exact native
+ *   approval and separate planning.
  *
  * Prohibitions enforced:
  * - No sourceFrame, displayFrame, inBetweenCount, segment-spacing override,
@@ -76,8 +79,9 @@ import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
 
 /**
  * Discriminated physical edit target for Drag. Direct cells name a desired
- * final `appFrame`; occupied boundaries name a stable target `keyId` resolved
- * after the source slot closes.
+ * final `appFrame` after source closure; occupied boundaries name a stable
+ * target `keyId` resolved after removing only the moved identity while leaving
+ * every survivor at its original physical frame.
  */
 export type PhysicPaintRotoPhysicalEditTarget =
   | { readonly kind: 'physical-cell'; readonly appFrame: number }
@@ -839,13 +843,11 @@ function buildPasteCandidate(
 }
 
 // ---------------------------------------------------------------------------
-// D-07 Drag (move-key) candidate builder: cut-and-insert for direct cells and
-// occupied identity boundaries. The moved identity is removed first, its
-// source slot is closed by shifting every later survivor left by one, the
-// target is resolved by stable identity against the post-cut map, and the
-// destination is opened by shifting every remaining identity at or after the
-// insertion frame right by one before reinserting the moved identity. The
-// operation never overwrites or replaces an occupied target.
+// D-07/D-29 Drag (move-key) candidate builder. Direct physical cells retain
+// source-closing cut-and-insert behavior. Occupied identity boundaries remove
+// only the moved identity, preserve every survivor's original frame, resolve
+// the stable target in that remaining map, and ripple only at the destination
+// before reinserting the moved identity. Neither path overwrites a real key.
 // ---------------------------------------------------------------------------
 
 type MoveBuilderResult =
@@ -907,18 +909,19 @@ function buildMoveCandidate(
       };
     }
 
-    // Cut first: remove moved, close source slot.
-    const postCut = cutSource(identities, movedKeyId, movedFrame);
-    // Resolve the target by stable identity against the post-cut map.
-    const targetPostCutFrame = postCut.get(target.targetKeyId) as number;
-    const insertionFrame = target.kind === 'before-key' ? targetPostCutFrame : targetPostCutFrame + 1;
+    // D-29 occupied boundary: remove only the moved identity. Every survivor
+    // retains its direct physical frame, so the source slot remains open.
+    const remaining = removeMovedIdentityWithoutClosingSource(identities, movedKeyId);
+    // Resolve the destination by stable identity against the unchanged survivors.
+    const targetFrame = remaining.get(target.targetKeyId) as number;
+    const insertionFrame = target.kind === 'before-key' ? targetFrame : targetFrame + 1;
     if (insertionFrame >= capacity) {
       return {
         ok: false,
         resolution: fail('over-capacity', 'move-key', `Resolved insertion frame ${insertionFrame} is outside capacity ${capacity}.`),
       };
     }
-    return { ok: true, candidate: openAndInsert(identities, postCut, movedKeyId, insertionFrame, target) };
+    return { ok: true, candidate: openAndInsert(identities, remaining, movedKeyId, insertionFrame, target) };
   }
 
   return {
@@ -960,9 +963,26 @@ function buildMoveNoChangeCandidate(
 }
 
 /**
+ * D-29 occupied-boundary removal: exclude only the moved identity while
+ * preserving every survivor's original direct physical frame. The destination
+ * opener may then ripple at or after the resolved occupied boundary.
+ */
+function removeMovedIdentityWithoutClosingSource(
+  identities: ValidatedIdentities,
+  movedKeyId: string,
+): Map<string, number> {
+  const remaining = new Map<string, number>();
+  for (const identity of identities.ordered) {
+    if (identity.keyId === movedKeyId) continue;
+    remaining.set(identity.keyId, identity.appFrame);
+  }
+  return remaining;
+}
+
+/**
  * Cut the moved identity and close its source slot by shifting every
  * remaining key originally after the moved frame left by exactly one slot.
- * Returns the post-cut identity-to-frame map.
+ * Returns the post-cut identity-to-frame map for direct physical-cell Drag.
  */
 function cutSource(
   identities: ValidatedIdentities,
@@ -990,13 +1010,13 @@ function cutSource(
  */
 function openAndInsert(
   identities: ValidatedIdentities,
-  postCut: Map<string, number>,
+  remaining: Map<string, number>,
   movedKeyId: string,
   insertionFrame: number,
   target: PhysicPaintRotoPhysicalEditTarget,
 ): Candidate {
   const mapping = new Map<string, number>();
-  for (const [keyId, frame] of postCut) {
+  for (const [keyId, frame] of remaining) {
     mapping.set(keyId, frame >= insertionFrame ? frame + 1 : frame);
   }
   mapping.set(movedKeyId, insertionFrame);
