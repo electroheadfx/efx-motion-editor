@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
-stopped_at: Completed 36.14-25-PLAN.md
-last_updated: "2026-07-24T07:51:42.213Z"
+stopped_at: Completed 36.14-26-PLAN.md
+last_updated: "2026-07-24T09:38:44.091Z"
 last_activity: 2026-07-24
-last_activity_desc: Completed Plan 25 full-height Play Script presentation
+last_activity_desc: Completed Plan 26 canonical physical Play Script publication
 progress:
   total_phases: 17
   completed_phases: 16
   total_plans: 121
-  completed_plans: 112
+  completed_plans: 113
   percent: 93
 ---
 
@@ -30,18 +30,18 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 20 of 29
+Plan: 21 of 29
 Status: Ready to execute
-Last activity: 2026-07-24 — Completed Plan 25 full-height Play Script presentation
-Next recommended action: Continue D-30 with Plan 26 canonical physical Play Script cache publication; Plans 12-18 remain non-executable.
+Last activity: 2026-07-24 — Completed Plan 26 canonical physical Play Script publication
+Next recommended action: Continue D-30 with Plan 28 integrated bounded static review; Plan 29 remains user-owned native UAT, and Plans 12-18 remain non-executable.
 
-Progress: [██████████████████░░] 112/121 plans complete; 16/17 phases complete ([█████████░] 93%)
+Progress: [██████████████████░░] 113/121 plans complete; 16/17 phases complete ([█████████░] 93%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 39 for v0.8.0
+- Total plans completed: 40 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -108,6 +108,7 @@ Progress: [██████████████████░░] 112/121
 | Phase 36.14 P27 | 2min | 1 tasks | 2 files |
 | Phase 36.14 P22 | 26m 19s | 3 tasks | 7 files |
 | Phase 36.14 P25 | 8min | 2 tasks | 5 files |
+| Phase 36.14 P26 | 9min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -204,6 +205,10 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 36.14 Plan 25]: Share one Studio-owned Play-button ref between the Scripts toolbar and Studio-level dialog for exact focus restoration.
 - [Phase ?]: [Phase 36.14 Plan 25]: Mount exactly one Play Script dialog in the Studio canvas grid with standalone full-height light styles isolated from compact pane constraints.
 - [Phase ?]: [Phase 36.14 Plan 25]: Defer canonical physical Play cache publication to Plan 26 and native visible acceptance to Plan 29.
+- [Phase ?]: [Phase 36.14 Plan 26]: Play Script is an explicit non-history replace-roto-physical-map operation and never publishes through replace-roto-key-frames.
+- [Phase ?]: [Phase 36.14 Plan 26]: Occupied Play destinations preserve keyId, empty destinations allocate one fresh keyId before dispatch, and out-of-range records remain unchanged.
+- [Phase ?]: [Phase 36.14 Plan 26]: Parent Play acceptance requires saved-project authority, exact project/launch/layer/revision identity, and a canonical physical document.
+- [Phase ?]: [Phase 36.14 Plan 26]: Accepted Play PNG registration starts after canonical parent acceptance without delaying acknowledgement.
 
 ### Pending Todos
 
@@ -281,6 +286,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-24T07:51:42.201Z
-Stopped at: Completed 36.14-25-PLAN.md
+Last session: 2026-07-24T09:38:44.078Z
+Stopped at: Completed 36.14-26-PLAN.md
 Resume file: None
