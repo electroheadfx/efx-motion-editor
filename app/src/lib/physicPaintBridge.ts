@@ -4,7 +4,7 @@ import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunch
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import { validatePhysicPaintRotoPhysicalEditSemanticDelta } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
-import { isRotoPngDataUrl } from '../components/physic-paint/roto/rotoCanvasFrames';
+import { isRotoPngDataUrl, registerRotoAlphaCanvasFrameFromDataUrl } from '../components/physic-paint/roto/rotoCanvasFrames';
 import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
@@ -199,11 +199,32 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
     } else {
       result = applyFailureResult(payload, 'Unsupported physics paint payload');
     }
-    if (result.ok) deliveredOperations.set(payload.operationId, { fingerprint, result });
+    if (result.ok) {
+      deliveredOperations.set(payload.operationId, { fingerprint, result });
+      registerAcceptedPlayScriptPngs(payload);
+    }
     return result.ok ? result : { ...result, error: `${APPLY_ERROR} ${result.error ?? ''}`.trim() };
   } catch (error) {
     return applyFailureResult(payload, `${APPLY_ERROR} ${String(error)}`);
   }
+}
+
+function registerAcceptedPlayScriptPngs(payload: PhysicPaintApplyPayload): void {
+  if (payload.kind !== 'replace-roto-physical-map'
+    || payload.operationKind !== 'play-script'
+    || payload.semanticDelta?.kind !== 'play-script') return;
+  const { affectedStartAppFrame, affectedEndAppFrame } = payload.semanticDelta;
+  const acceptedRecords = payload.records.filter((record) => (
+    record.appFrame >= affectedStartAppFrame && record.appFrame <= affectedEndAppFrame
+  ));
+  void Promise.all(acceptedRecords.map((record) => registerRotoAlphaCanvasFrameFromDataUrl(
+    record.payload.dataUrl,
+    record.payload.width !== undefined && record.payload.height !== undefined
+      ? { width: record.payload.width, height: record.payload.height }
+      : undefined,
+  ))).catch((error) => {
+    console.warn('[physicPaintBridge] Could not register accepted Play Script PNGs:', error);
+  });
 }
 
 export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityRequest): PhysicPaintRotoAuthorityResult {
@@ -526,6 +547,13 @@ function applyFailureResult(payload: PhysicPaintApplyPayload, error: string): Ph
 
 function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>): PhysicPaintRotoPhysicalEditApplyResult {
   const reject = (error: string, stagedRevision?: string) => physicalEditResult(payload, { ok: false, error, stagedRevision });
+  const isPlayScript = payload.operationKind === 'play-script';
+  if (isPlayScript && (!projectStore.filePath.peek() || !projectStore.scriptLibraryAuthority.peek())) {
+    return reject('Save the project first.');
+  }
+  if (isPlayScript && payload.projectContextId !== projectStore.projectContextId.peek()) {
+    return reject('Project context changed before the Play Script could be applied.');
+  }
   if (payload.projectContextId && payload.projectContextId !== projectStore.projectContextId.peek()) {
     return reject('Project context changed before the physical edit could be applied.');
   }
@@ -539,6 +567,9 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   const currentRecords = physicPaintStore.getRotoRealKeyRecords(payload.layerId);
   const currentInterpolation = physicPaintStore.getRotoPhysicalInterpolationState(payload.layerId);
   const currentDocument = physicPaintStore.getRotoPhysicalDocument(payload.layerId);
+  if (isPlayScript && !currentDocument) {
+    return reject('Canonical Roto physical document is unavailable for Play Script.');
+  }
   const currentRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation);
   if (currentRevision !== payload.expectedRevision) {
     return reject('Roto physical revision became stale before commit.');
@@ -587,7 +618,6 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     }
   }
 
-  const isPlayScript = payload.operationKind === 'play-script';
   if (isPlayScript) {
     const playScriptValidationError = validatePlayScriptPhysicalDelta({
       payload,

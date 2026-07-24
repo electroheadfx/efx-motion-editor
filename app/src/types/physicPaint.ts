@@ -736,7 +736,7 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
   if (value.kind === 'replace-roto-physical-map') {
     const isReplay = value.operationKind === 'undo' || value.operationKind === 'redo';
     return isNonEmptyString(value.operationId)
-      && (value.operationKind === 'insert-slot' || value.operationKind === 'delete-key' || value.operationKind === 'move-key' || value.operationKind === 'force-spacing' || value.operationKind === 'duplicate-key' || value.operationKind === 'paste-key' || value.operationKind === 'set-interpolation-enabled' || value.operationKind === 'undo' || value.operationKind === 'redo')
+      && (value.operationKind === 'insert-slot' || value.operationKind === 'delete-key' || value.operationKind === 'move-key' || value.operationKind === 'force-spacing' || value.operationKind === 'duplicate-key' || value.operationKind === 'paste-key' || value.operationKind === 'play-script' || value.operationKind === 'set-interpolation-enabled' || value.operationKind === 'undo' || value.operationKind === 'redo')
       && isNonEmptyString(value.layerId)
       && isNonNegativeInteger(value.startFrame)
       && isNonEmptyString(value.launchOperationId)
