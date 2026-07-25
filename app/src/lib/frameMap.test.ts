@@ -3,6 +3,7 @@ import {sequenceStore} from '../stores/sequenceStore';
 import {defaultTransform, type Layer} from '../types/layer';
 import {frameMap, fxTrackLayouts} from './frameMap';
 import {physicPaintStore} from '../stores/physicPaintStore';
+import {buildPhysicPaintRotoPhysicalRevision} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type {Sequence} from '../types/sequence';
 
 /** Build a test sequence with `as any` for solidColor/isTransparent fields
@@ -100,7 +101,7 @@ describe('frameMap solid/transparent entries', () => {
     expect((entries[3] as any).solidColor).toBeUndefined();
   });
 
-  it('extends the parent timeline and FX range to generated Roto interpolation display frames', () => {
+  it('extends the parent timeline and FX range to generated Roto interpolation physical frames', () => {
     sequenceStore.sequences.value = [
       makeSequence({
         keyPhotos: [
@@ -131,10 +132,30 @@ describe('frameMap solid/transparent entries', () => {
         outFrame: 3,
       },
     ] as Sequence[];
-    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,Y2lyY2xl' });
-    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 1, { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,c3F1YXJl' });
-    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 2, { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,Y3Jvc3NlZA==' });
-    physicPaintStore.setRotoInterpolationSettings('roto-layer', { enabled: true, inBetweenCount: 3, mode: 'duplicate' });
+    // Physical real keys at direct appFrames 0, 4, 8 with interpolation enabled:
+    // gap-derived interiors fill 1-3 and 5-7, so the physical end frame is 9.
+    const records = [
+      { keyId: 'key-0', appFrame: 0, dataUrl: 'data:image/png;base64,Y2lyY2xl' },
+      { keyId: 'key-4', appFrame: 4, dataUrl: 'data:image/png;base64,c3F1YXJl' },
+      { keyId: 'key-8', appFrame: 8, dataUrl: 'data:image/png;base64,Y3Jvc3NlZA==' },
+    ].map((key) => ({
+      keyId: key.keyId,
+      appFrame: key.appFrame,
+      kind: 'real-key' as const,
+      payload: { frameIndex: 0, appFrame: key.appFrame, dataUrl: key.dataUrl },
+    }));
+    const interpolation = { enabled: true, mode: 'duplicate' as const };
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument('roto-layer', {
+      capacity: 600,
+      realKeyRecords: records,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation),
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
 
     const entries = frameMap.value;
     expect(entries).toHaveLength(9);

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Layer } from '../types/layer';
 import { defaultTransform } from '../types/layer';
 import { physicPaintStore, _setPhysicPaintMarkDirtyCallback } from '../stores/physicPaintStore';
+import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
 vi.mock('../stores/paintStore', () => ({
   paintStore: { getFrame: vi.fn(() => null) },
@@ -150,8 +151,28 @@ function makeRotoLayer(): Layer {
   };
 }
 
-function seedRotoPaper(): void {
-  physicPaintStore.setRotoBackgroundMetadata('roto-layer', { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 });
+function seedPhysicalRoto(
+  keys: Array<{ keyId: string; appFrame: number; dataUrl: string }>,
+  options: { interpolationEnabled?: boolean; background?: { background: 'canvas1'; paperGrain: string; grainStrength: number } | null } = {},
+): void {
+  const records = keys.map((key) => ({
+    keyId: key.keyId,
+    appFrame: key.appFrame,
+    kind: 'real-key' as const,
+    payload: { frameIndex: 0, appFrame: key.appFrame, dataUrl: key.dataUrl },
+  }));
+  const interpolation = { enabled: options.interpolationEnabled ?? false, mode: 'duplicate' as const };
+  const result = physicPaintStore.replaceRotoPhysicalDocument('roto-layer', {
+    capacity: 600,
+    realKeyRecords: records,
+    interpolation,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: options.background ?? null,
+    selectedKeyId: null,
+    cursorAppFrame: 0,
+    revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation),
+  });
+  if (!result.ok) throw new Error(result.error);
 }
 
 beforeEach(() => {
@@ -185,20 +206,21 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     const branchStart = source.lastIndexOf("layer.type === 'physic-paint'");
     const physicPaintBranch = source.slice(branchStart, source.indexOf("} else if (layer.type === 'paint')", branchStart));
 
-    expect(physicPaintBranch).toContain('getPhysicPaintFrameForLayer(paintLayerId, paintLookupFrame)');
-    expect(physicPaintBranch.indexOf('getPhysicPaintFrameForLayer(paintLayerId, paintLookupFrame)')).toBeLessThan(
+    expect(physicPaintBranch).toContain('resolvePhysicPaintFrameSource(paintLayerId, paintLookupFrame)');
+    expect(physicPaintBranch.indexOf('resolvePhysicPaintFrameSource(paintLayerId, paintLookupFrame)')).toBeLessThan(
       physicPaintBranch.indexOf('resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame)'),
     );
-    expect(physicPaintBranch).toContain("const backgroundDraw = realKeyBackgroundDraw ?? (missingDraw?.kind === 'background-only' ? missingDraw : null)");
+    expect(physicPaintBranch).toContain("const backgroundDraw = physicalBackgroundDraw ?? (missingDraw?.kind === 'background-only' ? missingDraw : null)");
     expect(physicPaintBranch).not.toContain('setFrame(');
     expect(physicPaintBranch).not.toContain('upsertRealRotoKeyFrame(');
     expect(physicPaintBranch).not.toContain('replaceGeneratedRotoCache(');
   });
 
   it('renders the real paper texture for an interior missing Roto frame in the main app renderer', () => {
-    seedRotoPaper();
-    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 1, { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' });
-    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 3, { frameIndex: 0, appFrame: 3, dataUrl: 'data:image/png;base64,cmVhbC0z' });
+    seedPhysicalRoto([
+      { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
+      { keyId: 'key-3', appFrame: 3, dataUrl: 'data:image/png;base64,cmVhbC0z' },
+    ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
@@ -225,8 +247,9 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
   });
 
   it('draws paper baseline before transparent real Roto frame pixels in the main app renderer', () => {
-    seedRotoPaper();
-    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 1, { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' });
+    seedPhysicalRoto([
+      { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
+    ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
@@ -242,12 +265,10 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
   });
 
   it('draws renderer-owned paper before generated interpolation alpha cache output', () => {
-    seedRotoPaper();
-    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 1, { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' });
-    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 3, { frameIndex: 0, appFrame: 3, dataUrl: 'data:image/png;base64,cmVhbC0z' });
-    physicPaintStore.replaceGeneratedRotoCache('roto-layer', [
-      { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,Z2VuZXJhdGVkLWFscGhhLW9ubHk=', source: 'generated-interpolation', nearestRealKeyFrame: 1 },
-    ]);
+    seedPhysicalRoto([
+      { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
+      { keyId: 'key-3', appFrame: 3, dataUrl: 'data:image/png;base64,cmVhbC0z' },
+    ], { interpolationEnabled: true, background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
@@ -255,21 +276,21 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
 
     const paperIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'canvas');
-    const generatedAlphaIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,Z2VuZXJhdGVkLWFscGhhLW9ubHk=');
+    // The physically derived duplicate interior republishes the left real key's alpha at the interior frame.
+    const generatedAlphaIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,cmVhbC0x');
 
     expect(paperIndex).toBeGreaterThanOrEqual(0);
     expect(generatedAlphaIndex).toBeGreaterThanOrEqual(0);
     expect(paperIndex).toBeLessThan(generatedAlphaIndex);
-    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
     expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0z' }));
     expect(physicPaintStore.getRotoBackgroundMetadata('roto-layer')).toEqual({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 });
   });
 
   it('36.12-GENERATED-FRAMES draws published generated interpolation alpha cache after close/reopen load', () => {
-    seedRotoPaper();
-    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 1, { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' });
-    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 3, { frameIndex: 0, appFrame: 3, dataUrl: 'data:image/png;base64,cmVhbC0z' });
-    physicPaintStore.setRotoInterpolationSettings('roto-layer', { enabled: true, inBetweenCount: 1, mode: 'duplicate' });
+    seedPhysicalRoto([
+      { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
+      { keyId: 'key-3', appFrame: 3, dataUrl: 'data:image/png;base64,cmVhbC0z' },
+    ], { interpolationEnabled: true, background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
     const persisted = structuredClone(physicPaintStore.toMceOutputs());
     physicPaintStore.reset();
     physicPaintStore.loadFromMceOutputs(persisted);
@@ -285,37 +306,37 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     expect(paperIndex).toBeGreaterThanOrEqual(0);
     expect(generatedAlphaIndex).toBeGreaterThanOrEqual(0);
     expect(paperIndex).toBeLessThan(generatedAlphaIndex);
-    expect(physicPaintStore.getRotoFrame('roto-layer', 2)?.source).toBe('generated-interpolation');
-    expect(physicPaintStore.getRotoCacheFrames('roto-layer').find((frame) => frame.appFrame === 2)).toMatchObject({ source: 'generated-interpolation', nearestRealKeyFrame: 1 });
+    expect(physicPaintStore.getRotoPhysicalRenderSource('roto-layer', 2)).toMatchObject({
+      kind: 'generated',
+      appFrame: 2,
+      leftKeyId: 'key-1',
+      rightKeyId: 'key-3',
+    });
   });
 
-  it('36.13-PREVIEW-EXPORT-PARITY draws store-regenerated custom 2 -> 6 span output at override-aware display positions after save/load', () => {
-    seedRotoPaper();
-    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,cmVhbC0w' });
-    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 1, { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' });
-    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 2, { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,cmVhbC0y' });
-    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 6, { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,cmVhbC02' });
-    physicPaintStore.setRotoInterpolationSettings('roto-layer', {
-      enabled: true,
-      inBetweenCount: 2,
-      mode: 'duplicate',
-      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
-    });
+  it('36.13-PREVIEW-EXPORT-PARITY draws store-regenerated 2 -> 6 span output at direct physical appFrame positions after save/load', () => {
+    seedPhysicalRoto([
+      { keyId: 'key-0', appFrame: 0, dataUrl: 'data:image/png;base64,cmVhbC0w' },
+      { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
+      { keyId: 'key-2', appFrame: 2, dataUrl: 'data:image/png;base64,cmVhbC0y' },
+      { keyId: 'key-6', appFrame: 6, dataUrl: 'data:image/png;base64,cmVhbC02' },
+    ], { interpolationEnabled: true, background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
     const persisted = structuredClone(physicPaintStore.toMceOutputs());
     physicPaintStore.reset();
     physicPaintStore.loadFromMceOutputs(persisted);
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
-    renderer.renderFrame([makeRotoLayer()], 10, [], 24, true, 1, 10);
-    renderer.renderFrame([makeRotoLayer()], 10, [], 24, true, 1, 10);
+    // The 2 -> 6 span derives gap interiors at direct physical appFrames 3, 4, 5.
+    renderer.renderFrame([makeRotoLayer()], 4, [], 24, true, 1, 4);
+    renderer.renderFrame([makeRotoLayer()], 4, [], 24, true, 1, 4);
 
-    expect(physicPaintStore.getRotoFrame('roto-layer', 10)).toMatchObject({
-      source: 'generated-interpolation',
-      appFrame: 10,
-      fromSourceFrame: 2,
-      toSourceFrame: 6,
-      dataUrl: 'data:image/png;base64,cmVhbC0y',
+    expect(physicPaintStore.getRotoPhysicalRenderSource('roto-layer', 4)).toMatchObject({
+      kind: 'generated',
+      appFrame: 4,
+      leftKeyId: 'key-2',
+      rightKeyId: 'key-6',
+      renderedFrame: { dataUrl: 'data:image/png;base64,cmVhbC0y' },
     });
     const paperIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'canvas');
     const generatedAlphaIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,cmVhbC0y');
@@ -326,8 +347,10 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
   });
 
   it('36.11 draws renderer-owned paper before merged real-key alpha repaint output', () => {
-    seedRotoPaper();
-    physicPaintStore.applyCanvas({
+    seedPhysicalRoto([
+      { keyId: 'key-5', appFrame: 5, dataUrl: 'data:image/png;base64,cmVhbC01' },
+    ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 } });
+    const applied = physicPaintStore.applyCanvas({
       kind: 'apply-canvas',
       operationId: 'op-merged-preview',
       layerId: 'roto-layer',
@@ -342,6 +365,7 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
       },
       rotoBackground: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 },
     });
+    expect(applied.ok).toBe(true);
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
