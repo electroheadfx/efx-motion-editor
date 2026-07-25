@@ -481,13 +481,6 @@ function validatePlayScriptPhysicalDelta(input: {
   return null;
 }
 
-function buildRotoRevision(frames: readonly { sourceFrame?: number; appFrame: number; dataUrl: string }[]): string {
-  const source = frames.map((frame) => `${frame.sourceFrame ?? frame.appFrame}:${frame.dataUrl.length}:${frame.dataUrl.slice(-24)}`).sort().join('|');
-  let hash = 2166136261;
-  for (let index = 0; index < source.length; index += 1) { hash ^= source.charCodeAt(index); hash = Math.imul(hash, 16777619); }
-  return `${frames.length}-${(hash >>> 0).toString(16)}`;
-}
-
 /**
  * Apply the generic acknowledged physical-edit payload (Plan 36.14-04
  * Task 3). The parent revalidates project/launch/layer identity, expected

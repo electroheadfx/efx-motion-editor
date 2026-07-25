@@ -61,7 +61,6 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
   const editBuffer = useRotoEditBufferController<ReturnType<import('@efxlab/efx-physic-paint').EfxPaintEngine['save']>, RenderedFramePayload>();
   const confirmedFramesRef = useRef<Map<number, RenderedFramePayload>>(new Map());
   const livePixelTransactionsRef = useRef(createRotoLivePixelCacheTransactions());
-  const buffer = editBuffer.bufferRef.current;
   const parentDeliveryRef = useRef<Map<string, Promise<void>>>(new Map());
   const parentDeliveryErrorRef = useRef<Map<string, unknown>>(new Map());
   const failedParentPayloadRef = useRef<Map<string, { identity: RotoLivePixelIdentity; payload: PhysicPaintApplyPayload }>>(new Map());
