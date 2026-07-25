@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
-import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, type RecordedStrokeGroup, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
+import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, type RecordedStrokeGroup, type RotoScriptActionAvailability, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
 import { createPhysicsPaintEngineActions } from '../engine/usePhysicsPaintEngineActions';
 import { makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { createPhysicsPaintSessionController, type PhysicsPaintSessionControllerInput } from '../hooks/usePhysicsPaintSessionController';
@@ -788,5 +788,51 @@ describe('Roto script clipboard controller', () => {
     await expect(applying).resolves.toBe(true);
     expect(test.controller.status.value).toBe('Applied 1');
     expect(test.controller.clipboard.value).toBe(copied);
+  });
+});
+
+describe('Roto script clipboard discard availability port (36.15-07)', () => {
+  it('reports Discard unavailable with the exact missing-script reason on an empty clipboard', () => {
+    const test = harness();
+    expect(test.controller.clipboard.value).toBeNull();
+    expect(test.controller.availability.value.canDiscard).toBe(false);
+    expect(test.controller.availability.value.discardDisabledReason).toBe('Copy a Roto paint script before discarding it.');
+  });
+
+  it('reports Discard available with no reason after a successful copy', async () => {
+    const test = harness([stroke(1)]);
+    await copyCompletedSource(test);
+    expect(test.controller.clipboard.value).not.toBeNull();
+    expect(test.controller.availability.value.canDiscard).toBe(true);
+    expect(test.controller.availability.value.discardDisabledReason).toBeNull();
+  });
+
+  it('reports Discard unavailable with the exact busy reason while the controller is busy', async () => {
+    const test = harness([stroke(1)]);
+    await copyCompletedSource(test);
+    expect(test.controller.availability.value.canDiscard).toBe(true);
+
+    const navigating = test.controller.prepareNavigation(9);
+    expect(test.controller.availability.value.busy).toBe(true);
+    expect(test.controller.availability.value.canDiscard).toBe(false);
+    expect(test.controller.availability.value.discardDisabledReason).toBe('Finish the current script operation before discarding.');
+
+    await expect(navigating).resolves.toBe(true);
+    test.controller.completeNavigation();
+    expect(test.controller.availability.value.canDiscard).toBe(true);
+    expect(test.controller.availability.value.discardDisabledReason).toBeNull();
+  });
+
+  it('exposes canDiscard and discardDisabledReason on the typed availability contract', () => {
+    const test = harness();
+    const availability: RotoScriptActionAvailability = test.controller.availability.value;
+    const canDiscard: boolean = availability.canDiscard;
+    const discardDisabledReason: string | null = availability.discardDisabledReason;
+    expect(typeof canDiscard).toBe('boolean');
+    expect(discardDisabledReason === null || typeof discardDisabledReason === 'string').toBe(true);
+    expect(typeof availability.canCopy).toBe('boolean');
+    expect(typeof availability.canApply).toBe('boolean');
+    expect(availability.copyDisabledReason === null || typeof availability.copyDisabledReason === 'string').toBe(true);
+    expect(availability.applyDisabledReason === null || typeof availability.applyDisabledReason === 'string').toBe(true);
   });
 });
