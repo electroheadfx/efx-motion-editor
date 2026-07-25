@@ -19,6 +19,9 @@ afterEach(async () => {
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'TimelineRenderer.ts');
 const source = () => readFileSync(sourcePath, 'utf8');
 
+const frameMapSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../lib/frameMap.ts');
+const frameMapSource = () => readFileSync(frameMapSourcePath, 'utf8');
+
 describe('TimelineRenderer play script marker geometry', () => {
   it('uses the derived FX header label with sequence-name fallback and matching reorder ghost', async () => {
     const { getTimelineFxHeaderLabel, getTimelinePlayScriptLabel } = await import('./TimelineRenderer');
@@ -87,5 +90,57 @@ describe('TimelineRenderer play script marker geometry', () => {
     expect(fxTrackSource).toContain("ctx.font = '600 10px system-ui, sans-serif'");
     expect(code).not.toContain('document.createElement');
     expect(code).not.toContain('play-script-row');
+  });
+});
+
+describe('physic-paint Roto key markers (C-04)', () => {
+  it('computes marker x from (inFrame + appFrame) * frameWidth - scrollX + TRACK_HEADER_WIDTH', async () => {
+    const { getPhysicPaintRotoKeyMarkerGeometry, TRACK_HEADER_WIDTH } = await import('./TimelineRenderer');
+
+    const geometry = getPhysicPaintRotoKeyMarkerGeometry({ appFrame: 5, inFrame: 0, frameWidth: 4, scrollX: 12 });
+    expect(geometry.x).toBe((0 + 5) * 4 - 12 + TRACK_HEADER_WIDTH);
+  });
+
+  it('adds nonzero inFrame to the layer-local appFrame (layer-local vs timeline-global guard)', async () => {
+    const { getPhysicPaintRotoKeyMarkerGeometry, TRACK_HEADER_WIDTH } = await import('./TimelineRenderer');
+
+    const geometry = getPhysicPaintRotoKeyMarkerGeometry({ appFrame: 5, inFrame: 10, frameWidth: 4, scrollX: 12 });
+    expect(geometry.x).toBe((10 + 5) * 4 - 12 + TRACK_HEADER_WIDTH);
+  });
+
+  it('draws always-visible roto key diamonds in the physic-paint branch with the dedicated #F5A623 fill', () => {
+    const code = source();
+    const fxTrackSource = code.slice(code.indexOf('private drawFxTrack'), code.indexOf('/** Draw a Photoshop-style checkerboard'));
+
+    expect(fxTrackSource).toContain("fxTrack.layerType === 'physic-paint'");
+    expect(fxTrackSource).toContain('fxTrack.rotoKeyFrames');
+    expect(fxTrackSource).toContain('drawRotoKeyMarkers');
+
+    // The marker pass is gated on rotoKeyFrames, never on playScriptMarkers
+    const gateIndex = fxTrackSource.indexOf('fxTrack.rotoKeyFrames');
+    const gateLineStart = fxTrackSource.lastIndexOf('\n', gateIndex);
+    const gateLineEnd = fxTrackSource.indexOf('\n', gateIndex);
+    const gateLine = fxTrackSource.slice(gateLineStart, gateLineEnd);
+    expect(gateLine).not.toContain('playScriptMarkers');
+
+    // Marker path: literal #F5A623 fill, no stroke, no shadow, no playScriptMarkers coupling
+    const markerIndex = code.indexOf('private drawRotoKeyMarkers');
+    expect(markerIndex).toBeGreaterThan(-1);
+    const markerSource = code.slice(markerIndex, code.indexOf('private drawFxTrack'));
+    expect(markerSource).toContain("'#F5A623'");
+    expect(markerSource).not.toContain('playScriptMarkers');
+    expect(markerSource).not.toContain('shadowColor');
+    expect(markerSource).not.toContain('strokeStyle');
+  });
+
+  it('populates rotoKeyFrames from real Roto key records for physic-paint layers only', () => {
+    const code = frameMapSource();
+    const fxLayoutsIndex = code.indexOf('export const fxTrackLayouts');
+    expect(fxLayoutsIndex).toBeGreaterThan(-1);
+    const fxLayoutsSource = code.slice(fxLayoutsIndex);
+
+    expect(fxLayoutsSource).toContain('rotoKeyFrames');
+    expect(fxLayoutsSource).toContain("primaryLayer?.type === 'physic-paint'");
+    expect(fxLayoutsSource).toContain('getRotoRealKeyRecords');
   });
 });
