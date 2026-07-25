@@ -324,14 +324,21 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     const code = source();
     const map = getRotoMapBlock(code);
     expect(map).toContain('getRotoCellStateTooltipCopy(');
-    expect(map).toContain('PhysicsPaintStyledTooltip');
+    expect(map).toContain('RotoTimelineCellButton');
     expect(map).not.toContain('title=');
     expect(map).not.toContain('dragTitle');
     // Drag machinery untouched: identity attributes and handlers stay.
-    expect(map).toContain('data-roto-app-frame');
-    expect(map).toContain('data-roto-kind');
-    expect(map).toContain('data-roto-key-id');
     expect(map).toContain('handleRotoCellPointerDown');
+    // Each cell owns one styled-tooltip controller via the child component.
+    const cellComponentIndex = code.indexOf('function RotoTimelineCellButton');
+    expect(cellComponentIndex).toBeGreaterThanOrEqual(0);
+    const cellComponent = code.slice(cellComponentIndex, code.indexOf('export function PhysicsPaintWorkflowStrip'));
+    expect(cellComponent).toContain('useStyledTooltip');
+    expect(cellComponent).toContain('PhysicsPaintStyledTooltip');
+    expect(cellComponent).not.toContain('title=');
+    expect(cellComponent).toContain('data-roto-app-frame');
+    expect(cellComponent).toContain('data-roto-kind');
+    expect(cellComponent).toContain('data-roto-key-id');
     // The interpolation pill adopts the styled tooltip in place of its native title (Pitfall 4).
     const pillIndex = code.indexOf('physics-paint-pill--interpolation');
     expect(pillIndex).toBeGreaterThanOrEqual(0);

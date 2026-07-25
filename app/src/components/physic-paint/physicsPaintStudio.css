@@ -1376,12 +1376,40 @@ button.destructive {
   background: transparent;
 }
 
-.physics-paint-header-capsule-slot {
+.physics-paint-status-capsule {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   flex: 1 1 auto;
   min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #51606d;
+  border-radius: 999px;
+  background: #2d3741;
+  color: #dde7f0;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.physics-paint-status-capsule .lucide {
+  flex: 0 0 auto;
+  color: #f8c96b;
+}
+
+.physics-paint-status-capsule-text {
+  min-width: 0;
+  overflow: hidden;
+  color: #dde7f0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .physics-paint-pill {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1578,16 +1606,6 @@ button.destructive {
   font-weight: 700;
   line-height: 18px;
   text-align: center;
-}
-
-.physics-paint-roto-playback-status {
-  margin: 0;
-  max-width: 100%;
-  color: #b6bec8;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: nowrap;
 }
 
 .physics-paint-roto-key-utilities {
@@ -1952,10 +1970,7 @@ button.destructive {
 }
 
 .physics-paint-preview-status,
-.physics-paint-publication-summary,
-.physics-paint-roto-status,
-.physics-paint-roto-key-status,
-.physics-paint-roto-interpolation-status {
+.physics-paint-publication-summary {
   color: #f59e0b;
   font-size: 13px;
   line-height: 1.5;
@@ -1963,57 +1978,6 @@ button.destructive {
 
 .physics-paint-publication-summary {
   color: var(--sidebar-dot-green, #4caf70);
-}
-
-.physics-paint-roto-status-stack {
-  display: grid;
-  gap: 1px;
-  min-height: 66px;
-  max-height: 66px;
-  margin: -2px 0 0;
-  overflow: hidden;
-}
-
-.physics-paint-roto-cell-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-  min-width: 0;
-  color: #d8dde3;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.physics-paint-roto-cell-legend-title {
-  color: #b8c4d4;
-}
-
-.physics-paint-roto-cell-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-
-.physics-paint-roto-cell-swatch {
-  position: relative;
-  display: inline-block;
-  width: 13px;
-  height: 24px;
-  border: 1px solid #3d454d;
-  border-radius: 1px;
-  overflow: hidden;
-  flex: 0 0 auto;
-}
-
-.physics-paint-roto-status,
-.physics-paint-roto-key-status,
-.physics-paint-roto-interpolation-status {
-  margin: 0;
-  color: #b8c4d4;
-  font-size: 12px;
 }
 
 .physics-paint-roto-custom-span-status {
@@ -2129,8 +2093,16 @@ button.destructive {
   min-width: 0;
 }
 
+.physics-paint-roto-cell-anchor {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
 .physics-paint-roto-cell {
   position: relative;
+  display: block;
+  width: 100%;
   min-width: 0;
   height: 24px;
   padding: 0;

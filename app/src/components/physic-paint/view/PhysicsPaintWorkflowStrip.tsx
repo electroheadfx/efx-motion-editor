@@ -1,13 +1,15 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Clipboard, ClipboardCopy, ClipboardPaste, ClipboardPen, CopyPlus, Play, RotateCcw, Square, Trash2, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Clipboard, ClipboardCopy, ClipboardPaste, ClipboardPen, CopyPlus, Info, Play, RotateCcw, Square, Trash2, X } from 'lucide-preact';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
   collectRotoDragVacatedAppFrames,
   getRotoCellFill, getRotoCellViewModel,
-  getMissingRotoFrameStatusLabel,
+  getRotoCellStateTooltipCopy,
   getRotoDragPreviewViewModel,
+  getRotoStatusCapsuleViewModel,
   type PhysicsPaintOnionState,
+  type RotoCellSemanticTooltipKind,
   type RotoCellViewModel, type RotoMissingFrameStatusKind,
   type RotoDragPreviewViewModel,
 } from './physicsPaintWorkflowPresentation';
@@ -48,12 +50,6 @@ export type PhysicsPaintWorkflowRotoScriptState = Pick<RotoScriptClipboardContro
   | 'status'
   | 'error'
 >;
-const ROTO_CELL_LEGEND_ITEMS = [
-  { label: 'Empty', className: 'roto-fill-empty' },
-  { label: 'Cached', className: 'roto-fill-cached' },
-  { label: 'Generated', className: 'roto-fill-generated' },
-  { label: 'Background only', className: 'roto-fill-background-only' },
-];
 
 export interface PhysicsPaintWorkflowStripFrameMarker {
   frame: number;
@@ -229,6 +225,59 @@ function getRotoDragFeedback(preview: RotoDragPreviewState | null): string | nul
   return getRotoDragPreviewViewModel(preview.publication.proposal).conciseStatus;
 }
 
+interface RotoTimelineCellButtonProps {
+  frame: number;
+  cellClass: string;
+  semanticKind: 'empty' | 'real-key' | 'generated';
+  cellKeyId: string | null;
+  ariaLabel: string;
+  tooltipCopy: string;
+  onCellPointerDown?: (event: PointerEvent) => void;
+  onCellClick: () => void;
+}
+
+/**
+ * One physical-frame cell with its own styled-tooltip controller (D-16/C-06).
+ * Hooks cannot run inside the 120-cell map in the strip body, so each cell is
+ * a child component owning one `useStyledTooltip` instance. The button keeps
+ * every `data-roto-*` attribute, class hook, and drag handler verbatim — only
+ * the native `title` is retired in favor of the styled tooltip (Pitfall 4).
+ */
+function RotoTimelineCellButton(props: RotoTimelineCellButtonProps) {
+  const tooltip = useStyledTooltip();
+  return (
+    <span
+      class="physics-paint-roto-cell-anchor"
+      onPointerEnter={tooltip.onPointerEnter}
+      onPointerLeave={tooltip.onPointerLeave}
+    >
+      <button
+        type="button"
+        class={props.cellClass}
+        data-roto-app-frame={props.frame}
+        data-roto-kind={props.semanticKind}
+        data-roto-key-id={props.cellKeyId ?? undefined}
+        aria-label={props.ariaLabel}
+        onPointerDown={props.onCellPointerDown
+          ? (event) => {
+              tooltip.hide();
+              props.onCellPointerDown?.(event as unknown as PointerEvent);
+            }
+          : undefined}
+        onFocus={tooltip.onFocus}
+        onBlur={tooltip.onBlur}
+        onClick={() => {
+          tooltip.hide();
+          props.onCellClick();
+        }}
+      >
+        <span>{props.frame}</span>
+      </button>
+      <PhysicsPaintStyledTooltip visible={tooltip.visible}>{props.tooltipCopy}</PhysicsPaintStyledTooltip>
+    </span>
+  );
+}
+
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
   const [rotoDragPreview, setRotoDragPreview] = useState<RotoDragPreviewState | null>(null);
@@ -265,8 +314,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     ? [...cachedRotoFrames, { frameIndex: 0, appFrame: props.currentFrame, dataUrl: 'data:image/png;base64,', source: 'generated-interpolation' as const }]
     : cachedRotoFrames;
   const currentRotoCell = getRotoCellViewModel({ frame: props.currentFrame, currentFrame: props.currentFrame, cachedFrames: currentCellFrames });
-  const rotoMissingStatusLabel = props.rotoMissingFrameStatusKind ? getMissingRotoFrameStatusLabel({ frame: props.currentFrame, kind: props.rotoMissingFrameStatusKind }) : null;
-  const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames);
   const isCurrentRealRotoKey = currentSemanticCell?.kind === 'real';
   const sessionKeyAvailability = props.rotoKeyState?.actionAvailability;
   const physicalActions = props.rotoPhysicalActions;
@@ -310,6 +357,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const copyScriptTooltip = useStyledTooltip();
   const applyScriptTooltip = useStyledTooltip();
   const closeTooltip = useStyledTooltip();
+  const capsuleTooltip = useStyledTooltip();
+  const interpolationTooltip = useStyledTooltip();
   const rotoKeyRecords = props.rotoKeyRecords ?? [];
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
@@ -326,6 +375,24 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (!rotoDragPreview?.publication) return new Set<number>();
     return collectRotoDragVacatedAppFrames(currentPhysicalCells, rotoDragPreview.publication.proposal);
   }, [currentPhysicalCells, rotoDragPreview]);
+  // Header status capsule (D-15/D-18/D-19): one prioritized line derived
+  // render-time from EXISTING props/signal reads only — no new controller
+  // state, no effect copying props into local state (key_links). Feedback
+  // recency is static wiring metadata: playback status reflects the latest
+  // transport interaction, then script apply status, then the generated-frame
+  // guard hint; the pure selector owns the priority grammar itself.
+  const generatedGuardStatus = !resolverApprovedGeneratedTarget && (currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false)
+    ? getGeneratedRotoDisabledStatus(currentRotoCell.frame)
+    : null;
+  const capsuleText = getRotoStatusCapsuleViewModel({
+    pendingOperation: rotoDragFeedback ?? (keyUtilitiesDisabledByBusyState ? getRotoKeyBusyStatus(props.currentFrame) : null),
+    savingIndicator: props.statusMessage ?? null,
+    feedback: [
+      { text: props.rotoCachedPlaybackStatus ?? null, recency: 2 },
+      { text: scriptStatus, recency: 1 },
+      { text: generatedGuardStatus, recency: 0 },
+    ],
+  });
   function handleRotoPlaybackFpsInput(event: Event) {
     const value = Number((event.currentTarget as HTMLInputElement).value);
     if (Number.isFinite(value)) props.onRotoPlaybackFpsChange?.(value);
@@ -767,7 +834,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
         </div>
 
-        <div class="physics-paint-header-capsule-slot" aria-hidden="true" />
+        <div
+          class="physics-paint-status-capsule"
+          role="status"
+          aria-live="polite"
+          onPointerEnter={capsuleTooltip.onPointerEnter}
+          onPointerLeave={capsuleTooltip.onPointerLeave}
+        >
+          <Info size={16} aria-hidden="true" />
+          <span class="physics-paint-status-capsule-text">{capsuleText}</span>
+          <PhysicsPaintStyledTooltip visible={capsuleTooltip.visible}>{capsuleText}</PhysicsPaintStyledTooltip>
+        </div>
 
         {props.onRotoInterpolationEnabledChange ? (
           <div
@@ -776,7 +853,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             aria-label="Roto interpolation settings"
             data-enabled={interpolationEnabled ? 'true' : 'false'}
             data-pending={props.rotoInterpolationPending ? 'true' : 'false'}
-            title={interpolationStatus}
+            onPointerEnter={interpolationTooltip.onPointerEnter}
+            onPointerLeave={interpolationTooltip.onPointerLeave}
           >
             <button
               type="button"
@@ -804,6 +882,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <option value="blend">Blend</option>
               </select>
             </label>
+            <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible}>{interpolationStatus}</PhysicsPaintStyledTooltip>
           </div>
         ) : null}
 
@@ -892,24 +971,28 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   const dragLabel = hasTargetFeedback
                     ? (previewCell?.ariaLabel ?? rotoDragFeedback ?? vm.ariaLabel)
                     : dragEligible ? `${vm.ariaLabel} Drag this real Roto key to an empty frame.` : generatedTitle ?? vm.ariaLabel;
-                  const dragTitle = hasTargetFeedback
-                    ? (previewCell?.title ?? rotoDragFeedback ?? vm.title)
-                    : dragEligible ? `${vm.title} Drag to move this real Roto key.` : generatedTitle ?? vm.title;
+                  const cellTooltipKind: RotoCellSemanticTooltipKind = isPhysicalRealKey
+                    ? 'real-key'
+                    : isGenerated
+                      ? 'generated'
+                      : vm.baseMeaning === 'cached'
+                        ? 'cached'
+                        : vm.baseMeaning === 'background-only'
+                          ? 'background-only'
+                          : 'empty';
                   const cellClass = `physics-paint-roto-cell ${fillClass} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
                   return (
-                    <button
+                    <RotoTimelineCellButton
                       key={frame}
-                      class={cellClass}
-                      data-roto-app-frame={frame}
-                      data-roto-kind={semanticKind}
-                      data-roto-key-id={cellKeyId ?? undefined}
-                      aria-label={dragLabel}
-                      title={dragTitle}
-                      onPointerDown={dragEligible && cellKeyId ? (event) => handleRotoCellPointerDown(event as unknown as PointerEvent, frame, cellKeyId) : undefined}
-                      onClick={() => handleRotoCellClick(frame, vm)}
-                    >
-                      <span>{frame}</span>
-                    </button>
+                      frame={frame}
+                      cellClass={cellClass}
+                      semanticKind={semanticKind}
+                      cellKeyId={cellKeyId}
+                      ariaLabel={dragLabel}
+                      tooltipCopy={getRotoCellStateTooltipCopy(cellTooltipKind)}
+                      onCellPointerDown={dragEligible && cellKeyId ? (event) => handleRotoCellPointerDown(event, frame, cellKeyId) : undefined}
+                      onCellClick={() => handleRotoCellClick(frame, vm)}
+                    />
                   );
                 })}
               </div>
@@ -1116,33 +1199,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           </div>
         ) : null}
       </div>
-
-        <div class="physics-paint-roto-status-stack">
-          <div class="physics-paint-roto-cell-legend" aria-label="Roto cell states">
-            <span class="physics-paint-roto-cell-legend-title">Roto cell states</span>
-            {ROTO_CELL_LEGEND_ITEMS.map(item => (
-              <span key={item.label} class="physics-paint-roto-cell-legend-item">
-                <span class={`physics-paint-roto-cell-swatch ${item.className}`} aria-hidden="true" />
-                <span>{item.label}</span>
-              </span>
-            ))}
-          </div>
-          <p class="physics-paint-roto-status">{rotoMissingStatusLabel ?? currentRotoCell.label}</p>
-          {rotoDragFeedback ? <p class="physics-paint-roto-interpolation-status" role="status" aria-live="polite">{rotoDragFeedback}</p> : null}
-          {props.onRotoInterpolationEnabledChange ? <p class="physics-paint-roto-interpolation-status">{interpolationStatus}</p> : null}
-          {!resolverApprovedGeneratedTarget ? <p class="physics-paint-roto-interpolation-status">{'Generated frame {frame} is render-only. Completed real-key paint is cached automatically.'}</p> : null}
-          {!resolverApprovedGeneratedTarget && (currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false) ? <p class="physics-paint-roto-key-status">{getGeneratedRotoDisabledStatus(currentRotoCell.frame)}</p> : null}
-          {keyUtilitiesDisabledByBusyState ? <p class="physics-paint-roto-key-status">{getRotoKeyBusyStatus(props.currentFrame)}</p> : null}
-          {currentRotoFill === 'cached-only' ? (
-            <>
-              <p class="physics-paint-roto-key-status">Cached reference</p>
-              <p class="physics-paint-roto-interpolation-status">Cached reference: repaintable, not stroke-editable.</p>
-            </>
-          ) : null}
-          {props.statusMessage ? <p class="physics-paint-roto-interpolation-status">{props.statusMessage}</p> : null}
-          {scriptStatus ? <p class="physics-paint-roto-interpolation-status">{scriptStatus}</p> : null}
-          {props.rotoCachedPlaybackStatus ? <p class="physics-paint-roto-playback-status">{props.rotoCachedPlaybackStatus}</p> : null}
-        </div>
 
    </section>
   );
