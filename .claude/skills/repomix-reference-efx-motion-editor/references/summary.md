@@ -1,5 +1,5 @@
 This file is a merged representation of a subset of the codebase, containing files not matching ignore patterns, combined into a single document by Repomix.
-The content has been processed where comments have been removed, empty lines have been removed, content has been compressed (code blocks are separated by ⋮---- delimiter).
+The content has been processed where comments have been removed, empty lines have been removed.
 
 # Summary
 
@@ -37,36 +37,35 @@ This skill contains the following reference files:
 - Files matching default ignore patterns are excluded
 - Code comments have been removed from supported file types
 - Empty lines have been removed from all files
-- Content has been compressed - code blocks are separated by ⋮---- delimiter
 - Long base64 data strings (e.g., data:image/png;base64,...) have been truncated to reduce token count
 - Files are sorted by Git change count (files with more changes are at the bottom)
 
 ## Statistics
 
-218 files | 7 650 lines
+387 files | 75 912 lines
 
 | Language | Files | Lines |
 |----------|------:|------:|
-| TypeScript | 114 | 4 297 |
-| TypeScript (TSX) | 65 | 1 416 |
-| Rust | 17 | 1 000 |
-| JSON | 9 | 305 |
-| Markdown | 5 | 483 |
+| TypeScript | 184 | 34 624 |
+| TypeScript (TSX) | 79 | 19 298 |
+| Markdown | 76 | 15 253 |
+| Rust | 23 | 2 954 |
+| JSON | 11 | 570 |
+| Shell | 3 | 191 |
 | META | 3 | 40 |
-| CSS | 1 | 23 |
-| TOML | 1 | 38 |
-| HTML | 1 | 12 |
-| YAML | 1 | 3 |
-| Other | 1 | 33 |
+| CSS | 3 | 2 869 |
+| HTML | 2 | 24 |
+| TOML | 1 | 45 |
+| Other | 2 | 44 |
 
 **Largest files:**
-- `README.md` (305 lines)
-- `app/src-tauri/src/services/project_io.rs` (240 lines)
-- `app/src/components/timeline/TimelineRenderer.ts` (211 lines)
-- `app/src-tauri/src/lib.rs` (181 lines)
-- `packages/efx-physic-paint/src/engine/EfxPaintEngine.ts` (173 lines)
-- `app/src/types/project.ts` (164 lines)
-- `packages/efx-physic-paint/src/types.ts` (144 lines)
-- `app/src/components/canvas/PaintOverlay.tsx` (144 lines)
-- `app/src-tauri/src/services/image_pool.rs` (130 lines)
-- `packages/efx-physic-paint/src/brush/paint.ts` (125 lines)
+- `.agents/skills/repomix-reference-efx-motion-editor/references/files.md` (8 523 lines)
+- `app/src/components/physic-paint/physicsPaintStudio.css` (2 224 lines)
+- `app/src/components/canvas/PaintOverlay.tsx` (2 017 lines)
+- `packages/efx-physic-paint/src/engine/EfxPaintEngine.ts` (1 668 lines)
+- `app/src/stores/physicPaintStore.ts` (1 282 lines)
+- `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts` (1 237 lines)
+- `app/src/components/timeline/TimelineRenderer.ts` (1 203 lines)
+- `app/src/lib/physicPaintBridge.ts` (1 124 lines)
+- `app/src/components/sidebar/PaintProperties.tsx` (1 112 lines)
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx` (1 042 lines)

@@ -10,6 +10,10 @@
 
 - pnpm
 
+### Dependencies
+
+- @opengsd/gsd-core (^1.4.1)
+
 ### Configuration Files
 
 - .gitignore
@@ -56,6 +60,7 @@
 - @tailwindcss/vite (^4.0.0)
 - @tauri-apps/cli (^2.10.0)
 - @types/sortablejs (^1.15.9)
+- @vitest/coverage-v8 (^2.1.9)
 - tailwindcss (^4.0.0)
 - typescript (~5.9.3)
 - vite (5.4.21)
@@ -94,10 +99,12 @@
 
 ### Dev Dependencies
 
+- @preact/preset-vite (^2.10.5)
+- @types/node (^24.12.0)
+- preact (^10.29.0)
 - tsup (^8.5.1)
 - typescript (~5.9.3)
-- preact (^10.29.0)
-- @types/node (^24.12.0)
+- vite (5.4.21)
 
 ### Configuration Files
 

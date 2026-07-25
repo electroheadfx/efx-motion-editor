@@ -5,7 +5,7 @@ description: Reference codebase for Efx Motion Editor. Use this skill when you n
 
 # Efx Motion Editor Codebase Reference
 
-218 files | 7650 lines | 66287 tokens
+387 files | 75912 lines | 787215 tokens
 
 ## Overview
 
