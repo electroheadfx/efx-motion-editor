@@ -31,6 +31,24 @@ export function getTimelinePlayScriptMarkerGeometry(
   };
 }
 
+export interface PhysicPaintRotoKeyMarkerGeometry {
+  x: number;
+}
+
+/** Canvas x for one real-Roto-key diamond on a physic-paint FX row (C-04).
+ *  rotoKeyFrames are layer-LOCAL physical appFrames, so the marker x mirrors the
+ *  drawKeyframeDiamonds FX coordinate math: (inFrame + appFrame) * frameWidth - scrollX + TRACK_HEADER_WIDTH. */
+export function getPhysicPaintRotoKeyMarkerGeometry(marker: {
+  appFrame: number;
+  inFrame: number;
+  frameWidth: number;
+  scrollX: number;
+}): PhysicPaintRotoKeyMarkerGeometry {
+  return {
+    x: (marker.inFrame + marker.appFrame) * marker.frameWidth - marker.scrollX + TRACK_HEADER_WIDTH,
+  };
+}
+
 export function getTimelineFxHeaderLabel(
   fxTrack: Pick<FxTrackLayout, 'sequenceName' | 'layerType'> & Partial<Pick<FxTrackLayout, 'headerLabel'>>,
 ): string {
@@ -477,6 +495,50 @@ export class TimelineRenderer {
     ctx.restore();
   }
 
+  /** Draw always-visible orange diamonds for real Roto keys on a physic-paint FX row (C-04).
+   *  Pure canvas drawing: #F5A623 fill, no stroke, no shadow, no interaction surface (D-08/D-09). */
+  private drawRotoKeyMarkers(
+    ctx: CanvasRenderingContext2D,
+    rotoKeyFrames: number[],
+    inFrame: number,
+    barX: number,
+    barW: number,
+    barY: number,
+    barH: number,
+    frameWidth: number,
+    scrollX: number,
+    canvasWidth: number,
+  ): void {
+    if (rotoKeyFrames.length === 0 || barW <= 0) return;
+
+    const trackLeft = Math.max(barX, TRACK_HEADER_WIDTH);
+    const trackRight = Math.min(barX + barW, canvasWidth);
+    if (trackRight <= trackLeft) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(trackLeft, barY, trackRight - trackLeft, barH, 3);
+    ctx.clip();
+
+    const halfSize = 9; // half-extent matching the 9px keyframe icon size
+    const centerY = barY + barH / 2;
+
+    ctx.fillStyle = '#F5A623';
+    for (const appFrame of rotoKeyFrames) {
+      const { x } = getPhysicPaintRotoKeyMarkerGeometry({ appFrame, inFrame, frameWidth, scrollX });
+      if (x < TRACK_HEADER_WIDTH - halfSize || x > canvasWidth + halfSize) continue;
+      ctx.beginPath();
+      ctx.moveTo(x, centerY - halfSize); // top
+      ctx.lineTo(x + halfSize, centerY); // right
+      ctx.lineTo(x, centerY + halfSize); // bottom
+      ctx.lineTo(x - halfSize, centerY); // left
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
   private drawFxTrack(
     ctx: CanvasRenderingContext2D,
     fxTrack: FxTrackLayout,
@@ -573,6 +635,21 @@ export class TimelineRenderer {
         this.drawPhysicPaintPlayScriptMarkers(
           ctx,
           fxTrack.playScriptMarkers,
+          barX,
+          barW,
+          barY,
+          barH,
+          frameWidth,
+          scrollX,
+          canvasWidth,
+        );
+      }
+
+      if (fxTrack.layerType === 'physic-paint' && fxTrack.rotoKeyFrames?.length) {
+        this.drawRotoKeyMarkers(
+          ctx,
+          fxTrack.rotoKeyFrames,
+          fxTrack.inFrame,
           barX,
           barW,
           barY,

@@ -54,6 +54,7 @@ export interface FxTrackLayout {
   thumbnailImageId?: string;  // used for thumbnail icon rendering in content overlay range bars
   layerType?: LayerType;      // used to distinguish static-image/image-sequence/video for color and rendering decisions
   playScriptMarkers?: TimelinePlayScriptMarker[]; // saved Play ranges nested inside physic-paint FX bars
+  rotoKeyFrames?: number[]; // layer-local physical appFrames of real Roto keys (C-04 markers)
   fadeIn?: { duration: number };
   fadeOut?: { duration: number };
 }

@@ -194,6 +194,9 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       visible: seq.visible !== false,
       thumbnailImageId: seq.kind === 'content-overlay' ? getThumbnailImageId(primaryLayer) : undefined,
       layerType: primaryLayer?.type,
+      rotoKeyFrames: primaryLayer?.type === 'physic-paint'
+        ? physicPaintStore.getRotoRealKeyRecords(getLayerId(primaryLayer)).map((record) => record.appFrame)
+        : undefined,
       fadeIn: seq.fadeIn ? { duration: seq.fadeIn.duration } : undefined,
       fadeOut: seq.fadeOut ? { duration: seq.fadeOut.duration } : undefined,
     });
