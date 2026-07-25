@@ -140,6 +140,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36.12: Physics Paint Roto Generated Interpolation** - Animators can generate render-only in-between Roto frames between real keys without making generated frames editable. (completed 2026-07-02)
 - [x] **Phase 36.13: Physics Paint Roto Dynamic Interpolation Spacing** - MVP slice for per-segment interpolation spacing overrides so intentionally distant real keys keep custom spans across toggle, save/load, preview, export, and real-key-depth onion skinning. (completed 2026-07-13)
 - [x] **Phase 36.14: Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration** - Cut every real Roto key, generated in-between, timeline edit, persisted frame, and rendered output over to one deterministic physical-frame authority, then integrate the approved timeline UI and Copy Script / Apply Script controller contract. (planned; final v0.8.0 phase) (completed 2026-07-25)
+- [ ] **Phase 36.15: Roto Timeline Final UI Integration** - Implement the approved 36.14-UI-SPEC final timeline UI that was locked out of Phase 36.14 under D-30 (Plans 15-17 scope), plus the user complement spec: icon-only controls, distinct strip groups, EFX Motion layer key markers. Source of truth: `SPECS/36.x-phases/phase-36.15-final-ui/spec-36.15-final-ui.md` + `36.14-UI-SPEC.md` (URGENT)
 
 ## Phase Details
 
@@ -573,6 +574,31 @@ D-30 gap-closure recovery track: execute only with `/gsd-execute-phase 36.14 --g
 **Wave 27** *(post-approval regression eligibility; blocked on Plan 29 native approval)* — Stale-test contract transfer
 
 - [x] 36.14-30-PLAN.md — Triage the 18 baseline-failing test files and 73 typecheck errors; transfer still-valid assertions to the canonical physical contract, delete retired-contract tests, remove the unused buildRotoRevision declaration, and close with the full typecheck + vitest run + build gate green.
+
+### Phase 36.15: Roto Timeline Final UI Integration
+
+**Goal:** As a stop-motion animator, I want the Physics Paint Roto timeline to present the approved final UI — fixed strip geometry with clearly separated control groups, icon-only actions with tooltips, an elastic status capsule, and key markers visible on the EFX Motion layer — so the physical-frame behavior approved in 36.14 is exposed through the intended presentation without duplicating business logic in the view.
+**Requirements:** (assigned during planning — candidate IDs: 36.15-STRIP-GEOMETRY, 36.15-GROUP-SEPARATION, 36.15-ICON-ACTIONS, 36.15-STATUS-CAPSULE, 36.15-LAYER-KEY-MARKERS, 36.15-SELECTION-GUARD, 36.15-SCRIPT-CONTROLS)
+**Depends on:** Phase 36.14 (physical-frame authority, native-UAT-approved behavior)
+**Plans:** 0 plans (discuss + refreshed research first, then plan)
+
+**Success Criteria**:
+
+1. The workflow strip implements the 36.14 UI-SPEC Fixed Layout Contract: fixed 155px strip, locked header hierarchy, fixed abutting timeline cells, fit-content non-wrapping context action row.
+2. Control groups render as visually distinct gray-background groups with minimum 5px spacing around each divider: playback (loop/fps), interpolation (lucide `blend` icon, no border), apply-key-spacing (lucide `align-horizontal-space-around` before the number), key space — per complement spec C-01..C-03.
+3. The bottom timeline action row is icon-only with tooltips per complement spec C-05 (`between-vertical-start`, `copy-plus`, `clipboard-copy`, `clipboard-paste`, `trash-2`, `clipboard`, `clipboard-pen`, `clipboard-x`); Discard Script lives in the right-panel Scripts toolbar.
+4. The bottom cell-states legend area is removed (C-06); an elastic truncating header status capsule replaces the permanent status stack; LOG tab remains the only detailed diagnostic surface.
+5. Paint keys are visually marked on the EFX Motion layer (C-04); the application selection guard exists in `app/index.html`; guarded Script controls stay in order, focusable, with controller-supplied unavailable reasons.
+6. All wiring consumes existing controller/resolver seams — no business logic moves into the view; the 36.14 physical contract and native-approved behavior are unchanged; native visual UAT approves the final result.
+
+Planning notes:
+
+- Research must be refreshed before planning: production strip changed after the 2026-07-19 UI-SPEC was written; current source is the starting surface, and the C-03 layout-sketch group membership needs confirmation against current production.
+- Base contract: `.planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-UI-SPEC.md`; complement (wins on conflict): `SPECS/36.x-phases/phase-36.15-final-ui/spec-36.15-final-ui.md`.
+- Locked 36.14 Plans 15-17 objectives are the historical reference for this scope; do not execute those plan files — plan fresh.
+- No view-layer business logic, no competing timeline implementation, no shadcn/second token system; extend `physicsPaintStudio.css` and existing Preact patterns.
+- Presentation-only phase: any needed behavior change beyond wiring to existing controller ports is out of scope and routes to a quick.
+- Related open follow-ups recorded in STATE.md Deferred Items (resolver regression tests, CR-01/CR-02 fixes) are NOT part of this phase.
 
 ### Phase 36.8: Physics Paint Roto State Refactor
 
