@@ -4,8 +4,8 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.14
 status: completed
-stopped_at: Phase 36.15 context gathered
-last_updated: "2026-07-25T12:59:24.499Z"
+stopped_at: Phase 36.15 UI-SPEC approved
+last_updated: "2026-07-25T13:11:18.735Z"
 last_activity: 2026-07-25
 last_activity_desc: Phase 36.14 complete
 progress:
@@ -296,6 +296,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-25T12:59:24.457Z
-Stopped at: Phase 36.15 context gathered
-Resume file: .planning/phases/36.15-roto-timeline-final-ui-integration/36.15-CONTEXT.md
+Last session: 2026-07-25T13:11:18.692Z
+Stopped at: Phase 36.15 UI-SPEC approved
+Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/36.15-roto-timeline-final-ui-integration/36.15-UI-SPEC.md

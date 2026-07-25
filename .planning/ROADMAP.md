@@ -583,12 +583,26 @@ D-30 gap-closure recovery track: execute only with `/gsd-execute-phase 36.14 --g
 **Plans:** 7 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 36.15-01-PLAN.md — Styled tooltip component + icon-only guarded bottom action row (wave 1)
 - [ ] 36.15-02-PLAN.md — EFX Motion layer real-Roto-key diamond markers (wave 1)
 - [ ] 36.15-03-PLAN.md — Application selection guard in app/index.html (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 36.15-04-PLAN.md — Header pill-island recomposition + close button (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 36.15-05-PLAN.md — Status capsule + status stack/legend removal + per-cell tooltips (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 36.15-06-PLAN.md — Fixed 155px strip geometry cutover (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 36.15-07-PLAN.md — Discard Script relocation to the Scripts toolbar (wave 5)
 
 **Success Criteria**:
