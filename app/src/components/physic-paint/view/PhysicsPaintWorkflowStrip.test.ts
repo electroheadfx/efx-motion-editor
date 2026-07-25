@@ -63,6 +63,25 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
   });
 
+  it('guards the Paste key icon action with aria-disabled and a styled tooltip', () => {
+    const code = source();
+    expect(code).toContain('aria-label="Paste key"');
+    expect(code).toContain('ClipboardPaste');
+    const labelIndex = code.indexOf('aria-label="Paste key"');
+    const buttonStart = code.lastIndexOf('<button', labelIndex);
+    const buttonEnd = code.indexOf('</button>', labelIndex) + '</button>'.length;
+    const pasteBlock = code.slice(buttonStart, buttonEnd);
+    expect(pasteBlock).toContain('aria-disabled');
+    expect(pasteBlock).toContain('aria-describedby');
+    expect(pasteBlock.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(pasteBlock).not.toContain('title=');
+    const guardIndex = pasteBlock.indexOf('if (!canPasteRotoKey) return;');
+    const handlerIndex = pasteBlock.indexOf('props.onPasteRotoFrame?.()');
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(handlerIndex).toBeGreaterThan(guardIndex);
+    expect(code).toContain('Paste key — unavailable: ');
+  });
+
   it('keeps distinct Copy Script and Apply Script controls immediately after Delete', () => {
     const code = source();
     const deleteIndex = code.indexOf('>Delete</button>');
