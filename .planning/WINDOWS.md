@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 2
+open_count: 3
 waived_count: 0
 fixed_count: 9
-total_count: 11
-last_updated: 2026-07-24T09:57:16.430Z
+total_count: 12
+last_updated: 2026-07-25T18:41:27.754Z
 ---
 
 # Broken Windows Ledger
@@ -26,6 +26,7 @@ last_updated: 2026-07-24T09:57:16.430Z
 | 9 | 36.14 | deviation | app/src/types/physicPaint.ts | 739 | The active apply-payload allowlist omitted the valid play-script physical operation. | fixed |  | 2026-07-24T09:36:17.277Z | 2026-07-24T09:37:35.662Z |
 | 10 | 36.14 | deviation | .planning/STATE.md |  | Corrected stale Plan 25 activity, Plan 26 next action, and 112-plan prose count after the non-linear Plan 26 state update. | fixed |  | 2026-07-24T09:40:48.530Z | 2026-07-24T09:41:05.837Z |
 | 11 | 36.14 | deviation | .planning/STATE.md |  | Corrected stale non-linear recovery position after generic state advancement | fixed |  | 2026-07-24T09:56:45.875Z | 2026-07-24T09:57:16.430Z |
+| 12 | 36.15 | stub | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx |  | Intentional empty flex-1 capsule slot (.physics-paint-header-capsule-slot); resolved by Plan 05 status capsule | open |  | 2026-07-25T18:41:27.754Z |  |
 
 ````json
 [
@@ -160,6 +161,18 @@ last_updated: 2026-07-24T09:57:16.430Z
     "reason": "",
     "recorded_at": "2026-07-24T09:56:45.875Z",
     "resolved_at": "2026-07-24T09:57:16.430Z"
+  },
+  {
+    "id": 12,
+    "kind": "stub",
+    "phase": "36.15",
+    "file": "app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx",
+    "line": null,
+    "description": "Intentional empty flex-1 capsule slot (.physics-paint-header-capsule-slot); resolved by Plan 05 status capsule",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-07-25T18:41:27.754Z",
+    "resolved_at": null
   }
 ]
 ````

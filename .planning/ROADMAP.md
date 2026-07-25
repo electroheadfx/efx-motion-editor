@@ -580,7 +580,7 @@ D-30 gap-closure recovery track: execute only with `/gsd-execute-phase 36.14 --g
 **Goal:** As a stop-motion animator, I want the Physics Paint Roto timeline to present the approved final UI — fixed strip geometry with clearly separated control groups, icon-only actions with tooltips, an elastic status capsule, and key markers visible on the EFX Motion layer — so the physical-frame behavior approved in 36.14 is exposed through the intended presentation without duplicating business logic in the view.
 **Requirements:** 36.15-STRIP-GEOMETRY, 36.15-GROUP-SEPARATION, 36.15-ICON-ACTIONS, 36.15-STATUS-CAPSULE, 36.15-LAYER-KEY-MARKERS, 36.15-SELECTION-GUARD, 36.15-SCRIPT-CONTROLS
 **Depends on:** Phase 36.14 (physical-frame authority, native-UAT-approved behavior)
-**Plans:** 3/7 plans executed
+**Plans:** 4/7 plans executed
 
 Plans:
 **Wave 1**
@@ -591,7 +591,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 36.15-04-PLAN.md — Header pill-island recomposition + close button (wave 2)
+- [x] 36.15-04-PLAN.md — Header pill-island recomposition + close button (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
