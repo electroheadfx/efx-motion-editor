@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.15
 current_phase_name: roto-timeline-final-ui-integration
 status: executing
-stopped_at: Completed 36.15-02-PLAN.md
-last_updated: "2026-07-25T18:14:08.597Z"
+stopped_at: Completed 36.15-03-PLAN.md
+last_updated: "2026-07-25T18:20:48.032Z"
 last_activity: 2026-07-25
 last_activity_desc: Phase 36.15 execution started
 progress:
   total_phases: 18
   completed_phases: 16
   total_plans: 129
-  completed_plans: 118
+  completed_plans: 119
   percent: 89
 ---
 
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.15 (roto-timeline-final-ui-integration) — EXECUTING
 Previous phase: 36.14 complete (physical-frame cutover, native-UAT approved)
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-07-25 — Phase 36.15 execution started
 Next recommended action: /gsd-execute-phase 36.15 (wave order 1 → 1 → 1 → 2 → 3 → 4 → 5)
 
-Progress: [██████████████████░░] 114/121 plans complete; 16/17 phases complete ([█████████░] 91%)
+Progress: [██████████████████░░] 114/121 plans complete; 16/17 phases complete ([█████████░] 92%)
 
 ## Performance Metrics
 
@@ -113,6 +113,7 @@ Progress: [██████████████████░░] 114/121
 | Phase 36.14 P28 | 12min | 2 tasks | 1 files |
 | Phase 36.15 P01 | 17min | 2 tasks | 5 files |
 | Phase 36.15 P02 | 6min | 2 tasks | 4 files |
+| Phase 36.15 P03 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -221,6 +222,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 36.15 Plan 01]: useStyledTooltip registers the Escape keydown listener only while visible with drag-session-style idempotent cleanup; hover delay is exactly 1000ms, keyboard focus shows instantly (D-17).
 - [Phase ?]: rotoKeyFrames stays layer-local physical appFrames on FxTrackLayout; renderer adds fxTrack.inFrame at draw time (36.15-02)
 - [Phase ?]: Roto key markers use a dedicated drawRotoKeyMarkers pass with #F5A623 fill, no drawLosange reuse, zero interaction surface (36.15-02)
+- [Phase ?]: [Phase 36.15 Plan 03]: Application selection guard lives in app/index.html per the 36.14 UI-SPEC contract; exact four-selector exception list test-locked against broadening (T-36.15-05)
+- [Phase ?]: [Phase 36.15 Plan 03]: Scoped user-select rules in physicsPaintStudio.css coexist with the app-wide guard and are test-locked against silent removal
 
 ### Pending Todos
 
@@ -302,6 +305,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-25T18:13:59.232Z
-Stopped at: Completed 36.15-02-PLAN.md
+Last session: 2026-07-25T18:20:48.018Z
+Stopped at: Completed 36.15-03-PLAN.md
 Resume file: None
