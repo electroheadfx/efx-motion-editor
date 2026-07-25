@@ -426,3 +426,88 @@ describe('PhysicsPaintWorkflowStrip strip geometry pitch contract (36.15-06 task
     }
   });
 });
+
+function getMediaQueryBlock(styles: string, query: string): string {
+  const start = styles.indexOf(query);
+  if (start === -1) return '';
+  let depth = 0;
+  let end = start;
+  for (let i = start; i < styles.length; i += 1) {
+    if (styles[i] === '{') depth += 1;
+    if (styles[i] === '}') {
+      depth -= 1;
+      if (depth === 0) { end = i + 1; break; }
+    }
+  }
+  return styles.slice(start, end);
+}
+
+describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)', () => {
+  it('locks the strip shell and studio grid third track to 155px with no legacy or override height literals', () => {
+    const styles = css();
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 155px');
+    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: 58px minmax(0, 1fr) 155px');
+    expect(styles).not.toContain('256px');
+    expect(styles).not.toContain('260px');
+  });
+
+  it('declares the exact 46/1/28/38/28/14 band geometry with zeroed strip padding and gap', () => {
+    const styles = css();
+    const strip = getCssRuleBlock(styles, '.physics-paint-workflow-strip {');
+    expect(strip).toContain('gap: 0');
+    expect(strip).toContain('padding: 0 12px');
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-header {')).toContain('height: 46px');
+    const timeline = getCssRuleBlock(styles, '.physics-paint-timeline {');
+    expect(timeline).toContain('border-top: 1px');
+    expect(timeline).not.toContain('min-height');
+    const lane = getCssRuleBlock(styles, '.physics-paint-lane {');
+    expect(lane).toContain('height: 38px');
+    expect(lane).not.toContain('min-height');
+    expect(lane).not.toContain('padding: 8px 0');
+    const actionRow = getCssRuleBlock(styles, '.physics-paint-roto-action-row {');
+    expect(actionRow).toContain('height: 28px');
+    expect(actionRow).toContain('display: flex');
+    expect(actionRow).toContain('min-width: 2160px');
+    expect(getCssRuleBlock(styles, '.physics-paint-timeline-scrollbar {')).toContain('height: 14px');
+    // Bigger bottom action-row icons (user feedback): 24px-high buttons.
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-key-icon-button {')).toContain('height: 24px');
+  });
+
+  it('renders the key-utilities pill inside a 28px action-row band that is a sibling of the lane inside the scroll container', () => {
+    const code = source();
+    const scrollIndex = code.indexOf('class="physics-paint-timeline-scroll"');
+    const laneIndex = code.indexOf('class="physics-paint-lane"', scrollIndex);
+    const actionRowIndex = code.indexOf('class="physics-paint-roto-action-row"', laneIndex);
+    const utilitiesIndex = code.indexOf('physics-paint-roto-key-utilities', actionRowIndex);
+    const scrollbarIndex = code.indexOf('class="physics-paint-timeline-scrollbar"', utilitiesIndex);
+    for (const index of [scrollIndex, laneIndex, actionRowIndex, utilitiesIndex, scrollbarIndex]) {
+      expect(index).toBeGreaterThanOrEqual(0);
+    }
+    expect(actionRowIndex).toBeGreaterThan(laneIndex);
+    expect(utilitiesIndex).toBeGreaterThan(actionRowIndex);
+    expect(scrollbarIndex).toBeGreaterThan(utilitiesIndex);
+    // The pill no longer lives inside the lane grid.
+    const laneBlock = code.slice(laneIndex, actionRowIndex);
+    expect(laneBlock).not.toContain('physics-paint-roto-key-utilities');
+    expect(laneBlock).toContain('physics-paint-roto-cells');
+  });
+
+  it('removes the 860px responsive collapse and declares D-18 horizontal scroll on the strip shell', () => {
+    const styles = css();
+    const query = getMediaQueryBlock(styles, '@media (max-width: 860px)');
+    expect(query).not.toBe('');
+    expect(query).not.toContain('.physics-paint-workflow-strip');
+    expect(query).not.toContain('.physics-paint-right-panel');
+    expect(query).not.toContain('.physics-paint-studio');
+    const strip = getCssRuleBlock(styles, '.physics-paint-workflow-strip {');
+    expect(strip).toContain('overflow-x: auto');
+    expect(strip).toContain('overflow-y: hidden');
+  });
+
+  it('keeps the drag machinery identifiers intact after the restructure (guardrail)', () => {
+    const code = source();
+    for (const identifier of ['data-roto-app-frame', 'data-roto-kind', 'data-roto-key-id', 'classifyRotoDragTarget', 'elementFromPoint', 'setPointerCapture']) {
+      expect(code).toContain(identifier);
+    }
+  });
+});
