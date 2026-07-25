@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronDown, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Clipboard, ClipboardCopy, ClipboardPaste, ClipboardPen, CopyPlus, Info, Play, RotateCcw, Square, Trash2, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronDown, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Clipboard, ClipboardCopy, ClipboardPaste, ClipboardPen, CopyPlus, Info, Play, Plus, RotateCcw, Square, Trash2, X } from 'lucide-preact';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
@@ -94,6 +94,8 @@ export interface PhysicsPaintWorkflowStripProps {
   isRotoCachedPlaybackActive?: boolean;
   onRotoInterpolationEnabledChange?: (enabled: boolean) => void;
   onRotoInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
+  /** + Key header action: promote the current frame to an empty real key. */
+  onAddRotoKey?: () => void;
   onDuplicateRotoKey?: () => void;
   onInsertRotoFrame?: () => void;
   onDeleteRotoFrame?: () => void;
@@ -346,6 +348,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // view never shortens, re-derives, or infers these reasons.
   const insertRotoKeyDisabledReason = canInsertRotoKey ? null : getRotoKeyUtilityDisabledMessage('insert');
   const duplicateRotoKeyDisabledReason = canDuplicateRotoKey ? null : getRotoKeyUtilityDisabledMessage('duplicate');
+  // + Key availability flows from the physical action bundle's reactive port
+  // (launch, pending, current-frame occupancy) plus the shared busy lock; the
+  // disabled reason stays verbatim from the controller port (D-12).
+  const canAddRotoKey = Boolean(physicalActions) && physicalActions!.canAddEmptyKey.value && props.ready !== false && !keyUtilitiesDisabledByBusyState;
+  const addRotoKeyDisabledReason = canAddRotoKey
+    ? null
+    : keyUtilitiesDisabledByBusyState || props.ready === false
+      ? 'Finish the current key action before using key tools.'
+      : physicalActions?.addEmptyKeyDisabledReason.value ?? 'Adding a Roto key is unavailable.';
   const copyRotoKeyDisabledReason = canCopyRotoKey ? null : getRotoKeyUtilityDisabledMessage('copy');
   const pasteRotoKeyDisabledReason = canPasteRotoKey ? null : getRotoKeyUtilityDisabledMessage('paste');
   const deleteRotoKeyDisabledReason = canDeleteRotoKey ? null : getRotoKeyUtilityDisabledMessage('delete');
@@ -354,6 +365,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const copyRotoScriptDisabledReason = canCopyRotoScript ? null : scriptAvailability?.copyDisabledReason ?? null;
   const applyRotoScriptDisabledReason = canApplyRotoScript ? null : scriptAvailability?.applyDisabledReason ?? null;
   const insertKeyTooltip = useStyledTooltip();
+  const addKeyTooltip = useStyledTooltip();
   const duplicateKeyTooltip = useStyledTooltip();
   const copyKeyTooltip = useStyledTooltip();
   const pasteKeyTooltip = useStyledTooltip();
@@ -864,6 +876,34 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           <span class="physics-paint-status-capsule-text">{capsuleText}</span>
           <PhysicsPaintStyledTooltip visible={capsuleTooltip.visible}>{capsuleText}</PhysicsPaintStyledTooltip>
         </div>
+
+        <span class="physics-paint-roto-key-icon-action" onPointerEnter={addKeyTooltip.onPointerEnter} onPointerLeave={addKeyTooltip.onPointerLeave}>
+          <button
+            type="button"
+            class="physics-paint-roto-key-icon-button"
+            aria-label="Add key"
+            aria-disabled={!canAddRotoKey ? 'true' : undefined}
+            aria-describedby={!canAddRotoKey && addRotoKeyDisabledReason ? 'roto-key-action-reason-add' : undefined}
+            onFocus={addKeyTooltip.onFocus}
+            onBlur={addKeyTooltip.onBlur}
+            onClick={() => {
+              addKeyTooltip.hide();
+              if (!canAddRotoKey) return;
+              props.onAddRotoKey?.();
+            }}
+            onKeyDown={(event) => {
+              if ((event.key === 'Enter' || event.key === ' ') && !canAddRotoKey) event.preventDefault();
+            }}
+          >
+            <Plus size={16} aria-hidden="true" />
+          </button>
+          {!canAddRotoKey && addRotoKeyDisabledReason ? (
+            <span id="roto-key-action-reason-add" class="physics-paint-sr-only">{addRotoKeyDisabledReason}</span>
+          ) : null}
+          <PhysicsPaintStyledTooltip visible={addKeyTooltip.visible}>
+            {!canAddRotoKey && addRotoKeyDisabledReason ? `Add key — unavailable: ${addRotoKeyDisabledReason}` : 'Add key'}
+          </PhysicsPaintStyledTooltip>
+        </span>
 
         <span class="physics-paint-roto-key-icon-action" onPointerEnter={duplicateKeyTooltip.onPointerEnter} onPointerLeave={duplicateKeyTooltip.onPointerLeave}>
           <button

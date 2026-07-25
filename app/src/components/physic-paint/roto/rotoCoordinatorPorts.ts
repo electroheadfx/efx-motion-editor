@@ -55,6 +55,16 @@ export interface RotoPhysicalKeyUtilityPort {
     clipboardPayload: PhysicPaintRotoRealKeyPayload,
     destinationKeyId: string | null,
   ) => Promise<boolean>;
+  /**
+   * Promote an unoccupied physical frame to a real key carrying the supplied
+   * empty paint payload. Routes through the same paste-to-empty
+   * resolver/coordinator machinery the script-target promotion path uses, so
+   * staging, settlement, rollback, and history stay identical.
+   */
+  addEmptyKey: (
+    destinationAppFrame: number,
+    emptyPayload: PhysicPaintRotoRealKeyPayload,
+  ) => Promise<boolean>;
 }
 
 export interface RotoFrameDisplayPort {

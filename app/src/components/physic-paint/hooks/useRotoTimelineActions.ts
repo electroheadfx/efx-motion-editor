@@ -137,6 +137,10 @@ export interface RotoPhysicalTimelineActionBundle {
   readonly canApplyForceSpacing: ReadonlySignal<boolean>;
   /** Reactive Force Spacing disabled reason, or null when eligible. */
   readonly forceSpacingDisabledReason: ReadonlySignal<string | null>;
+  /** Reactive + Key availability: launch ready, idle, and the current frame unoccupied. */
+  readonly canAddEmptyKey: ReadonlySignal<boolean>;
+  /** Reactive + Key disabled reason, or null when eligible. */
+  readonly addEmptyKeyDisabledReason: ReadonlySignal<string | null>;
 }
 
 export interface RotoTimelineActionsInput {
@@ -179,6 +183,7 @@ const INSERT_SUCCESS_MESSAGE = 'Inserted an empty Roto frame before the selected
 const DELETE_SUCCESS_MESSAGE = 'Deleted the selected Roto key.';
 const DUPLICATE_SUCCESS_MESSAGE = 'Duplicated the selected Roto key.';
 const PASTE_SUCCESS_MESSAGE = 'Pasted the copied paint into the Roto timeline.';
+const ADD_KEY_SUCCESS_MESSAGE = 'Added an empty Roto key.';
 const INVALID_FORCE_SPACING_MESSAGE = 'Enter a whole number of empty frames (0 or more).';
 
 export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
@@ -225,6 +230,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const dragDisabledReason = computed(() => computeDragAvailability(input).reason);
   const canApplyForceSpacing = computed(() => computeForceSpacingAvailability(input).eligible);
   const forceSpacingDisabledReason = computed(() => computeForceSpacingAvailability(input).reason);
+  const canAddEmptyKey = computed(() => computeAddEmptyKeyAvailability(input).eligible);
+  const addEmptyKeyDisabledReason = computed(() => computeAddEmptyKeyAvailability(input).reason);
   const pendingOperationIdSignal = input.pendingOperationId ?? signal<string | null>(null);
 
   const runPhysicalAction = useCallback(async (runnerInput: PhysicalActionRunnerInput): Promise<boolean> => {
@@ -340,8 +347,31 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     }
   }, [input, runPhysicalAction]);
 
-  const prepareRotoKeyDrag = useCallback((movedKeyId: string, target: RotoDragTarget): RotoDragPreparationResult => {
-    const launch = input.getLaunchContext?.() ?? null;
+  const addEmptyKey = useCallback((
+    destinationAppFrame: number,
+    emptyPayload: PhysicPaintRotoRealKeyPayload,
+  ): Promise<boolean> => {
+    if (!Number.isInteger(destinationAppFrame) || destinationAppFrame < 0) {
+      input.publishStatus?.('Select a valid Roto frame before adding a key.');
+      return Promise.resolve(false);
+    }
+    try {
+      // + Key promotion reuses the paste-to-empty physical edit machinery with
+      // an empty payload — the same path the script-target promotion uses — so
+      // the resolver, coordinator, settlement, and history stay unchanged.
+      return runPhysicalAction({
+        intent: createPhysicPaintRotoPasteKeyIntent(destinationAppFrame, emptyPayload, null),
+        operationKind: 'paste-key',
+        requiredKeyId: null,
+        successMessage: ADD_KEY_SUCCESS_MESSAGE,
+      });
+    } catch {
+      input.publishStatus?.('The empty Roto key payload is unavailable.');
+      return Promise.resolve(false);
+    }
+  }, [input, runPhysicalAction]);
+
+  const prepareRotoKeyDrag = useCallback((movedKeyId: string, target: RotoDragTarget): RotoDragPreparationResult => {    const launch = input.getLaunchContext?.() ?? null;
     if (!launch) {
       return { ok: false, reason: 'Select a real Roto key before editing the timeline.' };
     }
@@ -502,12 +532,15 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     applyForceSpacing,
     canApplyForceSpacing,
     forceSpacingDisabledReason,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason]);
+    canAddEmptyKey,
+    addEmptyKeyDisabledReason,
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,
     pasteKey,
-  }), [duplicateKey, pasteKey]);
+    addEmptyKey,
+  }), [duplicateKey, pasteKey, addEmptyKey]);
 
   return {
     updateInterpolationSettings,
@@ -612,8 +645,25 @@ function computeDragAvailability(input: RotoTimelineActionsInput): ActionAvailab
   return { eligible: true, reason: null };
 }
 
-function computeForceSpacingAvailability(input: RotoTimelineActionsInput): ActionAvailability {
+function computeAddEmptyKeyAvailability(input: RotoTimelineActionsInput): ActionAvailability {
   if (!input.getLaunchContext || !input.getLaunchContext()) {
+    return { eligible: false, reason: 'Select a Physics Paint Roto timeline before adding a key.' };
+  }
+  if (input.pendingOperationId && input.pendingOperationId.value !== null) {
+    return { eligible: false, reason: 'A Roto physical edit is already in flight.' };
+  }
+  const currentAppFrame = input.getCurrentAppFrame?.() ?? null;
+  if (currentAppFrame === null || !Number.isInteger(currentAppFrame) || currentAppFrame < 0) {
+    return { eligible: false, reason: 'Select a valid Roto frame before adding a key.' };
+  }
+  const records = input.getRotoKeyRecords?.() ?? [];
+  if (records.some((record) => record.appFrame === currentAppFrame)) {
+    return { eligible: false, reason: 'The current frame already has a real Roto key.' };
+  }
+  return { eligible: true, reason: null };
+}
+
+function computeForceSpacingAvailability(input: RotoTimelineActionsInput): ActionAvailability {  if (!input.getLaunchContext || !input.getLaunchContext()) {
     return { eligible: false, reason: 'Select a Physics Paint Roto timeline before applying Force Spacing.' };
   }
   if (!input.executePhysicalEdit || !input.getRotoKeyRecords || !input.getRotoInterpolationState || !input.getCapacity) {

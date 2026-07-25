@@ -47,7 +47,7 @@ function createHarness(options: HarnessOptions = {}) {
     ? ({ operationId: 'op-1', layerId: 'layer-1' } as PhysicPaintLaunchContext)
     : options.launch;
   const publishStatus = vi.fn();
-  const executePhysicalEdit = vi.fn(async () => true);
+  const executePhysicalEdit = vi.fn(async (_input: unknown) => true);
   const pendingOperationId = signal<string | null>(options.pendingOperationId ?? null);
   const input: RotoTimelineActionsInput = {
     getModel: () => ({ settings: {}, realSourceFrames: [] }) as never,

@@ -38,6 +38,7 @@ export interface RotoKeyUtilities {
   duplicateKey: () => void;
   copyKey: () => void;
   pasteKey: () => void;
+  addKey: () => void;
 }
 
 export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilities {
@@ -204,6 +205,31 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
     });
   }, [blocked, input, session]);
 
+  // + Key: promote the current empty/generated frame to a real, paintable key
+  // carrying empty paint. Routes through the physical paste-to-empty machinery
+  // with a blank payload, mirroring the script-target promotion path.
+  const addKey = useCallback(() => {
+    if (blocked) return;
+    const actionState = session.actionAvailability.value;
+    if (actionState.currentIsRealKey) {
+      input.setApplyMessage('The current frame already has a real Roto key.');
+      return;
+    }
+    const blank = input.buildBlankRotoFrame(input.currentFrame);
+    setKeyActionInFlight(true);
+    void input.physicalKeyUtilities.addEmptyKey(
+      input.currentFrame,
+      toEmptyKeyPayload(blank, input.currentFrame),
+    ).catch((error) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      input.setApplyStatus('error');
+      input.setApplyMessage('Could not add an empty Roto key.');
+      input.setLastError(detail);
+    }).finally(() => {
+      setKeyActionInFlight(false);
+    });
+  }, [blocked, input, session]);
+
   return {
     session,
     keyActionInFlight,
@@ -213,6 +239,7 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
     duplicateKey,
     copyKey,
     pasteKey,
+    addKey,
   };
 }
 
@@ -224,5 +251,15 @@ function toClipboardPayload(copiedKey: RotoSessionCopiedKey): PhysicPaintRotoRea
     dataUrl: frame.dataUrl,
     ...(frame.width !== undefined ? { width: frame.width } : {}),
     ...(frame.height !== undefined ? { height: frame.height } : {}),
+  }) as PhysicPaintRotoRealKeyPayload;
+}
+
+function toEmptyKeyPayload(blank: PhysicPaintRotoCacheFrame, destinationAppFrame: number): PhysicPaintRotoRealKeyPayload {
+  return Object.freeze({
+    frameIndex: blank.frameIndex,
+    appFrame: destinationAppFrame,
+    dataUrl: blank.dataUrl,
+    ...(blank.width !== undefined ? { width: blank.width } : {}),
+    ...(blank.height !== undefined ? { height: blank.height } : {}),
   }) as PhysicPaintRotoRealKeyPayload;
 }
