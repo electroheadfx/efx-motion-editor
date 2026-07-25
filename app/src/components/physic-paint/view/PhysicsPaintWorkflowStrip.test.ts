@@ -156,14 +156,15 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   });
 
   it('carries the exact UI-SPEC tooltip copy with the two-part unavailable grammar on every action', () => {
-    const row = getKeyUtilitiesRowBlock(source());
+    const code = source();
+    const row = getKeyUtilitiesRowBlock(code);
     for (const { label } of LOCKED_ICON_ACTIONS) {
       expect(row).toContain(`${label} — unavailable: `);
     }
-    expect(row).toContain('copyDisabledReason');
-    expect(row).toContain('applyDisabledReason');
-    expect(row).toContain('onCopyRotoScript');
-    expect(row).toContain('onApplyRotoScript');
+    expect(code).toContain('copyDisabledReason');
+    expect(code).toContain('applyDisabledReason');
+    expect(code).toContain('onCopyRotoScript');
+    expect(code).toContain('onApplyRotoScript');
   });
 
   it('keeps generated frames non-editable and real cached frames selectable', () => {

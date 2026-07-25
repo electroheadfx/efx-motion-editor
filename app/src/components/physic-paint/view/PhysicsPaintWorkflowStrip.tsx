@@ -1,4 +1,4 @@
-import { Check, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardPaste, Play, RotateCcw, Square } from 'lucide-preact';
+import { BetweenVerticalStart, Check, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Clipboard, ClipboardCopy, ClipboardPaste, ClipboardPen, CopyPlus, Play, RotateCcw, Square, Trash2 } from 'lucide-preact';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
@@ -229,7 +229,6 @@ function getRotoDragFeedback(preview: RotoDragPreviewState | null): string | nul
 }
 
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
-  const [pressedRotoKeyAction, setPressedRotoKeyAction] = useState<RotoKeyUtilityAction | null>(null);
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
   const [rotoDragPreview, setRotoDragPreview] = useState<RotoDragPreviewState | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
@@ -289,8 +288,26 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const canDeleteRotoKey = physicalActions ? physicalDeleteAvailable && props.ready !== false : (sessionKeyAvailability ? (sessionKeyAvailability.canDelete || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey);
   const physicalDragAvailable = physicalActions?.canDragKey.value ?? false;
   const rotoDragLocked = keyUtilitiesDisabledByBusyState || !physicalActions || !physicalDragAvailable;
+  // Guarded-icon-action availability reasons (D-12): verbatim controller ports
+  // via getRotoKeyUtilityDisabledMessage (which defers to physicalActions /
+  // sessionKeyAvailability reasons) and scriptAvailability reason ports. The
+  // view never shortens, re-derives, or infers these reasons.
+  const insertRotoKeyDisabledReason = canInsertRotoKey ? null : getRotoKeyUtilityDisabledMessage('insert');
+  const duplicateRotoKeyDisabledReason = canDuplicateRotoKey ? null : getRotoKeyUtilityDisabledMessage('duplicate');
+  const copyRotoKeyDisabledReason = canCopyRotoKey ? null : getRotoKeyUtilityDisabledMessage('copy');
   const pasteRotoKeyDisabledReason = canPasteRotoKey ? null : getRotoKeyUtilityDisabledMessage('paste');
+  const deleteRotoKeyDisabledReason = canDeleteRotoKey ? null : getRotoKeyUtilityDisabledMessage('delete');
+  const canCopyRotoScript = Boolean(scriptAvailability?.canCopy);
+  const canApplyRotoScript = Boolean(scriptAvailability?.canApply);
+  const copyRotoScriptDisabledReason = canCopyRotoScript ? null : scriptAvailability?.copyDisabledReason ?? null;
+  const applyRotoScriptDisabledReason = canApplyRotoScript ? null : scriptAvailability?.applyDisabledReason ?? null;
+  const insertKeyTooltip = useStyledTooltip();
+  const duplicateKeyTooltip = useStyledTooltip();
+  const copyKeyTooltip = useStyledTooltip();
   const pasteKeyTooltip = useStyledTooltip();
+  const deleteKeyTooltip = useStyledTooltip();
+  const copyScriptTooltip = useStyledTooltip();
+  const applyScriptTooltip = useStyledTooltip();
   const rotoKeyRecords = props.rotoKeyRecords ?? [];
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
@@ -363,38 +380,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (action === 'duplicate') return 'Select a real Roto key to duplicate.';
     if (action === 'copy') return 'Select a real Roto key to copy.';
     return 'Select a real Roto key to delete.';
-  }
-
-  function runRotoKeyUtilityAction(action: RotoKeyUtilityAction, enabled: boolean, callback: (() => void) | undefined) {
-    if (enabled) {
-      callback?.();
-      return;
-    }
-    if (!props.statusMessage) {
-      // Disabled native buttons do not emit clicks; keep this copy source near the buttons
-      // so the existing status stack can mirror the same reason when Studio supplies it.
-      getRotoKeyUtilityDisabledMessage(action);
-    }
-  }
-
-  function endRotoKeyPress(action: RotoKeyUtilityAction) {
-    setTimeout(() => setPressedRotoKeyAction((pressed) => pressed === action ? null : pressed), 120);
-  }
-
-  function getRotoKeyButtonPressProps(action: RotoKeyUtilityAction) {
-    return {
-      'data-pressed': pressedRotoKeyAction === action,
-      onPointerDown: () => setPressedRotoKeyAction(action),
-      onPointerUp: () => endRotoKeyPress(action),
-      onPointerCancel: () => endRotoKeyPress(action),
-      onPointerLeave: () => endRotoKeyPress(action),
-      onKeyDown: (event: KeyboardEvent) => {
-        if (event.key === ' ' || event.key === 'Enter') setPressedRotoKeyAction(action);
-      },
-      onKeyUp: (event: KeyboardEvent) => {
-        if (event.key === ' ' || event.key === 'Enter') endRotoKeyPress(action);
-      },
-    };
   }
 
   const updateScrollbar = useCallback(() => {
@@ -912,9 +897,87 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               </div>
               <div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key utilities for frame ${props.currentFrame}`}>
                 <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
-                <button type="button" class="physics-paint-roto-key-button" aria-label={`Insert empty Roto frame before frame ${props.currentFrame}`} disabled={!canInsertRotoKey} {...getRotoKeyButtonPressProps('insert')} onClick={() => runRotoKeyUtilityAction('insert', canInsertRotoKey, props.onInsertRotoFrame)}>Insert</button>
-                <button type="button" class="physics-paint-roto-key-button" aria-label={`Duplicate Roto key at frame ${props.currentFrame}`} disabled={!canDuplicateRotoKey} {...getRotoKeyButtonPressProps('duplicate')} onClick={() => runRotoKeyUtilityAction('duplicate', canDuplicateRotoKey, props.onDuplicateRotoKey)}>Dup</button>
-                <button type="button" class="physics-paint-roto-key-button" aria-label={`Copy Roto key at frame ${props.currentFrame}`} disabled={!canCopyRotoKey} {...getRotoKeyButtonPressProps('copy')} onClick={() => runRotoKeyUtilityAction('copy', canCopyRotoKey, props.onCopyRotoFrame)}>Copy</button>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={insertKeyTooltip.onPointerEnter} onPointerLeave={insertKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Insert key before"
+                    aria-disabled={!canInsertRotoKey ? 'true' : undefined}
+                    aria-describedby={!canInsertRotoKey && insertRotoKeyDisabledReason ? 'roto-key-action-reason-insert' : undefined}
+                    onFocus={insertKeyTooltip.onFocus}
+                    onBlur={insertKeyTooltip.onBlur}
+                    onClick={() => {
+                      insertKeyTooltip.hide();
+                      if (!canInsertRotoKey) return;
+                      props.onInsertRotoFrame?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canInsertRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <BetweenVerticalStart size={15} aria-hidden="true" />
+                  </button>
+                  {!canInsertRotoKey && insertRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-insert" class="physics-paint-sr-only">{insertRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={insertKeyTooltip.visible}>
+                    {!canInsertRotoKey && insertRotoKeyDisabledReason ? `Insert key before — unavailable: ${insertRotoKeyDisabledReason}` : 'Insert key before'}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={duplicateKeyTooltip.onPointerEnter} onPointerLeave={duplicateKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Duplicate key"
+                    aria-disabled={!canDuplicateRotoKey ? 'true' : undefined}
+                    aria-describedby={!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? 'roto-key-action-reason-duplicate' : undefined}
+                    onFocus={duplicateKeyTooltip.onFocus}
+                    onBlur={duplicateKeyTooltip.onBlur}
+                    onClick={() => {
+                      duplicateKeyTooltip.hide();
+                      if (!canDuplicateRotoKey) return;
+                      props.onDuplicateRotoKey?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canDuplicateRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <CopyPlus size={15} aria-hidden="true" />
+                  </button>
+                  {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-duplicate" class="physics-paint-sr-only">{duplicateRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={duplicateKeyTooltip.visible}>
+                    {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? `Duplicate key — unavailable: ${duplicateRotoKeyDisabledReason}` : 'Duplicate key'}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyKeyTooltip.onPointerEnter} onPointerLeave={copyKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Copy key"
+                    aria-disabled={!canCopyRotoKey ? 'true' : undefined}
+                    aria-describedby={!canCopyRotoKey && copyRotoKeyDisabledReason ? 'roto-key-action-reason-copy' : undefined}
+                    onFocus={copyKeyTooltip.onFocus}
+                    onBlur={copyKeyTooltip.onBlur}
+                    onClick={() => {
+                      copyKeyTooltip.hide();
+                      if (!canCopyRotoKey) return;
+                      props.onCopyRotoFrame?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canCopyRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <ClipboardCopy size={15} aria-hidden="true" />
+                  </button>
+                  {!canCopyRotoKey && copyRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-copy" class="physics-paint-sr-only">{copyRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={copyKeyTooltip.visible}>
+                    {!canCopyRotoKey && copyRotoKeyDisabledReason ? `Copy key — unavailable: ${copyRotoKeyDisabledReason}` : 'Copy key'}
+                  </PhysicsPaintStyledTooltip>
+                </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={pasteKeyTooltip.onPointerEnter} onPointerLeave={pasteKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
@@ -942,10 +1005,87 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {!canPasteRotoKey && pasteRotoKeyDisabledReason ? `Paste key — unavailable: ${pasteRotoKeyDisabledReason}` : 'Paste key'}
                   </PhysicsPaintStyledTooltip>
                 </span>
-                <button type="button" class="physics-paint-roto-key-button destructive" aria-label={`Delete Roto key at frame ${props.currentFrame}`} disabled={!canDeleteRotoKey} {...getRotoKeyButtonPressProps('delete')} onClick={() => runRotoKeyUtilityAction('delete', canDeleteRotoKey, props.onDeleteRotoFrame)}>Delete</button>
-                <button type="button" class="physics-paint-roto-key-button" aria-label="Copy Roto paint script" title={scriptAvailability?.copyDisabledReason ?? 'Copy the mounted Roto paint script'} disabled={!scriptAvailability?.canCopy} onClick={props.onCopyRotoScript}>Copy Script</button>
-                <button type="button" class="physics-paint-roto-key-button" aria-label="Apply Roto paint script" title={scriptAvailability?.applyDisabledReason ?? 'Apply the copied Roto paint script'} disabled={!scriptAvailability?.canApply} onClick={props.onApplyRotoScript}>Apply Script</button>
-                <button type="button" class="physics-paint-roto-key-button destructive" aria-label="Discard copied Roto paint script" title="Discard the copied Roto paint script" disabled={!props.rotoScript?.hasCopiedScript.value || Boolean(scriptAvailability?.busy)} onClick={props.onDiscardRotoScript}>Discard Script</button>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={deleteKeyTooltip.onPointerEnter} onPointerLeave={deleteKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button destructive"
+                    aria-label="Delete key"
+                    aria-disabled={!canDeleteRotoKey ? 'true' : undefined}
+                    aria-describedby={!canDeleteRotoKey && deleteRotoKeyDisabledReason ? 'roto-key-action-reason-delete' : undefined}
+                    onFocus={deleteKeyTooltip.onFocus}
+                    onBlur={deleteKeyTooltip.onBlur}
+                    onClick={() => {
+                      deleteKeyTooltip.hide();
+                      if (!canDeleteRotoKey) return;
+                      props.onDeleteRotoFrame?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canDeleteRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <Trash2 size={15} aria-hidden="true" />
+                  </button>
+                  {!canDeleteRotoKey && deleteRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-delete" class="physics-paint-sr-only">{deleteRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={deleteKeyTooltip.visible}>
+                    {!canDeleteRotoKey && deleteRotoKeyDisabledReason ? `Delete key — unavailable: ${deleteRotoKeyDisabledReason}` : 'Delete key'}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyScriptTooltip.onPointerEnter} onPointerLeave={copyScriptTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button script-action"
+                    aria-label="Copy Script"
+                    aria-disabled={!canCopyRotoScript ? 'true' : undefined}
+                    aria-describedby={!canCopyRotoScript && copyRotoScriptDisabledReason ? 'roto-key-action-reason-copy-script' : undefined}
+                    onFocus={copyScriptTooltip.onFocus}
+                    onBlur={copyScriptTooltip.onBlur}
+                    onClick={() => {
+                      copyScriptTooltip.hide();
+                      if (!canCopyRotoScript) return;
+                      props.onCopyRotoScript?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canCopyRotoScript) event.preventDefault();
+                    }}
+                  >
+                    <Clipboard size={15} aria-hidden="true" />
+                  </button>
+                  {!canCopyRotoScript && copyRotoScriptDisabledReason ? (
+                    <span id="roto-key-action-reason-copy-script" class="physics-paint-sr-only">{copyRotoScriptDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={copyScriptTooltip.visible}>
+                    {!canCopyRotoScript && copyRotoScriptDisabledReason ? `Copy Script — unavailable: ${copyRotoScriptDisabledReason}` : 'Copy Script'}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={applyScriptTooltip.onPointerEnter} onPointerLeave={applyScriptTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button script-action"
+                    aria-label="Apply Script"
+                    aria-disabled={!canApplyRotoScript ? 'true' : undefined}
+                    aria-describedby={!canApplyRotoScript && applyRotoScriptDisabledReason ? 'roto-key-action-reason-apply-script' : undefined}
+                    onFocus={applyScriptTooltip.onFocus}
+                    onBlur={applyScriptTooltip.onBlur}
+                    onClick={() => {
+                      applyScriptTooltip.hide();
+                      if (!canApplyRotoScript) return;
+                      props.onApplyRotoScript?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canApplyRotoScript) event.preventDefault();
+                    }}
+                  >
+                    <ClipboardPen size={15} aria-hidden="true" />
+                  </button>
+                  {!canApplyRotoScript && applyRotoScriptDisabledReason ? (
+                    <span id="roto-key-action-reason-apply-script" class="physics-paint-sr-only">{applyRotoScriptDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={applyScriptTooltip.visible}>
+                    {!canApplyRotoScript && applyRotoScriptDisabledReason ? `Apply Script — unavailable: ${applyRotoScriptDisabledReason}` : 'Apply Script'}
+                  </PhysicsPaintStyledTooltip>
+                </span>
               </div>
             </div>
         </div>
