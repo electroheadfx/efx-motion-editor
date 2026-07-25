@@ -152,6 +152,94 @@ export function getRotoReplacementSuccessLabel(frame: number): string {
   return `Frame ${clampNonNegativeInteger(frame, 0)} saved as a real Roto key`;
 }
 
+// ---------------------------------------------------------------------------
+// Header status capsule (Plan 36.15-05, D-15/D-18/D-19).
+//
+// A single prioritized line replaces the retired multi-line status stack:
+// pending operation > saving indicator > guard/action feedback > ambient
+// info, with the ambient baseline shown when nothing higher-priority exists.
+// Within the guard/action feedback class the most recent line wins (recency
+// metadata supplied by the caller; declaration order is the fallback).
+//
+// The selector is pure: the strip passes already-resolved strings read from
+// its existing props/signal ports. It never reads stores, signals, or props
+// objects directly, and every returned line renders as Preact text children
+// only (T-36.15-08).
+// ---------------------------------------------------------------------------
+
+export const ROTO_STATUS_CAPSULE_BASELINE = 'Missing frames play transparent/background';
+
+export interface RotoStatusCapsuleFeedbackCandidate {
+  /** Candidate line; null/blank candidates are ignored. */
+  text: string | null | undefined;
+  /**
+   * Most-recent-wins metadata inside the feedback class. Higher values win;
+   * candidates without recency fall back to their declaration index, and ties
+   * resolve to the later candidate.
+   */
+  recency?: number;
+}
+
+export interface RotoStatusCapsuleInput {
+  /** Pending operation line (highest priority): busy copy, drag commit copy. */
+  pendingOperation?: string | null;
+  /** Saving indicator line. */
+  savingIndicator?: string | null;
+  /** Guard/action feedback lines with recency metadata. */
+  feedback?: readonly RotoStatusCapsuleFeedbackCandidate[];
+  /** Ambient info line; the capsule falls back to the baseline when absent. */
+  ambient?: string | null;
+}
+
+export function getRotoStatusCapsuleViewModel(input: RotoStatusCapsuleInput = {}): string {
+  const pendingOperation = trimCapsuleLine(input.pendingOperation);
+  if (pendingOperation !== null) return pendingOperation;
+  const savingIndicator = trimCapsuleLine(input.savingIndicator);
+  if (savingIndicator !== null) return savingIndicator;
+  let winnerText: string | null = null;
+  let winnerRecency = Number.NEGATIVE_INFINITY;
+  (input.feedback ?? []).forEach((candidate, index) => {
+    const text = trimCapsuleLine(candidate.text);
+    if (text === null) return;
+    const recency = candidate.recency ?? index;
+    if (winnerText === null || recency >= winnerRecency) {
+      winnerText = text;
+      winnerRecency = recency;
+    }
+  });
+  if (winnerText !== null) return winnerText;
+  const ambient = trimCapsuleLine(input.ambient);
+  return ambient ?? ROTO_STATUS_CAPSULE_BASELINE;
+}
+
+function trimCapsuleLine(line: string | null | undefined): string | null {
+  if (typeof line !== 'string') return null;
+  const trimmed = line.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+// ---------------------------------------------------------------------------
+// Per-cell state tooltip copy (Plan 36.15-05, D-16/C-06).
+//
+// The retired bottom cell-states legend is compensated by exact per-cell copy
+// routed through the shared styled tooltip. These five strings are the whole
+// vocabulary — the strip maps each cell's semantic kind to one of them.
+// ---------------------------------------------------------------------------
+
+export type RotoCellSemanticTooltipKind = 'real-key' | 'generated' | 'cached' | 'background-only' | 'empty';
+
+export const ROTO_CELL_STATE_TOOLTIP_COPY: Record<RotoCellSemanticTooltipKind, string> = {
+  'real-key': 'Real key',
+  generated: 'Generated — render-only',
+  cached: 'Cached',
+  'background-only': 'Background only',
+  empty: 'Empty',
+};
+
+export function getRotoCellStateTooltipCopy(kind: RotoCellSemanticTooltipKind): string {
+  return ROTO_CELL_STATE_TOOLTIP_COPY[kind];
+}
+
 export function getPhysicsPaintEngineStatusTone({
   ready,
   error,
