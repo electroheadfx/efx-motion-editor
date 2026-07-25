@@ -28,15 +28,16 @@ function getButtonBlock(code: string, ariaLabel: string): string {
   return code.slice(start, end);
 }
 
-const LOCKED_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: string }> = [
+const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: string }> = [
   { label: 'Insert key before', guard: 'canInsertRotoKey', handler: 'props.onInsertRotoFrame?.()' },
-  { label: 'Duplicate key', guard: 'canDuplicateRotoKey', handler: 'props.onDuplicateRotoKey?.()' },
   { label: 'Copy key', guard: 'canCopyRotoKey', handler: 'props.onCopyRotoFrame?.()' },
   { label: 'Paste key', guard: 'canPasteRotoKey', handler: 'props.onPasteRotoFrame?.()' },
   { label: 'Delete key', guard: 'canDeleteRotoKey', handler: 'props.onDeleteRotoFrame?.()' },
   { label: 'Copy Script', guard: 'canCopyRotoScript', handler: 'props.onCopyRotoScript?.()' },
   { label: 'Apply Script', guard: 'canApplyRotoScript', handler: 'props.onApplyRotoScript?.()' },
 ];
+
+const HEADER_DUPLICATE_ACTION = { label: 'Duplicate key', guard: 'canDuplicateRotoKey', handler: 'props.onDuplicateRotoKey?.()' } as const;
 
 describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('renders an optional supplied workflow label with a non-ordinal fallback', () => {
@@ -108,9 +109,22 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(firstButtonIndex).toBeGreaterThan(chipIndex);
   });
 
-  it('renders the seven guarded icon actions in locked order (D-10)', () => {
+  it('shows the layer name with the current frame before the first action-row icon', () => {
     const row = getKeyUtilitiesRowBlock(source());
-    const indices = LOCKED_ICON_ACTIONS.map(({ label }) => row.indexOf(`aria-label="${label}"`));
+    const layerIndex = row.indexOf('physics-paint-roto-key-layer');
+    const chipIndex = row.indexOf('physics-paint-roto-key-context');
+    const firstButtonIndex = row.indexOf('<button');
+    expect(layerIndex).toBeGreaterThanOrEqual(0);
+    expect(chipIndex).toBeGreaterThan(layerIndex);
+    expect(firstButtonIndex).toBeGreaterThan(chipIndex);
+    expect(row).toContain("{props.workflowLabel ?? 'PPaint'}");
+    // The layer name no longer occupies the header.
+    expect(getHeaderBlock(source())).not.toContain('physics-paint-mode-label');
+  });
+
+  it('renders the six guarded icon actions in locked order (D-10)', () => {
+    const row = getKeyUtilitiesRowBlock(source());
+    const indices = ROW_ICON_ACTIONS.map(({ label }) => row.indexOf(`aria-label="${label}"`));
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
     for (let i = 1; i < indices.length; i += 1) {
       expect(indices[i]).toBeGreaterThan(indices[i - 1]);
@@ -136,11 +150,13 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   });
 
   it('keeps every guarded action focusable without native disabled and guarded on click and keydown (D-12)', () => {
-    const row = getKeyUtilitiesRowBlock(source());
+    const code = source();
+    const row = getKeyUtilitiesRowBlock(code);
     expect(row.replace(/aria-disabled/g, '')).not.toContain('disabled=');
     expect(row).not.toContain('title=');
-    for (const { label, guard, handler } of LOCKED_ICON_ACTIONS) {
-      const block = getButtonBlock(row, label);
+    for (const { label, guard, handler } of [...ROW_ICON_ACTIONS, HEADER_DUPLICATE_ACTION]) {
+      const scope = label === HEADER_DUPLICATE_ACTION.label ? code : row;
+      const block = getButtonBlock(scope, label);
       expect(block).toContain('aria-disabled');
       expect(block).toContain('aria-describedby');
       const guardIndex = block.indexOf(`if (!${guard}) return;`);
@@ -154,9 +170,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('carries the exact UI-SPEC tooltip copy with the two-part unavailable grammar on every action', () => {
     const code = source();
     const row = getKeyUtilitiesRowBlock(code);
-    for (const { label } of LOCKED_ICON_ACTIONS) {
+    for (const { label } of ROW_ICON_ACTIONS) {
       expect(row).toContain(`${label} — unavailable: `);
     }
+    expect(code).toContain(`${HEADER_DUPLICATE_ACTION.label} — unavailable: `);
     expect(code).toContain('copyDisabledReason');
     expect(code).toContain('applyDisabledReason');
     expect(code).toContain('onCopyRotoScript');
@@ -187,22 +204,6 @@ function getCssRuleBlock(styles: string, selector: string): string {
 }
 
 describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
-  it('declares the four header pill islands in D-01 order and keeps the mode label pill-free', () => {
-    const header = getHeaderBlock(source());
-    const navigationIndex = header.indexOf('physics-paint-pill--navigation');
-    const interpolationIndex = header.indexOf('physics-paint-pill--interpolation');
-    const playbackIndex = header.indexOf('physics-paint-pill--playback');
-    const applySpacingIndex = header.indexOf('physics-paint-pill--apply-spacing');
-    for (const index of [navigationIndex, interpolationIndex, playbackIndex, applySpacingIndex]) {
-      expect(index).toBeGreaterThanOrEqual(0);
-    }
-    expect(interpolationIndex).toBeGreaterThan(navigationIndex);
-    expect(playbackIndex).toBeGreaterThan(interpolationIndex);
-    expect(applySpacingIndex).toBeGreaterThan(playbackIndex);
-    const modeLabelBlock = header.slice(header.indexOf('physics-paint-mode-label'), header.lastIndexOf('<div', navigationIndex));
-    expect(modeLabelBlock).not.toContain('physics-paint-pill');
-  });
-
   it('renders the interpolation toggle as a borderless Blend icon toggle with no count input or text label', () => {
     const code = source();
     const labelIndex = code.indexOf("'Disable generated in-betweens'");
@@ -509,5 +510,72 @@ describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)'
     for (const identifier of ['data-roto-app-frame', 'data-roto-kind', 'data-roto-key-id', 'classifyRotoDragTarget', 'elementFromPoint', 'setPointerCapture']) {
       expect(code).toContain(identifier);
     }
+  });
+});
+
+describe('PhysicsPaintWorkflowStrip header restructure contract (36.15-06 continuation)', () => {
+  it('orders the top bar as navigation, capsule, Duplicate, Tools, Close with no mode label', () => {
+    const header = getHeaderBlock(source());
+    const navigationIndex = header.indexOf('physics-paint-pill--navigation');
+    const capsuleIndex = header.indexOf('class="physics-paint-status-capsule"');
+    const duplicateIndex = header.indexOf('aria-label="Duplicate key"');
+    const toolsIndex = header.indexOf('aria-label="Tools"');
+    const closeIndex = header.indexOf('aria-label="Close"');
+    for (const index of [navigationIndex, capsuleIndex, duplicateIndex, toolsIndex, closeIndex]) {
+      expect(index).toBeGreaterThanOrEqual(0);
+    }
+    expect(capsuleIndex).toBeGreaterThan(navigationIndex);
+    expect(duplicateIndex).toBeGreaterThan(capsuleIndex);
+    expect(toolsIndex).toBeGreaterThan(duplicateIndex);
+    expect(closeIndex).toBeGreaterThan(toolsIndex);
+    expect(header).not.toContain('physics-paint-mode-label');
+  });
+
+  it('moves the interpolation, playback, and apply-spacing pill groups into the Tools dropdown', () => {
+    const code = source();
+    const triggerIndex = code.indexOf('aria-label="Tools"');
+    const dropdownIndex = code.indexOf('physics-paint-tools-dropdown', triggerIndex);
+    const interpolationIndex = code.indexOf('physics-paint-pill--interpolation', dropdownIndex);
+    const playbackIndex = code.indexOf('physics-paint-pill--playback', dropdownIndex);
+    const applySpacingIndex = code.indexOf('physics-paint-pill--apply-spacing', dropdownIndex);
+    for (const index of [triggerIndex, dropdownIndex, interpolationIndex, playbackIndex, applySpacingIndex]) {
+      expect(index).toBeGreaterThanOrEqual(0);
+    }
+    expect(dropdownIndex).toBeGreaterThan(triggerIndex);
+    expect(playbackIndex).toBeGreaterThan(interpolationIndex);
+    expect(applySpacingIndex).toBeGreaterThan(playbackIndex);
+    // The dropdown closes over all three groups and stays inside the header.
+    const header = getHeaderBlock(code);
+    expect(header).toContain('physics-paint-tools-dropdown');
+    expect(header).toContain('physics-paint-pill--apply-spacing');
+  });
+
+  it('exposes the Tools trigger as an accessible menu button with open-state wiring', () => {
+    const code = source();
+    const trigger = getButtonBlock(code, 'Tools');
+    expect(trigger).toContain('aria-haspopup="menu"');
+    expect(trigger).toContain('aria-expanded');
+    expect(trigger).toContain('physics-paint-tools-trigger');
+    expect(code).toContain('toolsOpen');
+    // Outside-pointer and Escape dismissal are registered only while open.
+    const effectIndex = code.indexOf('if (!toolsOpen) return;');
+    expect(effectIndex).toBeGreaterThanOrEqual(0);
+    const effect = code.slice(effectIndex, effectIndex + 700);
+    expect(effect).toContain("addEventListener('pointerdown'");
+    expect(effect).toContain("addEventListener('keydown'");
+    expect(effect).toContain("event.key === 'Escape'");
+    expect(effect).toContain('removeEventListener');
+  });
+
+  it('styles the Tools dropdown as an elevated vertical panel above strip content', () => {
+    const styles = css();
+    const dropdown = getCssRuleBlock(styles, '.physics-paint-tools-dropdown {');
+    expect(dropdown).toContain('position: absolute');
+    expect(dropdown).toContain('flex-direction: column');
+    expect(dropdown).toMatch(/z-index:\s*(5[0-9]|[6-9][0-9])/);
+    const menu = getCssRuleBlock(styles, '.physics-paint-tools-menu {');
+    expect(menu).toContain('position: relative');
+    // The retired header mode-label rules are gone.
+    expect(styles).not.toContain('.physics-paint-mode-label');
   });
 });
