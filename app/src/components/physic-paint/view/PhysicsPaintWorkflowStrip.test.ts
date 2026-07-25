@@ -447,7 +447,7 @@ describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)'
   it('locks the strip shell and studio grid third track to 155px with no legacy or override height literals', () => {
     const styles = css();
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 155px');
-    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: 58px minmax(0, 1fr) 155px');
+    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 155px');
     expect(styles).not.toContain('256px');
     expect(styles).not.toContain('260px');
   });

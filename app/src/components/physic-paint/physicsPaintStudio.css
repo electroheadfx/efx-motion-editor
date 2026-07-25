@@ -409,7 +409,7 @@ button.destructive {
 
 .physics-paint-studio {
   display: grid;
-  grid-template-rows: 58px minmax(0, 1fr) 155px;
+  grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 155px;
   grid-template-columns: 52px minmax(0, 1fr) minmax(316px, 340px);
   width: 100vw;
   height: 100vh;
@@ -426,7 +426,7 @@ button.destructive {
 .physics-paint-topbar {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(170px, 1fr) minmax(0, auto) minmax(170px, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
   align-items: center;
   gap: 14px;
   min-height: 58px;
@@ -437,6 +437,7 @@ button.destructive {
 
 .physics-paint-topbar-primary {
   display: flex;
+  flex-wrap: wrap;
   justify-self: center;
   align-items: center;
   justify-content: center;
@@ -2558,7 +2559,6 @@ button.destructive {
   }
 
   .physics-paint-topbar {
-    grid-template-columns: minmax(120px, 1fr) minmax(0, auto) minmax(120px, 1fr);
     gap: 8px;
   }
 
