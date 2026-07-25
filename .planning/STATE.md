@@ -5,10 +5,10 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
-stopped_at: Completed 36.14-28-PLAN.md
-last_updated: "2026-07-24T09:55:50.088Z"
+stopped_at: Plan 29 native UAT approved; stale-test transfer scoped as next plan
+last_updated: "2026-07-24T20:15:00.000Z"
 last_activity: 2026-07-24
-last_activity_desc: Completed Plan 28 bounded static integration review
+last_activity_desc: Ran authorized executable gates; user authorized stale-test transfer planning
 progress:
   total_phases: 17
   completed_phases: 16
@@ -30,10 +30,10 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 28 of 29
-Status: Ready for user-owned native gap UAT
-Last activity: 2026-07-24 — Completed Plan 28 bounded static integration review
-Next recommended action: Continue D-30 only with Plan 29 user-owned native gap UAT; Plans 12-18 remain historical, locked, and non-executable.
+Plan: 29 of 29 approved; next plan to be created for stale-test transfer
+Status: Plan 29 native gap UAT approved by user on 2026-07-24
+Last activity: 2026-07-24 — Ran user-authorized executable gates (typecheck FAIL: 37 errors; vitest FAIL: 18 files / 85 tests; package build PASS); failures confirmed as deferred stale-test contract debt plus one unused production declaration (physicPaintBridge.ts buildRotoRevision)
+Next recommended action: Create a fresh bounded Phase 36.14 plan for stale-test contract transfer (triage 18 failing files, transfer valid assertions to the physical contract, delete obsolete tests, remove unused buildRotoRevision, re-run gates). Plans 12-18 remain historical, locked, and non-executable.
 
 Progress: [██████████████████░░] 114/121 plans complete; 16/17 phases complete ([█████████░] 94%)
 
@@ -242,6 +242,7 @@ None yet.
 - Quick 260718-j3h Physics Paint Roto Backspace/Delete shortcuts passed native UAT on 2026-07-18. Both keys reuse the visible Delete transaction, preserve real/generated/empty/busy guards and existing shortcuts, and clear the preview base before blank-canvas restoration so deleted paint refreshes immediately.
 - Quick 260718-m2f single-real-key Roto drag passed native UAT and 7/7 verification on 2026-07-19. Pointer capture, atomic publication/rollback, local Undo/Redo, canonical closer/farther/generated timing, effective destination feedback, persistence, and payload metadata preservation are approved. Regression tests remain intentionally deferred to the next interpolation-review quick.
 - Plan 36.14-11 Task 3 final typecheck is blocked because existing pre-UAT regression files still instantiate the removed source/display Script contracts. Plan 11 forbids test edits, test config changes, compatibility adapters, and a second final gate invocation; build did not run after typecheck failed.
+- 2026-07-24: User authorized and ran the deferred executable gates. Measured debt: typecheck 37 errors (21x `sourceFrame` in physicsPaintRotoScriptClipboard.test.ts, launch-level `rotoBackground`, null-safety in physicPaintStore.test.ts, unused `buildRotoRevision` in physicPaintBridge.ts:484); vitest 18 files / 85 tests failing on retired pre-physical contracts; `@efxlab/efx-physic-paint` package build PASS. User authorized planning a fresh bounded stale-test transfer scope.
 
 ### Quick Tasks Completed
 
@@ -291,6 +292,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-24T09:55:50.075Z
-Stopped at: Completed 36.14-28-PLAN.md
+Last session: 2026-07-24T20:15:00.000Z
+Stopped at: Plan 29 approved; executable gates authorized and run; routing to stale-test transfer planning
 Resume file: None
