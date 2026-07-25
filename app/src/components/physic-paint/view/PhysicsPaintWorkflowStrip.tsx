@@ -117,7 +117,6 @@ export interface PhysicsPaintWorkflowStripProps {
   rotoScript?: PhysicsPaintWorkflowRotoScriptState;
   onCopyRotoScript?: () => void;
   onApplyRotoScript?: () => void;
-  onDiscardRotoScript?: () => void;
   /** Header Close affordance — Studio routes through the guarded close-flush path. */
   onClose?: () => void;
   onNavigateToSyncedFrame: (frame: number) => void;

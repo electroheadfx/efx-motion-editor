@@ -138,7 +138,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     }
     expect(row).not.toContain('Discard Script');
     expect(row).not.toContain('physics-paint-roto-key-button"');
-    expect(getWorkflowStripPropsInterface(code)).toContain('onDiscardRotoScript?: () => void');
+    expect(getWorkflowStripPropsInterface(code)).not.toContain('onDiscardRotoScript');
   });
 
   it('keeps every guarded action focusable without native disabled and guarded on click and keydown (D-12)', () => {

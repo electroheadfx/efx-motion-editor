@@ -1,28 +1,34 @@
-import { Paintbrush, Pencil, Play, RefreshCw, Save, Trash2 } from 'lucide-preact';
+import { ClipboardX, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2 } from 'lucide-preact';
 import type { ComponentChildren, Ref, RefObject } from 'preact';
 import { useEffect, useId, useRef } from 'preact/hooks';
+import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
+import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 
 export interface PhysicsPaintScriptsPanelProps {
   library: RotoScriptLibraryController;
   playScript: RotoPlayScriptController;
+  rotoScript: RotoScriptClipboardController;
   playButtonRef: RefObject<HTMLButtonElement>;
   loadAndApplyDisabledReason: string | null;
   onSave: () => void;
   onActivateRow: (id: string) => void;
   onLoadAndApply: () => void;
+  onDiscardScript: () => void;
   onRefresh: () => void;
 }
 
 export function PhysicsPaintScriptsPanel({
   library,
   playScript,
+  rotoScript,
   playButtonRef,
   loadAndApplyDisabledReason,
   onSave,
   onActivateRow,
   onLoadAndApply,
+  onDiscardScript,
   onRefresh,
 }: PhysicsPaintScriptsPanelProps) {
   const rows = library.rows.value;
@@ -36,6 +42,10 @@ export function PhysicsPaintScriptsPanel({
   const saveReasonId = useId();
   const loadAndApplyReasonId = useId();
   const playReasonId = useId();
+  const discardScriptReasonId = useId();
+  const discardScriptTooltip = useStyledTooltip();
+  const canDiscardScript = rotoScript.availability.value.canDiscard;
+  const discardScriptDisabledReason = rotoScript.availability.value.discardDisabledReason;
   useEffect(() => {
     if (confirmation) cancelDeleteRef.current?.focus();
     else if (previousConfirmation.current) deleteButtonRef.current?.focus();
@@ -54,6 +64,33 @@ export function PhysicsPaintScriptsPanel({
         <IconButton label="Rename Script" title="Rename Script — Edit the selected preset name" disabled={!availability.canRename} onClick={library.beginRename}><Pencil size={16} /></IconButton>
         <IconButton buttonRef={deleteButtonRef} label="Delete Script" title="Delete Script — Remove the selected project preset" disabled={!availability.canDelete} onClick={library.requestDelete}><Trash2 size={16} /></IconButton>
         <IconButton label="Refresh Scripts" title="Refresh Scripts — Scan the project scripts folder" disabled={library.busy.value} onClick={onRefresh}><RefreshCw size={16} /></IconButton>
+        <span class="physics-paint-roto-key-icon-action" onPointerEnter={discardScriptTooltip.onPointerEnter} onPointerLeave={discardScriptTooltip.onPointerLeave}>
+          <button
+            type="button"
+            class="physics-paint-script-icon-button"
+            aria-label="Discard Script"
+            aria-disabled={!canDiscardScript ? 'true' : undefined}
+            aria-describedby={!canDiscardScript && discardScriptDisabledReason ? discardScriptReasonId : undefined}
+            onFocus={discardScriptTooltip.onFocus}
+            onBlur={discardScriptTooltip.onBlur}
+            onClick={() => {
+              discardScriptTooltip.hide();
+              if (!canDiscardScript) return;
+              onDiscardScript();
+            }}
+            onKeyDown={(event) => {
+              if ((event.key === 'Enter' || event.key === ' ') && !canDiscardScript) event.preventDefault();
+            }}
+          >
+            <ClipboardX size={16} aria-hidden="true" />
+          </button>
+          {!canDiscardScript && discardScriptDisabledReason ? (
+            <span id={discardScriptReasonId} class="physics-paint-sr-only">{discardScriptDisabledReason}</span>
+          ) : null}
+          <PhysicsPaintStyledTooltip visible={discardScriptTooltip.visible}>
+            {!canDiscardScript && discardScriptDisabledReason ? `Discard Script — unavailable: ${discardScriptDisabledReason}` : 'Discard Script'}
+          </PhysicsPaintStyledTooltip>
+        </span>
       </div>
       <div class="physics-paint-scripts-list" role="listbox" aria-label="Saved Roto scripts">
         {rows.map((row) => (
