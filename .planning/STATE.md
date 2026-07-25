@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.14
-status: completed
-stopped_at: Phase 36.15 UI-SPEC approved
-last_updated: "2026-07-25T13:11:18.735Z"
+current_phase: 36.15
+status: planned
+stopped_at: Phase 36.15 planned — ready to execute
+last_updated: "2026-07-25T16:30:00.000Z"
 last_activity: 2026-07-25
-last_activity_desc: Phase 36.14 complete
+last_activity_desc: Phase 36.15 planned (7 plans, 5 waves, checker verified)
 progress:
   total_phases: 18
   completed_phases: 16
   total_plans: 122
   completed_plans: 116
   percent: 89
-current_phase_name: physics-paint-roto-timeline-ui-from-pencil
+current_phase_name: roto-timeline-final-ui-integration
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 ## Current Position
 
-Phase: 36.14
-Previous phase: Pre-36.14 quick sequence complete
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-07-25 — Phase 36.14 complete
-Next recommended action: Create a fresh bounded Phase 36.14 plan for stale-test contract transfer (triage 18 failing files, transfer valid assertions to the physical contract, delete obsolete tests, remove unused buildRotoRevision, re-run gates). Plans 12-18 remain historical, locked, and non-executable.
+Phase: 36.15
+Previous phase: 36.14 complete (physical-frame cutover, native-UAT approved)
+Plan: 7 plans across 5 waves
+Status: Ready to execute
+Last activity: 2026-07-25 — Phase 36.15 planned (research + patterns + 7 plans, checker verified)
+Next recommended action: /gsd-execute-phase 36.15 (wave order 1 → 1 → 1 → 2 → 3 → 4 → 5)
 
 Progress: [██████████████████░░] 114/121 plans complete; 16/17 phases complete ([█████████░] 94%)
 

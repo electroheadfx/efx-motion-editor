@@ -72,6 +72,18 @@ The former active Phase 36.14 UI-only contract (`36.14-PENCIL-LAYOUT`, `36.14-CO
 - [x] **36.14-UI-INTEGRATION**: The final Roto timeline follows the corrected compact reference with fixed ruler/cell proportions and synchronized horizontal scrolling; keeps transport, quick key actions, interpolation/Force Spacing, cadence, and `Copy Script | Apply Script` in distinct visible groups; omits Tools/header Log/obsolete Save controls and a permanent developer legend; clearly presents real, generated, empty/background, current, disabled, active, destructive, and complete ripple-preview states; routes concise latest-operation status to the header capsule and full detail to the existing right-panel LOG; keeps unavailable script controls focusable with controller-supplied reasons; relocates Discard Script to the Scripts toolbar; and prevents accidental chrome text selection while preserving inputs, editable fields, and LOG text selection.
 - [x] **36.14-UAT-THEN-REGRESSION**: Under D-30's current rejected-UAT recovery track, Plans 21-27 complete production gap fixes using bounded static checks only, Plan 28 performs integrated bounded static read-only review, and Plan 29 is the user-owned native UAT gate. No tests, test discovery, typecheck, build, package command, server, browser, or native process is run by Plans 21-28. Only after the user's exact native approval may separate later regression/typecheck/build planning become eligible; that approval does not automatically execute or unlock Plans 13-18, create `36.14-12-APPROVAL.txt`, alter Validation flags, or complete the phase.
 
+### Physics Paint Roto Timeline Final UI Integration
+
+Presentation-only integration of the approved 36.15 UI-SPEC over the 36.14 physical contract; base contract is the 36.14 UI-SPEC, complement spec `SPECS/36.x-phases/phase-36.15-final-ui/spec-36.15-final-ui.md` (C-01..C-06) wins on conflict.
+
+- [ ] **36.15-STRIP-GEOMETRY**: The workflow strip implements the Fixed Layout Contract: fixed 155px strip (bands 46/1/28/38/28/14), locked header hierarchy, fixed 18px abutting timeline cells in a derived 2160px lane, 54px fixed-pitch ruler ticks, 14px synchronized scrollbar band, fit-content non-wrapping context action row, no responsive height override, and horizontal scroll below minimum host width.
+- [ ] **36.15-GROUP-SEPARATION**: Control groups render as visually distinct gray-background pill groups with minimum 5px spacing around each divider: playback (loop/fps), interpolation (lucide `blend` icon, no border), apply-key-spacing (lucide `align-horizontal-space-around` before the number), key space — per complement spec C-01..C-03.
+- [ ] **36.15-ICON-ACTIONS**: The bottom timeline action row is icon-only with tooltips per complement spec C-05 (`between-vertical-start`, `copy-plus`, `clipboard-copy`, `clipboard-paste`, `trash-2`, `clipboard`, `clipboard-pen`, `clipboard-x`); Discard Script lives in the right-panel Scripts toolbar.
+- [ ] **36.15-STATUS-CAPSULE**: The bottom cell-states legend area is removed (C-06); an elastic truncating header status capsule replaces the permanent status stack; LOG tab remains the only detailed diagnostic surface.
+- [ ] **36.15-LAYER-KEY-MARKERS**: Paint keys are visually marked on the EFX Motion layer (C-04).
+- [ ] **36.15-SELECTION-GUARD**: The application selection guard exists in `app/index.html` with the exact exception list, preserving inputs, editable fields, and LOG text selection.
+- [ ] **36.15-SCRIPT-CONTROLS**: Guarded Script controls stay in order and focusable with controller-supplied unavailable reasons; all wiring consumes existing controller/resolver seams with no business logic in the view.
+
 ## Implemented Integration Baseline
 
 The former future integration seam was implemented during the v0.8.0 Roto recovery phases and is now baseline behavior.
@@ -135,13 +147,20 @@ Which phases cover which requirements. Updated during roadmap creation.
 | 36.14-DOWNSTREAM-PARITY | Phase 36.14 | Complete |
 | 36.14-UI-INTEGRATION | Phase 36.14 | Complete |
 | 36.14-UAT-THEN-REGRESSION | Phase 36.14 | Complete |
+| 36.15-STRIP-GEOMETRY | Phase 36.15 | Planned |
+| 36.15-GROUP-SEPARATION | Phase 36.15 | Planned |
+| 36.15-ICON-ACTIONS | Phase 36.15 | Planned |
+| 36.15-STATUS-CAPSULE | Phase 36.15 | Planned |
+| 36.15-LAYER-KEY-MARKERS | Phase 36.15 | Planned |
+| 36.15-SELECTION-GUARD | Phase 36.15 | Planned |
+| 36.15-SCRIPT-CONTROLS | Phase 36.15 | Planned |
 
 **Coverage:**
 
-- v0.8.0 requirements: 40 total
-- Mapped to phases: 40
+- v0.8.0 requirements: 47 total
+- Mapped to phases: 47
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-08*
-*Last updated: 2026-07-24 after aligning Phase 36.14 rejected-UAT recovery sequencing with D-29 and D-30*
+*Last updated: 2026-07-25 after registering the Phase 36.15 requirement IDs assigned during planning*
