@@ -188,6 +188,6 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"/Users/lmarques/.claude/hooks/gsd-statusline.js\""
+    "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"/Users/lmarques/.claude/hooks/gsd-statusline-gpt-kimi.js\""
   }
 }
