@@ -8,7 +8,7 @@ const source = () => readFileSync(sourcePath, 'utf8');
 
 function getRotoMapBlock(code: string): string {
   const mapStart = code.indexOf('{frameCells.map(frame =>');
-  return code.slice(mapStart, code.indexOf('interpolationConnectors.map', mapStart));
+  return code.slice(mapStart, code.indexOf('physics-paint-roto-key-utilities', mapStart));
 }
 function getWorkflowStripPropsInterface(code: string): string {
   return code.slice(code.indexOf('export interface PhysicsPaintWorkflowStripProps'), code.indexOf('const VIRTUAL_TIMELINE_FRAME_COUNT'));
@@ -43,7 +43,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('keeps interpolation, onion, and key utility controls', () => {
     const code = source();
-    expect(code).toContain('physics-paint-roto-interpolation-connector');
+    expect(code).toContain('physics-paint-roto-interpolation-controls');
+    expect(code).toContain('physics-paint-roto-interpolation-toggle');
+    expect(code).toContain('aria-label="Interpolation mode"');
+    expect(code).toContain('aria-label="Empty frames between real keys"');
     expect(code).toContain('onOnionChange');
     expect(code).toContain('onInsertRotoFrame');
     expect(code).toContain('onDeleteRotoFrame');
@@ -54,9 +57,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('disables and handler-guards interpolation controls only while the mutation lock is active', () => {
     const code = source();
     expect(getWorkflowStripPropsInterface(code)).toContain('mutationLocked?: boolean');
-    expect(code).toContain('const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked)');
+    expect(code).toContain('const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.rotoInterpolationPending);');
     expect(code).toContain('disabled={interpolationControlsDisabled}');
-    expect(code.match(/if \(props\.mutationLocked\) return;/g)).toHaveLength(2);
+    expect(code.match(/if \(props\.mutationLocked \|\| props\.rotoInterpolationPending\) return;/g)).toHaveLength(1);
+    expect(code).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
   });
 
   it('keeps distinct Copy Script and Apply Script controls immediately after Delete', () => {
@@ -75,7 +79,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('keeps generated frames non-editable and real cached frames selectable', () => {
     const code = source(); const map = getRotoMapBlock(code);
     expect(code).toContain("marker.source !== 'generated-interpolation'");
-    expect(map).toContain('const isDisplayRealKey = realCachedRotoFrameNumbers.includes(frame)');
-    expect(map).toContain('isDisplayRealKey || isOccupiedFrame(displayOccupiedRotoFrames, frame)');
+    expect(map).toContain("const isGenerated = semanticCell?.kind === 'generated'");
+    expect(map).toContain("const isPhysicalRealKey = semanticCell?.kind === 'real'");
+    expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked;');
   });
 });

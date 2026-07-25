@@ -59,9 +59,8 @@ describe('Physics Paint Play Script integration contract', () => {
 
 describe('Physics Paint Roto delete shortcut wiring', () => {
   it('shares the exact key utility delete reference with keyboard and visible-button paths', () => {
-    expect(studio).toContain('const deleteRotoFrame = rotoKeyUtilities.deleteKey;');
-    expect(studio).toContain('deleteRotoKey: rotoKeyUtilities.deleteKey,');
-    expect(studio).toContain('onDeleteRotoFrame: deleteRotoFrame');
+    expect(studio).toContain('deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,');
+    expect(studio).toContain('onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame,');
   });
 
   it('advertises the approved Backspace and Delete shortcut copy', () => {

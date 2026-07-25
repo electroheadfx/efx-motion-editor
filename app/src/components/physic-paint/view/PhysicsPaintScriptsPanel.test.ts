@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const panel = readFileSync(fileURLToPath(new URL('./PhysicsPaintScriptsPanel.tsx', import.meta.url)), 'utf8');
+const playScriptDialog = readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
+const studioView = readFileSync(fileURLToPath(new URL('./PhysicsPaintStudioView.tsx', import.meta.url)), 'utf8');
 const rightPanel = readFileSync(fileURLToPath(new URL('./PhysicsPaintRightPanel.tsx', import.meta.url)), 'utf8');
 const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
 const controller = readFileSync(fileURLToPath(new URL('../roto/physicsPaintRotoScriptLibrary.ts', import.meta.url)), 'utf8');
@@ -28,15 +30,17 @@ describe('Physics Paint SCRIPTS panel contract', () => {
   });
 
   it('provides an accessible Play Script dialog distinct from cached Roto playback', () => {
-    expect(panel).toContain('role="dialog"');
-    expect(panel).toContain('aria-labelledby="physics-play-script-title"');
-    expect(panel).toContain('Max {playScript.capacity.value}');
-    expect(panel).toContain('Enter a positive integer or Max.');
-    expect(panel).toContain("if (event.key === 'Escape')");
-    expect(panel).toContain("if (event.key === 'Enter' && !playScript.validationError.value");
-    expect(panel).toContain("event.key !== 'Tab'");
-    expect(panel).toContain('playInputRef.current?.focus()');
-    expect(panel).toContain('playButtonRef.current?.focus()');
+    expect(studioView).toContain('<PhysicsPaintPlayScriptDialog {...playScriptDialog} />');
+    expect(playScriptDialog).toContain('role="dialog"');
+    expect(playScriptDialog).toContain('aria-modal="true"');
+    expect(playScriptDialog).toContain('aria-labelledby="physics-play-script-title"');
+    expect(playScriptDialog).toContain('Max {playScript.capacity.value}');
+    expect(playScriptDialog).toContain('Enter a positive integer or Max.');
+    expect(playScriptDialog).toContain("if (event.key === 'Escape')");
+    expect(playScriptDialog).toContain("if (event.key === 'Enter' && !playScript.validationError.value");
+    expect(playScriptDialog).toContain("event.key !== 'Tab'");
+    expect(playScriptDialog).toContain('inputRef.current?.focus()');
+    expect(playScriptDialog).toContain('returnFocusRef.current?.focus()');
     expect(panel).not.toContain('toggleRotoPlayback');
   });
 
