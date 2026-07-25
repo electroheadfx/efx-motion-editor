@@ -520,7 +520,7 @@ export class TimelineRenderer {
     ctx.roundRect(trackLeft, barY, trackRight - trackLeft, barH, 3);
     ctx.clip();
 
-    const halfSize = 9; // half-extent matching the 9px keyframe icon size
+    const halfSize = 5; // half-extent kept visibly smaller than the 9px keyframe icon
     const centerY = barY + barH / 2;
 
     ctx.fillStyle = '#F5A623';
