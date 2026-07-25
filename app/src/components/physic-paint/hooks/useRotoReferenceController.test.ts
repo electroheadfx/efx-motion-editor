@@ -8,6 +8,9 @@ import {
 
 const frame = (appFrame: number, source: 'real-key' | 'generated-interpolation', dataUrl = `data:${appFrame}`): RotoReferenceFrame => ({ appFrame, frameIndex: appFrame, source, dataUrl });
 
+/** Minimal valid PNG data URL (real signature bytes) for canonical render sources. */
+const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+
 function createEngine() {
   return {
     setBgMode: vi.fn(),
@@ -19,49 +22,69 @@ function createEngine() {
 }
 
 describe('Roto reference controller', () => {
-  it('resolves cached display frames in generated, preview-real, launch/store-real, confirmed, then generic-store order', () => {
-    const generated = frame(4, 'generated-interpolation', 'generated');
-    const preview = frame(4, 'real-key', 'preview');
-    const launchReal = frame(4, 'real-key', 'launch-real');
-    const confirmed = { ...frame(9, 'real-key', 'confirmed'), displayFrame: 4 };
-    const generic = frame(4, 'real-key', 'generic');
-    const getRotoFrame = vi.fn(() => launchReal);
+  it('resolves cached frames through the exact physical cell: generated, real, dirty preview fallback, then null', () => {
+    const generatedSource = {
+      kind: 'generated' as const,
+      layerId: 'layer-1',
+      appFrame: 4,
+      leftKeyId: 'key-1',
+      rightKeyId: 'key-9',
+      interpolationMode: 'duplicate' as const,
+      contentRevision: 'rev-1',
+      cacheRevision: 'rev-1:generated:duplicate:key-1:key-9:4',
+      renderedFrame: { frameIndex: 0, appFrame: 4, dataUrl: pngDataUrl('generated') },
+    };
+    const realSource = {
+      kind: 'real' as const,
+      layerId: 'layer-1',
+      appFrame: 4,
+      keyId: 'key-4',
+      contentRevision: 'rev-1',
+      cacheRevision: 'rev-1:real:key-4',
+      renderedFrame: { frameIndex: 0, appFrame: 4, dataUrl: pngDataUrl('real') },
+    };
 
+    // A current generated physical source resolves to the derived output at the exact appFrame.
+    expect(findCachedRotoDisplayFrame(4, { getPhysicalRenderSource: () => generatedSource })).toMatchObject({
+      appFrame: 4,
+      dataUrl: generatedSource.renderedFrame.dataUrl,
+      contentRevision: 'rev-1',
+      cacheRevision: 'rev-1:generated:duplicate:key-1:key-9:4',
+    });
+
+    // A real physical source resolves with its stable key identity.
+    expect(findCachedRotoDisplayFrame(4, { getPhysicalRenderSource: () => realSource, dirtyFrames: new Set() })).toMatchObject({
+      appFrame: 4,
+      keyId: 'key-4',
+      contentRevision: 'rev-1',
+    });
+
+    // A dirty real key serves its matching live preview only when key identity and revision agree.
+    const matchingPreview = { appFrame: 4, frameIndex: 0, dataUrl: 'data:preview', keyId: 'key-4', contentRevision: 'rev-1' };
     expect(findCachedRotoDisplayFrame(4, {
-      cachedRotoFrames: [launchReal, generated],
-      previewFrames: new Map([[4, preview]]),
-      confirmedFrames: new Map([[9, confirmed]]),
-      getRotoFrame,
-    })).toBe(generated);
-
+      getPhysicalRenderSource: () => realSource,
+      previewFrames: new Map([[4, matchingPreview]]),
+      dirtyFrames: new Set([4]),
+    })).toBe(matchingPreview);
+    const stalePreview = { appFrame: 4, frameIndex: 0, dataUrl: 'data:stale', keyId: 'key-other', contentRevision: 'rev-1' };
     expect(findCachedRotoDisplayFrame(4, {
-      cachedRotoFrames: [launchReal],
-      previewFrames: new Map([[4, preview]]),
-      confirmedFrames: new Map([[9, confirmed]]),
-      getRotoFrame,
-    })).toBe(preview);
+      getPhysicalRenderSource: () => realSource,
+      previewFrames: new Map([[4, stalePreview]]),
+      dirtyFrames: new Set([4]),
+    })).toMatchObject({ appFrame: 4, keyId: 'key-4', dataUrl: realSource.renderedFrame.dataUrl });
 
+    // A stale generated source (revision mismatch) resolves to null, never to a generic store fallback.
     expect(findCachedRotoDisplayFrame(4, {
-      cachedRotoFrames: [launchReal],
-      previewFrames: new Map(),
-      confirmedFrames: new Map([[9, confirmed]]),
-      getRotoFrame,
-    })).toBe(launchReal);
+      getPhysicalRenderSource: () => ({ ...generatedSource, cacheRevision: 'rev-0:generated:duplicate:key-1:key-9:4' }),
+      getFrame: () => frame(4, 'real-key', 'generic'),
+    })).toBeNull();
 
-    expect(findCachedRotoDisplayFrame(4, {
-      cachedRotoFrames: [],
-      previewFrames: new Map(),
-      confirmedFrames: new Map([[9, confirmed]]),
-      getRotoFrame: () => null,
-    })).toBe(confirmed);
-
+    // Without a physical source there is no generic-store fallback.
     expect(findCachedRotoReferenceFrame(4, {
-      cachedRotoFrames: [],
-      previewFrames: new Map(),
-      confirmedFrames: new Map(),
-      getRotoFrame: () => null,
-      getFrame: () => generic,
-    })).toBe(generic);
+      getPhysicalRenderSource: () => null,
+      getRotoFrame: () => frame(4, 'real-key', 'launch-real'),
+      getFrame: () => frame(4, 'real-key', 'generic'),
+    })).toBeNull();
   });
 
   it('refuses dirty frames without clearing their repaint base, then loads a clean base through explicit engine operations', () => {
@@ -98,7 +121,7 @@ describe('Roto reference controller', () => {
     expect(engine.clear).toHaveBeenCalledTimes(1);
     expect(engine.setPreviewBaseImageUrl).toHaveBeenCalledWith(cached.dataUrl);
     expect(syncPending).toHaveBeenCalledTimes(1);
-    expect(setApplyMessage).toHaveBeenCalledWith('Cached key base loaded — visible and non-editable. Add paint to update frame 4.');
+    expect(setApplyMessage).toHaveBeenCalledWith('Cached physical base loaded for frame 4. Add paint to update this key.');
   });
 
   it('clears the preview base and resets background when no cached frame exists', () => {

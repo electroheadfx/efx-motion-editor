@@ -1,6 +1,6 @@
 import { computed, signal } from '@preact/signals';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
+import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import type { RotoPlayScriptController, RotoPlayScriptControllerPorts } from '../roto/physicsPaintRotoPlayScriptController';
 
 const hookState = vi.hoisted(() => ({ refs: [] as Array<{ current: unknown }>, cursor: 0 }));
@@ -42,12 +42,14 @@ vi.mock('../roto/physicsPaintRotoPlayScriptController', async () => {
 
 import { useRotoPlayScriptController } from './useRotoPlayScriptController';
 
-function renderHook(ports: Omit<RotoPlayScriptControllerPorts, 'requestAuthority' | 'commit'>): RotoPlayScriptController {
+type HookPorts = Parameters<typeof useRotoPlayScriptController>[0];
+
+function renderHook(ports: HookPorts): RotoPlayScriptController {
   hookState.cursor = 0;
   return useRotoPlayScriptController(ports, 'Browser fallback');
 }
 
-function ports(version: number, mirrorAccepted: RotoPlayScriptControllerPorts['mirrorAccepted']) {
+function ports(version: number): HookPorts {
   const context: PhysicPaintLaunchContext = {
     operationId: `launch-${version}`,
     layerId: `layer-${version}`,
@@ -56,20 +58,20 @@ function ports(version: number, mirrorAccepted: RotoPlayScriptControllerPorts['m
     height: 200 + version,
     project: { name: `Project ${version}`, saved: true, contextId: `context-${version}` },
   };
-  const background: PhysicPaintRotoBackgroundMetadata = { background: version === 1 ? 'canvas1' : 'canvas3', paperGrain: `canvas${version}`, grainStrength: version / 10 };
   return {
     library: { selected: signal({ id: 'script' }), selectedId: signal('script'), busy: signal(false) } as unknown as RotoPlayScriptControllerPorts['library'],
     getLaunchContext: () => context,
     getSelection: () => version === 1
-      ? { kind: 'real-key' as const, sourceFrame: 4, displayFrame: 4 }
-      : { kind: 'generated-interpolation' as const, sourceFrame: 9, displayFrame: 12 },
+      ? { kind: 'real-key' as const, keyId: 'key-4', appFrame: 4 }
+      : { kind: 'generated-interpolation' as const, keyId: null, appFrame: 9 },
     getMotion: () => ({ deformation: version * 10, position: version * 20 }),
-    getBackground: () => background,
     getOperationLocked: () => version === 2,
     getSize: () => ({ width: 100 + version, height: 200 + version }),
-    mirrorAccepted,
     stopPlayback: vi.fn(),
     log: vi.fn(),
+    executePhysicalEdit: vi.fn(async () => true),
+    pendingOperationId: signal<string | null>(null),
+    acceptedOutput: signal(null),
   };
 }
 
@@ -81,33 +83,35 @@ describe('useRotoPlayScriptController', () => {
   });
 
   it('proxies every dynamic port and refreshes availability after rerender', () => {
-    const firstMirror = vi.fn();
-    const secondMirror = vi.fn();
-    const controller = renderHook(ports(1, firstMirror));
+    const firstPorts = ports(1);
+    const controller = renderHook(firstPorts);
     const stablePorts = captured.ports!;
 
     expect(controller.disabledReason.value).toBeNull();
-    expect(stablePorts.getSelection()).toMatchObject({ kind: 'real-key', sourceFrame: 4 });
+    expect(stablePorts.getSelection()).toMatchObject({ kind: 'real-key', keyId: 'key-4', appFrame: 4 });
+    expect(typeof stablePorts.requestAuthority).toBe('function');
+    expect(typeof stablePorts.commit).toBe('function');
     const initialAvailabilityRevision = stablePorts.availabilityRevision?.value;
 
-    expect(renderHook(ports(1, firstMirror))).toBe(controller);
+    expect(renderHook(ports(1))).toBe(controller);
     expect(stablePorts.availabilityRevision?.value).toBe(initialAvailabilityRevision);
 
-    const rerendered = renderHook(ports(2, secondMirror));
+    const secondPorts = ports(2);
+    const rerendered = renderHook(secondPorts);
 
     expect(rerendered).toBe(controller);
     expect(controller.disabledReason.value).toBe('generated-disabled');
-    expect(stablePorts.getSelection()).toMatchObject({ kind: 'generated-interpolation', sourceFrame: 9, displayFrame: 12 });
+    expect(stablePorts.getSelection()).toMatchObject({ kind: 'generated-interpolation', keyId: null, appFrame: 9 });
     expect(stablePorts.getLaunchContext()).toMatchObject({ layerId: 'layer-2', project: { contextId: 'context-2' } });
     expect(stablePorts.getMotion()).toEqual({ deformation: 20, position: 40 });
-    expect(stablePorts.getBackground()).toEqual({ background: 'canvas3', paperGrain: 'canvas2', grainStrength: 0.2 });
     expect(stablePorts.getOperationLocked()).toBe(true);
     expect(stablePorts.getSize()).toEqual({ width: 102, height: 202 });
 
-    stablePorts.mirrorAccepted([], 9, stablePorts.getBackground());
     stablePorts.stopPlayback();
     stablePorts.log('current');
-    expect(firstMirror).not.toHaveBeenCalled();
-    expect(secondMirror).toHaveBeenCalledWith([], 9, expect.objectContaining({ background: 'canvas3' }));
+    expect(firstPorts.stopPlayback).not.toHaveBeenCalled();
+    expect(firstPorts.log).not.toHaveBeenCalled();
+    expect(secondPorts.stopPlayback).toHaveBeenCalledOnce();
+    expect(secondPorts.log).toHaveBeenCalledWith('current');
   });
 });

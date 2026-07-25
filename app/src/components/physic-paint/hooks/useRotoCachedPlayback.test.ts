@@ -74,7 +74,7 @@ describe('useRotoCachedPlayback', () => {
     const onStart = vi.fn();
     const setIsPlaying = vi.fn();
     const harness = createHarness({
-      initialFps: 24,
+      initialSettings: { loop: false, fps: 24 },
       workflowMode: 'roto',
       getFrames: () => [],
       onStart,
@@ -99,7 +99,7 @@ describe('useRotoCachedPlayback', () => {
     const setIsPlaying = vi.fn();
     const frames = [{ appFrame: 8, frame: { id: 'first' } }, { appFrame: 9, frame: null }];
     const harness = createHarness({
-      initialFps: 2,
+      initialSettings: { loop: false, fps: 2 },
       workflowMode: 'roto',
       getFrames: () => frames,
       onStart,
@@ -138,7 +138,7 @@ describe('useRotoCachedPlayback', () => {
     const transitions: string[] = [];
     const setIsPlaying = vi.fn((playing: boolean) => transitions.push(`playing:${playing}`));
     const harness = createHarness({
-      initialFps: 2,
+      initialSettings: { loop: false, fps: 2 },
       workflowMode: 'roto',
       getFrames: () => [{ appFrame: 8, frame: { id: 'first' } }, { appFrame: 9, frame: { id: 'last' } }],
       onStart: vi.fn(),
@@ -150,6 +150,11 @@ describe('useRotoCachedPlayback', () => {
     playback.start();
     playback = harness.render();
     expect(playback.frame).toEqual({ id: 'first' });
+
+    vi.advanceTimersByTime(500);
+    playback = harness.render();
+    expect(playback.isActive).toBe(true);
+    expect(playback.frame).toEqual({ id: 'last' });
 
     vi.advanceTimersByTime(500);
     playback = harness.render();
@@ -170,7 +175,7 @@ describe('useRotoCachedPlayback', () => {
     const onFrame = vi.fn();
     const setIsPlaying = vi.fn();
     const harness = createHarness({
-      initialFps: 24,
+      initialSettings: { loop: false, fps: 24 },
       workflowMode: 'roto',
       getFrames: () => [{ appFrame: 5, frame: { id: 'key' } }, { appFrame: 6, frame: { id: 'next' } }],
       onStart: vi.fn(),
@@ -189,7 +194,7 @@ describe('useRotoCachedPlayback', () => {
     vi.advanceTimersByTime(17);
     expect(onFrame).toHaveBeenLastCalledWith(1, 6);
 
-    playback.resetForLaunch();
+    playback.resetForLaunch({ loop: false, fps: 24 });
     playback = harness.render();
     expect(playback.isActive).toBe(false);
     expect(playback.frame).toBeNull();
