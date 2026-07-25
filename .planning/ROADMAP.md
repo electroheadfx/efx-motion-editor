@@ -452,7 +452,7 @@ Use `SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md` and th
 **Mode:** mvp
 **Requirements:** 36.14-PHYSICAL-IDENTITY, 36.14-DERIVED-INTERPOLATION, 36.14-ATOMIC-FRAME-MAPPING, 36.14-RIPPLE-INSERT-DELETE, 36.14-RIPPLE-DRAG, 36.14-FORCE-SPACING, 36.14-DOWNSTREAM-PARITY, 36.14-UI-INTEGRATION, 36.14-UAT-THEN-REGRESSION
 **Depends on:** Phase 36.13 and native-UAT approval of the dedicated ROTO-SCRIPT-COPY / ROTO-SCRIPT-APPLY GSD quick
-**Plans:** 22/29 plans executed
+**Plans:** 24/30 plans executed
 
 **Success Criteria**:
 
@@ -572,7 +572,7 @@ D-30 gap-closure recovery track: execute only with `/gsd-execute-phase 36.14 --g
 
 **Wave 27** *(post-approval regression eligibility; blocked on Plan 29 native approval)* — Stale-test contract transfer
 
-- [ ] 36.14-30-PLAN.md — Triage the 18 baseline-failing test files and 73 typecheck errors; transfer still-valid assertions to the canonical physical contract, delete retired-contract tests, remove the unused buildRotoRevision declaration, and close with the full typecheck + vitest run + build gate green.
+- [x] 36.14-30-PLAN.md — Triage the 18 baseline-failing test files and 73 typecheck errors; transfer still-valid assertions to the canonical physical contract, delete retired-contract tests, remove the unused buildRotoRevision declaration, and close with the full typecheck + vitest run + build gate green.
 
 ### Phase 36.8: Physics Paint Roto State Refactor
 
@@ -909,4 +909,4 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
 | 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 6/6 | Complete | 2026-07-13 |
-| 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 22/29 | In Progress|  |
+| 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 24/30 | In Progress|  |

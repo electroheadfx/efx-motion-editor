@@ -6,14 +6,14 @@ current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: executing
 stopped_at: Plan 29 native UAT approved; stale-test transfer scoped as next plan
-last_updated: "2026-07-24T20:15:00.000Z"
-last_activity: 2026-07-24
-last_activity_desc: Ran authorized executable gates; user authorized stale-test transfer planning
+last_updated: "2026-07-25T05:34:42.190Z"
+last_activity: 2026-07-25
+last_activity_desc: Phase 36.14 execution started
 progress:
   total_phases: 17
   completed_phases: 16
-  total_plans: 121
-  completed_plans: 114
+  total_plans: 122
+  completed_plans: 115
   percent: 94
 ---
 
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 29 of 29 approved; next plan to be created for stale-test transfer
-Status: Plan 29 native gap UAT approved by user on 2026-07-24
-Last activity: 2026-07-24 — Ran user-authorized executable gates (typecheck FAIL: 37 errors; vitest FAIL: 18 files / 85 tests; package build PASS); failures confirmed as deferred stale-test contract debt plus one unused production declaration (physicPaintBridge.ts buildRotoRevision)
+Plan: 1 of 30
+Status: Executing Phase 36.14
+Last activity: 2026-07-25 — Phase 36.14 execution started
 Next recommended action: Create a fresh bounded Phase 36.14 plan for stale-test contract transfer (triage 18 failing files, transfer valid assertions to the physical contract, delete obsolete tests, remove unused buildRotoRevision, re-run gates). Plans 12-18 remain historical, locked, and non-executable.
 
 Progress: [██████████████████░░] 114/121 plans complete; 16/17 phases complete ([█████████░] 94%)
