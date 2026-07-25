@@ -6,6 +6,7 @@ import { projectStore } from '../stores/projectStore';
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import type { PhysicPaintApplyPayload } from '../types/physicPaint';
+import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {
   applyPhysicPaintPayload,
   createPhysicPaintLaunchContext,
@@ -42,6 +43,37 @@ const makeFrame = (frameIndex: number, appFrame: number) => ({
   width: 1000,
   height: 650,
 });
+
+const makePhysicalRecord = (keyId: string, appFrame: number) => ({
+  keyId,
+  appFrame,
+  kind: 'real-key' as const,
+  payload: {
+    frameIndex: 0,
+    appFrame,
+    dataUrl: `data:image/png;base64,${btoa(`frame-${appFrame}`)}`,
+    width: 1000,
+    height: 650,
+  },
+});
+
+function seedPhysicalDocument(
+  layerId: string,
+  records: ReturnType<typeof makePhysicalRecord>[],
+  interpolation: { enabled: boolean; mode: 'duplicate' | 'blend' } = { enabled: false, mode: 'duplicate' },
+): void {
+  const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, {
+    capacity: 600,
+    realKeyRecords: records,
+    interpolation,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame: records[0]?.appFrame ?? 0,
+    revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation),
+  });
+  if (!result.ok) throw new Error(result.error);
+}
 
 
 
@@ -148,34 +180,22 @@ describe('physicPaintBridge', () => {
   });
 
   it('hydrates every cached Roto frame summary into launch context', () => {
-    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 8, makeFrame(0, 8));
-    physicPaintStore.replaceGeneratedRotoCache('phys-layer-1', [{
-      ...makeFrame(1, 9),
-      source: 'generated-interpolation',
-      nearestRealKeyFrame: 8,
-    }], {
-      enabled: true,
-      inBetweenCount: 1,
-      mode: 'duplicate',
-      deform: 0,
-      position: 0,
-    });
+    seedPhysicalDocument('phys-layer-1', [makePhysicalRecord('key-8', 8), makePhysicalRecord('key-10', 10)], { enabled: true, mode: 'duplicate' });
 
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null);
 
     expect(context).toMatchObject({ startFrame: 8 });
-    expect(context.cachedRotoFrames).toEqual([
-      expect.objectContaining({ appFrame: 8, source: 'real-key' }),
-      expect.objectContaining({ appFrame: 9, source: 'generated-interpolation', nearestRealKeyFrame: 8 }),
+    expect(context.rotoPhysical).toEqual(expect.objectContaining({
+      cursorAppFrame: 8,
+      selectedKeyId: 'key-8',
+      interpolationEnabled: true,
+      interpolationMode: 'duplicate',
+    }));
+    expect(context.rotoPhysical?.records).toEqual([
+      expect.objectContaining({ keyId: 'key-8', appFrame: 8 }),
+      expect.objectContaining({ keyId: 'key-10', appFrame: 10 }),
     ]);
     expect(context.editableState).toBeUndefined();
-    expect(context.rotoInterpolationSettings).toEqual({
-      enabled: true,
-      inBetweenCount: 1,
-      mode: 'duplicate',
-      deform: 0,
-      position: 0,
-    });
   });
 
   it('includes a defensive copy of persisted Roto paper metadata for standalone reopen', () => {
@@ -184,8 +204,8 @@ describe('physicPaintBridge', () => {
 
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null);
 
-    expect(context).toMatchObject({ rotoBackground: metadata });
-    expect(context.rotoBackground).not.toBe(metadata);
+    expect(context.rotoPhysical?.background).toEqual(metadata);
+    expect(context.rotoPhysical?.background).not.toBe(metadata);
   });
 
   it('does not attach stale layer-level editable state when reopening cached-only Roto frames', () => {
@@ -194,33 +214,24 @@ describe('physicPaintBridge', () => {
 
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 1, null, null);
 
-    expect(context.cachedRotoFrames?.map((frame) => frame.appFrame)).toEqual([1, 4]);
+    expect(context).toMatchObject({ startFrame: 1 });
+    expect(context.rotoPhysical?.records).toEqual([]);
     expect(context.editableState).toBeUndefined();
   });
 
   it('36.12 D-16 rejects generated-only Roto launch targets as render-only instead of redirecting to editable state', () => {
-    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 12, makeFrame(0, 12));
-    physicPaintStore.replaceGeneratedRotoCache('phys-layer-1', [{
-      ...makeFrame(1, 13),
-      source: 'generated-interpolation',
-      nearestRealKeyFrame: 12,
-    }], {
-      enabled: true,
-      inBetweenCount: 1,
-      mode: 'blend',
-      deform: 20,
-      position: 30,
-    });
+    seedPhysicalDocument('phys-layer-1', [makePhysicalRecord('key-12', 12), makePhysicalRecord('key-14', 14)], { enabled: true, mode: 'duplicate' });
 
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 13, null, null);
 
-    expect(context).toMatchObject({
-      startFrame: 13,
-    });
+    expect(context).toMatchObject({ startFrame: 13 });
     expect(context.editableState).toBeUndefined();
-    expect(context.cachedRotoFrames).toEqual(expect.arrayContaining([
-      expect.objectContaining({ appFrame: 13, source: 'generated-interpolation', nearestRealKeyFrame: 12 }),
-    ]));
+    expect(context.rotoPhysical).toEqual(expect.objectContaining({
+      cursorAppFrame: 13,
+      selectedKeyId: null,
+      interpolationEnabled: true,
+    }));
+    expect(context.rotoPhysical?.records.map((record) => record.appFrame)).toEqual([12, 14]);
   });
 
 
@@ -284,7 +295,7 @@ describe('physicPaintBridge', () => {
       frame: 4,
     });
 
-    expect(result).toEqual({ ok: false, error: 'Invalid physics paint launch context' });
+    expect(result).toEqual({ ok: false, error: 'Could not open physics paint canvas: Error: Could not construct a canonical physical launch context.' });
     expect(open).not.toHaveBeenCalled();
     open.mockRestore();
   });
@@ -416,14 +427,14 @@ describe('physicPaintBridge', () => {
       renderedFrame: makeFrame(0, 4),
       closeWindowAfterApply: true,
     }));
-    physicPaintStore.setRotoInterpolationSettings('phys-layer-1', { enabled: true, inBetweenCount: 2, mode: 'blend', deform: 20, position: 30 });
+    physicPaintStore.setRotoInterpolationSettings('phys-layer-1', { enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 });
 
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(true);
     expect(physicPaintStore.getRotoFrame('phys-layer-1', 2)).toEqual(expect.objectContaining({ appFrame: 2, source: 'generated-interpolation' }));
     expect(physicPaintStore.getRotoFrame('phys-layer-1', 3)).toEqual(expect.objectContaining({ appFrame: 3, source: 'generated-interpolation' }));
     expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({
-      roto_interpolation_settings: { enabled: true, inBetweenCount: 2, mode: 'blend', deform: 20, position: 30, segmentSpacingOverrides: [] },
+      roto_interpolation_settings: { enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0, segmentSpacingOverrides: [] },
       roto_cache_metadata: [
         expect.objectContaining({ appFrame: 1, source: 'real-key', sourceFrame: 1 }),
         expect.objectContaining({ appFrame: 4, source: 'real-key', sourceFrame: 4 }),
@@ -717,6 +728,10 @@ describe('physicPaintBridge', () => {
 
     const cleanup = await installPhysicPaintApplyListener();
     listener?.(new CustomEvent(PHYSIC_PAINT_APPLY_EVENT, { detail: applyCanvasPayload({ operationId: 'listener-op' }) }));
+    // The fallback listener applies through the asynchronous prepared-payload seam.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(dispatch).toHaveBeenCalledTimes(1);
     const resultEvent = dispatch.mock.calls[0][0] as CustomEvent;
@@ -750,6 +765,10 @@ describe('physicPaintBridge', () => {
       data: { type: PHYSIC_PAINT_APPLY_EVENT, payload: applyCanvasPayload({ operationId: 'message-op' }) },
       source: child as unknown as MessageEventSource,
     } as MessageEvent);
+    // The fallback listener applies through the asynchronous prepared-payload seam.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(child.postMessage).toHaveBeenCalledWith({
