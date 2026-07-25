@@ -380,3 +380,49 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     }
   });
 });
+
+describe('PhysicsPaintWorkflowStrip strip geometry pitch contract (36.15-06 task 1)', () => {
+  it('derives one lane-width constant from the virtual frame count and binds the ruler inline style to it', () => {
+    const code = source();
+    expect(code).toContain('ROTO_CELL_WIDTH_PX = 18');
+    expect(code).toMatch(/ROTO_LANE_WIDTH_PX\s*=\s*VIRTUAL_TIMELINE_FRAME_COUNT\s*\*\s*ROTO_CELL_WIDTH_PX/);
+    const rulerIndex = code.indexOf('class="physics-paint-ruler"');
+    expect(rulerIndex).toBeGreaterThanOrEqual(0);
+    const rulerTagEnd = code.indexOf('aria-hidden="true"', rulerIndex);
+    const rulerTag = code.slice(rulerIndex, rulerTagEnd === -1 ? code.length : rulerTagEnd);
+    expect(rulerTag).toContain('ROTO_LANE_WIDTH_PX');
+    expect(code).not.toContain('1800px');
+  });
+
+  it('locks the cells grid to 18px abutting columns with zero gap', () => {
+    const styles = css();
+    const cells = getCssRuleBlock(styles, '.physics-paint-roto-cells {');
+    expect(cells).toContain('grid-template-columns: repeat(120, 18px)');
+    expect(cells).toContain('gap: 0');
+    expect(styles).not.toContain('repeat(120, 13px)');
+  });
+
+  it('aligns ruler and lane to the derived 2160px width with fixed-pitch 54px ticks', () => {
+    const styles = css();
+    expect(getCssRuleBlock(styles, '.physics-paint-ruler {')).toContain('2160px');
+    const lane = getCssRuleBlock(styles, '.physics-paint-lane {');
+    expect(lane).toContain('grid-template-columns: 2160px');
+    expect(lane).toContain('min-width: 2160px');
+    expect(styles).not.toContain('1800px');
+    const tick = getCssRuleBlock(styles, '.physics-paint-ruler-tick {');
+    expect(tick).toContain('54px');
+    expect(tick).not.toContain('flex: 1 1 0');
+  });
+
+  it('restyles the timeline scrollbar as a 14px band', () => {
+    const scrollbar = getCssRuleBlock(css(), '.physics-paint-timeline-scrollbar {');
+    expect(scrollbar).toContain('height: 14px');
+  });
+
+  it('keeps the drag machinery identifiers intact (guardrail)', () => {
+    const code = source();
+    for (const identifier of ['data-roto-app-frame', 'data-roto-kind', 'data-roto-key-id', 'classifyRotoDragTarget', 'elementFromPoint', 'setPointerCapture']) {
+      expect(code).toContain(identifier);
+    }
+  });
+});
