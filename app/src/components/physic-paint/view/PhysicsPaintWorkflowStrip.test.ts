@@ -514,21 +514,43 @@ describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)'
 });
 
 describe('PhysicsPaintWorkflowStrip header restructure contract (36.15-06 continuation)', () => {
-  it('orders the top bar as navigation, capsule, Duplicate, Tools, Close with no mode label', () => {
+  it('orders the top bar as navigation, capsule, Add key, Duplicate, Tools, Close with no mode label', () => {
     const header = getHeaderBlock(source());
     const navigationIndex = header.indexOf('physics-paint-pill--navigation');
     const capsuleIndex = header.indexOf('class="physics-paint-status-capsule"');
+    const addKeyIndex = header.indexOf('aria-label="Add key"');
     const duplicateIndex = header.indexOf('aria-label="Duplicate key"');
     const toolsIndex = header.indexOf('aria-label="Tools"');
     const closeIndex = header.indexOf('aria-label="Close"');
-    for (const index of [navigationIndex, capsuleIndex, duplicateIndex, toolsIndex, closeIndex]) {
+    for (const index of [navigationIndex, capsuleIndex, addKeyIndex, duplicateIndex, toolsIndex, closeIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
     expect(capsuleIndex).toBeGreaterThan(navigationIndex);
-    expect(duplicateIndex).toBeGreaterThan(capsuleIndex);
+    expect(addKeyIndex).toBeGreaterThan(capsuleIndex);
+    expect(duplicateIndex).toBeGreaterThan(addKeyIndex);
     expect(toolsIndex).toBeGreaterThan(duplicateIndex);
     expect(closeIndex).toBeGreaterThan(toolsIndex);
     expect(header).not.toContain('physics-paint-mode-label');
+  });
+
+  it('renders the Add key header action as a guarded icon button wired to the empty-key port', () => {
+    const code = source();
+    expect(getWorkflowStripPropsInterface(code)).toContain('onAddRotoKey?: () => void');
+    expect(code).toContain('canAddEmptyKey');
+    expect(code).toContain('addEmptyKeyDisabledReason');
+    const block = getButtonBlock(code, 'Add key');
+    expect(block).toContain('<Plus size={16}');
+    expect(block).toContain('aria-disabled');
+    expect(block).toContain('aria-describedby');
+    expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(block).not.toContain('title=');
+    const guardIndex = block.indexOf('if (!canAddRotoKey) return;');
+    const handlerIndex = block.indexOf('props.onAddRotoKey?.()');
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(handlerIndex).toBeGreaterThan(guardIndex);
+    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canAddRotoKey");
+    expect(code).toContain('roto-key-action-reason-add');
+    expect(code).toContain('Add key — unavailable: ');
   });
 
   it('moves the interpolation, playback, and apply-spacing pill groups into the Tools dropdown', () => {
