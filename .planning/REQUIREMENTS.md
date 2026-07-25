@@ -78,7 +78,7 @@ Presentation-only integration of the approved 36.15 UI-SPEC over the 36.14 physi
 
 - [ ] **36.15-STRIP-GEOMETRY**: The workflow strip implements the Fixed Layout Contract: fixed 155px strip (bands 46/1/28/38/28/14), locked header hierarchy, fixed 18px abutting timeline cells in a derived 2160px lane, 54px fixed-pitch ruler ticks, 14px synchronized scrollbar band, fit-content non-wrapping context action row, no responsive height override, and horizontal scroll below minimum host width.
 - [ ] **36.15-GROUP-SEPARATION**: Control groups render as visually distinct gray-background pill groups with minimum 5px spacing around each divider: playback (loop/fps), interpolation (lucide `blend` icon, no border), apply-key-spacing (lucide `align-horizontal-space-around` before the number), key space — per complement spec C-01..C-03.
-- [ ] **36.15-ICON-ACTIONS**: The bottom timeline action row is icon-only with tooltips per complement spec C-05 (`between-vertical-start`, `copy-plus`, `clipboard-copy`, `clipboard-paste`, `trash-2`, `clipboard`, `clipboard-pen`, `clipboard-x`); Discard Script lives in the right-panel Scripts toolbar.
+- [x] **36.15-ICON-ACTIONS**: The bottom timeline action row is icon-only with tooltips per complement spec C-05 (`between-vertical-start`, `copy-plus`, `clipboard-copy`, `clipboard-paste`, `trash-2`, `clipboard`, `clipboard-pen`, `clipboard-x`); Discard Script lives in the right-panel Scripts toolbar.
 - [ ] **36.15-STATUS-CAPSULE**: The bottom cell-states legend area is removed (C-06); an elastic truncating header status capsule replaces the permanent status stack; LOG tab remains the only detailed diagnostic surface.
 - [ ] **36.15-LAYER-KEY-MARKERS**: Paint keys are visually marked on the EFX Motion layer (C-04).
 - [ ] **36.15-SELECTION-GUARD**: The application selection guard exists in `app/index.html` with the exact exception list, preserving inputs, editable fields, and LOG text selection.
@@ -149,7 +149,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | 36.14-UAT-THEN-REGRESSION | Phase 36.14 | Complete |
 | 36.15-STRIP-GEOMETRY | Phase 36.15 | Planned |
 | 36.15-GROUP-SEPARATION | Phase 36.15 | Planned |
-| 36.15-ICON-ACTIONS | Phase 36.15 | Planned |
+| 36.15-ICON-ACTIONS | Phase 36.15 | Complete |
 | 36.15-STATUS-CAPSULE | Phase 36.15 | Planned |
 | 36.15-LAYER-KEY-MARKERS | Phase 36.15 | Planned |
 | 36.15-SELECTION-GUARD | Phase 36.15 | Planned |

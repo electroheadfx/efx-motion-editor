@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.15
-status: planned
-stopped_at: Phase 36.15 planned — ready to execute
-last_updated: "2026-07-25T16:30:00.000Z"
+current_phase_name: roto-timeline-final-ui-integration
+status: executing
+stopped_at: Completed 36.15-01-PLAN.md
+last_updated: "2026-07-25T17:39:43.953Z"
 last_activity: 2026-07-25
-last_activity_desc: Phase 36.15 planned (7 plans, 5 waves, checker verified)
+last_activity_desc: Phase 36.15 execution started
 progress:
   total_phases: 18
   completed_phases: 16
-  total_plans: 122
-  completed_plans: 116
+  total_plans: 129
+  completed_plans: 117
   percent: 89
-current_phase_name: roto-timeline-final-ui-integration
 ---
 
 # Project State
@@ -24,18 +24,18 @@ current_phase_name: roto-timeline-final-ui-integration
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.14 — physics-paint-roto-timeline-ui-from-pencil
+**Current focus:** Phase 36.15 — roto-timeline-final-ui-integration
 
 ## Current Position
 
-Phase: 36.15
+Phase: 36.15 (roto-timeline-final-ui-integration) — EXECUTING
 Previous phase: 36.14 complete (physical-frame cutover, native-UAT approved)
-Plan: 7 plans across 5 waves
+Plan: 2 of 7
 Status: Ready to execute
-Last activity: 2026-07-25 — Phase 36.15 planned (research + patterns + 7 plans, checker verified)
+Last activity: 2026-07-25 — Phase 36.15 execution started
 Next recommended action: /gsd-execute-phase 36.15 (wave order 1 → 1 → 1 → 2 → 3 → 4 → 5)
 
-Progress: [██████████████████░░] 114/121 plans complete; 16/17 phases complete ([█████████░] 94%)
+Progress: [██████████████████░░] 114/121 plans complete; 16/17 phases complete ([█████████░] 91%)
 
 ## Performance Metrics
 
@@ -111,6 +111,7 @@ Progress: [██████████████████░░] 114/121
 | Phase 36.14 P25 | 8min | 2 tasks | 5 files |
 | Phase 36.14 P26 | 9min | 2 tasks | 6 files |
 | Phase 36.14 P28 | 12min | 2 tasks | 1 files |
+| Phase 36.15 P01 | 17min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -215,6 +216,8 @@ Recent decisions affecting current work:
 - [Phase ?]: D-29 is the active occupied-boundary Drag authority: after D is A@1,C@5,D@8,B@9, while physical-cell frame 6 remains A@1,C@4,B@6,D@8.
 - [Phase ?]: D-30 is the sole active recovery sequence; D-12 and its approval-token/Plans 13-18 transition remain historical and non-executable.
 - [Phase ?]: The clean working tree is compatible with the integrated source because the intentional pre-gap fixes remain present in committed production source rather than as disposable local changes.
+- [Phase ?]: [Phase 36.15 Plan 01]: Guarded icon actions use aria-disabled + a persistent sr-only verbatim controller reason for aria-describedby; the styled tooltip mounts only when visible (D-12/D-14).
+- [Phase ?]: [Phase 36.15 Plan 01]: useStyledTooltip registers the Escape keydown listener only while visible with drag-session-style idempotent cleanup; hover delay is exactly 1000ms, keyboard focus shows instantly (D-17).
 
 ### Pending Todos
 
@@ -296,6 +299,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-25T13:11:18.692Z
-Stopped at: Phase 36.15 UI-SPEC approved
-Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/36.15-roto-timeline-final-ui-integration/36.15-UI-SPEC.md
+Last session: 2026-07-25T17:39:43.939Z
+Stopped at: Completed 36.15-01-PLAN.md
+Resume file: None
