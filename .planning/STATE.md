@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.14
-current_phase_name: physics-paint-roto-timeline-ui-from-pencil
-status: executing
-stopped_at: Plan 29 native UAT approved; stale-test transfer scoped as next plan
-last_updated: "2026-07-25T05:34:42.190Z"
+status: completed
+stopped_at: Plan 29 approved; executable gates authorized and run; routing to stale-test transfer planning
+last_updated: "2026-07-25T08:19:40.550Z"
 last_activity: 2026-07-25
-last_activity_desc: Phase 36.14 execution started
+last_activity_desc: Phase 36.14 complete
 progress:
   total_phases: 17
   completed_phases: 16
   total_plans: 122
-  completed_plans: 115
+  completed_plans: 116
   percent: 94
+current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 ## Current Position
 
-Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — EXECUTING
+Phase: 36.14
 Previous phase: Pre-36.14 quick sequence complete
-Plan: 1 of 30
-Status: Executing Phase 36.14
-Last activity: 2026-07-25 — Phase 36.14 execution started
+Plan: Not started
+Status: All phases complete
+Last activity: 2026-07-25 — Phase 36.14 complete
 Next recommended action: Create a fresh bounded Phase 36.14 plan for stale-test contract transfer (triage 18 failing files, transfer valid assertions to the physical contract, delete obsolete tests, remove unused buildRotoRevision, re-run gates). Plans 12-18 remain historical, locked, and non-executable.
 
 Progress: [██████████████████░░] 114/121 plans complete; 16/17 phases complete ([█████████░] 94%)
@@ -41,7 +41,7 @@ Progress: [██████████████████░░] 114/121
 
 **Velocity:**
 
-- Total plans completed: 40 for v0.8.0
+- Total plans completed: 66 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -63,6 +63,7 @@ Progress: [██████████████████░░] 114/121
 | 36.7 | 5 | - | - |
 | 36.10 | 5 | - | - |
 | 36.11 | 3 | - | - |
+| 36.14 | 24 | - | - |
 
 **Recent Trend:**
 
@@ -289,6 +290,9 @@ Items acknowledged and carried forward from previous milestone close:
 |----------|------|--------|-------------|
 | macOS distribution | Developer ID signing, notarization, stapling, and Gatekeeper validation | Final release quick task after Phase 36.14 | v0.8.0 closure |
 | Architecture | Headless batch adapter replay / editor-driven renderFromStrokes / forceDryAll path | Excluded | v0.7.0 failure post-mortem |
+| Roto timeline UI | Corrected-reference final UI integration: Discard Script relocation to right-panel Scripts toolbar, app/index.html selection guard, compact header status capsule replacing permanent status stack | Follow-up UI plan authorized at Phase 36.14 closure | 2026-07-25 |
+| Testing | Deterministic physical-resolver regression coverage: insert/delete-slot, force-spacing, occupied before/after-key drag, source-closing drag against locked D-29 examples; fulfills deferred 260718-m2f drag-test obligation | Follow-up test plan authorized at Phase 36.14 closure | 2026-07-25 |
+| Bugs | 36.14-REVIEW.md findings: CR-01 dead export-resume path, CR-02 blank blend in-betweens after Play Script commit (prioritize — touches approved blend behavior), WR-01..WR-04 | Follow-up quick authorized at Phase 36.14 closure | 2026-07-25 |
 
 ## Session Continuity
 

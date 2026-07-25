@@ -119,6 +119,8 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - Architecture notes for the future editor transport path from standalone paint output into EFX Motion Editor frame/layer cache.
 - Explicit non-replacement boundary: perfect-freehand remains the fast/direct paint path and p5.brush remains the FX brush path; efx-physic-paint is an additional physics paint tool.
 
+**State (2026-07-25):** All milestone phases complete through Phase 36.14 — the Roto timeline runs on one deterministic physical-frame authority (stable keyId + direct appFrame, gap-derived interpolation, parent-authoritative settlement), native UAT approved 2026-07-24, and the typecheck/vitest/build gates are green. Three follow-ups authorized at closure (final corrected-reference UI integration, deterministic resolver regression tests, code-review bug fixes) are recorded in STATE.md Deferred Items.
+
 ## Latest Milestone: v0.7.0 Monorepo & Paint Enhancements (Shipped 2026-04-05)
 
 2 completed phases (26, 33), 23 plans, 112 commits. Phases 27-32 failed (adapter approach abandoned — efx-physic-paint deferred to v0.8.0 as standalone window). See `.planning/MILESTONES.md` for details.
@@ -234,4 +236,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-22 after Phase 36.7 — Roto key utilities validated and Phase 37 contract work queued*
+*Last updated: 2026-07-25 after Phase 36.14 — deterministic physical-frame Roto timeline cutover complete; native UAT approved, executable gates green; milestone v0.8.0 phases finished with three closure-authorized follow-ups recorded in STATE.md Deferred Items*
