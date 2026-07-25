@@ -5,6 +5,10 @@ import { describe, expect, it } from 'vitest';
 
 const htmlPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../index.html');
 const html = () => readFileSync(htmlPath, 'utf8');
+const rightPanelPath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintRightPanel.tsx');
+const rightPanel = () => readFileSync(rightPanelPath, 'utf8');
+const studioCssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
+const studioCss = () => readFileSync(studioCssPath, 'utf8');
 
 const BASE_SELECTORS = ['html', 'body', '#app'];
 const EXCEPTION_SELECTORS = ['input', 'textarea', '[contenteditable="true"]', '.physics-paint-log-messages'];
@@ -64,5 +68,19 @@ describe('application selection guard source contract (36.15-SELECTION-GUARD)', 
     expect(rules).toHaveLength(2);
     const allSelectors = rules.flatMap(rule => rule.selectors);
     expect(allSelectors.sort()).toEqual([...BASE_SELECTORS, ...EXCEPTION_SELECTORS].sort());
+  });
+});
+
+describe('selection guard liveness and coexistence guardrails', () => {
+  it('keeps the .physics-paint-log-messages exception target live in PhysicsPaintRightPanel.tsx', () => {
+    expect(rightPanel()).toContain('physics-paint-log-messages');
+  });
+
+  it('keeps the pre-existing scoped user-select rules in physicsPaintStudio.css', () => {
+    const css = studioCss();
+    const demoShellRule = css.slice(css.indexOf('body:has(.demo-shell)'));
+    expect(demoShellRule.slice(0, demoShellRule.indexOf('}'))).toContain('user-select: none');
+    const stripRule = css.slice(css.indexOf('.physics-paint-workflow-strip {'));
+    expect(stripRule.slice(0, stripRule.indexOf('}'))).toContain('user-select: none');
   });
 });
