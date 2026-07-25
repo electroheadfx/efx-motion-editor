@@ -1,0 +1,247 @@
+{
+  "items": [
+    {
+      "requirement_id": "36.14-PHYSICAL-IDENTITY",
+      "category": "adjacency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When two things are exactly equal or just touch, do they merge, collide, or separate?"
+    },
+    {
+      "requirement_id": "36.14-PHYSICAL-IDENTITY",
+      "category": "empty",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What is the result for empty, single-element, or null input?"
+    },
+    {
+      "requirement_id": "36.14-PHYSICAL-IDENTITY",
+      "category": "ordering",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When elements compare equal, is output order specified and stable?"
+    },
+    {
+      "requirement_id": "36.14-DERIVED-INTERPOLATION",
+      "category": "boundary",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What happens exactly at each min/max/threshold — and one step either side?"
+    },
+    {
+      "requirement_id": "36.14-DERIVED-INTERPOLATION",
+      "category": "precision",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "Where can precision loss, overflow, or rounding/tie-breaking occur — and what is the exact contract (e.g. half-up vs half-to-even, ceil/floor/truncate)?"
+    },
+    {
+      "requirement_id": "36.14-ATOMIC-FRAME-MAPPING",
+      "category": "idempotency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What happens if this runs twice on the same input?"
+    },
+    {
+      "requirement_id": "36.14-ATOMIC-FRAME-MAPPING",
+      "category": "concurrency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "If interrupted or run in parallel, what is guaranteed?"
+    },
+    {
+      "requirement_id": "36.14-RIPPLE-INSERT-DELETE",
+      "category": "adjacency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When two things are exactly equal or just touch, do they merge, collide, or separate?"
+    },
+    {
+      "requirement_id": "36.14-RIPPLE-INSERT-DELETE",
+      "category": "empty",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What is the result for empty, single-element, or null input?"
+    },
+    {
+      "requirement_id": "36.14-RIPPLE-INSERT-DELETE",
+      "category": "ordering",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When elements compare equal, is output order specified and stable?"
+    },
+    {
+      "requirement_id": "36.14-RIPPLE-INSERT-DELETE",
+      "category": "idempotency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What happens if this runs twice on the same input?"
+    },
+    {
+      "requirement_id": "36.14-RIPPLE-INSERT-DELETE",
+      "category": "concurrency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "If interrupted or run in parallel, what is guaranteed?"
+    },
+    {
+      "requirement_id": "36.14-RIPPLE-DRAG",
+      "category": "idempotency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What happens if this runs twice on the same input?"
+    },
+    {
+      "requirement_id": "36.14-RIPPLE-DRAG",
+      "category": "concurrency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "If interrupted or run in parallel, what is guaranteed?"
+    },
+    {
+      "requirement_id": "36.14-FORCE-SPACING",
+      "category": "boundary",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What happens exactly at each min/max/threshold — and one step either side?"
+    },
+    {
+      "requirement_id": "36.14-FORCE-SPACING",
+      "category": "precision",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "Where can precision loss, overflow, or rounding/tie-breaking occur — and what is the exact contract (e.g. half-up vs half-to-even, ceil/floor/truncate)?"
+    },
+    {
+      "requirement_id": "36.14-FORCE-SPACING",
+      "category": "idempotency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What happens if this runs twice on the same input?"
+    },
+    {
+      "requirement_id": "36.14-FORCE-SPACING",
+      "category": "concurrency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "If interrupted or run in parallel, what is guaranteed?"
+    },
+    {
+      "requirement_id": "36.14-DOWNSTREAM-PARITY",
+      "category": "empty",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What is the result for empty, single-element, or null input?"
+    },
+    {
+      "requirement_id": "36.14-DOWNSTREAM-PARITY",
+      "category": "encoding",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "Whose definition of length/equality applies — bytes, code points, grapheme clusters, or normalized form?"
+    },
+    {
+      "requirement_id": "36.14-UI-INTEGRATION",
+      "category": "empty",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What is the result for empty, single-element, or null input?"
+    },
+    {
+      "requirement_id": "36.14-UI-INTEGRATION",
+      "category": "encoding",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "Whose definition of length/equality applies — bytes, code points, grapheme clusters, or normalized form?"
+    },
+    {
+      "requirement_id": "36.14-UI-INTEGRATION",
+      "category": "idempotency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What happens if this runs twice on the same input?"
+    },
+    {
+      "requirement_id": "36.14-UI-INTEGRATION",
+      "category": "concurrency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "If interrupted or run in parallel, what is guaranteed?"
+    },
+    {
+      "requirement_id": "36.14-UAT-THEN-REGRESSION",
+      "category": "idempotency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What happens if this runs twice on the same input?"
+    },
+    {
+      "requirement_id": "36.14-UAT-THEN-REGRESSION",
+      "category": "concurrency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "If interrupted or run in parallel, what is guaranteed?"
+    }
+  ],
+  "coverage": {
+    "applicable": 26,
+    "resolved": 0,
+    "unresolved": 26,
+    "byVerification": {
+      "explicit": 0,
+      "backstop": 0
+    }
+  }
+}

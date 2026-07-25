@@ -568,7 +568,11 @@ D-30 gap-closure recovery track: execute only with `/gsd-execute-phase 36.14 --g
 
 **Wave 26** *(gap closure; blocked on Plan 28)* — Renewed native gap UAT
 
-- [ ] 36.14-29-PLAN.md — Stop at D-30's blocking user-owned native gap UAT; record pass/rejection in the normal summary only and do not create approval evidence or advance locked plans.
+- [x] 36.14-29-PLAN.md — Stop at D-30's blocking user-owned native gap UAT; record pass/rejection in the normal summary only and do not create approval evidence or advance locked plans. (approved 2026-07-24)
+
+**Wave 27** *(post-approval regression eligibility; blocked on Plan 29 native approval)* — Stale-test contract transfer
+
+- [ ] 36.14-30-PLAN.md — Triage the 18 baseline-failing test files and 73 typecheck errors; transfer still-valid assertions to the canonical physical contract, delete retired-contract tests, remove the unused buildRotoRevision declaration, and close with the full typecheck + vitest run + build gate green.
 
 ### Phase 36.8: Physics Paint Roto State Refactor
 
