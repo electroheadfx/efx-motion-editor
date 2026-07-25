@@ -59,12 +59,6 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     for (const obsolete of ['Save current', 'Save pending', 'onSaveRotoFrame', 'onSavePendingRotoFrames', 'pendingRotoFrames', 'rotoSavingFrame', 'rotoSaveInFlight', 'Unsaved', 'Saving frame']) expect(code).not.toContain(obsolete);
   });
 
-  it('explains automatic real-key caching and generated render-only frames', () => {
-    const code = source();
-    expect(code).toContain('Completed real-key paint is cached automatically.');
-    expect(code).toContain('Generated frame {frame} is render-only.');
-  });
-
   it('keeps interpolation, onion, and key utility controls', () => {
     const code = source();
     expect(code).toContain('physics-paint-roto-interpolation-controls');
@@ -281,5 +275,101 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
     const openingTag = code.slice(stateActionsStart, code.indexOf('>', stateActionsIndex) + 1);
     expect(openingTag).not.toContain('aria-hidden="true"');
     expect(stateActions).toContain('aria-label="Close"');
+  });
+});
+
+describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
+  it('renders the elastic status capsule between the navigation and interpolation pills with the Info glyph', () => {
+    const code = source();
+    const header = getHeaderBlock(code);
+    const navigationIndex = header.indexOf('physics-paint-pill--navigation');
+    const capsuleIndex = header.indexOf('class="physics-paint-status-capsule"');
+    const interpolationIndex = header.indexOf('physics-paint-pill--interpolation');
+    expect(navigationIndex).toBeGreaterThanOrEqual(0);
+    expect(capsuleIndex).toBeGreaterThan(navigationIndex);
+    expect(interpolationIndex).toBeGreaterThan(capsuleIndex);
+    const capsule = header.slice(capsuleIndex, interpolationIndex);
+    expect(capsule).toContain('role="status"');
+    expect(capsule).toContain('aria-live="polite"');
+    expect(capsule).toContain('<Info size={16}');
+    expect(capsule).toContain('physics-paint-status-capsule-text');
+    expect(capsule).toContain('PhysicsPaintStyledTooltip');
+    expect(capsule).not.toContain('title=');
+    expect(header).not.toContain('physics-paint-header-capsule-slot');
+    expect(code).toContain('getRotoStatusCapsuleViewModel');
+  });
+
+  it('removes the retired status stack, cell-states legend, and diagnostic lines outright', () => {
+    const code = source();
+    for (const obsolete of [
+      'physics-paint-roto-status-stack',
+      'physics-paint-roto-cell-legend',
+      'physics-paint-roto-cell-swatch',
+      'physics-paint-roto-key-status',
+      'physics-paint-roto-interpolation-status',
+      'physics-paint-roto-playback-status',
+      'ROTO_CELL_LEGEND_ITEMS',
+      'Completed real-key paint is cached automatically',
+      'Cached reference',
+      '{interpolationStatus}</p>',
+    ]) {
+      expect(code).not.toContain(obsolete);
+    }
+    // No replacement band: no toast rail, expandable diagnostics, or Log button.
+    expect(code).not.toContain('aria-label="Log"');
+    expect(code).not.toContain('aria-label="Open Log"');
+  });
+
+  it('routes per-cell state copy through the styled tooltip and drops the native cell title', () => {
+    const code = source();
+    const map = getRotoMapBlock(code);
+    expect(map).toContain('getRotoCellStateTooltipCopy(');
+    expect(map).toContain('PhysicsPaintStyledTooltip');
+    expect(map).not.toContain('title=');
+    expect(map).not.toContain('dragTitle');
+    // Drag machinery untouched: identity attributes and handlers stay.
+    expect(map).toContain('data-roto-app-frame');
+    expect(map).toContain('data-roto-kind');
+    expect(map).toContain('data-roto-key-id');
+    expect(map).toContain('handleRotoCellPointerDown');
+    // The interpolation pill adopts the styled tooltip in place of its native title (Pitfall 4).
+    const pillIndex = code.indexOf('physics-paint-pill--interpolation');
+    expect(pillIndex).toBeGreaterThanOrEqual(0);
+    const pillEnd = code.indexOf('physics-paint-pill--playback', pillIndex);
+    const pill = code.slice(pillIndex, pillEnd === -1 ? code.length : pillEnd);
+    expect(pill).not.toContain('title=');
+    expect(pill).toContain('PhysicsPaintStyledTooltip');
+    expect(pill).toContain('{interpolationStatus}');
+  });
+
+  it('styles the capsule as the sole flex:1 truncating region and deletes the retired stack/legend CSS', () => {
+    const styles = css();
+    const capsuleBlock = getCssRuleBlock(styles, '.physics-paint-status-capsule {');
+    expect(capsuleBlock).not.toBe('');
+    expect(capsuleBlock).toContain('flex: 1');
+    expect(capsuleBlock).toContain('min-width: 0');
+    expect(capsuleBlock.toLowerCase()).toContain('#2d3741');
+    expect(capsuleBlock.toLowerCase()).toContain('#51606d');
+    expect(capsuleBlock).toContain('11px');
+    expect(capsuleBlock).toContain('700');
+    expect(capsuleBlock).toContain('border-radius: 999px');
+    const capsuleTextBlock = getCssRuleBlock(styles, '.physics-paint-status-capsule-text {');
+    expect(capsuleTextBlock).toContain('text-overflow: ellipsis');
+    expect(capsuleTextBlock).toContain('overflow: hidden');
+    expect(capsuleTextBlock).toContain('white-space: nowrap');
+    expect(capsuleTextBlock.toLowerCase()).toContain('#dde7f0');
+    expect(getCssRuleBlock(styles, '.physics-paint-status-capsule .lucide {').toLowerCase()).toContain('#f8c96b');
+    for (const retired of [
+      '.physics-paint-roto-status-stack',
+      '.physics-paint-roto-cell-legend',
+      '.physics-paint-roto-cell-swatch',
+      '.physics-paint-roto-status,',
+      '.physics-paint-roto-key-status',
+      '.physics-paint-roto-interpolation-status',
+      '.physics-paint-roto-playback-status',
+      '.physics-paint-header-capsule-slot',
+    ]) {
+      expect(styles).not.toContain(retired);
+    }
   });
 });
