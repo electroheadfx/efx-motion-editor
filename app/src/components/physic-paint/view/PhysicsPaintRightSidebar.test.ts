@@ -135,8 +135,12 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(narrow).toMatch(/\.physics-paint-options-tab\s*\{[\s\S]*padding-inline:\s*4px[\s\S]*font-size:\s*11px/);
 
     const mobile = css.slice(css.indexOf('@media (max-width: 860px)'));
-    expect(mobile).toContain('grid-template-columns: 48px minmax(0, 1fr)');
-    expect(mobile).toMatch(/\.physics-paint-right-panel\s*\{[\s\S]*height:\s*260px[\s\S]*max-height:\s*260px[\s\S]*overflow:\s*hidden/);
-    expect(mobile).toMatch(/\.physics-paint-right-section,[\s\S]*\.physics-paint-scripts-panel\s*\{[\s\S]*min-width:\s*0/);
+    // D-18 fixed layout contract (36.15-06): the 860px query no longer reflows
+    // the studio grid, re-places panels, or overrides right-panel/strip
+    // heights; the strip scrolls horizontally below the minimum host width.
+    expect(mobile).not.toContain('.physics-paint-studio');
+    expect(mobile).not.toContain('.physics-paint-right-panel');
+    expect(mobile).not.toContain('.physics-paint-workflow-strip');
+    expect(mobile).not.toContain('260px');
   });
 });

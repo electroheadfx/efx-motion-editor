@@ -998,6 +998,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   );
                 })}
               </div>
+            </div>
+            <div class="physics-paint-roto-action-row">
               <div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key utilities for frame ${props.currentFrame}`}>
                 <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={insertKeyTooltip.onPointerEnter} onPointerLeave={insertKeyTooltip.onPointerLeave}>
@@ -1018,7 +1020,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       if ((event.key === 'Enter' || event.key === ' ') && !canInsertRotoKey) event.preventDefault();
                     }}
                   >
-                    <BetweenVerticalStart size={15} aria-hidden="true" />
+                    <BetweenVerticalStart size={16} aria-hidden="true" />
                   </button>
                   {!canInsertRotoKey && insertRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-insert" class="physics-paint-sr-only">{insertRotoKeyDisabledReason}</span>
@@ -1045,7 +1047,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       if ((event.key === 'Enter' || event.key === ' ') && !canDuplicateRotoKey) event.preventDefault();
                     }}
                   >
-                    <CopyPlus size={15} aria-hidden="true" />
+                    <CopyPlus size={16} aria-hidden="true" />
                   </button>
                   {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-duplicate" class="physics-paint-sr-only">{duplicateRotoKeyDisabledReason}</span>
@@ -1072,7 +1074,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       if ((event.key === 'Enter' || event.key === ' ') && !canCopyRotoKey) event.preventDefault();
                     }}
                   >
-                    <ClipboardCopy size={15} aria-hidden="true" />
+                    <ClipboardCopy size={16} aria-hidden="true" />
                   </button>
                   {!canCopyRotoKey && copyRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-copy" class="physics-paint-sr-only">{copyRotoKeyDisabledReason}</span>
@@ -1099,7 +1101,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       if ((event.key === 'Enter' || event.key === ' ') && !canPasteRotoKey) event.preventDefault();
                     }}
                   >
-                    <ClipboardPaste size={15} aria-hidden="true" />
+                    <ClipboardPaste size={16} aria-hidden="true" />
                   </button>
                   {!canPasteRotoKey && pasteRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-paste" class="physics-paint-sr-only">{pasteRotoKeyDisabledReason}</span>
@@ -1126,7 +1128,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       if ((event.key === 'Enter' || event.key === ' ') && !canDeleteRotoKey) event.preventDefault();
                     }}
                   >
-                    <Trash2 size={15} aria-hidden="true" />
+                    <Trash2 size={16} aria-hidden="true" />
                   </button>
                   {!canDeleteRotoKey && deleteRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-delete" class="physics-paint-sr-only">{deleteRotoKeyDisabledReason}</span>
@@ -1153,7 +1155,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       if ((event.key === 'Enter' || event.key === ' ') && !canCopyRotoScript) event.preventDefault();
                     }}
                   >
-                    <Clipboard size={15} aria-hidden="true" />
+                    <Clipboard size={16} aria-hidden="true" />
                   </button>
                   {!canCopyRotoScript && copyRotoScriptDisabledReason ? (
                     <span id="roto-key-action-reason-copy-script" class="physics-paint-sr-only">{copyRotoScriptDisabledReason}</span>
@@ -1180,7 +1182,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       if ((event.key === 'Enter' || event.key === ' ') && !canApplyRotoScript) event.preventDefault();
                     }}
                   >
-                    <ClipboardPen size={15} aria-hidden="true" />
+                    <ClipboardPen size={16} aria-hidden="true" />
                   </button>
                   {!canApplyRotoScript && applyRotoScriptDisabledReason ? (
                     <span id="roto-key-action-reason-apply-script" class="physics-paint-sr-only">{applyRotoScriptDisabledReason}</span>
@@ -1192,14 +1194,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               </div>
             </div>
         </div>
-        {scrollbar.visible ? (
-          <div class="physics-paint-timeline-scrollbar" onPointerDown={(event) => handleTimelineScrollbarPointerDown(event as unknown as PointerEvent)}>
+        <div class="physics-paint-timeline-scrollbar" onPointerDown={(event) => handleTimelineScrollbarPointerDown(event as unknown as PointerEvent)}>
+          {scrollbar.visible ? (
             <span
               class="physics-paint-timeline-scrollbar-thumb"
               style={{ left: `${scrollbar.left}px`, width: `${scrollbar.width}px` }}
             />
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
    </section>
