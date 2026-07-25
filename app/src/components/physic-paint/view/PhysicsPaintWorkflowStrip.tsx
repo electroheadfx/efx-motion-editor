@@ -125,6 +125,8 @@ export interface PhysicsPaintWorkflowStripProps {
 
 const VIRTUAL_TIMELINE_FRAME_COUNT = 120;
 const RULER_STEP = 3;
+const ROTO_CELL_WIDTH_PX = 18;
+const ROTO_LANE_WIDTH_PX = VIRTUAL_TIMELINE_FRAME_COUNT * ROTO_CELL_WIDTH_PX;
 
 export function buildPhysicsPaintRotoFrameCells(currentFrame: number): number[] {
   const visibleCount = VIRTUAL_TIMELINE_FRAME_COUNT;
@@ -929,7 +931,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">
         <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" onScroll={updateScrollbar}>
-          <div class="physics-paint-ruler" style={{ width: '1800px', minWidth: '1800px' }} aria-hidden="true">
+          <div class="physics-paint-ruler" style={{ width: `${ROTO_LANE_WIDTH_PX}px`, minWidth: `${ROTO_LANE_WIDTH_PX}px` }} aria-hidden="true">
             {rotoRulerTicks.map(frame => (
               <span key={frame} class="physics-paint-ruler-tick">{frame}</span>
             ))}

@@ -2015,8 +2015,8 @@ button.destructive {
 
 .physics-paint-timeline-scrollbar {
   position: relative;
-  height: 8px;
-  margin: 1px 2px 3px;
+  height: 14px;
+  margin: 0;
   border: 0;
   border-radius: 999px;
   background: #585a5c;
@@ -2025,8 +2025,8 @@ button.destructive {
 
 .physics-paint-timeline-scrollbar-thumb {
   position: absolute;
-  top: 1px;
-  bottom: 1px;
+  top: 4px;
+  bottom: 4px;
   min-width: 120px;
   border-radius: 999px;
   background: #8a8a8a;
@@ -2037,14 +2037,15 @@ button.destructive {
   display: flex;
   align-items: center;
   height: 28px;
-  min-width: 1800px;
+  min-width: 2160px;
   border-bottom: 1px solid #5c6066;
   background: #47494b;
 }
 
 .physics-paint-ruler-tick {
   position: relative;
-  flex: 1 1 0;
+  flex: 0 0 54px;
+  box-sizing: border-box;
   align-self: stretch;
   padding-left: 2px;
   color: #eceff2;
@@ -2066,10 +2067,10 @@ button.destructive {
 
 .physics-paint-lane {
   display: grid;
-  grid-template-columns: 1800px;
+  grid-template-columns: 2160px;
   align-items: center;
   gap: 4px;
-  min-width: 1800px;
+  min-width: 2160px;
   min-height: 74px;
   padding: 8px 0;
   background: #37393a;
@@ -2088,8 +2089,8 @@ button.destructive {
 
 .physics-paint-roto-cells {
   display: grid;
-  grid-template-columns: repeat(120, 13px);
-  gap: 2px;
+  grid-template-columns: repeat(120, 18px);
+  gap: 0;
   min-width: 0;
 }
 
@@ -2102,6 +2103,7 @@ button.destructive {
 .physics-paint-roto-cell {
   position: relative;
   display: block;
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
   height: 24px;
