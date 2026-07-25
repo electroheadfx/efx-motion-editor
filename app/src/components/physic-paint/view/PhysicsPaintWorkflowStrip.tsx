@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Clipboard, ClipboardCopy, ClipboardPaste, ClipboardPen, CopyPlus, Info, Play, RotateCcw, Square, Trash2, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronDown, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Clipboard, ClipboardCopy, ClipboardPaste, ClipboardPen, CopyPlus, Info, Play, RotateCcw, Square, Trash2, X } from 'lucide-preact';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
@@ -283,7 +283,9 @@ function RotoTimelineCellButton(props: RotoTimelineCellButtonProps) {
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
   const [rotoDragPreview, setRotoDragPreview] = useState<RotoDragPreviewState | null>(null);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const toolsMenuRef = useRef<HTMLDivElement>(null);
   const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
   const suppressNextRotoClickRef = useRef(false);
   const mountedRef = useRef(true);
@@ -790,6 +792,25 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     return () => observer.disconnect();
   }, [frameCells, updateScrollbar]);
 
+  // Tools dropdown dismissal: outside-pointer and Escape listeners are
+  // registered only while the menu is open (tooltip Escape-listener
+  // discipline), with idempotent cleanup on close or unmount.
+  useEffect(() => {
+    if (!toolsOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!toolsMenuRef.current?.contains(event.target as Node)) setToolsOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setToolsOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [toolsOpen]);
+
   function handleTimelineScrollbarPointerDown(event: PointerEvent) {
     const el = timelineScrollRef.current;
     const target = event.currentTarget as HTMLElement;
@@ -823,10 +844,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   return (
     <section class="physics-paint-workflow-strip" aria-label="Physics Paint workflow strip">
       <div class="physics-paint-workflow-header">
-        <div class="physics-paint-mode-label" aria-label="Selected Physics Paint mode">
-          {props.workflowLabel ?? 'PPaint'}
-        </div>
-
         <div class="physics-paint-pill physics-paint-pill--navigation physics-paint-roto-navigation-controls" role="group" aria-label="Roto frame navigation">
           <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={props.onGoToFirstFrame}><ChevronFirst size={15} /></button>
           <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={props.onGoToPreviousFrame}><ChevronsLeft size={15} /></button>
@@ -848,6 +865,48 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           <PhysicsPaintStyledTooltip visible={capsuleTooltip.visible}>{capsuleText}</PhysicsPaintStyledTooltip>
         </div>
 
+        <span class="physics-paint-roto-key-icon-action" onPointerEnter={duplicateKeyTooltip.onPointerEnter} onPointerLeave={duplicateKeyTooltip.onPointerLeave}>
+          <button
+            type="button"
+            class="physics-paint-roto-key-icon-button"
+            aria-label="Duplicate key"
+            aria-disabled={!canDuplicateRotoKey ? 'true' : undefined}
+            aria-describedby={!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? 'roto-key-action-reason-duplicate' : undefined}
+            onFocus={duplicateKeyTooltip.onFocus}
+            onBlur={duplicateKeyTooltip.onBlur}
+            onClick={() => {
+              duplicateKeyTooltip.hide();
+              if (!canDuplicateRotoKey) return;
+              props.onDuplicateRotoKey?.();
+            }}
+            onKeyDown={(event) => {
+              if ((event.key === 'Enter' || event.key === ' ') && !canDuplicateRotoKey) event.preventDefault();
+            }}
+          >
+            <CopyPlus size={16} aria-hidden="true" />
+          </button>
+          {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? (
+            <span id="roto-key-action-reason-duplicate" class="physics-paint-sr-only">{duplicateRotoKeyDisabledReason}</span>
+          ) : null}
+          <PhysicsPaintStyledTooltip visible={duplicateKeyTooltip.visible}>
+            {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? `Duplicate key — unavailable: ${duplicateRotoKeyDisabledReason}` : 'Duplicate key'}
+          </PhysicsPaintStyledTooltip>
+        </span>
+
+        <div class="physics-paint-tools-menu" ref={toolsMenuRef}>
+          <button
+            type="button"
+            class="physics-paint-tools-trigger"
+            aria-label="Tools"
+            aria-haspopup="menu"
+            aria-expanded={toolsOpen}
+            onClick={() => setToolsOpen((open) => !open)}
+          >
+            <span aria-hidden="true">Tools</span>
+            <ChevronDown size={13} aria-hidden="true" />
+          </button>
+          {toolsOpen ? (
+            <div class="physics-paint-tools-dropdown" role="menu" aria-label="Roto tools">
         {props.onRotoInterpolationEnabledChange ? (
           <div
             class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls"
@@ -908,6 +967,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             >Apply</button>
           </form>
         ) : null}
+            </div>
+          ) : null}
+        </div>
 
         <div class="physics-paint-state-actions">
           <span class="physics-paint-roto-key-icon-action" onPointerEnter={closeTooltip.onPointerEnter} onPointerLeave={closeTooltip.onPointerLeave}>
@@ -1001,6 +1063,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             </div>
             <div class="physics-paint-roto-action-row">
               <div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key utilities for frame ${props.currentFrame}`}>
+                <span class="physics-paint-roto-key-layer">{props.workflowLabel ?? 'PPaint'}</span>
                 <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={insertKeyTooltip.onPointerEnter} onPointerLeave={insertKeyTooltip.onPointerLeave}>
                   <button
@@ -1027,33 +1090,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={insertKeyTooltip.visible}>
                     {!canInsertRotoKey && insertRotoKeyDisabledReason ? `Insert key before — unavailable: ${insertRotoKeyDisabledReason}` : 'Insert key before'}
-                  </PhysicsPaintStyledTooltip>
-                </span>
-                <span class="physics-paint-roto-key-icon-action" onPointerEnter={duplicateKeyTooltip.onPointerEnter} onPointerLeave={duplicateKeyTooltip.onPointerLeave}>
-                  <button
-                    type="button"
-                    class="physics-paint-roto-key-icon-button"
-                    aria-label="Duplicate key"
-                    aria-disabled={!canDuplicateRotoKey ? 'true' : undefined}
-                    aria-describedby={!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? 'roto-key-action-reason-duplicate' : undefined}
-                    onFocus={duplicateKeyTooltip.onFocus}
-                    onBlur={duplicateKeyTooltip.onBlur}
-                    onClick={() => {
-                      duplicateKeyTooltip.hide();
-                      if (!canDuplicateRotoKey) return;
-                      props.onDuplicateRotoKey?.();
-                    }}
-                    onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && !canDuplicateRotoKey) event.preventDefault();
-                    }}
-                  >
-                    <CopyPlus size={16} aria-hidden="true" />
-                  </button>
-                  {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? (
-                    <span id="roto-key-action-reason-duplicate" class="physics-paint-sr-only">{duplicateRotoKeyDisabledReason}</span>
-                  ) : null}
-                  <PhysicsPaintStyledTooltip visible={duplicateKeyTooltip.visible}>
-                    {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? `Duplicate key — unavailable: ${duplicateRotoKeyDisabledReason}` : 'Duplicate key'}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyKeyTooltip.onPointerEnter} onPointerLeave={copyKeyTooltip.onPointerLeave}>
