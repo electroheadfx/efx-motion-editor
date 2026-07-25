@@ -578,9 +578,18 @@ D-30 gap-closure recovery track: execute only with `/gsd-execute-phase 36.14 --g
 ### Phase 36.15: Roto Timeline Final UI Integration
 
 **Goal:** As a stop-motion animator, I want the Physics Paint Roto timeline to present the approved final UI — fixed strip geometry with clearly separated control groups, icon-only actions with tooltips, an elastic status capsule, and key markers visible on the EFX Motion layer — so the physical-frame behavior approved in 36.14 is exposed through the intended presentation without duplicating business logic in the view.
-**Requirements:** (assigned during planning — candidate IDs: 36.15-STRIP-GEOMETRY, 36.15-GROUP-SEPARATION, 36.15-ICON-ACTIONS, 36.15-STATUS-CAPSULE, 36.15-LAYER-KEY-MARKERS, 36.15-SELECTION-GUARD, 36.15-SCRIPT-CONTROLS)
+**Requirements:** 36.15-STRIP-GEOMETRY, 36.15-GROUP-SEPARATION, 36.15-ICON-ACTIONS, 36.15-STATUS-CAPSULE, 36.15-LAYER-KEY-MARKERS, 36.15-SELECTION-GUARD, 36.15-SCRIPT-CONTROLS
 **Depends on:** Phase 36.14 (physical-frame authority, native-UAT-approved behavior)
-**Plans:** 0 plans (discuss + refreshed research first, then plan)
+**Plans:** 7 plans
+
+Plans:
+- [ ] 36.15-01-PLAN.md — Styled tooltip component + icon-only guarded bottom action row (wave 1)
+- [ ] 36.15-02-PLAN.md — EFX Motion layer real-Roto-key diamond markers (wave 1)
+- [ ] 36.15-03-PLAN.md — Application selection guard in app/index.html (wave 1)
+- [ ] 36.15-04-PLAN.md — Header pill-island recomposition + close button (wave 2)
+- [ ] 36.15-05-PLAN.md — Status capsule + status stack/legend removal + per-cell tooltips (wave 3)
+- [ ] 36.15-06-PLAN.md — Fixed 155px strip geometry cutover (wave 4)
+- [ ] 36.15-07-PLAN.md — Discard Script relocation to the Scripts toolbar (wave 5)
 
 **Success Criteria**:
 
