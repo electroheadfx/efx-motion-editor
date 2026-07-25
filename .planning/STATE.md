@@ -4,16 +4,16 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.14
 status: completed
-stopped_at: Plan 29 approved; executable gates authorized and run; routing to stale-test transfer planning
-last_updated: "2026-07-25T08:19:40.550Z"
+stopped_at: Phase 36.15 context gathered
+last_updated: "2026-07-25T12:59:24.499Z"
 last_activity: 2026-07-25
 last_activity_desc: Phase 36.14 complete
 progress:
-  total_phases: 17
+  total_phases: 18
   completed_phases: 16
   total_plans: 122
   completed_plans: 116
-  percent: 94
+  percent: 89
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 ---
 
@@ -296,6 +296,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-24T20:15:00.000Z
-Stopped at: Plan 29 approved; executable gates authorized and run; routing to stale-test transfer planning
-Resume file: None
+Last session: 2026-07-25T12:59:24.457Z
+Stopped at: Phase 36.15 context gathered
+Resume file: .planning/phases/36.15-roto-timeline-final-ui-integration/36.15-CONTEXT.md
