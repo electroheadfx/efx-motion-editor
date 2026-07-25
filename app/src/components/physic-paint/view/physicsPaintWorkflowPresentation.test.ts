@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   clampOnionCount, clampOnionOpacity,
   getPhysicsPaintEngineStatusTone, getRotoCellFill,
-  getRotoCellStateLabel, getRotoCellViewModel, getRotoMissingFrameStatus,
+  getRotoCellStateLabel, getRotoCellStateTooltipCopy, getRotoCellViewModel, getRotoMissingFrameStatus,
   getRotoReplacementSuccessLabel, getMissingRotoFrameStatusLabel,
+  getRotoStatusCapsuleViewModel,
   isPhysicsPaintDevExportEnabled,
   type RotoCellBaseMeaning, type RotoCellFill, type RotoCellOverlay,
 } from './physicsPaintWorkflowPresentation';
@@ -146,6 +147,89 @@ describe('physicsPaintWorkflowPresentation', () => {
     expect(isPhysicsPaintDevExportEnabled({ MODE: 'development' })).toBe(true);
     expect(isPhysicsPaintDevExportEnabled({ DEV: false, MODE: 'production' })).toBe(false);
     expect(isPhysicsPaintDevExportEnabled({})).toBe(false);
+  });
+
+});
+
+describe('getRotoStatusCapsuleViewModel (36.15-05 status capsule, D-15)', () => {
+
+  it('returns the ambient baseline when nothing higher-priority exists', () => {
+    expect(getRotoStatusCapsuleViewModel({})).toBe('Missing frames play transparent/background');
+    expect(getRotoStatusCapsuleViewModel({ pendingOperation: null, savingIndicator: null, feedback: [], ambient: null })).toBe('Missing frames play transparent/background');
+    expect(getRotoStatusCapsuleViewModel({ ambient: 'Missing frames play transparent/background' })).toBe('Missing frames play transparent/background');
+  });
+
+
+  it('arbitrates the full D-15 priority ladder one rung at a time', () => {
+    // Guard/action feedback beats ambient info.
+    expect(getRotoStatusCapsuleViewModel({
+      ambient: 'Missing frames play transparent/background',
+      feedback: [{ text: 'Frame inserted' }],
+    })).toBe('Frame inserted');
+    // Saving indicator beats guard/action feedback.
+    expect(getRotoStatusCapsuleViewModel({
+      savingIndicator: 'Saving frame 5...',
+      feedback: [{ text: 'Frame inserted' }],
+      ambient: 'Missing frames play transparent/background',
+    })).toBe('Saving frame 5...');
+    // Pending operation beats the saving indicator.
+    expect(getRotoStatusCapsuleViewModel({
+      pendingOperation: 'Moving key…',
+      savingIndicator: 'Saving frame 5...',
+      feedback: [{ text: 'Frame inserted' }],
+      ambient: 'Missing frames play transparent/background',
+    })).toBe('Moving key…');
+  });
+
+
+  it('resolves simultaneous guard-class lines most-recent-wins', () => {
+    expect(getRotoStatusCapsuleViewModel({
+      feedback: [
+        { text: 'Frame inserted', recency: 1 },
+        { text: 'Spacing applied', recency: 2 },
+      ],
+    })).toBe('Spacing applied');
+    expect(getRotoStatusCapsuleViewModel({
+      feedback: [
+        { text: 'Spacing applied', recency: 2 },
+        { text: 'Frame inserted', recency: 1 },
+      ],
+    })).toBe('Spacing applied');
+    // Equal recency: the later candidate in the list wins the tie.
+    expect(getRotoStatusCapsuleViewModel({
+      feedback: [
+        { text: 'Undo complete', recency: 1 },
+        { text: 'Redo complete', recency: 1 },
+      ],
+    })).toBe('Redo complete');
+  });
+
+
+  it('passes busy copy and verb-first success lines through verbatim', () => {
+    for (const busy of ['Applying spacing…', 'Moving key…', 'Deleting frame…']) {
+      expect(getRotoStatusCapsuleViewModel({ pendingOperation: busy })).toBe(busy);
+    }
+    for (const success of ['Frame inserted', 'Spacing applied', 'Key moved', 'Undo complete', 'Redo complete']) {
+      expect(getRotoStatusCapsuleViewModel({ feedback: [{ text: success }] })).toBe(success);
+    }
+  });
+
+
+  it('ignores blank candidates and keeps higher-priority content over blank lines', () => {
+    expect(getRotoStatusCapsuleViewModel({ pendingOperation: '  ', savingIndicator: 'Saving frame 5...' })).toBe('Saving frame 5...');
+    expect(getRotoStatusCapsuleViewModel({ feedback: [{ text: null }, { text: '' }], ambient: null })).toBe('Missing frames play transparent/background');
+  });
+
+});
+
+describe('getRotoCellStateTooltipCopy (36.15-05 per-cell state tooltips, D-16)', () => {
+
+  it('returns the exact D-16 copy for every semantic cell kind', () => {
+    expect(getRotoCellStateTooltipCopy('real-key')).toBe('Real key');
+    expect(getRotoCellStateTooltipCopy('generated')).toBe('Generated — render-only');
+    expect(getRotoCellStateTooltipCopy('cached')).toBe('Cached');
+    expect(getRotoCellStateTooltipCopy('background-only')).toBe('Background only');
+    expect(getRotoCellStateTooltipCopy('empty')).toBe('Empty');
   });
 
 });
