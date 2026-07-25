@@ -8,6 +8,23 @@ const studioView = readFileSync(fileURLToPath(new URL('./PhysicsPaintStudioView.
 const rightPanel = readFileSync(fileURLToPath(new URL('./PhysicsPaintRightPanel.tsx', import.meta.url)), 'utf8');
 const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
 const controller = readFileSync(fileURLToPath(new URL('../roto/physicsPaintRotoScriptLibrary.ts', import.meta.url)), 'utf8');
+const studio = readFileSync(fileURLToPath(new URL('../PhysicsPaintStudio.tsx', import.meta.url)), 'utf8');
+const strip = readFileSync(fileURLToPath(new URL('./PhysicsPaintWorkflowStrip.tsx', import.meta.url)), 'utf8');
+
+function getDiscardBlock(code: string): string {
+  const labelIndex = code.indexOf('aria-label="Discard Script"');
+  if (labelIndex === -1) return '';
+  const start = code.lastIndexOf('<span', labelIndex);
+  const tooltipClose = code.indexOf('</PhysicsPaintStyledTooltip>', labelIndex);
+  const end = tooltipClose === -1
+    ? code.indexOf('</button>', labelIndex) + '</button>'.length
+    : tooltipClose + '</PhysicsPaintStyledTooltip>'.length;
+  return code.slice(start, end);
+}
+
+function getScriptsPanelPropsInterface(code: string): string {
+  return code.slice(code.indexOf('export interface PhysicsPaintScriptsPanelProps'), code.indexOf('export function PhysicsPaintScriptsPanel'));
+}
 
 describe('Physics Paint SCRIPTS panel contract', () => {
   it('keeps approved mixed-case tab groups and explicitly scans on Scripts entry', () => {
@@ -72,5 +89,46 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(css).toMatch(/\.physics-paint-script-thumbnail[\s\S]*?(?:width|height):\s*48px/);
     expect(css).toMatch(/text-overflow:\s*ellipsis/);
     expect(css).toMatch(/@media[\s\S]*?max-width:\s*860px[\s\S]*?grid-template-columns:\s*1fr/);
+  });
+});
+
+describe('Physics Paint Scripts panel Discard Script contract (36.15-07)', () => {
+  it('renders a guarded Discard Script clipboard-x control without native disabled or title', () => {
+    expect(panel).toContain('ClipboardX');
+    expect(panel).toContain('aria-label="Discard Script"');
+    const block = getDiscardBlock(panel);
+    expect(block).toContain('aria-disabled');
+    expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(block).not.toContain('title=');
+  });
+
+  it('wires the styled tooltip two-part grammar and guards activation before the handler', () => {
+    const block = getDiscardBlock(panel);
+    expect(block).toContain('Discard Script — unavailable: ${discardScriptDisabledReason}');
+    expect(block).toContain('discardScriptDisabledReason}');
+    expect(block).toContain('aria-describedby');
+    expect(block).toContain('PhysicsPaintStyledTooltip');
+    const guardIndex = block.indexOf('if (!canDiscardScript) return;');
+    const handlerIndex = block.indexOf('onDiscardScript()');
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(handlerIndex).toBeGreaterThan(guardIndex);
+    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canDiscardScript");
+  });
+
+  it('declares rotoScript and onDiscardScript props and renders Discard inside the toolbar', () => {
+    const propsInterface = getScriptsPanelPropsInterface(panel);
+    expect(propsInterface).toContain('rotoScript: RotoScriptClipboardController');
+    expect(propsInterface).toContain('onDiscardScript: () => void');
+    const toolbarStart = panel.indexOf('physics-paint-scripts-toolbar');
+    const toolbarEnd = panel.indexOf('physics-paint-scripts-list', toolbarStart);
+    const toolbar = panel.slice(toolbarStart, toolbarEnd);
+    expect(toolbar).toContain('aria-label="Discard Script"');
+    expect(toolbar.indexOf('aria-label="Discard Script"')).toBeGreaterThan(toolbar.indexOf('label="Refresh Scripts"'));
+  });
+
+  it('removes onDiscardRotoScript from the strip and Studio workflow props while scripts props invoke discardScript', () => {
+    expect(strip).not.toContain('onDiscardRotoScript');
+    expect(studio).not.toContain('onDiscardRotoScript');
+    expect(studio).toContain('onDiscardScript: () => { rotoScript.discardScript(); setLastError(null); }');
   });
 });
