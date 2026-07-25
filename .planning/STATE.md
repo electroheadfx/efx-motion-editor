@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.15
 current_phase_name: roto-timeline-final-ui-integration
 status: executing
-stopped_at: Completed 36.15-07-PLAN.md
-last_updated: "2026-07-25T18:58:18.996Z"
+stopped_at: Completed 36.15-05-PLAN.md
+last_updated: "2026-07-25T19:30:33.354Z"
 last_activity: 2026-07-25
 last_activity_desc: Phase 36.15 execution started
 progress:
   total_phases: 18
   completed_phases: 16
   total_plans: 129
-  completed_plans: 121
+  completed_plans: 122
   percent: 89
 ---
 
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 36.15 (roto-timeline-final-ui-integration) — EXECUTING
 Previous phase: 36.14 complete (physical-frame cutover, native-UAT approved)
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-07-25 — Phase 36.15 execution started
 Next recommended action: /gsd-execute-phase 36.15 (wave order 1 → 1 → 1 → 2 → 3 → 4 → 5)
 
-Progress: [██████████████████░░] 114/121 plans complete; 16/17 phases complete ([█████████░] 94%)
+Progress: [██████████████████░░] 114/121 plans complete; 16/17 phases complete ([██████████] 95%)
 
 ## Performance Metrics
 
@@ -116,6 +116,7 @@ Progress: [██████████████████░░] 114/121
 | Phase 36.15 P03 | 3min | 2 tasks | 2 files |
 | Phase 36.15 P04 | 17min | 2 tasks | 4 files |
 | Phase 36.15 P07 | 12min | 2 tasks | 7 files |
+| Phase 36.15 P05 | 19min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -230,6 +231,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 36.15 Plan 04]: Borderless Blend toggle uses surface+glyph emphasis only; header Close routes through getCurrentWindow().close() with window.close() fallback so the onCloseRequested flush always runs
 - [Phase ?]: [Phase 36.15 Plan 07]: Discard availability/reasons are controller-owned derived state inside the existing availability computed (busy > missing > null); no new signal (D-12)
 - [Phase ?]: [Phase 36.15 Plan 07]: Discard Script relocated to the Scripts toolbar as a guarded clipboard-x action; onDiscardRotoScript fully removed from strip props and Studio workflow props (D-11 complete)
+- [Phase ?]: [Phase 36.15 Plan 05]: Capsule selector is pure D-15 arbitration over resolved strings; ambient fallback is the static baseline 'Missing frames play transparent/background'; feedback recency is static wiring metadata (playback > script > generated guard)
+- [Phase ?]: [Phase 36.15 Plan 05]: Per-cell styled tooltips via RotoTimelineCellButton child component (one useStyledTooltip per cell); interpolation pill native title converted to styled tooltip (Pitfall 4)
 
 ### Pending Todos
 
@@ -311,6 +314,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-25T18:58:18.982Z
-Stopped at: Completed 36.15-07-PLAN.md
+Last session: 2026-07-25T19:30:33.337Z
+Stopped at: Completed 36.15-05-PLAN.md
 Resume file: None
