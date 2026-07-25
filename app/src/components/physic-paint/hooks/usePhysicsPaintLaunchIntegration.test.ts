@@ -50,7 +50,7 @@ describe('Physics Paint launch replacement coordinator', () => {
     };
     const controller = createRotoScriptClipboardController({
       getEngine: () => engine,
-      getSource: () => ({ selectionKind: 'real-key', sourceFrame, displayFrame: sourceFrame }),
+      getSource: () => ({ selectionKind: 'real-key', layerId: 'old-layer', keyId: `key-${sourceFrame}`, appFrame: sourceFrame }),
       getMotion: () => ({ deformation: 0, position: 0 }),
       getPublicationIdentity: () => ({
         operationId: 'old-operation',
@@ -58,15 +58,18 @@ describe('Physics Paint launch replacement coordinator', () => {
         cachedBase: null,
         background: { background: 'transparent', paperGrain: 'watercolor', grainStrength: 0.5 },
       }),
-      prepareEmptyTarget: () => null,
+      prepareTarget: async (current) => current.keyId ? { keyId: current.keyId, appFrame: current.appFrame } : null,
     });
     controller.updateEngine(engine);
     const copying = controller.copyScript();
     controller.observeCompletedMutation(engine, completion(1));
     await expect(copying).resolves.toBe(true);
     sourceFrame = 8;
-    controller.updateSource({ selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    controller.updateSource({ selectionKind: 'real-key', layerId: 'old-layer', keyId: 'key-8', appFrame: 8 });
     const applying = controller.applyScript();
+    // Let the asynchronous prepareTarget port settle so the Apply is registered
+    // as the active operation before the replacement request drains it.
+    await Promise.resolve();
     const events: string[] = [];
     const coordinator = createPhysicsPaintLaunchReplacementCoordinator({
       prepareReplacement: () => controller.prepareLaunchReplacement(),
@@ -88,8 +91,9 @@ describe('Physics Paint launch replacement coordinator', () => {
     await Promise.resolve();
 
     expect(capturedTarget).toMatchObject({
-      sourceFrame: 8,
-      displayFrame: 8,
+      keyId: 'key-8',
+      appFrame: 8,
+      publishPixels: true,
       publicationIdentity: { operationId: 'old-operation', layerId: 'old-layer' },
     });
     expect(events).toEqual(['clear/load']);
@@ -106,9 +110,9 @@ describe('Physics Paint launch replacement coordinator', () => {
     const controller = createRotoScriptClipboardController({
       sessionId: 'mounted-session',
       getEngine: () => engine,
-      getSource: () => ({ selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 4, displayFrame: 4 }),
+      getSource: () => ({ selectionKind: 'real-key', layerId: 'layer-a', keyId: 'key-4', appFrame: 4 }),
       getMotion: () => ({ deformation: 0, position: 0 }),
-      prepareEmptyTarget: () => null,
+      prepareTarget: async () => null,
     });
     controller.updateEngine(engine);
     const copying = controller.copyScript();
@@ -138,7 +142,7 @@ describe('Physics Paint launch replacement coordinator', () => {
         await drain.promise;
         events.push('drained');
       },
-      applyLatest: (context) => events.push(`load:${context.operationId}`),
+      applyLatest: (context) => { events.push(`load:${context.operationId}`); },
     });
 
     coordinator.request(launch('replacement', 8));
