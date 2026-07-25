@@ -41,9 +41,11 @@ export interface RotoScriptActionAvailability {
   canCopy: boolean;
   canApply: boolean;
   canApplyReplacement: boolean;
+  canDiscard: boolean;
   copyDisabledReason: string | null;
   applyDisabledReason: string | null;
   replacementApplyDisabledReason: string | null;
+  discardDisabledReason: string | null;
   busy: boolean;
 }
 
@@ -192,6 +194,11 @@ const APPLY_REASONS = {
   busy: 'Finish the current script operation before applying another script.',
 } as const;
 
+const DISCARD_REASONS = {
+  missing: 'Copy a Roto paint script before discarding it.',
+  busy: 'Finish the current script operation before discarding.',
+} as const;
+
 export function createRotoScriptClipboardController(ports: RotoScriptClipboardControllerPorts): RotoScriptClipboardController {
   const clipboard = signal<RotoPaintScript | null>(null);
   const hasCopiedScript = computed(() => clipboard.value !== null);
@@ -244,13 +251,20 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         ? APPLY_REASONS.generated
         : null;
     const applyDisabledReason = replacementApplyDisabledReason ?? (clipboard.value === null ? APPLY_REASONS.missing : null);
+    const discardDisabledReason = unavailable
+      ? DISCARD_REASONS.busy
+      : clipboard.value === null
+        ? DISCARD_REASONS.missing
+        : null;
     return {
       canCopy: copyDisabledReason === null,
       canApply: applyDisabledReason === null,
       canApplyReplacement: replacementApplyDisabledReason === null,
+      canDiscard: discardDisabledReason === null,
       copyDisabledReason,
       applyDisabledReason,
       replacementApplyDisabledReason,
+      discardDisabledReason,
       busy: busy.value,
     };
   });
