@@ -144,3 +144,130 @@ describe('physic-paint Roto key markers (C-04)', () => {
     expect(fxLayoutsSource).toContain('getRotoRealKeyRecords');
   });
 });
+
+describe('rotoKeyFrames reactivity through fxTrackLayouts', () => {
+  function makeRotoRecord(keyId: string, appFrame: number) {
+    return {
+      keyId,
+      appFrame,
+      kind: 'real-key' as const,
+      payload: { frameIndex: 0, appFrame, dataUrl: 'data:image/png;base64,AAAA' },
+    };
+  }
+
+  async function seedPhysicPaintFxSequence(layerId: string, sequenceId = 'fx-roto') {
+    const { sequenceStore } = await import('../../stores/sequenceStore');
+    const { defaultTransform } = await import('../../types/layer');
+    const contentSequence = {
+      id: 'seq-content',
+      name: 'Content',
+      kind: 'content',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      layers: [],
+      keyPhotos: [{ id: 'kp-1', imageId: 'img-1', holdFrames: 2 }],
+    };
+    const fxSequence = {
+      id: sequenceId,
+      name: 'Roto FX',
+      kind: 'fx',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [{
+        id: layerId,
+        name: 'Roto',
+        type: 'physic-paint',
+        visible: true,
+        opacity: 1,
+        blendMode: 'normal',
+        transform: defaultTransform(),
+        source: { type: 'physic-paint', layerId },
+      }],
+      inFrame: 0,
+      outFrame: 12,
+    };
+    sequenceStore.sequences.value = [contentSequence, fxSequence] as never;
+    return sequenceId;
+  }
+
+  it('exposes exactly the seeded real key appFrames (generated interiors never appear)', async () => {
+    const { physicPaintStore } = await import('../../stores/physicPaintStore');
+    const { fxTrackLayouts } = await import('../../lib/frameMap');
+    const sequenceId = await seedPhysicPaintFxSequence('roto-layer');
+
+    // Real keys at 0, 4, 8 with interpolation enabled derive generated interiors
+    // 1-3 and 5-7; rotoKeyFrames must carry real keys only (D-07).
+    const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+      'roto-layer',
+      [makeRotoRecord('key-0', 0), makeRotoRecord('key-4', 4), makeRotoRecord('key-8', 8)],
+      { enabled: true, mode: 'duplicate' },
+      600,
+    );
+    if (!seeded.ok) throw new Error(seeded.error);
+
+    const layout = fxTrackLayouts.value.find((track) => track.sequenceId === sequenceId);
+    expect(layout?.layerType).toBe('physic-paint');
+    expect(layout?.rotoKeyFrames).toEqual([0, 4, 8]);
+  });
+
+  it('recomputes rotoKeyFrames when replaceRotoPhysicalRecords changes the record set', async () => {
+    const { physicPaintStore } = await import('../../stores/physicPaintStore');
+    const { fxTrackLayouts } = await import('../../lib/frameMap');
+    const sequenceId = await seedPhysicPaintFxSequence('roto-layer');
+
+    const first = physicPaintStore.replaceRotoPhysicalRecords(
+      'roto-layer',
+      [makeRotoRecord('key-0', 0), makeRotoRecord('key-4', 4), makeRotoRecord('key-8', 8)],
+      { enabled: false, mode: 'duplicate' },
+      600,
+    );
+    if (!first.ok) throw new Error(first.error);
+    expect(fxTrackLayouts.value.find((track) => track.sequenceId === sequenceId)?.rotoKeyFrames).toEqual([0, 4, 8]);
+
+    const second = physicPaintStore.replaceRotoPhysicalRecords(
+      'roto-layer',
+      [makeRotoRecord('key-a', 2), makeRotoRecord('key-b', 7)],
+      { enabled: false, mode: 'duplicate' },
+      600,
+    );
+    if (!second.ok) throw new Error(second.error);
+
+    // No manual invalidation: the existing physicPaintVersion subscription drives the recompute.
+    expect(fxTrackLayouts.value.find((track) => track.sequenceId === sequenceId)?.rotoKeyFrames).toEqual([2, 7]);
+  });
+
+  it('leaves rotoKeyFrames undefined for non-physic-paint FX layers', async () => {
+    const { sequenceStore } = await import('../../stores/sequenceStore');
+    const { defaultTransform } = await import('../../types/layer');
+    const { fxTrackLayouts } = await import('../../lib/frameMap');
+
+    sequenceStore.sequences.value = [{
+      id: 'fx-grain',
+      name: 'Film Grain',
+      kind: 'fx',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [{
+        id: 'grain-layer',
+        name: 'Film Grain',
+        type: 'generator-grain',
+        visible: true,
+        opacity: 1,
+        blendMode: 'normal',
+        transform: defaultTransform(),
+        source: { type: 'generator-grain', density: 0.3, size: 1, intensity: 0.5, lockSeed: true, seed: 42 },
+      }],
+      inFrame: 0,
+      outFrame: 12,
+    }] as never;
+
+    const layout = fxTrackLayouts.value.find((track) => track.sequenceId === 'fx-grain');
+    expect(layout?.layerType).toBe('generator-grain');
+    expect(layout?.rotoKeyFrames).toBeUndefined();
+  });
+});
