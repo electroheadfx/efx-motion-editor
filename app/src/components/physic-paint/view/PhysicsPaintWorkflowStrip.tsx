@@ -1,4 +1,4 @@
-import { BetweenVerticalStart, Check, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Clipboard, ClipboardCopy, ClipboardPaste, ClipboardPen, CopyPlus, Play, RotateCcw, Square, Trash2 } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Clipboard, ClipboardCopy, ClipboardPaste, ClipboardPen, CopyPlus, Play, RotateCcw, Square, Trash2 } from 'lucide-preact';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
@@ -756,77 +756,76 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           {props.workflowLabel ?? 'PPaint'}
         </div>
 
-        <div class="physics-paint-workflow-animation">
-            <div class="physics-paint-mode-controls">
-              <div class="physics-paint-roto-navigation-controls" role="group" aria-label="Roto frame navigation">
-                <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={props.onGoToFirstFrame}><ChevronFirst size={15} /></button>
-                <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={props.onGoToPreviousFrame}><ChevronsLeft size={15} /></button>
-                <button type="button" class={`physics-paint-nav-button physics-paint-roto-transport ${props.isRotoCachedPlaybackActive ? 'active' : ''}`} aria-label={props.isRotoCachedPlaybackActive ? 'Stop cached Roto playback' : 'Play cached Roto frames'} disabled={props.ready === false || !props.rotoCachedPlaybackAvailable || !props.onToggleRotoPlayback} onClick={props.onToggleRotoPlayback}>{props.isRotoCachedPlaybackActive ? <Square size={15} /> : <Play size={15} />}</button>
-                <output class="physics-paint-current-frame">{props.currentFrame}</output>
-                <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
-                <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
-              </div>
-              <div class="physics-paint-roto-playback-controls" role="group" aria-label="Roto playback settings">
-                <button type="button" class={`physics-paint-nav-button physics-paint-roto-loop-toggle ${props.rotoCachedPlaybackLoop ? 'active' : ''}`} aria-label="Loop cached Roto playback" aria-pressed={Boolean(props.rotoCachedPlaybackLoop)} disabled={props.ready === false || !props.onRotoPlaybackLoopChange} onClick={() => props.onRotoPlaybackLoopChange?.(!props.rotoCachedPlaybackLoop)}><RotateCcw size={15} /></button>
-                <label class="physics-paint-roto-fps-control">
-                  <span>fps</span>
-                  <input type="number" min="1" max="60" step="0.5" value={props.rotoCachedPlaybackFps ?? props.projectFps ?? 1} aria-label="Cached Roto playback frames per second" disabled={props.ready === false} onInput={handleRotoPlaybackFpsInput} />
-                </label>
-              </div>
-              {props.onRotoInterpolationEnabledChange ? (
-                <div
-                  class="physics-paint-roto-interpolation-controls"
-                  data-enabled={interpolationEnabled ? 'true' : 'false'}
-                  data-pending={props.rotoInterpolationPending ? 'true' : 'false'}
-                  title={interpolationStatus}
-                >
-                  <button
-                    type="button"
-                    class={`physics-paint-roto-interpolation-toggle ${interpolationEnabled ? 'active' : ''}`}
-                    aria-label={interpolationEnabled ? 'Disable generated in-betweens' : 'Enable generated in-betweens'}
-                    aria-pressed={interpolationEnabled}
-                    aria-busy={props.rotoInterpolationPending ? 'true' : undefined}
-                    disabled={interpolationControlsDisabled}
-                    onClick={() => {
-                      if (props.mutationLocked || props.rotoInterpolationPending) return;
-                      props.onRotoInterpolationEnabledChange?.(!interpolationEnabled);
-                    }}
-                  >
-                    <span>Interpolation</span>
-                    <span class="physics-paint-roto-interpolation-toggle-state">
-                      {props.rotoInterpolationPending ? 'Pending' : interpolationEnabled ? 'On' : 'Off'}
-                    </span>
-                  </button>
-                  <label class="physics-paint-roto-interpolation-mode">
-                    <select
-                      class="physics-paint-roto-interpolation-select"
-                      value={interpolationMode}
-                      aria-label="Interpolation mode"
-                      disabled={interpolationControlsDisabled || !props.onRotoInterpolationModeChange}
-                      onChange={handleInterpolationModeChange}
-                    >
-                      <option value="duplicate">Duplicate</option>
-                      <option value="blend">Blend</option>
-                    </select>
-                  </label>
-                </div>
-              ) : null}
-              {physicalActions ? (
-                <form class="physics-paint-roto-force-spacing-controls" title={forceSpacingDisabledReason ?? 'Set empty physical frames between real Roto keys'} onSubmit={handleForceSpacingSubmit}>
-                  <input type="number" min="0" step="1" value={forceSpacingInput} aria-label="Empty frames between real keys" disabled={interpolationControlsDisabled || !forceSpacingAvailable} onInput={handleForceSpacingInput} />
-                  <button
-                    type="submit"
-                    class="physics-paint-roto-force-spacing-apply"
-                    aria-label="Apply force spacing"
-                    title="Apply force spacing"
-                    disabled={interpolationControlsDisabled || !forceSpacingAvailable}
-                  >
-                    <Check size={14} aria-hidden="true" />
-                  </button>
-                </form>
-              ) : null}
-            </div>
+        <div class="physics-paint-pill physics-paint-pill--navigation physics-paint-roto-navigation-controls" role="group" aria-label="Roto frame navigation">
+          <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={props.onGoToFirstFrame}><ChevronFirst size={15} /></button>
+          <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={props.onGoToPreviousFrame}><ChevronsLeft size={15} /></button>
+          <button type="button" class={`physics-paint-nav-button physics-paint-roto-transport ${props.isRotoCachedPlaybackActive ? 'active' : ''}`} aria-label={props.isRotoCachedPlaybackActive ? 'Stop cached Roto playback' : 'Play cached Roto frames'} disabled={props.ready === false || !props.rotoCachedPlaybackAvailable || !props.onToggleRotoPlayback} onClick={props.onToggleRotoPlayback}>{props.isRotoCachedPlaybackActive ? <Square size={15} /> : <Play size={15} />}</button>
+          <output class="physics-paint-current-frame">{props.currentFrame}</output>
+          <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
+          <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
+        </div>
+
+        <div class="physics-paint-header-capsule-slot" aria-hidden="true" />
+
+        {props.onRotoInterpolationEnabledChange ? (
+          <div
+            class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls"
+            role="group"
+            aria-label="Roto interpolation settings"
+            data-enabled={interpolationEnabled ? 'true' : 'false'}
+            data-pending={props.rotoInterpolationPending ? 'true' : 'false'}
+            title={interpolationStatus}
+          >
+            <button
+              type="button"
+              class={`physics-paint-roto-interpolation-toggle ${interpolationEnabled ? 'active' : ''}`}
+              aria-label={interpolationEnabled ? 'Disable generated in-betweens' : 'Enable generated in-betweens'}
+              aria-pressed={interpolationEnabled}
+              aria-busy={props.rotoInterpolationPending ? 'true' : undefined}
+              disabled={interpolationControlsDisabled}
+              onClick={() => {
+                if (props.mutationLocked || props.rotoInterpolationPending) return;
+                props.onRotoInterpolationEnabledChange?.(!interpolationEnabled);
+              }}
+            >
+              <Blend size={15} aria-hidden="true" />
+            </button>
+            <label class="physics-paint-roto-interpolation-mode">
+              <select
+                class="physics-paint-roto-interpolation-select"
+                value={interpolationMode}
+                aria-label="Interpolation mode"
+                disabled={interpolationControlsDisabled || !props.onRotoInterpolationModeChange}
+                onChange={handleInterpolationModeChange}
+              >
+                <option value="duplicate">Duplicate</option>
+                <option value="blend">Blend</option>
+              </select>
+            </label>
           </div>
+        ) : null}
+
+        <div class="physics-paint-pill physics-paint-pill--playback physics-paint-roto-playback-controls" role="group" aria-label="Roto playback settings">
+          <button type="button" class={`physics-paint-nav-button physics-paint-roto-loop-toggle ${props.rotoCachedPlaybackLoop ? 'active' : ''}`} aria-label="Loop cached Roto playback" aria-pressed={Boolean(props.rotoCachedPlaybackLoop)} disabled={props.ready === false || !props.onRotoPlaybackLoopChange} onClick={() => props.onRotoPlaybackLoopChange?.(!props.rotoCachedPlaybackLoop)}><RotateCcw size={15} /></button>
+          <label class="physics-paint-roto-fps-control">
+            <span>fps</span>
+            <input type="number" min="1" max="60" step="0.5" value={props.rotoCachedPlaybackFps ?? props.projectFps ?? 1} aria-label="Cached Roto playback frames per second" disabled={props.ready === false} onInput={handleRotoPlaybackFpsInput} />
+          </label>
+        </div>
+
+        {physicalActions ? (
+          <form class="physics-paint-pill physics-paint-pill--apply-spacing physics-paint-roto-force-spacing-controls" title={forceSpacingDisabledReason ?? 'Set empty physical frames between real Roto keys'} onSubmit={handleForceSpacingSubmit}>
+            <AlignHorizontalSpaceAround size={15} aria-hidden="true" />
+            <input type="number" min="0" step="1" value={forceSpacingInput} aria-label="Empty frames between real keys" disabled={interpolationControlsDisabled || !forceSpacingAvailable} onInput={handleForceSpacingInput} />
+            <button
+              type="submit"
+              class="physics-paint-roto-force-spacing-apply"
+              aria-label="Apply force spacing"
+              disabled={interpolationControlsDisabled || !forceSpacingAvailable}
+            >Apply</button>
+          </form>
+        ) : null}
+
         <div class="physics-paint-state-actions" aria-hidden="true" />
       </div>
 

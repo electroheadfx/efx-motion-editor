@@ -205,7 +205,7 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
     expect(interpolationIndex).toBeGreaterThan(navigationIndex);
     expect(playbackIndex).toBeGreaterThan(interpolationIndex);
     expect(applySpacingIndex).toBeGreaterThan(playbackIndex);
-    const modeLabelBlock = header.slice(header.indexOf('physics-paint-mode-label'), navigationIndex);
+    const modeLabelBlock = header.slice(header.indexOf('physics-paint-mode-label'), header.lastIndexOf('<div', navigationIndex));
     expect(modeLabelBlock).not.toContain('physics-paint-pill');
   });
 

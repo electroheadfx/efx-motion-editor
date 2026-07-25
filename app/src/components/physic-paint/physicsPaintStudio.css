@@ -1366,13 +1366,52 @@ button.destructive {
 }
 
 .physics-paint-workflow-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  display: flex;
+  flex-wrap: nowrap;
   align-items: center;
-  height: 42px;
-  min-height: 42px;
-  justify-content: stretch;
+  gap: 8px;
+  height: 46px;
+  min-height: 46px;
+  padding: 0 8px;
   background: transparent;
+}
+
+.physics-paint-header-capsule-slot {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.physics-paint-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.physics-paint-pill--navigation {
+  border-color: #575e66;
+  background: #34383c;
+}
+
+.physics-paint-pill--interpolation {
+  border-color: #596775;
+  background: #323a43;
+}
+
+.physics-paint-pill--playback {
+  border-color: #59616a;
+  background: #34383c;
+}
+
+.physics-paint-pill--apply-spacing {
+  border-color: #575e66;
+  background: #34383c;
 }
 
 .physics-paint-workflow-tabs {
@@ -1408,6 +1447,7 @@ button.destructive {
 
 .physics-paint-mode-label {
   min-width: 80px;
+  flex: 0 0 auto;
 }
 
 .physics-paint-current-frame {
@@ -1454,11 +1494,6 @@ button.destructive {
   align-items: center;
   gap: 4px;
   min-width: 0;
-}
-
-.physics-paint-roto-playback-controls {
-  padding-left: 6px;
-  border-left: 1px solid rgba(145, 165, 189, 0.34);
 }
 
 .physics-paint-nav-button {
@@ -1692,27 +1727,7 @@ button.destructive {
 }
 
 .physics-paint-roto-interpolation-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 26px;
-  padding: 2px 5px;
-  border: 1px solid rgba(111, 144, 255, 0.34);
-  border-radius: 7px;
-  background: rgba(12, 18, 32, 0.34);
-  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
-}
-
-.physics-paint-roto-interpolation-controls[data-enabled="true"] {
-  border-color: rgba(105, 217, 166, 0.8);
-  background: rgba(28, 92, 67, 0.4);
-  box-shadow: inset 0 0 0 1px rgba(105, 217, 166, 0.14);
-}
-
-.physics-paint-roto-interpolation-controls[data-pending="true"] {
-  border-color: rgba(143, 182, 255, 0.5);
-  background: rgba(35, 50, 78, 0.46);
-  box-shadow: none;
+  min-width: 0;
 }
 
 .physics-paint-roto-interpolation-mode {
@@ -1730,41 +1745,26 @@ button.destructive {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
   height: 22px;
   padding: 0 7px;
-  border: 1px solid #68788e;
-  border-radius: 4px;
-  background: #303a46;
-  color: #dce4ed;
+  border-radius: 999px;
+  background: transparent;
+  color: #b8c7ff;
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
-  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
 .physics-paint-roto-interpolation-toggle:hover:not(:disabled) {
-  border-color: #91a5bd;
-  background: #3a4654;
+  background: rgba(184, 199, 255, 0.14);
 }
 
 .physics-paint-roto-interpolation-toggle.active {
-  border-color: #79ddb0;
-  background: #2f7258;
-  color: #f1fff8;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
-}
-
-.physics-paint-roto-interpolation-toggle-state {
-  min-width: 18px;
-  color: #aeb9c6;
-  text-align: center;
-}
-
-.physics-paint-roto-interpolation-toggle.active .physics-paint-roto-interpolation-toggle-state {
-  color: #bff5d8;
+  background: rgba(184, 199, 255, 0.2);
+  color: #dbe4ff;
 }
 
 .physics-paint-roto-interpolation-toggle:focus-visible {
@@ -1782,11 +1782,7 @@ button.destructive {
 }
 
 .physics-paint-roto-force-spacing-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-  padding-left: 6px;
-  border-left: 1px solid rgba(145, 165, 189, 0.34);
+  min-width: 0;
 }
 
 .physics-paint-roto-force-spacing-controls input {
@@ -1794,7 +1790,7 @@ button.destructive {
   height: 22px;
   padding: 1px 4px;
   border: 1px solid #747980;
-  border-radius: 4px 0 0 4px;
+  border-radius: 4px;
   background: #5a5c5f;
   color: #f8fafc;
   font-size: 11px;
@@ -1806,14 +1802,16 @@ button.destructive {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
   height: 22px;
-  padding: 0;
+  padding: 0 10px;
   border: 1px solid #68788e;
-  border-left: 0;
-  border-radius: 0 4px 4px 0;
+  border-radius: 999px;
   background: #303a46;
   color: #b8c7ff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -1831,10 +1829,6 @@ button.destructive {
 .physics-paint-roto-force-spacing-apply:disabled {
   cursor: not-allowed;
   opacity: 0.58;
-}
-
-.physics-paint-roto-force-spacing-apply svg {
-  flex: 0 0 auto;
 }
 
 .physics-paint-roto-interpolation-select,
