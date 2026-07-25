@@ -1618,6 +1618,79 @@ button.destructive {
   color: #ffb0b8;
 }
 
+.physics-paint-roto-key-icon-action {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.physics-paint-roto-key-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #58616b;
+  border-radius: 4px;
+  background: #3a424c;
+  color: #eef4f8;
+  cursor: pointer;
+}
+
+.physics-paint-roto-key-icon-button:hover:not([aria-disabled="true"]),
+.physics-paint-roto-key-icon-button:focus-visible:not([aria-disabled="true"]) {
+  border-color: #68717a;
+  background: #454b52;
+  color: #f2f5f7;
+}
+
+.physics-paint-roto-key-icon-button:focus-visible {
+  outline: 2px solid #f2f5f7;
+  outline-offset: 1px;
+}
+
+.physics-paint-roto-key-icon-button[aria-disabled="true"] {
+  border-color: #3f4851;
+  background: #2a3036;
+  color: #7d8791;
+  cursor: default;
+  opacity: 1;
+}
+
+.physics-paint-roto-key-icon-button.destructive:not([aria-disabled="true"]) {
+  border-color: rgba(255, 102, 102, 0.45);
+  background: #503238;
+  color: #ffb0b8;
+}
+
+.physics-paint-roto-key-icon-button.script-action:not([aria-disabled="true"]) {
+  border-color: #5f7593;
+  background: #34475e;
+  color: #ddebfa;
+}
+
+.physics-paint-styled-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  max-width: 220px;
+  padding: 3px 8px;
+  border: 1px solid #5d6670;
+  border-radius: 999px;
+  background: #20262d;
+  color: #eef4f8;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
 .physics-paint-roto-interpolation-controls {
   display: inline-flex;
   align-items: center;

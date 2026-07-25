@@ -1,6 +1,7 @@
-import { Check, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, RotateCcw, Square } from 'lucide-preact';
+import { Check, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardPaste, Play, RotateCcw, Square } from 'lucide-preact';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
   collectRotoDragVacatedAppFrames,
   getRotoCellFill, getRotoCellViewModel,
@@ -288,6 +289,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const canDeleteRotoKey = physicalActions ? physicalDeleteAvailable && props.ready !== false : (sessionKeyAvailability ? (sessionKeyAvailability.canDelete || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey);
   const physicalDragAvailable = physicalActions?.canDragKey.value ?? false;
   const rotoDragLocked = keyUtilitiesDisabledByBusyState || !physicalActions || !physicalDragAvailable;
+  const pasteRotoKeyDisabledReason = canPasteRotoKey ? null : getRotoKeyUtilityDisabledMessage('paste');
+  const pasteKeyTooltip = useStyledTooltip();
   const rotoKeyRecords = props.rotoKeyRecords ?? [];
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
@@ -912,7 +915,33 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <button type="button" class="physics-paint-roto-key-button" aria-label={`Insert empty Roto frame before frame ${props.currentFrame}`} disabled={!canInsertRotoKey} {...getRotoKeyButtonPressProps('insert')} onClick={() => runRotoKeyUtilityAction('insert', canInsertRotoKey, props.onInsertRotoFrame)}>Insert</button>
                 <button type="button" class="physics-paint-roto-key-button" aria-label={`Duplicate Roto key at frame ${props.currentFrame}`} disabled={!canDuplicateRotoKey} {...getRotoKeyButtonPressProps('duplicate')} onClick={() => runRotoKeyUtilityAction('duplicate', canDuplicateRotoKey, props.onDuplicateRotoKey)}>Dup</button>
                 <button type="button" class="physics-paint-roto-key-button" aria-label={`Copy Roto key at frame ${props.currentFrame}`} disabled={!canCopyRotoKey} {...getRotoKeyButtonPressProps('copy')} onClick={() => runRotoKeyUtilityAction('copy', canCopyRotoKey, props.onCopyRotoFrame)}>Copy</button>
-                <button type="button" class="physics-paint-roto-key-button" aria-label={`Paste Roto key to frame ${props.currentFrame}`} disabled={!canPasteRotoKey} {...getRotoKeyButtonPressProps('paste')} onClick={() => runRotoKeyUtilityAction('paste', canPasteRotoKey, props.onPasteRotoFrame)}>Paste</button>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={pasteKeyTooltip.onPointerEnter} onPointerLeave={pasteKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Paste key"
+                    aria-disabled={!canPasteRotoKey ? 'true' : undefined}
+                    aria-describedby={!canPasteRotoKey && pasteRotoKeyDisabledReason ? 'roto-key-action-reason-paste' : undefined}
+                    onFocus={pasteKeyTooltip.onFocus}
+                    onBlur={pasteKeyTooltip.onBlur}
+                    onClick={() => {
+                      pasteKeyTooltip.hide();
+                      if (!canPasteRotoKey) return;
+                      props.onPasteRotoFrame?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canPasteRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <ClipboardPaste size={15} aria-hidden="true" />
+                  </button>
+                  {!canPasteRotoKey && pasteRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-paste" class="physics-paint-sr-only">{pasteRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={pasteKeyTooltip.visible}>
+                    {!canPasteRotoKey && pasteRotoKeyDisabledReason ? `Paste key — unavailable: ${pasteRotoKeyDisabledReason}` : 'Paste key'}
+                  </PhysicsPaintStyledTooltip>
+                </span>
                 <button type="button" class="physics-paint-roto-key-button destructive" aria-label={`Delete Roto key at frame ${props.currentFrame}`} disabled={!canDeleteRotoKey} {...getRotoKeyButtonPressProps('delete')} onClick={() => runRotoKeyUtilityAction('delete', canDeleteRotoKey, props.onDeleteRotoFrame)}>Delete</button>
                 <button type="button" class="physics-paint-roto-key-button" aria-label="Copy Roto paint script" title={scriptAvailability?.copyDisabledReason ?? 'Copy the mounted Roto paint script'} disabled={!scriptAvailability?.canCopy} onClick={props.onCopyRotoScript}>Copy Script</button>
                 <button type="button" class="physics-paint-roto-key-button" aria-label="Apply Roto paint script" title={scriptAvailability?.applyDisabledReason ?? 'Apply the copied Roto paint script'} disabled={!scriptAvailability?.canApply} onClick={props.onApplyRotoScript}>Apply Script</button>
