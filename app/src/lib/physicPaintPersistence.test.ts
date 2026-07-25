@@ -26,12 +26,12 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
   }),
 }));
 
-function makeOutput(): RuntimePhysicPaintOutput[] {
+function makeOutput(appFrame = 12): RuntimePhysicPaintOutput[] {
   return [{
     layer_id: 'physic layer/1',
     frames: [{
       frameIndex: 0,
-      appFrame: 12,
+      appFrame,
       dataUrl: 'data:image/png;base64,AQID',
       width: 100,
       height: 50,
@@ -51,18 +51,18 @@ describe('physicPaintPersistence', () => {
     expect(persisted[0].frames).toEqual([{
       frameIndex: 0,
       appFrame: 12,
-      cache_path: 'cache/physic-paint/physic_layer_1/frame-000012-0000.png',
+      cache_path: expect.stringMatching(/^cache\/physic-paint\/physic_layer_1-[0-9a-f]{8}\/frame-000012-0000\.png$/),
       width: 100,
       height: 50,
     }]);
     expect(JSON.stringify(persisted)).not.toContain('data:image/png');
-    expect(files.has('/project/cache/physic-paint/physic_layer_1/frame-000012-0000.png')).toBe(true);
+    expect(Array.from(files.keys()).some(path => /^\/project\/cache\/physic-paint\/physic_layer_1-[0-9a-f]{8}\/frame-000012-0000\.png$/.test(path))).toBe(true);
   });
 
   it('removes the project Physics Paint cache when no outputs remain', async () => {
-    await savePhysicPaintData('/project', makeOutput());
+    await savePhysicPaintData('/project', makeOutput(13));
     expect(dirs.has('/project/cache/physic-paint')).toBe(true);
-    expect(Array.from(files.keys())).toContain('/project/cache/physic-paint/physic_layer_1/frame-000012-0000.png');
+    expect(Array.from(files.keys()).some(path => path.startsWith('/project/cache/physic-paint/physic_layer_1-'))).toBe(true);
 
     const persisted = await savePhysicPaintData('/project', []);
 
@@ -72,97 +72,85 @@ describe('physicPaintPersistence', () => {
   });
 
   it('hydrates cached frames back to runtime data URLs', async () => {
-    const persisted = await savePhysicPaintData('/project', makeOutput());
+    const persisted = await savePhysicPaintData('/project', makeOutput(14));
 
     const hydrated = await loadPhysicPaintData('/project', persisted);
 
     expect(hydrated?.[0].frames[0]).toMatchObject({
-      appFrame: 12,
+      appFrame: 14,
       frameIndex: 0,
       dataUrl: 'data:image/png;base64,AQID',
     });
   });
 
-  it('stores transparent Roto onion frames as project cache files', async () => {
-    const output = makeOutput();
-    output[0].roto_cache_metadata = [{
-      ...output[0].frames[0],
-      source: 'real-key',
-      onionDataUrl: 'data:image/png;base64,BAUG',
+  it('hydrates persisted real Roto keys and settings from the canonical physical document', async () => {
+    const { buildPhysicPaintRotoPhysicalRevision } = await import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel');
+    const records = [0, 4, 8].map((appFrame) => ({
+      keyId: `key-${appFrame}`,
+      appFrame,
+      kind: 'real-key' as const,
+      payload: { frameIndex: 0, appFrame, dataUrl: `data:image/png;base64,${btoa(`real-${appFrame}`)}`, width: 100, height: 50 },
+    }));
+    const interpolation = { enabled: true, mode: 'duplicate' as const };
+    const runtime = [{
+      layer_id: 'physic layer/1',
+      frames: [],
+      roto_physical: {
+        capacity: 600,
+        realKeyRecords: records,
+        interpolation,
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        selectedKeyId: null,
+        cursorAppFrame: 0,
+        revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation),
+      },
     }];
 
-    const persisted = await savePhysicPaintData('/project', output);
+    const persisted = await savePhysicPaintData('/project', runtime);
 
-    expect(persisted[0].roto_cache_metadata?.[0]).toMatchObject({
-      appFrame: 12,
-      source: 'real-key',
-      cache_path: 'cache/physic-paint/physic_layer_1/frame-000012-0000.png',
-      onion_cache_path: 'cache/physic-paint/physic_layer_1/onion-000012-0000.png',
-    });
+    // Only sidecar cache paths are serialized for physical payloads; no data URLs and no generated metadata.
     expect(JSON.stringify(persisted)).not.toContain('data:image/png');
-    expect(files.has('/project/cache/physic-paint/physic_layer_1/onion-000012-0000.png')).toBe(true);
+    expect(JSON.stringify(persisted)).not.toContain('generated-interpolation');
+    expect(persisted[0].roto_physical?.realKeyRecords.map((record) => record.appFrame)).toEqual([0, 4, 8]);
 
     const hydrated = await loadPhysicPaintData('/project', persisted);
-    expect(hydrated?.[0].roto_cache_metadata?.[0].onionDataUrl).toBe('data:image/png;base64,BAUG');
-  });
 
-  it('hydrates persisted real Roto keys and settings while ignoring generated metadata without cache files', async () => {
-    files.set('/project/cache/physic-paint/physic_layer_1/frame-000000-0000.png', new Uint8Array([1, 2, 3]));
-    files.set('/project/cache/physic-paint/physic_layer_1/frame-000001-0000.png', new Uint8Array([4, 5, 6]));
-    files.set('/project/cache/physic-paint/physic_layer_1/frame-000002-0000.png', new Uint8Array([7, 8, 9]));
-
-    const hydrated = await loadPhysicPaintData('/project', [{
-      layer_id: 'physic layer/1',
-      frames: [
-        { frameIndex: 0, appFrame: 0, cache_path: 'cache/physic-paint/physic_layer_1/frame-000000-0000.png', width: 100, height: 50 },
-        { frameIndex: 0, appFrame: 1, cache_path: 'cache/physic-paint/physic_layer_1/frame-000001-0000.png', width: 100, height: 50 },
-        { frameIndex: 0, appFrame: 2, cache_path: 'cache/physic-paint/physic_layer_1/frame-000002-0000.png', width: 100, height: 50 },
-      ],
-      roto_cache_metadata: [
-        { frameIndex: 0, appFrame: 0, source: 'real-key' },
-        { frameIndex: 0, appFrame: 4, source: 'real-key', sourceFrame: 1 },
-        { frameIndex: 0, appFrame: 8, source: 'real-key', sourceFrame: 2 },
-        { frameIndex: 0, appFrame: 11, source: 'generated-interpolation', fromSourceFrame: 2 },
-      ],
-      roto_interpolation_settings: { enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 },
-    }]);
-
-    expect(hydrated?.[0].roto_interpolation_settings).toEqual({ enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 });
-    expect(hydrated?.[0].roto_cache_metadata?.map((frame) => ({ appFrame: frame.appFrame, sourceFrame: frame.sourceFrame, source: frame.source }))).toEqual([
-      { appFrame: 0, sourceFrame: undefined, source: 'real-key' },
-      { appFrame: 4, sourceFrame: 1, source: 'real-key' },
-      { appFrame: 8, sourceFrame: 2, source: 'real-key' },
+    expect(hydrated?.[0].roto_physical?.interpolation).toEqual({ enabled: true, mode: 'duplicate' });
+    expect(hydrated?.[0].roto_physical?.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, dataUrl: record.payload.dataUrl }))).toEqual([
+      { keyId: 'key-0', appFrame: 0, dataUrl: `data:image/png;base64,${btoa('real-0')}` },
+      { keyId: 'key-4', appFrame: 4, dataUrl: `data:image/png;base64,${btoa('real-4')}` },
+      { keyId: 'key-8', appFrame: 8, dataUrl: `data:image/png;base64,${btoa('real-8')}` },
     ]);
   });
 
-  it('skips unsafe persisted cache paths while loading project data', async () => {
+  it('rejects unsafe persisted cache paths instead of reading them', async () => {
     files.set('/secret.png', new Uint8Array([1, 2, 3]));
-    files.set('/project/cache/physic-paint/physic_layer_1/frame-000012-0000.png', new Uint8Array([4, 5, 6]));
+    const { readFile } = await import('@tauri-apps/plugin-fs');
 
-    const hydrated = await loadPhysicPaintData('/project', [{
+    await expect(loadPhysicPaintData('/project', [{
       layer_id: 'physic layer/1',
       frames: [
         { frameIndex: 0, appFrame: 10, cache_path: '../secret.png', width: 100, height: 50 },
+      ],
+    }])).rejects.toThrow('Persisted Physics Paint frame in layer "physic layer/1" has invalid placement or path.');
+    await expect(loadPhysicPaintData('/project', [{
+      layer_id: 'physic layer/1',
+      frames: [
         { frameIndex: 0, appFrame: 11, cache_path: '/secret.png', width: 100, height: 50 },
-        { frameIndex: 0, appFrame: 12, cache_path: 'cache/physic-paint/physic_layer_1/frame-000012-0000.png', width: 100, height: 50 },
       ],
-      roto_cache_metadata: [
-        { frameIndex: 0, appFrame: 10, cache_path: '../secret.png', width: 100, height: 50, source: 'real-key' },
-        { frameIndex: 0, appFrame: 12, cache_path: 'cache/physic-paint/physic_layer_1/frame-000012-0000.png', width: 100, height: 50, source: 'real-key' },
-      ],
-    }]);
-
-    expect(hydrated?.[0].frames.map((frame) => frame.appFrame)).toEqual([12]);
-    expect(hydrated?.[0].roto_cache_metadata?.map((frame) => frame.appFrame)).toEqual([12]);
-    expect(hydrated?.[0].frames[0].dataUrl).toBe('data:image/png;base64,BAUG');
+    }])).rejects.toThrow('Persisted Physics Paint frame in layer "physic layer/1" has invalid placement or path.');
+    expect(readFile).not.toHaveBeenCalledWith('/secret.png');
+    expect(readFile).not.toHaveBeenCalledWith('/project/../secret.png');
   });
 
-  it('skips malformed outputs without frames while loading old project data', async () => {
-    const persisted = await savePhysicPaintData('/project', makeOutput());
+  it('rejects malformed outputs without frames instead of hydrating partial state', async () => {
+    const persisted = await savePhysicPaintData('/project', makeOutput(15));
     const malformed = { layer_id: 'broken-layer', workflow_mode: 'play' } as never;
 
-    const hydrated = await loadPhysicPaintData('/project', [malformed, ...persisted]);
+    await expect(loadPhysicPaintData('/project', [malformed, ...persisted])).rejects.toThrow('Persisted Physics Paint output is not a closed physical output.');
 
+    const hydrated = await loadPhysicPaintData('/project', persisted);
     expect(hydrated).toHaveLength(1);
     expect(hydrated?.[0].layer_id).toBe('physic layer/1');
   });
@@ -171,6 +159,6 @@ describe('physicPaintPersistence', () => {
     const output = makeOutput();
     output[0].frames[0].dataUrl = 'data:text/plain;base64,AQID';
 
-    await expect(savePhysicPaintData('/project', output)).rejects.toThrow('not a PNG data URL');
+    await expect(savePhysicPaintData('/project', output)).rejects.toThrow('Invalid Physics Paint frame in layer "physic layer/1".');
   });
 });

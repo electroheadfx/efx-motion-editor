@@ -5,6 +5,7 @@ import { layerStore } from '../stores/layerStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
 import { projectStore } from '../stores/projectStore';
 import { sequenceStore } from '../stores/sequenceStore';
+import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {
   applyPhysicPaintPayload,
   getPhysicPaintRotoAuthority,
@@ -14,8 +15,31 @@ import {
 } from './physicPaintBridge';
 
 const frame = (sourceFrame: number, dataUrl = `data:image/png;base64,${sourceFrame}`) => ({ frameIndex: 0, appFrame: sourceFrame, sourceFrame, dataUrl, source: 'real-key' as const, width: 10, height: 10 });
-const currentFrame = (sourceFrame: number, dataUrl?: string) => ({ ...frame(sourceFrame, dataUrl), ...physicPaintStore.getRotoFrame('layer-1', sourceFrame) });
 const layer = (): Layer => ({ id: 'layer-1', name: 'Physics Paint', type: 'physic-paint', visible: true, opacity: 1, blendMode: 'normal', transform: defaultTransform(), source: { type: 'physic-paint', layerId: 'layer-1' } });
+
+const UNTOUCHED_DATA_URL = `data:image/png;base64,${btoa('untouched')}`;
+
+/** Seed the canonical physical real-key document the parent authority reads. */
+function seedPhysicalRecords(keys: Array<{ keyId: string; appFrame: number; dataUrl: string }>): void {
+  const records = keys.map((key) => ({
+    keyId: key.keyId,
+    appFrame: key.appFrame,
+    kind: 'real-key' as const,
+    payload: { frameIndex: 0, appFrame: key.appFrame, dataUrl: key.dataUrl, width: 10, height: 10 },
+  }));
+  const interpolation = { enabled: false, mode: 'duplicate' as const };
+  const result = physicPaintStore.replaceRotoPhysicalDocument('layer-1', {
+    capacity: 600,
+    realKeyRecords: records,
+    interpolation,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame: 0,
+    revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation),
+  });
+  if (!result.ok) throw new Error(result.error);
+}
 
 function installProject() {
   const candidate = layer();
@@ -27,10 +51,12 @@ function installProject() {
 }
 
 function batch(overrides: Record<string, unknown> = {}) {
+  const authority = getPhysicPaintRotoAuthority({ operationId: 'revision', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4 });
+  if (!authority.ok || authority.frames.length === 0) throw new Error('authority must expose the seeded physical keys');
   return {
     kind: 'replace-roto-key-frames' as const, operationId: `commit-${crypto.randomUUID()}`, projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', startFrame: 4,
-    frameCount: 2, expectedLayerEndExclusive: 10, expectedRotoRevision: getPhysicPaintRotoAuthority({ operationId: 'revision', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4 }).rotoRevision,
-    frames: [currentFrame(1, 'data:image/png;base64,untouched'), frame(4, 'data:image/png;base64,new-4'), frame(5, 'data:image/png;base64,new-5')],
+    frameCount: 2, expectedLayerEndExclusive: 10, expectedRotoRevision: authority.rotoRevision,
+    frames: [authority.frames[0], frame(4, 'data:image/png;base64,new-4'), frame(5, 'data:image/png;base64,new-5')],
     rotoBackground: { background: 'canvas2' as const, paperGrain: 'canvas3', grainStrength: 0.65 },
     rotoInterpolationSettings: { enabled: true, inBetweenCount: 1, mode: 'duplicate' as const, deform: 0, position: 0 },
     ...overrides,
@@ -38,14 +64,14 @@ function batch(overrides: Record<string, unknown> = {}) {
 }
 
 describe('Play Script parent authority and complete-set bridge', () => {
-  beforeEach(() => { physicPaintStore.reset(); sequenceStore.sequences.value = []; installProject(); physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, frame(1, 'data:image/png;base64,untouched')); });
+  beforeEach(() => { physicPaintStore.reset(); sequenceStore.sequences.value = []; installProject(); physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, frame(1, UNTOUCHED_DATA_URL)); seedPhysicalRecords([{ keyId: 'key-1', appFrame: 1, dataUrl: UNTOUCHED_DATA_URL }]); });
   afterEach(() => { vi.restoreAllMocks(); physicPaintStore.reset(); sequenceStore.sequences.value = []; vi.unstubAllGlobals(); });
 
   it('returns current operation-correlated capacity, real keys, and revision', () => {
     const result = getPhysicPaintRotoAuthority({ operationId: 'authority-1', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4 });
     expect(result).toMatchObject({ operationId: 'authority-1', ok: true, canonicalStart: 4, layerEndExclusive: 10, capacity: 6, projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1' });
     expect(result.rotoRevision).not.toBe('');
-    expect(result.frames).toEqual([expect.objectContaining({ sourceFrame: 1, source: 'real-key' })]);
+    expect(result.frames).toEqual([expect.objectContaining({ appFrame: 1, source: 'real-key' })]);
   });
 
   it('authorizes canonical source ownership when the same numbered display frame is generated', () => {
@@ -78,7 +104,7 @@ describe('Play Script parent authority and complete-set bridge', () => {
 
     sequenceStore.sequences.value = [];
     sequenceStore.add({ id: 'seq-large', kind: 'fx', name: 'FX', fps: 24, width: 100, height: 100, keyPhotos: [], layers: [layer()], inFrame: 0, outFrame: PHYSIC_PAINT_MAX_APPLY_FRAMES + 100 });
-    expect(authority('large-valid-range', 4)).toMatchObject({ ok: true, capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES, layerEndExclusive: 4 + PHYSIC_PAINT_MAX_APPLY_FRAMES });
+    expect(authority('large-valid-range', 4)).toMatchObject({ ok: true, capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES - 4, layerEndExclusive: PHYSIC_PAINT_MAX_APPLY_FRAMES });
   });
 
   it('rejects stale project, generated display mutations, stale revisions, duplicate, incomplete, and over-capacity batches', () => {
@@ -93,20 +119,20 @@ describe('Play Script parent authority and complete-set bridge', () => {
   });
 
   it('rejects omission, modification, and injection outside the affected destination range', () => {
-    const farKey: PhysicPaintRotoCacheFrame = {
-      ...frame(20, 'data:image/png;base64,far-key'),
-      backgroundOnly: true,
-      onionDataUrl: 'data:image/png;base64,onion',
-    };
-    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 20, farKey);
+    seedPhysicalRecords([
+      { keyId: 'key-1', appFrame: 1, dataUrl: UNTOUCHED_DATA_URL },
+      { keyId: 'key-20', appFrame: 20, dataUrl: `data:image/png;base64,${btoa('far-key')}` },
+    ]);
+    const frameSource = (candidate: PhysicPaintRotoCacheFrame) => candidate.sourceFrame ?? candidate.appFrame;
     const authority = getPhysicPaintRotoAuthority({ operationId: 'complete-set', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4 });
-    const untouchedFarKey = authority.frames.find((candidate) => candidate.sourceFrame === 20)!;
+    const untouchedFarKey = authority.frames.find((candidate) => frameSource(candidate) === 20);
+    if (!untouchedFarKey || !authority.frames[0]) throw new Error('authority must expose the seeded physical keys');
     const base = { expectedRotoRevision: authority.rotoRevision, frames: [authority.frames[0], frame(4, 'data:image/png;base64,new-4'), frame(5, 'data:image/png;base64,new-5'), untouchedFarKey] };
 
-    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.filter((candidate) => candidate.sourceFrame !== 20) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
-    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.map((candidate) => candidate.sourceFrame === 20 ? { ...candidate, dataUrl: 'data:image/png;base64,changed' } : candidate) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
-    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.map((candidate) => candidate.sourceFrame === 20 ? { ...candidate, onionDataUrl: 'data:image/png;base64,changed-onion' } : candidate) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
-    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.map((candidate) => candidate.sourceFrame === 20 ? { ...candidate, sourceFrame: 21, appFrame: 21 } : candidate) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
+    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.filter((candidate) => frameSource(candidate) !== 20) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
+    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.map((candidate) => frameSource(candidate) === 20 ? { ...candidate, dataUrl: 'data:image/png;base64,changed' } : candidate) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
+    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.map((candidate) => frameSource(candidate) === 20 ? { ...candidate, onionDataUrl: 'data:image/png;base64,changed-onion' } : candidate) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
+    expect(applyPhysicPaintPayload(batch({ ...base, frames: base.frames.map((candidate) => frameSource(candidate) === 20 ? { ...candidate, sourceFrame: 21, appFrame: 21 } : candidate) }))).toMatchObject({ ok: false, error: 'Play Script batch changed or omitted an unrelated real key.' });
     expect(applyPhysicPaintPayload(batch({ ...base, frames: [...base.frames, frame(30, 'data:image/png;base64,injected')] }))).toMatchObject({ ok: false, error: 'Play Script batch contains an unexpected out-of-range real key.' });
     expect(applyPhysicPaintPayload(batch(base))).toMatchObject({ ok: true, appliedFrameCount: 4 });
   });
@@ -135,7 +161,9 @@ describe('Play Script parent authority and complete-set bridge', () => {
     expect(replace).toHaveBeenCalledOnce();
     expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([1, 4, 5]);
     expect(physicPaintStore.getRotoBackgroundMetadata('layer-1')).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
-    expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({ roto_background: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } }));
+    expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({
+      roto_physical: expect.objectContaining({ background: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } }),
+    }));
     expect(physicPaintStore.getRotoCacheFrames('layer-1').filter((candidate) => candidate.source === 'generated-interpolation')).toHaveLength(2);
   });
 
@@ -143,7 +171,7 @@ describe('Play Script parent authority and complete-set bridge', () => {
     const transparent = { background: 'transparent' as const, paperGrain: 'canvas1', grainStrength: 0 };
     expect(applyPhysicPaintPayload(batch({ rotoBackground: transparent })).ok).toBe(true);
     expect(physicPaintStore.getRotoBackgroundMetadata('layer-1')).toEqual(transparent);
-    expect(physicPaintStore.toMceOutputs()[0].roto_background).toEqual(transparent);
+    expect(physicPaintStore.toMceOutputs()[0].roto_physical?.background).toEqual(transparent);
   });
 
   it('installs the browser parent authority listener and replies to the correlated child source', async () => {
