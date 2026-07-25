@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Clipboard, ClipboardCopy, ClipboardPaste, ClipboardPen, CopyPlus, Play, RotateCcw, Square, Trash2 } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Clipboard, ClipboardCopy, ClipboardPaste, ClipboardPen, CopyPlus, Play, RotateCcw, Square, Trash2, X } from 'lucide-preact';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
@@ -118,6 +118,8 @@ export interface PhysicsPaintWorkflowStripProps {
   onCopyRotoScript?: () => void;
   onApplyRotoScript?: () => void;
   onDiscardRotoScript?: () => void;
+  /** Header Close affordance — Studio routes through the guarded close-flush path. */
+  onClose?: () => void;
   onNavigateToSyncedFrame: (frame: number) => void;
   onGoToFirstFrame: () => void;
   onGoToPreviousFrame: () => void;
@@ -308,6 +310,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const deleteKeyTooltip = useStyledTooltip();
   const copyScriptTooltip = useStyledTooltip();
   const applyScriptTooltip = useStyledTooltip();
+  const closeTooltip = useStyledTooltip();
   const rotoKeyRecords = props.rotoKeyRecords ?? [];
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
@@ -826,7 +829,24 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           </form>
         ) : null}
 
-        <div class="physics-paint-state-actions" aria-hidden="true" />
+        <div class="physics-paint-state-actions">
+          <span class="physics-paint-roto-key-icon-action" onPointerEnter={closeTooltip.onPointerEnter} onPointerLeave={closeTooltip.onPointerLeave}>
+            <button
+              type="button"
+              class="physics-paint-roto-key-icon-button"
+              aria-label="Close"
+              onFocus={closeTooltip.onFocus}
+              onBlur={closeTooltip.onBlur}
+              onClick={() => {
+                closeTooltip.hide();
+                props.onClose?.();
+              }}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+            <PhysicsPaintStyledTooltip visible={closeTooltip.visible}>Close</PhysicsPaintStyledTooltip>
+          </span>
+        </div>
       </div>
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">

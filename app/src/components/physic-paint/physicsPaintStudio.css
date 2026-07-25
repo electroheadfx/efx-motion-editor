@@ -1436,9 +1436,10 @@ button.destructive {
 
 
 .physics-paint-state-actions {
-  justify-self: end;
-  height: 34px;
-  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
   padding: 0;
   background: transparent;
 }

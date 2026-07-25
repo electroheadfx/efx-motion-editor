@@ -268,4 +268,18 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
     expect(code).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
     expect(code.match(/if \(props\.mutationLocked \|\| props\.rotoInterpolationPending\) return;/g)).toHaveLength(1);
   });
+
+  it('exposes a header Close affordance through a plain onClose prop with no Tauri import', () => {
+    const code = source();
+    expect(getWorkflowStripPropsInterface(code)).toContain('onClose?: () => void');
+    expect(code).not.toContain('@tauri-apps');
+    const stateActionsIndex = code.indexOf('physics-paint-state-actions');
+    expect(stateActionsIndex).toBeGreaterThanOrEqual(0);
+    const stateActionsStart = code.lastIndexOf('<div', stateActionsIndex);
+    const stateActionsEnd = code.indexOf('</div>', stateActionsIndex) + '</div>'.length;
+    const stateActions = code.slice(stateActionsStart, stateActionsEnd);
+    const openingTag = code.slice(stateActionsStart, code.indexOf('>', stateActionsIndex) + 1);
+    expect(openingTag).not.toContain('aria-hidden="true"');
+    expect(stateActions).toContain('aria-label="Close"');
+  });
 });
