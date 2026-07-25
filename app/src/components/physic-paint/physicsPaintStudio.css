@@ -1729,7 +1729,7 @@ button.destructive {
   bottom: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
-  z-index: 40;
+  z-index: 60;
   max-width: 220px;
   padding: 3px 8px;
   border: 1px solid #5d6670;
