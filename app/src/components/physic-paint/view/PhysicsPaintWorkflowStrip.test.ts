@@ -13,6 +13,28 @@ function getRotoMapBlock(code: string): string {
 function getWorkflowStripPropsInterface(code: string): string {
   return code.slice(code.indexOf('export interface PhysicsPaintWorkflowStripProps'), code.indexOf('const VIRTUAL_TIMELINE_FRAME_COUNT'));
 }
+function getKeyUtilitiesRowBlock(code: string): string {
+  const rowStart = code.indexOf('physics-paint-roto-key-utilities');
+  const rowEnd = code.indexOf('physics-paint-timeline-scrollbar', rowStart);
+  return code.slice(rowStart, rowEnd === -1 ? code.length : rowEnd);
+}
+function getButtonBlock(code: string, ariaLabel: string): string {
+  const labelIndex = code.indexOf(`aria-label="${ariaLabel}"`);
+  if (labelIndex === -1) return '';
+  const start = code.lastIndexOf('<button', labelIndex);
+  const end = code.indexOf('</button>', labelIndex) + '</button>'.length;
+  return code.slice(start, end);
+}
+
+const LOCKED_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: string }> = [
+  { label: 'Insert key before', guard: 'canInsertRotoKey', handler: 'props.onInsertRotoFrame?.()' },
+  { label: 'Duplicate key', guard: 'canDuplicateRotoKey', handler: 'props.onDuplicateRotoKey?.()' },
+  { label: 'Copy key', guard: 'canCopyRotoKey', handler: 'props.onCopyRotoFrame?.()' },
+  { label: 'Paste key', guard: 'canPasteRotoKey', handler: 'props.onPasteRotoFrame?.()' },
+  { label: 'Delete key', guard: 'canDeleteRotoKey', handler: 'props.onDeleteRotoFrame?.()' },
+  { label: 'Copy Script', guard: 'canCopyRotoScript', handler: 'props.onCopyRotoScript?.()' },
+  { label: 'Apply Script', guard: 'canApplyRotoScript', handler: 'props.onApplyRotoScript?.()' },
+];
 
 describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('renders an optional supplied workflow label with a non-ordinal fallback', () => {
@@ -82,17 +104,66 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('Paste key — unavailable: ');
   });
 
-  it('keeps distinct Copy Script and Apply Script controls immediately after Delete', () => {
+  it('renders the Key {n} chip before any action button in the row (D-13)', () => {
+    const row = getKeyUtilitiesRowBlock(source());
+    const chipIndex = row.indexOf('physics-paint-roto-key-context');
+    const firstButtonIndex = row.indexOf('<button');
+    expect(chipIndex).toBeGreaterThanOrEqual(0);
+    expect(firstButtonIndex).toBeGreaterThan(chipIndex);
+  });
+
+  it('renders the seven guarded icon actions in locked order (D-10)', () => {
+    const row = getKeyUtilitiesRowBlock(source());
+    const indices = LOCKED_ICON_ACTIONS.map(({ label }) => row.indexOf(`aria-label="${label}"`));
+    indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
+    for (let i = 1; i < indices.length; i += 1) {
+      expect(indices[i]).toBeGreaterThan(indices[i - 1]);
+    }
+    expect(source()).toContain('BetweenVerticalStart');
+    expect(source()).toContain('CopyPlus');
+    expect(source()).toContain('ClipboardCopy');
+    expect(source()).toContain('ClipboardPaste');
+    expect(source()).toContain('Trash2');
+    expect(source()).toMatch(/[^a-zA-Z]Clipboard[^a-zA-Z]/);
+    expect(source()).toContain('ClipboardPen');
+  });
+
+  it('removes the seven text buttons and the Discard Script button from the row (D-11)', () => {
     const code = source();
-    const deleteIndex = code.indexOf('>Delete</button>');
-    const copyScriptIndex = code.indexOf('>Copy Script</button>');
-    const applyScriptIndex = code.indexOf('>Apply Script</button>');
-    expect(copyScriptIndex).toBeGreaterThan(deleteIndex);
-    expect(applyScriptIndex).toBeGreaterThan(copyScriptIndex);
-    expect(code).toContain('copyDisabledReason');
-    expect(code).toContain('applyDisabledReason');
-    expect(code).toContain('onCopyRotoScript');
-    expect(code).toContain('onApplyRotoScript');
+    const row = getKeyUtilitiesRowBlock(code);
+    for (const obsolete of ['>Insert</button>', '>Dup</button>', '>Copy</button>', '>Paste</button>', '>Delete</button>', '>Copy Script</button>', '>Apply Script</button>', '>Discard Script</button>']) {
+      expect(row).not.toContain(obsolete);
+    }
+    expect(row).not.toContain('Discard Script');
+    expect(row).not.toContain('physics-paint-roto-key-button"');
+    expect(getWorkflowStripPropsInterface(code)).toContain('onDiscardRotoScript?: () => void');
+  });
+
+  it('keeps every guarded action focusable without native disabled and guarded on click and keydown (D-12)', () => {
+    const row = getKeyUtilitiesRowBlock(source());
+    expect(row.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(row).not.toContain('title=');
+    for (const { label, guard, handler } of LOCKED_ICON_ACTIONS) {
+      const block = getButtonBlock(row, label);
+      expect(block).toContain('aria-disabled');
+      expect(block).toContain('aria-describedby');
+      const guardIndex = block.indexOf(`if (!${guard}) return;`);
+      const handlerIndex = block.indexOf(handler);
+      expect(guardIndex).toBeGreaterThanOrEqual(0);
+      expect(handlerIndex).toBeGreaterThan(guardIndex);
+      expect(block).toContain(`(event.key === 'Enter' || event.key === ' ') && !${guard}`);
+    }
+  });
+
+  it('carries the exact UI-SPEC tooltip copy with the two-part unavailable grammar on every action', () => {
+    const row = getKeyUtilitiesRowBlock(source());
+    for (const { label } of LOCKED_ICON_ACTIONS) {
+      expect(row).toContain(`${label} — unavailable: `);
+    }
+    expect(row).toContain('copyDisabledReason');
+    expect(row).toContain('applyDisabledReason');
+    expect(row).toContain('onCopyRotoScript');
+    expect(row).toContain('onApplyRotoScript');
   });
 
   it('keeps generated frames non-editable and real cached frames selectable', () => {
