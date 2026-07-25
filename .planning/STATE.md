@@ -4,17 +4,17 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.15
 current_phase_name: roto-timeline-final-ui-integration
-status: executing
-stopped_at: Completed 36.15-05-PLAN.md
-last_updated: "2026-07-25T19:30:33.354Z"
+status: verifying
+stopped_at: Completed 36.15-06-PLAN.md
+last_updated: "2026-07-25T22:28:43.637Z"
 last_activity: 2026-07-25
 last_activity_desc: Phase 36.15 execution started
 progress:
   total_phases: 18
-  completed_phases: 16
+  completed_phases: 17
   total_plans: 129
-  completed_plans: 122
-  percent: 89
+  completed_plans: 123
+  percent: 94
 ---
 
 # Project State
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 Phase: 36.15 (roto-timeline-final-ui-integration) — EXECUTING
 Previous phase: 36.14 complete (physical-frame cutover, native-UAT approved)
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-25 — Phase 36.15 execution started
 Next recommended action: /gsd-execute-phase 36.15 (wave order 1 → 1 → 1 → 2 → 3 → 4 → 5)
 
@@ -117,6 +117,7 @@ Progress: [██████████████████░░] 114/121
 | Phase 36.15 P04 | 17min | 2 tasks | 4 files |
 | Phase 36.15 P07 | 12min | 2 tasks | 7 files |
 | Phase 36.15 P05 | 19min | 2 tasks | 5 files |
+| Phase 36.15 P06 | 37min | 12 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -233,6 +234,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 36.15 Plan 07]: Discard Script relocated to the Scripts toolbar as a guarded clipboard-x action; onDiscardRotoScript fully removed from strip props and Studio workflow props (D-11 complete)
 - [Phase ?]: [Phase 36.15 Plan 05]: Capsule selector is pure D-15 arbitration over resolved strings; ambient fallback is the static baseline 'Missing frames play transparent/background'; feedback recency is static wiring metadata (playback > script > generated guard)
 - [Phase ?]: [Phase 36.15 Plan 05]: Per-cell styled tooltips via RotoTimelineCellButton child component (one useStyledTooltip per cell); interpolation pill native title converted to styled tooltip (Pitfall 4)
+- [Phase ?]: [Phase 36.15 Plan 06]: + Key reuses the paste-to-empty physical edit with an empty payload (script-target promotion path); reactive canAddEmptyKey/addEmptyKeyDisabledReason ports own availability
+- [Phase ?]: [Phase 36.15 Plan 06]: Header final order is navigation, capsule, + Key, Duplicate, Tools dropdown, Close; layer name lives in the bottom action row; dropdown listeners register only while open
+- [Phase ?]: [Phase 36.15 Plan 06]: Strip is a fixed 155px five-band surface (46/1/28/38/28/14) with D-18 horizontal scroll; studio top row grows via minmax(58px, auto) with zero-reserve topbar side columns
 
 ### Pending Todos
 
@@ -314,6 +318,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-25T19:30:33.337Z
-Stopped at: Completed 36.15-05-PLAN.md
+Last session: 2026-07-25T22:28:43.623Z
+Stopped at: Completed 36.15-06-PLAN.md
 Resume file: None
