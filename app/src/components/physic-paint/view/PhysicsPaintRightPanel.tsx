@@ -64,13 +64,12 @@ const DEFAULT_PALETTE = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', 
  *  of the flexible height when its neighbors are resized (36.15-12, Gap H-4). */
 const MIN_PANE_SPLIT = 15;
 
-/** Default sidebar shares (36.15-13, UAT Gap I-2): the user's spec — brush
- *  color 425 : tool 213 : scripts/onion/motion 340 — as ratios of the content
- *  height (sidebar height minus the two fixed 32px grab handles). Their
- *  absolute example (425+32+213+32+340 = 1042) exceeds the 976px sidebar, so
- *  the defaults are proportional shares, not absolute pixels. */
-const DEFAULT_SHARE_SUM = 425 + 213 + 340;
-const DEFAULT_BRUSH_SPLIT = (425 / DEFAULT_SHARE_SUM) * 100;
+/** Default sidebar shares (36.15-13, UAT Gap I-2; trimmed 36.15 Gap J): brush
+ *  color 425×0.85=361.25 : tool 213 : scripts/onion/motion 340×0.8=272 — as
+ *  ratios of the content height (sidebar height minus the two fixed 32px grab
+ *  handles). Proportional shares, not absolute pixels. */
+const DEFAULT_SHARE_SUM = 361.25 + 213 + 272;
+const DEFAULT_BRUSH_SPLIT = (361.25 / DEFAULT_SHARE_SUM) * 100;
 const DEFAULT_TOOL_SPLIT = (213 / DEFAULT_SHARE_SUM) * 100;
 
 export function createPhysicsPaintPaneResizeDrag(options: {
@@ -188,9 +187,9 @@ export function PhysicsPaintRightPanel({
   // Gap G-4).
   const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
   // Three resizable sections (36.15-12, UAT Gap H-4; default shares from
-  // 36.15-13, UAT Gap I-2): brush color, tool, and Scripts/Onion/Motion take
-  // 425:213:340 of the content height by default; the scripts section takes
-  // the remaining 100 - brushSplit - toolSplit.
+  // 36.15-13 Gap I-2, trimmed by Gap J): brush color, tool, and
+  // Scripts/Onion/Motion take 361.25:213:272 of the content height by default;
+  // the scripts section takes the remaining 100 - brushSplit - toolSplit.
   const [brushSplit, setBrushSplit] = useState(DEFAULT_BRUSH_SPLIT);
   const [toolSplit, setToolSplit] = useState(DEFAULT_TOOL_SPLIT);
   const previousColorRef = useRef(color);

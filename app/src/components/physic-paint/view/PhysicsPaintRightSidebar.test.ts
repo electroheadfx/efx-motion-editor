@@ -61,14 +61,12 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rule('.physics-paint-options-tab')).toMatch(/text-transform:\s*none/);
   });
 
-  it('owns three independently scrollable sections with 425:213:340 default shares of the content height', () => {
-    // 36.15-13, UAT Gap I-2: the user's spec — brush color 425 : tool 213 :
-    // scripts/onion/motion 340 — as RATIOS of the content height (sidebar
-    // height minus the two fixed 32px grab handles). Their absolute example
-    // (425+32+213+32+340 = 1042) exceeds the 976px sidebar, so the defaults
-    // are proportional shares, not absolute pixels.
-    expect(rightPanel).toContain('const DEFAULT_SHARE_SUM = 425 + 213 + 340');
-    expect(rightPanel).toContain('const DEFAULT_BRUSH_SPLIT = (425 / DEFAULT_SHARE_SUM) * 100');
+  it('owns three independently scrollable sections with 361.25:213:272 default shares of the content height', () => {
+    // 36.15 Gap J: user trim of the Gap I-2 spec — color 425×0.85=361.25,
+    // tool 213 unchanged, scripts/onion/motion 340×0.8=272 — as RATIOS of the
+    // content height (sidebar height minus the two fixed 32px grab handles).
+    expect(rightPanel).toContain('const DEFAULT_SHARE_SUM = 361.25 + 213 + 272');
+    expect(rightPanel).toContain('const DEFAULT_BRUSH_SPLIT = (361.25 / DEFAULT_SHARE_SUM) * 100');
     expect(rightPanel).toContain('const DEFAULT_TOOL_SPLIT = (213 / DEFAULT_SHARE_SUM) * 100');
     expect(rightPanel).toContain('const [brushSplit, setBrushSplit] = useState(DEFAULT_BRUSH_SPLIT)');
     expect(rightPanel).toContain('const [toolSplit, setToolSplit] = useState(DEFAULT_TOOL_SPLIT)');
