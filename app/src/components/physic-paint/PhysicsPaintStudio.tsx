@@ -5,6 +5,7 @@ import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoC
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
+import { selectAllRotoKeyIds } from './roto/physicsPaintRotoMultiSelection';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, isPhysicsPaintDevExportEnabled, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
@@ -57,6 +58,10 @@ export function PhysicsPaintStudio() {
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
   const selectedKeyId = useSignal<string | null>(launchContext?.rotoPhysical?.selectedKeyId ?? null);
+  // Session-local multi-selection (Pattern 5; D-02/D-05): keyId-only, never
+  // persisted, never sent across the bridge — only selectedKeyId persists.
+  const selectedKeyIds = useSignal<readonly string[]>([]);
+  const selectionAnchorKeyId = useSignal<string | null>(null);
   const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(launchContext?.cachedRotoFrames ?? []);
   const setLaunchContext = useCallback((update: PhysicPaintLaunchContext | null | ((current: PhysicPaintLaunchContext | null) => PhysicPaintLaunchContext | null)) => {
     setLaunchContextState((current) => {
@@ -80,6 +85,16 @@ export function PhysicsPaintStudio() {
   // store's validated physical records and canonical interpolation state.
   const rotoKeyRecords = useMemo(() => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId) : [], [launchContext?.layerId, physicPaintVersion.value]);
   const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, physicPaintVersion.value]);
+  // Single Select All entry point (D-03): shared by the Cmd/Ctrl+A dispatcher
+  // branch and the future strip icon (plan 37-04). Store-ordered real-key
+  // identities guarantee physical-frame order and real-key-only membership.
+  const selectAllRotoKeys = useCallback(() => {
+    const orderedRealKeyIds = rotoKeyRecords.map((record) => record.keyId);
+    if (orderedRealKeyIds.length === 0) return;
+    const next = selectAllRotoKeyIds(orderedRealKeyIds, selectedKeyId.peek());
+    selectedKeyIds.value = next.selectedKeyIds;
+    selectionAnchorKeyId.value = next.anchorKeyId;
+  }, [rotoKeyRecords]);
   const [lastError, setLastError] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
@@ -828,6 +843,7 @@ export function PhysicsPaintStudio() {
       undo,
       redo,
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,
+      selectAllRotoKeys,
       toggleShortcuts: () => setShortcutsVisible((visible) => !visible),
       toggleRotoPlayback: rotoCachedPlayback.toggle,
       navigateRotoFrame: (frame) => { void requestRotoFrameNavigation(frame); },

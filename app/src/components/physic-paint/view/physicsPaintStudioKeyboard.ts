@@ -15,6 +15,7 @@ export interface PhysicsPaintStudioKeyboardActions {
   undo: () => void;
   redo: () => void;
   deleteRotoKey?: () => void;
+  selectAllRotoKeys?: () => void;
 }
 
 export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
@@ -98,6 +99,16 @@ export function dispatchPhysicsPaintStudioKeyDown(
     if (!actions.deleteRotoKey || !isPhysicsPaintRotoDeleteTarget(event.target)) return;
     event.preventDefault();
     actions.deleteRotoKey();
+    return;
+  }
+
+  if (meta && !event.shiftKey && !event.altKey && key === 'a') {
+    // Select All (D-03): strip-focus scoped so LOG text selection keeps its
+    // native select-all (Pitfall 5); blocked while mutations are locked.
+    if (!actions.selectAllRotoKeys || state.mutationLocked) return;
+    if (!(event.target instanceof Element) || event.target.closest('.physics-paint-workflow-strip') === null) return;
+    event.preventDefault();
+    actions.selectAllRotoKeys();
     return;
   }
 
