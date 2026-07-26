@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.15
-current_phase_name: roto-timeline-final-ui-integration
-status: verifying
+status: completed
 stopped_at: Completed 36.15-13-PLAN.md
-last_updated: "2026-07-26T11:00:31.707Z"
-last_activity: 2026-07-25
-last_activity_desc: Phase 36.15 execution started
+last_updated: "2026-07-26T11:25:12.038Z"
+last_activity: 2026-07-26
+last_activity_desc: Phase 36.15 complete
 progress:
   total_phases: 18
   completed_phases: 17
   total_plans: 135
   completed_plans: 129
   percent: 94
+current_phase_name: roto-timeline-final-ui-integration
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 ## Current Position
 
-Phase: 36.15 (roto-timeline-final-ui-integration) — EXECUTING
+Phase: 36.15
 Previous phase: 36.14 complete (physical-frame cutover, native-UAT approved)
-Plan: 7 of 7
-Status: Phase complete — ready for verification
-Last activity: 2026-07-25 — Phase 36.15 execution started
+Plan: Not started
+Status: All phases complete
+Last activity: 2026-07-26 — Phase 36.15 complete
 Next recommended action: /gsd-execute-phase 36.15 (wave order 1 → 1 → 1 → 2 → 3 → 4 → 5)
 
 Progress: [██████████████████░░] 114/121 plans complete; 16/17 phases complete ([██████████] 96%)
@@ -41,7 +41,7 @@ Progress: [██████████████████░░] 114/121
 
 **Velocity:**
 
-- Total plans completed: 66 for v0.8.0
+- Total plans completed: 79 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -64,6 +64,7 @@ Progress: [██████████████████░░] 114/121
 | 36.10 | 5 | - | - |
 | 36.11 | 3 | - | - |
 | 36.14 | 24 | - | - |
+| 36.15 | 13 | - | - |
 
 **Recent Trend:**
 

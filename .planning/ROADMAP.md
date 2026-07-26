@@ -140,7 +140,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36.12: Physics Paint Roto Generated Interpolation** - Animators can generate render-only in-between Roto frames between real keys without making generated frames editable. (completed 2026-07-02)
 - [x] **Phase 36.13: Physics Paint Roto Dynamic Interpolation Spacing** - MVP slice for per-segment interpolation spacing overrides so intentionally distant real keys keep custom spans across toggle, save/load, preview, export, and real-key-depth onion skinning. (completed 2026-07-13)
 - [x] **Phase 36.14: Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration** - Cut every real Roto key, generated in-between, timeline edit, persisted frame, and rendered output over to one deterministic physical-frame authority, then integrate the approved timeline UI and Copy Script / Apply Script controller contract. (planned; final v0.8.0 phase) (completed 2026-07-25)
-- [ ] **Phase 36.15: Roto Timeline Final UI Integration** - Implement the approved 36.14-UI-SPEC final timeline UI that was locked out of Phase 36.14 under D-30 (Plans 15-17 scope), plus the user complement spec: icon-only controls, distinct strip groups, EFX Motion layer key markers. Source of truth: `SPECS/36.x-phases/phase-36.15-final-ui/spec-36.15-final-ui.md` + `36.14-UI-SPEC.md` (URGENT)
+- [x] **Phase 36.15: Roto Timeline Final UI Integration** - Implement the approved 36.14-UI-SPEC final timeline UI that was locked out of Phase 36.14 under D-30 (Plans 15-17 scope), plus the user complement spec: icon-only controls, distinct strip groups, EFX Motion layer key markers. Source of truth: `SPECS/36.x-phases/phase-36.15-final-ui/spec-36.15-final-ui.md` + `36.14-UI-SPEC.md` (URGENT) (completed 2026-07-26)
 
 ## Phase Details
 
@@ -580,7 +580,7 @@ D-30 gap-closure recovery track: execute only with `/gsd-execute-phase 36.14 --g
 **Goal:** As a stop-motion animator, I want the Physics Paint Roto timeline to present the approved final UI — fixed strip geometry with clearly separated control groups, icon-only actions with tooltips, an elastic status capsule, and key markers visible on the EFX Motion layer — so the physical-frame behavior approved in 36.14 is exposed through the intended presentation without duplicating business logic in the view.
 **Requirements:** 36.15-STRIP-GEOMETRY, 36.15-GROUP-SEPARATION, 36.15-ICON-ACTIONS, 36.15-STATUS-CAPSULE, 36.15-LAYER-KEY-MARKERS, 36.15-SELECTION-GUARD, 36.15-SCRIPT-CONTROLS
 **Depends on:** Phase 36.14 (physical-frame authority, native-UAT-approved behavior)
-**Plans:** 13/13 plans executed
+**Plans:** 13/13 plans complete
 
 Plans:
 
