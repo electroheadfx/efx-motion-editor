@@ -1,7 +1,8 @@
 ---
 phase: 37
 slug: multi-select-physical-roto-keys
-status: draft
+status: approved
+reviewed_at: 2026-07-26
 shadcn_initialized: false
 preset: none
 created: 2026-07-26
@@ -265,7 +266,7 @@ Multi-selection state (ordered stable keyId set + anchor keyId + current editing
 
 ## UI Considerations
 
-Applicable state considerations resolved: **10 covered, 3 backstop, 2 dismissed, 0 unresolved** (15 rows). Inherited 36.15 probe resolutions continue to apply verbatim; the table below covers surfaces new or changed in this phase.
+Applicable state considerations resolved: **10 covered, 3 backstop, 2 dismissed, 0 unresolved** (15 rows). Validated post-approval by the ui-consideration-probe engine (2026-07-26): 12 surfaces probed, element kinds confirmed with user-approved additions (`list-collection` for the selection, drag-preview, blocked-preview, group-delete, cell-treatment, and single-key-action surfaces; `nav` for the busy-state status capsule); the 3 backstops and 2 dismissals confirmed by the user. Inherited 36.15 probe resolutions continue to apply verbatim; the table below covers surfaces new or changed in this phase.
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
@@ -307,11 +308,11 @@ Applicable state considerations resolved: **10 covered, 3 backstop, 2 dismissed,
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved — 2026-07-26 (gsd-ui-checker, 6/6 PASS, 0 blocking issues)
