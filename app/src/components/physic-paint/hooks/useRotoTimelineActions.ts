@@ -78,16 +78,29 @@ export interface RotoDragPublication {
   readonly proposalVersion: string;
   readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
   readonly movedKeyId: string;
+  /**
+   * Complete moved identity set (D-06/D-09). Present and frozen on group
+   * publications; absent on single-key publications so existing consumers are
+   * untouched.
+   */
+  readonly movedKeyIds?: readonly string[];
   readonly targetSignature: RotoDragTargetSignature;
 }
 
 /**
  * Preparation result. The failure branch carries no proposal; the success
- * branch carries one immutable publication.
+ * branch carries one immutable publication. Group preparation failures also
+ * carry the structured conflict frames (37-04 blocked-target preview) and the
+ * full resolver failure text for release-time diagnostic routing (D-26).
  */
 export type RotoDragPreparationResult =
   | { readonly ok: true; readonly publication: RotoDragPublication }
-  | { readonly ok: false; readonly reason: string };
+  | {
+      readonly ok: false;
+      readonly reason: string;
+      readonly conflictingAppFrames?: readonly number[];
+      readonly detail?: string;
+    };
 
 export interface RotoPhysicalTimelineActionBundle {
   /** Insert one empty physical slot before the selected real key (D-05). */
@@ -123,6 +136,31 @@ export interface RotoPhysicalTimelineActionBundle {
    * coordinator performs the authoritative post-barrier revalidation.
    */
   readonly commitRotoKeyDrag: (publication: RotoDragPublication) => Promise<boolean>;
+  /**
+   * Prepare one versioned Drag publication for the group Drag (D-06..D-09).
+   * Mirrors the single-key preparation guard order exactly, reads the
+   * controller-supplied selection set through the `getSelectedKeyIds` input
+   * port (fail-closed: at least two bounded unique members containing the
+   * grabbed key), invokes the pure resolver with a `move-key-group` intent,
+   * and returns one immutable publication carrying the exact proposal, the
+   * frozen moved set, and the authoritative proposalVersion/expected launch
+   * tuple. Failure results carry the concise UI-SPEC copy, the structured
+   * `conflictingAppFrames`, and the full resolver failure text as `detail`;
+   * prepare never publishes to the capsule during the gesture (release-time
+   * publication is 37-04's gesture-timing responsibility). The view retains
+   * the publication opaquely and submits it unchanged to
+   * {@link commitRotoKeyGroupDrag}.
+   */
+  readonly prepareRotoKeyGroupDrag: (grabbedKeyId: string, target: RotoDragTarget) => RotoDragPreparationResult;
+  /**
+   * Submit the exact retained group Drag publication to the acknowledged
+   * physical coordinator (D-09). Verifies wrapper coherence (operation kind,
+   * grabbed-key match, moved-set shallow equality, non-empty launch tuple)
+   * and passes the same proposal object plus captured expected launch tuple
+   * to `executePhysicalEdit` without resolver or mapping recomputation. The
+   * coordinator performs the authoritative post-barrier revalidation.
+   */
+  readonly commitRotoKeyGroupDrag: (publication: RotoDragPublication) => Promise<boolean>;
   /** Reactive Drag availability derived from selection + pending authority. */
   readonly canDragKey: ReadonlySignal<boolean>;
   /** Reactive Drag disabled reason, or null when eligible. */
@@ -158,6 +196,12 @@ export interface RotoTimelineActionsInput {
   getPhysicalCells?: () => readonly RotoPhysicalTimelineCell[];
   /** Selected stable keyId (D-01). */
   getSelectedKeyId?: () => string | null;
+  /**
+   * Controller-owned session selection set (37-02; D-05). Read-only here:
+   * the hook never derives selection from frames, never mutates the set, and
+   * never persists it or sends it across the bridge.
+   */
+  getSelectedKeyIds?: () => readonly string[];
   /** Current direct physical navigation frame. */
   getCurrentAppFrame?: () => number;
   /** Launch context identity at action time (D-09). */
@@ -170,6 +214,12 @@ export interface RotoTimelineActionsInput {
   pendingOperationId?: ReadonlySignal<string | null>;
   /** Concise status/LOG publisher for resolver failures. */
   publishStatus?: (message: string | null) => void;
+  /**
+   * D-26 detail leg: full resolver failure detail (code + text) routed to the
+   * surviving diagnostic channel. The Studio wires this to the same console
+   * diagnostic style as the coordinator's logDiagnostic.
+   */
+  publishDiagnostic?: (message: string) => void;
 }
 
 interface PhysicalActionRunnerInput {
@@ -440,6 +490,119 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     });
   }, [input]);
 
+  const prepareRotoKeyGroupDrag = useCallback((grabbedKeyId: string, target: RotoDragTarget): RotoDragPreparationResult => {
+    const launch = input.getLaunchContext?.() ?? null;
+    if (!launch) {
+      return { ok: false, reason: 'Select a real Roto key before editing the timeline.' };
+    }
+    if (!input.executePhysicalEdit || !input.getRotoKeyRecords || !input.getRotoInterpolationState || !input.getCapacity) {
+      return { ok: false, reason: 'Timeline editing is unavailable.' };
+    }
+    if (input.pendingOperationId && input.pendingOperationId.value !== null) {
+      return { ok: false, reason: 'A Roto physical edit is already in flight.' };
+    }
+    if (!isBoundedKeyId(grabbedKeyId)) {
+      return { ok: false, reason: 'The dragged Roto key identity is malformed.' };
+    }
+    // Fail-closed selection-set validation (T-37-03-01): the controller port
+    // is the only selection source; the strip routes single-key grabs to
+    // prepareRotoKeyDrag, so this guard is defense-in-depth — the resolver
+    // remains the membership authority.
+    const selectedKeyIds = input.getSelectedKeyIds?.() ?? [];
+    const seenKeyIds = new Set<string>();
+    let selectionSetValid = selectedKeyIds.length >= 2 && selectedKeyIds.includes(grabbedKeyId);
+    if (selectionSetValid) {
+      for (const keyId of selectedKeyIds) {
+        if (!isBoundedKeyId(keyId) || seenKeyIds.has(keyId)) {
+          selectionSetValid = false;
+          break;
+        }
+        seenKeyIds.add(keyId);
+      }
+    }
+    if (!selectionSetValid) {
+      return { ok: false, reason: 'Select at least two real Roto keys to move as a group.' };
+    }
+    const records = input.getRotoKeyRecords();
+    const interpolation = input.getRotoInterpolationState();
+    const capacity = input.getCapacity();
+    const movedMatches = records.filter((record) => record.keyId === grabbedKeyId);
+    if (movedMatches.length === 0) {
+      return { ok: false, reason: 'The dragged Roto key is no longer available.' };
+    }
+    if (movedMatches.length > 1) {
+      return { ok: false, reason: 'The dragged Roto key identity is ambiguous.' };
+    }
+    const movedKeyIds = Object.freeze([...selectedKeyIds]) as readonly string[];
+    const identities = records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
+    const resolution: PhysicPaintRotoPhysicalEditResolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      intent: { kind: 'move-key-group', movedKeyIds, grabbedKeyId, target },
+      capacity,
+      interpolationEnabled: interpolation.enabled,
+    });
+    if (!resolution.ok) {
+      // Concise UI-SPEC copy plus structured conflicts and full detail; the
+      // capsule is NOT published here — during-gesture hovers re-run prepare,
+      // and release-reject publication is 37-04's gesture-timing contract.
+      const failureCode = resolution.failure.code;
+      const reason = failureCode === 'duplicate-destination-frame'
+        ? 'Move rejected — key in the way'
+        : failureCode === 'over-capacity' || failureCode === 'out-of-range-frame'
+          ? 'Move rejected — not enough room'
+          : resolution.failure.text || 'The Roto key group move is invalid.';
+      return {
+        ok: false,
+        reason,
+        conflictingAppFrames: resolution.failure.conflictingAppFrames,
+        detail: resolution.failure.text,
+      };
+    }
+    const proposal = resolution.proposal;
+    if (!proposal.status.changed) {
+      // Valid no-change: never publish as a Drag preview or commit (D-09).
+      return { ok: false, reason: 'This move would not change the timeline.' };
+    }
+    const targetSignature = targetSignatureOf(target);
+    const proposalVersion = buildProposalVersion(records, interpolation, launch);
+    return {
+      ok: true,
+      publication: Object.freeze({
+        proposal,
+        proposalVersion,
+        expectedLaunch: { operationId: launch.operationId, layerId: launch.layerId },
+        movedKeyId: grabbedKeyId,
+        movedKeyIds,
+        targetSignature,
+      }) as RotoDragPublication,
+    };
+  }, [input]);
+
+  const commitRotoKeyGroupDrag = useCallback(async (publication: RotoDragPublication): Promise<boolean> => {
+    if (!input.executePhysicalEdit) return false;
+    // Wrapper coherence (T-37-03-02): operation kind, grabbed-key match,
+    // moved-set shallow equality (length plus index-wise identity), and a
+    // non-empty launch tuple. No resolver or mapping recomputation — the
+    // exact retained objects pass through (D-09).
+    if (publication.proposal.status.operationKind !== 'move-key-group') return false;
+    const drag = publication.proposal.drag;
+    if (!drag || drag.movedKeyId !== publication.movedKeyId) return false;
+    const movedKeyIds = publication.movedKeyIds;
+    if (
+      !movedKeyIds
+      || movedKeyIds.length !== drag.movedKeyIds.length
+      || movedKeyIds.some((keyId, index) => keyId !== drag.movedKeyIds[index])
+    ) return false;
+    if (publication.expectedLaunch.operationId.length === 0 || publication.expectedLaunch.layerId.length === 0) return false;
+    return input.executePhysicalEdit({
+      proposal: publication.proposal,
+      expectedLaunch: publication.expectedLaunch,
+      operationKind: 'move-key-group',
+      selectedKeyId: publication.proposal.selectedKeyId,
+      selectedAppFrame: publication.proposal.selectedAppFrame,
+    });
+  }, [input]);
+
   const setForceSpacingInput = useCallback((value: string) => {
     forceSpacingInput.value = value;
   }, [forceSpacingInput]);
@@ -525,6 +688,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     pendingOperationId: pendingOperationIdSignal,
     prepareRotoKeyDrag,
     commitRotoKeyDrag,
+    prepareRotoKeyGroupDrag,
+    commitRotoKeyGroupDrag,
     canDragKey,
     dragDisabledReason,
     forceSpacingInput,
@@ -534,7 +699,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     forceSpacingDisabledReason,
     canAddEmptyKey,
     addEmptyKeyDisabledReason,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,

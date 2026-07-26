@@ -464,12 +464,14 @@ export function PhysicsPaintStudio() {
     getRotoInterpolationState: () => rotoInterpolationState,
     getPhysicalCells: () => rotoTimelineModel.physicalCells.value,
     getSelectedKeyId: () => selectedKeyId.value,
+    getSelectedKeyIds: () => selectedKeyIds.value,
     getCurrentAppFrame: () => currentFrame,
     getLaunchContext: () => launchContextRef.current,
     getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 1,
     executePhysicalEdit: (executeInput) => physicalEditCoordinator.executePhysicalEdit(executeInput as RotoPhysicalEditCoordinatorExecuteInput<SerializedProject>),
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     publishStatus: (message) => { setApplyMessage(message); },
+    publishDiagnostic: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
   });
   const rotoPhysicalActions = rotoTimelineActions.physicalActions;
   prepareRotoScriptTargetRef.current = async (source) => {
