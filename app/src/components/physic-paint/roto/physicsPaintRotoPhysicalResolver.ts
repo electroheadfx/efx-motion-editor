@@ -1,14 +1,18 @@
 /**
  * Pure physical timeline edit resolver — stable identity plus direct appFrame.
  *
- * This module is intentionally INACTIVE after Plan 02. It defines the closed
- * edit intent/result contracts and the sole resolver entry point. The current
- * shared live timing graph (`rotoSourceDisplayModel.ts`, `rotoKeyTransactions.ts`,
- * `physicsPaintRotoKeyController.ts`, store, persistence, bridge, rendering, and
- * presentation) remains the active production authority until owning consumer
- * plans (36.14-03 through 36.14-10) perform coherent cutovers; destructive
- * shared-contract removal is owned by Plan 11 after its production
- * reachability audit proves zero live consumers.
+ * This module defines the closed edit intent/result contracts and the sole
+ * resolver entry point. It is the active canonical physical edit authority
+ * after the Phase 36.14 cutovers: preview and commit callers both consume its
+ * complete immutable proposals, and no other timing or transaction authority
+ * exists.
+ *
+ * Phase 37 extension: the closed intent union additionally admits the group
+ * operations `move-key-group` (D-06..D-09 / GD-1..GD-3), `delete-key-group`
+ * (D-13..D-15 / GDel-1..GDel-2), and scoped `force-spacing` via `scopeKeyIds`
+ * (D-10..D-12 / GFS-1..GFS-3). Every group candidate feeds the same
+ * `finalizeProposal` finalizer (D-19 single authority); group intents exist
+ * only inside this resolver boundary.
  *
  * Locked decisions honored:
  * - D-01/D-03: the resolver accepts stable `keyId` plus direct physical
@@ -51,8 +55,12 @@
  *   are presentation metadata beside the complete mapping only.
  * - No payload mutation, payload cloning, key creation, store access, bridge
  *   call, history mutation, acknowledgement handling, or UI state.
- * - No multi-selection, group movement, occupied-key overwrite, or
- *   operation-specific preview resolver.
+ * - Phase 37: group movement IS implemented here via the `move-key-group`
+ *   intent per Phase-37 D-06..D-09 / GD-1..GD-3 (grabbed-key anchoring,
+ *   atomic reject, D-29-mirroring source-gap split), group delete via
+ *   `delete-key-group` per D-13..D-15, and scoped Force Spacing via
+ *   `scopeKeyIds` per D-10..D-12. Occupied-key overwrite and
+ *   operation-specific preview resolvers remain prohibited.
  *
  * This module is dependency-light: it imports only the canonical physical
  * identity/validator from the 36.14-01 model and the existing shared maximum
@@ -91,13 +99,14 @@ export type PhysicPaintRotoPhysicalEditTarget =
   | { readonly kind: 'after-key'; readonly targetKeyId: string };
 
 /**
- * Closed physical edit intent union. The final union contains exactly Insert,
- * Delete, Move, and Force Spacing.
+ * Closed physical edit intent union. The union contains exactly Insert,
+ * Delete, Move, Force Spacing, Duplicate, and Paste; Phase 37 adds the group
+ * variants `move-key-group` and `delete-key-group` plus the optional scoped
+ * `scopeKeyIds` input on `force-spacing` (null/undefined = full timeline).
  *
- * Task 1: `insert-slot` and `delete-key`.
- * Task 2: adds `move-key` with a discriminated {@link PhysicPaintRotoPhysicalEditTarget}.
- * Task 3: adds `force-spacing` with `emptyFrames` and an optional preserved
- * selection identity.
+ * D-06: the grabbed key anchors the drop — it maps to the drop target and
+ * every other selected key shifts by the same physical delta, preserving
+ * relative physical distances inside the group.
  */
 export type PhysicPaintRotoPhysicalEditIntent =
   | { readonly kind: 'insert-slot'; readonly selectedKeyId: string }
@@ -105,6 +114,12 @@ export type PhysicPaintRotoPhysicalEditIntent =
   | {
       readonly kind: 'move-key';
       readonly movedKeyId: string;
+      readonly target: PhysicPaintRotoPhysicalEditTarget;
+    }
+  | {
+      readonly kind: 'move-key-group';
+      readonly movedKeyIds: readonly string[];
+      readonly grabbedKeyId: string;
       readonly target: PhysicPaintRotoPhysicalEditTarget;
     }
   | {
@@ -132,6 +147,7 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-slot'
   | 'delete-key'
   | 'move-key'
+  | 'move-key-group'
   | 'force-spacing'
   | 'duplicate-key'
   | 'paste-key';
@@ -189,13 +205,21 @@ export interface PhysicPaintRotoPhysicalIdentityChange {
  * Drag presentation metadata. Names the original target kind, target identity
  * when present, before/after boundary when present, and the resolved final
  * insertion frame. The {@link movedKeyId} is repeated here for presentation
- * convenience; the authoritative mapping remains the proposal's `mapping`.
+ * convenience and always equals the grabbed key; the authoritative mapping
+ * remains the proposal's `mapping`.
+ *
+ * Phase 37 (Pitfall 2): {@link movedKeyIds} carries the complete moved set
+ * (a one-member frozen array for single-key Drag) and {@link grabbedKeyId}
+ * names the anchor identity, so group previews can apply the moved treatment
+ * to every selected key and focus-follow the grabbed key.
  */
 export interface PhysicPaintRotoPhysicalDragPresentation {
   readonly targetKind: 'physical-cell' | 'before-key' | 'after-key';
   readonly targetKeyId: string | null;
   readonly resolvedInsertionAppFrame: number;
   readonly movedKeyId: string;
+  readonly movedKeyIds: readonly string[];
+  readonly grabbedKeyId: string;
 }
 
 /**
@@ -274,11 +298,18 @@ export type PhysicPaintRotoPhysicalEditFailureCode =
 /**
  * Discriminated failure result. The failure branch cannot carry a partial
  * proposal.
+ *
+ * Phase 37 (Pitfall 1 / D-08): the optional {@link conflictingAppFrames}
+ * carries the sorted colliding destination cells for
+ * `duplicate-destination-frame` rejections so the blocked-target preview can
+ * mark exactly those cells during the gesture. Existing failure construction
+ * sites leave it absent.
  */
 export interface PhysicPaintRotoPhysicalEditFailure {
   readonly code: PhysicPaintRotoPhysicalEditFailureCode;
   readonly operationKind: PhysicPaintRotoPhysicalEditOperationKind | null;
   readonly text: string;
+  readonly conflictingAppFrames?: readonly number[];
 }
 
 /**
@@ -555,6 +586,7 @@ function isResolverOperationKind(value: unknown): value is PhysicPaintRotoPhysic
   return value === 'insert-slot'
     || value === 'delete-key'
     || value === 'move-key'
+    || value === 'move-key-group'
     || value === 'force-spacing'
     || value === 'duplicate-key'
     || value === 'paste-key';
@@ -564,10 +596,19 @@ function fail(
   code: PhysicPaintRotoPhysicalEditFailureCode,
   operationKind: PhysicPaintRotoPhysicalEditOperationKind | null,
   text: string,
+  conflictingAppFrames?: readonly number[],
 ): PhysicPaintRotoPhysicalEditResolution {
+  const failure = conflictingAppFrames === undefined
+    ? Object.freeze({ code, operationKind, text })
+    : Object.freeze({
+        code,
+        operationKind,
+        text,
+        conflictingAppFrames: Object.freeze([...conflictingAppFrames].sort((left, right) => left - right)),
+      });
   return Object.freeze({
     ok: false as const,
-    failure: Object.freeze({ code, operationKind, text }) as PhysicPaintRotoPhysicalEditFailure,
+    failure: failure as PhysicPaintRotoPhysicalEditFailure,
   }) as PhysicPaintRotoPhysicalEditResolution;
 }
 
@@ -960,6 +1001,8 @@ function buildMoveNoChangeCandidate(
       targetKeyId: target.kind === 'physical-cell' ? null : target.targetKeyId,
       resolvedInsertionAppFrame: movedFrame,
       movedKeyId,
+      movedKeyIds: Object.freeze([movedKeyId]) as readonly string[],
+      grabbedKeyId: movedKeyId,
     }) as PhysicPaintRotoPhysicalDragPresentation,
   };
 }
@@ -1048,6 +1091,8 @@ function openAndInsert(
       targetKeyId: target.kind === 'physical-cell' ? null : target.targetKeyId,
       resolvedInsertionAppFrame: insertionFrame,
       movedKeyId,
+      movedKeyIds: Object.freeze([movedKeyId]) as readonly string[],
+      grabbedKeyId: movedKeyId,
     }) as PhysicPaintRotoPhysicalDragPresentation,
   };
 }
@@ -1066,6 +1111,274 @@ function cutAndInsert(
 ): Candidate {
   const postCut = cutSource(identities, movedKeyId, movedFrame);
   return openAndInsert(identities, postCut, movedKeyId, insertionFrame, target);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 37 D-06..D-09 group Drag (move-key-group) candidate builder. The
+// grabbed key anchors the drop: it maps to the drop target and every other
+// selected key shifts by the same physical delta, preserving relative
+// distances inside the group (D-06). Collision policy is atomic reject with
+// zero partial mutation (D-07). Source-gap behavior mirrors the D-29 split
+// by the grabbed key's target kind (D-09): an empty/generated whole-cell
+// target closes the group's source gaps (unselected keys ripple left);
+// occupied before/after carets leave the group's source gaps open and ripple
+// only unselected keys at the destination boundary. Derived from the locked
+// mappings GD-1..GD-3 (baseline A@1,B@3,C@5,D@10; selection {B,C}; grab B).
+// ---------------------------------------------------------------------------
+
+function buildMoveGroupCandidate(
+  identities: ValidatedIdentities,
+  movedKeyIds: readonly string[],
+  grabbedKeyId: string,
+  target: PhysicPaintRotoPhysicalEditTarget,
+  capacity: number,
+): MoveBuilderResult {
+  const movedSet = new Set(movedKeyIds);
+  const grabbedOriginalFrame = identities.framesByKeyId.get(grabbedKeyId) as number;
+  const movedKeyIdsFrozen = Object.freeze([...movedKeyIds]) as readonly string[];
+
+  if (target.kind === 'physical-cell') {
+    if (!isNonNegativeInteger(target.appFrame) || target.appFrame >= capacity) {
+      return {
+        ok: false,
+        resolution: fail('out-of-range-frame', 'move-key-group', `Direct target frame ${target.appFrame} is outside capacity ${capacity}.`),
+      };
+    }
+
+    // A direct cell occupied in the ORIGINAL input by an UNSELECTED real key
+    // is invalid: occupied keys require an identity boundary, never an
+    // overwrite. Dropping onto another group member's cell is a legal group
+    // shift, so selected identities are excluded from the occupancy check.
+    for (const identity of identities.ordered) {
+      if (!movedSet.has(identity.keyId) && identity.appFrame === target.appFrame) {
+        return {
+          ok: false,
+          resolution: fail('malformed-target', 'move-key-group', `Direct cell frame ${target.appFrame} is occupied by an unselected real key; use before-key or after-key.`),
+        };
+      }
+    }
+
+    // Close the group's source gaps: each unselected survivor shifts left by
+    // the count of selected sources whose original frame is below its frame
+    // (GD-1: D@10 shifts left 2 to D@8; A@1 unchanged).
+    const selectedFramesAsc = identities.ordered
+      .filter((identity) => movedSet.has(identity.keyId))
+      .map((identity) => identity.appFrame);
+    const postCut = new Map<string, number>();
+    for (const identity of identities.ordered) {
+      if (movedSet.has(identity.keyId)) continue;
+      let shift = 0;
+      for (const selectedFrame of selectedFramesAsc) {
+        if (selectedFrame < identity.appFrame) shift += 1;
+      }
+      postCut.set(identity.keyId, identity.appFrame - shift);
+    }
+
+    // Selected destinations are absolute original-plus-delta frames with NO
+    // destination opening — this distinguishes the group whole-cell path from
+    // the single-key cut-and-insert (GD-1: delta = +4 → B→7, C→9).
+    const delta = target.appFrame - grabbedOriginalFrame;
+    const destinations = new Map<string, number>();
+    for (const identity of identities.ordered) {
+      if (!movedSet.has(identity.keyId)) continue;
+      destinations.set(identity.keyId, identity.appFrame + delta);
+    }
+    for (const destination of destinations.values()) {
+      if (destination < 0 || destination >= capacity) {
+        return {
+          ok: false,
+          resolution: fail('over-capacity', 'move-key-group', `Selected destination frame ${destination} is outside capacity ${capacity}.`),
+        };
+      }
+    }
+    const conflicts: number[] = [];
+    for (const destination of destinations.values()) {
+      for (const postCutFrame of postCut.values()) {
+        if (postCutFrame === destination) {
+          conflicts.push(destination);
+          break;
+        }
+      }
+    }
+    if (conflicts.length > 0) {
+      return {
+        ok: false,
+        resolution: fail(
+          'duplicate-destination-frame',
+          'move-key-group',
+          `Selected destination frame ${conflicts[0]} is occupied by an unselected real key after source closure.`,
+          conflicts,
+        ),
+      };
+    }
+
+    const mapping = new Map<string, number>(postCut);
+    for (const [keyId, destination] of destinations) {
+      mapping.set(keyId, destination);
+    }
+    const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+    for (const identity of identities.ordered) {
+      const after = mapping.get(identity.keyId) as number;
+      if (after === identity.appFrame) continue;
+      roleByKeyId.set(identity.keyId, movedSet.has(identity.keyId) ? 'moved' : 'ripple-left');
+    }
+
+    return {
+      ok: true,
+      candidate: {
+        mapping,
+        expectedKeyIds: identities.keyIds,
+        removedKeyId: null,
+        selectedKeyId: grabbedKeyId,
+        operationKind: 'move-key-group',
+        changed: computeChanged(identities, mapping),
+        roleByKeyId,
+        drag: Object.freeze({
+          targetKind: target.kind,
+          targetKeyId: null,
+          resolvedInsertionAppFrame: target.appFrame,
+          movedKeyId: grabbedKeyId,
+          movedKeyIds: movedKeyIdsFrozen,
+          grabbedKeyId,
+        }) as PhysicPaintRotoPhysicalDragPresentation,
+      },
+    };
+  }
+
+  if (target.kind === 'before-key' || target.kind === 'after-key') {
+    if (!isBoundedKeyId(target.targetKeyId)) {
+      return {
+        ok: false,
+        resolution: fail('malformed-target', 'move-key-group', 'Drag target keyId must be a bounded non-empty string.'),
+      };
+    }
+    if (!identities.keyIds.has(target.targetKeyId)) {
+      return {
+        ok: false,
+        resolution: fail('unknown-target-identity', 'move-key-group', `Drag target identity "${target.targetKeyId}" does not exist.`),
+      };
+    }
+    if (movedSet.has(target.targetKeyId)) {
+      return {
+        ok: false,
+        resolution: fail('moved-as-target', 'move-key-group', 'A selected identity cannot be its own group before/after boundary; the boundary disappears during removal.'),
+      };
+    }
+
+    // D-09 occupied caret: remove only the selected identities. Every
+    // unselected survivor keeps its original frame, so the group's source
+    // gaps stay open (GD-3: A@1, D@10 with gaps at 3 and 5).
+    const unselectedFrames = new Map<string, number>();
+    for (const identity of identities.ordered) {
+      if (movedSet.has(identity.keyId)) continue;
+      unselectedFrames.set(identity.keyId, identity.appFrame);
+    }
+    const targetFrame = unselectedFrames.get(target.targetKeyId) as number;
+    const insertionFrame = target.kind === 'before-key' ? targetFrame : targetFrame + 1;
+    if (insertionFrame >= capacity) {
+      return {
+        ok: false,
+        resolution: fail('over-capacity', 'move-key-group', `Resolved insertion frame ${insertionFrame} is outside capacity ${capacity}.`),
+      };
+    }
+
+    // Selected destinations are fixed absolute frames computed ONCE from the
+    // original frames (GD-3: delta = +7 → B→10, C→12); destination-side
+    // openings ripple ONLY unselected keys.
+    const delta = insertionFrame - grabbedOriginalFrame;
+    const placements = identities.ordered
+      .filter((identity) => movedSet.has(identity.keyId))
+      .map((identity) => ({ keyId: identity.keyId, destination: identity.appFrame + delta }));
+    for (const placement of placements) {
+      if (placement.destination < 0 || placement.destination >= capacity) {
+        return {
+          ok: false,
+          resolution: fail('over-capacity', 'move-key-group', `Selected destination frame ${placement.destination} is outside capacity ${capacity}.`),
+        };
+      }
+    }
+
+    // Insert selected keys in ASCENDING destination order: for each
+    // destination, ripple every unselected key currently at/after that
+    // destination right by 1 (freeing the slot), then place the selected key.
+    // After each placement, any unselected key sitting on a not-yet-placed
+    // selected destination rejects atomically (D-09 ripple-conflict rule).
+    const mapping = new Map<string, number>();
+    const placed = new Set<string>();
+    for (const placement of placements) {
+      for (const [otherKeyId, frame] of unselectedFrames) {
+        if (frame >= placement.destination) {
+          const next = frame + 1;
+          if (next >= capacity) {
+            return {
+              ok: false,
+              resolution: fail('over-capacity', 'move-key-group', `Ripple destination frame ${next} is outside capacity ${capacity}.`),
+            };
+          }
+          unselectedFrames.set(otherKeyId, next);
+        }
+      }
+      mapping.set(placement.keyId, placement.destination);
+      placed.add(placement.keyId);
+      const pendingDestinations = new Set<number>();
+      for (const pending of placements) {
+        if (!placed.has(pending.keyId)) pendingDestinations.add(pending.destination);
+      }
+      if (pendingDestinations.size > 0) {
+        const conflicts: number[] = [];
+        for (const frame of unselectedFrames.values()) {
+          if (pendingDestinations.has(frame)) conflicts.push(frame);
+        }
+        if (conflicts.length > 0) {
+          return {
+            ok: false,
+            resolution: fail(
+              'duplicate-destination-frame',
+              'move-key-group',
+              `Destination ripple forced an unselected real key onto selected destination frame ${conflicts[0]}.`,
+              conflicts,
+            ),
+          };
+        }
+      }
+    }
+    for (const [keyId, frame] of unselectedFrames) {
+      mapping.set(keyId, frame);
+    }
+
+    const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+    for (const identity of identities.ordered) {
+      const after = mapping.get(identity.keyId) as number;
+      if (after === identity.appFrame) continue;
+      roleByKeyId.set(identity.keyId, movedSet.has(identity.keyId) ? 'moved' : 'ripple-right');
+    }
+
+    return {
+      ok: true,
+      candidate: {
+        mapping,
+        expectedKeyIds: identities.keyIds,
+        removedKeyId: null,
+        selectedKeyId: grabbedKeyId,
+        operationKind: 'move-key-group',
+        changed: computeChanged(identities, mapping),
+        roleByKeyId,
+        drag: Object.freeze({
+          targetKind: target.kind,
+          targetKeyId: target.targetKeyId,
+          resolvedInsertionAppFrame: insertionFrame,
+          movedKeyId: grabbedKeyId,
+          movedKeyIds: movedKeyIdsFrozen,
+          grabbedKeyId,
+        }) as PhysicPaintRotoPhysicalDragPresentation,
+      },
+    };
+  }
+
+  return {
+    ok: false,
+    resolution: fail('malformed-target', 'move-key-group', 'Unknown drag target kind.'),
+  };
 }
 
 /**
@@ -1408,6 +1721,10 @@ function buildStatusText(
       ? 'Moved key'
       : `Moved key to frame ${selectedAppFrame}`;
   }
+  if (operationKind === 'move-key-group') {
+    if (!changed) return 'No change';
+    return 'Keys moved';
+  }
   if (operationKind === 'force-spacing') {
     if (!changed) return 'No change';
     return 'Force Spacing applied';
@@ -1673,6 +1990,41 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     const spacingResult = buildForceSpacingCandidate(identities, intent.emptyFrames, intent.selectedKeyId);
     if (!spacingResult.ok) return spacingResult.resolution;
     const finalized = finalizeProposal(spacingResult.candidate, identities, input.capacity, input.interpolationEnabled);
+    if (!finalized.ok) return finalized.resolution;
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'move-key-group') {
+    if (!Array.isArray(intent.movedKeyIds) || intent.movedKeyIds.length === 0) {
+      return fail('malformed-identity', operationKind, 'Group move requires a non-empty movedKeyIds array.');
+    }
+    const seenMovedKeyIds = new Set<string>();
+    for (const movedKeyId of intent.movedKeyIds) {
+      if (!isBoundedKeyId(movedKeyId)) {
+        return fail('malformed-identity', operationKind, 'Group move requires bounded moved keyIds.');
+      }
+      if (seenMovedKeyIds.has(movedKeyId)) {
+        return fail('duplicate-id', operationKind, `Duplicate moved keyId "${movedKeyId}".`);
+      }
+      seenMovedKeyIds.add(movedKeyId);
+    }
+    if (identities.ordered.length === 0) {
+      return fail('empty-key-set', operationKind, 'Group move requires at least one real key.');
+    }
+    for (const movedKeyId of seenMovedKeyIds) {
+      if (!identities.keyIds.has(movedKeyId)) {
+        return fail('unknown-operation-identity', operationKind, `Group move targets unknown moved identity "${movedKeyId}".`);
+      }
+    }
+    if (!isBoundedKeyId(intent.grabbedKeyId) || !seenMovedKeyIds.has(intent.grabbedKeyId)) {
+      return fail('malformed-identity', operationKind, 'Group move grabbed keyId must be a bounded member of movedKeyIds.');
+    }
+    if (intent.target === null || typeof intent.target !== 'object') {
+      return fail('malformed-target', operationKind, 'Group move target must be a discriminated record.');
+    }
+    const moveResult = buildMoveGroupCandidate(identities, intent.movedKeyIds, intent.grabbedKeyId, intent.target, input.capacity);
+    if (!moveResult.ok) return moveResult.resolution;
+    const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
