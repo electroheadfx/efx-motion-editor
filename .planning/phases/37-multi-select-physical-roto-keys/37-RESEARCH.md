@@ -397,16 +397,19 @@ export const ROTO_CELL_STATE_TOOLTIP_COPY: Record<RotoCellSemanticTooltipKind, s
 
 ## Open Questions
 
-1. **Select All icon exact placement** — "after Delete and before Copy Script" (37-UI-SPEC) vs shipped row without Copy Script (36.15 Plan 08).
+1. **Select All icon exact placement** (RESOLVED — plan 37-04 Task 3; user confirms at UAT Q3 in plan 37-05) — "after Delete and before Copy Script" (37-UI-SPEC) vs shipped row without Copy Script (36.15 Plan 08).
    - What we know: key-utilities pill currently ends at Delete; Key spacing pill follows.
    - What's unclear: whether the user wants Select All inside the key-utilities pill (recommended) or as its own pill.
    - Recommendation: end of key-utilities pill after Delete; confirm via UAT backstop "Bottom action row with Select All".
-2. **Group preparation result shape for blocked previews** — extend resolver failure with `conflictingAppFrames`, or return a tri-state preparation (`ok | blocked(conflicts) | invalid`)?
+   - Resolution: adopted the recommendation — `ListChecks` guarded icon at end of key-utilities pill after Delete (37-04 Task 3); final placement ruling routed to the user as UAT question Q3 (37-05).
+2. **Group preparation result shape for blocked previews** (RESOLVED — plan 37-01 Task 1) — extend resolver failure with `conflictingAppFrames`, or return a tri-state preparation (`ok | blocked(conflicts) | invalid`)?
    - What we know: failure type is code/text only; view must not derive legality.
    - What's unclear: which side carries the conflict list (resolver failure vs preparation wrapper).
    - Recommendation: extend `PhysicPaintRotoPhysicalEditFailure` with optional structured conflict fields; preparation passes them through.
-3. **Escape-collapse home** — keyboard dispatcher vs strip-level keydown.
+   - Resolution: adopted the recommendation — optional `conflictingAppFrames` on `PhysicPaintRotoPhysicalEditFailure` (37-01 Task 1 step 5), passed through preparation to the 37-04 blocked-target preview; view never re-derives legality.
+3. **Escape-collapse home** (RESOLVED — plan 37-02 Task 3) — keyboard dispatcher vs strip-level keydown.
    - Recommendation: dispatcher branch (`collapseRotoSelection` action) since Backspace/Delete already live there; drag capture-phase Escape already wins during gestures.
+   - Resolution: adopted the recommendation — Escape-collapse branch in `physicsPaintStudioKeyboard.ts` dispatcher, strip-focus scoped and paint-edit-mode guarded; the strip's capture-phase drag-cancel listener stays authoritative during gestures (37-02 Task 3).
 
 ## Environment Availability
 
