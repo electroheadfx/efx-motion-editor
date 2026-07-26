@@ -1440,61 +1440,6 @@ button.destructive {
   background: transparent;
 }
 
-.physics-paint-tools-menu {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-}
-
-.physics-paint-tools-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid #575e66;
-  border-radius: 999px;
-  background: #34383c;
-  color: #f2f5f7;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.physics-paint-tools-trigger:hover {
-  background: #454b52;
-}
-
-.physics-paint-tools-trigger:focus-visible {
-  outline: 2px solid #f2f5f7;
-  outline-offset: 1px;
-}
-
-.physics-paint-tools-dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 55;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 108px;
-  padding: 6px;
-  border: 1px solid #5d6670;
-  border-radius: 10px;
-  background: #2b2f33;
-  overflow-y: auto;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
-}
-
-.physics-paint-tools-dropdown .physics-paint-pill {
-  height: 28px;
-  min-height: 28px;
-}
-
 .physics-paint-current-frame {
   width: 48px;
   height: 26px;
@@ -1768,6 +1713,14 @@ button.destructive {
   pointer-events: none;
 }
 
+/* Header-band tooltips render below the anchor so they stay inside the
+   155px strip instead of being clipped by the strip's overflow-y: hidden
+   shell or masked by the canvas above (UAT Gap B). */
+.physics-paint-styled-tooltip--below {
+  bottom: auto;
+  top: calc(100% + 6px);
+}
+
 .physics-paint-roto-interpolation-controls {
   min-width: 0;
 }
@@ -1827,6 +1780,13 @@ button.destructive {
   min-width: 0;
 }
 
+/* The relocated Set Key Space pill compacts into the 28px action-row band
+   (36.15-08). */
+.physics-paint-roto-action-row .physics-paint-pill {
+  height: 26px;
+  min-height: 26px;
+}
+
 .physics-paint-roto-force-spacing-controls input {
   width: 42px;
   height: 22px;
@@ -1838,6 +1798,11 @@ button.destructive {
   font-size: 11px;
   font-weight: 700;
   text-align: center;
+}
+
+.physics-paint-roto-force-spacing-controls input[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.58;
 }
 
 .physics-paint-roto-force-spacing-apply {
@@ -1857,7 +1822,7 @@ button.destructive {
   cursor: pointer;
 }
 
-.physics-paint-roto-force-spacing-apply:hover:not(:disabled) {
+.physics-paint-roto-force-spacing-apply:hover:not([aria-disabled="true"]) {
   border-color: #91a5bd;
   background: #3a4654;
   color: #e6edff;
@@ -1868,8 +1833,8 @@ button.destructive {
   outline-offset: 2px;
 }
 
-.physics-paint-roto-force-spacing-apply:disabled {
-  cursor: not-allowed;
+.physics-paint-roto-force-spacing-apply[aria-disabled="true"] {
+  cursor: default;
   opacity: 0.58;
 }
 

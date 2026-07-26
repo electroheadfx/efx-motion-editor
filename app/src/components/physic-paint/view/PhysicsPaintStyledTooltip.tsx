@@ -92,6 +92,13 @@ export function useStyledTooltip(delayMs: number = STYLED_TOOLTIP_DELAY_MS): Sty
 export interface PhysicsPaintStyledTooltipProps {
   id?: string;
   visible: boolean;
+  /**
+   * 'above' (default) renders the pill above the anchor. 'below' renders it
+   * below the anchor — required for header-band controls so the tooltip stays
+   * inside the strip instead of being clipped by the strip's overflow-y:
+   * hidden shell or masked by the canvas above (UAT Gap B).
+   */
+  placement?: 'above' | 'below';
   children: ComponentChildren;
 }
 
@@ -102,8 +109,9 @@ export interface PhysicsPaintStyledTooltipProps {
  */
 export function PhysicsPaintStyledTooltip(props: PhysicsPaintStyledTooltipProps) {
   if (!props.visible) return null;
+  const placementClass = props.placement === 'below' ? ' physics-paint-styled-tooltip--below' : '';
   return (
-    <span id={props.id} role="tooltip" class="physics-paint-styled-tooltip">
+    <span id={props.id} role="tooltip" class={`physics-paint-styled-tooltip${placementClass}`}>
       {props.children}
     </span>
   );

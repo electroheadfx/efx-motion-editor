@@ -29,6 +29,8 @@ function getButtonBlock(code: string, ariaLabel: string): string {
 }
 
 const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: string }> = [
+  { label: 'Add key', guard: 'canAddRotoKey', handler: 'props.onAddRotoKey?.()' },
+  { label: 'Duplicate key', guard: 'canDuplicateRotoKey', handler: 'props.onDuplicateRotoKey?.()' },
   { label: 'Insert key before', guard: 'canInsertRotoKey', handler: 'props.onInsertRotoFrame?.()' },
   { label: 'Copy key', guard: 'canCopyRotoKey', handler: 'props.onCopyRotoFrame?.()' },
   { label: 'Paste key', guard: 'canPasteRotoKey', handler: 'props.onPasteRotoFrame?.()' },
@@ -36,8 +38,6 @@ const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: s
   { label: 'Copy Script', guard: 'canCopyRotoScript', handler: 'props.onCopyRotoScript?.()' },
   { label: 'Apply Script', guard: 'canApplyRotoScript', handler: 'props.onApplyRotoScript?.()' },
 ];
-
-const HEADER_DUPLICATE_ACTION = { label: 'Duplicate key', guard: 'canDuplicateRotoKey', handler: 'props.onDuplicateRotoKey?.()' } as const;
 
 describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('renders an optional supplied workflow label with a non-ordinal fallback', () => {
@@ -122,15 +122,16 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(getHeaderBlock(source())).not.toContain('physics-paint-mode-label');
   });
 
-  it('renders the six guarded icon actions in locked order (D-10)', () => {
+  it('renders the eight guarded icon actions in locked order (D-10)', () => {
     const row = getKeyUtilitiesRowBlock(source());
     const indices = ROW_ICON_ACTIONS.map(({ label }) => row.indexOf(`aria-label="${label}"`));
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
     for (let i = 1; i < indices.length; i += 1) {
       expect(indices[i]).toBeGreaterThan(indices[i - 1]);
     }
-    expect(source()).toContain('BetweenVerticalStart');
+    expect(source()).toContain('Plus');
     expect(source()).toContain('CopyPlus');
+    expect(source()).toContain('BetweenVerticalStart');
     expect(source()).toContain('ClipboardCopy');
     expect(source()).toContain('ClipboardPaste');
     expect(source()).toContain('Trash2');
@@ -154,9 +155,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const row = getKeyUtilitiesRowBlock(code);
     expect(row.replace(/aria-disabled/g, '')).not.toContain('disabled=');
     expect(row).not.toContain('title=');
-    for (const { label, guard, handler } of [...ROW_ICON_ACTIONS, HEADER_DUPLICATE_ACTION]) {
-      const scope = label === HEADER_DUPLICATE_ACTION.label ? code : row;
-      const block = getButtonBlock(scope, label);
+    for (const { label, guard, handler } of ROW_ICON_ACTIONS) {
+      const block = getButtonBlock(row, label);
       expect(block).toContain('aria-disabled');
       expect(block).toContain('aria-describedby');
       const guardIndex = block.indexOf(`if (!${guard}) return;`);
@@ -173,7 +173,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     for (const { label } of ROW_ICON_ACTIONS) {
       expect(row).toContain(`${label} — unavailable: `);
     }
-    expect(code).toContain(`${HEADER_DUPLICATE_ACTION.label} — unavailable: `);
+    expect(row).toContain('Set Key Space — unavailable: ');
     expect(code).toContain('copyDisabledReason');
     expect(code).toContain('applyDisabledReason');
     expect(code).toContain('onCopyRotoScript');
@@ -343,7 +343,7 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     // The interpolation pill adopts the styled tooltip in place of its native title (Pitfall 4).
     const pillIndex = code.indexOf('physics-paint-pill--interpolation');
     expect(pillIndex).toBeGreaterThanOrEqual(0);
-    const pillEnd = code.indexOf('physics-paint-pill--playback', pillIndex);
+    const pillEnd = code.indexOf('<div class="physics-paint-state-actions"', pillIndex);
     const pill = code.slice(pillIndex, pillEnd === -1 ? code.length : pillEnd);
     expect(pill).not.toContain('title=');
     expect(pill).toContain('PhysicsPaintStyledTooltip');
@@ -513,91 +513,119 @@ describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)'
   });
 });
 
-describe('PhysicsPaintWorkflowStrip header restructure contract (36.15-06 continuation)', () => {
-  it('orders the top bar as navigation, capsule, Add key, Duplicate, Tools, Close with no mode label', () => {
+describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT Gap A)', () => {
+  it('orders the top bar as navigation, playback, capsule, interpolation, Close with no Tools menu or header key actions', () => {
     const header = getHeaderBlock(source());
     const navigationIndex = header.indexOf('physics-paint-pill--navigation');
+    const playbackIndex = header.indexOf('physics-paint-pill--playback');
     const capsuleIndex = header.indexOf('class="physics-paint-status-capsule"');
-    const addKeyIndex = header.indexOf('aria-label="Add key"');
-    const duplicateIndex = header.indexOf('aria-label="Duplicate key"');
-    const toolsIndex = header.indexOf('aria-label="Tools"');
+    const interpolationIndex = header.indexOf('physics-paint-pill--interpolation');
     const closeIndex = header.indexOf('aria-label="Close"');
-    for (const index of [navigationIndex, capsuleIndex, addKeyIndex, duplicateIndex, toolsIndex, closeIndex]) {
+    for (const index of [navigationIndex, playbackIndex, capsuleIndex, interpolationIndex, closeIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
-    expect(capsuleIndex).toBeGreaterThan(navigationIndex);
-    expect(addKeyIndex).toBeGreaterThan(capsuleIndex);
-    expect(duplicateIndex).toBeGreaterThan(addKeyIndex);
-    expect(toolsIndex).toBeGreaterThan(duplicateIndex);
-    expect(closeIndex).toBeGreaterThan(toolsIndex);
-    expect(header).not.toContain('physics-paint-mode-label');
+    expect(playbackIndex).toBeGreaterThan(navigationIndex);
+    expect(capsuleIndex).toBeGreaterThan(playbackIndex);
+    expect(interpolationIndex).toBeGreaterThan(capsuleIndex);
+    expect(closeIndex).toBeGreaterThan(interpolationIndex);
+    for (const removed of ['aria-label="Tools"', 'physics-paint-tools-menu', 'physics-paint-tools-trigger', 'physics-paint-tools-dropdown', 'aria-label="Add key"', 'aria-label="Duplicate key"', 'physics-paint-pill--apply-spacing', 'physics-paint-mode-label']) {
+      expect(header).not.toContain(removed);
+    }
   });
 
-  it('renders the Add key header action as a guarded icon button wired to the empty-key port', () => {
+  it('removes the Tools dropdown machinery and its CSS outright', () => {
+    const code = source();
+    for (const removed of ['toolsOpen', 'setToolsOpen', 'toolsMenuRef', 'aria-haspopup="menu"', 'physics-paint-tools-menu', 'physics-paint-tools-trigger', 'physics-paint-tools-dropdown']) {
+      expect(code).not.toContain(removed);
+    }
+    const styles = css();
+    for (const removed of ['.physics-paint-tools-menu', '.physics-paint-tools-trigger', '.physics-paint-tools-dropdown']) {
+      expect(styles).not.toContain(removed);
+    }
+  });
+
+  it('renders the interpolation pill as a dropdown offering Frame duplicate and Frame blend', () => {
+    const code = source();
+    expect(code).toContain('aria-label="Interpolation mode"');
+    expect(code).toContain('<option value="duplicate">Frame duplicate</option>');
+    expect(code).toContain('<option value="blend">Frame blend</option>');
+    expect(code).not.toContain('<option value="duplicate">Duplicate</option>');
+    expect(code).not.toContain('<option value="blend">Blend</option>');
+  });
+
+  it('orders the bottom action row as layer, Key chip, Add key, Duplicate, Insert, Copy, Paste, Delete, Set Key Space', () => {
+    const row = getKeyUtilitiesRowBlock(source());
+    const layerIndex = row.indexOf('physics-paint-roto-key-layer');
+    const chipIndex = row.indexOf('physics-paint-roto-key-context');
+    const addIndex = row.indexOf('aria-label="Add key"');
+    const duplicateIndex = row.indexOf('aria-label="Duplicate key"');
+    const insertIndex = row.indexOf('aria-label="Insert key before"');
+    const copyIndex = row.indexOf('aria-label="Copy key"');
+    const pasteIndex = row.indexOf('aria-label="Paste key"');
+    const deleteIndex = row.indexOf('aria-label="Delete key"');
+    const spacingIndex = row.indexOf('physics-paint-pill--apply-spacing');
+    for (const index of [layerIndex, chipIndex, addIndex, duplicateIndex, insertIndex, copyIndex, pasteIndex, deleteIndex, spacingIndex]) {
+      expect(index).toBeGreaterThanOrEqual(0);
+    }
+    expect(chipIndex).toBeGreaterThan(layerIndex);
+    expect(addIndex).toBeGreaterThan(chipIndex);
+    expect(duplicateIndex).toBeGreaterThan(addIndex);
+    expect(insertIndex).toBeGreaterThan(duplicateIndex);
+    expect(copyIndex).toBeGreaterThan(insertIndex);
+    expect(pasteIndex).toBeGreaterThan(copyIndex);
+    expect(deleteIndex).toBeGreaterThan(pasteIndex);
+    expect(spacingIndex).toBeGreaterThan(deleteIndex);
+  });
+
+  it('guards the relocated Add key and Duplicate actions with the empty-key/duplicate ports', () => {
     const code = source();
     expect(getWorkflowStripPropsInterface(code)).toContain('onAddRotoKey?: () => void');
     expect(code).toContain('canAddEmptyKey');
     expect(code).toContain('addEmptyKeyDisabledReason');
-    const block = getButtonBlock(code, 'Add key');
-    expect(block).toContain('<Plus size={16}');
-    expect(block).toContain('aria-disabled');
-    expect(block).toContain('aria-describedby');
-    expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-    expect(block).not.toContain('title=');
-    const guardIndex = block.indexOf('if (!canAddRotoKey) return;');
-    const handlerIndex = block.indexOf('props.onAddRotoKey?.()');
-    expect(guardIndex).toBeGreaterThanOrEqual(0);
-    expect(handlerIndex).toBeGreaterThan(guardIndex);
-    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canAddRotoKey");
     expect(code).toContain('roto-key-action-reason-add');
-    expect(code).toContain('Add key — unavailable: ');
+    expect(code).toContain('roto-key-action-reason-duplicate');
   });
 
-  it('moves the interpolation, playback, and apply-spacing pill groups into the Tools dropdown', () => {
-    const code = source();
-    const triggerIndex = code.indexOf('aria-label="Tools"');
-    const dropdownIndex = code.indexOf('physics-paint-tools-dropdown', triggerIndex);
-    const interpolationIndex = code.indexOf('physics-paint-pill--interpolation', dropdownIndex);
-    const playbackIndex = code.indexOf('physics-paint-pill--playback', dropdownIndex);
-    const applySpacingIndex = code.indexOf('physics-paint-pill--apply-spacing', dropdownIndex);
-    for (const index of [triggerIndex, dropdownIndex, interpolationIndex, playbackIndex, applySpacingIndex]) {
-      expect(index).toBeGreaterThanOrEqual(0);
-    }
-    expect(dropdownIndex).toBeGreaterThan(triggerIndex);
-    expect(playbackIndex).toBeGreaterThan(interpolationIndex);
-    expect(applySpacingIndex).toBeGreaterThan(playbackIndex);
-    // The dropdown closes over all three groups and stays inside the header.
-    const header = getHeaderBlock(code);
-    expect(header).toContain('physics-paint-tools-dropdown');
-    expect(header).toContain('physics-paint-pill--apply-spacing');
+  it('converts the relocated Set Key Space form to the guarded pattern with a styled tooltip and no native disabled/title', () => {
+    const row = getKeyUtilitiesRowBlock(source());
+    const spacingIndex = row.indexOf('physics-paint-pill--apply-spacing');
+    expect(spacingIndex).toBeGreaterThanOrEqual(0);
+    const formEnd = row.indexOf('</form>', spacingIndex);
+    const form = row.slice(spacingIndex, formEnd === -1 ? row.length : formEnd);
+    expect(form.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(form).not.toContain('title=');
+    expect(form).toContain('aria-disabled={!canApplyForceSpacingAction');
+    expect(form).toContain('aria-label="Empty frames between real keys"');
+    expect(form).toContain('aria-label="Apply force spacing"');
+    expect(form).toContain('>Apply</button>');
+    expect(row).toContain('Set Key Space — unavailable: ');
+    expect(row).toContain('Set empty physical frames between real Roto keys');
+    expect(row).toContain('PhysicsPaintStyledTooltip');
+    // The submit handler keeps its verbatim mutation-lock guard.
+    expect(source()).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
   });
+});
 
-  it('exposes the Tools trigger as an accessible menu button with open-state wiring', () => {
-    const code = source();
-    const trigger = getButtonBlock(code, 'Tools');
-    expect(trigger).toContain('aria-haspopup="menu"');
-    expect(trigger).toContain('aria-expanded');
-    expect(trigger).toContain('physics-paint-tools-trigger');
-    expect(code).toContain('toolsOpen');
-    // Outside-pointer and Escape dismissal are registered only while open.
-    const effectIndex = code.indexOf('if (!toolsOpen) return;');
-    expect(effectIndex).toBeGreaterThanOrEqual(0);
-    const effect = code.slice(effectIndex, effectIndex + 700);
-    expect(effect).toContain("addEventListener('pointerdown'");
-    expect(effect).toContain("addEventListener('keydown'");
-    expect(effect).toContain("event.key === 'Escape'");
-    expect(effect).toContain('removeEventListener');
-  });
-
-  it('styles the Tools dropdown as an elevated vertical panel above strip content', () => {
+describe('PhysicsPaintWorkflowStrip clipping guard contract (36.15-08, UAT Gap B)', () => {
+  it('places header tooltips below their anchors so no header control is masked by the canvas', () => {
+    const header = getHeaderBlock(source());
+    const belowCount = (header.match(/placement="below"/g) ?? []).length;
+    // Status capsule, interpolation pill, and Close all render their tooltips below.
+    expect(belowCount).toBeGreaterThanOrEqual(3);
     const styles = css();
-    const dropdown = getCssRuleBlock(styles, '.physics-paint-tools-dropdown {');
-    expect(dropdown).toContain('position: absolute');
-    expect(dropdown).toContain('flex-direction: column');
-    expect(dropdown).toMatch(/z-index:\s*(5[0-9]|[6-9][0-9])/);
-    const menu = getCssRuleBlock(styles, '.physics-paint-tools-menu {');
-    expect(menu).toContain('position: relative');
-    // The retired header mode-label rules are gone.
-    expect(styles).not.toContain('.physics-paint-mode-label');
+    const below = getCssRuleBlock(styles, '.physics-paint-styled-tooltip--below {');
+    expect(below).toContain('top: calc(100% + 6px)');
+    expect(below).toContain('bottom: auto');
+  });
+
+  it('keeps the interpolation mode select native so the open dropdown renders above studio chrome', () => {
+    const code = source();
+    const selectIndex = code.indexOf('aria-label="Interpolation mode"');
+    expect(selectIndex).toBeGreaterThanOrEqual(0);
+    const selectStart = code.lastIndexOf('<select', selectIndex);
+    expect(selectStart).toBeGreaterThanOrEqual(0);
+    // No custom listbox/menu replaces the native dropdown.
+    expect(code).not.toContain('role="listbox"');
+    expect(code).not.toContain('role="menu"');
   });
 });

@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronDown, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Clipboard, ClipboardCopy, ClipboardPaste, ClipboardPen, CopyPlus, Info, Play, Plus, RotateCcw, Square, Trash2, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Clipboard, ClipboardCopy, ClipboardPaste, ClipboardPen, CopyPlus, Info, Play, Plus, RotateCcw, Square, Trash2, X } from 'lucide-preact';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
@@ -285,9 +285,7 @@ function RotoTimelineCellButton(props: RotoTimelineCellButtonProps) {
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
   const [rotoDragPreview, setRotoDragPreview] = useState<RotoDragPreviewState | null>(null);
-  const [toolsOpen, setToolsOpen] = useState(false);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
-  const toolsMenuRef = useRef<HTMLDivElement>(null);
   const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
   const suppressNextRotoClickRef = useRef(false);
   const mountedRef = useRef(true);
@@ -330,6 +328,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const forceSpacingInput = physicalActions?.forceSpacingInput.value ?? '1';
   const forceSpacingAvailable = physicalActions?.canApplyForceSpacing.value ?? false;
   const forceSpacingDisabledReason = physicalActions?.forceSpacingDisabledReason.value ?? null;
+  // Set Key Space guarded action (36.15-08): the relocated bottom-row form uses
+  // the same guarded-icon contract as the other row actions — no native
+  // disabled/title; the submit handler keeps its verbatim mutation-lock guard.
+  const canApplyForceSpacingAction = forceSpacingAvailable && props.ready !== false && !props.mutationLocked;
+  const forceSpacingActionDisabledReason = canApplyForceSpacingAction
+    ? null
+    : forceSpacingDisabledReason ?? 'Finish the current key action before using key tools.';
   const scriptAvailability = props.rotoScript?.availability.value;
   const scriptStatus = props.rotoScript?.status.value ?? null;
   const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy) || Boolean(rotoDragPreview?.pending);
@@ -375,6 +380,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const closeTooltip = useStyledTooltip();
   const capsuleTooltip = useStyledTooltip();
   const interpolationTooltip = useStyledTooltip();
+  const forceSpacingTooltip = useStyledTooltip();
   const rotoKeyRecords = props.rotoKeyRecords ?? [];
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
@@ -804,25 +810,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     return () => observer.disconnect();
   }, [frameCells, updateScrollbar]);
 
-  // Tools dropdown dismissal: outside-pointer and Escape listeners are
-  // registered only while the menu is open (tooltip Escape-listener
-  // discipline), with idempotent cleanup on close or unmount.
-  useEffect(() => {
-    if (!toolsOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!toolsMenuRef.current?.contains(event.target as Node)) setToolsOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setToolsOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [toolsOpen]);
-
   function handleTimelineScrollbarPointerDown(event: PointerEvent) {
     const el = timelineScrollRef.current;
     const target = event.currentTarget as HTMLElement;
@@ -865,6 +852,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
         </div>
 
+        <div class="physics-paint-pill physics-paint-pill--playback physics-paint-roto-playback-controls" role="group" aria-label="Roto playback settings">
+          <button type="button" class={`physics-paint-nav-button physics-paint-roto-loop-toggle ${props.rotoCachedPlaybackLoop ? 'active' : ''}`} aria-label="Loop cached Roto playback" aria-pressed={Boolean(props.rotoCachedPlaybackLoop)} disabled={props.ready === false || !props.onRotoPlaybackLoopChange} onClick={() => props.onRotoPlaybackLoopChange?.(!props.rotoCachedPlaybackLoop)}><RotateCcw size={15} /></button>
+          <label class="physics-paint-roto-fps-control">
+            <span>fps</span>
+            <input type="number" min="1" max="60" step="0.5" value={props.rotoCachedPlaybackFps ?? props.projectFps ?? 1} aria-label="Cached Roto playback frames per second" disabled={props.ready === false} onInput={handleRotoPlaybackFpsInput} />
+          </label>
+        </div>
+
         <div
           class="physics-paint-status-capsule"
           role="status"
@@ -874,79 +869,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         >
           <Info size={16} aria-hidden="true" />
           <span class="physics-paint-status-capsule-text">{capsuleText}</span>
-          <PhysicsPaintStyledTooltip visible={capsuleTooltip.visible}>{capsuleText}</PhysicsPaintStyledTooltip>
+          <PhysicsPaintStyledTooltip visible={capsuleTooltip.visible} placement="below">{capsuleText}</PhysicsPaintStyledTooltip>
         </div>
 
-        <span class="physics-paint-roto-key-icon-action" onPointerEnter={addKeyTooltip.onPointerEnter} onPointerLeave={addKeyTooltip.onPointerLeave}>
-          <button
-            type="button"
-            class="physics-paint-roto-key-icon-button"
-            aria-label="Add key"
-            aria-disabled={!canAddRotoKey ? 'true' : undefined}
-            aria-describedby={!canAddRotoKey && addRotoKeyDisabledReason ? 'roto-key-action-reason-add' : undefined}
-            onFocus={addKeyTooltip.onFocus}
-            onBlur={addKeyTooltip.onBlur}
-            onClick={() => {
-              addKeyTooltip.hide();
-              if (!canAddRotoKey) return;
-              props.onAddRotoKey?.();
-            }}
-            onKeyDown={(event) => {
-              if ((event.key === 'Enter' || event.key === ' ') && !canAddRotoKey) event.preventDefault();
-            }}
-          >
-            <Plus size={16} aria-hidden="true" />
-          </button>
-          {!canAddRotoKey && addRotoKeyDisabledReason ? (
-            <span id="roto-key-action-reason-add" class="physics-paint-sr-only">{addRotoKeyDisabledReason}</span>
-          ) : null}
-          <PhysicsPaintStyledTooltip visible={addKeyTooltip.visible}>
-            {!canAddRotoKey && addRotoKeyDisabledReason ? `Add key — unavailable: ${addRotoKeyDisabledReason}` : 'Add key'}
-          </PhysicsPaintStyledTooltip>
-        </span>
-
-        <span class="physics-paint-roto-key-icon-action" onPointerEnter={duplicateKeyTooltip.onPointerEnter} onPointerLeave={duplicateKeyTooltip.onPointerLeave}>
-          <button
-            type="button"
-            class="physics-paint-roto-key-icon-button"
-            aria-label="Duplicate key"
-            aria-disabled={!canDuplicateRotoKey ? 'true' : undefined}
-            aria-describedby={!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? 'roto-key-action-reason-duplicate' : undefined}
-            onFocus={duplicateKeyTooltip.onFocus}
-            onBlur={duplicateKeyTooltip.onBlur}
-            onClick={() => {
-              duplicateKeyTooltip.hide();
-              if (!canDuplicateRotoKey) return;
-              props.onDuplicateRotoKey?.();
-            }}
-            onKeyDown={(event) => {
-              if ((event.key === 'Enter' || event.key === ' ') && !canDuplicateRotoKey) event.preventDefault();
-            }}
-          >
-            <CopyPlus size={16} aria-hidden="true" />
-          </button>
-          {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? (
-            <span id="roto-key-action-reason-duplicate" class="physics-paint-sr-only">{duplicateRotoKeyDisabledReason}</span>
-          ) : null}
-          <PhysicsPaintStyledTooltip visible={duplicateKeyTooltip.visible}>
-            {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? `Duplicate key — unavailable: ${duplicateRotoKeyDisabledReason}` : 'Duplicate key'}
-          </PhysicsPaintStyledTooltip>
-        </span>
-
-        <div class="physics-paint-tools-menu" ref={toolsMenuRef}>
-          <button
-            type="button"
-            class="physics-paint-tools-trigger"
-            aria-label="Tools"
-            aria-haspopup="menu"
-            aria-expanded={toolsOpen}
-            onClick={() => setToolsOpen((open) => !open)}
-          >
-            <span aria-hidden="true">Tools</span>
-            <ChevronDown size={13} aria-hidden="true" />
-          </button>
-          {toolsOpen ? (
-            <div class="physics-paint-tools-dropdown" role="menu" aria-label="Roto tools">
         {props.onRotoInterpolationEnabledChange ? (
           <div
             class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls"
@@ -979,37 +904,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 disabled={interpolationControlsDisabled || !props.onRotoInterpolationModeChange}
                 onChange={handleInterpolationModeChange}
               >
-                <option value="duplicate">Duplicate</option>
-                <option value="blend">Blend</option>
+                <option value="duplicate">Frame duplicate</option>
+                <option value="blend">Frame blend</option>
               </select>
             </label>
-            <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible}>{interpolationStatus}</PhysicsPaintStyledTooltip>
+            <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} placement="below">{interpolationStatus}</PhysicsPaintStyledTooltip>
           </div>
         ) : null}
-
-        <div class="physics-paint-pill physics-paint-pill--playback physics-paint-roto-playback-controls" role="group" aria-label="Roto playback settings">
-          <button type="button" class={`physics-paint-nav-button physics-paint-roto-loop-toggle ${props.rotoCachedPlaybackLoop ? 'active' : ''}`} aria-label="Loop cached Roto playback" aria-pressed={Boolean(props.rotoCachedPlaybackLoop)} disabled={props.ready === false || !props.onRotoPlaybackLoopChange} onClick={() => props.onRotoPlaybackLoopChange?.(!props.rotoCachedPlaybackLoop)}><RotateCcw size={15} /></button>
-          <label class="physics-paint-roto-fps-control">
-            <span>fps</span>
-            <input type="number" min="1" max="60" step="0.5" value={props.rotoCachedPlaybackFps ?? props.projectFps ?? 1} aria-label="Cached Roto playback frames per second" disabled={props.ready === false} onInput={handleRotoPlaybackFpsInput} />
-          </label>
-        </div>
-
-        {physicalActions ? (
-          <form class="physics-paint-pill physics-paint-pill--apply-spacing physics-paint-roto-force-spacing-controls" title={forceSpacingDisabledReason ?? 'Set empty physical frames between real Roto keys'} onSubmit={handleForceSpacingSubmit}>
-            <AlignHorizontalSpaceAround size={15} aria-hidden="true" />
-            <input type="number" min="0" step="1" value={forceSpacingInput} aria-label="Empty frames between real keys" disabled={interpolationControlsDisabled || !forceSpacingAvailable} onInput={handleForceSpacingInput} />
-            <button
-              type="submit"
-              class="physics-paint-roto-force-spacing-apply"
-              aria-label="Apply force spacing"
-              disabled={interpolationControlsDisabled || !forceSpacingAvailable}
-            >Apply</button>
-          </form>
-        ) : null}
-            </div>
-          ) : null}
-        </div>
 
         <div class="physics-paint-state-actions">
           <span class="physics-paint-roto-key-icon-action" onPointerEnter={closeTooltip.onPointerEnter} onPointerLeave={closeTooltip.onPointerLeave}>
@@ -1026,7 +927,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             >
               <X size={15} aria-hidden="true" />
             </button>
-            <PhysicsPaintStyledTooltip visible={closeTooltip.visible}>Close</PhysicsPaintStyledTooltip>
+            <PhysicsPaintStyledTooltip visible={closeTooltip.visible} placement="below">Close</PhysicsPaintStyledTooltip>
           </span>
         </div>
       </div>
@@ -1105,6 +1006,60 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key utilities for frame ${props.currentFrame}`}>
                 <span class="physics-paint-roto-key-layer">{props.workflowLabel ?? 'PPaint'}</span>
                 <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={addKeyTooltip.onPointerEnter} onPointerLeave={addKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Add key"
+                    aria-disabled={!canAddRotoKey ? 'true' : undefined}
+                    aria-describedby={!canAddRotoKey && addRotoKeyDisabledReason ? 'roto-key-action-reason-add' : undefined}
+                    onFocus={addKeyTooltip.onFocus}
+                    onBlur={addKeyTooltip.onBlur}
+                    onClick={() => {
+                      addKeyTooltip.hide();
+                      if (!canAddRotoKey) return;
+                      props.onAddRotoKey?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canAddRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <Plus size={16} aria-hidden="true" />
+                  </button>
+                  {!canAddRotoKey && addRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-add" class="physics-paint-sr-only">{addRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={addKeyTooltip.visible}>
+                    {!canAddRotoKey && addRotoKeyDisabledReason ? `Add key — unavailable: ${addRotoKeyDisabledReason}` : 'Add key'}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={duplicateKeyTooltip.onPointerEnter} onPointerLeave={duplicateKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Duplicate key"
+                    aria-disabled={!canDuplicateRotoKey ? 'true' : undefined}
+                    aria-describedby={!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? 'roto-key-action-reason-duplicate' : undefined}
+                    onFocus={duplicateKeyTooltip.onFocus}
+                    onBlur={duplicateKeyTooltip.onBlur}
+                    onClick={() => {
+                      duplicateKeyTooltip.hide();
+                      if (!canDuplicateRotoKey) return;
+                      props.onDuplicateRotoKey?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canDuplicateRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <CopyPlus size={16} aria-hidden="true" />
+                  </button>
+                  {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-duplicate" class="physics-paint-sr-only">{duplicateRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={duplicateKeyTooltip.visible}>
+                    {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? `Duplicate key — unavailable: ${duplicateRotoKeyDisabledReason}` : 'Duplicate key'}
+                  </PhysicsPaintStyledTooltip>
+                </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={insertKeyTooltip.onPointerEnter} onPointerLeave={insertKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
@@ -1213,6 +1168,46 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {!canDeleteRotoKey && deleteRotoKeyDisabledReason ? `Delete key — unavailable: ${deleteRotoKeyDisabledReason}` : 'Delete key'}
                   </PhysicsPaintStyledTooltip>
                 </span>
+                {physicalActions ? (
+                  <span class="physics-paint-roto-key-icon-action" onPointerEnter={forceSpacingTooltip.onPointerEnter} onPointerLeave={forceSpacingTooltip.onPointerLeave}>
+                    <form
+                      class="physics-paint-pill physics-paint-pill--apply-spacing physics-paint-roto-force-spacing-controls"
+                      aria-label="Set Key Space"
+                      onSubmit={handleForceSpacingSubmit}
+                    >
+                      <AlignHorizontalSpaceAround size={15} aria-hidden="true" />
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={forceSpacingInput}
+                        aria-label="Empty frames between real keys"
+                        aria-disabled={!canApplyForceSpacingAction ? 'true' : undefined}
+                        aria-describedby={!canApplyForceSpacingAction && forceSpacingActionDisabledReason ? 'roto-key-action-reason-spacing' : undefined}
+                        onFocus={forceSpacingTooltip.onFocus}
+                        onBlur={forceSpacingTooltip.onBlur}
+                        onInput={(event) => {
+                          if (!canApplyForceSpacingAction) return;
+                          handleForceSpacingInput(event);
+                        }}
+                      />
+                      <button
+                        type="submit"
+                        class="physics-paint-roto-force-spacing-apply"
+                        aria-label="Apply force spacing"
+                        aria-disabled={!canApplyForceSpacingAction ? 'true' : undefined}
+                        onFocus={forceSpacingTooltip.onFocus}
+                        onBlur={forceSpacingTooltip.onBlur}
+                      >Apply</button>
+                    </form>
+                    {!canApplyForceSpacingAction && forceSpacingActionDisabledReason ? (
+                      <span id="roto-key-action-reason-spacing" class="physics-paint-sr-only">{forceSpacingActionDisabledReason}</span>
+                    ) : null}
+                    <PhysicsPaintStyledTooltip visible={forceSpacingTooltip.visible}>
+                      {!canApplyForceSpacingAction && forceSpacingActionDisabledReason ? `Set Key Space — unavailable: ${forceSpacingActionDisabledReason}` : 'Set empty physical frames between real Roto keys'}
+                    </PhysicsPaintStyledTooltip>
+                  </span>
+                ) : null}
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyScriptTooltip.onPointerEnter} onPointerLeave={copyScriptTooltip.onPointerLeave}>
                   <button
                     type="button"
