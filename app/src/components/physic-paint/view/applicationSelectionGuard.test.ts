@@ -11,7 +11,9 @@ const studioCssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physi
 const studioCss = () => readFileSync(studioCssPath, 'utf8');
 
 const BASE_SELECTORS = ['html', 'body', '#app'];
-const EXCEPTION_SELECTORS = ['input', 'textarea', '[contenteditable="true"]', '.physics-paint-log-messages'];
+// The '.physics-paint-log-messages' exception was retired with the LOG tab
+// (36.15-11, UAT Gap G-6) — its only selection target no longer exists.
+const EXCEPTION_SELECTORS = ['input', 'textarea', '[contenteditable="true"]'];
 
 interface CssRule {
   selectors: string[];
@@ -46,7 +48,7 @@ describe('application selection guard source contract (36.15-SELECTION-GUARD)', 
     expect(base!.declarations).toContain('-webkit-user-select: none');
   });
 
-  it('applies user-select: text (with -webkit- prefix) to exactly the four contract exception selectors', () => {
+  it('applies user-select: text (with -webkit- prefix) to exactly the three contract exception selectors', () => {
     const rules = getSelectionGuardRules(html());
     const exception = rules.find(rule => rule.declarations.includes('user-select: text'));
     expect(exception).toBeDefined();
@@ -72,8 +74,9 @@ describe('application selection guard source contract (36.15-SELECTION-GUARD)', 
 });
 
 describe('selection guard liveness and coexistence guardrails', () => {
-  it('keeps the .physics-paint-log-messages exception target live in PhysicsPaintRightPanel.tsx', () => {
-    expect(rightPanel()).toContain('physics-paint-log-messages');
+  it('removes the retired .physics-paint-log-messages exception with the LOG tab (36.15-11, UAT Gap G-6)', () => {
+    expect(rightPanel()).not.toContain('physics-paint-log-messages');
+    expect(html()).not.toContain('physics-paint-log-messages');
   });
 
   it('keeps the pre-existing scoped user-select rules in physicsPaintStudio.css', () => {

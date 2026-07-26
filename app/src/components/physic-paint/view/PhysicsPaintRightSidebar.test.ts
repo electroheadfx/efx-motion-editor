@@ -28,19 +28,33 @@ function rule(selector: string): string {
 
 describe('native-approved Physics Paint right sidebar', () => {
   it('keeps exact independent upper and lower mixed-case tab groups', () => {
-    const upperStart = rightPanel.indexOf('aria-label="Brush color and tool panels"');
-    const upperEnd = rightPanel.indexOf('</div>', upperStart);
-    const upper = rightPanel.slice(upperStart, upperEnd);
-    expectInOrder(upper, ['Brush color', 'Tool', 'LOG']);
-    expect(upper).not.toContain('Onion');
+    // Three tab groups (36.15-11, UAT Gap G-6): [Brush color] and [Tool] as
+    // independent single-tab groups in the upper pane (the LOG tab was
+    // removed as obsolete), [Scripts, Onion, Motion] in the lower pane.
+    const brushStart = rightPanel.indexOf('aria-label="Brush color panel"');
+    const brushEnd = rightPanel.indexOf('</div>', brushStart);
+    const brush = rightPanel.slice(brushStart, brushEnd);
+    expectInOrder(brush, ['Brush color']);
+    expect(brush).not.toContain('Tool');
+
+    const toolStart = rightPanel.indexOf('aria-label="Tool panel"');
+    const toolEnd = rightPanel.indexOf('</div>', toolStart);
+    const tool = rightPanel.slice(toolStart, toolEnd);
+    expectInOrder(tool, ['Tool']);
+    expect(tool).not.toContain('Brush color');
 
     const lowerStart = rightPanel.indexOf('aria-label="Physics Paint option panels"');
     const lowerEnd = rightPanel.indexOf('</div>', lowerStart);
     const lower = rightPanel.slice(lowerStart, lowerEnd);
-    expectInOrder(lower, ['Onion', 'Motion', 'Scripts']);
+    // Scripts is FIRST in its group and default-open (36.15-11, UAT Gap G-4).
+    expectInOrder(lower, ['Scripts', 'Onion', 'Motion']);
     expect(lower).not.toContain('Tool');
 
-    for (const label of ['Brush color', 'Tool', 'Onion', 'Motion', 'Scripts']) {
+    // The LOG tab is gone (36.15-11, UAT Gap G-6).
+    expect(rightPanel).not.toContain('physics-paint-tab-log');
+    expect(rightPanel).not.toMatch(/>\s*LOG\s*</);
+
+    for (const label of ['Brush color', 'Tool', 'Scripts', 'Onion', 'Motion']) {
       expect(rightPanel).toMatch(new RegExp(`>\\s*${label}\\s*<`));
       expect(rightPanel).not.toMatch(new RegExp(`>\\s*${label.toUpperCase()}\\s*<`));
     }
@@ -127,7 +141,7 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rule('.physics-paint-right-panel')).toMatch(/overflow:\s*hidden/);
     expect(rule('.physics-paint-options-tabs')).toMatch(/min-width:\s*0[\s\S]*overflow:\s*hidden/);
     expect(rule('.physics-paint-options-tab')).toMatch(/min-width:\s*0[\s\S]*white-space:\s*nowrap/);
-    expect(rule('.physics-paint-scripts-toolbar')).toMatch(/grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\)[\s\S]*min-width:\s*0/);
+    expect(rule('.physics-paint-scripts-toolbar')).toMatch(/grid-template-columns:\s*repeat\(6,\s*auto\)[\s\S]*min-width:\s*0/);
     expect(rule('.physics-paint-scripts-list')).toMatch(/min-width:\s*0[\s\S]*overflow-x:\s*hidden/);
 
     const narrow = css.slice(css.indexOf('@media (max-width: 1180px)'), css.indexOf('@media (max-width: 860px)'));

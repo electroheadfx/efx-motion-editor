@@ -47,20 +47,18 @@ export interface PhysicsPaintRightPanelProps {
   applyMessage?: string | null;
   error?: string | null;
   onExportDebugProof?: () => void;
+  /**
+   * Retired view surface (36.15-11, UAT Gap G-6): the session save/load
+   * buttons were removed from the Tool tab. The props stay on the interface
+   * so PhysicsPaintStudio wiring is untouched; the underlying session
+   * persistence API (usePhysicsPaintSessionController) is preserved.
+   */
   onSaveState: () => void;
   onLoadState: (event: Event) => void;
   scripts: PhysicsPaintScriptsPanelProps;
 }
 
 const DEFAULT_PALETTE = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', '#ff6666', '#f8fafc', '#111827'];
-
-export function getPhysicsPaintSessionControlState(mutationLocked: boolean) {
-  return {
-    saveDisabled: mutationLocked,
-    loadDisabled: mutationLocked,
-    loadClass: `physics-paint-text-button physics-paint-load-state${mutationLocked ? ' disabled-control' : ''}`,
-  };
-}
 
 export function createPhysicsPaintPaneResizeDrag(options: {
   target: HTMLElement;
@@ -167,22 +165,15 @@ export function PhysicsPaintRightPanel({
   onEraseStrengthChange,
   onOnionChange,
   onPlayWiggleChange,
-  devExportEnabled = false,
-  devExportBusy = false,
-  applyStatus = 'idle',
-  applyMessage,
-  error,
-  onExportDebugProof,
-  onSaveState,
-  onLoadState,
   scripts,
 }: PhysicsPaintRightPanelProps) {
   const [hexInput, setHexInput] = useState(color);
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
   const [hiddenPaletteColors, setHiddenPaletteColors] = useState<string[]>([]);
-  const [primaryTab, setPrimaryTab] = useState<'brush' | 'tool' | 'log'>('brush');
-  const [optionsTab, setOptionsTab] = useState<'onion' | 'motion' | 'scripts'>('onion');
+  // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
+  // Gap G-4).
+  const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
   const [paneSplit, setPaneSplit] = useState(50);
   const previousColorRef = useRef(color);
   const paneLayoutRef = useRef<HTMLDivElement>(null);
@@ -191,8 +182,13 @@ export function PhysicsPaintRightPanel({
   const hueRef = useRef<HTMLDivElement>(null);
   const draggingColorBox = useRef(false);
   const draggingHue = useRef(false);
-  const logVisible = Boolean(devExportEnabled || applyMessage || error || applyStatus === 'applying');
-  const sessionControls = getPhysicsPaintSessionControlState(engineControlsDisabled);
+
+  // Scripts is default-open: run the same project scripts folder scan that
+  // clicking the Scripts tab performs (36.15-11, UAT Gap G-4).
+  const enterScripts = scripts.library.enterScripts;
+  useEffect(() => {
+    void enterScripts();
+  }, [enterScripts]);
 
   useEffect(() => {
     void loadRecentColors()
@@ -216,10 +212,6 @@ export function PhysicsPaintRightPanel({
     previousColorRef.current = color;
     setHexInput(color);
   }, [color]);
-
-  useEffect(() => {
-    if (!logVisible && primaryTab === 'log') setPrimaryTab('brush');
-  }, [logVisible, primaryTab]);
 
   const currentRgb = useMemo(() => hexToRgba(color), [color]);
   const currentHex = useMemo(() => rgbaToHex(currentRgb.r, currentRgb.g, currentRgb.b), [currentRgb.b, currentRgb.g, currentRgb.r]);
@@ -378,38 +370,16 @@ export function PhysicsPaintRightPanel({
           <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
             <div class="physics-paint-right-pane-content">
           <section class="physics-paint-right-section physics-paint-single-tab-section">
-        <div class="physics-paint-options-tabs physics-paint-single-tab" role="tablist" aria-label="Brush color and tool panels">
+        <div class="physics-paint-options-tabs physics-paint-single-tab" role="tablist" aria-label="Brush color panel">
           <button
             type="button"
-            class={`physics-paint-options-tab physics-paint-tab-brush ${primaryTab === 'brush' ? 'active' : ''}`}
+            class="physics-paint-options-tab physics-paint-tab-brush active"
             role="tab"
-            aria-selected={primaryTab === 'brush'}
-            onClick={() => setPrimaryTab('brush')}
+            aria-selected="true"
           >
             Brush color
           </button>
-          <button
-            type="button"
-            class={`physics-paint-options-tab physics-paint-tab-tool ${primaryTab === 'tool' ? 'active' : ''}`}
-            role="tab"
-            aria-selected={primaryTab === 'tool'}
-            onClick={() => setPrimaryTab('tool')}
-          >
-            Tool
-          </button>
-          {logVisible ? (
-            <button
-              type="button"
-              class={`physics-paint-options-tab physics-paint-tab-log ${primaryTab === 'log' ? 'active' : ''}`}
-              role="tab"
-              aria-selected={primaryTab === 'log'}
-              onClick={() => setPrimaryTab('log')}
-            >
-              LOG
-            </button>
-          ) : null}
         </div>
-        {primaryTab === 'brush' ? (
           <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel" role="tabpanel" aria-label="Brush color">
             <div class="physics-paint-color-picker" aria-label="Brush color picker">
               <canvas
@@ -501,7 +471,18 @@ export function PhysicsPaintRightPanel({
               ))}
             </div>
           </div>
-        ) : primaryTab === 'tool' ? (
+          </section>
+          <section class="physics-paint-right-section physics-paint-single-tab-section">
+        <div class="physics-paint-options-tabs physics-paint-single-tab" role="tablist" aria-label="Tool panel">
+          <button
+            type="button"
+            class="physics-paint-options-tab physics-paint-tab-tool active"
+            role="tab"
+            aria-selected="true"
+          >
+            Tool
+          </button>
+        </div>
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Tool">
             <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} disabled={engineControlsDisabled} />
             {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Color blending" min={0} max={100} value={pickup} onChange={onPickupChange} disabled={engineControlsDisabled} /> : null}
@@ -517,29 +498,7 @@ export function PhysicsPaintRightPanel({
                 <SmoothingButton label="High" value={3} disabled={engineControlsDisabled} active={smoothing === 3} onSelect={onSmoothingChange} />
               </div>
             </div>
-            <div class="physics-paint-option-actions">
-              <button class="physics-paint-text-button" disabled={sessionControls.saveDisabled} onClick={onSaveState}>Save state</button>
-              <label class={sessionControls.loadClass} aria-disabled={sessionControls.loadDisabled}>
-                Load state
-                <input type="file" accept=".json" disabled={sessionControls.loadDisabled} onChange={onLoadState} />
-              </label>
-            </div>
           </div>
-        ) : logVisible ? (
-          <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel physics-paint-log-tab-panel" role="tabpanel" aria-label="Log">
-            <span class="physics-paint-right-label">Log</span>
-            <div class="physics-paint-log-messages" aria-live="polite">
-              {applyStatus === 'applying' ? <p class="physics-paint-log-message applying">Applying...</p> : null}
-              {applyMessage ? <p class={`physics-paint-log-message ${applyStatus}`}>{applyMessage}</p> : null}
-              {error ? <p class="physics-paint-log-message error">{error}</p> : null}
-            </div>
-            {devExportEnabled ? (
-              <button type="button" class="physics-paint-text-button physics-paint-dev-export" disabled={devExportBusy || !onExportDebugProof} onClick={onExportDebugProof}>
-                Export PNGs + manifest
-              </button>
-            ) : null}
-          </div>
-        ) : null}
           </section>
             </div>
           </SidebarScrollArea>
@@ -570,6 +529,15 @@ export function PhysicsPaintRightPanel({
           <div class="physics-paint-options-tabs physics-paint-options-tabs-navigation" role="tablist" aria-label="Physics Paint option panels">
           <button
             type="button"
+            class={`physics-paint-options-tab physics-paint-tab-scripts ${optionsTab === 'scripts' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={optionsTab === 'scripts'}
+            onClick={() => { setOptionsTab('scripts'); void scripts.library.enterScripts(); }}
+          >
+            Scripts
+          </button>
+          <button
+            type="button"
             class={`physics-paint-options-tab physics-paint-tab-onion ${optionsTab === 'onion' ? 'active' : ''}`}
             role="tab"
             aria-selected={optionsTab === 'onion'}
@@ -586,19 +554,12 @@ export function PhysicsPaintRightPanel({
           >
             Motion
           </button>
-          <button
-            type="button"
-            class={`physics-paint-options-tab physics-paint-tab-scripts ${optionsTab === 'scripts' ? 'active' : ''}`}
-            role="tab"
-            aria-selected={optionsTab === 'scripts'}
-            onClick={() => { setOptionsTab('scripts'); void scripts.library.enterScripts(); }}
-          >
-            Scripts
-          </button>
       </div>
 
       <section class="physics-paint-right-section physics-paint-options-tabs-section">
-        {optionsTab === 'onion' ? (
+        {optionsTab === 'scripts' ? (
+          <PhysicsPaintScriptsPanel {...scripts} />
+        ) : optionsTab === 'onion' ? (
           <div class={`physics-paint-options-tab-panel physics-paint-options-tab-panel-onion physics-paint-onion-tab-panel${onionDisabled ? ' disabled-control' : ''}`} role="tabpanel" aria-label="Onion skin controls">
             <label class="physics-paint-onion-toggle-row">
               <input type="checkbox" checked={onion.enabled} disabled={onionDisabled} onChange={(event) => updateOnion({ enabled: (event.currentTarget as HTMLInputElement).checked })} />
@@ -624,9 +585,7 @@ export function PhysicsPaintRightPanel({
             <PanelSlider id="physics-play-deform" label="Deform" min={0} max={100} value={playWiggle.strokeDeformation} onChange={(value) => updatePlayWiggle('strokeDeformation', value)} />
             <PanelSlider id="physics-play-move" label="Move" min={0} max={100} value={playWiggle.strokePosition} onChange={(value) => updatePlayWiggle('strokePosition', value)} />
           </div>
-        ) : (
-          <PhysicsPaintScriptsPanel {...scripts} />
-        )}
+        ) : null}
           </section>
             </div>
           </SidebarScrollArea>

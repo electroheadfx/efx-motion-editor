@@ -34,10 +34,32 @@ function getScriptsToolbarBlock(code: string): string {
 
 describe('Physics Paint SCRIPTS panel contract', () => {
   it('keeps approved mixed-case tab groups and explicitly scans on Scripts entry', () => {
-    for (const tab of ['Brush color', 'Tool', 'Onion', 'Motion', 'Scripts']) expect(rightPanel).toMatch(new RegExp(`>\\s*${tab}\\s*<`));
-    expect(rightPanel.match(/role="tab"/g)).toHaveLength(6);
+    for (const tab of ['Brush color', 'Tool', 'Scripts', 'Onion', 'Motion']) expect(rightPanel).toMatch(new RegExp(`>\\s*${tab}\\s*<`));
+    // Three tab groups: [Brush color] + [Tool] + [Scripts, Onion, Motion]
+    // (36.15-11, UAT Gap G-6) — the LOG tab is gone.
+    expect(rightPanel.match(/role="tab"/g)).toHaveLength(5);
+    expect(rightPanel.match(/role="tablist"/g)).toHaveLength(3);
     expect(rightPanel).toContain("setOptionsTab('scripts'); void scripts.library.enterScripts()");
     expect(rightPanel).toContain("optionsTab === 'scripts'");
+  });
+
+  it('renders Scripts as the FIRST tab of its group and the default-open tab (36.15-11, UAT Gap G-4)', () => {
+    const scriptsIndex = rightPanel.indexOf('physics-paint-tab-scripts');
+    const onionIndex = rightPanel.indexOf('physics-paint-tab-onion');
+    const motionIndex = rightPanel.indexOf('physics-paint-tab-motion');
+    expect(scriptsIndex).toBeGreaterThanOrEqual(0);
+    expect(onionIndex).toBeGreaterThan(scriptsIndex);
+    expect(motionIndex).toBeGreaterThan(onionIndex);
+    expect(rightPanel).toMatch(/useState<[^>]*'scripts'[^>]*>\('scripts'\)/);
+  });
+
+  it('removes the LOG tab and the Save state / Load state buttons (36.15-11, UAT Gap G-6)', () => {
+    expect(rightPanel).not.toContain('physics-paint-tab-log');
+    expect(rightPanel).not.toContain('physics-paint-log-messages');
+    expect(rightPanel).not.toContain("primaryTab === 'log'");
+    expect(rightPanel).not.toContain('Save state');
+    expect(rightPanel).not.toContain('Load state');
+    expect(rightPanel).not.toContain('getPhysicsPaintSessionControlState');
   });
 
   it('exposes six ordered accessible Lucide controls and exact disabled reasons', () => {
@@ -89,7 +111,7 @@ describe('Physics Paint SCRIPTS panel contract', () => {
 
   it('locks deterministic compact CSS without claiming pixel layout proof', () => {
     expect(css).toMatch(/\.physics-paint-options-tabs[\s\S]*?white-space:\s*nowrap/);
-    expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\)/);
+    expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*auto\)/);
     expect(css).toMatch(/\.physics-paint-scripts-panel[\s\S]*?min-width:\s*0/);
     expect(css).toMatch(/\.physics-paint-scripts-list[\s\S]*?overflow-x:\s*hidden[\s\S]*?overflow-y:\s*auto/);
     expect(css).toMatch(/\.physics-paint-script-thumbnail[\s\S]*?(?:width|height):\s*48px/);
@@ -205,7 +227,7 @@ describe('Physics Paint Scripts panel Copy/Apply Script toolbar contract (36.15-
     const guardedCount = (toolbar.match(/physics-paint-roto-key-icon-action/g) ?? []).length;
     // Three guarded clipboard actions (Copy, Apply, Clear) form the second row.
     expect(guardedCount).toBeGreaterThanOrEqual(3);
-    expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\)/);
+    expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*auto\)/);
     expect(css).toContain('.physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action');
   });
 });
@@ -271,5 +293,36 @@ describe('Physics Paint Scripts panel Gap F second-row contract (36.15-10, UAT G
     for (const icon of ['<Save size={16}', '<Paintbrush size={16}', '<Play size={16}']) {
       expect(toolbar).toContain(icon);
     }
+  });
+});
+
+describe('Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap G-1/G-5)', () => {
+  it('sizes the toolbar cells to content so the Copy / Apply / Clear labels render in full (no truncation)', () => {
+    // Content-sized columns replace the fixed-fraction cells that ellipsized
+    // the second-row labels down to 'C…' / 'A…' / 'Cl…' (UAT Gap G-1).
+    expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*auto\)/);
+    expect(css).not.toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\)/);
+    // The second-row label rule keeps the full short label visible.
+    const labelRuleStart = css.indexOf('.physics-paint-scripts-toolbar .physics-paint-script-icon-button .physics-paint-roto-key-icon-label {');
+    expect(labelRuleStart).toBeGreaterThanOrEqual(0);
+    const labelRuleEnd = css.indexOf('}', labelRuleStart);
+    const labelRule = css.slice(labelRuleStart, labelRuleEnd === -1 ? css.length : labelRuleEnd + 1);
+    expect(labelRule).toContain('white-space: nowrap');
+    expect(labelRule).not.toContain('text-overflow: ellipsis');
+    expect(labelRule).not.toContain('overflow: hidden');
+    // Buttons no longer stretch to fill fixed-fraction cells.
+    expect(css).not.toContain('.physics-paint-script-icon-button { width: 100% }');
+    // Source labels stay the full short words.
+    for (const label of ['Copy', 'Apply', 'Clear']) {
+      expect(panel).toContain(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
+    }
+  });
+
+  it('separates the two toolbar icon rows with a visible row gap (UAT Gap G-5)', () => {
+    const ruleStart = css.indexOf('.physics-paint-scripts-toolbar {');
+    expect(ruleStart).toBeGreaterThanOrEqual(0);
+    const ruleEnd = css.indexOf('}', ruleStart);
+    const rule = css.slice(ruleStart, ruleEnd === -1 ? css.length : ruleEnd + 1);
+    expect(rule).toMatch(/row-gap:\s*([4-9]|\d{2,})px/);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createPhysicsPaintPaneResizeDrag, getPhysicsPaintSessionControlState } from './PhysicsPaintRightPanel';
+import { createPhysicsPaintPaneResizeDrag } from './PhysicsPaintRightPanel';
 
 class PointerTarget extends EventTarget {
   captured = true;
@@ -85,18 +85,5 @@ describe('Physics Paint right panel session controls', () => {
     expect(firstResize).not.toHaveBeenCalled();
     expect(secondResize).toHaveBeenCalledOnce();
     expect(secondResize).toHaveBeenCalledWith(77);
-  });
-
-  it('disables visible Save and Load controls only for the mutation lock duration', () => {
-    expect(getPhysicsPaintSessionControlState(true)).toEqual({
-      saveDisabled: true,
-      loadDisabled: true,
-      loadClass: 'physics-paint-text-button physics-paint-load-state disabled-control',
-    });
-    expect(getPhysicsPaintSessionControlState(false)).toEqual({
-      saveDisabled: false,
-      loadDisabled: false,
-      loadClass: 'physics-paint-text-button physics-paint-load-state',
-    });
   });
 });

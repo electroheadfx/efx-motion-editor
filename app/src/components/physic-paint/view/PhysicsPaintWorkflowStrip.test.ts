@@ -773,3 +773,37 @@ describe('PhysicsPaintWorkflowStrip Gap F grouping and casing contract (36.15-10
     expect(apply).toContain('text-transform: none');
   });
 });
+
+describe('PhysicsPaintWorkflowStrip Gap G bottom-row polish contract (36.15-11, UAT Gap G-2/G-3)', () => {
+  it('renders the tools group on the bare band with no background block or pill border', () => {
+    const styles = css();
+    const utilities = getCssRuleBlock(styles, '.physics-paint-roto-key-utilities {');
+    expect(utilities).not.toBe('');
+    // UAT Gap G-2: the background block/pill behind the tools group is gone.
+    expect(utilities).toContain('background: transparent');
+    expect(utilities).not.toMatch(/border:\s*1px/);
+    expect(utilities).not.toContain('#20262d');
+    // The identity group keeps its own pill — only the tools group goes bare.
+    const identity = getCssRuleBlock(styles, '.physics-paint-roto-key-identity {');
+    expect(identity).toContain('border:');
+    expect(identity).toContain('background:');
+  });
+
+  it('vertically centers all three bottom-row groups within the 28px band', () => {
+    const styles = css();
+    const actionRow = getCssRuleBlock(styles, '.physics-paint-roto-action-row {');
+    expect(actionRow).toContain('align-items: center');
+    expect(actionRow).toContain('height: 28px');
+    for (const selector of ['.physics-paint-roto-key-identity {', '.physics-paint-roto-key-utilities {']) {
+      const group = getCssRuleBlock(styles, selector);
+      expect(group).not.toBe('');
+      expect(group).toContain('align-items: center');
+    }
+    // The bare tools group fits the band exactly: no taller than the 26px
+    // icon buttons (the retired pill's padding + border pushed it to 30px,
+    // which is what threw the row off-center, UAT Gap G-3).
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-key-utilities {')).toContain('height: 26px');
+    // The 28px band and 155px strip geometry stay intact (Plan 06 contract).
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 155px');
+  });
+});

@@ -589,10 +589,6 @@ button.destructive {
   gap: 4px;
 }
 
-.physics-paint-dev-export {
-  white-space: nowrap;
-}
-
 .physics-paint-tool-rail {
   grid-row: 2 / 4;
   grid-column: 1;
@@ -1008,13 +1004,6 @@ button.destructive {
   padding-top: 2px;
 }
 
-.physics-paint-option-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-top: 4px;
-}
-
 .physics-paint-options-tabs-section,
 .physics-paint-single-tab-section {
   gap: 0;
@@ -1067,7 +1056,6 @@ button.destructive {
 }
 
 .physics-paint-tab-brush,
-.physics-paint-tab-log,
 .physics-paint-tab-tool,
 .physics-paint-tab-onion,
 .physics-paint-tab-motion,
@@ -1104,32 +1092,6 @@ button.destructive {
   box-shadow: none;
 }
 
-.physics-paint-log-messages {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
-.physics-paint-log-message {
-  margin: 0;
-  color: var(--sidebar-text-secondary, #7799bb);
-  font-size: 12px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.physics-paint-log-message.applying {
-  color: #f59e0b;
-}
-
-.physics-paint-log-message.success {
-  color: var(--sidebar-dot-green, #4caf70);
-}
-
-.physics-paint-log-message.error {
-  color: var(--color-error-text, #ff6666);
-}
-
 .physics-paint-scripts-panel {
   position: relative;
   display: flex;
@@ -1143,8 +1105,15 @@ button.destructive {
 
 .physics-paint-scripts-toolbar {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 4px;
+  /* Content-sized columns: the second-row Copy / Apply / Clear labels render
+     in full instead of ellipsizing inside fixed-fraction cells (36.15-11,
+     UAT Gap G-1). */
+  grid-template-columns: repeat(6, auto);
+  justify-content: start;
+  column-gap: 4px;
+  /* Visible vertical separation between the two icon rows (36.15-11, UAT
+     Gap G-5). */
+  row-gap: 8px;
   min-width: 0;
 }
 
@@ -1152,23 +1121,21 @@ button.destructive {
   display: flex;
   min-width: 0;
 }
-.physics-paint-script-disabled-control .physics-paint-script-icon-button { width: 100%; }
 
 /* Guarded clipboard actions (Copy Script / Apply Script / Clear Script
-   Buffer) fill their grid cells so the second toolbar row is styled exactly
-   like the first (36.15-08, UAT Gap C). */
+   Buffer) form the second toolbar row styled like the first (36.15-08, UAT
+   Gap C). */
 .physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action {
   display: flex;
   min-width: 0;
 }
-.physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action .physics-paint-script-icon-button { width: 100%; }
 
 /* Short visible labels on the guarded second-row clipboard actions (Copy /
    Apply / Clear) sit next to their icons like the bottom action row
    (36.15-09, UAT Gap E-1). */
 .physics-paint-scripts-toolbar .physics-paint-script-icon-button {
-  gap: 2px;
-  padding: 0 2px;
+  gap: 4px;
+  padding: 0 6px;
 }
 .physics-paint-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
@@ -1189,17 +1156,15 @@ button.destructive {
   text-transform: none;
 }
 
-/* The labeled second-row buttons overflow their narrow grid cells, which let
-   the flex layout shrink the icon below the first-row 16px size ("ridiculous
-   small"). Pin the icon at full size; the label absorbs the shortage with an
-   ellipsis (36.15-10, UAT Gap F-1). */
+/* The labeled second-row buttons keep their Lucide icons pinned at the full
+   first-row 16px size — the svg never flex-shrinks (36.15-10, UAT Gap F-1). */
 .physics-paint-scripts-toolbar .physics-paint-script-icon-button svg {
   flex: 0 0 auto;
 }
+/* Full short labels — content-sized cells mean no truncation (36.15-11, UAT
+   Gap G-1). */
 .physics-paint-scripts-toolbar .physics-paint-script-icon-button .physics-paint-roto-key-icon-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .physics-paint-scripts-list {
@@ -1603,14 +1568,19 @@ button.destructive {
   text-align: center;
 }
 
+/* Group 2 of the bottom action row: the six key tools sit directly on the
+   bare band — the background block/pill was removed (36.15-11, UAT Gap G-2).
+   The 26px height (no padding, no border) keeps the group vertically centered
+   inside the 28px band (36.15-11, UAT Gap G-3); the retired pill's 1px
+   padding + 1px borders pushed it to 30px and threw the row off-center. */
 .physics-paint-roto-key-utilities {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 1px 8px;
-  border: 1px solid #69727c;
-  border-radius: 8px;
-  background: #20262d;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .physics-paint-roto-key-layer {
@@ -1980,18 +1950,6 @@ button.destructive {
 .physics-paint-render-action + .physics-paint-primary-action {
   margin-left: 4px;
   font-size: 11px;
-}
-
-.physics-paint-load-state {
-  position: relative;
-  overflow: hidden;
-}
-
-.physics-paint-load-state input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
 }
 
 .physics-paint-workflow-options label {
