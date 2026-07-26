@@ -5,7 +5,7 @@ import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoC
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
-import { selectAllRotoKeyIds } from './roto/physicsPaintRotoMultiSelection';
+import { selectAllRotoKeyIds, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, isPhysicsPaintDevExportEnabled, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
@@ -70,9 +70,16 @@ export function PhysicsPaintStudio() {
       if (next?.cachedRotoFrames !== current?.cachedRotoFrames) latestRotoFramesRef.current = next?.cachedRotoFrames ?? [];
       if (next?.operationId !== current?.operationId || next?.layerId !== current?.layerId) {
         selectedKeyId.value = next?.rotoPhysical?.selectedKeyId ?? null;
+        // Launch replacement resets the multi-selection exactly like the
+        // single selection (Pattern 5): a replaced launch never inherits a
+        // stale set or anchor.
+        selectedKeyIds.value = selectedKeyId.value === null ? [] : [selectedKeyId.value];
+        selectionAnchorKeyId.value = selectedKeyId.value;
       } else if (next && next.startFrame !== current?.startFrame) {
         selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, next.startFrame)?.keyId ?? null;
         physicPaintStore.setRotoPhysicalSelection(next.layerId, selectedKeyId.value, next.startFrame);
+        selectedKeyIds.value = selectedKeyId.value === null ? [] : [selectedKeyId.value];
+        selectionAnchorKeyId.value = selectedKeyId.value;
       }
       return next;
     });
@@ -813,6 +820,20 @@ export function PhysicsPaintStudio() {
     consumeBridgeApplyResult: (detail) => {
       const transition = physicalEditCoordinator.consumeBridgeApplyResult(detail);
       const accepted = physicalEditCoordinator.acceptedOutput.peek();
+      if (transition === 'accepted' && accepted) {
+        // D-17 post-acceptance selection aftermath: group-aware kinds keep
+        // the set (move re-anchors to the grabbed key; force-spacing keyIds
+        // survive retiming); group delete and every other kind collapse to
+        // the accepted selectedKeyId.
+        const nextSelection = resolvePostAcceptanceRotoSelection({
+          operationKind: accepted.operationKind,
+          acceptedSelectedKeyId: accepted.after.selectedKeyId,
+          state: { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() },
+          currentKeyId: accepted.after.selectedKeyId,
+        });
+        selectedKeyIds.value = nextSelection.selectedKeyIds;
+        selectionAnchorKeyId.value = nextSelection.anchorKeyId;
+      }
       const currentLaunch = launchContextRef.current;
       const currentEngine = engineRef.current;
       const selectedKeyId = accepted?.after.selectedKeyId ?? null;
