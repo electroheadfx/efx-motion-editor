@@ -906,7 +906,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 onChange={handleInterpolationModeChange}
               >
                 <option value="duplicate">Frame duplicate</option>
-                <option value="blend">Frame blend</option>
+                <option value="blend">Frame blending</option>
               </select>
             </label>
             <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} placement="below">{interpolationStatus}</PhysicsPaintStyledTooltip>
@@ -1183,7 +1183,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       onSubmit={handleForceSpacingSubmit}
                     >
                       <AlignHorizontalSpaceAround size={18} aria-hidden="true" />
-                      <span class="physics-paint-roto-key-icon-label">Space</span>
+                      <span class="physics-paint-roto-key-icon-label">Key spacing</span>
                       <input
                         type="number"
                         min="0"

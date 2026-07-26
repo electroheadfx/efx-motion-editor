@@ -95,6 +95,7 @@ export function PhysicsPaintScriptsPanel({
             }}
           >
             <Clipboard size={16} aria-hidden="true" />
+            <span class="physics-paint-roto-key-icon-label">Copy</span>
           </button>
           {!canCopyRotoScript && copyRotoScriptDisabledReason ? (
             <span id={copyScriptReasonId} class="physics-paint-sr-only">{copyRotoScriptDisabledReason}</span>
@@ -122,6 +123,7 @@ export function PhysicsPaintScriptsPanel({
             }}
           >
             <ClipboardPen size={16} aria-hidden="true" />
+            <span class="physics-paint-roto-key-icon-label">Apply</span>
           </button>
           {!canApplyRotoScript && applyRotoScriptDisabledReason ? (
             <span id={applyScriptReasonId} class="physics-paint-sr-only">{applyRotoScriptDisabledReason}</span>
@@ -149,6 +151,7 @@ export function PhysicsPaintScriptsPanel({
             }}
           >
             <ClipboardX size={16} aria-hidden="true" />
+            <span class="physics-paint-roto-key-icon-label">Clear</span>
           </button>
           {!canClearScriptBuffer && clearScriptBufferDisabledReason ? (
             <span id={clearScriptBufferReasonId} class="physics-paint-sr-only">{clearScriptBufferDisabledReason}</span>

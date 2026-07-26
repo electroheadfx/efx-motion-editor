@@ -207,12 +207,13 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       expect(labelIndex).toBeGreaterThan(iconIndex);
     }
     expect(row).not.toContain('size={16}');
-    // The Set Key Space form carries its own short label after the icon.
+    // The Set Key Space form carries its own short label after the icon
+    // (renamed 'Space' → 'Key spacing' in 36.15-09, UAT Gap E-2).
     const spacingIndex = row.indexOf('physics-paint-pill--apply-spacing');
     const form = row.slice(spacingIndex, row.indexOf('</form>', spacingIndex));
     const spacingIconIndex = form.indexOf('<AlignHorizontalSpaceAround size={18}');
     expect(spacingIconIndex).toBeGreaterThanOrEqual(0);
-    expect(form.indexOf('<span class="physics-paint-roto-key-icon-label">Space</span>')).toBeGreaterThan(spacingIconIndex);
+    expect(form.indexOf('<span class="physics-paint-roto-key-icon-label">Key spacing</span>')).toBeGreaterThan(spacingIconIndex);
   });
 
   it('enlarges the bottom-row icon buttons and styles the visible labels within the fixed 28px band', () => {
@@ -591,11 +592,13 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     }
   });
 
-  it('renders the interpolation pill as a dropdown offering Frame duplicate and Frame blend', () => {
+  it('renders the interpolation pill as a dropdown offering Frame duplicate and Frame blending', () => {
     const code = source();
     expect(code).toContain('aria-label="Interpolation mode"');
     expect(code).toContain('<option value="duplicate">Frame duplicate</option>');
-    expect(code).toContain('<option value="blend">Frame blend</option>');
+    // Renamed 'Frame blend' → 'Frame blending' (36.15-09, UAT Gap E-4).
+    expect(code).toContain('<option value="blend">Frame blending</option>');
+    expect(code).not.toContain('<option value="blend">Frame blend</option>');
     expect(code).not.toContain('<option value="duplicate">Duplicate</option>');
     expect(code).not.toContain('<option value="blend">Blend</option>');
   });
@@ -673,5 +676,35 @@ describe('PhysicsPaintWorkflowStrip clipping guard contract (36.15-08, UAT Gap B
     // No custom listbox/menu replaces the native dropdown.
     expect(code).not.toContain('role="listbox"');
     expect(code).not.toContain('role="menu"');
+  });
+});
+
+describe('PhysicsPaintWorkflowStrip Gap E cosmetic contract (36.15-09, UAT Gap E)', () => {
+  it('renames the Set Key Space bottom-row label to Key spacing', () => {
+    const row = getKeyUtilitiesRowBlock(source());
+    expect(row).toContain('<span class="physics-paint-roto-key-icon-label">Key spacing</span>');
+    expect(row).not.toContain('<span class="physics-paint-roto-key-icon-label">Space</span>');
+  });
+
+  it('removes the doubled ring artifact from the Apply submit by dropping its 999px pill radius', () => {
+    const styles = css();
+    const apply = getCssRuleBlock(styles, '.physics-paint-roto-force-spacing-apply {');
+    expect(apply).not.toBe('');
+    // The 999px pill cap inside the 999px form pill produced a second
+    // concentric ring at the button's right edge; the submit is a 4px
+    // rounded rect like the adjacent number input.
+    expect(apply).not.toContain('border-radius: 999px');
+    expect(apply).toContain('border-radius: 4px');
+  });
+
+  it('raises the selected key cell above its right neighbor so the full orange selection border renders', () => {
+    const styles = css();
+    const current = getCssRuleBlock(styles, '.physics-paint-roto-cell.current {');
+    expect(current).not.toBe('');
+    // Abutting 18px cells paint in DOM order, so the next cell covered the
+    // selected cell's right outline edge; a positive z-index on the selected
+    // state lifts the full four-side outline above the neighbor without
+    // touching the 18px pitch or the band geometry.
+    expect(current).toMatch(/z-index:\s*[1-9]\d*;/);
   });
 });

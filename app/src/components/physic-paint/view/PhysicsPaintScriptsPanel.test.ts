@@ -209,3 +209,30 @@ describe('Physics Paint Scripts panel Copy/Apply Script toolbar contract (36.15-
     expect(css).toContain('.physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action');
   });
 });
+
+describe('Physics Paint Scripts panel second-row label contract (36.15-09, UAT Gap E-1)', () => {
+  it('renders a short visible label after each guarded second-row icon like the bottom action row', () => {
+    const labeledActions: ReadonlyArray<{ action: string; icon: string; label: string }> = [
+      { action: 'Copy Script', icon: '<Clipboard size={16}', label: 'Copy' },
+      { action: 'Apply Script', icon: '<ClipboardPen size={16}', label: 'Apply' },
+      { action: 'Clear Script Buffer', icon: '<ClipboardX size={16}', label: 'Clear' },
+    ];
+    for (const { action, icon, label } of labeledActions) {
+      const block = getGuardedToolbarBlock(panel, action);
+      expect(block).not.toBe('');
+      const iconIndex = block.indexOf(icon);
+      expect(iconIndex).toBeGreaterThanOrEqual(0);
+      const labelIndex = block.indexOf(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
+      expect(labelIndex).toBeGreaterThan(iconIndex);
+    }
+  });
+
+  it('lays the labeled toolbar buttons out with an icon-label gap and side padding', () => {
+    const ruleStart = css.indexOf('.physics-paint-scripts-toolbar .physics-paint-script-icon-button {');
+    expect(ruleStart).toBeGreaterThanOrEqual(0);
+    const ruleEnd = css.indexOf('}', ruleStart);
+    const rule = css.slice(ruleStart, ruleEnd === -1 ? css.length : ruleEnd + 1);
+    expect(rule).toMatch(/gap:\s*[1-9]\d*px/);
+    expect(rule).toMatch(/padding:\s*0\s+[1-9]\d*px/);
+  });
+});
