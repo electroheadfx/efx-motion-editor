@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.15
-status: completed
-stopped_at: Phase 37 context gathered
-last_updated: "2026-07-26T16:25:00.664Z"
+current_phase: 37
+status: planned
+stopped_at: Phase 37 planned — ready to execute
+last_updated: "2026-07-26T19:30:00.000Z"
 last_activity: 2026-07-26
-last_activity_desc: Phase 36.15 complete
+last_activity_desc: Phase 37 planned (6 plans, 5 waves, checker verified)
 progress:
   total_phases: 19
   completed_phases: 17
-  total_plans: 135
+  total_plans: 141
   completed_plans: 129
-  percent: 89
-current_phase_name: roto-timeline-final-ui-integration
+  percent: 91
+current_phase_name: multi-select-physical-roto-keys
 ---
 
 # Project State
@@ -24,18 +24,18 @@ current_phase_name: roto-timeline-final-ui-integration
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.15 — roto-timeline-final-ui-integration
+**Current focus:** Phase 37 — multi-select-physical-roto-keys
 
 ## Current Position
 
-Phase: 36.15
-Previous phase: 36.14 complete (physical-frame cutover, native-UAT approved)
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-07-26 — Phase 36.15 complete
-Next recommended action: /gsd-execute-phase 36.15 (wave order 1 → 1 → 1 → 2 → 3 → 4 → 5)
+Phase: 37
+Previous phase: 36.15 complete (final timeline UI integration)
+Plan: 6 plans across 5 waves
+Status: Ready to execute
+Last activity: 2026-07-26 — Phase 37 planned (research + patterns + 6 plans, checker verified)
+Next recommended action: /gsd-execute-phase 37 (wave order 1 → 1 → 2 → 3 → 4 → 5)
 
-Progress: [██████████████████░░] 114/121 plans complete; 16/17 phases complete ([██████████] 96%)
+Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 89%)
 
 ## Performance Metrics
 
@@ -338,6 +338,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-26T16:25:00.615Z
-Stopped at: Phase 37 context gathered
-Resume file: .planning/phases/37-multi-select-physical-roto-keys/37-CONTEXT.md
+Last session: 2026-07-26T19:30:00.000Z
+Stopped at: Phase 37 planned — ready to execute
+Resume file: .planning/phases/37-multi-select-physical-roto-keys/37-01-PLAN.md

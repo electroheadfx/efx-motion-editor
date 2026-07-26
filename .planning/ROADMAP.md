@@ -638,7 +638,37 @@ Planning notes:
 **Goal:** As a stop-motion animator, I want to select multiple real Physics Paint Roto keys — including Select All — and drag/drop, delete, and Force-Space them as one group, so that retiming and reorganizing many keys is fast and safe while the Phase 36.14 canonical physical-frame model and the Phase 36.15 final timeline UI remain the only authorities.
 **Requirements:** 37-MULTI-SELECT-IDENTITY, 37-SELECT-ALL, 37-GROUP-DRAG, 37-GROUP-DELETE, 37-GROUP-FORCE-SPACING, 37-ATOMIC-TRANSACTIONS, 37-DOWNSTREAM-PARITY, 37-UI-INTEGRATION, 37-UAT-THEN-REGRESSION
 **Depends on:** Phase 36.15 (final timeline UI), Phase 36.14 (canonical physical-frame authority)
-**Plans:** TBD
+**Plans:** 0/6 plans complete
+
+Plans:
+
+Wave 1:
+
+- [ ] 37-01-PLAN.md
+
+- [ ] 37-02-PLAN.md
+
+Wave 2 *(blocked on Wave 1 completion)*:
+
+- [ ] 37-03-PLAN.md
+
+Wave 3 *(blocked on Wave 2 completion)*:
+
+- [ ] 37-04-PLAN.md
+
+Wave 4 *(blocked on Wave 3 completion)*:
+
+- [ ] 37-05-PLAN.md
+
+Wave 5 *(blocked on Wave 4 completion — post-UAT only)*:
+
+- [ ] 37-06-PLAN.md
+
+Cross-cutting constraints:
+
+- D-18: no test creation/modification/deletion/renaming/execution before explicit native UAT approval (37-05); all regression tests confined to 37-06.
+- Every multi-key operation is one complete acknowledged physical-map transaction with exactly one accepted-only history entry; no partial mutation on rejection.
+- Selection identity is keyId-only, session-local, Studio-owned; never persisted, never across the bridge.
 
 **Success Criteria** (what must be TRUE):
 
