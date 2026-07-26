@@ -1659,14 +1659,24 @@ button.destructive {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 24px;
-  padding: 0;
+  gap: 4px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
   border: 1px solid #58616b;
   border-radius: 4px;
   background: #3a424c;
   color: #eef4f8;
   cursor: pointer;
+}
+
+/* Short visible label rendered after each bottom-row action icon (36.15-08,
+   UAT Gap D); the row stays inside its fixed 28px band. */
+.physics-paint-roto-key-icon-label {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .physics-paint-roto-key-icon-button:hover:not([aria-disabled="true"]),

@@ -96,7 +96,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const handlerIndex = pasteBlock.indexOf('props.onPasteRotoFrame?.()');
     expect(guardIndex).toBeGreaterThanOrEqual(0);
     expect(handlerIndex).toBeGreaterThan(guardIndex);
-    expect(code).toContain('Paste key — unavailable: ');
+    expect(code).toContain("buildGuardedActionTooltipCopy('Paste key', pasteRotoKeyDisabledReason)");
   });
 
   it('renders the Key {n} chip before any action button in the row (D-13)', () => {
@@ -173,17 +173,58 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     }
   });
 
-  it('carries the exact UI-SPEC tooltip copy with the two-part unavailable grammar on every action', () => {
+  it('carries de-prefixed tooltip copy via the shared guarded-action copy builder on every action (Gap D)', () => {
     const code = source();
     const row = getKeyUtilitiesRowBlock(code);
-    for (const { label } of ROW_ICON_ACTIONS) {
-      expect(row).toContain(`${label} — unavailable: `);
-    }
-    expect(row).toContain('Set Key Space — unavailable: ');
+    // The tool-name prefix is dropped: description or 'unavailable: {reason}'.
+    expect(row).not.toContain(' — unavailable: ');
+    expect(code).toContain('function buildGuardedActionTooltipCopy(description: string, disabledReason: string | null)');
+    expect(code).toContain('return disabledReason ? `unavailable: ${disabledReason}` : description;');
+    const builderCalls = (row.match(/buildGuardedActionTooltipCopy\(/g) ?? []).length;
+    // Six guarded icon actions plus the Set Key Space form.
+    expect(builderCalls).toBeGreaterThanOrEqual(7);
     // Script copy/apply availability reasons now surface in the Scripts
     // sidebar toolbar, not the strip (Gap C).
     expect(code).not.toContain('copyDisabledReason');
     expect(code).not.toContain('applyDisabledReason');
+  });
+
+  it('renders a short visible label after each enlarged bottom-row icon (Gap D)', () => {
+    const row = getKeyUtilitiesRowBlock(source());
+    const labeledActions: ReadonlyArray<{ action: string; icon: string; label: string }> = [
+      { action: 'Add key', icon: 'Plus', label: 'Key' },
+      { action: 'Duplicate key', icon: 'CopyPlus', label: 'Duplicate' },
+      { action: 'Insert key before', icon: 'BetweenVerticalStart', label: 'Insert' },
+      { action: 'Copy key', icon: 'ClipboardCopy', label: 'Copy' },
+      { action: 'Paste key', icon: 'ClipboardPaste', label: 'Paste' },
+      { action: 'Delete key', icon: 'Trash2', label: 'Delete' },
+    ];
+    for (const { action, icon, label } of labeledActions) {
+      const block = getButtonBlock(row, action);
+      const iconIndex = block.indexOf(`<${icon} size={18}`);
+      expect(iconIndex).toBeGreaterThanOrEqual(0);
+      const labelIndex = block.indexOf(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
+      expect(labelIndex).toBeGreaterThan(iconIndex);
+    }
+    expect(row).not.toContain('size={16}');
+    // The Set Key Space form carries its own short label after the icon.
+    const spacingIndex = row.indexOf('physics-paint-pill--apply-spacing');
+    const form = row.slice(spacingIndex, row.indexOf('</form>', spacingIndex));
+    const spacingIconIndex = form.indexOf('<AlignHorizontalSpaceAround size={18}');
+    expect(spacingIconIndex).toBeGreaterThanOrEqual(0);
+    expect(form.indexOf('<span class="physics-paint-roto-key-icon-label">Space</span>')).toBeGreaterThan(spacingIconIndex);
+  });
+
+  it('enlarges the bottom-row icon buttons and styles the visible labels within the fixed 28px band', () => {
+    const styles = css();
+    const button = getCssRuleBlock(styles, '.physics-paint-roto-key-icon-button {');
+    expect(button).toContain('height: 26px');
+    expect(button).toContain('min-width: 26px');
+    expect(button).toContain('gap: 4px');
+    const label = getCssRuleBlock(styles, '.physics-paint-roto-key-icon-label {');
+    expect(label).not.toBe('');
+    expect(label).toContain('white-space: nowrap');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-action-row {')).toContain('height: 28px');
   });
 
   it('keeps generated frames non-editable and real cached frames selectable', () => {
@@ -476,8 +517,8 @@ describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)'
     expect(actionRow).toContain('display: flex');
     expect(actionRow).toContain('min-width: 2160px');
     expect(getCssRuleBlock(styles, '.physics-paint-timeline-scrollbar {')).toContain('height: 14px');
-    // Bigger bottom action-row icons (user feedback): 24px-high buttons.
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-key-icon-button {')).toContain('height: 24px');
+    // Bigger bottom action-row icons (user feedback): 26px-high buttons.
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-key-icon-button {')).toContain('height: 26px');
   });
 
   it('renders the key-utilities pill inside a 28px action-row band that is a sibling of the lane inside the scroll container', () => {
@@ -604,8 +645,7 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     expect(form).toContain('aria-label="Empty frames between real keys"');
     expect(form).toContain('aria-label="Apply force spacing"');
     expect(form).toContain('>Apply</button>');
-    expect(row).toContain('Set Key Space — unavailable: ');
-    expect(row).toContain('Set empty physical frames between real Roto keys');
+    expect(row).toContain("buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys'");
     expect(row).toContain('PhysicsPaintStyledTooltip');
     // The submit handler keeps its verbatim mutation-lock guard.
     expect(source()).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');

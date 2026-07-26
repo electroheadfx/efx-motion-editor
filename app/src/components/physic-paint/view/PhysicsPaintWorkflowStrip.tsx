@@ -149,6 +149,16 @@ function getRotoFillClass(fill: ReturnType<typeof getRotoCellFill>): string {
   return fill === 'cached-only' ? 'roto-fill-cached-only' : 'roto-fill-empty';
 }
 
+/**
+ * Shared guarded-action tooltip copy (36.15-08, UAT Gap D). The tooltip shows
+ * only the description or 'unavailable: {verbatim controller reason}' — the
+ * Plan 01 '{Action} — ' tool-name prefix is dropped because every bottom-row
+ * action now carries a short visible label next to its icon.
+ */
+function buildGuardedActionTooltipCopy(description: string, disabledReason: string | null): string {
+  return disabledReason ? `unavailable: ${disabledReason}` : description;
+}
+
 type RotoDragCandidateKind = 'empty' | 'real-key' | 'generated' | 'outside' | 'locked';
 interface RotoDragPreviewState {
   movedKeyId: string;
@@ -1015,13 +1025,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       if ((event.key === 'Enter' || event.key === ' ') && !canAddRotoKey) event.preventDefault();
                     }}
                   >
-                    <Plus size={16} aria-hidden="true" />
+                    <Plus size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Key</span>
                   </button>
                   {!canAddRotoKey && addRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-add" class="physics-paint-sr-only">{addRotoKeyDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={addKeyTooltip.visible}>
-                    {!canAddRotoKey && addRotoKeyDisabledReason ? `Add key — unavailable: ${addRotoKeyDisabledReason}` : 'Add key'}
+                    {buildGuardedActionTooltipCopy('Add key', addRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={duplicateKeyTooltip.onPointerEnter} onPointerLeave={duplicateKeyTooltip.onPointerLeave}>
@@ -1042,13 +1053,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       if ((event.key === 'Enter' || event.key === ' ') && !canDuplicateRotoKey) event.preventDefault();
                     }}
                   >
-                    <CopyPlus size={16} aria-hidden="true" />
+                    <CopyPlus size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Duplicate</span>
                   </button>
                   {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-duplicate" class="physics-paint-sr-only">{duplicateRotoKeyDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={duplicateKeyTooltip.visible}>
-                    {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? `Duplicate key — unavailable: ${duplicateRotoKeyDisabledReason}` : 'Duplicate key'}
+                    {buildGuardedActionTooltipCopy('Duplicate key', duplicateRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={insertKeyTooltip.onPointerEnter} onPointerLeave={insertKeyTooltip.onPointerLeave}>
@@ -1069,13 +1081,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       if ((event.key === 'Enter' || event.key === ' ') && !canInsertRotoKey) event.preventDefault();
                     }}
                   >
-                    <BetweenVerticalStart size={16} aria-hidden="true" />
+                    <BetweenVerticalStart size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Insert</span>
                   </button>
                   {!canInsertRotoKey && insertRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-insert" class="physics-paint-sr-only">{insertRotoKeyDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={insertKeyTooltip.visible}>
-                    {!canInsertRotoKey && insertRotoKeyDisabledReason ? `Insert key before — unavailable: ${insertRotoKeyDisabledReason}` : 'Insert key before'}
+                    {buildGuardedActionTooltipCopy('Insert key before', insertRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyKeyTooltip.onPointerEnter} onPointerLeave={copyKeyTooltip.onPointerLeave}>
@@ -1096,13 +1109,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       if ((event.key === 'Enter' || event.key === ' ') && !canCopyRotoKey) event.preventDefault();
                     }}
                   >
-                    <ClipboardCopy size={16} aria-hidden="true" />
+                    <ClipboardCopy size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Copy</span>
                   </button>
                   {!canCopyRotoKey && copyRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-copy" class="physics-paint-sr-only">{copyRotoKeyDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={copyKeyTooltip.visible}>
-                    {!canCopyRotoKey && copyRotoKeyDisabledReason ? `Copy key — unavailable: ${copyRotoKeyDisabledReason}` : 'Copy key'}
+                    {buildGuardedActionTooltipCopy('Copy key', copyRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={pasteKeyTooltip.onPointerEnter} onPointerLeave={pasteKeyTooltip.onPointerLeave}>
@@ -1123,13 +1137,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       if ((event.key === 'Enter' || event.key === ' ') && !canPasteRotoKey) event.preventDefault();
                     }}
                   >
-                    <ClipboardPaste size={16} aria-hidden="true" />
+                    <ClipboardPaste size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Paste</span>
                   </button>
                   {!canPasteRotoKey && pasteRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-paste" class="physics-paint-sr-only">{pasteRotoKeyDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={pasteKeyTooltip.visible}>
-                    {!canPasteRotoKey && pasteRotoKeyDisabledReason ? `Paste key — unavailable: ${pasteRotoKeyDisabledReason}` : 'Paste key'}
+                    {buildGuardedActionTooltipCopy('Paste key', pasteRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={deleteKeyTooltip.onPointerEnter} onPointerLeave={deleteKeyTooltip.onPointerLeave}>
@@ -1150,13 +1165,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       if ((event.key === 'Enter' || event.key === ' ') && !canDeleteRotoKey) event.preventDefault();
                     }}
                   >
-                    <Trash2 size={16} aria-hidden="true" />
+                    <Trash2 size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Delete</span>
                   </button>
                   {!canDeleteRotoKey && deleteRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-delete" class="physics-paint-sr-only">{deleteRotoKeyDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={deleteKeyTooltip.visible}>
-                    {!canDeleteRotoKey && deleteRotoKeyDisabledReason ? `Delete key — unavailable: ${deleteRotoKeyDisabledReason}` : 'Delete key'}
+                    {buildGuardedActionTooltipCopy('Delete key', deleteRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 {physicalActions ? (
@@ -1166,7 +1182,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       aria-label="Set Key Space"
                       onSubmit={handleForceSpacingSubmit}
                     >
-                      <AlignHorizontalSpaceAround size={15} aria-hidden="true" />
+                      <AlignHorizontalSpaceAround size={18} aria-hidden="true" />
+                      <span class="physics-paint-roto-key-icon-label">Space</span>
                       <input
                         type="number"
                         min="0"
@@ -1195,7 +1212,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       <span id="roto-key-action-reason-spacing" class="physics-paint-sr-only">{forceSpacingActionDisabledReason}</span>
                     ) : null}
                     <PhysicsPaintStyledTooltip visible={forceSpacingTooltip.visible}>
-                      {!canApplyForceSpacingAction && forceSpacingActionDisabledReason ? `Set Key Space — unavailable: ${forceSpacingActionDisabledReason}` : 'Set empty physical frames between real Roto keys'}
+                      {buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys', forceSpacingActionDisabledReason)}
                     </PhysicsPaintStyledTooltip>
                   </span>
                 ) : null}
