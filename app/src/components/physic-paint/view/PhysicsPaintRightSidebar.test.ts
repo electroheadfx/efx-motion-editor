@@ -27,21 +27,17 @@ function rule(selector: string): string {
 }
 
 describe('native-approved Physics Paint right sidebar', () => {
-  it('keeps exact independent upper and lower mixed-case tab groups', () => {
-    // Three tab groups (36.15-11, UAT Gap G-6): [Brush color] and [Tool] as
-    // independent single-tab groups in the upper pane (the LOG tab was
-    // removed as obsolete), [Scripts, Onion, Motion] in the lower pane.
-    const brushStart = rightPanel.indexOf('aria-label="Brush color panel"');
-    const brushEnd = rightPanel.indexOf('</div>', brushStart);
-    const brush = rightPanel.slice(brushStart, brushEnd);
-    expectInOrder(brush, ['Brush color']);
-    expect(brush).not.toContain('Tool');
-
-    const toolStart = rightPanel.indexOf('aria-label="Tool panel"');
-    const toolEnd = rightPanel.indexOf('</div>', toolStart);
-    const tool = rightPanel.slice(toolStart, toolEnd);
-    expectInOrder(tool, ['Tool']);
-    expect(tool).not.toContain('Brush color');
+  it('renders the Brush color and Tool sections with no tab chrome and keeps the lower Scripts/Onion/Motion tab group', () => {
+    // Chrome-less sections (36.15-12, UAT Gap H-1/H-2): the single-tab header
+    // strips from 36.15-11 are gone — each section starts directly with its
+    // content. Only the lower [Scripts, Onion, Motion] group keeps tabs.
+    expect(rightPanel).not.toContain('aria-label="Brush color panel"');
+    expect(rightPanel).not.toContain('aria-label="Tool panel"');
+    expect(rightPanel).not.toContain('physics-paint-tab-brush');
+    expect(rightPanel).not.toContain('physics-paint-tab-tool');
+    expect(rightPanel).not.toContain('physics-paint-single-tab"');
+    expect(rightPanel).not.toMatch(/>\s*Brush color\s*</);
+    expect(rightPanel).not.toMatch(/>\s*Tool\s*</);
 
     const lowerStart = rightPanel.indexOf('aria-label="Physics Paint option panels"');
     const lowerEnd = rightPanel.indexOf('</div>', lowerStart);
@@ -54,18 +50,26 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rightPanel).not.toContain('physics-paint-tab-log');
     expect(rightPanel).not.toMatch(/>\s*LOG\s*</);
 
-    for (const label of ['Brush color', 'Tool', 'Scripts', 'Onion', 'Motion']) {
+    // Exactly one tablist with three tabs remains (the lower group).
+    expect(rightPanel.match(/role="tablist"/g)).toHaveLength(1);
+    expect(rightPanel.match(/role="tab"/g)).toHaveLength(3);
+
+    for (const label of ['Scripts', 'Onion', 'Motion']) {
       expect(rightPanel).toMatch(new RegExp(`>\\s*${label}\\s*<`));
       expect(rightPanel).not.toMatch(new RegExp(`>\\s*${label.toUpperCase()}\\s*<`));
     }
     expect(rule('.physics-paint-options-tab')).toMatch(/text-transform:\s*none/);
   });
 
-  it('owns two independently scrollable panes with a local 50/50 split', () => {
-    expect(rightPanel).toContain('const [paneSplit, setPaneSplit] = useState(50)');
-    expect(rightPanel).toContain('gridTemplateRows: `minmax(0, ${paneSplit}fr) 28px minmax(0, ${100 - paneSplit}fr)`');
-    expect(rightPanel.match(/class="physics-paint-right-pane /g)).toHaveLength(2);
-    expect(rightPanel.match(/<SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>/g)).toHaveLength(2);
+  it('owns three independently scrollable sections sharing the sidebar height in equal thirds by default', () => {
+    // 36.15-12, UAT Gap H-4: Brush color, Tool, and Scripts/Onion/Motion share
+    // the sidebar height in thirds (100/3 each), with a 28px grab handle
+    // between each pair.
+    expect(rightPanel).toContain('const [brushSplit, setBrushSplit] = useState(100 / 3)');
+    expect(rightPanel).toContain('const [toolSplit, setToolSplit] = useState(100 / 3)');
+    expect(rightPanel).toContain('gridTemplateRows: `minmax(0, ${brushSplit}fr) 28px minmax(0, ${toolSplit}fr) 28px minmax(0, ${100 - brushSplit - toolSplit}fr)`');
+    expect(rightPanel.match(/class="physics-paint-right-pane /g)).toHaveLength(3);
+    expect(rightPanel.match(/<SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>/g)).toHaveLength(3);
     const pane = rule('.physics-paint-right-pane');
     expect(pane).toMatch(/min-height:\s*0/);
     expect(pane).toMatch(/overflow:\s*hidden/);
@@ -77,7 +81,7 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(scrollArea).toContain('interactive = false');
     expect(scrollArea).toContain("pointerEvents: interactive ? 'auto' : 'none'");
     expect(scrollArea).toContain('onPointerDown={interactive ? (event) => scrollToTrackPosition(event.clientY) : undefined}');
-    expect(rightPanel.match(/<SidebarScrollArea[^>]*interactive>/g)).toHaveLength(2);
+    expect(rightPanel.match(/<SidebarScrollArea[^>]*interactive>/g)).toHaveLength(3);
     expect(leftPanel).toContain('<SidebarScrollArea>');
     expect(leftPanel).not.toMatch(/<SidebarScrollArea[^>]*interactive/);
   });
@@ -98,17 +102,22 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rule('.physics-paint-swatch-remove')).toMatch(/left:\s*-5px/);
   });
 
-  it('uses the Lucide horizontal grip in a 28px keyboard and pointer resize band clamped to 20-80', () => {
+  it('places a Lucide-grip 28px grab handle between each section pair with keyboard and pointer resize clamped to 15% minimum sections', () => {
+    // 36.15-12, UAT Gap H-3/H-4: two grab handles reuse the existing
+    // GripHorizontal resize band look and pointer behavior — one between the
+    // brush color and tool sections, one between the tool and scripts
+    // sections.
     expect(rightPanel).toContain("import { GripHorizontal, X } from 'lucide-preact'");
-    expect(rightPanel).toContain('role="separator"');
-    expect(rightPanel).toContain('aria-orientation="horizontal"');
-    expect(rightPanel).toContain('aria-valuemin={20}');
-    expect(rightPanel).toContain('aria-valuemax={80}');
-    expect(rightPanel).toContain('<GripHorizontal aria-hidden="true" size={18} strokeWidth={1.8} />');
-    expect(rightPanel).toContain('onPointerDown={(event) => handlePaneResizeStart');
-    expect(rightPanel).toContain("event.key !== 'ArrowUp' && event.key !== 'ArrowDown'");
-    expect(rightPanel).toContain("event.key === 'ArrowDown' ? 5 : -5");
-    expect(rightPanel.match(/Math\.max\(20, Math\.min\(80,/g)).toHaveLength(2);
+    expect(rightPanel.match(/class="physics-paint-right-pane-resizer"/g)).toHaveLength(2);
+    expect(rightPanel.match(/role="separator"/g)).toHaveLength(2);
+    expect(rightPanel).toContain('aria-label="Resize brush color and tool sections"');
+    expect(rightPanel).toContain('aria-label="Resize tool and scripts sections"');
+    expect(rightPanel.match(/aria-orientation="horizontal"/g)).toHaveLength(2);
+    expect(rightPanel.match(/aria-valuemin=\{15\}/g)).toHaveLength(2);
+    expect(rightPanel.match(/<GripHorizontal aria-hidden="true" size=\{18\} strokeWidth=\{1\.8\} \/>/g)).toHaveLength(2);
+    expect(rightPanel.match(/onPointerDown=\{\(event\) => startPaneResize\(event as unknown as PointerEvent, '(brush|tool)'\)\}/g)).toHaveLength(2);
+    expect(rightPanel.match(/event\.key !== 'ArrowUp' && event\.key !== 'ArrowDown'/g)).toHaveLength(2);
+    expect(rightPanel.match(/event\.key === 'ArrowDown' \? 5 : -5/g)).toHaveLength(2);
     const resizeBand = rule('.physics-paint-right-pane-resizer');
     expect(resizeBand).toMatch(/min-height:\s*28px/);
     expect(resizeBand).toMatch(/cursor:\s*row-resize/);

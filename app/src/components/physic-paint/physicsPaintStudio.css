@@ -409,7 +409,7 @@ button.destructive {
 
 .physics-paint-studio {
   display: grid;
-  grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 155px;
+  grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 161px;
   grid-template-columns: 52px minmax(0, 1fr) minmax(316px, 340px);
   width: 100vw;
   height: 100vh;
@@ -1055,8 +1055,6 @@ button.destructive {
   margin-left: 0;
 }
 
-.physics-paint-tab-brush,
-.physics-paint-tab-tool,
 .physics-paint-tab-onion,
 .physics-paint-tab-motion,
 .physics-paint-tab-scripts {
@@ -1333,7 +1331,9 @@ button.destructive {
   display: flex;
   flex-direction: column;
   gap: 0;
-  height: 155px;
+  /* 161px = Plan 06 155px with the user-approved Gap H-6 action-row
+     relaxation (28px to 34px): 46 + 1 + 28 + 38 + 34 + 14. */
+  height: 161px;
   min-height: 0;
   padding: 0 12px;
   border-top: 1px solid #5a5e63;
@@ -1571,8 +1571,9 @@ button.destructive {
 /* Group 2 of the bottom action row: the six key tools sit directly on the
    bare band — the background block/pill was removed (36.15-11, UAT Gap G-2).
    The 26px height (no padding, no border) keeps the group vertically centered
-   inside the 28px band (36.15-11, UAT Gap G-3); the retired pill's 1px
-   padding + 1px borders pushed it to 30px and threw the row off-center. */
+   inside the 34px band with 4px of clear padding above and below (36.15-11,
+   UAT Gap G-3; 36.15-12, UAT Gap H-6); the retired pill's 1px padding + 1px
+   borders pushed it to 30px and threw the row off-center. */
 .physics-paint-roto-key-utilities {
   display: inline-flex;
   align-items: center;
@@ -1669,7 +1670,7 @@ button.destructive {
 }
 
 /* Short visible label rendered after each bottom-row action icon (36.15-08,
-   UAT Gap D); the row stays inside its fixed 28px band. */
+   UAT Gap D); the row stays inside its fixed band. */
 .physics-paint-roto-key-icon-label {
   font-size: 10px;
   font-weight: 700;
@@ -1725,7 +1726,7 @@ button.destructive {
 }
 
 /* Header-band tooltips render below the anchor so they stay inside the
-   155px strip instead of being clipped by the strip's overflow-y: hidden
+   161px strip instead of being clipped by the strip's overflow-y: hidden
    shell or masked by the canvas above (UAT Gap B). */
 .physics-paint-styled-tooltip--below {
   bottom: auto;
@@ -1791,8 +1792,8 @@ button.destructive {
   min-width: 0;
 }
 
-/* The relocated Set Key Space pill compacts into the 28px action-row band
-   (36.15-08). */
+/* The relocated Set Key Space pill compacts into the 34px action-row band
+   (36.15-08; band height relaxed to 34px in 36.15-12, UAT Gap H-6). */
 .physics-paint-roto-action-row .physics-paint-pill {
   height: 26px;
   min-height: 26px;
@@ -1997,6 +1998,11 @@ button.destructive {
 
 .physics-paint-timeline-scroll {
   min-width: 0;
+  /* Small left offset shared by the ruler, lane, and action row so the
+     selected frame-0 cell's orange ring (2px outline + 1px offset + 1px
+     shadow) is not clipped by the scroll edge (36.15-12, UAT Gap H-5). The
+     18px pitch and ruler-to-cell alignment are unchanged. */
+  padding-left: 4px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -2074,7 +2080,10 @@ button.destructive {
   /* Three visually separated groups (identity / tools / key spacing) with the
      top bar's 8px pill-island gaps (36.15-10, UAT Gap F-2). */
   gap: 8px;
-  height: 28px;
+  /* 34px — the smallest height that gives the 26px groups clear 4px top and
+     bottom padding (36.15-12, UAT Gap H-6; user-approved relaxation of the
+     Plan 06 28px band). */
+  height: 34px;
   min-width: 2160px;
   background: #37393a;
 }

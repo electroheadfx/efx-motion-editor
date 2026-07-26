@@ -60,6 +60,10 @@ export interface PhysicsPaintRightPanelProps {
 
 const DEFAULT_PALETTE = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', '#ff6666', '#f8fafc', '#111827'];
 
+/** Minimum sidebar section share (%) — every section keeps at least this much
+ *  of the flexible height when its neighbors are resized (36.15-12, Gap H-4). */
+const MIN_PANE_SPLIT = 15;
+
 export function createPhysicsPaintPaneResizeDrag(options: {
   target: HTMLElement;
   pointerId: number;
@@ -174,7 +178,11 @@ export function PhysicsPaintRightPanel({
   // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
   // Gap G-4).
   const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
-  const [paneSplit, setPaneSplit] = useState(50);
+  // Three resizable sections (36.15-12, UAT Gap H-4): brush color, tool, and
+  // Scripts/Onion/Motion share the sidebar height in equal thirds by default;
+  // the scripts section takes the remaining 100 - brushSplit - toolSplit.
+  const [brushSplit, setBrushSplit] = useState(100 / 3);
+  const [toolSplit, setToolSplit] = useState(100 / 3);
   const previousColorRef = useRef(color);
   const paneLayoutRef = useRef<HTMLDivElement>(null);
   const activePaneResizeCleanupRef = useRef<(() => void) | null>(null);
@@ -311,7 +319,7 @@ export function PhysicsPaintRightPanel({
     }
   }, []);
 
-  const handlePaneResizeStart = useCallback((event: PointerEvent) => {
+  const startPaneResize = useCallback((event: PointerEvent, handle: 'brush' | 'tool') => {
     event.preventDefault();
     const layout = paneLayoutRef.current;
     if (!layout) return;
@@ -319,10 +327,22 @@ export function PhysicsPaintRightPanel({
     const target = event.currentTarget as HTMLElement;
     const rect = layout.getBoundingClientRect();
     target.setPointerCapture(event.pointerId);
+    const startBrush = brushSplit;
+    const startTool = toolSplit;
 
     const resize = (clientY: number) => {
       const split = ((clientY - rect.top) / rect.height) * 100;
-      setPaneSplit(Math.max(20, Math.min(80, split)));
+      if (handle === 'brush') {
+        // Handle 1 resizes its two neighbors (brush/tool); scripts is untouched.
+        const total = startBrush + startTool;
+        const nextBrush = Math.max(MIN_PANE_SPLIT, Math.min(total - MIN_PANE_SPLIT, split));
+        setBrushSplit(nextBrush);
+        setToolSplit(total - nextBrush);
+      } else {
+        // Handle 2 resizes tool/scripts; the brush section is untouched.
+        const nextTool = Math.max(MIN_PANE_SPLIT, Math.min(100 - startBrush - MIN_PANE_SPLIT, split - startBrush));
+        setToolSplit(nextTool);
+      }
     };
     resize(event.clientY);
     const cleanup = createPhysicsPaintPaneResizeDrag({ target, pointerId: event.pointerId, resize });
@@ -330,7 +350,7 @@ export function PhysicsPaintRightPanel({
       cleanup();
       if (activePaneResizeCleanupRef.current) activePaneResizeCleanupRef.current = null;
     };
-  }, []);
+  }, [brushSplit, toolSplit]);
 
   const normalizedFavoriteColors = favoriteColors
     .map(normalizeHexInput)
@@ -364,23 +384,13 @@ export function PhysicsPaintRightPanel({
       <div
         ref={paneLayoutRef}
         class="physics-paint-right-pane-layout"
-        style={{ gridTemplateRows: `minmax(0, ${paneSplit}fr) 28px minmax(0, ${100 - paneSplit}fr)` }}
+        style={{ gridTemplateRows: `minmax(0, ${brushSplit}fr) 28px minmax(0, ${toolSplit}fr) 28px minmax(0, ${100 - brushSplit - toolSplit}fr)` }}
       >
         <div class="physics-paint-right-pane physics-paint-right-pane-primary">
           <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
             <div class="physics-paint-right-pane-content">
           <section class="physics-paint-right-section physics-paint-single-tab-section">
-        <div class="physics-paint-options-tabs physics-paint-single-tab" role="tablist" aria-label="Brush color panel">
-          <button
-            type="button"
-            class="physics-paint-options-tab physics-paint-tab-brush active"
-            role="tab"
-            aria-selected="true"
-          >
-            Brush color
-          </button>
-        </div>
-          <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel" role="tabpanel" aria-label="Brush color">
+          <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel">
             <div class="physics-paint-color-picker" aria-label="Brush color picker">
               <canvas
                 ref={colorBoxRef}
@@ -472,18 +482,38 @@ export function PhysicsPaintRightPanel({
             </div>
           </div>
           </section>
-          <section class="physics-paint-right-section physics-paint-single-tab-section">
-        <div class="physics-paint-options-tabs physics-paint-single-tab" role="tablist" aria-label="Tool panel">
-          <button
-            type="button"
-            class="physics-paint-options-tab physics-paint-tab-tool active"
-            role="tab"
-            aria-selected="true"
-          >
-            Tool
-          </button>
+            </div>
+          </SidebarScrollArea>
         </div>
-          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Tool">
+
+        <div
+          class="physics-paint-right-pane-resizer"
+          role="separator"
+          aria-label="Resize brush color and tool sections"
+          aria-orientation="horizontal"
+          aria-valuemin={15}
+          aria-valuemax={Math.round(brushSplit + toolSplit - MIN_PANE_SPLIT)}
+          aria-valuenow={Math.round(brushSplit)}
+          tabIndex={0}
+          onPointerDown={(event) => startPaneResize(event as unknown as PointerEvent, 'brush')}
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+            event.preventDefault();
+            const delta = event.key === 'ArrowDown' ? 5 : -5;
+            const total = brushSplit + toolSplit;
+            const nextBrush = Math.max(MIN_PANE_SPLIT, Math.min(total - MIN_PANE_SPLIT, brushSplit + delta));
+            setBrushSplit(nextBrush);
+            setToolSplit(total - nextBrush);
+          }}
+        >
+          <GripHorizontal aria-hidden="true" size={18} strokeWidth={1.8} />
+        </div>
+
+        <div class="physics-paint-right-pane physics-paint-right-pane-tools">
+          <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
+            <div class="physics-paint-right-pane-content">
+          <section class="physics-paint-right-section physics-paint-single-tab-section">
+          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool">
             <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} disabled={engineControlsDisabled} />
             {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Color blending" min={0} max={100} value={pickup} onChange={onPickupChange} disabled={engineControlsDisabled} /> : null}
             {physicsMode === 'local' ? <PanelSlider id="physics-spread" label="Spread" min={0} max={100} value={spread} onChange={onSpreadChange} disabled={engineControlsDisabled} /> : null}
@@ -507,17 +537,18 @@ export function PhysicsPaintRightPanel({
         <div
           class="physics-paint-right-pane-resizer"
           role="separator"
-          aria-label="Resize Physics Paint sidebar panels"
+          aria-label="Resize tool and scripts sections"
           aria-orientation="horizontal"
-          aria-valuemin={20}
-          aria-valuemax={80}
-          aria-valuenow={Math.round(paneSplit)}
+          aria-valuemin={15}
+          aria-valuemax={Math.round(100 - brushSplit - MIN_PANE_SPLIT)}
+          aria-valuenow={Math.round(toolSplit)}
           tabIndex={0}
-          onPointerDown={(event) => handlePaneResizeStart(event as unknown as PointerEvent)}
+          onPointerDown={(event) => startPaneResize(event as unknown as PointerEvent, 'tool')}
           onKeyDown={(event) => {
             if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
             event.preventDefault();
-            setPaneSplit((split) => Math.max(20, Math.min(80, split + (event.key === 'ArrowDown' ? 5 : -5))));
+            const delta = event.key === 'ArrowDown' ? 5 : -5;
+            setToolSplit(Math.max(MIN_PANE_SPLIT, Math.min(100 - brushSplit - MIN_PANE_SPLIT, toolSplit + delta)));
           }}
         >
           <GripHorizontal aria-hidden="true" size={18} strokeWidth={1.8} />

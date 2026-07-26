@@ -33,12 +33,15 @@ function getScriptsToolbarBlock(code: string): string {
 }
 
 describe('Physics Paint SCRIPTS panel contract', () => {
-  it('keeps approved mixed-case tab groups and explicitly scans on Scripts entry', () => {
-    for (const tab of ['Brush color', 'Tool', 'Scripts', 'Onion', 'Motion']) expect(rightPanel).toMatch(new RegExp(`>\\s*${tab}\\s*<`));
-    // Three tab groups: [Brush color] + [Tool] + [Scripts, Onion, Motion]
-    // (36.15-11, UAT Gap G-6) — the LOG tab is gone.
-    expect(rightPanel.match(/role="tab"/g)).toHaveLength(5);
-    expect(rightPanel.match(/role="tablist"/g)).toHaveLength(3);
+  it('keeps the lower Scripts/Onion/Motion tab group with no Brush color / Tool tab chrome and explicitly scans on Scripts entry', () => {
+    for (const tab of ['Scripts', 'Onion', 'Motion']) expect(rightPanel).toMatch(new RegExp(`>\\s*${tab}\\s*<`));
+    // 36.15-12, UAT Gap H-1/H-2: the Brush color and Tool single-tab header
+    // strips are removed — those sections render their content directly. Only
+    // the lower group keeps tabs; the LOG tab stays gone.
+    expect(rightPanel).not.toMatch(/>\s*Brush color\s*</);
+    expect(rightPanel).not.toMatch(/>\s*Tool\s*</);
+    expect(rightPanel.match(/role="tab"/g)).toHaveLength(3);
+    expect(rightPanel.match(/role="tablist"/g)).toHaveLength(1);
     expect(rightPanel).toContain("setOptionsTab('scripts'); void scripts.library.enterScripts()");
     expect(rightPanel).toContain("optionsTab === 'scripts'");
   });
