@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.15
 current_phase_name: roto-timeline-final-ui-integration
 status: verifying
-stopped_at: Completed 36.15-11-PLAN.md
-last_updated: "2026-07-26T09:10:38.701Z"
+stopped_at: Completed 36.15-12-PLAN.md
+last_updated: "2026-07-26T10:13:41.740Z"
 last_activity: 2026-07-25
 last_activity_desc: Phase 36.15 execution started
 progress:
   total_phases: 18
   completed_phases: 17
-  total_plans: 133
-  completed_plans: 127
+  total_plans: 134
+  completed_plans: 128
   percent: 94
 ---
 
@@ -35,7 +35,7 @@ Status: Phase complete — ready for verification
 Last activity: 2026-07-25 — Phase 36.15 execution started
 Next recommended action: /gsd-execute-phase 36.15 (wave order 1 → 1 → 1 → 2 → 3 → 4 → 5)
 
-Progress: [██████████████████░░] 114/121 plans complete; 16/17 phases complete ([██████████] 95%)
+Progress: [██████████████████░░] 114/121 plans complete; 16/17 phases complete ([██████████] 96%)
 
 ## Performance Metrics
 
@@ -122,6 +122,7 @@ Progress: [██████████████████░░] 114/121
 | Phase 36.15 P09 | 15min | 1 tasks | 5 files |
 | Phase 36.15 P10 | 15min | 1 tasks | 4 files |
 | Phase 36.15 P11 | 15min | 1 tasks | 8 files |
+| Phase 36.15 P12 | 14min | 1 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -250,6 +251,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 36.15-10: Bottom action row split into three sibling groups (identity/tools/Key spacing) reusing the Plan 04 top-bar 8px pill-island gap language
 - [Phase ?]: 36.15-11: Scripts toolbar truncation was a layout contract — repeat(6, auto) content-sized cells replace fixed-fraction cells so Copy/Apply/Clear labels render in full
 - [Phase ?]: 36.15-11: Right sidebar restructured to three tab groups ([Brush color], [Tool] without Save/Load state, [Scripts/Onion/Motion] Scripts-first default-open); LOG tab retired with its Plan 03 selection-guard exception in the same commit; session persistence API preserved but view-unreferenced
+- [Phase ?]: 36.15-12: Gap H-6 relaxes the Plan 06 band contract with user approval — action row 28px to 34px (26px groups get 4px padding), band sum 155px to 161px; all other bands unchanged
+- [Phase ?]: 36.15-12: Right sidebar is three chrome-less resizable sections (Brush color / Tool / Scripts-Onion-Motion) at equal thirds with two GripHorizontal grab handles that each resize only their neighbors, 15% minimum share
+- [Phase ?]: 36.15-12: Frame-0 selection ring fixed by padding-left 4px on the shared timeline scroll container — ruler, lane, and action row shift together so 18px pitch and ruler alignment are untouched
 
 ### Pending Todos
 
@@ -331,6 +335,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-26T09:10:25.050Z
-Stopped at: Completed 36.15-11-PLAN.md
+Last session: 2026-07-26T10:13:41.724Z
+Stopped at: Completed 36.15-12-PLAN.md
 Resume file: None
