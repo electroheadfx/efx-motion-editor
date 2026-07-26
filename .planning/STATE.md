@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.15
 current_phase_name: roto-timeline-final-ui-integration
 status: verifying
-stopped_at: Completed 36.15-08-PLAN.md
-last_updated: "2026-07-26T06:46:51.848Z"
+stopped_at: Completed 36.15-09-PLAN.md
+last_updated: "2026-07-26T07:35:55.568Z"
 last_activity: 2026-07-25
 last_activity_desc: Phase 36.15 execution started
 progress:
   total_phases: 18
   completed_phases: 17
-  total_plans: 130
-  completed_plans: 124
+  total_plans: 131
+  completed_plans: 125
   percent: 94
 ---
 
@@ -119,6 +119,7 @@ Progress: [██████████████████░░] 114/121
 | Phase 36.15 P05 | 19min | 2 tasks | 5 files |
 | Phase 36.15 P06 | 37min | 12 tasks | 11 files |
 | Phase 36.15 P08 | 23min | 3 tasks | 7 files |
+| Phase 36.15 P09 | 15min | 1 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -241,6 +242,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 36.15 Plan 08]: Tools dropdown removed; final top bar is playback, fps/auto, capsule, interpolation dropdown (Frame duplicate/Frame blend native select), Close; bottom row is layer, Key chip, + Key, Duplicate, Insert, Copy, Paste, Delete, Set Key Space
 - [Phase ?]: [Phase 36.15 Plan 08]: Gap B fixed via native select (OS popup immune to clipping) plus placement='below' header tooltips that stay inside the overflow-y:hidden strip
 - [Phase ?]: [Phase 36.15 Plan 08]: Copy/Apply Script relocated to the Scripts toolbar before Clear Script Buffer (user wording); de-prefixed tooltip grammar lives in the shared buildGuardedActionTooltipCopy builder
+- [Phase ?]: [Phase 36.15 Plan 09]: Doubled APPLY ring fixed by restyling the submit as a 4px rounded rect (its 999px cap echoed the form pill); clipped selection border fixed with z-index on .current only — 18px pitch and 155px bands untouched
 
 ### Pending Todos
 
@@ -322,6 +324,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-26T06:46:51.834Z
-Stopped at: Completed 36.15-08-PLAN.md
+Last session: 2026-07-26T07:35:55.555Z
+Stopped at: Completed 36.15-09-PLAN.md
 Resume file: None
