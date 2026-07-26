@@ -224,13 +224,14 @@ export interface RotoTimelineActionsInput {
 
 interface PhysicalActionRunnerInput {
   readonly intent: PhysicPaintRotoPhysicalEditIntent;
-  readonly operationKind: 'insert-slot' | 'delete-key' | 'duplicate-key' | 'paste-key';
+  readonly operationKind: 'insert-slot' | 'delete-key' | 'delete-key-group' | 'duplicate-key' | 'paste-key';
   readonly requiredKeyId: string | null;
   readonly successMessage: string;
 }
 
 const INSERT_SUCCESS_MESSAGE = 'Inserted an empty Roto frame before the selected key.';
 const DELETE_SUCCESS_MESSAGE = 'Deleted the selected Roto key.';
+const GROUP_DELETE_SUCCESS_MESSAGE = 'Keys deleted';
 const DUPLICATE_SUCCESS_MESSAGE = 'Duplicated the selected Roto key.';
 const PASTE_SUCCESS_MESSAGE = 'Pasted the copied paint into the Roto timeline.';
 const ADD_KEY_SUCCESS_MESSAGE = 'Added an empty Roto key.';
@@ -318,6 +319,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     });
     if (!resolution.ok) {
       input.publishStatus?.(resolution.failure.text || 'The Roto timeline edit is invalid.');
+      if (runnerInput.operationKind === 'delete-key-group') {
+        input.publishDiagnostic?.('delete-key-group rejected: ' + resolution.failure.code + ' — ' + resolution.failure.text);
+      }
       return false;
     }
     const proposal = resolution.proposal;
@@ -345,6 +349,20 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   }, [runPhysicalAction, input]);
 
   const deleteRotoFrame = useCallback((): Promise<boolean> => {
+    // D-13 shared transaction: the Backspace/Delete keyboard route and the
+    // toolbar Delete icon already call this one bundle action, so every
+    // delete route shares the group branch with zero routing changes. The
+    // resolver is the membership authority ('unknown-operation-identity'
+    // rejects absent/unknown members fail-closed), so requiredKeyId is null.
+    const selectedKeyIds = input.getSelectedKeyIds?.() ?? [];
+    if (selectedKeyIds.length >= 2) {
+      return runPhysicalAction({
+        intent: { kind: 'delete-key-group', keyIds: Object.freeze([...selectedKeyIds]) },
+        operationKind: 'delete-key-group',
+        requiredKeyId: null,
+        successMessage: GROUP_DELETE_SUCCESS_MESSAGE,
+      });
+    }
     const selectedKeyId = ensureSelectedKeyId(input);
     return runPhysicalAction({
       intent: { kind: 'delete-key', selectedKeyId },
@@ -632,6 +650,10 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     // derives exact interiors, and rejects an over-capacity complete map.
     const records = input.getRotoKeyRecords();
     const selectedKeyId = input.getSelectedKeyId?.() ?? null;
+    // D-10: exactly one key selected = full timeline; two or more =
+    // selected-only scope. Null scope is the byte-identical 36.14 path.
+    const selectedKeyIds = input.getSelectedKeyIds?.() ?? [];
+    const scopeKeyIds = selectedKeyIds.length >= 2 ? Object.freeze([...selectedKeyIds]) as readonly string[] : null;
     const interpolation = input.getRotoInterpolationState();
     const capacity = input.getCapacity();
     const expectedLaunch = {
@@ -648,12 +670,23 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         kind: 'force-spacing',
         emptyFrames,
         selectedKeyId,
+        scopeKeyIds,
       },
       capacity,
       interpolationEnabled: interpolation.enabled,
     });
     if (!resolution.ok) {
-      input.publishStatus?.(resolution.failure.text || 'Force Spacing is invalid.');
+      if (scopeKeyIds !== null) {
+        const failureCode = resolution.failure.code;
+        input.publishStatus?.(
+          failureCode === 'duplicate-destination-frame' || failureCode === 'over-capacity'
+            ? 'Spacing rejected — not enough room'
+            : resolution.failure.text || 'Force Spacing is invalid.',
+        );
+        input.publishDiagnostic?.('force-spacing rejected: ' + failureCode + ' — ' + resolution.failure.text);
+      } else {
+        input.publishStatus?.(resolution.failure.text || 'Force Spacing is invalid.');
+      }
       return false;
     }
     const proposal = resolution.proposal;
