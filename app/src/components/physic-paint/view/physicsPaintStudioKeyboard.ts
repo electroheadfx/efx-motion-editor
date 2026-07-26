@@ -16,6 +16,7 @@ export interface PhysicsPaintStudioKeyboardActions {
   redo: () => void;
   deleteRotoKey?: () => void;
   selectAllRotoKeys?: () => void;
+  collapseRotoSelection?: () => void;
 }
 
 export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
@@ -109,6 +110,24 @@ export function dispatchPhysicsPaintStudioKeyDown(
     if (!(event.target instanceof Element) || event.target.closest('.physics-paint-workflow-strip') === null) return;
     event.preventDefault();
     actions.selectAllRotoKeys();
+    return;
+  }
+
+  if (
+    event.key === 'Escape'
+    && !event.repeat
+    && !event.metaKey
+    && !event.ctrlKey
+    && !event.altKey
+    && !event.shiftKey
+  ) {
+    // Escape-collapse (D-02): no modifiers, bubble-phase only. No new
+    // window-level or capture-phase listener — the drag session's existing
+    // capture listener already wins during gestures via
+    // stopImmediatePropagation, so drag-cancel keeps precedence (Pitfall 4).
+    if (!actions.collapseRotoSelection) return;
+    event.preventDefault();
+    actions.collapseRotoSelection();
     return;
   }
 

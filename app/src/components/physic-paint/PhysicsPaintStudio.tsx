@@ -5,7 +5,7 @@ import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoC
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
-import { selectAllRotoKeyIds, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
+import { selectAllRotoKeyIds, collapseRotoKeySelection, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, isPhysicsPaintDevExportEnabled, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
@@ -865,6 +865,14 @@ export function PhysicsPaintStudio() {
       redo,
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,
       selectAllRotoKeys,
+      collapseRotoSelection: () => {
+        // D-02: collapse only an active multi-selection; a single-key
+        // selection is already collapsed and stays untouched.
+        if (selectedKeyIds.value.length <= 1) return;
+        const next = collapseRotoKeySelection(selectedKeyId.peek());
+        selectedKeyIds.value = next.selectedKeyIds;
+        selectionAnchorKeyId.value = next.anchorKeyId;
+      },
       toggleShortcuts: () => setShortcutsVisible((visible) => !visible),
       toggleRotoPlayback: rotoCachedPlayback.toggle,
       navigateRotoFrame: (frame) => { void requestRotoFrameNavigation(frame); },
