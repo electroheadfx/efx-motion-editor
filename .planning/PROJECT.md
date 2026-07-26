@@ -102,6 +102,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Physics Paint Roto timeline cells distinguish empty, cached, editable/current, generated/render-only, background-only, dirty, and saving states with semantic labels, non-color visual cues, and compact legend/status copy — v0.8.0 Phase 36.5
 - ✓ Physics Paint dirty Roto frames save automatically on leave with source-frame feedback, latest-destination queuing, and failure retention — v0.8.0 Phase 36.6
 - ✓ Stop-motion animators can duplicate, insert, delete, copy, and paste real Physics Paint Roto keys with clean cache/cell/canvas state — v0.8.0 Phase 36.7
+- ✓ Physics Paint Roto timeline ships the approved final UI: fixed-geometry strip with grouped controls, guarded icon actions with styled tooltips, elastic status capsule, real-key diamonds on the EFX Motion layer, + Key empty-paint promotion, resizable sidebar sections, and Scripts panel script actions — v0.8.0 Phase 36.15
 
 ### Active
 
@@ -119,7 +120,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - Architecture notes for the future editor transport path from standalone paint output into EFX Motion Editor frame/layer cache.
 - Explicit non-replacement boundary: perfect-freehand remains the fast/direct paint path and p5.brush remains the FX brush path; efx-physic-paint is an additional physics paint tool.
 
-**State (2026-07-25):** All milestone phases complete through Phase 36.14 — the Roto timeline runs on one deterministic physical-frame authority (stable keyId + direct appFrame, gap-derived interpolation, parent-authoritative settlement), native UAT approved 2026-07-24, and the typecheck/vitest/build gates are green. Three follow-ups authorized at closure (final corrected-reference UI integration, deterministic resolver regression tests, code-review bug fixes) are recorded in STATE.md Deferred Items.
+**State (2026-07-26):** All milestone phases complete through Phase 36.15 — the Roto timeline final UI integration is shipped and UAT-approved (13 plans: styled tooltips, guarded icon actions, fixed-geometry strip, status capsule, canvas key diamonds, selection guard, sidebar restructure with resizable sections, plus ten user-driven UAT gap closures). One closure-authorized follow-up (the final corrected-reference UI integration) is now DELIVERED by 36.15. Two follow-ups remain in STATE.md Deferred Items (deterministic resolver regression tests, code-review bug fixes); the 36.15 advisory code review added 1 critical + 4 warnings (delete-key keyboard throw, resize drag math, scrollbar pointer-capture, unstable action bundle, color-drag pointercancel) as candidates.
 
 ## Latest Milestone: v0.7.0 Monorepo & Paint Enhancements (Shipped 2026-04-05)
 
@@ -236,4 +237,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-25 after Phase 36.14 — deterministic physical-frame Roto timeline cutover complete; native UAT approved, executable gates green; milestone v0.8.0 phases finished with three closure-authorized follow-ups recorded in STATE.md Deferred Items*
+*Last updated: 2026-07-26 after Phase 36.15 — Roto timeline final UI integration complete and UAT-approved; milestone v0.8.0 phases finished; remaining follow-ups recorded in STATE.md Deferred Items*
