@@ -883,7 +883,8 @@ function computeSelectAllKeysAvailability(input: RotoTimelineActionsInput): Acti
   return { eligible: true, reason: null };
 }
 
-function computeForceSpacingAvailability(input: RotoTimelineActionsInput): ActionAvailability {  if (!input.getLaunchContext || !input.getLaunchContext()) {    return { eligible: false, reason: 'Select a Physics Paint Roto timeline before applying Force Spacing.' };
+function computeForceSpacingAvailability(input: RotoTimelineActionsInput): ActionAvailability {  if (!input.getLaunchContext || !input.getLaunchContext()) {
+    return { eligible: false, reason: 'Select a Physics Paint Roto timeline before applying Force Spacing.' };
   }
   if (!input.executePhysicalEdit || !input.getRotoKeyRecords || !input.getRotoInterpolationState || !input.getCapacity) {
     return { eligible: false, reason: 'Timeline editing is unavailable.' };
