@@ -45,12 +45,17 @@ export const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
  * the generic physical history hook can route Undo/Redo through the same
  * coordinator execute seam; Task 2 attaches replay provenance to these
  * kinds only. Plan 36.14-22 adds the non-history canonical interpolation
- * operations to that same acknowledged envelope.
+ * operations to that same acknowledged envelope. Phase 37 adds the group
+ * kinds `move-key-group` and `delete-key-group`; they ride the same generic
+ * acknowledged envelope as ordinary mapping-only edits with no semantic
+ * delta and no multi-selection field crossing the bridge.
  */
 export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-slot'
   | 'delete-key'
+  | 'delete-key-group'
   | 'move-key'
+  | 'move-key-group'
   | 'force-spacing'
   | 'duplicate-key'
   | 'paste-key'
@@ -194,7 +199,9 @@ function isBoundedPhysicalKeyId(value: unknown): value is string {
 function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is PhysicPaintRotoPhysicalEditOperationKind {
   return value === 'insert-slot'
     || value === 'delete-key'
+    || value === 'delete-key-group'
     || value === 'move-key'
+    || value === 'move-key-group'
     || value === 'force-spacing'
     || value === 'duplicate-key'
     || value === 'paste-key'

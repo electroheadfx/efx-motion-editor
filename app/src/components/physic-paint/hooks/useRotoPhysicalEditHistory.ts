@@ -12,8 +12,9 @@
  * Command shape (D-09):
  * - `operationId`: the coordinator's accepted operation ID (dedupe key);
  * - `operationKind`: the original ordinary kind (`insert-slot`,
- *   `delete-key`, `move-key`, `force-spacing`, `duplicate-key`, or
- *   `paste-key`); replay kinds (`undo`, `redo`) are never recorded as new
+ *   `delete-key`, `delete-key-group`, `move-key`, `move-key-group`,
+ *   `force-spacing`, `duplicate-key`, or `paste-key`); replay kinds
+ *   (`undo`, `redo`) are never recorded as new
  *   commands;
  * - `before`/`after`: immutable complete `RotoPhysicalEditSnapshot`
  *   captured by the coordinator at acceptance, including records,
@@ -126,7 +127,9 @@ function isOrdinaryOperationKind(
 ): kind is RotoPhysicalEditOrdinaryOperationKind {
   return kind === 'insert-slot'
     || kind === 'delete-key'
+    || kind === 'delete-key-group'
     || kind === 'move-key'
+    || kind === 'move-key-group'
     || kind === 'force-spacing'
     || kind === 'duplicate-key'
     || kind === 'paste-key';
