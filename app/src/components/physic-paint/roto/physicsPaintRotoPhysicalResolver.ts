@@ -111,6 +111,7 @@ export type PhysicPaintRotoPhysicalEditTarget =
 export type PhysicPaintRotoPhysicalEditIntent =
   | { readonly kind: 'insert-slot'; readonly selectedKeyId: string }
   | { readonly kind: 'delete-key'; readonly selectedKeyId: string }
+  | { readonly kind: 'delete-key-group'; readonly keyIds: readonly string[] }
   | {
       readonly kind: 'move-key';
       readonly movedKeyId: string;
@@ -126,6 +127,8 @@ export type PhysicPaintRotoPhysicalEditIntent =
       readonly kind: 'force-spacing';
       readonly emptyFrames: number;
       readonly selectedKeyId: string | null;
+      /** Phase 37 D-10..D-12: selected-keys-only scope; null/undefined = full timeline. */
+      readonly scopeKeyIds?: readonly string[] | null;
     }
   | {
       readonly kind: 'duplicate-key';
@@ -146,6 +149,7 @@ export type PhysicPaintRotoPhysicalEditIntent =
 export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-slot'
   | 'delete-key'
+  | 'delete-key-group'
   | 'move-key'
   | 'move-key-group'
   | 'force-spacing'
@@ -261,6 +265,8 @@ export interface PhysicPaintRotoPhysicalEditProposal {
   readonly changes: readonly PhysicPaintRotoPhysicalIdentityChange[];
   /** Removed identity for Delete, null for every other operation. */
   readonly removedKeyId: string | null;
+  /** Complete removed identity set: the sole removed identity for `delete-key`, the full group for `delete-key-group`, empty otherwise. */
+  readonly removedKeyIds: readonly string[];
   /** Drag presentation metadata for Move, null for every other operation. */
   readonly drag: PhysicPaintRotoPhysicalDragPresentation | null;
   /** Complete canonical next records for Duplicate/Paste; null for mapping-only edits and replay. */
@@ -585,6 +591,7 @@ export function validatePhysicPaintRotoPhysicalEditSemanticDelta(
 function isResolverOperationKind(value: unknown): value is PhysicPaintRotoPhysicalEditOperationKind {
   return value === 'insert-slot'
     || value === 'delete-key'
+    || value === 'delete-key-group'
     || value === 'move-key'
     || value === 'move-key-group'
     || value === 'force-spacing'
@@ -678,6 +685,9 @@ function validateIdentities(
 // Operation candidate builders (private).
 // ---------------------------------------------------------------------------
 
+/** Shared frozen empty removed-identity set for every non-delete operation. */
+const EMPTY_REMOVED_KEY_IDS = Object.freeze([]) as readonly string[];
+
 interface Candidate {
   /** Final identity-to-frame mapping for this operation. */
   readonly mapping: Map<string, number>;
@@ -685,6 +695,8 @@ interface Candidate {
   readonly expectedKeyIds: ReadonlySet<string>;
   /** Removed identity for Delete, null for every other operation. */
   readonly removedKeyId: string | null;
+  /** Complete removed identity set; the sole removed identity for `delete-key`, the full group for `delete-key-group`, empty otherwise. */
+  readonly removedKeyIds: readonly string[];
   /** Selected identity after the operation, or null when nothing remains. */
   readonly selectedKeyId: string | null;
   readonly operationKind: PhysicPaintRotoPhysicalEditOperationKind;
@@ -730,6 +742,7 @@ function buildInsertCandidate(
     mapping,
     expectedKeyIds: identities.keyIds,
     removedKeyId: null,
+    removedKeyIds: EMPTY_REMOVED_KEY_IDS,
     selectedKeyId,
     operationKind: 'insert-slot',
     changed: true,
@@ -780,8 +793,75 @@ function buildDeleteCandidate(
     mapping,
     expectedKeyIds,
     removedKeyId: selectedKeyId,
+    removedKeyIds: Object.freeze([selectedKeyId]) as readonly string[],
     selectedKeyId: nextSelected,
     operationKind: 'delete-key',
+    changed: true,
+    roleByKeyId,
+    drag: null,
+  };
+}
+
+/**
+ * Phase 37 D-13..D-15 group Delete: remove every selected identity in one
+ * atomic operation, shift each unselected survivor left by the count of
+ * removed keys whose original frame is below its frame (GDel-1: D@10 - 2 →
+ * D@8), and preserve every unselected identity at its rippled frame.
+ *
+ * Survivor selection (D-14): the smallest-frame unselected key with original
+ * frame strictly greater than the group's last position becomes selected;
+ * when the group was at the end, fall back to the largest-frame unselected
+ * key below the group's first position; when nothing remains, the selection
+ * is null (GDel-2 delete-to-empty, cursor returns to the launch frame).
+ */
+function buildDeleteGroupCandidate(
+  identities: ValidatedIdentities,
+  keyIds: readonly string[],
+): Candidate {
+  const removalSet = new Set(keyIds);
+  let minRemovedFrame = Number.POSITIVE_INFINITY;
+  let maxRemovedFrame = Number.NEGATIVE_INFINITY;
+  const removedFramesAsc: number[] = [];
+  for (const identity of identities.ordered) {
+    if (!removalSet.has(identity.keyId)) continue;
+    removedFramesAsc.push(identity.appFrame);
+    if (identity.appFrame < minRemovedFrame) minRemovedFrame = identity.appFrame;
+    if (identity.appFrame > maxRemovedFrame) maxRemovedFrame = identity.appFrame;
+  }
+
+  const mapping = new Map<string, number>();
+  const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+  const expectedKeyIds = new Set<string>();
+  let successorKeyId: string | null = null;
+  let previousKeyId: string | null = null;
+
+  for (const identity of identities.ordered) {
+    if (removalSet.has(identity.keyId)) continue;
+    expectedKeyIds.add(identity.keyId);
+    let shift = 0;
+    for (const removedFrame of removedFramesAsc) {
+      if (removedFrame < identity.appFrame) shift += 1;
+    }
+    mapping.set(identity.keyId, identity.appFrame - shift);
+    if (shift > 0) roleByKeyId.set(identity.keyId, 'ripple-left');
+    if (successorKeyId === null && identity.appFrame > maxRemovedFrame) {
+      // Track the smallest-frame survivor strictly after the group's last position.
+      successorKeyId = identity.keyId;
+    }
+    if (identity.appFrame < minRemovedFrame) {
+      previousKeyId = identity.keyId;
+    }
+  }
+
+  const nextSelected = successorKeyId ?? previousKeyId;
+
+  return {
+    mapping,
+    expectedKeyIds,
+    removedKeyId: null,
+    removedKeyIds: Object.freeze([...keyIds]) as readonly string[],
+    selectedKeyId: nextSelected,
+    operationKind: 'delete-key-group',
     changed: true,
     roleByKeyId,
     drag: null,
@@ -823,6 +903,7 @@ function buildDuplicateCandidate(
     mapping,
     expectedKeyIds,
     removedKeyId: null,
+    removedKeyIds: EMPTY_REMOVED_KEY_IDS,
     selectedKeyId: newKeyId,
     operationKind: 'duplicate-key',
     changed: true,
@@ -869,6 +950,7 @@ function buildPasteCandidate(
     mapping,
     expectedKeyIds,
     removedKeyId: null,
+    removedKeyIds: EMPTY_REMOVED_KEY_IDS,
     selectedKeyId,
     operationKind: 'paste-key',
     changed,
@@ -992,6 +1074,7 @@ function buildMoveNoChangeCandidate(
     mapping,
     expectedKeyIds: identities.keyIds,
     removedKeyId: null,
+    removedKeyIds: EMPTY_REMOVED_KEY_IDS,
     selectedKeyId: movedKeyId,
     operationKind: 'move-key',
     changed: false,
@@ -1082,6 +1165,7 @@ function openAndInsert(
     mapping,
     expectedKeyIds: identities.keyIds,
     removedKeyId: null,
+    removedKeyIds: EMPTY_REMOVED_KEY_IDS,
     selectedKeyId: movedKeyId,
     operationKind: 'move-key',
     changed: computeChanged(identities, mapping),
@@ -1229,6 +1313,7 @@ function buildMoveGroupCandidate(
         mapping,
         expectedKeyIds: identities.keyIds,
         removedKeyId: null,
+        removedKeyIds: EMPTY_REMOVED_KEY_IDS,
         selectedKeyId: grabbedKeyId,
         operationKind: 'move-key-group',
         changed: computeChanged(identities, mapping),
@@ -1359,6 +1444,7 @@ function buildMoveGroupCandidate(
         mapping,
         expectedKeyIds: identities.keyIds,
         removedKeyId: null,
+        removedKeyIds: EMPTY_REMOVED_KEY_IDS,
         selectedKeyId: grabbedKeyId,
         operationKind: 'move-key-group',
         changed: computeChanged(identities, mapping),
@@ -1408,6 +1494,7 @@ function buildForceSpacingCandidate(
   identities: ValidatedIdentities,
   emptyFrames: number,
   selectedKeyId: string | null,
+  scopeKeyIds?: readonly string[] | null,
 ): MoveBuilderResult {
   if (
     typeof emptyFrames !== 'number' ||
@@ -1435,6 +1522,103 @@ function buildForceSpacingCandidate(
     }
   }
 
+  // Phase 37 D-10..D-12 scoped variant: the earliest selected key anchors at
+  // its CURRENT frame, selected key `i` maps to `anchor + i * (N + 1)`, and
+  // unselected keys keep their frames as hard walls (D-11) — any computed
+  // selected destination equal to an unselected frame rejects atomically.
+  // Over-capacity destinations are left for the common finalizer. The
+  // null/undefined scope path below is the untouched 36.14 algorithm (GFS-3).
+  if (scopeKeyIds !== undefined && scopeKeyIds !== null) {
+    if (!Array.isArray(scopeKeyIds) || scopeKeyIds.length === 0) {
+      return {
+        ok: false,
+        resolution: fail('malformed-identity', 'force-spacing', 'Scoped Force Spacing requires a non-empty scopeKeyIds array.'),
+      };
+    }
+    const scopeSet = new Set<string>();
+    for (const keyId of scopeKeyIds) {
+      if (!isBoundedKeyId(keyId)) {
+        return {
+          ok: false,
+          resolution: fail('malformed-identity', 'force-spacing', 'Scoped Force Spacing requires bounded scope keyIds.'),
+        };
+      }
+      if (scopeSet.has(keyId)) {
+        return {
+          ok: false,
+          resolution: fail('duplicate-id', 'force-spacing', `Duplicate scope keyId "${keyId}".`),
+        };
+      }
+      scopeSet.add(keyId);
+    }
+    for (const keyId of scopeSet) {
+      if (!identities.keyIds.has(keyId)) {
+        return {
+          ok: false,
+          resolution: fail('unknown-operation-identity', 'force-spacing', `Scope identity "${keyId}" does not exist.`),
+        };
+      }
+    }
+
+    const scopedOrdered = identities.ordered.filter((identity) => scopeSet.has(identity.keyId));
+    const anchor = scopedOrdered[0].appFrame;
+    const step = emptyFrames + 1;
+    const mapping = new Map<string, number>();
+    const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+    const scopedDestinations: number[] = [];
+
+    for (const identity of identities.ordered) {
+      if (!scopeSet.has(identity.keyId)) {
+        mapping.set(identity.keyId, identity.appFrame);
+      }
+    }
+    for (let i = 0; i < scopedOrdered.length; i += 1) {
+      const identity = scopedOrdered[i];
+      const next = anchor + i * step;
+      mapping.set(identity.keyId, next);
+      scopedDestinations.push(next);
+      if (next !== identity.appFrame) {
+        roleByKeyId.set(identity.keyId, 'reanchored');
+      }
+    }
+
+    const conflicts: number[] = [];
+    for (const destination of scopedDestinations) {
+      for (const identity of identities.ordered) {
+        if (!scopeSet.has(identity.keyId) && identity.appFrame === destination) {
+          conflicts.push(destination);
+          break;
+        }
+      }
+    }
+    if (conflicts.length > 0) {
+      return {
+        ok: false,
+        resolution: fail(
+          'duplicate-destination-frame',
+          'force-spacing',
+          `Scoped Force Spacing destination frame ${conflicts[0]} is occupied by an unselected real key.`,
+          conflicts,
+        ),
+      };
+    }
+
+    return {
+      ok: true as const,
+      candidate: {
+        mapping,
+        expectedKeyIds: identities.keyIds,
+        removedKeyId: null,
+        removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+        selectedKeyId,
+        operationKind: 'force-spacing',
+        changed: computeChanged(identities, mapping),
+        roleByKeyId,
+        drag: null,
+      },
+    };
+  }
+
   const firstAppFrame = identities.ordered[0].appFrame;
   const step = emptyFrames + 1;
   const mapping = new Map<string, number>();
@@ -1455,6 +1639,7 @@ function buildForceSpacingCandidate(
       mapping,
       expectedKeyIds: identities.keyIds,
       removedKeyId: null,
+      removedKeyIds: EMPTY_REMOVED_KEY_IDS,
       selectedKeyId,
       operationKind: 'force-spacing',
       changed: computeChanged(identities, mapping),
@@ -1653,10 +1838,12 @@ function finalizeProposal(
   const selectedKeyId = candidate.selectedKeyId;
   const selectedAppFrame = semanticSelectedAppFrame;
 
-  // 6. Build affectedKeyIds: shifted identities plus removed identity.
+  // 6. Build affectedKeyIds: shifted identities plus every removed identity.
   const affectedList: string[] = changesFrozen.map((change) => change.keyId);
-  if (candidate.removedKeyId !== null && !affectedList.includes(candidate.removedKeyId)) {
-    affectedList.push(candidate.removedKeyId);
+  for (const removedKeyId of candidate.removedKeyIds) {
+    if (!affectedList.includes(removedKeyId)) {
+      affectedList.push(removedKeyId);
+    }
   }
   if (candidate.semanticDelta?.kind === 'duplicate-key' && !affectedList.includes(candidate.semanticDelta.newKeyId)) {
     affectedList.push(candidate.semanticDelta.newKeyId);
@@ -1669,7 +1856,7 @@ function finalizeProposal(
 
   // 7. Build concise status.
   const code: 'ok' | 'ok-no-change' = candidate.changed ? 'ok' : 'ok-no-change';
-  const text = buildStatusText(operationKind, candidate.changed, selectedAppFrame, candidate.removedKeyId);
+  const text = buildStatusText(operationKind, candidate.changed, selectedAppFrame, candidate.removedKeyIds);
 
   const status = Object.freeze({
     operationKind,
@@ -1690,6 +1877,7 @@ function finalizeProposal(
     selectedAppFrame,
     changes: changesFrozen,
     removedKeyId: candidate.removedKeyId,
+    removedKeyIds: candidate.removedKeyIds,
     drag: candidate.drag,
     nextRecords: candidate.nextRecords ?? null,
     semanticDelta: candidate.semanticDelta ?? null,
@@ -1703,7 +1891,7 @@ function buildStatusText(
   operationKind: PhysicPaintRotoPhysicalEditOperationKind,
   changed: boolean,
   selectedAppFrame: number | null,
-  removedKeyId: string | null,
+  removedKeyIds: readonly string[],
 ): string {
   if (operationKind === 'insert-slot') {
     if (!changed) return 'No change';
@@ -1712,8 +1900,12 @@ function buildStatusText(
       : `Inserted slot at frame ${selectedAppFrame}`;
   }
   if (operationKind === 'delete-key') {
-    if (removedKeyId === null) return 'No change';
+    if (removedKeyIds.length === 0) return 'No change';
     return 'Deleted key';
+  }
+  if (operationKind === 'delete-key-group') {
+    if (removedKeyIds.length === 0) return 'No change';
+    return 'Keys deleted';
   }
   if (operationKind === 'move-key') {
     if (!changed) return 'No change';
@@ -1894,6 +2086,36 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
 
+  if (intent.kind === 'delete-key-group') {
+    if (!Array.isArray(intent.keyIds) || intent.keyIds.length === 0) {
+      return fail('malformed-identity', operationKind, 'Group delete requires a non-empty keyIds array.');
+    }
+    const seenKeyIds = new Set<string>();
+    for (const keyId of intent.keyIds) {
+      if (!isBoundedKeyId(keyId)) {
+        return fail('malformed-identity', operationKind, 'Group delete requires bounded keyIds.');
+      }
+      if (seenKeyIds.has(keyId)) {
+        return fail('duplicate-id', operationKind, `Duplicate keyId "${keyId}".`);
+      }
+      seenKeyIds.add(keyId);
+    }
+    if (identities.ordered.length === 0) {
+      return fail('empty-key-set', operationKind, 'Group delete requires at least one real key.');
+    }
+    for (const keyId of seenKeyIds) {
+      if (!identities.keyIds.has(keyId)) {
+        // Idempotency guard: an already-absent or unknown identity fails
+        // closed with no proposal (37-GROUP-DELETE).
+        return fail('unknown-operation-identity', operationKind, `Group delete targets unknown identity "${keyId}".`);
+      }
+    }
+    const candidate = buildDeleteGroupCandidate(identities, intent.keyIds);
+    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled);
+    if (!finalized.ok) return finalized.resolution;
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
   if (intent.kind === 'duplicate-key') {
     if (!isBoundedKeyId(intent.sourceKeyId) || !isBoundedKeyId(intent.newKeyId) || intent.sourceKeyId === intent.newKeyId) {
       return fail('malformed-identity', operationKind, 'Duplicate source and fresh identities must be distinct bounded IDs.');
@@ -1987,7 +2209,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
   }
 
   if (intent.kind === 'force-spacing') {
-    const spacingResult = buildForceSpacingCandidate(identities, intent.emptyFrames, intent.selectedKeyId);
+    const spacingResult = buildForceSpacingCandidate(identities, intent.emptyFrames, intent.selectedKeyId, intent.scopeKeyIds);
     if (!spacingResult.ok) return spacingResult.resolution;
     const finalized = finalizeProposal(spacingResult.candidate, identities, input.capacity, input.interpolationEnabled);
     if (!finalized.ok) return finalized.resolution;

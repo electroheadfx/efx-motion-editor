@@ -217,6 +217,7 @@ function buildReplayProposal(target: RotoPhysicalEditSnapshot<unknown>): PhysicP
     selectedAppFrame: target.selectedAppFrame,
     changes: [],
     removedKeyId: null,
+    removedKeyIds: Object.freeze([]) as readonly string[],
     drag: null,
     nextRecords: null,
     semanticDelta: null,
