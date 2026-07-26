@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.15
 current_phase_name: roto-timeline-final-ui-integration
 status: verifying
-stopped_at: Completed 36.15-06-PLAN.md
-last_updated: "2026-07-25T22:28:43.637Z"
+stopped_at: Completed 36.15-08-PLAN.md
+last_updated: "2026-07-26T06:46:51.848Z"
 last_activity: 2026-07-25
 last_activity_desc: Phase 36.15 execution started
 progress:
   total_phases: 18
   completed_phases: 17
-  total_plans: 129
-  completed_plans: 123
+  total_plans: 130
+  completed_plans: 124
   percent: 94
 ---
 
@@ -118,6 +118,7 @@ Progress: [██████████████████░░] 114/121
 | Phase 36.15 P07 | 12min | 2 tasks | 7 files |
 | Phase 36.15 P05 | 19min | 2 tasks | 5 files |
 | Phase 36.15 P06 | 37min | 12 tasks | 11 files |
+| Phase 36.15 P08 | 23min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -237,6 +238,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 36.15 Plan 06]: + Key reuses the paste-to-empty physical edit with an empty payload (script-target promotion path); reactive canAddEmptyKey/addEmptyKeyDisabledReason ports own availability
 - [Phase ?]: [Phase 36.15 Plan 06]: Header final order is navigation, capsule, + Key, Duplicate, Tools dropdown, Close; layer name lives in the bottom action row; dropdown listeners register only while open
 - [Phase ?]: [Phase 36.15 Plan 06]: Strip is a fixed 155px five-band surface (46/1/28/38/28/14) with D-18 horizontal scroll; studio top row grows via minmax(58px, auto) with zero-reserve topbar side columns
+- [Phase ?]: [Phase 36.15 Plan 08]: Tools dropdown removed; final top bar is playback, fps/auto, capsule, interpolation dropdown (Frame duplicate/Frame blend native select), Close; bottom row is layer, Key chip, + Key, Duplicate, Insert, Copy, Paste, Delete, Set Key Space
+- [Phase ?]: [Phase 36.15 Plan 08]: Gap B fixed via native select (OS popup immune to clipping) plus placement='below' header tooltips that stay inside the overflow-y:hidden strip
+- [Phase ?]: [Phase 36.15 Plan 08]: Copy/Apply Script relocated to the Scripts toolbar before Clear Script Buffer (user wording); de-prefixed tooltip grammar lives in the shared buildGuardedActionTooltipCopy builder
 
 ### Pending Todos
 
@@ -318,6 +322,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-25T22:28:43.623Z
-Stopped at: Completed 36.15-06-PLAN.md
+Last session: 2026-07-26T06:46:51.834Z
+Stopped at: Completed 36.15-08-PLAN.md
 Resume file: None
