@@ -1183,6 +1183,23 @@ button.destructive {
   border-radius: 5px;
   background: #4b4e51;
   color: #f3f5f7;
+  /* Opt out of the global button text-transform: uppercase rule so the
+     second-row Copy / Apply / Clear labels render lowercase (36.15-10, UAT
+     Gap F-1). */
+  text-transform: none;
+}
+
+/* The labeled second-row buttons overflow their narrow grid cells, which let
+   the flex layout shrink the icon below the first-row 16px size ("ridiculous
+   small"). Pin the icon at full size; the label absorbs the shortage with an
+   ellipsis (36.15-10, UAT Gap F-1). */
+.physics-paint-scripts-toolbar .physics-paint-script-icon-button svg {
+  flex: 0 0 auto;
+}
+.physics-paint-scripts-toolbar .physics-paint-script-icon-button .physics-paint-roto-key-icon-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .physics-paint-scripts-list {
@@ -1675,6 +1692,9 @@ button.destructive {
   border-radius: 4px;
   background: #3a424c;
   color: #eef4f8;
+  /* Opt out of the global button text-transform: uppercase rule so the
+     short visible labels render lowercase (36.15-10, UAT Gap F-3). */
+  text-transform: none;
   cursor: pointer;
 }
 
@@ -1843,6 +1863,9 @@ button.destructive {
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
+  /* Render the submit as 'Apply', not 'APPLY' — opt out of the global
+     button text-transform: uppercase rule (36.15-10, UAT Gap F-5). */
+  text-transform: none;
   cursor: pointer;
 }
 
@@ -2090,9 +2113,26 @@ button.destructive {
 .physics-paint-roto-action-row {
   display: flex;
   align-items: center;
+  /* Three visually separated groups (identity / tools / key spacing) with the
+     top bar's 8px pill-island gaps (36.15-10, UAT Gap F-2). */
+  gap: 8px;
   height: 28px;
   min-width: 2160px;
   background: #37393a;
+}
+
+/* Group 1 of the bottom action row: the Layer name + Key {n} identity chip is
+   its OWN tonal group, not fused with the tool icons (36.15-10, UAT Gap F-4).
+   Same tonal language as the tools group pill. */
+.physics-paint-roto-key-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid #69727c;
+  border-radius: 8px;
+  background: #20262d;
 }
 
 

@@ -236,3 +236,40 @@ describe('Physics Paint Scripts panel second-row label contract (36.15-09, UAT G
     expect(rule).toMatch(/padding:\s*0\s+[1-9]\d*px/);
   });
 });
+
+describe('Physics Paint Scripts panel Gap F second-row contract (36.15-10, UAT Gap F-1)', () => {
+  it('renders the second-row labels lowercase by opting the script icon buttons out of the global uppercase button rule', () => {
+    // The global `button { text-transform: uppercase }` rule rendered the
+    // Copy / Apply / Clear labels as CAPS; the script icon buttons opt out.
+    // Anchored at a line start so compound selectors (e.g. the toolbar
+    // width rule) do not match first.
+    const ruleStart = css.indexOf('\n.physics-paint-script-icon-button {');
+    expect(ruleStart).toBeGreaterThanOrEqual(0);
+    const ruleEnd = css.indexOf('}', ruleStart);
+    const rule = css.slice(ruleStart, ruleEnd === -1 ? css.length : ruleEnd + 1);
+    expect(rule).toContain('text-transform: none');
+    // Source labels stay lowercase single words.
+    for (const label of ['Copy', 'Apply', 'Clear']) {
+      expect(panel).toContain(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
+    }
+  });
+
+  it('keeps the second-row icons at the first-row size by preventing flex shrink in the grid cells', () => {
+    // Both rows use size={16} Lucide icons; the labeled second-row buttons
+    // overflow their narrow grid cells, so the icon shrank below 16px
+    // ("ridiculous small"). flex: 0 0 auto keeps the icon at full size.
+    const ruleStart = css.indexOf('.physics-paint-scripts-toolbar .physics-paint-script-icon-button svg {');
+    expect(ruleStart).toBeGreaterThanOrEqual(0);
+    const ruleEnd = css.indexOf('}', ruleStart);
+    const rule = css.slice(ruleStart, ruleEnd === -1 ? css.length : ruleEnd + 1);
+    expect(rule).toMatch(/flex:\s*0\s+0\s+auto|flex-shrink:\s*0/);
+    const toolbar = getScriptsToolbarBlock(panel);
+    for (const icon of ['<Clipboard size={16}', '<ClipboardPen size={16}', '<ClipboardX size={16}']) {
+      expect(toolbar).toContain(icon);
+    }
+    // First-row icons stay size={16} too — true size parity.
+    for (const icon of ['<Save size={16}', '<Paintbrush size={16}', '<Play size={16}']) {
+      expect(toolbar).toContain(icon);
+    }
+  });
+});

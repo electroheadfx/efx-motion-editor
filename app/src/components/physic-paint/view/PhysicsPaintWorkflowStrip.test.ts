@@ -15,8 +15,10 @@ function getRotoMapBlock(code: string): string {
 function getWorkflowStripPropsInterface(code: string): string {
   return code.slice(code.indexOf('export interface PhysicsPaintWorkflowStripProps'), code.indexOf('const VIRTUAL_TIMELINE_FRAME_COUNT'));
 }
-function getKeyUtilitiesRowBlock(code: string): string {
-  const rowStart = code.indexOf('physics-paint-roto-key-utilities');
+function getActionRowBlock(code: string): string {
+  // Anchored at the action-row band (not the tools group) so the block spans
+  // all three Gap F groups: identity → tools → key spacing (36.15-10).
+  const rowStart = code.indexOf('class="physics-paint-roto-action-row"');
   const rowEnd = code.indexOf('physics-paint-timeline-scrollbar', rowStart);
   return code.slice(rowStart, rowEnd === -1 ? code.length : rowEnd);
 }
@@ -100,7 +102,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   });
 
   it('renders the Key {n} chip before any action button in the row (D-13)', () => {
-    const row = getKeyUtilitiesRowBlock(source());
+    const row = getActionRowBlock(source());
     const chipIndex = row.indexOf('physics-paint-roto-key-context');
     const firstButtonIndex = row.indexOf('<button');
     expect(chipIndex).toBeGreaterThanOrEqual(0);
@@ -108,7 +110,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   });
 
   it('shows the layer name with the current frame before the first action-row icon', () => {
-    const row = getKeyUtilitiesRowBlock(source());
+    const row = getActionRowBlock(source());
     const layerIndex = row.indexOf('physics-paint-roto-key-layer');
     const chipIndex = row.indexOf('physics-paint-roto-key-context');
     const firstButtonIndex = row.indexOf('<button');
@@ -121,7 +123,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   });
 
   it('renders the six guarded icon actions in locked order (D-10)', () => {
-    const row = getKeyUtilitiesRowBlock(source());
+    const row = getActionRowBlock(source());
     const indices = ROW_ICON_ACTIONS.map(({ label }) => row.indexOf(`aria-label="${label}"`));
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
     for (let i = 1; i < indices.length; i += 1) {
@@ -142,7 +144,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('removes the seven text buttons, the Discard Script button, and the script action props from the row (D-11, Gap C)', () => {
     const code = source();
-    const row = getKeyUtilitiesRowBlock(code);
+    const row = getActionRowBlock(code);
     for (const obsolete of ['>Insert</button>', '>Dup</button>', '>Copy</button>', '>Paste</button>', '>Delete</button>', '>Copy Script</button>', '>Apply Script</button>', '>Discard Script</button>']) {
       expect(row).not.toContain(obsolete);
     }
@@ -158,7 +160,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('keeps every guarded action focusable without native disabled and guarded on click and keydown (D-12)', () => {
     const code = source();
-    const row = getKeyUtilitiesRowBlock(code);
+    const row = getActionRowBlock(code);
     expect(row.replace(/aria-disabled/g, '')).not.toContain('disabled=');
     expect(row).not.toContain('title=');
     for (const { label, guard, handler } of ROW_ICON_ACTIONS) {
@@ -175,7 +177,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('carries de-prefixed tooltip copy via the shared guarded-action copy builder on every action (Gap D)', () => {
     const code = source();
-    const row = getKeyUtilitiesRowBlock(code);
+    const row = getActionRowBlock(code);
     // The tool-name prefix is dropped: description or 'unavailable: {reason}'.
     expect(row).not.toContain(' — unavailable: ');
     expect(code).toContain('function buildGuardedActionTooltipCopy(description: string, disabledReason: string | null)');
@@ -190,7 +192,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   });
 
   it('renders a short visible label after each enlarged bottom-row icon (Gap D)', () => {
-    const row = getKeyUtilitiesRowBlock(source());
+    const row = getActionRowBlock(source());
     const labeledActions: ReadonlyArray<{ action: string; icon: string; label: string }> = [
       { action: 'Add key', icon: 'Plus', label: 'Key' },
       { action: 'Duplicate key', icon: 'CopyPlus', label: 'Duplicate' },
@@ -222,7 +224,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(button).toContain('height: 26px');
     expect(button).toContain('min-width: 26px');
     expect(button).toContain('gap: 4px');
-    const label = getCssRuleBlock(styles, '.physics-paint-roto-key-icon-label {');
+    const label = getCssRuleBlock(styles, '\n.physics-paint-roto-key-icon-label {');
     expect(label).not.toBe('');
     expect(label).toContain('white-space: nowrap');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-action-row {')).toContain('height: 28px');
@@ -604,7 +606,7 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
   });
 
   it('orders the bottom action row as layer, Key chip, Add key, Duplicate, Insert, Copy, Paste, Delete, Set Key Space', () => {
-    const row = getKeyUtilitiesRowBlock(source());
+    const row = getActionRowBlock(source());
     const layerIndex = row.indexOf('physics-paint-roto-key-layer');
     const chipIndex = row.indexOf('physics-paint-roto-key-context');
     const addIndex = row.indexOf('aria-label="Add key"');
@@ -637,7 +639,7 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
   });
 
   it('converts the relocated Set Key Space form to the guarded pattern with a styled tooltip and no native disabled/title', () => {
-    const row = getKeyUtilitiesRowBlock(source());
+    const row = getActionRowBlock(source());
     const spacingIndex = row.indexOf('physics-paint-pill--apply-spacing');
     expect(spacingIndex).toBeGreaterThanOrEqual(0);
     const formEnd = row.indexOf('</form>', spacingIndex);
@@ -681,7 +683,7 @@ describe('PhysicsPaintWorkflowStrip clipping guard contract (36.15-08, UAT Gap B
 
 describe('PhysicsPaintWorkflowStrip Gap E cosmetic contract (36.15-09, UAT Gap E)', () => {
   it('renames the Set Key Space bottom-row label to Key spacing', () => {
-    const row = getKeyUtilitiesRowBlock(source());
+    const row = getActionRowBlock(source());
     expect(row).toContain('<span class="physics-paint-roto-key-icon-label">Key spacing</span>');
     expect(row).not.toContain('<span class="physics-paint-roto-key-icon-label">Space</span>');
   });
@@ -706,5 +708,68 @@ describe('PhysicsPaintWorkflowStrip Gap E cosmetic contract (36.15-09, UAT Gap E
     // state lifts the full four-side outline above the neighbor without
     // touching the 18px pitch or the band geometry.
     expect(current).toMatch(/z-index:\s*[1-9]\d*;/);
+  });
+});
+
+describe('PhysicsPaintWorkflowStrip Gap F grouping and casing contract (36.15-10, UAT Gap F)', () => {
+  it('renders three visually separated bottom-row groups in order: identity, tools, key spacing', () => {
+    const row = getActionRowBlock(source());
+    const identityIndex = row.indexOf('physics-paint-roto-key-identity');
+    const utilitiesIndex = row.indexOf('physics-paint-roto-key-utilities');
+    const spacingIndex = row.indexOf('physics-paint-pill--apply-spacing');
+    for (const index of [identityIndex, utilitiesIndex, spacingIndex]) {
+      expect(index).toBeGreaterThanOrEqual(0);
+    }
+    expect(utilitiesIndex).toBeGreaterThan(identityIndex);
+    expect(spacingIndex).toBeGreaterThan(utilitiesIndex);
+    // The identity group is its OWN group: it closes before the tools group
+    // opens, so the layer name + Key chip are not fused with the tool icons.
+    const identityCloseIndex = row.indexOf('</div>', identityIndex);
+    expect(identityCloseIndex).toBeGreaterThanOrEqual(0);
+    expect(identityCloseIndex).toBeLessThan(utilitiesIndex);
+    // The Key spacing form is likewise outside the tools group.
+    const utilitiesCloseIndex = row.lastIndexOf('</div>', spacingIndex);
+    expect(utilitiesCloseIndex).toBeGreaterThan(utilitiesIndex);
+    expect(utilitiesCloseIndex).toBeLessThan(spacingIndex);
+    // The identity group carries the layer name and the Key chip.
+    const identity = row.slice(identityIndex, identityCloseIndex);
+    expect(identity).toContain('physics-paint-roto-key-layer');
+    expect(identity).toContain('physics-paint-roto-key-context');
+  });
+
+  it('separates the three bottom-row groups with top-bar-style spacing and gives the identity group its own pill', () => {
+    const styles = css();
+    // Same visual language as the top bar pill islands (8px gaps, Plan 04).
+    const actionRow = getCssRuleBlock(styles, '.physics-paint-roto-action-row {');
+    expect(actionRow).toContain('gap: 8px');
+    const identity = getCssRuleBlock(styles, '.physics-paint-roto-key-identity {');
+    expect(identity).not.toBe('');
+    expect(identity).toContain('border:');
+    expect(identity).toContain('background:');
+    // The 28px band and strip geometry stay intact (Plan 06 contract).
+    expect(actionRow).toContain('height: 28px');
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 155px');
+  });
+
+  it('renders bottom-row tool labels lowercase by opting the icon buttons out of the global uppercase button rule', () => {
+    const styles = css();
+    // The global `button { text-transform: uppercase }` rule (studio chrome)
+    // rendered the short labels as CAPS; the bottom-row icon buttons opt out.
+    const button = getCssRuleBlock(styles, '.physics-paint-roto-key-icon-button {');
+    expect(button).toContain('text-transform: none');
+    // Source labels stay lowercase single words.
+    const row = getActionRowBlock(source());
+    for (const label of ['Key', 'Duplicate', 'Insert', 'Copy', 'Paste', 'Delete']) {
+      expect(row).toContain(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
+    }
+  });
+
+  it("renders the Key spacing submit as 'Apply' (not 'APPLY')", () => {
+    const row = getActionRowBlock(source());
+    expect(row).toContain('>Apply</button>');
+    expect(row).not.toContain('>APPLY</button>');
+    const styles = css();
+    const apply = getCssRuleBlock(styles, '.physics-paint-roto-force-spacing-apply {');
+    expect(apply).toContain('text-transform: none');
   });
 });

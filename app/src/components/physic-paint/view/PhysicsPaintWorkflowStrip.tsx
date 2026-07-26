@@ -1004,9 +1004,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               </div>
             </div>
             <div class="physics-paint-roto-action-row">
-              <div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key utilities for frame ${props.currentFrame}`}>
+              <div class="physics-paint-roto-key-identity" role="group" aria-label={`Roto layer ${props.workflowLabel ?? 'PPaint'} key ${props.currentFrame}`}>
                 <span class="physics-paint-roto-key-layer">{props.workflowLabel ?? 'PPaint'}</span>
                 <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
+              </div>
+              <div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key tools for frame ${props.currentFrame}`}>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={addKeyTooltip.onPointerEnter} onPointerLeave={addKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
@@ -1175,8 +1177,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {buildGuardedActionTooltipCopy('Delete key', deleteRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
-                {physicalActions ? (
-                  <span class="physics-paint-roto-key-icon-action" onPointerEnter={forceSpacingTooltip.onPointerEnter} onPointerLeave={forceSpacingTooltip.onPointerLeave}>
+              </div>
+              {physicalActions ? (
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={forceSpacingTooltip.onPointerEnter} onPointerLeave={forceSpacingTooltip.onPointerLeave}>
                     <form
                       class="physics-paint-pill physics-paint-pill--apply-spacing physics-paint-roto-force-spacing-controls"
                       aria-label="Set Key Space"
@@ -1214,9 +1217,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     <PhysicsPaintStyledTooltip visible={forceSpacingTooltip.visible}>
                       {buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys', forceSpacingActionDisabledReason)}
                     </PhysicsPaintStyledTooltip>
-                  </span>
-                ) : null}
-              </div>
+                </span>
+              ) : null}
             </div>
         </div>
         <div class="physics-paint-timeline-scrollbar" onPointerDown={(event) => handleTimelineScrollbarPointerDown(event as unknown as PointerEvent)}>
