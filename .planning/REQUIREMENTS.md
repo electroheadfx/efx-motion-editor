@@ -84,6 +84,18 @@ Presentation-only integration of the approved 36.15 UI-SPEC over the 36.14 physi
 - [x] **36.15-SELECTION-GUARD**: The application selection guard exists in `app/index.html` with the exact exception list, preserving inputs, editable fields, and LOG text selection.
 - [x] **36.15-SCRIPT-CONTROLS**: Guarded Script controls stay in order and focusable with controller-supplied unavailable reasons; all wiring consumes existing controller/resolver seams with no business logic in the view.
 
+### Physics Paint Roto Multi-Select Physical Keys
+
+- [ ] **37-MULTI-SELECT-IDENTITY**: User can select multiple real Roto keys; generated and empty physical cells remain non-editable and can never become selected identities; selection tracks stable keyId values only (never sourceFrame/displayFrame or projected ownership) and survives physical retiming.
+- [ ] **37-SELECT-ALL**: User can Select All real Roto keys; Select All remains discoverable within the compact 155px strip.
+- [ ] **37-GROUP-DRAG**: User can drag several selected keys together preserving relative physical distances; preview and commit use the same complete physical mapping; occupied-key before/after boundaries follow D-29 rules; invalid or over-capacity moves are rejected atomically with no partial mutation; selection, focus, and minimal scroll follow the accepted moved group.
+- [ ] **37-GROUP-DELETE**: User can delete all selected real keys in one atomic operation preserving unselected identities and payloads; later physical keys ripple per the canonical physical model; survivor selection is deterministic; exactly one Undo/Redo action; Backspace/Delete, toolbar Delete, and future keyboard routes share the same transaction.
+- [ ] **37-GROUP-FORCE-SPACING**: Force Spacing retimes keys per the locked selected-only vs full-timeline scope decision, preserving first-key anchoring and exactly N empty physical slots between adjacent in-scope keys; collisions against out-of-scope keys follow the locked policy; invalid, negative, fractional, nonnumeric, and over-capacity values are rejected atomically; success records one accepted history action; session-local N stays non-persistent.
+- [ ] **37-ATOMIC-TRANSACTIONS**: Every multi-key operation is one complete acknowledged physical-map transaction with no partial mutation visible on rejection, timeout, rollback, launch replacement, or disposal; Undo/Redo stores complete immutable snapshots; exact parent acknowledgement is required before accepted-only history advances.
+- [ ] **37-DOWNSTREAM-PARITY**: Save/reopen preserves the accepted physical map and stable keyId ownership; live pixels, caches, dirty state, playback, onion/reference, preview, export, missing/background rendering, and timeline extent derive from the accepted map only; Basic perfect-freehand and FX p5.brush behavior remain unchanged; script clipboard, durable script library, Play Script, interpolation, and Force Spacing semantics remain compatible.
+- [ ] **37-UI-INTEGRATION**: The 36.15 icon-only timeline UI gains clear multi-select affordances; selected keys have a distinct visual state with accessible tooltips; group drag preview shows the complete final proposed timeline; disabled multi-key actions remain focusable with controller-provided reasons; the status capsule receives one concise operation status with detailed failures routed to LOG.
+- [ ] **37-UAT-THEN-REGRESSION**: Production implementation ships first; native user-owned UAT is blocking before any regression test creation, modification, deletion, renaming, or execution; only after explicit UAT approval do deterministic vitest run regression coverage, typecheck, and build follow.
+
 ## Implemented Integration Baseline
 
 The former future integration seam was implemented during the v0.8.0 Roto recovery phases and is now baseline behavior.
@@ -154,13 +166,22 @@ Which phases cover which requirements. Updated during roadmap creation.
 | 36.15-LAYER-KEY-MARKERS | Phase 36.15 | Complete |
 | 36.15-SELECTION-GUARD | Phase 36.15 | Complete |
 | 36.15-SCRIPT-CONTROLS | Phase 36.15 | Complete |
+| 37-MULTI-SELECT-IDENTITY | Phase 37 | Planned |
+| 37-SELECT-ALL | Phase 37 | Planned |
+| 37-GROUP-DRAG | Phase 37 | Planned |
+| 37-GROUP-DELETE | Phase 37 | Planned |
+| 37-GROUP-FORCE-SPACING | Phase 37 | Planned |
+| 37-ATOMIC-TRANSACTIONS | Phase 37 | Planned |
+| 37-DOWNSTREAM-PARITY | Phase 37 | Planned |
+| 37-UI-INTEGRATION | Phase 37 | Planned |
+| 37-UAT-THEN-REGRESSION | Phase 37 | Planned |
 
 **Coverage:**
 
-- v0.8.0 requirements: 47 total
-- Mapped to phases: 47
+- v0.8.0 requirements: 56 total
+- Mapped to phases: 56
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-08*
-*Last updated: 2026-07-25 after registering the Phase 36.15 requirement IDs assigned during planning*
+*Last updated: 2026-07-26 after registering the Phase 37 multi-select requirement IDs*

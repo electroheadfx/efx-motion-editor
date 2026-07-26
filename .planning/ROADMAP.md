@@ -141,6 +141,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36.13: Physics Paint Roto Dynamic Interpolation Spacing** - MVP slice for per-segment interpolation spacing overrides so intentionally distant real keys keep custom spans across toggle, save/load, preview, export, and real-key-depth onion skinning. (completed 2026-07-13)
 - [x] **Phase 36.14: Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration** - Cut every real Roto key, generated in-between, timeline edit, persisted frame, and rendered output over to one deterministic physical-frame authority, then integrate the approved timeline UI and Copy Script / Apply Script controller contract. (planned; final v0.8.0 phase) (completed 2026-07-25)
 - [x] **Phase 36.15: Roto Timeline Final UI Integration** - Implement the approved 36.14-UI-SPEC final timeline UI that was locked out of Phase 36.14 under D-30 (Plans 15-17 scope), plus the user complement spec: icon-only controls, distinct strip groups, EFX Motion layer key markers. Source of truth: `SPECS/36.x-phases/phase-36.15-final-ui/spec-36.15-final-ui.md` + `36.14-UI-SPEC.md` (URGENT) (completed 2026-07-26)
+- [ ] **Phase 37: Multi-Select Physical Roto Keys** - Add multi-selection of real Physics Paint Roto keys so the user can select several keys, drag/drop them together, delete them together, and retime them with Force Spacing, including Select All — while preserving the Phase 36.14 canonical physical-frame model and the Phase 36.15 final timeline UI. (planned)
 
 ## Phase Details
 
@@ -632,6 +633,28 @@ Planning notes:
 - Presentation-only phase: any needed behavior change beyond wiring to existing controller ports is out of scope and routes to a quick.
 - Related open follow-ups recorded in STATE.md Deferred Items (resolver regression tests, CR-01/CR-02 fixes) are NOT part of this phase.
 
+### Phase 37: Multi-Select Physical Roto Keys
+
+**Goal:** As a stop-motion animator, I want to select multiple real Physics Paint Roto keys — including Select All — and drag/drop, delete, and Force-Space them as one group, so that retiming and reorganizing many keys is fast and safe while the Phase 36.14 canonical physical-frame model and the Phase 36.15 final timeline UI remain the only authorities.
+**Requirements:** 37-MULTI-SELECT-IDENTITY, 37-SELECT-ALL, 37-GROUP-DRAG, 37-GROUP-DELETE, 37-GROUP-FORCE-SPACING, 37-ATOMIC-TRANSACTIONS, 37-DOWNSTREAM-PARITY, 37-UI-INTEGRATION, 37-UAT-THEN-REGRESSION
+**Depends on:** Phase 36.15 (final timeline UI), Phase 36.14 (canonical physical-frame authority)
+**Plans:** TBD
+
+**Success Criteria** (what must be TRUE):
+
+1. User can select multiple real Roto keys and Select All real keys; generated and empty physical cells can never become selected identities; selection tracks stable keyId values and survives physical retiming.
+2. User can drag a multi-selected key group as one operation preserving relative physical distances, with preview and commit using the same complete physical mapping, D-29 occupied-boundary behavior, and atomic rejection with no partial mutation; selection, focus, and minimal scroll follow the accepted moved group.
+3. User can delete all selected real keys in one atomic operation that preserves unselected identities and payloads, ripples later physical keys per the canonical model, deterministically selects a survivor, and records exactly one Undo/Redo action; all delete routes share the same transaction.
+4. Force Spacing retimes keys per the locked selected-only vs full-timeline scope decision, preserving first-key anchoring and exactly N empty physical slots between adjacent in-scope keys; invalid, negative, fractional, nonnumeric, and over-capacity values are rejected atomically; success records one accepted history action.
+5. Every multi-key operation is one complete acknowledged physical-map transaction; no partial mutation is visible on rejection, timeout, rollback, launch replacement, or disposal; Undo/Redo stores complete immutable snapshots; exact parent acknowledgement gates accepted-only history.
+6. Save/reopen preserves the accepted physical map and stable keyId ownership; live pixels, caches, dirty state, playback, onion/reference, preview, export, missing/background rendering, and timeline extent derive from the accepted map only; Basic perfect-freehand and FX p5.brush behavior are unchanged.
+7. The 36.15 icon-only timeline UI gains clear multi-select affordances with a distinct selected-key visual state and accessible tooltips, discoverable Select All within the compact 155px strip, complete-timeline group drag preview, focusable disabled multi-key actions with controller-provided reasons, and one concise status capsule message per operation with detailed failures in LOG.
+8. Production implementation ships first; native user-owned UAT is blocking before any regression test creation, modification, deletion, renaming, or execution; only after explicit UAT approval do deterministic vitest run regression coverage, typecheck, and build follow.
+
+**Exclusions:** No revival of historical Plans 36.14-13 through 36.14-18; no sourceFrame/displayFrame compatibility, migration code, forwarding wrappers, aliases, dual-write paths, or another timing/transaction authority; no changes to script clipboard, durable script library, Play Script, or interpolation semantics beyond Force Spacing compatibility; no changes to single-key Copy/Duplicate/Paste/Insert behavior except defined interaction with multi-select state.
+
+**UI hint**: yes
+
 ### Phase 36.8: Physics Paint Roto State Refactor
 
 Create a new MVP/TDD phase for a narrow maintainability and correctness refactor after Phase 36.7.
@@ -968,3 +991,5 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
 | 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 6/6 | Complete | 2026-07-13 |
 | 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 24/30 | Complete    | 2026-07-25 |
+| 36.15. Roto Timeline Final UI Integration | v0.8.0 | 13/13 | Complete | 2026-07-26 |
+| 37. Multi-Select Physical Roto Keys | v0.8.0 | 0/TBD | Planned | |
