@@ -423,6 +423,9 @@ export function getRotoDragPreviewViewModel(
     throw new Error('RotoDragPreviewViewModel requires a move-key proposal with drag metadata.');
   }
   const movedKeyId = drag.movedKeyId;
+  // Complete moved identity set (37-04; D-06/D-22): group publications carry
+  // drag.movedKeyIds; single-key proposals fall back to the grabbed identity.
+  const movedSet = new Set(drag.movedKeyIds ?? [drag.movedKeyId]);
   const movedAppFrame = proposal.mapping.get(movedKeyId) ?? drag.resolvedInsertionAppFrame;
   const targetKind = drag.targetKind;
   const targetKeyId = drag.targetKeyId;
@@ -447,7 +450,7 @@ export function getRotoDragPreviewViewModel(
     let keyId: string | null = null;
     if (cell.kind === 'real') {
       keyId = cell.keyId;
-      if (cell.keyId === movedKeyId) {
+      if (movedSet.has(cell.keyId)) {
         role = 'moved';
       } else if (targetKeyId !== null && cell.keyId === targetKeyId) {
         // Occupied target identity takes precedence over shifted (D-07/D-21).

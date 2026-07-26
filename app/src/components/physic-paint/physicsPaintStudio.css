@@ -2263,6 +2263,23 @@ button.destructive {
   outline-offset: 1px;
 }
 
+.physics-paint-roto-cell.roto-drag-target-blocked {
+  /* Group-drag blocked destination (37-04, D-08): resolver-supplied
+     conflictingAppFrames only — the view never re-derives collision data.
+     Destructive-family dotted outline over the existing invalid fade,
+     visually distinct from every valid green D-23 treatment. */
+  opacity: 0.42;
+  filter: saturate(0.35);
+  outline: 1px dotted rgba(255, 176, 184, 0.85);
+  outline-offset: 1px;
+}
+
+.physics-paint-roto-cell.roto-drag-source.roto-drag-cannot-drop {
+  /* Grabbed key while the group mapping is invalid (37-04, D-08): overrides
+     the grabbing cursor; valid group drags keep grabbing. */
+  cursor: not-allowed;
+}
+
 .physics-paint-roto-cell.roto-drag-committing {
   border-style: dashed;
   outline: 2px solid rgba(245, 166, 35, 0.86);

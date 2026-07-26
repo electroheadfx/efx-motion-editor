@@ -1105,6 +1105,14 @@ export function PhysicsPaintStudio() {
           selectedKeyIds.value = next.selectedKeyIds;
           selectionAnchorKeyId.value = next.anchorKeyId;
         },
+        // Release-time group-drag reject publication (37-04; D-26): concise
+        // UI-SPEC copy to the capsule (36.15 D-15 single-owner arbitration),
+        // full resolver detail to the surviving diagnostic channel, mirroring
+        // the coordinator's logDiagnostic console style.
+        onRotoGroupDragRejected: (reason, detail) => {
+          setApplyMessage(reason);
+          console.error('[PhysicsPaintStudio] physical edit:', detail);
+        },
         rotoScript,
         statusMessage: isPlaying ? `Previewing ${animFrame + 1} / ${animTotal}` : (applyStatus !== 'success' ? applyMessage : null), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
         onNavigateToSyncedFrame: (frame) => { void requestRotoFrameNavigation(frame); }, onGoToFirstFrame: goToFirstFrame, onGoToPreviousFrame: goToPreviousFrame, onGoToNextFrame: goToNextFrame, onGoToLastFrame: goToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,

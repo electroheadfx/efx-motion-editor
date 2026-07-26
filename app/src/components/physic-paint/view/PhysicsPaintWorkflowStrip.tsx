@@ -108,6 +108,12 @@ export interface PhysicsPaintWorkflowStripProps {
   onToggleRotoKeySelection?: (keyId: string) => void;
   /** Plain-click collapse intent: reduce the multi-selection to the clicked key (D-02). */
   onCollapseRotoSelectionToKey?: (keyId: string) => void;
+  /**
+   * Release-time group-drag reject publication (D-07/D-09, 37-03 contract):
+   * fires exactly once when a group session is released on a resolver-level
+   * invalid target — concise capsule copy plus the full resolver detail.
+   */
+  onRotoGroupDragRejected?: (reason: string, detail: string) => void;
   onCopyRotoFrame?: () => void;
   onPasteRotoFrame?: () => void;
   /** Physical real-key records for identity-based Drag targeting (D-01/D-07). */
@@ -175,6 +181,10 @@ interface RotoDragPreviewState {
   candidateValid: boolean;
   error: string | null;
   pending: boolean;
+  /** True when the gesture session is a group drag (selection >= 2 containing the grabbed key). */
+  groupDrag: boolean;
+  /** Resolver-supplied blocked destination frames for the blocked-target preview (D-08); null otherwise. */
+  conflictingAppFrames: readonly number[] | null;
 }
 
 interface RotoDragGestureSession {
@@ -187,10 +197,14 @@ interface RotoDragGestureSession {
   latestX: number;
   latestY: number;
   started: boolean;
+  groupDrag: boolean;
   candidateTarget: RotoDragTarget | null;
   candidateKind: RotoDragCandidateKind;
   candidateValid: boolean;
   candidateError: string | null;
+  /** Group-preparation failure detail retained for release-time publication (D-07/D-09); null on single-key paths. */
+  candidateConflicts: readonly number[] | null;
+  candidateDetail: string | null;
   publication: RotoDragPublication | null;
   rafId: number | null;
   lastRafTime: number | null;
@@ -574,14 +588,25 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     session.candidateKind = candidate.kind;
     session.candidateValid = candidate.valid;
     session.candidateError = candidate.valid ? null : candidate.error;
+    session.candidateConflicts = null;
+    session.candidateDetail = null;
     session.publication = null;
     if (candidate.valid && candidate.target && physicalActions) {
-      const preparation: RotoDragPreparationResult = physicalActions.prepareRotoKeyDrag(session.movedKeyId, candidate.target);
+      const preparation: RotoDragPreparationResult = session.groupDrag
+        ? physicalActions.prepareRotoKeyGroupDrag(session.movedKeyId, candidate.target)
+        : physicalActions.prepareRotoKeyDrag(session.movedKeyId, candidate.target);
       if (preparation.ok) {
         session.publication = preparation.publication;
       } else {
         session.candidateValid = false;
         session.candidateError = preparation.reason;
+        // Group-preparation failure detail (D-07/D-08): retained for the
+        // blocked-target preview and the release-time reject publication.
+        // Hover re-runs publish nothing (37-03 contract).
+        if (session.groupDrag) {
+          session.candidateConflicts = preparation.conflictingAppFrames ?? null;
+          session.candidateDetail = preparation.detail ?? null;
+        }
       }
     }
     if (!session.started) return;
@@ -593,6 +618,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       candidateValid: session.candidateValid,
       error: session.candidateError,
       pending: false,
+      groupDrag: session.groupDrag,
+      conflictingAppFrames: session.candidateConflicts,
     });
   }, [classifyRotoDragTarget, physicalActions]);
 
@@ -634,6 +661,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     // clicks are selection gestures handled by handleRotoCellClick.
     if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || rotoDragLocked || !physicalActions || rotoDragGestureRef.current) return;
     const sourceElement = event.currentTarget as HTMLButtonElement;
+    // Group drag arming (D-06): grabbing a real key that is part of a
+    // >= 2 selection starts a group session; grabbing an unselected real
+    // key while a multi-selection exists first collapses the selection to
+    // that key and follows the unchanged single-key path (UI-SPEC).
+    const selectedSet = new Set(props.rotoSelectedKeyIds ?? []);
+    const groupDrag = selectedSet.size >= 2 && selectedSet.has(movedKeyId);
+    if (!groupDrag && selectedSet.size >= 2 && !selectedSet.has(movedKeyId)) {
+      props.onCollapseRotoSelectionToKey?.(movedKeyId);
+    }
     let active = true;
     const session: RotoDragGestureSession = {
       pointerId: event.pointerId,
@@ -645,10 +681,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       latestX: event.clientX,
       latestY: event.clientY,
       started: false,
+      groupDrag,
       candidateTarget: null,
       candidateKind: 'outside',
       candidateValid: false,
       candidateError: null,
+      candidateConflicts: null,
+      candidateDetail: null,
       publication: null,
       rafId: null,
       lastRafTime: null,
@@ -736,6 +775,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       if (!releaseMatchesRetained) {
         cleanup();
         clearSuppressionSoon();
+        // Release-time group-drag reject publication (D-07/D-09, 37-03
+        // contract): fires exactly once per rejected group release and only
+        // for resolver-level failures (candidateDetail non-null).
+        // Classification-level invalids (outside/locked) and single-key
+        // releases stay silent exactly as before.
+        if (session.groupDrag && session.candidateDetail !== null) {
+          props.onRotoGroupDragRejected?.(session.candidateError ?? 'Move rejected — key in the way', session.candidateDetail);
+        }
         // Restore focus to the source identity (D-24). No coordinator call.
         restoreSourceFocus();
         return;
@@ -753,10 +800,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           candidateValid: true,
           error: null,
           pending: true,
+          groupDrag: session.groupDrag,
+          conflictingAppFrames: session.candidateConflicts,
         });
       }
       clearSuppressionSoon();
-      void physicalActions!.commitRotoKeyDrag(retainedPublication!).then((accepted) => {
+      const commitPublication = session.groupDrag
+        ? physicalActions!.commitRotoKeyGroupDrag(retainedPublication!)
+        : physicalActions!.commitRotoKeyDrag(retainedPublication!);
+      void commitPublication.then((accepted) => {
         if (!mountedRef.current) return;
         setRotoDragPreview(null);
         if (!accepted) {
@@ -815,7 +867,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     window.addEventListener('pointercancel', handlePointerCancel);
     window.addEventListener('keydown', handleEscape, true);
     sourceElement.addEventListener('lostpointercapture', handleLostPointerCapture);
-  }, [classifyRotoDragTarget, physicalActions, rotoDragLocked, rotoDragValidityKey, startRotoEdgeScroll, updateRotoDragCandidate]);
+  }, [classifyRotoDragTarget, physicalActions, props.rotoSelectedKeyIds, props.onCollapseRotoSelectionToKey, props.onRotoGroupDragRejected, rotoDragLocked, rotoDragValidityKey, startRotoEdgeScroll, updateRotoDragCandidate]);
 
   useEffect(() => {
     const active = rotoDragGestureRef.current;
@@ -1017,7 +1069,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   // strongest highlight; every other selected real key gets
                   // the `.selected` outline when the set has >= 2 members.
                   const isSecondarySelected = cellKeyId !== null && rotoSelectedKeyIdSet.has(cellKeyId) && rotoSelectedKeyIdSet.size >= 2 && !vm.overlays.includes('current');
-                  const cellClass = `physics-paint-roto-cell ${fillClass} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
+                  const cellClass = `physics-paint-roto-cell ${fillClass} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
                   return (
                     <RotoTimelineCellButton
                       key={frame}
