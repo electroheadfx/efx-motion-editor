@@ -64,6 +64,15 @@ const DEFAULT_PALETTE = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', 
  *  of the flexible height when its neighbors are resized (36.15-12, Gap H-4). */
 const MIN_PANE_SPLIT = 15;
 
+/** Default sidebar shares (36.15-13, UAT Gap I-2): the user's spec — brush
+ *  color 425 : tool 213 : scripts/onion/motion 340 — as ratios of the content
+ *  height (sidebar height minus the two fixed 32px grab handles). Their
+ *  absolute example (425+32+213+32+340 = 1042) exceeds the 976px sidebar, so
+ *  the defaults are proportional shares, not absolute pixels. */
+const DEFAULT_SHARE_SUM = 425 + 213 + 340;
+const DEFAULT_BRUSH_SPLIT = (425 / DEFAULT_SHARE_SUM) * 100;
+const DEFAULT_TOOL_SPLIT = (213 / DEFAULT_SHARE_SUM) * 100;
+
 export function createPhysicsPaintPaneResizeDrag(options: {
   target: HTMLElement;
   pointerId: number;
@@ -178,11 +187,12 @@ export function PhysicsPaintRightPanel({
   // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
   // Gap G-4).
   const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
-  // Three resizable sections (36.15-12, UAT Gap H-4): brush color, tool, and
-  // Scripts/Onion/Motion share the sidebar height in equal thirds by default;
-  // the scripts section takes the remaining 100 - brushSplit - toolSplit.
-  const [brushSplit, setBrushSplit] = useState(100 / 3);
-  const [toolSplit, setToolSplit] = useState(100 / 3);
+  // Three resizable sections (36.15-12, UAT Gap H-4; default shares from
+  // 36.15-13, UAT Gap I-2): brush color, tool, and Scripts/Onion/Motion take
+  // 425:213:340 of the content height by default; the scripts section takes
+  // the remaining 100 - brushSplit - toolSplit.
+  const [brushSplit, setBrushSplit] = useState(DEFAULT_BRUSH_SPLIT);
+  const [toolSplit, setToolSplit] = useState(DEFAULT_TOOL_SPLIT);
   const previousColorRef = useRef(color);
   const paneLayoutRef = useRef<HTMLDivElement>(null);
   const activePaneResizeCleanupRef = useRef<(() => void) | null>(null);
@@ -384,7 +394,7 @@ export function PhysicsPaintRightPanel({
       <div
         ref={paneLayoutRef}
         class="physics-paint-right-pane-layout"
-        style={{ gridTemplateRows: `minmax(0, ${brushSplit}fr) 28px minmax(0, ${toolSplit}fr) 28px minmax(0, ${100 - brushSplit - toolSplit}fr)` }}
+        style={{ gridTemplateRows: `minmax(0, ${brushSplit}fr) 32px minmax(0, ${toolSplit}fr) 32px minmax(0, ${100 - brushSplit - toolSplit}fr)` }}
       >
         <div class="physics-paint-right-pane physics-paint-right-pane-primary">
           <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>

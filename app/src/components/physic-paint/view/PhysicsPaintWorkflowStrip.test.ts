@@ -854,10 +854,28 @@ describe('PhysicsPaintWorkflowStrip Gap H band and lane contract (36.15-12, UAT 
     const actionRow = getCssRuleBlock(styles, '.physics-paint-roto-action-row {');
     expect(actionRow).toContain('display: flex');
     expect(actionRow).toContain('align-items: center');
-    // All three groups stay 26px so the 34px band yields 4px of clear padding
-    // above and below each centered group.
+    // All three groups stay 26px so the 34px band keeps clear padding around
+    // each centered group (Gap I-1 then weights that clearance to the bottom
+    // via the action row's 6px padding-bottom — see the Gap I contract).
     expect(getCssRuleBlock(styles, '.physics-paint-roto-key-identity {')).toContain('height: 26px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-key-utilities {')).toContain('height: 26px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-action-row .physics-paint-pill {')).toContain('height: 26px');
+  });
+});
+
+describe('PhysicsPaintWorkflowStrip Gap I action-row padding contract (36.15-13, UAT Gap I-1)', () => {
+  it('adds 6px bottom padding to the action row without changing the 34px band or the 161px band sum', () => {
+    const styles = css();
+    const actionRow = getCssRuleBlock(styles, '.physics-paint-roto-action-row {');
+    // UAT Gap I-1 (user's final polish round): padding-bottom: 6px on the
+    // action-row div.
+    expect(actionRow).toContain('padding-bottom: 6px');
+    // The stylesheet sets box-sizing: border-box globally, so the padding
+    // shrinks the content box instead of growing the band: the 34px band, the
+    // 161px strip shell, and the studio grid third track stay intact.
+    expect(actionRow).toContain('height: 34px');
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 161px');
+    expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 161px');
+    expect(styles).not.toContain('height: 155px');
   });
 });

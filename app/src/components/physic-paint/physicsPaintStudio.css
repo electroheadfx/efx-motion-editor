@@ -782,7 +782,9 @@ button.destructive {
   align-items: center;
   justify-content: center;
   min-width: 0;
-  min-height: 28px;
+  /* 32px fixed grab-handle band per the user's sidebar proportion spec
+     (36.15-13, UAT Gap I-2; was 28px in 36.15-12). */
+  min-height: 32px;
   color: #9aa1aa;
   cursor: row-resize;
   touch-action: none;
@@ -1088,6 +1090,14 @@ button.destructive {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+}
+
+/* No top dead space on the chrome-less brush color section: the shared
+   tab-panel's 20px top padding was designed for the retired tab strip, so the
+   section starts directly with the color picker (36.15-13, UAT Gap I-3).
+   Placed after the shared rule so it wins at equal specificity. */
+.physics-paint-single-tab-panel {
+  padding-top: 0;
 }
 
 .physics-paint-scripts-panel {
@@ -2080,10 +2090,11 @@ button.destructive {
   /* Three visually separated groups (identity / tools / key spacing) with the
      top bar's 8px pill-island gaps (36.15-10, UAT Gap F-2). */
   gap: 8px;
-  /* 34px — the smallest height that gives the 26px groups clear 4px top and
-     bottom padding (36.15-12, UAT Gap H-6; user-approved relaxation of the
-     Plan 06 28px band). */
+  /* 34px band (36.15-12, UAT Gap H-6) + 6px bottom padding weighting the
+     clearance below the 26px groups (36.15-13, UAT Gap I-1; border-box sizing
+     keeps the 34px band and the 161px band sum intact). */
   height: 34px;
+  padding-bottom: 6px;
   min-width: 2160px;
   background: #37393a;
 }

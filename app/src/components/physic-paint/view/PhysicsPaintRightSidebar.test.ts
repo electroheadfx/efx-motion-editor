@@ -61,13 +61,18 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rule('.physics-paint-options-tab')).toMatch(/text-transform:\s*none/);
   });
 
-  it('owns three independently scrollable sections sharing the sidebar height in equal thirds by default', () => {
-    // 36.15-12, UAT Gap H-4: Brush color, Tool, and Scripts/Onion/Motion share
-    // the sidebar height in thirds (100/3 each), with a 28px grab handle
-    // between each pair.
-    expect(rightPanel).toContain('const [brushSplit, setBrushSplit] = useState(100 / 3)');
-    expect(rightPanel).toContain('const [toolSplit, setToolSplit] = useState(100 / 3)');
-    expect(rightPanel).toContain('gridTemplateRows: `minmax(0, ${brushSplit}fr) 28px minmax(0, ${toolSplit}fr) 28px minmax(0, ${100 - brushSplit - toolSplit}fr)`');
+  it('owns three independently scrollable sections with 425:213:340 default shares of the content height', () => {
+    // 36.15-13, UAT Gap I-2: the user's spec — brush color 425 : tool 213 :
+    // scripts/onion/motion 340 — as RATIOS of the content height (sidebar
+    // height minus the two fixed 32px grab handles). Their absolute example
+    // (425+32+213+32+340 = 1042) exceeds the 976px sidebar, so the defaults
+    // are proportional shares, not absolute pixels.
+    expect(rightPanel).toContain('const DEFAULT_SHARE_SUM = 425 + 213 + 340');
+    expect(rightPanel).toContain('const DEFAULT_BRUSH_SPLIT = (425 / DEFAULT_SHARE_SUM) * 100');
+    expect(rightPanel).toContain('const DEFAULT_TOOL_SPLIT = (213 / DEFAULT_SHARE_SUM) * 100');
+    expect(rightPanel).toContain('const [brushSplit, setBrushSplit] = useState(DEFAULT_BRUSH_SPLIT)');
+    expect(rightPanel).toContain('const [toolSplit, setToolSplit] = useState(DEFAULT_TOOL_SPLIT)');
+    expect(rightPanel).toContain('gridTemplateRows: `minmax(0, ${brushSplit}fr) 32px minmax(0, ${toolSplit}fr) 32px minmax(0, ${100 - brushSplit - toolSplit}fr)`');
     expect(rightPanel.match(/class="physics-paint-right-pane /g)).toHaveLength(3);
     expect(rightPanel.match(/<SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>/g)).toHaveLength(3);
     const pane = rule('.physics-paint-right-pane');
@@ -75,6 +80,18 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(pane).toMatch(/overflow:\s*hidden/);
     expect(rule('.physics-paint-right-pane-layout')).toMatch(/overflow:\s*hidden/);
     expect(rule('.physics-paint-right-pane-content')).toMatch(/padding-right:\s*6px/);
+  });
+
+  it('removes the dead space at the top of the chrome-less brush color section', () => {
+    // 36.15-13, UAT Gap I-3: the shared tab-panel's 20px top padding was
+    // designed for the retired tab strip; the chrome-less color section now
+    // starts directly with the color picker via a padding-top: 0 override.
+    expect(rightPanel).toContain('class="physics-paint-options-tab-panel physics-paint-single-tab-panel"');
+    const panel = rule('.physics-paint-single-tab-panel');
+    expect(panel).toMatch(/padding-top:\s*0/);
+    // The override must follow the shared tab-panel rule so it wins at equal
+    // specificity.
+    expect(css.indexOf('.physics-paint-single-tab-panel {')).toBeGreaterThan(css.indexOf('.physics-paint-options-tab-panel {'));
   });
 
   it('scopes interactive custom scrollbars to Physics Paint panes and preserves default consumers', () => {
@@ -102,11 +119,12 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rule('.physics-paint-swatch-remove')).toMatch(/left:\s*-5px/);
   });
 
-  it('places a Lucide-grip 28px grab handle between each section pair with keyboard and pointer resize clamped to 15% minimum sections', () => {
-    // 36.15-12, UAT Gap H-3/H-4: two grab handles reuse the existing
-    // GripHorizontal resize band look and pointer behavior — one between the
-    // brush color and tool sections, one between the tool and scripts
-    // sections.
+  it('places a Lucide-grip 32px grab handle between each section pair with keyboard and pointer resize clamped to 15% minimum sections', () => {
+    // 36.15-12, UAT Gap H-3/H-4 + 36.15-13, UAT Gap I-2: two grab handles
+    // reuse the existing GripHorizontal resize band look and pointer behavior
+    // — one between the brush color and tool sections, one between the tool
+    // and scripts sections; Gap I-2 sets the fixed handle band to the user's
+    // 32px spec.
     expect(rightPanel).toContain("import { GripHorizontal, X } from 'lucide-preact'");
     expect(rightPanel.match(/class="physics-paint-right-pane-resizer"/g)).toHaveLength(2);
     expect(rightPanel.match(/role="separator"/g)).toHaveLength(2);
@@ -119,7 +137,7 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rightPanel.match(/event\.key !== 'ArrowUp' && event\.key !== 'ArrowDown'/g)).toHaveLength(2);
     expect(rightPanel.match(/event\.key === 'ArrowDown' \? 5 : -5/g)).toHaveLength(2);
     const resizeBand = rule('.physics-paint-right-pane-resizer');
-    expect(resizeBand).toMatch(/min-height:\s*28px/);
+    expect(resizeBand).toMatch(/min-height:\s*32px/);
     expect(resizeBand).toMatch(/cursor:\s*row-resize/);
     expect(resizeBand).toMatch(/touch-action:\s*none/);
   });
