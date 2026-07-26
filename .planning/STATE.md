@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.15
 current_phase_name: roto-timeline-final-ui-integration
 status: verifying
-stopped_at: Completed 36.15-10-PLAN.md
-last_updated: "2026-07-26T08:20:40.341Z"
+stopped_at: Completed 36.15-11-PLAN.md
+last_updated: "2026-07-26T09:10:38.701Z"
 last_activity: 2026-07-25
 last_activity_desc: Phase 36.15 execution started
 progress:
   total_phases: 18
   completed_phases: 17
-  total_plans: 132
-  completed_plans: 126
+  total_plans: 133
+  completed_plans: 127
   percent: 94
 ---
 
@@ -121,6 +121,7 @@ Progress: [██████████████████░░] 114/121
 | Phase 36.15 P08 | 23min | 3 tasks | 7 files |
 | Phase 36.15 P09 | 15min | 1 tasks | 5 files |
 | Phase 36.15 P10 | 15min | 1 tasks | 4 files |
+| Phase 36.15 P11 | 15min | 1 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -247,6 +248,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 36.15-10: CAPS labels were CSS inheritance from the global button text-transform: uppercase rule; fixed with per-class text-transform: none opt-outs
 - [Phase ?]: 36.15-10: Scripts second-row small icons were flex shrink in grid cells, not icon size; fixed with flex: 0 0 auto on the svg and label ellipsis
 - [Phase ?]: 36.15-10: Bottom action row split into three sibling groups (identity/tools/Key spacing) reusing the Plan 04 top-bar 8px pill-island gap language
+- [Phase ?]: 36.15-11: Scripts toolbar truncation was a layout contract — repeat(6, auto) content-sized cells replace fixed-fraction cells so Copy/Apply/Clear labels render in full
+- [Phase ?]: 36.15-11: Right sidebar restructured to three tab groups ([Brush color], [Tool] without Save/Load state, [Scripts/Onion/Motion] Scripts-first default-open); LOG tab retired with its Plan 03 selection-guard exception in the same commit; session persistence API preserved but view-unreferenced
 
 ### Pending Todos
 
@@ -328,6 +331,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-26T08:20:40.327Z
-Stopped at: Completed 36.15-10-PLAN.md
+Last session: 2026-07-26T09:10:25.050Z
+Stopped at: Completed 36.15-11-PLAN.md
 Resume file: None
