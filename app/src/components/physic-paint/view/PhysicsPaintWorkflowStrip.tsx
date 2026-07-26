@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, Play, Plus, RotateCcw, Square, Trash2, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, Play, Plus, RotateCcw, Square, Trash2, X } from 'lucide-preact';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
@@ -114,6 +114,10 @@ export interface PhysicsPaintWorkflowStripProps {
    * invalid target — concise capsule copy plus the full resolver detail.
    */
   onRotoGroupDragRejected?: (reason: string, detail: string) => void;
+  /** Shift-click range-selection intent on a real-key cell (D-01). Never navigates. */
+  onExtendRotoKeySelection?: (keyId: string) => void;
+  /** Select All guarded icon route (D-03) — shares the Studio callback with Cmd/Ctrl+A. */
+  onSelectAllRotoKeys?: () => void;
   onCopyRotoFrame?: () => void;
   onPasteRotoFrame?: () => void;
   /** Physical real-key records for identity-based Drag targeting (D-01/D-07). */
@@ -395,12 +399,23 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const copyRotoKeyDisabledReason = canCopyRotoKey ? null : getRotoKeyUtilityDisabledMessage('copy');
   const pasteRotoKeyDisabledReason = canPasteRotoKey ? null : getRotoKeyUtilityDisabledMessage('paste');
   const deleteRotoKeyDisabledReason = canDeleteRotoKey ? null : getRotoKeyUtilityDisabledMessage('delete');
+  // Select All guarded icon (37-04; D-03): availability flows from the 37-03
+  // canSelectAllKeys / selectAllKeysDisabledReason computeds plus the shared
+  // busy lock; the disabled reason stays verbatim from the controller port
+  // (36.15 D-28 — aria-disabled only, never the native disabled attribute).
+  const canSelectAllRotoKeys = (physicalActions?.canSelectAllKeys.value ?? false) && props.ready !== false && !keyUtilitiesDisabledByBusyState;
+  const selectAllDisabledReason = canSelectAllRotoKeys
+    ? null
+    : keyUtilitiesDisabledByBusyState && physicalActions?.canSelectAllKeys.value
+      ? getRotoKeyUtilityDisabledMessage('delete')
+      : physicalActions?.selectAllKeysDisabledReason.value ?? 'Select all keys is unavailable.';
   const insertKeyTooltip = useStyledTooltip();
   const addKeyTooltip = useStyledTooltip();
   const duplicateKeyTooltip = useStyledTooltip();
   const copyKeyTooltip = useStyledTooltip();
   const pasteKeyTooltip = useStyledTooltip();
   const deleteKeyTooltip = useStyledTooltip();
+  const selectAllTooltip = useStyledTooltip();
   const closeTooltip = useStyledTooltip();
   const capsuleTooltip = useStyledTooltip();
   const interpolationTooltip = useStyledTooltip();
@@ -479,6 +494,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     const cellKeyId = keyIdByAppFrame.get(frame) ?? null;
     if (cellKeyId !== null && (event.metaKey || event.ctrlKey) && !event.shiftKey) {
       props.onToggleRotoKeySelection?.(cellKeyId);
+      return;
+    }
+    if (cellKeyId !== null && event.shiftKey && !event.metaKey && !event.ctrlKey) {
+      props.onExtendRotoKeySelection?.(cellKeyId);
       return;
     }
     if (cellKeyId !== null && !event.metaKey && !event.ctrlKey && !event.shiftKey && rotoSelectedKeyIdSet.size >= 2) {
@@ -1259,6 +1278,34 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={deleteKeyTooltip.visible}>
                     {buildGuardedActionTooltipCopy('Delete key', deleteRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={selectAllTooltip.onPointerEnter} onPointerLeave={selectAllTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Select all keys"
+                    aria-disabled={!canSelectAllRotoKeys ? 'true' : undefined}
+                    aria-describedby={!canSelectAllRotoKeys && selectAllDisabledReason ? 'roto-key-action-reason-select-all' : undefined}
+                    onFocus={selectAllTooltip.onFocus}
+                    onBlur={selectAllTooltip.onBlur}
+                    onClick={() => {
+                      selectAllTooltip.hide();
+                      if (!canSelectAllRotoKeys) return;
+                      props.onSelectAllRotoKeys?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canSelectAllRotoKeys) event.preventDefault();
+                    }}
+                  >
+                    <ListChecks size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">All</span>
+                  </button>
+                  {!canSelectAllRotoKeys && selectAllDisabledReason ? (
+                    <span id="roto-key-action-reason-select-all" class="physics-paint-sr-only">{selectAllDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={selectAllTooltip.visible}>
+                    {buildGuardedActionTooltipCopy('Select all keys', selectAllDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
               </div>

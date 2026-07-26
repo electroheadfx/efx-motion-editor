@@ -5,7 +5,7 @@ import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoC
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
-import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
+import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, isPhysicsPaintDevExportEnabled, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
@@ -1105,6 +1105,21 @@ export function PhysicsPaintStudio() {
           selectedKeyIds.value = next.selectedKeyIds;
           selectionAnchorKeyId.value = next.anchorKeyId;
         },
+        // Shift-click range selection (37-04; D-01): contiguous real-key range
+        // from the anchor to the clicked key through the 37-02 range reducer.
+        // Anchor fallback: a null anchor resolves to the current editing key.
+        // The clicked key becomes current (flagged for 37-05 native UAT).
+        onExtendRotoKeySelection: (keyId) => {
+          const result = extendRotoKeySelectionRange(
+            { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() ?? selectedKeyId.peek() },
+            rotoKeyRecords.map((record) => record.keyId),
+            keyId,
+          );
+          selectedKeyIds.value = result.state.selectedKeyIds;
+          selectionAnchorKeyId.value = result.state.anchorKeyId;
+          if (result.currentKeyId !== null) selectedKeyId.value = result.currentKeyId;
+        },
+        onSelectAllRotoKeys: selectAllRotoKeys,
         // Release-time group-drag reject publication (37-04; D-26): concise
         // UI-SPEC copy to the capsule (36.15 D-15 single-owner arbitration),
         // full resolver detail to the surviving diagnostic channel, mirroring
