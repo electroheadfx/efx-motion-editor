@@ -4,16 +4,16 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.15
 status: completed
-stopped_at: Completed 36.15-13-PLAN.md
-last_updated: "2026-07-26T11:25:12.038Z"
+stopped_at: Phase 37 context gathered
+last_updated: "2026-07-26T16:25:00.664Z"
 last_activity: 2026-07-26
 last_activity_desc: Phase 36.15 complete
 progress:
-  total_phases: 18
+  total_phases: 19
   completed_phases: 17
   total_plans: 135
   completed_plans: 129
-  percent: 94
+  percent: 89
 current_phase_name: roto-timeline-final-ui-integration
 ---
 
@@ -338,6 +338,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-26T11:00:31.693Z
-Stopped at: Completed 36.15-13-PLAN.md
-Resume file: None
+Last session: 2026-07-26T16:25:00.615Z
+Stopped at: Phase 37 context gathered
+Resume file: .planning/phases/37-multi-select-physical-roto-keys/37-CONTEXT.md
