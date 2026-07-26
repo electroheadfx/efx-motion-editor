@@ -5,7 +5,7 @@ import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoC
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
-import { selectAllRotoKeyIds, collapseRotoKeySelection, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
+import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, isPhysicsPaintDevExportEnabled, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
@@ -1085,6 +1085,26 @@ export function PhysicsPaintStudio() {
         onToggleRotoPlayback: rotoCachedPlayback.toggle, onRotoPlaybackLoopChange: setRotoPlaybackLoop, onRotoPlaybackFpsChange: setRotoPlaybackFps, rotoInterpolationEnabled: rotoInterpolationState.enabled, rotoInterpolationMode: rotoInterpolationState.mode, rotoInterpolationPending: physicalEditCoordinator.pendingOperationId.value !== null,
         onRotoInterpolationEnabledChange: (enabled) => { void updateRotoInterpolationSettings({ enabled }); }, onRotoInterpolationModeChange: (mode) => { void updateRotoInterpolationSettings({ mode }); },
         onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
+        // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
+        // through the pure 37-02 reducers over the store-ordered identity
+        // list. Selection-only changes publish no status entry (UI-SPEC).
+        rotoSelectedKeyIds: selectedKeyIds.value,
+        onToggleRotoKeySelection: (keyId) => {
+          const result = toggleRotoKeySelection(
+            { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() },
+            rotoKeyRecords.map((record) => record.keyId),
+            keyId,
+            selectedKeyId.peek(),
+          );
+          selectedKeyIds.value = result.state.selectedKeyIds;
+          selectionAnchorKeyId.value = result.state.anchorKeyId;
+          selectedKeyId.value = result.currentKeyId;
+        },
+        onCollapseRotoSelectionToKey: (keyId) => {
+          const next = collapseRotoKeySelection(keyId);
+          selectedKeyIds.value = next.selectedKeyIds;
+          selectionAnchorKeyId.value = next.anchorKeyId;
+        },
         rotoScript,
         statusMessage: isPlaying ? `Previewing ${animFrame + 1} / ${animTotal}` : (applyStatus !== 'success' ? applyMessage : null), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
         onNavigateToSyncedFrame: (frame) => { void requestRotoFrameNavigation(frame); }, onGoToFirstFrame: goToFirstFrame, onGoToPreviousFrame: goToPreviousFrame, onGoToNextFrame: goToNextFrame, onGoToLastFrame: goToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,

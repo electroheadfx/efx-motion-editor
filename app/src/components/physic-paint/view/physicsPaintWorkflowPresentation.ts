@@ -240,6 +240,18 @@ export function getRotoCellStateTooltipCopy(kind: RotoCellSemanticTooltipKind): 
   return ROTO_CELL_STATE_TOOLTIP_COPY[kind];
 }
 
+/**
+ * Secondary multi-selection tooltip copy (37-04; D-04; 37-UI-SPEC copywriting
+ * contract). The current editing key keeps its `Real key` copy via the
+ * `.current` treatment; every other selected real key shows `Selected key`,
+ * composed with its semantic base when the base differs from 'real-key'
+ * (e.g. `Selected key — cached`). Pure function over the shared vocabulary.
+ */
+export function getRotoCellSelectedTooltipCopy(base: RotoCellSemanticTooltipKind): string {
+  if (base === 'real-key') return 'Selected key';
+  return `Selected key — ${ROTO_CELL_STATE_TOOLTIP_COPY[base].toLowerCase()}`;
+}
+
 export function getPhysicsPaintEngineStatusTone({
   ready,
   error,

@@ -5,6 +5,7 @@ import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyle
 import {
   collectRotoDragVacatedAppFrames,
   getRotoCellFill, getRotoCellViewModel,
+  getRotoCellSelectedTooltipCopy,
   getRotoCellStateTooltipCopy,
   getRotoDragPreviewViewModel,
   getRotoStatusCapsuleViewModel,
@@ -101,6 +102,12 @@ export interface PhysicsPaintWorkflowStripProps {
   onDeleteRotoFrame?: () => void;
   /** Stable physical timeline action bundle (D-05/D-06/D-09). */
   rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
+  /** Controller-owned multi-selection set (37-02 signal). The strip never mutates or reorders it (D-05). */
+  rotoSelectedKeyIds?: readonly string[];
+  /** Cmd/Ctrl-click toggle intent on a real-key cell (D-01). Never navigates. */
+  onToggleRotoKeySelection?: (keyId: string) => void;
+  /** Plain-click collapse intent: reduce the multi-selection to the clicked key (D-02). */
+  onCollapseRotoSelectionToKey?: (keyId: string) => void;
   onCopyRotoFrame?: () => void;
   onPasteRotoFrame?: () => void;
   /** Physical real-key records for identity-based Drag targeting (D-01/D-07). */
@@ -243,9 +250,10 @@ interface RotoTimelineCellButtonProps {
   semanticKind: 'empty' | 'real-key' | 'generated';
   cellKeyId: string | null;
   ariaLabel: string;
+  ariaSelected?: boolean;
   tooltipCopy: string;
   onCellPointerDown?: (event: PointerEvent) => void;
-  onCellClick: () => void;
+  onCellClick: (event: MouseEvent) => void;
 }
 
 /**
@@ -270,6 +278,7 @@ function RotoTimelineCellButton(props: RotoTimelineCellButtonProps) {
         data-roto-kind={props.semanticKind}
         data-roto-key-id={props.cellKeyId ?? undefined}
         aria-label={props.ariaLabel}
+        aria-selected={props.ariaSelected === true ? 'true' : undefined}
         onPointerDown={props.onCellPointerDown
           ? (event) => {
               tooltip.hide();
@@ -278,9 +287,9 @@ function RotoTimelineCellButton(props: RotoTimelineCellButtonProps) {
           : undefined}
         onFocus={tooltip.onFocus}
         onBlur={tooltip.onBlur}
-        onClick={() => {
+        onClick={(event) => {
           tooltip.hide();
-          props.onCellClick();
+          props.onCellClick(event as unknown as MouseEvent);
         }}
       >
         <span>{props.frame}</span>
@@ -388,6 +397,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     for (const record of rotoKeyRecords) map.set(record.appFrame, record.keyId);
     return map;
   }, [rotoKeyRecords]);
+  // Controller-owned selection set (37-02; D-05): read-only here, never
+  // reordered, never derived from frames or DOM order.
+  const rotoSelectedKeyIdSet = useMemo(() => new Set(props.rotoSelectedKeyIds ?? []), [props.rotoSelectedKeyIds]);
   const rotoDragValidityKey = `${props.rotoDragContextKey ?? 'none'}:${frameCells[0] ?? -1}:${frameCells[frameCells.length - 1] ?? -1}:${currentPhysicalCells.map((cell) => `${cell.kind}@${cell.appFrame}`).join(',')}:${rotoDragLocked ? 1 : 0}:${rotoKeyRecords.map((record) => `${record.keyId}@${record.appFrame}`).join(',')}`;
   const rotoDragFeedback = getRotoDragFeedback(rotoDragPreview);
   const resolverApprovedGeneratedTarget = Boolean(rotoDragPreview?.candidateValid && rotoDragPreview.candidateKind === 'generated');
@@ -437,7 +449,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     props.onRotoInterpolationModeChange?.(mode);
   }
 
-  function handleRotoCellClick(frame: number, vm: RotoCellViewModel) {
+  function handleRotoCellClick(frame: number, vm: RotoCellViewModel, event: MouseEvent) {
     if (suppressNextRotoClickRef.current) {
       suppressNextRotoClickRef.current = false;
       return;
@@ -445,6 +457,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (vm.baseMeaning === 'generated' || vm.isEditableTarget === false) {
       props.onNavigateToSyncedFrame(frame);
       return;
+    }
+    // Selection gestures (D-01/D-02; Pitfall 6): real-key cells only —
+    // generated/empty cells already returned above. Modifier branches never
+    // steal navigation and never arm a drag session (the pointer-down guard
+    // rejects modifier presses, so a modifier-click is selection-only).
+    const cellKeyId = keyIdByAppFrame.get(frame) ?? null;
+    if (cellKeyId !== null && (event.metaKey || event.ctrlKey) && !event.shiftKey) {
+      props.onToggleRotoKeySelection?.(cellKeyId);
+      return;
+    }
+    if (cellKeyId !== null && !event.metaKey && !event.ctrlKey && !event.shiftKey && rotoSelectedKeyIdSet.size >= 2) {
+      props.onCollapseRotoSelectionToKey?.(cellKeyId);
     }
     props.onNavigateToSyncedFrame(frame);
   }
@@ -606,7 +630,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }, [updateRotoDragCandidate, updateScrollbar]);
 
   const handleRotoCellPointerDown = useCallback((event: PointerEvent, sourceAppFrame: number, movedKeyId: string) => {
-    if (!event.isPrimary || event.button !== 0 || rotoDragLocked || !physicalActions || rotoDragGestureRef.current) return;
+    // Modifier presses never arm a drag session (Pitfall 6): Cmd/Ctrl/Shift
+    // clicks are selection gestures handled by handleRotoCellClick.
+    if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || rotoDragLocked || !physicalActions || rotoDragGestureRef.current) return;
     const sourceElement = event.currentTarget as HTMLButtonElement;
     let active = true;
     const session: RotoDragGestureSession = {
@@ -986,7 +1012,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                         : vm.baseMeaning === 'background-only'
                           ? 'background-only'
                           : 'empty';
-                  const cellClass = `physics-paint-roto-cell ${fillClass} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
+                  // Secondary multi-selection treatment (D-04): the current
+                  // editing key keeps only its `.current` orange ring as the
+                  // strongest highlight; every other selected real key gets
+                  // the `.selected` outline when the set has >= 2 members.
+                  const isSecondarySelected = cellKeyId !== null && rotoSelectedKeyIdSet.has(cellKeyId) && rotoSelectedKeyIdSet.size >= 2 && !vm.overlays.includes('current');
+                  const cellClass = `physics-paint-roto-cell ${fillClass} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
                   return (
                     <RotoTimelineCellButton
                       key={frame}
@@ -994,10 +1025,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       cellClass={cellClass}
                       semanticKind={semanticKind}
                       cellKeyId={cellKeyId}
-                      ariaLabel={dragLabel}
-                      tooltipCopy={getRotoCellStateTooltipCopy(cellTooltipKind)}
+                      ariaLabel={isSecondarySelected ? `${dragLabel} Selected.` : dragLabel}
+                      ariaSelected={isSecondarySelected}
+                      tooltipCopy={isSecondarySelected ? getRotoCellSelectedTooltipCopy(cellTooltipKind) : getRotoCellStateTooltipCopy(cellTooltipKind)}
                       onCellPointerDown={dragEligible && cellKeyId ? (event) => handleRotoCellPointerDown(event, frame, cellKeyId) : undefined}
-                      onCellClick={() => handleRotoCellClick(frame, vm)}
+                      onCellClick={(event) => handleRotoCellClick(frame, vm, event)}
                     />
                   );
                 })}

@@ -2225,6 +2225,17 @@ button.destructive {
   box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.65), 0 0 10px rgba(245, 166, 35, 0.38);
 }
 
+.physics-paint-roto-cell.selected {
+  /* Secondary multi-selection treatment (37-04, D-04): cool neutral family,
+     visually subordinate to the orange current ring and distinct from every
+     drag green-white preview treatment (three-way distinction rule). The
+     z-index lift mirrors `.current` so the outline survives abutting
+     neighbors; geometry unchanged. */
+  z-index: 1;
+  outline: 2px solid #F2F5F7;
+  outline-offset: 1px;
+}
+
 .physics-paint-roto-cell.roto-drag-eligible {
   cursor: grab;
   touch-action: none;
