@@ -533,12 +533,8 @@ Plans:
 **Historical Waves 14-20 — original D-12 sequence, retained as non-executable evidence**
 
 - [x] 36.14-12-PLAN.md — Historical rejected native-UAT checkpoint. Its approval-file transition is not used by the D-30 recovery track.
-- [ ] 36.14-13-PLAN.md — Historical post-Plan-12 regression/compile plan; remains locked and is not eligible in the D-30 recovery track.
-- [ ] 36.14-14-PLAN.md — Historical downstream regression plan; remains locked and is not eligible in the D-30 recovery track.
-- [ ] 36.14-15-PLAN.md — Historical final UI integration plan; remains locked and is not eligible in the D-30 recovery track.
-- [ ] 36.14-16-PLAN.md — Historical drag-presentation integration plan; remains locked and is not eligible in the D-30 recovery track.
-- [ ] 36.14-17-PLAN.md — Historical accessibility/regression/compile plan; remains locked and is not eligible in the D-30 recovery track.
-- [ ] 36.14-18-PLAN.md — Historical final native-UAT/approval-artifact plan; remains locked and is not eligible in the D-30 recovery track.
+
+Plans 36.14-13 through 36.14-18 are historical locked records retained as non-executable evidence under D-30. They are superseded by Plans 21-30 and Phase 36.15, intentionally have no SUMMARY files, and must not be counted as pending execution work.
 
 <!-- D-30-HISTORICAL-END -->
 
