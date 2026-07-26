@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.15
 current_phase_name: roto-timeline-final-ui-integration
 status: verifying
-stopped_at: Completed 36.15-09-PLAN.md
-last_updated: "2026-07-26T07:35:55.568Z"
+stopped_at: Completed 36.15-10-PLAN.md
+last_updated: "2026-07-26T08:20:40.341Z"
 last_activity: 2026-07-25
 last_activity_desc: Phase 36.15 execution started
 progress:
   total_phases: 18
   completed_phases: 17
-  total_plans: 131
-  completed_plans: 125
+  total_plans: 132
+  completed_plans: 126
   percent: 94
 ---
 
@@ -120,6 +120,7 @@ Progress: [██████████████████░░] 114/121
 | Phase 36.15 P06 | 37min | 12 tasks | 11 files |
 | Phase 36.15 P08 | 23min | 3 tasks | 7 files |
 | Phase 36.15 P09 | 15min | 1 tasks | 5 files |
+| Phase 36.15 P10 | 15min | 1 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -243,6 +244,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 36.15 Plan 08]: Gap B fixed via native select (OS popup immune to clipping) plus placement='below' header tooltips that stay inside the overflow-y:hidden strip
 - [Phase ?]: [Phase 36.15 Plan 08]: Copy/Apply Script relocated to the Scripts toolbar before Clear Script Buffer (user wording); de-prefixed tooltip grammar lives in the shared buildGuardedActionTooltipCopy builder
 - [Phase ?]: [Phase 36.15 Plan 09]: Doubled APPLY ring fixed by restyling the submit as a 4px rounded rect (its 999px cap echoed the form pill); clipped selection border fixed with z-index on .current only — 18px pitch and 155px bands untouched
+- [Phase ?]: 36.15-10: CAPS labels were CSS inheritance from the global button text-transform: uppercase rule; fixed with per-class text-transform: none opt-outs
+- [Phase ?]: 36.15-10: Scripts second-row small icons were flex shrink in grid cells, not icon size; fixed with flex: 0 0 auto on the svg and label ellipsis
+- [Phase ?]: 36.15-10: Bottom action row split into three sibling groups (identity/tools/Key spacing) reusing the Plan 04 top-bar 8px pill-island gap language
 
 ### Pending Todos
 
@@ -324,6 +328,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-26T07:35:55.555Z
-Stopped at: Completed 36.15-09-PLAN.md
+Last session: 2026-07-26T08:20:40.327Z
+Stopped at: Completed 36.15-10-PLAN.md
 Resume file: None
