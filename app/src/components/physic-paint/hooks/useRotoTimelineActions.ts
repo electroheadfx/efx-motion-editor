@@ -179,6 +179,10 @@ export interface RotoPhysicalTimelineActionBundle {
   readonly canAddEmptyKey: ReadonlySignal<boolean>;
   /** Reactive + Key disabled reason, or null when eligible. */
   readonly addEmptyKeyDisabledReason: ReadonlySignal<string | null>;
+  /** Reactive Select All availability derived from launch presence, idle pending state, and at least one real key record (D-03). */
+  readonly canSelectAllKeys: ReadonlySignal<boolean>;
+  /** Reactive Select All disabled reason (verbatim controller reason for the 37-04 guarded icon), or null when eligible. */
+  readonly selectAllKeysDisabledReason: ReadonlySignal<string | null>;
 }
 
 export interface RotoTimelineActionsInput {
@@ -283,6 +287,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const forceSpacingDisabledReason = computed(() => computeForceSpacingAvailability(input).reason);
   const canAddEmptyKey = computed(() => computeAddEmptyKeyAvailability(input).eligible);
   const addEmptyKeyDisabledReason = computed(() => computeAddEmptyKeyAvailability(input).reason);
+  const canSelectAllKeys = computed(() => computeSelectAllKeysAvailability(input).eligible);
+  const selectAllKeysDisabledReason = computed(() => computeSelectAllKeysAvailability(input).reason);
   const pendingOperationIdSignal = input.pendingOperationId ?? signal<string | null>(null);
 
   const runPhysicalAction = useCallback(async (runnerInput: PhysicalActionRunnerInput): Promise<boolean> => {
@@ -732,7 +738,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     forceSpacingDisabledReason,
     canAddEmptyKey,
     addEmptyKeyDisabledReason,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason]);
+    canSelectAllKeys,
+    selectAllKeysDisabledReason,
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,
@@ -861,8 +869,21 @@ function computeAddEmptyKeyAvailability(input: RotoTimelineActionsInput): Action
   return { eligible: true, reason: null };
 }
 
-function computeForceSpacingAvailability(input: RotoTimelineActionsInput): ActionAvailability {  if (!input.getLaunchContext || !input.getLaunchContext()) {
-    return { eligible: false, reason: 'Select a Physics Paint Roto timeline before applying Force Spacing.' };
+function computeSelectAllKeysAvailability(input: RotoTimelineActionsInput): ActionAvailability {
+  if (!input.getLaunchContext || !input.getLaunchContext()) {
+    return { eligible: false, reason: 'Select a Physics Paint Roto timeline before selecting keys.' };
+  }
+  if (input.pendingOperationId && input.pendingOperationId.value !== null) {
+    return { eligible: false, reason: 'A Roto physical edit is already in flight.' };
+  }
+  if ((input.getRotoKeyRecords?.() ?? []).length === 0) {
+    return { eligible: false, reason: 'No real Roto keys to select.' };
+  }
+  // Select All is idempotent: eligible even when every key is already selected.
+  return { eligible: true, reason: null };
+}
+
+function computeForceSpacingAvailability(input: RotoTimelineActionsInput): ActionAvailability {  if (!input.getLaunchContext || !input.getLaunchContext()) {    return { eligible: false, reason: 'Select a Physics Paint Roto timeline before applying Force Spacing.' };
   }
   if (!input.executePhysicalEdit || !input.getRotoKeyRecords || !input.getRotoInterpolationState || !input.getCapacity) {
     return { eligible: false, reason: 'Timeline editing is unavailable.' };

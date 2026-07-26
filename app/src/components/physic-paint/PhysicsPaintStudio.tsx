@@ -101,6 +101,12 @@ export function PhysicsPaintStudio() {
     const next = selectAllRotoKeyIds(orderedRealKeyIds, selectedKeyId.peek());
     selectedKeyIds.value = next.selectedKeyIds;
     selectionAnchorKeyId.value = next.anchorKeyId;
+    // UI-SPEC status contract: one feedback line per successful invocation,
+    // shared by the Cmd/Ctrl+A route and the 37-04 icon route through the
+    // same setApplyMessage publisher the bundle's publishStatus uses (36.15
+    // D-15 single-owner capsule arbitration). Selection-only gestures
+    // (toggle/range/collapse) publish nothing.
+    setApplyMessage('All keys selected');
   }, [rotoKeyRecords]);
   const [lastError, setLastError] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
