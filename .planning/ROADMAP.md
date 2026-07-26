@@ -638,7 +638,7 @@ Planning notes:
 **Goal:** As a stop-motion animator, I want to select multiple real Physics Paint Roto keys — including Select All — and drag/drop, delete, and Force-Space them as one group, so that retiming and reorganizing many keys is fast and safe while the Phase 36.14 canonical physical-frame model and the Phase 36.15 final timeline UI remain the only authorities.
 **Requirements:** 37-MULTI-SELECT-IDENTITY, 37-SELECT-ALL, 37-GROUP-DRAG, 37-GROUP-DELETE, 37-GROUP-FORCE-SPACING, 37-ATOMIC-TRANSACTIONS, 37-DOWNSTREAM-PARITY, 37-UI-INTEGRATION, 37-UAT-THEN-REGRESSION
 **Depends on:** Phase 36.15 (final timeline UI), Phase 36.14 (canonical physical-frame authority)
-**Plans:** 2/6 plans executed
+**Plans:** 3/6 plans executed
 
 Plans:
 
@@ -650,7 +650,7 @@ Wave 1:
 
 Wave 2 *(blocked on Wave 1 completion)*:
 
-- [ ] 37-03-PLAN.md
+- [x] 37-03-PLAN.md
 
 Wave 3 *(blocked on Wave 2 completion)*:
 
@@ -1022,4 +1022,4 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 6/6 | Complete | 2026-07-13 |
 | 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 24/30 | Complete    | 2026-07-25 |
 | 36.15. Roto Timeline Final UI Integration | v0.8.0 | 13/13 | Complete | 2026-07-26 |
-| 37. Multi-Select Physical Roto Keys | v0.8.0 | 2/6 | In Progress|  |
+| 37. Multi-Select Physical Roto Keys | v0.8.0 | 3/6 | In Progress|  |
