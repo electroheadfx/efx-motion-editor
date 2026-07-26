@@ -35,8 +35,6 @@ const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: s
   { label: 'Copy key', guard: 'canCopyRotoKey', handler: 'props.onCopyRotoFrame?.()' },
   { label: 'Paste key', guard: 'canPasteRotoKey', handler: 'props.onPasteRotoFrame?.()' },
   { label: 'Delete key', guard: 'canDeleteRotoKey', handler: 'props.onDeleteRotoFrame?.()' },
-  { label: 'Copy Script', guard: 'canCopyRotoScript', handler: 'props.onCopyRotoScript?.()' },
-  { label: 'Apply Script', guard: 'canApplyRotoScript', handler: 'props.onApplyRotoScript?.()' },
 ];
 
 describe('PhysicsPaintWorkflowStrip source contract', () => {
@@ -122,7 +120,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(getHeaderBlock(source())).not.toContain('physics-paint-mode-label');
   });
 
-  it('renders the eight guarded icon actions in locked order (D-10)', () => {
+  it('renders the six guarded icon actions in locked order (D-10)', () => {
     const row = getKeyUtilitiesRowBlock(source());
     const indices = ROW_ICON_ACTIONS.map(({ label }) => row.indexOf(`aria-label="${label}"`));
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
@@ -135,11 +133,14 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(source()).toContain('ClipboardCopy');
     expect(source()).toContain('ClipboardPaste');
     expect(source()).toContain('Trash2');
-    expect(source()).toMatch(/[^a-zA-Z]Clipboard[^a-zA-Z]/);
-    expect(source()).toContain('ClipboardPen');
+    // Copy Script / Apply Script moved to the Scripts sidebar toolbar (Gap C).
+    expect(row).not.toContain('aria-label="Copy Script"');
+    expect(row).not.toContain('aria-label="Apply Script"');
+    expect(source()).not.toMatch(/[^a-zA-Z]Clipboard[^a-zA-Z]/);
+    expect(source()).not.toContain('ClipboardPen');
   });
 
-  it('removes the seven text buttons and the Discard Script button from the row (D-11)', () => {
+  it('removes the seven text buttons, the Discard Script button, and the script action props from the row (D-11, Gap C)', () => {
     const code = source();
     const row = getKeyUtilitiesRowBlock(code);
     for (const obsolete of ['>Insert</button>', '>Dup</button>', '>Copy</button>', '>Paste</button>', '>Delete</button>', '>Copy Script</button>', '>Apply Script</button>', '>Discard Script</button>']) {
@@ -147,7 +148,12 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     }
     expect(row).not.toContain('Discard Script');
     expect(row).not.toContain('physics-paint-roto-key-button"');
-    expect(getWorkflowStripPropsInterface(code)).not.toContain('onDiscardRotoScript');
+    const propsInterface = getWorkflowStripPropsInterface(code);
+    expect(propsInterface).not.toContain('onDiscardRotoScript');
+    expect(propsInterface).not.toContain('onCopyRotoScript');
+    expect(propsInterface).not.toContain('onApplyRotoScript');
+    expect(code).not.toContain('onCopyRotoScript');
+    expect(code).not.toContain('onApplyRotoScript');
   });
 
   it('keeps every guarded action focusable without native disabled and guarded on click and keydown (D-12)', () => {
@@ -174,10 +180,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       expect(row).toContain(`${label} — unavailable: `);
     }
     expect(row).toContain('Set Key Space — unavailable: ');
-    expect(code).toContain('copyDisabledReason');
-    expect(code).toContain('applyDisabledReason');
-    expect(code).toContain('onCopyRotoScript');
-    expect(code).toContain('onApplyRotoScript');
+    // Script copy/apply availability reasons now surface in the Scripts
+    // sidebar toolbar, not the strip (Gap C).
+    expect(code).not.toContain('copyDisabledReason');
+    expect(code).not.toContain('applyDisabledReason');
   });
 
   it('keeps generated frames non-editable and real cached frames selectable', () => {

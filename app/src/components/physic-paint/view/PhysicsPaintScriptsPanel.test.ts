@@ -11,8 +11,8 @@ const controller = readFileSync(fileURLToPath(new URL('../roto/physicsPaintRotoS
 const studio = readFileSync(fileURLToPath(new URL('../PhysicsPaintStudio.tsx', import.meta.url)), 'utf8');
 const strip = readFileSync(fileURLToPath(new URL('./PhysicsPaintWorkflowStrip.tsx', import.meta.url)), 'utf8');
 
-function getDiscardBlock(code: string): string {
-  const labelIndex = code.indexOf('aria-label="Discard Script"');
+function getGuardedToolbarBlock(code: string, ariaLabel: string): string {
+  const labelIndex = code.indexOf(`aria-label="${ariaLabel}"`);
   if (labelIndex === -1) return '';
   const start = code.lastIndexOf('<span', labelIndex);
   const tooltipClose = code.indexOf('</PhysicsPaintStyledTooltip>', labelIndex);
@@ -24,6 +24,12 @@ function getDiscardBlock(code: string): string {
 
 function getScriptsPanelPropsInterface(code: string): string {
   return code.slice(code.indexOf('export interface PhysicsPaintScriptsPanelProps'), code.indexOf('export function PhysicsPaintScriptsPanel'));
+}
+
+function getScriptsToolbarBlock(code: string): string {
+  const toolbarStart = code.indexOf('physics-paint-scripts-toolbar');
+  const toolbarEnd = code.indexOf('physics-paint-scripts-list', toolbarStart);
+  return code.slice(toolbarStart, toolbarEnd === -1 ? code.length : toolbarEnd);
 }
 
 describe('Physics Paint SCRIPTS panel contract', () => {
@@ -92,43 +98,114 @@ describe('Physics Paint SCRIPTS panel contract', () => {
   });
 });
 
-describe('Physics Paint Scripts panel Discard Script contract (36.15-07)', () => {
-  it('renders a guarded Discard Script clipboard-x control without native disabled or title', () => {
+describe('Physics Paint Scripts panel Clear Script Buffer contract (36.15-07, renamed 36.15-08 Gap C)', () => {
+  it('renders a guarded Clear Script Buffer clipboard-x control without native disabled or title', () => {
     expect(panel).toContain('ClipboardX');
-    expect(panel).toContain('aria-label="Discard Script"');
-    const block = getDiscardBlock(panel);
+    expect(panel).toContain('aria-label="Clear Script Buffer"');
+    expect(panel).not.toContain('Discard Script');
+    const block = getGuardedToolbarBlock(panel, 'Clear Script Buffer');
     expect(block).toContain('aria-disabled');
     expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
     expect(block).not.toContain('title=');
   });
 
-  it('wires the styled tooltip two-part grammar and guards activation before the handler', () => {
-    const block = getDiscardBlock(panel);
-    expect(block).toContain('Discard Script — unavailable: ${discardScriptDisabledReason}');
-    expect(block).toContain('discardScriptDisabledReason}');
+  it('uses the user wording clear script from buffer with de-prefixed tooltip grammar and guards activation before the handler', () => {
+    const block = getGuardedToolbarBlock(panel, 'Clear Script Buffer');
+    expect(block).toContain('Clear script from buffer');
+    expect(block).toContain('unavailable: ${clearScriptBufferDisabledReason}');
+    expect(block).not.toContain(' — unavailable: ');
     expect(block).toContain('aria-describedby');
     expect(block).toContain('PhysicsPaintStyledTooltip');
-    const guardIndex = block.indexOf('if (!canDiscardScript) return;');
+    const guardIndex = block.indexOf('if (!canClearScriptBuffer) return;');
     const handlerIndex = block.indexOf('onDiscardScript()');
     expect(guardIndex).toBeGreaterThanOrEqual(0);
     expect(handlerIndex).toBeGreaterThan(guardIndex);
-    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canDiscardScript");
+    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canClearScriptBuffer");
   });
 
-  it('declares rotoScript and onDiscardScript props and renders Discard inside the toolbar', () => {
+  it('declares rotoScript and onDiscardScript props and renders Clear Script Buffer inside the toolbar', () => {
     const propsInterface = getScriptsPanelPropsInterface(panel);
     expect(propsInterface).toContain('rotoScript: RotoScriptClipboardController');
     expect(propsInterface).toContain('onDiscardScript: () => void');
-    const toolbarStart = panel.indexOf('physics-paint-scripts-toolbar');
-    const toolbarEnd = panel.indexOf('physics-paint-scripts-list', toolbarStart);
-    const toolbar = panel.slice(toolbarStart, toolbarEnd);
-    expect(toolbar).toContain('aria-label="Discard Script"');
-    expect(toolbar.indexOf('aria-label="Discard Script"')).toBeGreaterThan(toolbar.indexOf('label="Refresh Scripts"'));
+    const toolbar = getScriptsToolbarBlock(panel);
+    expect(toolbar).toContain('aria-label="Clear Script Buffer"');
+    expect(toolbar.indexOf('aria-label="Clear Script Buffer"')).toBeGreaterThan(toolbar.indexOf('label="Refresh Scripts"'));
   });
 
   it('removes onDiscardRotoScript from the strip and Studio workflow props while scripts props invoke discardScript', () => {
     expect(strip).not.toContain('onDiscardRotoScript');
     expect(studio).not.toContain('onDiscardRotoScript');
     expect(studio).toContain('onDiscardScript: () => { rotoScript.discardScript(); setLastError(null); }');
+  });
+});
+
+describe('Physics Paint Scripts panel Copy/Apply Script toolbar contract (36.15-08, UAT Gap C)', () => {
+  it('renders guarded Copy Script and Apply Script controls before Clear Script Buffer without native disabled or title', () => {
+    expect(panel).toContain('Clipboard,');
+    expect(panel).toContain('ClipboardPen');
+    const toolbar = getScriptsToolbarBlock(panel);
+    const refreshIndex = toolbar.indexOf('label="Refresh Scripts"');
+    const copyIndex = toolbar.indexOf('aria-label="Copy Script"');
+    const applyIndex = toolbar.indexOf('aria-label="Apply Script"');
+    const clearIndex = toolbar.indexOf('aria-label="Clear Script Buffer"');
+    for (const index of [refreshIndex, copyIndex, applyIndex, clearIndex]) {
+      expect(index).toBeGreaterThanOrEqual(0);
+    }
+    expect(copyIndex).toBeGreaterThan(refreshIndex);
+    expect(applyIndex).toBeGreaterThan(copyIndex);
+    expect(clearIndex).toBeGreaterThan(applyIndex);
+    for (const label of ['Copy Script', 'Apply Script']) {
+      const block = getGuardedToolbarBlock(panel, label);
+      expect(block).toContain('aria-disabled');
+      expect(block).toContain('aria-describedby');
+      expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+      expect(block).not.toContain('title=');
+      expect(block).toContain('PhysicsPaintStyledTooltip');
+    }
+  });
+
+  it('reads availability from the rotoScript controller ports and guards activation before the handlers', () => {
+    expect(panel).toContain('rotoScript.availability.value.canCopy');
+    expect(panel).toContain('rotoScript.availability.value.canApply');
+    expect(panel).toContain('copyDisabledReason');
+    expect(panel).toContain('applyDisabledReason');
+    const copyBlock = getGuardedToolbarBlock(panel, 'Copy Script');
+    const applyBlock = getGuardedToolbarBlock(panel, 'Apply Script');
+    const copyGuard = copyBlock.indexOf('if (!canCopyRotoScript) return;');
+    expect(copyGuard).toBeGreaterThanOrEqual(0);
+    expect(copyBlock.indexOf('onCopyScript()')).toBeGreaterThan(copyGuard);
+    expect(copyBlock).toContain("(event.key === 'Enter' || event.key === ' ') && !canCopyRotoScript");
+    const applyGuard = applyBlock.indexOf('if (!canApplyRotoScript) return;');
+    expect(applyGuard).toBeGreaterThanOrEqual(0);
+    expect(applyBlock.indexOf('onApplyScript()')).toBeGreaterThan(applyGuard);
+    expect(applyBlock).toContain("(event.key === 'Enter' || event.key === ' ') && !canApplyRotoScript");
+    // De-prefixed tooltip grammar (Gap D): description or 'unavailable: {reason}'.
+    expect(copyBlock).toContain('unavailable: ${copyRotoScriptDisabledReason}');
+    expect(applyBlock).toContain('unavailable: ${applyRotoScriptDisabledReason}');
+    expect(copyBlock).not.toContain(' — unavailable: ');
+    expect(applyBlock).not.toContain(' — unavailable: ');
+  });
+
+  it('declares onCopyScript/onApplyScript props, wires them in Studio scripts props, and removes the strip script actions', () => {
+    const propsInterface = getScriptsPanelPropsInterface(panel);
+    expect(propsInterface).toContain('onCopyScript: () => void');
+    expect(propsInterface).toContain('onApplyScript: () => void');
+    expect(studio).toContain('onCopyScript: () => { void rotoScript.copyScript()');
+    expect(studio).toContain('onApplyScript: () => { void rotoScript.applyScript()');
+    expect(studio).not.toContain('onCopyRotoScript');
+    expect(studio).not.toContain('onApplyRotoScript');
+    expect(strip).not.toContain('onCopyRotoScript');
+    expect(strip).not.toContain('onApplyRotoScript');
+    expect(strip).not.toContain('aria-label="Copy Script"');
+    expect(strip).not.toContain('aria-label="Apply Script"');
+  });
+
+  it('lays the nine toolbar icons out as a proper second row styled like the first (no orphan icon)', () => {
+    const toolbar = getScriptsToolbarBlock(panel);
+    const guardedCount = (toolbar.match(/physics-paint-roto-key-icon-action/g) ?? []).length;
+    // Three guarded clipboard actions (Copy, Apply, Clear) form the second row.
+    expect(guardedCount).toBeGreaterThanOrEqual(3);
+    expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\)/);
+    expect(css).toContain('.physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action');
   });
 });

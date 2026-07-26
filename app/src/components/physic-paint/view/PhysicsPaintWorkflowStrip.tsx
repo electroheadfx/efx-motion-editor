@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Clipboard, ClipboardCopy, ClipboardPaste, ClipboardPen, CopyPlus, Info, Play, Plus, RotateCcw, Square, Trash2, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, Play, Plus, RotateCcw, Square, Trash2, X } from 'lucide-preact';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
@@ -113,8 +113,6 @@ export interface PhysicsPaintWorkflowStripProps {
   mutationLocked?: boolean;
   rotoKeyState?: PhysicsPaintWorkflowRotoKeyState;
   rotoScript?: PhysicsPaintWorkflowRotoScriptState;
-  onCopyRotoScript?: () => void;
-  onApplyRotoScript?: () => void;
   /** Header Close affordance — Studio routes through the guarded close-flush path. */
   onClose?: () => void;
   onNavigateToSyncedFrame: (frame: number) => void;
@@ -335,7 +333,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const forceSpacingActionDisabledReason = canApplyForceSpacingAction
     ? null
     : forceSpacingDisabledReason ?? 'Finish the current key action before using key tools.';
-  const scriptAvailability = props.rotoScript?.availability.value;
   const scriptStatus = props.rotoScript?.status.value ?? null;
   const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy) || Boolean(rotoDragPreview?.pending);
   const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.rotoInterpolationPending);
@@ -365,18 +362,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const copyRotoKeyDisabledReason = canCopyRotoKey ? null : getRotoKeyUtilityDisabledMessage('copy');
   const pasteRotoKeyDisabledReason = canPasteRotoKey ? null : getRotoKeyUtilityDisabledMessage('paste');
   const deleteRotoKeyDisabledReason = canDeleteRotoKey ? null : getRotoKeyUtilityDisabledMessage('delete');
-  const canCopyRotoScript = Boolean(scriptAvailability?.canCopy);
-  const canApplyRotoScript = Boolean(scriptAvailability?.canApply);
-  const copyRotoScriptDisabledReason = canCopyRotoScript ? null : scriptAvailability?.copyDisabledReason ?? null;
-  const applyRotoScriptDisabledReason = canApplyRotoScript ? null : scriptAvailability?.applyDisabledReason ?? null;
   const insertKeyTooltip = useStyledTooltip();
   const addKeyTooltip = useStyledTooltip();
   const duplicateKeyTooltip = useStyledTooltip();
   const copyKeyTooltip = useStyledTooltip();
   const pasteKeyTooltip = useStyledTooltip();
   const deleteKeyTooltip = useStyledTooltip();
-  const copyScriptTooltip = useStyledTooltip();
-  const applyScriptTooltip = useStyledTooltip();
   const closeTooltip = useStyledTooltip();
   const capsuleTooltip = useStyledTooltip();
   const interpolationTooltip = useStyledTooltip();
@@ -1208,60 +1199,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     </PhysicsPaintStyledTooltip>
                   </span>
                 ) : null}
-                <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyScriptTooltip.onPointerEnter} onPointerLeave={copyScriptTooltip.onPointerLeave}>
-                  <button
-                    type="button"
-                    class="physics-paint-roto-key-icon-button script-action"
-                    aria-label="Copy Script"
-                    aria-disabled={!canCopyRotoScript ? 'true' : undefined}
-                    aria-describedby={!canCopyRotoScript && copyRotoScriptDisabledReason ? 'roto-key-action-reason-copy-script' : undefined}
-                    onFocus={copyScriptTooltip.onFocus}
-                    onBlur={copyScriptTooltip.onBlur}
-                    onClick={() => {
-                      copyScriptTooltip.hide();
-                      if (!canCopyRotoScript) return;
-                      props.onCopyRotoScript?.();
-                    }}
-                    onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && !canCopyRotoScript) event.preventDefault();
-                    }}
-                  >
-                    <Clipboard size={16} aria-hidden="true" />
-                  </button>
-                  {!canCopyRotoScript && copyRotoScriptDisabledReason ? (
-                    <span id="roto-key-action-reason-copy-script" class="physics-paint-sr-only">{copyRotoScriptDisabledReason}</span>
-                  ) : null}
-                  <PhysicsPaintStyledTooltip visible={copyScriptTooltip.visible}>
-                    {!canCopyRotoScript && copyRotoScriptDisabledReason ? `Copy Script — unavailable: ${copyRotoScriptDisabledReason}` : 'Copy Script'}
-                  </PhysicsPaintStyledTooltip>
-                </span>
-                <span class="physics-paint-roto-key-icon-action" onPointerEnter={applyScriptTooltip.onPointerEnter} onPointerLeave={applyScriptTooltip.onPointerLeave}>
-                  <button
-                    type="button"
-                    class="physics-paint-roto-key-icon-button script-action"
-                    aria-label="Apply Script"
-                    aria-disabled={!canApplyRotoScript ? 'true' : undefined}
-                    aria-describedby={!canApplyRotoScript && applyRotoScriptDisabledReason ? 'roto-key-action-reason-apply-script' : undefined}
-                    onFocus={applyScriptTooltip.onFocus}
-                    onBlur={applyScriptTooltip.onBlur}
-                    onClick={() => {
-                      applyScriptTooltip.hide();
-                      if (!canApplyRotoScript) return;
-                      props.onApplyRotoScript?.();
-                    }}
-                    onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && !canApplyRotoScript) event.preventDefault();
-                    }}
-                  >
-                    <ClipboardPen size={16} aria-hidden="true" />
-                  </button>
-                  {!canApplyRotoScript && applyRotoScriptDisabledReason ? (
-                    <span id="roto-key-action-reason-apply-script" class="physics-paint-sr-only">{applyRotoScriptDisabledReason}</span>
-                  ) : null}
-                  <PhysicsPaintStyledTooltip visible={applyScriptTooltip.visible}>
-                    {!canApplyRotoScript && applyRotoScriptDisabledReason ? `Apply Script — unavailable: ${applyRotoScriptDisabledReason}` : 'Apply Script'}
-                  </PhysicsPaintStyledTooltip>
-                </span>
               </div>
             </div>
         </div>

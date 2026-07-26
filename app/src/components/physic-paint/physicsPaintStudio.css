@@ -1153,6 +1153,15 @@ button.destructive {
   min-width: 0;
 }
 .physics-paint-script-disabled-control .physics-paint-script-icon-button { width: 100%; }
+
+/* Guarded clipboard actions (Copy Script / Apply Script / Clear Script
+   Buffer) fill their grid cells so the second toolbar row is styled exactly
+   like the first (36.15-08, UAT Gap C). */
+.physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action {
+  display: flex;
+  min-width: 0;
+}
+.physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action .physics-paint-script-icon-button { width: 100%; }
 .physics-paint-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 .physics-paint-script-icon-button {
@@ -1684,12 +1693,6 @@ button.destructive {
   border-color: rgba(255, 102, 102, 0.45);
   background: #503238;
   color: #ffb0b8;
-}
-
-.physics-paint-roto-key-icon-button.script-action:not([aria-disabled="true"]) {
-  border-color: #5f7593;
-  background: #34475e;
-  color: #ddebfa;
 }
 
 .physics-paint-styled-tooltip {
