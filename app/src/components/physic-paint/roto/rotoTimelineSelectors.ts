@@ -114,7 +114,25 @@ export function selectRealCachedRotoSourceFrameNumbers(contextCachedRotoFrames: 
     .sort((a, b) => a - b) ?? [];
 }
 
-export function selectRotoTimelineView(input: RotoTimelineSelectorInput): RotoTimelineView {
+/**
+ * Structural (frame-independent) half of the legacy source/display view:
+ * model, projection, and marker/cache lists derived solely from cached frames
+ * and interpolation settings. Keeps reference identity across pure frame
+ * changes so downstream memos stop recomputing per frame (38.1 D-07).
+ */
+export interface RotoLegacyTimelineStructuralView {
+  readonly model: RotoSourceDisplayModel;
+  readonly projection: RotoDisplayProjection;
+  readonly realKeyDisplayFrames: number[];
+  readonly occupiedRotoFrames: number[];
+  readonly savedRotoFrames: PhysicsPaintWorkflowStripFrameMarker[];
+  readonly cachedRotoFrames: PhysicPaintRotoCacheFrame[];
+}
+
+export function selectRotoLegacyTimelineStructuralView(input: {
+  cachedRotoFrames?: readonly PhysicPaintRotoCacheFrame[];
+  interpolationSettings?: Partial<PhysicPaintRotoInterpolationSettings> | null;
+}): RotoLegacyTimelineStructuralView {
   const model = createRotoSourceDisplayModelLegacy({
     realSourceFrames: selectRealSourceFrames(input.cachedRotoFrames),
     settings: normalizeTimelineSettings(input.interpolationSettings),
@@ -124,16 +142,29 @@ export function selectRotoTimelineView(input: RotoTimelineSelectorInput): RotoTi
   const occupiedRotoFrames = normalizeFrameNumbers(realKeyDisplayFrames);
   const savedRotoFrames = realKeyDisplayFrames.map((frame) => ({ frame, saved: true, label: `Frame ${frame}` }));
   const cachedRotoFrames = [...(input.cachedRotoFrames ?? [])];
-  const currentRealKey = projection.realKeys.find((frame) => frame.displayFrame === input.currentFrame);
-  const currentGeneratedFrame = projection.generatedFrames.find((frame) => frame.displayFrame === input.currentFrame);
-  const cachedCurrentGeneratedFrame = cachedRotoFrames.find((frame) => frame.source === 'generated-interpolation' && frame.appFrame === input.currentFrame);
+  return { model, projection, realKeyDisplayFrames, occupiedRotoFrames, savedRotoFrames, cachedRotoFrames };
+}
+
+/**
+ * Frame-dependent assembly for the legacy view: cheap `find`/`includes`
+ * lookups over the structural view for the current frame. Values are
+ * byte-identical to the pre-split selector for identical inputs (38.1 D-09).
+ */
+export function assembleRotoTimelineView(
+  structural: RotoLegacyTimelineStructuralView,
+  currentFrame: number,
+): RotoTimelineView {
+  const { model, projection, realKeyDisplayFrames, occupiedRotoFrames, savedRotoFrames, cachedRotoFrames } = structural;
+  const currentRealKey = projection.realKeys.find((frame) => frame.displayFrame === currentFrame);
+  const currentGeneratedFrame = projection.generatedFrames.find((frame) => frame.displayFrame === currentFrame);
+  const cachedCurrentGeneratedFrame = cachedRotoFrames.find((frame) => frame.source === 'generated-interpolation' && frame.appFrame === currentFrame);
   const currentFrameIsGenerated = Boolean(currentGeneratedFrame || cachedCurrentGeneratedFrame);
   const currentFrameOwnerSourceFrame = currentRealKey?.sourceFrame
     ?? currentGeneratedFrame?.fromSourceFrame
     ?? cachedCurrentGeneratedFrame?.fromSourceFrame
     ?? cachedCurrentGeneratedFrame?.sourceFrame
     ?? null;
-  const currentFrameSelectionKind: RotoTimelineSelectionKind = realKeyDisplayFrames.includes(input.currentFrame)
+  const currentFrameSelectionKind: RotoTimelineSelectionKind = realKeyDisplayFrames.includes(currentFrame)
     ? 'real-key'
     : currentFrameIsGenerated
       ? 'generated-interpolation'
@@ -149,6 +180,10 @@ export function selectRotoTimelineView(input: RotoTimelineSelectorInput): RotoTi
     currentFrameOwnerSourceFrame,
     currentFrameIsGenerated,
   };
+}
+
+export function selectRotoTimelineView(input: RotoTimelineSelectorInput): RotoTimelineView {
+  return assembleRotoTimelineView(selectRotoLegacyTimelineStructuralView(input), input.currentFrame);
 }
 
 export function selectRealSourceFrames(cachedRotoFrames: readonly PhysicPaintRotoCacheFrame[] | undefined): number[] {
@@ -224,13 +259,27 @@ export interface RotoPhysicalTimelineView {
 }
 
 /**
- * Select the physical timeline view from the store's validated physical records,
- * canonical interpolation state, bounded capacity, current navigation frame,
- * and selected keyId. Derives semantic cells, selection, and ordered records from
- * one shared projection seam.
+ * Structural (frame-independent) half of the physical timeline view: the
+ * shared projection seam plus every field derived solely from identities,
+ * interpolation, and capacity. Keeps reference identity across pure frame or
+ * selection changes (38.1 D-07).
  */
-export function selectRotoPhysicalTimelineView(input: RotoPhysicalTimelineViewSelectorInput): RotoPhysicalTimelineView {
-  const { realKeyRecords, interpolation, capacity, currentAppFrame, selectedKeyId } = input;
+export interface RotoPhysicalTimelineStructuralView {
+  readonly orderedRealKeyRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly physicalCells: readonly RotoPhysicalTimelineCell[];
+  readonly generatedCells: readonly RotoPhysicalTimelineCell[];
+  readonly orderedKeyIds: readonly string[];
+  readonly interpolation: PhysicPaintRotoInterpolationState;
+  readonly capacity: number;
+  readonly projection: PhysicPaintRotoPhysicalTimelineProjection | null;
+}
+
+export function selectRotoPhysicalTimelineStructuralView(input: {
+  readonly realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly interpolation: PhysicPaintRotoInterpolationState;
+  readonly capacity: number;
+}): RotoPhysicalTimelineStructuralView {
+  const { realKeyRecords, interpolation, capacity } = input;
 
   const identities = realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
   const projectionResult = projectPhysicPaintRotoPhysicalTimeline({
@@ -240,18 +289,12 @@ export function selectRotoPhysicalTimelineView(input: RotoPhysicalTimelineViewSe
   });
 
   if (!projectionResult.ok) {
-    // Fail closed: return an empty physical view with no projection.
-    const emptyCell: RotoPhysicalTimelineCell = { kind: 'empty', appFrame: currentAppFrame };
+    // Fail closed: structural empty view with no projection.
     return {
       orderedRealKeyRecords: realKeyRecords,
       physicalCells: [],
       generatedCells: [],
       orderedKeyIds: [],
-      currentCell: emptyCell,
-      selectedKeyId: null,
-      selectedRealKey: null,
-      selectedAppFrame: null,
-      currentAppFrame,
       interpolation,
       capacity,
       projection: null,
@@ -259,26 +302,81 @@ export function selectRotoPhysicalTimelineView(input: RotoPhysicalTimelineViewSe
   }
 
   const projection = projectionResult.projection;
-  const currentCell = projection.cells.find((cell) => cell.appFrame === currentAppFrame)
-    ?? { kind: 'empty' as const, appFrame: currentAppFrame };
-
-  const selectedRealKey = selectedKeyId !== null
-    ? realKeyRecords.find((record) => record.keyId === selectedKeyId) ?? null
-    : null;
-  const selectedAppFrame = selectedRealKey?.appFrame ?? null;
-
   return {
     orderedRealKeyRecords: realKeyRecords,
     physicalCells: projection.cells,
     generatedCells: projection.generatedCells,
     orderedKeyIds: projection.orderedKeyIds,
+    interpolation,
+    capacity,
+    projection,
+  };
+}
+
+/**
+ * Frame/selection assembly for the physical view: cheap `find` lookups over
+ * the structural view. Values are byte-identical to the pre-split selector
+ * for identical inputs (38.1 D-09); the fail-closed empty-view branch is
+ * preserved verbatim.
+ */
+export function assembleRotoPhysicalTimelineView(
+  structural: RotoPhysicalTimelineStructuralView,
+  input: {
+    readonly currentAppFrame: number;
+    readonly selectedKeyId: string | null;
+  },
+): RotoPhysicalTimelineView {
+  const { currentAppFrame, selectedKeyId } = input;
+
+  if (structural.projection === null) {
+    // Fail closed: return an empty physical view with no projection.
+    const emptyCell: RotoPhysicalTimelineCell = { kind: 'empty', appFrame: currentAppFrame };
+    return {
+      orderedRealKeyRecords: structural.orderedRealKeyRecords,
+      physicalCells: structural.physicalCells,
+      generatedCells: structural.generatedCells,
+      orderedKeyIds: structural.orderedKeyIds,
+      currentCell: emptyCell,
+      selectedKeyId: null,
+      selectedRealKey: null,
+      selectedAppFrame: null,
+      currentAppFrame,
+      interpolation: structural.interpolation,
+      capacity: structural.capacity,
+      projection: null,
+    };
+  }
+
+  const currentCell = structural.physicalCells.find((cell) => cell.appFrame === currentAppFrame)
+    ?? { kind: 'empty' as const, appFrame: currentAppFrame };
+
+  const selectedRealKey = selectedKeyId !== null
+    ? structural.orderedRealKeyRecords.find((record) => record.keyId === selectedKeyId) ?? null
+    : null;
+  const selectedAppFrame = selectedRealKey?.appFrame ?? null;
+
+  return {
+    orderedRealKeyRecords: structural.orderedRealKeyRecords,
+    physicalCells: structural.physicalCells,
+    generatedCells: structural.generatedCells,
+    orderedKeyIds: structural.orderedKeyIds,
     currentCell,
     selectedKeyId,
     selectedRealKey,
     selectedAppFrame,
     currentAppFrame,
-    interpolation,
-    capacity,
-    projection,
+    interpolation: structural.interpolation,
+    capacity: structural.capacity,
+    projection: structural.projection,
   };
+}
+
+/**
+ * Select the physical timeline view from the store's validated physical records,
+ * canonical interpolation state, bounded capacity, current navigation frame,
+ * and selected keyId. Derives semantic cells, selection, and ordered records from
+ * one shared projection seam.
+ */
+export function selectRotoPhysicalTimelineView(input: RotoPhysicalTimelineViewSelectorInput): RotoPhysicalTimelineView {
+  return assembleRotoPhysicalTimelineView(selectRotoPhysicalTimelineStructuralView(input), input);
 }

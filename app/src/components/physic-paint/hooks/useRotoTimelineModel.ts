@@ -1,8 +1,13 @@
 import { computed, signal, type Signal } from '@preact/signals';
 import { useMemo } from 'preact/hooks';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
-import { selectRotoTimelineView, type RotoTimelineSelectionKind, type RotoTimelineView } from '../roto/rotoTimelineSelectors';
-import { selectRotoPhysicalTimelineView, type RotoPhysicalTimelineView } from '../roto/rotoTimelineSelectors';
+import type { RotoTimelineSelectionKind, RotoTimelineView, RotoPhysicalTimelineView } from '../roto/rotoTimelineSelectors';
+import {
+  assembleRotoPhysicalTimelineView,
+  assembleRotoTimelineView,
+  selectRotoLegacyTimelineStructuralView,
+  selectRotoPhysicalTimelineStructuralView,
+} from '../roto/rotoTimelineSelectors';
 import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
   type PhysicPaintRotoRealKeyRecord,
@@ -42,23 +47,45 @@ export interface RotoTimelineModel {
   orderedRealKeyRecords: Signal<readonly PhysicPaintRotoRealKeyRecord[]>;
   generatedCells: Signal<readonly RotoPhysicalTimelineCell[]>;
   physicalCells: Signal<readonly RotoPhysicalTimelineCell[]>;
+  // Additive write seam (38.1 D-07): frame/selection writes update the
+  // persistent graph in place; the structural projection is never rebuilt.
+  // Writes are equality-guarded against the current peeked value (Pitfall 3).
+  setCurrentFrame(frame: number): void;
+  setSelectedKeyId(keyId: string | null): void;
 }
 
 export function createRotoTimelineModel(input: RotoTimelineModelInput): RotoTimelineModel {
-  const source = signal(input);
-  const view = computed(() => selectRotoTimelineView(source.value));
-  const physicalView = computed(() => selectRotoPhysicalTimelineView({
-    realKeyRecords: source.value.rotoKeyRecords ?? [],
-    interpolation: source.value.rotoInterpolationState ?? PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
-    capacity: source.value.capacity ?? 1,
-    currentAppFrame: source.value.currentFrame,
-    selectedKeyId: source.value.selectedKeyId ?? null,
+  // Structural inputs: records, interpolation, capacity, cached frames, and
+  // interpolation settings. Frame/selection live in their own signals so a
+  // navigation frame change never rebuilds the structural projection.
+  const structuralInput = signal({
+    cachedRotoFrames: input.cachedRotoFrames,
+    interpolationSettings: input.interpolationSettings,
+    rotoKeyRecords: input.rotoKeyRecords,
+    rotoInterpolationState: input.rotoInterpolationState,
+    capacity: input.capacity,
+  });
+  const currentFrame = signal(input.currentFrame);
+  const selectedKeyIdInput = signal(input.selectedKeyId ?? null);
+
+  const legacyStructural = computed(() => selectRotoLegacyTimelineStructuralView(structuralInput.value));
+  const physicalStructural = computed(() => selectRotoPhysicalTimelineStructuralView({
+    realKeyRecords: structuralInput.value.rotoKeyRecords ?? [],
+    interpolation: structuralInput.value.rotoInterpolationState ?? PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+    capacity: structuralInput.value.capacity ?? 1,
   }));
+
+  const view = computed(() => assembleRotoTimelineView(legacyStructural.value, currentFrame.value));
+  const physicalView = computed(() => assembleRotoPhysicalTimelineView(physicalStructural.value, {
+    currentAppFrame: currentFrame.value,
+    selectedKeyId: selectedKeyIdInput.value,
+  }));
+
   return {
     view,
-    occupiedRotoFrames: computed(() => view.value.occupiedRotoFrames),
-    savedRotoFrames: computed(() => view.value.savedRotoFrames),
-    cachedRotoFrames: computed(() => view.value.cachedRotoFrames),
+    occupiedRotoFrames: computed(() => legacyStructural.value.occupiedRotoFrames),
+    savedRotoFrames: computed(() => legacyStructural.value.savedRotoFrames),
+    cachedRotoFrames: computed(() => legacyStructural.value.cachedRotoFrames),
     currentFrameSelectionKind: computed(() => view.value.currentFrameSelectionKind),
     currentFrameOwnerSourceFrame: computed(() => view.value.currentFrameOwnerSourceFrame),
     currentFrameIsGenerated: computed(() => view.value.currentFrameIsGenerated),
@@ -67,12 +94,32 @@ export function createRotoTimelineModel(input: RotoTimelineModelInput): RotoTime
     selectedKeyId: computed(() => physicalView.value.selectedKeyId),
     selectedRealKey: computed(() => physicalView.value.selectedRealKey),
     selectedAppFrame: computed(() => physicalView.value.selectedAppFrame),
-    orderedRealKeyRecords: computed(() => physicalView.value.orderedRealKeyRecords),
-    generatedCells: computed(() => physicalView.value.generatedCells),
-    physicalCells: computed(() => physicalView.value.physicalCells),
+    orderedRealKeyRecords: computed(() => physicalStructural.value.orderedRealKeyRecords),
+    generatedCells: computed(() => physicalStructural.value.generatedCells),
+    physicalCells: computed(() => physicalStructural.value.physicalCells),
+    setCurrentFrame(frame: number): void {
+      if (currentFrame.peek() !== frame) currentFrame.value = frame;
+    },
+    setSelectedKeyId(keyId: string | null): void {
+      if (selectedKeyIdInput.peek() !== keyId) selectedKeyIdInput.value = keyId;
+    },
   };
 }
 
 export function useRotoTimelineModel(input: RotoTimelineModelInput): RotoTimelineModel {
-  return useMemo(() => createRotoTimelineModel(input), [input.cachedRotoFrames, input.currentFrame, input.interpolationSettings, input.rotoKeyRecords, input.rotoInterpolationState, input.capacity, input.selectedKeyId]);
+  // Structural input identity alone recreates the graph; frame and selection
+  // inputs are deliberately absent from the dependency array (38.1 D-07).
+  const model = useMemo(() => createRotoTimelineModel(input), [
+    input.cachedRotoFrames,
+    input.interpolationSettings,
+    input.rotoKeyRecords,
+    input.rotoInterpolationState,
+    input.capacity,
+  ]);
+  // Sync frame/selection into the persistent graph through the guarded write
+  // seam, at the top of the hook body — never in an effect, never downstream.
+  // Equality guards make these writes no-ops when the values are unchanged.
+  model.setCurrentFrame(input.currentFrame);
+  model.setSelectedKeyId(input.selectedKeyId ?? null);
+  return model;
 }

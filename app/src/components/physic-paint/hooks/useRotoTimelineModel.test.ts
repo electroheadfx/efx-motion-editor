@@ -164,8 +164,9 @@ describe('useRotoTimelineModel legacy parity (38.1 D-09)', () => {
     expect(model.currentFrameSelectionKind.value).toBe('real-key');
     expect(model.currentFrameIsGenerated.value).toBe(false);
 
-    // Generated-interpolation frame (source keys 0 and 4 with 1 in-between -> display 2).
-    model.setCurrentFrame(2);
+    // Generated-interpolation frame (source keys 0 and 4 with 1 in-between
+    // -> display 0 real, display 1 generated, display 2 real).
+    model.setCurrentFrame(1);
     expect(model.currentFrameSelectionKind.value).toBe('generated-interpolation');
     expect(model.currentFrameIsGenerated.value).toBe(true);
 
