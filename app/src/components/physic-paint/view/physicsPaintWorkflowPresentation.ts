@@ -153,12 +153,15 @@ export function getRotoReplacementSuccessLabel(frame: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Header status capsule (Plan 36.15-05, D-15/D-18/D-19).
+// Header status capsule (Plan 36.15-05, D-15/D-18/D-19; idle context per
+// Phase 38 D-08/D-09).
 //
 // A single prioritized line replaces the retired multi-line status stack:
 // pending operation > saving indicator > guard/action feedback > ambient
-// info, with the ambient baseline shown when nothing higher-priority exists.
-// Within the guard/action feedback class the most recent line wins (recency
+// current-cell context, with the caller-supplied ambient line shown when
+// nothing higher-priority exists. When the ambient input is absent or blank,
+// the capsule shows nothing — there is no static filler line (D-08). Within
+// the guard/action feedback class the most recent line wins (recency
 // metadata supplied by the caller; declaration order is the fallback).
 //
 // The selector is pure: the strip passes already-resolved strings read from
@@ -166,8 +169,6 @@ export function getRotoReplacementSuccessLabel(frame: number): string {
 // objects directly, and every returned line renders as Preact text children
 // only (T-36.15-08).
 // ---------------------------------------------------------------------------
-
-export const ROTO_STATUS_CAPSULE_BASELINE = 'Missing frames play transparent/background';
 
 export interface RotoStatusCapsuleFeedbackCandidate {
   /** Candidate line; null/blank candidates are ignored. */
@@ -187,7 +188,7 @@ export interface RotoStatusCapsuleInput {
   savingIndicator?: string | null;
   /** Guard/action feedback lines with recency metadata. */
   feedback?: readonly RotoStatusCapsuleFeedbackCandidate[];
-  /** Ambient info line; the capsule falls back to the baseline when absent. */
+  /** Ambient current-cell context line; when absent/blank the capsule is empty. */
   ambient?: string | null;
 }
 
@@ -209,13 +210,37 @@ export function getRotoStatusCapsuleViewModel(input: RotoStatusCapsuleInput = {}
   });
   if (winnerText !== null) return winnerText;
   const ambient = trimCapsuleLine(input.ambient);
-  return ambient ?? ROTO_STATUS_CAPSULE_BASELINE;
+  return ambient ?? '';
 }
 
 function trimCapsuleLine(line: string | null | undefined): string | null {
   if (typeof line !== 'string') return null;
   const trimmed = line.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+// ---------------------------------------------------------------------------
+// Idle current-cell context line (Phase 38 D-09).
+//
+// The capsule's lowest rung describes the cell under the playhead, derived
+// render-time by the strip from `currentSemanticCell` + `props.currentFrame`
+// and fed through the selector's `ambient` slot. The mapping below is the
+// UI-SPEC locked vocabulary — real key, generated interpolation, or empty.
+// Pure: no store/signal/props reads; returns display strings only
+// (T-36.15-08).
+// ---------------------------------------------------------------------------
+
+export function getRotoStatusCapsuleIdleContext({
+  cellKind,
+  frame,
+}: {
+  cellKind: 'real' | 'generated' | 'empty' | null;
+  frame: number;
+}): string | null {
+  if (cellKind === 'real') return `Real Roto key · Frame ${frame}`;
+  if (cellKind === 'generated') return `Generated frame · Frame ${frame}`;
+  if (cellKind === 'empty') return `Empty frame · Frame ${frame}`;
+  return null;
 }
 
 // ---------------------------------------------------------------------------

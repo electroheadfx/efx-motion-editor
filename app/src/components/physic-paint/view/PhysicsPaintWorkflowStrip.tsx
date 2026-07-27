@@ -8,6 +8,7 @@ import {
   getRotoCellSelectedTooltipCopy,
   getRotoCellStateTooltipCopy,
   getRotoDragPreviewViewModel,
+  getRotoStatusCapsuleIdleContext,
   getRotoStatusCapsuleViewModel,
   type PhysicsPaintOnionState,
   type RotoCellSemanticTooltipKind,
@@ -441,7 +442,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }, [currentPhysicalCells, rotoDragPreview]);
   // Header status capsule (D-15/D-18/D-19): one prioritized line derived
   // render-time from EXISTING props/signal reads only — no new controller
-  // state, no effect copying props into local state (key_links). Feedback
+  // state, no effect copying props into local state (key_links). The ambient
+  // feed (Phase 38 D-09) is the same kind of direct derivation: the locked
+  // current-cell context line from `currentSemanticCell` + `props.currentFrame`
+  // via the pure helper — no signal, no memo, no effect. Feedback
   // recency is static wiring metadata: playback status reflects the latest
   // transport interaction, then script apply status, then the generated-frame
   // guard hint; the pure selector owns the priority grammar itself.
@@ -456,6 +460,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       { text: scriptStatus, recency: 1 },
       { text: generatedGuardStatus, recency: 0 },
     ],
+    ambient: getRotoStatusCapsuleIdleContext({
+      cellKind: currentSemanticCell?.kind ?? null,
+      frame: props.currentFrame,
+    }),
   });
   function handleRotoPlaybackFpsInput(event: Event) {
     const value = Number((event.currentTarget as HTMLInputElement).value);
