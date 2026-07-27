@@ -534,6 +534,8 @@ export function PhysicsPaintStudio() {
       currentFrame,
       currentKeyId: currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null,
       physicalKeyUtilities: rotoTimelineActions.physicalKeyUtilities,
+      getSelectedKeyIds: () => selectedKeyIds.value,
+      getRotoKeyRecords: () => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId) : [],
       canvasSize: { width: canvasWidth, height: canvasHeight },
       realKeyFrames: rotoKeyRecords.map((record): PhysicPaintRotoCacheFrame => ({
         ...record.payload,

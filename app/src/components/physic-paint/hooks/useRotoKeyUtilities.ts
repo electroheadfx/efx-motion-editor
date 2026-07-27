@@ -1,13 +1,15 @@
 import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
-import { createRotoSession, type RotoSession, type RotoSessionActionResult, type RotoSessionCopiedKey, type RotoSessionEffect } from '../roto/physicsPaintRotoSession';
-import type { PhysicPaintRotoRealKeyPayload } from '../roto/physicsPaintRotoPhysicalModel';
+import { createRotoSession, isRotoSessionCopiedKeyGroup, type RotoSession, type RotoSessionActionResult, type RotoSessionCopiedGroupEntry, type RotoSessionCopiedKey, type RotoSessionCopiedKeyValue, type RotoSessionEffect } from '../roto/physicsPaintRotoSession';
+import type { PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalKeyUtilityPort } from '../roto/rotoCoordinatorPorts';
 
 export interface RotoKeyUtilitiesInput {
   currentFrame: number;
   currentKeyId: string | null;
   physicalKeyUtilities: RotoPhysicalKeyUtilityPort;
+  getSelectedKeyIds: () => readonly string[];
+  getRotoKeyRecords: () => readonly PhysicPaintRotoRealKeyRecord[];
   realKeyFrames: readonly PhysicPaintRotoCacheFrame[];
   cachedRotoFrames?: readonly PhysicPaintRotoCacheFrame[];
   dirtyFrames: ReadonlySet<number>;
@@ -44,7 +46,7 @@ export interface RotoKeyUtilities {
 export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilities {
   const [keyActionInFlight, setKeyActionInFlight] = useState(false);
   const [sessionVersion, setSessionVersion] = useState(0);
-  const copiedKeyRef = useRef<RotoSessionCopiedKey | null>(null);
+  const copiedKeyRef = useRef<RotoSessionCopiedKeyValue | null>(null);
 
   const session = useMemo(() => createRotoSession({
     currentFrame: input.currentFrame,
@@ -169,6 +171,22 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
 
   const copyKey = useCallback(() => {
     if (blocked) return;
+    const selectedKeyIds = input.getSelectedKeyIds();
+    if (selectedKeyIds.length >= 2) {
+      const records = input.getRotoKeyRecords();
+      const entries: RotoSessionCopiedGroupEntry[] = [];
+      for (const keyId of selectedKeyIds) {
+        const record = records.find((candidate) => candidate.keyId === keyId);
+        if (!record) {
+          input.setApplyMessage('The selected Roto keys are no longer available.');
+          return;
+        }
+        entries.push(Object.freeze({ payload: record.payload, sourceAppFrame: record.appFrame, sourceKeyId: record.keyId }));
+      }
+      entries.sort((a, b) => a.sourceAppFrame - b.sourceAppFrame);
+      void runSessionResult(session.copyKeyGroup(entries));
+      return;
+    }
     const actionState = session.actionAvailability.value;
     if (!actionState.currentIsRealKey) {
       input.setApplyMessage(actionState.disabledReason ?? 'Key utilities require a real Roto key. Generated in-betweens are render-only.');
@@ -187,6 +205,10 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
     const copiedKey = session.copiedKey.value;
     if (!copiedKey) {
       input.setApplyMessage('Copy a real Roto key before pasting.');
+      return;
+    }
+    if (isRotoSessionCopiedKeyGroup(copiedKey)) {
+      input.setApplyMessage('The copied Roto key group cannot paste through the single-key route.');
       return;
     }
     const clipboardPayload = toClipboardPayload(copiedKey);

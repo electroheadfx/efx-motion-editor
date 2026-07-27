@@ -6,13 +6,31 @@ import {
   type RotoKeyUtilityActiveRestore,
   type RotoKeyUtilityTransaction,
 } from '../roto/physicsPaintRotoKeyController';
+import type { PhysicPaintRotoRealKeyPayload } from './physicsPaintRotoPhysicalModel';
 
-export type RotoSessionActionName = 'copyKey' | 'requestFrame' | 'markDirty' | 'markCachedBaseLoaded' | 'markLiveOverlayDirty' | 'markLiveOverlayEmpty';
+export type RotoSessionActionName = 'copyKey' | 'copyKeyGroup' | 'requestFrame' | 'markDirty' | 'markCachedBaseLoaded' | 'markLiveOverlayDirty' | 'markLiveOverlayEmpty';
 export type RotoSessionRestoreIntent = RotoKeyUtilityActiveRestore;
 
 export interface RotoSessionCopiedKey {
   frame: number;
   cachedFrame: PhysicPaintRotoCacheFrame;
+}
+
+export interface RotoSessionCopiedGroupEntry {
+  readonly payload: PhysicPaintRotoRealKeyPayload;
+  readonly sourceAppFrame: number;
+  readonly sourceKeyId: string;
+}
+
+export interface RotoSessionCopiedKeyGroup {
+  readonly kind: 'group';
+  readonly entries: readonly RotoSessionCopiedGroupEntry[];
+}
+
+export type RotoSessionCopiedKeyValue = RotoSessionCopiedKey | RotoSessionCopiedKeyGroup;
+
+export function isRotoSessionCopiedKeyGroup(value: RotoSessionCopiedKeyValue | null): value is RotoSessionCopiedKeyGroup {
+  return value !== null && 'kind' in value && value.kind === 'group';
 }
 
 export type RotoSessionEffect =
@@ -38,7 +56,7 @@ export interface RotoSessionInput {
   realKeyFrames: readonly PhysicPaintRotoCacheFrame[];
   cachedRotoFrames?: readonly PhysicPaintRotoCacheFrame[];
   dirtyFrames?: readonly number[] | ReadonlySet<number>;
-  copiedKey?: RotoSessionCopiedKey | null;
+  copiedKey?: RotoSessionCopiedKeyValue | null;
   canvasSize?: { width: number; height: number };
   buildBlankRotoFrame: (appFrame: number) => PhysicPaintRotoCacheFrame;
   keyActionInFlight?: boolean;
@@ -56,12 +74,13 @@ export interface RotoSession {
   playbackFrameNumbers: Signal<number[]>;
   dirtyFrames: Signal<number[]>;
   cachedBaseFrames: Signal<number[]>;
-  copiedKey: Signal<RotoSessionCopiedKey | null>;
+  copiedKey: Signal<RotoSessionCopiedKeyValue | null>;
   restoreIntent: Signal<RotoSessionRestoreIntent>;
   feedback: Signal<string | null>;
   currentFrameIsDirty: Signal<boolean>;
   actionAvailability: Signal<RotoKeyUtilityActionState>;
   copyKey: () => RotoSessionActionResult;
+  copyKeyGroup: (entries: readonly RotoSessionCopiedGroupEntry[]) => RotoSessionActionResult;
   requestFrame: (frame: number) => RotoSessionActionResult;
   markDirty: (frame?: number) => RotoSessionActionResult;
   markCachedBaseLoaded: (frame?: number) => RotoSessionActionResult;
@@ -76,7 +95,7 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
   const cachedRotoFrames = signal(normalizeCachedFrames(input.cachedRotoFrames, input.canvasSize));
   const dirtyFrames = signal(normalizeFrameNumbers(toArray(input.dirtyFrames)));
   const cachedBaseFrames = signal<number[]>([]);
-  const copiedKey = signal<RotoSessionCopiedKey | null>(input.copiedKey ? normalizeCopiedKey(input.copiedKey, input.canvasSize) : null);
+  const copiedKey = signal<RotoSessionCopiedKeyValue | null>(input.copiedKey ? normalizeCopiedKey(input.copiedKey, input.canvasSize) : null);
   const restoreIntent = signal<RotoSessionRestoreIntent>({ kind: 'none', frame: initialCurrentFrame });
   const feedback = signal<string | null>(null);
 
@@ -151,6 +170,14 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     return { action: 'copyKey', ok: true, message, effects: [] };
   }
 
+  function copyKeyGroup(entries: readonly RotoSessionCopiedGroupEntry[]): RotoSessionActionResult {
+    if (entries.length < 2) return failed('copyKeyGroup', 'Select at least two real Roto keys to copy.');
+    copiedKey.value = Object.freeze({ kind: 'group', entries: Object.freeze([...entries]) });
+    const message = `Copied ${entries.length} keys`;
+    feedback.value = message;
+    return { action: 'copyKeyGroup', ok: true, message, effects: [] };
+  }
+
   return {
     currentFrame,
     realKeyFrames,
@@ -167,6 +194,7 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     currentFrameIsDirty,
     actionAvailability,
     copyKey,
+    copyKeyGroup,
     requestFrame,
     markDirty,
     markCachedBaseLoaded,
@@ -213,7 +241,12 @@ function normalizeRealKeyFrame(frame: PhysicPaintRotoCacheFrame, appFrame: numbe
   return next;
 }
 
-function normalizeCopiedKey(copiedKey: RotoSessionCopiedKey, canvasSize?: { width: number; height: number }): RotoSessionCopiedKey | null {
+function normalizeCopiedKey(copiedKey: RotoSessionCopiedKeyValue, canvasSize?: { width: number; height: number }): RotoSessionCopiedKeyValue | null {
+  if (isRotoSessionCopiedKeyGroup(copiedKey)) {
+    if (copiedKey.entries.length < 2) return null;
+    if (!copiedKey.entries.every((entry) => normalizeFrame(entry.sourceAppFrame) !== null)) return null;
+    return copiedKey;
+  }
   const frame = normalizeFrame(copiedKey.frame);
   if (frame === null) return null;
   return { frame, cachedFrame: normalizeRealKeyFrame(copiedKey.cachedFrame, frame, canvasSize) };
