@@ -36,3 +36,31 @@ export function createRotoUiFlushScheduler(): RotoUiFlushScheduler {
 
   return { schedule, dispose, isPending };
 }
+
+/**
+ * 38.1 D-05: monotonic navigation generation tokens (latest-wins canvas).
+ *
+ * Discrete-click rule: a generation that is still latest ALWAYS paints; only
+ * a generation superseded by a newer navigation skips. Supersession is the
+ * only staleness criterion — no time-based or distance-based heuristics.
+ */
+
+export interface RotoNavigationGeneration {
+  begin(): number;
+  isLatest(generation: number): boolean;
+}
+
+export function createRotoNavigationGeneration(): RotoNavigationGeneration {
+  let current = 0;
+
+  function begin(): number {
+    current += 1;
+    return current;
+  }
+
+  function isLatest(generation: number): boolean {
+    return generation === current;
+  }
+
+  return { begin, isLatest };
+}
