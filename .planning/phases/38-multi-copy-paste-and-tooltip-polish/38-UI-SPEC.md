@@ -1,7 +1,8 @@
 ---
 phase: 38
 slug: multi-copy-paste-and-tooltip-polish
-status: draft
+status: approved
+reviewed_at: 2026-07-27
 shadcn_initialized: false
 preset: none
 created: 2026-07-27
@@ -265,7 +266,7 @@ Group clipboard state lives at the Roto controller/hook boundary alongside the P
 
 ## UI Considerations
 
-Applicable state considerations resolved: **10 covered, 2 backstop, 1 dismissed, 0 unresolved** (13 rows). Inherited 36.15/37 probe resolutions continue to apply verbatim; the table below covers surfaces new or changed in this phase.
+Applicable state considerations resolved: **13 covered, 2 backstop, 4 dismissed, 0 unresolved** (19 rows reconciling all 32 probe findings across 7 elements). Inherited 36.15/37 probe resolutions continue to apply verbatim; the table below covers surfaces new or changed in this phase plus the probe reconciliation rows.
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
@@ -282,6 +283,12 @@ Applicable state considerations resolved: **10 covered, 2 backstop, 1 dismissed,
 | long-text | Status capsule group copy | ✅ covered | All new capsule copy is short verb-first lines; single-line ellipsis truncation unchanged; full detail routes to LOG. |
 | loading | Acknowledged group paste | ✅ covered | Busy copy `Pasting keys…` only while the acknowledged transaction is pending; rollback restores the pre-paste map and selection on rejection/timeout. |
 | empty | Tooltip keyboard behavior | ⛔ dismissed | Static input policy inherited unchanged (1000ms hover, instant focus, Escape while visible); no data lifecycle states; covered by the Interaction Contract. |
+| populated | Group Copy feedback | ✅ covered | `Copied {N} keys` capsule line renders under guard/action feedback priority; Copy is not a mutation — no transaction, no history entry, no dirty state (D-03). |
+| long-text | Group Paste reject copy | ✅ covered | Reject copy is short fixed strings (`Paste rejected — key in the way` / `Paste rejected — not enough room`); full resolver/validation diagnostics route to LOG only (36.14 D-26). |
+| long-text | Guarded Paste tooltip reason | ✅ covered | Verbatim controller unavailability reason wraps multiline under the D-14 tooltip contract (280×96px clamp, no ellipsis, no scroll). |
+| empty, loading, error, partial, overflow | Group Copy (non-applicable kinds) | ⛔ dismissed | Clipboard-empty state lives on Paste, not Copy; Copy is not a mutation so no loading state exists; no user-visible failure path (guarded availability covers invalid contexts); not a data-list surface (no partial/overflow rendering); the clipboard slot is internal, never rendered. |
+| all kinds | LOG tab | ⛔ dismissed | Inherited unchanged diagnostic surface owned by the 36.x base contract; this phase only adds new lines to it. Its empty/populated/overflow behavior is not re-specified here. |
+| all kinds | Bottom action row | ⛔ dismissed | Geometry, fit-content non-wrapping behavior, and guarded availability are inherited unchanged from 36.15/37; group-aware Copy/Paste states are the Group Copy / Guarded Paste rows above. |
 
 ---
 
@@ -305,11 +312,11 @@ Applicable state considerations resolved: **10 covered, 2 backstop, 1 dismissed,
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED — 2026-07-27 (gsd-ui-checker, 6/6 dimensions, no recommendations)
