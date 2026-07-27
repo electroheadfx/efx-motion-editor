@@ -103,10 +103,11 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Physics Paint dirty Roto frames save automatically on leave with source-frame feedback, latest-destination queuing, and failure retention — v0.8.0 Phase 36.6
 - ✓ Stop-motion animators can duplicate, insert, delete, copy, and paste real Physics Paint Roto keys with clean cache/cell/canvas state — v0.8.0 Phase 36.7
 - ✓ Physics Paint Roto timeline ships the approved final UI: fixed-geometry strip with grouped controls, guarded icon actions with styled tooltips, elastic status capsule, real-key diamonds on the EFX Motion layer, + Key empty-paint promotion, resizable sidebar sections, and Scripts panel script actions — v0.8.0 Phase 36.15
+- ✓ Multiple real Physics Paint Roto keys can be selected (including Select All) and group-dragged, deleted, and Force-Spaced as one atomic transaction over the canonical physical-frame model, with full downstream parity and regression-locked behavior — v0.8.0 Phase 37
 
 ### Active
 
-- [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 Phase 37
+- [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 
 ## Current Milestone: v0.8.0 Standalone Physics Paint
@@ -120,7 +121,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - Architecture notes for the future editor transport path from standalone paint output into EFX Motion Editor frame/layer cache.
 - Explicit non-replacement boundary: perfect-freehand remains the fast/direct paint path and p5.brush remains the FX brush path; efx-physic-paint is an additional physics paint tool.
 
-**State (2026-07-26):** All milestone phases complete through Phase 36.15 — the Roto timeline final UI integration is shipped and UAT-approved (13 plans: styled tooltips, guarded icon actions, fixed-geometry strip, status capsule, canvas key diamonds, selection guard, sidebar restructure with resizable sections, plus ten user-driven UAT gap closures). One closure-authorized follow-up (the final corrected-reference UI integration) is now DELIVERED by 36.15. Two follow-ups remain in STATE.md Deferred Items (deterministic resolver regression tests, code-review bug fixes); the 36.15 advisory code review added 1 critical + 4 warnings (delete-key keyboard throw, resize drag math, scrollbar pointer-capture, unstable action bundle, color-drag pointercancel) as candidates.
+**State (2026-07-27):** All milestone phases complete through Phase 37 — multi-select physical Roto keys is shipped and UAT-approved (6 plans: resolver group operations, multi-selection state + keyboard, timeline action wiring, workflow-strip UI, native UAT with all sections passed, and 33 post-UAT regression anchors; 849 tests green). Phase 36.15 shipped the Roto timeline final UI integration (13 plans, UAT-approved). Follow-ups remain in STATE.md Deferred Items; the 36.15 advisory code review added 1 critical + 4 warnings as candidates, and the Phase 37 advisory code review added 5 warnings (unguarded Backspace route, Cmd/Ctrl+A guard divergence, paint-barrier undo/redo desync, store selection sync miss, per-render computed recreation).
 
 ## Latest Milestone: v0.7.0 Monorepo & Paint Enhancements (Shipped 2026-04-05)
 
@@ -237,4 +238,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-26 after Phase 36.15 — Roto timeline final UI integration complete and UAT-approved; milestone v0.8.0 phases finished; remaining follow-ups recorded in STATE.md Deferred Items*
+*Last updated: 2026-07-27 after Phase 37 — multi-select physical Roto keys complete and UAT-approved; milestone v0.8.0 phases finished; remaining follow-ups recorded in STATE.md Deferred Items*
