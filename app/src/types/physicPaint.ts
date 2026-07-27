@@ -59,6 +59,7 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'force-spacing'
   | 'duplicate-key'
   | 'paste-key'
+  | 'paste-key-group'
   | 'play-script'
   | 'set-interpolation-enabled'
   | 'set-interpolation-mode'
@@ -82,6 +83,16 @@ export type PhysicPaintRotoPhysicalEditSemanticDelta =
       readonly destinationKeyId: string | null;
       readonly newKeyId: string | null;
       readonly clipboardPayload: PhysicPaintRotoPhysicalEditRecord['payload'];
+    }
+  | {
+      readonly kind: 'paste-key-group';
+      readonly destinationAppFrame: number;
+      readonly entries: readonly {
+        readonly payload: PhysicPaintRotoPhysicalEditRecord['payload'];
+        readonly sourceAppFrame: number;
+        readonly sourceKeyId: string;
+        readonly newKeyId: string;
+      }[];
     }
   | {
       readonly kind: 'play-script';
@@ -205,6 +216,7 @@ function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is Ph
     || value === 'force-spacing'
     || value === 'duplicate-key'
     || value === 'paste-key'
+    || value === 'paste-key-group'
     || value === 'play-script'
     || value === 'set-interpolation-enabled'
     || value === 'set-interpolation-mode'
@@ -246,6 +258,19 @@ export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): valu
     if ((value.destinationKeyId === null) === (value.newKeyId === null)) return false;
     return isPhysicPaintRotoPhysicalEditPayload(value.clipboardPayload);
   }
+  if (value.kind === 'paste-key-group') {
+    if (!hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'entries'])) return false;
+    if (!isNonNegativeInteger(value.destinationAppFrame)) return false;
+    if (!Array.isArray(value.entries) || value.entries.length < 2) return false;
+    return value.entries.every((entry) => {
+      if (!isRecord(entry)) return false;
+      if (!hasOnlyKeys(entry, ['payload', 'sourceAppFrame', 'sourceKeyId', 'newKeyId'])) return false;
+      if (!isPhysicPaintRotoPhysicalEditPayload(entry.payload)) return false;
+      if (!isNonNegativeInteger(entry.sourceAppFrame)) return false;
+      if (!isBoundedPhysicalKeyId(entry.sourceKeyId)) return false;
+      return isBoundedPhysicalKeyId(entry.newKeyId);
+    });
+  }
   if (value.kind === 'play-script') {
     if (!hasOnlyKeys(value, ['kind', 'affectedStartAppFrame', 'affectedEndAppFrame', 'expectedLayerCapacity', 'expectedLayerEndExclusive', 'proposedRecords', 'freshKeyIds'])) return false;
     if (!isNonNegativeInteger(value.affectedStartAppFrame) || !isNonNegativeInteger(value.affectedEndAppFrame)) return false;
@@ -264,7 +289,7 @@ function operationSemanticDeltaIsValid(
   semanticDelta: unknown,
   allowMissingOnFailure = false,
 ): boolean {
-  if (operationKind === 'duplicate-key' || operationKind === 'paste-key' || operationKind === 'play-script') {
+  if (operationKind === 'duplicate-key' || operationKind === 'paste-key' || operationKind === 'paste-key-group' || operationKind === 'play-script') {
     if (semanticDelta === undefined) return allowMissingOnFailure;
     return isPhysicPaintRotoPhysicalEditSemanticDelta(semanticDelta) && semanticDelta.kind === operationKind;
   }

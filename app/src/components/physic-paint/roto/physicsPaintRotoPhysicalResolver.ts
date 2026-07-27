@@ -141,6 +141,16 @@ export type PhysicPaintRotoPhysicalEditIntent =
       readonly destinationKeyId: string | null;
       readonly newKeyId: string | null;
       readonly clipboardPayload: PhysicPaintRotoRealKeyPayload;
+    }
+  | {
+      readonly kind: 'paste-key-group';
+      readonly destinationAppFrame: number;
+      readonly entries: readonly {
+        readonly payload: PhysicPaintRotoRealKeyPayload;
+        readonly sourceAppFrame: number;
+        readonly sourceKeyId: string;
+        readonly newKeyId: string;
+      }[];
     };
 
 /**
@@ -154,7 +164,8 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'move-key-group'
   | 'force-spacing'
   | 'duplicate-key'
-  | 'paste-key';
+  | 'paste-key'
+  | 'paste-key-group';
 
 /**
  * Immutable resolver input: stable identities, typed intent, bounded capacity,
@@ -452,8 +463,44 @@ export function createPhysicPaintRotoPasteKeyIntent(
   });
 }
 
+/**
+ * Frozen group-paste intent factory (Phase 38 D-04..D-07). The earliest copied
+ * key anchors the group at `destinationAppFrame`; every other entry lands at
+ * the destination plus its relative physical offset derived from source
+ * appFrames at resolve time (D-03 — no offset table is stored here). Fresh
+ * keyIds are allocated exactly once in this factory and never re-minted
+ * downstream. Throws on malformed input; never returns a partial intent.
+ */
+export function createPhysicPaintRotoPasteKeyGroupIntent(
+  destinationAppFrame: number,
+  entries: readonly {
+    readonly payload: PhysicPaintRotoRealKeyPayload;
+    readonly sourceAppFrame: number;
+    readonly sourceKeyId: string;
+  }[],
+): Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key-group' }> {
+  if (!isNonNegativeInteger(destinationAppFrame)) throw new Error('Group paste requires a nonnegative destination frame.');
+  if (!Array.isArray(entries) || entries.length < 2) throw new Error('Group paste requires at least two entries.');
+  const frozenEntries = entries.map((entry) => {
+    if (!isPhysicPaintRotoRealKeyPayload(entry.payload)) throw new Error('Group paste entry payload is malformed.');
+    if (!isNonNegativeInteger(entry.sourceAppFrame)) throw new Error('Group paste entry source frame is malformed.');
+    if (!isBoundedKeyId(entry.sourceKeyId)) throw new Error('Group paste entry source identity is malformed.');
+    return Object.freeze({
+      payload: clonePayloadAtFrame(entry.payload, entry.payload.appFrame),
+      sourceAppFrame: entry.sourceAppFrame,
+      sourceKeyId: entry.sourceKeyId,
+      newKeyId: createPhysicPaintRotoKeyId(),
+    });
+  });
+  return Object.freeze({
+    kind: 'paste-key-group',
+    destinationAppFrame,
+    entries: Object.freeze(frozenEntries),
+  });
+}
+
 export interface PhysicPaintRotoPhysicalEditSemanticDeltaValidationInput {
-  readonly operationKind: 'duplicate-key' | 'paste-key';
+  readonly operationKind: 'duplicate-key' | 'paste-key' | 'paste-key-group';
   readonly currentRecords: unknown;
   readonly nextRecords: unknown;
   readonly semanticDelta: unknown;
@@ -529,6 +576,86 @@ export function validatePhysicPaintRotoPhysicalEditSemanticDelta(
     return { ok: true };
   }
 
+  if (input.operationKind === 'paste-key-group') {
+    const delta = input.semanticDelta;
+    if (!hasExactKeys(delta, ['kind', 'destinationAppFrame', 'entries'])
+      || !isNonNegativeInteger(delta.destinationAppFrame)
+      || delta.destinationAppFrame >= input.capacity
+      || !Array.isArray(delta.entries)
+      || delta.entries.length < 2) {
+      return { ok: false, error: 'Group paste semantic declaration is malformed.' };
+    }
+    interface DeclaredGroupEntry {
+      readonly payload: PhysicPaintRotoRealKeyPayload;
+      readonly sourceAppFrame: number;
+      readonly sourceKeyId: string;
+      readonly newKeyId: string;
+    }
+    const declaredEntries: DeclaredGroupEntry[] = [];
+    const seenNewKeyIds = new Set<string>();
+    for (const rawEntry of delta.entries) {
+      if (!isRecord(rawEntry)
+        || !hasExactKeys(rawEntry, ['payload', 'sourceAppFrame', 'sourceKeyId', 'newKeyId'])
+        || !isPhysicPaintRotoRealKeyPayload(rawEntry.payload)
+        || !isNonNegativeInteger(rawEntry.sourceAppFrame)
+        || !isBoundedKeyId(rawEntry.sourceKeyId)
+        || !isBoundedKeyId(rawEntry.newKeyId)) {
+        return { ok: false, error: 'Group paste semantic declaration entry is malformed.' };
+      }
+      if (currentById.has(rawEntry.newKeyId) || seenNewKeyIds.has(rawEntry.newKeyId)) {
+        return { ok: false, error: 'Group paste new identity is not fresh.' };
+      }
+      seenNewKeyIds.add(rawEntry.newKeyId);
+      declaredEntries.push({
+        payload: rawEntry.payload,
+        sourceAppFrame: rawEntry.sourceAppFrame,
+        sourceKeyId: rawEntry.sourceKeyId,
+        newKeyId: rawEntry.newKeyId,
+      });
+    }
+    const anchorSourceAppFrame = Math.min(...declaredEntries.map((entry) => entry.sourceAppFrame));
+    const occupiedFrames = new Set(current.map((record) => record.appFrame));
+    const seenDestinations = new Set<number>();
+    const destinationByNewKeyId = new Map<string, number>();
+    for (const entry of declaredEntries) {
+      const destination = delta.destinationAppFrame + (entry.sourceAppFrame - anchorSourceAppFrame);
+      if (destination >= input.capacity) {
+        return { ok: false, error: 'Group paste destination exceeds capacity.' };
+      }
+      if (occupiedFrames.has(destination) || seenDestinations.has(destination)) {
+        return { ok: false, error: 'Group paste destination is occupied.' };
+      }
+      seenDestinations.add(destination);
+      destinationByNewKeyId.set(entry.newKeyId, destination);
+    }
+    if (next.length !== current.length + declaredEntries.length) {
+      return { ok: false, error: 'Group paste must add exactly the declared entries.' };
+    }
+    for (const record of current) {
+      const proposed = nextById.get(record.keyId);
+      if (!proposed || !recordsEqual(proposed, record)) {
+        return { ok: false, error: `Group paste changed existing identity "${record.keyId}".` };
+      }
+    }
+    for (const entry of declaredEntries) {
+      const destination = destinationByNewKeyId.get(entry.newKeyId) as number;
+      const pasted = nextById.get(entry.newKeyId);
+      if (!pasted || pasted.appFrame !== destination || !payloadEqualsAtFrame(pasted.payload, entry.payload, destination)) {
+        return { ok: false, error: 'Group paste record does not match the declared retargeted entry.' };
+      }
+    }
+    for (const record of next) {
+      if (!currentById.has(record.keyId) && !seenNewKeyIds.has(record.keyId)) {
+        return { ok: false, error: 'Group paste introduced an undeclared identity.' };
+      }
+    }
+    const anchorEntry = declaredEntries.find((entry) => entry.sourceAppFrame === anchorSourceAppFrame) as DeclaredGroupEntry;
+    if (input.selectedKeyId !== anchorEntry.newKeyId || input.selectedAppFrame !== delta.destinationAppFrame) {
+      return { ok: false, error: 'Group paste must select the earliest pasted fresh identity.' };
+    }
+    return { ok: true };
+  }
+
   const delta = input.semanticDelta;
   if (!hasExactKeys(delta, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload'])
     || !isNonNegativeInteger(delta.destinationAppFrame)
@@ -596,7 +723,8 @@ function isResolverOperationKind(value: unknown): value is PhysicPaintRotoPhysic
     || value === 'move-key-group'
     || value === 'force-spacing'
     || value === 'duplicate-key'
-    || value === 'paste-key';
+    || value === 'paste-key'
+    || value === 'paste-key-group';
 }
 
 function fail(
@@ -964,6 +1092,95 @@ function buildPasteCandidate(
       newKeyId: intent.newKeyId,
       clipboardPayload: clonePayloadAtFrame(intent.clipboardPayload, intent.clipboardPayload.appFrame),
     }),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 38 group paste (paste-key-group) candidate builder. The earliest copied
+// key anchors the group at the requested destination; every other entry lands
+// at destination + (sourceAppFrame - anchor) with exact frames and zero ripple
+// of existing keys (D-04/D-06). All-empty-or-reject (D-05): any occupied or
+// mutually colliding computed destination rejects the whole proposal through
+// the existing failure codes; the group candidate NEVER replaces or ripples an
+// existing record. Fresh keyIds arrive pre-allocated from the frozen intent.
+// ---------------------------------------------------------------------------
+
+type PasteKeyGroupBuilderResult =
+  | { readonly ok: true; readonly candidate: Candidate }
+  | { readonly ok: false; readonly resolution: PhysicPaintRotoPhysicalEditResolution };
+
+function buildPasteKeyGroupCandidate(
+  identities: ValidatedIdentities,
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  intent: Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key-group' }>,
+  capacity: number,
+): PasteKeyGroupBuilderResult {
+  const anchorSourceAppFrame = Math.min(...intent.entries.map((entry) => entry.sourceAppFrame));
+  const destinations = intent.entries.map((entry) => intent.destinationAppFrame + (entry.sourceAppFrame - anchorSourceAppFrame));
+  for (const destination of destinations) {
+    if (destination < 0 || destination >= capacity) {
+      return {
+        ok: false,
+        resolution: fail('out-of-range-frame', 'paste-key-group', `Group paste destination frame ${destination} is outside capacity ${capacity}.`),
+      };
+    }
+  }
+  if (records.length + intent.entries.length > capacity) {
+    return {
+      ok: false,
+      resolution: fail('over-capacity', 'paste-key-group', `Group paste would exceed capacity ${capacity}.`),
+    };
+  }
+  const occupiedFrames = new Set(records.map((record) => record.appFrame));
+  const seenDestinations = new Set<number>();
+  const conflictingAppFrames: number[] = [];
+  for (const destination of destinations) {
+    if (occupiedFrames.has(destination) || seenDestinations.has(destination)) {
+      conflictingAppFrames.push(destination);
+    }
+    seenDestinations.add(destination);
+  }
+  if (conflictingAppFrames.length > 0) {
+    return {
+      ok: false,
+      resolution: fail('duplicate-destination-frame', 'paste-key-group', 'Group paste destination is occupied.', conflictingAppFrames),
+    };
+  }
+  const anchorEntry = intent.entries.find((entry) => entry.sourceAppFrame === anchorSourceAppFrame) as (typeof intent.entries)[number];
+  const nextRecords: PhysicPaintRotoRealKeyRecord[] = [...records];
+  for (let index = 0; index < intent.entries.length; index += 1) {
+    const entry = intent.entries[index];
+    const destination = destinations[index];
+    nextRecords.push(Object.freeze({
+      kind: 'real-key',
+      keyId: entry.newKeyId,
+      appFrame: destination,
+      payload: clonePayloadAtFrame(entry.payload, destination),
+    }) as PhysicPaintRotoRealKeyRecord);
+  }
+  nextRecords.sort((left, right) => left.appFrame - right.appFrame);
+  const mapping = new Map(nextRecords.map((record) => [record.keyId, record.appFrame]));
+  const expectedKeyIds = new Set(identities.keyIds);
+  for (const entry of intent.entries) expectedKeyIds.add(entry.newKeyId);
+  return {
+    ok: true,
+    candidate: {
+      mapping,
+      expectedKeyIds,
+      removedKeyId: null,
+      removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+      selectedKeyId: anchorEntry.newKeyId,
+      operationKind: 'paste-key-group',
+      changed: true,
+      roleByKeyId: new Map(),
+      drag: null,
+      nextRecords: Object.freeze(nextRecords),
+      semanticDelta: Object.freeze({
+        kind: 'paste-key-group',
+        destinationAppFrame: intent.destinationAppFrame,
+        entries: intent.entries,
+      }),
+    },
   };
 }
 
@@ -1934,7 +2151,7 @@ function validateSemanticInputRecords(
   input: unknown,
   identities: ValidatedIdentities,
   capacity: number,
-  operationKind: 'duplicate-key' | 'paste-key',
+  operationKind: 'duplicate-key' | 'paste-key' | 'paste-key-group',
 ): { ok: true; records: readonly PhysicPaintRotoRealKeyRecord[] } | { ok: false; resolution: PhysicPaintRotoPhysicalEditResolution } {
   let records: readonly PhysicPaintRotoRealKeyRecord[];
   try {
@@ -2177,6 +2394,51 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (!finalized.ok) return finalized.resolution;
     const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
       operationKind: 'paste-key',
+      currentRecords: recordsResult.records,
+      nextRecords: finalized.proposal.nextRecords,
+      semanticDelta: finalized.proposal.semanticDelta,
+      capacity: input.capacity,
+      selectedKeyId: finalized.proposal.selectedKeyId,
+      selectedAppFrame: finalized.proposal.selectedAppFrame,
+    });
+    if (!semanticValidation.ok) return fail('invalid-semantic-delta', operationKind, semanticValidation.error);
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'paste-key-group') {
+    if (!isNonNegativeInteger(intent.destinationAppFrame) || intent.destinationAppFrame >= input.capacity) {
+      return fail('out-of-range-frame', operationKind, 'Group paste destination is outside capacity.');
+    }
+    if (!Array.isArray(intent.entries) || intent.entries.length < 2) {
+      return fail('invalid-semantic-delta', operationKind, 'Group paste requires at least two entries.');
+    }
+    const seenNewKeyIds = new Set<string>();
+    for (const entry of intent.entries) {
+      if (!isRecord(entry)) {
+        return fail('malformed-target', operationKind, 'Group paste entries must be records.');
+      }
+      if (!isPhysicPaintRotoRealKeyPayload(entry.payload)) {
+        return fail('malformed-payload', operationKind, 'Group paste entry payload is malformed.');
+      }
+      if (!isNonNegativeInteger(entry.sourceAppFrame)) {
+        return fail('malformed-target', operationKind, 'Group paste entry source frame is malformed.');
+      }
+      if (!isBoundedKeyId(entry.sourceKeyId) || !isBoundedKeyId(entry.newKeyId)) {
+        return fail('malformed-identity', operationKind, 'Group paste entry identities must be bounded IDs.');
+      }
+      if (identities.keyIds.has(entry.newKeyId) || seenNewKeyIds.has(entry.newKeyId)) {
+        return fail('duplicate-id', operationKind, 'Group paste requires fresh bounded identities.');
+      }
+      seenNewKeyIds.add(entry.newKeyId);
+    }
+    const recordsResult = validateSemanticInputRecords(input.records, identities, input.capacity, 'paste-key-group');
+    if (!recordsResult.ok) return recordsResult.resolution;
+    const candidateResult = buildPasteKeyGroupCandidate(identities, recordsResult.records, intent, input.capacity);
+    if (!candidateResult.ok) return candidateResult.resolution;
+    const finalized = finalizeProposal(candidateResult.candidate, identities, input.capacity, input.interpolationEnabled);
+    if (!finalized.ok) return finalized.resolution;
+    const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
+      operationKind: 'paste-key-group',
       currentRecords: recordsResult.records,
       nextRecords: finalized.proposal.nextRecords,
       semanticDelta: finalized.proposal.semanticDelta,
