@@ -4,16 +4,16 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 37
 status: completed
-stopped_at: Phase 37 planned — ready to execute
-last_updated: "2026-07-27T07:34:56.831Z"
+stopped_at: Phase 38 context gathered
+last_updated: "2026-07-27T10:26:48.376Z"
 last_activity: 2026-07-27
 last_activity_desc: Phase 37 complete
 progress:
-  total_phases: 19
+  total_phases: 20
   completed_phases: 18
   total_plans: 141
   completed_plans: 135
-  percent: 95
+  percent: 90
 current_phase_name: multi-select-physical-roto-keys
 ---
 
@@ -324,6 +324,7 @@ None yet.
 - Phases 36.15 State Machine Readiness and 37 Future Integration Contract were removed after the stabilized controller/bridge implementation made their planned scope obsolete.
 - Functional active-session Copy Script / Apply Script reuse was extracted from Phase 36.14 into a dedicated prerequisite quick; Phase 36.14 now owns only final UI presentation and wiring.
 - Phase 36.14 edited: edited fields: title, goal, requirements, success_criteria, planning notes
+- Phase 38 added: Multi-Copy/Paste and Tooltip Polish
 
 ## Deferred Items
 
@@ -339,6 +340,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-26T19:30:00.000Z
-Stopped at: Phase 37 planned — ready to execute
-Resume file: .planning/phases/37-multi-select-physical-roto-keys/37-01-PLAN.md
+Last session: 2026-07-27T10:26:48.330Z
+Stopped at: Phase 38 context gathered
+Resume file: .planning/phases/38-multi-copy-paste-and-tooltip-polish/38-CONTEXT.md
