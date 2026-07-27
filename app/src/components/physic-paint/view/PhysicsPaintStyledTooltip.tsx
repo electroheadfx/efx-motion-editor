@@ -194,12 +194,12 @@ export interface PhysicsPaintStyledTooltipProps {
   id?: string;
   visible: boolean;
   /**
-   * UI region of the anchor — the pill renders on the opposite side (D-11).
-   * Optional during the 38-05 mount-conversion sequence; defaults to
-   * 'bottom' (renders above), matching the legacy default outcome. Made
-   * required once every mount declares its region.
+   * UI region of the anchor — the pill renders on the opposite side (D-11):
+   * bottom-of-UI anchors render above, top-of-UI below, right-edge anchors
+   * to the left, left-edge to the right. Required: every mount declares its
+   * region; per-mount hand placement is a locked anti-pattern.
    */
-  region?: TooltipRegion;
+  region: TooltipRegion;
   children: ComponentChildren;
 }
 
@@ -228,7 +228,7 @@ export function PhysicsPaintStyledTooltip(props: PhysicsPaintStyledTooltipProps)
     const pillSize = { width: pill.offsetWidth, height: pill.offsetHeight };
     const placement = computeTooltipPlacement(
       anchor.getBoundingClientRect(),
-      props.region ?? 'bottom',
+      props.region,
       pillSize,
     );
     pill.style.left = `${placement.left}px`;

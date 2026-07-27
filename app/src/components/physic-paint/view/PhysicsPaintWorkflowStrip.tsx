@@ -313,7 +313,7 @@ function RotoTimelineCellButton(props: RotoTimelineCellButtonProps) {
       >
         <span>{props.frame}</span>
       </button>
-      <PhysicsPaintStyledTooltip visible={tooltip.visible}>{props.tooltipCopy}</PhysicsPaintStyledTooltip>
+      <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom">{props.tooltipCopy}</PhysicsPaintStyledTooltip>
     </span>
   );
 }
@@ -1144,7 +1144,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   {!canAddRotoKey && addRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-add" class="physics-paint-sr-only">{addRotoKeyDisabledReason}</span>
                   ) : null}
-                  <PhysicsPaintStyledTooltip visible={addKeyTooltip.visible}>
+                  <PhysicsPaintStyledTooltip visible={addKeyTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy('Add key', addRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
@@ -1172,7 +1172,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-duplicate" class="physics-paint-sr-only">{duplicateRotoKeyDisabledReason}</span>
                   ) : null}
-                  <PhysicsPaintStyledTooltip visible={duplicateKeyTooltip.visible}>
+                  <PhysicsPaintStyledTooltip visible={duplicateKeyTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy('Duplicate key', duplicateRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
@@ -1200,7 +1200,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   {!canInsertRotoKey && insertRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-insert" class="physics-paint-sr-only">{insertRotoKeyDisabledReason}</span>
                   ) : null}
-                  <PhysicsPaintStyledTooltip visible={insertKeyTooltip.visible}>
+                  <PhysicsPaintStyledTooltip visible={insertKeyTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy('Insert key before', insertRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
@@ -1256,7 +1256,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   {!canPasteRotoKey && pasteRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-paste" class="physics-paint-sr-only">{pasteRotoKeyDisabledReason}</span>
                   ) : null}
-                  <PhysicsPaintStyledTooltip visible={pasteKeyTooltip.visible}>
+                  <PhysicsPaintStyledTooltip visible={pasteKeyTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy('Paste key', pasteRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
@@ -1284,7 +1284,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   {!canDeleteRotoKey && deleteRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-delete" class="physics-paint-sr-only">{deleteRotoKeyDisabledReason}</span>
                   ) : null}
-                  <PhysicsPaintStyledTooltip visible={deleteKeyTooltip.visible}>
+                  <PhysicsPaintStyledTooltip visible={deleteKeyTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy('Delete key', deleteRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
@@ -1312,7 +1312,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   {!canSelectAllRotoKeys && selectAllDisabledReason ? (
                     <span id="roto-key-action-reason-select-all" class="physics-paint-sr-only">{selectAllDisabledReason}</span>
                   ) : null}
-                  <PhysicsPaintStyledTooltip visible={selectAllTooltip.visible}>
+                  <PhysicsPaintStyledTooltip visible={selectAllTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy('Select all keys', selectAllDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
@@ -1353,7 +1353,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {!canApplyForceSpacingAction && forceSpacingActionDisabledReason ? (
                       <span id="roto-key-action-reason-spacing" class="physics-paint-sr-only">{forceSpacingActionDisabledReason}</span>
                     ) : null}
-                    <PhysicsPaintStyledTooltip visible={forceSpacingTooltip.visible}>
+                    <PhysicsPaintStyledTooltip visible={forceSpacingTooltip.visible} region="bottom">
                       {buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys', forceSpacingActionDisabledReason)}
                     </PhysicsPaintStyledTooltip>
                 </span>
