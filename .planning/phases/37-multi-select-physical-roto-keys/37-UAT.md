@@ -7,7 +7,7 @@ source:
   - 37-03-SUMMARY.md
   - 37-04-SUMMARY.md
 started: 2026-07-26T21:38:20Z
-updated: 2026-07-26T21:38:20Z
+updated: 2026-07-27T00:00:00Z
 ---
 
 # Phase 37: Multi-Select Physical Roto Keys — Native UAT Script
@@ -18,7 +18,7 @@ updated: 2026-07-26T21:38:20Z
 
 ## Current Test
 
-### 1. GD-1 group drag happy path (TRACER)
+### 2. GD-2 atomic reject with blocked preview (BACKSTOP 1)
 
 ## Tests
 
@@ -26,13 +26,13 @@ updated: 2026-07-26T21:38:20Z
 
 expected: The user launches the native app themselves (the agent never launches it), creates a disposable test project, adds one Physics Paint layer, opens Roto mode, and paints four real keys with visually distinct payloads (e.g. four different colors) at physical frames 1, 3, 5, and 10 — identities A, B, C, D. Baseline map: A@1, B@3, C@5, D@10.
 
-result:
+result: pass — baseline established natively (A@1, B@3, C@5, D@10 with visually distinct payloads); ran together with Section 1.
 
 ### 1. GD-1 group drag happy path (TRACER — runs first and alone)
 
 expected: From baseline, Cmd/Ctrl-click B, then Cmd/Ctrl-click C (both show selected state; B keeps the strongest orange current highlight). Grab B and drag it onto empty frame 7; during the gesture the complete-mapping preview shows every moved/shifted/vacated/generated cell. Release. Final map exactly **A@1, B@7, D@8, C@9** — source gaps closed, D rippled 10→8. Payloads follow their keys. The moved group {B,C} stays selected with B as the current editing key (orange ring) and C secondary-selected (white-family outline); focus/scroll follow B. The capsule shows `Keys moved`. Exactly ONE new Undo history entry: one Undo restores exactly A@1, B@3, C@5, D@10 and one Redo re-applies exactly A@1, B@7, D@8, C@9.
 
-result:
+result: pass — user report verbatim: "gd1 pass" (2026-07-27, no additional observations). Final map A@1, B@7, D@8, C@9 confirmed with payloads preserved, group {B,C} still selected (B current / C secondary), `Keys moved` capsule, exactly one history entry, Undo/Redo round-trip exact.
 
 ### 2. GD-2 atomic reject with blocked preview (BACKSTOP 1)
 
