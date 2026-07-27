@@ -1098,14 +1098,14 @@ Plans:
 **Goal:** Restore canvas-first responsiveness in the Physics Paint Studio at realistic key counts by restructuring the per-frame render path — timeline-model structural/frame split, canvas-first same-tick paint (D-03), rAF-batched UI (D-04), latest-wins canvas under saturation (D-05), and playback UI freeze with one catch-up render on stop (D-01/D-02) — timing-only with zero behavior change (D-09), unblocking the re-run of the Phase 38-06 native UAT.
 **Requirements**: 38.1-D-01..38.1-D-10 (decision IDs; no formal requirement IDs registered — planning-data gap carried from Phase 38)
 **Depends on:** Phase 38
-**Plans:** 1/6 plans executed
+**Plans:** 2/6 plans executed
 
 Plans:
 
 **Wave 1** *(parallel — no shared files)*
 
 - [x] 38.1-01-PLAN.md — Timeline-model structural/frame split (useRotoTimelineModel.ts:77 defect) + D-07 instrumentation test: zero structural rebuilds on frame writes, byte-compatible model surface.
-- [ ] 38.1-02-PLAN.md — rAF UI flush scheduler (D-04) + latest-wins navigation generation tokens (D-05): pure, test-locked utilities.
+- [x] 38.1-02-PLAN.md — rAF UI flush scheduler (D-04) + latest-wins navigation generation tokens (D-05): pure, test-locked utilities.
 
 **Wave 2** *(blocked on Wave 1)*
 

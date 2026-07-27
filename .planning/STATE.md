@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 38.1
 current_phase_name: studio-render-path-performance
 status: executing
-stopped_at: Completed 38.1-01-PLAN.md
-last_updated: "2026-07-27T19:41:10.974Z"
+stopped_at: Completed 38.1-02-PLAN.md
+last_updated: "2026-07-27T19:49:43.591Z"
 last_activity: 2026-07-27
 last_activity_desc: Phase 38.1 execution started
 progress:
   total_phases: 21
   completed_phases: 18
   total_plans: 155
-  completed_plans: 141
+  completed_plans: 142
   percent: 86
 ---
 
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 38.1 (studio-render-path-performance) — EXECUTING
 Previous phase: 36.15 complete (final timeline UI integration)
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-07-27 — Phase 38.1 execution started
 Next recommended action: /gsd-discuss-phase 38.1 (then plan/execute; resume /gsd-execute-phase 38 afterward)
 
-Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 91%)
+Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 92%)
 
 ## Performance Metrics
 
@@ -132,6 +132,7 @@ Progress: [██████████████████░░] 129/141
 | Phase 38 P04 | 6min | 2 tasks | 5 files |
 | Phase 38 P05 | 7min | 3 tasks | 4 files |
 | Phase 38.1 P01 | 7min | 2 tasks | 3 files |
+| Phase 38.1 P02 | 5min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -274,6 +275,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 38 Plan 05]: Tooltip viewport mechanism is FIXED-in-place (no portal) per the containing-block audit — no transformed/filtered/containing ancestor for any mount; 38-06 UAT and 38-08 tests must use this mechanism verbatim
 - [Phase ?]: [Phase 38 Plan 05]: Notch escapes the pill's locked overflow clip via viewport-fixed positioning at --tooltip-notch-x/y derived from the post-clamp anchor-center projection; computeTooltipPlacement is the single placement authority for all 15 mounts via the required region prop
 - [Phase ?]: [Phase 38.1 Plan 01]: Roto timeline model split into structural inputs (useMemo deps) versus frame/selection signals written in place via equality-guarded additive seam; frame writes cost O(find) with zero projection rebuilds (spy-proven).
+- [Phase ?]: [Phase 38.1 Plan 02]: Scheduled-flag rAF flush scheduler (createRotoUiFlushScheduler) coalesces UI flushes to one per animation frame with guard-check-then-post; the posted frame is never revoked-and-reposted (D-04).
+- [Phase ?]: [Phase 38.1 Plan 02]: Navigation generation tokens (createRotoNavigationGeneration) use supersession as the only staleness criterion; never-superseded generations always paint (discrete-click rule, D-05).
 
 ### Pending Todos
 
@@ -357,6 +360,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-27T19:41:10.953Z
-Stopped at: Completed 38.1-01-PLAN.md
+Last session: 2026-07-27T19:49:43.572Z
+Stopped at: Completed 38.1-02-PLAN.md
 Resume file: None
