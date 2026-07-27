@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 38
-current_phase_name: multi-copy-paste-and-tooltip-polish
+current_phase: 38.1
+current_phase_name: studio-render-path-performance
 status: executing
 stopped_at: Completed 38-05-PLAN.md
-last_updated: "2026-07-27T15:44:22.875Z"
+last_updated: "2026-07-27T16:45:10.011Z"
 last_activity: 2026-07-27
 last_activity_desc: Phase 38 execution started
 progress:
-  total_phases: 20
+  total_phases: 21
   completed_phases: 18
   total_plans: 149
   completed_plans: 140
-  percent: 90
+  percent: 86
 ---
 
 # Project State
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 38 — multi-copy-paste-and-tooltip-polish
+**Current focus:** Phase 38.1 — Studio render-path performance (inserted; phase 38 paused at 38-06 UAT)
 
 ## Current Position
 
-Phase: 38 (multi-copy-paste-and-tooltip-polish) — EXECUTING
+Phase: 38.1 (studio-render-path-performance) — DISCUSSING; phase 38 paused at plan 6/8 UAT checkpoint
 Previous phase: 36.15 complete (final timeline UI integration)
 Plan: 6 of 8
 Status: Ready to execute
 Last activity: 2026-07-27 — Phase 38 execution started
-Next recommended action: /gsd-execute-phase 37 (wave order 1 → 1 → 2 → 3 → 4 → 5)
+Next recommended action: /gsd-discuss-phase 38.1 (then plan/execute; resume /gsd-execute-phase 38 afterward)
 
 Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 94%)
 
@@ -339,6 +339,7 @@ None yet.
 - Functional active-session Copy Script / Apply Script reuse was extracted from Phase 36.14 into a dedicated prerequisite quick; Phase 36.14 now owns only final UI presentation and wiring.
 - Phase 36.14 edited: edited fields: title, goal, requirements, success_criteria, planning notes
 - Phase 38 added: Multi-Copy/Paste and Tooltip Polish
+- Phase 38.1 inserted after Phase 38: Studio render-path performance — fix many-key Studio render-path scaling ceiling (per-frame timeline-model rebuild, full strip re-render per frame) with canvas-first paint, deferred UI, playback UI suspension. Blocks 38-06 UAT re-run. (URGENT)
 
 ## Deferred Items
 

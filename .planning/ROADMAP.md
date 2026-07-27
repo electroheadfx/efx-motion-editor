@@ -1092,3 +1092,14 @@ Plans:
 
 - [ ] 38-07-PLAN.md — Post-UAT regression tests: group seam (resolver, multi-selection aftermath, group clipboard shape). `vitest run` only.
 - [ ] 38-08-PLAN.md — Post-UAT regression tests: presentation + final gate (capsule idle-context assertions, tooltip placement describe, full vitest run + typecheck + build green).
+
+### Phase 38.1: Studio render-path performance (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 38
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 38.1 to break down)
