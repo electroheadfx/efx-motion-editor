@@ -1023,3 +1023,71 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 24/30 | Complete    | 2026-07-25 |
 | 36.15. Roto Timeline Final UI Integration | v0.8.0 | 13/13 | Complete | 2026-07-26 |
 | 37. Multi-Select Physical Roto Keys | v0.8.0 | 6/6 | Complete    | 2026-07-27 |
+
+### Phase 38: Multi-Copy/Paste and Tooltip Polish
+
+**Goal:** Extend the approved Phase 37 multi-selection workflow with group Copy/Paste, and fix the current tooltip/status polish issues in the Physics Paint timeline. Preserve the canonical physical-frame model, stable keyId ownership, accepted-only transactions, Phase 36.15 UI geometry, and Phase 37 multi-selection behavior.
+
+**Scope:**
+
+1. Multi-Copy/Paste for selected real Roto keys:
+   - Copy all selected real keys with stable source provenance, physical appFrames, and immutable payload snapshots.
+   - Preserve relative physical offsets between selected keys.
+   - Paste the copied group as new real keys with fresh keyIds.
+   - Anchor the group predictably (preferred MVP: earliest copied key maps to destination; others keep relative offsets).
+   - Reject occupied destinations, collisions, and over-capacity atomically for MVP.
+   - Clipboard remains immutable and reusable.
+   - One accepted transaction and one Undo/Redo action.
+   - Save/reopen, caches, playback, onion/reference, preview/export, timeline extent, and interpolation derive from the accepted map only.
+   - Single-key Copy/Paste behavior remains unchanged.
+2. Status capsule:
+   - Fix the persistent `Missing frames play transparent/background` message.
+   - It must not permanently occupy the capsule when the user is on a real key.
+   - Define when missing-frame ambient context should appear, if ever.
+   - Keep detailed explanation in LOG/diagnostics.
+3. Tooltip placement:
+   - Move the tube/log tooltip to the top by default.
+   - Use bottom placement only as a fallback when there is not enough space above.
+   - Keep tooltip inside viewport bounds.
+4. Tooltip shape:
+   - Add a small triangular notch/arrow pointing to the source control.
+   - Flip the notch with top/bottom placement.
+   - Match the approved dark rounded visual style.
+5. Multiline tooltips:
+   - Stop truncating tooltip text with `...`.
+   - Wrap text to multiple lines.
+   - Use bounded maximum width and maximum height.
+   - Preserve accessibility, keyboard focus behavior, and compact timeline geometry.
+
+**Constraints:**
+- Preserve stable keyId/direct appFrame as the only durable physical ownership model.
+- No sourceFrame/displayFrame compatibility, migration code, forwarding wrappers, aliases, dual-write paths, or second timing authority.
+- Basic perfect-freehand and FX p5.brush behavior unchanged.
+- Production first, then blocking native UAT, then regression tests with `vitest run`, typecheck, and build.
+- Keep the 155px workflow strip, 28px action row, and 18px cells unless a discussed UI decision explicitly requires otherwise.
+
+**Requirements**: 38-GROUP-COPY, 38-GROUP-PASTE, 38-CAPSULE-IDLE-CONTEXT, 38-TOOLTIP-VIEWPORT-PLACEMENT, 38-TOOLTIP-NOTCH-MULTILINE, 38-DOWNSTREAM-PARITY, 38-UAT-THEN-REGRESSION
+**Depends on:** Phase 37
+**Plans:** 8 plans
+
+Plans:
+
+**Wave 1**
+
+- [ ] 38-01-PLAN.md — Group clipboard: widen the one shared slot to a frozen `single | group` discriminated union (D-02/D-03); group Copy for 2+ selected keys with store-record snapshots; 1-key Copy byte-identical (D-01).
+- [ ] 38-02-PLAN.md — `paste-key-group` five-owner literal propagation with atomic reject (D-04..D-07): shared types, resolver intent/factory/candidate/validator/dispatch, coordinator equality/routing/retargeting, bridge validation branch, history verify-only.
+- [ ] 38-03-PLAN.md — Status capsule fix (D-08/D-09/D-10): delete the baseline fallback; idle current-cell context via the existing `ambient` slot; arbitration priority unchanged.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 38-04-PLAN.md — Group paste activation route + clipboard-shape branch in pasteKey + `paste-key-group` selection aftermath (pasted group becomes selection, earliest pasted key current); UI-SPEC locked reject copy with detail to LOG.
+- [ ] 38-05-PLAN.md — Tooltip rework (D-11..D-14): shared direction-aware viewport placement utility, 10×6px same-fill notch, 280×96px multiline clamp, every mount converted.
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 38-06-PLAN.md — BLOCKING native user-owned UAT checkpoint (D-15); no test work before explicit approval.
+
+**Wave 4** *(blocked on Wave 3 native UAT approval)*
+
+- [ ] 38-07-PLAN.md — Post-UAT regression tests: group seam (resolver, multi-selection aftermath, group clipboard shape). `vitest run` only.
+- [ ] 38-08-PLAN.md — Post-UAT regression tests: presentation + final gate (capsule idle-context assertions, tooltip placement describe, full vitest run + typecheck + build green).
