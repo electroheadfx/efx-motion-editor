@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { signal, type Signal } from '@preact/signals';
 import type { PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 
@@ -6,6 +7,18 @@ const MIN_ROTO_PLAYBACK_FPS = 1;
 const MAX_ROTO_PLAYBACK_FPS = 60;
 
 export interface RotoCachedPlaybackFrame<Frame> {
+  appFrame: number;
+  frame: Frame | null;
+}
+
+/**
+ * 38.1-D-01 per-tick playback surface: one write per playback tick, read ONLY
+ * by the sanctioned live surfaces (the playback canvas image subscriber and
+ * the nav-pill current-frame indicator). Writing this signal never re-renders
+ * the Studio — anything needing its value outside a live surface must peek().
+ */
+export interface RotoCachedPlaybackTick<Frame = unknown> {
+  frameIndex: number;
   appFrame: number;
   frame: Frame | null;
 }
@@ -22,6 +35,7 @@ export interface UseRotoCachedPlaybackInput<Frame> {
 export interface RotoCachedPlayback<Frame> {
   isActive: boolean;
   frame: Frame | null;
+  playbackTick: Signal<RotoCachedPlaybackTick<Frame> | null>;
   status: string | null;
   setStatus: (status: string | null) => void;
   loop: boolean;
@@ -47,7 +61,6 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     fps: clampRotoPlaybackFps(input.initialSettings.fps),
   };
   const [isActive, setIsActive] = useState(false);
-  const [frame, setFrame] = useState<Frame | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [loop, setLoopState] = useState(initialSettings.loop);
   const [fps, setFps] = useState(initialSettings.fps);
@@ -55,6 +68,13 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
   const timerRef = useRef<number | null>(null);
   const inputRef = useRef(input);
   inputRef.current = input;
+  // 38.1-D-01/D-08: the per-tick frame lives on a signal, not useState, so a
+  // playback tick never re-renders the Studio. Created once per hook instance
+  // (ref-held); `frame` remains readable as a plain value via the getter on
+  // the returned object (existing consumer/test contract).
+  const playbackTickRef = useRef<Signal<RotoCachedPlaybackTick<Frame> | null> | null>(null);
+  if (playbackTickRef.current === null) playbackTickRef.current = signal<RotoCachedPlaybackTick<Frame> | null>(null);
+  const playbackTick = playbackTickRef.current;
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) window.clearInterval(timerRef.current);
@@ -63,10 +83,10 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
 
   const finishPlayback = useCallback(() => {
     clearTimer();
-    setFrame(null);
+    playbackTick.value = null;
     setIsActive(false);
     inputRef.current.setIsPlaying(false);
-  }, [clearTimer]);
+  }, [clearTimer, playbackTick]);
 
   const stop = useCallback(() => {
     finishPlayback();
@@ -110,13 +130,13 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
         frameIndex = 0;
       }
       const cachedFrame = cachedFrames[frameIndex];
-      setFrame(cachedFrame.frame ?? null);
+      playbackTick.value = { frameIndex, appFrame: cachedFrame.appFrame, frame: cachedFrame.frame ?? null };
       inputRef.current.onFrame(frameIndex, cachedFrame.appFrame);
       frameIndex += 1;
     };
     showNextFrame();
     timerRef.current = window.setInterval(showNextFrame, 1000 / playbackFps);
-  }, [clearTimer, finishPlayback]);
+  }, [clearTimer, finishPlayback, playbackTick]);
 
   const toggle = useCallback(() => {
     if (isActive) {
@@ -149,7 +169,8 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
 
   return {
     isActive,
-    frame,
+    get frame() { return playbackTick.value?.frame ?? null; },
+    playbackTick,
     status,
     setStatus,
     loop,

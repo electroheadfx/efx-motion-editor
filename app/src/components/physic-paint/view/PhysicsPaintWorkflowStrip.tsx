@@ -1,6 +1,8 @@
 import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, Play, Plus, RotateCcw, Square, Trash2, X } from 'lucide-preact';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import type { Signal } from '@preact/signals';
+import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
   collectRotoDragVacatedAppFrames,
@@ -94,6 +96,13 @@ export interface PhysicsPaintWorkflowStripProps {
   onRotoPlaybackLoopChange?: (loop: boolean) => void;
   onRotoPlaybackFpsChange?: (fps: number) => void;
   isRotoCachedPlaybackActive?: boolean;
+  /**
+   * 38.1-D-01 per-tick playback surface, passed through as a signal reference.
+   * Read ONLY by the nav-pill current-frame output child during active
+   * playback — never .value-read in the strip body (that would subscribe all
+   * ~120 cells per tick).
+   */
+  rotoCachedPlaybackTick?: Signal<RotoCachedPlaybackTick | null> | null;
   onRotoInterpolationEnabledChange?: (enabled: boolean) => void;
   onRotoInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
   /** + Key header action: promote the current frame to an empty real key. */
@@ -261,6 +270,20 @@ function getRotoDragFeedback(preview: RotoDragPreviewState | null): string | nul
   }
   if (!preview.candidateValid || !preview.publication) return preview.error;
   return getRotoDragPreviewViewModel(preview.publication.proposal).conciseStatus;
+}
+
+/**
+ * 38.1-D-01 live surface 2: the minimal current-frame indicator — the EXISTING
+ * nav-pill element `<output class="physics-paint-current-frame">` (Open
+ * Question 1 RESOLVED: element, class, and placement pinned, unchanged).
+ * During active cached playback it reads the per-tick playback appFrame signal
+ * (only this child re-renders per tick); otherwise it shows props.currentFrame
+ * exactly as before. The signal is never read when playback is inactive, so an
+ * idle strip holds zero per-tick subscriptions.
+ */
+function RotoPlaybackCurrentFrameOutput(props: { currentFrame: number; playbackActive: boolean; playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined }) {
+  const playbackAppFrame = props.playbackActive ? props.playbackTick?.value?.appFrame ?? null : null;
+  return <output class="physics-paint-current-frame">{playbackAppFrame ?? props.currentFrame}</output>;
 }
 
 interface RotoTimelineCellButtonProps {
@@ -1033,7 +1056,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={props.onGoToFirstFrame}><ChevronFirst size={15} /></button>
           <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={props.onGoToPreviousFrame}><ChevronsLeft size={15} /></button>
           <button type="button" class={`physics-paint-nav-button physics-paint-roto-transport ${props.isRotoCachedPlaybackActive ? 'active' : ''}`} aria-label={props.isRotoCachedPlaybackActive ? 'Stop cached Roto playback' : 'Play cached Roto frames'} disabled={props.ready === false || !props.rotoCachedPlaybackAvailable || !props.onToggleRotoPlayback} onClick={props.onToggleRotoPlayback}>{props.isRotoCachedPlaybackActive ? <Square size={15} /> : <Play size={15} />}</button>
-          <output class="physics-paint-current-frame">{props.currentFrame}</output>
+          <RotoPlaybackCurrentFrameOutput currentFrame={props.currentFrame} playbackActive={Boolean(props.isRotoCachedPlaybackActive)} playbackTick={props.rotoCachedPlaybackTick ?? null} />
           <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
           <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
         </div>

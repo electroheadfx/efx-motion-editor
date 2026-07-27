@@ -1,8 +1,11 @@
 import type { ComponentChildren, ComponentProps } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import type { Signal } from '@preact/signals';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import { subscribeProjectPaperCanvas } from '../../../lib/projectPaperRaster';
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
+import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
+import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { PhysicsPaintPlayScriptDialog } from './PhysicsPaintPlayScriptDialog';
 import { PhysicsPaintRightPanel } from './PhysicsPaintRightPanel';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
@@ -12,7 +15,7 @@ import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
 interface PhysicsPaintCanvasStackViewProps {
   children: ComponentChildren;
   cachedRotoReferenceUrl?: string | null;
-  cachedRotoPlaybackUrl?: string | null;
+  cachedRotoPlaybackTick?: Signal<RotoCachedPlaybackTick<RenderedFramePayload> | null> | null;
   cachedRotoPlaybackActive?: boolean;
   cachedRotoPlaybackComposition?: {
     width: number;
@@ -25,8 +28,18 @@ interface PhysicsPaintCanvasStackViewProps {
   onInputIntent?: () => void;
 }
 
-function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: number; background: PhysicPaintRotoBackgroundMetadata }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+/**
+ * 38.1-D-01 live surface 1: the playback canvas image. Narrow subscriber —
+ * reads the per-tick playback signal directly so each tick re-renders ONLY
+ * this <img> slot, never the Studio. Renders the exact same element as the
+ * previous url-driven slot (DOM byte-identical).
+ */
+function PhysicsPaintRotoPlaybackImage(props: { tick: Signal<RotoCachedPlaybackTick<RenderedFramePayload> | null> | null | undefined }) {
+  const dataUrl = props.tick?.value?.frame?.dataUrl ?? null;
+  return dataUrl ? <img class="physics-paint-cached-roto-playback" src={dataUrl} alt="" /> : null;
+}
+
+function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: number; background: PhysicPaintRotoBackgroundMetadata }) {  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -102,7 +115,7 @@ function PhysicsPaintCanvasStack(props: PhysicsPaintCanvasStackViewProps) {
               background={props.cachedRotoPlaybackComposition.background}
             />
           ) : null}
-          {props.cachedRotoPlaybackUrl ? <img class="physics-paint-cached-roto-playback" src={props.cachedRotoPlaybackUrl} alt="" /> : null}
+          <PhysicsPaintRotoPlaybackImage tick={props.cachedRotoPlaybackTick} />
           {!props.cachedRotoPlaybackActive ? props.onionOverlay : null}
         </div>
       ) : null}
@@ -146,7 +159,7 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         <section class="physics-paint-main physics-paint-canvas-region" aria-label="Physics Paint canvas">
           <PhysicsPaintCanvasStack
             cachedRotoReferenceUrl={canvas.cachedRotoReferenceUrl}
-            cachedRotoPlaybackUrl={canvas.cachedRotoPlaybackUrl}
+            cachedRotoPlaybackTick={canvas.cachedRotoPlaybackTick}
             cachedRotoPlaybackActive={canvas.cachedRotoPlaybackActive}
             cachedRotoPlaybackComposition={canvas.cachedRotoPlaybackComposition}
             inputDisabled={canvas.inputDisabled}
