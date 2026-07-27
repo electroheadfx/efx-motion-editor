@@ -15,13 +15,16 @@ import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPh
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import {
   createPhysicPaintRotoDuplicateKeyIntent,
+  createPhysicPaintRotoPasteKeyGroupIntent,
   createPhysicPaintRotoPasteKeyIntent,
   resolvePhysicPaintRotoPhysicalEdit,
+  type PhysicPaintRotoPhysicalEditFailure,
   type PhysicPaintRotoPhysicalEditIntent,
   type PhysicPaintRotoPhysicalEditProposal,
   type PhysicPaintRotoPhysicalEditResolution,
   type PhysicPaintRotoPhysicalEditTarget,
 } from '../roto/physicsPaintRotoPhysicalResolver';
+import type { RotoSessionCopiedGroupEntry } from '../roto/physicsPaintRotoSession';
 import type {
   RotoPhysicalEditExecuteInput,
   RotoPhysicalKeyUtilityPort,
@@ -228,9 +231,15 @@ export interface RotoTimelineActionsInput {
 
 interface PhysicalActionRunnerInput {
   readonly intent: PhysicPaintRotoPhysicalEditIntent;
-  readonly operationKind: 'insert-slot' | 'delete-key' | 'delete-key-group' | 'duplicate-key' | 'paste-key';
+  readonly operationKind: 'insert-slot' | 'delete-key' | 'delete-key-group' | 'duplicate-key' | 'paste-key' | 'paste-key-group';
   readonly requiredKeyId: string | null;
   readonly successMessage: string;
+  /**
+   * Optional failure-code → concise capsule copy mapping (UI-SPEC locked
+   * lines). Absent: the resolver failure text publishes unchanged, preserving
+   * byte-identical behavior for existing routes.
+   */
+  readonly rejectedCopy?: (failure: PhysicPaintRotoPhysicalEditFailure) => string;
 }
 
 const INSERT_SUCCESS_MESSAGE = 'Inserted an empty Roto frame before the selected key.';
@@ -324,9 +333,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       interpolationEnabled: interpolation.enabled,
     });
     if (!resolution.ok) {
-      input.publishStatus?.(resolution.failure.text || 'The Roto timeline edit is invalid.');
-      if (runnerInput.operationKind === 'delete-key-group') {
-        input.publishDiagnostic?.('delete-key-group rejected: ' + resolution.failure.code + ' — ' + resolution.failure.text);
+      input.publishStatus?.(runnerInput.rejectedCopy?.(resolution.failure) ?? (resolution.failure.text || 'The Roto timeline edit is invalid.'));
+      if (runnerInput.operationKind === 'delete-key-group' || runnerInput.operationKind === 'paste-key-group') {
+        input.publishDiagnostic?.(runnerInput.operationKind + ' rejected: ' + resolution.failure.code + ' — ' + resolution.failure.text);
       }
       return false;
     }
@@ -419,6 +428,42 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       input.publishStatus?.('The copied Roto paint is unavailable.');
       return Promise.resolve(false);
     }
+  }, [input, runPhysicalAction]);
+
+  const pasteKeyGroup = useCallback((
+    destinationAppFrame: number,
+    entries: readonly RotoSessionCopiedGroupEntry[],
+  ): Promise<boolean> => {
+    if (!Number.isInteger(destinationAppFrame) || destinationAppFrame < 0) {
+      input.publishStatus?.('Select a valid Roto frame before pasting.');
+      return Promise.resolve(false);
+    }
+    let intent: Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key-group' }>;
+    try {
+      // The factory is the fail-closed gate: it throws on fewer than two
+      // entries or malformed entry fields (T-38-01).
+      intent = createPhysicPaintRotoPasteKeyGroupIntent(destinationAppFrame, entries);
+    } catch {
+      input.publishStatus?.('The copied Roto key group is unavailable.');
+      return Promise.resolve(false);
+    }
+    // Busy line shows only while the acknowledged transaction is pending; the
+    // success or reject line always overwrites it (UI-SPEC locked).
+    input.publishStatus?.('Pasting keys…');
+    return runPhysicalAction({
+      intent,
+      operationKind: 'paste-key-group',
+      // requiredKeyId is null per the delete-key-group precedent: the resolver
+      // is the destination-occupancy authority — every computed destination
+      // must be empty, so no existing keyId is required.
+      requiredKeyId: null,
+      successMessage: `Pasted ${entries.length} keys`,
+      rejectedCopy: (failure) => failure.code === 'duplicate-destination-frame'
+        ? 'Paste rejected — key in the way'
+        : failure.code === 'over-capacity' || failure.code === 'out-of-range-frame'
+          ? 'Paste rejected — not enough room'
+          : failure.text || 'The Roto key group paste is invalid.',
+    });
   }, [input, runPhysicalAction]);
 
   const addEmptyKey = useCallback((
@@ -745,8 +790,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,
     pasteKey,
+    pasteKeyGroup,
     addEmptyKey,
-  }), [duplicateKey, pasteKey, addEmptyKey]);
+  }), [duplicateKey, pasteKey, pasteKeyGroup, addEmptyKey]);
 
   return {
     updateInterpolationSettings,

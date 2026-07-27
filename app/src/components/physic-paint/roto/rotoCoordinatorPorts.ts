@@ -2,6 +2,7 @@ import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintLaunchContext, PhysicPaintRotoPhysicalEditApplyPayload, PhysicPaintRotoPhysicalEditOperationKind } from '../../../types/physicPaint';
 import type { RotoSessionEffect } from '../roto/physicsPaintRotoSession';
+import type { RotoSessionCopiedGroupEntry } from './physicsPaintRotoSession';
 import type {
   PhysicPaintRotoInterpolationState,
   PhysicPaintRotoRealKeyPayload,
@@ -54,6 +55,18 @@ export interface RotoPhysicalKeyUtilityPort {
     destinationAppFrame: number,
     clipboardPayload: PhysicPaintRotoRealKeyPayload,
     destinationKeyId: string | null,
+  ) => Promise<boolean>;
+  /**
+   * Atomic all-empty-or-reject group paste variant (D-05): every computed
+   * destination must be empty or the whole paste rejects with zero partial
+   * mutation. Unlike pasteKey's replace-style single behavior, this route
+   * never replaces an existing key. The earliest copied key anchors at
+   * `destinationAppFrame`; relative physical offsets derive from entry
+   * source appFrames at resolve time (D-04/D-06/D-07).
+   */
+  pasteKeyGroup: (
+    destinationAppFrame: number,
+    entries: readonly RotoSessionCopiedGroupEntry[],
   ) => Promise<boolean>;
   /**
    * Promote an unoccupied physical frame to a real key carrying the supplied

@@ -208,7 +208,18 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
       return;
     }
     if (isRotoSessionCopiedKeyGroup(copiedKey)) {
-      input.setApplyMessage('The copied Roto key group cannot paste through the single-key route.');
+      setKeyActionInFlight(true);
+      void input.physicalKeyUtilities.pasteKeyGroup(
+        input.currentFrame,
+        copiedKey.entries,
+      ).catch((error) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        input.setApplyStatus('error');
+        input.setApplyMessage('Could not paste the copied Roto key group.');
+        input.setLastError(detail);
+      }).finally(() => {
+        setKeyActionInFlight(false);
+      });
       return;
     }
     const clipboardPayload = toClipboardPayload(copiedKey);
