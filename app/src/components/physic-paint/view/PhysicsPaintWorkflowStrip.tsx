@@ -276,6 +276,28 @@ interface RotoTimelineCellButtonProps {
 }
 
 /**
+ * Per-cell derivation bundle (38.1-04, Option A — 38.1-D-08 link 2, RESEARCH
+ * Pattern 3). Each entry holds the expensive per-cell derivations for one
+ * frame: `getRotoCellViewModel` (whose per-call cachedFrames filter/find scan
+ * is O(N)) and `getRotoCellFill` (O(N) some). `currentFrame` feeds nothing in
+ * these derivations except the view model's `current` overlay, so a pure
+ * frame change invalidates ONLY the previously-current and newly-current
+ * entries; every other entry serves the byte-identical cached value.
+ */
+interface RotoCellDerivation {
+  vm: RotoCellViewModel;
+  fill: ReturnType<typeof getRotoCellFill>;
+}
+
+interface RotoCellDerivationCache {
+  physicalCellByAppFrame: Map<number, RotoPhysicalTimelineCell>;
+  cachedRotoFrames: readonly PhysicPaintRotoCacheFrame[];
+  realCachedRotoFrames: PhysicPaintRotoCacheFrame[];
+  currentFrame: number;
+  entries: Map<number, RotoCellDerivation>;
+}
+
+/**
  * One physical-frame cell with its own styled-tooltip controller (D-16/C-06).
  * Hooks cannot run inside the 120-cell map in the strip body, so each cell is
  * a child component owning one `useStyledTooltip` instance. The button keeps
@@ -323,6 +345,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const [rotoDragPreview, setRotoDragPreview] = useState<RotoDragPreviewState | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
+  const rotoCellDerivationCacheRef = useRef<RotoCellDerivationCache | null>(null);
   const suppressNextRotoClickRef = useRef(false);
   const mountedRef = useRef(true);
   const interpolationEnabled = props.rotoInterpolationEnabled === true;
@@ -343,6 +366,54 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   );
   const frameCells = useMemo(() => buildPhysicsPaintRotoFrameCells(props.currentFrame), [props.currentFrame]);
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
+  // Per-cell derivation cache update (38.1-04, Option A — 38.1-D-08 link 2,
+  // RESEARCH Pattern 3). Full invalidation on ANY structural identity change
+  // (the physical-cell Map or the cached-frame arrays — realCachedRotoFrames
+  // is memoized from cachedRotoFrames, so its identity tracks it). On a pure
+  // currentFrame change ONLY the previously-current and newly-current entries
+  // are dropped: `currentFrame` reaches `getRotoCellViewModel` solely through
+  // the `current` overlay (frame === currentFrame), so every other entry
+  // stays byte-valid. Drag preview, selection, and saved-marker state are
+  // read per-render in the cell loop below and are NOT cache inputs.
+  const activeCellDerivationCache = rotoCellDerivationCacheRef.current;
+  if (
+    activeCellDerivationCache === null ||
+    activeCellDerivationCache.physicalCellByAppFrame !== physicalCellByAppFrame ||
+    activeCellDerivationCache.cachedRotoFrames !== cachedRotoFrames
+  ) {
+    rotoCellDerivationCacheRef.current = {
+      physicalCellByAppFrame,
+      cachedRotoFrames,
+      realCachedRotoFrames,
+      currentFrame: props.currentFrame,
+      entries: new Map(),
+    };
+  } else if (activeCellDerivationCache.currentFrame !== props.currentFrame) {
+    activeCellDerivationCache.entries.delete(activeCellDerivationCache.currentFrame);
+    activeCellDerivationCache.entries.delete(props.currentFrame);
+    activeCellDerivationCache.currentFrame = props.currentFrame;
+  }
+  const getRotoCellDerivation = (frame: number): RotoCellDerivation => {
+    const cache = rotoCellDerivationCacheRef.current as RotoCellDerivationCache;
+    const cached = cache.entries.get(frame);
+    if (cached) return cached;
+    // Byte-identical to the pre-cache cell-loop derivation: same inputs, same
+    // pure helpers, same argument order — only WHEN it runs changed (D-09).
+    const semanticCell = cache.physicalCellByAppFrame.get(frame) ?? null;
+    const isGenerated = semanticCell?.kind === 'generated';
+    const cachedFramesForCell = isGenerated && !cache.cachedRotoFrames.some((candidate) => candidate.appFrame === frame)
+      ? [...cache.cachedRotoFrames, { frameIndex: 0, appFrame: frame, dataUrl: 'data:image/png;base64,', source: 'generated-interpolation' as const }]
+      : cache.cachedRotoFrames;
+    const vm = getRotoCellViewModel({
+      frame,
+      currentFrame: props.currentFrame,
+      cachedFrames: cachedFramesForCell,
+    });
+    const fill = getRotoCellFill(frame, cache.realCachedRotoFrames);
+    const derivation: RotoCellDerivation = { vm, fill };
+    cache.entries.set(frame, derivation);
+    return derivation;
+  };
   const hasGeneratedInBetweens = generatedRotoFrames.length > 0;
   const interpolationStatus = interpolationEnabled
     ? hasGeneratedInBetweens
@@ -1060,15 +1131,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 {frameCells.map(frame => {
                   const semanticCell = physicalCellByAppFrame.get(frame) ?? null;
                   const isGenerated = semanticCell?.kind === 'generated';
-                  const cachedFramesForCell = isGenerated && !cachedRotoFrames.some((candidate) => candidate.appFrame === frame)
-                    ? [...cachedRotoFrames, { frameIndex: 0, appFrame: frame, dataUrl: 'data:image/png;base64,', source: 'generated-interpolation' as const }]
-                    : cachedRotoFrames;
-                  const vm = getRotoCellViewModel({
-                    frame,
-                    currentFrame: props.currentFrame,
-                    cachedFrames: cachedFramesForCell,
-                  });
-                  const fill = getRotoCellFill(frame, realCachedRotoFrames);
+                  // Cached per-cell derivation (38.1-04, Option A): recomputed
+                  // for at most the previous+new current cells on a pure frame
+                  // change; the value is byte-identical to the pre-cache
+                  // inline derivation.
+                  const { vm, fill } = getRotoCellDerivation(frame);
                   const isPhysicalRealKey = semanticCell?.kind === 'real';
                   const fillClass = isPhysicalRealKey
                     ? 'roto-fill-cached'
