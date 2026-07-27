@@ -134,6 +134,12 @@ export function extendRotoKeySelectionRange(
  *   accepted (grabbed) key, which the existing single-selection sync has
  *   already made current.
  * - 'force-spacing': the set is unchanged — keyIds survive retiming.
+ * - 'paste-key-group': the pasted set (keyIds present in the accepted
+ *   after-map but absent from the before-map, appFrame-ordered) becomes the
+ *   selection; the anchor is the accepted selectedKeyId — the earliest
+ *   pasted key's fresh keyId, so the earliest pasted key is the current
+ *   editing key (38-04; 37 D-06/D-17 pattern). Absent or empty
+ *   `acceptedAddedKeyIds` falls through to the default collapse.
  * - 'delete-key-group': collapse to the accepted survivor (D-14).
  * - every other kind (single-key ops, undo, redo, paste, duplicate, insert,
  *   play-script): collapse to the single accepted selectedKeyId (A4).
@@ -143,6 +149,13 @@ export function resolvePostAcceptanceRotoSelection(input: {
   readonly acceptedSelectedKeyId: string | null;
   readonly state: RotoKeySelectionState;
   readonly currentKeyId: string | null;
+  /**
+   * KeyIds present in the accepted after-map but absent from the before-map,
+   * appFrame-ordered (computed by the caller from the accepted before/after
+   * record diff). Only consumed by the 'paste-key-group' branch; every other
+   * operation kind ignores it.
+   */
+  readonly acceptedAddedKeyIds?: readonly string[];
 }): RotoKeySelectionState {
   const { operationKind, acceptedSelectedKeyId, state } = input;
   if (operationKind === 'move-key-group') {
@@ -150,6 +163,9 @@ export function resolvePostAcceptanceRotoSelection(input: {
   }
   if (operationKind === 'force-spacing') {
     return state;
+  }
+  if (operationKind === 'paste-key-group' && input.acceptedAddedKeyIds && input.acceptedAddedKeyIds.length > 0) {
+    return { selectedKeyIds: [...input.acceptedAddedKeyIds], anchorKeyId: acceptedSelectedKeyId };
   }
   return collapseRotoKeySelection(acceptedSelectedKeyId);
 }

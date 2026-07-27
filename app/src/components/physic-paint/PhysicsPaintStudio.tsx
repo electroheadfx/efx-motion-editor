@@ -833,13 +833,23 @@ export function PhysicsPaintStudio() {
       if (transition === 'accepted' && accepted) {
         // D-17 post-acceptance selection aftermath: group-aware kinds keep
         // the set (move re-anchors to the grabbed key; force-spacing keyIds
-        // survive retiming); group delete and every other kind collapse to
-        // the accepted selectedKeyId.
+        // survive retiming; paste-key-group selects the pasted set with the
+        // earliest pasted key as anchor); group delete and every other kind
+        // collapse to the accepted selectedKeyId.
+        // acceptedAddedKeyIds derives ONLY from the accepted before/after
+        // record keyId diff (38-DOWNSTREAM-PARITY — no store/session reads);
+        // after.records is appFrame-sorted by resolver contract, so the list
+        // is ordered earliest-first with no additional sort.
+        const beforeKeyIds = new Set(accepted.before.records.map((record) => record.keyId));
+        const acceptedAddedKeyIds = accepted.after.records
+          .filter((record) => !beforeKeyIds.has(record.keyId))
+          .map((record) => record.keyId);
         const nextSelection = resolvePostAcceptanceRotoSelection({
           operationKind: accepted.operationKind,
           acceptedSelectedKeyId: accepted.after.selectedKeyId,
           state: { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() },
           currentKeyId: accepted.after.selectedKeyId,
+          acceptedAddedKeyIds,
         });
         selectedKeyIds.value = nextSelection.selectedKeyIds;
         selectionAnchorKeyId.value = nextSelection.anchorKeyId;
@@ -848,7 +858,7 @@ export function PhysicsPaintStudio() {
       const currentEngine = engineRef.current;
       const selectedKeyId = accepted?.after.selectedKeyId ?? null;
       const selectedAppFrame = accepted?.after.selectedAppFrame ?? null;
-      const createdSelectedDestination = accepted?.operationKind === 'paste-key'
+      const createdSelectedDestination = (accepted?.operationKind === 'paste-key' || accepted?.operationKind === 'paste-key-group')
         && selectedKeyId !== null
         && selectedAppFrame !== null
         && !accepted.before.records.some((record) => record.keyId === selectedKeyId)
