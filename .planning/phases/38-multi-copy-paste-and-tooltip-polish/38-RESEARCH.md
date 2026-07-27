@@ -421,19 +421,19 @@ This is a codebase-extension phase; the "state of the art" is the project's own 
 
 All other claims in this research were verified against current production source (files cited inline with line numbers, read 2026-07-27 on `main`) or against locked phase artifacts (38-CONTEXT.md, 38-UI-SPEC.md).
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Portal vs fixed positioning for the tooltip**
+1. **Portal vs fixed positioning for the tooltip** — RESOLVED: plan 38-05 Task 1 owns the containing-block audit (grep/inspect ancestors for transform/filter/perspective), defaulting to `createPortal(document.body)` if any doubt.
    - What we know: CONTEXT discretion allows either; `createPortal` is available via `preact/compat` (already installed). The strip shell clips absolute positioning but does not itself transform.
    - What's unclear: whether any ancestor of any mount point (Studio grid containers, sidebar sections) applies `transform`/`filter`/`perspective`, which would make `position: fixed` resolve against that ancestor instead of the viewport.
    - Recommendation: planner task 0 of the tooltip wave — grep/inspect ancestors for containing-block triggers; default to `createPortal(document.body)` if any doubt (it is uniformly correct and keeps aria wiring via `id`).
 
-2. **Exact `hasCopiedRotoKey` / `canPaste` semantics with a group clipboard on a generated/empty current cell**
+2. **Exact `hasCopiedRotoKey` / `canPaste` semantics with a group clipboard on a generated/empty current cell** — RESOLVED: shape-agnostic paste availability kept in plans 38-01 (hasCopiedRotoKey unchanged) and 38-04 (availability does NOT branch on clipboard shape; resolver supplies reject reasons at activation time).
    - What we know: single paste availability derives from `session.actionAvailability.canPaste` (strip `:380`); group paste targets the current editing cell and can land on generated/empty cells (D-06).
    - What's unclear: whether the session's `canPaste`/`pasteDisabledReason` need a group-aware reason string (e.g. clipboard shape-aware copy) or stay shape-agnostic.
    - Recommendation: keep availability shape-agnostic (clipboard non-empty + not busy); the resolver supplies reject reasons at activation time. Confirm wording in UAT.
 
-3. **Group copy when the 2+ selection includes keys whose payloads are not yet cached**
+3. **Group copy when the 2+ selection includes keys whose payloads are not yet cached** — RESOLVED: documented non-issue; plan 38-01 sources group entries from the authoritative store records (never the session cache, Pitfall 6), and store records always carry a payload.
    - What we know: store records always carry a payload (identity-owned, durable).
    - What's unclear: none functionally — records are the authority; flagged only so the planner does not route group copy through the session cache (Pitfall 6).
 
