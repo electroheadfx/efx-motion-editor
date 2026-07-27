@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 38.1
 current_phase_name: studio-render-path-performance
 status: executing
-stopped_at: Completed 38.1-04-PLAN.md
-last_updated: "2026-07-27T20:13:16.201Z"
+stopped_at: Completed 38.1-05-PLAN.md
+last_updated: "2026-07-27T20:38:43.568Z"
 last_activity: 2026-07-27
 last_activity_desc: Phase 38.1 execution started
 progress:
   total_phases: 21
   completed_phases: 18
   total_plans: 155
-  completed_plans: 144
+  completed_plans: 145
   percent: 86
 ---
 
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 38.1 (studio-render-path-performance) — EXECUTING
 Previous phase: 36.15 complete (final timeline UI integration)
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-07-27 — Phase 38.1 execution started
 Next recommended action: /gsd-discuss-phase 38.1 (then plan/execute; resume /gsd-execute-phase 38 afterward)
 
-Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 93%)
+Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 94%)
 
 ## Performance Metrics
 
@@ -135,6 +135,7 @@ Progress: [██████████████████░░] 129/141
 | Phase 38.1 P02 | 5min | 2 tasks | 2 files |
 | Phase 38.1 P03 | 7min | 2 tasks | 1 files |
 | Phase 38.1 P04 | 4min | 2 tasks | 1 files |
+| Phase 38.1 P05 | 10min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -284,6 +285,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 38.1 Plan 03]: Playback availability derives from getRotoPhysicalRenderSource via a structural memo over [layerId, playbackFrameNumbers] — provably identical boolean to the removed per-render findCachedRotoDisplayFrame array build; onion projection memoized on its exact inputs.
 - [Phase ?]: 38.1-04: per-cell derivation cache via Option A (useRef Map keyed by frame, two-tier invalidation) — Option B rejected because the source-grep contract pins cell-loop literals inside the frameCells.map slice
 - [Phase ?]: 38.1-04: rotoDragValidityKey memoized over exactly its five interpolated values; validity semantics unchanged (value-compared downstream)
+- [Phase ?]: 38.1-05: playbackTick signal carries { frameIndex, appFrame, frame } with playback.frame kept as a plain-value getter — hook test passes unmodified
+- [Phase ?]: 38.1-05: D-02 deferred event IS the start/missing-frame line — published at the start transition and enqueued, re-published once in the stop catch-up render before idle context resumes
+- [Phase ?]: 38.1-05: statusMessage peeks the playback signals (Previewing format verbatim, zero Studio subscription); null status clears bypass the D-02 gate
 
 ### Pending Todos
 
@@ -367,6 +371,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-27T20:13:16.186Z
-Stopped at: Completed 38.1-04-PLAN.md
+Last session: 2026-07-27T20:38:30.303Z
+Stopped at: Completed 38.1-05-PLAN.md
 Resume file: None
