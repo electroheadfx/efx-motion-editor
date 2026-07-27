@@ -2,13 +2,18 @@ import { describe, expect, it } from 'vitest';
 import {
   clampOnionCount, clampOnionOpacity,
   getPhysicsPaintEngineStatusTone, getRotoCellFill,
-  getRotoCellStateLabel, getRotoCellStateTooltipCopy, getRotoCellViewModel, getRotoMissingFrameStatus,
+  getRotoCellSelectedTooltipCopy, getRotoCellStateLabel, getRotoCellStateTooltipCopy, getRotoCellViewModel, getRotoMissingFrameStatus,
+  getRotoDragPreviewViewModel,
   getRotoReplacementSuccessLabel, getMissingRotoFrameStatusLabel,
   getRotoStatusCapsuleViewModel,
   isPhysicsPaintDevExportEnabled,
   type RotoCellBaseMeaning, type RotoCellFill, type RotoCellOverlay,
 } from './physicsPaintWorkflowPresentation';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
+import type { PhysicPaintRotoKeyIdentity } from '../roto/physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoPhysicalEditIntent } from '../roto/physicsPaintRotoPhysicalResolver';
+import { resolvePhysicPaintRotoPhysicalEdit } from '../roto/physicsPaintRotoPhysicalResolver';
 
 describe('physicsPaintWorkflowPresentation', () => {
 
@@ -230,6 +235,95 @@ describe('getRotoCellStateTooltipCopy (36.15-05 per-cell state tooltips, D-16)',
     expect(getRotoCellStateTooltipCopy('cached')).toBe('Cached');
     expect(getRotoCellStateTooltipCopy('background-only')).toBe('Background only');
     expect(getRotoCellStateTooltipCopy('empty')).toBe('Empty');
+  });
+
+});
+
+/**
+ * Post-UAT regression anchors (37-06, D-18) for the group presentation half of
+ * Phase 37 (D-04, D-08, Pitfall 2). The moved-set view-model tests build their
+ * proposals through a real `resolvePhysicPaintRotoPhysicalEdit` call over the
+ * locked baseline A@1, B@3, C@5, D@10 — fixtures stay honest by construction.
+ */
+
+function buildBaselineIdentities(): PhysicPaintRotoKeyIdentity[] {
+  return [
+    { keyId: 'A', appFrame: 1 },
+    { keyId: 'B', appFrame: 3 },
+    { keyId: 'C', appFrame: 5 },
+    { keyId: 'D', appFrame: 10 },
+  ];
+}
+
+function resolveBaselineProposal(intent: PhysicPaintRotoPhysicalEditIntent) {
+  const resolution = resolvePhysicPaintRotoPhysicalEdit({
+    identities: buildBaselineIdentities(),
+    intent,
+    capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES,
+    interpolationEnabled: false,
+  });
+  if (!resolution.ok) throw new Error('Baseline presentation fixture must resolve ok');
+  return resolution.proposal;
+}
+
+describe('getRotoDragPreviewViewModel — group moved-set roles (37-04, D-06/D-22, Pitfall 2)', () => {
+
+  it("applies role 'moved' to every member of drag.movedKeyIds and 'shifted' to the rippled unselected key", () => {
+    const proposal = resolveBaselineProposal({
+      kind: 'move-key-group',
+      movedKeyIds: ['B', 'C'],
+      grabbedKeyId: 'B',
+      target: { kind: 'physical-cell', appFrame: 7 },
+    });
+
+    const view = getRotoDragPreviewViewModel(proposal);
+
+    expect(view.movedKeyId).toBe('B');
+    expect(view.movedAppFrame).toBe(7);
+    expect(view.targetKind).toBe('physical-cell');
+    expect(view.targetKeyId).toBeNull();
+    expect(view.boundary).toBeNull();
+
+    // GD-1 final map: A@1, B@7, D@8, C@9.
+    expect(view.cellsByAppFrame.get(7)).toMatchObject({ kind: 'real', keyId: 'B', role: 'moved' });
+    expect(view.cellsByAppFrame.get(9)).toMatchObject({ kind: 'real', keyId: 'C', role: 'moved' });
+    expect(view.cellsByAppFrame.get(8)).toMatchObject({ kind: 'real', keyId: 'D', role: 'shifted' });
+    expect(view.cellsByAppFrame.get(1)).toMatchObject({ kind: 'real', keyId: 'A', role: 'idle' });
+  });
+
+  it('keeps the single-key fallback path unchanged (one-member moved set via movedKeyId)', () => {
+    const proposal = resolveBaselineProposal({
+      kind: 'move-key',
+      movedKeyId: 'B',
+      target: { kind: 'physical-cell', appFrame: 6 },
+    });
+
+    const view = getRotoDragPreviewViewModel(proposal);
+
+    expect(view.movedKeyId).toBe('B');
+    expect(view.movedAppFrame).toBe(6);
+    // Single-key D-29 cut-and-insert final map: A@1, C@4, B@6, D@10.
+    // D ripples out and back to its original frame 10, so its net change is
+    // zero and its presentation role stays 'idle'.
+    expect(view.cellsByAppFrame.get(6)).toMatchObject({ kind: 'real', keyId: 'B', role: 'moved' });
+    expect(view.cellsByAppFrame.get(4)).toMatchObject({ kind: 'real', keyId: 'C', role: 'shifted' });
+    expect(view.cellsByAppFrame.get(10)).toMatchObject({ kind: 'real', keyId: 'D', role: 'idle' });
+    expect(view.cellsByAppFrame.get(1)).toMatchObject({ kind: 'real', keyId: 'A', role: 'idle' });
+  });
+
+});
+
+describe('getRotoCellSelectedTooltipCopy (37-04, D-04, UI-SPEC copy contract)', () => {
+
+  it("returns exactly 'Selected key' for the 'real-key' base", () => {
+    expect(getRotoCellSelectedTooltipCopy('real-key')).toBe('Selected key');
+  });
+
+  it('composes with the lowercased base copy for every other base', () => {
+    expect(getRotoCellSelectedTooltipCopy('generated')).toBe('Selected key — generated — render-only');
+    expect(getRotoCellSelectedTooltipCopy('cached')).toBe('Selected key — cached');
+    expect(getRotoCellSelectedTooltipCopy('background-only')).toBe('Selected key — background only');
+    expect(getRotoCellSelectedTooltipCopy('empty')).toBe('Selected key — empty');
   });
 
 });
