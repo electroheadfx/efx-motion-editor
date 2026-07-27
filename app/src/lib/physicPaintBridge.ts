@@ -649,7 +649,7 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     mode: payload.interpolationMode,
   };
   const stagedRevision = buildPhysicPaintRotoPhysicalRevision(proposedRecords, stagedInterpolation);
-  if (payload.operationKind === 'duplicate-key' || payload.operationKind === 'paste-key') {
+  if (payload.operationKind === 'duplicate-key' || payload.operationKind === 'paste-key' || payload.operationKind === 'paste-key-group') {
     const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
       operationKind: payload.operationKind,
       currentRecords,

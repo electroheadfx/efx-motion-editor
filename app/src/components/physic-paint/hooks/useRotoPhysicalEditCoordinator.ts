@@ -155,6 +155,26 @@ function semanticDeltaEquals(
       && stringArraysEqual(left.freshKeyIds, right.freshKeyIds)
       && applyPayloadRecordsEqual(left.proposedRecords, right.proposedRecords);
   }
+  if (left.kind === 'paste-key-group' && right.kind === 'paste-key-group') {
+    if (left.destinationAppFrame !== right.destinationAppFrame) return false;
+    if (left.entries.length !== right.entries.length) return false;
+    for (let index = 0; index < left.entries.length; index += 1) {
+      const leftEntry = left.entries[index];
+      const rightEntry = right.entries[index];
+      if (!leftEntry || !rightEntry) return false;
+      if (leftEntry.sourceAppFrame !== rightEntry.sourceAppFrame
+        || leftEntry.sourceKeyId !== rightEntry.sourceKeyId
+        || leftEntry.newKeyId !== rightEntry.newKeyId
+        || leftEntry.payload.frameIndex !== rightEntry.payload.frameIndex
+        || leftEntry.payload.appFrame !== rightEntry.payload.appFrame
+        || leftEntry.payload.dataUrl !== rightEntry.payload.dataUrl
+        || leftEntry.payload.width !== rightEntry.payload.width
+        || leftEntry.payload.height !== rightEntry.payload.height) {
+        return false;
+      }
+    }
+    return true;
+  }
   if (left.kind !== 'paste-key' || right.kind !== 'paste-key') return false;
   const leftPayload = left.clipboardPayload;
   const rightPayload = right.clipboardPayload;
@@ -743,7 +763,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       const historyProvenance = 'historyProvenance' in input ? input.historyProvenance : undefined;
       const replayTarget = 'replayTargetSnapshot' in input ? input.replayTargetSnapshot : undefined;
       const isReplay = input.operationKind === 'undo' || input.operationKind === 'redo';
-      const isSemanticOrdinary = input.operationKind === 'duplicate-key' || input.operationKind === 'paste-key';
+      const isSemanticOrdinary = input.operationKind === 'duplicate-key' || input.operationKind === 'paste-key' || input.operationKind === 'paste-key-group';
       if (isInterpolationChange) {
         if (!interpolationInput
           || 'proposal' in input
@@ -1101,9 +1121,12 @@ function buildStagedRecords(
     const pasteDestinationKeyId = semanticDelta?.kind === 'paste-key'
       ? semanticDelta.destinationKeyId ?? semanticDelta.newKeyId
       : null;
+    const pasteGroupEntry = semanticDelta?.kind === 'paste-key-group'
+      ? semanticDelta.entries.find((entry) => entry.newKeyId === keyId) ?? null
+      : null;
     const sourcePayload = semanticDelta?.kind === 'paste-key' && keyId === pasteDestinationKeyId
       ? semanticDelta.clipboardPayload
-      : duplicateSource?.payload ?? existing?.payload;
+      : pasteGroupEntry?.payload ?? duplicateSource?.payload ?? existing?.payload;
     if (!sourcePayload) return null;
     if (!Number.isInteger(appFrame) || appFrame < 0 || appFrame >= capacity) return null;
     staged.push({
