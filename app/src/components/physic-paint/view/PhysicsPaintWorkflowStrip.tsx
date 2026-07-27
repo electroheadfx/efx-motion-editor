@@ -430,7 +430,16 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // Controller-owned selection set (37-02; D-05): read-only here, never
   // reordered, never derived from frames or DOM order.
   const rotoSelectedKeyIdSet = useMemo(() => new Set(props.rotoSelectedKeyIds ?? []), [props.rotoSelectedKeyIds]);
-  const rotoDragValidityKey = `${props.rotoDragContextKey ?? 'none'}:${frameCells[0] ?? -1}:${frameCells[frameCells.length - 1] ?? -1}:${currentPhysicalCells.map((cell) => `${cell.kind}@${cell.appFrame}`).join(',')}:${rotoDragLocked ? 1 : 0}:${rotoKeyRecords.map((record) => `${record.keyId}@${record.appFrame}`).join(',')}`;
+  // Structural memo (38.1-04, 38.1-D-08 link 2): the O(N) template-string
+  // build now recomputes only when one of the five values it interpolates
+  // changes identity — never on unrelated renders (drag preview ticks,
+  // scrollbar updates). The produced string is byte-identical to the
+  // pre-memo construction; effect/callback deps compare it by value as
+  // before.
+  const rotoDragValidityKey = useMemo(
+    () => `${props.rotoDragContextKey ?? 'none'}:${frameCells[0] ?? -1}:${frameCells[frameCells.length - 1] ?? -1}:${currentPhysicalCells.map((cell) => `${cell.kind}@${cell.appFrame}`).join(',')}:${rotoDragLocked ? 1 : 0}:${rotoKeyRecords.map((record) => `${record.keyId}@${record.appFrame}`).join(',')}`,
+    [props.rotoDragContextKey, frameCells, currentPhysicalCells, rotoDragLocked, rotoKeyRecords],
+  );
   const rotoDragFeedback = getRotoDragFeedback(rotoDragPreview);
   const resolverApprovedGeneratedTarget = Boolean(rotoDragPreview?.candidateValid && rotoDragPreview.candidateKind === 'generated');
   const rotoDragPreviewViewModel: RotoDragPreviewViewModel | null = rotoDragPreview?.publication
