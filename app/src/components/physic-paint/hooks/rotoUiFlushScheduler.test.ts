@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createRotoUiFlushScheduler } from './rotoUiFlushScheduler';
+import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './rotoUiFlushScheduler';
 
 describe('createRotoUiFlushScheduler (38.1 D-04)', () => {
   let pendingCallbacks: (FrameRequestCallback | null)[];
@@ -107,5 +107,42 @@ describe('createRotoUiFlushScheduler (38.1 D-04)', () => {
     expect(cancelStub).not.toHaveBeenCalled();
     expect(pendingCallbacks.length).toBe(1);
     expect(pendingCallbacks[0]).toBe(posted);
+  });
+});
+
+describe('createRotoNavigationGeneration (38.1 D-05)', () => {
+  it('begin() returns strictly increasing generation tokens', () => {
+    const generation = createRotoNavigationGeneration();
+    const first = generation.begin();
+    const second = generation.begin();
+    const third = generation.begin();
+    expect(first).toBe(1);
+    expect(second).toBe(2);
+    expect(third).toBe(3);
+    expect(second).toBeGreaterThan(first);
+    expect(third).toBeGreaterThan(second);
+  });
+
+  it('isLatest() is true only for the most recent begin() token', () => {
+    const generation = createRotoNavigationGeneration();
+    const first = generation.begin();
+    const second = generation.begin();
+    expect(generation.isLatest(second)).toBe(true);
+    expect(generation.isLatest(first)).toBe(false);
+
+    const third = generation.begin();
+    expect(generation.isLatest(third)).toBe(true);
+    expect(generation.isLatest(second)).toBe(false);
+    expect(generation.isLatest(first)).toBe(false);
+  });
+
+  it('a token that was never superseded remains latest indefinitely (discrete-click rule)', () => {
+    const generation = createRotoNavigationGeneration();
+    const click = generation.begin();
+    // Skipping applies only when a NEWER navigation exists; a discrete click
+    // whose generation was never superseded always paints.
+    expect(generation.isLatest(click)).toBe(true);
+    expect(generation.isLatest(click)).toBe(true);
+    expect(generation.isLatest(click)).toBe(true);
   });
 });
