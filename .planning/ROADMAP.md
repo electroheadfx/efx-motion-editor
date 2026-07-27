@@ -1069,7 +1069,7 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 
 **Requirements**: 38-GROUP-COPY, 38-GROUP-PASTE, 38-CAPSULE-IDLE-CONTEXT, 38-TOOLTIP-VIEWPORT-PLACEMENT, 38-TOOLTIP-NOTCH-MULTILINE, 38-DOWNSTREAM-PARITY, 38-UAT-THEN-REGRESSION
 **Depends on:** Phase 37
-**Plans:** 3/8 plans executed
+**Plans:** 4/8 plans executed
 
 Plans:
 
@@ -1081,7 +1081,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 38-04-PLAN.md — Group paste activation route + clipboard-shape branch in pasteKey + `paste-key-group` selection aftermath (pasted group becomes selection, earliest pasted key current); UI-SPEC locked reject copy with detail to LOG.
+- [x] 38-04-PLAN.md — Group paste activation route + clipboard-shape branch in pasteKey + `paste-key-group` selection aftermath (pasted group becomes selection, earliest pasted key current); UI-SPEC locked reject copy with detail to LOG.
 - [ ] 38-05-PLAN.md — Tooltip rework (D-11..D-14): shared direction-aware viewport placement utility, 10×6px same-fill notch, 280×96px multiline clamp, every mount converted.
 
 **Wave 3** *(blocked on Wave 2 completion)*

@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 38
 current_phase_name: multi-copy-paste-and-tooltip-polish
 status: executing
-stopped_at: Completed 38-03-PLAN.md
-last_updated: "2026-07-27T15:12:44.848Z"
+stopped_at: Completed 38-04-PLAN.md
+last_updated: "2026-07-27T15:26:02.557Z"
 last_activity: 2026-07-27
 last_activity_desc: Phase 38 execution started
 progress:
   total_phases: 20
   completed_phases: 18
   total_plans: 149
-  completed_plans: 138
+  completed_plans: 139
   percent: 90
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 38 (multi-copy-paste-and-tooltip-polish) — EXECUTING
 Previous phase: 36.15 complete (final timeline UI integration)
-Plan: 4 of 8
+Plan: 5 of 8
 Status: Ready to execute
 Last activity: 2026-07-27 — Phase 38 execution started
 Next recommended action: /gsd-execute-phase 37 (wave order 1 → 1 → 2 → 3 → 4 → 5)
@@ -129,6 +129,7 @@ Progress: [██████████████████░░] 129/141
 | Phase 38 P01 | 15min | 2 tasks | 4 files |
 | Phase 38 P02 | 15min | 2 tasks | 4 files |
 | Phase 38 P03 | 7min | 2 tasks | 2 files |
+| Phase 38 P04 | 6min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -266,6 +267,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 38 Plan 02]: paste-key-group propagates through the five-owner semantic seam; group paste anchors at min sourceAppFrame with all-empty-or-reject collisions, zero ripple, and fresh keyIds minted once in the factory
 - [Phase ?]: [Phase 38 Plan 02]: History owner required zero edits — Exclude-based ordinary-kind classification picks up the paste-key-group literal automatically (D-07 by construction)
 - [Phase ?]: [Phase 38 Plan 03]: Capsule idle rung is a caller-supplied render-time derivation via getRotoStatusCapsuleIdleContext; static baseline deleted permanently (D-08/D-09); playback missing-frame wording kept verbatim as the sanctioned event-driven surface (D-10)
+- [Phase ?]: [Phase 38 Plan 04]: Group paste activated through the existing single-authority seam — hook shape branch -> pasteKeyGroup port -> frozen 38-02 intent -> runPhysicalAction -> coordinator -> bridge; one atomic transaction, one history entry, UI-SPEC locked busy/success/reject copy
+- [Phase ?]: [Phase 38 Plan 04]: Post-acceptance group-paste selection derives the pasted set solely from the accepted before/after record keyId diff (acceptedAddedKeyIds); the pasted set becomes the selection with the earliest pasted key anchor, closing Pitfall 2 without new focus machinery
 
 ### Pending Todos
 
@@ -348,6 +351,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-27T15:12:44.832Z
-Stopped at: Completed 38-03-PLAN.md
+Last session: 2026-07-27T15:25:51.368Z
+Stopped at: Completed 38-04-PLAN.md
 Resume file: None
