@@ -1715,12 +1715,10 @@ button.destructive {
 }
 
 .physics-paint-styled-tooltip {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
+  position: fixed;
   z-index: 60;
-  max-width: 220px;
+  max-width: 280px;
+  max-height: 96px;
   padding: 3px 8px;
   border: 1px solid #5d6670;
   border-radius: 999px;
@@ -1729,18 +1727,52 @@ button.destructive {
   font-size: 10px;
   font-weight: 600;
   line-height: 1.2;
-  white-space: nowrap;
+  white-space: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
   pointer-events: none;
 }
 
-/* Header-band tooltips render below the anchor so they stay inside the
-   161px strip instead of being clipped by the strip's overflow-y: hidden
-   shell or masked by the canvas above (UAT Gap B). */
-.physics-paint-styled-tooltip--below {
-  bottom: auto;
-  top: calc(100% + 6px);
+/* Direction modifiers select which pill edge faces the source control; the
+   notch is viewport-fixed at --tooltip-notch-x/--tooltip-notch-y (the
+   anchor-center projection on that edge, computed after clamping) so it
+   escapes the pill's overflow clipping and keeps tracking the control. */
+.physics-paint-styled-tooltip-notch {
+  position: fixed;
+  left: var(--tooltip-notch-x, 0);
+  top: var(--tooltip-notch-y, 0);
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.physics-paint-styled-tooltip--above .physics-paint-styled-tooltip-notch {
+  margin-left: -5px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid #20262d;
+}
+
+.physics-paint-styled-tooltip--below .physics-paint-styled-tooltip-notch {
+  margin-left: -5px;
+  margin-top: -6px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 6px solid #20262d;
+}
+
+.physics-paint-styled-tooltip--left .physics-paint-styled-tooltip-notch {
+  margin-top: -5px;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 6px solid #20262d;
+}
+
+.physics-paint-styled-tooltip--right .physics-paint-styled-tooltip-notch {
+  margin-left: -6px;
+  margin-top: -5px;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-right: 6px solid #20262d;
 }
 
 .physics-paint-roto-interpolation-controls {

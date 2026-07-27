@@ -975,7 +975,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         >
           <Info size={16} aria-hidden="true" />
           <span class="physics-paint-status-capsule-text">{capsuleText}</span>
-          <PhysicsPaintStyledTooltip visible={capsuleTooltip.visible} placement="below">{capsuleText}</PhysicsPaintStyledTooltip>
+          <PhysicsPaintStyledTooltip visible={capsuleTooltip.visible} region="top">{capsuleText}</PhysicsPaintStyledTooltip>
         </div>
 
         {props.onRotoInterpolationEnabledChange ? (
@@ -1014,7 +1014,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <option value="blend">Frame blending</option>
               </select>
             </label>
-            <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} placement="below">{interpolationStatus}</PhysicsPaintStyledTooltip>
+            <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} region="top">{interpolationStatus}</PhysicsPaintStyledTooltip>
           </div>
         ) : null}
 
@@ -1033,7 +1033,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             >
               <X size={15} aria-hidden="true" />
             </button>
-            <PhysicsPaintStyledTooltip visible={closeTooltip.visible} placement="below">Close</PhysicsPaintStyledTooltip>
+            <PhysicsPaintStyledTooltip visible={closeTooltip.visible} region="top">Close</PhysicsPaintStyledTooltip>
           </span>
         </div>
       </div>
@@ -1228,7 +1228,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   {!canCopyRotoKey && copyRotoKeyDisabledReason ? (
                     <span id="roto-key-action-reason-copy" class="physics-paint-sr-only">{copyRotoKeyDisabledReason}</span>
                   ) : null}
-                  <PhysicsPaintStyledTooltip visible={copyKeyTooltip.visible}>
+                  <PhysicsPaintStyledTooltip visible={copyKeyTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy('Copy key', copyRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
