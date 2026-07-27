@@ -712,7 +712,23 @@ export function PhysicsPaintStudio() {
   }, [currentFrame, currentFrameSelectionKind, rotoFrameEditing]);
   acceptRotoScriptBrushRef.current = rotoFrameEditing.acceptScriptBrush;
   useRotoBackgroundMetadataSync({ launchContext, settings });
-  const getRotoCachedPlaybackFrames = () => rotoSession.playbackFrameNumbers.value.map((appFrame) => ({ appFrame, frame: findCachedRotoDisplayFrame(appFrame) }));
+  // 38.1 D-08 link 3: playback availability without a per-render O(N) array
+  // build. Equivalence with selectRotoPlaybackAvailable (some-style boolean):
+  // no launch -> false; empty list -> false; all-missing -> false; mixed ->
+  // true iff any frame resolves — the physical-input branch reads the same
+  // getRenderSource truth loadCachedRotoReferenceFrame and findCachedRotoDisplayFrame
+  // consult, so availability cannot diverge from the frames the canvas would
+  // actually paint. Recomputes only when the structural frame list or launch
+  // identity changes, never on a pure Studio render.
+  const rotoPlaybackFrameNumbers = rotoSession.playbackFrameNumbers.value;
+  const rotoPlaybackLayerId = launchContext?.layerId ?? null;
+  const rotoCachedPlaybackAvailableFrames = useMemo(() => {
+    if (rotoPlaybackLayerId === null) return [];
+    return rotoPlaybackFrameNumbers.flatMap((appFrame) => {
+      const source = physicPaintStore.getRotoPhysicalRenderSource(rotoPlaybackLayerId, appFrame);
+      return source ? [{ appFrame, frame: source.renderedFrame }] : [];
+    });
+  }, [rotoPlaybackLayerId, rotoPlaybackFrameNumbers]);
   const missingConditions = selectPhysicsPaintMissingConditions({
     engineReady: Boolean(engine),
     canvasMounted,
@@ -932,19 +948,25 @@ export function PhysicsPaintStudio() {
       adjustOnionCount: (delta) => setOnion((current) => ({ ...current, count: clampOnionCount(current.count + delta) })),
     },
   });
-  const onionPreviewFrames = projectRotoOnionPreviewFrames({
+  // 38.1 D-08 link 3: onion projection behind structural memoization — the
+  // dependency array enumerates exactly its real inputs, so the projection
+  // re-runs on every genuine input change (including currentFrame) but stops
+  // re-running on unrelated Studio renders. What it computes is unchanged.
+  const rotoOnionPreviewFrames = rotoPreviewFramesRef.current;
+  const rotoOnionDirtyFrames = dirtyRotoFramesRef.current;
+  const onionPreviewFrames = useMemo(() => projectRotoOnionPreviewFrames({
     currentFrame,
     isPlaying,
     onion,
     realKeyRecords: rotoKeyRecords,
     getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, appFrame) : null,
-    previewFrames: rotoPreviewFramesRef.current,
-    dirtyFrames: dirtyRotoFramesRef.current,
-  });
+    previewFrames: rotoOnionPreviewFrames,
+    dirtyFrames: rotoOnionDirtyFrames,
+  }), [currentFrame, isPlaying, onion, rotoKeyRecords, launchContext, rotoOnionPreviewFrames, rotoOnionDirtyFrames]);
   const rotoCachedPlaybackAvailable = selectRotoPlaybackAvailable({
     workflowMode,
     hasLaunchContext: Boolean(launchContext),
-    frames: getRotoCachedPlaybackFrames(),
+    frames: rotoCachedPlaybackAvailableFrames,
   });
   const { updateRotoInterpolationSettings } = useRotoInterpolationController({
     launchContext,
