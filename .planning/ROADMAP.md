@@ -1095,11 +1095,27 @@ Plans:
 
 ### Phase 38.1: Studio render-path performance (INSERTED)
 
-**Goal:** [Urgent work - to be planned]
-**Requirements**: TBD
+**Goal:** Restore canvas-first responsiveness in the Physics Paint Studio at realistic key counts by restructuring the per-frame render path — timeline-model structural/frame split, canvas-first same-tick paint (D-03), rAF-batched UI (D-04), latest-wins canvas under saturation (D-05), and playback UI freeze with one catch-up render on stop (D-01/D-02) — timing-only with zero behavior change (D-09), unblocking the re-run of the Phase 38-06 native UAT.
+**Requirements**: 38.1-D-01..38.1-D-10 (decision IDs; no formal requirement IDs registered — planning-data gap carried from Phase 38)
 **Depends on:** Phase 38
-**Plans:** 0 plans
+**Plans:** 6 plans
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 38.1 to break down)
+**Wave 1** *(parallel — no shared files)*
+
+- [ ] 38.1-01-PLAN.md — Timeline-model structural/frame split (useRotoTimelineModel.ts:77 defect) + D-07 instrumentation test: zero structural rebuilds on frame writes, byte-compatible model surface.
+- [ ] 38.1-02-PLAN.md — rAF UI flush scheduler (D-04) + latest-wins navigation generation tokens (D-05): pure, test-locked utilities.
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 38.1-03-PLAN.md — Studio navigation pipeline: canvas-first same-tick paint, generation-guarded stale skips, rAF-batched frame propagation, structural memoization of per-render O(N) derivations.
+- [ ] 38.1-04-PLAN.md — Strip cheap render: fine-grained per-cell derivation, rotoDragValidityKey structural memo, byte-identical DOM contract (D-09/D-10).
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 38.1-05-PLAN.md — Playback UI freeze (D-01/D-02): per-tick signal surface; live set = canvas image + nav-pill frame indicator + transport state; missing-frame events queued and flushed once on stop; exactly one catch-up render.
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 38.1-06-PLAN.md — BLOCKING native user-owned UAT on the user's real project (D-06): canvas-first feel, playback freeze at full fps, zero behavior change, preserved tooltip/capsule mechanisms.
