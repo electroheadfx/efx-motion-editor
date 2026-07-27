@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { signal, type Signal } from '@preact/signals';
+import { batch, signal, type Signal } from '@preact/signals';
 import type { PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 
@@ -75,6 +75,16 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
   const playbackTickRef = useRef<Signal<RotoCachedPlaybackTick<Frame> | null> | null>(null);
   if (playbackTickRef.current === null) playbackTickRef.current = signal<RotoCachedPlaybackTick<Frame> | null>(null);
   const playbackTick = playbackTickRef.current;
+  // 38.1-D-02: capsule-bound status events raised while playback is ACTIVE are
+  // appended to this queue instead of publishing to render state per tick;
+  // finishPlayback (the single stop funnel) flushes the queue ONCE inside the
+  // same synchronous block as the play-state restoration, so Preact's render
+  // queue produces exactly ONE catch-up render showing the flushed line once,
+  // after which the 36.15/38 capsule arbitration resumes the idle context line
+  // (38 D-10). Events are never dropped; the queue is cleared on flush, and a
+  // second stop without an intervening start flushes nothing.
+  const queuedStatusEventsRef = useRef<string[]>([]);
+  const statusGateActiveRef = useRef(false);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) window.clearInterval(timerRef.current);
@@ -82,10 +92,21 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
   }, []);
 
   const finishPlayback = useCallback(() => {
-    clearTimer();
-    playbackTick.value = null;
-    setIsActive(false);
-    inputRef.current.setIsPlaying(false);
+    // 38.1-D-01: the entire stop path is ONE synchronous block — queue flush,
+    // tick clear, and play-state restoration with no intervening await — so
+    // exactly ONE catch-up render restores full UI currency on stop.
+    batch(() => {
+      clearTimer();
+      statusGateActiveRef.current = false;
+      playbackTick.value = null;
+      setIsActive(false);
+      const queued = queuedStatusEventsRef.current;
+      if (queued.length > 0) {
+        queuedStatusEventsRef.current = [];
+        setStatus(queued[queued.length - 1]);
+      }
+      inputRef.current.setIsPlaying(false);
+    });
   }, [clearTimer, playbackTick]);
 
   const stop = useCallback(() => {
@@ -118,9 +139,15 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     setIsActive(true);
     currentInput.setIsPlaying(true);
     currentInput.onStart(cachedFrames.length);
-    setStatus(missingCount > 0
+    const startStatus = missingCount > 0
       ? `Playing cached Roto frames at ${playbackFps} fps. ${missingCount} missing frame(s). Missing frames play transparent/background.`
-      : `Playing ${cachedFrames.length} cached Roto frame(s) at ${playbackFps} fps. Missing frames play transparent/background.`);
+      : `Playing ${cachedFrames.length} cached Roto frame(s) at ${playbackFps} fps. Missing frames play transparent/background.`;
+    setStatus(startStatus);
+    // D-02: the start line doubles as the deferred playback event — visible
+    // from the start transition render, re-published once inside the stop
+    // catch-up render, then the idle context line resumes (38 D-10).
+    queuedStatusEventsRef.current = [startStatus];
+    statusGateActiveRef.current = true;
     const showNextFrame = () => {
       if (frameIndex >= cachedFrames.length) {
         if (!settingsRef.current.loop) {
@@ -161,6 +188,17 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
 
   const getSettings = useCallback(() => ({ ...settingsRef.current }), []);
 
+  // D-02 gate: while playback is active, capsule-bound status publishes are
+  // queued (single-flush-on-stop); outside playback they publish immediately.
+  // Null clears always pass through — only events queue.
+  const publishStatus = useCallback((next: string | null) => {
+    if (statusGateActiveRef.current && next !== null) {
+      queuedStatusEventsRef.current.push(next);
+      return;
+    }
+    setStatus(next);
+  }, []);
+
   useEffect(() => () => clearTimer(), [clearTimer]);
 
   useEffect(() => {
@@ -172,7 +210,7 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     get frame() { return playbackTick.value?.frame ?? null; },
     playbackTick,
     status,
-    setStatus,
+    setStatus: publishStatus,
     loop,
     fps,
     setLoop,
