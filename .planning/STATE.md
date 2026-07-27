@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 38
 current_phase_name: multi-copy-paste-and-tooltip-polish
 status: executing
-stopped_at: Completed 38-02-PLAN.md
-last_updated: "2026-07-27T15:04:01.937Z"
+stopped_at: Completed 38-03-PLAN.md
+last_updated: "2026-07-27T15:12:44.848Z"
 last_activity: 2026-07-27
 last_activity_desc: Phase 38 execution started
 progress:
   total_phases: 20
   completed_phases: 18
   total_plans: 149
-  completed_plans: 137
+  completed_plans: 138
   percent: 90
 ---
 
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 38 (multi-copy-paste-and-tooltip-polish) — EXECUTING
 Previous phase: 36.15 complete (final timeline UI integration)
-Plan: 3 of 8
+Plan: 4 of 8
 Status: Ready to execute
 Last activity: 2026-07-27 — Phase 38 execution started
 Next recommended action: /gsd-execute-phase 37 (wave order 1 → 1 → 2 → 3 → 4 → 5)
 
-Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 92%)
+Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 93%)
 
 ## Performance Metrics
 
@@ -128,6 +128,7 @@ Progress: [██████████████████░░] 129/141
 | Phase 36.15 P13 | 15min | 1 tasks | 4 files |
 | Phase 38 P01 | 15min | 2 tasks | 4 files |
 | Phase 38 P02 | 15min | 2 tasks | 4 files |
+| Phase 38 P03 | 7min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -264,6 +265,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 38 Plan 01]: Fail-closed narrowing guard in pasteKey is the interface-first seam for group paste; 38-04 replaces the guard body with the real route
 - [Phase ?]: [Phase 38 Plan 02]: paste-key-group propagates through the five-owner semantic seam; group paste anchors at min sourceAppFrame with all-empty-or-reject collisions, zero ripple, and fresh keyIds minted once in the factory
 - [Phase ?]: [Phase 38 Plan 02]: History owner required zero edits — Exclude-based ordinary-kind classification picks up the paste-key-group literal automatically (D-07 by construction)
+- [Phase ?]: [Phase 38 Plan 03]: Capsule idle rung is a caller-supplied render-time derivation via getRotoStatusCapsuleIdleContext; static baseline deleted permanently (D-08/D-09); playback missing-frame wording kept verbatim as the sanctioned event-driven surface (D-10)
 
 ### Pending Todos
 
@@ -346,6 +348,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-27T15:03:49.238Z
-Stopped at: Completed 38-02-PLAN.md
+Last session: 2026-07-27T15:12:44.832Z
+Stopped at: Completed 38-03-PLAN.md
 Resume file: None
