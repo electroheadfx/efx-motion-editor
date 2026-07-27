@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import type { EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample, SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings } from '../../types/physicPaint';
@@ -39,6 +39,7 @@ import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboard
 import type { RotoScriptPhysicalTarget, RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
 import { useRotoPhysicalEditHistory } from './hooks/useRotoPhysicalEditHistory';
 import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryController';
+import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './hooks/rotoUiFlushScheduler';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import './physicsPaintStudio.css';
@@ -84,6 +85,22 @@ export function PhysicsPaintStudio() {
       return next;
     });
   }, []);
+  // 38.1 D-04/D-05: one rAF UI flush scheduler and one navigation generation
+  // counter per Studio instance (never module scope — two Studio windows must
+  // not share navigation generations). The scheduler caps startFrame-driven
+  // Studio renders at one per animation frame with latest-state-at-fire-time;
+  // the generation counter skips canvas paints superseded by a newer
+  // navigation while a never-superseded (discrete-click) generation always
+  // paints. The mount-scoped cleanup revokes any pending rAF so an unmounted
+  // Studio never flushes (external-sync disposal, not an effect chain).
+  const rotoUiFlushScheduler = useMemo(() => createRotoUiFlushScheduler(), []);
+  const rotoNavigationGeneration = useMemo(() => createRotoNavigationGeneration(), []);
+  useEffect(() => () => { rotoUiFlushScheduler.dispose(); }, [rotoUiFlushScheduler]);
+  const scheduleRotoStartFramePropagation = useCallback((frame: number) => {
+    rotoUiFlushScheduler.schedule(() => {
+      setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
+    });
+  }, [rotoUiFlushScheduler, setLaunchContext]);
   const bridgeMode = usePhysicsPaintBridgeMode();
   const bridgeModeRef = useRef(bridgeMode);
   bridgeModeRef.current = bridgeMode;
@@ -717,6 +734,9 @@ export function PhysicsPaintStudio() {
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     rotoCachedPlayback.stop();
+    // 38.1 D-05: begin the navigation generation BEFORE any await so a newer
+    // navigation started during the flush supersedes this one.
+    const generation = rotoNavigationGeneration.begin();
     if (launchContext) {
       engine?.flushPendingStrokeFinalizations();
       try {
@@ -726,6 +746,12 @@ export function PhysicsPaintStudio() {
         setApplyMessage(`Could not save Roto frame ${currentFrame} before navigation.`);
         return false;
       }
+      // 38.1 D-05: superseded navigation — a newer intent owns the canvas.
+      // Skip the paint AND the UI propagation; the flush above is never
+      // skipped or weakened (save-before-leave contract, RESEARCH Pitfall 5).
+      if (!rotoNavigationGeneration.isLatest(generation)) return false;
+      // 38.1 D-03 canvas-first: the engine paint issues NOW, in this same
+      // synchronous continuation, BEFORE any Preact UI state propagation.
       setCachedRotoReferenceUrl(null);
       if (engine) {
         engine.clearPreviewBaseImage();
@@ -736,25 +762,31 @@ export function PhysicsPaintStudio() {
     }
     if (launchContext) {
       const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, frame);
-      selectedKeyId.value = selectedRecord?.keyId ?? null;
+      const nextSelectedKeyId = selectedRecord?.keyId ?? null;
+      if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
       physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, selectedKeyId.value, frame);
     }
-    setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
+    // 38.1 D-04: the startFrame update — the full-Studio-render driver via
+    // currentFrame — is rAF-batched so a click burst coalesces to at most one
+    // Studio render per animation frame showing the LATEST frame.
+    scheduleRotoStartFramePropagation(frame);
     pendingFrameSyncRef.current = frame;
     await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
     return true;
-  }, [bridgeMode, currentFrame, engine, launchContext, loadCachedRotoReferenceFrame, rotoCachedPlayback, rotoPersistence, setLaunchContext]);
+  }, [bridgeMode, currentFrame, engine, launchContext, loadCachedRotoReferenceFrame, rotoCachedPlayback, rotoNavigationGeneration, rotoPersistence, scheduleRotoStartFramePropagation, setCachedRotoReferenceUrl, selectedKeyId]);
   rotoNavigation.configureRuntimePort({ navigateToSyncedFrame: navigateToSyncedPhysicalFrame });
   rotoNavigation.configureDisplayPort({
     restoreFrame: (effect) => {
       const frame = effect.restore.frame;
-      setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
+      // 38.1 D-03/D-04: canvas paint first within this flow; the startFrame
+      // update propagates through the same rAF scheduler as navigation.
       if (engine && (effect.restore.kind === 'load-real-key' || effect.restore.kind === 'blank-real-key')) loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
       else if (engine && effect.restore.kind === 'clear-blank') {
         engine.clearPreviewBaseImage();
         (engine as PreviewBackgroundEngine).resetBackground();
         engine.clear();
       }
+      scheduleRotoStartFramePropagation(frame);
     },
     clearCanvas: (frame) => {
       if (!engine || frame !== currentFrame) return;
