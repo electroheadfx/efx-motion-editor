@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 3
+open_count: 4
 waived_count: 0
 fixed_count: 9
-total_count: 12
-last_updated: 2026-07-25T18:41:27.754Z
+total_count: 13
+last_updated: 2026-07-27T14:40:22.046Z
 ---
 
 # Broken Windows Ledger
@@ -27,6 +27,7 @@ last_updated: 2026-07-25T18:41:27.754Z
 | 10 | 36.14 | deviation | .planning/STATE.md |  | Corrected stale Plan 25 activity, Plan 26 next action, and 112-plan prose count after the non-linear Plan 26 state update. | fixed |  | 2026-07-24T09:40:48.530Z | 2026-07-24T09:41:05.837Z |
 | 11 | 36.14 | deviation | .planning/STATE.md |  | Corrected stale non-linear recovery position after generic state advancement | fixed |  | 2026-07-24T09:56:45.875Z | 2026-07-24T09:57:16.430Z |
 | 12 | 36.15 | stub | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx |  | Intentional empty flex-1 capsule slot (.physics-paint-header-capsule-slot); resolved by Plan 05 status capsule | open |  | 2026-07-25T18:41:27.754Z |  |
+| 13 | 38 | deviation | .planning/phases/38-multi-copy-paste-and-tooltip-polish/38-01-PLAN.md |  | 38-01 verify block: Studio port grep expectations (==1 whole-file) contradict action text; verified scoped to keyUtilities block instead | open |  | 2026-07-27T14:40:22.046Z |  |
 
 ````json
 [
@@ -172,6 +173,18 @@ last_updated: 2026-07-25T18:41:27.754Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-07-25T18:41:27.754Z",
+    "resolved_at": null
+  },
+  {
+    "id": 13,
+    "kind": "deviation",
+    "phase": "38",
+    "file": ".planning/phases/38-multi-copy-paste-and-tooltip-polish/38-01-PLAN.md",
+    "line": null,
+    "description": "38-01 verify block: Studio port grep expectations (==1 whole-file) contradict action text; verified scoped to keyUtilities block instead",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-07-27T14:40:22.046Z",
     "resolved_at": null
   }
 ]

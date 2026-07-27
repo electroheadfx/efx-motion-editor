@@ -1060,6 +1060,7 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
    - Preserve accessibility, keyboard focus behavior, and compact timeline geometry.
 
 **Constraints:**
+
 - Preserve stable keyId/direct appFrame as the only durable physical ownership model.
 - No sourceFrame/displayFrame compatibility, migration code, forwarding wrappers, aliases, dual-write paths, or second timing authority.
 - Basic perfect-freehand and FX p5.brush behavior unchanged.
@@ -1068,13 +1069,13 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 
 **Requirements**: 38-GROUP-COPY, 38-GROUP-PASTE, 38-CAPSULE-IDLE-CONTEXT, 38-TOOLTIP-VIEWPORT-PLACEMENT, 38-TOOLTIP-NOTCH-MULTILINE, 38-DOWNSTREAM-PARITY, 38-UAT-THEN-REGRESSION
 **Depends on:** Phase 37
-**Plans:** 8 plans
+**Plans:** 1/8 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 38-01-PLAN.md — Group clipboard: widen the one shared slot to a frozen `single | group` discriminated union (D-02/D-03); group Copy for 2+ selected keys with store-record snapshots; 1-key Copy byte-identical (D-01).
+- [x] 38-01-PLAN.md — Group clipboard: widen the one shared slot to a frozen `single | group` discriminated union (D-02/D-03); group Copy for 2+ selected keys with store-record snapshots; 1-key Copy byte-identical (D-01).
 - [ ] 38-02-PLAN.md — `paste-key-group` five-owner literal propagation with atomic reject (D-04..D-07): shared types, resolver intent/factory/candidate/validator/dispatch, coordinator equality/routing/retargeting, bridge validation branch, history verify-only.
 - [ ] 38-03-PLAN.md — Status capsule fix (D-08/D-09/D-10): delete the baseline fallback; idle current-cell context via the existing `ambient` slot; arbitration priority unchanged.
 

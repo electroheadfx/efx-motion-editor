@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 37
-status: completed
-stopped_at: Phase 38 UI-SPEC approved
-last_updated: "2026-07-27T10:52:19.794Z"
+current_phase: 38
+current_phase_name: multi-copy-paste-and-tooltip-polish
+status: executing
+stopped_at: Completed 38-01-PLAN.md
+last_updated: "2026-07-27T14:40:38.462Z"
 last_activity: 2026-07-27
-last_activity_desc: Phase 37 complete
+last_activity_desc: Phase 38 execution started
 progress:
   total_phases: 20
   completed_phases: 18
-  total_plans: 141
-  completed_plans: 135
+  total_plans: 149
+  completed_plans: 136
   percent: 90
-current_phase_name: multi-select-physical-roto-keys
 ---
 
 # Project State
@@ -24,18 +24,18 @@ current_phase_name: multi-select-physical-roto-keys
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 37 — multi-select-physical-roto-keys
+**Current focus:** Phase 38 — multi-copy-paste-and-tooltip-polish
 
 ## Current Position
 
-Phase: 37
+Phase: 38 (multi-copy-paste-and-tooltip-polish) — EXECUTING
 Previous phase: 36.15 complete (final timeline UI integration)
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-07-27 — Phase 37 complete
+Plan: 2 of 8
+Status: Ready to execute
+Last activity: 2026-07-27 — Phase 38 execution started
 Next recommended action: /gsd-execute-phase 37 (wave order 1 → 1 → 2 → 3 → 4 → 5)
 
-Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 89%)
+Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 91%)
 
 ## Performance Metrics
 
@@ -126,6 +126,7 @@ Progress: [██████████████████░░] 129/141
 | Phase 36.15 P11 | 15min | 1 tasks | 8 files |
 | Phase 36.15 P12 | 14min | 1 tasks | 6 files |
 | Phase 36.15 P13 | 15min | 1 tasks | 4 files |
+| Phase 38 P01 | 15min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -258,6 +259,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 36.15-12: Right sidebar is three chrome-less resizable sections (Brush color / Tool / Scripts-Onion-Motion) at equal thirds with two GripHorizontal grab handles that each resize only their neighbors, 15% minimum share
 - [Phase ?]: 36.15-12: Frame-0 selection ring fixed by padding-left 4px on the shared timeline scroll container — ruler, lane, and action row shift together so 18px pitch and ruler alignment are untouched
 - [Phase ?]: 36.15-13: Sidebar default proportions are 425:213:340 ratios of the content height (not absolute pixels — the user's example sums past the sidebar), behind two fixed 32px grab handles; Gap I-1 padding-bottom rides inside the 34px band via border-box
+- [Phase ?]: [Phase 38 Plan 01]: Roto clipboard slot widened to a single|group discriminated union in ONE shared slot; group Copy freezes store-fresh {payload, sourceAppFrame, sourceKeyId} entries with 'Copied {N} keys' feedback; single-key copy/paste byte-identical
+- [Phase ?]: [Phase 38 Plan 01]: Fail-closed narrowing guard in pasteKey is the interface-first seam for group paste; 38-04 replaces the guard body with the real route
 
 ### Pending Todos
 
@@ -340,6 +343,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-27T10:52:19.744Z
-Stopped at: Phase 38 UI-SPEC approved
-Resume file: .planning/phases/38-multi-copy-paste-and-tooltip-polish/38-UI-SPEC.md
+Last session: 2026-07-27T14:40:38.447Z
+Stopped at: Completed 38-01-PLAN.md
+Resume file: None
