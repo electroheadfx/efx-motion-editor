@@ -91,8 +91,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const code = source();
     expect(getWorkflowStripPropsInterface(code)).toContain('mutationLocked?: boolean');
     expect(code).toContain('const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.rotoInterpolationPending);');
-    expect(code).toContain('disabled={interpolationControlsDisabled}');
-    expect(code.match(/if \(props\.mutationLocked \|\| props\.rotoInterpolationPending\) return;/g)).toHaveLength(1);
+    expect(code).toContain('disabled={props.interpolationControlsDisabled}');
+    expect(code.match(/if \(props\.mutationLocked \|\| props\.interpolationPending\) return;/g)).toHaveLength(1);
     expect(code).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
   });
 
@@ -309,16 +309,20 @@ describe('localized static and live Workflow regions', () => {
 });
 
 describe('localized render instrumentation', () => {
-  it('counts the monolithic strip and its conceptual static chrome at the current strip owner', () => {
+  it('counts the live strip and extracted static chrome at their implementation owners', () => {
     const code = source();
     const stripStart = code.indexOf('export function PhysicsPaintWorkflowStrip');
     const stripBody = code.slice(stripStart, code.indexOf('const [scrollbar', stripStart));
+    const staticStart = code.indexOf('function PhysicsPaintWorkflowStaticChromeImpl');
+    const staticBody = code.slice(staticStart, code.indexOf('const closeTooltip', staticStart));
 
     expect(stripStart).toBeGreaterThanOrEqual(0);
+    expect(staticStart).toBeGreaterThanOrEqual(0);
     expect(countOccurrences(code, "recordPhysicsPaintPerformanceCounter('render.workflowStrip')")).toBe(1);
     expect(countOccurrences(code, "recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome')")).toBe(1);
     expect(stripBody).toContain("recordPhysicsPaintPerformanceCounter('render.workflowStrip')");
-    expect(stripBody).toContain("recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome')");
+    expect(stripBody).not.toContain("recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome')");
+    expect(staticBody).toContain("recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome')");
   });
 
   it('counts each private timeline cell body at its current owner', () => {
@@ -331,18 +335,18 @@ describe('localized render instrumentation', () => {
     expect(cellBody).toContain("recordPhysicsPaintPerformanceCounter('render.rotoTimelineCellButton')");
   });
 
-  it('counts timeline ResizeObserver install and cleanup without changing its dependencies', () => {
+  it('counts timeline ResizeObserver install and cleanup at the mount-stable owner', () => {
     const code = source();
-    const effectEnd = code.indexOf('}, [frameCells, updateScrollbar]);');
+    const effectEnd = code.indexOf('}, [updateScrollbar]);');
     const effectStart = code.lastIndexOf('useEffect(() => {', effectEnd);
-    const observerEffect = code.slice(effectStart, effectEnd + '}, [frameCells, updateScrollbar]);'.length);
+    const observerEffect = code.slice(effectStart, effectEnd + '}, [updateScrollbar]);'.length);
 
     expect(effectStart).toBeGreaterThanOrEqual(0);
     expect(countOccurrences(code, "recordPhysicsPaintPerformanceCounter('observer.timeline.resize.install')")).toBe(1);
     expect(countOccurrences(code, "recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup')")).toBe(1);
     expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.install')");
     expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup')");
-    expect(observerEffect).toContain('}, [frameCells, updateScrollbar]);');
+    expect(observerEffect).toContain('}, [updateScrollbar]);');
   });
 });
 
@@ -418,7 +422,7 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
   it('keeps the force-spacing and interpolation mutation-lock guards verbatim', () => {
     const code = source();
     expect(code).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
-    expect(code.match(/if \(props\.mutationLocked \|\| props\.rotoInterpolationPending\) return;/g)).toHaveLength(1);
+    expect(code.match(/if \(props\.mutationLocked \|\| props\.interpolationPending\) return;/g)).toHaveLength(1);
   });
 
   it('exposes a header Close affordance through a plain onClose prop with no Tauri import', () => {
@@ -441,12 +445,12 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     const code = source();
     const header = getHeaderBlock(code);
     const navigationIndex = header.indexOf('physics-paint-pill--navigation');
-    const capsuleIndex = header.indexOf('class="physics-paint-status-capsule"');
+    const capsuleIndex = header.indexOf('<PhysicsPaintWorkflowLiveStatus');
     const interpolationIndex = header.indexOf('physics-paint-pill--interpolation');
     expect(navigationIndex).toBeGreaterThanOrEqual(0);
     expect(capsuleIndex).toBeGreaterThan(navigationIndex);
     expect(interpolationIndex).toBeGreaterThan(capsuleIndex);
-    const capsule = header.slice(capsuleIndex, interpolationIndex);
+    const capsule = code.slice(code.indexOf('function PhysicsPaintWorkflowLiveStatus'), code.indexOf('interface PhysicsPaintWorkflowStaticChromeProps'));
     expect(capsule).toContain('role="status"');
     expect(capsule).toContain('aria-live="polite"');
     expect(capsule).toContain('<Info size={16}');
@@ -504,7 +508,7 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     const pill = code.slice(pillIndex, pillEnd === -1 ? code.length : pillEnd);
     expect(pill).not.toContain('title=');
     expect(pill).toContain('PhysicsPaintStyledTooltip');
-    expect(pill).toContain('{interpolationStatus}');
+    expect(pill).toContain('{props.interpolationStatus}');
   });
 
   it('styles the capsule as the sole flex:1 truncating region and deletes the retired stack/legend CSS', () => {
@@ -679,7 +683,7 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     const header = getHeaderBlock(source());
     const navigationIndex = header.indexOf('physics-paint-pill--navigation');
     const playbackIndex = header.indexOf('physics-paint-pill--playback');
-    const capsuleIndex = header.indexOf('class="physics-paint-status-capsule"');
+    const capsuleIndex = header.indexOf('<PhysicsPaintWorkflowLiveStatus');
     const interpolationIndex = header.indexOf('physics-paint-pill--interpolation');
     const closeIndex = header.indexOf('aria-label="Close"');
     for (const index of [navigationIndex, playbackIndex, capsuleIndex, interpolationIndex, closeIndex]) {

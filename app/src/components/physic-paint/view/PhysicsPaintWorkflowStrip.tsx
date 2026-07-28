@@ -1,7 +1,8 @@
 import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, Play, Plus, RotateCcw, Square, Trash2, X } from 'lucide-preact';
 
+import { memo } from 'preact/compat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { Signal } from '@preact/signals';
+import { useSignal, type Signal } from '@preact/signals';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
@@ -282,10 +283,103 @@ function getRotoDragFeedback(preview: RotoDragPreviewState | null): string | nul
  * exactly as before. The signal is never read when playback is inactive, so an
  * idle strip holds zero per-tick subscriptions.
  */
-function RotoPlaybackCurrentFrameOutput(props: { currentFrame: number; playbackActive: boolean; playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined }) {
+function RotoPlaybackCurrentFrameOutput(props: { currentFrame: Signal<number>; playbackActive: boolean; playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined }) {
   const playbackAppFrame = props.playbackActive ? props.playbackTick?.value?.appFrame ?? null : null;
-  return <output class="physics-paint-current-frame">{playbackAppFrame ?? props.currentFrame}</output>;
+  return <output class="physics-paint-current-frame">{playbackAppFrame ?? props.currentFrame.value}</output>;
 }
+
+function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string> }) {
+  const tooltip = useStyledTooltip();
+  const capsuleText = props.capsuleText.value;
+  return (
+    <div
+      class="physics-paint-status-capsule"
+      role="status"
+      aria-live="polite"
+      onPointerEnter={tooltip.onPointerEnter}
+      onPointerLeave={tooltip.onPointerLeave}
+    >
+      <Info size={16} aria-hidden="true" />
+      <span class="physics-paint-status-capsule-text">{capsuleText}</span>
+      <PhysicsPaintStyledTooltip visible={tooltip.visible} region="top">{capsuleText}</PhysicsPaintStyledTooltip>
+    </div>
+  );
+}
+
+interface PhysicsPaintWorkflowStaticChromeProps {
+  currentFrame: Signal<number>;
+  capsuleText: Signal<string>;
+  ready: boolean;
+  playbackAvailable: boolean;
+  playbackActive: boolean;
+  playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined;
+  playbackLoop: boolean;
+  playbackFps: number;
+  projectFps: number;
+  interpolationEnabled: boolean;
+  interpolationMode: PhysicPaintRotoInterpolationState['mode'];
+  interpolationPending: boolean;
+  interpolationControlsDisabled: boolean;
+  interpolationStatus: string;
+  onTogglePlayback?: () => void;
+  onPlaybackLoopChange?: (loop: boolean) => void;
+  onPlaybackFpsChange?: (fps: number) => void;
+  onInterpolationEnabledChange?: (enabled: boolean) => void;
+  onInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
+  onGoToFirstFrame: () => void;
+  onGoToPreviousFrame: () => void;
+  onGoToNextFrame: () => void;
+  onGoToLastFrame: () => void;
+  onClose?: () => void;
+  mutationLocked: boolean;
+}
+
+function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticChromeProps) {
+  recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome');
+  const closeTooltip = useStyledTooltip();
+  const interpolationTooltip = useStyledTooltip();
+  function handleRotoPlaybackFpsInput(event: Event) {
+    const value = Number((event.currentTarget as HTMLInputElement).value);
+    if (Number.isFinite(value)) props.onPlaybackFpsChange?.(value);
+  }
+  function handleInterpolationModeChange(event: Event) {
+    const mode = (event.currentTarget as HTMLSelectElement).value;
+    if (mode !== 'duplicate' && mode !== 'blend') return;
+    props.onInterpolationModeChange?.(mode);
+  }
+  return (
+    <div class="physics-paint-workflow-header">
+      <div class="physics-paint-pill physics-paint-pill--navigation physics-paint-roto-navigation-controls" role="group" aria-label="Roto frame navigation">
+        <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={props.onGoToFirstFrame}><ChevronFirst size={15} /></button>
+        <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={props.onGoToPreviousFrame}><ChevronsLeft size={15} /></button>
+        <button type="button" class={`physics-paint-nav-button physics-paint-roto-transport ${props.playbackActive ? 'active' : ''}`} aria-label={props.playbackActive ? 'Stop cached Roto playback' : 'Play cached Roto frames'} disabled={!props.ready || !props.playbackAvailable || !props.onTogglePlayback} onClick={props.onTogglePlayback}>{props.playbackActive ? <Square size={15} /> : <Play size={15} />}</button>
+        <RotoPlaybackCurrentFrameOutput currentFrame={props.currentFrame} playbackActive={props.playbackActive} playbackTick={props.playbackTick} />
+        <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
+        <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
+      </div>
+      <div class="physics-paint-pill physics-paint-pill--playback physics-paint-roto-playback-controls" role="group" aria-label="Roto playback settings">
+        <button type="button" class={`physics-paint-nav-button physics-paint-roto-loop-toggle ${props.playbackLoop ? 'active' : ''}`} aria-label="Loop cached Roto playback" aria-pressed={props.playbackLoop} disabled={!props.ready || !props.onPlaybackLoopChange} onClick={() => props.onPlaybackLoopChange?.(!props.playbackLoop)}><RotateCcw size={15} /></button>
+        <label class="physics-paint-roto-fps-control"><span>fps</span><input type="number" min="1" max="60" step="0.5" value={props.playbackFps || props.projectFps || 1} aria-label="Cached Roto playback frames per second" disabled={!props.ready} onInput={handleRotoPlaybackFpsInput} /></label>
+      </div>
+      <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} />
+      {props.onInterpolationEnabledChange ? (
+        <div class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls" role="group" aria-label="Roto interpolation settings" data-enabled={props.interpolationEnabled ? 'true' : 'false'} data-pending={props.interpolationPending ? 'true' : 'false'} onPointerEnter={interpolationTooltip.onPointerEnter} onPointerLeave={interpolationTooltip.onPointerLeave}>
+          <button type="button" class={`physics-paint-roto-interpolation-toggle ${props.interpolationEnabled ? 'active' : ''}`} aria-label={props.interpolationEnabled ? 'Disable generated in-betweens' : 'Enable generated in-betweens'} aria-pressed={props.interpolationEnabled} aria-busy={props.interpolationPending ? 'true' : undefined} disabled={props.interpolationControlsDisabled} onClick={() => { if (props.mutationLocked || props.interpolationPending) return; props.onInterpolationEnabledChange?.(!props.interpolationEnabled); }}><Blend size={15} aria-hidden="true" /></button>
+          <label class="physics-paint-roto-interpolation-mode"><select class="physics-paint-roto-interpolation-select" value={props.interpolationMode} aria-label="Interpolation mode" disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange} onChange={handleInterpolationModeChange}><option value="duplicate">Frame duplicate</option><option value="blend">Frame blending</option></select></label>
+          <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} region="top">{props.interpolationStatus}</PhysicsPaintStyledTooltip>
+        </div>
+      ) : null}
+      <div class="physics-paint-state-actions">
+        <span class="physics-paint-roto-key-icon-action" onPointerEnter={closeTooltip.onPointerEnter} onPointerLeave={closeTooltip.onPointerLeave}>
+          <button type="button" class="physics-paint-roto-key-icon-button" aria-label="Close" onFocus={closeTooltip.onFocus} onBlur={closeTooltip.onBlur} onClick={() => { closeTooltip.hide(); props.onClose?.(); }}><X size={15} aria-hidden="true" /></button>
+          <PhysicsPaintStyledTooltip visible={closeTooltip.visible} region="top">Close</PhysicsPaintStyledTooltip>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const PhysicsPaintWorkflowStaticChrome = memo(PhysicsPaintWorkflowStaticChromeImpl);
 
 interface RotoTimelineCellButtonProps {
   frame: number;
@@ -367,7 +461,6 @@ function RotoTimelineCellButton(props: RotoTimelineCellButtonProps) {
 
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   recordPhysicsPaintPerformanceCounter('render.workflowStrip');
-  recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome');
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
   const [rotoDragPreview, setRotoDragPreview] = useState<RotoDragPreviewState | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
@@ -376,6 +469,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const rotoCellDerivationCacheRef = useRef<RotoCellDerivationCache | null>(null);
   const suppressNextRotoClickRef = useRef(false);
   const mountedRef = useRef(true);
+  const currentFrameSignal = useSignal(props.currentFrame);
+  if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
   const interpolationEnabled = props.rotoInterpolationEnabled === true;
   const interpolationMode = props.rotoInterpolationMode ?? 'duplicate';
   const currentPhysicalCells = props.rotoPhysicalCells ?? [];
@@ -525,9 +620,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const pasteKeyTooltip = useStyledTooltip();
   const deleteKeyTooltip = useStyledTooltip();
   const selectAllTooltip = useStyledTooltip();
-  const closeTooltip = useStyledTooltip();
-  const capsuleTooltip = useStyledTooltip();
-  const interpolationTooltip = useStyledTooltip();
   const forceSpacingTooltip = useStyledTooltip();
   const rotoKeyRecords = props.rotoKeyRecords ?? [];
   const keyIdByAppFrame = useMemo(() => {
@@ -582,11 +674,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       frame: props.currentFrame,
     }),
   });
-  function handleRotoPlaybackFpsInput(event: Event) {
-    const value = Number((event.currentTarget as HTMLInputElement).value);
-    if (Number.isFinite(value)) props.onRotoPlaybackFpsChange?.(value);
-  }
-
+  const capsuleTextSignal = useSignal(capsuleText);
+  if (capsuleTextSignal.peek() !== capsuleText) capsuleTextSignal.value = capsuleText;
   function handleForceSpacingInput(event: Event) {
     physicalActions?.setForceSpacingInput((event.currentTarget as HTMLInputElement).value);
   }
@@ -595,12 +684,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     event.preventDefault();
     if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;
     void physicalActions?.applyForceSpacing();
-  }
-
-  function handleInterpolationModeChange(event: Event) {
-    const mode = (event.currentTarget as HTMLSelectElement).value;
-    if (mode !== 'duplicate' && mode !== 'blend') return;
-    props.onRotoInterpolationModeChange?.(mode);
   }
 
   function handleRotoCellClick(frame: number, vm: RotoCellViewModel, event: MouseEvent) {
@@ -1103,95 +1186,33 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
 
   return (
     <section class="physics-paint-workflow-strip" aria-label="Physics Paint workflow strip">
-      <div class="physics-paint-workflow-header">
-        <div class="physics-paint-pill physics-paint-pill--navigation physics-paint-roto-navigation-controls" role="group" aria-label="Roto frame navigation">
-          <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={props.onGoToFirstFrame}><ChevronFirst size={15} /></button>
-          <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={props.onGoToPreviousFrame}><ChevronsLeft size={15} /></button>
-          <button type="button" class={`physics-paint-nav-button physics-paint-roto-transport ${props.isRotoCachedPlaybackActive ? 'active' : ''}`} aria-label={props.isRotoCachedPlaybackActive ? 'Stop cached Roto playback' : 'Play cached Roto frames'} disabled={props.ready === false || !props.rotoCachedPlaybackAvailable || !props.onToggleRotoPlayback} onClick={props.onToggleRotoPlayback}>{props.isRotoCachedPlaybackActive ? <Square size={15} /> : <Play size={15} />}</button>
-          <RotoPlaybackCurrentFrameOutput currentFrame={props.currentFrame} playbackActive={Boolean(props.isRotoCachedPlaybackActive)} playbackTick={props.rotoCachedPlaybackTick ?? null} />
-          <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
-          <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
-        </div>
-
-        <div class="physics-paint-pill physics-paint-pill--playback physics-paint-roto-playback-controls" role="group" aria-label="Roto playback settings">
-          <button type="button" class={`physics-paint-nav-button physics-paint-roto-loop-toggle ${props.rotoCachedPlaybackLoop ? 'active' : ''}`} aria-label="Loop cached Roto playback" aria-pressed={Boolean(props.rotoCachedPlaybackLoop)} disabled={props.ready === false || !props.onRotoPlaybackLoopChange} onClick={() => props.onRotoPlaybackLoopChange?.(!props.rotoCachedPlaybackLoop)}><RotateCcw size={15} /></button>
-          <label class="physics-paint-roto-fps-control">
-            <span>fps</span>
-            <input type="number" min="1" max="60" step="0.5" value={props.rotoCachedPlaybackFps ?? props.projectFps ?? 1} aria-label="Cached Roto playback frames per second" disabled={props.ready === false} onInput={handleRotoPlaybackFpsInput} />
-          </label>
-        </div>
-
-        <div
-          class="physics-paint-status-capsule"
-          role="status"
-          aria-live="polite"
-          onPointerEnter={capsuleTooltip.onPointerEnter}
-          onPointerLeave={capsuleTooltip.onPointerLeave}
-        >
-          <Info size={16} aria-hidden="true" />
-          <span class="physics-paint-status-capsule-text">{capsuleText}</span>
-          <PhysicsPaintStyledTooltip visible={capsuleTooltip.visible} region="top">{capsuleText}</PhysicsPaintStyledTooltip>
-        </div>
-
-        {props.onRotoInterpolationEnabledChange ? (
-          <div
-            class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls"
-            role="group"
-            aria-label="Roto interpolation settings"
-            data-enabled={interpolationEnabled ? 'true' : 'false'}
-            data-pending={props.rotoInterpolationPending ? 'true' : 'false'}
-            onPointerEnter={interpolationTooltip.onPointerEnter}
-            onPointerLeave={interpolationTooltip.onPointerLeave}
-          >
-            <button
-              type="button"
-              class={`physics-paint-roto-interpolation-toggle ${interpolationEnabled ? 'active' : ''}`}
-              aria-label={interpolationEnabled ? 'Disable generated in-betweens' : 'Enable generated in-betweens'}
-              aria-pressed={interpolationEnabled}
-              aria-busy={props.rotoInterpolationPending ? 'true' : undefined}
-              disabled={interpolationControlsDisabled}
-              onClick={() => {
-                if (props.mutationLocked || props.rotoInterpolationPending) return;
-                props.onRotoInterpolationEnabledChange?.(!interpolationEnabled);
-              }}
-            >
-              <Blend size={15} aria-hidden="true" />
-            </button>
-            <label class="physics-paint-roto-interpolation-mode">
-              <select
-                class="physics-paint-roto-interpolation-select"
-                value={interpolationMode}
-                aria-label="Interpolation mode"
-                disabled={interpolationControlsDisabled || !props.onRotoInterpolationModeChange}
-                onChange={handleInterpolationModeChange}
-              >
-                <option value="duplicate">Frame duplicate</option>
-                <option value="blend">Frame blending</option>
-              </select>
-            </label>
-            <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} region="top">{interpolationStatus}</PhysicsPaintStyledTooltip>
-          </div>
-        ) : null}
-
-        <div class="physics-paint-state-actions">
-          <span class="physics-paint-roto-key-icon-action" onPointerEnter={closeTooltip.onPointerEnter} onPointerLeave={closeTooltip.onPointerLeave}>
-            <button
-              type="button"
-              class="physics-paint-roto-key-icon-button"
-              aria-label="Close"
-              onFocus={closeTooltip.onFocus}
-              onBlur={closeTooltip.onBlur}
-              onClick={() => {
-                closeTooltip.hide();
-                props.onClose?.();
-              }}
-            >
-              <X size={15} aria-hidden="true" />
-            </button>
-            <PhysicsPaintStyledTooltip visible={closeTooltip.visible} region="top">Close</PhysicsPaintStyledTooltip>
-          </span>
-        </div>
-      </div>
+      <PhysicsPaintWorkflowStaticChrome
+        currentFrame={currentFrameSignal}
+        capsuleText={capsuleTextSignal}
+        ready={props.ready !== false}
+        playbackAvailable={Boolean(props.rotoCachedPlaybackAvailable)}
+        playbackActive={Boolean(props.isRotoCachedPlaybackActive)}
+        playbackTick={props.rotoCachedPlaybackTick}
+        playbackLoop={Boolean(props.rotoCachedPlaybackLoop)}
+        playbackFps={props.rotoCachedPlaybackFps ?? 0}
+        projectFps={props.projectFps ?? 1}
+        interpolationEnabled={interpolationEnabled}
+        interpolationMode={interpolationMode}
+        interpolationPending={Boolean(props.rotoInterpolationPending)}
+        interpolationControlsDisabled={interpolationControlsDisabled}
+        interpolationStatus={interpolationStatus}
+        onTogglePlayback={props.onToggleRotoPlayback}
+        onPlaybackLoopChange={props.onRotoPlaybackLoopChange}
+        onPlaybackFpsChange={props.onRotoPlaybackFpsChange}
+        onInterpolationEnabledChange={props.onRotoInterpolationEnabledChange}
+        onInterpolationModeChange={props.onRotoInterpolationModeChange}
+        onGoToFirstFrame={props.onGoToFirstFrame}
+        onGoToPreviousFrame={props.onGoToPreviousFrame}
+        onGoToNextFrame={props.onGoToNextFrame}
+        onGoToLastFrame={props.onGoToLastFrame}
+        onClose={props.onClose}
+        mutationLocked={Boolean(props.mutationLocked)}
+      />
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">
         <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" onScroll={updateScrollbar}>

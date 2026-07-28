@@ -1090,7 +1090,12 @@ export function PhysicsPaintStudio() {
     savedFrames: timelineSavedRotoFrames,
     playFrames: [],
   });
-  const { goToFirstFrame, goToPreviousFrame, goToNextFrame, goToLastFrame } = rotoNavigationActions;
+  const rotoNavigationActionsRef = useRef(rotoNavigationActions);
+  rotoNavigationActionsRef.current = rotoNavigationActions;
+  const handleGoToFirstFrame = useCallback(() => { rotoNavigationActionsRef.current.goToFirstFrame(); }, []);
+  const handleGoToPreviousFrame = useCallback(() => { rotoNavigationActionsRef.current.goToPreviousFrame(); }, []);
+  const handleGoToNextFrame = useCallback(() => { rotoNavigationActionsRef.current.goToNextFrame(); }, []);
+  const handleGoToLastFrame = useCallback(() => { rotoNavigationActionsRef.current.goToLastFrame(); }, []);
   // Script Motion (D-04): deform/position remain a separate store/controller
   // contract, never merged into interpolation enabled state.
   // 38-11: stable identity via launchContextRef — launchContext identity
@@ -1338,7 +1343,7 @@ export function PhysicsPaintStudio() {
         onRotoGroupDragRejected: handleRotoGroupDragRejected,
         rotoScript,
         statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
-        onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: goToFirstFrame, onGoToPreviousFrame: goToPreviousFrame, onGoToNextFrame: goToNextFrame, onGoToLastFrame: goToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
+        onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
       },
     status: { shortcutsVisible },
   });
