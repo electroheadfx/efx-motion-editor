@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -10,6 +10,10 @@ const rightPanel = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintRightP
 const toolRail = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintToolRail.tsx', import.meta.url)), 'utf8');
 const topBar = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintTopBar.tsx', import.meta.url)), 'utf8');
 const playScriptDialog = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
+const memoizedTopBarPath = fileURLToPath(new URL('./view/MemoizedPhysicsPaintTopBar.ts', import.meta.url));
+const memoizedTopBar = existsSync(memoizedTopBarPath) ? readFileSync(memoizedTopBarPath, 'utf8') : '';
+const memoizedPlayScriptDialogPath = fileURLToPath(new URL('./view/MemoizedPhysicsPaintPlayScriptDialog.ts', import.meta.url));
+const memoizedPlayScriptDialog = existsSync(memoizedPlayScriptDialogPath) ? readFileSync(memoizedPlayScriptDialogPath, 'utf8') : '';
 const canvasMount = readFileSync(fileURLToPath(new URL('./engine/PhysicsPaintCanvasMount.tsx', import.meta.url)), 'utf8');
 const engineLifecycle = readFileSync(fileURLToPath(new URL('./engine/usePhysicsPaintEngineLifecycle.ts', import.meta.url)), 'utf8');
 const bridge = readFileSync(fileURLToPath(new URL('../../lib/physicPaintBridge.ts', import.meta.url)), 'utf8');
@@ -79,6 +83,61 @@ function countOccurrences(source: string, literal: string): number {
 }
 
 describe('Physics Paint navigation render localization', () => {
+  it('uses dedicated compat wrappers while keeping TopBar and Play Script dialog plain', () => {
+    expect(topBar).toContain('export function PhysicsPaintTopBar(');
+    expect(playScriptDialog).toContain('export function PhysicsPaintPlayScriptDialog(');
+    expect(memoizedTopBar).toContain("import { memo } from 'preact/compat';");
+    expect(memoizedTopBar).toContain("import { PhysicsPaintTopBar } from './PhysicsPaintTopBar';");
+    expect(memoizedTopBar).toContain('export const MemoizedPhysicsPaintTopBar = memo(PhysicsPaintTopBar);');
+    expect(memoizedPlayScriptDialog).toContain("import { memo } from 'preact/compat';");
+    expect(memoizedPlayScriptDialog).toContain("import { PhysicsPaintPlayScriptDialog } from './PhysicsPaintPlayScriptDialog';");
+    expect(memoizedPlayScriptDialog).toContain('export const MemoizedPhysicsPaintPlayScriptDialog = memo(PhysicsPaintPlayScriptDialog);');
+    expect(studioView).toContain("import { MemoizedPhysicsPaintTopBar } from './MemoizedPhysicsPaintTopBar';");
+    expect(studioView).toContain("import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';");
+    expect(studioView).toContain('<MemoizedPhysicsPaintTopBar {...topBar} />');
+    expect(studioView).toContain('<MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />');
+    expect(studioView).not.toContain('<PhysicsPaintTopBar {...topBar} />');
+    expect(studioView).not.toContain('<PhysicsPaintPlayScriptDialog {...playScriptDialog} />');
+  });
+
+  it('keeps TopBar and dialog props identity-stable on frame-only Studio renders', () => {
+    expect(studio).toContain('const topBarPropsMemo = useRef(createIdentityMemo()).current;');
+    expect(studio).toContain('const playScriptDialogPropsMemo = useRef(createIdentityMemo()).current;');
+    const topBarStart = studio.indexOf('const topBar = topBarPropsMemo.resolve(');
+    const topBarEnd = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(', topBarStart);
+    const topBarBlock = studio.slice(topBarStart, topBarEnd);
+    expect(topBarStart).toBeGreaterThanOrEqual(0);
+    expect(topBarBlock).toContain('settings.size');
+    expect(topBarBlock).toContain('readyToApply');
+    expect(topBarBlock).toContain('staticControlsLocked');
+    for (const invalidator of ['currentFrame', 'startFrame', 'rotoNavigationGeneration']) expect(topBarBlock).not.toContain(invalidator);
+
+    const dialogStart = studio.indexOf('const playScriptDialog = playScriptDialogPropsMemo.resolve(');
+    const dialogEnd = studio.indexOf('const viewModel = usePhysicsPaintStudioViewModel', dialogStart);
+    const dialogBlock = studio.slice(dialogStart, dialogEnd);
+    expect(dialogStart).toBeGreaterThanOrEqual(0);
+    expect(dialogBlock).toContain('[rotoPlayScript, playButtonRef]');
+    for (const invalidator of ['currentFrame', 'startFrame', 'rotoNavigationGeneration']) expect(dialogBlock).not.toContain(invalidator);
+  });
+
+  it('preserves internal dialog Signal and focus-keyboard subscriptions beneath the memo', () => {
+    expect(playScriptDialog).toContain('const confirmationOpen = playScript.confirmationOpen.value;');
+    expect(playScriptDialog).toContain('inputRef.current?.focus()');
+    expect(playScriptDialog).toContain('returnFocusRef.current?.focus()');
+    expect(playScriptDialog).toContain("event.key === 'Escape'");
+    expect(playScriptDialog).toContain("event.key === 'Enter'");
+    expect(playScriptDialog).toContain("event.key !== 'Tab'");
+  });
+
+  it('keeps navigation-only mutation locking out of static Studio region identities', () => {
+    expect(studio).toContain('const staticControlsLocked = mutationLocked && !rotoScriptNavigationLocked;');
+    const toolRailStart = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(');
+    const toolRailEnd = studio.indexOf('const rightPanel = rightPanelPropsMemo.resolve(', toolRailStart);
+    const toolRailBlock = studio.slice(toolRailStart, toolRailEnd);
+    expect(toolRailBlock).toContain('staticControlsLocked');
+    expect(toolRailBlock).not.toContain('disabled: !engine || mutationLocked');
+  });
+
   it('keeps navigation-only status out of the right-panel identity boundary', () => {
     const memoStart = studio.indexOf('const rightPanel = rightPanelPropsMemo.resolve(');
     const memoEnd = studio.indexOf('const viewModel = usePhysicsPaintStudioViewModel', memoStart);
@@ -171,12 +230,14 @@ describe('localized render instrumentation', () => {
     expect(engineLifecycle).toContain('}, [engine, input.launchContext?.rotoPhysical?.background]);');
   });
 
-  it('adds no localization wrappers, identity resolves, or observer dependency changes', () => {
+  it('limits Task 1 localization to dedicated static wrappers and four Studio identity resolves', () => {
     expect(countOccurrences(toolRail, 'memo(')).toBe(1);
     expect(countOccurrences(rightPanel, 'memo(')).toBe(0);
+    expect(countOccurrences(memoizedTopBar, 'memo(')).toBe(1);
+    expect(countOccurrences(memoizedPlayScriptDialog, 'memo(')).toBe(1);
     expect(countOccurrences(studioView, 'memo(')).toBe(0);
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
-    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(2);
+    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(4);
     expect(studioView).toContain('}, []);');
     expect(canvasMount).toContain('}, [props.height, props.width]);');
   });
