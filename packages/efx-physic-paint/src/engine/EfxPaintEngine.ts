@@ -180,6 +180,24 @@ export class EfxPaintEngine {
   private previewBaseEnabled: boolean = false
   private previewBackgroundSeparated: boolean = false
   private previewBaseImage: HTMLImageElement | null = null
+  // 38.1-07: decoded-Image cache keyed by dataUrl — a frame revisit applies
+  // the already-decoded image synchronously (zero new decode round-trips).
+  // FIFO-capped; populated ONLY by actual setPreviewBaseImageUrl loads (no
+  // decode-ahead); cleared on destroy.
+  private static readonly PREVIEW_BASE_IMAGE_CACHE_CAP = 32
+  private previewBaseImageCache: Map<string, HTMLImageElement> = new Map()
+  // 38.1-07: resetBackground skip memo — an unchanged background (same bgData
+  // identity AND same input tuple) performs no drawBg/redraw work. Every other
+  // background writer REPLACES this.bgData, so the identity half covers them
+  // all. The previewBackgroundRequestId bump stays unconditional.
+  private lastResetBackgroundData: ImageData | null = null
+  private lastResetBackgroundInputs: {
+    bgMode: BgMode
+    width: number
+    height: number
+    paperTextures: Map<string, { tiledCanvas: HTMLCanvasElement; heightMap: Float32Array }>
+    userPhoto: HTMLImageElement | null
+  } | null = null
 
   // --- Engine State ---
   private state: EngineState
@@ -496,23 +514,61 @@ export class EfxPaintEngine {
 
   resetBackground(): void {
     this.previewBackgroundRequestId += 1
+    const inputs = this.lastResetBackgroundInputs
+    if (
+      this.bgData !== null
+      && this.bgData === this.lastResetBackgroundData
+      && inputs !== null
+      && inputs.bgMode === this.state.bgMode
+      && inputs.width === this.width
+      && inputs.height === this.height
+      && inputs.paperTextures === this.paperTextures
+      && inputs.userPhoto === this.userPhoto
+    ) {
+      return
+    }
     this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
     this.redrawPreviewBase()
     this.redrawAll()
+    this.lastResetBackgroundData = this.bgData
+    this.lastResetBackgroundInputs = {
+      bgMode: this.state.bgMode,
+      width: this.width,
+      height: this.height,
+      paperTextures: this.paperTextures,
+      userPhoto: this.userPhoto,
+    }
   }
 
   setPreviewBaseImageUrl(dataUrl: string): void {
     const requestId = ++this.previewBaseRequestId
+    const cached = this.previewBaseImageCache.get(dataUrl)
+    if (cached) {
+      // Cache hit: the image is already decoded — apply synchronously under
+      // the identical guards (the approved revisit timing win).
+      this.applyPreviewBaseImage(cached, requestId)
+      return
+    }
     const image = new Image()
     image.onload = () => {
       if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) return
-      this.previewBaseImage = image
-      this.previewBaseEnabled = true
-      this.previewBackgroundSeparated = true
-      this.redrawPreviewBase()
-      this.redrawAll()
+      this.previewBaseImageCache.set(dataUrl, image)
+      if (this.previewBaseImageCache.size > EfxPaintEngine.PREVIEW_BASE_IMAGE_CACHE_CAP) {
+        const oldest = this.previewBaseImageCache.keys().next().value
+        if (oldest !== undefined) this.previewBaseImageCache.delete(oldest)
+      }
+      this.applyPreviewBaseImage(image, requestId)
     }
     image.src = dataUrl
+  }
+
+  private applyPreviewBaseImage(image: HTMLImageElement, requestId: number): void {
+    if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) return
+    this.previewBaseImage = image
+    this.previewBaseEnabled = true
+    this.previewBackgroundSeparated = true
+    this.redrawPreviewBase()
+    this.redrawAll()
   }
 
   clearPreviewBaseImage(): void {
@@ -902,6 +958,7 @@ export class EfxPaintEngine {
   destroy(): void {
     this.flushPendingStrokeFinalizations()
     this.destroyed = true
+    this.previewBaseImageCache?.clear()
     // Cancel render loop
     if (this.rafId) cancelAnimationFrame(this.rafId)
     // Clear intervals

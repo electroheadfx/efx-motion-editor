@@ -277,6 +277,6 @@ describe('EfxPaintEngine resetBackground skip (38.1-07)', () => {
     expect(engine.bgCtx.getImageData, 'unchanged-background reset performs no drawBg work').toHaveBeenCalledTimes(1);
     expect(engine.previewBaseImage).toBe(images[0]);
     expect(engine.previewBaseEnabled).toBe(true);
-    expect(mocks.redrawAll).toHaveBeenCalledTimes(3); // clearPreviewBaseImage + cached apply
+    expect(mocks.redrawAll).toHaveBeenCalledTimes(4); // apply + resetBackground + clearPreviewBaseImage + cached apply (skipped reset adds none)
   });
 });
