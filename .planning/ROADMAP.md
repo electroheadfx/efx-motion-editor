@@ -1069,7 +1069,7 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 
 **Requirements**: 38-GROUP-COPY, 38-GROUP-PASTE, 38-CAPSULE-IDLE-CONTEXT, 38-TOOLTIP-VIEWPORT-PLACEMENT, 38-TOOLTIP-NOTCH-MULTILINE, 38-DOWNSTREAM-PARITY, 38-UAT-THEN-REGRESSION
 **Depends on:** Phase 37
-**Plans:** 7/11 plans executed
+**Plans:** 8/11 plans executed
 
 Plans:
 
@@ -1088,7 +1088,7 @@ Plans:
 
 - [x] 38-09-PLAN.md — Gap closure: tooltip row-placement flip — scripts panel right-edge mounts (Copy/Apply/Clear) flip to 'above' when the left-direction band overlaps same-row sibling controls (38.1-06 run-1 item E); notch/clamp/controller byte-identical; D-15: no test changes.
 - [x] 38-10-PLAN.md — Gap closure: plain-wheel horizontal scroll on the timeline strip (deltaY→scrollLeft, shift/trackpad preserved) + bottom custom scrollbar two-way sync + narrow-window action-toolbar reachability via the shared scroller (user-requested behavior change, 38.1-06 deferred follow-up #2).
-- [ ] 38-11-PLAN.md — Gap closure: sidebar/tool-rail render localization — preact/compat memo + identity-stable props so startFrame-only Studio renders skip PhysicsPaintRightPanel and PhysicsPaintToolRail (38.1-06 deferred follow-up #1); ephemeral component-memo proof, zero behavior change.
+- [x] 38-11-PLAN.md — Gap closure: sidebar/tool-rail render localization — preact/compat memo + identity-stable props so startFrame-only Studio renders skip PhysicsPaintRightPanel and PhysicsPaintToolRail (38.1-06 deferred follow-up #1); ephemeral component-memo proof, zero behavior change.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 38
 current_phase_name: multi-copy-paste-and-tooltip-polish
 status: completed
-stopped_at: Completed 38-10-PLAN.md
-last_updated: "2026-07-28T07:09:04.384Z"
+stopped_at: Completed 38-11-PLAN.md
+last_updated: "2026-07-28T07:35:15.020Z"
 last_activity: 2026-07-28
 last_activity_desc: Phase 38.1 complete
 progress:
   total_phases: 21
   completed_phases: 19
   total_plans: 159
-  completed_plans: 149
+  completed_plans: 150
   percent: 90
 ---
 
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 ## Current Position
 
-Phase: 38 (multi-copy-paste-and-tooltip-polish) — plan 10/11 complete
+Phase: 38 (multi-copy-paste-and-tooltip-polish) — plan 11/11 complete
 Previous phase: 36.15 complete (final timeline UI integration)
-Plan: 10 complete (plain-wheel timeline scroll + toolbar reachability)
+Plan: 11 complete (sidebar/tool-rail render localization on timeline navigation)
 Status: All phases complete
 Last activity: 2026-07-28 — Phase 38.1 complete
-Next recommended action: execute gap plan 38-11 (sidebar render localization), then resume at the 38-06 UAT re-run checkpoint
+Next recommended action: resume at the 38-06 UAT re-run checkpoint (handoff must natively confirm the side panels no longer repaint on navigation)
 
 Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 94%)
 
@@ -141,6 +141,7 @@ Progress: [██████████████████░░] 129/141
 | Phase 38.1 P06 | 2 UAT runs (2026-07-27/28) | 1 tasks | 0 files |
 | Phase 38 P09 | 4min | 2 tasks | 2 files |
 | Phase 38 P10 | 10min | 2 tasks | 1 files |
+| Phase 38 P11 | 25min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -302,6 +303,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 38 Plan 09]: Tooltip row-collision flip — side-direction band AABB-intersecting a same-row sibling flips to 'above' (then 'below'; side+clamp last resort) via opt-in avoidRowOverlap + 4th rowObstacles param; 3-arg path byte-identical for the 12 strip mounts
 - [Phase ?]: [Phase 38 Plan 10]: Plain-wheel horizontal scroll rides one non-passive element-scoped wheel listener with shift/dominance/line-mode guards; handler writes DOM scrollLeft only so the custom thumb follows through the existing native scroll -> updateScrollbar path (zero render-path timing change, 38.1 D-04)
 - [Phase ?]: [Phase 38 Plan 10]: Bottom action toolbar reachability locked via the existing shared-scroll layout (markup-order gate); CSS audit clean with zero diff; Task 2 recorded as an audit-only --allow-empty commit
+- [Phase ?]: [Phase 38 Plan 11]: Studio tool rail and right panel are wrapped in preact/compat memo behind per-Studio createIdentityMemo caches with single-line enumerated deps excluding the frame cursor — startFrame-only renders skip both subtrees; signals pass by identity so signal-driven updates bypass the memo
+- [Phase ?]: [Phase 38 Plan 11]: Callbacks that must stay referentially stable reach navigation-fresh bindings through refs (launchContextRef, rotoFrameEditingRef) and the history hook's stable inner callbacks rather than per-render wrapper objects — behavior byte-identical
 
 ### Pending Todos
 
@@ -385,6 +388,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-28T07:09:04.369Z
-Stopped at: Completed 38-10-PLAN.md
+Last session: 2026-07-28T07:35:15.005Z
+Stopped at: Completed 38-11-PLAN.md
 Resume file: None
