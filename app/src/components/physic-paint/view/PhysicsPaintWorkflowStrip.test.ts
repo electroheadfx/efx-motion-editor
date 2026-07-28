@@ -40,6 +40,9 @@ function getMatchingDivEnd(code: string, start: number): number {
   }
   return -1;
 }
+function countOccurrences(code: string, literal: string): number {
+  return code.split(literal).length - 1;
+}
 
 const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: string }> = [
   { label: 'Add key', guard: 'canAddRotoKey', handler: 'props.onAddRotoKey?.()' },
@@ -247,6 +250,44 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(map).toContain("const isGenerated = semanticCell?.kind === 'generated'");
     expect(map).toContain("const isPhysicalRealKey = semanticCell?.kind === 'real'");
     expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked;');
+  });
+});
+
+describe('localized render instrumentation', () => {
+  it('counts the monolithic strip and its conceptual static chrome at the current strip owner', () => {
+    const code = source();
+    const stripStart = code.indexOf('export function PhysicsPaintWorkflowStrip');
+    const stripBody = code.slice(stripStart, code.indexOf('const [scrollbar', stripStart));
+
+    expect(stripStart).toBeGreaterThanOrEqual(0);
+    expect(countOccurrences(code, "recordPhysicsPaintPerformanceCounter('render.workflowStrip')")).toBe(1);
+    expect(countOccurrences(code, "recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome')")).toBe(1);
+    expect(stripBody).toContain("recordPhysicsPaintPerformanceCounter('render.workflowStrip')");
+    expect(stripBody).toContain("recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome')");
+  });
+
+  it('counts each private timeline cell body at its current owner', () => {
+    const code = source();
+    const cellStart = code.indexOf('function RotoTimelineCellButton');
+    const cellBody = code.slice(cellStart, code.indexOf('const tooltip', cellStart));
+
+    expect(cellStart).toBeGreaterThanOrEqual(0);
+    expect(countOccurrences(code, "recordPhysicsPaintPerformanceCounter('render.rotoTimelineCellButton')")).toBe(1);
+    expect(cellBody).toContain("recordPhysicsPaintPerformanceCounter('render.rotoTimelineCellButton')");
+  });
+
+  it('counts timeline ResizeObserver install and cleanup without changing its dependencies', () => {
+    const code = source();
+    const effectEnd = code.indexOf('}, [frameCells, updateScrollbar]);');
+    const effectStart = code.lastIndexOf('useEffect(() => {', effectEnd);
+    const observerEffect = code.slice(effectStart, effectEnd + '}, [frameCells, updateScrollbar]);'.length);
+
+    expect(effectStart).toBeGreaterThanOrEqual(0);
+    expect(countOccurrences(code, "recordPhysicsPaintPerformanceCounter('observer.timeline.resize.install')")).toBe(1);
+    expect(countOccurrences(code, "recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup')")).toBe(1);
+    expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.install')");
+    expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup')");
+    expect(observerEffect).toContain('}, [frameCells, updateScrollbar]);');
   });
 });
 
