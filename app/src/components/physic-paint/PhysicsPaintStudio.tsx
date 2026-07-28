@@ -114,6 +114,12 @@ export function PhysicsPaintStudio() {
   // store's validated physical records and canonical interpolation state.
   const rotoKeyRecords = useMemo(() => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId) : [], [launchContext?.layerId, physicPaintVersion.value]);
   const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, physicPaintVersion.value]);
+  // 38.1 D-07: the legacy interpolation settings read MUST be memoized on the
+  // same structural inputs (physicPaintVersion + layerId) as the records
+  // above — the store getter returns a fresh clone per call, and an unstable
+  // identity here defeats the useRotoTimelineModel structural memo, forcing a
+  // full signal-graph rebuild on every Studio render.
+  const rotoLegacyInterpolationSettings = useMemo(() => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined, [launchContext?.layerId, physicPaintVersion.value]);
   // Single Select All entry point (D-03): shared by the Cmd/Ctrl+A dispatcher
   // branch and the future strip icon (plan 37-04). Store-ordered real-key
   // identities guarantee physical-frame order and real-key-only membership.
@@ -238,7 +244,7 @@ export function PhysicsPaintStudio() {
   };
   const rotoTimelineModel = useRotoTimelineModel({
     cachedRotoFrames: latestRotoFramesRef.current,
-    interpolationSettings: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined,
+    interpolationSettings: rotoLegacyInterpolationSettings,
     currentFrame,
     rotoKeyRecords,
     rotoInterpolationState,
