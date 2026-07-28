@@ -1,9 +1,11 @@
 import type { ComponentChildren, ComponentProps } from 'preact';
+import { memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Signal } from '@preact/signals';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import { subscribeProjectPaperCanvas } from '../../../lib/projectPaperRaster';
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
+import { MemoizedPhysicsPaintCanvasMount } from '../engine/MemoizedPhysicsPaintCanvasMount';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
@@ -15,7 +17,8 @@ import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 interface PhysicsPaintCanvasStackViewProps {
-  children: ComponentChildren;
+  canvasKey: string;
+  mount: ComponentProps<typeof PhysicsPaintCanvasMount>;
   cachedRotoReferenceUrl?: string | null;
   cachedRotoPlaybackTick?: Signal<RotoCachedPlaybackTick<RenderedFramePayload> | null> | null;
   cachedRotoPlaybackActive?: boolean;
@@ -59,7 +62,7 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
   return <canvas class="physics-paint-cached-roto-playback-background" ref={canvasRef} width={props.width} height={props.height} aria-hidden="true" />;
 }
 
-function PhysicsPaintCanvasStack(props: PhysicsPaintCanvasStackViewProps) {
+function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
   recordPhysicsPaintPerformanceCounter('render.canvasStack');
   const stackRef = useRef<HTMLDivElement>(null);
   const [canvasBounds, setCanvasBounds] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
@@ -107,7 +110,7 @@ function PhysicsPaintCanvasStack(props: PhysicsPaintCanvasStackViewProps) {
 
   return (
     <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={props.onInputIntent}>
-      {props.children}
+      <MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />
       {canvasBounds ? (
         <div
           class="physics-paint-onion-overlay canvas-region"
@@ -130,6 +133,8 @@ function PhysicsPaintCanvasStack(props: PhysicsPaintCanvasStackViewProps) {
   );
 }
 
+const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);
+
 export interface PhysicsPaintStudioViewProps {
   layout: {
     rightPanelCollapsed: boolean;
@@ -138,10 +143,7 @@ export interface PhysicsPaintStudioViewProps {
   };
   topBar: ComponentProps<typeof MemoizedPhysicsPaintTopBar>;
   toolRail: ComponentProps<typeof PhysicsPaintToolRail>;
-  canvas: Omit<PhysicsPaintCanvasStackViewProps, 'children'> & {
-    canvasKey: string;
-    mount: ComponentProps<typeof PhysicsPaintCanvasMount>;
-  };
+  canvas: PhysicsPaintCanvasStackViewProps;
   rightPanel: ComponentProps<typeof MemoizedPhysicsPaintRightPanel>;
   playScriptDialog: ComponentProps<typeof MemoizedPhysicsPaintPlayScriptDialog>;
   workflow: ComponentProps<typeof PhysicsPaintWorkflowStrip>;
@@ -165,18 +167,7 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         <PhysicsPaintToolRail {...toolRail} />
 
         <section class="physics-paint-main physics-paint-canvas-region" aria-label="Physics Paint canvas">
-          <PhysicsPaintCanvasStack
-            cachedRotoReferenceUrl={canvas.cachedRotoReferenceUrl}
-            cachedRotoPlaybackTick={canvas.cachedRotoPlaybackTick}
-            cachedRotoPlaybackActive={canvas.cachedRotoPlaybackActive}
-            cachedRotoPlaybackComposition={canvas.cachedRotoPlaybackComposition}
-            inputDisabled={canvas.inputDisabled}
-            inputDisabledMessage={canvas.inputDisabledMessage}
-            onInputIntent={canvas.onInputIntent}
-            onionOverlay={canvas.onionOverlay}
-          >
-            <PhysicsPaintCanvasMount key={canvas.canvasKey} {...canvas.mount} />
-          </PhysicsPaintCanvasStack>
+          <MemoizedPhysicsPaintCanvasStack {...canvas} />
         </section>
 
         <PhysicsPaintRightPanelRegion

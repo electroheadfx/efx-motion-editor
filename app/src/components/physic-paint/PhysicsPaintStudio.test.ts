@@ -118,7 +118,7 @@ describe('Physics Paint navigation render localization', () => {
     for (const invalidator of ['currentFrame', 'startFrame', 'rotoNavigationGeneration']) expect(topBarDeps).not.toContain(invalidator);
 
     const dialogStart = studio.indexOf('const playScriptDialog = playScriptDialogPropsMemo.resolve(');
-    const dialogEnd = studio.indexOf('const viewModel = usePhysicsPaintStudioViewModel', dialogStart);
+    const dialogEnd = studio.indexOf('const canvasEngineReadyImplRef =', dialogStart);
     const dialogBlock = studio.slice(dialogStart, dialogEnd);
     expect(dialogStart).toBeGreaterThanOrEqual(0);
     expect(dialogBlock).toContain('[rotoPlayScript, playButtonRef]');
@@ -315,15 +315,15 @@ describe('localized render instrumentation', () => {
     expect(engineLifecycle).toContain('}, [engine, input.launchContext?.rotoPhysical?.background]);');
   });
 
-  it('limits Plan 09 localization to dedicated static wrappers and five Studio identity resolves', () => {
+  it('retains Plan 09 wrappers while adding the Plan 11 CanvasStack memo and two Studio identity resolves', () => {
     expect(countOccurrences(toolRail, 'memo(')).toBe(1);
     expect(countOccurrences(rightPanel, 'memo(')).toBe(0);
     expect(countOccurrences(memoizedTopBar, 'memo(')).toBe(1);
     expect(countOccurrences(memoizedPlayScriptDialog, 'memo(')).toBe(1);
     expect(countOccurrences(rightPanelRegion, 'memo(')).toBe(1);
-    expect(countOccurrences(studioView, 'memo(')).toBe(0);
+    expect(countOccurrences(studioView, 'memo(')).toBe(1);
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
-    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(5);
+    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(7);
     expect(studioView).toContain('}, []);');
     expect(canvasMount).toContain('}, [props.height, props.width]);');
   });
