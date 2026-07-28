@@ -10,7 +10,7 @@ import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, isPhysicsPaintDevExportEnabled, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyboard';
-import { usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
+import { createIdentityMemo, usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
 import { useRotoTimelineActions } from './hooks/useRotoTimelineActions';
 import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
 import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
@@ -101,6 +101,13 @@ export function PhysicsPaintStudio() {
   const rotoUiFlushScheduler = useMemo(() => createRotoUiFlushScheduler(), []);
   const rotoNavigationGeneration = useMemo(() => createRotoNavigationGeneration(), []);
   useEffect(() => () => { rotoUiFlushScheduler.dispose(); }, [rotoUiFlushScheduler]);
+  // 38-11: per-Studio identity memos backing the memo-wrapped tool rail and
+  // right panel (never module scope — two Studio windows must not share
+  // caches). A startFrame-only Studio render feeds Object.is-identical deps,
+  // resolve returns the cached props object, and preact/compat memo's default
+  // shallow compare skips the subtree. Deps enumerate exactly the values each
+  // build references — never the Studio's frame cursor.
+  const toolRailPropsMemo = useRef(createIdentityMemo()).current;
   const scheduleRotoStartFramePropagation = useCallback((frame: number) => {
     rotoUiFlushScheduler.schedule(() => {
       setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
@@ -722,6 +729,11 @@ export function PhysicsPaintStudio() {
     });
   }, [currentFrame, currentFrameSelectionKind, rotoFrameEditing]);
   acceptRotoScriptBrushRef.current = rotoFrameEditing.acceptScriptBrush;
+  // 38-11: rotoFrameEditing's wrapper object is rebuilt per render (its inner
+  // callbacks close over a per-render input literal), so callbacks that must
+  // stay referentially stable reach it through a ref instead of a hook dep.
+  const rotoFrameEditingRef = useRef(rotoFrameEditing);
+  rotoFrameEditingRef.current = rotoFrameEditing;
   useRotoBackgroundMetadataSync({ launchContext, settings });
   // 38.1 D-08 link 3: playback availability without a per-render O(N) array
   // build. Equivalence with selectRotoPlaybackAvailable (some-style boolean):
@@ -750,10 +762,14 @@ export function PhysicsPaintStudio() {
     rotoPlaybackActive: rotoCachedPlayback.isActive,
   });
   const readyToApply = missingConditions.length === 0;
+  // 38-11: launchContext identity changes on every navigation (startFrame
+  // propagation) and rotoFrameEditing is rebuilt per render — both route
+  // through refs so this callback keeps a stable identity across
+  // startFrame-only renders. The guards read the exact same live values.
   const clearActiveSource = useCallback(() => {
-    if (rotoScript.mutationLocked.peek() || !engine || !launchContext) return;
-    if (rotoFrameEditing.clearCurrentFrame()) rotoScript.notifySourceRevision();
-  }, [engine, launchContext, rotoFrameEditing, rotoScript]);
+    if (rotoScript.mutationLocked.peek() || !engine || !launchContextRef.current) return;
+    if (rotoFrameEditingRef.current.clearCurrentFrame()) rotoScript.notifySourceRevision();
+  }, [engine, rotoScript]);
   const dryPaint = useCallback(() => {
     if (rotoScript.mutationLocked.peek()) return;
     engine?.forceDry();
@@ -862,16 +878,23 @@ export function PhysicsPaintStudio() {
     redoPaint: rotoFrameEditing.redo,
   });
 
+  // 38-11: the history hook returns a fresh wrapper object per render, but
+  // its inner undo/redo callbacks are stable (useCallback over the stable
+  // publishAvailability). Depending on the inner callbacks keeps these
+  // wrappers referentially stable across startFrame-only renders; behavior
+  // is byte-identical.
+  const rotoMoveHistoryUndo = rotoMoveHistory.undo;
+  const rotoMoveHistoryRedo = rotoMoveHistory.redo;
   const undo = useCallback(async () => {
-    const changed = await rotoMoveHistory.undo();
+    const changed = await rotoMoveHistoryUndo();
     if (changed) rotoScript.notifySourceRevision();
     return changed;
-  }, [rotoMoveHistory, rotoScript]);
+  }, [rotoMoveHistoryUndo, rotoScript]);
   const redo = useCallback(async () => {
-    const changed = await rotoMoveHistory.redo();
+    const changed = await rotoMoveHistoryRedo();
     if (changed) rotoScript.notifySourceRevision();
     return changed;
-  }, [rotoMoveHistory, rotoScript]);
+  }, [rotoMoveHistoryRedo, rotoScript]);
 
   const requestRotoFrameNavigation = rotoNavigation.requestNavigation;
   const { getStrokeMetadata } = usePhysicsPaintLaunchIntegration({
@@ -1025,6 +1048,26 @@ export function PhysicsPaintStudio() {
     const current = physicPaintStore.getRotoInterpolationSettings(launchContext.layerId);
     physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, { ...current, deform: motion.strokeDeformation, position: motion.strokePosition });
   };
+  // 38-11: the tool rail props assemble behind the identity memo — the
+  // single-line deps array below enumerates exactly the values the build
+  // references (38.1 onion-projection idiom); it contains no frame-derived
+  // input, so a startFrame-only Studio render returns the cached object and
+  // the memo-wrapped rail skips its render. Signal objects pass through by
+  // identity (never .value-cached), so signal-driven updates keep flowing.
+  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, settings.activePhysicsAction, historyAvailability, engine, mutationLocked, selectTool, undo, redo, clearActiveSource, startPhysics, stopPhysics, dryPaint], () => ({
+    activeTool: settings.tool,
+    physicsMode: settings.physicsMode,
+    activePhysicsAction: settings.activePhysicsAction,
+    historyAvailability,
+    disabled: !engine || mutationLocked,
+    onSelectTool: selectTool,
+    onUndo: undo,
+    onRedo: redo,
+    onClearFrame: clearActiveSource,
+    onPhysicsStart: startPhysics,
+    onPhysicsStop: stopPhysics,
+    onDryPaint: dryPaint,
+  }));
   const viewModel = usePhysicsPaintStudioViewModel({
     layout: {
         rightPanelCollapsed,
@@ -1035,11 +1078,7 @@ export function PhysicsPaintStudio() {
         brushSize: settings.size, opacity: settings.opacity, background: settings.background, paperGrain: settings.paperGrain, grainStrength: settings.grainStrength, ready: readyToApply, disabled: mutationLocked,
         onBrushSizeChange: setBrushSize, onOpacityChange: setBrushOpacity, onBackgroundChange: setBackground, onPaperGrainChange: setPaperGrain, onGrainStrengthChange: setGrainStrength,
       },
-    toolRail: {
-        activeTool: settings.tool, physicsMode: settings.physicsMode, activePhysicsAction: settings.activePhysicsAction,
-        historyAvailability, disabled: !engine || mutationLocked,
-        onSelectTool: selectTool, onUndo: undo, onRedo: redo, onClearFrame: clearActiveSource, onPhysicsStart: startPhysics, onPhysicsStop: stopPhysics, onDryPaint: dryPaint,
-      },
+    toolRail,
     canvas: {
         cachedRotoReferenceUrl,
         cachedRotoPlaybackTick: rotoCachedPlayback.playbackTick,

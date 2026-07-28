@@ -1,3 +1,4 @@
+import { memo } from 'preact/compat';
 import type { PaintHistoryAvailability, ToolType } from '@efxlab/efx-physic-paint';
 import type { ReadonlySignal } from '@preact/signals';
 import paintModeNormalIcon from '../../../assets/physics-paint-ui/icons/paint-mode-normal.svg';
@@ -68,7 +69,12 @@ function isItemActive(
   return false;
 }
 
-export function PhysicsPaintToolRail({
+// 38-11: the rail is wrapped in preact/compat memo — a startFrame-only Studio
+// render feeds referentially stable props (38-11 identity memo in the Studio),
+// the default shallow compare returns equal, and Preact skips this subtree.
+// historyAvailability is read internally via .value (signal subscription), so
+// undo/redo availability updates bypass the memo and keep flowing.
+function PhysicsPaintToolRailImpl({
   activeTool,
   physicsMode,
   activePhysicsAction = null,
@@ -150,3 +156,5 @@ export function PhysicsPaintToolRail({
     </nav>
   );
 }
+
+export const PhysicsPaintToolRail = memo(PhysicsPaintToolRailImpl);
