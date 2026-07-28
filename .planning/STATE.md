@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 38
 current_phase_name: multi-copy-paste-and-tooltip-polish
 status: completed
-stopped_at: Completed 38.1-06-PLAN.md (native UAT approved; phase closed)
-last_updated: "2026-07-28T06:25:48.875Z"
+stopped_at: Completed 38-09-PLAN.md (tooltip row-placement flip; automated-ready, visual UAT in 38-06 re-run)
+last_updated: "2026-07-28T06:59:33.602Z"
 last_activity: 2026-07-28
 last_activity_desc: Phase 38.1 complete
 progress:
   total_phases: 21
   completed_phases: 19
-  total_plans: 156
-  completed_plans: 147
+  total_plans: 159
+  completed_plans: 148
   percent: 90
 ---
 
@@ -35,7 +35,7 @@ Status: All phases complete
 Last activity: 2026-07-28 — Phase 38.1 complete
 Next recommended action: create gap plans 38-09 (tooltip row placement), 38-10 (wheel + bottom toolbar scroll), 38-11 (sidebar render localization), then /gsd-execute-phase 38
 
-Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 94%)
+Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 93%)
 
 ## Performance Metrics
 
@@ -139,6 +139,7 @@ Progress: [██████████████████░░] 129/141
 | Phase 38.1 P05 | 10min | 2 tasks | 4 files |
 | Phase 38.1 P07 | 23min | 3 tasks | 5 files |
 | Phase 38.1 P06 | 2 UAT runs (2026-07-27/28) | 1 tasks | 0 files |
+| Phase 38 P09 | 4min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -297,6 +298,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 38.1 Plan 06]: Run-1 UAT rejection (A ~1s navigation, C ~1s stop) fixed by gap plan 38.1-07 (store identity-triple memo, engine decode cache + resetBackground skip, paint-before-flush); checkpoint stayed verdict-only
 - [Phase ?]: [Phase 38.1 Plan 06]: Run-2 UAT approved 2026-07-28 ('work now! its fast!'); tooltip-masking item E explicitly excluded and routed to phase-38 gap plan 38-09
 - [Phase ?]: [Phase 38.1 Plan 06]: Two deferred follow-ups recorded at approval: (1) sidebar/tool-rail re-render on navigation — localize navigation UI updates to the timeline; (2) plain-wheel + bottom-toolbar horizontal scroll
+- [Phase ?]: [Phase 38 Plan 09]: Tooltip row-collision flip — side-direction band AABB-intersecting a same-row sibling flips to 'above' (then 'below'; side+clamp last resort) via opt-in avoidRowOverlap + 4th rowObstacles param; 3-arg path byte-identical for the 12 strip mounts
 
 ### Pending Todos
 
@@ -380,6 +382,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-28T05:54:21.842Z
-Stopped at: Completed 38.1-06-PLAN.md (native UAT approved; phase closed)
+Last session: 2026-07-28T06:59:33.587Z
+Stopped at: Completed 38-09-PLAN.md (tooltip row-placement flip; automated-ready, visual UAT in 38-06 re-run)
 Resume file: None
