@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 38.1
 current_phase_name: studio-render-path-performance
 status: executing
-stopped_at: Completed 38.1-10-PLAN.md
-last_updated: "2026-07-28T18:34:28.644Z"
+stopped_at: Completed 38.1-11-PLAN.md
+last_updated: "2026-07-28T19:08:45.839Z"
 last_activity: 2026-07-28
-last_activity_desc: Plan 38.1-10 automated implementation complete; Plan 11 eligible next
+last_activity_desc: Plan 38.1-11 automated persistent CanvasMount and Efx isolation complete; Plan 12 eligible next
 progress:
   total_phases: 21
   completed_phases: 18
   total_plans: 164
-  completed_plans: 153
-  percent: 93
+  completed_plans: 154
+  percent: 94
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Reopened Phase 38.1 — Plan 10 automated implementation complete; Plan 11 eligible next
+**Current focus:** Reopened Phase 38.1 — Plan 11 automated implementation complete; Plan 12 native acceptance eligible next
 
 ## Current Position
 
 Phase: 38.1 (studio-render-path-performance) — reopened localized-render gap track
-Completed baseline: 38.1-01 through 38.1-10; known-working rollback commit before the reopened track remains `0d0a3547`
-Plan: 11 of 12
-Status: Plan 10 complete; proceed next with Plan 11. Phase 38 Plan 38-06 remains blocked until Plan 12 approval
-Last activity: 2026-07-28 — Plan 10 localized Workflow observer, static chrome, and timeline-cell render ownership
-Next recommended action: execute Plan 11; do not resume Phase 38 Plan 38-06 before Plan 12 approval
+Completed baseline: 38.1-01 through 38.1-11; known-working rollback commit before the reopened track remains `0d0a3547`
+Plan: 12 of 12
+Status: Plan 11 complete; proceed next with Plan 12. Phase 38 Plan 38-06 remains blocked until Plan 12 approval
+Last activity: 2026-07-28 — Plan 11 persistent CanvasMount/Efx render and callback isolation
+Next recommended action: execute Plan 12 native counter acceptance; do not resume Phase 38 Plan 38-06 before approval
 
-Progress: [███████████████████░] 153/164 plans complete; 18/21 phases complete ([█████████░] 93%)
+Progress: [███████████████████░] 154/164 plans complete; 18/21 phases complete ([█████████░] 94%)
 
 ## Performance Metrics
 
@@ -66,7 +66,7 @@ Progress: [███████████████████░] 153/164
 | 36.14 | 24 | - | - |
 | 36.15 | 13 | - | - |
 | 37 | 6 | - | - |
-| 38.1 | 10/12 | - | - |
+| 38.1 | 11/12 | - | - |
 
 **Recent Trend:**
 
@@ -145,6 +145,7 @@ Progress: [███████████████████░] 153/164
 | Phase 38 P10 | 10min | 2 tasks | 1 files |
 | Phase 38 P11 | 25min | 2 tasks | 4 files |
 | Phase 38.1 P10 | 17min | 3 tasks | 5 files |
+| Phase 38.1 P11 | 9min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -319,6 +320,9 @@ Recent decisions affecting current work:
 - [Phase 38.1 Plan 10]: Timeline observers remain mount-stable while a separate layout effect refreshes scrollbar geometry.
 - [Phase 38.1 Plan 10]: Static Workflow chrome uses memo with narrow Signal-driven current-frame and capsule children.
 - [Phase 38.1 Plan 10]: Timeline cells use cached props and stable shared action proxies so unchanged bodies skip through shallow memo comparison.
+- [Phase 38.1 Plan 11]: CanvasStack owns the keyed MemoizedPhysicsPaintCanvasMount internally so stable semantic props cross the memo boundary without a fresh children vnode.
+- [Phase 38.1 Plan 11]: Studio and CanvasMount expose stable callbacks backed by render-updated refs so current engine and Roto behavior crosses memo and Efx boundaries without effect synchronization.
+- [Phase 38.1 Plan 11]: canvasKey remains the replacement key while width, height, and paperTextureScale remain explicit persistent-boundary identity inputs.
 
 ### Pending Todos
 
@@ -404,6 +408,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-28T18:34:28.627Z
-Stopped at: Completed 38.1-10-PLAN.md
+Last session: 2026-07-28T19:08:45.823Z
+Stopped at: Completed 38.1-11-PLAN.md
 Resume file: None
