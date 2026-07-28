@@ -1,6 +1,7 @@
 import type { RefObject } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
+import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 export interface PhysicsPaintPlayScriptDialogProps {
   playScript: RotoPlayScriptController;
@@ -11,6 +12,7 @@ export function PhysicsPaintPlayScriptDialog({
   playScript,
   returnFocusRef,
 }: PhysicsPaintPlayScriptDialogProps) {
+  recordPhysicsPaintPerformanceCounter('render.playScriptDialog');
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const previousOpen = useRef(false);

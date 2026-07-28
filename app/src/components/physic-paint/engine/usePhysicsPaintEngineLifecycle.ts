@@ -3,6 +3,7 @@ import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import type { NativePenInputHandler } from './PhysicsPaintCanvasMount';
 import { applyRotoBackgroundMetadataToEngine } from '../engine/physicsPaintStudioSettings';
+import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 
 export function usePhysicsPaintEngineLifecycle(input: {
@@ -30,6 +31,13 @@ export function usePhysicsPaintEngineLifecycle(input: {
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
+    const cleanupTabletPressureListener = () => {
+      if (!unlisten) return;
+      const listener = unlisten;
+      unlisten = undefined;
+      recordPhysicsPaintPerformanceCounter('lifecycle.engine.tabletListener.cleanup');
+      listener();
+    };
 
     const installTabletPressureListener = async () => {
       try {
@@ -42,7 +50,8 @@ export function usePhysicsPaintEngineLifecycle(input: {
             tiltY: event.payload.tilt_y,
           });
         });
-        if (disposed) unlisten?.();
+        recordPhysicsPaintPerformanceCounter('lifecycle.engine.tabletListener.install');
+        if (disposed) cleanupTabletPressureListener();
       } catch (error) {
         console.warn('[PhysicsPaintStudio] native tablet pressure listener unavailable', error);
       }
@@ -51,7 +60,7 @@ export function usePhysicsPaintEngineLifecycle(input: {
     void installTabletPressureListener();
     return () => {
       disposed = true;
-      unlisten?.();
+      cleanupTabletPressureListener();
     };
   }, []);
 
@@ -61,7 +70,10 @@ export function usePhysicsPaintEngineLifecycle(input: {
   }, [engine, input.launchContext?.rotoPhysical?.background]);
 
 
-  useEffect(() => input.clearExternalState, []);
+  useEffect(() => () => {
+    recordPhysicsPaintPerformanceCounter('lifecycle.engine.externalState.cleanup');
+    return input.clearExternalState();
+  }, []);
 
   const handleEngineReady = useCallback((readyEngine: EfxPaintEngine) => {
     engineRef.current = readyEngine;

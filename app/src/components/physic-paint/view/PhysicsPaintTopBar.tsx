@@ -1,5 +1,6 @@
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
+import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 export interface PhysicsPaintTopBarProps {
   brushSize: number;
@@ -109,6 +110,7 @@ export function PhysicsPaintTopBar({
   onPaperGrainChange,
   onGrainStrengthChange,
 }: PhysicsPaintTopBarProps) {
+  recordPhysicsPaintPerformanceCounter('render.topBar');
   const statusCopy = ready ? 'Engine ready' : 'Engine not ready';
   const statusTone = getPhysicsPaintEngineStatusTone({ ready });
 

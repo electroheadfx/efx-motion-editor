@@ -11,6 +11,7 @@ import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
 import { PhysicsPaintTopBar } from './PhysicsPaintTopBar';
 import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
+import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 interface PhysicsPaintCanvasStackViewProps {
   children: ComponentChildren;
@@ -58,6 +59,7 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
 }
 
 function PhysicsPaintCanvasStack(props: PhysicsPaintCanvasStackViewProps) {
+  recordPhysicsPaintPerformanceCounter('render.canvasStack');
   const stackRef = useRef<HTMLDivElement>(null);
   const [canvasBounds, setCanvasBounds] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
 
@@ -86,12 +88,16 @@ function PhysicsPaintCanvasStack(props: PhysicsPaintCanvasStackViewProps) {
     };
     const resizeObserver = new ResizeObserver(updateCanvasBounds);
     resizeObserver.observe(stack);
+    recordPhysicsPaintPerformanceCounter('observer.canvasStack.resize.install');
     const mutationObserver = new MutationObserver(updateCanvasBounds);
     mutationObserver.observe(stack, { childList: true, subtree: true });
+    recordPhysicsPaintPerformanceCounter('observer.canvasStack.mutation.install');
     const frame = window.requestAnimationFrame(updateCanvasBounds);
     return () => {
       window.cancelAnimationFrame(frame);
+      recordPhysicsPaintPerformanceCounter('observer.canvasStack.mutation.cleanup');
       mutationObserver.disconnect();
+      recordPhysicsPaintPerformanceCounter('observer.canvasStack.resize.cleanup');
       resizeObserver.disconnect();
     };
   }, []);
@@ -144,6 +150,8 @@ export interface PhysicsPaintStudioViewProps {
 }
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
+  recordPhysicsPaintPerformanceCounter('render.studioView');
+  recordPhysicsPaintPerformanceCounter('render.rightPanelRegion');
   const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, workflow, status } = props;
   return (
     <main class="demo-shell">

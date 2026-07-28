@@ -13,6 +13,7 @@ import {
 import { clampOnionCount, clampOnionOpacity, type PhysicsPaintOnionState } from './physicsPaintWorkflowPresentation';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { PhysicsPaintScriptsPanel, type PhysicsPaintScriptsPanelProps } from './PhysicsPaintScriptsPanel';
+import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 export interface PhysicsPaintPlayWiggleSettings {
   strokeDeformation: number;
@@ -175,6 +176,7 @@ export function PhysicsPaintRightPanel({
   onPlayWiggleChange,
   scripts,
 }: PhysicsPaintRightPanelProps) {
+  recordPhysicsPaintPerformanceCounter('render.rightPanelImpl');
   const [hexInput, setHexInput] = useState(color);
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);

@@ -9,6 +9,7 @@ import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas
 import physicsLastStrokeIcon from '../../../assets/physics-paint-ui/icons/physics-last-stroke.svg';
 import physicsAllActivePaintIcon from '../../../assets/physics-paint-ui/icons/physics-all-active-paint.svg';
 import physicsDryPaintIcon from '../../../assets/physics-paint-ui/icons/physics-dry-paint.svg';
+import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 export type PhysicsPaintRailAction =
   | 'paint'
@@ -117,6 +118,7 @@ function PhysicsPaintToolRailImpl({
   onPhysicsStop,
   onDryPaint,
 }: PhysicsPaintToolRailProps) {
+  recordPhysicsPaintPerformanceCounter('render.toolRailImpl');
   const runAction = (item: PhysicsPaintToolRailItem) => {
     if (disabled) return;
     if (item.id === 'paint') onSelectTool('paint', null);

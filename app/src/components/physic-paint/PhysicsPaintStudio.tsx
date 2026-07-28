@@ -31,7 +31,7 @@ import { buildBlankRotoFrame, type RenderedFramePayload } from './roto/rotoCanva
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush } from './bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
-import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from './performance/physicsPaintPerformanceTrace';
+import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
 import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkflowIntegration';
 import { useRotoInterpolationController } from './hooks/useRotoInterpolationController';
 import { useRotoPlaybackSettingsController } from './hooks/useRotoPlaybackSettingsController';
@@ -48,6 +48,7 @@ type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
 
 export function PhysicsPaintStudio() {
+  recordPhysicsPaintPerformanceCounter('render.studio');
   const profilePerformance = isPhysicsPaintProfilingEnabled();
   const recordEnginePerformance = profilePerformance
     ? (sample: PaintPerformanceSample) => recordPhysicsPaintPerformance(sample)

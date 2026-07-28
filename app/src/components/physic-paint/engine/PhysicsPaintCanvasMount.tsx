@@ -3,12 +3,14 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { CompletedPaintMutation, EfxPaintEngine, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import { getContainedCanvasDisplaySize } from './physicsPaintCanvasSizing';
+import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper did not create a canvas';
 
 export type NativePenInputHandler = (input: { pressure: number; tiltX?: number; tiltY?: number }) => void;
 
 export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined }) {
+  recordPhysicsPaintPerformanceCounter('render.canvasMount');
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
@@ -23,7 +25,10 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
     };
     updateDisplaySize();
     const resizeObserver = region ? new ResizeObserver(updateDisplaySize) : null;
-    if (region) resizeObserver?.observe(region);
+    if (region && resizeObserver) {
+      resizeObserver.observe(region);
+      recordPhysicsPaintPerformanceCounter('observer.canvasMount.resize.install');
+    }
     const frame = window.requestAnimationFrame(() => {
       const mounted = Boolean(shellRef.current?.querySelector('canvas'));
       props.onCanvasMounted(mounted);
@@ -33,7 +38,10 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
 
     return () => {
       window.cancelAnimationFrame(frame);
-      resizeObserver?.disconnect();
+      if (resizeObserver) {
+        recordPhysicsPaintPerformanceCounter('observer.canvasMount.resize.cleanup');
+        resizeObserver.disconnect();
+      }
     };
   }, [props.height, props.width]);
 
@@ -42,6 +50,20 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
     '--physics-paint-paper-texture-scale': props.paperTextureScale,
     ...(displaySize ? { width: `${displaySize.width}px`, height: `${displaySize.height}px` } : {}),
   } as JSX.CSSProperties;
+  const handleEngineReady = (engine: EfxPaintEngine) => {
+    engine.setTool('paint');
+    setMountError(null);
+    props.onCanvasMounted(true);
+    recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.engineReady');
+    return props.onEngineReady(engine);
+  };
+  const handleBeforeEngineDestroy = props.beforeEngineDestroy
+    ? (engine: EfxPaintEngine) => {
+        recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.beforeDestroy');
+        return props.beforeEngineDestroy(engine);
+      }
+    : undefined;
+  recordPhysicsPaintPerformanceCounter('render.efxChildRequest');
 
   return (
     <div class="demo-canvas-shell" ref={shellRef} style={shellStyle}>
@@ -59,14 +81,9 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
         onNativePenInputReady={props.onNativePenInputReady}
         onCompletedMutation={props.onCompletedMutation}
         onPerformanceSample={props.onPerformanceSample}
-        beforeEngineDestroy={props.beforeEngineDestroy}
+        beforeEngineDestroy={handleBeforeEngineDestroy}
         getStrokeMetadata={props.getStrokeMetadata}
-        onEngineReady={(engine) => {
-          engine.setTool('paint');
-          setMountError(null);
-          props.onCanvasMounted(true);
-          props.onEngineReady(engine);
-        }}
+        onEngineReady={handleEngineReady}
       />
       {mountError ? <p class="demo-error">{mountError}</p> : null}
     </div>
