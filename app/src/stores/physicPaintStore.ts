@@ -184,6 +184,9 @@ function _pruneUnreferencedRotoAlphaCanvases(dataUrls: Iterable<string>): void {
 function _clearLayerState(layerId: string): boolean {
   const dataUrls = _getLayerDataUrls(layerId);
   let changed = false;
+  // Derived 38.1-07 structural memo entry — pruned with the layer's source
+  // state so a torn-down layer never leaves its cached projection resident.
+  _rotoPhysicalStructuralCache.delete(layerId);
   changed = _frames.delete(layerId) || changed;
   changed = _rotoBackgroundMetadata.delete(layerId) || changed;
   changed = _rotoCacheMetadata.delete(layerId) || changed;
@@ -836,6 +839,7 @@ export const physicPaintStore = {
     _rotoPhysicalCursorAppFrame.clear();
     _rotoPhysicalCapacity.clear();
     _rotoPlaybackSettings.clear();
+    _rotoPhysicalStructuralCache.clear();
     for (const [layerId, value] of nextFrames) _frames.set(layerId, value);
     for (const [layerId, value] of nextBackground) _rotoBackgroundMetadata.set(layerId, value);
     for (const [layerId, value] of nextCache) _rotoCacheMetadata.set(layerId, value);
@@ -1124,6 +1128,7 @@ export const physicPaintStore = {
     _rotoPhysicalCursorAppFrame.clear();
     _rotoPhysicalCapacity.clear();
     _rotoPlaybackSettings.clear();
+    _rotoPhysicalStructuralCache.clear();
     _notifyVisualChange();
   },
 
@@ -1490,6 +1495,7 @@ export const physicPaintStore = {
     _rotoPhysicalSelectedKeyId.delete(layerId);
     _rotoPhysicalCursorAppFrame.delete(layerId);
     _rotoPhysicalCapacity.delete(layerId);
+    _rotoPhysicalStructuralCache.delete(layerId);
     _pruneUnreferencedRotoAlphaCanvases(previousPayloadDataUrls);
     _invalidateSerializationCache();
   },
