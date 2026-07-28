@@ -17,6 +17,8 @@ const memoizedPlayScriptDialog = existsSync(memoizedPlayScriptDialogPath) ? read
 const rightPanelRegionPath = fileURLToPath(new URL('./view/PhysicsPaintRightPanelRegion.tsx', import.meta.url));
 const rightPanelRegion = existsSync(rightPanelRegionPath) ? readFileSync(rightPanelRegionPath, 'utf8') : '';
 const canvasMount = readFileSync(fileURLToPath(new URL('./engine/PhysicsPaintCanvasMount.tsx', import.meta.url)), 'utf8');
+const memoizedCanvasMountPath = fileURLToPath(new URL('./engine/MemoizedPhysicsPaintCanvasMount.ts', import.meta.url));
+const memoizedCanvasMount = existsSync(memoizedCanvasMountPath) ? readFileSync(memoizedCanvasMountPath, 'utf8') : '';
 const engineLifecycle = readFileSync(fileURLToPath(new URL('./engine/usePhysicsPaintEngineLifecycle.ts', import.meta.url)), 'utf8');
 const bridge = readFileSync(fileURLToPath(new URL('../../lib/physicPaintBridge.ts', import.meta.url)), 'utf8');
 const types = readFileSync(fileURLToPath(new URL('../../types/physicPaint.ts', import.meta.url)), 'utf8');
@@ -204,6 +206,28 @@ describe('Physics Paint navigation render localization', () => {
     expect(childStart).toBeLessThan(railStart);
     expect(toolRail.slice(childStart, railStart)).toContain('historyAvailability?.value');
     expect(toolRail.slice(railStart, railEnd)).not.toContain('historyAvailability?.value');
+  });
+});
+
+describe('Canvas navigation render localization', () => {
+  it('assembles stable CanvasStack and CanvasMount props with named callback boundaries', () => {
+    expect(studio).toContain('const canvasStackPropsMemo = useRef(createIdentityMemo()).current;');
+    expect(studio).toContain('const canvasMountPropsMemo = useRef(createIdentityMemo()).current;');
+    expect(studio).toContain('const handleCanvasEngineReady = useCallback(');
+    expect(studio).toContain('const handleCanvasCompletedMutation = useCallback(');
+    expect(studio).toContain('const canvasMount = canvasMountPropsMemo.resolve(');
+    expect(studio).toContain('const canvasStack = canvasStackPropsMemo.resolve(');
+    expect(studio).not.toContain('onEngineReady: (readyEngine) => {');
+    expect(studio).not.toContain('onCompletedMutation: (mutation, mutationEngine) => {');
+  });
+
+  it('keeps CanvasMount plain and mounts its dedicated wrapper from memoized CanvasStack', () => {
+    expect(canvasMount).toContain('export function PhysicsPaintCanvasMount(');
+    expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
+    expect(memoizedCanvasMount).toContain('export const MemoizedPhysicsPaintCanvasMount = memo(PhysicsPaintCanvasMount);');
+    expect(studioView).toContain('const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);');
+    expect(studioView).toContain('<MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />');
+    expect(studioView).not.toContain('<PhysicsPaintCanvasMount key={canvas.canvasKey} {...canvas.mount} />');
   });
 });
 
