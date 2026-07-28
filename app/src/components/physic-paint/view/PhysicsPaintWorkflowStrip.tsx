@@ -1,6 +1,6 @@
 import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, Play, Plus, RotateCcw, Square, Trash2, X } from 'lucide-preact';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Signal } from '@preact/signals';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
@@ -1027,6 +1027,35 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (el.firstElementChild) observer.observe(el.firstElementChild);
     return () => observer.disconnect();
   }, [frameCells, updateScrollbar]);
+
+  // Plain-wheel horizontal scrolling (38-10, 38.1-06 deferred follow-up #2):
+  // a vertical wheel delta over the timeline scroller drives scrollLeft.
+  // Guards, in order: Shift+wheel returns immediately (the browser's native
+  // shift-wheel horizontal mapping keeps working byte-identically); a
+  // horizontally dominant delta returns immediately (trackpad two-finger pans
+  // keep fully native behavior — no preventDefault, no writes). Line-mode
+  // wheels (e.g. Firefox) are normalized at 16px per line. The
+  // handler writes DOM scrollLeft ONLY — never a state setter — so the custom
+  // thumb follows through the existing native scroll -> onScroll ->
+  // updateScrollbar path (single sync path, no double derivation, no rAF
+  // throttle, zero render-path timing change per 38.1 D-04). Wheel events at
+  // the scroll extremes are still consumed while hovering the strip: page
+  // scroll-while-hovering-the-strip would be surprising. Listener discipline
+  // matches the styled-tooltip Escape listener (38-05): one registration on
+  // the scroller element only, removed in cleanup, mountedRef-guarded.
+  useLayoutEffect(() => {
+    const el = timelineScrollRef.current;
+    if (!el) return;
+    const handleTimelineWheel = (event: WheelEvent) => {
+      if (!mountedRef.current) return;
+      if (event.shiftKey) return;
+      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+      event.preventDefault();
+      el.scrollLeft += event.deltaY * (event.deltaMode === 1 ? 16 : 1);
+    };
+    el.addEventListener('wheel', handleTimelineWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleTimelineWheel);
+  }, []);
 
   function handleTimelineScrollbarPointerDown(event: PointerEvent) {
     const el = timelineScrollRef.current;
