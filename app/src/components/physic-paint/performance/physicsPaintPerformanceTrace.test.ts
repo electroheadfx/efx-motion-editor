@@ -1,9 +1,42 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  PHYSICS_PAINT_PERFORMANCE_COUNTER_NAMES,
   clearPhysicsPaintPerformance,
+  diffPhysicsPaintPerformanceSnapshots,
   recordPhysicsPaintPerformance,
+  recordPhysicsPaintPerformanceCounter,
+  snapshotPhysicsPaintPerformance,
   summarizePhysicsPaintPerformance,
 } from './physicsPaintPerformanceTrace';
+
+const EXPECTED_COUNTER_NAMES = [
+  'render.studio',
+  'render.studioView',
+  'render.topBar',
+  'render.toolRailImpl',
+  'render.rightPanelRegion',
+  'render.rightPanelImpl',
+  'render.playScriptDialog',
+  'render.canvasStack',
+  'render.canvasMount',
+  'render.efxChildRequest',
+  'render.workflowStrip',
+  'render.workflowStaticChrome',
+  'render.rotoTimelineCellButton',
+  'observer.canvasStack.resize.install',
+  'observer.canvasStack.resize.cleanup',
+  'observer.canvasStack.mutation.install',
+  'observer.canvasStack.mutation.cleanup',
+  'observer.canvasMount.resize.install',
+  'observer.canvasMount.resize.cleanup',
+  'observer.timeline.resize.install',
+  'observer.timeline.resize.cleanup',
+  'lifecycle.canvasMount.engineReady',
+  'lifecycle.canvasMount.beforeDestroy',
+  'lifecycle.engine.tabletListener.install',
+  'lifecycle.engine.tabletListener.cleanup',
+  'lifecycle.engine.externalState.cleanup',
+] as const;
 
 const storage = new Map<string, string>();
 
@@ -66,6 +99,98 @@ describe('Physics Paint performance trace', () => {
   it('records nothing while profiling is disabled', () => {
     storage.delete('efx.physicsPaint.profile');
     recordPhysicsPaintPerformance({ stage: 'disabled', category: 'sync-cpu', durationMs: 10, timestamp: 1 });
+    recordPhysicsPaintPerformanceCounter('render.studio');
     expect(summarizePhysicsPaintPerformance().sampleCount).toBe(0);
+    expect(snapshotPhysicsPaintPerformance().counters['render.studio']).toBe(0);
+  });
+
+  it('exports one unique canonical registry covering every localized-render counter', () => {
+    expect(PHYSICS_PAINT_PERFORMANCE_COUNTER_NAMES).toEqual(EXPECTED_COUNTER_NAMES);
+    expect(new Set(PHYSICS_PAINT_PERFORMANCE_COUNTER_NAMES).size).toBe(EXPECTED_COUNTER_NAMES.length);
+  });
+
+  it('records named counter increments and positive integer amounts', () => {
+    recordPhysicsPaintPerformanceCounter('render.studio');
+    recordPhysicsPaintPerformanceCounter('render.studio', 3);
+    recordPhysicsPaintPerformanceCounter('render.canvasMount', 2);
+
+    expect(snapshotPhysicsPaintPerformance().counters).toMatchObject({
+      'render.studio': 4,
+      'render.canvasMount': 2,
+    });
+  });
+
+  it('clears timing samples and counters while retaining explicit zero registry rows', () => {
+    recordPhysicsPaintPerformance({ stage: 'snapshot', category: 'sync-cpu', durationMs: 4, timestamp: 1 });
+    recordPhysicsPaintPerformanceCounter('render.studio');
+    clearPhysicsPaintPerformance();
+
+    const snapshot = snapshotPhysicsPaintPerformance();
+    expect(snapshot.summary).toEqual({
+      sampleCount: 0,
+      stages: [],
+      recentInputDelays: [],
+      recentCriticalSamples: [],
+    });
+    expect(snapshot.counters).toEqual(Object.fromEntries(EXPECTED_COUNTER_NAMES.map((name) => [name, 0])));
+    expect(diffPhysicsPaintPerformanceSnapshots(snapshot, snapshot)).toEqual(
+      Object.fromEntries(EXPECTED_COUNTER_NAMES.map((name) => [name, 0])),
+    );
+  });
+
+  it('returns detached snapshots that cannot change after later recorder writes', () => {
+    recordPhysicsPaintPerformanceCounter('render.studio');
+    const before = snapshotPhysicsPaintPerformance();
+    recordPhysicsPaintPerformanceCounter('render.studio', 2);
+    const after = snapshotPhysicsPaintPerformance();
+
+    expect(before).not.toBe(after);
+    expect(before.counters).not.toBe(after.counters);
+    expect(before.counters['render.studio']).toBe(1);
+    expect(after.counters['render.studio']).toBe(3);
+  });
+
+  it('diffs supplied snapshots across the complete registry with missing values treated as zero', () => {
+    const empty = snapshotPhysicsPaintPerformance();
+    const malformedBefore = {
+      ...empty,
+      counters: { 'render.studio': 2 },
+    } as typeof empty;
+    const malformedAfter = {
+      ...empty,
+      counters: { 'render.canvasMount': 5 },
+    } as typeof empty;
+
+    expect(diffPhysicsPaintPerformanceSnapshots(malformedBefore, malformedAfter)).toEqual({
+      ...Object.fromEntries(EXPECTED_COUNTER_NAMES.map((name) => [name, 0])),
+      'render.studio': -2,
+      'render.canvasMount': 5,
+    });
+  });
+
+  it('retains the existing native profiler object and adds snapshot plus delta methods', async () => {
+    vi.resetModules();
+    const nativeWindow = {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+      },
+    } as Window;
+    vi.stubGlobal('window', nativeWindow);
+
+    await import('./physicsPaintPerformanceTrace');
+
+    expect(nativeWindow.__EFX_PHYSICS_PAINT_PROFILE__).toEqual({
+      clear: expect.any(Function),
+      summary: expect.any(Function),
+      snapshot: expect.any(Function),
+      delta: expect.any(Function),
+    });
+    nativeWindow.__EFX_PHYSICS_PAINT_PROFILE__?.clear();
+    const before = nativeWindow.__EFX_PHYSICS_PAINT_PROFILE__?.snapshot();
+    const after = nativeWindow.__EFX_PHYSICS_PAINT_PROFILE__?.snapshot();
+    expect(before?.counters).toEqual(Object.fromEntries(EXPECTED_COUNTER_NAMES.map((name) => [name, 0])));
+    expect(nativeWindow.__EFX_PHYSICS_PAINT_PROFILE__?.delta(before!, after!)).toEqual(
+      Object.fromEntries(EXPECTED_COUNTER_NAMES.map((name) => [name, 0])),
+    );
   });
 });
