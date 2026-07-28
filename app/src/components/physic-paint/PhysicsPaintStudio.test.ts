@@ -221,6 +221,15 @@ describe('Canvas navigation render localization', () => {
     expect(studio).not.toContain('onCompletedMutation: (mutation, mutationEngine) => {');
   });
 
+  it('routes navigation-fresh engine and mutation behavior through stable implementation refs', () => {
+    expect(studio).toContain('canvasEngineReadyImplRef.current = (readyEngine) => {');
+    expect(studio).toContain('canvasCompletedMutationImplRef.current = (mutation, mutationEngine) => {');
+    expect(studio).toContain('canvasEngineReadyImplRef.current(readyEngine);');
+    expect(studio).toContain('canvasCompletedMutationImplRef.current(mutation, mutationEngine);');
+    expect(studio).toContain('const handleCanvasEngineReady = useCallback(');
+    expect(studio).toContain('const handleCanvasCompletedMutation = useCallback(');
+  });
+
   it('keeps CanvasMount plain and mounts its dedicated wrapper from memoized CanvasStack', () => {
     expect(canvasMount).toContain('export function PhysicsPaintCanvasMount(');
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);

@@ -90,4 +90,56 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     ]) expect(deps).toContain(dependency);
     for (const invalidator of ['currentFrame', 'startFrame', 'rotoNavigationGeneration']) expect(deps).not.toContain(invalidator);
   });
+
+  it('updates parent callback refs during render and exposes stable Efx forwarders', () => {
+    for (const callback of [
+      'onEngineReady',
+      'onCanvasMounted',
+      'onNativePenInputReady',
+      'onCompletedMutation',
+      'onPerformanceSample',
+      'beforeEngineDestroy',
+      'getStrokeMetadata',
+    ]) {
+      expect(mount).toContain(`const ${callback}Ref = useRef(props.${callback});`);
+      expect(mount).toContain(`${callback}Ref.current = props.${callback};`);
+    }
+    for (const forwarder of [
+      'handleEngineReady',
+      'handleNativePenInputReady',
+      'handleCompletedMutation',
+      'handlePerformanceSample',
+      'handleBeforeEngineDestroy',
+      'handleGetStrokeMetadata',
+    ]) {
+      expect(mount).toMatch(new RegExp(`const ${forwarder} = useCallback\\([\\s\\S]*?\\}, \\[\\]\\);`));
+    }
+  });
+
+  it('preserves engine-ready ordering and latest callback invocation', () => {
+    const readyStart = mount.indexOf('const handleEngineReady = useCallback(');
+    const readyEnd = mount.indexOf('const handleNativePenInputReady', readyStart);
+    const ready = mount.slice(readyStart, readyEnd);
+    const order = [
+      "engine.setTool('paint');",
+      'setMountError(null);',
+      'onCanvasMountedRef.current(true);',
+      "recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.engineReady');",
+      'return onEngineReadyRef.current(engine);',
+    ].map((literal) => ready.indexOf(literal));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it('keeps dimension observer and keyed lifecycle ownership unchanged', () => {
+    expect(mount).toContain('}, [props.height, props.width]);');
+    expect(view).toContain('<MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />');
+    for (const counter of [
+      'render.efxChildRequest',
+      'observer.canvasMount.resize.install',
+      'observer.canvasMount.resize.cleanup',
+      'lifecycle.canvasMount.engineReady',
+      'lifecycle.canvasMount.beforeDestroy',
+    ]) expect(mount.split(`recordPhysicsPaintPerformanceCounter('${counter}')`).length - 1).toBe(1);
+  });
 });
