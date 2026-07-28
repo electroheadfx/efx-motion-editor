@@ -30,6 +30,43 @@ export interface PhysicsPaintPerformanceSummary {
   recentCriticalSamples: PhysicsPaintPerformanceSample[];
 }
 
+export const PHYSICS_PAINT_PERFORMANCE_COUNTER_NAMES = [
+  'render.studio',
+  'render.studioView',
+  'render.topBar',
+  'render.toolRailImpl',
+  'render.rightPanelRegion',
+  'render.rightPanelImpl',
+  'render.playScriptDialog',
+  'render.canvasStack',
+  'render.canvasMount',
+  'render.efxChildRequest',
+  'render.workflowStrip',
+  'render.workflowStaticChrome',
+  'render.rotoTimelineCellButton',
+  'observer.canvasStack.resize.install',
+  'observer.canvasStack.resize.cleanup',
+  'observer.canvasStack.mutation.install',
+  'observer.canvasStack.mutation.cleanup',
+  'observer.canvasMount.resize.install',
+  'observer.canvasMount.resize.cleanup',
+  'observer.timeline.resize.install',
+  'observer.timeline.resize.cleanup',
+  'lifecycle.canvasMount.engineReady',
+  'lifecycle.canvasMount.beforeDestroy',
+  'lifecycle.engine.tabletListener.install',
+  'lifecycle.engine.tabletListener.cleanup',
+  'lifecycle.engine.externalState.cleanup',
+] as const;
+
+export type PhysicsPaintPerformanceCounterName = typeof PHYSICS_PAINT_PERFORMANCE_COUNTER_NAMES[number];
+export type PhysicsPaintPerformanceCounterSnapshot = Readonly<Record<PhysicsPaintPerformanceCounterName, number>>;
+
+export interface PhysicsPaintPerformanceSnapshot {
+  readonly summary: PhysicsPaintPerformanceSummary;
+  readonly counters: PhysicsPaintPerformanceCounterSnapshot;
+}
+
 const PROFILE_STORAGE_KEY = 'efx.physicsPaint.profile';
 const MAX_SAMPLES = 600;
 const CRITICAL_STAGES = new Set([
@@ -40,6 +77,7 @@ const CRITICAL_STAGES = new Set([
   'next-pointerdown-dispatch',
 ]);
 const samples: PhysicsPaintPerformanceSample[] = [];
+const counters = new Map<PhysicsPaintPerformanceCounterName, number>();
 
 function profilingEnabled(): boolean {
   return typeof window !== 'undefined'
@@ -65,8 +103,17 @@ export function recordPhysicsPaintPerformance(sample: PhysicsPaintPerformanceSam
   }
 }
 
+export function recordPhysicsPaintPerformanceCounter(
+  name: PhysicsPaintPerformanceCounterName,
+  amount = 1,
+): void {
+  if (!profilingEnabled() || !Number.isInteger(amount) || amount <= 0) return;
+  counters.set(name, (counters.get(name) ?? 0) + amount);
+}
+
 export function clearPhysicsPaintPerformance(): void {
   samples.length = 0;
+  counters.clear();
 }
 
 export function summarizePhysicsPaintPerformance(): PhysicsPaintPerformanceSummary {
@@ -104,6 +151,49 @@ export function summarizePhysicsPaintPerformance(): PhysicsPaintPerformanceSumma
   };
 }
 
+function snapshotCounters(): PhysicsPaintPerformanceCounterSnapshot {
+  return Object.freeze(Object.fromEntries(
+    PHYSICS_PAINT_PERFORMANCE_COUNTER_NAMES.map((name) => [name, counters.get(name) ?? 0]),
+  ) as Record<PhysicsPaintPerformanceCounterName, number>);
+}
+
+function detachedSummary(): PhysicsPaintPerformanceSummary {
+  const summary = summarizePhysicsPaintPerformance();
+  return Object.freeze({
+    sampleCount: summary.sampleCount,
+    stages: Object.freeze(summary.stages.map((stage) => Object.freeze({ ...stage }))),
+    recentInputDelays: Object.freeze(summary.recentInputDelays.map((sample) => Object.freeze({ ...sample }))),
+    recentCriticalSamples: Object.freeze(summary.recentCriticalSamples.map((sample) => Object.freeze({ ...sample }))),
+  }) as PhysicsPaintPerformanceSummary;
+}
+
+export function snapshotPhysicsPaintPerformance(): PhysicsPaintPerformanceSnapshot {
+  return Object.freeze({
+    summary: detachedSummary(),
+    counters: snapshotCounters(),
+  });
+}
+
+function snapshotCounterValue(
+  snapshot: PhysicsPaintPerformanceSnapshot,
+  name: PhysicsPaintPerformanceCounterName,
+): number {
+  const value = (snapshot.counters as Readonly<Record<string, unknown>>)[name];
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+export function diffPhysicsPaintPerformanceSnapshots(
+  before: PhysicsPaintPerformanceSnapshot,
+  after: PhysicsPaintPerformanceSnapshot,
+): PhysicsPaintPerformanceCounterSnapshot {
+  return Object.freeze(Object.fromEntries(
+    PHYSICS_PAINT_PERFORMANCE_COUNTER_NAMES.map((name) => [
+      name,
+      snapshotCounterValue(after, name) - snapshotCounterValue(before, name),
+    ]),
+  ) as Record<PhysicsPaintPerformanceCounterName, number>);
+}
+
 export function isPhysicsPaintProfilingEnabled(): boolean {
   return profilingEnabled();
 }
@@ -114,6 +204,8 @@ if (typeof window !== 'undefined' && import.meta.env.DEV) {
     value: {
       clear: clearPhysicsPaintPerformance,
       summary: summarizePhysicsPaintPerformance,
+      snapshot: snapshotPhysicsPaintPerformance,
+      delta: diffPhysicsPaintPerformanceSnapshots,
     },
   });
 }
@@ -123,6 +215,11 @@ declare global {
     __EFX_PHYSICS_PAINT_PROFILE__?: {
       clear: () => void;
       summary: () => PhysicsPaintPerformanceSummary;
+      snapshot: () => PhysicsPaintPerformanceSnapshot;
+      delta: (
+        before: PhysicsPaintPerformanceSnapshot,
+        after: PhysicsPaintPerformanceSnapshot,
+      ) => PhysicsPaintPerformanceCounterSnapshot;
     };
   }
 }
