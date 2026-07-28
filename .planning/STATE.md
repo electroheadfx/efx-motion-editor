@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 38
-current_phase_name: multi-copy-paste-and-tooltip-polish
-status: completed
-stopped_at: Completed 38-11-PLAN.md
-last_updated: "2026-07-28T07:35:15.020Z"
+current_phase: 38.1
+current_phase_name: studio-render-path-performance
+status: executing
+stopped_at: Reopened gap track validated; restart 38.1-08 from Task 1
+last_updated: "2026-07-28T15:37:08Z"
 last_activity: 2026-07-28
-last_activity_desc: Phase 38.1 complete
+last_activity_desc: Reopened Phase 38.1 localized-render plans validated
 progress:
   total_phases: 21
-  completed_phases: 19
-  total_plans: 159
+  completed_phases: 18
+  total_plans: 164
   completed_plans: 150
-  percent: 90
+  percent: 91
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 38 — resume at 38-06 UAT re-run (38.1 complete)
+**Current focus:** Reopened Phase 38.1 — deterministic localized-render acceptance; restart Plan 08 instrumentation from Task 1
 
 ## Current Position
 
-Phase: 38 (multi-copy-paste-and-tooltip-polish) — plan 11/11 complete
-Previous phase: 36.15 complete (final timeline UI integration)
-Plan: 11 complete (sidebar/tool-rail render localization on timeline navigation)
-Status: All phases complete
-Last activity: 2026-07-28 — Phase 38.1 complete
-Next recommended action: resume at the 38-06 UAT re-run checkpoint (handoff must natively confirm the side panels no longer repaint on navigation)
+Phase: 38.1 (studio-render-path-performance) — reopened localized-render gap track
+Previous completed baseline: 38.1-01 through 38.1-07; known-working rollback commit `0d0a3547`
+Plan: 08 pending from Task 1 (no durable production diff, commit, or summary from the overflowed session)
+Status: Executing reopened plans 08–12; Phase 38 Plan 38-06 remains blocked
+Last activity: 2026-07-28 — reopened plans and validation matrix checked against the filesystem
+Next recommended action: execute only 38.1-08 Tasks 1–3, then stop at its user-owned native RED-baseline checkpoint
 
-Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 94%)
+Progress: [██████████████████░░] 150/164 plans complete; 18/21 phases complete ([█████████░] 86%)
 
 ## Performance Metrics
 
@@ -66,7 +66,7 @@ Progress: [██████████████████░░] 129/141
 | 36.14 | 24 | - | - |
 | 36.15 | 13 | - | - |
 | 37 | 6 | - | - |
-| 38.1 | 7 | - | - |
+| 38.1 | 7/12 | - | - |
 
 **Recent Trend:**
 
@@ -305,6 +305,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 38 Plan 10]: Bottom action toolbar reachability locked via the existing shared-scroll layout (markup-order gate); CSS audit clean with zero diff; Task 2 recorded as an audit-only --allow-empty commit
 - [Phase ?]: [Phase 38 Plan 11]: Studio tool rail and right panel are wrapped in preact/compat memo behind per-Studio createIdentityMemo caches with single-line enumerated deps excluding the frame cursor — startFrame-only renders skip both subtrees; signals pass by identity so signal-driven updates bypass the memo
 - [Phase ?]: [Phase 38 Plan 11]: Callbacks that must stay referentially stable reach navigation-fresh bindings through refs (launchContextRef, rotoFrameEditingRef) and the history hook's stable inner callbacks rather than per-render wrapper objects — behavior byte-identical
+- [Phase 38.1 reopen]: Historical Plans 01–07 remain immutable and `0d0a3547` is the known-working rollback baseline; Plans 08–12 add deterministic localized-render instrumentation, isolation, and renewed native acceptance only.
+- [Phase 38.1 reopen]: Plan 08 is instrumentation-only and must capture actual forward/reverse RED profiler deltas before Plan 09; no memoization, observer dependency, server, browser, or native-launch change is eligible in Plan 08.
 
 ### Pending Todos
 
@@ -388,6 +390,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-28T07:35:15.005Z
-Stopped at: Completed 38-11-PLAN.md
-Resume file: None
+Last session: 2026-07-28T15:37:08Z
+Stopped at: Reopened Phase 38.1 planning validated; Plan 08 must restart from Task 1
+Resume file: .planning/phases/38.1-studio-render-path-performance/38.1-REOPEN-CONTEXT.md

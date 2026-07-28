@@ -1,40 +1,68 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-27T16:42:04.321Z",
-  "phase": "38",
-  "phase_name": "multi-copy-paste-and-tooltip-polish",
-  "phase_dir": ".planning/phases/38-multi-copy-paste-and-tooltip-polish",
-  "plan": 6,
+  "timestamp": "2026-07-28T15:37:08Z",
+  "phase": "38.1",
+  "phase_name": "studio-render-path-performance",
+  "phase_dir": ".planning/phases/38.1-studio-render-path-performance",
+  "plan": 8,
   "task": 1,
-  "total_tasks": 1,
-  "status": "paused",
+  "total_tasks": 4,
+  "status": "ready",
   "completed_tasks": [
-    {"id": "38-01", "name": "Group clipboard slot + group Copy", "status": "done", "commit": "c434ed12"},
-    {"id": "38-02", "name": "paste-key-group five-owner literal propagation", "status": "done", "commit": "08264914"},
-    {"id": "38-03", "name": "Capsule idle context (baseline deleted, ambient fed)", "status": "done", "commit": "d72a3eda"},
-    {"id": "38-04", "name": "Group paste activation + selection aftermath", "status": "done", "commit": "6ec5dcfb"},
-    {"id": "38-05", "name": "Tooltip viewport placement, notch, multiline", "status": "done", "commit": "3d7fc193"},
-    {"id": "38-06", "name": "Blocking native UAT checkpoint", "status": "in_progress", "progress": "UAT script presented; user rejected on ONE issue — many-key render-path slowdown. NOT approved; do not mark complete until re-run after Phase 38.1."}
+    {"id": "38.1-01", "name": "Timeline-model structural/frame split", "status": "done"},
+    {"id": "38.1-02", "name": "rAF UI scheduler and navigation generations", "status": "done"},
+    {"id": "38.1-03", "name": "Canvas-first Studio navigation pipeline", "status": "done"},
+    {"id": "38.1-04", "name": "Cheap Workflow strip derivation path", "status": "done"},
+    {"id": "38.1-05", "name": "Playback UI freeze and catch-up render", "status": "done"},
+    {"id": "38.1-06", "name": "Historical native timing UAT", "status": "done"},
+    {"id": "38.1-07", "name": "Store and engine O(1) navigation gap closure", "status": "done"}
   ],
   "remaining_tasks": [
-    {"id": "38.1", "name": "NEW Phase 38.1 'Studio render-path performance' — discuss (lock canvas-first / deferred-UI / playback-suspension decisions) → plan → execute → native UAT", "status": "not_started"},
-    {"id": "38-06", "name": "Re-run the full 33-step native UAT after Phase 38.1 lands", "status": "not_started"},
-    {"id": "38-07", "name": "Post-UAT regression tests: group seam (resolver/multiSelection/session)", "status": "not_started"},
-    {"id": "38-08", "name": "Post-UAT regression tests: presentation + tooltip + final full gate", "status": "not_started"}
+    {"id": "38.1-08", "name": "Instrumentation-only render/observer/lifecycle profiler and native RED baseline", "status": "not_started"},
+    {"id": "38.1-09", "name": "Static Studio region localization", "status": "blocked", "blocked_by": "38.1-08 native RED baseline"},
+    {"id": "38.1-10", "name": "Workflow observer/static/cell localization", "status": "blocked", "blocked_by": "38.1-09"},
+    {"id": "38.1-11", "name": "CanvasMount and Efx isolation", "status": "blocked", "blocked_by": "38.1-10"},
+    {"id": "38.1-12", "name": "Strict render-count UAT and complete Phase 38 regression", "status": "blocked", "blocked_by": "38.1-09 through 38.1-11"},
+    {"id": "38-06", "name": "Re-run the full Phase 38 33-step native UAT", "status": "blocked", "blocked_by": "38.1-12 approval"}
   ],
   "blockers": [
-    {"description": "Many-key render-path slowdown in Physics Paint Studio: useRotoTimelineModel.ts:77 rebuilds the entire timeline model on every currentFrame change; strip re-renders all N cells per frame; Studio view-model reconstructed per frame. Pre-existing scaling ceiling exposed by group paste multiplying key count (5-10x slowdown measured natively). Persists across Studio/project reopen (key-count-driven, not state-driven).", "type": "technical", "workaround": "Phase 38.1 — decouple timeline model from currentFrame, canvas-first paint priority, deferred/batched UI updates, suspend derived UI during playback."}
+    {
+      "description": "Phase 38.1 was reopened because historical timing UAT did not prove localized rendering. Plans 09-12 cannot begin until Plan 08 records actual forward and reverse native RED profiler deltas.",
+      "type": "human_verification",
+      "workaround": "Execute Plan 08 Tasks 1-3, then the user captures the profiler snapshots in the already-running native app."
+    }
   ],
   "async_jobs": [],
   "human_actions_pending": [
-    {"action": "Re-run the 33-step 38-06 native UAT after Phase 38.1 completes", "context": "UAT was presented once; all steps passed except the performance degradation, which made honest validation impossible", "blocking": true}
+    {
+      "action": "After Plan 08 automated instrumentation is committed, capture forward and reverse adjacent-navigation profiler delta objects using the protocol in 38.1-REOPEN-CONTEXT.md.",
+      "context": "Every registered counter must be explicit and at least one localized-render threshold must be RED before Plan 09 is eligible.",
+      "blocking": true
+    }
   ],
   "decisions": [
-    {"decision": "Shift-click 'regression' is NOT a code bug — event lag from the saturated render loop", "rationale": "physicsPaintRotoMultiSelection tests 18/18 green; extendRotoKeySelectionRange append-only in phase 38; shift-select works after Studio reopen", "phase": "38"},
-    {"decision": "Route perf work to a new decimal Phase 38.1 instead of patching inside the 38-06 checkpoint or adding a gap plan", "rationale": "Render loop is regression-prone core territory; canvas-first / deferred-UI / playback-suspension requirements deserve locked decisions via discuss-phase; user approved this routing", "phase": "38"},
-    {"decision": "3 known-red test failures are expected and must NOT be fixed before UAT", "rationale": "D-15: production first, native UAT, then tests. 2 physicsPaintWorkflowPresentation baseline assertions (38-08 scope) + 1 PhysicsPaintWorkflowStrip placement=\"below\" source-grep made stale by 38-05's intentional region mechanism (route to 38-08 final gate)", "phase": "38"}
+    {
+      "decision": "Plans 38.1-01 through 38.1-07 remain immutable historical evidence; only Plans 08-12 execute in the reopened track.",
+      "rationale": "The approved timing architecture remains the known-working baseline; reopening addresses deterministic localized-render acceptance only.",
+      "phase": "38.1"
+    },
+    {
+      "decision": "Commit 0d0a3547 is the known-working rollback baseline.",
+      "rationale": "It contains the completed Phase 38 follow-up localization while no Plan 08 production work survived the overflowed session.",
+      "phase": "38.1"
+    },
+    {
+      "decision": "Plan 08 is instrumentation-only and must not localize renders or alter observer dependencies.",
+      "rationale": "Plans 09-11 need an objective native RED baseline from the unchanged architecture.",
+      "phase": "38.1"
+    },
+    {
+      "decision": "The agent does not launch the server, browser, or native app.",
+      "rationale": "Native verification is user-owned; automated work uses only the focused one-shot commands written in the plan.",
+      "phase": "38.1"
+    }
   ],
   "uncommitted_files": [],
-  "next_action": "Insert Phase 38.1 'Studio render-path performance' into ROADMAP.md after phase 38, then /gsd-discuss-phase 38.1 to lock canvas-first / deferred-UI / playback-suspension decisions with the user",
-  "context_notes": "Phase 38 production surface is fully shipped and green (typecheck + build). All phase-38 diffs statically reviewed: nothing touches the per-frame render path — the slowdown is a pre-38 scaling ceiling (36.x/37 timeline-model design) exposed by key-count growth from group paste. User priorities for 38.1: (1) canvas paints first on scrub — clicking keys must give instant canvas feedback; (2) Preact UI estimation/redraw may lag behind; (3) during playback, disable non-essential UI updates entirely for speed. Phase-38 requirement IDs (38-GROUP-COPY etc.) were never registered in REQUIREMENTS.md — requirements.mark-complete reported not_found for all plans; noted in deferred-items.md."
+  "next_action": "Restart 38.1-08 from Task 1: extend the existing profiler API and focused tests, then instrument only the app-owned surfaces from the ownership table.",
+  "context_notes": "The previous Plan 08 attempt exhausted its model context after analysis only. Filesystem recovery found no production diff, no implementation commit matching 38.1-08, and no 38.1-08-SUMMARY.md. The authoritative plan chain is 08 -> 09 -> 10 -> 11 -> 12. Stop at Plan 08's blocking native RED-baseline checkpoint; do not dispatch Plan 09. Phase 38 Plan 38-06 remains blocked until renewed 38.1 native approval in Plan 12."
 }

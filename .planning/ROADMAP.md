@@ -1023,6 +1023,8 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 24/30 | Complete    | 2026-07-25 |
 | 36.15. Roto Timeline Final UI Integration | v0.8.0 | 13/13 | Complete | 2026-07-26 |
 | 37. Multi-Select Physical Roto Keys | v0.8.0 | 6/6 | Complete    | 2026-07-27 |
+| 38. Multi-Copy/Paste and Tooltip Polish | v0.8.0 | 8/11 | Blocked on renewed 38.1 native acceptance | — |
+| 38.1. Studio render-path performance | v0.8.0 | 7/12 | Reopened — Plan 08 next | — |
 
 ### Phase 38: Multi-Copy/Paste and Tooltip Polish
 
@@ -1101,10 +1103,10 @@ Plans:
 
 ### Phase 38.1: Studio render-path performance (INSERTED)
 
-**Goal:** Restore canvas-first responsiveness in the Physics Paint Studio at realistic key counts by restructuring the per-frame render path — timeline-model structural/frame split, canvas-first same-tick paint (D-03), rAF-batched UI (D-04), latest-wins canvas under saturation (D-05), and playback UI freeze with one catch-up render on stop (D-01/D-02) — timing-only with zero behavior change (D-09), unblocking the re-run of the Phase 38-06 native UAT.
-**Requirements**: 38.1-D-01..38.1-D-10 (decision IDs; no formal requirement IDs registered — planning-data gap carried from Phase 38)
+**Goal:** Preserve the approved canvas-first timing architecture from Plans 01–07 and complete the reopened localized-render acceptance track: deterministic render/observer/lifecycle counters, static Studio and Workflow localization, persistent CanvasMount/Efx isolation, and renewed user-owned native proof before unblocking Phase 38-06.
+**Requirements**: 38.1-D-01..38.1-D-10 plus reopen decisions R-D-01..R-D-10 (decision IDs; no formal requirement IDs registered — planning-data gap carried from Phase 38)
 **Depends on:** Phase 38
-**Plans:** 7/7 plans complete
+**Plans:** 7/12 plans complete — reopened Plans 08–12 pending; `0d0a3547` is the known-working rollback baseline
 
 Plans:
 
@@ -1123,6 +1125,26 @@ Plans:
 - [x] 38.1-05-PLAN.md — Playback UI freeze (D-01/D-02): per-tick signal surface; live set = canvas image + nav-pill frame indicator + transport state; missing-frame events queued and flushed once on stop; exactly one catch-up render.
 - [x] 38.1-07-PLAN.md — Gap closure: store-side per-navigation O(N) fix — per-layer structural cache for the physical projection + content revision (spy-proven zero rebuilds on navigation/selection reads, exactly one byte-identical rebuild per mutation class), engine decoded-Image cache + resetBackground skip, Studio paint-before-flush reorder with post-flush generated-cell repaint.
 
-**Wave 4** *(blocked on Wave 3)*
+**Wave 4** *(historical acceptance, blocked on Wave 3)*
 
-- [x] 38.1-06-PLAN.md — BLOCKING native user-owned UAT on the user's real project (D-06): canvas-first feel, playback freeze at full fps, zero behavior change, preserved tooltip/capsule mechanisms.
+- [x] 38.1-06-PLAN.md — Historical native UAT approved the canvas-first timing repair; its phase-complete claim was later reopened because localized-render acceptance remained unmet.
+
+**Reopened Wave 4** *(blocked on completed Plan 07; execute next)*
+
+- [ ] 38.1-08-PLAN.md — Extend the existing development-gated profiler with bounded named counters, detached snapshots/deltas, and complete app-owned render/observer/lifecycle instrumentation; make no localization change; block for actual forward/reverse native RED deltas before Plan 09.
+
+**Reopened Wave 5** *(blocked on Plan 08 native RED baseline)*
+
+- [ ] 38.1-09-PLAN.md — Localize frame-only Studio renders away from TopBar, closed Play Script dialog, and the entire right-panel shell/toggle/implementation region while preserving plain implementations and internal Signal reactivity.
+
+**Reopened Wave 6** *(blocked on Plan 09)*
+
+- [ ] 38.1-10-PLAN.md — Localize Workflow static chrome and timeline cells, stabilize action callbacks, and make timeline observer ownership mount-lifetime stable while preserving all interaction contracts.
+
+**Reopened Wave 7** *(blocked on Plan 10)*
+
+- [ ] 38.1-11-PLAN.md — Isolate persistent CanvasMount/Efx execution from frame-only orchestration while keeping overlays live and preserving controlled key/dimension replacement.
+
+**Reopened Wave 8** *(blocked on Plans 09–11)*
+
+- [ ] 38.1-12-PLAN.md — Run automated preconditions, user-owned strict render-count acceptance, and the complete Phase 38 33-step native regression before final reverification.
