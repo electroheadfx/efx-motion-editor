@@ -279,6 +279,28 @@ describe('localized render contract', () => {
     expect(code).toContain('if (session.rafId !== null) window.cancelAnimationFrame(session.rafId);');
     expect(code).toContain('sourceElement.setPointerCapture(session.pointerId);');
   });
+
+  it('memoizes private timeline cells behind stable shared frame and key actions', () => {
+    const code = source();
+    const cellStart = code.indexOf('function RotoTimelineCellButtonImpl(');
+    const cellEnd = code.indexOf('const RotoTimelineCellButton = memo(', cellStart);
+    const cellBlock = code.slice(cellStart, cellEnd);
+    const map = getRotoMapBlock(code);
+
+    expect(cellStart).toBeGreaterThanOrEqual(0);
+    expect(cellBlock).toContain("recordPhysicsPaintPerformanceCounter('render.rotoTimelineCellButton')");
+    expect(cellBlock).toContain('const tooltip = useStyledTooltip();');
+    expect(code).toContain('const RotoTimelineCellButton = memo(RotoTimelineCellButtonImpl);');
+    expect(code).toContain('const handleRotoTimelineCellClick = useCallback(');
+    expect(code).toContain('const handleRotoTimelineCellPointerDown = useCallback(');
+    expect(map).toContain('key={frame}');
+    expect(map).toContain('vm={vm}');
+    expect(map).toContain('dragEligible={dragEligible}');
+    expect(map).toContain('onCellPointerDown={handleRotoTimelineCellPointerDown}');
+    expect(map).toContain('onCellClick={handleRotoTimelineCellClick}');
+    expect(map).not.toContain('onCellPointerDown={dragEligible && cellKeyId ? (event) =>');
+    expect(map).not.toContain('onCellClick={(event) =>');
+  });
 });
 
 describe('localized static and live Workflow regions', () => {
