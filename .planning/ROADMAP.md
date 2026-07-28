@@ -1069,7 +1069,7 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 
 **Requirements**: 38-GROUP-COPY, 38-GROUP-PASTE, 38-CAPSULE-IDLE-CONTEXT, 38-TOOLTIP-VIEWPORT-PLACEMENT, 38-TOOLTIP-NOTCH-MULTILINE, 38-DOWNSTREAM-PARITY, 38-UAT-THEN-REGRESSION
 **Depends on:** Phase 37
-**Plans:** 5/8 plans executed
+**Plans:** 5/11 plans executed
 
 Plans:
 
@@ -1083,6 +1083,12 @@ Plans:
 
 - [x] 38-04-PLAN.md — Group paste activation route + clipboard-shape branch in pasteKey + `paste-key-group` selection aftermath (pasted group becomes selection, earliest pasted key current); UI-SPEC locked reject copy with detail to LOG.
 - [x] 38-05-PLAN.md — Tooltip rework (D-11..D-14): shared direction-aware viewport placement utility, 10×6px same-fill notch, 280×96px multiline clamp, every mount converted.
+
+**Wave 2 — gap closure (post-38.1 native-UAT follow-ups, 2026-07-28; resume first, before the 38-06 re-run)**
+
+- [ ] 38-09-PLAN.md — Gap closure: tooltip row-placement flip — scripts panel right-edge mounts (Copy/Apply/Clear) flip to 'above' when the left-direction band overlaps same-row sibling controls (38.1-06 run-1 item E); notch/clamp/controller byte-identical; D-15: no test changes.
+- [ ] 38-10-PLAN.md — Gap closure: plain-wheel horizontal scroll on the timeline strip (deltaY→scrollLeft, shift/trackpad preserved) + bottom custom scrollbar two-way sync + narrow-window action-toolbar reachability via the shared scroller (user-requested behavior change, 38.1-06 deferred follow-up #2).
+- [ ] 38-11-PLAN.md — Gap closure: sidebar/tool-rail render localization — preact/compat memo + identity-stable props so startFrame-only Studio renders skip PhysicsPaintRightPanel and PhysicsPaintToolRail (38.1-06 deferred follow-up #1); ephemeral component-memo proof, zero behavior change.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
