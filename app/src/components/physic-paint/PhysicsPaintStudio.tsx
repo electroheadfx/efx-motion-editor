@@ -108,8 +108,10 @@ export function PhysicsPaintStudio() {
   // resolve returns the cached props object, and preact/compat memo's default
   // shallow compare skips the subtree. Deps enumerate exactly the values each
   // build references — never the Studio's frame cursor.
+  const topBarPropsMemo = useRef(createIdentityMemo()).current;
   const toolRailPropsMemo = useRef(createIdentityMemo()).current;
   const rightPanelPropsMemo = useRef(createIdentityMemo()).current;
+  const playScriptDialogPropsMemo = useRef(createIdentityMemo()).current;
   const scheduleRotoStartFramePropagation = useCallback((frame: number) => {
     rotoUiFlushScheduler.schedule(() => {
       setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
@@ -325,6 +327,10 @@ export function PhysicsPaintStudio() {
     log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
   }, bridgeMode);
   const mutationLocked = rotoScript.mutationLocked.value;
+  // Navigation already locks the engine input and navigation coordinator. Keep
+  // the static Studio controls keyed only to real script mutations so the
+  // navigation lock's true/false pulse cannot invalidate their memo props.
+  const staticControlsLocked = mutationLocked && !rotoScriptNavigationLocked;
   const handleScriptRowActivate = useCallback(async (id: string) => {
     await rotoScriptLibrary.activateAndLoad(id);
   }, [rotoScriptLibrary]);
@@ -1046,18 +1052,32 @@ export function PhysicsPaintStudio() {
     const current = physicPaintStore.getRotoInterpolationSettings(launch.layerId);
     physicPaintStore.setRotoInterpolationSettings(launch.layerId, { ...current, deform: motion.strokeDeformation, position: motion.strokePosition });
   }, []);
+  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, settings.background, settings.paperGrain, settings.grainStrength, readyToApply, staticControlsLocked, setBrushSize, setBrushOpacity, setBackground, setPaperGrain, setGrainStrength], () => ({
+    brushSize: settings.size,
+    opacity: settings.opacity,
+    background: settings.background,
+    paperGrain: settings.paperGrain,
+    grainStrength: settings.grainStrength,
+    ready: readyToApply,
+    disabled: staticControlsLocked,
+    onBrushSizeChange: setBrushSize,
+    onOpacityChange: setBrushOpacity,
+    onBackgroundChange: setBackground,
+    onPaperGrainChange: setPaperGrain,
+    onGrainStrengthChange: setGrainStrength,
+  }));
   // 38-11: the tool rail props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
   // references (38.1 onion-projection idiom); it contains no frame-derived
   // input, so a startFrame-only Studio render returns the cached object and
   // the memo-wrapped rail skips its render. Signal objects pass through by
   // identity (never .value-cached), so signal-driven updates keep flowing.
-  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, settings.activePhysicsAction, historyAvailability, engine, mutationLocked, selectTool, undo, redo, clearActiveSource, startPhysics, stopPhysics, dryPaint], () => ({
+  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, settings.activePhysicsAction, historyAvailability, engine, staticControlsLocked, selectTool, undo, redo, clearActiveSource, startPhysics, stopPhysics, dryPaint], () => ({
     activeTool: settings.tool,
     physicsMode: settings.physicsMode,
     activePhysicsAction: settings.activePhysicsAction,
     historyAvailability,
-    disabled: !engine || mutationLocked,
+    disabled: !engine || staticControlsLocked,
     onSelectTool: selectTool,
     onUndo: undo,
     onRedo: redo,
@@ -1075,7 +1095,7 @@ export function PhysicsPaintStudio() {
   // fresh per-render getRotoInterpolationSettings clone. Signal-backed
   // controllers pass through by identity so their signal subscriptions
   // (ScriptsPanel rows/busy/selection) keep flowing independent of the memo.
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, mutationLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
     activeTool: settings.tool,
     color: settings.color,
     opacity: settings.opacity,
@@ -1087,7 +1107,7 @@ export function PhysicsPaintStudio() {
     physicsMode: settings.physicsMode,
     onion,
     onionDisabled: isPlaying,
-    engineControlsDisabled: mutationLocked,
+    engineControlsDisabled: staticControlsLocked,
     playWiggle: rotoLegacyInterpolationSettings
       ? { strokeDeformation: rotoLegacyInterpolationSettings.deform, strokePosition: rotoLegacyInterpolationSettings.position }
       : { strokeDeformation: 0, strokePosition: 0 },
@@ -1113,16 +1133,17 @@ export function PhysicsPaintStudio() {
       onRefresh: () => { void rotoScriptLibrary.refresh(); },
     },
   }));
+  const playScriptDialog = playScriptDialogPropsMemo.resolve([rotoPlayScript, playButtonRef], () => ({
+    playScript: rotoPlayScript,
+    returnFocusRef: playButtonRef,
+  }));
   const viewModel = usePhysicsPaintStudioViewModel({
     layout: {
         rightPanelCollapsed,
         onKeyDown: handlePhysicsPaintKeyDown,
         onSetRightPanelCollapsed: setRightPanelCollapsed,
       },
-    topBar: {
-        brushSize: settings.size, opacity: settings.opacity, background: settings.background, paperGrain: settings.paperGrain, grainStrength: settings.grainStrength, ready: readyToApply, disabled: mutationLocked,
-        onBrushSizeChange: setBrushSize, onOpacityChange: setBrushOpacity, onBackgroundChange: setBackground, onPaperGrainChange: setPaperGrain, onGrainStrengthChange: setGrainStrength,
-      },
+    topBar,
     toolRail,
     canvas: {
         cachedRotoReferenceUrl,
@@ -1236,10 +1257,7 @@ export function PhysicsPaintStudio() {
         },
       },
     rightPanel,
-    playScriptDialog: {
-        playScript: rotoPlayScript,
-        returnFocusRef: playButtonRef,
-      },
+    playScriptDialog,
     workflow: {
         workflowLabel: launchContext?.workflowLabel,
         currentFrame, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames,

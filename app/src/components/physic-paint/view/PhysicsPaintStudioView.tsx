@@ -6,10 +6,10 @@ import { subscribeProjectPaperCanvas } from '../../../lib/projectPaperRaster';
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
-import { PhysicsPaintPlayScriptDialog } from './PhysicsPaintPlayScriptDialog';
+import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
 import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel';
+import { MemoizedPhysicsPaintTopBar } from './MemoizedPhysicsPaintTopBar';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
-import { PhysicsPaintTopBar } from './PhysicsPaintTopBar';
 import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
@@ -135,14 +135,14 @@ export interface PhysicsPaintStudioViewProps {
     onKeyDown: (event: KeyboardEvent) => void;
     onSetRightPanelCollapsed: (collapsed: boolean) => void;
   };
-  topBar: ComponentProps<typeof PhysicsPaintTopBar>;
+  topBar: ComponentProps<typeof MemoizedPhysicsPaintTopBar>;
   toolRail: ComponentProps<typeof PhysicsPaintToolRail>;
   canvas: Omit<PhysicsPaintCanvasStackViewProps, 'children'> & {
     canvasKey: string;
     mount: ComponentProps<typeof PhysicsPaintCanvasMount>;
   };
   rightPanel: ComponentProps<typeof MemoizedPhysicsPaintRightPanel>;
-  playScriptDialog: ComponentProps<typeof PhysicsPaintPlayScriptDialog>;
+  playScriptDialog: ComponentProps<typeof MemoizedPhysicsPaintPlayScriptDialog>;
   workflow: ComponentProps<typeof PhysicsPaintWorkflowStrip>;
   status: {
     shortcutsVisible: boolean;
@@ -161,7 +161,7 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         tabIndex={0}
         onKeyDown={(event) => layout.onKeyDown(event as unknown as KeyboardEvent)}
       >
-        <PhysicsPaintTopBar {...topBar} />
+        <MemoizedPhysicsPaintTopBar {...topBar} />
         <PhysicsPaintToolRail {...toolRail} />
 
         <section class="physics-paint-main physics-paint-canvas-region" aria-label="Physics Paint canvas">
@@ -190,7 +190,7 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
           </div>
         )}
 
-        <PhysicsPaintPlayScriptDialog {...playScriptDialog} />
+        <MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />
 
         <PhysicsPaintWorkflowStrip {...workflow} />
 

@@ -106,11 +106,12 @@ describe('Physics Paint navigation render localization', () => {
     const topBarStart = studio.indexOf('const topBar = topBarPropsMemo.resolve(');
     const topBarEnd = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(', topBarStart);
     const topBarBlock = studio.slice(topBarStart, topBarEnd);
+    const topBarDeps = topBarBlock.slice(0, topBarBlock.indexOf('], () =>'));
     expect(topBarStart).toBeGreaterThanOrEqual(0);
     expect(topBarBlock).toContain('settings.size');
     expect(topBarBlock).toContain('readyToApply');
     expect(topBarBlock).toContain('staticControlsLocked');
-    for (const invalidator of ['currentFrame', 'startFrame', 'rotoNavigationGeneration']) expect(topBarBlock).not.toContain(invalidator);
+    for (const invalidator of ['currentFrame', 'startFrame', 'rotoNavigationGeneration']) expect(topBarDeps).not.toContain(invalidator);
 
     const dialogStart = studio.indexOf('const playScriptDialog = playScriptDialogPropsMemo.resolve(');
     const dialogEnd = studio.indexOf('const viewModel = usePhysicsPaintStudioViewModel', dialogStart);
