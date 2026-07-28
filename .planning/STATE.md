@@ -4,16 +4,16 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 38.1
 current_phase_name: studio-render-path-performance
-status: executing
-stopped_at: Completed 38.1-05-PLAN.md
-last_updated: "2026-07-27T20:38:43.568Z"
+status: verifying
+stopped_at: Completed 38.1-07-PLAN.md
+last_updated: "2026-07-28T05:40:49.294Z"
 last_activity: 2026-07-27
 last_activity_desc: Phase 38.1 execution started
 progress:
   total_phases: 21
   completed_phases: 18
-  total_plans: 155
-  completed_plans: 145
+  total_plans: 156
+  completed_plans: 146
   percent: 86
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 Phase: 38.1 (studio-render-path-performance) — EXECUTING
 Previous phase: 36.15 complete (final timeline UI integration)
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-27 — Phase 38.1 execution started
 Next recommended action: /gsd-discuss-phase 38.1 (then plan/execute; resume /gsd-execute-phase 38 afterward)
 
@@ -136,6 +136,7 @@ Progress: [██████████████████░░] 129/141
 | Phase 38.1 P03 | 7min | 2 tasks | 1 files |
 | Phase 38.1 P04 | 4min | 2 tasks | 1 files |
 | Phase 38.1 P05 | 10min | 2 tasks | 4 files |
+| Phase 38.1 P07 | 23min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -288,6 +289,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 38.1-05: playbackTick signal carries { frameIndex, appFrame, frame } with playback.frame kept as a plain-value getter — hook test passes unmodified
 - [Phase ?]: 38.1-05: D-02 deferred event IS the start/missing-frame line — published at the start transition and enqueued, re-published once in the stop catch-up render before idle context resumes
 - [Phase ?]: 38.1-05: statusMessage peeks the playback signals (Previewing format verbatim, zero Studio subscription); null status clears bypass the D-02 gate
+- [Phase ?]: 38.1-07: store physical roto projection + content revision behind a per-layer identity-triple memo (recordMap/interpolation/capacity) — per-navigation O(1), selection never invalidates
+- [Phase ?]: 38.1-07: engine decoded-Image cache (FIFO 32, destroy-cleared) + resetBackground unchanged-input skip with unconditional requestId bump
+- [Phase ?]: 38.1-07: navigation paints destination same-tick before awaiting flushLivePixels; isLatest gates propagation and post-flush generated-cell repaint
 
 ### Pending Todos
 
@@ -371,6 +375,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-27T20:38:30.303Z
-Stopped at: Completed 38.1-05-PLAN.md
+Last session: 2026-07-28T05:40:38.336Z
+Stopped at: Completed 38.1-07-PLAN.md
 Resume file: None
