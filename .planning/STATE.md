@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Reopened Phase 38.1 — Plan 08 native RED baseline complete; Plan 09 static Studio localization pending
+**Current focus:** Reopened Phase 38.1 — Plan 09 implementation committed; native five-counter verification pending
 
 ## Current Position
 
 Phase: 38.1 (studio-render-path-performance) — reopened localized-render gap track
 Completed baseline: 38.1-01 through 38.1-08; known-working rollback commit before the reopened track remains `0d0a3547`
-Plan: 08 complete; Plan 09 pending and not started
-Status: Executing reopened plans 09–12; Phase 38 Plan 38-06 remains blocked until Plan 12 approval
-Last activity: 2026-07-28 — actual forward/reverse native profiler deltas completed Plan 08 and routed RED counters to Plans 09–11
-Next recommended action: execute only 38.1-09; do not resume Phase 38 Plan 38-06
+Plan: 09 implementation complete; blocking native render-count checkpoint pending
+Status: Awaiting user-owned Plan 09 native verification; Plan 10 and Phase 38 Plan 38-06 remain blocked
+Last activity: 2026-07-28 — committed static Studio memo boundaries and passed all focused tests, typecheck, and build
+Next recommended action: verify the five Plan 09 counters forward and reverse; do not execute Plan 10 or resume Phase 38 Plan 38-06
 
 Progress: [██████████████████░░] 151/164 plans complete; 18/21 phases complete ([█████████░] 86%)
 
@@ -140,6 +140,7 @@ Progress: [██████████████████░░] 151/164
 | Phase 38.1 P07 | 23min | 3 tasks | 5 files |
 | Phase 38.1 P06 | 2 UAT runs (2026-07-27/28) | 1 tasks | 0 files |
 | Phase 38.1 P08 | 44min active across checkpoint | 4 tasks | 13 implementation/test files |
+| Phase 38.1 P09 | 17min automated implementation; native checkpoint pending | 2 tasks | 6 implementation/test files |
 | Phase 38 P09 | 4min | 2 tasks | 2 files |
 | Phase 38 P10 | 10min | 2 tasks | 1 files |
 | Phase 38 P11 | 25min | 2 tasks | 4 files |
@@ -311,6 +312,9 @@ Recent decisions affecting current work:
 - [Phase 38.1 Plan 08]: Actual forward and reverse native deltas are byte-identical and complete across all 26 canonical counters; render.studio/render.studioView are sanctioned orchestration, while unsanctioned positives route to Plans 09–11.
 - [Phase 38.1 Plan 08]: ToolRail remains a Plan 09 target despite the historical Phase 38 memo because R-D-04 requires zero and the native baseline records render.toolRailImpl = 2.
 - [Phase 38.1 Plan 08]: Plan 09 owns TopBar/ToolRail/right-panel localization; Plan 10 owns static Workflow/cell/timeline-observer localization; Plan 11 owns CanvasStack/CanvasMount/Efx isolation.
+- [Phase 38.1 Plan 09]: Plain TopBar and Play Script dialog implementations stay directly callable behind dedicated compat wrappers; the complete right-panel rail/shell/toggle is one memoized region retaining the existing inner RightPanel wrapper.
+- [Phase 38.1 Plan 09]: Static control identities exclude the navigation-only mutation-lock pulse via `mutationLocked && !rotoScriptNavigationLocked`, while engine actions and canvas input retain the original mutation lock.
+- [Phase 38.1 Plan 09]: Plan 10 remains blocked until forward and reverse native deltas confirm zero for TopBar, ToolRail implementation, right-panel region, RightPanel implementation, and the closed Play Script dialog.
 
 ### Pending Todos
 
@@ -318,7 +322,8 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 38 Plan 38-06 remains blocked until reopened Phase 38.1 Plan 12 receives renewed native approval; Plan 08 completion only unblocks Plan 09.
+- Plan 10 remains blocked until the user approves Plan 09's forward/reverse native five-counter checkpoint.
+- Phase 38 Plan 38-06 remains blocked until reopened Phase 38.1 Plan 12 receives renewed native approval.
 - Phase 36.2 Codex gap execution is rejected as failed and administratively superseded. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
 - Plans `36.2-11`, `36.2-12`, and `36.2-13` are closed with rejected/superseded summaries so they must not be resumed as Phase 36.2 implementation.
 - Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, repaint cached real-key behavior, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
@@ -395,6 +400,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-28T16:29:57Z
-Stopped at: Completed 38.1-08-PLAN.md; Plan 09 pending
-Resume file: .planning/phases/38.1-studio-render-path-performance/38.1-09-PLAN.md
+Last session: 2026-07-28T17:11:31Z
+Stopped at: Plan 09 implementation committed; awaiting native five-counter verification
+Resume file: .planning/phases/38.1-studio-render-path-performance/38.1-09-SUMMARY.md
