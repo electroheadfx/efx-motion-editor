@@ -307,9 +307,9 @@ describe('localized render instrumentation', () => {
       expect(countOccurrences(canvasMount, `recordPhysicsPaintPerformanceCounter('${counter}')`), counter).toBe(1);
     }
     expect(canvasMount).toContain('}, [props.height, props.width]);');
-    expect(canvasMount).toContain('return props.onEngineReady(engine);');
-    expect(canvasMount).toContain('const beforeEngineDestroy = props.beforeEngineDestroy;');
-    expect(canvasMount).toContain('return beforeEngineDestroy(engine);');
+    expect(canvasMount).toContain('return onEngineReadyRef.current(engine);');
+    expect(canvasMount).toContain('beforeEngineDestroyRef.current = props.beforeEngineDestroy;');
+    expect(canvasMount).toContain('return beforeEngineDestroyRef.current?.(engine);');
   });
 
   it('locks engine lifecycle counters to the current tablet and external cleanup effects', () => {

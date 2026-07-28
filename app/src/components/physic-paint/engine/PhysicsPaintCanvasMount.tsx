@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { CompletedPaintMutation, EfxPaintEngine, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import { getContainedCanvasDisplaySize } from './physicsPaintCanvasSizing';
@@ -14,6 +14,20 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
+  const onEngineReadyRef = useRef(props.onEngineReady);
+  const onCanvasMountedRef = useRef(props.onCanvasMounted);
+  const onNativePenInputReadyRef = useRef(props.onNativePenInputReady);
+  const onCompletedMutationRef = useRef(props.onCompletedMutation);
+  const onPerformanceSampleRef = useRef(props.onPerformanceSample);
+  const beforeEngineDestroyRef = useRef(props.beforeEngineDestroy);
+  const getStrokeMetadataRef = useRef(props.getStrokeMetadata);
+  onEngineReadyRef.current = props.onEngineReady;
+  onCanvasMountedRef.current = props.onCanvasMounted;
+  onNativePenInputReadyRef.current = props.onNativePenInputReady;
+  onCompletedMutationRef.current = props.onCompletedMutation;
+  onPerformanceSampleRef.current = props.onPerformanceSample;
+  beforeEngineDestroyRef.current = props.beforeEngineDestroy;
+  getStrokeMetadataRef.current = props.getStrokeMetadata;
 
   useEffect(() => {
     const shell = shellRef.current;
@@ -31,7 +45,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
     }
     const frame = window.requestAnimationFrame(() => {
       const mounted = Boolean(shellRef.current?.querySelector('canvas'));
-      props.onCanvasMounted(mounted);
+      onCanvasMountedRef.current(mounted);
       if (!mounted) setMountError(CANVAS_MOUNT_ERROR);
       updateDisplaySize();
     });
@@ -50,20 +64,29 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
     '--physics-paint-paper-texture-scale': props.paperTextureScale,
     ...(displaySize ? { width: `${displaySize.width}px`, height: `${displaySize.height}px` } : {}),
   } as JSX.CSSProperties;
-  const handleEngineReady = (engine: EfxPaintEngine) => {
+  const handleEngineReady = useCallback((engine: EfxPaintEngine) => {
     engine.setTool('paint');
     setMountError(null);
-    props.onCanvasMounted(true);
+    onCanvasMountedRef.current(true);
     recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.engineReady');
-    return props.onEngineReady(engine);
-  };
-  const beforeEngineDestroy = props.beforeEngineDestroy;
-  const handleBeforeEngineDestroy = beforeEngineDestroy
-    ? (engine: EfxPaintEngine) => {
-        recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.beforeDestroy');
-        return beforeEngineDestroy(engine);
-      }
-    : undefined;
+    return onEngineReadyRef.current(engine);
+  }, []);
+  const handleNativePenInputReady = useCallback((handler: NativePenInputHandler) => {
+    onNativePenInputReadyRef.current(handler);
+  }, []);
+  const handleCompletedMutation = useCallback((mutation: CompletedPaintMutation, engine: EfxPaintEngine) => {
+    return onCompletedMutationRef.current?.(mutation, engine);
+  }, []);
+  const handlePerformanceSample = useCallback((sample: PaintPerformanceSample) => {
+    return onPerformanceSampleRef.current?.(sample);
+  }, []);
+  const handleBeforeEngineDestroy = useCallback((engine: EfxPaintEngine) => {
+    recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.beforeDestroy');
+    return beforeEngineDestroyRef.current?.(engine);
+  }, []);
+  const handleGetStrokeMetadata = useCallback(() => {
+    return getStrokeMetadataRef.current?.();
+  }, []);
   recordPhysicsPaintPerformanceCounter('render.efxChildRequest');
 
   return (
@@ -79,11 +102,11 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
         defaultPaper="canvas1"
         paperTextureScale={props.paperTextureScale}
         class="paint-canvas"
-        onNativePenInputReady={props.onNativePenInputReady}
-        onCompletedMutation={props.onCompletedMutation}
-        onPerformanceSample={props.onPerformanceSample}
+        onNativePenInputReady={handleNativePenInputReady}
+        onCompletedMutation={handleCompletedMutation}
+        onPerformanceSample={handlePerformanceSample}
         beforeEngineDestroy={handleBeforeEngineDestroy}
-        getStrokeMetadata={props.getStrokeMetadata}
+        getStrokeMetadata={handleGetStrokeMetadata}
         onEngineReady={handleEngineReady}
       />
       {mountError ? <p class="demo-error">{mountError}</p> : null}
