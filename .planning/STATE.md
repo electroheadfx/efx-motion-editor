@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 38.1
 current_phase_name: studio-render-path-performance
 status: executing
-stopped_at: Reopened gap track validated; restart 38.1-08 from Task 1
-last_updated: "2026-07-28T15:37:08Z"
+stopped_at: Completed 38.1-08; Plan 09 pending
+last_updated: "2026-07-28T16:29:57Z"
 last_activity: 2026-07-28
-last_activity_desc: Reopened Phase 38.1 localized-render plans validated
+last_activity_desc: Plan 38.1-08 completed with actual native forward/reverse RED render deltas
 progress:
   total_phases: 21
   completed_phases: 18
   total_plans: 164
-  completed_plans: 150
-  percent: 91
+  completed_plans: 151
+  percent: 92
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Reopened Phase 38.1 — deterministic localized-render acceptance; restart Plan 08 instrumentation from Task 1
+**Current focus:** Reopened Phase 38.1 — Plan 08 native RED baseline complete; Plan 09 static Studio localization pending
 
 ## Current Position
 
 Phase: 38.1 (studio-render-path-performance) — reopened localized-render gap track
-Previous completed baseline: 38.1-01 through 38.1-07; known-working rollback commit `0d0a3547`
-Plan: 08 pending from Task 1 (no durable production diff, commit, or summary from the overflowed session)
-Status: Executing reopened plans 08–12; Phase 38 Plan 38-06 remains blocked
-Last activity: 2026-07-28 — reopened plans and validation matrix checked against the filesystem
-Next recommended action: execute only 38.1-08 Tasks 1–3, then stop at its user-owned native RED-baseline checkpoint
+Completed baseline: 38.1-01 through 38.1-08; known-working rollback commit before the reopened track remains `0d0a3547`
+Plan: 08 complete; Plan 09 pending and not started
+Status: Executing reopened plans 09–12; Phase 38 Plan 38-06 remains blocked until Plan 12 approval
+Last activity: 2026-07-28 — actual forward/reverse native profiler deltas completed Plan 08 and routed RED counters to Plans 09–11
+Next recommended action: execute only 38.1-09; do not resume Phase 38 Plan 38-06
 
-Progress: [██████████████████░░] 150/164 plans complete; 18/21 phases complete ([█████████░] 86%)
+Progress: [██████████████████░░] 151/164 plans complete; 18/21 phases complete ([█████████░] 86%)
 
 ## Performance Metrics
 
@@ -66,7 +66,7 @@ Progress: [██████████████████░░] 150/164
 | 36.14 | 24 | - | - |
 | 36.15 | 13 | - | - |
 | 37 | 6 | - | - |
-| 38.1 | 7/12 | - | - |
+| 38.1 | 8/12 | - | - |
 
 **Recent Trend:**
 
@@ -139,6 +139,7 @@ Progress: [██████████████████░░] 150/164
 | Phase 38.1 P05 | 10min | 2 tasks | 4 files |
 | Phase 38.1 P07 | 23min | 3 tasks | 5 files |
 | Phase 38.1 P06 | 2 UAT runs (2026-07-27/28) | 1 tasks | 0 files |
+| Phase 38.1 P08 | 44min active across checkpoint | 4 tasks | 13 implementation/test files |
 | Phase 38 P09 | 4min | 2 tasks | 2 files |
 | Phase 38 P10 | 10min | 2 tasks | 1 files |
 | Phase 38 P11 | 25min | 2 tasks | 4 files |
@@ -307,6 +308,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 38 Plan 11]: Callbacks that must stay referentially stable reach navigation-fresh bindings through refs (launchContextRef, rotoFrameEditingRef) and the history hook's stable inner callbacks rather than per-render wrapper objects — behavior byte-identical
 - [Phase 38.1 reopen]: Historical Plans 01–07 remain immutable and `0d0a3547` is the known-working rollback baseline; Plans 08–12 add deterministic localized-render instrumentation, isolation, and renewed native acceptance only.
 - [Phase 38.1 reopen]: Plan 08 is instrumentation-only and must capture actual forward/reverse RED profiler deltas before Plan 09; no memoization, observer dependency, server, browser, or native-launch change is eligible in Plan 08.
+- [Phase 38.1 Plan 08]: Actual forward and reverse native deltas are byte-identical and complete across all 26 canonical counters; render.studio/render.studioView are sanctioned orchestration, while unsanctioned positives route to Plans 09–11.
+- [Phase 38.1 Plan 08]: ToolRail remains a Plan 09 target despite the historical Phase 38 memo because R-D-04 requires zero and the native baseline records render.toolRailImpl = 2.
+- [Phase 38.1 Plan 08]: Plan 09 owns TopBar/ToolRail/right-panel localization; Plan 10 owns static Workflow/cell/timeline-observer localization; Plan 11 owns CanvasStack/CanvasMount/Efx isolation.
 
 ### Pending Todos
 
@@ -314,6 +318,7 @@ None yet.
 
 ### Blockers/Concerns
 
+- Phase 38 Plan 38-06 remains blocked until reopened Phase 38.1 Plan 12 receives renewed native approval; Plan 08 completion only unblocks Plan 09.
 - Phase 36.2 Codex gap execution is rejected as failed and administratively superseded. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
 - Plans `36.2-11`, `36.2-12`, and `36.2-13` are closed with rejected/superseded summaries so they must not be resumed as Phase 36.2 implementation.
 - Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, repaint cached real-key behavior, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
@@ -390,6 +395,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-28T15:37:08Z
-Stopped at: Reopened Phase 38.1 planning validated; Plan 08 must restart from Task 1
-Resume file: .planning/phases/38.1-studio-render-path-performance/38.1-REOPEN-CONTEXT.md
+Last session: 2026-07-28T16:29:57Z
+Stopped at: Completed 38.1-08-PLAN.md; Plan 09 pending
+Resume file: .planning/phases/38.1-studio-render-path-performance/38.1-09-PLAN.md

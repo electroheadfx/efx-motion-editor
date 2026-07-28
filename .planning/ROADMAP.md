@@ -1024,7 +1024,7 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.15. Roto Timeline Final UI Integration | v0.8.0 | 13/13 | Complete | 2026-07-26 |
 | 37. Multi-Select Physical Roto Keys | v0.8.0 | 6/6 | Complete    | 2026-07-27 |
 | 38. Multi-Copy/Paste and Tooltip Polish | v0.8.0 | 8/11 | Blocked on renewed 38.1 native acceptance | — |
-| 38.1. Studio render-path performance | v0.8.0 | 7/12 | Reopened — Plan 08 next | — |
+| 38.1. Studio render-path performance | v0.8.0 | 8/12 | Reopened — Plan 09 next | — |
 
 ### Phase 38: Multi-Copy/Paste and Tooltip Polish
 
@@ -1106,7 +1106,7 @@ Plans:
 **Goal:** Preserve the approved canvas-first timing architecture from Plans 01–07 and complete the reopened localized-render acceptance track: deterministic render/observer/lifecycle counters, static Studio and Workflow localization, persistent CanvasMount/Efx isolation, and renewed user-owned native proof before unblocking Phase 38-06.
 **Requirements**: 38.1-D-01..38.1-D-10 plus reopen decisions R-D-01..R-D-10 (decision IDs; no formal requirement IDs registered — planning-data gap carried from Phase 38)
 **Depends on:** Phase 38
-**Plans:** 7/12 plans complete — reopened Plans 08–12 pending; `0d0a3547` is the known-working rollback baseline
+**Plans:** 8/12 plans complete — Plan 08 native RED baseline complete; reopened Plans 09–12 pending; `0d0a3547` is the known-working rollback baseline
 
 Plans:
 
@@ -1129,11 +1129,11 @@ Plans:
 
 - [x] 38.1-06-PLAN.md — Historical native UAT approved the canvas-first timing repair; its phase-complete claim was later reopened because localized-render acceptance remained unmet.
 
-**Reopened Wave 4** *(blocked on completed Plan 07; execute next)*
+**Reopened Wave 4** *(completed after Plan 07)*
 
-- [ ] 38.1-08-PLAN.md — Extend the existing development-gated profiler with bounded named counters, detached snapshots/deltas, and complete app-owned render/observer/lifecycle instrumentation; make no localization change; block for actual forward/reverse native RED deltas before Plan 09.
+- [x] 38.1-08-PLAN.md — Extended the existing development-gated profiler with bounded named counters, detached snapshots/deltas, and complete app-owned render/observer/lifecycle instrumentation; captured actual forward/reverse native RED deltas with no localization change. (completed 2026-07-28)
 
-**Reopened Wave 5** *(blocked on Plan 08 native RED baseline)*
+**Reopened Wave 5** *(Plan 09 next; Plan 08 native RED baseline complete)*
 
 - [ ] 38.1-09-PLAN.md — Localize frame-only Studio renders away from TopBar, closed Play Script dialog, and the entire right-panel shell/toggle/implementation region while preserving plain implementations and internal Signal reactivity.
 
