@@ -7,7 +7,7 @@ import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { PhysicsPaintPlayScriptDialog } from './PhysicsPaintPlayScriptDialog';
-import { PhysicsPaintRightPanel } from './PhysicsPaintRightPanel';
+import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
 import { PhysicsPaintTopBar } from './PhysicsPaintTopBar';
 import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
@@ -135,7 +135,7 @@ export interface PhysicsPaintStudioViewProps {
     canvasKey: string;
     mount: ComponentProps<typeof PhysicsPaintCanvasMount>;
   };
-  rightPanel: ComponentProps<typeof PhysicsPaintRightPanel>;
+  rightPanel: ComponentProps<typeof MemoizedPhysicsPaintRightPanel>;
   playScriptDialog: ComponentProps<typeof PhysicsPaintPlayScriptDialog>;
   workflow: ComponentProps<typeof PhysicsPaintWorkflowStrip>;
   status: {
@@ -178,7 +178,7 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         ) : (
           <div class="physics-paint-right-panel-shell">
             <button type="button" class="physics-paint-panel-toggle" aria-label="Close brush options panel" title="Close brush options panel" onClick={() => layout.onSetRightPanelCollapsed(true)}>▸</button>
-            <PhysicsPaintRightPanel {...rightPanel} />
+            <MemoizedPhysicsPaintRightPanel {...rightPanel} />
           </div>
         )}
 
