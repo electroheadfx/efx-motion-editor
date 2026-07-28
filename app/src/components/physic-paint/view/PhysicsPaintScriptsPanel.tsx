@@ -156,7 +156,7 @@ export function PhysicsPaintScriptsPanel({
           {!canClearScriptBuffer && clearScriptBufferDisabledReason ? (
             <span id={clearScriptBufferReasonId} class="physics-paint-sr-only">{clearScriptBufferDisabledReason}</span>
           ) : null}
-          <PhysicsPaintStyledTooltip visible={clearScriptBufferTooltip.visible} region="right-edge">
+          <PhysicsPaintStyledTooltip visible={clearScriptBufferTooltip.visible} region="right-edge" avoidRowOverlap>
             {!canClearScriptBuffer && clearScriptBufferDisabledReason ? `unavailable: ${clearScriptBufferDisabledReason}` : 'Clear script from buffer'}
           </PhysicsPaintStyledTooltip>
         </span>
