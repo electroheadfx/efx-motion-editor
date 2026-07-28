@@ -760,21 +760,41 @@ export function PhysicsPaintStudio() {
     const generation = rotoNavigationGeneration.begin();
     if (launchContext) {
       engine?.flushPendingStrokeFinalizations();
+      // 38.1-07 D-03 (strengthened): INITIATE the save-before-leave flush
+      // WITHOUT awaiting. The flush operates on ALREADY-CAPTURED live-pixel
+      // transaction buffers and parent deliveries — it captures no engine
+      // pixels at await time, so the engine.clear() below cannot corrupt it.
+      // The flush is always initiated and always awaited afterward with the
+      // verbatim error path — never skipped, never weakened (save-before-leave,
+      // RESEARCH Pitfall 5).
+      const flushPromise = rotoPersistence.flushLivePixels(currentFrame);
+      // 38.1 D-03 canvas-first: the engine paint issues NOW, in the navigation
+      // intent tick — zero intervening awaits since begin(), so the generation
+      // cannot be superseded before this paint (no pre-paint isLatest recheck).
+      setCachedRotoReferenceUrl(null);
+      if (engine) {
+        engine.clearPreviewBaseImage();
+        (engine as PreviewBackgroundEngine).resetBackground();
+        engine.clear();
+        loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
+      }
       try {
-        await rotoPersistence.flushLivePixels(currentFrame);
+        await flushPromise;
       } catch {
         setApplyStatus('error');
         setApplyMessage(`Could not save Roto frame ${currentFrame} before navigation.`);
         return false;
       }
-      // 38.1 D-05: superseded navigation — a newer intent owns the canvas.
-      // Skip the paint AND the UI propagation; the flush above is never
-      // skipped or weakened (save-before-leave contract, RESEARCH Pitfall 5).
+      // 38.1 D-05: superseded navigation — a newer intent owns the canvas. The
+      // same-tick paint above already happened (the approved D-03 trade), but
+      // a superseded navigation never propagates and never repaints.
       if (!rotoNavigationGeneration.isLatest(generation)) return false;
-      // 38.1 D-03 canvas-first: the engine paint issues NOW, in this same
-      // synchronous continuation, BEFORE any Preact UI state propagation.
-      setCachedRotoReferenceUrl(null);
-      if (engine) {
+      // 38.1-07: post-flush neighbor pickup — a generated destination repaints
+      // once so it picks up the just-flushed neighbor key pixels. The kind
+      // check reads the O(1) cached projection — never
+      // getRotoPhysicalRenderSource, which would run the interpolation render.
+      if (engine && physicPaintStore.getRotoPhysicalProjection(launchContext.layerId)?.cells[frame]?.kind === 'generated') {
+        setCachedRotoReferenceUrl(null);
         engine.clearPreviewBaseImage();
         (engine as PreviewBackgroundEngine).resetBackground();
         engine.clear();
