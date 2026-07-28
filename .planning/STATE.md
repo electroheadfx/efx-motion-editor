@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 38.1
 current_phase_name: studio-render-path-performance
 status: executing
-stopped_at: Completed 38.1-08; Plan 09 pending
-last_updated: "2026-07-28T16:29:57Z"
+stopped_at: Completed 38.1-09 after native approval; Plan 10 pending
+last_updated: "2026-07-28T17:45:15Z"
 last_activity: 2026-07-28
-last_activity_desc: Plan 38.1-08 completed with actual native forward/reverse RED render deltas
+last_activity_desc: Plan 38.1-09 native-approved with all five static counters zero in both directions
 progress:
   total_phases: 21
   completed_phases: 18
   total_plans: 164
-  completed_plans: 151
-  percent: 92
+  completed_plans: 152
+  percent: 93
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Reopened Phase 38.1 — Plan 09 implementation committed; native five-counter verification pending
+**Current focus:** Reopened Phase 38.1 — Plan 09 complete after native approval; Plan 10 pending
 
 ## Current Position
 
 Phase: 38.1 (studio-render-path-performance) — reopened localized-render gap track
-Completed baseline: 38.1-01 through 38.1-08; known-working rollback commit before the reopened track remains `0d0a3547`
-Plan: 09 implementation complete; blocking native render-count checkpoint pending
-Status: Awaiting user-owned Plan 09 native verification; Plan 10 and Phase 38 Plan 38-06 remain blocked
-Last activity: 2026-07-28 — committed static Studio memo boundaries and passed all focused tests, typecheck, and build
-Next recommended action: verify the five Plan 09 counters forward and reverse; do not execute Plan 10 or resume Phase 38 Plan 38-06
+Completed baseline: 38.1-01 through 38.1-09; known-working rollback commit before the reopened track remains `0d0a3547`
+Plan: 10 pending; eligible after Plan 09 native approval, not started
+Status: Plan 09 complete; proceed next with Plan 10 only. Phase 38 Plan 38-06 remains blocked until Plan 12 approval
+Last activity: 2026-07-28 — user confirmed only the timeline re-rendered and explicitly approved all five Plan 09 static counters at zero in both directions
+Next recommended action: execute Plan 10; do not resume Phase 38 Plan 38-06 before Plan 12 approval
 
-Progress: [██████████████████░░] 151/164 plans complete; 18/21 phases complete ([█████████░] 86%)
+Progress: [███████████████████░] 152/164 plans complete; 18/21 phases complete ([█████████░] 86%)
 
 ## Performance Metrics
 
@@ -66,7 +66,7 @@ Progress: [██████████████████░░] 151/164
 | 36.14 | 24 | - | - |
 | 36.15 | 13 | - | - |
 | 37 | 6 | - | - |
-| 38.1 | 8/12 | - | - |
+| 38.1 | 9/12 | - | - |
 
 **Recent Trend:**
 
@@ -140,7 +140,7 @@ Progress: [██████████████████░░] 151/164
 | Phase 38.1 P07 | 23min | 3 tasks | 5 files |
 | Phase 38.1 P06 | 2 UAT runs (2026-07-27/28) | 1 tasks | 0 files |
 | Phase 38.1 P08 | 44min active across checkpoint | 4 tasks | 13 implementation/test files |
-| Phase 38.1 P09 | 17min automated implementation; native checkpoint pending | 2 tasks | 6 implementation/test files |
+| Phase 38.1 P09 | 17min implementation plus native approval | 2 tasks + supplemental checkpoint | 6 implementation/test files |
 | Phase 38 P09 | 4min | 2 tasks | 2 files |
 | Phase 38 P10 | 10min | 2 tasks | 1 files |
 | Phase 38 P11 | 25min | 2 tasks | 4 files |
@@ -314,7 +314,7 @@ Recent decisions affecting current work:
 - [Phase 38.1 Plan 08]: Plan 09 owns TopBar/ToolRail/right-panel localization; Plan 10 owns static Workflow/cell/timeline-observer localization; Plan 11 owns CanvasStack/CanvasMount/Efx isolation.
 - [Phase 38.1 Plan 09]: Plain TopBar and Play Script dialog implementations stay directly callable behind dedicated compat wrappers; the complete right-panel rail/shell/toggle is one memoized region retaining the existing inner RightPanel wrapper.
 - [Phase 38.1 Plan 09]: Static control identities exclude the navigation-only mutation-lock pulse via `mutationLocked && !rotoScriptNavigationLocked`, while engine actions and canvas input retain the original mutation lock.
-- [Phase 38.1 Plan 09]: Plan 10 remains blocked until forward and reverse native deltas confirm zero for TopBar, ToolRail implementation, right-panel region, RightPanel implementation, and the closed Play Script dialog.
+- [Phase 38.1 Plan 09]: User approval on 2026-07-28 confirmed zero forward/reverse deltas for TopBar, ToolRail implementation, right-panel region, RightPanel implementation, and the closed Play Script dialog; only the timeline re-rendered, so Plan 10 is eligible next.
 
 ### Pending Todos
 
@@ -322,7 +322,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- Plan 10 remains blocked until the user approves Plan 09's forward/reverse native five-counter checkpoint.
+- Plan 10 is eligible and next after Plan 09 native approval, but it has not started.
 - Phase 38 Plan 38-06 remains blocked until reopened Phase 38.1 Plan 12 receives renewed native approval.
 - Phase 36.2 Codex gap execution is rejected as failed and administratively superseded. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
 - Plans `36.2-11`, `36.2-12`, and `36.2-13` are closed with rejected/superseded summaries so they must not be resumed as Phase 36.2 implementation.
@@ -400,6 +400,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-28T17:11:31Z
-Stopped at: Plan 09 implementation committed; awaiting native five-counter verification
-Resume file: .planning/phases/38.1-studio-render-path-performance/38.1-09-SUMMARY.md
+Last session: 2026-07-28T17:45:15Z
+Stopped at: Plan 09 complete after native approval; Plan 10 pending
+Resume file: .planning/phases/38.1-studio-render-path-performance/38.1-10-PLAN.md

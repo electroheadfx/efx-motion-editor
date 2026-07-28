@@ -1,13 +1,13 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-28T17:11:31Z",
+  "timestamp": "2026-07-28T17:45:15Z",
   "phase": "38.1",
   "phase_name": "studio-render-path-performance",
   "phase_dir": ".planning/phases/38.1-studio-render-path-performance",
-  "plan": 9,
-  "task": 3,
-  "total_tasks": 3,
-  "status": "awaiting-human-verification",
+  "plan": 10,
+  "task": 0,
+  "total_tasks": 0,
+  "status": "ready-for-execution",
   "completed_tasks": [
     {"id": "38.1-01", "name": "Timeline-model structural/frame split", "status": "done"},
     {"id": "38.1-02", "name": "rAF UI scheduler and navigation generations", "status": "done"},
@@ -25,38 +25,22 @@
       "native_evidence": "Forward and reverse adjacent-navigation deltas are byte-identical, enumerate all 26 canonical counters, and are RED on Plan 09/10/11 ownership surfaces."
     },
     {
-      "id": "38.1-09-implementation",
+      "id": "38.1-09",
       "name": "Static Studio region localization",
-      "status": "automated-ready",
+      "status": "done",
       "summary": ".planning/phases/38.1-studio-render-path-performance/38.1-09-SUMMARY.md",
-      "commits": ["c7084323", "cd15c9a5", "2afcc2a7", "a399ed07"],
-      "automated_evidence": "Focused Studio/TopBar/RightPanel/performance tests, TypeScript typecheck, and production build pass. Dedicated wrappers and the complete right-panel region are committed."
+      "commits": ["c7084323", "cd15c9a5", "2afcc2a7", "a399ed07", "9fd0855a"],
+      "automated_evidence": "Focused Studio/TopBar/RightPanel/performance tests, TypeScript typecheck, and production build passed before the checkpoint.",
+      "native_evidence": "User approved on 2026-07-28: only the timeline re-rendered; render.topBar, render.toolRailImpl, render.rightPanelRegion, render.rightPanelImpl, and closed render.playScriptDialog were confirmed zero in both directions."
     }
   ],
   "remaining_tasks": [
-    {
-      "id": "38.1-09-native",
-      "name": "Forward/reverse five-counter native verification",
-      "status": "awaiting-human-verification",
-      "acceptance": {
-        "render.topBar": 0,
-        "render.toolRailImpl": 0,
-        "render.rightPanelRegion": 0,
-        "render.rightPanelImpl": 0,
-        "render.playScriptDialog": "0 while closed"
-      }
-    },
-    {"id": "38.1-10", "name": "Workflow observer/static/cell localization", "status": "blocked", "blocked_by": "38.1-09 native approval"},
+    {"id": "38.1-10", "name": "Workflow observer/static/cell localization", "status": "ready", "blocked_by": null},
     {"id": "38.1-11", "name": "CanvasMount and Efx isolation", "status": "blocked", "blocked_by": "38.1-10"},
-    {"id": "38.1-12", "name": "Strict render-count UAT and complete Phase 38 regression", "status": "blocked", "blocked_by": "38.1-09 through 38.1-11"},
+    {"id": "38.1-12", "name": "Strict render-count UAT and complete Phase 38 regression", "status": "blocked", "blocked_by": "38.1-10 through 38.1-11"},
     {"id": "38-06", "name": "Re-run the full Phase 38 33-step native UAT", "status": "blocked", "blocked_by": "38.1-12 approval"}
   ],
   "blockers": [
-    {
-      "description": "Plan 10 remains blocked until the user approves Plan 09's forward/reverse native five-counter checkpoint.",
-      "type": "plan_gate",
-      "workaround": "Use the existing native profiler warm-up/snapshot protocol and supply both direction deltas."
-    },
     {
       "description": "Phase 38 Plan 38-06 remains blocked until reopened Phase 38.1 Plan 12 receives renewed native approval.",
       "type": "phase_gate",
@@ -64,13 +48,7 @@
     }
   ],
   "async_jobs": [],
-  "human_actions_pending": [
-    {
-      "plan": "38.1-09",
-      "type": "native-render-count-verification",
-      "description": "Capture one settled adjacent committed navigation delta in each direction after warm-up and confirm the five Plan 09 rows are zero."
-    }
-  ],
+  "human_actions_pending": [],
   "decisions": [
     {
       "decision": "Plans 38.1-01 through 38.1-07 remain immutable historical evidence; only Plans 08-12 execute in the reopened track.",
@@ -88,8 +66,8 @@
       "phase": "38.1"
     },
     {
-      "decision": "Plan 10 is not eligible until the user approves the Plan 09 forward/reverse five-counter native checkpoint.",
-      "rationale": "Source contracts cannot prove mounted native Preact reconciliation skips.",
+      "decision": "Plan 09 native acceptance passed on 2026-07-28 and Plan 10 is now eligible as the next unstarted plan.",
+      "rationale": "The user explicitly confirmed that only the timeline re-rendered and all five measured static surfaces stayed at zero in both directions.",
       "phase": "38.1"
     },
     {
@@ -99,6 +77,6 @@
     }
   ],
   "uncommitted_files": [],
-  "next_action": "Run only the Plan 09 native five-counter checkpoint. Do not start Plan 10 and do not resume Phase 38 Plan 38-06.",
-  "context_notes": "Plan 09 implementation is automated-ready through a399ed07. Approval remains pending native forward/reverse zero deltas for TopBar, ToolRail implementation, right-panel region, RightPanel implementation, and the closed Play Script dialog."
+  "next_action": "Execute Phase 38.1 Plan 10 next. Do not resume Phase 38 Plan 38-06 before Plan 12 approval.",
+  "context_notes": "Plan 09 is complete and native-approved. The user's 2026-07-28 approval confirms only the timeline re-rendered and all five static Plan 09 counters were zero in both directions. Plan 10 is eligible but has not started."
 }

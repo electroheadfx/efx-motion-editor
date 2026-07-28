@@ -1024,7 +1024,7 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.15. Roto Timeline Final UI Integration | v0.8.0 | 13/13 | Complete | 2026-07-26 |
 | 37. Multi-Select Physical Roto Keys | v0.8.0 | 6/6 | Complete    | 2026-07-27 |
 | 38. Multi-Copy/Paste and Tooltip Polish | v0.8.0 | 8/11 | Blocked on renewed 38.1 native acceptance | — |
-| 38.1. Studio render-path performance | v0.8.0 | 8/12 | Plan 09 implemented — native checkpoint pending; Plan 10 blocked | — |
+| 38.1. Studio render-path performance | v0.8.0 | 9/12 | Plan 09 native-approved; Plan 10 eligible and next, not started | — |
 
 ### Phase 38: Multi-Copy/Paste and Tooltip Polish
 
@@ -1106,7 +1106,7 @@ Plans:
 **Goal:** Preserve the approved canvas-first timing architecture from Plans 01–07 and complete the reopened localized-render acceptance track: deterministic render/observer/lifecycle counters, static Studio and Workflow localization, persistent CanvasMount/Efx isolation, and renewed user-owned native proof before unblocking Phase 38-06.
 **Requirements**: 38.1-D-01..38.1-D-10 plus reopen decisions R-D-01..R-D-10 (decision IDs; no formal requirement IDs registered — planning-data gap carried from Phase 38)
 **Depends on:** Phase 38
-**Plans:** 8/12 plans approved — Plan 09 implementation and automated gates are complete, but its user-owned native five-counter checkpoint is pending; Plan 10 remains blocked; `0d0a3547` is the known-working rollback baseline
+**Plans:** 9/12 plans approved — Plan 09 implementation, automated gates, and user-owned native five-counter checkpoint are complete; Plan 10 is eligible and next but not started; `0d0a3547` is the known-working rollback baseline
 
 Plans:
 
@@ -1133,11 +1133,11 @@ Plans:
 
 - [x] 38.1-08-PLAN.md — Extended the existing development-gated profiler with bounded named counters, detached snapshots/deltas, and complete app-owned render/observer/lifecycle instrumentation; captured actual forward/reverse native RED deltas with no localization change. (completed 2026-07-28)
 
-**Reopened Wave 5** *(implementation committed; blocking native checkpoint pending)*
+**Reopened Wave 5** *(complete; native-approved 2026-07-28)*
 
-- [ ] 38.1-09-PLAN.md — Implementation and automated gates complete: dedicated TopBar/dialog wrappers, stable ToolRail identities, and one complete right-panel region boundary. Awaiting forward/reverse native proof that all five Plan 09 counters are zero before approval.
+- [x] 38.1-09-PLAN.md — Dedicated TopBar/dialog wrappers, stable ToolRail identities, and one complete right-panel region boundary; explicit user approval confirmed all five static counters at zero in both directions while only the timeline re-rendered.
 
-**Reopened Wave 6** *(blocked on Plan 09 native approval)*
+**Reopened Wave 6** *(eligible next; not started)*
 
 - [ ] 38.1-10-PLAN.md — Localize Workflow static chrome and timeline cells, stabilize action callbacks, and make timeline observer ownership mount-lifetime stable while preserving all interaction contracts.
 

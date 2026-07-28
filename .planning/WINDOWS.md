@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 8
+open_count: 5
 waived_count: 0
-fixed_count: 9
+fixed_count: 12
 total_count: 17
-last_updated: 2026-07-28T17:22:23.916Z
+last_updated: 2026-07-28T17:51:38.030Z
 ---
 
 # Broken Windows Ledger
@@ -28,10 +28,10 @@ last_updated: 2026-07-28T17:22:23.916Z
 | 11 | 36.14 | deviation | .planning/STATE.md |  | Corrected stale non-linear recovery position after generic state advancement | fixed |  | 2026-07-24T09:56:45.875Z | 2026-07-24T09:57:16.430Z |
 | 12 | 36.15 | stub | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx |  | Intentional empty flex-1 capsule slot (.physics-paint-header-capsule-slot); resolved by Plan 05 status capsule | open |  | 2026-07-25T18:41:27.754Z |  |
 | 13 | 38 | deviation | .planning/phases/38-multi-copy-paste-and-tooltip-polish/38-01-PLAN.md |  | 38-01 verify block: Studio port grep expectations (==1 whole-file) contradict action text; verified scoped to keyUtilities block instead | open |  | 2026-07-27T14:40:22.046Z |  |
-| 14 | 38.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Deferred follow-up: right color sidebar + left tool rail visibly re-render on timeline navigation; user wants navigation UI updates localized to the timeline | open |  | 2026-07-28T05:55:05.652Z |  |
+| 14 | 38.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Deferred follow-up: right color sidebar + left tool rail visibly re-render on timeline navigation; user wants navigation UI updates localized to the timeline | fixed |  | 2026-07-28T05:55:05.652Z | 2026-07-28T17:51:37.769Z |
 | 15 | 38.1 | deviation | app/src/components/physic-paint |  | Deferred follow-up: plain mouse wheel does not scroll the timeline horizontally (shift+wheel required); bottom action toolbar also needs working horizontal scroll | open |  | 2026-07-28T05:55:05.768Z |  |
-| 16 | 38.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | Task 1 source contract initially scanned a following comment and was narrowed to the actual dependency list. | open |  | 2026-07-28T17:22:23.472Z |  |
-| 17 | 38.1 | unrun-verify | .planning/phases/38.1-studio-render-path-performance/38.1-09-SUMMARY.md |  | Plan 09 forward/reverse native five-counter verification is pending user-owned runtime capture. | open |  | 2026-07-28T17:22:23.916Z |  |
+| 16 | 38.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | Task 1 source contract initially scanned a following comment and was narrowed to the actual dependency list. | fixed |  | 2026-07-28T17:22:23.472Z | 2026-07-28T17:51:37.894Z |
+| 17 | 38.1 | unrun-verify | .planning/phases/38.1-studio-render-path-performance/38.1-09-SUMMARY.md |  | Plan 09 forward/reverse native five-counter verification is pending user-owned runtime capture. | fixed |  | 2026-07-28T17:22:23.916Z | 2026-07-28T17:51:38.030Z |
 
 ````json
 [
@@ -198,10 +198,10 @@ last_updated: 2026-07-28T17:22:23.916Z
     "file": "app/src/components/physic-paint/PhysicsPaintStudio.tsx",
     "line": null,
     "description": "Deferred follow-up: right color sidebar + left tool rail visibly re-render on timeline navigation; user wants navigation UI updates localized to the timeline",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-07-28T05:55:05.652Z",
-    "resolved_at": null
+    "resolved_at": "2026-07-28T17:51:37.769Z"
   },
   {
     "id": 15,
@@ -222,10 +222,10 @@ last_updated: 2026-07-28T17:22:23.916Z
     "file": "app/src/components/physic-paint/PhysicsPaintStudio.test.ts",
     "line": null,
     "description": "Task 1 source contract initially scanned a following comment and was narrowed to the actual dependency list.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-07-28T17:22:23.472Z",
-    "resolved_at": null
+    "resolved_at": "2026-07-28T17:51:37.894Z"
   },
   {
     "id": 17,
@@ -234,10 +234,10 @@ last_updated: 2026-07-28T17:22:23.916Z
     "file": ".planning/phases/38.1-studio-render-path-performance/38.1-09-SUMMARY.md",
     "line": null,
     "description": "Plan 09 forward/reverse native five-counter verification is pending user-owned runtime capture.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-07-28T17:22:23.916Z",
-    "resolved_at": null
+    "resolved_at": "2026-07-28T17:51:38.030Z"
   }
 ]
 ````
