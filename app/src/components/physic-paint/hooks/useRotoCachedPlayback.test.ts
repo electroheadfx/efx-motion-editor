@@ -169,6 +169,45 @@ describe('useRotoCachedPlayback', () => {
     expect(setIsPlaying).toHaveBeenCalledTimes(2);
   });
 
+  it('stops a previously running playback when start() re-enters with an empty frame list', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const onFrame = vi.fn();
+    const setIsPlaying = vi.fn();
+    let frames: Array<{ appFrame: number; frame: Frame | null }> = [
+      { appFrame: 5, frame: { id: 'key' } },
+      { appFrame: 6, frame: { id: 'next' } },
+    ];
+    const harness = createHarness({
+      initialSettings: { loop: true, fps: 24 },
+      workflowMode: 'roto',
+      getFrames: () => frames,
+      onStart: vi.fn(),
+      onFrame,
+      setIsPlaying,
+    });
+
+    let playback = harness.render();
+    playback.start();
+    playback = harness.render();
+    expect(playback.isActive).toBe(true);
+
+    // Frames cleared mid-playback; a re-entrant start() (e.g. via updateFps)
+    // must stop the stale interval instead of leaving it ticking with the
+    // old frame list while the status line reports playback impossible.
+    frames = [];
+    playback.start();
+    playback = harness.render();
+
+    expect(playback.isActive).toBe(false);
+    expect(playback.status).toBe('No cached Roto frames yet. Missing frames play transparent/background.');
+    expect(setIsPlaying).toHaveBeenLastCalledWith(false);
+    const frameCallsBefore = onFrame.mock.calls.length;
+    vi.advanceTimersByTime(500);
+    expect(onFrame.mock.calls.length).toBe(frameCallsBefore);
+    vi.useRealTimers();
+  });
+
   it('restarts active playback at a clamped FPS and resets for a new launch', () => {
     vi.useFakeTimers();
     installWindowTimers();

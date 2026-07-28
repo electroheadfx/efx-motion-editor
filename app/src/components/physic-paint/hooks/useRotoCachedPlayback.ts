@@ -129,6 +129,14 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     const currentInput = inputRef.current;
     const cachedFrames = currentInput.getFrames();
     if (cachedFrames.length === 0) {
+      // A re-entrant start() (e.g. updateFps after frames were cleared
+      // mid-playback) must stop the previously running playback BEFORE
+      // publishing the empty status — otherwise the stale interval keeps
+      // ticking with the old frame list while the UI reports playback
+      // impossible. finishPlayback is the single stop funnel (D-02); it is
+      // skipped when no timer is running so a plain empty start never
+      // touches the external play-state callback.
+      if (timerRef.current !== null) finishPlayback();
       setStatus('No cached Roto frames yet. Missing frames play transparent/background.');
       return;
     }
