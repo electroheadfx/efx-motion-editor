@@ -383,14 +383,16 @@ const PhysicsPaintWorkflowStaticChrome = memo(PhysicsPaintWorkflowStaticChromeIm
 
 interface RotoTimelineCellButtonProps {
   frame: number;
+  vm: RotoCellViewModel;
   cellClass: string;
   semanticKind: 'empty' | 'real-key' | 'generated';
   cellKeyId: string | null;
+  dragEligible: boolean;
   ariaLabel: string;
   ariaSelected?: boolean;
   tooltipCopy: string;
-  onCellPointerDown?: (event: PointerEvent) => void;
-  onCellClick: (event: MouseEvent) => void;
+  onCellPointerDown: (event: PointerEvent, frame: number, keyId: string) => void;
+  onCellClick: (frame: number, vm: RotoCellViewModel, event: MouseEvent) => void;
 }
 
 /**
@@ -422,7 +424,7 @@ interface RotoCellDerivationCache {
  * every `data-roto-*` attribute, class hook, and drag handler verbatim — only
  * the native `title` is retired in favor of the styled tooltip (Pitfall 4).
  */
-function RotoTimelineCellButton(props: RotoTimelineCellButtonProps) {
+function RotoTimelineCellButtonImpl(props: RotoTimelineCellButtonProps) {
   recordPhysicsPaintPerformanceCounter('render.rotoTimelineCellButton');
   const tooltip = useStyledTooltip();
   return (
@@ -439,17 +441,17 @@ function RotoTimelineCellButton(props: RotoTimelineCellButtonProps) {
         data-roto-key-id={props.cellKeyId ?? undefined}
         aria-label={props.ariaLabel}
         aria-selected={props.ariaSelected === true ? 'true' : undefined}
-        onPointerDown={props.onCellPointerDown
+        onPointerDown={props.dragEligible && props.cellKeyId !== null
           ? (event) => {
               tooltip.hide();
-              props.onCellPointerDown?.(event as unknown as PointerEvent);
+              props.onCellPointerDown(event as unknown as PointerEvent, props.frame, props.cellKeyId as string);
             }
           : undefined}
         onFocus={tooltip.onFocus}
         onBlur={tooltip.onBlur}
         onClick={(event) => {
           tooltip.hide();
-          props.onCellClick(event as unknown as MouseEvent);
+          props.onCellClick(props.frame, props.vm, event as unknown as MouseEvent);
         }}
       >
         <span>{props.frame}</span>
@@ -458,6 +460,8 @@ function RotoTimelineCellButton(props: RotoTimelineCellButtonProps) {
     </span>
   );
 }
+
+const RotoTimelineCellButton = memo(RotoTimelineCellButtonImpl);
 
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   recordPhysicsPaintPerformanceCounter('render.workflowStrip');
@@ -686,33 +690,50 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     void physicalActions?.applyForceSpacing();
   }
 
-  function handleRotoCellClick(frame: number, vm: RotoCellViewModel, event: MouseEvent) {
+  const rotoCellClickStateRef = useRef({
+    keyIdByAppFrame,
+    rotoSelectedKeyIdSet,
+    onNavigateToSyncedFrame: props.onNavigateToSyncedFrame,
+    onToggleRotoKeySelection: props.onToggleRotoKeySelection,
+    onExtendRotoKeySelection: props.onExtendRotoKeySelection,
+    onCollapseRotoSelectionToKey: props.onCollapseRotoSelectionToKey,
+  });
+  rotoCellClickStateRef.current = {
+    keyIdByAppFrame,
+    rotoSelectedKeyIdSet,
+    onNavigateToSyncedFrame: props.onNavigateToSyncedFrame,
+    onToggleRotoKeySelection: props.onToggleRotoKeySelection,
+    onExtendRotoKeySelection: props.onExtendRotoKeySelection,
+    onCollapseRotoSelectionToKey: props.onCollapseRotoSelectionToKey,
+  };
+  const handleRotoTimelineCellClick = useCallback((frame: number, vm: RotoCellViewModel, event: MouseEvent) => {
     if (suppressNextRotoClickRef.current) {
       suppressNextRotoClickRef.current = false;
       return;
     }
+    const current = rotoCellClickStateRef.current;
     if (vm.baseMeaning === 'generated' || vm.isEditableTarget === false) {
-      props.onNavigateToSyncedFrame(frame);
+      current.onNavigateToSyncedFrame(frame);
       return;
     }
     // Selection gestures (D-01/D-02; Pitfall 6): real-key cells only —
     // generated/empty cells already returned above. Modifier branches never
     // steal navigation and never arm a drag session (the pointer-down guard
     // rejects modifier presses, so a modifier-click is selection-only).
-    const cellKeyId = keyIdByAppFrame.get(frame) ?? null;
+    const cellKeyId = current.keyIdByAppFrame.get(frame) ?? null;
     if (cellKeyId !== null && (event.metaKey || event.ctrlKey) && !event.shiftKey) {
-      props.onToggleRotoKeySelection?.(cellKeyId);
+      current.onToggleRotoKeySelection?.(cellKeyId);
       return;
     }
     if (cellKeyId !== null && event.shiftKey && !event.metaKey && !event.ctrlKey) {
-      props.onExtendRotoKeySelection?.(cellKeyId);
+      current.onExtendRotoKeySelection?.(cellKeyId);
       return;
     }
-    if (cellKeyId !== null && !event.metaKey && !event.ctrlKey && !event.shiftKey && rotoSelectedKeyIdSet.size >= 2) {
-      props.onCollapseRotoSelectionToKey?.(cellKeyId);
+    if (cellKeyId !== null && !event.metaKey && !event.ctrlKey && !event.shiftKey && current.rotoSelectedKeyIdSet.size >= 2) {
+      current.onCollapseRotoSelectionToKey?.(cellKeyId);
     }
-    props.onNavigateToSyncedFrame(frame);
-  }
+    current.onNavigateToSyncedFrame(frame);
+  }, []);
 
   function getGeneratedRotoTitle(frame: number): string {
     return GENERATED_ROTO_TITLE_TEMPLATE.replace('{frame}', String(frame));
@@ -883,7 +904,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     session.rafId = window.requestAnimationFrame(tick);
   }, [updateRotoDragCandidate, updateScrollbar]);
 
-  const handleRotoCellPointerDown = useCallback((event: PointerEvent, sourceAppFrame: number, movedKeyId: string) => {
+  const handleRotoCellPointerDownCurrent = useCallback((event: PointerEvent, sourceAppFrame: number, movedKeyId: string) => {
     // Modifier presses never arm a drag session (Pitfall 6): Cmd/Ctrl/Shift
     // clicks are selection gestures handled by handleRotoCellClick.
     if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || rotoDragLocked || !physicalActions || rotoDragGestureRef.current) return;
@@ -1095,6 +1116,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     window.addEventListener('keydown', handleEscape, true);
     sourceElement.addEventListener('lostpointercapture', handleLostPointerCapture);
   }, [classifyRotoDragTarget, physicalActions, props.rotoSelectedKeyIds, props.onCollapseRotoSelectionToKey, props.onRotoGroupDragRejected, rotoDragLocked, rotoDragValidityKey, startRotoEdgeScroll, updateRotoDragCandidate]);
+  const rotoCellPointerDownRef = useRef(handleRotoCellPointerDownCurrent);
+  rotoCellPointerDownRef.current = handleRotoCellPointerDownCurrent;
+  const handleRotoTimelineCellPointerDown = useCallback((event: PointerEvent, frame: number, keyId: string) => {
+    rotoCellPointerDownRef.current(event, frame, keyId);
+  }, []);
 
   useEffect(() => {
     const active = rotoDragGestureRef.current;
@@ -1273,14 +1299,16 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     <RotoTimelineCellButton
                       key={frame}
                       frame={frame}
+                      vm={vm}
                       cellClass={cellClass}
                       semanticKind={semanticKind}
                       cellKeyId={cellKeyId}
+                      dragEligible={dragEligible}
                       ariaLabel={isSecondarySelected ? `${dragLabel} Selected.` : dragLabel}
                       ariaSelected={isSecondarySelected}
                       tooltipCopy={isSecondarySelected ? getRotoCellSelectedTooltipCopy(cellTooltipKind) : getRotoCellStateTooltipCopy(cellTooltipKind)}
-                      onCellPointerDown={dragEligible && cellKeyId ? (event) => handleRotoCellPointerDown(event, frame, cellKeyId) : undefined}
-                      onCellClick={(event) => handleRotoCellClick(frame, vm, event)}
+                      onCellPointerDown={handleRotoTimelineCellPointerDown}
+                      onCellClick={handleRotoTimelineCellClick}
                     />
                   );
                 })}

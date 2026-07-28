@@ -78,7 +78,7 @@ describe('Physics Paint SCRIPTS panel contract', () => {
   });
 
   it('provides an accessible Play Script dialog distinct from cached Roto playback', () => {
-    expect(studioView).toContain('<PhysicsPaintPlayScriptDialog {...playScriptDialog} />');
+    expect(studioView).toContain('<MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />');
     expect(playScriptDialog).toContain('role="dialog"');
     expect(playScriptDialog).toContain('aria-modal="true"');
     expect(playScriptDialog).toContain('aria-labelledby="physics-play-script-title"');

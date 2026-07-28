@@ -512,7 +512,7 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     expect(map).not.toContain('title=');
     expect(map).not.toContain('dragTitle');
     // Drag machinery untouched: identity attributes and handlers stay.
-    expect(map).toContain('handleRotoCellPointerDown');
+    expect(map).toContain('handleRotoTimelineCellPointerDown');
     // Each cell owns one styled-tooltip controller via the child component.
     const cellComponentIndex = code.indexOf('function RotoTimelineCellButton');
     expect(cellComponentIndex).toBeGreaterThanOrEqual(0);
