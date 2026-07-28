@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 4
+open_count: 6
 waived_count: 0
 fixed_count: 9
-total_count: 13
-last_updated: 2026-07-27T14:40:22.046Z
+total_count: 15
+last_updated: 2026-07-28T05:55:05.768Z
 ---
 
 # Broken Windows Ledger
@@ -28,6 +28,8 @@ last_updated: 2026-07-27T14:40:22.046Z
 | 11 | 36.14 | deviation | .planning/STATE.md |  | Corrected stale non-linear recovery position after generic state advancement | fixed |  | 2026-07-24T09:56:45.875Z | 2026-07-24T09:57:16.430Z |
 | 12 | 36.15 | stub | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx |  | Intentional empty flex-1 capsule slot (.physics-paint-header-capsule-slot); resolved by Plan 05 status capsule | open |  | 2026-07-25T18:41:27.754Z |  |
 | 13 | 38 | deviation | .planning/phases/38-multi-copy-paste-and-tooltip-polish/38-01-PLAN.md |  | 38-01 verify block: Studio port grep expectations (==1 whole-file) contradict action text; verified scoped to keyUtilities block instead | open |  | 2026-07-27T14:40:22.046Z |  |
+| 14 | 38.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Deferred follow-up: right color sidebar + left tool rail visibly re-render on timeline navigation; user wants navigation UI updates localized to the timeline | open |  | 2026-07-28T05:55:05.652Z |  |
+| 15 | 38.1 | deviation | app/src/components/physic-paint |  | Deferred follow-up: plain mouse wheel does not scroll the timeline horizontally (shift+wheel required); bottom action toolbar also needs working horizontal scroll | open |  | 2026-07-28T05:55:05.768Z |  |
 
 ````json
 [
@@ -185,6 +187,30 @@ last_updated: 2026-07-27T14:40:22.046Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-07-27T14:40:22.046Z",
+    "resolved_at": null
+  },
+  {
+    "id": 14,
+    "kind": "deviation",
+    "phase": "38.1",
+    "file": "app/src/components/physic-paint/PhysicsPaintStudio.tsx",
+    "line": null,
+    "description": "Deferred follow-up: right color sidebar + left tool rail visibly re-render on timeline navigation; user wants navigation UI updates localized to the timeline",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-07-28T05:55:05.652Z",
+    "resolved_at": null
+  },
+  {
+    "id": 15,
+    "kind": "deviation",
+    "phase": "38.1",
+    "file": "app/src/components/physic-paint",
+    "line": null,
+    "description": "Deferred follow-up: plain mouse wheel does not scroll the timeline horizontally (shift+wheel required); bottom action toolbar also needs working horizontal scroll",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-07-28T05:55:05.768Z",
     "resolved_at": null
   }
 ]
