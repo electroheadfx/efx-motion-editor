@@ -108,6 +108,7 @@ export function PhysicsPaintStudio() {
   // resolve returns the cached props object, and preact/compat memo's default
   // shallow compare skips the subtree. Deps enumerate exactly the values each
   // build references — never the Studio's frame cursor.
+  const layoutPropsMemo = useRef(createIdentityMemo()).current;
   const topBarPropsMemo = useRef(createIdentityMemo()).current;
   const toolRailPropsMemo = useRef(createIdentityMemo()).current;
   const rightPanelPropsMemo = useRef(createIdentityMemo()).current;
@@ -153,6 +154,9 @@ export function PhysicsPaintStudio() {
   const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => makeInitialPhysicsPaintStudioSettings());
   const workflowMode = 'roto' as const;
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  const handleSetRightPanelCollapsed = useCallback((collapsed: boolean) => {
+    setRightPanelCollapsed(collapsed);
+  }, []);
   const playButtonRef = useRef<HTMLButtonElement>(null);
   const historyAvailability = useSignal<PaintHistoryAvailability>({ undo: 0, redo: 0 });
   const [onion, setOnionState] = useState<PhysicsPaintOnionState>(() => ({
@@ -1052,6 +1056,11 @@ export function PhysicsPaintStudio() {
     const current = physicPaintStore.getRotoInterpolationSettings(launch.layerId);
     physicPaintStore.setRotoInterpolationSettings(launch.layerId, { ...current, deform: motion.strokeDeformation, position: motion.strokePosition });
   }, []);
+  const layout = layoutPropsMemo.resolve([rightPanelCollapsed, handlePhysicsPaintKeyDown, handleSetRightPanelCollapsed], () => ({
+    rightPanelCollapsed,
+    onKeyDown: handlePhysicsPaintKeyDown,
+    onSetRightPanelCollapsed: handleSetRightPanelCollapsed,
+  }));
   const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, settings.background, settings.paperGrain, settings.grainStrength, readyToApply, staticControlsLocked, setBrushSize, setBrushOpacity, setBackground, setPaperGrain, setGrainStrength], () => ({
     brushSize: settings.size,
     opacity: settings.opacity,
@@ -1138,11 +1147,7 @@ export function PhysicsPaintStudio() {
     returnFocusRef: playButtonRef,
   }));
   const viewModel = usePhysicsPaintStudioViewModel({
-    layout: {
-        rightPanelCollapsed,
-        onKeyDown: handlePhysicsPaintKeyDown,
-        onSetRightPanelCollapsed: setRightPanelCollapsed,
-      },
+    layout,
     topBar,
     toolRail,
     canvas: {

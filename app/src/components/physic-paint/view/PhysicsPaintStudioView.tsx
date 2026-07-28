@@ -9,6 +9,7 @@ import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
 import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel';
 import { MemoizedPhysicsPaintTopBar } from './MemoizedPhysicsPaintTopBar';
+import { PhysicsPaintRightPanelRegion } from './PhysicsPaintRightPanelRegion';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
 import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
@@ -151,7 +152,6 @@ export interface PhysicsPaintStudioViewProps {
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  recordPhysicsPaintPerformanceCounter('render.rightPanelRegion');
   const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, workflow, status } = props;
   return (
     <main class="demo-shell">
@@ -179,16 +179,11 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
           </PhysicsPaintCanvasStack>
         </section>
 
-        {layout.rightPanelCollapsed ? (
-          <aside class="physics-paint-right-panel-rail" aria-label="Physics Paint right panel collapsed">
-            <button type="button" class="physics-paint-panel-toggle" aria-label="Open brush options panel" title="Open brush options panel" onClick={() => layout.onSetRightPanelCollapsed(false)}>▸</button>
-          </aside>
-        ) : (
-          <div class="physics-paint-right-panel-shell">
-            <button type="button" class="physics-paint-panel-toggle" aria-label="Close brush options panel" title="Close brush options panel" onClick={() => layout.onSetRightPanelCollapsed(true)}>▸</button>
-            <MemoizedPhysicsPaintRightPanel {...rightPanel} />
-          </div>
-        )}
+        <PhysicsPaintRightPanelRegion
+          collapsed={layout.rightPanelCollapsed}
+          onSetCollapsed={layout.onSetRightPanelCollapsed}
+          rightPanel={rightPanel}
+        />
 
         <MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />
 
