@@ -1023,8 +1023,8 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 24/30 | Complete    | 2026-07-25 |
 | 36.15. Roto Timeline Final UI Integration | v0.8.0 | 13/13 | Complete | 2026-07-26 |
 | 37. Multi-Select Physical Roto Keys | v0.8.0 | 6/6 | Complete    | 2026-07-27 |
-| 38. Multi-Copy/Paste and Tooltip Polish | v0.8.0 | 8/11 | Ready to resume 38-06 closure | — |
-| 38.1. Studio render-path performance | v0.8.0 | 12/12 | Complete | 2026-07-28 |
+| 38. Multi-Copy/Paste and Tooltip Polish | v0.8.0 | 8/11 | Blocked on 38.1 gap closure | — |
+| 38.1. Studio render-path performance | v0.8.0 | 12/12 | Gaps found | — |
 
 ### Phase 38: Multi-Copy/Paste and Tooltip Polish
 
