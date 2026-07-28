@@ -281,6 +281,33 @@ describe('localized render contract', () => {
   });
 });
 
+describe('localized static and live Workflow regions', () => {
+  it('isolates private static chrome behind compat memo and keeps live status narrow', () => {
+    const code = source();
+    expect(code).toContain("import { memo } from 'preact/compat';");
+    expect(code).toContain('function PhysicsPaintWorkflowStaticChromeImpl(');
+    expect(code).toContain('const PhysicsPaintWorkflowStaticChrome = memo(PhysicsPaintWorkflowStaticChromeImpl);');
+    expect(code).toContain('function PhysicsPaintWorkflowLiveStatus(');
+    const staticStart = code.indexOf('function PhysicsPaintWorkflowStaticChromeImpl(');
+    const staticEnd = code.indexOf('const PhysicsPaintWorkflowStaticChrome = memo(', staticStart);
+    const staticBlock = code.slice(staticStart, staticEnd);
+    expect(staticBlock).toContain("recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome')");
+    expect(staticBlock).toContain('physics-paint-workflow-header');
+    expect(staticBlock).toContain('physics-paint-pill--playback');
+    expect(staticBlock).toContain('physics-paint-pill--interpolation');
+    expect(staticBlock).toContain('aria-label="Close"');
+    expect(staticBlock).toContain('<PhysicsPaintWorkflowLiveStatus');
+    expect(countOccurrences(code, "recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome')")).toBe(1);
+  });
+
+  it('keeps the public strip and StudioView mount compatible', () => {
+    const code = source();
+    expect(code).toContain('export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)');
+    expect(code).toContain('<PhysicsPaintWorkflowStaticChrome');
+    expect(code).not.toContain("recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome');\n  const [scrollbar");
+  });
+});
+
 describe('localized render instrumentation', () => {
   it('counts the monolithic strip and its conceptual static chrome at the current strip owner', () => {
     const code = source();
