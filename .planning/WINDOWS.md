@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 5
 waived_count: 0
-fixed_count: 12
-total_count: 17
-last_updated: 2026-07-28T17:51:38.030Z
+fixed_count: 13
+total_count: 18
+last_updated: 2026-07-28T18:38:16.745Z
 ---
 
 # Broken Windows Ledger
@@ -32,6 +32,7 @@ last_updated: 2026-07-28T17:51:38.030Z
 | 15 | 38.1 | deviation | app/src/components/physic-paint |  | Deferred follow-up: plain mouse wheel does not scroll the timeline horizontally (shift+wheel required); bottom action toolbar also needs working horizontal scroll | open |  | 2026-07-28T05:55:05.768Z |  |
 | 16 | 38.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | Task 1 source contract initially scanned a following comment and was narrowed to the actual dependency list. | fixed |  | 2026-07-28T17:22:23.472Z | 2026-07-28T17:51:37.894Z |
 | 17 | 38.1 | unrun-verify | .planning/phases/38.1-studio-render-path-performance/38.1-09-SUMMARY.md |  | Plan 09 forward/reverse native five-counter verification is pending user-owned runtime capture. | fixed |  | 2026-07-28T17:22:23.916Z | 2026-07-28T17:51:38.030Z |
+| 18 | 38.1 | deviation | app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts | 81 | Updated stale Plan 09 Play Script dialog mount assertion so the Plan 10 full-suite gate matches the approved memo wrapper. | fixed |  | 2026-07-28T18:37:11.200Z | 2026-07-28T18:38:16.745Z |
 
 ````json
 [
@@ -238,6 +239,18 @@ last_updated: 2026-07-28T17:51:38.030Z
     "reason": "",
     "recorded_at": "2026-07-28T17:22:23.916Z",
     "resolved_at": "2026-07-28T17:51:38.030Z"
+  },
+  {
+    "id": 18,
+    "kind": "deviation",
+    "phase": "38.1",
+    "file": "app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts",
+    "line": 81,
+    "description": "Updated stale Plan 09 Play Script dialog mount assertion so the Plan 10 full-suite gate matches the approved memo wrapper.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-07-28T18:37:11.200Z",
+    "resolved_at": "2026-07-28T18:38:16.745Z"
   }
 ]
 ````

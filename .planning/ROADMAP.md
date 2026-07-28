@@ -1024,7 +1024,7 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.15. Roto Timeline Final UI Integration | v0.8.0 | 13/13 | Complete | 2026-07-26 |
 | 37. Multi-Select Physical Roto Keys | v0.8.0 | 6/6 | Complete    | 2026-07-27 |
 | 38. Multi-Copy/Paste and Tooltip Polish | v0.8.0 | 8/11 | Blocked on renewed 38.1 native acceptance | — |
-| 38.1. Studio render-path performance | v0.8.0 | 9/12 | Plan 09 native-approved; Plan 10 eligible and next, not started | — |
+| 38.1. Studio render-path performance | v0.8.0 | 10/12 | Plan 10 automated-complete; Plan 11 eligible next | — |
 
 ### Phase 38: Multi-Copy/Paste and Tooltip Polish
 
@@ -1106,7 +1106,7 @@ Plans:
 **Goal:** Preserve the approved canvas-first timing architecture from Plans 01–07 and complete the reopened localized-render acceptance track: deterministic render/observer/lifecycle counters, static Studio and Workflow localization, persistent CanvasMount/Efx isolation, and renewed user-owned native proof before unblocking Phase 38-06.
 **Requirements**: 38.1-D-01..38.1-D-10 plus reopen decisions R-D-01..R-D-10 (decision IDs; no formal requirement IDs registered — planning-data gap carried from Phase 38)
 **Depends on:** Phase 38
-**Plans:** 9/12 plans approved — Plan 09 implementation, automated gates, and user-owned native five-counter checkpoint are complete; Plan 10 is eligible and next but not started; `0d0a3547` is the known-working rollback baseline
+**Plans:** 10/12 plans executed
 
 Plans:
 
@@ -1137,11 +1137,11 @@ Plans:
 
 - [x] 38.1-09-PLAN.md — Dedicated TopBar/dialog wrappers, stable ToolRail identities, and one complete right-panel region boundary; explicit user approval confirmed all five static counters at zero in both directions while only the timeline re-rendered.
 
-**Reopened Wave 6** *(eligible next; not started)*
+**Reopened Wave 6** *(complete)*
 
-- [ ] 38.1-10-PLAN.md — Localize Workflow static chrome and timeline cells, stabilize action callbacks, and make timeline observer ownership mount-lifetime stable while preserving all interaction contracts.
+- [x] 38.1-10-PLAN.md — Localize Workflow static chrome and timeline cells, stabilize action callbacks, and make timeline observer ownership mount-lifetime stable while preserving all interaction contracts.
 
-**Reopened Wave 7** *(blocked on Plan 10)*
+**Reopened Wave 7** *(eligible next)*
 
 - [ ] 38.1-11-PLAN.md — Isolate persistent CanvasMount/Efx execution from frame-only orchestration while keeping overlays live and preserving controlled key/dimension replacement.
 
