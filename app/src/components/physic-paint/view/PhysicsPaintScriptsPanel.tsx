@@ -100,7 +100,7 @@ export function PhysicsPaintScriptsPanel({
           {!canCopyRotoScript && copyRotoScriptDisabledReason ? (
             <span id={copyScriptReasonId} class="physics-paint-sr-only">{copyRotoScriptDisabledReason}</span>
           ) : null}
-          <PhysicsPaintStyledTooltip visible={copyScriptTooltip.visible} region="right-edge">
+          <PhysicsPaintStyledTooltip visible={copyScriptTooltip.visible} region="right-edge" avoidRowOverlap>
             {!canCopyRotoScript && copyRotoScriptDisabledReason ? `unavailable: ${copyRotoScriptDisabledReason}` : 'Copy Script'}
           </PhysicsPaintStyledTooltip>
         </span>
@@ -128,7 +128,7 @@ export function PhysicsPaintScriptsPanel({
           {!canApplyRotoScript && applyRotoScriptDisabledReason ? (
             <span id={applyScriptReasonId} class="physics-paint-sr-only">{applyRotoScriptDisabledReason}</span>
           ) : null}
-          <PhysicsPaintStyledTooltip visible={applyScriptTooltip.visible} region="right-edge">
+          <PhysicsPaintStyledTooltip visible={applyScriptTooltip.visible} region="right-edge" avoidRowOverlap>
             {!canApplyRotoScript && applyRotoScriptDisabledReason ? `unavailable: ${applyRotoScriptDisabledReason}` : 'Apply Script'}
           </PhysicsPaintStyledTooltip>
         </span>
