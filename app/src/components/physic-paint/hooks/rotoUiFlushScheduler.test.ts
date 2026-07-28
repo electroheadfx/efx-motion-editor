@@ -75,6 +75,21 @@ describe('createRotoUiFlushScheduler (38.1 D-04)', () => {
     expect(observed).toEqual(['second']);
   });
 
+  it('runs the LATEST scheduled flush when several distinct flushes are scheduled in one frame (38.1 D-05 latest-wins)', () => {
+    const scheduler = createRotoUiFlushScheduler();
+    const observed: string[] = [];
+    // Each navigation captures its frame in a per-call closure (the Studio
+    // call site); only the latest navigation's flush may run at fire time.
+    scheduler.schedule(() => {
+      observed.push('frame-5');
+    });
+    scheduler.schedule(() => {
+      observed.push('frame-7');
+    });
+    fireAllPending();
+    expect(observed).toEqual(['frame-7']);
+  });
+
   it('dispose() before the frame fires prevents the pending flush and resets the guard', () => {
     const scheduler = createRotoUiFlushScheduler();
     let flushCount = 0;

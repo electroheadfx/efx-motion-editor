@@ -1,10 +1,13 @@
 /**
  * 38.1 D-04: scheduled-flag rAF UI flush scheduler.
  *
- * At most one flush is ever posted per animation frame: schedule() returns
- * immediately when a flush is already pending (the guard check runs before
- * any rAF post). Each flush therefore reads the latest state at fire time,
- * so fast clicking never queues more than one UI render behind the canvas.
+ * At most one flush is ever posted per animation frame: schedule() posts a
+ * rAF only when none is pending (the guard check runs before any rAF post).
+ * The LATEST scheduled flush wins (38.1 D-05 latest-wins): a schedule() call
+ * made while a flush is pending replaces the pending flush, so the flush that
+ * runs at fire time is the most recently scheduled one — matching the
+ * latest-wins navigation contract — and fast clicking never queues more than
+ * one UI render behind the canvas.
  */
 
 export interface RotoUiFlushScheduler {
@@ -15,19 +18,23 @@ export interface RotoUiFlushScheduler {
 
 export function createRotoUiFlushScheduler(): RotoUiFlushScheduler {
   let pendingId: number | null = null;
+  let pendingFlush: (() => void) | null = null;
 
   function schedule(flush: () => void): void {
+    pendingFlush = flush; // latest wins
     if (pendingId !== null) return;
     pendingId = requestAnimationFrame(() => {
       pendingId = null;
-      flush();
+      const run = pendingFlush;
+      pendingFlush = null;
+      run?.();
     });
   }
 
   function dispose(): void {
-    if (pendingId === null) return;
-    cancelAnimationFrame(pendingId);
+    if (pendingId !== null) cancelAnimationFrame(pendingId);
     pendingId = null;
+    pendingFlush = null;
   }
 
   function isPending(): boolean {
