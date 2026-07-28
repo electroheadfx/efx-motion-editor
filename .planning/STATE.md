@@ -2,10 +2,11 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 38.1
+current_phase: 38
+current_phase_name: multi-copy-paste-and-tooltip-polish
 status: completed
 stopped_at: Completed 38.1-06-PLAN.md (native UAT approved; phase closed)
-last_updated: "2026-07-28T06:25:36.818Z"
+last_updated: "2026-07-28T06:25:48.875Z"
 last_activity: 2026-07-28
 last_activity_desc: Phase 38.1 complete
 progress:
@@ -14,7 +15,6 @@ progress:
   total_plans: 156
   completed_plans: 147
   percent: 90
-current_phase_name: studio-render-path-performance
 ---
 
 # Project State
@@ -24,16 +24,16 @@ current_phase_name: studio-render-path-performance
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 38.1 — studio-render-path-performance
+**Current focus:** Phase 38 — resume at 38-06 UAT re-run (38.1 complete)
 
 ## Current Position
 
-Phase: 38.1
+Phase: 38 (multi-copy-paste-and-tooltip-polish) — resuming at plan 6/8 UAT checkpoint
 Previous phase: 36.15 complete (final timeline UI integration)
 Plan: Not started
 Status: All phases complete
 Last activity: 2026-07-28 — Phase 38.1 complete
-Next recommended action: /gsd-discuss-phase 38.1 (then plan/execute; resume /gsd-execute-phase 38 afterward)
+Next recommended action: create gap plans 38-09 (tooltip row placement), 38-10 (wheel + bottom toolbar scroll), 38-11 (sidebar render localization), then /gsd-execute-phase 38
 
 Progress: [██████████████████░░] 129/141 plans complete; 17/19 phases complete ([█████████░] 94%)
 
