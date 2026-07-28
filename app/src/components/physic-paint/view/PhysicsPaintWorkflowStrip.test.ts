@@ -266,8 +266,8 @@ describe('localized render contract', () => {
     expect(observerEffect).not.toContain('frameCells');
     expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.install')");
     expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup')");
-    expect(code).toContain('useLayoutEffect(() => {\n    updateScrollbar();\n  }, [frameCells, updateScrollbar]);');
-    expect(code).toContain('ref={timelineContentRef} class="physics-paint-timeline-content"');
+    expect(code).toContain('useLayoutEffect(() => {\n    updateScrollbar();\n  }, [frameCells, currentPhysicalCells, updateScrollbar]);');
+    expect(code).toContain('ref={timelineContentRef} class="physics-paint-lane"');
   });
 
   it('preserves the wheel and drag cleanup contracts while observer ownership changes', () => {

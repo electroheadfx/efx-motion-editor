@@ -1039,6 +1039,51 @@ export function PhysicsPaintStudio() {
     executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
     isMutationLocked: () => rotoScript.mutationLocked.peek(),
   });
+  const updateRotoInterpolationSettingsRef = useRef(updateRotoInterpolationSettings);
+  updateRotoInterpolationSettingsRef.current = updateRotoInterpolationSettings;
+  const requestRotoFrameNavigationRef = useRef(requestRotoFrameNavigation);
+  requestRotoFrameNavigationRef.current = requestRotoFrameNavigation;
+  const rotoKeyRecordsRef = useRef(rotoKeyRecords);
+  rotoKeyRecordsRef.current = rotoKeyRecords;
+  const handleRotoInterpolationEnabledChange = useCallback((enabled: boolean) => {
+    void updateRotoInterpolationSettingsRef.current({ enabled });
+  }, []);
+  const handleRotoInterpolationModeChange = useCallback((mode: PhysicPaintRotoInterpolationState['mode']) => {
+    void updateRotoInterpolationSettingsRef.current({ mode });
+  }, []);
+  const handleToggleRotoKeySelection = useCallback((keyId: string) => {
+    const result = toggleRotoKeySelection(
+      { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() },
+      rotoKeyRecordsRef.current.map((record) => record.keyId),
+      keyId,
+      selectedKeyId.peek(),
+    );
+    selectedKeyIds.value = result.state.selectedKeyIds;
+    selectionAnchorKeyId.value = result.state.anchorKeyId;
+    selectedKeyId.value = result.currentKeyId;
+  }, []);
+  const handleCollapseRotoSelectionToKey = useCallback((keyId: string) => {
+    const next = collapseRotoKeySelection(keyId);
+    selectedKeyIds.value = next.selectedKeyIds;
+    selectionAnchorKeyId.value = next.anchorKeyId;
+  }, []);
+  const handleExtendRotoKeySelection = useCallback((keyId: string) => {
+    const result = extendRotoKeySelectionRange(
+      { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() ?? selectedKeyId.peek() },
+      rotoKeyRecordsRef.current.map((record) => record.keyId),
+      keyId,
+    );
+    selectedKeyIds.value = result.state.selectedKeyIds;
+    selectionAnchorKeyId.value = result.state.anchorKeyId;
+    if (result.currentKeyId !== null) selectedKeyId.value = result.currentKeyId;
+  }, []);
+  const handleRotoGroupDragRejected = useCallback((reason: string, detail: string) => {
+    setApplyMessage(reason);
+    console.error('[PhysicsPaintStudio] physical edit:', detail);
+  }, []);
+  const handleNavigateToSyncedFrame = useCallback((frame: number) => {
+    void requestRotoFrameNavigationRef.current(frame);
+  }, []);
   const rotoNavigationActions = rotoNavigation.createNavigationActions({
     currentFrame,
     framesToApply: 1,
@@ -1272,54 +1317,28 @@ export function PhysicsPaintStudio() {
         // output child subscribes to it, during active playback only.
         rotoCachedPlaybackTick: rotoCachedPlayback.playbackTick,
         onToggleRotoPlayback: rotoCachedPlayback.toggle, onRotoPlaybackLoopChange: setRotoPlaybackLoop, onRotoPlaybackFpsChange: setRotoPlaybackFps, rotoInterpolationEnabled: rotoInterpolationState.enabled, rotoInterpolationMode: rotoInterpolationState.mode, rotoInterpolationPending: physicalEditCoordinator.pendingOperationId.value !== null,
-        onRotoInterpolationEnabledChange: (enabled) => { void updateRotoInterpolationSettings({ enabled }); }, onRotoInterpolationModeChange: (mode) => { void updateRotoInterpolationSettings({ mode }); },
+        onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange, onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
         onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).
         rotoSelectedKeyIds: selectedKeyIds.value,
-        onToggleRotoKeySelection: (keyId) => {
-          const result = toggleRotoKeySelection(
-            { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() },
-            rotoKeyRecords.map((record) => record.keyId),
-            keyId,
-            selectedKeyId.peek(),
-          );
-          selectedKeyIds.value = result.state.selectedKeyIds;
-          selectionAnchorKeyId.value = result.state.anchorKeyId;
-          selectedKeyId.value = result.currentKeyId;
-        },
-        onCollapseRotoSelectionToKey: (keyId) => {
-          const next = collapseRotoKeySelection(keyId);
-          selectedKeyIds.value = next.selectedKeyIds;
-          selectionAnchorKeyId.value = next.anchorKeyId;
-        },
+        onToggleRotoKeySelection: handleToggleRotoKeySelection,
+        onCollapseRotoSelectionToKey: handleCollapseRotoSelectionToKey,
         // Shift-click range selection (37-04; D-01): contiguous real-key range
         // from the anchor to the clicked key through the 37-02 range reducer.
         // Anchor fallback: a null anchor resolves to the current editing key.
         // The clicked key becomes current (flagged for 37-05 native UAT).
-        onExtendRotoKeySelection: (keyId) => {
-          const result = extendRotoKeySelectionRange(
-            { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() ?? selectedKeyId.peek() },
-            rotoKeyRecords.map((record) => record.keyId),
-            keyId,
-          );
-          selectedKeyIds.value = result.state.selectedKeyIds;
-          selectionAnchorKeyId.value = result.state.anchorKeyId;
-          if (result.currentKeyId !== null) selectedKeyId.value = result.currentKeyId;
-        },
+        onExtendRotoKeySelection: handleExtendRotoKeySelection,
         onSelectAllRotoKeys: selectAllRotoKeys,
         // Release-time group-drag reject publication (37-04; D-26): concise
         // UI-SPEC copy to the capsule (36.15 D-15 single-owner arbitration),
         // full resolver detail to the surviving diagnostic channel, mirroring
         // the coordinator's logDiagnostic console style.
-        onRotoGroupDragRejected: (reason, detail) => {
-          setApplyMessage(reason);
-          console.error('[PhysicsPaintStudio] physical edit:', detail);
-        },
+        onRotoGroupDragRejected: handleRotoGroupDragRejected,
         rotoScript,
         statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
-        onNavigateToSyncedFrame: (frame) => { void requestRotoFrameNavigation(frame); }, onGoToFirstFrame: goToFirstFrame, onGoToPreviousFrame: goToPreviousFrame, onGoToNextFrame: goToNextFrame, onGoToLastFrame: goToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
+        onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: goToFirstFrame, onGoToPreviousFrame: goToPreviousFrame, onGoToNextFrame: goToNextFrame, onGoToLastFrame: goToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
       },
     status: { shortcutsVisible },
   });

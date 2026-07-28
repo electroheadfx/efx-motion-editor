@@ -371,6 +371,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
   const [rotoDragPreview, setRotoDragPreview] = useState<RotoDragPreviewState | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const timelineContentRef = useRef<HTMLDivElement>(null);
   const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
   const rotoCellDerivationCacheRef = useRef<RotoCellDerivationCache | null>(null);
   const suppressNextRotoClickRef = useRef(false);
@@ -1024,17 +1025,22 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
 
   useEffect(() => {
     const el = timelineScrollRef.current;
-    if (!el) return;
+    const content = timelineContentRef.current;
+    if (!el || !content) return;
     updateScrollbar();
     const observer = new ResizeObserver(updateScrollbar);
     observer.observe(el);
-    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    observer.observe(content);
     recordPhysicsPaintPerformanceCounter('observer.timeline.resize.install');
     return () => {
       recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup');
       observer.disconnect();
     };
-  }, [frameCells, updateScrollbar]);
+  }, [updateScrollbar]);
+
+  useLayoutEffect(() => {
+    updateScrollbar();
+  }, [frameCells, currentPhysicalCells, updateScrollbar]);
 
   // Plain-wheel horizontal scrolling (38-10, 38.1-06 deferred follow-up #2):
   // a vertical wheel delta over the timeline scroller drives scrollLeft.
@@ -1195,7 +1201,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             ))}
           </div>
 
-            <div class="physics-paint-lane">
+            <div ref={timelineContentRef} class="physics-paint-lane">
               <div class="physics-paint-roto-cells" role="row">
                 {frameCells.map(frame => {
                   const semanticCell = physicalCellByAppFrame.get(frame) ?? null;
