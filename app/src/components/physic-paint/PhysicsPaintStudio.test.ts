@@ -14,6 +14,8 @@ const memoizedTopBarPath = fileURLToPath(new URL('./view/MemoizedPhysicsPaintTop
 const memoizedTopBar = existsSync(memoizedTopBarPath) ? readFileSync(memoizedTopBarPath, 'utf8') : '';
 const memoizedPlayScriptDialogPath = fileURLToPath(new URL('./view/MemoizedPhysicsPaintPlayScriptDialog.ts', import.meta.url));
 const memoizedPlayScriptDialog = existsSync(memoizedPlayScriptDialogPath) ? readFileSync(memoizedPlayScriptDialogPath, 'utf8') : '';
+const rightPanelRegionPath = fileURLToPath(new URL('./view/PhysicsPaintRightPanelRegion.tsx', import.meta.url));
+const rightPanelRegion = existsSync(rightPanelRegionPath) ? readFileSync(rightPanelRegionPath, 'utf8') : '';
 const canvasMount = readFileSync(fileURLToPath(new URL('./engine/PhysicsPaintCanvasMount.tsx', import.meta.url)), 'utf8');
 const engineLifecycle = readFileSync(fileURLToPath(new URL('./engine/usePhysicsPaintEngineLifecycle.ts', import.meta.url)), 'utf8');
 const bridge = readFileSync(fileURLToPath(new URL('../../lib/physicPaintBridge.ts', import.meta.url)), 'utf8');
@@ -139,6 +141,40 @@ describe('Physics Paint navigation render localization', () => {
     expect(toolRailBlock).not.toContain('disabled: !engine || mutationLocked');
   });
 
+  it('moves the complete right-panel rail, shell, toggle, and inner panel into one memoized region', () => {
+    expect(rightPanelRegion).toContain("import { memo } from 'preact/compat';");
+    expect(rightPanelRegion).toContain("import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel';");
+    expect(rightPanelRegion).toContain('function PhysicsPaintRightPanelRegionImpl(');
+    expect(rightPanelRegion).toContain('export const PhysicsPaintRightPanelRegion = memo(PhysicsPaintRightPanelRegionImpl);');
+    expect(rightPanelRegion).toContain('class="physics-paint-right-panel-rail"');
+    expect(rightPanelRegion).toContain('aria-label="Physics Paint right panel collapsed"');
+    expect(rightPanelRegion).toContain('aria-label="Open brush options panel"');
+    expect(rightPanelRegion).toContain('title="Open brush options panel"');
+    expect(rightPanelRegion).toContain('class="physics-paint-right-panel-shell"');
+    expect(rightPanelRegion).toContain('aria-label="Close brush options panel"');
+    expect(rightPanelRegion).toContain('title="Close brush options panel"');
+    expect(rightPanelRegion).toContain('>▸</button>');
+    expect(rightPanelRegion).toContain('<MemoizedPhysicsPaintRightPanel {...rightPanel} />');
+    expect(studioView).toContain("import { PhysicsPaintRightPanelRegion } from './PhysicsPaintRightPanelRegion';");
+    expect(countOccurrences(studioView, '<PhysicsPaintRightPanelRegion')).toBe(1);
+    expect(studioView).not.toContain('physics-paint-right-panel-rail');
+    expect(studioView).not.toContain('physics-paint-right-panel-shell');
+  });
+
+  it('gives the right-panel region stable frame-independent layout inputs and one counter owner', () => {
+    expect(studio).toContain('const layoutPropsMemo = useRef(createIdentityMemo()).current;');
+    expect(studio).toContain('const handleSetRightPanelCollapsed = useCallback((collapsed: boolean) => {');
+    const layoutStart = studio.indexOf('const layout = layoutPropsMemo.resolve(');
+    const layoutEnd = studio.indexOf('const topBar = topBarPropsMemo.resolve(', layoutStart);
+    const layoutBlock = studio.slice(layoutStart, layoutEnd);
+    const layoutDeps = layoutBlock.slice(0, layoutBlock.indexOf('], () =>'));
+    expect(layoutBlock).toContain('rightPanelCollapsed');
+    expect(layoutBlock).toContain('handleSetRightPanelCollapsed');
+    for (const invalidator of ['currentFrame', 'startFrame', 'rotoNavigationGeneration']) expect(layoutDeps).not.toContain(invalidator);
+    expect(countOccurrences(rightPanelRegion, "recordPhysicsPaintPerformanceCounter('render.rightPanelRegion')")).toBe(1);
+    expect(studioView).not.toContain("recordPhysicsPaintPerformanceCounter('render.rightPanelRegion')");
+  });
+
   it('keeps navigation-only status out of the right-panel identity boundary', () => {
     const memoStart = studio.indexOf('const rightPanel = rightPanelPropsMemo.resolve(');
     const memoEnd = studio.indexOf('const viewModel = usePhysicsPaintStudioViewModel', memoStart);
@@ -176,7 +212,7 @@ describe('localized render instrumentation', () => {
     const owners = [
       [studio.slice(studio.indexOf('export function PhysicsPaintStudio()'), studio.indexOf('async function dispatchAndWaitForAcceptedRotoPhysicalEdit')), 'render.studio'],
       [studioView.slice(studioView.indexOf('export function PhysicsPaintStudioView'), studioView.length), 'render.studioView'],
-      [studioView.slice(studioView.indexOf('export function PhysicsPaintStudioView'), studioView.length), 'render.rightPanelRegion'],
+      [rightPanelRegion.slice(rightPanelRegion.indexOf('function PhysicsPaintRightPanelRegionImpl'), rightPanelRegion.length), 'render.rightPanelRegion'],
       [studioView.slice(studioView.indexOf('function PhysicsPaintCanvasStack'), studioView.indexOf('export interface PhysicsPaintStudioViewProps')), 'render.canvasStack'],
       [topBar.slice(topBar.indexOf('export function PhysicsPaintTopBar'), topBar.length), 'render.topBar'],
       [toolRail.slice(toolRail.indexOf('function PhysicsPaintToolRailImpl'), toolRail.indexOf('export const PhysicsPaintToolRail')), 'render.toolRailImpl'],
@@ -231,14 +267,15 @@ describe('localized render instrumentation', () => {
     expect(engineLifecycle).toContain('}, [engine, input.launchContext?.rotoPhysical?.background]);');
   });
 
-  it('limits Task 1 localization to dedicated static wrappers and four Studio identity resolves', () => {
+  it('limits Plan 09 localization to dedicated static wrappers and five Studio identity resolves', () => {
     expect(countOccurrences(toolRail, 'memo(')).toBe(1);
     expect(countOccurrences(rightPanel, 'memo(')).toBe(0);
     expect(countOccurrences(memoizedTopBar, 'memo(')).toBe(1);
     expect(countOccurrences(memoizedPlayScriptDialog, 'memo(')).toBe(1);
+    expect(countOccurrences(rightPanelRegion, 'memo(')).toBe(1);
     expect(countOccurrences(studioView, 'memo(')).toBe(0);
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
-    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(4);
+    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(5);
     expect(studioView).toContain('}, []);');
     expect(canvasMount).toContain('}, [props.height, props.width]);');
   });
