@@ -207,6 +207,30 @@ describe('Physics Paint navigation render localization', () => {
   });
 });
 
+describe('Workflow navigation render localization', () => {
+  it('assembles Workflow with named stable callbacks instead of inline action closures', () => {
+    expect(studio).toContain('const workflowPropsMemo = useRef(createIdentityMemo()).current;');
+    for (const handler of [
+      'handleRotoInterpolationEnabledChange',
+      'handleRotoInterpolationModeChange',
+      'handleToggleRotoKeySelection',
+      'handleCollapseRotoSelectionToKey',
+      'handleExtendRotoKeySelection',
+      'handleRotoGroupDragRejected',
+      'handleNavigateToSyncedFrame',
+    ]) {
+      expect(studio).toContain(`const ${handler} = useCallback(`);
+    }
+    const workflowStart = studio.indexOf('const workflow = workflowPropsMemo.resolve(');
+    const workflowEnd = studio.indexOf('const viewModel = usePhysicsPaintStudioViewModel', workflowStart);
+    const workflowBlock = studio.slice(workflowStart, workflowEnd);
+    expect(workflowStart).toBeGreaterThanOrEqual(0);
+    expect(workflowBlock).not.toContain('=> {');
+    expect(workflowBlock).toContain('onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange');
+    expect(workflowBlock).toContain('onNavigateToSyncedFrame: handleNavigateToSyncedFrame');
+  });
+});
+
 describe('localized render instrumentation', () => {
   it('assigns each non-Workflow render counter to its app-owned implementation body', () => {
     const owners = [

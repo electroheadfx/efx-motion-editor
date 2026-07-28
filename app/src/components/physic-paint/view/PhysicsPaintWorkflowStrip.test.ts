@@ -253,6 +253,34 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   });
 });
 
+describe('localized render contract', () => {
+  it('owns timeline observers for the mount lifetime and refreshes geometry separately', () => {
+    const code = source();
+    expect(code).toContain('const timelineContentRef = useRef<HTMLDivElement>(null);');
+    const observerEnd = code.indexOf('}, [updateScrollbar]);');
+    const observerStart = code.lastIndexOf('useEffect(() => {', observerEnd);
+    const observerEffect = code.slice(observerStart, observerEnd + '}, [updateScrollbar]);'.length);
+    expect(observerStart).toBeGreaterThanOrEqual(0);
+    expect(observerEffect).toContain('const content = timelineContentRef.current;');
+    expect(observerEffect).toContain('observer.observe(content);');
+    expect(observerEffect).not.toContain('frameCells');
+    expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.install')");
+    expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup')");
+    expect(code).toContain('useLayoutEffect(() => {\n    updateScrollbar();\n  }, [frameCells, updateScrollbar]);');
+    expect(code).toContain('ref={timelineContentRef} class="physics-paint-timeline-content"');
+  });
+
+  it('preserves the wheel and drag cleanup contracts while observer ownership changes', () => {
+    const code = source();
+    expect(code).toContain("el.addEventListener('wheel', handleTimelineWheel, { passive: false });");
+    expect(code).toContain("return () => el.removeEventListener('wheel', handleTimelineWheel);");
+    expect(code).toContain("window.removeEventListener('pointermove', handlePointerMove);");
+    expect(code).toContain("window.removeEventListener('keydown', handleEscape, true);");
+    expect(code).toContain('if (session.rafId !== null) window.cancelAnimationFrame(session.rafId);');
+    expect(code).toContain('sourceElement.setPointerCapture(session.pointerId);');
+  });
+});
+
 describe('localized render instrumentation', () => {
   it('counts the monolithic strip and its conceptual static chrome at the current strip owner', () => {
     const code = source();
