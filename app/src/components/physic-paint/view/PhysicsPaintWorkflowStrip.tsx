@@ -32,6 +32,7 @@ import type {
   RotoDragTargetSignature,
   RotoPhysicalTimelineActionBundle,
 } from '../hooks/useRotoTimelineActions';
+import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
 const GENERATED_ROTO_DISABLED_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
@@ -328,6 +329,7 @@ interface RotoCellDerivationCache {
  * the native `title` is retired in favor of the styled tooltip (Pitfall 4).
  */
 function RotoTimelineCellButton(props: RotoTimelineCellButtonProps) {
+  recordPhysicsPaintPerformanceCounter('render.rotoTimelineCellButton');
   const tooltip = useStyledTooltip();
   return (
     <span
@@ -364,6 +366,8 @@ function RotoTimelineCellButton(props: RotoTimelineCellButtonProps) {
 }
 
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
+  recordPhysicsPaintPerformanceCounter('render.workflowStrip');
+  recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome');
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
   const [rotoDragPreview, setRotoDragPreview] = useState<RotoDragPreviewState | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
@@ -1025,7 +1029,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     const observer = new ResizeObserver(updateScrollbar);
     observer.observe(el);
     if (el.firstElementChild) observer.observe(el.firstElementChild);
-    return () => observer.disconnect();
+    recordPhysicsPaintPerformanceCounter('observer.timeline.resize.install');
+    return () => {
+      recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup');
+      observer.disconnect();
+    };
   }, [frameCells, updateScrollbar]);
 
   // Plain-wheel horizontal scrolling (38-10, 38.1-06 deferred follow-up #2):

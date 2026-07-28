@@ -57,10 +57,11 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
     recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.engineReady');
     return props.onEngineReady(engine);
   };
-  const handleBeforeEngineDestroy = props.beforeEngineDestroy
+  const beforeEngineDestroy = props.beforeEngineDestroy;
+  const handleBeforeEngineDestroy = beforeEngineDestroy
     ? (engine: EfxPaintEngine) => {
         recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.beforeDestroy');
-        return props.beforeEngineDestroy(engine);
+        return beforeEngineDestroy(engine);
       }
     : undefined;
   recordPhysicsPaintPerformanceCounter('render.efxChildRequest');

@@ -155,7 +155,8 @@ describe('localized render instrumentation', () => {
     }
     expect(canvasMount).toContain('}, [props.height, props.width]);');
     expect(canvasMount).toContain('return props.onEngineReady(engine);');
-    expect(canvasMount).toContain('return props.beforeEngineDestroy(engine);');
+    expect(canvasMount).toContain('const beforeEngineDestroy = props.beforeEngineDestroy;');
+    expect(canvasMount).toContain('return beforeEngineDestroy(engine);');
   });
 
   it('locks engine lifecycle counters to the current tablet and external cleanup effects', () => {
