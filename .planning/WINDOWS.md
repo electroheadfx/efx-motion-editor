@@ -1,10 +1,10 @@
 ---
 schema_version: 1
 open_count: 5
-waived_count: 0
-fixed_count: 13
-total_count: 18
-last_updated: 2026-07-28T18:38:16.745Z
+waived_count: 1
+fixed_count: 14
+total_count: 20
+last_updated: 2026-07-28T19:45:07.070Z
 ---
 
 # Broken Windows Ledger
@@ -33,6 +33,8 @@ last_updated: 2026-07-28T18:38:16.745Z
 | 16 | 38.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | Task 1 source contract initially scanned a following comment and was narrowed to the actual dependency list. | fixed |  | 2026-07-28T17:22:23.472Z | 2026-07-28T17:51:37.894Z |
 | 17 | 38.1 | unrun-verify | .planning/phases/38.1-studio-render-path-performance/38.1-09-SUMMARY.md |  | Plan 09 forward/reverse native five-counter verification is pending user-owned runtime capture. | fixed |  | 2026-07-28T17:22:23.916Z | 2026-07-28T17:51:38.030Z |
 | 18 | 38.1 | deviation | app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts | 81 | Updated stale Plan 09 Play Script dialog mount assertion so the Plan 10 full-suite gate matches the approved memo wrapper. | fixed |  | 2026-07-28T18:37:11.200Z | 2026-07-28T18:38:16.745Z |
+| 19 | 38.1 | deviation | .planning/phases/38.1-studio-render-path-performance/38.1-12-SUMMARY.md |  | User authorized grouped bidirectional native thresholds instead of raw forward/reverse delta-object transcription; no telemetry was fabricated | waived | User explicitly authorized grouped bidirectional thresholds as the acceptance record and waived raw delta-object transcription. | 2026-07-28T19:42:16.957Z | 2026-07-28T19:44:03.132Z |
+| 20 | 38.1 | deviation | .planning/STATE.md |  | Corrected stale Plan 11 prose and inconsistent completion percentage left by generic state handlers after Plan 12 closure | fixed |  | 2026-07-28T19:45:06.908Z | 2026-07-28T19:45:07.070Z |
 
 ````json
 [
@@ -251,6 +253,30 @@ last_updated: 2026-07-28T18:38:16.745Z
     "reason": "",
     "recorded_at": "2026-07-28T18:37:11.200Z",
     "resolved_at": "2026-07-28T18:38:16.745Z"
+  },
+  {
+    "id": 19,
+    "kind": "deviation",
+    "phase": "38.1",
+    "file": ".planning/phases/38.1-studio-render-path-performance/38.1-12-SUMMARY.md",
+    "line": null,
+    "description": "User authorized grouped bidirectional native thresholds instead of raw forward/reverse delta-object transcription; no telemetry was fabricated",
+    "status": "waived",
+    "reason": "User explicitly authorized grouped bidirectional thresholds as the acceptance record and waived raw delta-object transcription.",
+    "recorded_at": "2026-07-28T19:42:16.957Z",
+    "resolved_at": "2026-07-28T19:44:03.132Z"
+  },
+  {
+    "id": 20,
+    "kind": "deviation",
+    "phase": "38.1",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Corrected stale Plan 11 prose and inconsistent completion percentage left by generic state handlers after Plan 12 closure",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-07-28T19:45:06.908Z",
+    "resolved_at": "2026-07-28T19:45:07.070Z"
   }
 ]
 ````

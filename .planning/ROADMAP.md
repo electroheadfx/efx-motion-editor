@@ -1023,8 +1023,8 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 24/30 | Complete    | 2026-07-25 |
 | 36.15. Roto Timeline Final UI Integration | v0.8.0 | 13/13 | Complete | 2026-07-26 |
 | 37. Multi-Select Physical Roto Keys | v0.8.0 | 6/6 | Complete    | 2026-07-27 |
-| 38. Multi-Copy/Paste and Tooltip Polish | v0.8.0 | 8/11 | Blocked on renewed 38.1 native acceptance | — |
-| 38.1. Studio render-path performance | v0.8.0 | 11/12 | In Progress|  |
+| 38. Multi-Copy/Paste and Tooltip Polish | v0.8.0 | 8/11 | Ready to resume 38-06 closure | — |
+| 38.1. Studio render-path performance | v0.8.0 | 12/12 | Complete | 2026-07-28 |
 
 ### Phase 38: Multi-Copy/Paste and Tooltip Polish
 
@@ -1106,7 +1106,7 @@ Plans:
 **Goal:** Preserve the approved canvas-first timing architecture from Plans 01–07 and complete the reopened localized-render acceptance track: deterministic render/observer/lifecycle counters, static Studio and Workflow localization, persistent CanvasMount/Efx isolation, and renewed user-owned native proof before unblocking Phase 38-06.
 **Requirements**: 38.1-D-01..38.1-D-10 plus reopen decisions R-D-01..R-D-10 (decision IDs; no formal requirement IDs registered — planning-data gap carried from Phase 38)
 **Depends on:** Phase 38
-**Plans:** 11/12 plans executed
+**Plans:** 12/12 plans executed
 
 Plans:
 
@@ -1145,6 +1145,6 @@ Plans:
 
 - [x] 38.1-11-PLAN.md — Isolate persistent CanvasMount/Efx execution from frame-only orchestration while keeping overlays live and preserving controlled key/dimension replacement.
 
-**Reopened Wave 8** *(eligible next; user-owned native acceptance)*
+**Reopened Wave 8** *(complete; user-approved 2026-07-28)*
 
-- [ ] 38.1-12-PLAN.md — Run automated preconditions, user-owned strict render-count acceptance, and the complete Phase 38 33-step native regression before final reverification.
+- [x] 38.1-12-PLAN.md — Automated preconditions and final reverification passed; the user approved grouped bidirectional render thresholds, controlled remount/reactivity checks, and all 33 canonical Phase 38 native regression steps.

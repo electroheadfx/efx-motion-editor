@@ -4,17 +4,17 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 38.1
 current_phase_name: studio-render-path-performance
-status: executing
-stopped_at: Completed 38.1-11-PLAN.md
-last_updated: "2026-07-28T19:08:45.839Z"
+status: ready_for_verification
+stopped_at: Completed 38.1-12-PLAN.md
+last_updated: "2026-07-28T19:42:17.684Z"
 last_activity: 2026-07-28
-last_activity_desc: Plan 38.1-11 automated persistent CanvasMount and Efx isolation complete; Plan 12 eligible next
+last_activity_desc: Plan 38.1-12 native render acceptance and final automated reverification complete
 progress:
   total_phases: 21
-  completed_phases: 18
+  completed_phases: 19
   total_plans: 164
-  completed_plans: 154
-  percent: 94
+  completed_plans: 155
+  percent: 95
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Reopened Phase 38.1 — Plan 11 automated implementation complete; Plan 12 native acceptance eligible next
+**Current focus:** Reopened Phase 38.1 localized-render acceptance is complete; Phase 38 Plan 38-06 may resume from its approval checkpoint
 
 ## Current Position
 
-Phase: 38.1 (studio-render-path-performance) — reopened localized-render gap track
-Completed baseline: 38.1-01 through 38.1-11; known-working rollback commit before the reopened track remains `0d0a3547`
+Phase: 38.1 (studio-render-path-performance) — reopened localized-render gap track accepted
+Completed baseline: 38.1-01 through 38.1-12; known-working rollback commit before the reopened track remains `0d0a3547`
 Plan: 12 of 12
-Status: Plan 11 complete; proceed next with Plan 12. Phase 38 Plan 38-06 remains blocked until Plan 12 approval
-Last activity: 2026-07-28 — Plan 11 persistent CanvasMount/Efx render and callback isolation
-Next recommended action: execute Plan 12 native counter acceptance; do not resume Phase 38 Plan 38-06 before approval
+Status: Plan 12 complete; strict native render-count acceptance and all 33 Phase 38 regression steps approved
+Last activity: 2026-07-28 — Plan 12 native approval and final automated reverification
+Next recommended action: resume Phase 38 Plan 38-06 closure without rewriting the completed Phase 38.1 history
 
-Progress: [███████████████████░] 154/164 plans complete; 18/21 phases complete ([█████████░] 94%)
+Progress: [███████████████████░] 155/164 plans complete; 19/21 phases complete ([██████████] 95%)
 
 ## Performance Metrics
 
@@ -66,7 +66,7 @@ Progress: [███████████████████░] 154/164
 | 36.14 | 24 | - | - |
 | 36.15 | 13 | - | - |
 | 37 | 6 | - | - |
-| 38.1 | 11/12 | - | - |
+| 38.1 | 12/12 | 2min Plan 12 continuation | - |
 
 **Recent Trend:**
 
@@ -146,6 +146,7 @@ Progress: [███████████████████░] 154/164
 | Phase 38 P11 | 25min | 2 tasks | 4 files |
 | Phase 38.1 P10 | 17min | 3 tasks | 5 files |
 | Phase 38.1 P11 | 9min | 2 tasks | 6 files |
+| Phase 38.1 P12 | 2min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -323,6 +324,8 @@ Recent decisions affecting current work:
 - [Phase 38.1 Plan 11]: CanvasStack owns the keyed MemoizedPhysicsPaintCanvasMount internally so stable semantic props cross the memo boundary without a fresh children vnode.
 - [Phase 38.1 Plan 11]: Studio and CanvasMount expose stable callbacks backed by render-updated refs so current engine and Roto behavior crosses memo and Efx boundaries without effect synchronization.
 - [Phase 38.1 Plan 11]: canvasKey remains the replacement key while width, height, and paperTextureScale remain explicit persistent-boundary identity inputs.
+- [Phase 38.1 Plan 12]: User-approved grouped bidirectional render thresholds are the native acceptance record; raw delta-object transcription was explicitly waived and no telemetry was fabricated.
+- [Phase 38.1 Plan 12]: Stage A controlled render/remount/reactivity checks and all Phase 38 Stage B steps 1-33 are approved; final focused, exact-known-red, typecheck, build, and clean-tree gates passed afterward.
 
 ### Pending Todos
 
@@ -330,8 +333,8 @@ None yet.
 
 ### Blockers/Concerns
 
-- Plan 10 automated implementation is complete; Plan 11 is eligible next, while Plan 12 retains final native numerical acceptance.
-- Phase 38 Plan 38-06 remains blocked until reopened Phase 38.1 Plan 12 receives renewed native approval.
+- Reopened Phase 38.1 Plans 08–12 are complete; grouped bidirectional native thresholds, controlled remount/reactivity checks, and all 33 Phase 38 regression steps are user-approved.
+- Phase 38 Plan 38-06 is no longer blocked by Phase 38.1 and may resume from its approval closure point.
 - Phase 36.2 Codex gap execution is rejected as failed and administratively superseded. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
 - Plans `36.2-11`, `36.2-12`, and `36.2-13` are closed with rejected/superseded summaries so they must not be resumed as Phase 36.2 implementation.
 - Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, repaint cached real-key behavior, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
@@ -408,6 +411,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-28T19:08:45.823Z
-Stopped at: Completed 38.1-11-PLAN.md
+Last session: 2026-07-28T19:42:17.667Z
+Stopped at: Completed 38.1-12-PLAN.md
 Resume file: None
