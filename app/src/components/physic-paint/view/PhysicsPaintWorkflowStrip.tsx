@@ -414,6 +414,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   } else if (activeCellDerivationCache.currentFrame !== props.currentFrame) {
     activeCellDerivationCache.entries.delete(activeCellDerivationCache.currentFrame);
     activeCellDerivationCache.entries.delete(props.currentFrame);
+    // Bound the cache to the active window (38.1 review WR-03): the window
+    // slides with currentFrame, so entries for frames that scrolled out are
+    // evicted here — a long scrub session cannot grow the Map without bound.
+    // frameCells is memoized on props.currentFrame, so it only changes on
+    // this branch; structural changes reset entries to a fresh Map above.
+    const visibleFrames = new Set(frameCells);
+    for (const cachedFrame of activeCellDerivationCache.entries.keys()) {
+      if (!visibleFrames.has(cachedFrame)) activeCellDerivationCache.entries.delete(cachedFrame);
+    }
     activeCellDerivationCache.currentFrame = props.currentFrame;
   }
   const getRotoCellDerivation = (frame: number): RotoCellDerivation => {
