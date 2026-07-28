@@ -7,7 +7,7 @@ import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_D
 import { rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
 import { paintStore } from '../../stores/paintStore';
-import { clampOnionCount, isPhysicsPaintDevExportEnabled, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
+import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyboard';
 import { createIdentityMemo, usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
@@ -144,7 +144,7 @@ export function PhysicsPaintStudio() {
     // (toggle/range/collapse) publish nothing.
     setApplyMessage('All keys selected');
   }, [rotoKeyRecords]);
-  const [lastError, setLastError] = useState<string | null>(null);
+  const [, setLastError] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
   const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => makeInitialPhysicsPaintStudioSettings());
@@ -345,11 +345,6 @@ export function PhysicsPaintStudio() {
       rotoScript.cancelPreparedScriptLoadAndApply(preparation);
     }
   }, [rotoScript, rotoScriptLibrary]);
-  const scriptLoadAndApplyDisabledReason = !rotoScriptLibrary.selected.value
-    ? 'Select a project script first.'
-    : rotoScriptLibrary.busy.value
-      ? 'Finish the current script library operation.'
-      : rotoScript.availability.value.replacementApplyDisabledReason;
   const rotoInputDisabled = currentFrameIsGeneratedRoto || mutationLocked;
   const {
     selectTool,
@@ -922,7 +917,7 @@ export function PhysicsPaintStudio() {
     loadCachedReferenceFrame: (frame, readyEngine) => { loadCachedRotoReferenceFrame(frame, readyEngine ?? null); },
     onSettledLaunchContext: () => { void rotoScriptLibrary.updateProjectContext(); },
   });
-  const { saveEditableState, loadEditableState, exportDebugProof } = usePhysicsPaintWorkflowIntegration({
+  usePhysicsPaintWorkflowIntegration({
     session: {
       engine, canvasSize: { width: canvasWidth, height: canvasHeight }, launchContext, currentFrame,
       setLaunchContext, setApplyStatus, setApplyMessage, setLastError,
@@ -1050,7 +1045,6 @@ export function PhysicsPaintStudio() {
     const current = physicPaintStore.getRotoInterpolationSettings(launch.layerId);
     physicPaintStore.setRotoInterpolationSettings(launch.layerId, { ...current, deform: motion.strokeDeformation, position: motion.strokePosition });
   }, []);
-  const devExportEnabled = isPhysicsPaintDevExportEnabled(import.meta.env);
   // 38-11: the tool rail props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
   // references (38.1 onion-projection idiom); it contains no frame-derived
@@ -1080,7 +1074,7 @@ export function PhysicsPaintStudio() {
   // fresh per-render getRotoInterpolationSettings clone. Signal-backed
   // controllers pass through by identity so their signal subscriptions
   // (ScriptsPanel rows/busy/selection) keep flowing independent of the memo.
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, mutationLocked, rotoLegacyInterpolationSettings, devExportEnabled, applyStatus, applyMessage, lastError, exportDebugProof, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, saveEditableState, loadEditableState, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, scriptLoadAndApplyDisabledReason, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, mutationLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
     activeTool: settings.tool,
     color: settings.color,
     opacity: settings.opacity,
@@ -1096,12 +1090,6 @@ export function PhysicsPaintStudio() {
     playWiggle: rotoLegacyInterpolationSettings
       ? { strokeDeformation: rotoLegacyInterpolationSettings.deform, strokePosition: rotoLegacyInterpolationSettings.position }
       : { strokeDeformation: 0, strokePosition: 0 },
-    devExportEnabled,
-    devExportBusy: applyStatus === 'applying',
-    applyStatus,
-    applyMessage,
-    error: lastError,
-    onExportDebugProof: exportDebugProof,
     onColorChange: setBrushColor,
     onEdgeDetailChange: setEdgeDetail,
     onPickupChange: setPickup,
@@ -1110,14 +1098,11 @@ export function PhysicsPaintStudio() {
     onEraseStrengthChange: setEraseStrength,
     onOnionChange: setOnion,
     onPlayWiggleChange: updatePanelMotion,
-    onSaveState: saveEditableState,
-    onLoadState: loadEditableState,
     scripts: {
       library: rotoScriptLibrary,
       playScript: rotoPlayScript,
       rotoScript,
       playButtonRef,
-      loadAndApplyDisabledReason: scriptLoadAndApplyDisabledReason,
       onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
       onActivateRow: (id: string) => { void handleScriptRowActivate(id); },
       onLoadAndApply: () => { void handleSelectedScriptLoadAndApply(); },

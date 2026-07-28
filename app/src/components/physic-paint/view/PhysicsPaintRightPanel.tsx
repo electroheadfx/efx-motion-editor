@@ -10,7 +10,7 @@ import {
   saveHiddenPaletteColors,
   saveRecentColors,
 } from '../../../lib/paintPreferences';
-import { clampOnionCount, clampOnionOpacity, type PhysicsPaintApplyStatus, type PhysicsPaintOnionState } from './physicsPaintWorkflowPresentation';
+import { clampOnionCount, clampOnionOpacity, type PhysicsPaintOnionState } from './physicsPaintWorkflowPresentation';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { PhysicsPaintScriptsPanel, type PhysicsPaintScriptsPanelProps } from './PhysicsPaintScriptsPanel';
 
@@ -41,20 +41,6 @@ export interface PhysicsPaintRightPanelProps {
   onEraseStrengthChange: (value: number) => void;
   onOnionChange: (onion: PhysicsPaintOnionState) => void;
   onPlayWiggleChange: (wiggle: PhysicsPaintPlayWiggleSettings) => void;
-  devExportEnabled?: boolean;
-  devExportBusy?: boolean;
-  applyStatus?: PhysicsPaintApplyStatus;
-  applyMessage?: string | null;
-  error?: string | null;
-  onExportDebugProof?: () => void;
-  /**
-   * Retired view surface (36.15-11, UAT Gap G-6): the session save/load
-   * buttons were removed from the Tool tab. The props stay on the interface
-   * so PhysicsPaintStudio wiring is untouched; the underlying session
-   * persistence API (usePhysicsPaintSessionController) is preserved.
-   */
-  onSaveState: () => void;
-  onLoadState: (event: Event) => void;
   scripts: PhysicsPaintScriptsPanelProps;
 }
 

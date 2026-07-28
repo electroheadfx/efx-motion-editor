@@ -156,10 +156,11 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(scriptsPanel).toContain('event.stopPropagation()');
   });
 
-  it('keeps approved durable-load destination guard labels', () => {
-    expect(studio).toContain("? 'Select a project script first.'");
-    expect(studio).toContain("? 'Finish the current script library operation.'");
-    expect(studio).toContain('rotoScript.availability.value.replacementApplyDisabledReason');
+  it('keeps approved durable-load destination guard labels in the narrow Scripts subscriber', () => {
+    expect(scriptsPanel).toContain("? 'Select a project script first.'");
+    expect(scriptsPanel).toContain("? 'Finish the current script library operation.'");
+    expect(scriptsPanel).toContain('rotoScript.availability.value.replacementApplyDisabledReason');
+    expect(studio).not.toContain('const scriptLoadAndApplyDisabledReason =');
   });
 
   it('keeps desktop, narrow, and stacked layouts horizontally bounded', () => {

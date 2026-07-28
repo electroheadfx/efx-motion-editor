@@ -6,6 +6,8 @@ const studio = readFileSync(fileURLToPath(new URL('./PhysicsPaintStudio.tsx', im
 const studioView = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintStudioView.tsx', import.meta.url)), 'utf8');
 const main = readFileSync(fileURLToPath(new URL('../../main.tsx', import.meta.url)), 'utf8');
 const scriptsPanel = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintScriptsPanel.tsx', import.meta.url)), 'utf8');
+const rightPanel = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintRightPanel.tsx', import.meta.url)), 'utf8');
+const toolRail = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintToolRail.tsx', import.meta.url)), 'utf8');
 const bridge = readFileSync(fileURLToPath(new URL('../../lib/physicPaintBridge.ts', import.meta.url)), 'utf8');
 const types = readFileSync(fileURLToPath(new URL('../../types/physicPaint.ts', import.meta.url)), 'utf8');
 const projectTypes = readFileSync(fileURLToPath(new URL('../../types/project.ts', import.meta.url)), 'utf8');
@@ -65,5 +67,38 @@ describe('Physics Paint Roto delete shortcut wiring', () => {
 
   it('advertises the approved Backspace and Delete shortcut copy', () => {
     expect(studioView).toContain('Backspace / Delete remove selected real key');
+  });
+});
+
+describe('Physics Paint navigation render localization', () => {
+  it('keeps navigation-only status out of the right-panel identity boundary', () => {
+    const memoStart = studio.indexOf('const rightPanel = rightPanelPropsMemo.resolve(');
+    const memoEnd = studio.indexOf('const viewModel = usePhysicsPaintStudioViewModel', memoStart);
+    const memoBlock = studio.slice(memoStart, memoEnd);
+    for (const invalidator of ['applyStatus', 'applyMessage', 'lastError', 'scriptLoadAndApplyDisabledReason']) {
+      expect(memoBlock).not.toContain(invalidator);
+    }
+    const propsStart = rightPanel.indexOf('export interface PhysicsPaintRightPanelProps');
+    const propsEnd = rightPanel.indexOf('const DEFAULT_PALETTE', propsStart);
+    const propsBlock = rightPanel.slice(propsStart, propsEnd);
+    for (const deadProp of ['devExportEnabled', 'devExportBusy', 'applyStatus', 'applyMessage', 'error?:', 'onExportDebugProof', 'onSaveState', 'onLoadState']) {
+      expect(propsBlock).not.toContain(deadProp);
+    }
+  });
+
+  it('derives frame-sensitive Load and Apply availability inside the Scripts subscriber', () => {
+    expect(scriptsPanel).not.toContain('loadAndApplyDisabledReason: string | null');
+    expect(scriptsPanel).toContain('const loadAndApplyDisabledReason = !library.selected.value');
+    expect(studio).not.toContain('const scriptLoadAndApplyDisabledReason =');
+  });
+
+  it('subscribes to history availability only in the narrow Undo and Redo child', () => {
+    const childStart = toolRail.indexOf('function PhysicsPaintHistoryActionButton');
+    const railStart = toolRail.indexOf('function PhysicsPaintToolRailImpl');
+    const railEnd = toolRail.indexOf('export const PhysicsPaintToolRail', railStart);
+    expect(childStart).toBeGreaterThanOrEqual(0);
+    expect(childStart).toBeLessThan(railStart);
+    expect(toolRail.slice(childStart, railStart)).toContain('historyAvailability?.value');
+    expect(toolRail.slice(railStart, railEnd)).not.toContain('historyAvailability?.value');
   });
 });

@@ -1251,7 +1251,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 })}
               </div>
             </div>
-            <div class="physics-paint-roto-action-row">
+        </div>
+        <div class="physics-paint-roto-action-row">
               <div class="physics-paint-roto-key-identity" role="group" aria-label={`Roto layer ${props.workflowLabel ?? 'PPaint'} key ${props.currentFrame}`}>
                 <span class="physics-paint-roto-key-layer">{props.workflowLabel ?? 'PPaint'}</span>
                 <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
@@ -1496,7 +1497,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 </span>
               ) : null}
             </div>
-        </div>
         <div class="physics-paint-timeline-scrollbar" onPointerDown={(event) => handleTimelineScrollbarPointerDown(event as unknown as PointerEvent)}>
           {scrollbar.visible ? (
             <span

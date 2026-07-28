@@ -11,7 +11,6 @@ export interface PhysicsPaintScriptsPanelProps {
   playScript: RotoPlayScriptController;
   rotoScript: RotoScriptClipboardController;
   playButtonRef: RefObject<HTMLButtonElement>;
-  loadAndApplyDisabledReason: string | null;
   onSave: () => void;
   onActivateRow: (id: string) => void;
   onLoadAndApply: () => void;
@@ -26,7 +25,6 @@ export function PhysicsPaintScriptsPanel({
   playScript,
   rotoScript,
   playButtonRef,
-  loadAndApplyDisabledReason,
   onSave,
   onActivateRow,
   onLoadAndApply,
@@ -37,6 +35,11 @@ export function PhysicsPaintScriptsPanel({
 }: PhysicsPaintScriptsPanelProps) {
   const rows = library.rows.value;
   const availability = library.availability.value;
+  const loadAndApplyDisabledReason = !library.selected.value
+    ? 'Select a project script first.'
+    : library.busy.value
+      ? 'Finish the current script library operation.'
+      : rotoScript.availability.value.replacementApplyDisabledReason;
   const rename = library.rename.value;
   const confirmation = library.deleteConfirmation.value;
   const deleteButtonRef = useRef<HTMLButtonElement>(null);

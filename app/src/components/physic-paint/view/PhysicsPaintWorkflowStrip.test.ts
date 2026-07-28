@@ -29,6 +29,17 @@ function getButtonBlock(code: string, ariaLabel: string): string {
   const end = code.indexOf('</button>', labelIndex) + '</button>'.length;
   return code.slice(start, end);
 }
+function getMatchingDivEnd(code: string, start: number): number {
+  const tag = /<div\b|<\/div>/g;
+  tag.lastIndex = start;
+  let depth = 0;
+  let match: RegExpExecArray | null;
+  while ((match = tag.exec(code)) !== null) {
+    depth += match[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return tag.lastIndex;
+  }
+  return -1;
+}
 
 const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: string }> = [
   { label: 'Add key', guard: 'canAddRotoKey', handler: 'props.onAddRotoKey?.()' },
@@ -520,29 +531,31 @@ describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)'
     const actionRow = getCssRuleBlock(styles, '.physics-paint-roto-action-row {');
     expect(actionRow).toContain('height: 34px');
     expect(actionRow).toContain('display: flex');
-    expect(actionRow).toContain('min-width: 2160px');
+    expect(actionRow).toContain('min-width: 0');
+    expect(actionRow).toContain('overflow-x: auto');
+    expect(actionRow).not.toContain('min-width: 2160px');
     expect(getCssRuleBlock(styles, '.physics-paint-timeline-scrollbar {')).toContain('height: 14px');
     // Bigger bottom action-row icons (user feedback): 26px-high buttons.
     expect(getCssRuleBlock(styles, '.physics-paint-roto-key-icon-button {')).toContain('height: 26px');
   });
 
-  it('renders the key-utilities pill inside a 34px action-row band that is a sibling of the lane inside the scroll container', () => {
+  it('keeps the action row fixed outside the ruler-and-lane scroll container', () => {
     const code = source();
     const scrollIndex = code.indexOf('class="physics-paint-timeline-scroll"');
+    const scrollEnd = getMatchingDivEnd(code, code.lastIndexOf('<div', scrollIndex));
     const laneIndex = code.indexOf('class="physics-paint-lane"', scrollIndex);
     const actionRowIndex = code.indexOf('class="physics-paint-roto-action-row"', laneIndex);
     const utilitiesIndex = code.indexOf('physics-paint-roto-key-utilities', actionRowIndex);
     const scrollbarIndex = code.indexOf('class="physics-paint-timeline-scrollbar"', utilitiesIndex);
-    for (const index of [scrollIndex, laneIndex, actionRowIndex, utilitiesIndex, scrollbarIndex]) {
+    for (const index of [scrollIndex, scrollEnd, laneIndex, actionRowIndex, utilitiesIndex, scrollbarIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
-    expect(actionRowIndex).toBeGreaterThan(laneIndex);
+    expect(laneIndex).toBeLessThan(scrollEnd);
+    expect(actionRowIndex).toBeGreaterThan(scrollEnd);
     expect(utilitiesIndex).toBeGreaterThan(actionRowIndex);
     expect(scrollbarIndex).toBeGreaterThan(utilitiesIndex);
-    // The pill no longer lives inside the lane grid.
-    const laneBlock = code.slice(laneIndex, actionRowIndex);
-    expect(laneBlock).not.toContain('physics-paint-roto-key-utilities');
-    expect(laneBlock).toContain('physics-paint-roto-cells');
+    expect(code.slice(scrollIndex, scrollEnd)).not.toContain('physics-paint-roto-action-row');
+    expect(code.slice(scrollIndex, scrollEnd)).toContain('physics-paint-roto-cells');
   });
 
   it('removes the 860px responsive collapse and declares D-18 horizontal scroll on the strip shell', () => {

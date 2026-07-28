@@ -2040,10 +2040,10 @@ button.destructive {
 
 .physics-paint-timeline-scroll {
   min-width: 0;
-  /* Small left offset shared by the ruler, lane, and action row so the
-     selected frame-0 cell's orange ring (2px outline + 1px offset + 1px
-     shadow) is not clipped by the scroll edge (36.15-12, UAT Gap H-5). The
-     18px pitch and ruler-to-cell alignment are unchanged. */
+  /* Small left offset shared by the ruler and lane so the selected frame-0
+     cell's orange ring (2px outline + 1px offset + 1px shadow) is not clipped
+     by the scroll edge (36.15-12, UAT Gap H-5). The 18px pitch and
+     ruler-to-cell alignment are unchanged. */
   padding-left: 4px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -2126,9 +2126,17 @@ button.destructive {
      clearance below the 26px groups (36.15-13, UAT Gap I-1; border-box sizing
      keeps the 34px band and the 161px band sum intact). */
   height: 34px;
+  min-width: 0;
+  max-width: 100%;
   padding-bottom: 6px;
-  min-width: 2160px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   background: #37393a;
+}
+
+.physics-paint-roto-action-row::-webkit-scrollbar {
+  display: none;
 }
 
 /* Group 1 of the bottom action row: the Layer name + Key {n} identity chip is

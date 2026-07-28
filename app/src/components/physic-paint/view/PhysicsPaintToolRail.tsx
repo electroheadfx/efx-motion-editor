@@ -69,11 +69,40 @@ function isItemActive(
   return false;
 }
 
+function PhysicsPaintHistoryActionButton({
+  item,
+  historyAvailability,
+  disabled,
+  onAction,
+}: {
+  item: PhysicsPaintToolRailItem;
+  historyAvailability?: ReadonlySignal<PaintHistoryAvailability>;
+  disabled: boolean;
+  onAction: () => void;
+}) {
+  const availability = historyAvailability?.value;
+  const count = item.id === 'undo' ? availability?.undo ?? 0 : availability?.redo ?? 0;
+  const label = `${item.label} (${count} available)`;
+  return (
+    <button
+      type="button"
+      class="physics-paint-icon-button"
+      disabled={disabled || count === 0}
+      title={label}
+      aria-label={label}
+      onClick={onAction}
+    >
+      <img src={item.icon} alt="" aria-hidden="true" style={item.id === 'redo' ? { transform: 'scaleX(-1)' } : undefined} />
+      <span class="physics-paint-history-badge" aria-hidden="true">{count}</span>
+    </button>
+  );
+}
+
 // 38-11: the rail is wrapped in preact/compat memo — a startFrame-only Studio
 // render feeds referentially stable props (38-11 identity memo in the Studio),
 // the default shallow compare returns equal, and Preact skips this subtree.
-// historyAvailability is read internally via .value (signal subscription), so
-// undo/redo availability updates bypass the memo and keep flowing.
+// Undo/Redo read historyAvailability in narrow child subscribers so history
+// updates bypass the memo without rendering the rail shell or unrelated tools.
 function PhysicsPaintToolRailImpl({
   activeTool,
   physicsMode,
@@ -93,26 +122,26 @@ function PhysicsPaintToolRailImpl({
     if (item.id === 'paint') onSelectTool('paint', null);
     if (item.id === 'paint-physics') onSelectTool('paint', 'local');
     if (item.id === 'erase') onSelectTool('erase', physicsMode);
-    if (item.id === 'undo') onUndo();
-    if (item.id === 'redo') onRedo();
     if (item.id === 'clear-frame') onClearFrame();
     if (item.id === 'dry') onDryPaint();
   };
 
-  const historyCount = (item: PhysicsPaintToolRailItem) => item.id === 'undo'
-    ? historyAvailability?.value.undo ?? 0
-    : item.id === 'redo'
-      ? historyAvailability?.value.redo ?? 0
-      : null;
-  const isDisabled = (item: PhysicsPaintToolRailItem) => disabled || historyCount(item) === 0;
-
   return (
     <nav class="physics-paint-tool-rail" aria-label="Physics Paint tools">
       {PHYSICS_PAINT_TOOL_RAIL_ITEMS.map((item) => {
+        if (item.id === 'undo' || item.id === 'redo') {
+          return (
+            <PhysicsPaintHistoryActionButton
+              key={item.id}
+              item={item}
+              historyAvailability={historyAvailability}
+              disabled={disabled}
+              onAction={item.id === 'undo' ? onUndo : onRedo}
+            />
+          );
+        }
+
         const active = isItemActive(item, activeTool, physicsMode, activePhysicsAction);
-        const count = historyCount(item);
-        const buttonDisabled = isDisabled(item);
-        const label = count === null ? item.label : `${item.label} (${count} available)`;
         const className = `physics-paint-icon-button${active ? ' active' : ''}`;
 
         if (item.id === 'physics-last' || item.id === 'physics-all') {
@@ -122,14 +151,14 @@ function PhysicsPaintToolRailImpl({
               key={item.id}
               type="button"
               class={className}
-              disabled={buttonDisabled}
+              disabled={disabled}
               title={item.label}
               aria-label={item.label}
               aria-pressed={active}
-              onMouseDown={() => !buttonDisabled && onPhysicsStart(mode)}
+              onMouseDown={() => !disabled && onPhysicsStart(mode)}
               onMouseUp={onPhysicsStop}
               onMouseLeave={onPhysicsStop}
-              onTouchStart={() => !buttonDisabled && onPhysicsStart(mode)}
+              onTouchStart={() => !disabled && onPhysicsStart(mode)}
               onTouchEnd={onPhysicsStop}
             >
               <img src={item.icon} alt="" aria-hidden="true" />
@@ -142,14 +171,13 @@ function PhysicsPaintToolRailImpl({
             key={item.id}
             type="button"
             class={className}
-            disabled={buttonDisabled}
-            title={label}
-            aria-label={label}
+            disabled={disabled}
+            title={item.label}
+            aria-label={item.label}
             aria-pressed={item.kind === 'tool' ? active : undefined}
             onClick={() => runAction(item)}
           >
-            <img src={item.icon} alt="" aria-hidden="true" style={item.id === 'redo' ? { transform: 'scaleX(-1)' } : undefined} />
-            {count !== null ? <span class="physics-paint-history-badge" aria-hidden="true">{count}</span> : null}
+            <img src={item.icon} alt="" aria-hidden="true" />
           </button>
         );
       })}

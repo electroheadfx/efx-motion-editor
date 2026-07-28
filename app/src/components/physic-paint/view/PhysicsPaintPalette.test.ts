@@ -116,8 +116,6 @@ function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): Physic
     onEraseStrengthChange: vi.fn(),
     onOnionChange: vi.fn(),
     onPlayWiggleChange: vi.fn(),
-    onSaveState: vi.fn(),
-    onLoadState: vi.fn(),
     scripts: { library: { enterScripts: vi.fn() } } as unknown as PhysicsPaintRightPanelProps['scripts'],
     ...overrides,
   };
