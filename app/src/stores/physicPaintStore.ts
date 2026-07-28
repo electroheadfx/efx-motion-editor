@@ -90,6 +90,54 @@ const _rotoPhysicalCursorAppFrame = new Map<string, number>();
 const _rotoPhysicalCapacity = new Map<string, number>();
 const _rotoPlaybackSettings = new Map<string, PhysicPaintRotoPlaybackSettings>();
 export const rotoPhysicalRevision = signal(0);
+
+// --- Physical structural read memo (38.1-07) ---
+// Per-layer memo for the physical projection + content revision. Validity is
+// keyed on the identity triple (recordMap, frozen interpolation object,
+// capacity): every mutation site REPLACES those values (the add/delete/move/
+// undo/redo publish path at replaceRotoPhysicalRecords, payload writes at
+// updateRotoPhysicalRealKeyPayload, interpolation publishes at
+// setRotoPhysicalInterpolationState, document replacement, and hydration), so
+// the memo needs no explicit invalidation hooks and can never serve stale
+// data. Selection/cursor writes touch none of the three identities and never
+// invalidate. Any future post-install in-place write to an installed inner
+// record map would silently break this contract and is grep-gated.
+type RotoPhysicalStructuralCacheEntry = {
+  recordMap: Map<string, PhysicPaintRotoRealKeyRecord>;
+  interpolation: PhysicPaintRotoInterpolationState;
+  capacity: number;
+  projection: PhysicPaintRotoPhysicalTimelineProjection | null;
+  contentRevision: string;
+};
+const _rotoPhysicalStructuralCache = new Map<string, RotoPhysicalStructuralCacheEntry>();
+
+function _resolveRotoPhysicalStructural(layerId: string): RotoPhysicalStructuralCacheEntry | null {
+  const recordMap = _rotoRealKeyRecords.get(layerId);
+  if (!recordMap) {
+    _rotoPhysicalStructuralCache.delete(layerId);
+    return null;
+  }
+  const interpolation = _rotoPhysicalInterpolationState.get(layerId) ?? PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED;
+  const capacity = _rotoPhysicalCapacity.get(layerId) ?? PHYSIC_PAINT_MAX_APPLY_FRAMES;
+  const cached = _rotoPhysicalStructuralCache.get(layerId);
+  if (cached && cached.recordMap === recordMap && cached.interpolation === interpolation && cached.capacity === capacity) return cached;
+  const records = Array.from(recordMap.values()).sort((a, b) => a.appFrame - b.appFrame);
+  const identities = records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
+  const result = projectPhysicPaintRotoPhysicalTimeline({
+    identities,
+    capacity,
+    interpolationEnabled: interpolation.enabled,
+  });
+  const entry: RotoPhysicalStructuralCacheEntry = {
+    recordMap,
+    interpolation,
+    capacity,
+    projection: result.ok ? result.projection : null,
+    contentRevision: buildPhysicPaintRotoPhysicalRevision(records, interpolation),
+  };
+  _rotoPhysicalStructuralCache.set(layerId, entry);
+  return entry;
+}
 let _serializationRevision = 0;
 let _cachedSerializationRevision = -1;
 let _cachedMceOutputs: PhysicPaintMceOutput[] = [];
@@ -1225,7 +1273,9 @@ export const physicPaintStore = {
       background: _rotoBackgroundMetadata.get(layerId) ?? null,
       selectedKeyId: selectedRecord?.keyId ?? null,
       cursorAppFrame: Math.max(0, Math.min(capacity - 1, cursorCandidate)),
-      revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation),
+      // 38.1-07: memoized structural read — identical revision string without
+      // the per-read dataUrl-inclusive rehash.
+      revision: this.getRotoPhysicalContentRevision(layerId)!,
     });
   },
 
@@ -1329,26 +1379,15 @@ export const physicPaintStore = {
    * canonical interpolation state using the shared projection seam.
    */
   getRotoPhysicalProjection(layerId: string): PhysicPaintRotoPhysicalTimelineProjection | null {
-    const records = this.getRotoRealKeyRecords(layerId);
-    const capacity = this.getRotoPhysicalCapacity(layerId);
-    const interpolation = this.getRotoPhysicalInterpolationState(layerId);
-    if (records.length === 0 && !_rotoRealKeyRecords.has(layerId)) return null;
-    const identities = records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
-    const result = projectPhysicPaintRotoPhysicalTimeline({
-      identities,
-      capacity,
-      interpolationEnabled: interpolation.enabled,
-    });
-    if (!result.ok) return null;
-    return result.projection;
+    const structural = _resolveRotoPhysicalStructural(layerId);
+    if (!structural) return null;
+    return structural.projection;
   },
 
   getRotoPhysicalContentRevision(layerId: string): string | null {
-    if (!_rotoRealKeyRecords.has(layerId)) return null;
-    return buildPhysicPaintRotoPhysicalRevision(
-      this.getRotoRealKeyRecords(layerId),
-      this.getRotoPhysicalInterpolationState(layerId),
-    );
+    const structural = _resolveRotoPhysicalStructural(layerId);
+    if (!structural) return null;
+    return structural.contentRevision;
   },
 
   getRotoPhysicalEndFrame(layerId: string): number | null {
