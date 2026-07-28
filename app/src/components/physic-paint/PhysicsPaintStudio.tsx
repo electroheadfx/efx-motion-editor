@@ -108,6 +108,7 @@ export function PhysicsPaintStudio() {
   // shallow compare skips the subtree. Deps enumerate exactly the values each
   // build references — never the Studio's frame cursor.
   const toolRailPropsMemo = useRef(createIdentityMemo()).current;
+  const rightPanelPropsMemo = useRef(createIdentityMemo()).current;
   const scheduleRotoStartFramePropagation = useCallback((frame: number) => {
     rotoUiFlushScheduler.schedule(() => {
       setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
@@ -1039,15 +1040,17 @@ export function PhysicsPaintStudio() {
     playFrames: [],
   });
   const { goToFirstFrame, goToPreviousFrame, goToNextFrame, goToLastFrame } = rotoNavigationActions;
-  const rotoMotion = launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : null;
-  const panelMotion = rotoMotion ? { strokeDeformation: rotoMotion.deform, strokePosition: rotoMotion.position } : { strokeDeformation: 0, strokePosition: 0 };
   // Script Motion (D-04): deform/position remain a separate store/controller
   // contract, never merged into interpolation enabled state.
-  const updatePanelMotion = (motion: { strokeDeformation: number; strokePosition: number }) => {
-    if (!launchContext) return;
-    const current = physicPaintStore.getRotoInterpolationSettings(launchContext.layerId);
-    physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, { ...current, deform: motion.strokeDeformation, position: motion.strokePosition });
-  };
+  // 38-11: stable identity via launchContextRef — launchContext identity
+  // changes on every navigation while the live values read are identical.
+  const updatePanelMotion = useCallback((motion: { strokeDeformation: number; strokePosition: number }) => {
+    const launch = launchContextRef.current;
+    if (!launch) return;
+    const current = physicPaintStore.getRotoInterpolationSettings(launch.layerId);
+    physicPaintStore.setRotoInterpolationSettings(launch.layerId, { ...current, deform: motion.strokeDeformation, position: motion.strokePosition });
+  }, []);
+  const devExportEnabled = isPhysicsPaintDevExportEnabled(import.meta.env);
   // 38-11: the tool rail props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
   // references (38.1 onion-projection idiom); it contains no frame-derived
@@ -1067,6 +1070,62 @@ export function PhysicsPaintStudio() {
     onPhysicsStart: startPhysics,
     onPhysicsStop: stopPhysics,
     onDryPaint: dryPaint,
+  }));
+  // 38-11: the right panel props assemble behind the identity memo — the
+  // single-line deps array below enumerates exactly the values the build
+  // references (38.1 onion-projection idiom); it contains no frame-derived
+  // input, so a startFrame-only Studio render returns the cached object and
+  // the memo-wrapped panel skips its render. playWiggle reads through the
+  // memoized rotoLegacyInterpolationSettings (WR-02, b74ac80a) — never a
+  // fresh per-render getRotoInterpolationSettings clone. Signal-backed
+  // controllers pass through by identity so their signal subscriptions
+  // (ScriptsPanel rows/busy/selection) keep flowing independent of the memo.
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, mutationLocked, rotoLegacyInterpolationSettings, devExportEnabled, applyStatus, applyMessage, lastError, exportDebugProof, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, saveEditableState, loadEditableState, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, scriptLoadAndApplyDisabledReason, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
+    activeTool: settings.tool,
+    color: settings.color,
+    opacity: settings.opacity,
+    edgeDetail: settings.edgeDetail,
+    pickup: settings.pickup,
+    spread: settings.spread,
+    smoothing: settings.smoothing,
+    eraseStrength: settings.eraseStrength,
+    physicsMode: settings.physicsMode,
+    onion,
+    onionDisabled: isPlaying,
+    engineControlsDisabled: mutationLocked,
+    playWiggle: rotoLegacyInterpolationSettings
+      ? { strokeDeformation: rotoLegacyInterpolationSettings.deform, strokePosition: rotoLegacyInterpolationSettings.position }
+      : { strokeDeformation: 0, strokePosition: 0 },
+    devExportEnabled,
+    devExportBusy: applyStatus === 'applying',
+    applyStatus,
+    applyMessage,
+    error: lastError,
+    onExportDebugProof: exportDebugProof,
+    onColorChange: setBrushColor,
+    onEdgeDetailChange: setEdgeDetail,
+    onPickupChange: setPickup,
+    onSpreadChange: setSpread,
+    onSmoothingChange: setSmoothing,
+    onEraseStrengthChange: setEraseStrength,
+    onOnionChange: setOnion,
+    onPlayWiggleChange: updatePanelMotion,
+    onSaveState: saveEditableState,
+    onLoadState: loadEditableState,
+    scripts: {
+      library: rotoScriptLibrary,
+      playScript: rotoPlayScript,
+      rotoScript,
+      playButtonRef,
+      loadAndApplyDisabledReason: scriptLoadAndApplyDisabledReason,
+      onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
+      onActivateRow: (id: string) => { void handleScriptRowActivate(id); },
+      onLoadAndApply: () => { void handleSelectedScriptLoadAndApply(); },
+      onDiscardScript: () => { rotoScript.discardScript(); setLastError(null); },
+      onCopyScript: () => { void rotoScript.copyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); },
+      onApplyScript: () => { void rotoScript.applyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); },
+      onRefresh: () => { void rotoScriptLibrary.refresh(); },
+    },
   }));
   const viewModel = usePhysicsPaintStudioViewModel({
     layout: {
@@ -1190,26 +1249,7 @@ export function PhysicsPaintStudio() {
           getStrokeMetadata,
         },
       },
-    rightPanel: {
-        activeTool: settings.tool, color: settings.color, opacity: settings.opacity, edgeDetail: settings.edgeDetail, pickup: settings.pickup, spread: settings.spread, smoothing: settings.smoothing, eraseStrength: settings.eraseStrength, physicsMode: settings.physicsMode,
-        onion, onionDisabled: isPlaying, engineControlsDisabled: mutationLocked, playWiggle: panelMotion, devExportEnabled: isPhysicsPaintDevExportEnabled(import.meta.env), devExportBusy: applyStatus === 'applying', applyStatus, applyMessage, error: lastError,
-        onExportDebugProof: exportDebugProof, onColorChange: setBrushColor, onEdgeDetailChange: setEdgeDetail, onPickupChange: setPickup, onSpreadChange: setSpread, onSmoothingChange: setSmoothing, onEraseStrengthChange: setEraseStrength,
-        onOnionChange: setOnion, onPlayWiggleChange: updatePanelMotion, onSaveState: saveEditableState, onLoadState: loadEditableState,
-        scripts: {
-          library: rotoScriptLibrary,
-          playScript: rotoPlayScript,
-          rotoScript,
-          playButtonRef,
-          loadAndApplyDisabledReason: scriptLoadAndApplyDisabledReason,
-          onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
-          onActivateRow: (id) => { void handleScriptRowActivate(id); },
-          onLoadAndApply: () => { void handleSelectedScriptLoadAndApply(); },
-          onDiscardScript: () => { rotoScript.discardScript(); setLastError(null); },
-          onCopyScript: () => { void rotoScript.copyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); },
-          onApplyScript: () => { void rotoScript.applyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); },
-          onRefresh: () => { void rotoScriptLibrary.refresh(); },
-        },
-      },
+    rightPanel,
     playScriptDialog: {
         playScript: rotoPlayScript,
         returnFocusRef: playButtonRef,

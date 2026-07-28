@@ -1,3 +1,4 @@
+import { memo } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { GripHorizontal, X } from 'lucide-preact';
 import type { ToolType } from '@efxlab/efx-physic-paint';
@@ -155,7 +156,13 @@ function SmoothingButton(props: { label: string; value: number; active: boolean;
   );
 }
 
-export function PhysicsPaintRightPanel({
+// 38-11: the panel is wrapped in preact/compat memo — a startFrame-only
+// Studio render feeds referentially stable props (38-11 identity memo in the
+// Studio), the default shallow compare returns equal, and Preact skips this
+// subtree. Signal-backed controllers (scripts.library/playScript/rotoScript)
+// are read internally via .value, so ScriptsPanel signal updates bypass the
+// memo and keep flowing.
+function PhysicsPaintRightPanelImpl({
   activeTool,
   color,
   opacity,
@@ -634,3 +641,5 @@ export function PhysicsPaintRightPanel({
     </aside>
   );
 }
+
+export const PhysicsPaintRightPanel = memo(PhysicsPaintRightPanelImpl);
