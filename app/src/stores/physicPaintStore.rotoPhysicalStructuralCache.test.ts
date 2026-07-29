@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { physicPaintStore, _setPhysicPaintMarkDirtyCallback } from './physicPaintStore';
+import {
+  physicPaintStore,
+  physicPaintVersion,
+  rotoPhysicalRevision,
+  _setPhysicPaintMarkDirtyCallback,
+} from './physicPaintStore';
 import * as physicalModelModule from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import * as physicalResolverModule from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import type {
@@ -233,6 +238,38 @@ describe('physicPaintStore roto physical structural cache (38.1-07)', () => {
     expect(physicPaintStore.getRotoPhysicalProjection(LAYER)).toBe(projection);
     expect(projectionSpy.mock.calls.length).toBe(0);
     expect(revisionSpy.mock.calls.length).toBe(0);
+  });
+
+  it('capacity-only replacement clamps the cursor, replaces the projection, and publishes once', () => {
+    installBase();
+    expect(physicPaintStore.setRotoPhysicalSelection(LAYER, null, 20).ok).toBe(true);
+    const beforeProjection = physicPaintStore.getRotoPhysicalProjection(LAYER);
+    expect(beforeProjection?.cells).toHaveLength(24);
+
+    let dirtyCount = 0;
+    _setPhysicPaintMarkDirtyCallback(() => { dirtyCount += 1; });
+    const beforePhysicalRevision = rotoPhysicalRevision.value;
+    const beforeVisualVersion = physicPaintVersion.value;
+
+    const replaced = physicPaintStore.replaceRotoPhysicalRecords(LAYER, baseRecords(), INTERPOLATION, 13);
+    expect(replaced.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalCapacity(LAYER)).toBe(13);
+    expect(physicPaintStore.getRotoPhysicalDocument(LAYER)?.cursorAppFrame).toBe(12);
+    const afterProjection = physicPaintStore.getRotoPhysicalProjection(LAYER);
+    expect(afterProjection).not.toBe(beforeProjection);
+    expect(afterProjection?.cells).toHaveLength(13);
+    expect(rotoPhysicalRevision.value).toBe(beforePhysicalRevision + 1);
+    expect(physicPaintVersion.value).toBe(beforeVisualVersion + 1);
+    expect(dirtyCount).toBe(1);
+
+    const exactPhysicalRevision = rotoPhysicalRevision.value;
+    const exactVisualVersion = physicPaintVersion.value;
+    const exactNoop = physicPaintStore.replaceRotoPhysicalRecords(LAYER, baseRecords(), INTERPOLATION, 13);
+    expect(exactNoop.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalProjection(LAYER)).toBe(afterProjection);
+    expect(rotoPhysicalRevision.value).toBe(exactPhysicalRevision);
+    expect(physicPaintVersion.value).toBe(exactVisualVersion);
+    expect(dirtyCount).toBe(1);
   });
 
   it('no-op record replacement keeps reads free', () => {
