@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 38
 current_phase_name: multi-copy-paste-and-tooltip-polish
 status: executing
-stopped_at: Plan 38-06 native UAT approved; wave-4 plans 38-07/38-08 eligible
-last_updated: "2026-07-29T13:00:00Z"
+stopped_at: Completed 38-07-PLAN.md
+last_updated: "2026-07-29T15:25:14.838Z"
 last_activity: 2026-07-29
-last_activity_desc: Plan 38-06 33-step native UAT approved; D-15 gate lifted
+last_activity_desc: Plan 38-07 post-UAT group Copy/Paste regression coverage complete
 progress:
   total_phases: 21
   completed_phases: 19
   total_plans: 170
-  completed_plans: 162
-  percent: 95
+  completed_plans: 163
+  percent: 96
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 38 — execute wave-4 post-UAT regression plans 38-07 and 38-08 after the approved 38-06 native checkpoint
+**Current focus:** Phase 38 — execute final post-UAT regression and full-gate Plan 38-08
 
 ## Current Position
 
 Phase: 38 (multi-copy-paste-and-tooltip-polish) — EXECUTING
 Completed prerequisite: Phase 38.1 Plans 01-18 complete (verified 20/20); Plan 38-06 native UAT approved all 33 steps on 2026-07-29
-Plan: 9 of 11 complete; next incomplete plan is 38-07
-Status: D-15 gate lifted; wave-4 regression plans eligible
-Last activity: 2026-07-29 — Plan 38-06 native UAT approved; verdict recorded in 38-06-SUMMARY.md
-Next recommended action: execute Plans 38-07 and 38-08; 38-08 rewrites the three known-red D-15 deferred assertions
+Plan: 10 of 11 complete; next incomplete plan is 38-08
+Status: Plan 38-07 group Copy/Paste regression coverage complete; final regression gate remains
+Last activity: 2026-07-29 — Plan 38-07 added 53 passing focused tests with zero production edits
+Next recommended action: execute Plan 38-08, including the three known-red D-15 deferred assertion rewrites and full gates
 
-Progress: [███████████████████░] 162/170 plans complete; 19/21 phases complete ([██████████] 95%)
+Progress: [███████████████████░] 163/170 plans complete; 19/21 phases complete ([██████████] 96%)
 
 ## Performance Metrics
 
@@ -154,6 +154,7 @@ Progress: [███████████████████░] 162/170
 | Phase 38.1 P17 | 7min | 1 tasks | 2 files |
 | Phase 38.1 P18 | native checkpoint + closure | 2 tasks | 4 planning files |
 | Phase 38 P06 | user-owned native UAT session | 1 task | 1 planning file |
+| Phase 38 P07 | 16min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -350,6 +351,8 @@ Recent decisions affecting current work:
 - [Phase 38.1 Plan 18]: Native acceptance exposed obsolete Phase 37 group-ripple semantics; commit `25c7cf9e` restored rigid selected-only translation and passed native re-UAT before closure.
 - [Phase 38.1 verification]: Renewed goal verification passed 20/20 with zero unverified behavior; Phase 38 Plan 38-06 is eligible.
 - [Phase 38 Plan 38-06]: The full 33-step native UAT passed with explicit user approval on 2026-07-29; zero test files were touched (D-15), and both UI-SPEC backstops (steps 26/27) received human evidence. Wave-4 plans 38-07/38-08 are unblocked.
+- [Phase ?]: [Phase 38 Plan 07]: Production remained untouched because the 38-06 native UAT locked the shipped contract; regression anchors only.
+- [Phase ?]: [Phase 38 Plan 07]: The over-capacity resolver test uses a valid dense fixture because the shared baseline is invalid at capacity five.
 
 ### Pending Todos
 
@@ -435,6 +438,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-29T13:00:00Z
-Stopped at: Plan 38-06 native UAT approved; wave-4 plans 38-07/38-08 eligible
-Resume file: .planning/phases/38-multi-copy-paste-and-tooltip-polish/.continue-here.md
+Last session: 2026-07-29T15:25:14.821Z
+Stopped at: Completed 38-07-PLAN.md
+Resume file: None
