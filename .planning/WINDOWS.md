@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 5
 waived_count: 1
-fixed_count: 17
-total_count: 23
-last_updated: 2026-07-29T08:09:04.219Z
+fixed_count: 19
+total_count: 25
+last_updated: 2026-07-29T16:15:38.053Z
 ---
 
 # Broken Windows Ledger
@@ -38,6 +38,8 @@ last_updated: 2026-07-29T08:09:04.219Z
 | 21 | 38.1 | deviation | .planning/STATE.md |  | Corrected stale sequential state position after the generic advance handler | fixed |  | 2026-07-29T06:18:59.408Z | 2026-07-29T06:20:12.940Z |
 | 22 | 38.1 | deviation | .planning/STATE.md |  | Corrected inconsistent generated STATE.md progress and next-plan fields after Plan 38.1-16 | fixed |  | 2026-07-29T06:51:59.691Z | 2026-07-29T06:54:21.095Z |
 | 23 | 38.1 | deviation | app/src/test/preactHookRuntime.ts |  | Adjusted the test runtime to the app TypeScript target and removed one unused GREEN-test binding after the no-emit gate. | fixed |  | 2026-07-29T08:08:16.664Z | 2026-07-29T08:09:04.219Z |
+| 24 | 38 | deviation | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts |  | Rewrote omitted stale header-tooltip assertion against the region-driven fixed-position contract | fixed | Verified by the focused 63-test file and full Phase 38 closing suite. | 2026-07-29T16:15:36.790Z | 2026-07-29T16:15:38.053Z |
+| 25 | 38 | deviation | app/src/components/physic-paint/view/PhysicsPaintStyledTooltip.test.ts |  | Applied the user-approved flat #62666d tooltip visual over stale plan wording | fixed | Verified by the focused 9-test file and full Phase 38 closing suite. | 2026-07-29T16:15:36.934Z | 2026-07-29T16:15:38.053Z |
 
 ````json
 [
@@ -316,6 +318,30 @@ last_updated: 2026-07-29T08:09:04.219Z
     "reason": "",
     "recorded_at": "2026-07-29T08:08:16.664Z",
     "resolved_at": "2026-07-29T08:09:04.219Z"
+  },
+  {
+    "id": 24,
+    "kind": "deviation",
+    "phase": "38",
+    "file": "app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts",
+    "line": null,
+    "description": "Rewrote omitted stale header-tooltip assertion against the region-driven fixed-position contract",
+    "status": "fixed",
+    "reason": "Verified by the focused 63-test file and full Phase 38 closing suite.",
+    "recorded_at": "2026-07-29T16:15:36.790Z",
+    "resolved_at": "2026-07-29T16:15:38.053Z"
+  },
+  {
+    "id": 25,
+    "kind": "deviation",
+    "phase": "38",
+    "file": "app/src/components/physic-paint/view/PhysicsPaintStyledTooltip.test.ts",
+    "line": null,
+    "description": "Applied the user-approved flat #62666d tooltip visual over stale plan wording",
+    "status": "fixed",
+    "reason": "Verified by the focused 9-test file and full Phase 38 closing suite.",
+    "recorded_at": "2026-07-29T16:15:36.934Z",
+    "resolved_at": "2026-07-29T16:15:38.053Z"
   }
 ]
 ````

@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 38
 current_phase_name: multi-copy-paste-and-tooltip-polish
 status: executing
-stopped_at: Completed 38-07-PLAN.md
-last_updated: "2026-07-29T15:25:14.838Z"
+stopped_at: Completed 38-08-PLAN.md; Phase 38 verification pending
+last_updated: "2026-07-29T16:15:38.053Z"
 last_activity: 2026-07-29
-last_activity_desc: Plan 38-07 post-UAT group Copy/Paste regression coverage complete
+last_activity_desc: Plan 38-08 presentation regressions and full closing gates passed
 progress:
   total_phases: 21
   completed_phases: 19
   total_plans: 170
-  completed_plans: 163
+  completed_plans: 164
   percent: 96
 ---
 
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 38 — execute final post-UAT regression and full-gate Plan 38-08
+**Current focus:** Phase 38 — all 11 plans complete; run phase-level verification and closure
 
 ## Current Position
 
-Phase: 38 (multi-copy-paste-and-tooltip-polish) — EXECUTING
+Phase: 38 (multi-copy-paste-and-tooltip-polish) — VERIFYING
 Completed prerequisite: Phase 38.1 Plans 01-18 complete (verified 20/20); Plan 38-06 native UAT approved all 33 steps on 2026-07-29
-Plan: 10 of 11 complete; next incomplete plan is 38-08
-Status: Plan 38-07 group Copy/Paste regression coverage complete; final regression gate remains
-Last activity: 2026-07-29 — Plan 38-07 added 53 passing focused tests with zero production edits
-Next recommended action: execute Plan 38-08, including the three known-red D-15 deferred assertion rewrites and full gates
+Plan: 11 of 11 complete; no incomplete plan remains
+Status: Post-UAT group and presentation regressions pass; full Vitest, typecheck, and production build gates are green
+Last activity: 2026-07-29 — Plan 38-08 locked capsule/tooltip contracts and passed the complete closing gate
+Next recommended action: verify the Phase 38 goal, then mark the phase complete if verification passes
 
-Progress: [███████████████████░] 163/170 plans complete; 19/21 phases complete ([██████████] 96%)
+Progress: [███████████████████░] 164/170 plans complete; 19/21 phases complete ([██████████] 96%)
 
 ## Performance Metrics
 
@@ -155,6 +155,7 @@ Progress: [███████████████████░] 163/170
 | Phase 38.1 P18 | native checkpoint + closure | 2 tasks | 4 planning files |
 | Phase 38 P06 | user-owned native UAT session | 1 task | 1 planning file |
 | Phase 38 P07 | 16min | 3 tasks | 4 files |
+| Phase 38 P08 | 18min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -353,6 +354,9 @@ Recent decisions affecting current work:
 - [Phase 38 Plan 38-06]: The full 33-step native UAT passed with explicit user approval on 2026-07-29; zero test files were touched (D-15), and both UI-SPEC backstops (steps 26/27) received human evidence. Wave-4 plans 38-07/38-08 are unblocked.
 - [Phase ?]: [Phase 38 Plan 07]: Production remained untouched because the 38-06 native UAT locked the shipped contract; regression anchors only.
 - [Phase ?]: [Phase 38 Plan 07]: The over-capacity resolver test uses a valid dense fixture because the shared baseline is invalid at capacity five.
+- [Phase ?]: [Phase 38 Plan 08]: The approved tooltip regression contract is flat #62666d with no border, 4px corners, 12px normal text, and same-fill notch; the old bordered pill stays retired.
+- [Phase ?]: [Phase 38 Plan 08]: The stale WorkflowStrip header assertion was the omitted third D-15 deferred rewrite and now targets region-driven fixed viewport placement.
+- [Phase ?]: [Phase 38 Plan 08]: Production remained untouched; post-UAT tests and the full closing gates lock the shipped behavior.
 
 ### Pending Todos
 
@@ -438,6 +442,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-29T15:25:14.821Z
-Stopped at: Completed 38-07-PLAN.md
+Last session: 2026-07-29T16:15:38.032Z
+Stopped at: Completed 38-08-PLAN.md; Phase 38 verification pending
 Resume file: None
