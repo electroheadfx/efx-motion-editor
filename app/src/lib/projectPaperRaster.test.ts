@@ -40,10 +40,12 @@ describe('authoritative project paper raster parity', () => {
   it('renders Physics playback from the same cached project-paper implementation as PreviewRenderer', () => {
     const preview = source('src/lib/previewRenderer.ts');
     const playback = source('src/components/physic-paint/view/PhysicsPaintStudioView.tsx');
+    const playbackBackground = source('src/components/physic-paint/view/rotoPlaybackBackground.ts');
     const css = source('src/components/physic-paint/physicsPaintStudio.css');
 
     expect(preview).toContain("from './projectPaperRaster'");
-    expect(playback).toContain("from '../../../lib/projectPaperRaster'");
+    expect(playback).toContain("from './rotoPlaybackBackground'");
+    expect(playbackBackground).toContain("from '../../../lib/projectPaperRaster'");
     expect(playback).not.toContain('drawMissingRotoBackground');
     expect(playback).not.toContain('paper.src = `/img/paper_');
     expect(css).not.toContain("background-image: url('/img/paper_1.jpg')");

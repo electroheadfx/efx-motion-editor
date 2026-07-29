@@ -21,12 +21,12 @@ function stroke(overrides: Partial<PaintStroke> = {}): PaintStroke {
   };
 }
 
-function document() {
+function document(physicsMode: PaintStroke['physicsMode'] = 'local') {
   return createPersistedRotoScript({
     id, name: 'Preset', createdAt: '2026-07-16T12:00:00.000Z', updatedAt: '2026-07-16T12:00:00.000Z',
     source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 12, width: 1920, height: 1080, background: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.6 } },
     thumbnail: { mimeType: 'image/webp', width: 1, height: 1, quality: 0.8, dataUrl: webp },
-    brushes: [{ primary: stroke(), continuations: [stroke({ mutationId: 10, points: [], diffusionFrames: 4 })] }],
+    brushes: [{ primary: stroke({ physicsMode }), continuations: [stroke({ mutationId: 10, points: [], diffusionFrames: 4 })] }],
   });
 }
 
@@ -41,6 +41,14 @@ describe('durable Roto script schema', () => {
     expect(value.brushes[0].continuations[0]).toMatchObject({ points: [], diffusionFrames: 4 });
     expect(value.brushes[0].primary).not.toHaveProperty('mutationId');
     expect(value.source).toMatchObject({ projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 12 });
+  });
+
+  it('preserves every current physics mode in the v1 persisted contract', () => {
+    for (const physicsMode of ['local', 'last', 'all', null] as const) {
+      const value = document(physicsMode);
+      expect(value.brushes[0].primary.physicsMode).toBe(physicsMode);
+      expect(persistedRotoScriptToRuntime(value).brushes[0].primary.physicsMode).toBe(physicsMode);
+    }
   });
 
   it('creates fresh runtime and row objects without aliasing persisted input', () => {
@@ -62,6 +70,7 @@ describe('durable Roto script schema', () => {
       (copy: any) => { copy.id = '../escape'; },
       (copy: any) => { copy.updatedAt = '2026-07-15T00:00:00Z'; },
       (copy: any) => { copy.brushes[0].primary.timestamp = Number.MAX_SAFE_INTEGER + 1; },
+      (copy: any) => { copy.brushes[0].primary.physicsMode = 'global'; },
       (copy: any) => { copy.brushes[0].primary.points[0].p = 2; },
       (copy: any) => { copy.brushes[0].continuations[0].points = [{}]; },
       (copy: any) => { copy.thumbnail.width = 2; },
