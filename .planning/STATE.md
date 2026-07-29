@@ -4,17 +4,17 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 38.1
 current_phase_name: studio-render-path-performance
-status: gaps_found
-stopped_at: Phase 38.1 verification found 3 behavior-preservation blockers
-last_updated: "2026-07-28T20:22:56Z"
-last_activity: 2026-07-28
-last_activity_desc: Phase 38.1 verification found 3 blockers after Plan 12 acceptance
+status: Ready to execute
+stopped_at: Phase 38.1 gap-closure plans verified; Plans 13-18 ready to execute
+last_updated: "2026-07-29T05:49:35Z"
+last_activity: 2026-07-29
+last_activity_desc: Phase 38.1 gap-closure planning complete — 6 plans ready
 progress:
   total_phases: 21
   completed_phases: 18
-  total_plans: 164
+  total_plans: 170
   completed_plans: 155
-  percent: 95
+  percent: 91
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 38.1 gap closure — fix three behavior-preservation blockers before Phase 38 Plan 38-06 may resume
+**Current focus:** Phase 38.1 gap closure — execute verified Plans 13–18 before Phase 38 Plan 38-06 may resume
 
 ## Current Position
 
-Phase: 38.1 (studio-render-path-performance) — verification gaps found
+Phase: 38.1 (studio-render-path-performance) — gap-closure plans verified
 Completed baseline: 38.1-01 through 38.1-12; known-working rollback commit before the reopened track remains `0d0a3547`
-Plan: 12 of 12 executed; gap closure not yet planned
-Status: Native render-count acceptance passed, but verification found three production correctness blockers
-Last activity: 2026-07-28 — current verification recorded 18/20 decision contracts verified
-Next recommended action: run `/gsd-plan-phase 38.1 --gaps`; do not resume Phase 38 Plan 38-06 before re-verification passes
+Plan: 12 of 18 executed; Plans 13–18 are planned across Waves 9–11
+Status: Ready to execute
+Last activity: 2026-07-29 — Plans 13–18 passed independent plan verification after two revision cycles
+Next recommended action: run `/gsd-execute-phase 38.1 --gaps`; do not resume Phase 38 Plan 38-06 until Plan 18 native acceptance and Phase 38.1 re-verification pass
 
-Progress: [███████████████████░] 155/164 plans complete; 18/21 phases complete ([██████████] 95%)
+Progress: [██████████████████░░] 155/170 plans complete; 18/21 phases complete ([█████████░] 91%)
 
 ## Performance Metrics
 
@@ -333,8 +333,8 @@ None yet.
 
 ### Blockers/Concerns
 
-- Reopened Phase 38.1 Plans 08–12 are complete; grouped bidirectional native thresholds, controlled remount/reactivity checks, and all 33 Phase 38 regression steps are user-approved.
-- Phase 38 Plan 38-06 is no longer blocked by Phase 38.1 and may resume from its approval closure point.
+- Reopened Phase 38.1 Plans 08–12 remain the approved historical baseline; verification subsequently required gap-closure Plans 13–18.
+- Phase 38 Plan 38-06 remains blocked until Plans 13–17 execute, Plan 18 receives explicit user-owned native approval, and Phase 38.1 re-verification passes.
 - Phase 36.2 Codex gap execution is rejected as failed and administratively superseded. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
 - Plans `36.2-11`, `36.2-12`, and `36.2-13` are closed with rejected/superseded summaries so they must not be resumed as Phase 36.2 implementation.
 - Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, repaint cached real-key behavior, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
