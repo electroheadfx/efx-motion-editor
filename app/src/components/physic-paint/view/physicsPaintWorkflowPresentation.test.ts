@@ -5,7 +5,7 @@ import {
   getRotoCellSelectedTooltipCopy, getRotoCellStateLabel, getRotoCellStateTooltipCopy, getRotoCellViewModel, getRotoMissingFrameStatus,
   getRotoDragPreviewViewModel,
   getRotoReplacementSuccessLabel, getMissingRotoFrameStatusLabel,
-  getRotoStatusCapsuleViewModel,
+  getRotoStatusCapsuleIdleContext, getRotoStatusCapsuleViewModel,
   isPhysicsPaintDevExportEnabled,
   type RotoCellBaseMeaning, type RotoCellFill, type RotoCellOverlay,
 } from './physicsPaintWorkflowPresentation';
@@ -156,33 +156,47 @@ describe('physicsPaintWorkflowPresentation', () => {
 
 });
 
-describe('getRotoStatusCapsuleViewModel (36.15-05 status capsule, D-15)', () => {
+// The 38-06 native UAT approval authorizes this post-UAT rewrite. D-08
+// permanently deleted the static fallback, so idle authority is current-cell context.
+describe('getRotoStatusCapsuleIdleContext — current-cell idle mapping (38-08, D-09, UI-SPEC locked)', () => {
 
-  it('returns the ambient baseline when nothing higher-priority exists', () => {
-    expect(getRotoStatusCapsuleViewModel({})).toBe('Missing frames play transparent/background');
-    expect(getRotoStatusCapsuleViewModel({ pendingOperation: null, savingIndicator: null, feedback: [], ambient: null })).toBe('Missing frames play transparent/background');
-    expect(getRotoStatusCapsuleViewModel({ ambient: 'Missing frames play transparent/background' })).toBe('Missing frames play transparent/background');
+  it('maps each semantic cell kind to its exact physical-frame context', () => {
+    expect(getRotoStatusCapsuleIdleContext({ cellKind: 'real', frame: 5 })).toBe('Real Roto key · Frame 5');
+    expect(getRotoStatusCapsuleIdleContext({ cellKind: 'generated', frame: 9 })).toBe('Generated frame · Frame 9');
+    expect(getRotoStatusCapsuleIdleContext({ cellKind: 'empty', frame: 7 })).toBe('Empty frame · Frame 7');
+    expect(getRotoStatusCapsuleIdleContext({ cellKind: null, frame: 3 })).toBeNull();
+  });
+
+});
+
+describe('getRotoStatusCapsuleViewModel — idle-context contract (38-08, D-08/D-09, post-UAT)', () => {
+
+  it('returns ambient idle context or an empty string when no higher-priority line exists', () => {
+    expect(getRotoStatusCapsuleViewModel({})).toBe('');
+    expect(getRotoStatusCapsuleViewModel({ pendingOperation: null, savingIndicator: null, feedback: [], ambient: null })).toBe('');
+    expect(getRotoStatusCapsuleViewModel({ ambient: 'Real Roto key · Frame 5' })).toBe('Real Roto key · Frame 5');
+    expect(getRotoStatusCapsuleViewModel({ ambient: '   ' })).toBe('');
   });
 
 
   it('arbitrates the full D-15 priority ladder one rung at a time', () => {
     // Guard/action feedback beats ambient info.
     expect(getRotoStatusCapsuleViewModel({
-      ambient: 'Missing frames play transparent/background',
+      ambient: 'Real Roto key · Frame 5',
       feedback: [{ text: 'Frame inserted' }],
     })).toBe('Frame inserted');
     // Saving indicator beats guard/action feedback.
     expect(getRotoStatusCapsuleViewModel({
       savingIndicator: 'Saving frame 5...',
       feedback: [{ text: 'Frame inserted' }],
-      ambient: 'Missing frames play transparent/background',
+      ambient: 'Real Roto key · Frame 5',
     })).toBe('Saving frame 5...');
     // Pending operation beats the saving indicator.
     expect(getRotoStatusCapsuleViewModel({
       pendingOperation: 'Moving key…',
       savingIndicator: 'Saving frame 5...',
       feedback: [{ text: 'Frame inserted' }],
-      ambient: 'Missing frames play transparent/background',
+      ambient: 'Real Roto key · Frame 5',
     })).toBe('Moving key…');
   });
 
@@ -222,7 +236,8 @@ describe('getRotoStatusCapsuleViewModel (36.15-05 status capsule, D-15)', () => 
 
   it('ignores blank candidates and keeps higher-priority content over blank lines', () => {
     expect(getRotoStatusCapsuleViewModel({ pendingOperation: '  ', savingIndicator: 'Saving frame 5...' })).toBe('Saving frame 5...');
-    expect(getRotoStatusCapsuleViewModel({ feedback: [{ text: null }, { text: '' }], ambient: null })).toBe('Missing frames play transparent/background');
+    expect(getRotoStatusCapsuleViewModel({ feedback: [{ text: null }, { text: '' }], ambient: 'Real Roto key · Frame 5' })).toBe('Real Roto key · Frame 5');
+    expect(getRotoStatusCapsuleViewModel({ feedback: [{ text: null }, { text: '' }], ambient: null })).toBe('');
   });
 
 });
