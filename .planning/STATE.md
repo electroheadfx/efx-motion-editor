@@ -32,7 +32,7 @@ Phase: 38 (multi-copy-paste-and-tooltip-polish) — COMPLETE
 Completed prerequisite: Phase 38.1 Plans 01-18 complete and verified 20/20; Plan 38-06 native UAT approved all 33 steps
 Plan: 11 of 11 complete
 Status: Phase 38 verification passed 7/7 with zero unverified behavior; all 21 roadmap phases are complete
-Last activity: 2026-07-29 — Phase 38 completed after post-UAT regressions, full gates, review, and independent verification
+Last activity: 2026-07-29 — Completed quick task 260729-taj: Close milestone audit gap EDIT-02/B-01 (frame-sync listener install)
 Next recommended action: review the advisory `38-REVIEW.md` findings, then audit/complete the v0.8.0 milestone when ready
 
 Progress: [███████████████████░] 164/170 plan summaries present; 21/21 phases complete ([██████████] 96%)
@@ -409,6 +409,7 @@ None yet.
 | 260718-fp9 | Derive dynamic Physics Paint track labels and standalone identity | 2026-07-18 | b1ad99c4 |  | [260718-fp9-rename-the-visible-physics-paint-standal](./quick/260718-fp9-rename-the-visible-physics-paint-standal/) |
 | 260718-j3h | Add Backspace/Delete shortcuts for selected real Physics Paint Roto keys | 2026-07-18 | f9a4cede |  | [260718-j3h-add-backspace-and-delete-keyboard-shortc](./quick/260718-j3h-add-backspace-and-delete-keyboard-shortc/) |
 | 260718-m2f | Add single-real-key drag movement for Physics Paint Roto timeline | 2026-07-19 | 53c23549 | Verified | [260718-m2f-add-single-real-physics-paint-roto-key-d](./quick/260718-m2f-add-single-real-physics-paint-roto-key-d/) |
+| 260729-taj | Close milestone audit gap EDIT-02/B-01: install physic-paint frame-sync listener | 2026-07-29 | ed590d2b |  | [260729-taj-close-milestone-audit-gap-edit-02-b-01-i](./quick/260729-taj-close-milestone-audit-gap-edit-02-b-01-i/) |
 
 ### Roadmap Evolution
 
