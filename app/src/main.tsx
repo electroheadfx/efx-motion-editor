@@ -11,7 +11,7 @@ import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
-import {installPhysicPaintApplyListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
+import {installPhysicPaintApplyListener, installPhysicPaintFrameSyncListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
 
 const root = document.getElementById('app')!;
 
@@ -33,6 +33,10 @@ if (window.location.pathname === '/physics-paint') {
     await installPhysicPaintRotoAuthorityListener();
     await installPhysicPaintStateSaveListener();
     await installPhysicPaintThumbnailEncodeListener();
+    // Route physic-paint:seek-frame navigation messages from the standalone
+    // Physics Paint window to the editor timeline. Synchronous install; the
+    // discarded cleanup handle matches the app-lifetime pattern above.
+    installPhysicPaintFrameSyncListener();
 
     // Listen for undo/redo events emitted by the native macOS menu.
     // On macOS, Cmd+Z and Cmd+Shift+Z are intercepted by the native menu
