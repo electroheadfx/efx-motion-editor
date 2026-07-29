@@ -3,6 +3,30 @@ import { physicPaintStore } from '../stores/physicPaintStore';
 import { drawRotoFrameComposite, getMissingRotoFrameSpan, resolveMissingRotoFrameDraw } from './rotoFrameDraw';
 
 describe('drawRotoFrameComposite', () => {
+  it('applies independent positive-strength grain after a prepared background paper canvas', () => {
+    const operations: string[] = [];
+    const context = {
+      drawImage: (source: { id?: string }, ...args: number[]) => operations.push(`draw:${source.id ?? 'source'}:${args.join(',')}`),
+      fillRect: (...args: number[]) => operations.push(`fill:${args.join(',')}`),
+      createPattern: () => ({ id: 'pattern' }),
+      save: () => operations.push('save'),
+      restore: () => operations.push('restore'),
+      globalAlpha: 1,
+      fillStyle: '',
+    } as unknown as CanvasRenderingContext2D;
+    const instruction = resolveMissingRotoFrameDraw('phys-layer-1', 12, {
+      mode: 'paper',
+      metadata: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
+    });
+
+    if (instruction.kind !== 'background-only') throw new Error('expected paper background');
+    drawRotoFrameComposite(context, instruction, 20, 10, null, { id: 'prepared-paper' } as unknown as HTMLCanvasElement, null);
+
+    expect(operations).toContain('draw:prepared-paper:0,0,20,10');
+    expect(operations).toContain('fill:2,5,1,1');
+    expect(operations.indexOf('draw:prepared-paper:0,0,20,10')).toBeLessThan(operations.indexOf('fill:2,5,1,1'));
+  });
+
   it('composes persisted paper before transparent paint at authoritative project dimensions', () => {
     const operations: string[] = [];
     const context = {
