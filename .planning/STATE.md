@@ -4,17 +4,17 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 38.1
 current_phase_name: studio-render-path-performance
-status: Ready to execute
-stopped_at: Phase 38.1 gap-closure plans verified; Plans 13-18 ready to execute
-last_updated: "2026-07-29T05:49:35Z"
+status: executing
+stopped_at: Completed 38.1-13-PLAN.md
+last_updated: "2026-07-29T06:17:40.711Z"
 last_activity: 2026-07-29
-last_activity_desc: Phase 38.1 gap-closure planning complete — 6 plans ready
+last_activity_desc: Plan 38.1-13 cached playback background parity completed
 progress:
   total_phases: 21
   completed_phases: 18
   total_plans: 170
-  completed_plans: 155
-  percent: 91
+  completed_plans: 156
+  percent: 92
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 38.1 gap closure — execute verified Plans 13–18 before Phase 38 Plan 38-06 may resume
+**Current focus:** Phase 38.1 gap closure — continue Plans 14–18 before Phase 38 Plan 38-06 may resume
 
 ## Current Position
 
-Phase: 38.1 (studio-render-path-performance) — gap-closure plans verified
-Completed baseline: 38.1-01 through 38.1-12; known-working rollback commit before the reopened track remains `0d0a3547`
-Plan: 12 of 18 executed; Plans 13–18 are planned across Waves 9–11
-Status: Ready to execute
-Last activity: 2026-07-29 — Plans 13–18 passed independent plan verification after two revision cycles
-Next recommended action: run `/gsd-execute-phase 38.1 --gaps`; do not resume Phase 38 Plan 38-06 until Plan 18 native acceptance and Phase 38.1 re-verification pass
+Phase: 38.1 (studio-render-path-performance) — EXECUTING GAP CLOSURE
+Completed baseline: 38.1-01 through 38.1-13; known-working rollback commit before the reopened track remains `0d0a3547`
+Plan: 13 of 18 complete; next incomplete plan is 38.1-14
+Status: Executing Phase 38.1 gap closure
+Last activity: 2026-07-29 — Plan 38.1-13 cached playback background parity completed and tracer gate verified
+Next recommended action: continue `/gsd-execute-phase 38.1 --gaps`; do not resume Phase 38 Plan 38-06 until Plan 18 native acceptance and Phase 38.1 re-verification pass
 
-Progress: [██████████████████░░] 155/170 plans complete; 18/21 phases complete ([█████████░] 91%)
+Progress: [██████████████████░░] 156/170 plans complete; 18/21 phases complete ([█████████░] 92%)
 
 ## Performance Metrics
 
@@ -147,6 +147,7 @@ Progress: [██████████████████░░] 155/170
 | Phase 38.1 P10 | 17min | 3 tasks | 5 files |
 | Phase 38.1 P11 | 9min | 2 tasks | 6 files |
 | Phase 38.1 P12 | 2min | 3 tasks | 1 files |
+| Phase 38.1 P13 | 15min across tracer checkpoint | 1 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -326,6 +327,10 @@ Recent decisions affecting current work:
 - [Phase 38.1 Plan 11]: canvasKey remains the replacement key while width, height, and paperTextureScale remain explicit persistent-boundary identity inputs.
 - [Phase 38.1 Plan 12]: User-approved grouped bidirectional render thresholds are the native acceptance record; raw delta-object transcription was explicitly waived and no telemetry was fabricated.
 - [Phase 38.1 Plan 12]: Stage A controlled render/remount/reactivity checks and all Phase 38 Stage B steps 1-33 are approved; final focused, exact-known-red, typecheck, build, and clean-tree gates passed afterward.
+- [Phase 38.1 Plan 13]: Cached playback uses the canonical Roto resolver and compositor instead of interpreting background fields in PhysicsPaintStudioView.
+- [Phase 38.1 Plan 13]: Transparent playback clears synchronously and skips paper-raster subscription.
+- [Phase 38.1 Plan 13]: Prepared background paper and independent positive-strength grain compose together in deterministic order.
+- [Phase 38.1 Plan 13]: The existing playback effect remains the sole external synchronization owner; no additional effect, component state, or Signal was introduced.
 
 ### Pending Todos
 
@@ -411,6 +416,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-28T19:42:17.667Z
-Stopped at: Completed 38.1-12-PLAN.md
+Last session: 2026-07-29T06:17:40.695Z
+Stopped at: Completed 38.1-13-PLAN.md
 Resume file: None
