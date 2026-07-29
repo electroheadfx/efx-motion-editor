@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 38
 current_phase_name: multi-copy-paste-and-tooltip-polish
 status: executing
-stopped_at: Phase 38.1 verified complete; Phase 38 Plan 38-06 eligible
-last_updated: "2026-07-29T12:34:56Z"
+stopped_at: Plan 38-06 native UAT approved; wave-4 plans 38-07/38-08 eligible
+last_updated: "2026-07-29T13:00:00Z"
 last_activity: 2026-07-29
-last_activity_desc: Phase 38.1 Plan 18 native acceptance and 20/20 re-verification passed
+last_activity_desc: Plan 38-06 33-step native UAT approved; D-15 gate lifted
 progress:
   total_phases: 21
   completed_phases: 19
   total_plans: 170
-  completed_plans: 161
+  completed_plans: 162
   percent: 95
 ---
 
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 38 — resume the blocking Plan 38-06 native UAT checkpoint now that Phase 38.1 is complete and verified
+**Current focus:** Phase 38 — execute wave-4 post-UAT regression plans 38-07 and 38-08 after the approved 38-06 native checkpoint
 
 ## Current Position
 
 Phase: 38 (multi-copy-paste-and-tooltip-polish) — EXECUTING
-Completed prerequisite: Phase 38.1 Plans 01-18 complete; renewed verification passed 20/20 with zero unverified behavior
-Plan: 8 of 11 complete; next incomplete plan is 38-06
-Status: Ready to resume Plan 38-06 blocking native UAT
-Last activity: 2026-07-29 — Plan 38.1-18 native acceptance and phase re-verification completed
-Next recommended action: resume `/gsd-execute-phase 38`; Plans 38-07 and 38-08 remain blocked until explicit 38-06 native approval
+Completed prerequisite: Phase 38.1 Plans 01-18 complete (verified 20/20); Plan 38-06 native UAT approved all 33 steps on 2026-07-29
+Plan: 9 of 11 complete; next incomplete plan is 38-07
+Status: D-15 gate lifted; wave-4 regression plans eligible
+Last activity: 2026-07-29 — Plan 38-06 native UAT approved; verdict recorded in 38-06-SUMMARY.md
+Next recommended action: execute Plans 38-07 and 38-08; 38-08 rewrites the three known-red D-15 deferred assertions
 
-Progress: [███████████████████░] 161/170 plans complete; 19/21 phases complete ([██████████] 95%)
+Progress: [███████████████████░] 162/170 plans complete; 19/21 phases complete ([██████████] 95%)
 
 ## Performance Metrics
 
@@ -153,6 +153,7 @@ Progress: [███████████████████░] 161/170
 | Phase 38.1 P16 | 4min | 1 tasks | 2 files |
 | Phase 38.1 P17 | 7min | 1 tasks | 2 files |
 | Phase 38.1 P18 | native checkpoint + closure | 2 tasks | 4 planning files |
+| Phase 38 P06 | user-owned native UAT session | 1 task | 1 planning file |
 
 ## Accumulated Context
 
@@ -348,6 +349,7 @@ Recent decisions affecting current work:
 - [Phase 38.1 Plan 18]: User-approved summarized sections A-E and grouped forward/reverse thresholds are sufficient acceptance evidence; raw profiler deltas remain optional and were not fabricated.
 - [Phase 38.1 Plan 18]: Native acceptance exposed obsolete Phase 37 group-ripple semantics; commit `25c7cf9e` restored rigid selected-only translation and passed native re-UAT before closure.
 - [Phase 38.1 verification]: Renewed goal verification passed 20/20 with zero unverified behavior; Phase 38 Plan 38-06 is eligible.
+- [Phase 38 Plan 38-06]: The full 33-step native UAT passed with explicit user approval on 2026-07-29; zero test files were touched (D-15), and both UI-SPEC backstops (steps 26/27) received human evidence. Wave-4 plans 38-07/38-08 are unblocked.
 
 ### Pending Todos
 
@@ -356,7 +358,7 @@ None yet.
 ### Blockers/Concerns
 
 - Phase 38.1 is complete: Plans 01–18 executed, Plan 18 received explicit user-owned native approval, and renewed verification passed 20/20.
-- Phase 38 Plan 38-06 is now eligible and is the active blocking native UAT checkpoint; Plans 38-07 and 38-08 remain post-UAT only.
+- Phase 38 Plan 38-06 native UAT is approved (all 33 steps, 2026-07-29); wave-4 plans 38-07 and 38-08 are now eligible.
 - Phase 36.2 Codex gap execution is rejected as failed and administratively superseded. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
 - Plans `36.2-11`, `36.2-12`, and `36.2-13` are closed with rejected/superseded summaries so they must not be resumed as Phase 36.2 implementation.
 - Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, repaint cached real-key behavior, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
@@ -433,6 +435,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-29T12:34:56Z
-Stopped at: Phase 38.1 complete (18/18) and verified 20/20; Phase 38 Plan 38-06 eligible
+Last session: 2026-07-29T13:00:00Z
+Stopped at: Plan 38-06 native UAT approved; wave-4 plans 38-07/38-08 eligible
 Resume file: .planning/phases/38-multi-copy-paste-and-tooltip-polish/.continue-here.md

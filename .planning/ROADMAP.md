@@ -1023,7 +1023,7 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 24/30 | Complete    | 2026-07-25 |
 | 36.15. Roto Timeline Final UI Integration | v0.8.0 | 13/13 | Complete | 2026-07-26 |
 | 37. Multi-Select Physical Roto Keys | v0.8.0 | 6/6 | Complete    | 2026-07-27 |
-| 38. Multi-Copy/Paste and Tooltip Polish | v0.8.0 | 8/11 | In Progress | — |
+| 38. Multi-Copy/Paste and Tooltip Polish | v0.8.0 | 9/11 | In Progress | — |
 | 38.1. Studio render-path performance | v0.8.0 | 18/18 | Complete | 2026-07-29 |
 
 ### Phase 38: Multi-Copy/Paste and Tooltip Polish
@@ -1071,7 +1071,7 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 
 **Requirements**: 38-GROUP-COPY, 38-GROUP-PASTE, 38-CAPSULE-IDLE-CONTEXT, 38-TOOLTIP-VIEWPORT-PLACEMENT, 38-TOOLTIP-NOTCH-MULTILINE, 38-DOWNSTREAM-PARITY, 38-UAT-THEN-REGRESSION
 **Depends on:** Phase 37
-**Plans:** 8/11 plans executed
+**Plans:** 9/11 plans executed
 
 Plans:
 
@@ -1094,7 +1094,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 38-06-PLAN.md — BLOCKING native user-owned UAT checkpoint (D-15); no test work before explicit approval.
+- [x] 38-06-PLAN.md — Blocking native user-owned UAT checkpoint approved 2026-07-29: all 33 steps passed (group Copy/Paste, capsule idle context, tooltips incl. both backstops, downstream parity); zero test files touched (D-15); wave 4 unblocked.
 
 **Wave 4** *(blocked on Wave 3 native UAT approval)*
 
