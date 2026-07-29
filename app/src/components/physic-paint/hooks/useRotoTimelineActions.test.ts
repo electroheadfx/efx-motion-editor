@@ -39,6 +39,8 @@ interface HarnessOptions {
   currentAppFrame?: number;
   launch?: PhysicPaintLaunchContext | null;
   pendingOperationId?: string | null;
+  selectedKeyIds?: readonly string[];
+  capacity?: number;
 }
 
 function createHarness(options: HarnessOptions = {}) {
@@ -55,9 +57,10 @@ function createHarness(options: HarnessOptions = {}) {
     getRotoInterpolationState: () => ({ enabled: false, mode: 'duplicate' }),
     getPhysicalCells: () => [],
     getSelectedKeyId: () => null,
+    getSelectedKeyIds: () => options.selectedKeyIds ?? [],
     getCurrentAppFrame: () => options.currentAppFrame ?? 3,
     getLaunchContext: () => launch,
-    getCapacity: () => 10,
+    getCapacity: () => options.capacity ?? 10,
     executePhysicalEdit: executePhysicalEdit as never,
     pendingOperationId,
     publishStatus,
@@ -121,5 +124,64 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
     expect(accepted).toBe(false);
     expect(executePhysicalEdit).not.toHaveBeenCalled();
     expect(publishStatus).toHaveBeenCalledWith('Paste-to-empty destination is occupied.');
+  });
+});
+
+describe('useRotoTimelineActions rigid group-drag settlement', () => {
+  it('commits the exact retained A@5/B@6/D@7 proposal once', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: [
+        realKeyRecord('A', 0),
+        realKeyRecord('B', 1),
+        realKeyRecord('D', 7),
+      ],
+      selectedKeyIds: ['A', 'B'],
+    });
+
+    const preparation = actions.physicalActions.prepareRotoKeyGroupDrag('B', {
+      kind: 'physical-cell',
+      appFrame: 6,
+    });
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Rigid group drag must prepare');
+    expect(Object.fromEntries(preparation.publication.proposal.mapping)).toEqual({ A: 5, B: 6, D: 7 });
+
+    const accepted = await actions.physicalActions.commitRotoKeyGroupDrag(preparation.publication);
+
+    expect(accepted).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: unknown;
+      operationKind: string;
+      selectedKeyId: string | null;
+      selectedAppFrame: number | null;
+    };
+    expect(dispatched.proposal).toBe(preparation.publication.proposal);
+    expect(dispatched.operationKind).toBe('move-key-group');
+    expect(dispatched.selectedKeyId).toBe('B');
+    expect(dispatched.selectedAppFrame).toBe(6);
+  });
+
+  it('retains resolver conflicts and never dispatches a rejected group drag', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: [
+        realKeyRecord('A', 0),
+        realKeyRecord('B', 1),
+        realKeyRecord('D', 7),
+      ],
+      selectedKeyIds: ['A', 'B'],
+    });
+
+    const preparation = actions.physicalActions.prepareRotoKeyGroupDrag('B', {
+      kind: 'physical-cell',
+      appFrame: 7,
+    });
+
+    expect(preparation.ok).toBe(false);
+    if (preparation.ok) throw new Error('Colliding group drag must reject');
+    expect(preparation.reason).toBe('Move rejected — key in the way');
+    expect(preparation.conflictingAppFrames).toEqual([7]);
+    expect(preparation.detail).toContain('occupied by an unselected real key');
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
   });
 });

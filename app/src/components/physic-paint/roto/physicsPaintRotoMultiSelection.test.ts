@@ -118,13 +118,13 @@ describe('collapseRotoKeySelection (D-02)', () => {
 describe('resolvePostAcceptanceRotoSelection (D-17)', () => {
   const state = selection(['B', 'C'], 'B');
 
-  it("keeps the moved set after 'move-key-group' and moves the anchor to the accepted grabbed key", () => {
+  it("keeps the rigidly moved set after 'move-key-group' and anchors the accepted grabbed key", () => {
     expect(resolvePostAcceptanceRotoSelection({
       operationKind: 'move-key-group',
-      acceptedSelectedKeyId: 'C',
-      state,
-      currentKeyId: 'B',
-    })).toEqual({ selectedKeyIds: ['B', 'C'], anchorKeyId: 'C' });
+      acceptedSelectedKeyId: 'B',
+      state: selection(['A', 'B'], 'A'),
+      currentKeyId: 'A',
+    })).toEqual({ selectedKeyIds: ['A', 'B'], anchorKeyId: 'B' });
   });
 
   it("keeps the set unchanged after 'force-spacing' (keyIds survive retiming)", () => {

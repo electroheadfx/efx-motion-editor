@@ -804,9 +804,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         // Self-target: resolver would return changed:false; do not publish.
         return invalid('real-key', 'Move the Roto key to a different position.');
       }
-      // Occupied before/after boundary (D-07/D-21): compare pointer X with
-      // the cell's midpoint to choose the boundary direction. The resolver
-      // resolves the final insertion frame after cutting the moved identity.
+      // Occupied before/after boundary: compare pointer X with the cell's
+      // midpoint. The resolver converts the stable target identity into the
+      // adjacent physical anchor required by the active move operation.
       const cellRect = cell.getBoundingClientRect();
       const midpoint = cellRect.left + cellRect.width / 2;
       const boundary: 'before-key' | 'after-key' = clientX <= midpoint ? 'before-key' : 'after-key';

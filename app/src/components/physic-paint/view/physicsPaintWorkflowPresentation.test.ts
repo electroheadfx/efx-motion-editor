@@ -240,10 +240,8 @@ describe('getRotoCellStateTooltipCopy (36.15-05 per-cell state tooltips, D-16)',
 });
 
 /**
- * Post-UAT regression anchors (37-06, D-18) for the group presentation half of
- * Phase 37 (D-04, D-08, Pitfall 2). The moved-set view-model tests build their
- * proposals through a real `resolvePhysicPaintRotoPhysicalEdit` call over the
- * locked baseline A@1, B@3, C@5, D@10 — fixtures stay honest by construction.
+ * Group preview anchors build real resolver proposals so role assertions stay
+ * aligned with the authoritative physical mapping.
  */
 
 function buildBaselineIdentities(): PhysicPaintRotoKeyIdentity[] {
@@ -255,39 +253,69 @@ function buildBaselineIdentities(): PhysicPaintRotoKeyIdentity[] {
   ];
 }
 
-function resolveBaselineProposal(intent: PhysicPaintRotoPhysicalEditIntent) {
+function resolveProposal(
+  identities: readonly PhysicPaintRotoKeyIdentity[],
+  intent: PhysicPaintRotoPhysicalEditIntent,
+) {
   const resolution = resolvePhysicPaintRotoPhysicalEdit({
-    identities: buildBaselineIdentities(),
+    identities,
     intent,
     capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES,
     interpolationEnabled: false,
   });
-  if (!resolution.ok) throw new Error('Baseline presentation fixture must resolve ok');
+  if (!resolution.ok) throw new Error('Presentation fixture must resolve ok');
   return resolution.proposal;
 }
 
-describe('getRotoDragPreviewViewModel — group moved-set roles (37-04, D-06/D-22, Pitfall 2)', () => {
+function resolveBaselineProposal(intent: PhysicPaintRotoPhysicalEditIntent) {
+  return resolveProposal(buildBaselineIdentities(), intent);
+}
 
-  it("applies role 'moved' to every member of drag.movedKeyIds and 'shifted' to the rippled unselected key", () => {
-    const proposal = resolveBaselineProposal({
+describe('getRotoDragPreviewViewModel — rigid group roles', () => {
+
+  it("marks every selected key as 'moved' and leaves unselected keys 'idle'", () => {
+    const proposal = resolveProposal([
+      { keyId: 'A', appFrame: 0 },
+      { keyId: 'B', appFrame: 1 },
+      { keyId: 'D', appFrame: 7 },
+    ], {
       kind: 'move-key-group',
-      movedKeyIds: ['B', 'C'],
+      movedKeyIds: ['A', 'B'],
       grabbedKeyId: 'B',
-      target: { kind: 'physical-cell', appFrame: 7 },
+      target: { kind: 'physical-cell', appFrame: 6 },
     });
 
     const view = getRotoDragPreviewViewModel(proposal);
 
     expect(view.movedKeyId).toBe('B');
-    expect(view.movedAppFrame).toBe(7);
+    expect(view.movedAppFrame).toBe(6);
     expect(view.targetKind).toBe('physical-cell');
     expect(view.targetKeyId).toBeNull();
     expect(view.boundary).toBeNull();
+    expect(view.cellsByAppFrame.get(5)).toMatchObject({ kind: 'real', keyId: 'A', role: 'moved' });
+    expect(view.cellsByAppFrame.get(6)).toMatchObject({ kind: 'real', keyId: 'B', role: 'moved' });
+    expect(view.cellsByAppFrame.get(7)).toMatchObject({ kind: 'real', keyId: 'D', role: 'idle' });
+  });
 
-    // GD-1 final map: A@1, B@7, D@8, C@9.
-    expect(view.cellsByAppFrame.get(7)).toMatchObject({ kind: 'real', keyId: 'B', role: 'moved' });
-    expect(view.cellsByAppFrame.get(9)).toMatchObject({ kind: 'real', keyId: 'C', role: 'moved' });
-    expect(view.cellsByAppFrame.get(8)).toMatchObject({ kind: 'real', keyId: 'D', role: 'shifted' });
+  it("keeps an occupied caret identity fixed with role 'target'", () => {
+    const proposal = resolveBaselineProposal({
+      kind: 'move-key-group',
+      movedKeyIds: ['B', 'C'],
+      grabbedKeyId: 'B',
+      target: { kind: 'before-key', targetKeyId: 'D' },
+    });
+
+    const view = getRotoDragPreviewViewModel(proposal);
+
+    expect(view.movedAppFrame).toBe(9);
+    expect(view.targetKind).toBe('before-key');
+    expect(view.targetKeyId).toBe('D');
+    expect(view.targetAppFrame).toBe(10);
+    expect(view.targetPreDragAppFrame).toBe(10);
+    expect(view.boundary).toBe('before');
+    expect(view.cellsByAppFrame.get(9)).toMatchObject({ kind: 'real', keyId: 'B', role: 'moved' });
+    expect(view.cellsByAppFrame.get(11)).toMatchObject({ kind: 'real', keyId: 'C', role: 'moved' });
+    expect(view.cellsByAppFrame.get(10)).toMatchObject({ kind: 'real', keyId: 'D', role: 'target' });
     expect(view.cellsByAppFrame.get(1)).toMatchObject({ kind: 'real', keyId: 'A', role: 'idle' });
   });
 
