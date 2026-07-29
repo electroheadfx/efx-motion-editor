@@ -166,6 +166,8 @@ export interface DryingLUT {
 
 // === STROKE RECORDING ===
 
+export type PhysicsMode = 'local' | 'last' | 'all' | null
+
 export interface PaintStroke {
   mutationId?: number       // stable in-memory identity for accepted brush history
   tool: ToolType
@@ -176,7 +178,7 @@ export interface PaintStroke {
   hasPenInput?: boolean
   diffusionFrames?: number  // v2 format: frames of diffusion since last stroke
   playFrame?: number        // optional Play-canvas frame where this stroke starts
-  physicsMode?: 'local' | null // per-stroke mode for Play-canvas replay
+  physicsMode?: PhysicsMode // per-stroke mode for Play-canvas replay
 }
 
 // === PROJECT SERIALIZATION ===
@@ -194,7 +196,7 @@ export interface SerializedProject {
     hasPenInput?: boolean
     diffusionFrames?: number
     playFrame?: number
-    physicsMode?: 'local' | null
+    physicsMode?: PhysicsMode
   }>
   settings: {
     bgMode: string
@@ -220,7 +222,7 @@ export interface EngineState {
   drySpeed: number         // 10-100, derived from dryAmount slider: 10 + (dryAmount/100)*90
   physicsStrength: number
   physicsRunning: boolean
-  physicsMode: 'local' | 'last' | 'all' | null
+  physicsMode: PhysicsMode
   localSpreadStrength: number  // 0-100, controls local physics spread (D-11)
   hasPenInput: boolean
   diffusionFramesSinceLastStroke: number

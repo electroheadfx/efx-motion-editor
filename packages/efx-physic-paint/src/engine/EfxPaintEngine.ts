@@ -21,6 +21,7 @@ import type {
   FluidBuffers,
   FluidConfig,
   PaintStroke,
+  PhysicsMode,
   SerializedProject,
   NativePenInput,
   StrokeMetadata,
@@ -58,7 +59,7 @@ type DeferredStrokeFinalization = {
   color: string | null
   opts: BrushOpts
   hasPenInput: boolean
-  physicsMode: 'local' | null
+  physicsMode: PhysicsMode
   continuationFrames: number
   mutationId: number
   queuedAt: number
@@ -79,7 +80,7 @@ type PaintHistoryEntry = {
 type StrokeApplicationOptions = {
   startNaturalDrying?: boolean
   hasPenInput?: boolean
-  physicsMode?: 'local' | null
+  physicsMode?: PhysicsMode
 }
 
 type ActiveStrokeFinalization = {
@@ -226,7 +227,7 @@ export class EfxPaintEngine {
   // --- Intervals & Animation ---
   private physicsInterval: ReturnType<typeof setInterval> | null = null
   private physicsTickCount: number = 0
-  private savedPhysicsMode: 'local' | 'last' | 'all' | null = null
+  private savedPhysicsMode: PhysicsMode = null
   private dryingInterval: ReturnType<typeof setInterval> | null = null
   private rafId: number = 0
   private destroyed: boolean = false
@@ -707,17 +708,15 @@ export class EfxPaintEngine {
   /** Stop physics simulation and bake result */
   stopPhysics(): void {
     if (!this.state.physicsRunning) return
+    const completedMode = this.state.physicsMode
     this.state.physicsRunning = false
     if (this.physicsInterval !== null) {
       clearInterval(this.physicsInterval)
       this.physicsInterval = null
     }
 
-    // Restore previous physics mode (e.g. 'local' before hold-button override)
-    this.state.physicsMode = this.savedPhysicsMode
-
-    // Update saved wet layer with diffused result
-    if (this.state.physicsMode === 'last') {
+    // Update saved wet layer with the mode that actually completed.
+    if (completedMode === 'last') {
       for (let i = 0; i < this.size; i++) {
         if (this.wet.alpha[i] > 0 || this.lastStrokeMask[i]) {
           this.savedWet.r[i] = this.wet.r[i]
@@ -739,18 +738,22 @@ export class EfxPaintEngine {
     forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
 
     // Record physics run as action for deterministic replay
-    if (this.physicsTickCount > 0) {
+    const completedTickCount = this.physicsTickCount
+    if (completedTickCount > 0) {
       this.allActions.push({
         tool: 'paint', // placeholder, actual physics strokes filtered during save
         points: [],
         color: null,
         params: { ...this.state.brushOpts },
         timestamp: Date.now(),
-        diffusionFrames: this.physicsTickCount,
-        physicsMode: this.state.physicsMode === 'local' ? 'local' : null,
+        diffusionFrames: completedTickCount,
+        physicsMode: completedMode,
       })
-      this.notifyCompletedMutation('physics')
     }
+
+    // Restore previous physics mode only after completed-session finalization.
+    this.state.physicsMode = this.savedPhysicsMode
+    if (completedTickCount > 0) this.notifyCompletedMutation('physics')
   }
 
   /** Force-dry all wet paint immediately */
@@ -1134,7 +1137,7 @@ export class EfxPaintEngine {
       const pts = pointCount >= a.points.length ? a.points : a.points.slice(0, pointCount)
       const completeStroke = pointCount >= a.points.length
       this.applyStrokeToEngine(a.tool, pts, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode })
-      if (completeStroke) this.replayDiffusion(a.diffusionFrames || 0, sampleHFn)
+      if (completeStroke) this.replayDiffusion(a.diffusionFrames || 0, sampleHFn, a.physicsMode)
     }
 
     this.renderVisibleWetLayer()
@@ -1231,7 +1234,7 @@ export class EfxPaintEngine {
       color: primary.color,
       opts: { ...primary.params },
       hasPenInput: this.strokeHasPenInput(primary),
-      physicsMode: primary.physicsMode === 'local' ? 'local' : null,
+      physicsMode: primary.physicsMode ?? null,
       continuationFrames: continuations.reduce((total, continuation) => total + Math.max(0, Math.min(600, Math.trunc(continuation.diffusionFrames ?? 0))), 0),
       mutationId,
       queuedAt: performance.now(),
@@ -1574,7 +1577,7 @@ export class EfxPaintEngine {
   private prepareWetLayerForStroke(
     pt: PenPoint,
     opts: BrushOpts,
-    physicsMode: 'local' | null = this.state.physicsMode === 'local' ? 'local' : null,
+    physicsMode: PhysicsMode = this.state.physicsMode === 'local' ? 'local' : null,
   ): void {
     const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined
     if (physicsMode === 'local') {
@@ -1950,21 +1953,25 @@ export class EfxPaintEngine {
 
     for (const a of this.allActions) {
       this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode })
-      this.replayDiffusion(a.diffusionFrames || 0, sampleHFn)
+      this.replayDiffusion(a.diffusionFrames || 0, sampleHFn, a.physicsMode)
     }
 
     this.renderVisibleWetLayer()
   }
 
-  private replayDiffusion(frames: number, sampleHFn: (x: number, y: number) => number): void {
+  private replayDiffusion(
+    frames: number,
+    sampleHFn: (x: number, y: number) => number,
+    physicsMode: PhysicsMode = this.state.physicsMode,
+  ): void {
     const count = Math.max(0, Math.min(600, Math.trunc(frames)))
-    for (let i = 0; i < count; i++) this.replayDiffusionFrame(i, sampleHFn)
+    for (let i = 0; i < count; i++) this.replayDiffusionFrame(i, sampleHFn, physicsMode)
   }
 
   private replayDiffusionFrame(
     frame: number,
     sampleHFn: (x: number, y: number) => number,
-    physicsMode: 'local' | 'last' | 'all' | null = this.state.physicsMode,
+    physicsMode: PhysicsMode = this.state.physicsMode,
   ): void {
     physicsStep(
       this.wet, this.drying, this.dualCanvas.dryCtx,
@@ -2003,7 +2010,9 @@ export class EfxPaintEngine {
         hasPenInput: this.strokeHasPenInput(s),
         diffusionFrames: s.diffusionFrames || 0,
         ...(Number.isInteger(s.playFrame) && s.playFrame !== undefined && s.playFrame >= 0 ? { playFrame: s.playFrame } : {}),
-        ...(s.physicsMode === 'local' ? { physicsMode: 'local' as const } : { physicsMode: null }),
+        ...(s.physicsMode === 'local' || s.physicsMode === 'last' || s.physicsMode === 'all'
+          ? { physicsMode: s.physicsMode }
+          : { physicsMode: null }),
       })),
       settings: {
         bgMode: this.state.bgMode,
@@ -2038,7 +2047,9 @@ export class EfxPaintEngine {
       hasPenInput: s.hasPenInput,
       diffusionFrames: s.diffusionFrames || 0,
       ...(Number.isInteger(s.playFrame) && s.playFrame !== undefined && s.playFrame >= 0 ? { playFrame: s.playFrame } : {}),
-      ...(s.physicsMode === 'local' ? { physicsMode: 'local' as const } : { physicsMode: null }),
+      ...(s.physicsMode === 'local' || s.physicsMode === 'last' || s.physicsMode === 'all'
+        ? { physicsMode: s.physicsMode }
+        : { physicsMode: null }),
     }))
 
     // Loaded state is a pixel/script baseline, never active-frame Undo/Redo history.

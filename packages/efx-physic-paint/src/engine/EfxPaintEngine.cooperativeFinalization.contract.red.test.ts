@@ -907,7 +907,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.currentPaperKey = ''
     engine.allActions = [
       makeRecordedStroke({ physicsMode: 'local', diffusionFrames: 1 }),
-      makeRecordedStroke({ physicsMode: 'last', diffusionFrames: 2 }),
+      makeRecordedStroke({ points: [], physicsMode: 'last', diffusionFrames: 2 }),
       makeRecordedStroke({ physicsMode: 'all', diffusionFrames: 3 }),
       makeRecordedStroke({ physicsMode: null, diffusionFrames: 4 }),
     ]
