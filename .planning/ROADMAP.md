@@ -1024,7 +1024,7 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.15. Roto Timeline Final UI Integration | v0.8.0 | 13/13 | Complete | 2026-07-26 |
 | 37. Multi-Select Physical Roto Keys | v0.8.0 | 6/6 | Complete    | 2026-07-27 |
 | 38. Multi-Copy/Paste and Tooltip Polish | v0.8.0 | 8/11 | Blocked on 38.1 gap closure | — |
-| 38.1. Studio render-path performance | v0.8.0 | 16/18 | In Progress|  |
+| 38.1. Studio render-path performance | v0.8.0 | 17/18 | In Progress|  |
 
 ### Phase 38: Multi-Copy/Paste and Tooltip Polish
 
@@ -1106,7 +1106,7 @@ Plans:
 **Goal:** Preserve the approved canvas-first timing architecture from Plans 01–07 and complete the reopened localized-render acceptance track: deterministic render/observer/lifecycle counters, static Studio and Workflow localization, persistent CanvasMount/Efx isolation, and renewed user-owned native proof before unblocking Phase 38-06.
 **Requirements**: 38.1-D-01..38.1-D-10 plus reopen decisions R-D-01..R-D-10 (decision IDs; no formal requirement IDs registered — planning-data gap carried from Phase 38)
 **Depends on:** Phase 38
-**Plans:** 16/18 plans executed
+**Plans:** 17/18 plans executed
 
 Plans:
 
@@ -1158,7 +1158,7 @@ Plans:
 
 **Gap Closure Wave 10** *(blocked on Plan 13 completion)*
 
-- [ ] 38.1-17-PLAN.md — Add bounded Node-runtime CanvasMount hook/effect tests for stable-forwarder freshness, dimension dependencies, observer/rAF cleanup, and idempotent unmount; retain memo/key source assertions as architecture checks only.
+- [x] 38.1-17-PLAN.md — Add bounded Node-runtime CanvasMount hook/effect tests for stable-forwarder freshness, dimension dependencies, observer/rAF cleanup, and idempotent unmount; retain memo/key source assertions as architecture checks only.
 
 **Gap Closure Wave 11** *(blocked on Plans 13–17)*
 
