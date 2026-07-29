@@ -80,9 +80,12 @@ const samples: PhysicsPaintPerformanceSample[] = [];
 const counters = new Map<PhysicsPaintPerformanceCounterName, number>();
 
 function profilingEnabled(): boolean {
-  return typeof window !== 'undefined'
-    && import.meta.env.DEV
-    && window.localStorage?.getItem(PROFILE_STORAGE_KEY) === '1';
+  if (typeof window === 'undefined' || !import.meta.env.DEV) return false;
+  try {
+    return window.localStorage?.getItem(PROFILE_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 function rounded(value: number): number {
