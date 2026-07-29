@@ -144,7 +144,11 @@ describe('PhysicsPaintStyledTooltip surface contract', () => {
     expect(code).not.toContain('dangerouslySetInnerHTML');
     const styles = css();
     const block = styles.slice(styles.indexOf('.physics-paint-styled-tooltip'));
-    expect(block.slice(0, block.indexOf('}'))).toContain('pointer-events: none');
-    expect(block.slice(0, block.indexOf('}'))).toContain('#20262d');
+    const surface = block.slice(0, block.indexOf('}'));
+    expect(surface).toContain('pointer-events: none');
+    expect(surface).toContain('background: #62666d');
+    expect(surface).toContain('border: 0');
+    expect(surface).toContain('border-radius: 4px');
+    expect(surface).not.toContain('border-radius: 999px');
   });
 });

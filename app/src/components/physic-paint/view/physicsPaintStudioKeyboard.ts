@@ -14,6 +14,8 @@ export interface PhysicsPaintStudioKeyboardActions {
   toggleShortcuts: () => void;
   undo: () => void;
   redo: () => void;
+  copyRotoKey?: () => void;
+  pasteRotoKey?: () => void;
   deleteRotoKey?: () => void;
   selectAllRotoKeys?: () => void;
   collapseRotoSelection?: () => void;
@@ -82,6 +84,14 @@ export function dispatchPhysicsPaintStudioKeyDown(
     event.preventDefault();
     if (state.mutationLocked) return;
     actions.undo();
+    return;
+  }
+  if (meta && !event.shiftKey && !event.altKey && !event.repeat && (key === 'c' || key === 'v')) {
+    const action = key === 'c' ? actions.copyRotoKey : actions.pasteRotoKey;
+    if (!action) return;
+    event.preventDefault();
+    if (state.mutationLocked) return;
+    action();
     return;
   }
   if (event.key === '?' || (event.shiftKey && event.key === '/')) {

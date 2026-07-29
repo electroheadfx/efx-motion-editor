@@ -34,6 +34,8 @@ function actions() {
   return {
     undo: vi.fn(),
     redo: vi.fn(),
+    copyRotoKey: vi.fn(),
+    pasteRotoKey: vi.fn(),
     deleteRotoKey: vi.fn(),
     toggleShortcuts: vi.fn(),
     toggleRotoPlayback: vi.fn(),
@@ -174,6 +176,54 @@ describe('Physics Paint Roto delete shortcuts', () => {
     );
 
     expect(keyboardEvent.preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe('Physics Paint Roto copy/paste shortcuts', () => {
+  it.each([
+    [{ metaKey: true, key: 'c' }, 'copyRotoKey'],
+    [{ ctrlKey: true, key: 'C' }, 'copyRotoKey'],
+    [{ metaKey: true, key: 'v' }, 'pasteRotoKey'],
+    [{ ctrlKey: true, key: 'V' }, 'pasteRotoKey'],
+  ])('dispatches $expected through the existing timeline action', (init, expected) => {
+    const { handlers, preventDefault } = dispatch(String(init.key), new TestHTMLElement('canvas') as unknown as EventTarget, init);
+
+    expect(handlers[expected as 'copyRotoKey' | 'pasteRotoKey']).toHaveBeenCalledOnce();
+    expect(handlers[expected === 'copyRotoKey' ? 'pasteRotoKey' : 'copyRotoKey']).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it.each(['c', 'v'])('ignores repeated, shifted, alt-modified, and mutation-locked Cmd+%s dispatches', (key) => {
+    for (const overrides of [
+      { metaKey: true, repeat: true },
+      { metaKey: true, shiftKey: true },
+      { metaKey: true, altKey: true },
+    ]) {
+      const { handlers, preventDefault } = dispatch(key, new TestHTMLElement('canvas') as unknown as EventTarget, overrides);
+      expect(handlers.copyRotoKey).not.toHaveBeenCalled();
+      expect(handlers.pasteRotoKey).not.toHaveBeenCalled();
+      expect(preventDefault).not.toHaveBeenCalled();
+    }
+
+    const handlers = actions();
+    const keyboardEvent = eventFor(key, new TestHTMLElement('canvas') as unknown as EventTarget, { metaKey: true });
+    dispatchPhysicsPaintStudioKeyDown(
+      keyboardEvent.event,
+      { currentFrame: 4, isPlaying: false, mutationLocked: true },
+      handlers,
+      [],
+    );
+    expect(handlers.copyRotoKey).not.toHaveBeenCalled();
+    expect(handlers.pasteRotoKey).not.toHaveBeenCalled();
+    expect(keyboardEvent.preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it.each(['c', 'v'])('preserves native Cmd+%s inside editable controls', (key) => {
+    const { handlers, preventDefault } = dispatch(key, new TestHTMLElement('input') as unknown as EventTarget, { metaKey: true });
+
+    expect(handlers.copyRotoKey).not.toHaveBeenCalled();
+    expect(handlers.pasteRotoKey).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
   });
 });
 

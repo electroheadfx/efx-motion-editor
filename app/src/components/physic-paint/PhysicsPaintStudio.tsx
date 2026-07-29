@@ -998,6 +998,8 @@ export function PhysicsPaintStudio() {
     actions: {
       undo,
       redo,
+      copyRotoKey: copyRotoFrame,
+      pasteRotoKey: pasteRotoFrame,
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,
       selectAllRotoKeys,
       collapseRotoSelection: () => {

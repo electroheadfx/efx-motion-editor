@@ -71,13 +71,18 @@ describe('Physics Paint Play Script integration contract', () => {
   });
 });
 
-describe('Physics Paint Roto delete shortcut wiring', () => {
-  it('shares the exact key utility delete reference with keyboard and visible-button paths', () => {
+describe('Physics Paint Roto keyboard shortcut wiring', () => {
+  it('shares the exact key utility references with keyboard and visible-button paths', () => {
+    expect(studio).toContain('copyRotoKey: copyRotoFrame,');
+    expect(studio).toContain('pasteRotoKey: pasteRotoFrame,');
+    expect(studio).toContain('onCopyRotoFrame: copyRotoFrame');
+    expect(studio).toContain('onPasteRotoFrame: pasteRotoFrame');
     expect(studio).toContain('deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,');
     expect(studio).toContain('onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame,');
   });
 
-  it('advertises the approved Backspace and Delete shortcut copy', () => {
+  it('advertises the Copy, Paste, Backspace, and Delete shortcuts', () => {
+    expect(studioView).toContain('Cmd/Ctrl+C copy selected key(s) · Cmd/Ctrl+V paste at current frame');
     expect(studioView).toContain('Backspace / Delete remove selected real key');
   });
 });
