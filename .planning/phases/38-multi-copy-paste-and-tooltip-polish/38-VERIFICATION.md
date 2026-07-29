@@ -96,3 +96,26 @@ All seven must-haves are implemented, wired, automated, and accepted. **Phase 38
 
 _Verified: 2026-07-29_  
 _Verifier: Claude (gsd-verifier)_
+
+---
+
+## Post-Review Fix Validation
+
+**Recorded:** 2026-07-29  
+**Scope:** All seven code-review findings fixed in `38-REVIEW-FIX.md` (CR-01..CR-04, WR-01..WR-03, commits `5215b0ef` through `363bb0af`).
+
+### Native approval
+
+The user manually tested all seven code-review fixes in the native runtime and approved their behavior. Recorded directly per user instruction; no `gsd-verify-work` session was run and no UAT was reopened. All prior Phase 38 and Phase 38.1 approvals remain in force.
+
+### Post-fix automated gates
+
+| Gate | Result |
+|---|---|
+| Full Vitest | PASS — 92 files passed, 3 skipped; 971 tests passed, 1 skipped, 101 todo (971 vs. 967 pre-fix reflects the four new WR-03 lifecycle tests) |
+| TypeScript | PASS — `tsc --noEmit` completed without diagnostics |
+| Production build | PASS — `pnpm build` (efx-physic-paint + app) built successfully; Vite transformed 1086 modules |
+
+### Outcome
+
+With the fixes natively approved and all final gates green, the advisory review concerns listed above are resolved. **Phase 38 remains complete.**

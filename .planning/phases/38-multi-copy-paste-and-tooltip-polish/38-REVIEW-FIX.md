@@ -69,3 +69,7 @@ status: all_fixed
 _Fixed: 2026-07-29T18:31:11Z_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 1_
+
+## Validation
+
+Recorded 2026-07-29: the user manually tested all seven fixes in the native runtime and approved their behavior. Post-fix gates re-run and green: full Vitest (92 files passed, 3 skipped; 971 tests passed, 1 skipped, 101 todo), `tsc --noEmit` clean, and production `pnpm build` successful. Evidence recorded in `38-VERIFICATION.md` → Post-Review Fix Validation.
