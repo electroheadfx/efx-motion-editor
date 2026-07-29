@@ -823,4 +823,113 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     expect(engine.pendingStrokeFinalizations).toHaveLength(0)
     expect(engine.activeStrokeFinalization).toBeNull()
   })
+
+  it('finalizes a completed last session before restoring the prior physics mode', () => {
+    const { engine } = createHarness()
+    const dryPixels = new Uint8ClampedArray(8)
+    Object.assign(engine, {
+      width: 2,
+      height: 1,
+      size: 2,
+      previewBaseEnabled: true,
+      paperHeight: null,
+      physicsInterval: null,
+      physicsTickCount: 0,
+      savedPhysicsMode: null,
+      lastStrokeBounds: { x0: 1, y0: 0, x1: 1, y1: 0 },
+      lastStrokeMask: new Uint8Array([0, 1]),
+      blowDX: new Float32Array(2),
+      blowDY: new Float32Array(2),
+      fluidConfig: {},
+      fluid: {
+        u: new Float32Array(2), v: new Float32Array(2), u0: new Float32Array(2),
+        v0: new Float32Array(2), p: new Float32Array(2), div: new Float32Array(2),
+      },
+      wet: {
+        r: new Float32Array(2), g: new Float32Array(2), b: new Float32Array(2),
+        alpha: new Float32Array(2), wetness: new Float32Array(2), strokeOpacity: new Float32Array(2),
+      },
+      savedWet: {
+        r: new Float32Array([11, 21]), g: new Float32Array([12, 22]), b: new Float32Array([13, 23]),
+        alpha: new Float32Array([14, 24]), strokeOpacity: new Float32Array([0.15, 0.25]),
+      },
+      drying: { dryPos: new Float32Array(2) },
+      dualCanvas: {
+        dryCtx: {
+          getImageData: vi.fn(() => ({ data: dryPixels })),
+          putImageData: vi.fn(),
+        },
+      },
+      state: {
+        drawing: false,
+        physicsMode: 'local',
+        physicsRunning: false,
+        brushOpts: {},
+        physicsStrength: 50,
+        drySpeed: 10,
+        bgMode: 'transparent',
+        embossStrength: 0,
+        wetPaper: false,
+      },
+      currentPaperKey: '',
+    })
+
+    engine.startPhysics('last')
+    engine.physicsTickCount = 4
+    engine.wet.r[1] = 101
+    engine.wet.g[1] = 102
+    engine.wet.b[1] = 103
+    engine.wet.alpha[1] = 500
+    engine.wet.strokeOpacity[1] = 0.75
+
+    engine.stopPhysics()
+
+    expect(Array.from(engine.savedWet.r)).toEqual([11, 101])
+    expect(Array.from(engine.savedWet.g)).toEqual([12, 102])
+    expect(Array.from(engine.savedWet.b)).toEqual([13, 103])
+    expect(Array.from(engine.savedWet.alpha)).toEqual([14, 500])
+    expect(engine.savedWet.strokeOpacity[0]).toBeCloseTo(0.15)
+    expect(engine.savedWet.strokeOpacity[1]).toBeCloseTo(0.75)
+    expect(engine.getStrokes()).toMatchObject([{ points: [], diffusionFrames: 4, physicsMode: 'last' }])
+    expect(engine.state.physicsMode).toBe('local')
+    expect(engine.state.physicsRunning).toBe(false)
+  })
+
+  it('round-trips every completed physics mode and replays the recorded mode', () => {
+    const { engine } = createHarness()
+    Object.assign(engine.state, {
+      bgMode: 'transparent',
+      embossStrength: 0,
+      wetPaper: false,
+    })
+    engine.width = 2
+    engine.height = 1
+    engine.currentPaperKey = ''
+    engine.allActions = [
+      makeRecordedStroke({ physicsMode: 'local', diffusionFrames: 1 }),
+      makeRecordedStroke({ physicsMode: 'last', diffusionFrames: 2 }),
+      makeRecordedStroke({ physicsMode: 'all', diffusionFrames: 3 }),
+      makeRecordedStroke({ physicsMode: null, diffusionFrames: 4 }),
+    ]
+
+    const serialized = engine.save()
+    expect(serialized.strokes.map(stroke => stroke.physicsMode)).toEqual(['local', 'last', 'all', null])
+
+    const { engine: loaded } = createHarness()
+    loaded.redrawAll = vi.fn()
+    loaded.load(serialized)
+    expect(loaded.getStrokes().map(stroke => stroke.physicsMode)).toEqual(['local', 'last', 'all', null])
+
+    loaded.resetReplaySurface = vi.fn()
+    loaded.applyStrokeToEngine = vi.fn()
+    loaded.replayDiffusionFrame = vi.fn()
+    loaded.renderVisibleWetLayer = vi.fn()
+    loaded.paperHeight = null
+    loaded.width = 2
+    loaded.height = 1
+    loaded.renderPartialStrokes([{ stroke: loaded.getStrokes()[1], pointCount: 0 }])
+
+    expect(loaded.replayDiffusionFrame).toHaveBeenCalledWith(0, expect.any(Function), 'last')
+    expect(loaded.replayDiffusionFrame).toHaveBeenCalledWith(1, expect.any(Function), 'last')
+  })
 })
