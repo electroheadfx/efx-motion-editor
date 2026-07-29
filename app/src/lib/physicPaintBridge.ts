@@ -1,7 +1,7 @@
 import type { Result } from './ipc';
 import type { Layer } from '../types/layer';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import { validatePhysicPaintRotoPhysicalEditSemanticDelta } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import { isRotoPngDataUrl, prepareRotoPhysicalRealKeyPngs } from '../components/physic-paint/roto/rotoCanvasFrames';
@@ -282,6 +282,62 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     interpolationMode: interpolation.mode,
     frames,
     interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId),
+  };
+}
+
+/**
+ * Default interpolation settings echoed on malformed-authority failures. Never
+ * derived from store state: invalid requests must not query store state with
+ * an unvalidated layer ID.
+ */
+const INVALID_AUTHORITY_INTERPOLATION_SETTINGS: PhysicPaintRotoInterpolationSettings = {
+  enabled: false,
+  inBetweenCount: 1,
+  mode: 'duplicate',
+  position: 0,
+  deform: 0,
+};
+
+function extractAuthorityEnvelopeFields(payload: unknown): PhysicPaintRotoAuthorityRequest {
+  if (typeof payload !== 'object' || payload === null) {
+    return { operationId: '', projectContextId: '', layerId: '', canonicalStart: 0 };
+  }
+  const record = payload as Record<string, unknown>;
+  return {
+    operationId: typeof record.operationId === 'string' ? record.operationId : '',
+    projectContextId: typeof record.projectContextId === 'string' ? record.projectContextId : '',
+    layerId: typeof record.layerId === 'string' ? record.layerId : '',
+    canonicalStart: typeof record.canonicalStart === 'number' && Number.isInteger(record.canonicalStart) && record.canonicalStart >= 0 ? record.canonicalStart : 0,
+  };
+}
+
+/**
+ * Validating entry point for untrusted authority-request payloads (CR-01).
+ * Tauri and postMessage listeners receive `unknown` payloads; only requests
+ * that pass the strict runtime validator reach
+ * {@link getPhysicPaintRotoAuthority}. Malformed payloads get a failure result
+ * built from best-effort envelope fields and never touch store state.
+ */
+export function getPhysicPaintRotoAuthorityFromUnknown(payload: unknown): PhysicPaintRotoAuthorityResult {
+  if (isPhysicPaintRotoAuthorityRequest(payload)) return getPhysicPaintRotoAuthority(payload);
+  const fields = extractAuthorityEnvelopeFields(payload);
+  return {
+    operationId: fields.operationId,
+    ok: false,
+    projectContextId: fields.projectContextId,
+    layerId: fields.layerId,
+    canonicalStart: fields.canonicalStart,
+    layerEndExclusive: fields.canonicalStart,
+    capacity: 0,
+    physicalCapacity: 0,
+    rotoRevision: '',
+    physicalRevision: '',
+    physicalRecords: [],
+    interpolationEnabled: false,
+    interpolationMode: 'duplicate',
+    frames: [],
+    interpolationSettings: { ...INVALID_AUTHORITY_INTERPOLATION_SETTINGS },
+    error: 'Malformed Roto authority request.',
   };
 }
 
@@ -884,14 +940,14 @@ export async function installPhysicPaintRotoAuthorityListener(): Promise<() => v
   };
   if (isTauriRuntime()) {
     const eventApi = await import('@tauri-apps/api/event');
-    const unlisten = await eventApi.listen?.(PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, async (event) => emitResult(getPhysicPaintRotoAuthority(event.payload as PhysicPaintRotoAuthorityRequest)));
+    const unlisten = await eventApi.listen?.(PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, async (event) => emitResult(getPhysicPaintRotoAuthorityFromUnknown(event.payload)));
     if (unlisten) return unlisten;
   }
   if (typeof window === 'undefined') return () => {};
   const message = (event: MessageEvent) => {
     if (event.origin !== window.location.origin || event.data?.type !== PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT) return;
     const source = event.source && 'postMessage' in event.source ? event.source as Pick<Window, 'postMessage'> : undefined;
-    void emitResult(getPhysicPaintRotoAuthority(event.data.payload as PhysicPaintRotoAuthorityRequest), source);
+    void emitResult(getPhysicPaintRotoAuthorityFromUnknown(event.data.payload), source);
   };
   window.addEventListener('message', message);
   return () => window.removeEventListener('message', message);

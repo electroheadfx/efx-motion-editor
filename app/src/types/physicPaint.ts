@@ -941,6 +941,17 @@ export function isPhysicPaintScriptLibraryResultMessage(value: unknown): value i
   return Boolean(isRecord(value) && value.type === 'physic-paint:script-library-result' && isPhysicPaintScriptLibraryResult(value.payload));
 }
 
+export function isPhysicPaintRotoAuthorityRequest(value: unknown): value is PhysicPaintRotoAuthorityRequest {
+  return Boolean(
+    isRecord(value) &&
+      hasOnlyKeys(value, ['operationId', 'projectContextId', 'layerId', 'canonicalStart']) &&
+      isBoundedOperationId(value.operationId) &&
+      isNonEmptyString(value.projectContextId) &&
+      isNonEmptyString(value.layerId) &&
+      isNonNegativeInteger(value.canonicalStart)
+  );
+}
+
 function isScriptLibraryRow(value: unknown): value is RotoScriptLibraryRow {
   if (!isRecord(value) || !isCanonicalRotoScriptId(value.id) || !isNonEmptyString(value.revision) || normalizeRotoScriptName(value.name) === null) return false;
   if (!isNonEmptyString(value.createdAt) || !isNonEmptyString(value.updatedAt) || !isNonNegativeInteger(value.brushCount)) return false;
