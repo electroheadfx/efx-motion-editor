@@ -1733,6 +1733,25 @@ interface FinalizedFailure {
  * before calling this helper; it only derives the projection from the
  * validated mapping.
  */
+/**
+ * Runtime-immutable map for resolver outputs (WR-01). `ReadonlyMap` is a
+ * compile-time cast only — the native instance keeps callable `set`/`delete`/
+ * `clear` mutators, and freezing the containing proposal does not disable
+ * them. This helper copies the source map and replaces the mutators with
+ * throwing stubs before freezing the instance, so consumers of proposals and
+ * projections cannot mutate resolver-owned state.
+ */
+function asImmutableMap<K, V>(source: ReadonlyMap<K, V>): ReadonlyMap<K, V> {
+  const copy = new Map<K, V>(source);
+  const immutable = (): never => {
+    throw new TypeError('Resolver maps are immutable.');
+  };
+  copy.set = immutable;
+  copy.delete = immutable;
+  copy.clear = immutable;
+  return Object.freeze(copy) as ReadonlyMap<K, V>;
+}
+
 function buildProjectionFromMapping(
   mapping: ReadonlyMap<string, number>,
   capacity: number,
@@ -1798,7 +1817,7 @@ function buildProjectionFromMapping(
     assignments,
     cells: cellsFrozen,
     generatedCells: generatedCellsFrozen,
-    framesByKeyId: new Map<string, number>(mapping) as ReadonlyMap<string, number>,
+    framesByKeyId: asImmutableMap(mapping),
   }) as PhysicPaintRotoPhysicalTimelineProjection;
 }
 
@@ -1930,7 +1949,7 @@ function finalizeProposal(
   }) as PhysicPaintRotoPhysicalEditStatus;
 
   const proposal = Object.freeze({
-    mapping: new Map<string, number>(mapping) as ReadonlyMap<string, number>,
+    mapping: asImmutableMap(mapping),
     orderedKeyIds,
     assignments,
     cells: cellsFrozen,
