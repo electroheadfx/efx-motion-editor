@@ -1,4 +1,5 @@
 import { memo } from 'preact/compat';
+import { useEffect, useRef } from 'preact/hooks';
 import type { PaintHistoryAvailability, ToolType } from '@efxlab/efx-physic-paint';
 import type { ReadonlySignal } from '@preact/signals';
 import paintModeNormalIcon from '../../../assets/physics-paint-ui/icons/paint-mode-normal.svg';
@@ -99,6 +100,87 @@ function PhysicsPaintHistoryActionButton({
   );
 }
 
+// CR-03: unified pointer lifecycle for the press-and-hold physics controls.
+// Pointer capture keeps the gesture owned by the button; the engine action
+// stops on pointerup, pointercancel, lostpointercapture, blur, and unmount so
+// an interrupted touch can never leave physics running. Space/Enter provide
+// intentional keyboard press-and-hold semantics: keydown starts, keyup stops,
+// and auto-repeat is ignored.
+function PhysicsPaintHoldButton({
+  item,
+  mode,
+  active,
+  disabled,
+  onPhysicsStart,
+  onPhysicsStop,
+}: {
+  item: PhysicsPaintToolRailItem;
+  mode: 'last' | 'all';
+  active: boolean;
+  disabled: boolean;
+  onPhysicsStart: (mode: 'last' | 'all') => void;
+  onPhysicsStop: () => void;
+}) {
+  const holdActiveRef = useRef(false);
+
+  const startHold = () => {
+    if (disabled || holdActiveRef.current) return;
+    holdActiveRef.current = true;
+    onPhysicsStart(mode);
+  };
+  const stopHold = () => {
+    if (!holdActiveRef.current) return;
+    holdActiveRef.current = false;
+    onPhysicsStop();
+  };
+
+  // Unmount cleanup: an interrupted gesture must not leave the engine action
+  // active after the rail tears down.
+  useEffect(() => () => {
+    if (holdActiveRef.current) {
+      holdActiveRef.current = false;
+      onPhysicsStop();
+    }
+  }, [onPhysicsStop]);
+
+  return (
+    <button
+      type="button"
+      class={`physics-paint-icon-button${active ? ' active' : ''}`}
+      disabled={disabled}
+      title={item.label}
+      aria-label={item.label}
+      aria-pressed={active}
+      onPointerDown={(event) => {
+        if (disabled) return;
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // Pointer already released or cancelled — the hold still stops via
+          // the pointercancel/lostpointercapture handlers below.
+        }
+        startHold();
+      }}
+      onPointerUp={stopHold}
+      onPointerCancel={stopHold}
+      onLostPointerCapture={stopHold}
+      onKeyDown={(event) => {
+        if (event.repeat || (event.key !== ' ' && event.key !== 'Enter')) return;
+        event.preventDefault();
+        startHold();
+      }}
+      onKeyUp={(event) => {
+        if (event.key !== ' ' && event.key !== 'Enter') return;
+        event.preventDefault();
+        stopHold();
+      }}
+      onBlur={stopHold}
+    >
+      <img src={item.icon} alt="" aria-hidden="true" />
+    </button>
+  );
+}
+
 // 38-11: the rail is wrapped in preact/compat memo — a startFrame-only Studio
 // render feeds referentially stable props (38-11 identity memo in the Studio),
 // the default shallow compare returns equal, and Preact skips this subtree.
@@ -149,22 +231,15 @@ function PhysicsPaintToolRailImpl({
         if (item.id === 'physics-last' || item.id === 'physics-all') {
           const mode = item.id === 'physics-last' ? 'last' : 'all';
           return (
-            <button
+            <PhysicsPaintHoldButton
               key={item.id}
-              type="button"
-              class={className}
+              item={item}
+              mode={mode}
+              active={active}
               disabled={disabled}
-              title={item.label}
-              aria-label={item.label}
-              aria-pressed={active}
-              onMouseDown={() => !disabled && onPhysicsStart(mode)}
-              onMouseUp={onPhysicsStop}
-              onMouseLeave={onPhysicsStop}
-              onTouchStart={() => !disabled && onPhysicsStart(mode)}
-              onTouchEnd={onPhysicsStop}
-            >
-              <img src={item.icon} alt="" aria-hidden="true" />
-            </button>
+              onPhysicsStart={onPhysicsStart}
+              onPhysicsStop={onPhysicsStop}
+            />
           );
         }
 
