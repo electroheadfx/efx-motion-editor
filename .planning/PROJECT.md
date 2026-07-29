@@ -104,6 +104,8 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Stop-motion animators can duplicate, insert, delete, copy, and paste real Physics Paint Roto keys with clean cache/cell/canvas state — v0.8.0 Phase 36.7
 - ✓ Physics Paint Roto timeline ships the approved final UI: fixed-geometry strip with grouped controls, guarded icon actions with styled tooltips, elastic status capsule, real-key diamonds on the EFX Motion layer, + Key empty-paint promotion, resizable sidebar sections, and Scripts panel script actions — v0.8.0 Phase 36.15
 - ✓ Multiple real Physics Paint Roto keys can be selected (including Select All) and group-dragged, deleted, and Force-Spaced as one atomic transaction over the canonical physical-frame model, with full downstream parity and regression-locked behavior — v0.8.0 Phase 37
+- ✓ Selected real Roto keys support reusable group Copy/Paste with stable physical offsets, fresh identities, atomic rejection, one Undo/Redo action, and single-key parity; the capsule and viewport tooltips use the approved current-cell and flat multiline presentation — v0.8.0 Phase 38
+- ✓ Physics Paint Studio navigation preserves the canvas-first timing architecture while localizing static UI, Workflow cells, CanvasMount/Efx ownership, and deterministic render/lifecycle instrumentation — v0.8.0 Phase 38.1
 
 ### Active
 
@@ -121,7 +123,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - Architecture notes for the future editor transport path from standalone paint output into EFX Motion Editor frame/layer cache.
 - Explicit non-replacement boundary: perfect-freehand remains the fast/direct paint path and p5.brush remains the FX brush path; efx-physic-paint is an additional physics paint tool.
 
-**State (2026-07-27):** All milestone phases complete through Phase 37 — multi-select physical Roto keys is shipped and UAT-approved (6 plans: resolver group operations, multi-selection state + keyboard, timeline action wiring, workflow-strip UI, native UAT with all sections passed, and 33 post-UAT regression anchors; 849 tests green). Phase 36.15 shipped the Roto timeline final UI integration (13 plans, UAT-approved). Follow-ups remain in STATE.md Deferred Items; the 36.15 advisory code review added 1 critical + 4 warnings as candidates, and the Phase 37 advisory code review added 5 warnings (unguarded Backspace route, Cmd/Ctrl+A guard divergence, paint-barrier undo/redo desync, store selection sync miss, per-render computed recreation).
+**State (2026-07-29):** All 21 roadmap phases are complete. Phase 38 shipped group Copy/Paste plus capsule/tooltip polish after all 33 native UAT steps passed, then locked the behavior with 967 passing app tests, typecheck, and production build. Phase 38.1 is complete and verified 20/20 with zero unverified behavior. Follow-ups remain in STATE.md Deferred Items and the advisory phase review reports.
 
 ## Latest Milestone: v0.7.0 Monorepo & Paint Enhancements (Shipped 2026-04-05)
 
@@ -218,7 +220,7 @@ Known technical debt:
 | Phase 36.5 Roto cell semantics stay MVP-only | User needed trustworthy existing strip state communication without reopening interpolation, cached playback, key utilities, save-on-leave, close behavior, or full timeline redesign scope | ✓ Good — semantic view models, compact legend/status, non-color CSS cues, generated-cell guard, and cached-reference navigation fix were validated |
 | Phase 36.6 save-on-leave uses source-frame save truth | Dirty Roto navigation must save the source frame before opening a queued destination, not save/open based on destination state | ✓ Good — UAT passed for source save, source-specific feedback, latest destination, and failure retention |
 | Phase 36.7 Roto key utilities use controller-backed real-key transactions | Duplicate, Insert, Delete, Copy, and Paste need deterministic cache/cell/canvas updates without broad UI expansion or editor integration scope creep | ✓ Good — UAT passed for live key utility flow, generated/empty guards, dirty save-before-action, regression tests, typecheck, and user-story coverage |
-| Phase 37 is contract/validation-only | The milestone still avoids editor integration scope creep after proving one durable cached frame | Pending — next phase should document typed seam and validation without headless adapter/editor-runtime implementation |
+| Phase 38 uses production → native UAT → post-UAT regression | Visible Copy/Paste, capsule, and tooltip behavior must be approved before tests are rewritten around it | ✓ Good — all 33 native steps passed before Plans 38-07/08; the final 967-test/typecheck/build gate is green |
 
 ## Evolution
 
@@ -238,4 +240,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-27 after Phase 37 — multi-select physical Roto keys complete and UAT-approved; milestone v0.8.0 phases finished; remaining follow-ups recorded in STATE.md Deferred Items*
+*Last updated: 2026-07-29 after Phase 38 and Phase 38.1 completion — all 21 roadmap phases complete; remaining advisory review and deferred follow-ups recorded in STATE.md*
