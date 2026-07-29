@@ -187,7 +187,7 @@ describe('PhysicsPaintCanvasMount directly executed hook behavior', () => {
     expect(initialObserver.disconnect).not.toHaveBeenCalled();
     expect(requestAnimationFrameMock).toHaveBeenCalledTimes(1);
 
-    const resized = renderCanvas(callbacks, 100, 100, mounted.shell);
+    renderCanvas(callbacks, 100, 100, mounted.shell);
     expect(ResizeObserverStub.instances).toHaveLength(2);
     expect(initialObserver.disconnect).toHaveBeenCalledTimes(1);
     expect(cancelAnimationFrameMock).toHaveBeenCalledTimes(1);
