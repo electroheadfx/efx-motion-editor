@@ -255,12 +255,16 @@ function targetSignaturesEqual(
 }
 
 /**
- * Escape a keyId or other string for safe use inside a CSS attribute selector.
- * keyIds are opaque strings from the resolver; they may contain characters
- * that need escaping in CSS. We escape conservatively per CSS-string rules.
+ * Locate a mounted Roto key cell by its opaque bounded key identity (CR-04).
+ * Key IDs are opaque resolver strings; interpolating them into a CSS
+ * attribute selector can throw for valid CSS-string edge cases, so the lookup
+ * compares `dataset.rotoKeyId` directly instead of building a selector.
  */
-function cssEscape(value: string): string {
-  return value.replace(/["\\]/g, '\\$&');
+function findRotoKeyCellByKeyId(scroller: HTMLElement, keyId: string): HTMLElement | null {
+  for (const cell of scroller.querySelectorAll<HTMLElement>('[data-roto-key-id]')) {
+    if (cell.dataset.rotoKeyId === keyId) return cell;
+  }
+  return null;
 }
 
 function getRotoDragFeedback(preview: RotoDragPreviewState | null): string | null {
@@ -951,8 +955,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       if (!mountedRef.current) return;
       const scroller = timelineScrollRef.current;
       if (!scroller) return;
-      const selector = `[data-roto-key-id="${cssEscape(session.movedKeyId)}"]`;
-      const sourceCell = scroller.querySelector<HTMLElement>(selector);
+      const sourceCell = findRotoKeyCellByKeyId(scroller, session.movedKeyId);
       if (sourceCell) {
         sourceCell.focus();
       } else {
@@ -1070,8 +1073,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         // accepts it unchanged), so proposal.mapping is authoritative.
         const movedAppFrame = retainedPublication!.proposal.mapping.get(session.movedKeyId) ?? null;
         if (movedAppFrame === null) return;
-        const selector = `[data-roto-key-id="${cssEscape(session.movedKeyId)}"]`;
-        const targetCell = timelineScrollRef.current?.querySelector<HTMLElement>(selector) ?? null;
+        const scroller = timelineScrollRef.current;
+        const targetCell = scroller ? findRotoKeyCellByKeyId(scroller, session.movedKeyId) : null;
         if (targetCell) {
           targetCell.focus();
         } else {
