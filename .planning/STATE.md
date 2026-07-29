@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 38.1
 current_phase_name: studio-render-path-performance
 status: executing
-stopped_at: Completed 38.1-14-PLAN.md
-last_updated: "2026-07-29T06:30:06.914Z"
+stopped_at: Completed 38.1-15-PLAN.md
+last_updated: "2026-07-29T06:37:45.870Z"
 last_activity: 2026-07-29
-last_activity_desc: Plan 38.1-13 cached playback background parity completed and tracer gate verified
+last_activity_desc: Plan 38.1-15 capacity-aware physical Roto replacement completed
 progress:
   total_phases: 21
   completed_phases: 18
   total_plans: 170
-  completed_plans: 157
-  percent: 86
+  completed_plans: 158
+  percent: 93
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 38.1 gap closure — continue Plans 14–18 before Phase 38 Plan 38-06 may resume
+**Current focus:** Phase 38.1 gap closure — continue Plans 16–18 before Phase 38 Plan 38-06 may resume
 
 ## Current Position
 
 Phase: 38.1 (studio-render-path-performance) — EXECUTING GAP CLOSURE
-Completed baseline: 38.1-01 through 38.1-13; known-working rollback commit before the reopened track remains `0d0a3547`
-Plan: 14 of 18 complete; next incomplete plan is 38.1-14
+Completed baseline: 38.1-01 through 38.1-15; known-working rollback commit before the reopened track remains `0d0a3547`
+Plan: 15 of 18 complete; next incomplete plan is 38.1-16
 Status: Ready to execute
-Last activity: 2026-07-29 — Plan 38.1-13 cached playback background parity completed and tracer gate verified
+Last activity: 2026-07-29 — Plan 38.1-15 capacity-aware physical Roto replacement completed
 Next recommended action: continue `/gsd-execute-phase 38.1 --gaps`; do not resume Phase 38 Plan 38-06 until Plan 18 native acceptance and Phase 38.1 re-verification pass
 
-Progress: [██████████████████░░] 156/170 plans complete; 18/21 phases complete ([█████████░] 92%)
+Progress: [██████████████████░░] 158/170 plans complete; 18/21 phases complete ([█████████░] 93%)
 
 ## Performance Metrics
 
@@ -149,6 +149,7 @@ Progress: [██████████████████░░] 156/170
 | Phase 38.1 P12 | 2min | 3 tasks | 1 files |
 | Phase 38.1 P13 | 15min across tracer checkpoint | 1 tasks | 5 files |
 | Phase 38.1 P14 | 7min | 1 tasks | 3 files |
+| Phase 38.1 P15 | 3min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -334,6 +335,8 @@ Recent decisions affecting current work:
 - [Phase 38.1 Plan 13]: The existing playback effect remains the sole external synchronization owner; no additional effect, component state, or Signal was introduced.
 - [Phase ?]: [Phase 38.1 Plan 14]: Capture completedMode once at the stopPhysics guard boundary and use it for finalization and replay metadata before restoring savedPhysicsMode.
 - [Phase ?]: [Phase 38.1 Plan 14]: Preserve local, last, all, and null through one PhysicsMode alias and version-2 serialization without a legacy migration branch.
+- [Phase 38.1 Plan 15]: Physical Roto replacement no-op identity now requires records revision, interpolation revision, and installed capacity to match.
+- [Phase 38.1 Plan 15]: Capacity-only changes reuse the existing atomic replacement path; exact structural triples remain allocation- and notification-free.
 
 ### Pending Todos
 
@@ -419,6 +422,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-29T06:30:06.898Z
-Stopped at: Completed 38.1-14-PLAN.md
+Last session: 2026-07-29T06:37:45.855Z
+Stopped at: Completed 38.1-15-PLAN.md
 Resume file: None
