@@ -104,6 +104,45 @@ describe('Physics Paint performance trace', () => {
     expect(snapshotPhysicsPaintPerformance().counters['render.studio']).toBe(0);
   });
 
+  it('fails closed when the localStorage property getter throws', () => {
+    const restrictedWindow = {} as Window;
+    Object.defineProperty(restrictedWindow, 'localStorage', {
+      configurable: true,
+      get: () => {
+        throw new DOMException('Storage access denied', 'SecurityError');
+      },
+    });
+    vi.stubGlobal('window', restrictedWindow);
+
+    expect(() => {
+      recordPhysicsPaintPerformance({ stage: 'restricted', category: 'sync-cpu', durationMs: 10, timestamp: 1 });
+      recordPhysicsPaintPerformanceCounter('render.studio');
+    }).not.toThrow();
+
+    const snapshot = snapshotPhysicsPaintPerformance();
+    expect(snapshot.summary.sampleCount).toBe(0);
+    expect(snapshot.counters).toEqual(Object.fromEntries(EXPECTED_COUNTER_NAMES.map((name) => [name, 0])));
+  });
+
+  it('fails closed when localStorage.getItem throws', () => {
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: () => {
+          throw new DOMException('Storage read denied', 'SecurityError');
+        },
+      },
+    });
+
+    expect(() => {
+      recordPhysicsPaintPerformance({ stage: 'restricted', category: 'sync-cpu', durationMs: 10, timestamp: 1 });
+      recordPhysicsPaintPerformanceCounter('render.studio');
+    }).not.toThrow();
+
+    const snapshot = snapshotPhysicsPaintPerformance();
+    expect(snapshot.summary.sampleCount).toBe(0);
+    expect(snapshot.counters).toEqual(Object.fromEntries(EXPECTED_COUNTER_NAMES.map((name) => [name, 0])));
+  });
+
   it('exports one unique canonical registry covering every localized-render counter', () => {
     expect(PHYSICS_PAINT_PERFORMANCE_COUNTER_NAMES).toEqual(EXPECTED_COUNTER_NAMES);
     expect(new Set(PHYSICS_PAINT_PERFORMANCE_COUNTER_NAMES).size).toBe(EXPECTED_COUNTER_NAMES.length);
