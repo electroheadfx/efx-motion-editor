@@ -1106,7 +1106,7 @@ Plans:
 **Goal:** Preserve the approved canvas-first timing architecture from Plans 01–07 and complete the reopened localized-render acceptance track: deterministic render/observer/lifecycle counters, static Studio and Workflow localization, persistent CanvasMount/Efx isolation, and renewed user-owned native proof before unblocking Phase 38-06.
 **Requirements**: 38.1-D-01..38.1-D-10 plus reopen decisions R-D-01..R-D-10 (decision IDs; no formal requirement IDs registered — planning-data gap carried from Phase 38)
 **Depends on:** Phase 38
-**Plans:** 12/12 plans executed
+**Plans:** 12/17 plans executed
 
 Plans:
 
@@ -1148,3 +1148,14 @@ Plans:
 **Reopened Wave 8** *(complete; user-approved 2026-07-28)*
 
 - [x] 38.1-12-PLAN.md — Automated preconditions and final reverification passed; the user approved grouped bidirectional render thresholds, controlled remount/reactivity checks, and all 33 canonical Phase 38 native regression steps.
+
+**Gap Closure Wave 9** *(parallel; blocked on Plan 12)*
+
+- [ ] 38.1-13-PLAN.md — Route cached playback through the canonical transparent/background texture/paper grain compositor with behavior-first coverage.
+- [ ] 38.1-14-PLAN.md — Finalize and replay physics sessions using the completed mode before restoring the prior engine mode.
+- [ ] 38.1-15-PLAN.md — Treat capacity as physical timeline structural identity and publish capacity-only replacements.
+- [ ] 38.1-16-PLAN.md — Make optional profiling fail closed when localStorage access or reads throw.
+
+**Gap Closure Wave 10** *(blocked on Plan 13 shared StudioView ownership)*
+
+- [ ] 38.1-17-PLAN.md — Add Node-runtime CanvasMount/Studio behavior tests for instance reuse, callback freshness, keyed remounting, dimension reconfiguration, and exactly-once cleanup.
