@@ -4,14 +4,14 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 38
 current_phase_name: multi-copy-paste-and-tooltip-polish
-status: executing
-stopped_at: Completed 38-08-PLAN.md; Phase 38 verification pending
-last_updated: "2026-07-29T16:15:38.053Z"
+status: complete
+stopped_at: Phase 38 complete and verified 7/7; Phase 38.1 remains complete and verified 20/20
+last_updated: "2026-07-29T17:28:09.683Z"
 last_activity: 2026-07-29
-last_activity_desc: Plan 38-08 presentation regressions and full closing gates passed
+last_activity_desc: Phase 38 complete; all roadmap phases are complete
 progress:
   total_phases: 21
-  completed_phases: 19
+  completed_phases: 21
   total_plans: 170
   completed_plans: 164
   percent: 96
@@ -24,24 +24,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 38 — all 11 plans complete; run phase-level verification and closure
+**Current focus:** v0.8.0 execution phases are complete; Phase 38 review findings remain available for optional remediation before milestone completion
 
 ## Current Position
 
-Phase: 38 (multi-copy-paste-and-tooltip-polish) — VERIFYING
-Completed prerequisite: Phase 38.1 Plans 01-18 complete (verified 20/20); Plan 38-06 native UAT approved all 33 steps on 2026-07-29
-Plan: 11 of 11 complete; no incomplete plan remains
-Status: Post-UAT group and presentation regressions pass; full Vitest, typecheck, and production build gates are green
-Last activity: 2026-07-29 — Plan 38-08 locked capsule/tooltip contracts and passed the complete closing gate
-Next recommended action: verify the Phase 38 goal, then mark the phase complete if verification passes
+Phase: 38 (multi-copy-paste-and-tooltip-polish) — COMPLETE
+Completed prerequisite: Phase 38.1 Plans 01-18 complete and verified 20/20; Plan 38-06 native UAT approved all 33 steps
+Plan: 11 of 11 complete
+Status: Phase 38 verification passed 7/7 with zero unverified behavior; all 21 roadmap phases are complete
+Last activity: 2026-07-29 — Phase 38 completed after post-UAT regressions, full gates, review, and independent verification
+Next recommended action: review the advisory `38-REVIEW.md` findings, then audit/complete the v0.8.0 milestone when ready
 
-Progress: [███████████████████░] 164/170 plans complete; 19/21 phases complete ([██████████] 96%)
+Progress: [███████████████████░] 164/170 plan summaries present; 21/21 phases complete ([██████████] 96%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 92 for v0.8.0
+- Total plans completed: 96 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -67,6 +67,7 @@ Progress: [███████████████████░] 164/170
 | 36.15 | 13 | - | - |
 | 37 | 6 | - | - |
 | 38.1 | 18/18 | Complete through renewed native acceptance and re-verification | - |
+| 38 | 11 | - | - |
 
 **Recent Trend:**
 
@@ -442,6 +443,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-29T16:15:38.032Z
-Stopped at: Completed 38-08-PLAN.md; Phase 38 verification pending
+Last session: 2026-07-29T17:28:09.683Z
+Stopped at: Phase 38 complete and verified 7/7; all roadmap phases complete
 Resume file: None
