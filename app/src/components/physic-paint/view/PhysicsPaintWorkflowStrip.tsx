@@ -619,7 +619,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const selectAllDisabledReason = canSelectAllRotoKeys
     ? null
     : keyUtilitiesDisabledByBusyState && physicalActions?.canSelectAllKeys.value
-      ? getRotoKeyUtilityDisabledMessage('delete')
+      ? ROTO_KEY_BUSY_STATUS_TEMPLATE
       : physicalActions?.selectAllKeysDisabledReason.value ?? 'Select all keys is unavailable.';
   const insertKeyTooltip = useStyledTooltip();
   const addKeyTooltip = useStyledTooltip();
