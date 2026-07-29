@@ -109,6 +109,7 @@ export function dispatchPhysicsPaintStudioKeyDown(
   ) {
     if (!actions.deleteRotoKey || !isPhysicsPaintRotoDeleteTarget(event.target)) return;
     event.preventDefault();
+    if (state.mutationLocked) return;
     actions.deleteRotoKey();
     return;
   }

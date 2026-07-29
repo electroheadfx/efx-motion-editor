@@ -378,7 +378,13 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         successMessage: GROUP_DELETE_SUCCESS_MESSAGE,
       });
     }
-    const selectedKeyId = ensureSelectedKeyId(input);
+    // Fail closed (CR-02): the keyboard route can reach this action with no
+    // valid selection; never throw — publish a status and resolve false.
+    const selectedKeyId = input.getSelectedKeyId?.() ?? null;
+    if (!isBoundedKeyId(selectedKeyId)) {
+      input.publishStatus?.('Select a real Roto key to delete.');
+      return Promise.resolve(false);
+    }
     return runPhysicalAction({
       intent: { kind: 'delete-key', selectedKeyId },
       operationKind: 'delete-key',
