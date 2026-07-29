@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 5
 waived_count: 1
-fixed_count: 16
-total_count: 22
-last_updated: 2026-07-29T06:54:21.095Z
+fixed_count: 17
+total_count: 23
+last_updated: 2026-07-29T08:09:04.219Z
 ---
 
 # Broken Windows Ledger
@@ -37,6 +37,7 @@ last_updated: 2026-07-29T06:54:21.095Z
 | 20 | 38.1 | deviation | .planning/STATE.md |  | Corrected stale Plan 11 prose and inconsistent completion percentage left by generic state handlers after Plan 12 closure | fixed |  | 2026-07-28T19:45:06.908Z | 2026-07-28T19:45:07.070Z |
 | 21 | 38.1 | deviation | .planning/STATE.md |  | Corrected stale sequential state position after the generic advance handler | fixed |  | 2026-07-29T06:18:59.408Z | 2026-07-29T06:20:12.940Z |
 | 22 | 38.1 | deviation | .planning/STATE.md |  | Corrected inconsistent generated STATE.md progress and next-plan fields after Plan 38.1-16 | fixed |  | 2026-07-29T06:51:59.691Z | 2026-07-29T06:54:21.095Z |
+| 23 | 38.1 | deviation | app/src/test/preactHookRuntime.ts |  | Adjusted the test runtime to the app TypeScript target and removed one unused GREEN-test binding after the no-emit gate. | fixed |  | 2026-07-29T08:08:16.664Z | 2026-07-29T08:09:04.219Z |
 
 ````json
 [
@@ -303,6 +304,18 @@ last_updated: 2026-07-29T06:54:21.095Z
     "reason": "",
     "recorded_at": "2026-07-29T06:51:59.691Z",
     "resolved_at": "2026-07-29T06:54:21.095Z"
+  },
+  {
+    "id": 23,
+    "kind": "deviation",
+    "phase": "38.1",
+    "file": "app/src/test/preactHookRuntime.ts",
+    "line": null,
+    "description": "Adjusted the test runtime to the app TypeScript target and removed one unused GREEN-test binding after the no-emit gate.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-07-29T08:08:16.664Z",
+    "resolved_at": "2026-07-29T08:09:04.219Z"
   }
 ]
 ````
