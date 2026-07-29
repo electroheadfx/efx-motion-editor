@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 5
 waived_count: 1
-fixed_count: 15
-total_count: 21
-last_updated: 2026-07-29T06:20:12.940Z
+fixed_count: 16
+total_count: 22
+last_updated: 2026-07-29T06:54:21.095Z
 ---
 
 # Broken Windows Ledger
@@ -36,6 +36,7 @@ last_updated: 2026-07-29T06:20:12.940Z
 | 19 | 38.1 | deviation | .planning/phases/38.1-studio-render-path-performance/38.1-12-SUMMARY.md |  | User authorized grouped bidirectional native thresholds instead of raw forward/reverse delta-object transcription; no telemetry was fabricated | waived | User explicitly authorized grouped bidirectional thresholds as the acceptance record and waived raw delta-object transcription. | 2026-07-28T19:42:16.957Z | 2026-07-28T19:44:03.132Z |
 | 20 | 38.1 | deviation | .planning/STATE.md |  | Corrected stale Plan 11 prose and inconsistent completion percentage left by generic state handlers after Plan 12 closure | fixed |  | 2026-07-28T19:45:06.908Z | 2026-07-28T19:45:07.070Z |
 | 21 | 38.1 | deviation | .planning/STATE.md |  | Corrected stale sequential state position after the generic advance handler | fixed |  | 2026-07-29T06:18:59.408Z | 2026-07-29T06:20:12.940Z |
+| 22 | 38.1 | deviation | .planning/STATE.md |  | Corrected inconsistent generated STATE.md progress and next-plan fields after Plan 38.1-16 | fixed |  | 2026-07-29T06:51:59.691Z | 2026-07-29T06:54:21.095Z |
 
 ````json
 [
@@ -290,6 +291,18 @@ last_updated: 2026-07-29T06:20:12.940Z
     "reason": "",
     "recorded_at": "2026-07-29T06:18:59.408Z",
     "resolved_at": "2026-07-29T06:20:12.940Z"
+  },
+  {
+    "id": 22,
+    "kind": "deviation",
+    "phase": "38.1",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Corrected inconsistent generated STATE.md progress and next-plan fields after Plan 38.1-16",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-07-29T06:51:59.691Z",
+    "resolved_at": "2026-07-29T06:54:21.095Z"
   }
 ]
 ````
