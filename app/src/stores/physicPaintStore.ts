@@ -1202,9 +1202,10 @@ export const physicPaintStore = {
     const previousRecords = this.getRotoRealKeyRecords(layerId);
     const previousPayloadDataUrls = new Set(previousRecords.map((record) => record.payload.dataUrl));
     const previousInterpolation = this.getRotoPhysicalInterpolationState(layerId);
+    const previousCapacity = this.getRotoPhysicalCapacity(layerId);
     const previousRevision = buildPhysicPaintRotoPhysicalRevision(previousRecords, previousInterpolation);
     const nextRevision = buildPhysicPaintRotoPhysicalRevision(validatedRecords, interpolation);
-    if (_rotoRealKeyRecords.has(layerId) && previousRevision === nextRevision) return { ok: true };
+    if (_rotoRealKeyRecords.has(layerId) && previousRevision === nextRevision && previousCapacity === capacity) return { ok: true };
 
     // Atomically replace the complete record set and indexes.
     const recordMap = new Map<string, PhysicPaintRotoRealKeyRecord>();
