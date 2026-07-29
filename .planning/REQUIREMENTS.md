@@ -53,10 +53,10 @@ The former Phase 36.6 save-on-leave lifecycle was superseded by quick task `2607
 
 ### Physics Paint Roto Paint Script Reuse
 
-- [ ] **ROTO-SCRIPT-COPY**: User can copy the current live recorded paint script into active-session memory, with source-bound completed mutations keeping it current until navigation freezes the snapshot.
-- [ ] **ROTO-SCRIPT-APPLY**: User can repeatedly apply the copied script to real or true empty Roto frames through existing deterministic Deform/Move replay, Undo/Redo, and automatic pixel-cache publication.
+- [x] **ROTO-SCRIPT-COPY**: User can copy the current live recorded paint script into active-session memory, with source-bound completed mutations keeping it current until navigation freezes the snapshot.
+- [x] **ROTO-SCRIPT-APPLY**: User can repeatedly apply the copied script to real or true empty Roto frames through existing deterministic Deform/Move replay, Undo/Redo, and automatic pixel-cache publication.
 
-These functional requirements are owned by a dedicated GSD quick that must pass native UAT before Phase 36.14 begins. Phase 36.14 only presents and wires the resulting controller contract.
+These functional requirements were owned by dedicated GSD quick `260715-kgf`, which passed native UAT on 2026-07-16 (14/14 must-haves verified). Phase 36.14 presents and wires the resulting controller contract.
 
 ### Physics Paint Roto Deterministic Physical Timeline and Final UI Integration
 
@@ -86,15 +86,15 @@ Presentation-only integration of the approved 36.15 UI-SPEC over the 36.14 physi
 
 ### Physics Paint Roto Multi-Select Physical Keys
 
-- [ ] **37-MULTI-SELECT-IDENTITY**: User can select multiple real Roto keys; generated and empty physical cells remain non-editable and can never become selected identities; selection tracks stable keyId values only (never sourceFrame/displayFrame or projected ownership) and survives physical retiming.
-- [ ] **37-SELECT-ALL**: User can Select All real Roto keys; Select All remains discoverable within the compact 155px strip.
-- [ ] **37-GROUP-DRAG**: User can drag several selected keys together preserving relative physical distances; preview and commit use the same complete physical mapping; occupied-key before/after boundaries follow D-29 rules; invalid or over-capacity moves are rejected atomically with no partial mutation; selection, focus, and minimal scroll follow the accepted moved group.
-- [ ] **37-GROUP-DELETE**: User can delete all selected real keys in one atomic operation preserving unselected identities and payloads; later physical keys ripple per the canonical physical model; survivor selection is deterministic; exactly one Undo/Redo action; Backspace/Delete, toolbar Delete, and future keyboard routes share the same transaction.
-- [ ] **37-GROUP-FORCE-SPACING**: Force Spacing retimes keys per the locked selected-only vs full-timeline scope decision, preserving first-key anchoring and exactly N empty physical slots between adjacent in-scope keys; collisions against out-of-scope keys follow the locked policy; invalid, negative, fractional, nonnumeric, and over-capacity values are rejected atomically; success records one accepted history action; session-local N stays non-persistent.
-- [ ] **37-ATOMIC-TRANSACTIONS**: Every multi-key operation is one complete acknowledged physical-map transaction with no partial mutation visible on rejection, timeout, rollback, launch replacement, or disposal; Undo/Redo stores complete immutable snapshots; exact parent acknowledgement is required before accepted-only history advances.
-- [ ] **37-DOWNSTREAM-PARITY**: Save/reopen preserves the accepted physical map and stable keyId ownership; live pixels, caches, dirty state, playback, onion/reference, preview, export, missing/background rendering, and timeline extent derive from the accepted map only; Basic perfect-freehand and FX p5.brush behavior remain unchanged; script clipboard, durable script library, Play Script, interpolation, and Force Spacing semantics remain compatible.
-- [ ] **37-UI-INTEGRATION**: The 36.15 icon-only timeline UI gains clear multi-select affordances; selected keys have a distinct visual state with accessible tooltips; group drag preview shows the complete final proposed timeline; disabled multi-key actions remain focusable with controller-provided reasons; the status capsule receives one concise operation status with detailed failures routed to LOG.
-- [ ] **37-UAT-THEN-REGRESSION**: Production implementation ships first; native user-owned UAT is blocking before any regression test creation, modification, deletion, renaming, or execution; only after explicit UAT approval do deterministic vitest run regression coverage, typecheck, and build follow.
+- [x] **37-MULTI-SELECT-IDENTITY**: User can select multiple real Roto keys; generated and empty physical cells remain non-editable and can never become selected identities; selection tracks stable keyId values only (never sourceFrame/displayFrame or projected ownership) and survives physical retiming.
+- [x] **37-SELECT-ALL**: User can Select All real Roto keys; Select All remains discoverable within the compact 155px strip.
+- [x] **37-GROUP-DRAG**: User can drag several selected keys together preserving relative physical distances; preview and commit use the same complete physical mapping; occupied-key before/after boundaries follow D-29 rules; invalid or over-capacity moves are rejected atomically with no partial mutation; selection, focus, and minimal scroll follow the accepted moved group.
+- [x] **37-GROUP-DELETE**: User can delete all selected real keys in one atomic operation preserving unselected identities and payloads; later physical keys ripple per the canonical physical model; survivor selection is deterministic; exactly one Undo/Redo action; Backspace/Delete, toolbar Delete, and future keyboard routes share the same transaction.
+- [x] **37-GROUP-FORCE-SPACING**: Force Spacing retimes keys per the locked selected-only vs full-timeline scope decision, preserving first-key anchoring and exactly N empty physical slots between adjacent in-scope keys; collisions against out-of-scope keys follow the locked policy; invalid, negative, fractional, nonnumeric, and over-capacity values are rejected atomically; success records one accepted history action; session-local N stays non-persistent.
+- [x] **37-ATOMIC-TRANSACTIONS**: Every multi-key operation is one complete acknowledged physical-map transaction with no partial mutation visible on rejection, timeout, rollback, launch replacement, or disposal; Undo/Redo stores complete immutable snapshots; exact parent acknowledgement is required before accepted-only history advances.
+- [x] **37-DOWNSTREAM-PARITY**: Save/reopen preserves the accepted physical map and stable keyId ownership; live pixels, caches, dirty state, playback, onion/reference, preview, export, missing/background rendering, and timeline extent derive from the accepted map only; Basic perfect-freehand and FX p5.brush behavior remain unchanged; script clipboard, durable script library, Play Script, interpolation, and Force Spacing semantics remain compatible.
+- [x] **37-UI-INTEGRATION**: The 36.15 icon-only timeline UI gains clear multi-select affordances; selected keys have a distinct visual state with accessible tooltips; group drag preview shows the complete final proposed timeline; disabled multi-key actions remain focusable with controller-provided reasons; the status capsule receives one concise operation status with detailed failures routed to LOG.
+- [x] **37-UAT-THEN-REGRESSION**: Production implementation ships first; native user-owned UAT is blocking before any regression test creation, modification, deletion, renaming, or execution; only after explicit UAT approval do deterministic vitest run regression coverage, typecheck, and build follow.
 
 ## Implemented Integration Baseline
 
@@ -148,8 +148,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | 36.10-MISSING-BACKGROUND | Phase 36.10 | Complete |
 | 36.10-PREVIEW-EXPORT-PARITY | Phase 36.10 | Complete |
 | EDIT-01 through EDIT-05 | Phases 36.1–36.13 | Complete |
-| ROTO-SCRIPT-COPY | Dedicated pre-36.14 GSD quick | Pending |
-| ROTO-SCRIPT-APPLY | Dedicated pre-36.14 GSD quick | Pending |
+| ROTO-SCRIPT-COPY | Quick 260715-kgf | Complete |
+| ROTO-SCRIPT-APPLY | Quick 260715-kgf | Complete |
 | 36.14-PHYSICAL-IDENTITY | Phase 36.14 | Complete |
 | 36.14-DERIVED-INTERPOLATION | Phase 36.14 | Complete |
 | 36.14-ATOMIC-FRAME-MAPPING | Phase 36.14 | Complete |
@@ -166,15 +166,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | 36.15-LAYER-KEY-MARKERS | Phase 36.15 | Complete |
 | 36.15-SELECTION-GUARD | Phase 36.15 | Complete |
 | 36.15-SCRIPT-CONTROLS | Phase 36.15 | Complete |
-| 37-MULTI-SELECT-IDENTITY | Phase 37 | Planned |
-| 37-SELECT-ALL | Phase 37 | Planned |
-| 37-GROUP-DRAG | Phase 37 | Planned |
-| 37-GROUP-DELETE | Phase 37 | Planned |
-| 37-GROUP-FORCE-SPACING | Phase 37 | Planned |
-| 37-ATOMIC-TRANSACTIONS | Phase 37 | Planned |
-| 37-DOWNSTREAM-PARITY | Phase 37 | Planned |
-| 37-UI-INTEGRATION | Phase 37 | Planned |
-| 37-UAT-THEN-REGRESSION | Phase 37 | Planned |
+| 37-MULTI-SELECT-IDENTITY | Phase 37 | Complete |
+| 37-SELECT-ALL | Phase 37 | Complete |
+| 37-GROUP-DRAG | Phase 37 | Complete |
+| 37-GROUP-DELETE | Phase 37 | Complete |
+| 37-GROUP-FORCE-SPACING | Phase 37 | Complete |
+| 37-ATOMIC-TRANSACTIONS | Phase 37 | Complete |
+| 37-DOWNSTREAM-PARITY | Phase 37 | Complete |
+| 37-UI-INTEGRATION | Phase 37 | Complete |
+| 37-UAT-THEN-REGRESSION | Phase 37 | Complete |
 
 **Coverage:**
 
@@ -184,4 +184,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-06-08*
-*Last updated: 2026-07-26 after registering the Phase 37 multi-select requirement IDs*
+*Last updated: 2026-07-29 during v0.8.0 milestone audit — checked off ROTO-SCRIPT-COPY/APPLY (quick 260715-kgf) and Phase 37 IDs after verified completion*
