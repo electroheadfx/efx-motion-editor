@@ -6,11 +6,48 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const hookRuntime = vi.hoisted(() => ({
   values: [] as unknown[],
   refs: [] as Array<{ current: unknown }>,
+  effects: [] as Array<{
+    ran: boolean;
+    deps: readonly unknown[] | null;
+    cleanup: (() => void) | null;
+    pending: { effect: () => unknown; deps?: readonly unknown[] } | null;
+  }>,
   cursor: 0,
   reset() {
     this.values = [];
     this.refs = [];
+    this.effects = [];
     this.cursor = 0;
+  },
+  // Real effect semantics (WR-03): effects run on flush with deps comparison,
+  // cleanups run before re-run and on unmount — the previous no-op useEffect
+  // mock never exercised listener/timer cleanup or unmount behavior.
+  flushEffects() {
+    for (const slot of this.effects) {
+      if (!slot) continue;
+      const pending = slot.pending;
+      if (!pending) continue;
+      slot.pending = null;
+      const changed = !slot.ran
+        || pending.deps === undefined
+        || slot.deps === null
+        || pending.deps.length !== slot.deps.length
+        || pending.deps.some((dep, index) => !Object.is(dep, slot.deps?.[index]));
+      if (!changed) continue;
+      slot.cleanup?.();
+      const cleanup = pending.effect();
+      slot.cleanup = typeof cleanup === 'function' ? (cleanup as () => void) : null;
+      slot.deps = pending.deps ?? null;
+      slot.ran = true;
+    }
+  },
+  unmount() {
+    for (const slot of this.effects) {
+      if (!slot) continue;
+      slot.cleanup?.();
+      slot.cleanup = null;
+      slot.pending = null;
+    }
   },
 }));
 
@@ -30,7 +67,11 @@ vi.mock('preact/hooks', () => ({
     return hookRuntime.refs[index] as { current: Value };
   },
   useCallback: <Value>(callback: Value) => callback,
-  useEffect: () => {},
+  useEffect: (effect: () => unknown, deps?: readonly unknown[]) => {
+    const index = hookRuntime.cursor++;
+    const slot = (hookRuntime.effects[index] ??= { ran: false, deps: null, cleanup: null, pending: null });
+    slot.pending = { effect, deps };
+  },
 }));
 
 import {
@@ -73,7 +114,9 @@ function installWindowStub() {
 function createHarness() {
   const render = () => {
     hookRuntime.cursor = 0;
-    return useStyledTooltip();
+    const controller = useStyledTooltip();
+    hookRuntime.flushEffects();
+    return controller;
   };
   return { render };
 }
@@ -139,6 +182,69 @@ describe('useStyledTooltip', () => {
     expect(harness.render().visible).toBe(true);
     harness.render().hide();
     expect(harness.render().visible).toBe(false);
+  });
+});
+
+describe('useStyledTooltip — real effect lifecycle (WR-03)', () => {
+  let windowStub: ReturnType<typeof installWindowStub>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    hookRuntime.reset();
+    windowStub = installWindowStub();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('clears a pending hover timer on unmount so the tooltip never shows afterwards', () => {
+    const harness = createHarness();
+    harness.render().onPointerEnter();
+    vi.advanceTimersByTime(500);
+    hookRuntime.unmount();
+    vi.advanceTimersByTime(2000);
+    expect(harness.render().visible).toBe(false);
+    expect(windowStub.keydownListenerCount()).toBe(0);
+  });
+
+  it('removes the Escape listener when unmounted while visible', () => {
+    const harness = createHarness();
+    harness.render().onFocus();
+    expect(harness.render().visible).toBe(true);
+    expect(windowStub.keydownListenerCount()).toBe(1);
+    hookRuntime.unmount();
+    expect(windowStub.keydownListenerCount()).toBe(0);
+    // Escape after unmount is a no-op: no handler remains registered.
+    windowStub.dispatchKeydown('Escape');
+    expect(windowStub.keydownListenerCount()).toBe(0);
+  });
+
+  it('never accumulates Escape listeners across repeated show/hide cycles', () => {
+    const harness = createHarness();
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      harness.render().onFocus();
+      expect(harness.render().visible).toBe(true);
+      expect(windowStub.keydownListenerCount()).toBe(1);
+      harness.render().onBlur();
+      expect(harness.render().visible).toBe(false);
+      expect(windowStub.keydownListenerCount()).toBe(0);
+    }
+  });
+
+  it('cancels a pending hover show when the pointer leaves and still honors a later full hover', () => {
+    const harness = createHarness();
+    harness.render().onPointerEnter();
+    vi.advanceTimersByTime(999);
+    harness.render().onPointerLeave();
+    vi.advanceTimersByTime(2000);
+    expect(harness.render().visible).toBe(false);
+    expect(windowStub.keydownListenerCount()).toBe(0);
+    harness.render().onPointerEnter();
+    vi.advanceTimersByTime(1000);
+    expect(harness.render().visible).toBe(true);
+    expect(windowStub.keydownListenerCount()).toBe(1);
   });
 });
 
