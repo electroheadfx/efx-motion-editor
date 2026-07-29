@@ -1023,8 +1023,8 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.14. Deterministic Physical-Frame Roto Timeline Cutover and Final UI Integration | v0.8.0 | 24/30 | Complete    | 2026-07-25 |
 | 36.15. Roto Timeline Final UI Integration | v0.8.0 | 13/13 | Complete | 2026-07-26 |
 | 37. Multi-Select Physical Roto Keys | v0.8.0 | 6/6 | Complete    | 2026-07-27 |
-| 38. Multi-Copy/Paste and Tooltip Polish | v0.8.0 | 8/11 | Blocked on 38.1 gap closure | — |
-| 38.1. Studio render-path performance | v0.8.0 | 17/18 | In Progress|  |
+| 38. Multi-Copy/Paste and Tooltip Polish | v0.8.0 | 8/11 | In Progress | — |
+| 38.1. Studio render-path performance | v0.8.0 | 18/18 | Complete | 2026-07-29 |
 
 ### Phase 38: Multi-Copy/Paste and Tooltip Polish
 
@@ -1106,7 +1106,7 @@ Plans:
 **Goal:** Preserve the approved canvas-first timing architecture from Plans 01–07 and complete the reopened localized-render acceptance track: deterministic render/observer/lifecycle counters, static Studio and Workflow localization, persistent CanvasMount/Efx isolation, and renewed user-owned native proof before unblocking Phase 38-06.
 **Requirements**: 38.1-D-01..38.1-D-10 plus reopen decisions R-D-01..R-D-10 (decision IDs; no formal requirement IDs registered — planning-data gap carried from Phase 38)
 **Depends on:** Phase 38
-**Plans:** 17/18 plans executed
+**Plans:** 18/18 plans executed
 
 Plans:
 
@@ -1162,4 +1162,4 @@ Plans:
 
 **Gap Closure Wave 11** *(blocked on Plans 13–17)*
 
-- [ ] 38.1-18-PLAN.md — Run all focused gap suites, app/package typechecks, and app build, then stop for user-owned native acceptance of affected pixels/state, actual Preact CanvasMount/Efx reconciliation/lifecycle, and the approved bidirectional counter matrix before unblocking Phase 38-06.
+- [x] 38.1-18-PLAN.md — Exact post-gap automation passed; user-owned native sections A-E, actual Preact CanvasMount/Efx lifecycle, both grouped counter directions, and the corrected rigid Roto group drag were explicitly approved. Phase 38.1 re-verification passed 20/20.

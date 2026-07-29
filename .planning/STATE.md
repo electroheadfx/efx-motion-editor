@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 38.1
-current_phase_name: studio-render-path-performance
+current_phase: 38
+current_phase_name: multi-copy-paste-and-tooltip-polish
 status: executing
-stopped_at: Completed 38.1-17-PLAN.md
-last_updated: "2026-07-29T08:11:58.503Z"
+stopped_at: Phase 38.1 verified complete; Phase 38 Plan 38-06 eligible
+last_updated: "2026-07-29T12:34:56Z"
 last_activity: 2026-07-29
-last_activity_desc: Plan 38.1-17 CanvasMount hook runtime evidence completed
+last_activity_desc: Phase 38.1 Plan 18 native acceptance and 20/20 re-verification passed
 progress:
   total_phases: 21
-  completed_phases: 18
+  completed_phases: 19
   total_plans: 170
-  completed_plans: 160
-  percent: 94
+  completed_plans: 161
+  percent: 95
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 38.1 gap closure — complete Plan 18 native acceptance before Phase 38 Plan 38-06 may resume
+**Current focus:** Phase 38 — resume the blocking Plan 38-06 native UAT checkpoint now that Phase 38.1 is complete and verified
 
 ## Current Position
 
-Phase: 38.1 (studio-render-path-performance) — EXECUTING GAP CLOSURE
-Completed baseline: 38.1-01 through 38.1-17; known-working rollback commit before the reopened track remains `0d0a3547`
-Plan: 17 of 18 complete; next incomplete plan is 38.1-18
-Status: Ready to execute Plan 38.1-18 native acceptance gate
-Last activity: 2026-07-29 — Plan 38.1-17 CanvasMount hook runtime evidence completed
-Next recommended action: continue `/gsd-execute-phase 38.1 --gaps`; do not resume Phase 38 Plan 38-06 until Plan 18 native acceptance and Phase 38.1 re-verification pass
+Phase: 38 (multi-copy-paste-and-tooltip-polish) — EXECUTING
+Completed prerequisite: Phase 38.1 Plans 01-18 complete; renewed verification passed 20/20 with zero unverified behavior
+Plan: 8 of 11 complete; next incomplete plan is 38-06
+Status: Ready to resume Plan 38-06 blocking native UAT
+Last activity: 2026-07-29 — Plan 38.1-18 native acceptance and phase re-verification completed
+Next recommended action: resume `/gsd-execute-phase 38`; Plans 38-07 and 38-08 remain blocked until explicit 38-06 native approval
 
-Progress: [██████████████████░░] 160/170 plans complete; 18/21 phases complete ([█████████░] 94%)
+Progress: [███████████████████░] 161/170 plans complete; 19/21 phases complete ([██████████] 95%)
 
 ## Performance Metrics
 
@@ -66,7 +66,7 @@ Progress: [██████████████████░░] 160/170
 | 36.14 | 24 | - | - |
 | 36.15 | 13 | - | - |
 | 37 | 6 | - | - |
-| 38.1 | 12/12 | 2min Plan 12 continuation | - |
+| 38.1 | 18/18 | Complete through renewed native acceptance and re-verification | - |
 
 **Recent Trend:**
 
@@ -152,6 +152,7 @@ Progress: [██████████████████░░] 160/170
 | Phase 38.1 P15 | 3min | 1 tasks | 2 files |
 | Phase 38.1 P16 | 4min | 1 tasks | 2 files |
 | Phase 38.1 P17 | 7min | 1 tasks | 2 files |
+| Phase 38.1 P18 | native checkpoint + closure | 2 tasks | 4 planning files |
 
 ## Accumulated Context
 
@@ -343,6 +344,10 @@ Recent decisions affecting current work:
 - [Phase ?]: Plan 38.1-16 tests restricted storage through exported profiler behavior APIs without exposing or duplicating the private gate.
 - [Phase ?]: Plan 38.1-17: The Node hook runtime proves direct callback/effect/resource behavior only and deliberately does not emulate Preact keyed reconciliation.
 - [Phase ?]: Plan 38.1-17: Same-key persistence, changed-key replacement, and real Efx child ownership remain blocking Plan 18 native acceptance claims.
+- [Phase 38.1 Plan 18]: Exact post-gap automation passed (115 app tests, 58 engine tests, both TypeScript checks, package check, build) before user-owned native approval.
+- [Phase 38.1 Plan 18]: User-approved summarized sections A-E and grouped forward/reverse thresholds are sufficient acceptance evidence; raw profiler deltas remain optional and were not fabricated.
+- [Phase 38.1 Plan 18]: Native acceptance exposed obsolete Phase 37 group-ripple semantics; commit `25c7cf9e` restored rigid selected-only translation and passed native re-UAT before closure.
+- [Phase 38.1 verification]: Renewed goal verification passed 20/20 with zero unverified behavior; Phase 38 Plan 38-06 is eligible.
 
 ### Pending Todos
 
@@ -350,8 +355,8 @@ None yet.
 
 ### Blockers/Concerns
 
-- Reopened Phase 38.1 Plans 08–12 remain the approved historical baseline; verification subsequently required gap-closure Plans 13–18.
-- Phase 38 Plan 38-06 remains blocked until Plans 13–17 execute, Plan 18 receives explicit user-owned native approval, and Phase 38.1 re-verification passes.
+- Phase 38.1 is complete: Plans 01–18 executed, Plan 18 received explicit user-owned native approval, and renewed verification passed 20/20.
+- Phase 38 Plan 38-06 is now eligible and is the active blocking native UAT checkpoint; Plans 38-07 and 38-08 remain post-UAT only.
 - Phase 36.2 Codex gap execution is rejected as failed and administratively superseded. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
 - Plans `36.2-11`, `36.2-12`, and `36.2-13` are closed with rejected/superseded summaries so they must not be resumed as Phase 36.2 implementation.
 - Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, repaint cached real-key behavior, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
@@ -428,6 +433,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-29T08:11:58.487Z
-Stopped at: Completed 38.1-17-PLAN.md
-Resume file: None
+Last session: 2026-07-29T12:34:56Z
+Stopped at: Phase 38.1 complete (18/18) and verified 20/20; Phase 38 Plan 38-06 eligible
+Resume file: .planning/phases/38-multi-copy-paste-and-tooltip-polish/.continue-here.md
