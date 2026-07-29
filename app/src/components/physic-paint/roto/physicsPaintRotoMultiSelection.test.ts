@@ -159,4 +159,45 @@ describe('resolvePostAcceptanceRotoSelection (D-17)', () => {
       currentKeyId: 'B',
     })).toEqual({ selectedKeyIds: ['A'], anchorKeyId: 'A' });
   });
+
+  it("selects the accepted pasted group with the earliest pasted key as anchor after 'paste-key-group'", () => {
+    expect(resolvePostAcceptanceRotoSelection({
+      operationKind: 'paste-key-group',
+      acceptedSelectedKeyId: 'P',
+      acceptedAddedKeyIds: ['P', 'Q'],
+      state,
+      currentKeyId: 'B',
+    })).toEqual({ selectedKeyIds: ['P', 'Q'], anchorKeyId: 'P' });
+  });
+
+  it('does not mutate the prior selection state', () => {
+    const prior = selection(['B', 'C'], 'B');
+    const before = structuredClone(prior);
+
+    resolvePostAcceptanceRotoSelection({
+      operationKind: 'paste-key-group',
+      acceptedSelectedKeyId: 'P',
+      acceptedAddedKeyIds: ['P', 'Q'],
+      state: prior,
+      currentKeyId: 'B',
+    });
+
+    expect(prior).toEqual(before);
+  });
+
+  it('falls back to the default collapse when acceptedAddedKeyIds is absent or empty', () => {
+    expect(resolvePostAcceptanceRotoSelection({
+      operationKind: 'paste-key-group',
+      acceptedSelectedKeyId: 'P',
+      state,
+      currentKeyId: 'B',
+    })).toEqual({ selectedKeyIds: ['P'], anchorKeyId: 'P' });
+    expect(resolvePostAcceptanceRotoSelection({
+      operationKind: 'paste-key-group',
+      acceptedSelectedKeyId: 'P',
+      acceptedAddedKeyIds: [],
+      state,
+      currentKeyId: 'B',
+    })).toEqual({ selectedKeyIds: ['P'], anchorKeyId: 'P' });
+  });
 });
