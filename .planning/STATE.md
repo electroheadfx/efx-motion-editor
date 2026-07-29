@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 38.1
 current_phase_name: studio-render-path-performance
 status: executing
-stopped_at: Completed 38.1-13-PLAN.md
-last_updated: "2026-07-29T06:17:40.711Z"
+stopped_at: Completed 38.1-14-PLAN.md
+last_updated: "2026-07-29T06:30:06.914Z"
 last_activity: 2026-07-29
-last_activity_desc: Plan 38.1-13 cached playback background parity completed
+last_activity_desc: Plan 38.1-13 cached playback background parity completed and tracer gate verified
 progress:
   total_phases: 21
   completed_phases: 18
   total_plans: 170
-  completed_plans: 156
-  percent: 92
+  completed_plans: 157
+  percent: 86
 ---
 
 # Project State
@@ -30,8 +30,8 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 Phase: 38.1 (studio-render-path-performance) — EXECUTING GAP CLOSURE
 Completed baseline: 38.1-01 through 38.1-13; known-working rollback commit before the reopened track remains `0d0a3547`
-Plan: 13 of 18 complete; next incomplete plan is 38.1-14
-Status: Executing Phase 38.1 gap closure
+Plan: 14 of 18 complete; next incomplete plan is 38.1-14
+Status: Ready to execute
 Last activity: 2026-07-29 — Plan 38.1-13 cached playback background parity completed and tracer gate verified
 Next recommended action: continue `/gsd-execute-phase 38.1 --gaps`; do not resume Phase 38 Plan 38-06 until Plan 18 native acceptance and Phase 38.1 re-verification pass
 
@@ -148,6 +148,7 @@ Progress: [██████████████████░░] 156/170
 | Phase 38.1 P11 | 9min | 2 tasks | 6 files |
 | Phase 38.1 P12 | 2min | 3 tasks | 1 files |
 | Phase 38.1 P13 | 15min across tracer checkpoint | 1 tasks | 5 files |
+| Phase 38.1 P14 | 7min | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -331,6 +332,8 @@ Recent decisions affecting current work:
 - [Phase 38.1 Plan 13]: Transparent playback clears synchronously and skips paper-raster subscription.
 - [Phase 38.1 Plan 13]: Prepared background paper and independent positive-strength grain compose together in deterministic order.
 - [Phase 38.1 Plan 13]: The existing playback effect remains the sole external synchronization owner; no additional effect, component state, or Signal was introduced.
+- [Phase ?]: [Phase 38.1 Plan 14]: Capture completedMode once at the stopPhysics guard boundary and use it for finalization and replay metadata before restoring savedPhysicsMode.
+- [Phase ?]: [Phase 38.1 Plan 14]: Preserve local, last, all, and null through one PhysicsMode alias and version-2 serialization without a legacy migration branch.
 
 ### Pending Todos
 
@@ -416,6 +419,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-29T06:17:40.695Z
-Stopped at: Completed 38.1-13-PLAN.md
+Last session: 2026-07-29T06:30:06.898Z
+Stopped at: Completed 38.1-14-PLAN.md
 Resume file: None
