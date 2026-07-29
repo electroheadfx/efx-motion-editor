@@ -100,9 +100,7 @@ export function drawMissingRotoBackground(
 ): void {
   if (paperCanvas) {
     ctx.drawImage(paperCanvas, 0, 0, width, height);
-    return;
-  }
-  if (paperTexture) {
+  } else if (paperTexture) {
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, width, height);
     const previousAlpha = ctx.globalAlpha;
@@ -115,10 +113,10 @@ export function drawMissingRotoBackground(
       ctx.drawImage(paperTexture, 0, 0, width, height);
     }
     ctx.globalAlpha = previousAlpha;
-    return;
+  } else {
+    ctx.fillStyle = instruction.color;
+    ctx.fillRect(0, 0, width, height);
   }
-  ctx.fillStyle = instruction.color;
-  ctx.fillRect(0, 0, width, height);
   const grainStrength = instruction.grainStrength ?? 0;
   if (!instruction.paperGrain || grainStrength <= 0) return;
   drawDeterministicPaperGrain(ctx, instruction.paperGrain, grainStrength, width, height);

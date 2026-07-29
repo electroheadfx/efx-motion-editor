@@ -40,7 +40,7 @@ describe('drawRotoFrameComposite', () => {
     } as unknown as CanvasRenderingContext2D;
     const instruction = resolveMissingRotoFrameDraw('phys-layer-1', 12, {
       mode: 'paper',
-      metadata: { background: 'canvas2', paperGrain: 'canvas2', grainStrength: 0.65 },
+      metadata: { background: 'canvas2', paperGrain: 'canvas2', grainStrength: 0 },
     });
 
     if (instruction.kind !== 'background-only') throw new Error('expected paper background');

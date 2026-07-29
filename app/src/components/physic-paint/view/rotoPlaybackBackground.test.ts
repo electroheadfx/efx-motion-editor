@@ -37,7 +37,7 @@ describe('subscribeRotoPlaybackBackground', () => {
   it('subscribes to the background texture while applying independent paper grain metadata', () => {
     const { context, operations } = createContext();
     const paperCanvas = { id: 'canvas2-raster' } as unknown as HTMLCanvasElement;
-    const subscribePaperCanvas = vi.fn((paperTexture, width, height, listener) => {
+    const subscribePaperCanvas = vi.fn((_paperTexture, _width, _height, listener) => {
       listener(paperCanvas);
       return vi.fn();
     });

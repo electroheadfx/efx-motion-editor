@@ -3,7 +3,6 @@ import { memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Signal } from '@preact/signals';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
-import { subscribeProjectPaperCanvas } from '../../../lib/projectPaperRaster';
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
 import { MemoizedPhysicsPaintCanvasMount } from '../engine/MemoizedPhysicsPaintCanvasMount';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
@@ -15,6 +14,7 @@ import { PhysicsPaintRightPanelRegion } from './PhysicsPaintRightPanelRegion';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
 import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
+import { subscribeRotoPlaybackBackground } from './rotoPlaybackBackground';
 
 interface PhysicsPaintCanvasStackViewProps {
   canvasKey: string;
@@ -51,11 +51,11 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
     if (!canvas) return;
     const context = canvas.getContext('2d');
     if (!context) return;
-    return subscribeProjectPaperCanvas(props.background.background, props.width, props.height, (paperCanvas) => {
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      context.fillStyle = props.background.color ?? '#ffffff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      if (paperCanvas) context.drawImage(paperCanvas, 0, 0, canvas.width, canvas.height);
+    return subscribeRotoPlaybackBackground({
+      context,
+      width: props.width,
+      height: props.height,
+      background: props.background,
     });
   }, [props.background.background, props.background.color, props.background.grainStrength, props.background.paperGrain, props.height, props.width]);
 
