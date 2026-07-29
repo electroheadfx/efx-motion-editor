@@ -795,15 +795,19 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
 });
 
 describe('PhysicsPaintWorkflowStrip clipping guard contract (36.15-08, UAT Gap B)', () => {
-  it('places header tooltips below their anchors so no header control is masked by the canvas', () => {
+  it('maps all header tooltips from the top region to viewport-computed below placement', () => {
     const header = getHeaderBlock(source());
-    const belowCount = (header.match(/placement="below"/g) ?? []).length;
-    // Status capsule, interpolation pill, and Close all render their tooltips below.
-    expect(belowCount).toBeGreaterThanOrEqual(3);
+    const headerTopRegionCount = (header.match(/region="top"/g) ?? []).length;
+    const allTopRegionCount = (source().match(/region="top"/g) ?? []).length;
+    // Interpolation and Close declare the header region in this block; the
+    // extracted status-capsule child declares the same region at its owner.
+    expect(headerTopRegionCount).toBe(2);
+    expect(allTopRegionCount).toBe(3);
     const styles = css();
-    const below = getCssRuleBlock(styles, '.physics-paint-styled-tooltip--below {');
-    expect(below).toContain('top: calc(100% + 6px)');
-    expect(below).toContain('bottom: auto');
+    const surface = getCssRuleBlock(styles, '.physics-paint-styled-tooltip {');
+    const belowNotch = getCssRuleBlock(styles, '.physics-paint-styled-tooltip--below .physics-paint-styled-tooltip-notch {');
+    expect(surface).toContain('position: fixed');
+    expect(belowNotch).toContain('border-bottom: 6px solid #62666d');
   });
 
   it('keeps the interpolation mode select native so the open dropdown renders above studio chrome', () => {
