@@ -3,14 +3,23 @@ import type {
   PhysicPaintRotoPhysicalEditIntent,
   PhysicPaintRotoPhysicalEditResolution,
 } from './physicsPaintRotoPhysicalResolver';
-import { resolvePhysicPaintRotoPhysicalEdit } from './physicsPaintRotoPhysicalResolver';
-import type { PhysicPaintRotoKeyIdentity } from './physicsPaintRotoPhysicalModel';
+import {
+  createPhysicPaintRotoPasteKeyGroupIntent,
+  resolvePhysicPaintRotoPhysicalEdit,
+  validatePhysicPaintRotoPhysicalEditSemanticDelta,
+} from './physicsPaintRotoPhysicalResolver';
+import type {
+  PhysicPaintRotoKeyIdentity,
+  PhysicPaintRotoRealKeyPayload,
+  PhysicPaintRotoRealKeyRecord,
+} from './physicsPaintRotoPhysicalModel';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
 
 /**
  * Group-operation regression anchors. Group Drag uses the current rigid
  * physical-translation contract; group Delete and Force Spacing retain their
  * approved Phase 37 mappings over the shared A@1, B@3, C@5, D@10 baseline.
+ * GP-1..GP-7 lock the group-paste contract approved by the user-owned 38-06 UAT.
  */
 
 function buildBaselineIdentities(): PhysicPaintRotoKeyIdentity[] {
@@ -20,6 +29,39 @@ function buildBaselineIdentities(): PhysicPaintRotoKeyIdentity[] {
     { keyId: 'C', appFrame: 5 },
     { keyId: 'D', appFrame: 10 },
   ];
+}
+
+function buildBaselineRecords(): PhysicPaintRotoRealKeyRecord[] {
+  return [
+    { keyId: 'A', appFrame: 1 },
+    { keyId: 'B', appFrame: 3 },
+    { keyId: 'C', appFrame: 5 },
+    { keyId: 'D', appFrame: 10 },
+  ].map((identity) => ({
+    kind: 'real-key',
+    keyId: identity.keyId,
+    appFrame: identity.appFrame,
+    payload: {
+      frameIndex: 0,
+      appFrame: identity.appFrame,
+      dataUrl: 'data:image/png;base64,AAAA',
+      width: 2,
+      height: 2,
+    },
+  }));
+}
+
+function buildGroupEntries(): readonly {
+  readonly payload: PhysicPaintRotoRealKeyPayload;
+  readonly sourceAppFrame: number;
+  readonly sourceKeyId: string;
+}[] {
+  const records = buildBaselineRecords();
+  return Object.freeze([records[0], records[2]].map((record) => Object.freeze({
+    payload: record.payload,
+    sourceAppFrame: record.appFrame,
+    sourceKeyId: record.keyId,
+  })));
 }
 
 function resolveIdentities(
@@ -37,6 +79,20 @@ function resolveIdentities(
 
 function resolveBaseline(intent: PhysicPaintRotoPhysicalEditIntent): PhysicPaintRotoPhysicalEditResolution {
   return resolveIdentities(buildBaselineIdentities(), intent);
+}
+
+function resolveBaselineWithRecords(
+  intent: PhysicPaintRotoPhysicalEditIntent,
+  capacity = PHYSIC_PAINT_MAX_APPLY_FRAMES,
+): PhysicPaintRotoPhysicalEditResolution {
+  const records = buildBaselineRecords();
+  return resolvePhysicPaintRotoPhysicalEdit({
+    identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+    records,
+    intent,
+    capacity,
+    interpolationEnabled: false,
+  });
 }
 
 describe('resolvePhysicPaintRotoPhysicalEdit — rigid move-key-group', () => {
@@ -353,6 +409,218 @@ describe('resolvePhysicPaintRotoPhysicalEdit — scoped force-spacing (GFS-1..GF
         if (resolution.ok) throw new Error('invalid emptyFrames must reject');
         expect(resolution.failure.code).toBe('invalid-spacing');
       }
+    }
+  });
+});
+
+describe('resolvePhysicPaintRotoPhysicalEdit — paste-key-group (GP-1..GP-7, D-04..D-07)', () => {
+  it('GP-1: anchors the earliest copied key and preserves relative source offsets', () => {
+    const intent = createPhysicPaintRotoPasteKeyGroupIntent(20, buildGroupEntries());
+    const resolution = resolveBaselineWithRecords(intent);
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('GP-1 must resolve ok');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      A: 1,
+      B: 3,
+      C: 5,
+      D: 10,
+      [intent.entries[0].newKeyId]: 20,
+      [intent.entries[1].newKeyId]: 24,
+    });
+  });
+
+  it('GP-2: adds exactly fresh retargeted records with zero ripple and a frozen delta', () => {
+    const baseline = buildBaselineRecords();
+    const intent = createPhysicPaintRotoPasteKeyGroupIntent(20, buildGroupEntries());
+    const resolution = resolveBaselineWithRecords(intent);
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('GP-2 must resolve ok');
+    const { proposal } = resolution;
+    expect(proposal.status.operationKind).toBe('paste-key-group');
+    expect(proposal.selectedKeyId).toBe(intent.entries[0].newKeyId);
+    expect(proposal.selectedAppFrame).toBe(20);
+    expect(proposal.nextRecords).toHaveLength(baseline.length + intent.entries.length);
+    for (const record of baseline) {
+      expect(proposal.nextRecords).toContainEqual(record);
+    }
+    expect(proposal.nextRecords).toContainEqual({
+      kind: 'real-key',
+      keyId: intent.entries[0].newKeyId,
+      appFrame: 20,
+      payload: { ...intent.entries[0].payload, appFrame: 20 },
+    });
+    expect(proposal.nextRecords).toContainEqual({
+      kind: 'real-key',
+      keyId: intent.entries[1].newKeyId,
+      appFrame: 24,
+      payload: { ...intent.entries[1].payload, appFrame: 24 },
+    });
+    expect(Object.isFrozen(proposal.nextRecords)).toBe(true);
+    expect(proposal.semanticDelta).toEqual({
+      kind: 'paste-key-group',
+      destinationAppFrame: 20,
+      entries: intent.entries,
+    });
+    expect(Object.isFrozen(proposal.semanticDelta)).toBe(true);
+  });
+
+  it('GP-3: rejects occupied computed destinations atomically', () => {
+    const intent = createPhysicPaintRotoPasteKeyGroupIntent(1, buildGroupEntries());
+    const resolution = resolveBaselineWithRecords(intent);
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('GP-3 must reject');
+    expect(resolution.failure.code).toBe('duplicate-destination-frame');
+    expect(resolution.failure.operationKind).toBe('paste-key-group');
+    expect(resolution.failure.conflictingAppFrames).toEqual([1, 5]);
+    expect('proposal' in resolution).toBe(false);
+  });
+
+  it('GP-4: rejects over-capacity record count and out-of-range destinations atomically', () => {
+    const denseRecords: PhysicPaintRotoRealKeyRecord[] = [0, 1, 2, 3].map((appFrame, index) => ({
+      kind: 'real-key',
+      keyId: String.fromCharCode(65 + index),
+      appFrame,
+      payload: {
+        frameIndex: 0,
+        appFrame,
+        dataUrl: 'data:image/png;base64,AAAA',
+        width: 2,
+        height: 2,
+      },
+    }));
+    const overCapacityIntent = createPhysicPaintRotoPasteKeyGroupIntent(4, [
+      { payload: denseRecords[0].payload, sourceAppFrame: 0, sourceKeyId: 'A' },
+      { payload: denseRecords[1].payload, sourceAppFrame: 0, sourceKeyId: 'B' },
+    ]);
+    const overCapacity = resolvePhysicPaintRotoPhysicalEdit({
+      identities: denseRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records: denseRecords,
+      intent: overCapacityIntent,
+      capacity: 5,
+      interpolationEnabled: false,
+    });
+    expect(overCapacity.ok).toBe(false);
+    if (overCapacity.ok) throw new Error('GP-4 over-capacity must reject');
+    expect(overCapacity.failure.code).toBe('over-capacity');
+
+    const outOfRangeIntent = createPhysicPaintRotoPasteKeyGroupIntent(22, buildGroupEntries());
+    const outOfRange = resolveBaselineWithRecords(outOfRangeIntent, 25);
+    expect(outOfRange.ok).toBe(false);
+    if (outOfRange.ok) throw new Error('GP-4 out-of-range must reject');
+    expect(outOfRange.failure.code).toBe('out-of-range-frame');
+  });
+
+  it('GP-5: rejects mutually colliding computed destinations atomically', () => {
+    const records = buildBaselineRecords();
+    const intent = createPhysicPaintRotoPasteKeyGroupIntent(20, [
+      { payload: records[0].payload, sourceAppFrame: 5, sourceKeyId: 'A' },
+      { payload: records[2].payload, sourceAppFrame: 5, sourceKeyId: 'C' },
+    ]);
+    const resolution = resolveBaselineWithRecords(intent);
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('GP-5 must reject');
+    expect(resolution.failure.code).toBe('duplicate-destination-frame');
+    expect(resolution.failure.conflictingAppFrames).toEqual([20]);
+  });
+});
+
+describe('validatePhysicPaintRotoPhysicalEditSemanticDelta — paste-key-group branch (GP-6)', () => {
+  it('GP-6: accepts the declared addition and fails closed on every extra or missing change', () => {
+    const current = buildBaselineRecords();
+    const intent = createPhysicPaintRotoPasteKeyGroupIntent(20, buildGroupEntries());
+    const addedRecords: PhysicPaintRotoRealKeyRecord[] = intent.entries.map((entry, index) => {
+      const appFrame = index === 0 ? 20 : 24;
+      return {
+        kind: 'real-key',
+        keyId: entry.newKeyId,
+        appFrame,
+        payload: { ...entry.payload, appFrame },
+      };
+    });
+    const next = [...current, ...addedRecords];
+    const semanticDelta = {
+      kind: 'paste-key-group',
+      destinationAppFrame: 20,
+      entries: intent.entries,
+    };
+    const validate = (nextRecords: unknown, delta: unknown = semanticDelta) => (
+      validatePhysicPaintRotoPhysicalEditSemanticDelta({
+        operationKind: 'paste-key-group',
+        currentRecords: current,
+        nextRecords,
+        semanticDelta: delta,
+        capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES,
+        selectedKeyId: intent.entries[0].newKeyId,
+        selectedAppFrame: 20,
+      })
+    );
+
+    expect(validate(next)).toEqual({ ok: true });
+
+    const changedExisting = next.map((record) => record.keyId === 'B'
+      ? { ...record, appFrame: 4, payload: { ...record.payload, appFrame: 4 } }
+      : record);
+    const omittedFresh = next.filter((record) => record.keyId !== intent.entries[1].newKeyId);
+    const undeclaredIdentity = [...next, {
+      kind: 'real-key' as const,
+      keyId: 'undeclared',
+      appFrame: 30,
+      payload: { frameIndex: 0, appFrame: 30, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 },
+    }];
+    const mismatchedKind = {
+      kind: 'paste-key',
+      destinationAppFrame: 20,
+      destinationKeyId: null,
+      newKeyId: intent.entries[0].newKeyId,
+      clipboardPayload: intent.entries[0].payload,
+    };
+
+    for (const validation of [
+      validate(changedExisting),
+      validate(omittedFresh),
+      validate(undeclaredIdentity),
+      validate(next, mismatchedKind),
+    ]) {
+      expect(validation.ok).toBe(false);
+      if (validation.ok) throw new Error('GP-6 malformed delta must reject');
+      expect(typeof validation.error).toBe('string');
+      expect(validation.error.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('createPhysicPaintRotoPasteKeyGroupIntent — fail-closed factory (GP-7)', () => {
+  it('GP-7: throws on malformed input and deeply freezes one fresh identity per entry', () => {
+    const entries = buildGroupEntries();
+    expect(() => createPhysicPaintRotoPasteKeyGroupIntent(20, [])).toThrow();
+    expect(() => createPhysicPaintRotoPasteKeyGroupIntent(20, [entries[0]])).toThrow();
+    expect(() => createPhysicPaintRotoPasteKeyGroupIntent(-1, entries)).toThrow();
+    expect(() => createPhysicPaintRotoPasteKeyGroupIntent(1.5, entries)).toThrow();
+    expect(() => createPhysicPaintRotoPasteKeyGroupIntent(20, [
+      { ...entries[0], payload: { ...entries[0].payload, dataUrl: 'malformed' } },
+      entries[1],
+    ])).toThrow();
+    expect(() => createPhysicPaintRotoPasteKeyGroupIntent(20, [
+      { ...entries[0], sourceAppFrame: -1 },
+      entries[1],
+    ])).toThrow();
+    expect(() => createPhysicPaintRotoPasteKeyGroupIntent(20, [
+      { ...entries[0], sourceKeyId: '' },
+      entries[1],
+    ])).toThrow();
+
+    const intent = createPhysicPaintRotoPasteKeyGroupIntent(20, entries);
+    expect(Object.isFrozen(intent)).toBe(true);
+    expect(Object.isFrozen(intent.entries)).toBe(true);
+    expect(intent.entries.every((entry) => Object.isFrozen(entry))).toBe(true);
+    expect(new Set(intent.entries.map((entry) => entry.newKeyId)).size).toBe(intent.entries.length);
+    expect(Object.keys(intent).sort()).toEqual(['destinationAppFrame', 'entries', 'kind']);
+    for (const entry of intent.entries) {
+      expect(Object.keys(entry).sort()).toEqual(['newKeyId', 'payload', 'sourceAppFrame', 'sourceKeyId']);
     }
   });
 });
