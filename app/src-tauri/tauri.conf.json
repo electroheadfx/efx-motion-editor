@@ -10,7 +10,10 @@
     "frontendDist": "../dist"
   },
   "bundle": {
-    "resources": ["resources/*"]
+    "resources": ["resources/*"],
+    "macOS": {
+      "hardenedRuntime": true
+    }
   },
   "app": {
     "windows": [
