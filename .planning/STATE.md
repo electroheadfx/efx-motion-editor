@@ -6,9 +6,9 @@ current_phase: 38
 current_phase_name: multi-copy-paste-and-tooltip-polish
 status: complete
 stopped_at: Phase 38 complete and verified 7/7; Phase 38.1 remains complete and verified 20/20
-last_updated: "2026-07-29T17:28:09.683Z"
-last_activity: 2026-07-29
-last_activity_desc: Phase 38 complete; all roadmap phases are complete
+last_updated: "2026-07-30T17:09:16Z"
+last_activity: 2026-07-30
+last_activity_desc: Completed quick task 260730-mn0 Apple Developer ID release preparation; credentialed release deferred until after milestone audit/completion
 progress:
   total_phases: 21
   completed_phases: 21
@@ -32,8 +32,8 @@ Phase: 38 (multi-copy-paste-and-tooltip-polish) — COMPLETE
 Completed prerequisite: Phase 38.1 Plans 01-18 complete and verified 20/20; Plan 38-06 native UAT approved all 33 steps
 Plan: 11 of 11 complete
 Status: Phase 38 verification passed 7/7 with zero unverified behavior; all 21 roadmap phases are complete
-Last activity: 2026-07-29 — Completed quick task 260729-taj: Close milestone audit gap EDIT-02/B-01 (frame-sync listener install)
-Next recommended action: review the advisory `38-REVIEW.md` findings, then audit/complete the v0.8.0 milestone when ready
+Last activity: 2026-07-30 — Completed quick task 260730-mn0: Apple Developer ID release preparation and documentation
+Next recommended action: run `/gsd-audit-milestone`, then `/gsd-complete-milestone`; afterward execute the credentialed signed release using `docs/macos-signed-release.md`
 
 Progress: [███████████████████░] 164/170 plan summaries present; 21/21 phases complete ([██████████] 96%)
 
@@ -365,6 +365,7 @@ None yet.
 
 ### Blockers/Concerns
 
+- Quick 260730-mn0 completed Apple signing preparation: one valid Developer ID identity, App Store Connect Team Key setup, fail-loud release script, and two operational guides. The real credentialed build/notarization/stapling/Gatekeeper/external-launch proof was explicitly deferred until after milestone audit/completion and remains unverified.
 - Phase 38.1 is complete: Plans 01–18 executed, Plan 18 received explicit user-owned native approval, and renewed verification passed 20/20.
 - Phase 38 Plan 38-06 native UAT is approved (all 33 steps, 2026-07-29); wave-4 plans 38-07 and 38-08 are now eligible.
 - Phase 36.2 Codex gap execution is rejected as failed and administratively superseded. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
@@ -410,6 +411,7 @@ None yet.
 | 260718-j3h | Add Backspace/Delete shortcuts for selected real Physics Paint Roto keys | 2026-07-18 | f9a4cede |  | [260718-j3h-add-backspace-and-delete-keyboard-shortc](./quick/260718-j3h-add-backspace-and-delete-keyboard-shortc/) |
 | 260718-m2f | Add single-real-key drag movement for Physics Paint Roto timeline | 2026-07-19 | 53c23549 | Verified | [260718-m2f-add-single-real-physics-paint-roto-key-d](./quick/260718-m2f-add-single-real-physics-paint-roto-key-d/) |
 | 260729-taj | Close milestone audit gap EDIT-02/B-01: install physic-paint frame-sync listener | 2026-07-29 | ed590d2b |  | [260729-taj-close-milestone-audit-gap-edit-02-b-01-i](./quick/260729-taj-close-milestone-audit-gap-edit-02-b-01-i/) |
+| 260730-mn0 | Prepare Apple Developer ID signing, notarization, and release documentation | 2026-07-30 | 1292351a | Prepared | [260730-mn0-configure-apple-developer-id-signing-har](./quick/260730-mn0-configure-apple-developer-id-signing-har/) |
 
 ### Roadmap Evolution
 
@@ -436,7 +438,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| macOS distribution | Developer ID signing, notarization, stapling, and Gatekeeper validation | Final release quick task after Phase 36.14 | v0.8.0 closure |
+| macOS distribution | Developer ID signing, notarization, stapling, and Gatekeeper validation | Preparation complete in quick 260730-mn0; credentialed release and external validation intentionally scheduled after milestone audit/completion | v0.8.0 closure |
 | Architecture | Headless batch adapter replay / editor-driven renderFromStrokes / forceDryAll path | Excluded | v0.7.0 failure post-mortem |
 | Roto timeline UI | Corrected-reference final UI integration: Discard Script relocation to right-panel Scripts toolbar, app/index.html selection guard, compact header status capsule replacing permanent status stack | Follow-up UI plan authorized at Phase 36.14 closure | 2026-07-25 |
 | Testing | Deterministic physical-resolver regression coverage: insert/delete-slot, force-spacing, occupied before/after-key drag, source-closing drag against locked D-29 examples; fulfills deferred 260718-m2f drag-test obligation | Follow-up test plan authorized at Phase 36.14 closure | 2026-07-25 |
@@ -444,6 +446,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-29T17:28:09.683Z
-Stopped at: Phase 38 complete and verified 7/7; all roadmap phases complete
+Last session: 2026-07-30T17:09:16Z
+Stopped at: Quick 260730-mn0 preparation complete; credentialed signed release deferred until after milestone audit/completion
 Resume file: None
