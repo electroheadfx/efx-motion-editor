@@ -412,7 +412,7 @@ None yet.
 | 260718-m2f | Add single-real-key drag movement for Physics Paint Roto timeline | 2026-07-19 | 53c23549 | Verified | [260718-m2f-add-single-real-physics-paint-roto-key-d](./quick/260718-m2f-add-single-real-physics-paint-roto-key-d/) |
 | 260729-taj | Close milestone audit gap EDIT-02/B-01: install physic-paint frame-sync listener | 2026-07-29 | ed590d2b |  | [260729-taj-close-milestone-audit-gap-edit-02-b-01-i](./quick/260729-taj-close-milestone-audit-gap-edit-02-b-01-i/) |
 | 260730-mn0 | Prepare Apple Developer ID signing, notarization, and release documentation | 2026-07-30 | 1292351a | Prepared | [260730-mn0-configure-apple-developer-id-signing-har](./quick/260730-mn0-configure-apple-developer-id-signing-har/) |
-| 260731-9l0 | Add Cut tool to Efx Paint bottom timeline toolbar (copy + atomic delete, Cmd+X) | 2026-07-31 | 4f81df5d |  | [260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t](./quick/260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t/) |
+| 260731-9l0 | Add Cut tool to Efx Paint bottom timeline toolbar (copy + atomic delete, Cmd+X) | 2026-07-31 | 4f81df5d | Verified | [260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t](./quick/260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t/) |
 
 ### Roadmap Evolution
 
