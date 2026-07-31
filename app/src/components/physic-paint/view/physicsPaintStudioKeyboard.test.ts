@@ -35,6 +35,7 @@ function actions() {
     undo: vi.fn(),
     redo: vi.fn(),
     copyRotoKey: vi.fn(),
+    cutRotoKey: vi.fn(),
     pasteRotoKey: vi.fn(),
     deleteRotoKey: vi.fn(),
     toggleShortcuts: vi.fn(),
@@ -223,6 +224,67 @@ describe('Physics Paint Roto copy/paste shortcuts', () => {
 
     expect(handlers.copyRotoKey).not.toHaveBeenCalled();
     expect(handlers.pasteRotoKey).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe('Physics Paint Roto cut shortcut (quick 260731-9l0)', () => {
+  it.each([
+    [{ metaKey: true, key: 'x' }],
+    [{ ctrlKey: true, key: 'X' }],
+  ])('dispatches $key through cutRotoKey exactly once with the existing guards', (init) => {
+    const { handlers, preventDefault } = dispatch(String(init.key), new TestHTMLElement('canvas') as unknown as EventTarget, init);
+
+    expect(handlers.cutRotoKey).toHaveBeenCalledOnce();
+    expect(handlers.copyRotoKey).not.toHaveBeenCalled();
+    expect(handlers.pasteRotoKey).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { metaKey: true, repeat: true },
+    { metaKey: true, shiftKey: true },
+    { metaKey: true, altKey: true },
+  ])('ignores repeated, shifted, and alt-modified Cmd+X dispatches', (overrides) => {
+    const { handlers, preventDefault } = dispatch('x', new TestHTMLElement('canvas') as unknown as EventTarget, overrides);
+
+    expect(handlers.cutRotoKey).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('blocks Cmd+X while mutations are locked', () => {
+    const handlers = actions();
+    const keyboardEvent = eventFor('x', new TestHTMLElement('canvas') as unknown as EventTarget, { metaKey: true });
+    dispatchPhysicsPaintStudioKeyDown(
+      keyboardEvent.event,
+      { currentFrame: 4, isPlaying: false, mutationLocked: true },
+      handlers,
+      [],
+    );
+
+    expect(handlers.cutRotoKey).not.toHaveBeenCalled();
+    expect(keyboardEvent.preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('no-ops Cmd+X when no cutRotoKey action is registered', () => {
+    const { cutRotoKey: _omitted, ...handlers } = actions();
+    const keyboardEvent = eventFor('x', new TestHTMLElement('canvas') as unknown as EventTarget, { metaKey: true });
+    dispatchPhysicsPaintStudioKeyDown(
+      keyboardEvent.event,
+      { currentFrame: 4, isPlaying: false, mutationLocked: false },
+      handlers,
+      [],
+    );
+
+    expect(handlers.copyRotoKey).not.toHaveBeenCalled();
+    expect(handlers.pasteRotoKey).not.toHaveBeenCalled();
+    expect(keyboardEvent.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('preserves native Cmd+X inside editable controls', () => {
+    const { handlers, preventDefault } = dispatch('x', new TestHTMLElement('input') as unknown as EventTarget, { metaKey: true });
+
+    expect(handlers.cutRotoKey).not.toHaveBeenCalled();
     expect(preventDefault).not.toHaveBeenCalled();
   });
 });

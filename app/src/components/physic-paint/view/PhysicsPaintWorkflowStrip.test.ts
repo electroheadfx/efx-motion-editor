@@ -49,6 +49,7 @@ const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: s
   { label: 'Duplicate key', guard: 'canDuplicateRotoKey', handler: 'props.onDuplicateRotoKey?.()' },
   { label: 'Insert key before', guard: 'canInsertRotoKey', handler: 'props.onInsertRotoFrame?.()' },
   { label: 'Copy key', guard: 'canCopyRotoKey', handler: 'props.onCopyRotoFrame?.()' },
+  { label: 'Cut key', guard: 'canCutRotoKey', handler: 'props.onCutRotoFrame?.()' },
   { label: 'Paste key', guard: 'canPasteRotoKey', handler: 'props.onPasteRotoFrame?.()' },
   { label: 'Delete key', guard: 'canDeleteRotoKey', handler: 'props.onDeleteRotoFrame?.()' },
 ];
@@ -136,7 +137,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(getHeaderBlock(source())).not.toContain('physics-paint-mode-label');
   });
 
-  it('renders the six guarded icon actions in locked order (D-10)', () => {
+  it('renders the seven guarded icon actions in locked order (D-10)', () => {
     const row = getActionRowBlock(source());
     const indices = ROW_ICON_ACTIONS.map(({ label }) => row.indexOf(`aria-label="${label}"`));
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
@@ -147,6 +148,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(source()).toContain('CopyPlus');
     expect(source()).toContain('BetweenVerticalStart');
     expect(source()).toContain('ClipboardCopy');
+    expect(source()).toContain('Scissors');
     expect(source()).toContain('ClipboardPaste');
     expect(source()).toContain('Trash2');
     // Copy Script / Apply Script moved to the Scripts sidebar toolbar (Gap C).
@@ -197,8 +199,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('function buildGuardedActionTooltipCopy(description: string, disabledReason: string | null)');
     expect(code).toContain('return disabledReason ? `unavailable: ${disabledReason}` : description;');
     const builderCalls = (row.match(/buildGuardedActionTooltipCopy\(/g) ?? []).length;
-    // Six guarded icon actions plus the Set Key Space form.
-    expect(builderCalls).toBeGreaterThanOrEqual(7);
+    // Seven guarded icon actions plus the Set Key Space form.
+    expect(builderCalls).toBeGreaterThanOrEqual(8);
     // Script copy/apply availability reasons now surface in the Scripts
     // sidebar toolbar, not the strip (Gap C).
     expect(code).not.toContain('copyDisabledReason');
@@ -212,6 +214,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       { action: 'Duplicate key', icon: 'CopyPlus', label: 'Duplicate' },
       { action: 'Insert key before', icon: 'BetweenVerticalStart', label: 'Insert' },
       { action: 'Copy key', icon: 'ClipboardCopy', label: 'Copy' },
+      { action: 'Cut key', icon: 'Scissors', label: 'Cut' },
       { action: 'Paste key', icon: 'ClipboardPaste', label: 'Paste' },
       { action: 'Delete key', icon: 'Trash2', label: 'Delete' },
     ];
@@ -250,6 +253,49 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(map).toContain("const isGenerated = semanticCell?.kind === 'generated'");
     expect(map).toContain("const isPhysicalRealKey = semanticCell?.kind === 'real'");
     expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked;');
+  });
+});
+
+describe('PhysicsPaintWorkflowStrip Cut key contract (quick 260731-9l0)', () => {
+  it('renders the clipboard row in locked Copy, Cut, Paste, Delete order', () => {
+    const row = getActionRowBlock(source());
+    const copyIndex = row.indexOf('aria-label="Copy key"');
+    const cutIndex = row.indexOf('aria-label="Cut key"');
+    const pasteIndex = row.indexOf('aria-label="Paste key"');
+    const deleteIndex = row.indexOf('aria-label="Delete key"');
+    expect(copyIndex).toBeGreaterThanOrEqual(0);
+    expect(cutIndex).toBeGreaterThan(copyIndex);
+    expect(pasteIndex).toBeGreaterThan(cutIndex);
+    expect(deleteIndex).toBeGreaterThan(pasteIndex);
+  });
+
+  it('enables Cut only when BOTH copy and delete availability hold, chaining the verbatim controller reasons', () => {
+    const code = source();
+    expect(code).toContain('const canCutRotoKey = canCopyRotoKey && canDeleteRotoKey;');
+    expect(code).toContain('const cutRotoKeyDisabledReason = canCutRotoKey ? null : (copyRotoKeyDisabledReason ?? deleteRotoKeyDisabledReason);');
+  });
+
+  it('guards the Cut key icon action with aria-disabled, a verbatim reason span, and the guarded tooltip', () => {
+    const code = source();
+    const row = getActionRowBlock(code);
+    const block = getButtonBlock(row, 'Cut key');
+    expect(block).toContain('aria-label="Cut key"');
+    expect(block).toContain('aria-disabled={!canCutRotoKey');
+    expect(block).toContain("aria-describedby={!canCutRotoKey && cutRotoKeyDisabledReason ? 'roto-key-action-reason-cut' : undefined}");
+    expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(block).not.toContain('title=');
+    const guardIndex = block.indexOf('if (!canCutRotoKey) return;');
+    const handlerIndex = block.indexOf('props.onCutRotoFrame?.()');
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(handlerIndex).toBeGreaterThan(guardIndex);
+    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canCutRotoKey");
+    expect(block).toContain('<Scissors size={18} aria-hidden="true" />');
+    expect(block).toContain('<span class="physics-paint-roto-key-icon-label">Cut</span>');
+    // Cut sits with the clipboard actions; Delete keeps the trailing destructive position.
+    expect(block).not.toContain('destructive');
+    expect(code).toContain('id="roto-key-action-reason-cut"');
+    expect(code).toContain("buildGuardedActionTooltipCopy('Cut key', cutRotoKeyDisabledReason)");
+    expect(getWorkflowStripPropsInterface(code)).toContain('onCutRotoFrame?: () => void;');
   });
 });
 
