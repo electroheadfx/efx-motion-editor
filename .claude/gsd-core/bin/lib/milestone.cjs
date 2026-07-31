@@ -282,8 +282,8 @@ function cmdRequirementsReadyIds(cwd, args, raw) {
     catch {
         siblingPlanFiles = [];
     }
-    const parseFrontmatterReqIds = (content) => {
-        const fm = extractFrontmatter(content);
+    const parseFrontmatterReqIds = (content, sourcePath) => {
+        const fm = extractFrontmatter(content, sourcePath);
         const fmReq = fm.requirements;
         if (Array.isArray(fmReq))
             return fmReq.map((r) => String(r).trim()).filter(Boolean);
@@ -309,7 +309,7 @@ function cmdRequirementsReadyIds(cwd, args, raw) {
             catch {
                 continue;
             }
-            const siblingReqIds = parseFrontmatterReqIds(siblingContent);
+            const siblingReqIds = parseFrontmatterReqIds(siblingContent, siblingPath);
             const siblingDeclaresId = siblingReqIds.some((id) => id.toLowerCase() === reqId.toLowerCase());
             if (!siblingDeclaresId)
                 continue;
@@ -531,7 +531,7 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
             for (const s of summaries) {
                 try {
                     const content = node_fs_1.default.readFileSync(node_path_1.default.join(phasesDir, dir, s), 'utf-8');
-                    const fm = extractFrontmatter(content);
+                    const fm = extractFrontmatter(content, node_path_1.default.join(phasesDir, dir, s));
                     const rawOneLiner = fm['one-liner'];
                     const oneLiner = (typeof rawOneLiner === 'string' ? rawOneLiner : '') || extractOneLinerFromBody(content);
                     if (oneLiner) {
@@ -668,7 +668,7 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
             kind: 'milestoneComplete',
             version,
             nextMilestoneCommand: (0, runtime_slash_cjs_1.formatGsdSlash)('new-milestone', (0, runtime_slash_cjs_1.resolveRuntime)(cwd)),
-        }, { clock: clock_cjs_1.realClock, progressProvider: () => null });
+        }, { clock: clock_cjs_1.realClock, progressProvider: () => null, sourcePath: statePath });
         writeStateMd(statePath, result.content, cwd);
     }
     // Archive phase directories if requested
