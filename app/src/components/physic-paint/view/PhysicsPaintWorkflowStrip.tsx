@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, Play, Plus, RotateCcw, Square, Trash2, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, Play, Plus, RotateCcw, Scissors, Square, Trash2, X } from 'lucide-preact';
 
 import { memo } from 'preact/compat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -131,6 +131,7 @@ export interface PhysicsPaintWorkflowStripProps {
   /** Select All guarded icon route (D-03) — shares the Studio callback with Cmd/Ctrl+A. */
   onSelectAllRotoKeys?: () => void;
   onCopyRotoFrame?: () => void;
+  onCutRotoFrame?: () => void;
   onPasteRotoFrame?: () => void;
   /** Physical real-key records for identity-based Drag targeting (D-01/D-07). */
   rotoKeyRecords?: readonly PhysicPaintRotoRealKeyRecord[];
@@ -611,6 +612,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const copyRotoKeyDisabledReason = canCopyRotoKey ? null : getRotoKeyUtilityDisabledMessage('copy');
   const pasteRotoKeyDisabledReason = canPasteRotoKey ? null : getRotoKeyUtilityDisabledMessage('paste');
   const deleteRotoKeyDisabledReason = canDeleteRotoKey ? null : getRotoKeyUtilityDisabledMessage('delete');
+  // Cut (quick 260731-9l0): enabled only when BOTH copy and delete
+  // availability hold; the disabled tooltip shows the underlying copy or
+  // delete controller reason verbatim.
+  const canCutRotoKey = canCopyRotoKey && canDeleteRotoKey;
+  const cutRotoKeyDisabledReason = canCutRotoKey ? null : (copyRotoKeyDisabledReason ?? deleteRotoKeyDisabledReason);
   // Select All guarded icon (37-04; D-03): availability flows from the 37-03
   // canSelectAllKeys / selectAllKeysDisabledReason computeds plus the shared
   // busy lock; the disabled reason stays verbatim from the controller port
@@ -625,6 +631,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const addKeyTooltip = useStyledTooltip();
   const duplicateKeyTooltip = useStyledTooltip();
   const copyKeyTooltip = useStyledTooltip();
+  const cutKeyTooltip = useStyledTooltip();
   const pasteKeyTooltip = useStyledTooltip();
   const deleteKeyTooltip = useStyledTooltip();
   const selectAllTooltip = useStyledTooltip();
@@ -1434,6 +1441,34 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={copyKeyTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy('Copy key', copyRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={cutKeyTooltip.onPointerEnter} onPointerLeave={cutKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Cut key"
+                    aria-disabled={!canCutRotoKey ? 'true' : undefined}
+                    aria-describedby={!canCutRotoKey && cutRotoKeyDisabledReason ? 'roto-key-action-reason-cut' : undefined}
+                    onFocus={cutKeyTooltip.onFocus}
+                    onBlur={cutKeyTooltip.onBlur}
+                    onClick={() => {
+                      cutKeyTooltip.hide();
+                      if (!canCutRotoKey) return;
+                      props.onCutRotoFrame?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canCutRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <Scissors size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Cut</span>
+                  </button>
+                  {!canCutRotoKey && cutRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-cut" class="physics-paint-sr-only">{cutRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={cutKeyTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy('Cut key', cutRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={pasteKeyTooltip.onPointerEnter} onPointerLeave={pasteKeyTooltip.onPointerLeave}>

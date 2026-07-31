@@ -615,6 +615,16 @@ export function PhysicsPaintStudio() {
   const addRotoKey = rotoKeyUtilities.addKey;
   const duplicateRotoKey = rotoKeyUtilities.duplicateKey;
   const copyRotoFrame = rotoKeyUtilities.copyKey;
+  // Cut (quick 260731-9l0): enabled only when BOTH copy and delete
+  // availability hold; the delete half is re-checked here so the keyboard
+  // entry point enforces the same rule as the strip button.
+  const cutRotoFrame = useCallback(() => {
+    if (!rotoPhysicalActions.canDeleteFrame.value) {
+      setApplyMessage(rotoPhysicalActions.deleteDisabledReason.value ?? 'Deleting the selected Roto keys is unavailable.');
+      return;
+    }
+    rotoKeyUtilities.cutKey(rotoPhysicalActions.deleteRotoFrame);
+  }, [rotoPhysicalActions, rotoKeyUtilities]);
   const pasteRotoFrame = rotoKeyUtilities.pasteKey;
   const rotoCachedPlayback = rotoNavigation.playback;
   const rotoPlaybackSettingsController = useRotoPlaybackSettingsController({
@@ -999,6 +1009,7 @@ export function PhysicsPaintStudio() {
       undo,
       redo,
       copyRotoKey: copyRotoFrame,
+      cutRotoKey: cutRotoFrame,
       pasteRotoKey: pasteRotoFrame,
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,
       selectAllRotoKeys,
@@ -1352,7 +1363,7 @@ export function PhysicsPaintStudio() {
         rotoCachedPlaybackTick: rotoCachedPlayback.playbackTick,
         onToggleRotoPlayback: rotoCachedPlayback.toggle, onRotoPlaybackLoopChange: setRotoPlaybackLoop, onRotoPlaybackFpsChange: setRotoPlaybackFps, rotoInterpolationEnabled: rotoInterpolationState.enabled, rotoInterpolationMode: rotoInterpolationState.mode, rotoInterpolationPending: physicalEditCoordinator.pendingOperationId.value !== null,
         onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange, onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
-        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
+        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).
