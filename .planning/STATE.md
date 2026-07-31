@@ -32,7 +32,7 @@ Phase: 38 (multi-copy-paste-and-tooltip-polish) — COMPLETE
 Completed prerequisite: Phase 38.1 Plans 01-18 complete and verified 20/20; Plan 38-06 native UAT approved all 33 steps
 Plan: 11 of 11 complete
 Status: Phase 38 verification passed 7/7 with zero unverified behavior; all 21 roadmap phases are complete
-Last activity: 2026-07-30 — Completed quick task 260730-mn0: Apple Developer ID release preparation and documentation
+Last activity: 2026-07-31 — Completed quick task 260731-9l0: Add Cut tool to Efx Paint bottom timeline toolbar
 Next recommended action: run `/gsd-audit-milestone`, then `/gsd-complete-milestone`; afterward execute the credentialed signed release using `docs/macos-signed-release.md`
 
 Progress: [███████████████████░] 164/170 plan summaries present; 21/21 phases complete ([██████████] 96%)
@@ -412,6 +412,7 @@ None yet.
 | 260718-m2f | Add single-real-key drag movement for Physics Paint Roto timeline | 2026-07-19 | 53c23549 | Verified | [260718-m2f-add-single-real-physics-paint-roto-key-d](./quick/260718-m2f-add-single-real-physics-paint-roto-key-d/) |
 | 260729-taj | Close milestone audit gap EDIT-02/B-01: install physic-paint frame-sync listener | 2026-07-29 | ed590d2b |  | [260729-taj-close-milestone-audit-gap-edit-02-b-01-i](./quick/260729-taj-close-milestone-audit-gap-edit-02-b-01-i/) |
 | 260730-mn0 | Prepare Apple Developer ID signing, notarization, and release documentation | 2026-07-30 | 1292351a | Prepared | [260730-mn0-configure-apple-developer-id-signing-har](./quick/260730-mn0-configure-apple-developer-id-signing-har/) |
+| 260731-9l0 | Add Cut tool to Efx Paint bottom timeline toolbar (copy + atomic delete, Cmd+X) | 2026-07-31 | 4f81df5d |  | [260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t](./quick/260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t/) |
 
 ### Roadmap Evolution
 
