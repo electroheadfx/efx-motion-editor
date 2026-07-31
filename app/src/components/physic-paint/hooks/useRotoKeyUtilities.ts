@@ -39,6 +39,7 @@ export interface RotoKeyUtilities {
   runSessionResult: (result: RotoSessionActionResult, sourceSession?: RotoSession) => Promise<void>;
   duplicateKey: () => void;
   copyKey: () => void;
+  cutKey: (deleteSelection: () => Promise<boolean>) => void;
   pasteKey: () => void;
   addKey: () => void;
 }
@@ -169,8 +170,10 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
     });
   }, [blocked, input, requireCurrentRealKey]);
 
-  const copyKey = useCallback(() => {
-    if (blocked) return;
+  // Shared copy-side selection resolution (quick 260731-9l0): publishes its
+  // own failure messages and returns null when it already messaged; otherwise
+  // returns the raw session result so callers can compose Copy or Cut.
+  const resolveCopySelection = useCallback((): RotoSessionActionResult | null => {
     const selectedKeyIds = input.getSelectedKeyIds();
     if (selectedKeyIds.length >= 2) {
       const records = input.getRotoKeyRecords();
@@ -179,21 +182,63 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
         const record = records.find((candidate) => candidate.keyId === keyId);
         if (!record) {
           input.setApplyMessage('The selected Roto keys are no longer available.');
-          return;
+          return null;
         }
         entries.push(Object.freeze({ payload: record.payload, sourceAppFrame: record.appFrame, sourceKeyId: record.keyId }));
       }
       entries.sort((a, b) => a.sourceAppFrame - b.sourceAppFrame);
-      void runSessionResult(session.copyKeyGroup(entries));
-      return;
+      return session.copyKeyGroup(entries);
     }
     const actionState = session.actionAvailability.value;
     if (!actionState.currentIsRealKey) {
       input.setApplyMessage(actionState.disabledReason ?? 'Key utilities require a real Roto key. Generated in-betweens are render-only.');
+      return null;
+    }
+    return session.copyKey();
+  }, [input, session]);
+
+  const copyKey = useCallback(() => {
+    if (blocked) return;
+    const result = resolveCopySelection();
+    if (result) void runSessionResult(result);
+  }, [blocked, resolveCopySelection, runSessionResult]);
+
+  // Cut (quick 260731-9l0): fail-closed copy + delete composition. The
+  // pre-cut clipboard is snapshotted before copying; if the delete half
+  // resolves false or rejects, BOTH the live session clipboard and the
+  // rebuild-seed ref are restored so an earlier copied key survives intact.
+  const cutKey = useCallback((deleteSelection: () => Promise<boolean>) => {
+    if (blocked) return;
+    const previousClipboard = session.copiedKey.value;
+    const cutKeyCount = input.getSelectedKeyIds().length;
+    const result = resolveCopySelection();
+    if (!result) return;
+    if (!result.ok) {
+      if (result.message) input.setApplyMessage(result.message);
       return;
     }
-    void runSessionResult(session.copyKey());
-  }, [blocked, input, runSessionResult, session]);
+    copiedKeyRef.current = session.copiedKey.value;
+    setKeyActionInFlight(true);
+    void deleteSelection().then((deleted) => {
+      if (deleted) {
+        input.setApplyMessage(cutKeyCount >= 2 ? `Cut ${cutKeyCount} Roto keys to the clipboard.` : 'Cut the Roto key to the clipboard.');
+        input.setLastError(null);
+        return;
+      }
+      session.copiedKey.value = previousClipboard;
+      copiedKeyRef.current = previousClipboard;
+      input.setApplyMessage('Cut canceled — the selected keys could not be deleted. Clipboard unchanged.');
+    }).catch((error) => {
+      session.copiedKey.value = previousClipboard;
+      copiedKeyRef.current = previousClipboard;
+      const detail = error instanceof Error ? error.message : String(error);
+      input.setApplyStatus('error');
+      input.setApplyMessage('Could not cut the selected Roto keys.');
+      input.setLastError(detail);
+    }).finally(() => {
+      setKeyActionInFlight(false);
+    });
+  }, [blocked, input, resolveCopySelection, session]);
 
   const pasteKey = useCallback(() => {
     if (blocked) return;
@@ -271,6 +316,7 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
     runSessionResult,
     duplicateKey,
     copyKey,
+    cutKey,
     pasteKey,
     addKey,
   };
