@@ -24,6 +24,7 @@ const packageJson = JSON.parse(readFileSync(join(APP_DIR, 'package.json'), 'utf8
 const tauriConfig = JSON.parse(readFileSync(join(TAURI_DIR, 'tauri.conf.json'), 'utf8')) as {
   version: string;
   bundle?: { icon?: string[] };
+  app?: { security?: { csp?: string } };
 };
 const cargoToml = readFileSync(join(TAURI_DIR, 'Cargo.toml'), 'utf8');
 const cargoLock = readFileSync(join(TAURI_DIR, 'Cargo.lock'), 'utf8');
@@ -41,6 +42,11 @@ function cargoLockPackageVersion(lock: string, name: string): string | undefined
 
 function scriptProductVersion(text: string): string | undefined {
   return text.match(/^PRODUCT_VERSION="([^"]+)"/m)?.[1];
+}
+
+function cspDirectiveTokens(csp: string, directive: string): string[] {
+  const value = csp.match(new RegExp(`(?:^|;)\\s*${directive}\\s+([^;]+)`))?.[1];
+  return value ? value.trim().split(/\s+/) : [];
 }
 
 describe('release contract', () => {
@@ -95,5 +101,32 @@ describe('release contract', () => {
       encoding: 'utf8',
     }).trim();
     expect(resolved).toBe('/usr/bin/codesign');
+  });
+});
+
+describe('Tauri CSP image data-url contract', () => {
+  const csp = tauriConfig.app?.security?.csp ?? '';
+
+  it('img-src grants the data: scheme alongside every pre-existing source', () => {
+    const tokens = cspDirectiveTokens(csp, 'img-src');
+    expect(tokens.length, 'CSP must contain an img-src directive').toBeGreaterThan(0);
+    for (const source of ["'self'", 'asset:', 'http://asset.localhost', 'efxasset:', 'blob:', 'data:', 'https://*']) {
+      expect(tokens, `img-src must include ${source}`).toContain(source);
+    }
+  });
+
+  it('no other CSP directive gains the data: scheme', () => {
+    for (const directive of ['default-src', 'script-src', 'style-src', 'connect-src', 'media-src']) {
+      const tokens = cspDirectiveTokens(csp, directive);
+      expect(tokens, `${directive} must not include data:`).not.toContain('data:');
+    }
+  });
+
+  it('rotoCanvasFrames.ts declares the canonical ROTO_PNG_DATA_URL_HEADER constant', () => {
+    const source = readFileSync(
+      join(APP_DIR, 'src', 'components', 'physic-paint', 'roto', 'rotoCanvasFrames.ts'),
+      'utf8',
+    );
+    expect(source).toContain("ROTO_PNG_DATA_URL_HEADER = 'data:image/png;base64'");
   });
 });
