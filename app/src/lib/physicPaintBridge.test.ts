@@ -816,7 +816,7 @@ describe('physicPaintBridge', () => {
     expect(ensureFrameVisible).not.toHaveBeenCalled();
   });
 
-  it('installs a browser message listener for D-26 frame sync and removes it on cleanup', () => {
+  it('installs a browser message listener for D-26 frame sync and removes it on cleanup', async () => {
     let listener: ((event: MessageEvent) => void) | undefined;
     vi.spyOn(window, 'addEventListener').mockImplementation((event, cb) => {
       if (event === 'message') listener = cb as (event: MessageEvent) => void;
@@ -825,7 +825,7 @@ describe('physicPaintBridge', () => {
     const seek = vi.spyOn(timelineStore, 'seek');
     const ensureFrameVisible = vi.spyOn(timelineStore, 'ensureFrameVisible');
 
-    const cleanup = installPhysicPaintFrameSyncListener(window);
+    const cleanup = await installPhysicPaintFrameSyncListener(window);
     listener?.(new MessageEvent('message', { data: { type: 'physic-paint:seek-frame', frame: 7 } }));
 
     expect(seek).toHaveBeenCalledWith(7);

@@ -33,10 +33,11 @@ if (window.location.pathname === '/physics-paint') {
     await installPhysicPaintRotoAuthorityListener();
     await installPhysicPaintStateSaveListener();
     await installPhysicPaintThumbnailEncodeListener();
-    // Route physic-paint:seek-frame navigation messages from the standalone
-    // Physics Paint window to the editor timeline. Synchronous install; the
-    // discarded cleanup handle matches the app-lifetime pattern above.
-    installPhysicPaintFrameSyncListener();
+    // Route physic-paint:seek-frame navigation events from the standalone
+    // Physics Paint window to the editor timeline. Awaited install like the
+    // sibling bridge installs above; the discarded cleanup handle matches the
+    // app-lifetime pattern.
+    await installPhysicPaintFrameSyncListener();
 
     // Listen for undo/redo events emitted by the native macOS menu.
     // On macOS, Cmd+Z and Cmd+Shift+Z are intercepted by the native menu
