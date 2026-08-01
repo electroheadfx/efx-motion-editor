@@ -2,7 +2,7 @@
 
 ![EFX Motion Editor header artwork — cinematic stop-motion editor banner](docs/assets/header-efx-motion.png)
 
-A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes. Import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers with blend modes and keyframe animation, apply cinematic FX effects, add GLSL shader effects, paint and rotoscope frame-by-frame with a **dual-mode paint layer** (Flat vector strokes and FX spectral pigment rendering), **bezier path editing**, **inline color picker** with 4 modes, and **stroke draw-reveal animation**, plus a **standalone Physics Paint window** with a **deterministic Roto timeline** for physics-driven rotoscoping, apply **Hollywood-grade per-layer motion blur** with GLSL velocity shaders and sub-frame accumulation, import audio with waveforms, preview in real-time with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1).
+A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes. Import key photographs, arrange them into timed sequences, add overlay layers with blend modes and keyframe animation, apply cinematic FX effects, add GLSL shader effects, paint and rotoscope frame-by-frame with a **dual-mode paint layer** (Flat vector strokes and FX spectral pigment rendering), **bezier path editing**, **inline color picker** with 4 modes, and **stroke draw-reveal animation**, plus a **standalone Physics Paint window** with a **deterministic Roto timeline** for physics-driven rotoscoping, apply **Hollywood-grade per-layer motion blur** with GLSL velocity shaders and sub-frame accumulation, import audio with waveforms, preview in real-time with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1).
 
 <!-- Screenshot: Main editor view -->
 
@@ -16,7 +16,7 @@ Import photos (JPEG, PNG, TIFF, HEIC) via drag & drop or file dialog, assign hol
 
 ### Multi-Sequence Timeline
 
-Create, reorder, duplicate, and rename sequences with per-sequence FPS (15 or 24) and resolution settings. Canvas-based timeline with zoom, scroll, thumbnail previews, and frame-accurate scrubbing.
+Create, reorder, duplicate, and rename sequences with per-sequence frame rate and resolution settings. Canvas-based timeline with zoom, scroll, thumbnail previews, and frame-accurate scrubbing.
 
 <!-- Screenshot: Timeline with multiple sequences -->
 
