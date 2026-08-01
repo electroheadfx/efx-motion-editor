@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: Milestone v0.8.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-08-01 - Completed quick task 260801-jun: Create the v0.8.1 macOS packaging hotfix (frontend entry fix, EFX icons, version bump, codesign PATH hardening, release docs)
+Last activity: 2026-08-01 - Completed quick task 260801-o30: Fix v0.8.1 production Tauri CSP regression (grant data: scheme in img-src for cached Roto/Physics Paint PNGs)
 
 ## Performance Metrics
 
@@ -199,6 +199,7 @@ None yet.
 | 260731-9l0 | Add Cut tool to Efx Paint bottom timeline toolbar (copy + atomic delete, Cmd+X) | 2026-07-31 | 4f81df5d | Verified | [260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t](./quick/260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t/) |
 | 260801-jun | Create the v0.8.1 macOS packaging hotfix (frontend entry fix, EFX icons, version bump, codesign PATH hardening, release docs) | 2026-08-01 | 7a2ad433 | Verified | [260801-jun-create-the-v0-8-1-macos-packaging-hotfix](./quick/260801-jun-create-the-v0-8-1-macos-packaging-hotfix/) |
 | 260801-azb | Close G-01: add Tauri listen branch to installPhysicPaintFrameSyncListener for physic-paint:seek-frame | 2026-08-01 | 8c9defa1 |  | [260801-azb-close-g-01-add-tauri-listen-branch-to-in](./quick/260801-azb-close-g-01-add-tauri-listen-branch-to-in/) |
+| 260801-o30 | Fix v0.8.1 production Tauri CSP regression (grant data: scheme in img-src for cached Roto/Physics Paint PNGs) | 2026-08-01 | 65e86af2 |  | [260801-o30-fix-v0-8-1-production-tauri-csp-regressi](./quick/260801-o30-fix-v0-8-1-production-tauri-csp-regressi/) |
 
 ### Roadmap Evolution
 
