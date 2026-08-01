@@ -1,6 +1,8 @@
 # EFX Motion Editor
 
-A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes. Import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers with blend modes and keyframe animation, apply cinematic FX effects, add GLSL shader effects, paint and rotoscope frame-by-frame with a **3-mode paint system** (flat/FX/physical), **bezier path editing**, **inline color picker** with 4 modes, and **stroke draw-reveal animation**, apply **Hollywood-grade per-layer motion blur** with GLSL velocity shaders and sub-frame accumulation, import audio with waveforms, preview in real-time with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1).
+![EFX Motion Editor header artwork — cinematic stop-motion editor banner](docs/assets/header-efx-motion.png)
+
+A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes. Import key photographs, arrange them into timed sequences, add overlay layers with blend modes and keyframe animation, apply cinematic FX effects, add GLSL shader effects, paint and rotoscope frame-by-frame with a **dual-mode paint layer** (Flat vector strokes and FX spectral pigment rendering), **bezier path editing**, **inline color picker** with 4 modes, and **stroke draw-reveal animation**, plus a **standalone Physics Paint window** with a **deterministic Roto timeline** for physics-driven rotoscoping, apply **Hollywood-grade per-layer motion blur** with GLSL velocity shaders and sub-frame accumulation, import audio with waveforms, preview in real-time with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1).
 
 <!-- Screenshot: Main editor view -->
 
@@ -14,7 +16,7 @@ Import photos (JPEG, PNG, TIFF, HEIC) via drag & drop or file dialog, assign hol
 
 ### Multi-Sequence Timeline
 
-Create, reorder, duplicate, and rename sequences with per-sequence FPS (15 or 24) and resolution settings. Canvas-based timeline with zoom, scroll, thumbnail previews, and frame-accurate scrubbing.
+Create, reorder, duplicate, and rename sequences with per-sequence frame rate and resolution settings. Canvas-based timeline with zoom, scroll, thumbnail previews, and frame-accurate scrubbing.
 
 <!-- Screenshot: Timeline with multiple sequences -->
 
@@ -99,7 +101,7 @@ Fade in/out and cross-dissolve transitions between sequences with opacity and so
 | Dreamy | Dreamy blur dissolve |
 | Glitch Memories | Glitch effect with chromatic aberration |
 
-Transitions render in both the live preview and video export pipelines. Duration, easing curve, and per-shader parameters are editable in the sidebar. Project persistence via `.mce` v11 format.
+Transitions render in both the live preview and video export pipelines. Duration, easing curve, and per-shader parameters are editable in the sidebar. Project persistence via `.mce` v15 format.
 
 <!-- Screenshot: GL transition browser with animated previews -->
 
@@ -113,7 +115,7 @@ Import WAV, MP3, AAC, or FLAC audio files. Audio waveform renders on the timelin
 
 Frame-by-frame drawing and rotoscoping directly on the canvas. Powered by a perfect-freehand brush engine for smooth, pressure-sensitive strokes. 8 tools: select, brush, eraser (path-based), eyedropper, flood fill, line, rectangle, and ellipse. Onion skinning overlay shows ghosted paint from adjacent frames with configurable range and opacity falloff. Paint data persists as sidecar JSON files alongside the project. Paint layers composite in both the live preview and video export pipelines with full blend mode and opacity support.
 
-**3-Mode Paint System** — Each paint frame operates in one of three exclusive modes: **Flat** (perfect-freehand vector strokes), **FX** (p5.brush spectral pigment rendering), or **Physical** (placeholder for future efx-physic-paint engine). Mode conversion dialogs handle transitions between flat and FX with full undo support. Per-layer paint mode persists across sessions.
+**Dual-Mode Paint System** — Each paint frame operates in one of two exclusive modes: **Flat** (perfect-freehand vector strokes) or **FX** (p5.brush spectral pigment rendering). Mode conversion dialogs handle transitions between flat and FX with full undo support. Per-layer paint mode persists across sessions. Physics-driven painting lives in the dedicated standalone Physics Paint window (see Standalone Physics Paint below).
 
 **Brush FX Styles** — Post-process FX workflow: draw flat strokes, select them, then apply artistic styles powered by [p5.brush](https://p5-brush.cargo.site/) with Kubelka-Munk spectral pigment mixing (blue + yellow = green, not gray). 6 brush styles: flat, watercolor, ink, charcoal, pencil, and marker. Per-style FX parameters (bleed, grain, scatter, field strength, edge darken) with real-time slider controls. Per-frame batch rendering ensures overlapping strokes get physically-correct spectral blending in a single GLSL pass.
 
@@ -136,6 +138,18 @@ Frame-by-frame drawing and rotoscoping directly on the canvas. Powered by a perf
 **Tablet & Pen Support** — Native macOS tablet pressure bridge via NSEvent. Supports pen pressure sensitivity with easing/taper curves for natural brush dynamics, tilt detection, and coalesced touch events for high-resolution stroke capture at full tablet polling rate. Works with Wacom, Apple Pencil (iPad Sidecar), and other pressure-sensitive input devices.
 
 <!-- Screenshot: Paint overlay with brush FX styles -->
+
+### Standalone Physics Paint
+
+Physics-driven rotoscoping ships as **efx-physic-paint**, a complete standalone interactive application running in its own Tauri window — preserving native incremental physics behavior (the earlier headless batch adapter approach was abandoned in favor of this standalone window).
+
+- **Typed editor bridge** — The parent editor and the Physics Paint window communicate through a typed Tauri/postMessage bridge with exact acknowledgements ([`app/src/lib/physicPaintBridge.ts`](app/src/lib/physicPaintBridge.ts)), including native frame synchronization via the Tauri-native `physic-paint:seek-frame` path.
+- **Deterministic Roto timeline** — Stable physical-frame keys with direct frame positioning, generated interpolation, dynamic interpolation spacing controls, and atomic acknowledged edits.
+- **Live pixel caching** — Automatic live PNG pixel caching with durable alpha composites, cached playback, and real-key repaint.
+- **Undo/Redo** — Accepted-only history, 10 levels per brush.
+- **Movement & groups** — Single-key drag movement, rigid multi-select group drag and group delete, and Force Spacing.
+- **Clipboard operations** — Group Copy, Paste, Duplicate, and fail-closed Cut.
+- **Roto Scripts** — Durable project-scoped script library with reusable JSON presets and WebP thumbnails, Copy Script / Apply Script clipboard, and the Play Script one-hand multi-frame replay workflow (the former separate Play workflow is fused into Roto Scripts).
 
 ### Per-Layer Motion Blur
 
@@ -196,6 +210,10 @@ Real-time preview with zoom/pan, pinch gestures, fit-to-window, and fullscreen m
 - **Global Solo Mode** — Strip all overlay layers and FX from preview/export with one click or `S` key
 - **Sequence Isolation** — Solo mode and global loop playback toggle
 
+## Release
+
+v0.8.1 ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG. Production packaging safeguards include a complete frontend bundle entry, the generated EFX application icon set, system codesign resolution, and a production CSP that grants PNG data URLs in `img-src` for cached Roto/Physics Paint frames.
+
 ## Canvas Motion Fork
 
 This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40efxlab%2Fmotion-canvas) packages, a fork of [Motion Canvas](https://motioncanvas.io/). Currently used: core, 2d, vite-plugin, player, ui.
@@ -210,7 +228,7 @@ This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40ef
 | GPU Effects | WebGL2 (GLSL shaders, GPU blur, per-layer motion blur) |
 | Native Backend | Rust, Tauri 2.0 |
 | Video Export | FFmpeg (auto-provisioned) |
-| Paint Engine | @efxlab/efx-physic-paint (spectral pigment mixing via p5.brush), perfect-freehand (flat strokes), fit-curve + bezier-js (path editing) |
+| Paint Engine | perfect-freehand (flat strokes), p5.brush (spectral pigment FX), fit-curve + bezier-js (path editing), @efxlab/efx-physic-paint (standalone Physics Paint engine with typed editor bridge) |
 | Monorepo | pnpm workspaces, tsup (package builds) |
 | Project Format | `.mce` v15 (progressive JSON with backward compat v1-v15) |
 
