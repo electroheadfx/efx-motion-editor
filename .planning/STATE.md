@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 38
 current_phase_name: multi-copy-paste-and-tooltip-polish
 status: complete
-stopped_at: Phase 38 complete and verified 7/7; Phase 38.1 remains complete and verified 20/20
-last_updated: "2026-07-30T17:09:16Z"
-last_activity: 2026-07-30
-last_activity_desc: Completed quick task 260730-mn0 Apple Developer ID release preparation; credentialed release deferred until after milestone audit/completion
+stopped_at: Milestone v0.8.0 summary generated
+last_updated: "2026-08-01T09:31:32.046Z"
+last_activity: 2026-08-01
+last_activity_desc: "Completed quick task 260801-azb: Close G-01 Tauri listen branch for physic-paint:seek-frame (EDIT-02/B-01)"
 progress:
   total_phases: 21
-  completed_phases: 21
+  completed_phases: 20
   total_plans: 170
   completed_plans: 164
-  percent: 96
+  percent: 95
 ---
 
 # Project State
@@ -448,6 +448,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-30T17:09:16Z
-Stopped at: Quick 260730-mn0 preparation complete; credentialed signed release deferred until after milestone audit/completion
-Resume file: None
+Last session: 2026-08-01T09:31:31.987Z
+Stopped at: Milestone v0.8.0 summary generated
+Resume file: .planning/reports/MILESTONE_SUMMARY-v0.8.0.md
