@@ -1,5 +1,7 @@
 # EFX Motion Editor
 
+![EFX Motion Editor header artwork — cinematic stop-motion editor banner](docs/assets/header-efx-motion.png)
+
 A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes. Import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers with blend modes and keyframe animation, apply cinematic FX effects, add GLSL shader effects, paint and rotoscope frame-by-frame with a **3-mode paint system** (flat/FX/physical), **bezier path editing**, **inline color picker** with 4 modes, and **stroke draw-reveal animation**, apply **Hollywood-grade per-layer motion blur** with GLSL velocity shaders and sub-frame accumulation, import audio with waveforms, preview in real-time with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1).
 
 <!-- Screenshot: Main editor view -->
