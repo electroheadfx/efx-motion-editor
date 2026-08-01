@@ -7,7 +7,7 @@ TAURI_DIR="$REPO_ROOT/app/src-tauri"
 CONFIG_PATH="$TAURI_DIR/tauri.conf.json"
 TARGET_DIR="$TAURI_DIR/target"
 PRODUCT_NAME="EFX Motion Editor"
-PRODUCT_VERSION="0.8.0"
+PRODUCT_VERSION="0.8.1"
 PRODUCT_IDENTIFIER="com.efxlab.motion-editor"
 
 CODESIGN=/usr/bin/codesign
@@ -91,10 +91,10 @@ worktree_private_asset_exists() {
 }
 
 validate_tauri_config() {
-  "$NODE_BIN" - "$CONFIG_PATH" "$TAURI_DIR" <<'NODE'
+  "$NODE_BIN" - "$CONFIG_PATH" "$TAURI_DIR" "$PRODUCT_VERSION" <<'NODE'
 const fs = require('node:fs');
 const path = require('node:path');
-const [configPath, tauriDir] = process.argv.slice(2);
+const [configPath, tauriDir, productVersion] = process.argv.slice(2);
 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 const fail = (message) => {
   console.error(`ERROR: Tauri release configuration drift: ${message}`);
@@ -102,14 +102,38 @@ const fail = (message) => {
 };
 
 if (config.productName !== 'EFX Motion Editor') fail('productName must be EFX Motion Editor');
-if (config.version !== '0.8.0') fail('version must be 0.8.0');
+if (config.version !== productVersion) fail(`version must equal PRODUCT_VERSION (${productVersion})`);
 if (config.identifier !== 'com.efxlab.motion-editor') fail('identifier must be com.efxlab.motion-editor');
+if (config.build?.beforeBuildCommand !== 'pnpm build') fail("build.beforeBuildCommand must be 'pnpm build'");
+if (config.build?.frontendDist !== '../dist') fail("build.frontendDist must be '../dist'");
 if (config.bundle?.macOS?.hardenedRuntime !== true) fail('bundle.macOS.hardenedRuntime must be true');
 if (config.bundle?.macOS?.entitlements !== undefined) fail('bundle.macOS.entitlements must be absent');
 if (config.bundle?.externalBin !== undefined) fail('bundle.externalBin must be absent');
 if (!Array.isArray(config.bundle?.resources) || config.bundle.resources.length !== 1 || config.bundle.resources[0] !== 'resources/*') {
   fail('bundle.resources must contain only resources/*');
 }
+
+const expectedIcons = [
+  'icons/32x32.png',
+  'icons/128x128.png',
+  'icons/128x128@2x.png',
+  'icons/icon.icns',
+  'icons/icon.ico',
+];
+if (JSON.stringify(config.bundle?.icon) !== JSON.stringify(expectedIcons)) {
+  fail(`bundle.icon must be exactly ${JSON.stringify(expectedIcons)}`);
+}
+for (const rel of expectedIcons) {
+  const iconPath = path.join(tauriDir, rel);
+  if (!fs.existsSync(iconPath) || fs.statSync(iconPath).size === 0) {
+    fail(`referenced icon file is missing or empty: ${rel}`);
+  }
+}
+const icnsMagic = Buffer.alloc(4);
+const icnsFd = fs.openSync(path.join(tauriDir, 'icons/icon.icns'), 'r');
+fs.readSync(icnsFd, icnsMagic, 0, 4, 0);
+fs.closeSync(icnsFd);
+if (icnsMagic.toString('ascii') !== 'icns') fail('icons/icon.icns does not start with the icns magic bytes');
 
 const resourcesDir = path.join(tauriDir, 'resources');
 const regularFiles = fs.readdirSync(resourcesDir, { withFileTypes: true })
@@ -120,6 +144,9 @@ if (regularFiles.length !== 1 || regularFiles[0] !== 'test-image.jpg') {
   fail('resources/* must match exactly the regular file resources/test-image.jpg');
 }
 NODE
+
+  # The tracked generated icons under app/src-tauri/icons/ (validated above) are
+  # the canonical release inputs; the 1024x1024 source stays outside Git.
 }
 
 run_preflight() {
@@ -147,6 +174,15 @@ run_preflight() {
   [[ -x "$stapler_path" ]] || die "xcrun resolved a non-executable stapler"
   log "Apple capability probes: codesign, security, notarytool, and stapler available"
   log "Full Xcode is not required when these capability probes succeed."
+
+  # Simulated runtime resolution: with the system-first PATH prefix used by the
+  # Tauri build invocation, codesign must resolve to /usr/bin/codesign. This
+  # proves actual runtime resolution, not just string ordering (T-jun-01).
+  local resolved_codesign
+  resolved_codesign="$(PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" command -v codesign)" \
+    || die "codesign is not resolvable with the system-first PATH prefix"
+  [[ "$resolved_codesign" == "/usr/bin/codesign" ]] \
+    || die "codesign resolves to $resolved_codesign with the system-first PATH prefix; expected /usr/bin/codesign"
 
   validate_tauri_config
 
@@ -266,6 +302,26 @@ verify_app() {
   metadata="$($CODESIGN --display --verbose=4 "$app_path" 2>&1)"
   printf '%s\n' "$metadata" | /usr/bin/grep -Fxq "Identifier=$PRODUCT_IDENTIFIER" || die "App signature identifier is not $PRODUCT_IDENTIFIER"
 
+  # Info.plist metadata: the packaged app must report the release version and
+  # ship a real icon (v0.8.0 shipped the template placeholder — T-jun-02).
+  local info_plist="$app_path/Contents/Info.plist"
+  [[ -f "$info_plist" ]] || die "App bundle is missing Contents/Info.plist"
+  local short_version bundle_version icon_file
+  short_version="$("$PLUTIL" -extract CFBundleShortVersionString raw -o - "$info_plist" 2>/dev/null)" \
+    || die "Info.plist is missing CFBundleShortVersionString"
+  [[ "$short_version" == "$PRODUCT_VERSION" ]] \
+    || die "Info.plist CFBundleShortVersionString is $short_version; expected $PRODUCT_VERSION"
+  bundle_version="$("$PLUTIL" -extract CFBundleVersion raw -o - "$info_plist" 2>/dev/null)" \
+    || die "Info.plist is missing CFBundleVersion"
+  [[ -n "$bundle_version" ]] || die "Info.plist CFBundleVersion is empty"
+  icon_file="$("$PLUTIL" -extract CFBundleIconFile raw -o - "$info_plist" 2>/dev/null)" \
+    || die "Info.plist is missing CFBundleIconFile"
+  [[ -n "$icon_file" ]] || die "Info.plist CFBundleIconFile is empty"
+  local bundled_icon="$app_path/Contents/Resources/$icon_file"
+  [[ -s "$bundled_icon" ]] || die "Bundled icon is missing or empty: Contents/Resources/$icon_file"
+  [[ "$(/usr/bin/head -c 4 "$bundled_icon")" == "icns" ]] \
+    || die "Bundled icon does not start with the icns magic bytes: Contents/Resources/$icon_file"
+
   verify_no_entitlements "$app_path"
   "$SPCTL" --assess --type execute --verbose=4 "$app_path"
   "$XCRUN" stapler validate "$app_path"
@@ -291,7 +347,7 @@ find_release_artifacts() {
     "$FIND" "$TARGET_DIR" -type d -path '*/release/bundle/macos/EFX Motion Editor.app' -print0 2>/dev/null
   )
   while IFS= read -r -d '' path; do dmgs+=("$path"); done < <(
-    "$FIND" "$TARGET_DIR" -type f -path '*/release/bundle/dmg/*_0.8.0_*.dmg' -print0 2>/dev/null
+    "$FIND" "$TARGET_DIR" -type f -path "*/release/bundle/dmg/*_${PRODUCT_VERSION}_*.dmg" -print0 2>/dev/null
   )
 
   [[ "${#apps[@]}" -eq 1 ]] || die "Expected exactly one v$PRODUCT_VERSION $PRODUCT_NAME.app release artifact, found ${#apps[@]}"
@@ -342,7 +398,9 @@ run_release() {
   expected_team="$(expected_team_from_identity)"
 
   log "Starting Tauri app and DMG release build"
-  "$PNPM_BIN" --dir "$REPO_ROOT/app" tauri build --bundles app,dmg --ci
+  # System binaries first so Tauri's internal codesign/security invocations
+  # resolve the genuine Apple tools even if PATH carries wrappers (T-jun-01).
+  PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" "$PNPM_BIN" --dir "$REPO_ROOT/app" tauri build --bundles app,dmg --ci
   find_release_artifacts
   submit_and_staple_dmg "$RELEASE_DMG"
 

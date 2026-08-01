@@ -228,3 +228,17 @@ Never delete the G2 intermediate or private key while removing a duplicate leaf.
 - [ ] The Issuer ID, Key ID, and `.p8` location are recorded in a secure credential manager.
 - [ ] A password-protected `.p12` backup of the complete identity is stored securely outside the repository.
 - [ ] The credentialed release remains pending; no notarization, stapling, downloaded-artifact, or visible-launch success has been claimed.
+
+## v0.8.1 packaging hotfix
+
+The v0.8.0 release proved that correct credentials and signing are not sufficient: the packaged app contained no frontend entry (`dist/index.html` was never emitted because `motion-canvas:project` sets `build.rollupOptions.input`, suppressing Vite's default HTML entry) and shipped the template placeholder icon. Signing, notarization, and Gatekeeper checks all passed over that broken content.
+
+For v0.8.1 the pipeline around the credentialed steps was hardened so credential setup is the only remaining manual surface:
+
+- The Vite production build restores the `index.html` entry alongside the Motion Canvas project bundle and fails closed via a `writeBundle` bundle guard when the emitted frontend is incomplete — Tauri packaging cannot start from a broken `dist/`.
+- The real EFX icon set is generated once from the 1024x1024 RGBA source (kept outside Git) via `tauri icon` and pinned through the exact 5-file `bundle.icon` array; the tracked generated icons under `app/src-tauri/icons/` are the canonical release inputs and preflight validates the array, file presence, and ICNS magic bytes — no source PNG is required at release time.
+- Preflight enforces version agreement between `tauri.conf.json` and the script's `PRODUCT_VERSION` (dynamic comparison, no hardcoded version), and the DMG artifact glob interpolates `PRODUCT_VERSION`.
+- Preflight proves codesign runtime resolution with a simulated system-first PATH check (`command -v codesign` must print `/usr/bin/codesign`), and the Tauri build runs with `/usr/bin:/bin:/usr/sbin:/sbin` prefixed so Apple's tools cannot be shadowed by PATH wrappers.
+- `verify_app()` now also checks the packaged `Info.plist` (`CFBundleShortVersionString`, `CFBundleVersion`, `CFBundleIconFile`) and the bundled icon's presence and `icns` signature, in both the local release and downloaded-artifact paths.
+
+All keychain, certificate, App Store Connect key, and credential-handling guidance above is unchanged and still applies verbatim.

@@ -477,3 +477,21 @@ Redacted failure detail, if any:
 ```
 
 Release and distribution acceptance must remain pending until the credentialed release, both notarization paths, stapling, downloaded-artifact verification, and normal visible launch have all produced real evidence.
+
+## v0.8.1 packaging hotfix
+
+v0.8.0 packaged a broken app even though every signing check passed. Three defects combined:
+
+1. **Missing frontend entry.** `motion-canvas:project` sets `build.rollupOptions.input` in `app/vite.config.ts`, which makes Vite skip its default `index.html` entry. The production build therefore emitted no `dist/index.html` at all — only the Motion Canvas project bundle and assets — and nothing in the pipeline noticed.
+2. **Placeholder application icon.** `app/src-tauri/icons/` contained the 559-byte create-tauri-app template placeholder, and `tauri.conf.json` never declared a `bundle.icon` array, so the signed bundle shipped the stock icon.
+3. **codesign resolution via ambient PATH.** The Tauri build invokes `codesign`/`security` internally; a PATH carrying wrapper binaries could have shadowed the genuine Apple tools.
+
+The v0.8.1 pipeline makes these failures loud instead of silent:
+
+- **Fail-closed bundle guard.** The Vite config merges the Motion Canvas input with an `app` entry pointing at `app/index.html` and runs a `writeBundle` guard that fails `pnpm build` — hence Tauri's `beforeBuildCommand`, before any compilation or signing — when `index.html` is missing/empty, references no local module script, or references a missing/empty local asset. The esbuild JSX repair is returned from the same post plugin's `config` hook because `vite:esbuild` snapshots `config.esbuild` at plugin-creation time; mutating it in `configResolved` was a no-op.
+- **Icon contract.** The real EFX icon set was generated from the 1024x1024 RGBA source (kept outside Git) via `tauri icon`; `bundle.icon` names exactly the 5 desktop files (`32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.icns`, `icon.ico`). The tracked generated icons under `app/src-tauri/icons/` are the canonical release inputs: preflight requires the array to match, every referenced file to exist non-empty, and `icon.icns` to carry the `icns` magic bytes — a fresh clone passes preflight without any source PNG.
+- **Version agreement.** Preflight compares `tauri.conf.json` `version` against the script's `PRODUCT_VERSION` dynamically (no hardcoded version literal), and the DMG artifact glob interpolates `PRODUCT_VERSION`.
+- **Simulated codesign resolution.** Preflight requires `PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" command -v codesign` to resolve exactly `/usr/bin/codesign`, and the Tauri build invocation itself runs with the same system-first PATH prefix.
+- **Extended `verify_app()`.** Both the local release and `verify-downloaded` paths now require the packaged app's `Info.plist` to report `CFBundleShortVersionString == PRODUCT_VERSION`, present `CFBundleVersion` and `CFBundleIconFile`, and a non-empty bundled icon with `icns` magic.
+
+Regression coverage lives in `app/src/viteBuild.test.ts` (real hermetic production build + guard contract) and `app/src/releaseContract.test.ts` (version/icon/script contract). The credentialed release, notarization, tag creation, and visible native UAT remain user-owned steps.
