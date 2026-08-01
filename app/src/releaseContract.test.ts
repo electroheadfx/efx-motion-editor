@@ -85,7 +85,11 @@ describe('release contract', () => {
     expect(script).toMatch(/PATH="\/usr\/bin:\/bin:\/usr\/sbin:\/sbin:\$PATH" "\$PNPM_BIN" --dir/);
     // Preflight must prove runtime codesign resolution, not string ordering.
     expect(script).toMatch(/PATH="\/usr\/bin:\/bin:\/usr\/sbin:\/sbin:\$PATH" command -v codesign/);
-    // The simulated resolution check itself must pass on this machine.
+  });
+
+  // Live probe: macOS-only — on other hosts `codesign` does not exist and the
+  // platform-neutral contract tests above must still run.
+  it.runIf(process.platform === 'darwin')('simulated codesign resolution passes on this machine', () => {
     const resolved = execSync('PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" command -v codesign', {
       shell: '/bin/bash',
       encoding: 'utf8',

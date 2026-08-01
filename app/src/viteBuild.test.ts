@@ -28,18 +28,11 @@ function makeTempDir(prefix: string): string {
   return dir;
 }
 
-/** Extract local src=/href= references from emitted HTML (skips http(s):, data:, #, protocol-relative). */
+/** Extract local src=/href= references from emitted HTML (skips any URL scheme, fragments, protocol-relative). */
 function extractLocalRefs(html: string): string[] {
   return [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
     .map((match) => match[1])
-    .filter(
-      (ref) =>
-        !ref.startsWith('http:') &&
-        !ref.startsWith('https:') &&
-        !ref.startsWith('data:') &&
-        !ref.startsWith('#') &&
-        !ref.startsWith('//'),
-    );
+    .filter((ref) => !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(ref) && !ref.startsWith('#') && !ref.startsWith('//'));
 }
 
 /** Recursively collect file paths (relative to root) under a directory. */

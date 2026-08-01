@@ -42,7 +42,10 @@ export function assertProductionBundle(outDir: string): void {
 
   const moduleScripts = [...html.matchAll(/<script[^>]*>/g)]
     .map((match) => match[0])
-    .filter((tag) => tag.includes('type="module"') && /src="(?!https?:|data:|#|\/\/)[^"]+"/.test(tag));
+    .filter(
+      (tag) =>
+        tag.includes('type="module"') && /src="(?![a-zA-Z][a-zA-Z0-9+.-]*:|#|\/\/)[^"]+"/.test(tag),
+    );
   if (moduleScripts.length === 0) {
     fail('index.html references no local module script');
   }
@@ -50,12 +53,9 @@ export function assertProductionBundle(outDir: string): void {
   const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
     .map((match) => match[1])
     .filter(
-      (ref) =>
-        !ref.startsWith('http:') &&
-        !ref.startsWith('https:') &&
-        !ref.startsWith('data:') &&
-        !ref.startsWith('#') &&
-        !ref.startsWith('//'),
+      // Local references only: exclude any URL scheme (http:, data:, mailto:,
+      // blob:, ...), fragments, and protocol-relative URLs.
+      (ref) => !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(ref) && !ref.startsWith('#') && !ref.startsWith('//'),
     );
   for (const ref of refs) {
     const assetPath = join(outDir, ref.replace(/^\//, ''));
@@ -146,7 +146,10 @@ export default defineConfig({
       },
       writeBundle(outputOptions) {
         const outDir = outputOptions.dir ?? resolvedOutDir;
-        if (outDir) assertProductionBundle(outDir);
+        if (!outDir) {
+          throw new Error('Production bundle guard: unable to resolve the build output directory');
+        }
+        assertProductionBundle(outDir);
       },
     },
   ],
