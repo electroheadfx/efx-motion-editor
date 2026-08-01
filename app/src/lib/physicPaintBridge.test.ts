@@ -816,7 +816,7 @@ describe('physicPaintBridge', () => {
     expect(ensureFrameVisible).not.toHaveBeenCalled();
   });
 
-  it('installs a browser message listener for D-26 frame sync and removes it on cleanup', () => {
+  it('installs a browser message listener for D-26 frame sync and removes it on cleanup', async () => {
     let listener: ((event: MessageEvent) => void) | undefined;
     vi.spyOn(window, 'addEventListener').mockImplementation((event, cb) => {
       if (event === 'message') listener = cb as (event: MessageEvent) => void;
@@ -825,7 +825,7 @@ describe('physicPaintBridge', () => {
     const seek = vi.spyOn(timelineStore, 'seek');
     const ensureFrameVisible = vi.spyOn(timelineStore, 'ensureFrameVisible');
 
-    const cleanup = installPhysicPaintFrameSyncListener(window);
+    const cleanup = await installPhysicPaintFrameSyncListener(window);
     listener?.(new MessageEvent('message', { data: { type: 'physic-paint:seek-frame', frame: 7 } }));
 
     expect(seek).toHaveBeenCalledWith(7);
@@ -833,5 +833,35 @@ describe('physicPaintBridge', () => {
 
     cleanup();
     expect(remove).toHaveBeenCalledWith('message', expect.any(Function));
+  });
+
+  it('installs a Tauri listen branch for D-26 frame sync in native runtime', async () => {
+    let handler: ((event: { payload: unknown }) => unknown) | undefined;
+    const unlisten = vi.fn();
+    vi.doMock('@tauri-apps/api/event', () => ({
+      listen: vi.fn(async (eventName: string, cb: (event: { payload: unknown }) => unknown) => {
+        if (eventName === 'physic-paint:seek-frame') handler = cb;
+        return unlisten;
+      }),
+    }));
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {}, configurable: true });
+    try {
+      const add = vi.spyOn(window, 'addEventListener');
+      const seek = vi.spyOn(timelineStore, 'seek');
+      const ensureFrameVisible = vi.spyOn(timelineStore, 'ensureFrameVisible');
+
+      const cleanup = await installPhysicPaintFrameSyncListener(window);
+      handler?.({ payload: { type: 'physic-paint:seek-frame', frame: 9 } });
+
+      expect(seek).toHaveBeenCalledWith(9);
+      expect(ensureFrameVisible).toHaveBeenCalledWith(9);
+      expect(add).not.toHaveBeenCalledWith('message', expect.any(Function));
+
+      cleanup();
+      expect(unlisten).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      vi.doUnmock('@tauri-apps/api/event');
+    }
   });
 });

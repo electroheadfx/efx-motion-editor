@@ -960,7 +960,12 @@ export function handlePhysicPaintFrameSyncMessage(value: unknown): boolean {
   return true;
 }
 
-export function installPhysicPaintFrameSyncListener(target: Window = window): () => void {
+export async function installPhysicPaintFrameSyncListener(target: Window = window): Promise<() => void> {
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    const unlisten = await eventApi.listen?.('physic-paint:seek-frame', (event) => handlePhysicPaintFrameSyncMessage(event.payload));
+    if (unlisten) return unlisten;
+  }
   if (!target || typeof target.addEventListener !== 'function') return () => {};
   const listener = (event: MessageEvent) => {
     handlePhysicPaintFrameSyncMessage(event.data);

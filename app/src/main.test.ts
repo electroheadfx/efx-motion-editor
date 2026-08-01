@@ -5,9 +5,18 @@ import { paintStore } from './stores/paintStore';
 const originalWindow = globalThis.window;
 const originalDocument = globalThis.document;
 
+const tauriListeners = vi.hoisted(() => new Map<string, Array<(event: { payload: unknown }) => unknown>>());
+
 vi.mock('preact', () => ({ render: vi.fn() }));
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ onCloseRequested: vi.fn() }) }));
-vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(() => Promise.resolve(() => {})) }));
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn((eventName: string, handler: (event: { payload: unknown }) => unknown) => {
+    const handlers = tauriListeners.get(eventName) ?? [];
+    handlers.push(handler);
+    tauriListeners.set(eventName, handlers);
+    return Promise.resolve(() => {});
+  }),
+}));
 vi.mock('./lib/projectDir', () => ({ initTempProjectDir: vi.fn(() => Promise.resolve()) }));
 vi.mock('./lib/themeManager', () => ({ initTheme: vi.fn(() => Promise.resolve()) }));
 vi.mock('./lib/autoSave', () => ({ startAutoSave: vi.fn() }));
@@ -21,27 +30,22 @@ vi.mock('./lib/shortcuts', () => ({
 vi.mock('./lib/history', () => ({ undo: vi.fn(), redo: vi.fn() }));
 vi.mock('./app', () => ({ App: () => null }));
 
-type MessageListener = (event: MessageEvent) => void;
-
 describe('main.tsx editor startup', () => {
-  let messageListeners: MessageListener[];
-
   // Startup runs exactly once per process in production, so the suite stubs the
   // browser globals and imports main.tsx once; resetting the module registry
   // between tests would rebind main.tsx to fresh store instances the statically
   // imported stores in this file would no longer observe.
   beforeAll(async () => {
-    const listenersByType = new Map<string, Set<EventListenerOrEventListenerObject>>();
     Object.defineProperty(globalThis, 'window', {
       value: {
-        addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
-          const set = listenersByType.get(type) ?? new Set<EventListenerOrEventListenerObject>();
-          set.add(listener);
-          listenersByType.set(type, set);
-        },
+        addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
         dispatchEvent: vi.fn(),
         location: { pathname: '/', origin: 'http://localhost:1420' },
+        // Models the native Tauri runtime so startup exercises the production
+        // Tauri event path: every bridge listener early-returns its Tauri
+        // unlisten and installs no DOM 'message' listener.
+        __TAURI_INTERNALS__: {},
       },
       writable: true,
       configurable: true,
@@ -55,10 +59,15 @@ describe('main.tsx editor startup', () => {
     vi.spyOn(paintStore, 'initFromPreferences').mockResolvedValue(undefined);
 
     await import('./main');
-    await vi.dynamicImportSettled();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    messageListeners = [...(listenersByType.get('message') ?? [])] as MessageListener[];
+    const flush = async () => {
+      await vi.dynamicImportSettled();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+    await flush();
+    // The awaited bridge installs each perform a dynamic
+    // import('@tauri-apps/api/event'); flush once more if the frame-sync
+    // handler has not been registered yet.
+    if (!tauriListeners.get('physic-paint:seek-frame')?.length) await flush();
   });
 
   afterEach(() => {
@@ -79,16 +88,19 @@ describe('main.tsx editor startup', () => {
     });
   });
 
-  it('completes editor startup and registers at least one window message listener', () => {
-    expect(messageListeners.length).toBeGreaterThan(0);
+  it('completes editor startup and registers a Tauri listener for physic-paint:seek-frame', () => {
+    expect(tauriListeners.get('physic-paint:seek-frame')?.length ?? 0).toBeGreaterThan(0);
   });
 
-  it('routes a valid physic-paint:seek-frame message to the editor timeline', () => {
+  it('routes a Tauri physic-paint:seek-frame event to the editor timeline', () => {
     const seek = vi.spyOn(timelineStore, 'seek');
     const ensureFrameVisible = vi.spyOn(timelineStore, 'ensureFrameVisible');
 
-    const event = new MessageEvent('message', { data: { type: 'physic-paint:seek-frame', frame: 7 } });
-    for (const listener of messageListeners) listener(event);
+    const handlers = tauriListeners.get('physic-paint:seek-frame') ?? [];
+    expect(handlers.length).toBeGreaterThan(0);
+    for (const handler of handlers) {
+      handler({ payload: { type: 'physic-paint:seek-frame', frame: 7 } });
+    }
 
     expect(seek).toHaveBeenCalledTimes(1);
     expect(seek).toHaveBeenCalledWith(7);
