@@ -56,6 +56,16 @@ Native-mode frame sync restored: `installPhysicPaintFrameSyncListener` now regis
 - Typecheck: `pnpm --dir app run typecheck` — green.
 - Regression proof (G-01/G-02): with the Task 1 `isTauriRuntime()` listen branch temporarily removed, all three new Tauri-path tests failed (2 in main.test.ts, 1 in physicPaintBridge.test.ts); branch restored via `git checkout -- <file>` and suites re-verified green.
 
+## Native UAT
+
+Approved on 2026-08-01.
+
+The user verified in the native Tauri application that:
+
+- A Physics Paint `physic-paint:seek-frame` event moves the main editor to the matching frame exactly once.
+- Closing and reopening Physics Paint preserves frame synchronization without duplicate listener handling.
+- G-01 / EDIT-02 / B-01 is accepted as closed for the next milestone audit.
+
 ## Deviations from Plan
 
 ### Environment setup (Rule 3 - blocking issue)
