@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 5
+open_count: 6
 waived_count: 1
 fixed_count: 19
-total_count: 25
-last_updated: 2026-07-29T16:15:38.053Z
+total_count: 26
+last_updated: 2026-08-01T13:41:39.096Z
 ---
 
 # Broken Windows Ledger
@@ -40,6 +40,7 @@ last_updated: 2026-07-29T16:15:38.053Z
 | 23 | 38.1 | deviation | app/src/test/preactHookRuntime.ts |  | Adjusted the test runtime to the app TypeScript target and removed one unused GREEN-test binding after the no-emit gate. | fixed |  | 2026-07-29T08:08:16.664Z | 2026-07-29T08:09:04.219Z |
 | 24 | 38 | deviation | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts |  | Rewrote omitted stale header-tooltip assertion against the region-driven fixed-position contract | fixed | Verified by the focused 63-test file and full Phase 38 closing suite. | 2026-07-29T16:15:36.790Z | 2026-07-29T16:15:38.053Z |
 | 25 | 38 | deviation | app/src/components/physic-paint/view/PhysicsPaintStyledTooltip.test.ts |  | Applied the user-approved flat #62666d tooltip visual over stale plan wording | fixed | Verified by the focused 9-test file and full Phase 38 closing suite. | 2026-07-29T16:15:36.934Z | 2026-07-29T16:15:38.053Z |
+| 26 | quick-260801-jun | unrun-verify | app/src-tauri/src/services/project_io.rs |  | Pre-existing cargo test lib-test compile failure (stale roto field names); verification battery item 5 red | open |  | 2026-08-01T13:41:39.096Z |  |
 
 ````json
 [
@@ -342,6 +343,18 @@ last_updated: 2026-07-29T16:15:38.053Z
     "reason": "Verified by the focused 9-test file and full Phase 38 closing suite.",
     "recorded_at": "2026-07-29T16:15:36.934Z",
     "resolved_at": "2026-07-29T16:15:38.053Z"
+  },
+  {
+    "id": 26,
+    "kind": "unrun-verify",
+    "phase": "quick-260801-jun",
+    "file": "app/src-tauri/src/services/project_io.rs",
+    "line": null,
+    "description": "Pre-existing cargo test lib-test compile failure (stale roto field names); verification battery item 5 red",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-01T13:41:39.096Z",
+    "resolved_at": null
   }
 ]
 ````

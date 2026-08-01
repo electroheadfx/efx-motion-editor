@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: Milestone v0.8.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-08-01 — Milestone v0.8.0 completed and archived
+Last activity: 2026-08-01 - Completed quick task 260801-jun: Create the v0.8.1 macOS packaging hotfix (frontend entry fix, EFX icons, version bump, codesign PATH hardening, release docs)
 
 ## Performance Metrics
 
@@ -197,6 +197,7 @@ None yet.
 | 260729-taj | Close milestone audit gap EDIT-02/B-01: install physic-paint frame-sync listener | 2026-07-29 | ed590d2b |  | [260729-taj-close-milestone-audit-gap-edit-02-b-01-i](./quick/260729-taj-close-milestone-audit-gap-edit-02-b-01-i/) |
 | 260730-mn0 | Prepare Apple Developer ID signing, notarization, and release documentation | 2026-07-30 | 1292351a | Prepared | [260730-mn0-configure-apple-developer-id-signing-har](./quick/260730-mn0-configure-apple-developer-id-signing-har/) |
 | 260731-9l0 | Add Cut tool to Efx Paint bottom timeline toolbar (copy + atomic delete, Cmd+X) | 2026-07-31 | 4f81df5d | Verified | [260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t](./quick/260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t/) |
+| 260801-jun | Create the v0.8.1 macOS packaging hotfix (frontend entry fix, EFX icons, version bump, codesign PATH hardening, release docs) | 2026-08-01 | 7a2ad433 | Verified | [260801-jun-create-the-v0-8-1-macos-packaging-hotfix](./quick/260801-jun-create-the-v0-8-1-macos-packaging-hotfix/) |
 | 260801-azb | Close G-01: add Tauri listen branch to installPhysicPaintFrameSyncListener for physic-paint:seek-frame | 2026-08-01 | 8c9defa1 |  | [260801-azb-close-g-01-add-tauri-listen-branch-to-in](./quick/260801-azb-close-g-01-add-tauri-listen-branch-to-in/) |
 
 ### Roadmap Evolution
