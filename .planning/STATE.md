@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 38
-current_phase_name: multi-copy-paste-and-tooltip-polish
-status: complete
+status: Awaiting next milestone
 stopped_at: Milestone v0.8.0 summary generated
-last_updated: "2026-08-01T09:31:32.046Z"
+last_updated: "2026-08-01T09:55:04.014Z"
 last_activity: 2026-08-01
-last_activity_desc: "Completed quick task 260801-azb: Close G-01 Tauri listen branch for physic-paint:seek-frame (EDIT-02/B-01)"
+last_activity_desc: Milestone v0.8.0 completed and archived
 progress:
   total_phases: 21
   completed_phases: 20
   total_plans: 170
   completed_plans: 164
   percent: 95
+current_phase: 38
+current_phase_name: multi-copy-paste-and-tooltip-polish
 ---
 
 # Project State
@@ -28,14 +28,10 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 ## Current Position
 
-Phase: 38 (multi-copy-paste-and-tooltip-polish) — COMPLETE
-Completed prerequisite: Phase 38.1 Plans 01-18 complete and verified 20/20; Plan 38-06 native UAT approved all 33 steps
-Plan: 11 of 11 complete
-Status: Phase 38 verification passed 7/7 with zero unverified behavior; all 21 roadmap phases are complete
-Last activity: 2026-08-01 — Completed quick task 260801-azb: Close G-01 Tauri listen branch for physic-paint:seek-frame (EDIT-02/B-01)
-Next recommended action: run `/gsd-audit-milestone`, then `/gsd-complete-milestone`; afterward execute the credentialed signed release using `docs/macos-signed-release.md`
-
-Progress: [███████████████████░] 164/170 plan summaries present; 21/21 phases complete ([██████████] 96%)
+Phase: Milestone v0.8.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-01 — Milestone v0.8.0 completed and archived
 
 ## Performance Metrics
 
@@ -446,8 +442,122 @@ Items acknowledged and carried forward from previous milestone close:
 | Testing | Deterministic physical-resolver regression coverage: insert/delete-slot, force-spacing, occupied before/after-key drag, source-closing drag against locked D-29 examples; fulfills deferred 260718-m2f drag-test obligation | Follow-up test plan authorized at Phase 36.14 closure | 2026-07-25 |
 | Bugs | 36.14-REVIEW.md findings: CR-01 dead export-resume path, CR-02 blank blend in-betweens after Play Script commit (prioritize — touches approved blend behavior), WR-01..WR-04 | Follow-up quick authorized at Phase 36.14 closure | 2026-07-25 |
 
+### Open artifacts acknowledged at v0.8.0 close (2026-08-01)
+
+103 items from `audit-open` acknowledged via override_closeout (53 debug sessions, 4 UAT gaps, 1 verification gap, 45 stale quick tasks — mostly legacy from phases 24/35/36.x and earlier milestones):
+
+| Category | Item | Status |
+|----------|------|--------|
+| debug | 24-strokes-ordering | investigating |
+| debug | 24-strokes-padding | investigating |
+| debug | 24-undo-refresh | investigating |
+| debug | audio-export-infinite-hang | investigating |
+| debug | blur-radius-persistence | diagnosed |
+| debug | blur-settings-persistence-and-quality | diagnosed |
+| debug | blur-toolbar-controls | diagnosed |
+| debug | bpm-persistence-lost | investigating |
+| debug | canvas-no-live-update | diagnosed |
+| debug | colorpicker-drag-propagation | diagnosed |
+| debug | export-hang-cors-404 | awaiting_human_verify |
+| debug | fit-to-window-zoom-cap | investigating |
+| debug | fx-colorgrade-no-render | diagnosed |
+| debug | fx-layer-selection-broken | diagnosed |
+| debug | fx-timeline-interaction-gaps | diagnosed |
+| debug | fx-wrong-architectural-level | diagnosed |
+| debug | gradient-stop-missing-input-modes | diagnosed |
+| debug | gradient-timeline-thumbnails | diagnosed |
+| debug | hq-blur-corruption | diagnosed |
+| debug | keyframe-diamonds-disappear | investigating |
+| debug | keyphoto-frame-popup-zindex | awaiting_human_verify |
+| debug | knowledge-base | unknown |
+| debug | paint-export-scaling | awaiting_human_verify |
+| debug | paint-frames-repeat-per-sequence | awaiting_human_verify |
+| debug | paint-overlay-phase23-bugs | diagnosed |
+| debug | per-layer-blur-persistence | diagnosed |
+| debug | phase-35-uat-blockers | investigating |
+| debug | phase-35-uat-physic-paint-compositing-controls | unknown |
+| debug | phase-35-uat-save-button | diagnosed |
+| debug | phase-36-1-play-canvas-cache | testing |
+| debug | phase-36-1-regression-triage | checkpoint |
+| debug | phase-36-10-uat-gap | diagnosed |
+| debug | phase-36-13-roto-model | awaiting_human_verify |
+| debug | phase-36-onion-overlay | investigating |
+| debug | phase-36-uat-gap-test-4 | investigating |
+| debug | phase-36-uat-gap-test-5 | investigating |
+| debug | phase-36-uat-gap-test-6 | investigating |
+| debug | phase-36-uat-gap-test-7 | investigating |
+| debug | phase-3610-uat-roto-paper | diagnosed |
+| debug | phase-3610-uat-save-slowdown | diagnosed |
+| debug | phase-3612-uat-blocker | investigating |
+| debug | physics-paint-slow-strokes | investigating |
+| debug | play-canvas-insertion-order | investigating |
+| debug | png-export-audio-hang | diagnosed |
+| debug | preview-image-not-updating | awaiting_human_verify |
+| debug | properties-panel-stacking | diagnosed |
+| debug | timeline-mouse-wheel-scroll | awaiting_human_verify |
+| debug | uat-36-14-play-script | diagnosed |
+| debug | video-blend-mode-broken | investigating |
+| debug | video-layer-no-asset-picker | diagnosed |
+| debug | videos-not-in-imported-panel | diagnosed |
+| debug | zoom-pan-bounds | investigating |
+| debug | zoom-shortcuts-reversed | diagnosed |
+| uat | 35 | diagnosed |
+| uat | 36 | diagnosed |
+| uat | 36.10 | passed |
+| uat | 36.2 | failed_superseded |
+| verification | 36.6 | human_needed |
+| quick_task | 1-save-theme-preference-to-config-efx-moti | unknown |
+| quick_task | 10-defer-canvas-re-render-during-timeline-d | unknown |
+| quick_task | 11-fix-interpolation-menu-z-index-and-trans | unknown |
+| quick_task | 2-move-zoom-controls-from-toolbar-to-botto | unknown |
+| quick_task | 260317-k5n-from-sidebar-properties-a-simple-click-o | unknown |
+| quick_task | 260317-kko-playback-in-canvas-timeline-animate-too- | unknown |
+| quick_task | 260317-krf-add-a-key-photo-from-importer-do-not-wor | unknown |
+| quick_task | 260317-l8o-fix-sequence-key-photo-ux-restore-delete | unknown |
+| quick_task | 260317-m1x-sidebar-resize-grabber-too-small-vertica | unknown |
+| quick_task | 260317-mqr-sequence-and-layer-names-hover-effect-ma | unknown |
+| quick_task | 260317-n0w-smooth-slide-animations-on-sidebar-colla | unknown |
+| quick_task | 260317-nvg-fix-timeline-in-out-point-desync-on-scro | unknown |
+| quick_task | 260318-as5-fix-z-index-issue-where-sequence-thumbna | unknown |
+| quick_task | 260318-kn8-fix-arrow-key-scrubbing-arrows-should-on | unknown |
+| quick_task | 260318-l3c-timeline-zoom-remove-slider-add-icon-but | unknown |
+| quick_task | 260318-lgi-small-fixes-add-shortcut-to-help-menu-re | unknown |
+| quick_task | 260318-lwe-add-more-contrast-to-grab-icon-in-sequen | unknown |
+| quick_task | 260318-m2m-enhance-contrast-for-sequence-border-for | missing |
+| quick_task | 260318-m9x-help-menu-verify-shift-scroll-and-cmd-sc | unknown |
+| quick_task | 260319-f18-set-mouse-wheel-scroll-for-horizontal-sc | unknown |
+| quick_task | 260319-k9h-re-enable-realtime-canvas-update-during- | unknown |
+| quick_task | 260319-pov-fx-layer-enhancement-fix-all-fx-properti | unknown |
+| quick_task | 260319-q5i-fix-layer-panel-scroll-natural-trackpad- | unknown |
+| quick_task | 260319-qga-add-cmd-arrows-for-sequence-navigation-a | unknown |
+| quick_task | 260319-qmy-add-properties-animation-to-fx-layers-li | unknown |
+| quick_task | 260319-u8t-add-cmd-arrowup-down-shortcuts-to-naviga | unknown |
+| quick_task | 260320-kn9-add-close-project-to-return-to-homepage- | unknown |
+| quick_task | 260322-cwc-add-reference-to-canvas-motion-because-i | unknown |
+| quick_task | 260322-d9q-in-importer-media-can-t-be-suppressed-i- | unknown |
+| quick_task | 260323-fsg-timeline-buttons-remove-color-grade-from | unknown |
+| quick_task | 260323-g4n-remove-duplicate-playback-controls-from- | unknown |
+| quick_task | 260323-h1o-replace-timeline-playback-controls-with- | unknown |
+| quick_task | 260324-ju7-move-canvas-zoom-controls-from-bottom-to | unknown |
+| quick_task | 260324-k49-move-the-shader-button-from-timeline-hea | unknown |
+| quick_task | 260325-db2-perfect-freehand-doesn-t-support-pressur | unknown |
+| quick_task | 260327-p4e-i-can-t-change-object-color-rectangle-el | unknown |
+| quick_task | 260615-dpz-phase-36-1-consolidation-image-9-there-i | unknown |
+| quick_task | 260719-gmn-new-deterministic-physical-frame-roto-in | missing |
+| quick_task | 3-change-command-and-command-for-zoom-to-s | unknown |
+| quick_task | 4-create-a-lock-button-for-fit-to-have-res | unknown |
+| quick_task | 5-make-fx-blur-affect-all-layers-beneath-i | unknown |
+| quick_task | 6-add-blend-mode-to-fx-blur-on-timeline | unknown |
+| quick_task | 7-add-deselect-layer-when-clicking-outside | unknown |
+| quick_task | 8-theme-aware-background-color-for-outside | unknown |
+| quick_task | 9-fix-layer-deselection-when-dragging-slid | unknown |
+
 ## Session Continuity
 
 Last session: 2026-08-01T09:31:31.987Z
 Stopped at: Milestone v0.8.0 summary generated
 Resume file: .planning/reports/MILESTONE_SUMMARY-v0.8.0.md
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

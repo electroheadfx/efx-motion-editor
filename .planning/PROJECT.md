@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers (static images, image sequences, videos, paint/rotopaint) with blend modes, transforms, and keyframe animation, apply cinematic FX effects (film grain, vignette, color grade, blur, dirt/scratches, light leaks) and GLSL shader effects (17 Shadertoy + 18 GL transitions), add fade/cross-dissolve/GL transitions, import audio with waveform visualization and beat-synced editing, draw frame-by-frame with pressure-sensitive brush/shape/fill tools and onion skinning with expressive brush FX (watercolor, ink, charcoal, pencil, marker) via p5.brush with spectral pigment mixing, manage strokes with drag-reorder, visibility toggles, and multi-select, edit stroke paths as bezier curves with interactive anchor/handle manipulation, edit keyframe positions directly on canvas via motion path, apply per-layer GLSL velocity motion blur with shutter angle controls, preview in real-time on a canvas-based timeline with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1) with audio and motion blur sub-frame accumulation. Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v0.1.0 delivered the editing foundation; v0.2.0 completed the pipeline with keyframe animation, GPU blur, content overlays, transitions, and multi-format export; v0.3.0 added audio with beat sync, GLSL shader effects/transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar; v0.4.0 added canvas motion path editing and frame-by-frame paint/rotopaint layers; v0.5.0 added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export; v0.6.0 added stroke management, bezier path editing, and paint workflow UX improvements.
+A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers (static images, image sequences, videos, paint/rotopaint) with blend modes, transforms, and keyframe animation, apply cinematic FX effects (film grain, vignette, color grade, blur, dirt/scratches, light leaks) and GLSL shader effects (17 Shadertoy + 18 GL transitions), add fade/cross-dissolve/GL transitions, import audio with waveform visualization and beat-synced editing, draw frame-by-frame with pressure-sensitive brush/shape/fill tools and onion skinning with expressive brush FX (watercolor, ink, charcoal, pencil, marker) via p5.brush with spectral pigment mixing, manage strokes with drag-reorder, visibility toggles, and multi-select, edit stroke paths as bezier curves with interactive anchor/handle manipulation, edit keyframe positions directly on canvas via motion path, apply per-layer GLSL velocity motion blur with shutter angle controls, preview in real-time on a canvas-based timeline with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1) with audio and motion blur sub-frame accumulation. Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v0.1.0 delivered the editing foundation; v0.2.0 completed the pipeline with keyframe animation, GPU blur, content overlays, transitions, and multi-format export; v0.3.0 added audio with beat sync, GLSL shader effects/transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar; v0.4.0 added canvas motion path editing and frame-by-frame paint/rotopaint layers; v0.5.0 added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export; v0.6.0 added stroke management, bezier path editing, and paint workflow UX improvements; v0.7.0 migrated to a pnpm monorepo (app/ + packages/efx-physic-paint/) with a 3-mode paint system and color picker polish; v0.8.0 proved efx-physic-paint as a standalone interactive physics paint app/window with a deterministic physical-frame Roto timeline (durable cache, generated interpolation, multi-select group operations, Roto Script Play fusion, durable script library) and render-path performance via a structural/frame-split signal graph.
 
 ## Core Value
 
@@ -100,32 +100,35 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ efx-physic-paint is runnable and testable as a standalone interactive physics paint app/window before editor integration — v0.8.0 Phase 35
 - ✓ One Physics Paint Roto frame can be cached into EFX Motion, drawn in preview, preserved through project save/load, and reopened as a cached visual reference — v0.8.0 Phase 36.3
 - ✓ Physics Paint Roto timeline cells distinguish empty, cached, editable/current, generated/render-only, background-only, dirty, and saving states with semantic labels, non-color visual cues, and compact legend/status copy — v0.8.0 Phase 36.5
-- ✓ Physics Paint dirty Roto frames save automatically on leave with source-frame feedback, latest-destination queuing, and failure retention — v0.8.0 Phase 36.6
+- ✓ Physics Paint dirty Roto frames save automatically on leave with source-frame feedback, latest-destination queuing, and failure retention — v0.8.0 Phase 36.6 (superseded by automatic live pixel caching, quick 260714-ail)
+- ✓ Automatic live pixel caching for Physics Paint Roto with durable reopen and projected/distant key behavior — v0.8.0 quick 260714-ail
 - ✓ Stop-motion animators can duplicate, insert, delete, copy, and paste real Physics Paint Roto keys with clean cache/cell/canvas state — v0.8.0 Phase 36.7
 - ✓ Physics Paint Roto timeline ships the approved final UI: fixed-geometry strip with grouped controls, guarded icon actions with styled tooltips, elastic status capsule, real-key diamonds on the EFX Motion layer, + Key empty-paint promotion, resizable sidebar sections, and Scripts panel script actions — v0.8.0 Phase 36.15
 - ✓ Multiple real Physics Paint Roto keys can be selected (including Select All) and group-dragged, deleted, and Force-Spaced as one atomic transaction over the canonical physical-frame model, with full downstream parity and regression-locked behavior — v0.8.0 Phase 37
 - ✓ Selected real Roto keys support reusable group Copy/Paste with stable physical offsets, fresh identities, atomic rejection, one Undo/Redo action, and single-key parity; the capsule and viewport tooltips use the approved current-cell and flat multiline presentation — v0.8.0 Phase 38
 - ✓ Physics Paint Studio navigation preserves the canvas-first timing architecture while localizing static UI, Workflow cells, CanvasMount/Efx ownership, and deterministic render/lifecycle instrumentation — v0.8.0 Phase 38.1
+- ✓ efx-physic-paint standalone demo shell runs via pnpm/Vite with live interactive canvas — v0.8.0 Phase 34
+- ✓ Physics Paint UI rebuild with session persistence and output proof (inspect/save/export) — v0.8.0 Phase 36
+- ✓ Physics Paint explicit Roto close behavior (discard / cancel / save-close) — v0.8.0 Phase 36.4
+- ✓ Signals-backed Roto session/key state boundary replacing the Studio god-component — v0.8.0 Phase 36.8
+- ✓ Cached Roto timed Play/Stop preview with auto-play — v0.8.0 Phase 36.9
+- ✓ Span-aware missing Roto frame resolution for preview with export parity — v0.8.0 Phase 36.10
+- ✓ Cached real-key repaint merging prior cached alpha with new live alpha — v0.8.0 Phase 36.11
+- ✓ Integer-gap Roto interpolation deriving strict interior frames between adjacent real keys — v0.8.0 Phase 36.12
+- ✓ Dynamic interpolation spacing for Roto keys — v0.8.0 Phase 36.13
+- ✓ Deterministic physical-frame Roto timeline cutover: stable keyId, direct appFrame, atomic acknowledged transactions (Insert/Delete/Drag/Force Spacing/Undo/Redo) — v0.8.0 Phase 36.14
+- ✓ Tauri-native frame sync between editor timeline and standalone Physics Paint window (physic-paint:seek-frame, EDIT-02) — v0.8.0 quick 260801-azb
 
 ### Active
 
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 
-## Current Milestone: v0.8.0 Standalone Physics Paint
+## Latest Milestone: v0.8.0 Standalone Physics Paint (Shipped 2026-08-01)
 
-**Goal:** Make `packages/efx-physic-paint` runnable and testable as a standalone interactive physics paint app/window, proving the engine works before integrating it into EFX Motion Editor.
+21 phases (34, 35, 36, 36.1–36.15, 37, 38, 38.1), 170 plans, 1,347 commits over 54 days. Audit verdict `tech_debt`: 56/56 requirements satisfied, all integration and E2E flows wired, zero blockers; deferred items recorded in STATE.md and the milestone audit. Phase 36.2 intentionally failed/superseded. See `.planning/MILESTONES.md` and `.planning/reports/MILESTONE_SUMMARY-v0.8.0.md` for details.
 
-**Target features:**
-- Runnable pnpm/Vite dev command for a standalone physics paint surface.
-- Live interactive canvas exposing core physics paint tools and brush controls.
-- Inspect/save/export capability for paint output or frame sequences so later editor integration can consume cached results.
-- Architecture notes for the future editor transport path from standalone paint output into EFX Motion Editor frame/layer cache.
-- Explicit non-replacement boundary: perfect-freehand remains the fast/direct paint path and p5.brush remains the FX brush path; efx-physic-paint is an additional physics paint tool.
-
-**State (2026-07-29):** All 21 roadmap phases are complete. Phase 38 shipped group Copy/Paste plus capsule/tooltip polish after all 33 native UAT steps passed, then locked the behavior with 967 passing app tests, typecheck, and production build. Phase 38.1 is complete and verified 20/20 with zero unverified behavior. Follow-ups remain in STATE.md Deferred Items and the advisory phase review reports.
-
-## Latest Milestone: v0.7.0 Monorepo & Paint Enhancements (Shipped 2026-04-05)
+## Previous Milestone: v0.7.0 Monorepo & Paint Enhancements (Shipped 2026-04-05)
 
 2 completed phases (26, 33), 23 plans, 112 commits. Phases 27-32 failed (adapter approach abandoned — efx-physic-paint deferred to v0.8.0 as standalone window). See `.planning/MILESTONES.md` for details.
 
@@ -143,12 +146,13 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - Node-based compositing — layer-based approach is more intuitive for target users
 - Multi-frame stroke operations — single-frame scope sufficient for current workflows
 - Stroke grouping/nesting — flat list sufficient; hierarchy adds complexity without clear benefit
+- Headless batch adapter replay / editor-driven renderFromStrokes / forceDryAll path — excluded after v0.7.0 failure post-mortem; physics paint preserves interactive incremental simulation
 
 ## Context
 
-Shipped v0.7.0 with 112 commits across 80 files (10k insertions). pnpm monorepo with app/ + packages/efx-physic-paint/. Paint engine enhanced with 3-mode system (flat/FX/physical), inline 4-mode color picker, wireframe overlay, stroke animation, circle cursor, and brush persistence.
+Shipped v0.8.0 with 1,347 commits across 2,094 files (+363,768 / −152,899) over 54 days. Current codebase ~93k LOC TS/TSX across app/src and packages/. pnpm monorepo with app/ + packages/efx-physic-paint/ (now a proven standalone interactive physics paint app/window with Tauri-native frame sync).
 Tech stack: Tauri 2.0, Preact + Preact Signals, Motion Canvas (@efxlab v4.0.0), Vite 5, Tailwind CSS v4, pnpm workspaces, p5.brush (standalone), perfect-freehand, fit-curve, bezier-js.
-Architecture: 13 reactive signal stores, Rust image pipeline, Canvas 2D PreviewRenderer with multi-layer compositing (including paint layers with per-frame FX cache and bezier-aware rendering), WebGL2 GPU blur/GLSL runtime/motion blur, p5.brush adapter for spectral pigment mixing, 3-mode paint system with per-frame mode exclusivity, inline color picker with LazyStore persistence, bezierPath.ts math module, StrokeList with SortableJS, PaintOverlay with pen/bezier interaction, paint sidecar JSON persistence, sub-frame accumulation export pipeline, command-pattern undo/redo engine, tinykeys shortcuts, exportRenderer with FFmpeg encoding.
+Architecture: 13 reactive signal stores, Rust image pipeline, Canvas 2D PreviewRenderer with multi-layer compositing, WebGL2 GPU blur/GLSL runtime/motion blur, 3-mode paint system, efx-physic-paint standalone window with deterministic physical-frame Roto timeline (canonical keyId/appFrame model, atomic transactions, generated interpolation, multi-select group operations via finalizeProposal single authority, Roto Script Play fusion, durable script library), signals-backed Roto session boundary, structural/frame-split render-path signal graph with canvas-first navigation paint.
 Project format: .mce v15 with backward compatibility (v1 through v15).
 
 Known technical debt:
@@ -157,6 +161,12 @@ Known technical debt:
 - Coalescing API partially resolved (motion path drag uses startCoalescing/stopCoalescing) — most UI interactions still unwired (carried from v0.1.0)
 - canUndo/canRedo signals exported but no UI consumes them for button disabling — carried from v0.1.0
 - 3 pre-existing audioWaveform test failures (unrelated to v0.6.0 work)
+- Roto cache footprint measurement/compression deferred (PNG alpha encoding exists) — v0.8.0
+- Deterministic physical-resolver regression coverage authorized as follow-up test plan — v0.8.0 Phase 36.14
+- Code-review follow-ups CR-01/CR-02, WR-01..04 routed to follow-up quick — v0.8.0 Phase 36.14
+- Legacy source/display model still feeds useRotoTimelineActions.getModel (inert dual-model seam); legacy optional fallbacks in rotoOnionPreview/applyCanvas/deleteRotoFrame — v0.8.0
+- Dead playScriptMarkers field (no producer) and misleading physicPaintPlayScriptBridge.test.ts filename — v0.8.0 integration check I-01/I-02
+- macOS Developer ID credentialed signed release intentionally deferred post-close (prep complete, docs/macos-signed-release.md) — v0.8.0
 
 ## Constraints
 
@@ -218,9 +228,18 @@ Known technical debt:
 | Sub-frame accumulation with Float32 averaging | Higher quality export blur via temporal super-sampling | ✓ Good — combined with GLSL velocity blur for best quality |
 | Cached Roto PNG as durable truth | Phase 36.3 recovered the smallest trustworthy Roto path after Phase 36.2 failed: explicit `Save current` writes one frame into EFX Motion and reopen uses the saved PNG as reference, not editable stroke restore | ✓ Good — UAT passed for save, preview, save/load, cached-reference reopen, and navigation preservation |
 | Phase 36.5 Roto cell semantics stay MVP-only | User needed trustworthy existing strip state communication without reopening interpolation, cached playback, key utilities, save-on-leave, close behavior, or full timeline redesign scope | ✓ Good — semantic view models, compact legend/status, non-color CSS cues, generated-cell guard, and cached-reference navigation fix were validated |
-| Phase 36.6 save-on-leave uses source-frame save truth | Dirty Roto navigation must save the source frame before opening a queued destination, not save/open based on destination state | ✓ Good — UAT passed for source save, source-specific feedback, latest destination, and failure retention |
+| Phase 36.6 save-on-leave uses source-frame save truth | Dirty Roto navigation must save the source frame before opening a queued destination, not save/open based on destination state | ⚠️ Superseded — automatic live pixel caching (quick 260714-ail) replaced save-on-leave as the final architecture |
 | Phase 36.7 Roto key utilities use controller-backed real-key transactions | Duplicate, Insert, Delete, Copy, and Paste need deterministic cache/cell/canvas updates without broad UI expansion or editor integration scope creep | ✓ Good — UAT passed for live key utility flow, generated/empty guards, dirty save-before-action, regression tests, typecheck, and user-story coverage |
 | Phase 38 uses production → native UAT → post-UAT regression | Visible Copy/Paste, capsule, and tooltip behavior must be approved before tests are rewritten around it | ✓ Good — all 33 native steps passed before Plans 38-07/08; the final 967-test/typecheck/build gate is green |
+| Phase 36.8 Signals/controllers as the Roto state boundary (no XState) | PhysicsPaintStudio god-component with scattered useState/useRef/useEffect was the regression root cause | ✓ Good — compact signals boundary owns Roto coherence; planned state-machine phase removed as obsolete |
+| Phase 36.14 canonical physical-frame model (stable keyId, direct appFrame) | Source/display timeline ambiguity caused recurring Roto timing bugs | ✓ Good — atomic acknowledged transactions with ripple semantics locked; enabled-only interpolation persistence |
+| Phase 36.14 finalizeProposal as single authority for timeline mutations | All key operations (including later group ops) resolve through one validator/guard path | ✓ Good — Phase 37 group drag/delete/Force Spacing admitted with zero bridge edits |
+| Roto Script Play fusion (quick 260717-m9k) | Separate Play workflow duplicated script replay; one algorithm belongs in Roto SCRIPTS | ✓ Good — Play Script commits parent-authoritative real-key batches; separate Play workflow retired |
+| Durable Roto script library (quick 260716-dby) | Scripts must survive sessions as autonomous JSON presets with WebP thumbnails | ✓ Good — project scripts folder with explicit load-to-clipboard |
+| Phase 37 group operations as atomic transactions over canonical model | Multi-select group drag/delete/Force Spacing must not ripple unselected keys | ✓ Good — rigid group translation with zero unselected ripple, native UAT approved |
+| Phase 38.1 canvas-first navigation paint before Preact propagation | Child windows must never present provisional state as accepted | ✓ Good — navigation paints engine canvas in the same synchronous tick; structural/frame-split signal graph makes frame writes O(find) |
+| Tauri listen branch for physic-paint:seek-frame (G-01, quick 260801-azb) | Standalone window must track editor timeline seeks natively, not only via browser fallback | ✓ Good — regression-locked RED/GREEN coverage; native Tauri UAT approved |
+| Bounded recovery track D-30: bounded-static fixes → read-only review → user-owned native UAT gate | Exact native approval is the only oracle for Roto/Studio behavior | ✓ Good — carried the 36.14 cutover and Phase 38/38.1 to green |
 
 ## Evolution
 
@@ -240,4 +259,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-29 after Phase 38 and Phase 38.1 completion — all 21 roadmap phases complete; remaining advisory review and deferred follow-ups recorded in STATE.md*
+*Last updated: 2026-08-01 after v0.8.0 milestone close — Standalone Physics Paint shipped (56/56 requirements, audit verdict tech_debt); next milestone TBD via /gsd-new-milestone*

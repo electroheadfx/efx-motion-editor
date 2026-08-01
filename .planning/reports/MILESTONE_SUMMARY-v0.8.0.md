@@ -233,12 +233,12 @@ pnpm build
 
 ## Stats
 
-- **Timeline:** 2026-06-08 → 2026-08-01 (~8 weeks)
+- **Timeline:** 2026-06-08 → 2026-08-01 (54 days, ~8 weeks)
 - **Phases:** 21 / 21 complete (one intentionally failed/superseded: 36.2)
 - **Plans:** 164 / 170 summaries present (96%)
 - **Quick tasks:** 20 completed
-- **Commits:** 1,351
-- **Files changed:** 2,394 (+437,805 / −194,627)
+- **Commits:** 1,347 (git range 05944dac → 02fcac7b, authoritative)
+- **Files changed:** 2,094 (+363,768 / −152,899)
 - **Contributors:** Laurent Marques
 - **Requirements:** 56 / 56 satisfied
 - **Final gate:** 967 passing app tests + typecheck + production build (Phase 38 closure); 115 app + 58 engine tests at Phase 38.1 closure
