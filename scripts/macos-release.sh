@@ -145,18 +145,8 @@ if (regularFiles.length !== 1 || regularFiles[0] !== 'test-image.jpg') {
 }
 NODE
 
-  # Canonical icon source must remain available and well-formed (1024x1024 RGBA).
-  local canonical_png="$REPO_ROOT/SPECS/efxmotioneditor-icon.png"
-  [[ -f "$canonical_png" ]] || die "Canonical icon source is missing: SPECS/efxmotioneditor-icon.png"
-  local sips_out
-  sips_out="$(/usr/bin/sips -g pixelWidth -g pixelHeight -g hasAlpha "$canonical_png" 2>/dev/null)" \
-    || die "Unable to inspect canonical icon source with sips"
-  printf '%s\n' "$sips_out" | /usr/bin/grep -Eq 'pixelWidth:[[:space:]]+1024$' \
-    || die "Canonical icon source must be 1024 pixels wide"
-  printf '%s\n' "$sips_out" | /usr/bin/grep -Eq 'pixelHeight:[[:space:]]+1024$' \
-    || die "Canonical icon source must be 1024 pixels high"
-  printf '%s\n' "$sips_out" | /usr/bin/grep -Eq 'hasAlpha:[[:space:]]+yes$' \
-    || die "Canonical icon source must have an alpha channel (RGBA)"
+  # The tracked generated icons under app/src-tauri/icons/ (validated above) are
+  # the canonical release inputs; the 1024x1024 source stays outside Git.
 }
 
 run_preflight() {
