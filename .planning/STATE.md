@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: Milestone v0.8.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-08-01 - Completed quick task 260801-o30: Fix v0.8.1 production Tauri CSP regression (grant data: scheme in img-src for cached Roto/Physics Paint PNGs)
+Last activity: 2026-08-01 - Completed quick task 260801-sp2: Refresh README.md for v0.8.1 Standalone Physics Paint release
 
 ## Performance Metrics
 
@@ -200,6 +200,7 @@ None yet.
 | 260801-jun | Create the v0.8.1 macOS packaging hotfix (frontend entry fix, EFX icons, version bump, codesign PATH hardening, release docs) | 2026-08-01 | 7a2ad433 | Verified | [260801-jun-create-the-v0-8-1-macos-packaging-hotfix](./quick/260801-jun-create-the-v0-8-1-macos-packaging-hotfix/) |
 | 260801-azb | Close G-01: add Tauri listen branch to installPhysicPaintFrameSyncListener for physic-paint:seek-frame | 2026-08-01 | 8c9defa1 |  | [260801-azb-close-g-01-add-tauri-listen-branch-to-in](./quick/260801-azb-close-g-01-add-tauri-listen-branch-to-in/) |
 | 260801-o30 | Fix v0.8.1 production Tauri CSP regression (grant data: scheme in img-src for cached Roto/Physics Paint PNGs) | 2026-08-01 | 65e86af2 | Verified | [260801-o30-fix-v0-8-1-production-tauri-csp-regressi](./quick/260801-o30-fix-v0-8-1-production-tauri-csp-regressi/) |
+| 260801-sp2 | Refresh README.md for v0.8.1 Standalone Physics Paint release | 2026-08-01 | 821daff3 | Verified | [260801-sp2-refresh-readme-md-for-v0-8-1-standalone-](./quick/260801-sp2-refresh-readme-md-for-v0-8-1-standalone-/) |
 
 ### Roadmap Evolution
 
