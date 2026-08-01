@@ -1698,7 +1698,10 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                             // requirement's write. The "only flip Pending/In Progress ->
                             // Complete" gate is folded into the newValue callback so one
                             // updateTableCell call both probes and writes.
-                            const reqUpdate = updateTraceabilityCell(reqContent, reqRowMatch, 'Status', (current) => /^(?:pending|in progress)$/i.test(current.trim()) ? ' Complete ' : current);
+                            const reqUpdate = updateTraceabilityCell(reqContent, reqRowMatch, 'Status', (current) => 
+                            // #2788: accept `Gaps Found` too so a phase stranded by revert-phase (the
+                            // gaps_found response) can complete without hand-editing the table.
+                            /^(?:pending|in progress|gaps found)$/i.test(current.trim()) ? ' Complete ' : current);
                             if (reqUpdate.ok) {
                                 reqContent = reqUpdate.value;
                             }

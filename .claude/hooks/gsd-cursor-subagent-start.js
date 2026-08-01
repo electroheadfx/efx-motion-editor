@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gsd-hook-version: 1.9.0
+// gsd-hook-version: 1.9.1
 // gsd-cursor-subagent-start.js — Cursor subagentStart hook (ADR-1239 / #2089)
 //
 // Cursor invokes this script when a subagent session starts.
