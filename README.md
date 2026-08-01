@@ -277,9 +277,10 @@ efx-motion-editor/                # pnpm workspace root
 │   │   │   ├── timeline/         # TimelineCanvas, TimelineRenderer, AddFxMenu
 │   │   │   ├── sidebar/          # Properties panels, FX controls, keyframe nav
 │   │   │   ├── shader-browser/   # GLSL shader browser window
+│   │   │   ├── physic-paint/     # Standalone Physics Paint window UI (Roto timeline)
 │   │   │   ├── overlay/          # Shortcuts overlay, fullscreen
 │   │   │   └── shared/           # NumericInput, ColorPickerModal, SectionLabel
-│   │   ├── stores/               # Reactive state (13 Preact Signal stores)
+│   │   ├── stores/               # Reactive state (17 Preact Signal stores)
 │   │   ├── lib/                  # Core logic
 │   │   │   ├── shaders/          # GLSL shader library
 │   │   │   │   ├── generators/   # 10 procedural generator shaders
@@ -299,6 +300,9 @@ efx-motion-editor/                # pnpm workspace root
 │   │   │   ├── paintFloodFill.ts    # Stack-based flood fill algorithm
 │   │   │   ├── bezierPath.ts        # Bezier curve math (fit-curve conversion, sampling, editing)
 │   │   │   ├── paintPersistence.ts  # Sidecar file I/O for paint data
+│   │   │   ├── physicPaintBridge.ts    # Typed bridge to the standalone Physics Paint window (frame sync)
+│   │   │   ├── physicPaintPersistence.ts  # Physics Paint sidecar persistence
+│   │   │   ├── rotoFrameDraw.ts        # Roto timeline frame rendering
 │   │   │   ├── playbackEngine.ts    # rAF playback with delta accumulation
 │   │   │   └── ...
 │   │   ├── types/                # TypeScript type definitions
@@ -309,12 +313,13 @@ efx-motion-editor/                # pnpm workspace root
 │           ├── models/           # Data structures (project format)
 │           └── services/         # File I/O, image processing, thumbnails
 ├── packages/
-│   └── efx-physic-paint/         # @efxlab/efx-physic-paint — spectral pigment mixing engine
+│   └── efx-physic-paint/         # @efxlab/efx-physic-paint — natural-media paint simulation (wet/dry physics, stable fluids, paper texture)
 │       ├── src/                  # Brush, core, engine, render, animation, util modules
 │       ├── tsup.config.ts        # Build config (ESM + CJS)
 │       └── package.json
 ├── package.json                  # Workspace root (scripts, overrides, packageManager)
 ├── pnpm-workspace.yaml           # Workspace definition (app, packages/*)
+├── docs/                         # Project docs and assets (README header artwork)
 └── .planning/                    # GSD project planning
 ```
 
