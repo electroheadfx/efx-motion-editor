@@ -21,10 +21,10 @@ current_phase_name: multi-copy-paste-and-tooltip-polish
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-22)
+See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v0.8.0 execution phases are complete; Phase 38 review findings remain available for optional remediation before milestone completion
+**Current focus:** Planning next milestone (v0.8.0 Standalone Physics Paint shipped 2026-08-01). Next: `/gsd-new-milestone`; then the credentialed signed release via `docs/macos-signed-release.md`
 
 ## Current Position
 
@@ -161,199 +161,10 @@ Last activity: 2026-08-01 — Milestone v0.8.0 completed and archived
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- v0.8.0: efx-physic-paint must be proven as a standalone interactive physics paint app/window before editor integration.
-- v0.8.0: Physics paint is an additional tool; it does not replace perfect-freehand basic paint or p5.brush FX paint.
-- v0.8.0: Failed headless adapter/batch replay remains excluded; future integration seam is typed/contract-only in this milestone.
-- [Phase 36]: Workflow strip owns a physics-paint-specific compact lane model rather than importing or cloning the main EFX Motion timeline. — Followed D-09 and keeps the bottom timeline separate from the main editor timeline implementation.
-- [Phase 36]: Play lane click handling remains inspection-only; conversion and clearing are explicit button/dialog flows. — Mitigates timeline-click tampering by keeping destructive callbacks behind explicit confirmations.
-- [Phase 36]: Roto onion overlays use local Roto snapshots and persisted Roto output only, excluding latest Play frames from normal post-save overlay rendering.
-- [Phase 36.2]: Plan 02 keeps Roto dirty/current state orthogonal to gray/green/pink semantic fills; missing main EFX Motion cache preview/marker propagation is carried to Plans 36.2-03/04.
-- [Phase 36.2 Plan 04]: Generated-only Roto cache frames are launch redirects, not editable targets; standalone launch opens the nearest real key when metadata is available.
-- [Phase 36.2 Plan 04]: Missing Roto frames are resolved virtually in PreviewRenderer, preserving transparent/background-only playback without writing cache metadata.
-- [Superseded by quick 260714-ail] Phase 36.2 Plan 03 manual lifecycle flushes at frame leave, Save pending/current, and close/unload are replaced by completed-mutation live pixel caching.
-- [Phase 36.2]: Plan 03: Cached-only Roto PNGs are repaintable visual references, not editable stroke state, and are cleared before exported replacement frames are generated. — Prevents old cache compositing into replacement Roto output.
-- [Superseded by quick 260714-ail] Phase 36.2 Plan 03 navigation blocking during Roto flush/apply is removed; per-source-frame revisions now prevent stale cache writes without blocking navigation.
-- [Superseded by quick 260714-ail] Phase 36.2 Plan 07 close-time Roto flush/apply is removed; completed mutations already update durable flattened pixels.
-- [Phase 36.2 Plan 07]: Editable-session pink cells are driven only by real editable stroke content in the open session; cached/background-only occupancy remains separate.
-- [Phase 36.2 Plan 07]: Cached Roto references stay full opacity and use outline treatment for reference status so old cache pixels are not visually diminished.
-- [Phase 36.2 Plan 08]: Roto interpolation controls live inline in the standalone workflow strip, not in a modal or hidden shortcut path, so UAT can discover and change settings visually.
-- [Phase 36.2 Plan 08]: Generated interpolation frames remain render-only cached frames surfaced by connector/status UI; real-key cells remain the only editable targets.
-- [Phase 36.2 Plan 09]: Roto key utility controls are inline in the standalone workflow strip; generated interpolation frames stay render-only and Paste is replace-style on real keys only.
-- [Phase 36.3]: Cached Roto PNG output is the durable truth; reopen uses a full-strength visual `Cached reference`, not editable stroke restoration.
-- [Superseded by quick 260714-ail] Phase 36.3 `Save current` recovery is removed; completed live mutations automatically commit the latest flattened alpha pixels.
-- [Phase 36.3]: Phase 36.3 UI-spec fidelity debt is documented in `36.3-UI-REVIEW.md`; defer fixes to a later targeted UI cleanup, not hidden Phase 36.3 scope.
-- [Superseded by quick 260714-ail] Phase 36.6 save-on-leave and queued navigation lifecycle are removed; source-bound per-frame revisions accept only the latest automatic live-pixel commit.
-- [Phase 36.7]: Roto key utilities now operate on real-key controller transactions so Duplicate, Insert, Delete, Copy, and Paste keep cache/cell/canvas state clean.
-- [Phase 36.9]: Cached Roto Play/Stop transport lives inside the Roto navigator; Play and Stop replace each other in one icon slot, loop is an icon pressed state, fps changes restart active playback, and Space toggles playback in Roto mode.
-- [Phase 36.9]: Cached Roto playback sequences only real cached Roto key frames from launch context, excluding current/occupied/saved/background fallback frames that caused empty trailing frames.
-- [Phase 36.11]: Cached real-key repaint uses the cached alpha as a non-editable engine preview base and merges new live alpha additively on save; preview base stays out of export/cache serialization.
-- [Superseded by quick 260714-ail] Phase 36.11 same-session post-Save navigation is replaced by immediate automatic live-pixel commits through the same cached-frame source.
-- [Quick 260718-m2f]: Single-key Roto drag uses one non-ripple canonical move transaction; generated/empty cells are valid requested destinations when Studio's resolver finds a legal effective frame, occupied real keys remain invalid, and move-specific timing rebuilds only affected adjacent spans.
-- [Quick 260718-m2f]: Drag preview validity is Studio-authoritative and shares requested/effective destination semantics with commit; the existing interpolation-number control remains unchanged pending the next dedicated interpolation review.
-- [Phase ?]: Plan 01 ships an additive inactive canonical physical Roto model: stable keyId, direct appFrame, enabled-only interpolation, separate Script Motion, and fail-closed reconstructing validators. No shared live contract is edited, removed, or dual-written.
-- [Phase ?]: One exported resolver is the sole behavior seam for Insert/Delete/Move/Force-Spacing; complete mapping is the authority and pairwise deltas are presentation metadata only
-- [Phase ?]: Cut-first Drag resolves occupied before/after boundaries by stable identity against the post-cut map; direct cells occupied by another real key are invalid
-- [Phase ?]: Force Spacing anchors the first ordered real key and maps identity i to first + i * (N + 1); N = 0 produces adjacent ordered keys
-- [Phase ?]: One shared physical projection seam (projectPhysicPaintRotoPhysicalTimeline) owns validation, ordering, exact interiors, and bounded cells; edit resolver reuses it.
-- [Phase ?]: Store physical record ownership requires stable unique keyId and unique direct appFrame; complete replacement validates before mutation.
-- [Phase ?]: Interpolation toggling changes only enabled state and runtime cell derivation; cannot move records, selection, navigation, or Script Motion.
-- [Phase ?]: Coordinator owns physical-edit snapshot/stage/send/match/restore; Studio no longer captures local move snapshots
-- [Phase ?]: Bridge routes replace-roto-physical-map results to coordinator.consumeBridgeApplyResult; other kinds use matchApplyResult
-- [Phase ?]: History fed via effect on coordinator.acceptedOutput; Plan 05 replaces with generic accepted-only history
-- [Phase ?]: One stable RotoPhysicalTimelineActionBundle owns Insert/Delete actions, reactive availability, and extension points for Plans 07-08
-- [Phase ?]: Retained Duplicate/Paste/Save helpers migrated to physicsPaintRotoKeyController; rotoKeyTransactions.ts deleted without forwarding export
-- [Phase ?]: Toolbar and keyboard call the same insertRotoFrame/deleteRotoFrame references; presentation files contain no physical business logic
-- [Phase ?]: D-09 pointer-up commits only when release target signature equals retained publication's target signature; mismatch cancels without coordinator call
-- [Phase ?]: D-22 preview renders complete resolver-proposed mapping (moved, shifted, generated, vacated) rather than destination-only marker
-- [Phase ?]: D-24 focus follows moved identity at accepted appFrame on success; cancellation/failure restores source keyId focus or falls back to timeline container
-- [Phase ?]: Legacy move route fully removed: resolveRotoKeyMoveTiming/buildRotoKeyMoveTransaction/RotoKeyMove* types and onResolveRotoKeyMoveCandidate/onMoveRotoKey/moveRotoKey cut over to identity-based resolver/coordinator path
-- [Phase ?]: Force Spacing input is session-local Signal state and never durable timing authority.
-- [Phase ?]: Canonical parsing accepts only exact nonnegative base-10 safe integers, including zero.
-- [Phase ?]: The physical resolver exclusively owns Force Spacing ordering, anchoring, exact gaps, generated interiors, uniqueness, range, capacity, and no-change detection.
-- [Phase ?]: Changed Force Spacing proposals pass unchanged through the generic coordinator and accepted-only history path.
-- [Phase ?]: The interpolation enabled toggle remains active while the rendered live count mutation route is removed.
-- [Phase ?]: Plan 09 closes with canonical persistence/open/bridge/launch ownership complete while wrapper retirement is rescheduled rather than partially implemented
-- [Phase ?]: Plan 10 migrates remaining cache, live-pixel, navigation, and visual responsibilities plus production importers out of useRotoPersistenceIntegration.ts
-- [Phase ?]: After byte-exact Plan 12 approval, Plan 13 transfers valid assertions and deletes useRotoPersistenceIntegration.ts, rotoSaveTransactions.ts, and their obsolete tests without compatibility forwarding
-- [Phase 36.14 Plan 10]: Stable keyId plus direct appFrame is the sole durable Roto ownership coordinate; accepted edits rebuild frame-indexed child state by identity.
-- [Phase 36.14 Plan 10]: Preview and export share the physical render-source resolver and revision-aware cache identity; export owns no independent Roto timing path.
-- [Phase 36.14 Plan 10]: Physical contentRevision validates cache ownership while physicPaintVersion remains monotonic visual invalidation only.
-- [Phase 36.14 Plan 10]: Approval-gated persistence/cache modules remain exact dormant sources with zero non-test production importers; active edit-buffer types and persistence classification live in rotoEditBufferTransactions, with paired module/test deletion reserved for Plan 13.
-- [Phase 36.14 planning revision]: Plan 20 is the exact four-owner semantic Duplicate/Paste foundation at Wave 11; Plan 19 composes it through exactly five utility owners at Wave 12 while preserving Clear; Plan 11 audits both owner sets read-only, cleans stable-identity Clear through useRotoFrameEditingController.ts, and owns the sole pre-UAT typecheck/build gate at Wave 13.
-- [Phase 36.14 Plan 20]: Duplicate and Paste are explicit ordinary replace-roto-physical-map operations using complete semantic proposals, not replay aliases or generic utility transactions.
-- [Phase 36.14 Plan 20]: Resolver, coordinator, and parent independently validate one shared Duplicate/Paste semantic delta before exact parent acknowledgement can reach accepted-only history.
-- [Phase 36.14 Plan 19]: Duplicate crosses the utility boundary by stable source keyId only; Plan 20 owns destination, ripple, fresh identity, complete proposal, settlement, rollback, and history.
-- [Phase 36.14 Plan 19]: Paste carries direct destination appFrame, existing destination keyId or null, and a frozen reusable copied-paint payload through Plan 20's semantic seam.
-- [Phase 36.14 Plan 19]: The production key-utility route has no local frame-list staging, fire-and-forget persistence, or configurable generic persistence port.
-- [Phase 36.14 Plan 19]: Studio composes timeline actions before navigation and passes the semantic utility port directly without a ref or effect mirror.
-- [Phase ?]: Plan 11 closes on bounded static production audits and does not claim successful typecheck or build.
-- [Phase ?]: The complete typecheck and build proof moves to Plan 13 after byte-exact Plan 12 approval and stale-test contract transfer.
-- [Phase ?]: No source/display compatibility field, forwarding wrapper, alias, TypeScript exclusion, test workaround, or second transaction authority is introduced.
-- [Phase ?]: Approval-gated dormant persistence and cache modules remain production-unreachable until Plan 13 deletes them with obsolete tests.
-- [Phase ?]: [Phase 36.14 Plan 21]: All six ordinary physical operations share one narrowed immutable history command type; Undo and Redo remain replay-only.
-- [Phase ?]: [Phase 36.14 Plan 21]: Replay stages the stored child snapshot locally while the parent receives only canonical records, interpolation, selection, revision, and provenance.
-- [Phase ?]: [Phase 36.14 Plan 21]: History stacks move only after exact accepted command, direction, source/target revision, launch, layer, project, capacity, selection, and current-frame matching.
-- [Phase ?]: [Phase 36.14 Plan 23]: Canonical real-key PNGs decode and register before physical document publication so generated reads remain synchronous and effect-free.
-- [Phase ?]: [Phase 36.14 Plan 23]: Strict-interior generation publishes only adjacent-key canvas PNG composites or no image; pseudo-PNG, neighbor substitution, and durable generated authority remain excluded.
-- [Phase ?]: [Phase 36.14 Plan 23]: Generated references require exact appFrame, contentRevision-derived cache identity, and the shared PNG signature guard.
-- [Phase ?]: D-29: occupied before/after Drag preserves the source gap and ripples only at the stable-identity destination boundary.
-- [Phase ?]: Empty/generated physical-cell Drag remains source-closing at the requested direct appFrame.
-- [Phase ?]: D-30 keeps Plans 21-27 bounded-static, Plan 28 read-only static review, and Plan 29 user-owned native UAT; exact approval only enables separate later planning.
-- [Phase ?]: [Phase 36.14 Plan 27]: Only the exact main window may load or invoke export notification APIs; child windows return before the dynamic plugin import.
-- [Phase ?]: [Phase 36.14 Plan 27]: Export completion remains authoritative and notification lookup, permission, and awaited dispatch stay contained as post-success best effort.
-- [Phase ?]: [Phase 36.14 Plan 27]: Physics Paint notification permission is not broadened and remains separate from Play Script presentation and cache root causes.
-- [Phase ?]: Use set-interpolation-enabled on the existing replace-roto-physical-map transaction rather than adding a second transport or coordinator.
-- [Phase ?]: Defer the child interpolation document update until exact parent acceptance so the controlled checkbox never presents provisional state as accepted.
-- [Phase ?]: Keep interpolation toggles outside the physical Undo/Redo command ledger while preserving Script Motion deform/position as a separate legacy contract.
-- [Phase ?]: [Phase 36.14 Plan 25]: Keep RotoPlayScriptController as the sole Play validation, generation, progress, and cancellation authority; move presentation only.
-- [Phase ?]: [Phase 36.14 Plan 25]: Share one Studio-owned Play-button ref between the Scripts toolbar and Studio-level dialog for exact focus restoration.
-- [Phase ?]: [Phase 36.14 Plan 25]: Mount exactly one Play Script dialog in the Studio canvas grid with standalone full-height light styles isolated from compact pane constraints.
-- [Phase ?]: [Phase 36.14 Plan 25]: Defer canonical physical Play cache publication to Plan 26 and native visible acceptance to Plan 29.
-- [Phase ?]: [Phase 36.14 Plan 26]: Play Script is an explicit non-history replace-roto-physical-map operation and never publishes through replace-roto-key-frames.
-- [Phase ?]: [Phase 36.14 Plan 26]: Occupied Play destinations preserve keyId, empty destinations allocate one fresh keyId before dispatch, and out-of-range records remain unchanged.
-- [Phase ?]: [Phase 36.14 Plan 26]: Parent Play acceptance requires saved-project authority, exact project/launch/layer/revision identity, and a canonical physical document.
-- [Phase ?]: [Phase 36.14 Plan 26]: Accepted Play PNG registration starts after canonical parent acceptance without delaying acknowledgement.
-- [Phase ?]: Treat Plans 21-27 source and summary evidence as bounded-static readiness only; Plan 29 remains the sole native oracle.
-- [Phase ?]: D-29 is the active occupied-boundary Drag authority: after D is A@1,C@5,D@8,B@9, while physical-cell frame 6 remains A@1,C@4,B@6,D@8.
-- [Phase ?]: D-30 is the sole active recovery sequence; D-12 and its approval-token/Plans 13-18 transition remain historical and non-executable.
-- [Phase ?]: The clean working tree is compatible with the integrated source because the intentional pre-gap fixes remain present in committed production source rather than as disposable local changes.
-- [Phase ?]: [Phase 36.15 Plan 01]: Guarded icon actions use aria-disabled + a persistent sr-only verbatim controller reason for aria-describedby; the styled tooltip mounts only when visible (D-12/D-14).
-- [Phase ?]: [Phase 36.15 Plan 01]: useStyledTooltip registers the Escape keydown listener only while visible with drag-session-style idempotent cleanup; hover delay is exactly 1000ms, keyboard focus shows instantly (D-17).
-- [Phase ?]: rotoKeyFrames stays layer-local physical appFrames on FxTrackLayout; renderer adds fxTrack.inFrame at draw time (36.15-02)
-- [Phase ?]: Roto key markers use a dedicated drawRotoKeyMarkers pass with #F5A623 fill, no drawLosange reuse, zero interaction surface (36.15-02)
-- [Phase ?]: [Phase 36.15 Plan 03]: Application selection guard lives in app/index.html per the 36.14 UI-SPEC contract; exact four-selector exception list test-locked against broadening (T-36.15-05)
-- [Phase ?]: [Phase 36.15 Plan 03]: Scoped user-select rules in physicsPaintStudio.css coexist with the app-wide guard and are test-locked against silent removal
-- [Phase ?]: [Phase 36.15 Plan 04]: Header recomposed as D-01 pill islands in one non-wrapping 46px flex row; apply-spacing reuses the navigation tonal variant; capsule slot is a plain flex-1 spacer Plan 05 fills
-- [Phase ?]: [Phase 36.15 Plan 04]: Borderless Blend toggle uses surface+glyph emphasis only; header Close routes through getCurrentWindow().close() with window.close() fallback so the onCloseRequested flush always runs
-- [Phase ?]: [Phase 36.15 Plan 07]: Discard availability/reasons are controller-owned derived state inside the existing availability computed (busy > missing > null); no new signal (D-12)
-- [Phase ?]: [Phase 36.15 Plan 07]: Discard Script relocated to the Scripts toolbar as a guarded clipboard-x action; onDiscardRotoScript fully removed from strip props and Studio workflow props (D-11 complete)
-- [Phase ?]: [Phase 36.15 Plan 05]: Capsule selector is pure D-15 arbitration over resolved strings; ambient fallback is the static baseline 'Missing frames play transparent/background'; feedback recency is static wiring metadata (playback > script > generated guard)
-- [Phase ?]: [Phase 36.15 Plan 05]: Per-cell styled tooltips via RotoTimelineCellButton child component (one useStyledTooltip per cell); interpolation pill native title converted to styled tooltip (Pitfall 4)
-- [Phase ?]: [Phase 36.15 Plan 06]: + Key reuses the paste-to-empty physical edit with an empty payload (script-target promotion path); reactive canAddEmptyKey/addEmptyKeyDisabledReason ports own availability
-- [Phase ?]: [Phase 36.15 Plan 06]: Header final order is navigation, capsule, + Key, Duplicate, Tools dropdown, Close; layer name lives in the bottom action row; dropdown listeners register only while open
-- [Phase ?]: [Phase 36.15 Plan 06]: Strip is a fixed 155px five-band surface (46/1/28/38/28/14) with D-18 horizontal scroll; studio top row grows via minmax(58px, auto) with zero-reserve topbar side columns
-- [Phase ?]: [Phase 36.15 Plan 08]: Tools dropdown removed; final top bar is playback, fps/auto, capsule, interpolation dropdown (Frame duplicate/Frame blend native select), Close; bottom row is layer, Key chip, + Key, Duplicate, Insert, Copy, Paste, Delete, Set Key Space
-- [Phase ?]: [Phase 36.15 Plan 08]: Gap B fixed via native select (OS popup immune to clipping) plus placement='below' header tooltips that stay inside the overflow-y:hidden strip
-- [Phase ?]: [Phase 36.15 Plan 08]: Copy/Apply Script relocated to the Scripts toolbar before Clear Script Buffer (user wording); de-prefixed tooltip grammar lives in the shared buildGuardedActionTooltipCopy builder
-- [Phase ?]: [Phase 36.15 Plan 09]: Doubled APPLY ring fixed by restyling the submit as a 4px rounded rect (its 999px cap echoed the form pill); clipped selection border fixed with z-index on .current only — 18px pitch and 155px bands untouched
-- [Phase ?]: 36.15-10: CAPS labels were CSS inheritance from the global button text-transform: uppercase rule; fixed with per-class text-transform: none opt-outs
-- [Phase ?]: 36.15-10: Scripts second-row small icons were flex shrink in grid cells, not icon size; fixed with flex: 0 0 auto on the svg and label ellipsis
-- [Phase ?]: 36.15-10: Bottom action row split into three sibling groups (identity/tools/Key spacing) reusing the Plan 04 top-bar 8px pill-island gap language
-- [Phase ?]: 36.15-11: Scripts toolbar truncation was a layout contract — repeat(6, auto) content-sized cells replace fixed-fraction cells so Copy/Apply/Clear labels render in full
-- [Phase ?]: 36.15-11: Right sidebar restructured to three tab groups ([Brush color], [Tool] without Save/Load state, [Scripts/Onion/Motion] Scripts-first default-open); LOG tab retired with its Plan 03 selection-guard exception in the same commit; session persistence API preserved but view-unreferenced
-- [Phase ?]: 36.15-12: Gap H-6 relaxes the Plan 06 band contract with user approval — action row 28px to 34px (26px groups get 4px padding), band sum 155px to 161px; all other bands unchanged
-- [Phase ?]: 36.15-12: Right sidebar is three chrome-less resizable sections (Brush color / Tool / Scripts-Onion-Motion) at equal thirds with two GripHorizontal grab handles that each resize only their neighbors, 15% minimum share
-- [Phase ?]: 36.15-12: Frame-0 selection ring fixed by padding-left 4px on the shared timeline scroll container — ruler, lane, and action row shift together so 18px pitch and ruler alignment are untouched
-- [Phase ?]: 36.15-13: Sidebar default proportions are 425:213:340 ratios of the content height (not absolute pixels — the user's example sums past the sidebar), behind two fixed 32px grab handles; Gap I-1 padding-bottom rides inside the 34px band via border-box
-- [Phase ?]: [Phase 38 Plan 01]: Roto clipboard slot widened to a single|group discriminated union in ONE shared slot; group Copy freezes store-fresh {payload, sourceAppFrame, sourceKeyId} entries with 'Copied {N} keys' feedback; single-key copy/paste byte-identical
-- [Phase ?]: [Phase 38 Plan 01]: Fail-closed narrowing guard in pasteKey is the interface-first seam for group paste; 38-04 replaces the guard body with the real route
-- [Phase ?]: [Phase 38 Plan 02]: paste-key-group propagates through the five-owner semantic seam; group paste anchors at min sourceAppFrame with all-empty-or-reject collisions, zero ripple, and fresh keyIds minted once in the factory
-- [Phase ?]: [Phase 38 Plan 02]: History owner required zero edits — Exclude-based ordinary-kind classification picks up the paste-key-group literal automatically (D-07 by construction)
-- [Phase ?]: [Phase 38 Plan 03]: Capsule idle rung is a caller-supplied render-time derivation via getRotoStatusCapsuleIdleContext; static baseline deleted permanently (D-08/D-09); playback missing-frame wording kept verbatim as the sanctioned event-driven surface (D-10)
-- [Phase ?]: [Phase 38 Plan 04]: Group paste activated through the existing single-authority seam — hook shape branch -> pasteKeyGroup port -> frozen 38-02 intent -> runPhysicalAction -> coordinator -> bridge; one atomic transaction, one history entry, UI-SPEC locked busy/success/reject copy
-- [Phase ?]: [Phase 38 Plan 04]: Post-acceptance group-paste selection derives the pasted set solely from the accepted before/after record keyId diff (acceptedAddedKeyIds); the pasted set becomes the selection with the earliest pasted key anchor, closing Pitfall 2 without new focus machinery
-- [Phase ?]: [Phase 38 Plan 05]: Tooltip viewport mechanism is FIXED-in-place (no portal) per the containing-block audit — no transformed/filtered/containing ancestor for any mount; 38-06 UAT and 38-08 tests must use this mechanism verbatim
-- [Phase ?]: [Phase 38 Plan 05]: Notch escapes the pill's locked overflow clip via viewport-fixed positioning at --tooltip-notch-x/y derived from the post-clamp anchor-center projection; computeTooltipPlacement is the single placement authority for all 15 mounts via the required region prop
-- [Phase ?]: [Phase 38.1 Plan 01]: Roto timeline model split into structural inputs (useMemo deps) versus frame/selection signals written in place via equality-guarded additive seam; frame writes cost O(find) with zero projection rebuilds (spy-proven).
-- [Phase ?]: [Phase 38.1 Plan 02]: Scheduled-flag rAF flush scheduler (createRotoUiFlushScheduler) coalesces UI flushes to one per animation frame with guard-check-then-post; the posted frame is never revoked-and-reposted (D-04).
-- [Phase ?]: [Phase 38.1 Plan 02]: Navigation generation tokens (createRotoNavigationGeneration) use supersession as the only staleness criterion; never-superseded generations always paint (discrete-click rule, D-05).
-- [Phase ?]: [Phase 38.1 Plan 03]: Studio navigation pipeline is canvas-first with generation tokens: begin() before the awaited save-flush, isLatest() recheck after, engine paint in the same synchronous continuation before any Preact propagation; superseded navigations never paint, discrete clicks always paint.
-- [Phase ?]: [Phase 38.1 Plan 03]: Studio startFrame propagation routes through one per-instance createRotoUiFlushScheduler (mount-scoped dispose), capping Studio renders at one per animation frame; sendPhysicPaintFrameSyncMessage stays per-navigation and uncoalesced.
-- [Phase ?]: [Phase 38.1 Plan 03]: Playback availability derives from getRotoPhysicalRenderSource via a structural memo over [layerId, playbackFrameNumbers] — provably identical boolean to the removed per-render findCachedRotoDisplayFrame array build; onion projection memoized on its exact inputs.
-- [Phase ?]: 38.1-04: per-cell derivation cache via Option A (useRef Map keyed by frame, two-tier invalidation) — Option B rejected because the source-grep contract pins cell-loop literals inside the frameCells.map slice
-- [Phase ?]: 38.1-04: rotoDragValidityKey memoized over exactly its five interpolated values; validity semantics unchanged (value-compared downstream)
-- [Phase ?]: 38.1-05: playbackTick signal carries { frameIndex, appFrame, frame } with playback.frame kept as a plain-value getter — hook test passes unmodified
-- [Phase ?]: 38.1-05: D-02 deferred event IS the start/missing-frame line — published at the start transition and enqueued, re-published once in the stop catch-up render before idle context resumes
-- [Phase ?]: 38.1-05: statusMessage peeks the playback signals (Previewing format verbatim, zero Studio subscription); null status clears bypass the D-02 gate
-- [Phase ?]: 38.1-07: store physical roto projection + content revision behind a per-layer identity-triple memo (recordMap/interpolation/capacity) — per-navigation O(1), selection never invalidates
-- [Phase ?]: 38.1-07: engine decoded-Image cache (FIFO 32, destroy-cleared) + resetBackground unchanged-input skip with unconditional requestId bump
-- [Phase ?]: 38.1-07: navigation paints destination same-tick before awaiting flushLivePixels; isLatest gates propagation and post-flush generated-cell repaint
-- [Phase ?]: [Phase 38.1 Plan 06]: Run-1 UAT rejection (A ~1s navigation, C ~1s stop) fixed by gap plan 38.1-07 (store identity-triple memo, engine decode cache + resetBackground skip, paint-before-flush); checkpoint stayed verdict-only
-- [Phase ?]: [Phase 38.1 Plan 06]: Run-2 UAT approved 2026-07-28 ('work now! its fast!'); tooltip-masking item E explicitly excluded and routed to phase-38 gap plan 38-09
-- [Phase ?]: [Phase 38.1 Plan 06]: Two deferred follow-ups recorded at approval: (1) sidebar/tool-rail re-render on navigation — localize navigation UI updates to the timeline; (2) plain-wheel + bottom-toolbar horizontal scroll
-- [Phase ?]: [Phase 38 Plan 09]: Tooltip row-collision flip — side-direction band AABB-intersecting a same-row sibling flips to 'above' (then 'below'; side+clamp last resort) via opt-in avoidRowOverlap + 4th rowObstacles param; 3-arg path byte-identical for the 12 strip mounts
-- [Phase ?]: [Phase 38 Plan 10]: Plain-wheel horizontal scroll rides one non-passive element-scoped wheel listener with shift/dominance/line-mode guards; handler writes DOM scrollLeft only so the custom thumb follows through the existing native scroll -> updateScrollbar path (zero render-path timing change, 38.1 D-04)
-- [Phase ?]: [Phase 38 Plan 10]: Bottom action toolbar reachability locked via the existing shared-scroll layout (markup-order gate); CSS audit clean with zero diff; Task 2 recorded as an audit-only --allow-empty commit
-- [Phase ?]: [Phase 38 Plan 11]: Studio tool rail and right panel are wrapped in preact/compat memo behind per-Studio createIdentityMemo caches with single-line enumerated deps excluding the frame cursor — startFrame-only renders skip both subtrees; signals pass by identity so signal-driven updates bypass the memo
-- [Phase ?]: [Phase 38 Plan 11]: Callbacks that must stay referentially stable reach navigation-fresh bindings through refs (launchContextRef, rotoFrameEditingRef) and the history hook's stable inner callbacks rather than per-render wrapper objects — behavior byte-identical
-- [Phase 38.1 reopen]: Historical Plans 01–07 remain immutable and `0d0a3547` is the known-working rollback baseline; Plans 08–12 add deterministic localized-render instrumentation, isolation, and renewed native acceptance only.
-- [Phase 38.1 reopen]: Plan 08 is instrumentation-only and must capture actual forward/reverse RED profiler deltas before Plan 09; no memoization, observer dependency, server, browser, or native-launch change is eligible in Plan 08.
-- [Phase 38.1 Plan 08]: Actual forward and reverse native deltas are byte-identical and complete across all 26 canonical counters; render.studio/render.studioView are sanctioned orchestration, while unsanctioned positives route to Plans 09–11.
-- [Phase 38.1 Plan 08]: ToolRail remains a Plan 09 target despite the historical Phase 38 memo because R-D-04 requires zero and the native baseline records render.toolRailImpl = 2.
-- [Phase 38.1 Plan 08]: Plan 09 owns TopBar/ToolRail/right-panel localization; Plan 10 owns static Workflow/cell/timeline-observer localization; Plan 11 owns CanvasStack/CanvasMount/Efx isolation.
-- [Phase 38.1 Plan 09]: Plain TopBar and Play Script dialog implementations stay directly callable behind dedicated compat wrappers; the complete right-panel rail/shell/toggle is one memoized region retaining the existing inner RightPanel wrapper.
-- [Phase 38.1 Plan 09]: Static control identities exclude the navigation-only mutation-lock pulse via `mutationLocked && !rotoScriptNavigationLocked`, while engine actions and canvas input retain the original mutation lock.
-- [Phase 38.1 Plan 09]: User approval on 2026-07-28 confirmed zero forward/reverse deltas for TopBar, ToolRail implementation, right-panel region, RightPanel implementation, and the closed Play Script dialog; only the timeline re-rendered, so Plan 10 is eligible next.
-- [Phase 38.1 Plan 10]: Timeline observers remain mount-stable while a separate layout effect refreshes scrollbar geometry.
-- [Phase 38.1 Plan 10]: Static Workflow chrome uses memo with narrow Signal-driven current-frame and capsule children.
-- [Phase 38.1 Plan 10]: Timeline cells use cached props and stable shared action proxies so unchanged bodies skip through shallow memo comparison.
-- [Phase 38.1 Plan 11]: CanvasStack owns the keyed MemoizedPhysicsPaintCanvasMount internally so stable semantic props cross the memo boundary without a fresh children vnode.
-- [Phase 38.1 Plan 11]: Studio and CanvasMount expose stable callbacks backed by render-updated refs so current engine and Roto behavior crosses memo and Efx boundaries without effect synchronization.
-- [Phase 38.1 Plan 11]: canvasKey remains the replacement key while width, height, and paperTextureScale remain explicit persistent-boundary identity inputs.
-- [Phase 38.1 Plan 12]: User-approved grouped bidirectional render thresholds are the native acceptance record; raw delta-object transcription was explicitly waived and no telemetry was fabricated.
-- [Phase 38.1 Plan 12]: Stage A controlled render/remount/reactivity checks and all Phase 38 Stage B steps 1-33 are approved; final focused, exact-known-red, typecheck, build, and clean-tree gates passed afterward.
-- [Phase 38.1 Plan 13]: Cached playback uses the canonical Roto resolver and compositor instead of interpreting background fields in PhysicsPaintStudioView.
-- [Phase 38.1 Plan 13]: Transparent playback clears synchronously and skips paper-raster subscription.
-- [Phase 38.1 Plan 13]: Prepared background paper and independent positive-strength grain compose together in deterministic order.
-- [Phase 38.1 Plan 13]: The existing playback effect remains the sole external synchronization owner; no additional effect, component state, or Signal was introduced.
-- [Phase ?]: [Phase 38.1 Plan 14]: Capture completedMode once at the stopPhysics guard boundary and use it for finalization and replay metadata before restoring savedPhysicsMode.
-- [Phase ?]: [Phase 38.1 Plan 14]: Preserve local, last, all, and null through one PhysicsMode alias and version-2 serialization without a legacy migration branch.
-- [Phase 38.1 Plan 15]: Physical Roto replacement no-op identity now requires records revision, interpolation revision, and installed capacity to match.
-- [Phase 38.1 Plan 15]: Capacity-only changes reuse the existing atomic replacement path; exact structural triples remain allocation- and notification-free.
-- [Phase ?]: Plan 38.1-16 keeps server/non-development short-circuits outside one fail-closed storage exception boundary; any localStorage access failure disables profiling.
-- [Phase ?]: Plan 38.1-16 tests restricted storage through exported profiler behavior APIs without exposing or duplicating the private gate.
-- [Phase ?]: Plan 38.1-17: The Node hook runtime proves direct callback/effect/resource behavior only and deliberately does not emulate Preact keyed reconciliation.
-- [Phase ?]: Plan 38.1-17: Same-key persistence, changed-key replacement, and real Efx child ownership remain blocking Plan 18 native acceptance claims.
-- [Phase 38.1 Plan 18]: Exact post-gap automation passed (115 app tests, 58 engine tests, both TypeScript checks, package check, build) before user-owned native approval.
-- [Phase 38.1 Plan 18]: User-approved summarized sections A-E and grouped forward/reverse thresholds are sufficient acceptance evidence; raw profiler deltas remain optional and were not fabricated.
-- [Phase 38.1 Plan 18]: Native acceptance exposed obsolete Phase 37 group-ripple semantics; commit `25c7cf9e` restored rigid selected-only translation and passed native re-UAT before closure.
-- [Phase 38.1 verification]: Renewed goal verification passed 20/20 with zero unverified behavior; Phase 38 Plan 38-06 is eligible.
-- [Phase 38 Plan 38-06]: The full 33-step native UAT passed with explicit user approval on 2026-07-29; zero test files were touched (D-15), and both UI-SPEC backstops (steps 26/27) received human evidence. Wave-4 plans 38-07/38-08 are unblocked.
-- [Phase ?]: [Phase 38 Plan 07]: Production remained untouched because the 38-06 native UAT locked the shipped contract; regression anchors only.
-- [Phase ?]: [Phase 38 Plan 07]: The over-capacity resolver test uses a valid dense fixture because the shared baseline is invalid at capacity five.
-- [Phase ?]: [Phase 38 Plan 08]: The approved tooltip regression contract is flat #62666d with no border, 4px corners, 12px normal text, and same-fill notch; the old bordered pill stays retired.
-- [Phase ?]: [Phase 38 Plan 08]: The stale WorkflowStrip header assertion was the omitted third D-15 deferred rewrite and now targets region-driven fixed viewport placement.
-- [Phase ?]: [Phase 38 Plan 08]: Production remained untouched; post-UAT tests and the full closing gates lock the shipped behavior.
+v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (see also `.planning/milestones/v0.8.0-ROADMAP.md` and the v0.8.0 retrospective). Carried forward:
+
+- Physics paint is an additional tool; it does not replace perfect-freehand basic paint or p5.brush FX paint.
+- Failed headless adapter/batch replay remains excluded; the future editor integration seam is typed/contract-only.
 
 ### Pending Todos
 
@@ -361,31 +172,8 @@ None yet.
 
 ### Blockers/Concerns
 
-- Quick 260730-mn0 completed Apple signing preparation: one valid Developer ID identity, App Store Connect Team Key setup, fail-loud release script, and two operational guides. The real credentialed build/notarization/stapling/Gatekeeper/external-launch proof was explicitly deferred until after milestone audit/completion and remains unverified.
-- Phase 38.1 is complete: Plans 01–18 executed, Plan 18 received explicit user-owned native approval, and renewed verification passed 20/20.
-- Phase 38 Plan 38-06 native UAT is approved (all 33 steps, 2026-07-29); wave-4 plans 38-07 and 38-08 are now eligible.
-- Phase 36.2 Codex gap execution is rejected as failed and administratively superseded. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
-- Plans `36.2-11`, `36.2-12`, and `36.2-13` are closed with rejected/superseded summaries so they must not be resumed as Phase 36.2 implementation.
-- Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, repaint cached real-key behavior, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
-- Phase 36.7 completed: Roto key utility UAT passed for Duplicate, Insert, Delete, Copy, Paste, generated/empty guards, dirty save-before-action, focused regressions, typecheck, and user-story coverage.
-- Phase 36.8 completed: Roto session/key state boundary refactor passed focused regressions, full app tests, typecheck, package build, and user-approved Roto key utility UAT.
-- Phase 36.9 completed: native UAT and verification passed for real-key-only cached playback, transport placement, loop, fps, Space toggle, and no empty trailing frames.
-- Phase 36.10 completed: UAT Test 5 passed after user verified save/close/reopen preserves Physics Paint Roto strokes and paper/background metadata.
-- Phase 36.11 completed: user approved additive cached real-key repaint after old cache visibility, new paint preview layering, paper/background proportions, save merge, and same-session navigation cache refresh were verified.
-- Phase 36.12 completed: user approved generated render-only Roto interpolation after duplicate mapping, parent preview/export, persistence, live toggle-off, and compact source-sequence key creation blockers were resolved.
-- Phase 36.13 completed: user approved dynamic spacing, canonical persistence/preview/export parity, generated/empty non-durability, visible onion composition, real-key-depth Onion Value semantics, and generated-owner onion traversal.
-- Phases 36.15 and 37 were removed as obsolete: Signals/controllers remain the accepted state boundary, and the implemented parent bridge/cache integration surpassed the former future-contract scope.
-- Phase 36.14 is the final v0.8.0 UI-only phase: corrected timeline UI, developer-status removal, existing Log routing, application selection guard, and final presentation/wiring of the prerequisite quick's Copy Script / Apply Script controls.
-- Quick 260715-j3q exact 10-level per-brush Undo/Redo and reactive availability badges passed native UAT on 2026-07-15.
-- Quick 260715-kgf functional Roto Copy Script / Apply Script passed native UAT on 2026-07-16. The approved contract uses an immutable reusable clipboard until Copy/Discard/disposal, exact selected-frame targeting with distant spacing preservation, deterministic Roto Motion, per-brush Undo/Redo, and one final composite cache publication.
-- Quick 260716-dby durable project-scoped Roto script library passed native UAT A–M and independent verification on 2026-07-16. Autonomous UUID JSON presets, strict WebP thumbnails, parent/native filesystem authority, Save As lifecycle, explicit immutable Load, and the existing Apply path are locked by 47 mapped regressions. Phase 36.14 is unblocked.
-- Quick 260717-9hw right-sidebar and SCRIPTS polish passed native UAT, deep review, and 6/6 verification on 2026-07-17. The approved layout uses separate Brush color/Tool/LOG and Onion/Motion/Scripts panes with a 50/50 GripHorizontal split; durable row selection is transactional load-only, and Paintbrush performs token-bound authoritative Load + exactly one existing Apply with complete stale lifecycle protection.
-- Quick 260717-m9k merged the former Play Paint algorithm into durable Roto SCRIPTS and passed native UAT, definitive deep review, and 13/13 verification on 2026-07-18. Play Script accepts integer/Max duration, reloads the selected durable preset, stages deterministic progressive alpha, publishes one parent-authoritative real-key batch with background parity, preserves interpolation/source-display timing across reopen, and removes the obsolete dual Play workflow cleanly.
-- Quick 260718-fp9 dynamic Physics Paint labels passed renewed native UAT on 2026-07-18. Timeline headers derive consecutive `PPaint #n` labels from current top-to-bottom Physics Paint order, reorder/delete renumber immediately, and the standalone receives the selected track label without changing persisted names or Roto script provenance.
-- Quick 260718-j3h Physics Paint Roto Backspace/Delete shortcuts passed native UAT on 2026-07-18. Both keys reuse the visible Delete transaction, preserve real/generated/empty/busy guards and existing shortcuts, and clear the preview base before blank-canvas restoration so deleted paint refreshes immediately.
-- Quick 260718-m2f single-real-key Roto drag passed native UAT and 7/7 verification on 2026-07-19. Pointer capture, atomic publication/rollback, local Undo/Redo, canonical closer/farther/generated timing, effective destination feedback, persistence, and payload metadata preservation are approved. Regression tests remain intentionally deferred to the next interpolation-review quick.
-- Plan 36.14-11 Task 3 final typecheck is blocked because existing pre-UAT regression files still instantiate the removed source/display Script contracts. Plan 11 forbids test edits, test config changes, compatibility adapters, and a second final gate invocation; build did not run after typecheck failed.
-- 2026-07-24: User authorized and ran the deferred executable gates. Measured debt: typecheck 37 errors (21x `sourceFrame` in physicsPaintRotoScriptClipboard.test.ts, launch-level `rotoBackground`, null-safety in physicPaintStore.test.ts, unused `buildRotoRevision` in physicPaintBridge.ts:484); vitest 18 files / 85 tests failing on retired pre-physical contracts; `@efxlab/efx-physic-paint` package build PASS. User authorized planning a fresh bounded stale-test transfer scope.
+- Quick 260730-mn0 completed Apple signing preparation: one valid Developer ID identity, App Store Connect Team Key setup, fail-loud release script, and two operational guides. The real credentialed build/notarization/stapling/Gatekeeper/external-launch proof was explicitly deferred until after milestone close and remains unverified — run `docs/macos-signed-release.md`.
+- v0.8.0 audit-accepted tech debt and follow-ups are tracked in `## Deferred Items` below and in the MILESTONES.md v0.8.0 entry (resolver regression tests, CR-01/CR-02 + WR-01..04, legacy dual-model seam, dead playScriptMarkers, cache footprint).
 
 ### Quick Tasks Completed
 
@@ -554,8 +342,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-01T09:31:31.987Z
-Stopped at: Milestone v0.8.0 summary generated
+Last session: 2026-08-01
+Stopped at: Milestone v0.8.0 completed, archived, and tagged
 Resume file: .planning/reports/MILESTONE_SUMMARY-v0.8.0.md
 
 ## Operator Next Steps

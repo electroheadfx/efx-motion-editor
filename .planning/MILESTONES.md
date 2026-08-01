@@ -2,165 +2,39 @@
 
 ## v0.8.0 Standalone Physics Paint (Shipped: 2026-08-01)
 
-**Phases completed:** 21 phases, 170 plans, 309 tasks
+**Phases completed:** 21 phases (34, 35, 36, 36.1-36.15, 37, 38, 38.1), 170 plans
+**Closeout type:** override_closeout — Known verification overrides: 103 open artifacts acknowledged (see STATE.md Deferred Items); 8 phases verified via Phase 36 parent rollup / supersession instead of individual VERIFICATION.md
+**Timeline:** 2026-06-08 → 2026-08-01 (54 days) | **Commits:** 1,347 (git range 05944dac → 02fcac7b) | **Files changed:** 2,094 (+363,768 / -152,899)
+**Requirements:** 56/56 satisfied | **Audit:** tech_debt (9/9 integration, 6/6 E2E flows, zero blockers)
+
+**Delivered:** `packages/efx-physic-paint` is proven as a standalone interactive physics paint app/window with a deterministic physical-frame Roto timeline, multi-select group operations, Roto Script Play fusion, a durable script library, and render-path performance — with Tauri-native frame sync to the editor timeline.
 
 **Key accomplishments:**
 
-- Package-local Vite/Preact standalone physics paint demo with public-wrapper HMR, visible standalone identity, and user-verified browser runtime behavior.
-- Standalone physics paint README now matches the current package demo, public Preact wrapper props, and pnpm workflow boundaries.
-- 1. [Rule 2 - Missing critical functionality] Added app package verification scripts
-- 1. [Rule 3 - Blocking issue] Installed locked workspace dependencies
-- 1. [Rule 3 - Blocking] Installed locked workspace dependencies before verification
-- 1. [Rule 3 - Blocking] Installed existing workspace dependencies from lockfile
-- UAT-facing physics paint apply feedback, app-hosted studio companion UI, and current no-issues close-out for the interactive workflow
-- Physics paint UAT gap closure for native apply-result completion, editable state save feedback, and hydrated layer identity validation
-- Physics paint UAT blockers closed for hydrated layer identity, compositing controls, native apply-result completion, and visible Tauri-first editable state saving.
-- Pure Physics Paint Roto/Play workflow predicates with Vitest coverage for destructive actions, onion limits, play range markers, FPS fallback, and dev-export gating
-- Editable Physics Paint state JSON helpers with fail-closed SerializedProject parsing and adapter-based local download orchestration.
-- Dev-only physics paint PNG proof helpers transform live rendered frames into still metadata and bounded manifest.json frame-sequence metadata.
-- Project-FPS launch context, validated D-26 frame-sync bridge, and callback-oriented Physics Paint studio actions for preview-only Play, Save play summaries, editable state, and debug proof output.
-- EFX-style Physics Paint top bar, SVG tool rail, and lightweight right panel for the rebuilt standalone UI.
-- Bottom Physics Paint workflow strip with Roto/Play mode tabs, dedicated timeline lanes, onion preview controls, and destructive confirmation surfaces
-- Integrated five-region standalone Physics Paint Studio with contextual shortcuts, onion previews, workflow conversions, and final UI redlines
-- Roto/Play workflow tabs now drive guarded conversion confirmations without separate bottom-strip conversion buttons
-- Standalone Roto onion previews now use real local snapshots, and saved Play frames no longer remain as yellow/orange onion overlays.
-- Physics Paint Save state now opens a Tauri native JSON save dialog in desktop runtime while preserving browser editable-JSON download fallback.
-- Save play now persists Play canvas workflow/range/source metadata and relaunches the standalone Studio back into the saved Play canvas context.
-- Validated multi-range Physics Paint Play script storage with overlap-safe apply, gap helpers, and MCE persistence
-- 1. [Rule 3 - Blocking] Test dependencies were absent in the manual worktree
-- Canvas-rendered saved Play script range markers nested inside physic-paint timeline bars with tested zoom/scroll geometry and renderer purity.
-- Standalone Physics Paint Play scrubbing now previews locally with max-duration limits, cached saved-script lookup, dirty/remade cache switching, and Save play cache replacement semantics.
-- Physics Paint Play animation now draws recorded strokes sequentially like one artist hand, with point-count weighted frame allocation and deterministic tests.
-- Saved Physics Paint Play ranges now flow into live timeline layout marker data with current-frame active state and a concrete Phase 36.1 validation map.
-- Explicit Roto and Play editor launch buttons now open scrubber-aware Physics Paint contexts with gap-constrained Play durations.
-- Mode-specific Physics Paint standalone strip with locked Roto/Play launch labels, launch-frame Play gap cells, and text Render actions separated from Save play publishing.
-- The remaining cache/delete lifecycle gap plan was closed by current human verification instead of re-executing stale gap work.
-- Span-aware missing Roto frame resolution now drives preview behavior while export remains delegated through PreviewRenderer for parity.
-- Explicit background-only Roto support provenance with bounded interior cache recomputation and real-key alpha separation.
-- 1. [Rule 3 - Blocking] Built local workspace dependency before typecheck
-- Vitest source-contract and store regressions now prove missing Roto frame preview/export parity while protecting real-key alpha caches from background-only support.
-- Roto paper reopen, real-key paper compositing, and duplicate save-render gaps are automated-ready with focused regression coverage.
-- Physics Paint Roto now saves dirty cached real-key repaints by merging prior cached alpha with new live alpha, without restoring prior pixels into editable strokes or baking paper/background.
-- Cached real-key repaint sessions now distinguish immutable cached base from editable live overlay, preserving no-change saves/navigation and keeping Clear/Undo limited to post-reopen paint.
-- Cached real-key repaint now passes automated validation and live UAT: old cached paint stays visible/non-editable, new paint previews above it, saves merge additively, paper/background stays separate, and same-session navigation reloads the latest saved cache.
-- Integer-gap Roto interpolation spans now derive every strict interior frame between adjacent real keys with proportional normalized blend positions.
-- Store-generated Roto interpolation now creates render-only alpha cache entries that refresh from real keys without endangering real-key edits.
-- 1. [Rule 3 - Blocking] Installed existing workspace dependencies in the isolated worktree
-- Generated Physics Paint Roto cache frames are now covered by preview/export parity tests that prove shared cache-backed rendering and renderer-owned paper/background composition.
-- Initial Studio/workflow-strip generated interpolation wiring landed, but live UAT exposed blocker gaps in source-key preservation, mode selection, persistence, playback, and parent preview/export.
-- 1. [Rule 3 - Blocking] Retry worktree lacked installed dependencies
-- 1. [Rule 3 - Blocking] Retry worktree lacked installed dependencies
-- Physics Paint Roto interpolation settings now survive .mce load/reopen and regenerate generated render-only cache for parent preview/export publication.
-- Workflow strip count/mode controls and Studio store wiring make generated Roto interpolation visible, selectable, and render-only in the live Physics Paint UI.
-- 1. [Rule 3 - Blocking] Installed worktree dependencies and built local workspace declarations
-- 1. [Rule 3 - Blocking] Installed existing workspace dependencies from lockfile
-- Override-aware Physics Paint Roto interpolation now persists source-endpoint segment timing and regenerates derived display cache from real source keys after toggle, close/reopen, and project save/load.
-- Custom Roto interpolation spans now have test-proven real-key-only onion anchors and store-backed preview/export parity.
-- Custom dynamic interpolation spacing is complete after automated verification and user-approved native UAT, including final Debug 08 onion parity corrections.
-- Additive inactive canonical physical Roto model with stable keyId, direct appFrame, enabled-only interpolation, separate Script Motion, and fail-closed reconstructing validators — compile-preserving and solely authoritative alongside the unchanged live timing graph.
-- Pure deterministic physical resolver with closed Insert/Delete/Move/Force-Spacing intent union, one exported seam, common complete-map finalizer, strict-interior generated cells, cut-and-insert Drag, and immutable deep-frozen proposals — compile-preserving and solely authoritative alongside the unchanged live timing graph.
-- 1. [Rule 3 - Blocking issue] Deleted stale test files importing from removed `rotoSourceDisplayModel.ts`
-- One operation-agnostic acknowledged physical-edit coordinator replacing the accepted move-only lifecycle, with deterministic content revision, exact-tuple settlement, complete immutable snapshot rollback, and atomic consumer cutover
-- Generic accepted-only physical command ledger with coordinator-backed Undo/Redo, identity-changing replay provenance, and deleted move/apply wrappers — one stable ports/listener/coordinator settlement path
-- Identity-preserving ripple Insert Frame, ripple Delete Frame with deterministic survivor selection, one stable physical timeline action bundle, toolbar/keyboard intent routing, and deleted legacy key transactions — Insert/Delete own no arithmetic, staging, publication, or history append
-- 1. [Rule 1 - Bug] Removed unused helpers and imports after legacy cutover
-- 1. Task 3 wrapper retirement moved to Plans 10 and 13
-- Stable-key Roto ownership with revision-gated live pixels and one physical real/generated/missing render path shared by playback, preview, export, and timeline extent
-- Stable-key Clear and Script workflows now target direct physical frames through the existing acknowledged coordinator, with bounded production audits complete and the stale-test-blocked compile proof explicitly deferred until Plan 13.
-- Native UAT is blocked because Physics Paint reports “Engine not ready”; the first painted Roto key remains visible but is not persisted or represented correctly, preventing timeline navigation.
-- Duplicate and both Paste forms now reach Plan 20's complete-record acknowledged physical authority through narrow semantic ports, with reusable copied paint and no local timing, persistence, or settlement bypass
-- First-class Duplicate and Paste operations with complete immutable record proposals, three-boundary semantic validation, exact parent acknowledgement, and accepted-only history through the existing Signals coordinator
-- Complete child-owned physical snapshots now replay through the sole acknowledged coordinator, with all six command kinds moving Undo/Redo history only after exact accepted provenance
-- Enabled-only interpolation now uses the existing acknowledged physical-map transaction, preserves every real-key record, and updates a controlled Preact checkbox only from canonical state.
-- Canonical real-key PNGs now hydrate the shared alpha-canvas registry before publication, generate only valid strict-interior PNG composites, and reach reference consumers through revision-bound fail-closed validation
-- Stable-identity occupied Drag now preserves the source gap and ripples only at before/after destination boundaries, while whole-cell Drag and D-30's UAT-first recovery contract remain unchanged
-- Studio-level light Play Script dialog with shared focus identity and unchanged Signal-backed generation authority
-- Play Script now publishes one complete stable-identity physical record map, receives exact parent acceptance, and makes accepted alpha PNGs available to canonical physical consumers without a legacy cache dual write.
-- Export completion notifications now stop at an exact main-window capability boundary before plugin loading, while successful export state remains independent from optional notification delivery
-- One canonical physical Roto authority is statically reachable across interpolation, exact history, generated PNGs, persistence, Play Script publication, and guarded export notification, with D-29/D-30 aligned for the native-only handoff.
-- The user approved the complete repaired native Roto surface, including interpolation, exact replay, cached playback, persistence, downstream parity, and workflow control grouping.
-- All 18 baseline-failing test files triaged assertion-by-assertion to the canonical physical-frame contract (17 repaired, 1 deleted wholesale), three checkpoint-authorized minimal production fixes applied, and the deferred three-command gate is green in one pass from repo root.
-- Shared styled tooltip (exact 1000ms hover / instant keyboard focus) plus the locked 7-icon guarded Roto action row — Key chip first, no native disabled, verbatim controller reasons, Discard Script removed from the row.
-- Always-visible #F5A623 diamonds per real Roto key on physic-paint FX rows of the main timeline — one FxTrackLayout field, one frameMap population line, one clipped canvas draw pass, pure-function geometry tested including the nonzero-inFrame case.
-- The 36.14 UI-SPEC application-level text-selection policy applied at the app shell — user-select: none on html/body/#app with an exact four-selector user-select: text exception list — locked by a permanent source-contract test including exception-target liveness and scoped-rule coexistence guardrails.
-- D-01 header rebuilt as four gray pill islands in one non-wrapping 46px flex row — navigation / interpolation (borderless Blend toggle) / playback / apply-spacing (icon + text Apply) — with a flex-1 capsule slot for Plan 05 and a header Close button routed through the guarded close-flush path.
-- The 9-line permanent status stack and the bottom cell-states legend collapsed into one elastic prioritized header capsule (D-15/D-18/D-19) fed by a pure unit-tested selector, with exact D-16 per-cell state copy routed through the Plan 01 styled tooltip.
-- The full STRIP-GEOMETRY cutover — fixed 155px five-band strip with derived 2160px lane constant and re-banded action row — plus the user-verified follow-up scope: restructured top bar with a Tools dropdown and relocated Duplicate/layer-name, the new + Key empty-real-key tool, smaller canvas diamonds, raised tooltip z-index, enlarged action-row icons, and a responsive studio top panel.
-- D-11 completed: Discard Script lives in the right-panel Scripts toolbar as a guarded `clipboard-x` action fed by a new controller-owned `canDiscard`/`discardDisabledReason` port — and the strip's Discard surface (prop, Studio workflow prop) is fully retired.
-- Final presentation polish closing all four 2026-07-26 native-UAT gaps: Tools dropdown removed with controls regrouped into the user-specified top/bottom bars, the canvas-masking tooltip clipped no more, Copy/Apply Script relocated into a proper second Scripts-toolbar row with the 'Clear Script Buffer' rename, and labeled, enlarged bottom-row icons with de-prefixed tooltips.
-- Final cosmetic polish closing all four 2026-07-26 second-pass native-UAT items: labeled Scripts-toolbar second-row icons, the doubled ring removed from the Set Key Space APPLY button with its label renamed 'Key spacing', the selected key cell's orange border unclipped on all four sides, and the interpolation option renamed 'Frame blending'.
-- Final presentation polish closing all five 2026-07-26 third-pass native-UAT items: the bottom action row split into three top-bar-style separated groups (identity / tools / Key spacing), every short label rendered lowercase via text-transform opt-outs from the global uppercase button rule, the Key spacing submit reading 'Apply', and the Scripts second-row icons pinned at the full first-row 16px size.
-- Final presentation polish closing all six 2026-07-26 fourth-pass native-UAT items: Scripts toolbar second-row labels render in full on content-sized cells with an 8px row separation, the bottom-row tools group sits on the bare band with all three groups vertically centered, Scripts is the first and default-open tab of its group, and the right sidebar is restructured into three tab groups — [Brush color], [Tool] without Save/Load state, [Scripts, Onion, Motion] — with the LOG tab and its Plan 03 selection-guard exception retired in the same commit.
-- Final presentation polish closing all six 2026-07-26 fifth-pass native-UAT items: the Brush color and Tool tab header strips are gone so each sidebar section starts directly with its content, the three sidebar sections share the height in equal thirds behind two GripHorizontal grab handles that each resize only their neighbors, a 4px shared scroll offset lets the frame-0 selected cell render its full orange ring, and the bottom action row grows to a user-approved 34px band (band sum 161px) with all three 26px groups vertically centered under clear top/bottom padding.
-- Final polish closing all three items of the user's 2026-07-26 final native-UAT round ("after that its perfect!"): the bottom action row gains the requested 6px bottom padding, the sidebar default proportions follow the user's spec (brush color 425 : tool 213 : scripts/onion/motion 340 as ratios of the content height behind two fixed 32px grab handles), and the ~20px dead space at the top of the chrome-less brush color section is gone.
-- Cache-first Roto contracts and store helpers distinguish real keys, generated interpolation cache, and deleted frames while preserving existing rendered PNG storage.
-- Standalone Roto workflow cells now distinguish empty gray, cached-only green, and editable-session pink states with save-pending copy that avoids dirty/current-frame color ambiguity.
-- Cache-first Roto lifecycle with dirty-frame save boundaries, cached-only reference repainting, pending-save controls, and best-effort close flushing.
-- Cached Roto PNG launch hydration and PreviewRenderer-only playback/export semantics with virtual missing-frame handling
-- 1. [Rule 3 - Blocking] Worktree dependency access for tests
-- Dirty Roto close now awaits the normal apply-canvas flush, cached/background-only frames keep gray/green semantics, and cached references reopen at full strength.
-- Standalone Roto interpolation controls now expose generated render-only in-betweens through visible strip UI wired to existing cache regeneration.
-- 1. [Rule 3 - Blocking] Planned rotoFrameDraw.test.ts path was absent
-- Durable Physics Paint Roto cache core with Save current, parent preview persistence, project save/load hydration, and cached-reference reopen
-- User-run UAT approved the durable Physics Paint Roto cache workflow for Save current, preview, save/load, and cached-reference reopen
-- Roto close workflow now offers discard, cancel, or save-close for dirty current frames while clean frames close normally.
-- Physics Paint clean close is now authorized by Tauri capability policy while the existing dirty close workflow remains unchanged.
-- Typed Roto cell semantic model separating empty, cached, editable/current, generated, and background-only meanings from current/dirty/pending overlays.
-- Existing Physics Paint Roto workflow strip now renders semantic cell classes, labels, a compact legend, and generated-cell guard from the Plan 01 view model.
-- Physics Paint Roto workflow cells now have distinct semantic visual treatments, overlay states, compact legend styling, and an approved cached-reference navigation fix.
-- Roto frame navigation now saves dirty source frames once through the existing cache path before opening the latest requested destination.
-- The workflow strip now shows which dirty Roto source frame is saving while preserving existing navigation and Save current behavior.
-- 1. [Rule 3 - Blocking] Installed worktree dependencies offline for verification
-- 1. [Rule 3 - Blocking] Installed workspace dependencies to run Vitest
-- Studio-level Roto key utilities now save dirty source keys before mutation, update cache metadata through the store, and keep Paste eligible for empty/generated/real targets.
-- Contextual Physics Paint Roto key utility pill with accessible Insert, Dup, Copy, Paste, and Delete controls styled to the approved UI-SPEC.
-- Focused regression tests and TypeScript typecheck are green for the completed Roto key utility slice; live user UAT remains the required blocking checkpoint.
-- Controller-backed Roto key transactions now make Insert, Delete, Paste, and Duplicate cache truth deterministic while keeping the existing contextual UI unchanged.
-- Signals-backed Roto session boundary with clean key transaction regressions and plain adapter effect descriptors.
-- Dirty Roto save-before-navigation/action now lives in the session boundary with sticky failure retention and explicit save result transitions.
-- 1. [Rule 3 - Blocking] Restored local dependencies for test execution
-- 1. [Rule 3 - Blocking] Installed declared workspace dependencies in the manual worktree
-- 1. Copy/Paste state did not become visibly usable after Copy
-- Cached Roto timed Play/Stop preview approved as necessary, unlocking the TDD implementation plan without touching app source.
-- Cached Roto playback is locked as a preview-only cached overlay controller with Stop cleanup that clears both overlay and global preview state.
-- Cached Roto playback is now discoverable in the Roto navigator, supports loop/fps preview controls and Space Play/Stop, and sequences only real cached key frames.
-- Group drag (move-key-group), group delete (delete-key-group), and scoped Force Spacing (scopeKeyIds) resolved through the existing finalizeProposal single authority, with both new operation kinds admitted in lockstep through the wire validator and history ordinary-kind guard and the parent bridge generic path statically proven (zero bridge edits).
-- Pure keyId-only selection-reducer module plus session-local `selectedKeyIds`/`selectionAnchorKeyId` Signals at the Studio controller boundary, with launch-replacement reset, the D-17 post-acceptance aftermath rules, and Escape-collapse / strip-scoped Cmd/Ctrl+A keyboard branches — the selection model every 37-03/37-04 group operation reads.
-- Group drag prepare/commit pair (one frozen move-key-group publication through the acknowledged seam, zero recomputation), group-aware deleteRotoFrame sharing one transaction across every delete route, scope-aware applyForceSpacing per D-10, Select All availability computeds with verbatim guarded reasons, and D-26 reject routing (concise capsule copy + diagnostic detail) — all single-key paths provably unchanged, typecheck green, zero test artifacts.
-- Modifier-click / Shift-click / plain-click selection gestures wired from strip cells through the 37-02 reducers with no navigation steal and no drag arming on modifiers, the `.selected` secondary cell treatment with `Selected key` tooltip and aria-selected, the group drag session over the 37-03 prepare/commit pair with moved-set preview and resolver-driven blocked-target preview plus exactly-once release-time reject publication, and the guarded Select All icon at the end of the key-utilities pill — all single-key paths provably unchanged, typecheck green, zero test artifacts.
-- User-approved native UAT of Phase 37 multi-select physical Roto keys: 10/10 script sections passed, 3/3 UI backstops visually confirmed, 4/4 flagged-assumption questions confirmed — plan 37-06 eligible per D-18
-- Locked the UAT-approved Phase 37 group-operation contract as 33 executable regression anchors across three test files — full suite 849 passed / 0 failed, typecheck and build green, zero production edits
-- Roto clipboard slot widened to a frozen single|group discriminated union with group Copy (2+ selected keys snapshot store-fresh `{payload, sourceAppFrame, sourceKeyId}` entries with `Copied {N} keys` feedback) while 1-key Copy and single-key Paste stay byte-identical
-- The `paste-key-group` literal now flows through all five owners of the 36.14-20 semantic-operation seam — shared types, pure resolver (intent/factory/candidate/validator/dispatch), coordinator (equality/routing/retargeting), parent bridge (validation branch), and history (automatic via Exclude) — so a group of copied real Roto keys resolves as one atomic, thrice-validated, accepted-only transaction with anchor/offset math, all-empty-or-reject collisions, and zero ripple
-- Static capsule baseline deleted and replaced with a live current-cell idle context line fed through the selector's ambient slot from a new pure helper; missing-frame wording confirmed event-driven only in useRotoCachedPlayback.
-- Group paste is live end-to-end: a group clipboard routes through the new `pasteKeyGroup` port member and route into the frozen 38-02 intent and the existing runPhysicalAction/coordinator/bridge seam — one atomic acknowledged transaction with UI-SPEC locked busy/success/reject copy — and the accepted pasted group becomes the selection with the earliest pasted key current, while the single-key paste path stays byte-identical
-- FIXED, pill rendered in place — no portal.
-- The user explicitly approved the full 33-step native UAT script on 2026-07-29. Plans 38-01 through 38-05 are now accepted behavior, and wave-4 regression plans 38-07 and 38-08 are unblocked.
-- Fifty-three focused Vitest tests now lock the UAT-approved group Copy/Paste seam across resolver semantics, selection aftermath, and the shared session clipboard without touching production code.
-- Capsule idle context and viewport tooltip behavior are now regression-locked against the UAT-approved shipped contract, with the complete app suite, TypeScript check, and production build green.
-- Zero changes.
-- Timeline navigation no longer repaints the right color sidebar or the left vertical tool rail: both subtrees are wrapped in `preact/compat` memo and fed referentially stable props assembled behind a new pure `createIdentityMemo()` factory, so the rAF-batched `startFrame` propagation (38.1 D-04) shallow-compares equal and Preact skips both subtrees — proven by an ephemeral bundle script and the enumerated-deps contract, with zero visual and zero behavior change.
-- Persistent structural/frame-split Roto timeline signal graph — a navigation frame write now costs O(find) with zero projection rebuilds (spy-proven), behind a byte-compatible model interface and identical selector values.
-- Two pure, test-locked primitives for the Studio navigation pipeline — a scheduled-flag rAF scheduler capping UI flushes at one per animation frame with latest-state-at-fire-time, and monotonic latest-wins generation tokens whose only staleness criterion is supersession.
-- Studio navigation pipeline rewired to the locked ordering invariants — the engine canvas paints in the same tick as every navigation intent before any Preact UI work, superseded paints are skipped via generation tokens, UI frame propagation is rAF-batched to one render per animation frame, and both per-render O(N) derivations are structurally memoized — with byte-identical observable behavior.
-- The workflow strip's per-frame render is now O(changed cells): the O(N) rotoDragValidityKey string build sits behind a five-input structural memo, and a component-scoped per-cell derivation cache recomputes at most the previously-current and newly-current cells' view models on a pure frame change — with the 55-assertion source-grep contract, the capsule arbitration, and the tooltip mechanism byte-identical.
-- The cached-playback per-tick surface is now signal-backed end-to-end: each tick reaches exactly three live surfaces — the playback canvas image, the pinned nav-pill current-frame indicator, and play/stop transport state — while cells, capsule, and tube/log stay frozen; missing-frame events queue during playback and flush once inside the single synchronous catch-up render on every stop path, after which the idle context line resumes.
-- Native UAT APPROVED on re-verification run 2 (2026-07-28, user verdict: "work now! its fast!") — canvas-first navigation flat across key counts, instant revisits, instant dirty-frame departures, instant stop catch-up, playback freeze intact, zero behavior change — after run 1 rejected sections A/C and gap plan 38.1-07 shipped the store-memo + engine-cache + paint-before-flush fixes.
-- Per-navigation physical roto store reads are now O(1) in total key count — a per-layer identity-triple memo serves the projection + content revision (spy-proven zero recomputes on navigation/selection, exactly one byte-identical recompute per structural mutation class) — plus the engine decoded-Image cache (zero-decode frame revisits), the resetBackground unchanged-input skip, and the paint-before-flush Studio navigation reorder with post-flush generated-cell repaint.
-- The existing Physics Paint profiler now records the complete Studio-to-Efx navigation path, and actual native forward/reverse deltas establish the RED ownership baseline for Plans 09–11 without changing render localization.
-- Dedicated Preact memo boundaries now skip frame-only TopBar, ToolRail, Play Script dialog, and complete right-panel region work while preserving plain implementations and internal Signal-driven updates.
-- Mount-stable timeline observers, Signal-driven static Workflow memoization, and cached memoized cell bodies now localize adjacent navigation to no more than the cells whose observable state changes.
-- Memoized CanvasStack and keyed CanvasMount boundaries now keep the persistent Efx child out of frame-only Studio work while latest-ref callbacks preserve current engine and Roto behavior.
-- User-approved bidirectional render localization and all 33 Phase 38 native regressions now agree with focused tests, the exact sanctioned-red suite gate, typecheck, production build, and a clean repository.
-- Cached Roto playback now preserves transparent, textured-paper, and independent grain metadata through the same canonical compositor used by preview and export.
-- Last-session wet-buffer preservation with explicit completed-mode recording, version-2 serialization, and deterministic replay propagation
-- Physical Roto replacement now treats capacity as a structural identity member, so capacity-only changes install, clamp, rebuild, and publish while exact triples remain notification-free.
-- Physics Paint's optional render-path profiler now treats restricted browser storage as disabled, preventing localStorage capability failures from escaping or mutating deterministic profiler state.
-- A reusable Node hook runtime now executes CanvasMount callback freshness, dimension-effect dependency behavior, and exactly-once observer/rAF cleanup without impersonating Preact reconciliation.
-- The complete post-gap automation and user-owned native checkpoint now approve cached pixels, physics replay, capacity publication, real Preact CanvasMount/Efx lifecycle, localized render thresholds, and the corrected rigid Roto group-drag contract.
+1. Standalone `efx-physic-paint` package proven as an interactive physics paint app/window — independent of editor integration, with a standalone demo shell and full interactive controls
+2. Complete Physics Paint Roto system: durable cache core, cell semantics, explicit close behavior, automatic live pixel caching, cached real-key repaint, and cached playback
+3. Deterministic physical-frame Roto timeline: canonical model with stable keyIds, integer-gap interpolation, dynamic spacing, and final Pencil-spec UI integration (guarded action row, styled tooltips)
+4. Roto Script Play fusion — Play Paint algorithm moved into Roto SCRIPTS, retiring the separate Play workflow; durable script library with JSON presets and WebP thumbnails
+5. Multi-select and group operations: group drag, group delete, scoped Force Spacing, group Copy/Paste/Cut — resolved through a single finalizeProposal authority
+6. Studio render-path performance: structural/frame-split signal graph making navigation-frame writes O(find) with zero projection rebuilds, plus automatic live pixel caching
+7. Tauri-native frame sync (G-01 closure): `physic-paint:seek-frame` listen branch with regression coverage and approved native Tauri UAT
+
+**Plus 20 completed quick tasks**, including automatic live pixel caching (260714-ail), per-brush 10-level Undo/Redo (260715-j3q), Copy/Apply Script (260715-kgf), durable script library (260716-dby), Play fusion (260717-m9k), single-key drag (260718-m2f), Cut tool (260731-9l0), Apple signing preparation (260730-mn0), and the G-01 Tauri frame-sync closure (260801-azb).
+
+**Known gaps / tech debt (audit-accepted):**
+
+- Phase 36.2 intentionally FAILED/SUPERSEDED; Phase 36.6 superseded by quick 260714-ail (automatic live pixel caching)
+- Deterministic physical-resolver regression coverage authorized as follow-up test plan (36.14)
+- Advisory code-review findings CR-01/CR-02, WR-01..04 routed to follow-up quick (36.14)
+- Legacy source/display model still feeds useRotoTimelineActions.getModel (inert dual-model seam); legacy optional fallbacks in rotoOnionPreview/applyCanvas/deleteRotoFrame
+- Integration advisories: I-01 dead playScriptMarkers field, I-02 misleading physicPaintPlayScriptBridge.test.ts filename, I-03 dev-only `*` targetOrigin fallback
+- Roto cache footprint measurement/compression deferred (PNG alpha encoding exists)
+- macOS Developer ID credentialed signed release intentionally deferred post-close (prep complete; docs/macos-signed-release.md)
+- 10 phases carry draft Nyquist VALIDATION.md status (coverage TODO, not compliance failure); 11 compliant
+
+Full summary: `.planning/reports/MILESTONE_SUMMARY-v0.8.0.md` | Audit: `.planning/milestones/v0.8.0-MILESTONE-AUDIT.md`
 
 ---
-
 ## v0.7.0 Monorepo & Paint Enhancements (Shipped: 2026-04-05)
 
 **Phases:** 2 completed (26, 33) + 6 failed/abandoned (27-32) | **Plans:** 23 | **Tasks:** 40

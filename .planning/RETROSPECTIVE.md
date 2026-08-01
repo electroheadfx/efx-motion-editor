@@ -2,6 +2,59 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v0.8.0 — Standalone Physics Paint
+
+**Shipped:** 2026-08-01
+**Phases:** 21 (34, 35, 36, 36.1–36.15, 37, 38, 38.1) | **Plans:** 170 | **Quick tasks:** 20 completed
+
+### What Was Built
+- Standalone `efx-physic-paint` package proven as an interactive physics paint app/window with demo shell, interactive controls, UI rebuild, session persistence, and output proof
+- Complete Physics Paint Roto system: durable cache core, cell semantics, explicit close behavior, automatic live pixel caching, cached real-key repaint, and cached playback
+- Deterministic physical-frame Roto timeline: canonical stable-keyId/direct-appFrame model, atomic acknowledged transactions (Insert/Delete/Drag/Force Spacing/Undo/Redo), integer-gap interpolation, dynamic spacing
+- Final Pencil-spec timeline UI: fixed 155px strip, icon-only guarded action row, styled multiline tooltips with notch, elastic status capsule, real-key diamond markers on the EFX Motion layer
+- Roto Script Play fusion with durable script library (JSON presets, WebP thumbnails); separate Play workflow retired
+- Multi-select and group operations: group drag, group delete, scoped Force Spacing, group Copy/Paste/Cut through the finalizeProposal single authority
+- Studio render-path performance: structural/frame-split signal graph (O(find) navigation writes), canvas-first same-tick paint, rAF-batched UI, playback UI freeze, memoized static chrome
+- Tauri-native frame sync (`physic-paint:seek-frame` listen branch, G-01 closure) with regression-locked coverage
+
+### What Worked
+- **Standalone window + transport over headless adapter:** The v0.7.0 post-mortem conclusion held — proving the engine standalone first, then wiring a typed transport, avoided the adapter trap entirely
+- **MVP/TDD recovery phases after 36.2 failure:** Splitting the failed cache-first mega-phase into small recovery phases (36.3–36.13) rebuilt trust incrementally; each phase had its own native UAT gate
+- **D-30 bounded recovery track (bounded-static fixes → read-only review → user-owned native UAT):** Carried the 36.14 cutover through a rejected UAT to green without regressing into test-first churn
+- **finalizeProposal single authority:** Phase 37 group operations were admitted through the existing coordinator with zero bridge edits — the 36.14 architecture investment paid off exactly as designed
+- **Production → native UAT → post-UAT regression (Phases 37/38):** Approving visible behavior before rewriting tests around it eliminated test-thrash on UI contracts
+- **UAT-evidence summarization:** Grouped visual rerender checks plus thresholds were accepted as sufficient evidence — no raw delta JSON needed
+
+### What Was Inefficient
+- **Phase 36.2 cache-first mega-phase:** 13 plans attempting cell semantics + navigation + save-on-leave + playback + interpolation + key utilities in one phase failed and was superseded — too much scope, too few UAT gates
+- **36.14 rejected UAT cycle:** The physical-frame cutover needed a full D-30 recovery track (Plans 21–30) after the original plan sequence was rejected — earlier native checkpoints per wave would have caught the divergence sooner
+- **8 phases without individual VERIFICATION.md:** Coverage accepted via the Phase 36 parent rollup — administratively fine, but the init.manager projection could not prove readiness without audit interpretation
+- **Stale quick-task/debug-session accumulation:** 103 open artifacts at close (mostly legacy from phases 24/35/36.x) required an override acknowledgment — intermediate cleanup between milestones would keep the audit signal clean
+- **36.6 save-on-leave built then superseded:** Automatic live pixel caching (quick 260714-ail) replaced the lifecycle within weeks — the simpler architecture was discoverable earlier
+
+### Patterns Established
+- Canonical physical identity: one stable keyId + one direct appFrame per real key; no source/display dual models, no compatibility aliases
+- Atomic acknowledged transactions: optimistic stage → parent publication → exact acknowledgement → fail-closed rollback → one accepted-only history action
+- Signals-backed session boundary: compact Roto session/key controllers own coherence; Studio is an adapter (replaced the god-component; planned XState phase removed as obsolete)
+- Canvas-first navigation: engine canvas paints in the same synchronous tick as the navigation intent, before any Preact propagation; UI flushes via rAF scheduler
+- Structural/frame-split signal graph: navigation frame writes cost O(find) with zero projection rebuilds
+- Immutable reusable clipboard: frozen single|group discriminated union; copy once, paste repeatedly
+
+### Key Lessons
+1. **Small MVP recovery phases beat mega-phase retries** — after 36.2 failed, eight small phases with individual UAT gates delivered what one 13-plan phase could not
+2. **A single mutation authority compounds** — finalizeProposal made multi-select, group drag/delete, and group copy/paste incremental additions instead of new subsystems
+3. **Native UAT is the only oracle for interactive behavior** — static checks and unit tests repeatedly missed what one user-owned native run caught (36.14, 38.1 run-1)
+4. **Supersede loudly** — 36.6 save-on-leave, 36.2, and historical 36.14 plans are marked FAILED/SUPERSEDED in place; silent abandonment is what made earlier milestones hard to audit
+5. **Performance work needs a baseline RED first** — 38.1's profiler instrumentation (bounded counters, actual native deltas) preceded every optimization; unmeasured render fixes would have been guesswork
+6. **Transport seams should be typed and contract-only until proven** — the editor integration contract stayed a seam all milestone; G-01 proved the last gap with a two-line Tauri listen branch
+
+### Cost Observations
+- Model mix: predominantly opus for planning/cutover work, sonnet for execution waves, haiku for extraction/summaries
+- Sessions: ~25+ over 54 days (2026-06-08 → 2026-08-01)
+- Notable: 1,347 commits for 170 plans (~8 commits/plan) reflects the UAT-gated iterate-in-place style; the 36.14 recovery track alone accounts for a large share
+
+---
+
 ## Milestone: v0.7.0 — Monorepo & Paint Enhancements
 
 **Shipped:** 2026-04-05
@@ -366,6 +419,8 @@
 | v0.4.0 | ~3 | 2 | 9 | Wave parallelization for paint; visual verification checkpoint plan |
 | v0.5.0 | ~4 | 2 | 8 | p5.brush adoption pivot; separate WebGL2 contexts per GPU feature |
 | v0.6.0 | ~8 | 4 | 14 | First proactive milestone audit; scope reduction (COMP-01-05 canceled); long gap context restoration |
+| v0.7.0 | ~4 | 2 | 23 | Adapter approach abandoned (Phases 27-32 failed); micro-plan iterative fixing (Phase 33) |
+| v0.8.0 | ~25+ | 21 | 170 | Standalone window + transport; MVP/TDD recovery phases; D-30 bounded recovery; UAT-first then regression |
 
 ### Cumulative Quality
 
@@ -377,6 +432,8 @@
 | v0.4.0 | 34,067 | 430+ | 4 (carried) | 0 new |
 | v0.5.0 | 40,066 | 560+ | 4 (carried) | 0 new |
 | v0.6.0 | 40,688 | 660+ | 5 (1 new + 4 carried) | 0 new |
+| v0.7.0 | ~45,000 | 700+ | 5 (carried) | 0 new |
+| v0.8.0 | ~93,287 | 2,094 changed | 11 (6 new + 5 carried) | 3 advisory (I-01 dead field, I-02 filename, I-03 dev-only origin) |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -394,3 +451,7 @@
 12. Separate WebGL2 contexts per GPU feature prevents state pollution and simplifies lifecycle management
 13. Run milestone audit proactively before completion — catches documentation inconsistencies and confirms requirement coverage
 14. Scope reduction is healthy — canceling features keeps milestones focused on achievable, validated work
+15. Small MVP recovery phases with individual UAT gates deliver what failed mega-phases cannot
+16. A single mutation authority (e.g., finalizeProposal) compounds — later operations become incremental admissions, not new subsystems
+17. Production first, native UAT gate, then regression tests — approving visible behavior before locking tests eliminates test-thrash
+18. Measure before optimizing — profiler baselines (RED deltas) make render-path performance work provable instead of speculative
