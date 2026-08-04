@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { build, type Plugin } from 'vite';
+import { build, createLogger, type Plugin } from 'vite';
 
 // A real cold production build takes ~60-90s; keep the explicit per-test and
 // hook timeouts generous so Vitest never kills the build mid-run.
@@ -49,6 +49,17 @@ function collectFiles(root: string, prefix = ''): string[] {
   return out;
 }
 
+// D-12: capture every build warning through a customLogger wrap. Capture is
+// unfiltered at ingestion — assertions filter, the capture never does.
+// Consumed by plan 40-03's non-return assertions; named exactly `warnings`.
+const warnings: string[] = [];
+const logger = createLogger();
+const origWarn = logger.warn;
+logger.warn = (msg, options) => {
+  warnings.push(String(msg));
+  origWarn(msg, options);
+};
+
 function createInputCapturePlugin(captured: { input: unknown; chunkLimit?: number }): Plugin {
   return {
     name: 'test-capture-rollup-input',
@@ -70,7 +81,8 @@ describe('production vite build', () => {
     await build({
       root: APP_DIR,
       configFile: join(APP_DIR, 'vite.config.ts'),
-      logLevel: 'silent',
+      // customLogger replaces logLevel gating — the wrap sees all warn calls.
+      customLogger: logger,
       plugins: [createInputCapturePlugin(captured)],
       build: { outDir, emptyOutDir: true }, // hermetic — never touches app/dist
     });
@@ -132,6 +144,31 @@ describe('production vite build', () => {
       // The slash in the input key "src/project" relocates the bundle under src/.
       const projectBundles = collectFiles(outDir).filter((rel) => /(^|\/)project-[^/]*\.js$/.test(rel));
       expect(projectBundles.length, 'a project-*.js bundle must be emitted').toBeGreaterThan(0);
+    },
+  );
+
+  it(
+    'PhysicsPaintStudio lazy chunk remains a separate bundle',
+    { timeout: 180_000 },
+    () => {
+      // D-15: the efx-physic-paint engine code rides the intentional Studio
+      // lazy chunk; pin the separation by stable prefix, never by content hash.
+      const studioChunks = collectFiles(outDir).filter((rel) => /PhysicsPaintStudio-[^/]*\.js$/.test(rel));
+      expect(studioChunks.length, 'the PhysicsPaintStudio lazy chunk must remain a separate bundle').toBeGreaterThan(0);
+    },
+  );
+
+  it(
+    'emits no chunk-size warning at the 1100 desktop budget',
+    { timeout: 180_000 },
+    () => {
+      // Baseline entry chunk is 969.22 kB — 130 kB under the 1100 budget — so
+      // the production build must not complain about chunk size at all.
+      const chunkSizeWarnings = warnings.filter((w) => /chunk.*(size|larger than)/i.test(w));
+      expect(
+        chunkSizeWarnings.length,
+        'no chunk-size warning may be emitted at the 1100 desktop budget',
+      ).toBe(0);
     },
   );
 
