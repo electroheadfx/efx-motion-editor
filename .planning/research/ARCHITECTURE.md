@@ -1,595 +1,313 @@
 # Architecture Research
 
-**Domain:** Standalone physics paint app/demo architecture for `packages/efx-physic-paint` in the EFX Motion Editor pnpm monorepo
-**Researched:** 2026-06-08
-**Confidence:** HIGH for repo-local architecture and build order; MEDIUM for future transport details because transport is deliberately deferred and should be validated in its own integration phase.
+**Domain:** v0.9.0 feature integration into the existing EFX Motion Editor monorepo (Tauri 2.0 main editor + standalone `efx-physic-paint` window)
+**Researched:** 2026-08-03
+**Confidence:** HIGH — all integration points verified by direct repo inspection (no external research needed; the open questions are internal seam choices, not ecosystem unknowns)
 
 ## Standard Architecture
 
-### System Overview
-
-The standalone physics paint milestone should make `@efxlab/efx-physic-paint` runnable as its own browser app/demo inside the existing workspace package, while preserving the library as a publishable package. The key architectural correction from the failed v0.7.0 phases is: **do not make EFX Motion Editor drive physics paint through a headless/batch adapter.** The engine must remain interactive and incremental; the editor should later launch/embed a standalone paint surface and consume exported/cached stills or frame sequences via a narrow transport seam.
+### System Overview (post-v0.9.0)
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         pnpm workspace root                                 │
-│  package.json                                                               │
-│    dev                 → pnpm --filter efx-motion-editor dev                │
-│    build               → package build, then editor build                   │
-│    dev:paint           → should run the standalone paint demo/app           │
-│  pnpm-workspace.yaml    → app + packages/*                                  │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│              packages/efx-physic-paint                                      │
-│                                                                             │
-│  Library surface                                                             │
-│    src/index.ts       → EfxPaintEngine + types                               │
-│    src/preact.tsx     → EfxPaintCanvas wrapper                               │
-│    src/animation/*    → AnimationPlayer frame replay                         │
-│    tsup.config.ts     → publishable ESM outputs                              │
-│                                                                             │
-│  Standalone demo/app surface                                                 │
-│    demo/index.html    → Vite browser entry                                   │
-│    demo/src/App.tsx   → controls, canvas, export panel, diagnostics          │
-│    demo/src/main.tsx  → Preact mount                                         │
-│    vite.demo.config.ts → app-only Vite config                                │
-│                                                                             │
-│  Future integration seams                                                    │
-│    src/session/*      → serializable session/project model                   │
-│    src/export/*       → still/sequence capture contracts                     │
-│    src/transport/*    → message protocol types only in this milestone        │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼ future milestone, not this one
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          app/ EFX Motion Editor                              │
-│                                                                             │
-│  Physical paint layer stores only:                                           │
-│    session id/path, cached frame paths, dimensions, fps, dirty range,         │
-│    thumbnail/still metadata                                                  │
-│                                                                             │
-│  Editor compositor consumes cached images with existing drawImage pattern.   │
-│  It does not replay physics strokes or run renderFromStrokes in-process.     │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────── Main editor window (Tauri "main") ───────────────────────────┐
+│  timelineStore / audioStore / physicPaintStore / projectStore (13 signal stores)        │
+│  playbackEngine.ts ── audioEngine.ts (Web Audio, authoritative monitoring)              │
+│  lib/physicPaintBridge.ts                                                               │
+│    ├─ launch: createPhysicPaintLaunchContext (+ NEW audioPreview payload)               │
+│    ├─ NEW revisioned audio-preview context emitter (subscribes audioStore)              │
+│    ├─ listen branches: apply / roto-authority / script-library / state-save /           │
+│    │   thumbnail-encode / physic-paint:seek-frame                                       │
+│    └─ physicPaintPersistence.ts (+ NEW loop-clips member in roto_physical document)     │
+└───────────────┬─────────────────────────────────────────────────────────────────────────┘
+                │ Tauri events (emitTo 'efx-physic-paint') + launch URL context
+                │ (existing patterns: PHYSIC_PAINT_*_EVENT constants)
+┌───────────────▼──────────── EFX Paint window (label "efx-physic-paint") ────────────────┐
+│  Same SPA bundle, parsed via parsePhysicsPaintLaunchContext(location)                   │
+│  PhysicsPaintStudio + hooks/ controllers (signals boundary)                             │
+│  ├─ NEW audio/efxPaintAudioPreviewEngine.ts (own AudioContext, read-only)               │
+│  ├─ roto/physicsPaintRotoPlayScriptController.ts (+ NEW applicationMode, colorOverride) │
+│  ├─ roto/physicsPaintRotoPlayScriptRenderer.ts (+ hold scheduling, recolor)             │
+│  ├─ roto/physicsPaintRotoPhysicalModel.ts (+ NEW durable loopClips member)              │
+│  ├─ roto/physicsPaintRotoPhysicalResolver.ts (+ loop projection/resolution)             │
+│  └─ view/PhysicsPaintWorkflowStrip.tsx (+ filmstrip loop capsule)                       │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+                │
+┌───────────────▼──────────── packages/efx-physic-paint ──────────────────────────────────┐
+│  animation/progressiveStrokeSchedule.ts (progressive — unchanged default)               │
+│  animation/recordedStrokeMotion.ts (deterministic held-pose Script Motion — reused)     │
+│  NEW animation/staticStrokeSchedule.ts (hold mode: full stroke set per frame)           │
+│  engine/EfxPaintEngine.ts (render host for staged frames — unchanged API)               │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Responsibilities
 
-| Component | Responsibility | Typical Implementation |
-|-----------|----------------|------------------------|
-| `EfxPaintEngine` | Own the incremental paint simulation, typed-array buffers, dual canvases, pointer input, physics/drying intervals, stroke recording, serialization. | Keep as the interactive facade in `src/engine/EfxPaintEngine.ts`; add small event/capture hooks rather than changing it into a headless renderer. |
-| `EfxPaintCanvas` | Thin Preact wrapper around engine lifecycle. | Keep `src/preact.tsx`; expand props only for callbacks and initial session/config, not editor-specific concepts. |
-| Standalone demo app | Provide a runnable UI for testing tools, brush controls, physics, save/load, still export, and sequence export. | Add a Vite/Preact demo entry inside the package, separate from `tsup` library build. |
-| Session model | Define what a physics-paint document is independent of the demo UI. | Versioned JSON envelope around `SerializedProject`, engine settings, dimensions, fps/range metadata, and export metadata. |
-| Export/capture seam | Produce stills and frame sequences that future editor integration can cache. | Functions that capture `engine.getDisplayCanvas()`/`getCanvas()` to PNG/blob/data URL and drive `AnimationPlayer` for frame sequences. |
-| Transport protocol seam | Define messages/events for later editor ↔ standalone window communication. | Type-only module in this milestone; no Tauri window wiring yet unless needed for a manual spike. |
-| EFX Motion Editor future consumer | Store references to rendered outputs and composite cached frames. | Later: physical paint layer sidecar with session path + cache manifest; compositor uses existing image/cache draw path. |
+| Component | Responsibility | Status |
+|-----------|----------------|--------|
+| `app/src/stores/audioStore.ts` | Authoritative audio tracks (offset/trim/volume/mute/fades/order), persistence | **Unmodified** (read by new bridge code) |
+| `app/src/lib/audioEngine.ts` | Main-window Web Audio playback singleton (`play`, `playDelayed`, `stopAll`) | **Unmodified** |
+| `app/src/lib/playbackEngine.ts` | Main-editor frame→audio scheduling (`startAudioPlayback` math at lines 192–224) | **Modified** — extract pure resolver into shared module (see Pattern 1) |
+| `app/src/lib/physicPaintBridge.ts` | Launch context, project-context event, all request/result listen branches, seek-frame routing | **Modified** — new audio-preview context in launch payload + revisioned update emitter |
+| `app/src/types/physicPaint.ts` | Closed bridge/launch schema (`PhysicPaintLaunchContext`, authority result, etc.) | **Modified** — new `PhysicPaintAudioPreviewContext`, optional `audioPreview` on launch context, new event constants |
+| `app/src/components/physic-paint/audio/efxPaintAudioPreviewEngine.ts` | NEW. Paint-window-local Web Audio preview: decode, schedule, seek, stop, monitoring toggle | **New** |
+| `app/src/components/physic-paint/hooks/useRotoCachedPlayback.ts` | Paint playback cursor (`playbackTick`, `start`/`stop`/`toggle`, loop/fps) | **Modified** — notify audio preview on start/stop/seek (ports-style callback, not direct import) |
+| `physicsPaintRotoPlayScriptController.ts` | Play Script commit authority: `requestAuthority` → render → `commit` with `expectedRevision`, phases, cancel | **Modified** — new controller ports/options (`applicationMode`, `colorOverride`, loop params); commit path itself unchanged |
+| `physicsPaintRotoPlayScriptRenderer.ts` | `renderRotoPlayScriptFrames` staging (engine host, schedule, alpha merge, PNG encode) | **Modified** — mode switch (progressive schedule vs full-set hold), application-time recolor |
+| `physicsPaintRotoPhysicalModel.ts` | Canonical durable model: `PhysicPaintRotoRealKeyRecord{keyId, appFrame, payload}`, `PhysicPaintRotoPhysicalState/Document`, revision builder, fail-closed parsers | **Modified** — new `loopClips` durable member + validators + revision participation |
+| `physicsPaintRotoPhysicalResolver.ts` | `resolvePhysicPaintRotoPhysicalEdit` / `projectPhysicPaintRotoPhysicalTimeline` (finalizeProposal single authority) | **Modified** — loop-clip cell projection, modulo occurrence resolution, next-clip boundary |
+| `app/src/types/project.ts` + `physicPaintPersistence.ts` | `.mce` `roto_physical` document + PNG sidecars | **Modified** — schema bump for loop clips (clean break per project convention: no legacy migration) |
+| `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx` + `hooks/useRotoTimelineModel.ts` | Roto timeline strip cells/capsule | **Modified** — filmstrip loop capsule rendering (source cycle + hatched repetition band + ×N/∞ badge) |
+| `app/vite.config.ts` + `app/src/viteBuild.test.ts` | Build config + production bundle guard test seam | **Modified** — `chunkSizeWarningLimit: 1100`, safe mixed-import fixes, extended seam assertions |
+| `scripts/macos-release.sh` + `app/src-tauri/icons/` + `tauri.conf.json` | Release preflight icon contract | **Modified icons only** — preflight already validates the exact 5-entry array + ICNS magic (lines ~117–136) and packaged `CFBundleIconFile` (~306–323); no SPECS dependency |
 
-## Recommended Project Structure
-
-Recommended structure keeps the package publishable while adding a first-class demo app. It avoids creating another workspace package unless the demo grows into a large product; co-locating the demo with the package is better for this milestone because it shortens feedback loops and keeps API drift visible.
+## Recommended Project Structure (new files only)
 
 ```
-packages/efx-physic-paint/
-├── package.json                         # MODIFY: add standalone demo scripts/deps
-├── tsup.config.ts                       # MODIFY only if new public entrypoints are exported
-├── tsconfig.json                        # MODIFY: include demo if needed or add separate demo tsconfig
-├── vite.demo.config.ts                  # NEW: Vite config for package-local demo app
-├── demo/                                # NEW: runnable/testable standalone app
-│   ├── index.html                       # NEW: Vite HTML entry
-│   ├── src/
-│   │   ├── main.tsx                     # NEW: Preact render entry
-│   │   ├── App.tsx                      # NEW: demo shell/layout
-│   │   ├── components/
-│   │   │   ├── PaintSurface.tsx         # NEW: EfxPaintCanvas host + engine ref
-│   │   │   ├── BrushControls.tsx        # NEW: tool/brush/physics controls
-│   │   │   ├── ExportPanel.tsx          # NEW: still/sequence export UI
-│   │   │   ├── SessionPanel.tsx         # NEW: save/load JSON UI
-│   │   │   └── DiagnosticsPanel.tsx     # NEW: fps, dimensions, stroke count, state
-│   │   ├── state/
-│   │   │   └── demoState.ts             # NEW: Preact signals for demo-only UI state
-│   │   └── styles.css                   # NEW: package-local demo styling
-│   └── public/
-│       └── papers/                      # NEW: bundled paper texture fixtures for demo
-├── src/
-│   ├── index.ts                         # MODIFY: export session/export types if public
-│   ├── preact.tsx                       # MODIFY: optional lifecycle/event props only
-│   ├── types.ts                         # MODIFY: add stable exported session/capture types if core
-│   ├── animation/
-│   │   ├── AnimationPlayer.ts           # MODIFY: support frame capture hooks if needed
-│   │   └── index.ts                     # MODIFY: export animation helpers/types
-│   ├── engine/
-│   │   └── EfxPaintEngine.ts            # MODIFY: expose minimal capture/state hooks; avoid headless rewrite
-│   ├── session/
-│   │   ├── types.ts                     # NEW: `PhysicPaintSession`, manifests, version constants
-│   │   ├── serialize.ts                 # NEW: normalize save/load envelopes
-│   │   └── index.ts                     # NEW: public session exports
-│   ├── export/
-│   │   ├── capture.ts                   # NEW: still capture from live engine canvases
-│   │   ├── sequence.ts                  # NEW: AnimationPlayer-driven sequence capture helpers
-│   │   └── index.ts                     # NEW: public export helpers
-│   └── transport/
-│       ├── protocol.ts                  # NEW: future message types, no runtime coupling
-│       └── index.ts                     # NEW: public protocol type exports
-└── dist/                                # generated by tsup; do not edit manually
+app/src/
+├── lib/
+│   ├── audioPlaybackResolver.ts        # NEW — pure frame→per-track schedule math, shared
+│   └── physicPaintBridge.ts            # MOD — audio preview launch payload + revisioned emitter
+├── types/
+│   ├── physicPaint.ts                  # MOD — PhysicPaintAudioPreviewContext, event constants
+│   └── project.ts                      # MOD — McePhysicPaintRotoPhysicalDocument + loop_clips
+└── components/physic-paint/
+    ├── audio/                          # NEW folder
+    │   ├── efxPaintAudioPreviewEngine.ts   # own AudioContext, per-track sources/gains
+    │   ├── efxPaintAudioPreviewBridge.ts   # listen for context events, revision guard, dispose
+    │   └── useEfxPaintAudioPreview.ts      # hook: monitoring toggle signal + playback wiring
+    └── roto/
+        ├── physicsPaintRotoLoopClip.ts     # NEW — LoopClip model, validators, modulo resolver
+        └── (model/resolver/controller/renderer/strip — modified in place)
+
+packages/efx-physic-paint/src/animation/
+└── staticStrokeSchedule.ts             # NEW — hold-mode full-set schedule + tests
 ```
 
 ### Structure Rationale
 
-- **`demo/` inside `packages/efx-physic-paint`:** The package currently has library code but no Vite app entry. A package-local demo lets `pnpm --filter @efxlab/efx-physic-paint dev` run the actual engine directly without touching `app/` or Tauri.
-- **Separate `vite.demo.config.ts` from `tsup.config.ts`:** `tsup` should continue building publishable ESM library entrypoints (`index`, `preact`, `animation`). Vite should serve only the demo app.
-- **`src/session/`:** The future editor needs a stable serialized unit to save and reopen a standalone physics paint session. This should be independent from demo UI state.
-- **`src/export/`:** Still/sequence output is a core capability, not demo-only. Keep canvas capture reusable by future Tauri/window transport.
-- **`src/transport/`:** Define the future protocol early as TypeScript types so the demo can shape its export/cached-frame concepts without prematurely wiring editor windows.
-- **No `app/` changes in the first half of the milestone:** The milestone's value is proving the standalone engine/window. Editor changes should be limited to later seam documentation or an optional no-op type import validation.
+- **`audio/` subfolder under physic-paint:** mirrors the existing `bridge/`, `roto/`, `hooks/`, `view/` decomposition and keeps the session-local engine out of shared `lib/` (it must never be imported by the main window — two engines in one JS context is the doubled-audio pitfall).
+- **Loop clip as its own roto module:** matches the post-36.8 pattern of compact focused modules (`physicsPaintRotoAlphaMerge.ts`, `rotoLivePixelCacheTransactions.ts`) rather than growing the model file.
+- **Pure resolver in `lib/`:** the frame→audio math must be bit-identical between main editor and paint window; a shared pure module is the only way to guarantee that without cross-window imports.
 
 ## Architectural Patterns
 
-### Pattern 1: Standalone Interactive Engine Host
+### Pattern 1: Shared pure frame→audio-time resolver (audio bridge correctness keystone)
 
-**What:** The demo creates an actual `EfxPaintEngine` through `EfxPaintCanvas`, lets it own pointer events, render loop, dry/wet canvases, physics intervals, and stroke capture, and exposes controls through public engine methods.
-
-**When to use:** For all v0.8.0 physics paint validation: brush behavior, local physics, drying, paper texture interaction, pressure input, sequence capture.
-
-**Trade-offs:**
-- Pro: Preserves the interactive incremental behavior that the failed adapter/batch approach lost.
-- Pro: Matches how users will actually paint in a separate window later.
-- Pro: Surfaces engine lifecycle, texture loading, pointer, and performance issues immediately.
-- Con: Future editor integration must communicate through files/messages/cache rather than direct function calls.
+**What:** Extract the scheduling math currently inline in `playbackEngine.ts` `startAudioPlayback()` (lines 192–224) into a pure function both windows use.
+**When to use:** Always — the spec stop condition "Audio drifts from Paint playback" is only satisfiable if both sides compute identical offsets.
+**Trade-offs:** Tiny refactor of proven code; must keep `playbackEngine` behavior bit-identical (regression-lock with existing audio tests before rewiring).
 
 **Example:**
 ```typescript
-import { signal } from '@preact/signals'
-import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact'
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint'
-
-const engineRef = signal<EfxPaintEngine | null>(null)
-
-export function PaintSurface() {
-  return (
-    <EfxPaintCanvas
-      width={1280}
-      height={720}
-      papers={[{ name: 'canvas1', url: '/papers/canvas1.jpg' }]}
-      defaultPaper="canvas1"
-      onEngineReady={(engine) => {
-        engineRef.value = engine
-        engine.setBgMode('transparent')
-        engine.setTool('paint')
-      }}
-    />
-  )
+// app/src/lib/audioPlaybackResolver.ts (NEW)
+export interface AudioPlaybackCue {
+  trackId: string;
+  delaySec: number;        // 0 = start now
+  sourceOffsetSec: number; // (inFrame + slipOffset + framesIntoTrack) / fps
+  maxDurationSec: number;
 }
+export function resolveAudioCuesAtFrame(
+  tracks: readonly AudioTrack[],
+  frame: number,           // main-editor global frame == paint appFrame
+  fps: number,
+  maxFrames: number,
+): AudioPlaybackCue[] { /* exact math from playbackEngine.startAudioPlayback */ }
 ```
 
-### Pattern 2: Canvas Capture from the Live Engine
+**Locked mapping (answers question a):** `PhysicPaintRenderedFrame.appFrame` is documented as the *editor timeline frame* — the paint window's physical model already lives in main-editor global frames. Therefore the four-level mapping collapses: `paint appFrame == parent layer frame == main-editor global frame` (the physical model's `canonicalStart`/`layerEndExclusive` are the parent-layer bounds in global frames; sequence-local indices exist only as `frameIndex` inside rendered payloads). Audio time is `appFrame / fps` seconds; per-track source offset adds `inFrame + slipOffset`. The only remaining mapping is paint playback *range* (cursor start, loop span) → cue recomputation. A truth table (frame → per-track cue) must be written and regression-tested before implementation, per the spec risk register.
 
-**What:** Export reads pixels from the engine's existing canvases after the simulation has reached the desired visual state. It does not reconstruct the image from strokes in a separate headless code path.
+### Pattern 2: Paint-window-local Web Audio preview engine (not a shared engine)
 
-**When to use:** Save stills, generate thumbnails, capture frame sequences for future editor caches.
+**What:** The EFX Paint window is a separate Tauri webview (`app/src-tauri/src/lib.rs:125`, label `efx-physic-paint`) loading the same SPA bundle. JS contexts do not cross windows, so `audioEngine` cannot be reused. The paint window instantiates its own preview engine with its own `AudioContext`, fed by a **read-only context payload**.
+**When to use:** For the entire audio preview feature.
+**Trade-offs:** Buffers are decoded twice (once per window). Acceptable: decode cost is bounded and one-time per open session. Do NOT attempt `AudioBuffer` transport — structured-clone of decoded buffers across Tauri events is not supported; transport asset bytes (via the existing secure asset channel family, same as thumbnail encode) and decode locally with `ctx.decodeAudioData` (existing pattern in `audioEngine.decode`).
 
-**Trade-offs:**
-- Pro: Captured output is exactly what the user sees in the standalone window.
-- Pro: Avoids duplicate renderer drift.
-- Con: Export must coordinate with animation/physics timing and wait for frame completion before capture.
-
-**Example:**
+**Context payload (slots into existing launch/bridge schema):**
 ```typescript
-export interface StillCaptureOptions {
-  source?: 'display' | 'dry'
-  mimeType?: 'image/png' | 'image/webp'
-  quality?: number
+// app/src/types/physicPaint.ts (MOD)
+export interface PhysicPaintAudioPreviewTrack {
+  id: string; assetPath: string;      // absolute path; bytes via secure transport
+  offsetFrame: number; inFrame: number; outFrame: number;
+  slipOffset: number; volume: number; muted: boolean;
+  fadeInFrames: number; fadeOutFrames: number;
+  fadeInCurve: FadeCurve; fadeOutCurve: FadeCurve;
+  order: number;
 }
-
-export async function captureStill(
-  engine: EfxPaintEngine,
-  options: StillCaptureOptions = {},
-): Promise<Blob> {
-  const canvas = options.source === 'dry' ? engine.getCanvas() : engine.getDisplayCanvas()
-  return await new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => blob ? resolve(blob) : reject(new Error('Canvas capture failed')),
-      options.mimeType ?? 'image/png',
-      options.quality,
-    )
-  })
+export interface PhysicPaintAudioPreviewContext {
+  revision: number;                    // monotonic, main-editor-owned
+  fps: number;
+  tracks: readonly PhysicPaintAudioPreviewTrack[];
 }
+// PhysicPaintLaunchContext gains: audioPreview?: PhysicPaintAudioPreviewContext
+// New event: PHYSIC_PAINT_AUDIO_PREVIEW_CONTEXT_EVENT = 'physic-paint:audio-preview-context'
 ```
 
-### Pattern 3: Versioned Session Envelope
+**Revisioned updates:** `physicPaintBridge.ts` gains an emitter that subscribes to `audioStore` mutations (and fps), bumps a monotonic revision, and `emitTo('efx-physic-paint', ...)` the fresh context — same pattern as the existing `PHYSIC_PAINT_PROJECT_CONTEXT_EVENT` emission (line ~827). The paint-side bridge applies a context only if `incoming.revision > current.revision`; stale updates are dropped, never queued. This mirrors the `expectedRevision` guard discipline already used by the Roto authority/commit path.
 
-**What:** Wrap the existing `SerializedProject` in a session format that includes metadata needed by a standalone window and by future editor cache integration.
+**Sync without drift:** on paint playback start, compute cues via Pattern 1 and schedule all sources against `AudioContext.currentTime` in one shot (`playDelayed`-style, already proven in `audioEngine`). Do not re-nudge per paint frame — the audio clock is the drift-free reference; the paint cursor chases wall-clock anyway. Seek/pause/stop = dispose all sources and recompute from the new cursor. Loop = at range end, stop all and reschedule from range start (source metadata untouched).
 
-**When to use:** Demo save/load; future editor handoff to standalone paint; cache invalidation.
+**Doubled-audio and cleanup (AUDIO-06):**
+- Session rule: the paint preview engine asserts main-editor playback is stopped before starting (bridge-provided flag or a stop intent sent on paint play start); the main window never monitors while the paint window drives preview.
+- Window close → `dispose()` (stop all sources, `ctx.close()`, drop buffers) wired into the existing Studio close path. Regression test: close during playback leaves zero running sources.
+- Monitoring toggle is a session-local signal in the paint window (`useEfxPaintAudioPreview`), defaulting to on when context exists; it gates the preview engine's master gain only — never touches `audioStore`.
 
-**Trade-offs:**
-- Pro: Keeps engine serialization stable while allowing integration metadata to evolve.
-- Pro: Supports clean break policy for format changes without legacy migration complexity.
-- Con: Requires careful version bumping when export/cache metadata changes.
+### Pattern 3: LoopClip as a durable member of the canonical physical model
 
-**Example:**
-```typescript
-export interface PhysicPaintSession {
-  schema: 'efx-physic-paint-session'
-  version: 1
-  id: string
-  createdAt: string
-  updatedAt: string
-  canvas: { width: number; height: number; fps: 15 | 24 | number }
-  project: SerializedProject
-  exportDefaults: {
-    background: 'transparent' | 'white' | 'paper'
-    frameStart: number
-    frameEnd: number
-  }
-}
-```
+**What:** Loop clips live in `physicsPaintRotoPhysicalModel.ts` as a new member of `PhysicPaintRotoPhysicalState`/`PhysicPaintRotoPhysicalDocument`, referencing existing real keys by `keyId` — no duplicated payloads.
 
-### Pattern 4: Type-First Transport Protocol
+**Locked semantics mapped onto the existing model:**
+- Source cycle = N durable `PhysicPaintRotoRealKeyRecord`s created by one hold-mode Play Script commit (existing atomic path). They are ordinary real keys — editable, movable, undoable.
+- The loop clip record: `{ clipId, startFrame, sourceKeyIds: keyId[], repeat: finite{count} | infinite, revision }`. `cycleLength = sourceKeyIds.length`. Occurrence at appFrame F resolves to `sourceKeyIds[(F - startFrame) % cycleLength]` — render output is the referenced key's existing payload `dataUrl`, so the live pixel cache and preview get reuse for free.
+- Next-clip boundary: effective end = `min(startFrame + requestedDuration, nextClipStart, capacity)` with half-open intervals `[start, end)` — the same ordering discipline the resolver already applies to real keys. "Next clip" = the next durable occupant (real key or loop clip) at a later appFrame; a truth table for boundary cases (adjacent clips, partial cycle, clip moved later, clip removed, infinite → parent end) must be authored before implementation (project convention: truth table before timing patches).
+- Generated interpolation cells: loop occurrences are a distinct render-source variant (`{ kind: 'loop-occurrence', clipId, occurrenceIndex, sourceKeyId, ... }` added to `PhysicPaintRotoPhysicalRenderSource`), NOT generated-interpolation cells — they must be excluded from the interpolation gap derivation (`max(0, right-left-1)` interiors) to avoid phantom cells inside a loop span.
+- Revision/persistence: `loopClips` participates in `buildPhysicPaintRotoPhysicalRevision`, the fail-closed parsers (`parsePhysicPaintRotoPhysicalState`), and `McePhysicPaintRotoPhysicalDocument` (`roto_physical` in `.mce`; PNG sidecars unchanged — occurrences have no sidecars).
+- Undo/redo: loop creation is a semantic delta on the existing commit path (extend `validatePhysicPaintRotoPhysicalEditSemanticDelta` in `physicsPaintRotoPhysicalResolver.ts`); repeat-count edits are metadata-only operations through `finalizeProposal` — no re-render, no source cache invalidation.
 
-**What:** Define editor/window protocol messages as serializable TypeScript types now, but defer runtime window management and Tauri IPC until the editor integration milestone.
+**Why not materialize occurrences as generated cells or cache frames:** the model deliberately excludes generated cells from durable serialization and cache ownership; a loop is durable user intent, so it belongs in the durable document beside real keys.
 
-**When to use:** To shape the standalone app's save/export/cached-frame features around the future integration path without coupling this milestone to `app/` internals.
+### Pattern 4: PlayScript mode/color as render-input options, commit path untouched
 
-**Trade-offs:**
-- Pro: Makes seams explicit for roadmap planning.
-- Pro: Avoids premature Tauri multi-window work while still preventing incompatible demo-only APIs.
-- Con: Protocol details will need validation when actual Tauri window integration begins.
+**What:** `applicationMode` and `colorOverride` enter exclusively through `RotoPlayScriptRenderInput` (renderer) and the controller's UI ports. `RotoPlayScriptControllerPorts.requestAuthority`/`commit`, the phase machine, `expectedRevision` guards, and undo/redo are unchanged.
+**When to use:** For PLAY-01/02/04.
+**Trade-offs:** The renderer branches on mode; the alternative (two controllers) would fork the commit authority — rejected.
 
-**Example:**
-```typescript
-export type PhysicPaintTransportMessage =
-  | { type: 'open-session'; session: PhysicPaintSession }
-  | { type: 'session-changed'; sessionId: string; dirty: boolean }
-  | { type: 'export-still-request'; requestId: string; frame: number }
-  | { type: 'export-sequence-request'; requestId: string; range: { start: number; end: number }; fps: number }
-  | { type: 'export-progress'; requestId: string; completed: number; total: number }
-  | { type: 'export-complete'; requestId: string; manifest: PhysicPaintCacheManifest }
-  | { type: 'error'; requestId?: string; message: string }
-```
+- **Hold mode:** new package export `staticStrokeSchedule.ts` (preferred over a `mode` param on `buildProgressiveStrokeSchedule` — the progressive distribution math is regression-locked and should not grow a branch). Hold mode materializes the full flattened stroke set on every destination frame, still passing each stroke through `transformRecordedStrokeForHeldPose` with the same deterministic `destinationSourceFrame` seeding → Script Motion variation preserved, zero motion = stable hold, same input = same output.
+- **Color override:** applied in the renderer at `flattenScriptStrokes` time — clone strokes, recolor paint strokes, pass erase strokes through untouched. The `RotoPaintScript` (`physicsPaintRotoScriptClipboard.ts`) and the durable library JSON (`physicsPaintRotoScriptLibrary.ts`) are never mutated (spec: no persisted overrides in script documents).
+- **UI:** extend `useRotoPlayScriptController.ts` + the PlayScript dialog/strip surfaces with mode selector, override swatch, cycle/repeat/∞ controls; status copy must show requested vs effective duration and the locked French label `Boucle raccourcie par le clip suivant` (never `clip bloquant`).
 
 ## Data Flow
 
-### Standalone Editing Flow
+### Audio preview (main → paint, read-only)
 
 ```
-User pointer input
-    ↓
-EfxPaintEngine pointer handlers
-    ↓
-PenPoint[] + BrushOpts + current color/tool
-    ↓
-renderPaintStroke / applyEraseStroke
-    ↓
-wet buffers + savedWet + dry canvas
-    ↓
-localFluidPhysicsStep / physicsStep / dryStep over time
-    ↓
-render loop composites wet layer to display canvas
-    ↓
-Demo UI captures engine state, diagnostics, and export actions
+audioStore mutation (main)                Paint playback (EFX Paint window)
+        ↓                                          ↓
+revisioned context builder          playbackTick / start / stop / seek
+(physicPaintBridge.ts)                       ↓
+        ↓ emitTo                        resolveAudioCuesAtFrame(cursor, fps)
+'physic-paint:audio-preview-context'         ↓
+        ↓                             efxPaintAudioPreviewEngine
+revision guard (drop stale)                 ↓
+        ↓                             own AudioContext: schedule all cues once
+applied context signal                monitoring toggle → master gain only
 ```
 
-### Still Export Flow
+### Hold PlayScript with Loop Clip (commit)
 
 ```
-User clicks Export Still in demo
-    ↓
-Demo calls captureStill(engine, { source: 'display', mimeType: 'image/png' })
-    ↓
-Capture reads the live display canvas
-    ↓
-Browser download in standalone demo
-    ↓ future editor
-Transport returns a cache manifest entry for the still image
-    ↓
-Editor compositor drawImage(cachedStill)
+Scripts panel (mode=hold, cycle=N, repeat=R, colorOverride?)
+        ↓
+useRotoPlayScriptController → createRotoPlayScriptController.confirm()
+        ↓ requestAuthority (unchanged)
+renderRotoPlayScriptFrames(mode:'hold', colorOverride)   ← staticStrokeSchedule + recolor clone
+        ↓ staged N frames (source cycle only — NOT N×R)
+commit(publication, expectedRevision) → finalizeProposal (single authority)
+        ↓ semantic delta: play-script-hold { sourceKeyIds[N], loopClip{repeat} }
+durable document: N real keys + 1 loop clip → revision bump → undo snapshot
+        ↓
+projectPhysicPaintRotoPhysicalTimeline: loop occurrences projected to
+min(start + N×R, nextClipStart, capacity), half-open
+        ↓
+WorkflowStrip filmstrip capsule: [N source cells][hatched ×R band][Cycle 5f × 5 = 25f]
 ```
-
-### Frame Sequence Export Flow
-
-```
-User chooses frame range/fps in demo
-    ↓
-Demo creates AnimationPlayer(engine)
-    ↓
-AnimationPlayer locks input and controls frame rendering
-    ↓
-onFrame(frameIndex, engine.getDisplayCanvas())
-    ↓
-Capture frame blob/image data
-    ↓
-Write/download sequence + manifest in demo
-    ↓ future editor
-Transport returns PhysicPaintCacheManifest
-    ↓
-Editor maps timeline frame → cached PNG path → existing image cache/compositor
-```
-
-### Future Editor Transport Flow
-
-```
-Editor physical paint layer selected
-    ↓
-Editor opens standalone paint window with session path/id
-    ↓
-Standalone app loads PhysicPaintSession
-    ↓
-User paints interactively in standalone window
-    ↓
-Standalone exports still/sequence cache on save/commit
-    ↓
-Transport sends manifest to editor
-    ↓
-Editor invalidates physical-paint layer cache range
-    ↓
-PreviewRenderer/exportRenderer composite cached frames as image sequence layer
-```
-
-### State Management
-
-```
-Demo signals own UI state only:
-  selected tool, control panel values, export progress, diagnostics visibility
-
-EfxPaintEngine owns simulation state:
-  typed arrays, canvases, intervals, stroke list, paper textures, undo stack
-
-Session/export modules own serializable boundaries:
-  session JSON, capture options, frame cache manifest, transport message types
-```
-
-Do not mirror engine internals into Preact signals. The demo should call engine setters (`setBrushSize`, `setWaterAmount`, `setPhysicsStrength`, etc.) and store only UI control values needed to render panels.
-
-## Integration Points
-
-### Internal Boundaries
-
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| Demo UI ↔ `EfxPaintCanvas` | Preact props and `onEngineReady` | Already exists; should remain the primary host seam. |
-| Demo controls ↔ `EfxPaintEngine` | Direct public method calls | Add missing getters/events only if needed for diagnostics/export. |
-| `EfxPaintEngine` ↔ capture helpers | `getDisplayCanvas()` / `getCanvas()` | Already exists and is the correct still capture seam. |
-| `AnimationPlayer` ↔ sequence export | `onFrame(frameIndex, canvas)` | Already exists; extend carefully for async capture/backpressure if needed. |
-| Session save/load ↔ engine | `engine.save()` / `engine.load()` | Wrap in versioned `PhysicPaintSession`; avoid demo-only format. |
-| Future standalone window ↔ editor | Typed transport messages | Define now in `src/transport/protocol.ts`; implement runtime later. |
-| Future editor compositor ↔ output cache | Cache manifest + image paths | Editor should consume PNG/still/frame-sequence cache, not engine strokes. |
-
-### Proposed Future Transport/Cache Contracts
-
-| Contract | Shape | Purpose |
-|----------|-------|---------|
-| `PhysicPaintSession` | Versioned JSON with `SerializedProject`, dimensions, fps/range defaults | Reopen standalone paint state. |
-| `PhysicPaintCacheManifest` | Session id, dimensions, fps, frame range, frame file paths, still path, content hash/version | Let editor know what cached outputs exist and what timeline frames they cover. |
-| `PhysicPaintTransportMessage` | Discriminated union of open/export/progress/complete/error messages | Later Tauri/browser-window IPC seam. |
-| `CaptureStillOptions` | Source canvas, mime type, background policy | Reusable still export from the live engine. |
-| `CaptureSequenceOptions` | fps, frame range, naming, background policy | Reusable frame-sequence export from `AnimationPlayer`. |
-
-Recommended manifest shape:
-
-```typescript
-export interface PhysicPaintCacheManifest {
-  schema: 'efx-physic-paint-cache'
-  version: 1
-  sessionId: string
-  generatedAt: string
-  canvas: { width: number; height: number; fps: number }
-  range: { start: number; end: number }
-  background: 'transparent' | 'white' | 'paper'
-  still?: { frame: number; path: string; mimeType: 'image/png' }
-  frames: Array<{ frame: number; path: string; mimeType: 'image/png' }>
-  contentHash?: string
-}
-```
-
-## New vs Modified Files
-
-### New Files
-
-| File | Purpose | Phase |
-|------|---------|-------|
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/vite.demo.config.ts` | Vite config for standalone demo app. | Phase 1 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/demo/index.html` | Browser entry for demo. | Phase 1 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/demo/src/main.tsx` | Preact mount entry. | Phase 1 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/demo/src/App.tsx` | Demo shell, layout, panels. | Phase 1 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/demo/src/components/PaintSurface.tsx` | Engine host and lifecycle. | Phase 1 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/demo/src/components/BrushControls.tsx` | Tool and brush settings UI. | Phase 2 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/demo/src/components/SessionPanel.tsx` | Save/load JSON session UI. | Phase 3 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/demo/src/components/ExportPanel.tsx` | Still/sequence export UI. | Phase 4 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/demo/src/components/DiagnosticsPanel.tsx` | Runtime diagnostics and validation status. | Phase 2 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/demo/src/state/demoState.ts` | Demo-only Preact signals. | Phase 1 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/demo/src/styles.css` | Demo-only styling. | Phase 1 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/demo/public/papers/*` | Paper texture fixtures. | Phase 2 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/session/types.ts` | Session and cache manifest contracts. | Phase 3 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/session/serialize.ts` | Session envelope save/load helpers. | Phase 3 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/session/index.ts` | Session public exports. | Phase 3 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/export/capture.ts` | Still capture helpers from live canvases. | Phase 4 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/export/sequence.ts` | AnimationPlayer-driven sequence capture helpers. | Phase 4 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/export/index.ts` | Export helper public exports. | Phase 4 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/transport/protocol.ts` | Future editor/window message types. | Phase 5 |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/transport/index.ts` | Transport type public exports. | Phase 5 |
-
-### Modified Files
-
-| File | Change | Reason |
-|------|--------|--------|
-| `/Users/lmarques/Dev/efx-motion-editor/package.json` | Change root `dev:paint` from watch-only build to standalone demo command, e.g. `pnpm --filter @efxlab/efx-physic-paint dev`; optionally add `build:paint`. | Current `dev:paint` runs `tsup --watch`, which proves library build but not a runnable app/window. |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/package.json` | Add `dev`, `demo`, or `dev:demo` script using Vite; keep `build`, `dev:watch`, `check`; add dev deps `vite`, `@preact/preset-vite` if not inherited intentionally. | Make package runnable/testable as standalone. |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/index.ts` | Export session/export/transport types and helpers once stable. | Future editor can import contracts without reaching into internals. |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/preact.tsx` | Optional: add `onEngineDestroy`, `onEngineError`, `initialProject/session`, and CSS class/style passthrough. | Demo and future window need robust lifecycle handling. |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/engine/EfxPaintEngine.ts` | Minimal additions only: state snapshot/getters, explicit flush/capture readiness, maybe event callback hooks. Do not rewrite as headless batch renderer. | Export and diagnostics need stable read seams from the live engine. |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/animation/AnimationPlayer.ts` | Optional: allow async `onFrame`/backpressure or a `captureFrame` mode if browser blob creation falls behind. | Prevent sequence export from dropping frames or racing canvas updates. |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/tsup.config.ts` | Add public entrypoints such as `session`, `export`, `transport` only if consumers should import subpaths. | Keeps package API explicit. |
-| `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/README.md` | Update stale API examples and document standalone demo command. | Current README references old constructor/API names and says `pnpm dev` starts a demo that does not yet exist. |
-
-### Files to Avoid Modifying Early
-
-| File/Area | Why |
-|-----------|-----|
-| `/Users/lmarques/Dev/efx-motion-editor/app/src/**` | This milestone should prove standalone first; editor integration comes after seams are validated. |
-| Editor `paintStore`/`previewRenderer` | Do not revive the failed adapter path. Future integration should consume cached stills/sequences. |
-| Generated `packages/efx-physic-paint/dist/**` | Build output only; regenerate through `pnpm --filter @efxlab/efx-physic-paint build`. |
-
-## Suggested Build Order
-
-### Phase 1: Demo App Skeleton and Workspace Commands
-
-1. Add `vite.demo.config.ts`, `demo/index.html`, `demo/src/main.tsx`, `demo/src/App.tsx`, `demo/src/styles.css`.
-2. Add `demo/src/components/PaintSurface.tsx` using `EfxPaintCanvas` and `onEngineReady`.
-3. Modify `packages/efx-physic-paint/package.json` with a real `dev` or `dev:demo` script.
-4. Modify root `package.json` so `pnpm dev:paint` runs the standalone demo instead of `tsup --watch`.
-5. Keep `dev:watch` for library development and `build` for tsup.
-
-**Gate:** `pnpm dev:paint` starts a browser demo that displays a paint surface and accepts pointer input. Do not run the server in this agent context because project instructions say the user runs servers locally.
-
-### Phase 2: Control Surface and Engine Diagnostics
-
-1. Add brush/tool controls for current public engine setters: `setTool`, `setBrushSize`, `setBrushOpacity`, `setBrushPressure`, `setWaterAmount`, `setDrySpeed`, `setEdgeDetail`, `setPickup`, `setEraseStrength`, `setPhysicsStrength`, `setViscosity`, `setPhysicsMode`, `setLocalSpreadStrength`, `setColorHex`, `setBgMode`, `setPaperGrain`, `setEmbossStrength`, `setWetPaper`, `startPhysics`, `stopPhysics`, `forceDry`, `undo`, `clear`.
-2. Add paper fixture loading under demo public assets.
-3. Add diagnostics: canvas size, selected tool, stroke count, physics running, export readiness. If getters are missing, add minimal engine getters rather than duplicating engine state externally.
-4. Update README with accurate demo command and current API examples.
-
-**Gate:** User can test the core physics paint behavior interactively without opening EFX Motion Editor.
-
-### Phase 3: Session Save/Load Seam
-
-1. Add `src/session/types.ts` with `PhysicPaintSession` and `PhysicPaintCacheManifest`.
-2. Add `src/session/serialize.ts` helpers wrapping `engine.save()`/`engine.load()`.
-3. Add demo `SessionPanel` for download/upload of session JSON.
-4. Export session contracts from `src/index.ts` or a subpath if desired.
-
-**Gate:** A standalone paint session can be saved, reloaded, and continue painting. This proves the future editor can hand off/reopen a physical paint layer session.
-
-### Phase 4: Still and Sequence Export
-
-1. Add `src/export/capture.ts` for live canvas still capture.
-2. Add `src/export/sequence.ts` using `AnimationPlayer` and `onFrame` capture.
-3. Add `ExportPanel` to download a still PNG and a small frame sequence or manifest.
-4. If frame capture races with animation timing, modify `AnimationPlayer` to await async frame capture before advancing.
-
-**Gate:** Standalone app can produce inspectable stills and frame sequences suitable for future cached compositing.
-
-### Phase 5: Transport Protocol Types and Future Editor Cache Contract
-
-1. Add `src/transport/protocol.ts` with discriminated union messages.
-2. Ensure export helpers can produce `PhysicPaintCacheManifest`.
-3. Document expected future editor behavior: open window/session, receive manifest, cache paths, draw cached frames.
-4. Do not wire Tauri multi-window IPC yet unless the roadmap explicitly expands this milestone.
-
-**Gate:** Roadmap has concrete integration seams without committing to a brittle runtime implementation.
-
-### Phase 6: Package Hygiene and Validation
-
-1. Type-check the package with `pnpm --filter @efxlab/efx-physic-paint check`.
-2. Build the library with `pnpm --filter @efxlab/efx-physic-paint build`.
-3. Keep the demo build separate if desired, e.g. `pnpm --filter @efxlab/efx-physic-paint build:demo`.
-4. Confirm root `pnpm build` remains library build then editor build.
-
-**Gate:** Standalone demo exists without breaking the publishable package or editor workspace dependency.
-
-## Scaling Considerations
-
-| Scale / Concern | Architecture Adjustment |
-|-----------------|-------------------------|
-| Demo proof at 1000×650 | Current engine dimensions and dual-canvas model are fine. Focus on UI and export correctness. |
-| 1280×720 target window | Use responsive CSS around fixed-resolution engine canvas; expose dimensions in demo controls only after baseline works. |
-| 1920×1080 sessions | Be careful with typed-array memory: engine allocates many `Float32Array` buffers proportional to pixel count. Keep one live engine per standalone window. |
-| Long frame sequences | Stream/capture one frame at a time and produce a manifest. Do not retain every frame canvas in memory. |
-| Future editor playback | Editor should play cached PNG/frame files through its existing image cache/compositor. It should not run the physics engine on every preview frame. |
-| Future export | If cache is valid, export uses cached physical-paint frames. If dirty, standalone app/window should regenerate cache before editor export consumes it. |
-
-### Scaling Priorities
-
-1. **First bottleneck: browser canvas capture and frame sequence memory.** Fix by streaming blobs/files and keeping only a manifest in memory.
-2. **Second bottleneck: engine buffer size at high resolutions.** Fix by one engine per window, explicit destroy, and resolution changes that recreate the engine intentionally.
-3. **Third bottleneck: cache invalidation between editor and standalone.** Fix with session version/content hash/dirty range in the manifest rather than ad hoc file naming.
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Reviving the Headless Adapter / Batch Renderer
+### Anti-Pattern 1: Per-frame audio position correction
 
-**What people do:** Add `renderFromStrokes(strokes)` and have the editor call it for preview/export frames.
+**What people do:** Send `seek` commands from the paint cursor to the audio engine every frame tick.
+**Why it's wrong:** Event latency jitter becomes audible drift/stutter; it also fights the AudioContext clock, which is the only accurate timebase.
+**Do this instead:** Schedule the whole cue set once per play/seek against `AudioContext.currentTime` (existing `playDelayed` pattern); the visual cursor is the thing that drifts, and it already chases wall-clock.
 
-**Why it's wrong:** The project already learned this approach kills physics quality and becomes O(n²). It bypasses the interactive wet/dry timing that makes the engine valuable and duplicates rendering ownership between editor and engine.
+### Anti-Pattern 2: Loop occurrences as materialized frames or cache entries
 
-**Do this instead:** Run physics paint as a standalone interactive app/window. Capture the resulting stills/sequences and return cache manifests to the editor.
+**What people do:** Expand `5f × 5` into 25 staged frames at commit time "so the rest of the pipeline doesn't change."
+**Why it's wrong:** Violates the locked spec (no duplicated durable assets), breaks "edit source → all occurrences update," inflates the cache/sidecar footprint, and makes repeat-count edits a re-render.
+**Do this instead:** Durable loop clip + modulo resolution at projection/render time; occurrences reuse source payloads.
 
-### Anti-Pattern 2: Demo-Only Save Format
+### Anti-Pattern 3: Importing main-window audio singletons into the paint window
 
-**What people do:** Let the demo download whatever `engine.save()` returns and later invent a different editor session format.
+**What people do:** `import { audioEngine } from '../../../lib/audioEngine'` inside the paint surface and call it directly.
+**Why it's wrong:** Both windows load the same bundle but have separate JS contexts; bypassing the bridge loses the revision guard and the read-only contract, and invites doubled monitoring.
+**Do this instead:** Bridge-carried context payload + paint-local engine in `components/physic-paint/audio/`; keep `lib/audioEngine.ts` main-window-only.
 
-**Why it's wrong:** The future transport needs dimensions, fps/range, background/export policy, and cache metadata. A demo-only format creates immediate migration work.
+### Anti-Pattern 4: Mutating the progressive schedule module for hold mode
 
-**Do this instead:** Introduce a versioned `PhysicPaintSession` envelope now. Store `SerializedProject` inside it.
+**What people do:** Add `if (mode === 'hold')` branches inside `buildProgressiveStrokeSchedule`/`getProgressiveFrameStrokes`.
+**Why it's wrong:** That module is regression-locked progressive behavior (package-level tests); branching it risks the spec stop condition "Progressive PlayScript output changes unexpectedly."
+**Do this instead:** Separate `staticStrokeSchedule.ts` with its own tests; add an equivalence test asserting default progressive output is unchanged.
 
-### Anti-Pattern 3: Mirroring Engine State in Preact Signals
+### Anti-Pattern 5: Timing-hack hydration or warning-filter build hygiene
 
-**What people do:** Copy engine internals into demo signals and try to keep UI state and engine state synchronized bidirectionally.
+**What people do:** `setTimeout`/polling to fix Scripts hydration; warning filters or fake lazy imports to satisfy Vite's 500 kB default.
+**Why it's wrong:** Both are explicitly forbidden by the locked spec; they mask races and invite silent bundle growth.
+**Do this instead:** Consume the exact authoritative project-context event (existing `PHYSIC_PAINT_PROJECT_CONTEXT_EVENT` flow); set `chunkSizeWarningLimit: 1100` with documented desktop rationale and correct only proven-ineffective mixed imports, preserving Tauri/browser runtime guards and cycle-breaking dynamic imports involving stores/bridge modules.
 
-**Why it's wrong:** The engine already owns mutable simulation state, intervals, typed arrays, and stroke recording. Mirroring creates stale UI and synchronization bugs.
+## Integration Points (new vs modified, explicit)
 
-**Do this instead:** Store demo control values in signals, call engine setters, and add small engine getters/events only for diagnostics.
+### Internal Boundaries
 
-### Anti-Pattern 4: Coupling Standalone Demo to `app/` Internals
+| Boundary | Communication | New/Modified | Notes |
+|----------|---------------|--------------|-------|
+| main `audioStore` → paint window | Tauri event `physic-paint:audio-preview-context` (revisioned) + launch payload | **New** | Follows `PHYSIC_PAINT_PROJECT_CONTEXT_EVENT` emission pattern (physicPaintBridge.ts ~827) |
+| paint playback → audio preview | ports-style callbacks on `useRotoCachedPlayback` (start/stop/seek/loop) | **Modified** | No direct store imports in the hook; keep the 38.1 signals-boundary discipline |
+| paint window close → preview engine | Studio close path → `dispose()` | **New** | Cleanup test: no leaked AudioContext, no playing sources |
+| Scripts UI → PlayScript controller | extended ports (`applicationMode`, `colorOverride`, loop params) | **Modified** | Controller/commit authority unchanged |
+| renderer → package animation | `staticStrokeSchedule.ts` export via `@efxlab/efx-physic-paint/animation` alias | **New** | Alias already exists in `app/vite.config.ts` resolve.alias |
+| loop clips → physical document | new durable member + parsers + revision | **Modified** | `.mce` schema bump; clean break (no legacy migration per project convention) |
+| loop clips → timeline strip | `projectPhysicPaintRotoPhysicalTimeline` cell projection → `useRotoTimelineModel` → `PhysicsPaintWorkflowStrip` capsule | **Modified** | Filmstrip rendering is view-only; resolution stays in the resolver |
+| release preflight → icons | existing inline node validation in `scripts/macos-release.sh` | **Unmodified** | Regenerate `app/src-tauri/icons/*` via `pnpm tauri icon SPECS/efxmotioneditor-icon-2.png`; preflight already independent of SPECS |
+| build seam → chunk budget | `app/src/viteBuild.test.ts` extended to assert resolved `chunkSizeWarningLimit === 1100` | **Modified** | Export a resolved-config helper from `vite.config.ts`; no hash/count-dependent assertions |
 
-**What people do:** Import editor stores, preview renderer, Tauri APIs, or paint sidecar code into the package demo.
+## Suggested Build Order (answers question d)
 
-**Why it's wrong:** It prevents the package from staying publishable/testable and drags the failed integration complexity back into the proof milestone.
+```
+Phase 0  Scripts auto-hydration quick fix        [blocking; touches bridge context flow]
+Phase 1  Icon regeneration + build hygiene       [independent of all feature code]
+Phase 2  Audio preview bridge                    [needs only Patterns 1+2; independent of PlayScript]
+Phase 3  PlayScript controls (mode + color)      [renderer/controller; no model change yet]
+Phase 4  Hold renderer + LoopClip model          [deepest change; needs Phase 3's hold mode]
+Phase 5  Integrated UAT + signed release         [all gates green]
+```
 
-**Do this instead:** Keep package demo browser-only. Define transport/cache contracts as plain serializable types.
+**Ordering rationale:**
+- **0 before everything:** locked by spec; also de-risks the bridge project-context event path that Phase 2's audio context emitter imitates.
+- **1 early and parallel-safe:** touches only `app/src-tauri/icons/`, `vite.config.ts`, `viteBuild.test.ts` — zero overlap with feature code; gets release-blocking surfaces validated while features proceed.
+- **2 before 3/4:** audio is self-contained (bridge + new engine + one shared pure module); landing it before the Roto model churn keeps UAT surfaces separable and matches the milestone schedule (08-07→08-12 audio, 08-13→08-17 controls, 08-18→08-23 hold/loop).
+- **3 before 4:** hold-mode rendering and color override are renderer-level and testable against real-key commits alone; LoopClip persistence/resolution (4) then builds on proven hold output instead of landing both halves of static/hold at once.
+- **Hard dependency:** Phase 4's filmstrip capsule needs the resolver projection from the same phase — do not split capsule UI into Phase 3.
 
-### Anti-Pattern 5: Exporting Only the Dry Canvas
+## Scaling Considerations
 
-**What people do:** Capture `getCanvas()` because it is the base canvas and ignore `getDisplayCanvas()`.
+Not user-count scaling (single-user desktop); the real constraints are frame counts and asset weight:
 
-**Why it's wrong:** The display canvas includes wet layer compositing, cursor/preview concerns depending on timing, and visible live paint. Capturing the wrong canvas can miss current wet visual state.
-
-**Do this instead:** Default still/sequence export to `getDisplayCanvas()` after ensuring cursor/preview overlays are not included or are suppressed during export. Use `getCanvas()` only for explicit dry-layer diagnostics.
-
-## Roadmap Implications
-
-Recommended phase structure for the milestone:
-
-1. **Standalone Demo Skeleton** - Establish `pnpm dev:paint` as a real runnable Vite/Preact app around the existing package.
-   - Addresses: runnable app/window requirement.
-   - Avoids: editor coupling and adapter relapse.
-
-2. **Interactive Tooling and Diagnostics** - Expose current engine capabilities through controls and panels.
-   - Addresses: live interactive physics paint validation.
-   - Avoids: building export before the engine can be manually evaluated.
-
-3. **Session Seam** - Create a versioned standalone session envelope.
-   - Addresses: future editor handoff and reopenability.
-   - Avoids: demo-only JSON dead end.
-
-4. **Still/Sequence Export Seam** - Capture live engine output and produce a cache manifest.
-   - Addresses: editor cached-frame integration path.
-   - Avoids: headless re-rendering in the editor.
-
-5. **Transport Contract Documentation/Types** - Add message/manifest types without runtime editor integration.
-   - Addresses: roadmap clarity for the next milestone.
-   - Avoids: premature Tauri IPC/window complexity.
-
-6. **Validation and Package Hygiene** - Type-check/build package and update README.
-   - Addresses: monorepo stability and developer workflow.
+| Concern | Current behavior | v0.9.0 impact | Mitigation |
+|---------|------------------|---------------|------------|
+| Roto cache footprint | PNG sidecars per real key; compression deferred from v0.8.0 | Loop clips add zero sidecars — this is the spec's point | Keep occurrences payload-free; revisit compression separately |
+| Audio decode cost in paint window | n/a | One decode per track per session | Decode lazily on first play, not at launch; non-blocking warning on missing assets |
+| Hold commit size | Progressive commits bounded by `PHYSIC_PAINT_MAX_APPLY_FRAMES = 600` | Hold cycle bounded by cycle length, NOT requested duration | Enforce cycle-length capacity check at authority time; repeats are free |
+| Bundle size | entry chunk near warning threshold | 1100 budget documented | Fixed budget + review before raising; production bundle guard remains the correctness gate |
 
 ## Sources
 
-- `/Users/lmarques/Dev/efx-motion-editor/.planning/PROJECT.md` — v0.8.0 active requirements, constraints, and explicit exclusion of failed headless adapter approach.
-- `/Users/lmarques/Dev/efx-motion-editor/.planning/MILESTONES.md` — v0.7.0 post-milestone context and abandoned engine adapter phases.
-- `/Users/lmarques/Dev/efx-motion-editor/package.json` — root pnpm scripts; current `dev:paint` is watch-only and should become runnable demo command.
-- `/Users/lmarques/Dev/efx-motion-editor/pnpm-workspace.yaml` — workspace layout includes `app` and `packages/*`.
-- `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/package.json` — package exports/scripts; lacks runnable Vite demo command.
-- `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/index.ts` — current public library entrypoint.
-- `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/preact.tsx` — current Preact wrapper and lifecycle seam.
-- `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/engine/EfxPaintEngine.ts` — interactive engine facade, live canvas capture methods, animation hooks, save/load.
-- `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/animation/AnimationPlayer.ts` — frame-based replay and `onFrame` capture hook.
-- `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/src/types.ts` — engine config, brush, stroke, serialized project types.
-- `/Users/lmarques/Dev/efx-motion-editor/packages/efx-physic-paint/tsup.config.ts` — current library build entrypoints.
-- `/Users/lmarques/Dev/efx-motion-editor/app/package.json` — editor consumes `@efxlab/efx-physic-paint` via workspace dependency; editor should remain a future cached-output consumer.
+All findings from direct repository inspection (HIGH confidence):
+
+- `app/src/lib/physicPaintBridge.ts` — event constants, launch context construction (line 1087), project-context emission (~827), seek-frame listen branch (~966), request/result listener patterns
+- `app/src/types/physicPaint.ts` — `PhysicPaintLaunchContext`, `PhysicPaintRotoAuthorityResult` (`canonicalStart`, `layerEndExclusive`, `physicalRevision`), `PhysicPaintRenderedFrame.appFrame` documented as editor timeline frame, `PHYSIC_PAINT_MAX_APPLY_FRAMES = 600`
+- `app/src/lib/audioEngine.ts` — Web Audio one-shot source pattern, `decode`, `play`/`playDelayed` fade scheduling
+- `app/src/lib/playbackEngine.ts` lines 192–224 — the frame→audio cue math to extract
+- `app/src/stores/audioStore.ts`, `app/src/types/audio.ts` — `AudioTrack` authoritative field set (offsetFrame/inFrame/outFrame/slipOffset/volume/muted/fades/order)
+- `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts` — canonical keyId/appFrame records, `PhysicPaintRotoPhysicalState/Document` (the loop-clip host), revision builder, fail-closed parsers
+- `app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts` — commit ports, phase machine, `expectedRevision` publication
+- `app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer.ts` — `RotoPlayScriptRenderInput`, engine staging, `flattenScriptStrokes` (recolor seam)
+- `packages/efx-physic-paint/src/animation/progressiveStrokeSchedule.ts`, `recordedStrokeMotion.ts` — progressive schedule + deterministic `transformRecordedStrokeForHeldPose`
+- `app/src/components/physic-paint/hooks/useRotoCachedPlayback.ts` — paint playback surface (`playbackTick`, start/stop/loop/fps)
+- `app/src/lib/physicPaintPersistence.ts` + `app/src/types/project.ts` — `roto_physical` MCE document + sidecar validation
+- `app/src-tauri/src/lib.rs:125` — paint window creation; `app/src-tauri/tauri.conf.json` — exact 5-entry `bundle.icon` array
+- `scripts/macos-release.sh` — preflight icon validation (~117–136: exact array, non-empty, ICNS magic) and packaged-app checks (~306–323: `CFBundleIconFile`, bundled ICNS)
+- `app/vite.config.ts` — build config, production bundle guard, `@efxlab/efx-physic-paint/animation` alias; `app/src/viteBuild.test.ts` — the production-build test seam
+- `SPECS/milestone-v0.9.0-plan.md` — locked ownership boundaries, stop conditions, delivery schedule
 
 ---
-*Architecture research for: standalone efx-physic-paint milestone*
-*Researched: 2026-06-08*
+*Architecture research for: EFX Motion Editor v0.9.0 — PlayScript workflow, EFX Paint audio preview, macOS identity*
+*Researched: 2026-08-03*
