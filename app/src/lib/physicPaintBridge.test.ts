@@ -15,12 +15,17 @@ import {
   handlePhysicPaintFrameSyncMessage,
   installPhysicPaintApplyListener,
   installPhysicPaintAudioContextPublisher,
+  installPhysicPaintAudioOwnershipListener,
   installPhysicPaintFrameSyncListener,
+  isPhysicPaintChildAudioClaimed,
   openPhysicPaintCanvas,
   PHYSIC_PAINT_APPLY_EVENT,
   PHYSIC_PAINT_APPLY_RESULT_EVENT,
   PHYSIC_PAINT_AUDIO_CONTEXT_EVENT,
+  PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT,
+  PHYSIC_PAINT_AUDIO_PLAYBACK_STATE_EVENT,
   PHYSIC_PAINT_LAUNCH_EVENT,
+  publishPhysicPaintAudioPlaybackState,
 } from './physicPaintBridge';
 
 const originalWindow = globalThis.window;
@@ -342,6 +347,62 @@ describe('physicPaintBridge', () => {
 
   it('exports the audio context event name for the push channel (D-01/D-02)', () => {
     expect(PHYSIC_PAINT_AUDIO_CONTEXT_EVENT).toBe('physic-paint:audio-context');
+  });
+
+  it('exports the audio playback-state and ownership event names (41-04, D-05)', () => {
+    expect(PHYSIC_PAINT_AUDIO_PLAYBACK_STATE_EVENT).toBe('physic-paint:audio-playback-state');
+    expect(PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT).toBe('physic-paint:audio-ownership');
+  });
+
+  it('publishes the main playback state with the project-context publish shape (D-05)', async () => {
+    await publishPhysicPaintAudioPlaybackState(true);
+    const dispatch = window.dispatchEvent as ReturnType<typeof vi.fn>;
+    const events = dispatch.mock.calls
+      .map(([event]) => event)
+      .filter((event): event is CustomEvent => event instanceof CustomEvent && event.type === PHYSIC_PAINT_AUDIO_PLAYBACK_STATE_EVENT);
+    expect(events.length).toBe(1);
+    expect(events[0].detail).toEqual({ playing: true });
+  });
+
+  it('records child ownership claim/release in the main-side gate signal (D-05 symmetric guard)', async () => {
+    const unlisten = await installPhysicPaintAudioOwnershipListener();
+    try {
+      const addListener = window.addEventListener as ReturnType<typeof vi.fn>;
+      const custom = addListener.mock.calls.find(([name]) => name === PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT)?.[1] as (event: Event) => void;
+      const message = addListener.mock.calls.find(([name]) => name === 'message')?.[1] as (event: MessageEvent) => void;
+      expect(typeof custom).toBe('function');
+      expect(typeof message).toBe('function');
+      expect(isPhysicPaintChildAudioClaimed()).toBe(false);
+      custom(new CustomEvent(PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, { detail: { claim: true } }));
+      expect(isPhysicPaintChildAudioClaimed()).toBe(true);
+      // Origin-checked postMessage path: a foreign origin is ignored.
+      message({ origin: 'https://foreign.example', data: { type: PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, payload: { claim: false } } } as MessageEvent);
+      expect(isPhysicPaintChildAudioClaimed()).toBe(true);
+      message({ origin: 'http://localhost:1420', data: { type: PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, payload: { claim: false } } } as MessageEvent);
+      expect(isPhysicPaintChildAudioClaimed()).toBe(false);
+      // Invalid payloads are ignored (state unchanged).
+      custom(new CustomEvent(PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, { detail: { claim: 'yes' } }));
+      expect(isPhysicPaintChildAudioClaimed()).toBe(false);
+    } finally {
+      unlisten();
+    }
+  });
+
+  it('a fresh child launch clears any stale audio claim left by a previous window (D-05 lifecycle)', async () => {
+    const unlisten = await installPhysicPaintAudioOwnershipListener();
+    try {
+      const addListener = window.addEventListener as ReturnType<typeof vi.fn>;
+      const custom = addListener.mock.calls.find(([name]) => name === PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT)?.[1] as (event: Event) => void;
+      custom(new CustomEvent(PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, { detail: { claim: true } }));
+      expect(isPhysicPaintChildAudioClaimed()).toBe(true);
+      const open = vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+      const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 4 });
+      expect(result.ok).toBe(true);
+      expect(isPhysicPaintChildAudioClaimed()).toBe(false);
+      open.mockRestore();
+    } finally {
+      unlisten();
+    }
   });
 
   it('(1) publishes a revisioned audio context push on every tracks change with strictly increasing revisions (D-02)', () => {

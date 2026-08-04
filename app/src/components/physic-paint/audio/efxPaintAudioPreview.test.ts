@@ -1,12 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { audioEngine } from '../../../lib/audioEngine';
 import {
   applyRevisionedEfxPaintAudioPreview,
   parseEfxPaintAudioPreviewSection,
   resolveTrackPlayback,
 } from './efxPaintAudioPreviewContext';
-import { efxPaintAudioMonitor, handleEfxPaintAudioContextEvent } from './efxPaintAudioMonitor';
-import { efxPaintAudioPreviewStore } from './efxPaintAudioPreviewStore';
+import { efxPaintAudioMonitor, handleEfxPaintAudioContextEvent, resumeEfxPaintAudioAtLiveCursor } from './efxPaintAudioMonitor';
+import { audioPreviewEnabled, efxPaintAudioPreviewStore } from './efxPaintAudioPreviewStore';
+import { EFX_PAINT_AUDIO_SUPPRESSED_NOTE, efxPaintAudioOwnership } from './efxPaintAudioOwnership';
 
 // Controllable Web Audio clock: the monitor captures ctx.currentTime at each
 // seek-aligned start and compares against it in the throttled drift check
@@ -623,5 +624,153 @@ describe('push-on-change revisioned updates (41-03 Task 2: D-02/D-03, AUDIO-04 e
     expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
     expect(mockedAudioEngine.stopAll).not.toHaveBeenCalled();
     expect(efxPaintAudioMonitor.getAnchorAppFrame()).toBe(72);
+  });
+});
+
+describe('first-player-wins ownership guard (41-04 Task 1: D-05..D-07, AUDIO-06)', () => {
+  // Ownership state is module-scope session state — reset it around every
+  // test so a held claim, a playing main window, a suppression, or a muted
+  // toggle can never leak into another describe (later suites exercise
+  // playAtCursor and must see the default unclaimed/unmuted state).
+  function resetOwnership() {
+    efxPaintAudioOwnership.noteVisualStop();
+    efxPaintAudioOwnership.noteMainPlaybackState(false);
+    efxPaintAudioOwnership.releaseAudio();
+    efxPaintAudioOwnership.configure({ statusPublisher: null, claimSender: null, resumeHandler: resumeEfxPaintAudioAtLiveCursor });
+    audioPreviewEnabled.value = true;
+    efxPaintAudioMonitor.stop();
+  }
+
+  beforeEach(() => {
+    resetOwnership();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    fakeAudioContext.currentTime = 0;
+  });
+
+  afterEach(() => {
+    resetOwnership();
+  });
+
+  it('(a) main playing blocks the child audio start and publishes the suppressed note (D-05/D-06)', async () => {
+    const published: Array<string | null> = [];
+    const claims: boolean[] = [];
+    efxPaintAudioOwnership.configure({ statusPublisher: (note) => published.push(note), claimSender: (claim) => claims.push(claim) });
+    efxPaintAudioOwnership.noteMainPlaybackState(true);
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    // Suppressed start dispatches zero engine calls and claims nothing.
+    expect(mockedAudioEngine.ensureContext).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
+    expect(efxPaintAudioOwnership.isSuppressed()).toBe(true);
+    expect(claims).toEqual([]);
+    // D-06: suppression is never silent — the exact note, exactly once.
+    expect(EFX_PAINT_AUDIO_SUPPRESSED_NOTE).toBe('Audio playing in main editor');
+    expect(published).toEqual(['Audio playing in main editor']);
+    // A repeated Play attempt while still suppressed does not duplicate the note.
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    expect(published).toEqual(['Audio playing in main editor']);
+  });
+
+  it('(b) main stop auto-resumes at the current Paint cursor and clears the note (D-07)', async () => {
+    const published: Array<string | null> = [];
+    const claims: boolean[] = [];
+    efxPaintAudioOwnership.configure({ statusPublisher: (note) => published.push(note), claimSender: (claim) => claims.push(claim) });
+    efxPaintAudioOwnership.noteMainPlaybackState(true);
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288); // suppressed — zero dispatch
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    // Visual playback ticks advance the Paint cursor to 100 while suppressed.
+    efxPaintAudioMonitor.checkDrift(100, 288);
+    efxPaintAudioOwnership.noteMainPlaybackState(false);
+    // Auto-resume restarts monitoring at the CURRENT cursor (100), claims
+    // ownership, and clears the suppressed note.
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenCalledWith(
+      'track-1',
+      (24 + 12 + (100 - 48)) / 24,
+      expect.objectContaining({ id: 'track-1' }),
+      24,
+      // effectiveEnd = min(48 + (240 - 24), 288) = 264
+      (264 - 100) / 24,
+    );
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(true);
+    expect(efxPaintAudioOwnership.isSuppressed()).toBe(false);
+    expect(published).toEqual(['Audio playing in main editor', null]);
+    expect(claims).toEqual([true]);
+  });
+
+  it('(c) claim/release round-trip; a release for a non-held claim is a no-op (idempotent)', async () => {
+    const claims: boolean[] = [];
+    efxPaintAudioOwnership.configure({ claimSender: (claim) => claims.push(claim) });
+    expect(efxPaintAudioOwnership.isClaimHeld()).toBe(false);
+    efxPaintAudioOwnership.claimAudio();
+    efxPaintAudioOwnership.claimAudio(); // double claim is a no-op
+    expect(claims).toEqual([true]);
+    expect(efxPaintAudioOwnership.isClaimHeld()).toBe(true);
+    efxPaintAudioOwnership.releaseAudio();
+    expect(claims).toEqual([true, false]);
+    expect(efxPaintAudioOwnership.isClaimHeld()).toBe(false);
+    efxPaintAudioOwnership.releaseAudio(); // release without a held claim: no-op
+    expect(claims).toEqual([true, false]);
+  });
+
+  it('monitor.stop() releases the ownership claim through the single stop funnel (D-05 lifecycle)', async () => {
+    const claims: boolean[] = [];
+    efxPaintAudioOwnership.configure({ claimSender: (claim) => claims.push(claim) });
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    expect(claims).toEqual([true]);
+    efxPaintAudioMonitor.stop();
+    expect(claims).toEqual([true, false]);
+    efxPaintAudioMonitor.stop(); // second stop: no doubled release
+    expect(claims).toEqual([true, false]);
+  });
+
+  it('the child keeps monitoring when the main editor starts later (first-player-wins, claim held)', async () => {
+    efxPaintAudioOwnership.noteMainPlaybackState(false);
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288); // child starts first — claims
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(true);
+    vi.clearAllMocks();
+    // Main starts later: the child holds the claim, so its loop-wrap restart
+    // is NOT suppressed — the loser (main side, test (d)) suppresses instead.
+    efxPaintAudioOwnership.noteMainPlaybackState(true);
+    efxPaintAudioMonitor.notifyLoopWrap(48, 288);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+    expect(efxPaintAudioOwnership.isSuppressed()).toBe(false);
+  });
+
+  it('(e) toggle Off blocks the D-07 auto-resume (D-07 condition) and clears the stale note', async () => {
+    const published: Array<string | null> = [];
+    efxPaintAudioOwnership.configure({ statusPublisher: (note) => published.push(note) });
+    efxPaintAudioOwnership.noteMainPlaybackState(true);
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288); // suppressed, note published
+    expect(published).toEqual(['Audio playing in main editor']);
+    // The user mutes the session toggle while suppressed, then the main stops.
+    audioPreviewEnabled.value = false;
+    efxPaintAudioOwnership.noteMainPlaybackState(false);
+    // No auto-resume: zero engine dispatch, monitor stays silent.
+    expect(mockedAudioEngine.ensureContext).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
+    expect(efxPaintAudioOwnership.isSuppressed()).toBe(false);
+    // The note clears — the main editor is no longer playing, so "Audio
+    // playing in main editor" would be a stale status.
+    expect(published).toEqual(['Audio playing in main editor', null]);
   });
 });
