@@ -21,7 +21,7 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 ### v0.9.0 — Active
 
 - [x] **Phase 39: Scripts Auto-Hydration Fix** — Blocking prerequisite: saved-project scripts and Save Script appear automatically without manual Refresh, no timing hacks — **satisfied via quick task 260804-f2q with accepted native UAT (closed by verification 2026-08-04)**
-- [ ] **Phase 40: macOS Icon Regeneration + Build Hygiene** — Legible icon from the 794×794 alpha source, tracked generated icons stay release authority, documented 1100 kB chunk budget
+- [x] **Phase 40: macOS Icon Regeneration + Build Hygiene** — Legible icon from the 794×794 alpha source, tracked generated icons stay release authority, documented 1100 kB chunk budget (completed 2026-08-04)
 - [ ] **Phase 41: EFX Paint Audio Preview + Monitoring Toggle** — Read-only frame-synchronized main-editor audio monitoring inside EFX Paint with session-local toggle
 - [ ] **Phase 42: PlayScript Application Modes + Color Override** — Explicit progressive vs static/hold modes and application-time color override with clear Scripts panel UI
 - [ ] **Phase 43: Hold Loop Clips + Filmstrip Capsule** — Deterministic static/hold rendering with linked Loop Clips (cycle × repeat 1..∞) and filmstrip timeline visualization
@@ -288,7 +288,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39. Scripts Auto-Hydration Fix | v0.9.0 | 0/TBD | Not started | - |
-| 40. macOS Icon + Build Hygiene | v0.9.0 | 3/3 | In Progress|  |
+| 40. macOS Icon + Build Hygiene | v0.9.0 | 3/3 | Complete    | 2026-08-04 |
 | 41. EFX Paint Audio Preview | v0.9.0 | 0/TBD | Not started | - |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 0/TBD | Not started | - |
 | 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 0/TBD | Not started | - |

@@ -20,16 +20,16 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### macOS Release Identity
 
-- [ ] **ICON-01**: The macOS application icon is replaced using `SPECS/efxmotioneditor-icon-2.png` as design input (794×794 square alpha source used directly, no manual 1024 upscale), preserving the approved logo, typography, colors, rounded-square silhouette, and genuine alpha corners
-- [ ] **ICON-02**: The regenerated tracked icon set under `app/src-tauri/icons/` (32x32.png, 128x128.png, 128x128@2x.png, icon.icns, icon.ico) remains the release authority; release preflight does not depend on the ignored `SPECS/` path or exact source dimensions
-- [ ] **ICON-03**: Release-contract validation confirms every declared desktop icon exists and is non-empty, the ICNS has a valid signature, and the packaged `.app` declares and contains the expected icon resource — without altering bundle identity, signing, notarization, stapling, Gatekeeper, or downloaded-artifact verification
-- [ ] **ICON-04**: The new icon is legible at 16×16, 32×32, 64×64, 128×128, 256×256, and 512×512, and presents correctly in Finder, Dock, Applications, application switcher, and DMG (no placeholder, no unreadable prior icon)
+- [x] **ICON-01**: The macOS application icon is replaced using `SPECS/efxmotioneditor-icon-2.png` as design input (794×794 square alpha source used directly, no manual 1024 upscale), preserving the approved logo, typography, colors, rounded-square silhouette, and genuine alpha corners
+- [x] **ICON-02**: The regenerated tracked icon set under `app/src-tauri/icons/` (32x32.png, 128x128.png, 128x128@2x.png, icon.icns, icon.ico) remains the release authority; release preflight does not depend on the ignored `SPECS/` path or exact source dimensions
+- [x] **ICON-03**: Release-contract validation confirms every declared desktop icon exists and is non-empty, the ICNS has a valid signature, and the packaged `.app` declares and contains the expected icon resource — without altering bundle identity, signing, notarization, stapling, Gatekeeper, or downloaded-artifact verification
+- [x] **ICON-04**: The new icon is legible at 16×16, 32×32, 64×64, 128×128, 256×256, and 512×512, and presents correctly in Finder, Dock, Applications, application switcher, and DMG (no placeholder, no unreadable prior icon)
 
 ### Desktop Build Hygiene
 
-- [ ] **BUILD-01**: Vite build sets `chunkSizeWarningLimit: 1100` with a documented desktop rationale (packaged Tauri app, monitored entry-bundle budget, not a performance claim, not raised again without measurement)
-- [ ] **BUILD-02**: Only provably ineffective mixed static/dynamic imports are corrected — Tauri/browser runtime guards, genuine lazy chunks, and cycle-breaking dynamic imports are preserved; no global warning suppression; dependency-inversion cases reported as separately scoped work
-- [ ] **BUILD-03**: The production-build test seam verifies the resolved 1100 limit, HTML entry, non-empty local assets, Motion Canvas output, intentional chunk separation, and non-return of corrected mixed-import warnings — without depending on content hashes or exact chunk counts
+- [x] **BUILD-01**: Vite build sets `chunkSizeWarningLimit: 1100` with a documented desktop rationale (packaged Tauri app, monitored entry-bundle budget, not a performance claim, not raised again without measurement)
+- [x] **BUILD-02**: Only provably ineffective mixed static/dynamic imports are corrected — Tauri/browser runtime guards, genuine lazy chunks, and cycle-breaking dynamic imports are preserved; no global warning suppression; dependency-inversion cases reported as separately scoped work
+- [x] **BUILD-03**: The production-build test seam verifies the resolved 1100 limit, HTML entry, non-empty local assets, Motion Canvas output, intentional chunk separation, and non-return of corrected mixed-import warnings — without depending on content hashes or exact chunk counts
 
 ### EFX Paint Audio Preview (read-only)
 
@@ -105,13 +105,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HYDR-04 | Phase 39 | Complete |
 | HYDR-05 | Phase 39 | Complete |
 | HYDR-06 | Phase 39 | Complete |
-| ICON-01 | Phase 40 | Pending |
-| ICON-02 | Phase 40 | Pending |
-| ICON-03 | Phase 40 | Pending |
-| ICON-04 | Phase 40 | Pending |
-| BUILD-01 | Phase 40 | Pending |
-| BUILD-02 | Phase 40 | Pending |
-| BUILD-03 | Phase 40 | Pending |
+| ICON-01 | Phase 40 | Complete |
+| ICON-02 | Phase 40 | Complete |
+| ICON-03 | Phase 40 | Complete |
+| ICON-04 | Phase 40 | Complete |
+| BUILD-01 | Phase 40 | Complete |
+| BUILD-02 | Phase 40 | Complete |
+| BUILD-03 | Phase 40 | Complete |
 | AUDIO-01 | Phase 41 | Pending |
 | AUDIO-02 | Phase 41 | Pending |
 | AUDIO-03 | Phase 41 | Pending |
@@ -133,6 +133,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REL-03 | Phase 44 | Pending |
 
 **Coverage:**
+
 - v0.9.0 requirements: 32 total
 - Mapped to phases: 32 (Phases 39-44)
 - Unmapped: 0
