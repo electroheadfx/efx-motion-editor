@@ -2,7 +2,7 @@
 
 ## Overview
 
-EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience. v0.2.0 (Phases 8-14) extended the editor with keyframe animation, GPU blur, content overlays, transitions, and multi-format export. v0.3.0 (Phases 15-17) added audio import with waveforms and beat sync, GLSL shader effects and transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar. v0.4.0 (Phases 18-19) added After Effects-style canvas motion path editing and frame-by-frame paint/rotopaint layers with onion skinning. v0.5.0 (Phases 20-21) added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export. v0.6.0 (Phases 22-25) added stroke management, bezier path editing, and paint workflow UX improvements. v0.7.0 (Phases 26-33) converted to a pnpm monorepo and enhanced the current paint engine with a 3-mode system, inline color picker, wireframe overlay, and stroke animation. v0.8.0 (Phases 34-38.1) proved `packages/efx-physic-paint` as a standalone interactive physics paint app/window with a deterministic physical-frame Roto timeline, multi-select group operations, Roto Script Play fusion, and render-path performance.
+EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience. v0.2.0 (Phases 8-14) extended the editor with keyframe animation, GPU blur, content overlays, transitions, and multi-format export. v0.3.0 (Phases 15-17) added audio import with waveforms and beat sync, GLSL shader effects and transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar. v0.4.0 (Phases 18-19) added After Effects-style canvas motion path editing and frame-by-frame paint/rotopaint layers with onion skinning. v0.5.0 (Phases 20-21) added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export. v0.6.0 (Phases 22-25) added stroke management, bezier path editing, and paint workflow UX improvements. v0.7.0 (Phases 26-33) converted to a pnpm monorepo and enhanced the current paint engine with a 3-mode system, inline color picker, wireframe overlay, and stroke animation. v0.8.0 (Phases 34-38.1) proved `packages/efx-physic-paint` as a standalone interactive physics paint app/window with a deterministic physical-frame Roto timeline, multi-select group operations, Roto Script Play fusion, and render-path performance. v0.9.0 (Phases 39-44) restores automatic Scripts hydration, ships a legible macOS identity with explicit desktop build hygiene, adds read-only frame-synchronized audio preview inside EFX Paint, and delivers PlayScript static/hold application modes with color override and linked Hold Loop Clips with a filmstrip timeline capsule.
 
 ## Milestones
 
@@ -14,8 +14,104 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 - ✅ **v0.6.0 Various Enhancements** — Phases 22-25 (shipped 2026-04-03)
 - ✅ **v0.7.0 Monorepo & Paint Enhancements** — Phases 26-33 (shipped 2026-04-05)
 - ✅ **v0.8.0 Standalone Physics Paint** — Phases 34-38.1 (shipped 2026-08-01)
+- 🚧 **v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity** — Phases 39-44 (in progress, target release 2026-08-31)
 
 ## Phases
+
+### v0.9.0 — Active
+
+- [ ] **Phase 39: Scripts Auto-Hydration Fix** — Blocking prerequisite: saved-project scripts and Save Script appear automatically without manual Refresh, no timing hacks
+- [ ] **Phase 40: macOS Icon Regeneration + Build Hygiene** — Legible icon from the 794×794 alpha source, tracked generated icons stay release authority, documented 1100 kB chunk budget
+- [ ] **Phase 41: EFX Paint Audio Preview + Monitoring Toggle** — Read-only frame-synchronized main-editor audio monitoring inside EFX Paint with session-local toggle
+- [ ] **Phase 42: PlayScript Application Modes + Color Override** — Explicit progressive vs static/hold modes and application-time color override with clear Scripts panel UI
+- [ ] **Phase 43: Hold Loop Clips + Filmstrip Capsule** — Deterministic static/hold rendering with linked Loop Clips (cycle × repeat 1..∞) and filmstrip timeline visualization
+- [ ] **Phase 44: Integrated UAT + Signed Release** — All automated gates, packaged native UAT per spec, signed/notarized downloaded-artifact verification, publish 2026-08-31
+
+## Phase Details
+
+### Phase 39: Scripts Auto-Hydration Fix
+**Goal**: Saved-project scripts and Save Script are available automatically when EFX Paint opens a parent Paint layer — the hidden manual Refresh workaround is eliminated without timing hacks.
+**Depends on**: Nothing (first phase of milestone; blocking prerequisite for Phases 42-43)
+**Requirements**: HYDR-01, HYDR-02, HYDR-03, HYDR-04, HYDR-05, HYDR-06
+**Success Criteria** (what must be TRUE):
+  1. User opens a saved project containing durable project scripts, opens its Paint/Physics Paint layer, and sees existing script rows populate automatically without clicking Refresh
+  2. Save Script is enabled immediately when saved-project authority arrives and no library operation is busy
+  3. A genuinely unsaved project still shows `Save the project first.` and makes no persistence request
+  4. Closing and reopening EFX Paint hydrates exactly once per authoritative context — no duplicate scans/listeners, and stale context events from a replaced project or layer cannot populate rows
+  5. Manual Refresh remains available as an explicit rescan/recovery action, and Copy/Apply/Clear Buffer/Load+Apply/Play/rename/delete/selection/diagnostics/clipboard behavior and default-open accessibility are unchanged
+**Plans**: TBD
+**UI hint**: yes
+
+**Execution note:** This phase may be satisfied by the dedicated `/gsd-quick` per `SPECS/milestone-v0.9.0-plan.md` (completion gate). If the quick lands first with owned regression tests and accepted native UAT evidence, Phase 39 closes by verification instead of reimplementation. Any `setTimeout`/polling/`requestAnimationFrame` in the fix diff is automatic rejection (HYDR-06).
+
+### Phase 40: macOS Icon Regeneration + Build Hygiene
+**Goal**: The release presents a legible, recognizable macOS identity and an explicit, test-pinned desktop build policy.
+**Depends on**: Nothing (parallel-safe with Phase 39 — touches only icons, Vite config, build test seam, release preflight)
+**Requirements**: ICON-01, ICON-02, ICON-03, ICON-04, BUILD-01, BUILD-02, BUILD-03
+**Success Criteria** (what must be TRUE):
+  1. User recognizes EFX Motion Editor from the new icon in Finder, Dock, Applications, application switcher, and the mounted DMG — legible at 16×16 through 512×512 with genuine alpha corners, no placeholder, no unreadable prior icon
+  2. Release preflight validates the tracked generated icon set under `app/src-tauri/icons/` (non-empty entries, valid ICNS signature, packaged `.app` icon metadata) without depending on the ignored `SPECS/` path or exact source dimensions, and without altering bundle identity, signing, notarization, stapling, or Gatekeeper verification
+  3. Production build runs with `chunkSizeWarningLimit: 1100` backed by a documented desktop rationale (packaged Tauri app, monitored budget, not a performance claim, not raised again without measurement)
+  4. Only provably ineffective mixed static/dynamic imports are corrected — Tauri/browser runtime guards, genuine lazy chunks, and cycle-breaking imports preserved; dependency-inversion cases reported as separately scoped work
+  5. The production-build test seam verifies the resolved 1100 limit, HTML entry, non-empty local assets, Motion Canvas output, intentional chunk separation, and non-return of corrected mixed-import warnings — without content-hash or exact-chunk-count fragility
+**Plans**: TBD
+
+### Phase 41: EFX Paint Audio Preview + Monitoring Toggle
+**Goal**: Users hear the main editor's audio arrangement, frame-synchronized to the Paint cursor, while playing Paint/Roto frames inside EFX Paint — read-only, with a session-local monitoring toggle.
+**Depends on**: Phase 39 (reuses the proven exact-payload bridge handoff idiom for revisioned audio context)
+**Requirements**: AUDIO-01, AUDIO-02, AUDIO-03, AUDIO-04, AUDIO-05, AUDIO-06
+**Success Criteria** (what must be TRUE):
+  1. User hears the main editor's audio tracks at the correct Paint frame cursor position when playing in EFX Paint; main-editor muted tracks remain inaudible
+  2. Seek, pause, resume, loop, and stop stay synchronized with the Paint cursor without drift during sustained playback, and no doubled audio from duplicate engines ever occurs
+  3. User can silence monitoring with a session-local Audio Preview On/Off toggle without mutating main-editor track mute/volume state or export
+  4. Main-editor audio changes while EFX Paint is open arrive as revisioned bridge updates; a stale update never overwrites newer audio context
+  5. Missing audio assets surface a non-blocking warning, audio-preview failure never blocks Paint editing, and closing EFX Paint stops and releases all audio resources
+**Plans**: TBD
+
+**Entry artifact:** Locked frame→audio truth table (paint appFrame == main-editor global frame; per-track offset/trim/slip combinations) written and tested before implementation. Main editor remains sole authority for audio IDs, assets, offset, trim, volume, mute, fades, ordering, persistence, and export mixing.
+
+### Phase 42: PlayScript Application Modes + Color Override
+**Goal**: Users can apply PlayScripts progressively (unchanged existing behavior) or as static/hold, with an optional application-time color override, all clearly presented in the Scripts panel.
+**Depends on**: Phase 39 (Scripts panel hydration must be trustworthy before new controls land)
+**Requirements**: PLAY-01, PLAY-02, PLAY-03, PLAY-04
+**Success Criteria** (what must be TRUE):
+  1. User explicitly selects `progressive` (current accumulating behavior, unchanged with default options) or `static`/`hold` mode, independent of Roto interpolation and Script Motion
+  2. User can apply an optional override color that recolors paint strokes identically in both modes while erase strokes retain erase behavior and the reusable source script and its thumbnail remain byte-identical
+  3. The Scripts panel clearly shows progressive vs static/hold, original vs override color, Script Motion position/deformation controls, destination range, and generated-frame count
+  4. User can configure Hold Loop controls — source cycle frame count (min 1), repeat count (positive integer from 1), a separate infinity toggle — and see requested duration (`cycleLength × repeatCount`), effective duration after next-clip/parent-end boundary, and clear truncation status
+**Plans**: TBD
+**UI hint**: yes
+
+**Boundary note:** Interval and display conventions (half-open intervals, requested-vs-effective presentation) are locked in this phase so Phase 43's filmstrip and resolver share them. Static/hold schedule ships as a new package export; the regression-locked progressive module is never branched.
+
+### Phase 43: Hold Loop Clips + Filmstrip Capsule
+**Goal**: Static/hold mode materializes the complete script drawing deterministically on every destination frame, and linked Loop Clips replay a source cycle from 1 to infinity without duplicating durable source assets — visualized as a filmstrip capsule on the timeline.
+**Depends on**: Phase 42 (needs proven static/hold output and locked interval/display conventions)
+**Requirements**: HOLD-01, HOLD-02, HOLD-03, HOLD-04, HOLD-05, HOLD-06
+**Success Criteria** (what must be TRUE):
+  1. Every static/hold destination frame receives the complete script stroke set, supporting progressive-then-hold workflows on adjacent ranges, and generated keys remain paint content of the opened parent Paint layer composited as one resolved raster per frame by the main editor
+  2. Identical script, destination, and options produce identical output across save/reopen and cache regeneration — zero-variation produces a stable held drawing, nonzero variation is deterministic per frame, no random render-time jitter
+  3. Cancellation or failure never leaves a partial destination range; one Undo removes the accepted operation and Redo restores it, through the existing atomic commit path
+  4. A 5-frame cycle repeated 5 times resolves across 25 timeline frames while storing only 5 linked source frame assets; repeat-count and infinity edits never regenerate or duplicate the source cycle, and source-frame edits propagate to every linked occurrence
+  5. Next-clip priority truncates loops after complete or partial cycles with half-open interval boundaries; moving or removing the next clip re-expands effective duration without regenerating sources, and the filmstrip capsule shows the detailed source cycle, linked-repetition band, `Cycle Nf × R = Df` / `× ∞` badges, requested vs effective duration, and the label `Boucle raccourcie par le clip suivant` on truncation (the term `clip bloquant` never appears)
+**Plans**: TBD
+**UI hint**: yes
+
+**Boundary note:** Loop Clips persist as canonical linked loop regions in the existing physical-frame document authority. The exact persistence schema remains implementation research. v0.9.0 must not introduce a clean format break or discard existing v0.8.1 Paint projects; any required versioning or additive default must preserve open/save/reopen behavior. The clean multi-track format break remains reserved for v1.0.0. The capsule ships WITH the resolver in this phase — never split — because the filmstrip is a pure view of the resolver's outputs.
+
+### Phase 44: Integrated UAT + Signed Release
+**Goal**: v0.9.0 ships as a signed, notarized macOS release on 2026-08-31 with every automated gate and native packaged-app UAT step green and no release stop condition active.
+**Depends on**: Phases 39-43
+**Requirements**: REL-01, REL-02, REL-03
+**Success Criteria** (what must be TRUE):
+  1. All automated gates pass: `pnpm --dir app exec vitest run`, typecheck, `pnpm build`, cargo tests, release script syntax check and preflight
+  2. User-run packaged-app UAT passes every spec step: icon surfaces, hydration without Refresh, audio sync/seek/loop/stop without drift or doubling, toggle isolation, progressive apply, 5-frame cycle × 5 repeat badge and resolution, infinity to next clip, partial-cycle truncation label, next-clip move/remove re-expansion, color override with unchanged source, save/reopen/export
+  3. Signed/notarized downloaded-artifact verification and visible launch complete before publication (icon verified on the downloaded artifact, not the dev machine, since icon caches lie)
+**Plans**: TBD
+
+---
+
+### Archived Milestones
 
 <details>
 <summary>v0.1.0 (Phases 1-7) — SHIPPED 2019-03-11</summary>
@@ -49,8 +145,8 @@ See: `milestones/v0.1.0-ROADMAP.md` for full details.
 - [x] Phase 12.5: Vertical Scroll (2/2 plans) — completed 2019-03-18
 - [x] Phase 12.6: Layer Auto-selection UX (3/3 plans) — completed 2019-03-18
 - [x] Phase 12.7: Keyframe Icons (1/1 plan) — completed 2019-03-18
-- [x] Phase 12.8: Timeline Thumb Cover (1/1 plan) — completed 2019-03-18
-- [x] Phase 12.9: Add-Layer Dialogs (1/1 plan) — completed 2019-03-18
+- [x] Phase 12.8: Timeline Thumb Cover (1/1 plans) — completed 2019-03-18
+- [x] Phase 12.9: Add-Layer Dialogs (1/1 plans) — completed 2019-03-18
 - [x] Phase 12.10: GPU-Accelerated Blur (2/2 plans) — completed 2019-03-18
 - [x] Phase 12.11: Full-speed + Fullscreen (2/2 plans) — completed 2019-03-19
 - [x] Phase 12.12: Content Overlay Layers (4/4 plans) — completed 2019-03-19
@@ -164,3 +260,9 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 22-25 (4 phases) | v0.6.0 | 14/14 | Complete | 2026-04-03 |
 | 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
+| 39. Scripts Auto-Hydration Fix | v0.9.0 | 0/TBD | Not started | - |
+| 40. macOS Icon + Build Hygiene | v0.9.0 | 0/TBD | Not started | - |
+| 41. EFX Paint Audio Preview | v0.9.0 | 0/TBD | Not started | - |
+| 42. PlayScript Modes + Color Override | v0.9.0 | 0/TBD | Not started | - |
+| 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 0/TBD | Not started | - |
+| 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |

@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-08-04T07:18:50.566Z"
 last_activity: 2026-08-04
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Planning next milestone (v0.8.0 Standalone Physics Paint shipped 2026-08-01). Next: `/gsd-new-milestone`; then the credentialed signed release via `docs/macos-signed-release.md`
+**Current focus:** Milestone v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity (target release 2026-08-31). Phase 39: Scripts Auto-Hydration Fix (blocking prerequisite).
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 39 of 44 (Scripts Auto-Hydration Fix) — not started
 Plan: —
-Status: Defining requirements
-Last activity: 2026-08-04 — Milestone v0.9.0 started
+Status: Roadmap created; ready to plan Phase 39
+Last activity: 2026-08-04 — Milestone v0.9.0 roadmap created (Phases 39-44, 32/32 requirements mapped)
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -347,4 +349,4 @@ Resume file: .planning/reports/MILESTONE_SUMMARY-v0.8.0.md
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan Phase 39 (Scripts Auto-Hydration Fix) with /gsd-plan-phase 39 — or run the spec's bounded `/gsd-quick --validate` hydration fix first (SPECS/quick-prompts/fix-efx-paint-script-library-auto-hydration.md); if the quick lands first, Phase 39 closes by verification

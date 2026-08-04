@@ -99,19 +99,44 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HYDR-01..06 | TBD | Pending |
-| ICON-01..04 | TBD | Pending |
-| BUILD-01..03 | TBD | Pending |
-| AUDIO-01..06 | TBD | Pending |
-| PLAY-01..04 | TBD | Pending |
-| HOLD-01..06 | TBD | Pending |
-| REL-01..03 | TBD | Pending |
+| HYDR-01 | Phase 39 | Pending |
+| HYDR-02 | Phase 39 | Pending |
+| HYDR-03 | Phase 39 | Pending |
+| HYDR-04 | Phase 39 | Pending |
+| HYDR-05 | Phase 39 | Pending |
+| HYDR-06 | Phase 39 | Pending |
+| ICON-01 | Phase 40 | Pending |
+| ICON-02 | Phase 40 | Pending |
+| ICON-03 | Phase 40 | Pending |
+| ICON-04 | Phase 40 | Pending |
+| BUILD-01 | Phase 40 | Pending |
+| BUILD-02 | Phase 40 | Pending |
+| BUILD-03 | Phase 40 | Pending |
+| AUDIO-01 | Phase 41 | Pending |
+| AUDIO-02 | Phase 41 | Pending |
+| AUDIO-03 | Phase 41 | Pending |
+| AUDIO-04 | Phase 41 | Pending |
+| AUDIO-05 | Phase 41 | Pending |
+| AUDIO-06 | Phase 41 | Pending |
+| PLAY-01 | Phase 42 | Pending |
+| PLAY-02 | Phase 42 | Pending |
+| PLAY-03 | Phase 42 | Pending |
+| PLAY-04 | Phase 42 | Pending |
+| HOLD-01 | Phase 43 | Pending |
+| HOLD-02 | Phase 43 | Pending |
+| HOLD-03 | Phase 43 | Pending |
+| HOLD-04 | Phase 43 | Pending |
+| HOLD-05 | Phase 43 | Pending |
+| HOLD-06 | Phase 43 | Pending |
+| REL-01 | Phase 44 | Pending |
+| REL-02 | Phase 44 | Pending |
+| REL-03 | Phase 44 | Pending |
 
 **Coverage:**
 - v0.9.0 requirements: 32 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 32 (pending roadmap)
+- Mapped to phases: 32 (Phases 39-44)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-08-03*
-*Last updated: 2026-08-03 after initial definition from SPECS/milestone-v0.9.0-plan.md*
+*Last updated: 2026-08-04 after roadmap creation (Phases 39-44 mapped, 100% coverage)*
