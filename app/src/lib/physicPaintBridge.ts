@@ -1,6 +1,6 @@
 import type { Result } from './ipc';
 import type { Layer } from '../types/layer';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import { validatePhysicPaintRotoPhysicalEditSemanticDelta } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
@@ -17,11 +17,12 @@ import {
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { parseCanonicalPhysicsPaintLaunchValue } from '../components/physic-paint/bridge/physicsPaintLaunchContext';
 import { layerStore } from '../stores/layerStore';
+import { audioStore } from '../stores/audioStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import { projectStore } from '../stores/projectStore';
-import { scriptLibraryDelete, scriptLibraryEncodeThumbnailWebp, scriptLibraryLoad, scriptLibraryRename, scriptLibrarySave, scriptLibraryScan } from './ipc';
+import { assetUrl, scriptLibraryDelete, scriptLibraryEncodeThumbnailWebp, scriptLibraryLoad, scriptLibraryRename, scriptLibrarySave, scriptLibraryScan } from './ipc';
 
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
 export const PHYSIC_PAINT_PROJECT_CONTEXT_EVENT = 'physic-paint:project-context';
@@ -1084,6 +1085,37 @@ function getGeneratedRotoDisplayMutationGuard(layerId: string, displayFrame: num
   return getGeneratedRotoRenderOnlyStatus(displayFrame);
 }
 
+/**
+ * D-01/rev-counter: monotonic integer revision owned by this main-side
+ * publisher, bumped exactly once per publish. The SAME builder feeds both the
+ * launch embed and (plan 41-03) push-on-change events, so revision ordering is
+ * total across both channels. D-04: entries carry ONLY an efxasset:// protocol
+ * URL — never filePath/relativePath and never raw bytes.
+ */
+let nextAudioPreviewRevision = 1;
+
+export function buildPhysicPaintAudioPreviewSection(): EfxPaintAudioPreviewContext {
+  const revision = nextAudioPreviewRevision++;
+  return {
+    revision,
+    fps: projectStore.fps.peek(),
+    tracks: audioStore.tracks.peek().map((track) => ({
+      id: track.id,
+      assetUrl: assetUrl(track.filePath),
+      offsetFrame: track.offsetFrame,
+      inFrame: track.inFrame,
+      outFrame: track.outFrame,
+      slipOffset: track.slipOffset,
+      fadeInFrames: track.fadeInFrames,
+      fadeOutFrames: track.fadeOutFrames,
+      volume: track.volume,
+      muted: track.muted,
+      fadeInCurve: track.fadeInCurve,
+      fadeOutCurve: track.fadeOutCurve,
+    })),
+  };
+}
+
 export function createPhysicPaintLaunchContext(
   layer: Layer,
   frame: number,
@@ -1128,6 +1160,8 @@ export function createPhysicPaintLaunchContext(
     ...(isFinitePositiveNumber(canvas?.height) ? { height: canvas.height } : {}),
     ...(isFinitePositiveNumber(fps) ? { fps } : {}),
     rotoPlayback: playbackSettings,
+    // Absent section = no audio; keeps existing audio-less launches byte-stable.
+    ...(audioStore.tracks.peek().length > 0 ? { audioPreview: buildPhysicPaintAudioPreviewSection() } : {}),
     rotoPhysical: {
       capacity: document.capacity,
       records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),

@@ -88,6 +88,8 @@ struct PhysicsPaintLaunchContext {
     cached_roto_frames: Vec<PhysicsPaintRotoCacheFrame>,
     #[serde(rename = "rotoInterpolationSettings", skip_serializing_if = "Option::is_none")]
     roto_interpolation_settings: Option<Value>,
+    #[serde(rename = "audioPreview", skip_serializing_if = "Option::is_none")]
+    audio_preview: Option<Value>,
 }
 
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
@@ -586,6 +588,7 @@ mod tests {
             roto_playback: None,
             cached_roto_frames: Vec::new(),
             roto_interpolation_settings: None,
+            audio_preview: None,
         }
     }
 

@@ -1,4 +1,5 @@
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
+import type { FadeCurve } from './audio';
 import type { PersistedRotoScriptV1, RotoScriptLibraryRow } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 import { isCanonicalRotoScriptId, isPersistedRotoScriptV1, normalizeRotoScriptName } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 import {
@@ -461,6 +462,27 @@ export interface PhysicPaintRotoPhysicalDocumentPayload {
   readonly revision: string;
 }
 
+export interface EfxPaintAudioPreviewTrack {
+  id: string;
+  assetUrl: string;
+  offsetFrame: number;
+  inFrame: number;
+  outFrame: number;
+  slipOffset: number;
+  fadeInFrames: number;
+  fadeOutFrames: number;
+  volume: number;
+  muted: boolean;
+  fadeInCurve: FadeCurve;
+  fadeOutCurve: FadeCurve;
+}
+
+export interface EfxPaintAudioPreviewContext {
+  revision: number;
+  fps: number;
+  tracks: EfxPaintAudioPreviewTrack[];
+}
+
 export interface PhysicPaintLaunchContext {
   operationId: string;
   layerId: string;
@@ -476,6 +498,7 @@ export interface PhysicPaintLaunchContext {
   rotoPlayback?: PhysicPaintRotoPlaybackSettings;
   cachedRotoFrames?: PhysicPaintRotoCacheFrame[];
   rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings;
+  audioPreview?: EfxPaintAudioPreviewContext;
 }
 
 export interface PhysicPaintFrameSyncMessage {
@@ -743,6 +766,7 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
     optionalPositiveNumber(value.fps) &&
     (value.editableState === undefined || isSerializedProject(value.editableState)) &&
     (value.rotoPlayback === undefined || isPhysicPaintRotoPlaybackSettings(value.rotoPlayback)) &&
+    (value.audioPreview === undefined || isEfxPaintAudioPreviewContext(value.audioPreview)) &&
     optionalRotoCacheFrames(value.cachedRotoFrames) &&
     optionalRotoPhysicalDocumentPayload(value.rotoPhysical) &&
     optionalRotoInterpolationSettings(value.rotoInterpolationSettings) &&
@@ -874,6 +898,49 @@ export function isPhysicPaintRotoPlaybackSettings(value: unknown): value is Phys
     && Number.isFinite(value.fps)
     && value.fps >= 1
     && value.fps <= 60;
+}
+
+/**
+ * D-04: the audio preview section is a read-only projection of the main
+ * editor's audio tracks. It carries ONLY an efxasset:// protocol URL per
+ * track — never filePath/relativePath fields and never raw bytes.
+ */
+export function isEfxPaintAudioPreviewTrack(value: unknown): value is EfxPaintAudioPreviewTrack {
+  return isRecord(value)
+    && hasOnlyKeys(value, ['id', 'assetUrl', 'offsetFrame', 'inFrame', 'outFrame', 'slipOffset', 'fadeInFrames', 'fadeOutFrames', 'volume', 'muted', 'fadeInCurve', 'fadeOutCurve'])
+    && isNonEmptyString(value.id)
+    && isNonEmptyString(value.assetUrl)
+    && isFiniteNumber(value.offsetFrame)
+    && isFiniteNumber(value.inFrame)
+    && isFiniteNumber(value.outFrame)
+    && isFiniteNumber(value.slipOffset)
+    && isFiniteNumber(value.fadeInFrames)
+    && isFiniteNumber(value.fadeOutFrames)
+    && isFiniteNumber(value.volume)
+    && typeof value.muted === 'boolean'
+    && isEfxPaintAudioFadeCurve(value.fadeInCurve)
+    && isEfxPaintAudioFadeCurve(value.fadeOutCurve);
+}
+
+export function isEfxPaintAudioPreviewContext(value: unknown): value is EfxPaintAudioPreviewContext {
+  return isRecord(value)
+    && hasOnlyKeys(value, ['revision', 'fps', 'tracks'])
+    && typeof value.revision === 'number'
+    && Number.isInteger(value.revision)
+    && value.revision >= 0
+    && typeof value.fps === 'number'
+    && Number.isFinite(value.fps)
+    && value.fps > 0
+    && Array.isArray(value.tracks)
+    && value.tracks.every(isEfxPaintAudioPreviewTrack);
+}
+
+function isEfxPaintAudioFadeCurve(value: unknown): value is FadeCurve {
+  return value === 'linear' || value === 'exponential' || value === 'logarithmic';
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 export function isPhysicPaintApplyResult(value: unknown): value is PhysicPaintApplyResult {

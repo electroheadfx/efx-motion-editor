@@ -1,5 +1,7 @@
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import {
+  isEfxPaintAudioPreviewContext,
+  isEfxPaintAudioPreviewTrack,
   isPhysicPaintLaunchContext,
   isPhysicPaintRotoPhysicalEditRecord,
 } from '../../../types/physicPaint';
@@ -10,8 +12,10 @@ export interface PhysicsPaintLaunchStateSetters<Settings> {
   setSettings: (settings: Settings) => void;
 }
 
-const LAUNCH_KEYS = new Set(['operationId', 'layerId', 'project', 'startFrame', 'layerName', 'workflowLabel', 'width', 'height', 'fps', 'rotoPhysical', 'rotoPlayback']);
+const LAUNCH_KEYS = new Set(['operationId', 'layerId', 'project', 'startFrame', 'layerName', 'workflowLabel', 'width', 'height', 'fps', 'rotoPhysical', 'rotoPlayback', 'audioPreview']);
 const PHYSICAL_KEYS = new Set(['capacity', 'records', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision']);
+const AUDIO_PREVIEW_KEYS = new Set(['revision', 'fps', 'tracks']);
+const AUDIO_PREVIEW_TRACK_KEYS = new Set(['id', 'assetUrl', 'offsetFrame', 'inFrame', 'outFrame', 'slipOffset', 'fadeInFrames', 'fadeOutFrames', 'volume', 'muted', 'fadeInCurve', 'fadeOutCurve']);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -54,6 +58,11 @@ export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPai
   if (!isPhysicPaintLaunchContext(value) || !isPlainRecord(value.project) || !isPlainRecord(value.rotoPhysical)) return null;
   if (!hasOnlyKeys(value.rotoPhysical, PHYSICAL_KEYS) || !Array.isArray(value.rotoPhysical.records)) return null;
   if (!value.rotoPhysical.records.every(isPhysicPaintRotoPhysicalEditRecord)) return null;
+  if (value.audioPreview !== undefined) {
+    if (!isPlainRecord(value.audioPreview) || !hasOnlyKeys(value.audioPreview, AUDIO_PREVIEW_KEYS)) return null;
+    if (!isEfxPaintAudioPreviewContext(value.audioPreview)) return null;
+    if (!value.audioPreview.tracks.every((track) => isPlainRecord(track) && hasOnlyKeys(track, AUDIO_PREVIEW_TRACK_KEYS) && isEfxPaintAudioPreviewTrack(track))) return null;
+  }
   try {
     const document = parsePhysicPaintRotoPhysicalDocument({
       capacity: value.rotoPhysical.capacity,
@@ -80,6 +89,15 @@ export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPai
       ...(value.height !== undefined ? { height: value.height } : {}),
       ...(value.fps !== undefined ? { fps: value.fps } : {}),
       ...(value.rotoPlayback !== undefined ? { rotoPlayback: { ...value.rotoPlayback } } : {}),
+      ...(value.audioPreview !== undefined
+        ? {
+            audioPreview: {
+              revision: value.audioPreview.revision,
+              fps: value.audioPreview.fps,
+              tracks: value.audioPreview.tracks.map((track) => ({ ...track })),
+            },
+          }
+        : {}),
       rotoPhysical: {
         capacity: document.capacity,
         records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
