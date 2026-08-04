@@ -2,7 +2,7 @@
 
 **Compiled:** 2026-08-04
 **Baseline:** `baseline-build-warnings.txt` (executor re-capture, `pnpm --dir app build` exit 0, Vite 5.4.21 — 12 mixed-import warnings, 0 chunk-size warnings at the 1100 budget)
-**Status:** AWAITING USER APPROVAL — zero source edits made; `git status --porcelain -- app/ packages/` is clean
+**Status:** APPROVED (approve-all) AND APPLIED — 4 corrections committed (`c97c5780`); D-13 non-return assertion ships in the build seam
 
 Classification rules applied (D-08/D-09): FIX requires all three evidence points (module provably eager in the importing module's static graph, no import cycle created, no initialization-timing change). Incomplete evidence means PRESERVE. REPORT-AS-DI when a proper fix requires dependency inversion (documented, never fixed in-phase).
 
@@ -49,7 +49,9 @@ Classification rules applied (D-08/D-09): FIX requires all three evidence points
 
 ## Approval record
 
-- [ ] PENDING — user decision: approve-all / approve-subset (name rows) / preserve-all
+- [x] APPROVED — user decision: **approve-all** (2026-08-04). All 4 proposed corrections (#5, #9, #10, #12 — 6 edit sites) authorized as presented; #11 remains REPORT-AS-DI (backlog only, no edit); all PRESERVE rows untouched.
+- [x] Applied — corrections committed in `c97c5780` (`refactor(40-03): convert 4 approved mixed imports to static (D-08 approve-all)`); per-correction build-seam verification green (10/10 at commit time).
+- [x] Non-return pinned — D-13 subject-position module-path-absence assertion added to `app/src/viteBuild.test.ts` over `CORRECTED_MIXED_IMPORT_PATHS` (assertion committed alongside this record).
 
 ---
 

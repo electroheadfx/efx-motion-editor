@@ -60,6 +60,19 @@ logger.warn = (msg, options) => {
   origWarn(msg, options);
 };
 
+// D-13: module paths of the mixed imports converted to static form in plan
+// 40-03 (D-08 approve-all). Substrings exactly as the warning names the
+// module subject (absolute in build output; the `app/src/...` suffix is
+// matched in subject position via String.includes, robust to checkout path
+// and Vite/Rollup wording changes). An empty array means preserve-all was
+// approved — the assertion still ships.
+const CORRECTED_MIXED_IMPORT_PATHS: string[] = [
+  'app/src/lib/appConfig.ts',
+  'app/src/lib/unsavedGuard.ts',
+  'app/src/lib/themeManager.ts',
+  'app/src/lib/paintPreferences.ts',
+];
+
 function createInputCapturePlugin(captured: { input: unknown; chunkLimit?: number }): Plugin {
   return {
     name: 'test-capture-rollup-input',
@@ -169,6 +182,29 @@ describe('production vite build', () => {
         chunkSizeWarnings.length,
         'no chunk-size warning may be emitted at the 1100 desktop budget',
       ).toBe(0);
+    },
+  );
+
+  it(
+    'no corrected mixed-import module path re-appears in build warnings (D-13 non-return)',
+    { timeout: 180_000 },
+    () => {
+      // Subject-position module-path absence — never exact message matching.
+      // The naive "path appears anywhere" check false-fails: corrected paths
+      // (e.g. unsavedGuard.ts) legitimately appear as STATIC IMPORTERS inside
+      // preserved warnings (e.g. the plugin-dialog guard). The non-return
+      // contract is that a corrected module is no longer the SUBJECT of a
+      // mixed-import warning, i.e. no warning line names it in subject
+      // position ("<path> is dynamically imported by ..."). If a corrected
+      // import is converted back to dynamic form, its subject warning
+      // returns and this assertion fails.
+      const returned = CORRECTED_MIXED_IMPORT_PATHS.filter((p) =>
+        warnings.some((w) => w.includes(`${p} is dynamically imported by`)),
+      );
+      expect(
+        returned,
+        `corrected mixed imports must not re-appear as warning subjects: ${returned.join(', ')}`,
+      ).toEqual([]);
     },
   );
 
