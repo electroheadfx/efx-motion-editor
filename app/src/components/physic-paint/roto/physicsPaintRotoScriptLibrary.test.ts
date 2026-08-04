@@ -64,7 +64,7 @@ describe('Roto script library controller', () => {
   it('rejects rows from a context replaced while its scan was in flight', async () => {
     let settle!: (value: PhysicPaintScriptLibraryResult) => void;
     const test = harness(false);
-    test.request.mockImplementationOnce(() => new Promise((resolve) => { settle = resolve; }));
+    test.request.mockImplementationOnce((input) => { test.requests.push(input); return new Promise((resolve) => { settle = resolve; }); });
     const staleHydration = test.controller.updateProjectContext(context());
     const replacement = test.controller.updateProjectContext({ ...context(), project: { name: 'Other', saved: true, contextId: 'context-2' } });
     const staleRequest = test.request.mock.calls[0][0];
