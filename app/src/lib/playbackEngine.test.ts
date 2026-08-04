@@ -24,9 +24,13 @@ vi.mock('./audioEngine', () => ({
 
 // Fixed timeline geometry: 300 frames, no sequences — startAudioPlayback caps
 // track audibility at totalFrames (truth table section 2 main-editor rule).
-vi.mock('./frameMap', async () => {
+// importOriginal keeps the remaining exports (timelineStore reads more than
+// the three playbackEngine consumes).
+vi.mock('./frameMap', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./frameMap')>();
   const {signal: mockSignal} = await import('@preact/signals');
   return {
+    ...actual,
     totalFrames: mockSignal(300),
     frameMap: mockSignal([]),
     trackLayouts: mockSignal([]),
