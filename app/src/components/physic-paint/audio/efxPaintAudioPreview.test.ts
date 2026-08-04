@@ -5,7 +5,8 @@ import {
   parseEfxPaintAudioPreviewSection,
   resolveTrackPlayback,
 } from './efxPaintAudioPreviewContext';
-import { efxPaintAudioMonitor } from './efxPaintAudioMonitor';
+import { efxPaintAudioMonitor, handleEfxPaintAudioContextEvent } from './efxPaintAudioMonitor';
+import { efxPaintAudioPreviewStore } from './efxPaintAudioPreviewStore';
 
 // Controllable Web Audio clock: the monitor captures ctx.currentTime at each
 // seek-aligned start and compares against it in the throttled drift check
@@ -535,5 +536,92 @@ describe('efxPaintAudioMonitor sync behaviors (41-03: D-09 scrub, D-10 drift, D-
     for (const call of mockedAudioEngine.play.mock.calls) {
       expect(call[2]).not.toHaveProperty('playbackRate');
     }
+  });
+});
+
+describe('push-on-change revisioned updates (41-03 Task 2: D-02/D-03, AUDIO-04 edges)', () => {
+  beforeEach(() => {
+    efxPaintAudioMonitor.stop();
+    efxPaintAudioPreviewStore.clear();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    fakeAudioContext.currentTime = 0;
+  });
+
+  it('(2) double-delivery of one revision applies exactly once; the second delivery is a silent drop (idempotency)', async () => {
+    stubFetchOk();
+    const section = makeAudioPreviewSection({ revision: 7 });
+    const first = handleEfxPaintAudioContextEvent(section);
+    expect(first).not.toBeNull();
+    await first;
+    expect(efxPaintAudioPreviewStore.getSection()?.revision).toBe(7);
+    const second = handleEfxPaintAudioContextEvent(section);
+    expect(second).toBeNull();
+    // Exactly one application: a single fetch+decode cycle for the track.
+    expect(mockedAudioEngine.decode).toHaveBeenCalledTimes(1);
+  });
+
+  it('(3) out-of-order delivery (3, 2, 4) resolves to the newest revision with exactly two applications (concurrency)', async () => {
+    stubFetchOk();
+    const applySpy = vi.spyOn(efxPaintAudioMonitor, 'applyRevisionedContext');
+    await handleEfxPaintAudioContextEvent(makeAudioPreviewSection({ revision: 3 }));
+    expect(handleEfxPaintAudioContextEvent(makeAudioPreviewSection({ revision: 2, tracks: [] }))).toBeNull();
+    await handleEfxPaintAudioContextEvent(makeAudioPreviewSection({ revision: 4, tracks: [] }));
+    expect(efxPaintAudioPreviewStore.getSection()?.revision).toBe(4);
+    expect(efxPaintAudioPreviewStore.getSection()?.tracks).toEqual([]);
+    expect(applySpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('(4) a newer context arriving mid-playback restarts at the current Paint cursor with the new context (D-03)', async () => {
+    stubFetchOk();
+    await handleEfxPaintAudioContextEvent(makeAudioPreviewSection({ revision: 1 }));
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    // Playback ticks advance the Paint cursor to appFrame 100.
+    efxPaintAudioMonitor.checkDrift(100, 288);
+    vi.clearAllMocks();
+    await handleEfxPaintAudioContextEvent(makeAudioPreviewSection({
+      revision: 2,
+      tracks: [makeAudioPreviewTrack({ slipOffset: 0 })],
+    }));
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+    // Restart mapping at cursor 100 with the NEW context (slipOffset 0):
+    // sourceOffset = (24 + 0 + (100 - 48)) / 24; effectiveEnd = 264.
+    expect(mockedAudioEngine.play).toHaveBeenCalledWith(
+      'track-1',
+      (24 + (100 - 48)) / 24,
+      expect.objectContaining({ id: 'track-1' }),
+      24,
+      (264 - 100) / 24,
+    );
+    expect(mockedAudioEngine.stopAll.mock.invocationCallOrder[0])
+      .toBeLessThan(mockedAudioEngine.play.mock.invocationCallOrder[0]);
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(true);
+  });
+
+  it('(5) a stale event while playing is dropped silently with zero audio dispatch', async () => {
+    stubFetchOk();
+    await handleEfxPaintAudioContextEvent(makeAudioPreviewSection({ revision: 5 }));
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    vi.clearAllMocks();
+    const result = handleEfxPaintAudioContextEvent(makeAudioPreviewSection({ revision: 3 }));
+    expect(result).toBeNull();
+    expect(mockedAudioEngine.stopAll).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+    expect(efxPaintAudioPreviewStore.getSection()?.revision).toBe(5);
+  });
+
+  it('a newer context while idle/positioned updates the stored context and repositions the anchor with no audio dispatch', async () => {
+    stubFetchOk();
+    await handleEfxPaintAudioContextEvent(makeAudioPreviewSection({ revision: 1 }));
+    efxPaintAudioMonitor.positionedAt(72);
+    vi.clearAllMocks();
+    await handleEfxPaintAudioContextEvent(makeAudioPreviewSection({ revision: 2, tracks: [] }));
+    expect(efxPaintAudioPreviewStore.getSection()?.revision).toBe(2);
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.stopAll).not.toHaveBeenCalled();
+    expect(efxPaintAudioMonitor.getAnchorAppFrame()).toBe(72);
   });
 });

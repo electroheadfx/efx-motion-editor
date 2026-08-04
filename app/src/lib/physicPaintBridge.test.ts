@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultTransform, type Layer } from '../types/layer';
+import type { AudioTrack } from '../types/audio';
+import { audioStore } from '../stores/audioStore';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
 import { projectStore } from '../stores/projectStore';
@@ -12,10 +14,12 @@ import {
   createPhysicPaintLaunchContext,
   handlePhysicPaintFrameSyncMessage,
   installPhysicPaintApplyListener,
+  installPhysicPaintAudioContextPublisher,
   installPhysicPaintFrameSyncListener,
   openPhysicPaintCanvas,
   PHYSIC_PAINT_APPLY_EVENT,
   PHYSIC_PAINT_APPLY_RESULT_EVENT,
+  PHYSIC_PAINT_AUDIO_CONTEXT_EVENT,
   PHYSIC_PAINT_LAUNCH_EVENT,
 } from './physicPaintBridge';
 
@@ -106,6 +110,38 @@ function physicLayer(overrides: Partial<Layer> = {}): Layer {
     blendMode: 'normal',
     transform: defaultTransform(),
     source: { type: 'physic-paint', layerId: 'phys-layer-1' },
+    ...overrides,
+  };
+}
+
+function makeAudioTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
+  return {
+    id: 'audio-1',
+    audioAssetId: 'asset-1',
+    name: 'Kick',
+    filePath: '/Volumes/media/audio/kick.wav',
+    relativePath: 'audio/kick.wav',
+    originalFilename: 'kick.wav',
+    offsetFrame: 48,
+    inFrame: 0,
+    outFrame: 240,
+    volume: 0.8,
+    muted: false,
+    fadeInFrames: 0,
+    fadeOutFrames: 0,
+    fadeInCurve: 'exponential',
+    fadeOutCurve: 'exponential',
+    sampleRate: 48000,
+    duration: 10,
+    channelCount: 2,
+    order: 0,
+    trackHeight: 44,
+    slipOffset: 0,
+    totalFramesInFile: 240,
+    bpm: null,
+    beatOffsetFrames: 0,
+    beatMarkers: [],
+    showBeatMarkers: false,
     ...overrides,
   };
 }
@@ -302,6 +338,35 @@ describe('physicPaintBridge', () => {
 
   it('exports the launch event name for the Tauri path', () => {
     expect(PHYSIC_PAINT_LAUNCH_EVENT).toBe('physic-paint:launch');
+  });
+
+  it('exports the audio context event name for the push channel (D-01/D-02)', () => {
+    expect(PHYSIC_PAINT_AUDIO_CONTEXT_EVENT).toBe('physic-paint:audio-context');
+  });
+
+  it('(1) publishes a revisioned audio context push on every tracks change with strictly increasing revisions (D-02)', () => {
+    const dispose = installPhysicPaintAudioContextPublisher();
+    try {
+      const dispatch = window.dispatchEvent as ReturnType<typeof vi.fn>;
+      const audioPublishes = () => dispatch.mock.calls
+        .map(([event]) => event)
+        .filter((event): event is CustomEvent => event instanceof CustomEvent && event.type === PHYSIC_PAINT_AUDIO_CONTEXT_EVENT);
+      // The effect publishes once on install with the current (empty) state —
+      // the revision counter absorbs frequency; no debounce may skip state.
+      expect(audioPublishes().length).toBe(1);
+      audioStore.tracks.value = [makeAudioTrack()];
+      audioStore.tracks.value = [makeAudioTrack(), makeAudioTrack({ id: 'audio-2', order: 1 })];
+      const publishes = audioPublishes();
+      expect(publishes.length).toBe(3);
+      const revisions = publishes.map((event) => (event.detail as { revision: number }).revision);
+      expect(revisions[1]).toBeGreaterThan(revisions[0]);
+      expect(revisions[2]).toBeGreaterThan(revisions[1]);
+      // The latest publish carries the full rebuilt section (D-02).
+      expect((publishes[2].detail as { tracks: unknown[] }).tracks.length).toBe(2);
+    } finally {
+      dispose();
+      audioStore.tracks.value = [];
+    }
   });
 
   it('does not fall back to browser open when native Tauri window command fails', async () => {
