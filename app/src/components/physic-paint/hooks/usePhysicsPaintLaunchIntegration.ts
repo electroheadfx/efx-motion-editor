@@ -4,6 +4,8 @@ import type { PhysicPaintLaunchContext, PhysicPaintRotoPlaybackSettings } from '
 import type { PendingPhysicPaintApply } from './usePhysicsPaintApplyResultController';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { applyPhysicsPaintLaunchContext } from '../bridge/physicsPaintLaunchContext';
+import { applyRevisionedEfxPaintAudioPreview } from '../audio/efxPaintAudioPreviewContext';
+import { efxPaintAudioPreviewStore } from '../audio/efxPaintAudioPreviewStore';
 import { applyRotoBackgroundMetadataToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { hydrateRotoPhysicalLaunchContext } from '../roto/rotoLaunchHydration';
 import { usePhysicsPaintLaunchBridge, usePhysicsPaintProjectContextBridge } from '../bridge/usePhysicsPaintParentBridge';
@@ -119,6 +121,11 @@ export function usePhysicsPaintLaunchIntegration(input: {
       const background = launch.rotoPhysical?.background;
       return background ? applyRotoBackgroundMetadataToSettings(background) : null;
     });
+    // 41-02 (D-01): hydrate the audio preview store from the launch section
+    // through the strict newer-than revision funnel. Absent section = no audio.
+    if (hydration.context.audioPreview) {
+      applyRevisionedEfxPaintAudioPreview(efxPaintAudioPreviewStore, hydration.context.audioPreview);
+    }
     const readyEngine = input.engineRef.current;
     if (readyEngine) input.loadCachedReferenceFrame(hydration.document.cursorAppFrame, readyEngine as PreviewBackgroundEngine);
     input.state.setApplyStatus('idle');

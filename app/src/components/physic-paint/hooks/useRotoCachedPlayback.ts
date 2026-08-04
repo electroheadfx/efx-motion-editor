@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { batch, signal, type Signal } from '@preact/signals';
 import type { PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
+import { efxPaintAudioMonitor } from '../audio/efxPaintAudioMonitor';
+import { efxPaintAudioPreviewStore } from '../audio/efxPaintAudioPreviewStore';
 
 const MIN_ROTO_PLAYBACK_FPS = 1;
 const MAX_ROTO_PLAYBACK_FPS = 60;
@@ -107,6 +109,9 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
       }
       inputRef.current.setIsPlaying(false);
     });
+    // 41-02: stop audio monitoring through the same single stop funnel
+    // (no-op when the monitor is not playing).
+    efxPaintAudioMonitor.stop();
   }, [clearTimer, playbackTick]);
 
   const stop = useCallback(() => {
@@ -156,6 +161,18 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     // catch-up render, then the idle context line resumes (38 D-10).
     queuedStatusEventsRef.current = [startStatus];
     statusGateActiveRef.current = true;
+    // 41-02 audio monitoring: default-On until the 41-04 toggle lands. The
+    // loop window cap is the playback-range end (truth table section 2) — the
+    // first cached appFrame is the Play cursor, one past the last is the end.
+    // Store reads use peek() (38.1-D-01); the engine singleton is reused (D-08).
+    const audioPreview = efxPaintAudioPreviewStore.getSection();
+    if (audioPreview && audioPreview.tracks.length > 0) {
+      const audioCursorAppFrame = cachedFrames[0].appFrame;
+      const audioPlaybackRangeEnd = cachedFrames[cachedFrames.length - 1].appFrame + 1;
+      void efxPaintAudioMonitor.prepare(audioPreview).then(() => {
+        efxPaintAudioMonitor.playAtCursor(audioCursorAppFrame, audioPlaybackRangeEnd);
+      });
+    }
     const showNextFrame = () => {
       if (frameIndex >= cachedFrames.length) {
         if (!settingsRef.current.loop) {

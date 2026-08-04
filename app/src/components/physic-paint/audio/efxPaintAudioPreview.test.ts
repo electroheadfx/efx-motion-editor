@@ -392,7 +392,8 @@ describe('efxPaintAudioMonitor (Play wiring, truth table section 3 dispatch)', (
       (24 + 12 + (120 - 48)) / 24,
       expect.objectContaining({ id: 'track-1' }),
       24,
-      (288 - 120) / 24,
+      // effectiveEnd = min(48 + (240 - 24), 288) = 264 (trim caps before range end)
+      (264 - 120) / 24,
     );
   });
 
