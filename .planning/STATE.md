@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 41
 current_phase_name: efx-paint-audio-preview-monitoring-toggle
 status: executing
-stopped_at: Completed 41-01-PLAN.md (truth table + RED suite + decision lock)
-last_updated: "2026-08-04T20:53:59.906Z"
+stopped_at: "Completed 41-02-PLAN.md (audio preview tracer: launch payload + child monitor)"
+last_updated: "2026-08-04T21:14:02.843Z"
 last_activity: 2026-08-04
 last_activity_desc: Phase 41 execution started
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 8
-  completed_plans: 4
+  completed_plans: 5
   percent: 17
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 41 (efx-paint-audio-preview-monitoring-toggle) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-08-04 — Phase 41 execution started
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 63%
 
 ## Performance Metrics
 
@@ -157,6 +157,7 @@ Progress: [█████░░░░░] 50%
 | Phase 38 P07 | 16min | 3 tasks | 4 files |
 | Phase 38 P08 | 18min | 3 tasks | 4 files |
 | Phase 41 P01 | 10min across decision checkpoint | 3 tasks | 3 files |
+| Phase 41-efx-paint-audio-preview-monitoring-toggle P02 | 15min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -170,6 +171,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - Physics paint is an additional tool; it does not replace perfect-freehand basic paint or p5.brush FX paint.
 - Failed headless adapter/batch replay remains excluded; the future editor integration seam is typed/contract-only.
 - [Phase ?]: 41-01: D-04 boundary locked — a4-protocol-url carrier, a6-matched-fps sync scope, rev-counter revision discipline, d04-proof-packaged-build proof mode for the 41-05 CSP grant
+- [Phase ?]: 41-02: audioPreview embedded in launch context only when audio tracks exist (absent = no audio; audio-less launches byte-stable)
+- [Phase ?]: 41-02: launch-integration hydration applies audioPreview through the strict newer-than revision funnel — one application point for hydration and 41-03 push events
+- [Phase ?]: 41-02: monitor start wired inside useRotoCachedPlayback.start() with playbackRangeEnd = last cached appFrame + 1 (D-11 loop window cap)
 
 ### Pending Todos
 
@@ -351,8 +355,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-04T20:53:59.898Z
-Stopped at: Completed 41-01-PLAN.md (truth table + RED suite + decision lock)
+Last session: 2026-08-04T21:14:02.835Z
+Stopped at: Completed 41-02-PLAN.md (audio preview tracer: launch payload + child monitor)
 Resume file: None
 
 ## Operator Next Steps
