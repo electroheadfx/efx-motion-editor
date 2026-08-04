@@ -96,7 +96,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 41-03-PLAN.md — Sync behaviors (silent scrub, loop-wrap re-seek, 40ms drift corrector) + push-on-change revisioned updates with mid-playback restart (AUDIO-03, AUDIO-04)
+- [x] 41-03-PLAN.md — Sync behaviors (silent scrub, loop-wrap re-seek, 40ms drift corrector) + push-on-change revisioned updates with mid-playback restart (AUDIO-03, AUDIO-04)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -309,7 +309,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39. Scripts Auto-Hydration Fix | v0.9.0 | 0/TBD | Not started | - |
 | 40. macOS Icon + Build Hygiene | v0.9.0 | 3/3 | Complete    | 2026-08-04 |
-| 41. EFX Paint Audio Preview | v0.9.0 | 2/5 | In Progress|  |
+| 41. EFX Paint Audio Preview | v0.9.0 | 3/5 | In Progress|  |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 0/TBD | Not started | - |
 | 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 0/TBD | Not started | - |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |

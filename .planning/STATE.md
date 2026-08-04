@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 41
 current_phase_name: efx-paint-audio-preview-monitoring-toggle
 status: executing
-stopped_at: "Completed 41-02-PLAN.md (audio preview tracer: launch payload + child monitor)"
-last_updated: "2026-08-04T21:14:02.843Z"
+stopped_at: Completed 41-03-PLAN.md (playback sync + revisioned push channel)
+last_updated: "2026-08-04T21:44:44.429Z"
 last_activity: 2026-08-04
 last_activity_desc: Phase 41 execution started
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 6
   percent: 17
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 41 (efx-paint-audio-preview-monitoring-toggle) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-08-04 — Phase 41 execution started
 
-Progress: [██████░░░░] 63%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -158,6 +158,7 @@ Progress: [██████░░░░] 63%
 | Phase 38 P08 | 18min | 3 tasks | 4 files |
 | Phase 41 P01 | 10min across decision checkpoint | 3 tasks | 3 files |
 | Phase 41-efx-paint-audio-preview-monitoring-toggle P02 | 15min | 2 tasks | 10 files |
+| Phase 41 P03 | 18min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -174,6 +175,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 41-02: audioPreview embedded in launch context only when audio tracks exist (absent = no audio; audio-less launches byte-stable)
 - [Phase ?]: 41-02: launch-integration hydration applies audioPreview through the strict newer-than revision funnel — one application point for hydration and 41-03 push events
 - [Phase ?]: 41-02: monitor start wired inside useRotoCachedPlayback.start() with playbackRangeEnd = last cached appFrame + 1 (D-11 loop window cap)
+- [Phase ?]: 41-03: drift anchor stores only { appFrame, ctxTime } — the audioTime term cancels in |expected-actual|; checkDrift self-throttles to one compare per 10 ticks with a 40ms named threshold
+- [Phase ?]: 41-03: audio push publisher is a gated installer called from main.tsx only — never module scope, because the child bundle shares the module and its audioStore singleton would be empty (AUDIO-01)
+- [Phase ?]: 41-03: push publishes even with zero tracks (last-track deletion must reach the child); fps-mismatch note routes through the publishStatus gate, queued during playback and flushed on stop
 
 ### Pending Todos
 
@@ -355,8 +359,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-04T21:14:02.835Z
-Stopped at: Completed 41-02-PLAN.md (audio preview tracer: launch payload + child monitor)
+Last session: 2026-08-04T21:44:31.985Z
+Stopped at: Completed 41-03-PLAN.md (playback sync + revisioned push channel)
 Resume file: None
 
 ## Operator Next Steps
