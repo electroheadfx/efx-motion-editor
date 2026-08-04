@@ -54,7 +54,11 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
   3. Production build runs with `chunkSizeWarningLimit: 1100` backed by a documented desktop rationale (packaged Tauri app, monitored budget, not a performance claim, not raised again without measurement)
   4. Only provably ineffective mixed static/dynamic imports are corrected — Tauri/browser runtime guards, genuine lazy chunks, and cycle-breaking imports preserved; dependency-inversion cases reported as separately scoped work
   5. The production-build test seam verifies the resolved 1100 limit, HTML entry, non-empty local assets, Motion Canvas output, intentional chunk separation, and non-return of corrected mixed-import warnings — without content-hash or exact-chunk-count fragility
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 40-01-PLAN.md — Icon regeneration via Tauri pipeline + packaged-icon proof on fresh unsigned build + user icon UAT (ICON-01..04)
+- [ ] 40-02-PLAN.md — chunkSizeWarningLimit: 1100 with rationale + build seam (resolved-limit, warning capture, separation pins) (BUILD-01, BUILD-03)
+- [ ] 40-03-PLAN.md — Mixed-import baseline, D-08 approval gate, approved corrections + non-return assertions (BUILD-02, BUILD-03)
 
 ### Phase 41: EFX Paint Audio Preview + Monitoring Toggle
 **Goal**: Users hear the main editor's audio arrangement, frame-synchronized to the Paint cursor, while playing Paint/Roto frames inside EFX Paint — read-only, with a session-local monitoring toggle.
