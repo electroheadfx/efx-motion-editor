@@ -4,6 +4,8 @@ import {getCurrentWindow} from '@tauri-apps/api/window';
 import {listen} from '@tauri-apps/api/event';
 import {App} from './app';
 import {initTempProjectDir} from './lib/projectDir';
+import {initTheme} from './lib/themeManager';
+import {guardUnsavedChanges} from './lib/unsavedGuard';
 import {startAutoSave} from './lib/autoSave';
 import {mountShortcuts, handleSave, handleNewProject, handleOpenProject, handleCloseProject} from './lib/shortcuts';
 import {undo, redo} from './lib/history';
@@ -22,7 +24,6 @@ if (window.location.pathname === '/physics-paint') {
 } else {
   // Resolve temp project dir from Tauri's app data path before rendering
   initTempProjectDir().then(async () => {
-    const { initTheme } = await import('./lib/themeManager');
     await initTheme();
     await paintStore.initFromPreferences(); // Load saved brush prefs BEFORE render
     render(<App />, root);
@@ -81,7 +82,6 @@ if (window.location.pathname === '/physics-paint') {
 
     // Guard window close: show unsaved-changes dialog and prevent close on Cancel
     getCurrentWindow().onCloseRequested(async (event) => {
-      const { guardUnsavedChanges } = await import('./lib/unsavedGuard');
       const result = await guardUnsavedChanges();
       if (result === 'cancelled') {
         event.preventDefault();

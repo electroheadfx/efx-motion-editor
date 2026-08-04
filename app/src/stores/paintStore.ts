@@ -4,6 +4,7 @@ import {DEFAULT_BRUSH_SIZE, DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_OPACITY, DEFAULT_
 import {pointsToBezierAnchors, shapeToAnchors} from '../lib/bezierPath';
 import {pushAction} from '../lib/history';
 import {renderFrameFx} from '../lib/brushP5Adapter';
+import {loadBrushPreferences, saveBrushSize, saveBrushColor} from '../lib/paintPreferences';
 import {projectStore} from './projectStore';
 
 // Late-bound callback to mark project dirty without circular import
@@ -103,7 +104,6 @@ export const paintStore = {
 
   /** Load persisted brush preferences (color, size) on app startup. */
   async initFromPreferences(): Promise<void> {
-    const { loadBrushPreferences } = await import('../lib/paintPreferences');
     const prefs = await loadBrushPreferences();
     brushColor.value = prefs.color;
     brushSize.value = prefs.size;
@@ -532,13 +532,13 @@ export const paintStore = {
 
   setBrushSize(size: number): void {
     brushSize.value = Math.max(BRUSH_SIZE_MIN, Math.min(BRUSH_SIZE_MAX, size));
-    import('../lib/paintPreferences').then(m => m.saveBrushSize(brushSize.value));
+    saveBrushSize(brushSize.value);
   },
 
 
   setBrushColor(color: string): void {
     brushColor.value = color;
-    import('../lib/paintPreferences').then(m => m.saveBrushColor(color));
+    saveBrushColor(color);
     // Refresh FX canvas when color changes in FX mode
     if (activePaintMode.peek() === 'fx-paint' && paintMode.peek()) {
       Promise.all([

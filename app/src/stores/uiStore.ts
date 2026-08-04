@@ -1,5 +1,6 @@
 import {signal} from '@preact/signals';
 import type {PanelId} from '../types/ui';
+import {getSidebarWidth, getPanelFlex} from '../lib/appConfig';
 
 export type EditorMode = 'editor' | 'imported' | 'settings' | 'export' | 'shader-browser';
 
@@ -177,7 +178,6 @@ export const uiStore = {
   },
 
   async initSidebarLayout() {
-    const { getSidebarWidth, getPanelFlex } = await import('../lib/appConfig');
     const w = await getSidebarWidth();
     sidebarWidth.value = w;
     const [sf, pf] = await getPanelFlex();
