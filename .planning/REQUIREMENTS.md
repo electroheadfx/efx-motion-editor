@@ -11,12 +11,12 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Scripts Auto-Hydration (blocking prerequisite)
 
-- [ ] **HYDR-01**: When a saved project containing durable project scripts opens its Paint/Physics Paint layer, existing script rows populate automatically without clicking Refresh
-- [ ] **HYDR-02**: Save Script enables immediately when saved-project authority arrives and no library operation is busy
-- [ ] **HYDR-03**: The automatic scan occurs exactly once per authoritative context; stale context events from a replaced project or layer cannot populate rows; no duplicate scan/listener behavior after close/reopen
-- [ ] **HYDR-04**: Genuinely unsaved projects remain blocked with `Save the project first.` and make no persistence request
-- [ ] **HYDR-05**: Manual Refresh remains available as an explicit rescan/recovery action; Copy/Apply/Clear Buffer/Load+Apply/Play/rename/delete/selection/diagnostics/clipboard behavior and default-open accessibility remain unchanged
-- [ ] **HYDR-06**: The fix consumes the exact updated project context (or genuinely authoritative committed context) — no setTimeout, polling, or requestAnimationFrame timing hacks
+- [x] **HYDR-01**: When a saved project containing durable project scripts opens its Paint/Physics Paint layer, existing script rows populate automatically without clicking Refresh
+- [x] **HYDR-02**: Save Script enables immediately when saved-project authority arrives and no library operation is busy
+- [x] **HYDR-03**: The automatic scan occurs exactly once per authoritative context; stale context events from a replaced project or layer cannot populate rows; no duplicate scan/listener behavior after close/reopen
+- [x] **HYDR-04**: Genuinely unsaved projects remain blocked with `Save the project first.` and make no persistence request
+- [x] **HYDR-05**: Manual Refresh remains available as an explicit rescan/recovery action; Copy/Apply/Clear Buffer/Load+Apply/Play/rename/delete/selection/diagnostics/clipboard behavior and default-open accessibility remain unchanged
+- [x] **HYDR-06**: The fix consumes the exact updated project context (or genuinely authoritative committed context) — no setTimeout, polling, or requestAnimationFrame timing hacks
 
 ### macOS Release Identity
 
@@ -99,12 +99,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HYDR-01 | Phase 39 | Pending |
-| HYDR-02 | Phase 39 | Pending |
-| HYDR-03 | Phase 39 | Pending |
-| HYDR-04 | Phase 39 | Pending |
-| HYDR-05 | Phase 39 | Pending |
-| HYDR-06 | Phase 39 | Pending |
+| HYDR-01 | Phase 39 | Complete |
+| HYDR-02 | Phase 39 | Complete |
+| HYDR-03 | Phase 39 | Complete |
+| HYDR-04 | Phase 39 | Complete |
+| HYDR-05 | Phase 39 | Complete |
+| HYDR-06 | Phase 39 | Complete |
 | ICON-01 | Phase 40 | Pending |
 | ICON-02 | Phase 40 | Pending |
 | ICON-03 | Phase 40 | Pending |

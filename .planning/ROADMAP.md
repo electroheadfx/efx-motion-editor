@@ -20,7 +20,7 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 
 ### v0.9.0 — Active
 
-- [ ] **Phase 39: Scripts Auto-Hydration Fix** — Blocking prerequisite: saved-project scripts and Save Script appear automatically without manual Refresh, no timing hacks
+- [x] **Phase 39: Scripts Auto-Hydration Fix** — Blocking prerequisite: saved-project scripts and Save Script appear automatically without manual Refresh, no timing hacks — **satisfied via quick task 260804-f2q with accepted native UAT (closed by verification 2026-08-04)**
 - [ ] **Phase 40: macOS Icon Regeneration + Build Hygiene** — Legible icon from the 794×794 alpha source, tracked generated icons stay release authority, documented 1100 kB chunk budget
 - [ ] **Phase 41: EFX Paint Audio Preview + Monitoring Toggle** — Read-only frame-synchronized main-editor audio monitoring inside EFX Paint with session-local toggle
 - [ ] **Phase 42: PlayScript Application Modes + Color Override** — Explicit progressive vs static/hold modes and application-time color override with clear Scripts panel UI
@@ -39,7 +39,7 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
   3. A genuinely unsaved project still shows `Save the project first.` and makes no persistence request
   4. Closing and reopening EFX Paint hydrates exactly once per authoritative context — no duplicate scans/listeners, and stale context events from a replaced project or layer cannot populate rows
   5. Manual Refresh remains available as an explicit rescan/recovery action, and Copy/Apply/Clear Buffer/Load+Apply/Play/rename/delete/selection/diagnostics/clipboard behavior and default-open accessibility are unchanged
-**Plans**: TBD
+**Plans**: Satisfied by quick task 260804-f2q (`.planning/quick/260804-f2q-fix-the-phase-39-efx-paint-scripts-auto-/`) — owned regression tests, HYDR-06 timing-primitive diff gate, `VERIFICATION.md` status passed, native UAT approved 2026-08-04; closed by verification per the execution note below
 **UI hint**: yes
 
 **Execution note:** This phase may be satisfied by the dedicated `/gsd-quick` per `SPECS/milestone-v0.9.0-plan.md` (completion gate). If the quick lands first with owned regression tests and accepted native UAT evidence, Phase 39 closes by verification instead of reimplementation. Any `setTimeout`/polling/`requestAnimationFrame` in the fix diff is automatic rejection (HYDR-06).

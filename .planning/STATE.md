@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-status: planning
-last_updated: "2026-08-04T07:18:50.566Z"
+status: in_progress
+last_updated: "2026-08-04T12:05:00.000Z"
 last_activity: 2026-08-04
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 0
   completed_plans: 0
-  percent: 0
+  percent: 17
 ---
 
 # Project State
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Milestone v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity (target release 2026-08-31). Phase 39: Scripts Auto-Hydration Fix (blocking prerequisite).
+**Current focus:** Milestone v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity (target release 2026-08-31). Phase 39 complete (quick 260804-f2q); Phase 40: macOS Icon Regeneration + Build Hygiene is next.
 
 ## Current Position
 
-Phase: 39 of 44 (Scripts Auto-Hydration Fix) — not started
+Phase: 39 of 44 (Scripts Auto-Hydration Fix) — **complete** (closed by verification 2026-08-04 via quick task 260804-f2q: owned regression tests green, HYDR-06 diff gate clean, `260804-f2q-VERIFICATION.md` status passed, native UAT approved)
 Plan: —
-Status: Roadmap created; ready to plan Phase 39
-Last activity: 2026-08-04 - Quick task 260804-f2q native UAT approved: Phase 39 EFX Paint Scripts auto-hydration regression fixed and verified
+Status: Phase 39 closed by verification; ready to plan Phase 40
+Last activity: 2026-08-04 - Phase 39 closed by verification (quick task 260804-f2q, native UAT approved)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 17%
 
 ## Performance Metrics
 
