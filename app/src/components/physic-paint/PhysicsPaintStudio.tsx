@@ -28,6 +28,7 @@ import { buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, typ
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
 import { createPhysicPaintThumbnailNativeEncoder, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
 import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
+import { efxPaintAudioMonitor } from './audio/efxPaintAudioMonitor';
 import { audioPreviewEnabled, setAudioPreviewEnabled } from './audio/efxPaintAudioPreviewStore';
 import { buildBlankRotoFrame, type RenderedFramePayload } from './roto/rotoCanvasFrames';
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush } from './bridge/usePhysicsPaintParentBridge';
@@ -682,7 +683,15 @@ export function PhysicsPaintStudio() {
       await rotoPersistence.flushLivePixels(currentFrame);
       await rotoPlaybackSettingsController.flush();
     },
+    // 41-05 (D-08): audio engine release runs unconditionally on close,
+    // before the hasPending gate — closing the window always stops and
+    // releases monitoring, even with nothing to flush.
+    () => efxPaintAudioMonitor.release(),
   );
+  // 41-05 (D-08): release the audio engine on Studio unmount as well — the
+  // close-requested hook above covers the window-close path; this covers
+  // unmount. Double-firing is absorbed by release() idempotency.
+  useEffect(() => () => { efxPaintAudioMonitor.release(); }, []);
   // Header Close intent routes through getCurrentWindow().close() so the
   // onCloseRequested flush above always runs (T-36.15-06); the browser bridge
   // falls back to window.close() when the Tauri window API is unavailable.

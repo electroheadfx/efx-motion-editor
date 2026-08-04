@@ -258,6 +258,26 @@ export const efxPaintAudioMonitor = {
     return state === 'playing';
   },
 
+  /**
+   * D-08 engine release on window close (AUDIO-06): stop every source through
+   * the single stop funnel — stopAll covers scheduled playDelayed sources
+   * (RESEARCH Pitfall 6) and the funnel also releases the ownership claim and
+   * clears suppression — then close the AudioContext if one exists and
+   * discard it. A closed context is never reused: a later playAtCursor
+   * creates a fresh one via ensureContext (clean re-open). Idempotent: a
+   * second release performs no stopAll (stop is a no-op unless playing) and
+   * no close (hasContext is false once the context is discarded). The stored
+   * context section and prepared buffers survive — release tears down the
+   * engine, not the monitoring session, so a post-release Play simply
+   * re-creates the context.
+   */
+  release(): void {
+    this.stop();
+    if (audioEngine.hasContext()) {
+      void audioEngine.closeContext();
+    }
+  },
+
   /** Anchor accessor for the drift corrector and scrub tests (D-09/D-10). */
   getAnchorAppFrame(): number {
     return anchorAppFrame;

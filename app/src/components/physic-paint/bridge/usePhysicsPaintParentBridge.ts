@@ -16,11 +16,13 @@ export async function detectPhysicsPaintBridgeMode(): Promise<PhysicsPaintBridge
   return 'Unavailable';
 }
 
-export function usePhysicsPaintCloseFlush(hasPending: () => boolean, flush: () => Promise<void>): void {
+export function usePhysicsPaintCloseFlush(hasPending: () => boolean, flush: () => Promise<void>, onClose?: () => void): void {
   const hasPendingRef = useRef(hasPending);
   const flushRef = useRef(flush);
+  const onCloseRef = useRef(onClose);
   hasPendingRef.current = hasPending;
   flushRef.current = flush;
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     let disposed = false;
@@ -28,6 +30,10 @@ export function usePhysicsPaintCloseFlush(hasPending: () => boolean, flush: () =
     void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
       const appWindow = getCurrentWindow();
       unlisten = await appWindow.onCloseRequested(async (event) => {
+        // 41-05 (D-08): the unconditional close hook (audio engine release)
+        // runs BEFORE the flush gate — the hasPending early-return below must
+        // never skip it.
+        onCloseRef.current?.();
         if (!hasPendingRef.current()) return;
         event.preventDefault();
         try {

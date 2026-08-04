@@ -182,6 +182,33 @@ class AudioEngine {
     }
   }
 
+  /**
+   * Read-only probe: whether a live AudioContext currently exists (41-05 D-08
+   * release orchestration — no playback behavior change).
+   */
+  hasContext(): boolean {
+    return this.ctx !== null && this.ctx.state !== 'closed';
+  }
+
+  /**
+   * Close and discard the AudioContext (D-08 window-close release).
+   * Idempotent: a no-op when no context exists or it is already closed —
+   * ctx.close() on a closed context rejects, so the reference is dropped
+   * first and the close is guarded by a state check plus try/catch. A closed
+   * context is never reused: a later ensureContext() creates a fresh one.
+   */
+  async closeContext(): Promise<void> {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.ctx = null;
+    if (ctx.state === 'closed') return;
+    try {
+      await ctx.close();
+    } catch (_) {
+      // Closed concurrently — already discarded above.
+    }
+  }
+
   /** Update volume for a playing track. */
   setVolume(trackId: string, volume: number): void {
     const gain = this.gains.get(trackId);
