@@ -84,7 +84,27 @@ Plans:
   4. Main-editor audio changes while EFX Paint is open arrive as revisioned bridge updates; a stale update never overwrites newer audio context
   5. Missing audio assets surface a non-blocking warning, audio-preview failure never blocks Paint editing, and closing EFX Paint stops and releases all audio resources
 
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+**Wave 1**
+
+- [ ] 41-01-PLAN.md — Locked frame→audio truth table + RED test suite + decision checkpoint (A4/A6/revision) (AUDIO-02, AUDIO-03, AUDIO-04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 41-02-PLAN.md — Tracer: revisioned audioPreview launch section main→Rust→child + monitor fetch/decode/play-at-cursor (AUDIO-01, AUDIO-02, AUDIO-06)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 41-03-PLAN.md — Sync behaviors (silent scrub, loop-wrap re-seek, 40ms drift corrector) + push-on-change revisioned updates with mid-playback restart (AUDIO-03, AUDIO-04)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 41-04-PLAN.md — First-player-wins ownership guard with suppressed note + auto-resume; session-local Audio Preview toggle (AUDIO-05, AUDIO-06)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 41-05-PLAN.md — Engine release on close, CSP connect-src efxasset grant (RED-first contract test), native packaged-app UAT (AUDIO-06)
 
 **Entry artifact:** Locked frame→audio truth table (paint appFrame == main-editor global frame; per-track offset/trim/slip combinations) written and tested before implementation. Main editor remains sole authority for audio IDs, assets, offset, trim, volume, mute, fades, ordering, persistence, and export mixing.
 
