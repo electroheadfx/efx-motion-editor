@@ -117,7 +117,7 @@ After a seek-aligned start, audio **free-runs on the Web Audio clock** (D-10). T
 
 - Sync is **guaranteed when the child playback fps equals the project fps**. This is the default: `usePhysicsPaintLaunchIntegration` clamps the launch `context.fps` into 1..60 and defaults playback fps to project fps.
 - When child playback fps diverges from project fps: **no playbackRate scaling, no pitch shift**. Audio time continues to map through project fps. Show a **non-blocking status note** in the playback/status area, and let the drift corrector (section 5) hold sync at loop-wrap/seek boundaries.
-- Flagged: this is the RESEARCH A6 default, pending Task 3 checkpoint confirmation (see section 9).
+- **LOCKED (Task 3 checkpoint, option `a6-matched-fps`):** the sync guarantee holds when child playback fps equals project fps (the default). Monitoring at non-default playback speeds is explicitly **best-effort, not sample-locked** — the status note discloses this; no `playbackRate` scaling is ever applied.
 
 ---
 
@@ -127,7 +127,7 @@ After a seek-aligned start, audio **free-runs on the Web Audio clock** (D-10). T
 - `AudioTrack.filePath` and `AudioTrack.relativePath` **never appear in the payload** — not as fields, not as raw path strings (D-04). The closed-key schema rejects any track or section carrying them.
 - Forbidden by D-04: base64 or `data:` audio URLs; reuse of the v0.8.1 `img-src data:` grant for audio; speculative CSP broadening; unrestricted filesystem paths; raw audio bytes crossing the bridge.
 - Decode is **local** in the child window: `fetch(assetUrl)` → `arrayBuffer()` → `decodeAudioData` through the existing `audioEngine` path. The `efxasset` Rust handler returns 404 for missing files; the child warns and skips that track, never blocking the others (AUDIO-06).
-- Any CSP adjustment is the single narrow directive proven necessary by a failing test, guarded by a contract test (v0.8.1 precedent); the proof mode is selected at the Task 3 checkpoint (section 9).
+- Any CSP adjustment is the single narrow directive proven necessary by a failing test, guarded by a contract test (v0.8.1 precedent); the proof mode is locked in section 9 (`d04-proof-packaged-build`).
 
 ---
 
@@ -137,17 +137,17 @@ Scrubbing produces **no audio** (D-09 — silent scrub, play-only audio; no NLE-
 
 ---
 
-## 9. DECISIONS PENDING
+## 9. DECISIONS LOCKED
 
-To be locked by the 41-01 Task 3 blocking decision checkpoint; this section is renamed **DECISIONS LOCKED** once answered. Section 6 is annotated with the outcome.
+Locked by the 41-01 Task 3 blocking decision checkpoint on 2026-08-04. All four selections are final and gate the D-04 one-way boundary; no implementation plan may reopen them without a new user decision.
 
-| # | Question | Options routed at checkpoint |
-|---|----------|------------------------------|
-| A4 | Does "no absolute filesystem paths" (D-04) tolerate the path-bearing `efxasset://localhost` URL? | `a4-protocol-url` (permitted carrier) / `a4-opaque-token` (Rust ID-to-path registry) |
-| A6 | What does the user hear when child playback fps ≠ project fps? | `a6-matched-fps` (guarantee at matched fps + status note) / `a6-playback-rate` (playbackRate scaling, pitch shift) |
-| REV | Revision discipline for the audio section | `rev-counter` (monotonic integer, publisher-owned) / `rev-timestamp` (string id, rotoPhysical style) |
-| D04 | Proof mode for the D-04 "failing packaged-app test" before the 41-05 CSP grant | `d04-proof-contract-red` (contract-test RED is the accepted proof) / `d04-proof-packaged-build` (pre-grant packaged build must fail first) |
+| # | Question | Chosen option | Locked consequence |
+|---|----------|---------------|---------------------|
+| A4 | Does "no absolute filesystem paths" (D-04) tolerate the path-bearing `efxasset://localhost` URL? | **`a4-protocol-url`** — the `efxasset://` protocol URL (percent-encoded absolute path inside) is the permitted carrier | Zero Rust transport diff; D-04 read as permitting protocol URLs; no opaque-token registry is built. Payloads still never carry raw `filePath`/`relativePath` fields (section 7) |
+| A6 | What does the user hear when child playback fps ≠ project fps? | **`a6-matched-fps`** — sync guaranteed at matched fps, non-blocking status note otherwise | No `playbackRate` scaling, no pitch shift, ever; non-default playback speeds are best-effort monitoring, not sample-locked (section 6) |
+| REV | Revision discipline for the audio section | **`rev-counter`** — monotonic integer counter owned by the main-side publisher | Total order, strict newer-than compare; counter bumped exactly once per publish (section 4) |
+| D04 | Proof mode for the D-04 "failing packaged-app test" before the 41-05 CSP grant | **`d04-proof-packaged-build`** — literal D-04 reading: the `efxasset` fetch failure must be observed inside a **packaged build** before the grant lands | Plan 41-05 must run a full packaged build cycle demonstrating the pre-grant `connect-src` failure BEFORE adding the grant; the config-level contract test remains as the permanent guard afterwards but does NOT substitute for the packaged proof |
 
 ---
 
-*Locked by: Phase 41 plan 41-01 (Task 1). Test-encoded RED by plan 41-01 (Task 2). Decisions locked by plan 41-01 (Task 3 checkpoint).*
+*Locked by: Phase 41 plan 41-01 (Task 1). Test-encoded RED by plan 41-01 (Task 2). Decisions locked by plan 41-01 (Task 3 checkpoint, 2026-08-04): `a4-protocol-url`, `a6-matched-fps`, `rev-counter`, `d04-proof-packaged-build`.*

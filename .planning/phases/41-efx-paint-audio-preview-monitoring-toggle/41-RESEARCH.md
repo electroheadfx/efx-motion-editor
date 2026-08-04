@@ -438,24 +438,24 @@ export function handlePhysicPaintFrameSyncMessage(value: unknown): boolean {
 
 **Planner note:** A1/A3 are resolved by the D-04-mandated packaged-app test; A4/A6 deserve explicit user confirmation when the truth-table entry artifact is reviewed (both are one-line answers).
 
-## Open Questions (RESOLVED — routing locked by plan revision; chosen options recorded by the 41-01 Task 3 checkpoint and 41-04 design)
+## Open Questions (RESOLVED — Q1-Q3 locked by the 41-01 Task 3 checkpoint on 2026-08-04; Q4 resolved by the 41-04 design)
 
-> Resolution routing: Q1-Q3 resolve at the blocking 41-01 Task 3 decision checkpoint (recorded into the truth table's DECISIONS LOCKED section); Q4 is resolved by the 41-04 design (broadcast from `playbackEngine.start/stop` via a bridge publisher). The executor flips this heading to `## Open Questions (RESOLVED)` with the chosen option per question when the 41-01 checkpoint is answered.
+> Q1-Q3 resolved at the blocking 41-01 Task 3 decision checkpoint and recorded in the truth table's DECISIONS LOCKED section (section 9); Q4 resolved by the 41-04 design (broadcast from `playbackEngine.start/stop` via a bridge publisher).
 
-1. **Playback fps ≠ project fps: what does the user hear?** — ROUTED: 41-01 Task 3 checkpoint (options a6-matched-fps / a6-playback-rate)
+1. **Playback fps ≠ project fps: what does the user hear?** — RESOLVED: **`a6-matched-fps`**
+   - Decision: the sync guarantee holds when child playback fps equals project fps (the default). Non-default playback speeds are best-effort monitoring, not sample-locked — non-blocking status note, no `playbackRate` scaling, no pitch shift. Locked in the truth table section 6.
    - What we know: child playback fps is user-adjustable 1–60, defaults to project fps; audio time maps through project fps.
-   - What's unclear: whether monitoring must stay synchronized at non-default playback speeds (implies `playbackRate` scaling + pitch shift) or whether the sync guarantee applies at matched fps with a status note otherwise.
-   - Recommendation: Resolve in the locked truth-table artifact before implementation (roadmap mandates it); default to matched-fps guarantee + note (A6).
+   - Recommendation adopted: matched-fps guarantee + note (A6).
 
-2. **Does "no absolute filesystem paths" (D-04) tolerate the path-bearing `efxasset:` URL?** — ROUTED: 41-01 Task 3 checkpoint (options a4-protocol-url / a4-opaque-token)
+2. **Does "no absolute filesystem paths" (D-04) tolerate the path-bearing `efxasset:` URL?** — RESOLVED: **`a4-protocol-url`**
+   - Decision: the `efxasset://` URL carrying the percent-encoded absolute path IS the permitted carrier — zero Rust transport diff; D-04 read as permitting protocol URLs. Payloads still never carry raw `filePath`/`relativePath` fields. Locked in the truth table sections 7 and 9.
    - What we know: D-04 permits "opaque asset IDs or protocol URLs"; `efxasset:` URLs encode the absolute path; the URL is useless without the fetch, which stays inside the Tauri protocol boundary.
-   - What's unclear: whether the user intended strictly opaque tokens.
-   - Recommendation: Treat the protocol URL as permitted (A4); confirm with user at truth-table review; fallback is a Rust token registry.
 
-3. **Revision discipline for the audio section: counter or string id?** — ROUTED: 41-01 Task 3 checkpoint (options rev-counter / rev-timestamp)
-   - What we know: `rotoPhysical.revision` is a string; D-02 needs a total order ("newer").
-   - What's unclear: whether the main editor has an existing monotonic audio revision source (none found — `audioStore` has undo snapshots but no revision counter).
-   - Recommendation: Add a module-level monotonically increasing counter in the publisher (bumped per publish, embedded in launch context + updates). Planner locks this in the truth-table artifact.
+3. **Revision discipline for the audio section: counter or string id?** — RESOLVED: **`rev-counter`**
+   - Decision: monotonically increasing integer counter owned by the main-side publisher — total order, strict newer-than compare, bumped exactly once per publish. Locked in the truth table section 4.
+   - What we know: `rotoPhysical.revision` is a string; D-02 needs a total order ("newer"); no existing monotonic audio revision source was found.
+
+**D-04 proof mode (from the 41-01 Task 3 checkpoint, recorded here because it gates 41-05):** RESOLVED: **`d04-proof-packaged-build`** — the `efxasset` fetch failure must be observed inside a **packaged build** before the `connect-src` grant lands (exact D-04 wording). Plan 41-05 runs a packaged build cycle demonstrating the pre-grant failure BEFORE adding the grant; the config-level contract test remains as the permanent guard afterwards but does not substitute for the packaged proof.
 
 4. **Main-window playback-state broadcast hook point** — RESOLVED by 41-04 design: emit ownership events from `playbackEngine.start/stop` via a bridge publisher
    - What we know: D-07 needs the child to learn when main playback stops; `playbackEngine.start()/stop()` are the funnel.
