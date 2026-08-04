@@ -2,7 +2,7 @@ import type { AudioTrack } from '../../../types/audio';
 import type { EfxPaintAudioPreviewContext } from '../../../types/physicPaint';
 import { audioEngine } from '../../../lib/audioEngine';
 import { applyRevisionedEfxPaintAudioPreview, resolveTrackPlayback } from './efxPaintAudioPreviewContext';
-import { audioPreviewEnabled, efxPaintAudioPreviewStore } from './efxPaintAudioPreviewStore';
+import { audioPreviewEnabled, configureAudioPreviewToggleEffect, efxPaintAudioPreviewStore } from './efxPaintAudioPreviewStore';
 import { efxPaintAudioOwnership } from './efxPaintAudioOwnership';
 
 /**
@@ -54,6 +54,11 @@ let fpsMismatchNoted = false;
 // (D-03).
 let liveCursorAppFrame = 0;
 let livePlaybackRangeEnd = 0;
+// D-14: visual playback is running with the session toggle Off (a Play
+// attempt while muted, a mid-playback mute, or a toggle-gated D-07 resume
+// all land here). A later toggle-On resumes at the live cursor ONLY when this
+// flag is set; the visual-stop funnel (stop) clears it.
+let toggleSilenced = false;
 const preparedTrackIds = new Set<string>();
 
 export const efxPaintAudioMonitor = {
@@ -99,7 +104,12 @@ export const efxPaintAudioMonitor = {
     if (!current) return;
     liveCursorAppFrame = cursorAppFrame;
     livePlaybackRangeEnd = playbackRangeEnd;
-    if (!audioPreviewEnabled.peek()) return;
+    if (!audioPreviewEnabled.peek()) {
+      // D-14: a start/restart attempt while muted leaves visual playback
+      // running silent — remember it so a later toggle-On resumes here.
+      toggleSilenced = true;
+      return;
+    }
     if (!efxPaintAudioOwnership.canStartAudio()) {
       efxPaintAudioOwnership.noteSuppressed();
       return;
@@ -124,6 +134,7 @@ export const efxPaintAudioMonitor = {
     anchorCtx = ctx;
     anchorCtxTime = ctx.currentTime;
     driftTickCounter = 0;
+    toggleSilenced = false;
     state = 'playing';
     // D-05 claim lifecycle: the first audio start claims ownership so a later
     // main-editor start suppresses itself (symmetric guard).
@@ -132,10 +143,12 @@ export const efxPaintAudioMonitor = {
 
   /**
    * Stop all sources and clear the anchor. Also the visual-stop funnel for
-   * the ownership guard: releases the claim and drops any pending suppression
-   * (both idempotent — a second stop stays a no-op).
+   * the ownership guard and the toggle: releases the claim, drops any pending
+   * suppression, and clears the muted-mid-playback flag (both idempotent — a
+   * second stop stays a no-op).
    */
   stop(): void {
+    toggleSilenced = false;
     efxPaintAudioOwnership.releaseAudio();
     efxPaintAudioOwnership.noteVisualStop();
     if (state !== 'playing') return;
@@ -200,17 +213,41 @@ export const efxPaintAudioMonitor = {
   },
 
   /**
+   * D-14 toggle funnel, driven by setAudioPreviewEnabled through the injected
+   * effect channel. Off: an audible session stops immediately through the
+   * single stop funnel (visual playback is untouched — the toggle never
+   * stops the frame timer) and is flagged so a later On resumes; an idle or
+   * ownership-suppressed session is a pure state change (the D-06 note
+   * lifecycle is unchanged). On: resumes at the live Paint cursor only when
+   * playback is running silent. Same-value repeats never reach here — the
+   * store setter is idempotent (AUDIO-05).
+   */
+  setPreviewEnabled(enabled: boolean): void {
+    if (!enabled) {
+      if (state !== 'playing') return;
+      this.stop();
+      toggleSilenced = true;
+      return;
+    }
+    if (!toggleSilenced) return;
+    toggleSilenced = false;
+    this.playAtCursor(liveCursorAppFrame, livePlaybackRangeEnd);
+  },
+
+  /**
    * D-03 mid-playback revisioned update: adopt the newer context (fetch +
    * decode any new/changed tracks through the same prepare path), then — when
    * playing — restart audio at the CURRENT Paint cursor with the new context
-   * (stopAll + fresh dispatch, never deferred to next play). When idle or
-   * positioned, only the stored context and the anchor are updated; zero
-   * audio dispatch.
+   * (stopAll + fresh dispatch, never deferred to next play). The restart
+   * decision is taken AFTER prepare resolves: a toggle racing the update
+   * lands inside the await, and the funnel's final word reflects the state at
+   * acceptance time — Off always ends silent, On always ends positioned
+   * (AUDIO-05 concurrency edge). When idle or positioned, only the stored
+   * context and the anchor are updated; zero audio dispatch.
    */
   async applyRevisionedContext(next: EfxPaintAudioPreviewContext): Promise<void> {
-    const restartAtCursor = state === 'playing';
     await this.prepare(next);
-    if (restartAtCursor) {
+    if (state === 'playing') {
       this.playAtCursor(liveCursorAppFrame, livePlaybackRangeEnd);
     } else {
       anchorAppFrame = liveCursorAppFrame;
@@ -256,3 +293,8 @@ export function resumeEfxPaintAudioAtLiveCursor(): void {
 // scope registration is safe: the monitor is child-window-only code — the
 // main window never imports it (AUDIO-01 authority boundary).
 efxPaintAudioOwnership.configure({ resumeHandler: resumeEfxPaintAudioAtLiveCursor });
+
+// D-14: the session toggle's immediate mid-playback effect routes through the
+// monitor funnel (Off stops, On resumes at the live cursor when playback is
+// running silent). Same child-only module-scope discipline as above.
+configureAudioPreviewToggleEffect((enabled) => efxPaintAudioMonitor.setPreviewEnabled(enabled));

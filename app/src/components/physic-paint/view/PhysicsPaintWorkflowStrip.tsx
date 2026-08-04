@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, Play, Plus, RotateCcw, Scissors, Square, Trash2, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, Play, Plus, RotateCcw, Scissors, Square, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
 
 import { memo } from 'preact/compat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -97,6 +97,13 @@ export interface PhysicsPaintWorkflowStripProps {
   onToggleRotoPlayback?: () => void;
   onRotoPlaybackLoopChange?: (loop: boolean) => void;
   onRotoPlaybackFpsChange?: (fps: number) => void;
+  /**
+   * 41-04 (D-12..D-14): session-local Audio Preview toggle. State defaults On
+   * per session (never persisted); the intent routes through the monitor's
+   * single control funnel for immediate mid-playback effect.
+   */
+  audioPreviewEnabled?: boolean;
+  onAudioPreviewToggle?: () => void;
   isRotoCachedPlaybackActive?: boolean;
   /**
    * 38.1-D-01 per-tick playback surface, passed through as a signal reference.
@@ -329,6 +336,9 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   onTogglePlayback?: () => void;
   onPlaybackLoopChange?: (loop: boolean) => void;
   onPlaybackFpsChange?: (fps: number) => void;
+  /** 41-04 (D-12/D-13): session-local Audio Preview toggle state + intent. */
+  audioPreviewEnabled?: boolean;
+  onAudioPreviewToggle?: () => void;
   onInterpolationEnabledChange?: (enabled: boolean) => void;
   onInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
   onGoToFirstFrame: () => void;
@@ -343,6 +353,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
   recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome');
   const closeTooltip = useStyledTooltip();
   const interpolationTooltip = useStyledTooltip();
+  const audioPreviewTooltip = useStyledTooltip();
   function handleRotoPlaybackFpsInput(event: Event) {
     const value = Number((event.currentTarget as HTMLInputElement).value);
     if (Number.isFinite(value)) props.onPlaybackFpsChange?.(value);
@@ -364,6 +375,29 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
       </div>
       <div class="physics-paint-pill physics-paint-pill--playback physics-paint-roto-playback-controls" role="group" aria-label="Roto playback settings">
         <button type="button" class={`physics-paint-nav-button physics-paint-roto-loop-toggle ${props.playbackLoop ? 'active' : ''}`} aria-label="Loop cached Roto playback" aria-pressed={props.playbackLoop} disabled={!props.ready || !props.onPlaybackLoopChange} onClick={() => props.onPlaybackLoopChange?.(!props.playbackLoop)}><RotateCcw size={15} /></button>
+        {props.onAudioPreviewToggle ? (
+          <span
+            class="physics-paint-audio-preview-toggle-anchor"
+            onPointerEnter={audioPreviewTooltip.onPointerEnter}
+            onPointerLeave={audioPreviewTooltip.onPointerLeave}
+          >
+            {/* 41-04 (D-12): session-local Audio Preview toggle — guarded icon
+                with styled tooltip, mirroring the loop-toggle button pattern. */}
+            <button
+              type="button"
+              class={`physics-paint-nav-button physics-paint-audio-preview-toggle ${props.audioPreviewEnabled ? 'active' : ''}`}
+              aria-label={props.audioPreviewEnabled ? 'Disable audio preview' : 'Enable audio preview'}
+              aria-pressed={props.audioPreviewEnabled === true}
+              disabled={!props.ready}
+              onFocus={audioPreviewTooltip.onFocus}
+              onBlur={audioPreviewTooltip.onBlur}
+              onClick={() => { audioPreviewTooltip.hide(); props.onAudioPreviewToggle?.(); }}
+            >
+              {props.audioPreviewEnabled ? <Volume2 size={15} aria-hidden="true" /> : <VolumeX size={15} aria-hidden="true" />}
+            </button>
+            <PhysicsPaintStyledTooltip visible={audioPreviewTooltip.visible} region="bottom">{props.audioPreviewEnabled ? 'Audio preview On — click to mute monitoring' : 'Audio preview Off — click to hear monitoring'}</PhysicsPaintStyledTooltip>
+          </span>
+        ) : null}
         <label class="physics-paint-roto-fps-control"><span>fps</span><input type="number" min="1" max="60" step="0.5" value={props.playbackFps || props.projectFps || 1} aria-label="Cached Roto playback frames per second" disabled={!props.ready} onInput={handleRotoPlaybackFpsInput} /></label>
       </div>
       <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} />
@@ -1240,6 +1274,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         onTogglePlayback={props.onToggleRotoPlayback}
         onPlaybackLoopChange={props.onRotoPlaybackLoopChange}
         onPlaybackFpsChange={props.onRotoPlaybackFpsChange}
+        audioPreviewEnabled={props.audioPreviewEnabled}
+        onAudioPreviewToggle={props.onAudioPreviewToggle}
         onInterpolationEnabledChange={props.onRotoInterpolationEnabledChange}
         onInterpolationModeChange={props.onRotoInterpolationModeChange}
         onGoToFirstFrame={props.onGoToFirstFrame}

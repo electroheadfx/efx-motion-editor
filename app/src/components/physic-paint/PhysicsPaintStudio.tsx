@@ -28,6 +28,7 @@ import { buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, typ
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
 import { createPhysicPaintThumbnailNativeEncoder, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
 import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
+import { audioPreviewEnabled, setAudioPreviewEnabled } from './audio/efxPaintAudioPreviewStore';
 import { buildBlankRotoFrame, type RenderedFramePayload } from './roto/rotoCanvasFrames';
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush } from './bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
@@ -137,6 +138,12 @@ export function PhysicsPaintStudio() {
       },
     });
     return () => efxPaintAudioOwnership.configure({ claimSender: null });
+  }, []);
+  // 41-04 (D-14): the Audio Preview toggle intent flips the session signal;
+  // the immediate mid-playback effect (stop/resume at the live cursor) routes
+  // through the monitor funnel inside setAudioPreviewEnabled.
+  const handleAudioPreviewToggle = useCallback(() => {
+    setAudioPreviewEnabled(!audioPreviewEnabled.peek());
   }, []);
   // Physical selection state (D-01/D-10): selectedKeyId is the stable real-key
   // identity, rotoKeyRecords and rotoInterpolationState are derived from the
@@ -1378,6 +1385,10 @@ export function PhysicsPaintStudio() {
         // output child subscribes to it, during active playback only.
         rotoCachedPlaybackTick: rotoCachedPlayback.playbackTick,
         onToggleRotoPlayback: rotoCachedPlayback.toggle, onRotoPlaybackLoopChange: setRotoPlaybackLoop, onRotoPlaybackFpsChange: setRotoPlaybackFps, rotoInterpolationEnabled: rotoInterpolationState.enabled, rotoInterpolationMode: rotoInterpolationState.mode, rotoInterpolationPending: physicalEditCoordinator.pendingOperationId.value !== null,
+        // 41-04 (D-12..D-14): session-local Audio Preview toggle. The .value
+        // read subscribes this bundle like the sibling signal reads above; the
+        // intent routes through the monitor funnel for immediate effect.
+        audioPreviewEnabled: audioPreviewEnabled.value, onAudioPreviewToggle: handleAudioPreviewToggle,
         onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange, onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
         onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed

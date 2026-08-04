@@ -18,6 +18,32 @@ const section = signal<EfxPaintAudioPreviewContext | null>(null);
  */
 export const audioPreviewEnabled = signal(true);
 
+type AudioPreviewToggleEffect = (enabled: boolean) => void;
+let toggleEffect: AudioPreviewToggleEffect | null = null;
+
+/**
+ * D-14 effect channel: the monitor registers its toggle funnel here at module
+ * scope. The store cannot import the monitor (the monitor already imports
+ * this store), so the immediate mid-playback effect travels through this
+ * injected slot.
+ */
+export function configureAudioPreviewToggleEffect(effect: AudioPreviewToggleEffect | null): void {
+  toggleEffect = effect;
+}
+
+/**
+ * Session toggle setter (AUDIO-05). Idempotent: setting the current value is
+ * a no-op with zero engine calls — no double engine start, no doubled stopAll
+ * side effects. A real change routes through the monitor funnel: Off silences
+ * audio immediately while visual playback continues; On resumes at the live
+ * Paint cursor only when playback is running silent.
+ */
+export function setAudioPreviewEnabled(next: boolean): void {
+  if (audioPreviewEnabled.peek() === next) return;
+  audioPreviewEnabled.value = next;
+  toggleEffect?.(next);
+}
+
 export const efxPaintAudioPreviewStore = {
   section,
   hasAudio: computed(() => (section.value?.tracks.length ?? 0) > 0),

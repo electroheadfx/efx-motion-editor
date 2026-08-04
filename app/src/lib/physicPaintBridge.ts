@@ -932,8 +932,14 @@ export async function installPhysicPaintAudioOwnershipListener(): Promise<() => 
   };
   let unlistenTauri: (() => void) | undefined;
   if (isTauriRuntime()) {
-    const eventApi = await import('@tauri-apps/api/event');
-    unlistenTauri = await eventApi.listen?.(PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, (event) => accept(event.payload));
+    try {
+      const eventApi = await import('@tauri-apps/api/event');
+      unlistenTauri = await eventApi.listen?.(PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, (event) => accept(event.payload));
+    } catch {
+      // Tauri event API unavailable — the CustomEvent/postMessage fallbacks
+      // below still carry the claim (same resilience idiom as the child-side
+      // bridge listeners' .catch(() => undefined)).
+    }
   }
   if (typeof window === 'undefined') return () => { unlistenTauri?.(); };
   const custom = (event: Event) => accept((event as CustomEvent).detail);
