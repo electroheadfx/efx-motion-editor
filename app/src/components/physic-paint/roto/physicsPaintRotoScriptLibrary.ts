@@ -33,7 +33,7 @@ export interface RotoScriptLibraryController {
   rename: Signal<{ id: string; draft: string; error: string | null } | null>;
   deleteConfirmation: Signal<RotoScriptLibraryRow | null>;
   availability: ReadonlySignal<RotoScriptLibraryAvailability>;
-  updateProjectContext: () => Promise<void>;
+  updateProjectContext: (context: PhysicPaintLaunchContext) => Promise<void>;
   enterScripts: () => Promise<void>;
   refresh: () => Promise<void>;
   saveActiveFrame: () => Promise<boolean>;
@@ -63,6 +63,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   let contextGeneration = 0;
   let operationGeneration = 0;
   let contextKey = contextIdentity(ports.getLaunchContext());
+  let lastAutoHydratedKey: string | null = null;
   const selected = computed(() => rows.value.find((row) => row.id === selectedId.value) ?? null);
   const availability = computed<RotoScriptLibraryAvailability>(() => ({
     canSave: projectSaved.value && !busy.value,
@@ -108,23 +109,42 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       if (!disposed && acceptedOperationGeneration === operationGeneration) busy.value = false;
     }
   }
-  async function refresh(): Promise<void> {
+  function applyContextReset(nextContextKey: string): void {
+    contextKey = nextContextKey;
+    contextGeneration += 1;
+    operationGeneration += 1;
+    busy.value = false;
+    rows.value = [];
+    selectedId.value = null;
+    rename.value = null;
+    deleteConfirmation.value = null;
+    lastAutoHydratedKey = null;
+  }
+  async function refreshWithContext(context: PhysicPaintLaunchContext | null): Promise<void> {
     if (disposed) return;
-    const context = ports.getLaunchContext();
     const nextContextKey = contextIdentity(context);
     if (nextContextKey !== contextKey) {
-      contextKey = nextContextKey;
-      contextGeneration += 1;
-      operationGeneration += 1;
-      busy.value = false;
-      rows.value = [];
-      selectedId.value = null;
-      rename.value = null;
-      deleteConfirmation.value = null;
+      applyContextReset(nextContextKey);
     }
     const saved = Boolean(context?.project?.saved);
     projectSaved.value = saved;
     if (!projectSaved.value) { operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; skippedInvalidCount.value = 0; rename.value = null; deleteConfirmation.value = null; status.value = null; return; }
+    const result = await execute({ kind: 'scan', operationId: operationId('scan') });
+    status.value = result.ok ? `Found ${result.rows.length} scripts${result.skippedInvalidCount ? ` · Skipped ${result.skippedInvalidCount} invalid files` : ''}` : result.error ?? 'Refresh failed';
+  }
+  async function refresh(): Promise<void> {
+    await refreshWithContext(ports.getLaunchContext());
+  }
+  async function updateProjectContext(context: PhysicPaintLaunchContext): Promise<void> {
+    if (disposed) return;
+    const nextContextKey = contextIdentity(context);
+    if (nextContextKey !== contextKey) {
+      applyContextReset(nextContextKey);
+    }
+    projectSaved.value = Boolean(context?.project?.saved);
+    if (!projectSaved.value) { operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; skippedInvalidCount.value = 0; rename.value = null; deleteConfirmation.value = null; status.value = null; return; }
+    if (lastAutoHydratedKey === contextKey) return;
+    lastAutoHydratedKey = contextKey;
     const result = await execute({ kind: 'scan', operationId: operationId('scan') });
     status.value = result.ok ? `Found ${result.rows.length} scripts${result.skippedInvalidCount ? ` · Skipped ${result.skippedInvalidCount} invalid files` : ''}` : result.error ?? 'Refresh failed';
   }
@@ -237,10 +257,10 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   }
   return {
     rows, selectedId, selected, busy, status, skippedInvalidCount, rename, deleteConfirmation, availability,
-    updateProjectContext: refresh, enterScripts: refresh, refresh, saveActiveFrame, activateAndLoad, loadSnapshot, beginRename, updateRenameDraft, commitRename,
+    updateProjectContext, enterScripts: refresh, refresh, saveActiveFrame, activateAndLoad, loadSnapshot, beginRename, updateRenameDraft, commitRename,
     cancelRename: () => { rename.value = null; }, requestDelete: () => { deleteConfirmation.value = selected.peek(); }, confirmDelete,
     cancelDelete: () => { deleteConfirmation.value = null; }, select: (id) => { if (rows.peek().some((row) => row.id === id)) selectedId.value = id; },
-    dispose: () => { disposed = true; contextGeneration += 1; operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; rename.value = null; deleteConfirmation.value = null; },
+    dispose: () => { disposed = true; contextGeneration += 1; operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; rename.value = null; deleteConfirmation.value = null; lastAutoHydratedKey = null; },
   };
 }
 
