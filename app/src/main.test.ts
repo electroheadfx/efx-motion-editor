@@ -16,6 +16,9 @@ vi.mock('@tauri-apps/api/event', () => ({
     tauriListeners.set(eventName, handlers);
     return Promise.resolve(() => {});
   }),
+  // 41-03: the audio-context publisher targets the child window via emitTo at
+  // startup (the install effect publishes the current section immediately).
+  emitTo: vi.fn(() => Promise.resolve()),
 }));
 vi.mock('./lib/projectDir', () => ({ initTempProjectDir: vi.fn(() => Promise.resolve()) }));
 vi.mock('./lib/themeManager', () => ({ initTheme: vi.fn(() => Promise.resolve()) }));
