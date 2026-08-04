@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: 39 of 44 (Scripts Auto-Hydration Fix) — not started
 Plan: —
 Status: Roadmap created; ready to plan Phase 39
-Last activity: 2026-08-04 - Completed quick task 260804-f2q: Fix Phase 39 EFX Paint Scripts auto-hydration regression (automated checks green; native UAT pending)
+Last activity: 2026-08-04 - Quick task 260804-f2q native UAT approved: Phase 39 EFX Paint Scripts auto-hydration regression fixed and verified
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -192,7 +192,7 @@ None yet.
 | 260718-fp9 | Derive dynamic Physics Paint track labels and standalone identity | 2026-07-18 | b1ad99c4 |  | [260718-fp9-rename-the-visible-physics-paint-standal](./quick/260718-fp9-rename-the-visible-physics-paint-standal/) |
 | 260718-j3h | Add Backspace/Delete shortcuts for selected real Physics Paint Roto keys | 2026-07-18 | f9a4cede |  | [260718-j3h-add-backspace-and-delete-keyboard-shortc](./quick/260718-j3h-add-backspace-and-delete-keyboard-shortc/) |
 | 260718-m2f | Add single-real-key drag movement for Physics Paint Roto timeline | 2026-07-19 | 53c23549 | Verified | [260718-m2f-add-single-real-physics-paint-roto-key-d](./quick/260718-m2f-add-single-real-physics-paint-roto-key-d/) |
-| 260804-f2q | Fix Phase 39 EFX Paint Scripts auto-hydration regression | 2026-08-04 | d6b68fdc | Needs Review (native UAT pending) | [260804-f2q-fix-the-phase-39-efx-paint-scripts-auto-](./quick/260804-f2q-fix-the-phase-39-efx-paint-scripts-auto-/) |
+| 260804-f2q | Fix Phase 39 EFX Paint Scripts auto-hydration regression | 2026-08-04 | d6b68fdc | Verified | [260804-f2q-fix-the-phase-39-efx-paint-scripts-auto-](./quick/260804-f2q-fix-the-phase-39-efx-paint-scripts-auto-/) |
 | 260729-taj | Close milestone audit gap EDIT-02/B-01: install physic-paint frame-sync listener | 2026-07-29 | ed590d2b |  | [260729-taj-close-milestone-audit-gap-edit-02-b-01-i](./quick/260729-taj-close-milestone-audit-gap-edit-02-b-01-i/) |
 | 260730-mn0 | Prepare Apple Developer ID signing, notarization, and release documentation | 2026-07-30 | 1292351a | Prepared | [260730-mn0-configure-apple-developer-id-signing-har](./quick/260730-mn0-configure-apple-developer-id-signing-har/) |
 | 260731-9l0 | Add Cut tool to Efx Paint bottom timeline toolbar (copy + atomic delete, Cmd+X) | 2026-07-31 | 4f81df5d | Verified | [260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t](./quick/260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t/) |

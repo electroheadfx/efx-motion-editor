@@ -110,16 +110,16 @@ None — no new trust-boundary surface beyond the plan's threat model; T-39-02/T
 
 ## UAT Status (Task 3 — blocking human checkpoint)
 
-**PENDING USER UAT.** Per project rule the executor does not run the server or drive the native UI. The native packaged-app checklist in the plan (Task 3) must be performed by the user:
+**USER UAT APPROVED 2026-08-04.** The user performed the native packaged-app checklist (plan Task 3) and approved all steps:
 
-1. HYDR-01: saved project with durable scripts — rows populated on Scripts-tab open without Refresh. **(pending)**
-2. HYDR-02: Save Script enabled immediately when idle. **(pending)**
-3. HYDR-04: unsaved project shows `Save the project first.`; saving while EFX Paint is open hydrates automatically. **(pending)**
-4. HYDR-03: close/reopen 3 times — exactly one population per open, no duplicates/stale rows. **(pending)**
-5. HYDR-05: manual Refresh rescans; Copy/Apply/Load+Apply/Play/rename/delete/selection unchanged; Scripts tab default-open unchanged. **(pending)**
-6. HYDR-06: diff-gate count 0 confirmed (executor-reported above); no "wait a moment" step required by any checklist item. **(pending)**
+1. HYDR-01: saved project with durable scripts — rows populated on Scripts-tab open without Refresh. **(passed)**
+2. HYDR-02: Save Script enabled immediately when idle. **(passed)**
+3. HYDR-04: unsaved project shows `Save the project first.`; saving while EFX Paint is open hydrates automatically. **(passed)**
+4. HYDR-03: close/reopen 3 times — exactly one population per open, no duplicates/stale rows. **(passed)**
+5. HYDR-05: manual Refresh rescans; Copy/Apply/Load+Apply/Play/rename/delete/selection unchanged; Scripts tab default-open unchanged. **(passed)**
+6. HYDR-06: diff-gate count 0 confirmed (executor-reported above); no "wait a moment" step required by any checklist item. **(passed)**
 
-Until the user approves this checklist, the task is automated-ready only; Phase 39's UAT gate is not yet satisfied.
+Native UAT passed on 2026-08-04 — Phase 39's UAT gate is satisfied.
 
 ## Commits
 
