@@ -7,9 +7,16 @@ import {
 } from './efxPaintAudioPreviewContext';
 import { efxPaintAudioMonitor } from './efxPaintAudioMonitor';
 
+// Controllable Web Audio clock: the monitor captures ctx.currentTime at each
+// seek-aligned start and compares against it in the throttled drift check
+// (D-10). Tests advance `fakeAudioContext.currentTime` to simulate drift.
+const { fakeAudioContext } = vi.hoisted(() => ({
+  fakeAudioContext: { currentTime: 0 },
+}));
+
 vi.mock('../../../lib/audioEngine', () => ({
   audioEngine: {
-    ensureContext: vi.fn(),
+    ensureContext: vi.fn(() => fakeAudioContext),
     decode: vi.fn(async () => ({})),
     getBuffer: vi.fn(),
     play: vi.fn(),
@@ -406,5 +413,127 @@ describe('efxPaintAudioMonitor (Play wiring, truth table section 3 dispatch)', (
     expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
     expect(mockedAudioEngine.ensureContext).not.toHaveBeenCalled();
     expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
+  });
+});
+
+describe('efxPaintAudioMonitor sync behaviors (41-03: D-09 scrub, D-10 drift, D-11 loop wrap, A6 fps note)', () => {
+  beforeEach(() => {
+    efxPaintAudioMonitor.stop();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    fakeAudioContext.currentTime = 0;
+  });
+
+  async function prepareAndPlay(cursorAppFrame = 96, playbackRangeEnd = 288) {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(cursorAppFrame, playbackRangeEnd);
+  }
+
+  it('(a) scrub while playing repositions the anchor with zero audio dispatch (D-09)', async () => {
+    await prepareAndPlay(96, 288);
+    vi.clearAllMocks();
+    efxPaintAudioMonitor.positionedAt(120);
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.stopAll).not.toHaveBeenCalled();
+    expect(efxPaintAudioMonitor.getAnchorAppFrame()).toBe(120);
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(true);
+  });
+
+  it('(b) notifyLoopWrap performs stopAll then play at the mapped loop-start offset (D-11)', async () => {
+    await prepareAndPlay(96, 288);
+    vi.clearAllMocks();
+    efxPaintAudioMonitor.notifyLoopWrap(48, 288);
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+    // cursor == track.offsetFrame → framesIntoTrack = 0 → (24 + 12 + 0) / 24 = 1.5
+    // effectiveEnd = min(48 + (240 - 24), 288) = 264 → maxPlaySec = (264 - 48) / 24 = 9.0
+    expect(mockedAudioEngine.play).toHaveBeenCalledWith(
+      'track-1',
+      1.5,
+      expect.objectContaining({ id: 'track-1' }),
+      24,
+      9.0,
+    );
+    expect(mockedAudioEngine.stopAll.mock.invocationCallOrder[0])
+      .toBeLessThan(mockedAudioEngine.play.mock.invocationCallOrder[0]);
+  });
+
+  it('notifyLoopWrap is a no-op when not playing', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    vi.clearAllMocks();
+    efxPaintAudioMonitor.notifyLoopWrap(48, 288);
+    expect(mockedAudioEngine.stopAll).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+  });
+
+  it('(c) corrects only beyond the 40ms threshold: 30ms drift is ignored, 50ms triggers exactly one stopAll + restart (D-10)', async () => {
+    await prepareAndPlay(96, 288); // anchor: appFrame 96, ctxTime 0
+    vi.clearAllMocks();
+    // 10 ticks, cursor advances one appFrame per tick; audio clock runs 30ms slow.
+    fakeAudioContext.currentTime = 10 / 24 - 0.03;
+    for (let tick = 1; tick <= 10; tick += 1) efxPaintAudioMonitor.checkDrift(96 + tick, 288);
+    expect(mockedAudioEngine.stopAll).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    // 10 more ticks; audio clock now runs 50ms fast → exactly one seek-restart.
+    fakeAudioContext.currentTime = 20 / 24 + 0.05;
+    for (let tick = 11; tick <= 20; tick += 1) efxPaintAudioMonitor.checkDrift(96 + tick, 288);
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenCalledWith(
+      'track-1',
+      (24 + 12 + (116 - 48)) / 24,
+      expect.objectContaining({ id: 'track-1' }),
+      24,
+      // effectiveEnd = min(48 + (240 - 24), 288) = 264
+      (264 - 116) / 24,
+    );
+  });
+
+  it('(d) checkDrift self-throttles: nine calls do nothing, the tenth runs the comparison (D-10 — never per frame)', async () => {
+    await prepareAndPlay(96, 288);
+    vi.clearAllMocks();
+    // 100ms fast — over threshold whenever the comparison actually runs.
+    fakeAudioContext.currentTime = 9 / 24 + 0.1;
+    for (let tick = 1; tick <= 9; tick += 1) efxPaintAudioMonitor.checkDrift(96 + tick, 288);
+    expect(mockedAudioEngine.stopAll).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    fakeAudioContext.currentTime = 10 / 24 + 0.1;
+    efxPaintAudioMonitor.checkDrift(106, 288);
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('checkDrift is a no-op unless playing', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    fakeAudioContext.currentTime = 5;
+    for (let tick = 1; tick <= 12; tick += 1) efxPaintAudioMonitor.checkDrift(96 + tick, 288);
+    expect(mockedAudioEngine.stopAll).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+  });
+
+  it('(e) fps mismatch surfaces a non-blocking note once per playback session and never touches playbackRate (locked A6)', async () => {
+    await prepareAndPlay(96, 288); // context fps = 24
+    const note = efxPaintAudioMonitor.noteFpsMismatchOnce(24, 12);
+    expect(note).toBeTruthy();
+    expect(String(note)).toContain('12');
+    expect(String(note)).toContain('24');
+    // Once per playback session: a second mismatched call is silent.
+    expect(efxPaintAudioMonitor.noteFpsMismatchOnce(24, 12)).toBeNull();
+    // Matched fps never notes, and a new session (after stop) notes again.
+    efxPaintAudioMonitor.stop();
+    expect(efxPaintAudioMonitor.noteFpsMismatchOnce(24, 24)).toBeNull();
+    expect(efxPaintAudioMonitor.noteFpsMismatchOnce(24, 8)).toBeTruthy();
+    // No playbackRate scaling ever reaches the engine dispatch surface.
+    for (const call of mockedAudioEngine.play.mock.calls) {
+      expect(call[2]).not.toHaveProperty('playbackRate');
+    }
   });
 });
