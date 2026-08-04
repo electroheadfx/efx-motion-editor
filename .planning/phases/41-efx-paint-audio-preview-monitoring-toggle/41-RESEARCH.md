@@ -438,24 +438,26 @@ export function handlePhysicPaintFrameSyncMessage(value: unknown): boolean {
 
 **Planner note:** A1/A3 are resolved by the D-04-mandated packaged-app test; A4/A6 deserve explicit user confirmation when the truth-table entry artifact is reviewed (both are one-line answers).
 
-## Open Questions
+## Open Questions (RESOLVED — routing locked by plan revision; chosen options recorded by the 41-01 Task 3 checkpoint and 41-04 design)
 
-1. **Playback fps ≠ project fps: what does the user hear?**
+> Resolution routing: Q1-Q3 resolve at the blocking 41-01 Task 3 decision checkpoint (recorded into the truth table's DECISIONS LOCKED section); Q4 is resolved by the 41-04 design (broadcast from `playbackEngine.start/stop` via a bridge publisher). The executor flips this heading to `## Open Questions (RESOLVED)` with the chosen option per question when the 41-01 checkpoint is answered.
+
+1. **Playback fps ≠ project fps: what does the user hear?** — ROUTED: 41-01 Task 3 checkpoint (options a6-matched-fps / a6-playback-rate)
    - What we know: child playback fps is user-adjustable 1–60, defaults to project fps; audio time maps through project fps.
    - What's unclear: whether monitoring must stay synchronized at non-default playback speeds (implies `playbackRate` scaling + pitch shift) or whether the sync guarantee applies at matched fps with a status note otherwise.
    - Recommendation: Resolve in the locked truth-table artifact before implementation (roadmap mandates it); default to matched-fps guarantee + note (A6).
 
-2. **Does "no absolute filesystem paths" (D-04) tolerate the path-bearing `efxasset:` URL?**
+2. **Does "no absolute filesystem paths" (D-04) tolerate the path-bearing `efxasset:` URL?** — ROUTED: 41-01 Task 3 checkpoint (options a4-protocol-url / a4-opaque-token)
    - What we know: D-04 permits "opaque asset IDs or protocol URLs"; `efxasset:` URLs encode the absolute path; the URL is useless without the fetch, which stays inside the Tauri protocol boundary.
    - What's unclear: whether the user intended strictly opaque tokens.
    - Recommendation: Treat the protocol URL as permitted (A4); confirm with user at truth-table review; fallback is a Rust token registry.
 
-3. **Revision discipline for the audio section: counter or string id?**
+3. **Revision discipline for the audio section: counter or string id?** — ROUTED: 41-01 Task 3 checkpoint (options rev-counter / rev-timestamp)
    - What we know: `rotoPhysical.revision` is a string; D-02 needs a total order ("newer").
    - What's unclear: whether the main editor has an existing monotonic audio revision source (none found — `audioStore` has undo snapshots but no revision counter).
    - Recommendation: Add a module-level monotonically increasing counter in the publisher (bumped per publish, embedded in launch context + updates). Planner locks this in the truth-table artifact.
 
-4. **Main-window playback-state broadcast hook point**
+4. **Main-window playback-state broadcast hook point** — RESOLVED by 41-04 design: emit ownership events from `playbackEngine.start/stop` via a bridge publisher
    - What we know: D-07 needs the child to learn when main playback stops; `playbackEngine.start()/stop()` are the funnel.
    - What's unclear: whether broadcasting from `playbackEngine` (main-only module) vs. a bridge-level subscriber is preferred.
    - Recommendation: Emit ownership events from `playbackEngine.start/stop` via a bridge publisher (keeps one funnel, mirrors `publishPhysicPaintProjectContext` shape).
