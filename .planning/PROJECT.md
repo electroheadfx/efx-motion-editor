@@ -118,12 +118,12 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Dynamic interpolation spacing for Roto keys — v0.8.0 Phase 36.13
 - ✓ Deterministic physical-frame Roto timeline cutover: stable keyId, direct appFrame, atomic acknowledged transactions (Insert/Delete/Drag/Force Spacing/Undo/Redo) — v0.8.0 Phase 36.14
 - ✓ Tauri-native frame sync between editor timeline and standalone Physics Paint window (physic-paint:seek-frame, EDIT-02) — v0.8.0 quick 260801-azb
+- ✓ EFX Paint Scripts auto-hydration: saved-project scripts and Save Script appear without manual Refresh — v0.9.0 Phase 39 (quick 260804-f2q)
+- ✓ Legible macOS app icon regenerated from SPECS/efxmotioneditor-icon-2.png via the Tauri pipeline; tracked generated icons remain release authority, packaged-icon metadata proven on a fresh unsigned build — v0.9.0 Phase 40
+- ✓ Desktop build hygiene: chunkSizeWarningLimit 1100 documented and test-pinned; 4 triage-approved mixed-import corrections with non-return assertions — v0.9.0 Phase 40
 
 ### Active
 
-- [ ] Fix EFX Paint Scripts auto-hydration: saved-project scripts and Save Script appear without manual Refresh; no timing hacks — v0.9.0 blocking prerequisite
-- [ ] Replace unreadable macOS app icon from SPECS/efxmotioneditor-icon-2.png; tracked generated icons remain release authority — v0.9.0
-- [ ] Desktop build hygiene: chunkSizeWarningLimit 1100 documented + safe mixed-import corrections — v0.9.0
 - [ ] Read-only main-editor audio preview inside EFX Paint, frame-synchronized, session-local monitoring toggle — v0.9.0
 - [ ] PlayScript progressive vs static/hold application modes with application-time color override — v0.9.0
 - [ ] Linked Hold Loop Clips (cycle × repeat 1..∞) with filmstrip timeline visualization, no duplicated source assets — v0.9.0
@@ -279,4 +279,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-03 after milestone v0.9.0 start — PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
+*Last updated: 2026-08-04 after Phase 40 completion — macOS icon regenerated and proven on a fresh unsigned build; desktop build budget pinned; milestone v0.9.0 (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
