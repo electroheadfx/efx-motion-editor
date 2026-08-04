@@ -9,7 +9,7 @@
     "verifier": true,
     "_auto_chain_active": false,
     "tdd_mode": true,
-    "use_worktrees": true
+    "use_worktrees": false
   },
   "granularity": "fine",
   "mempalace": {
