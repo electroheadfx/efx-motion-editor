@@ -40,12 +40,14 @@ created: 2026-08-04
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 40-TBD-ICON01 | TBD | TBD | ICON-01 | T-40-01 | Trusted 794×794 source only; official `tauri icon` CLI parser (no custom decoding) | manual/generation + contract test | `pnpm --dir app exec vitest run src/releaseContract.test.ts` | ✅ | ⬜ pending |
-| 40-TBD-ICON02 | TBD | TBD | ICON-02 | — | N/A | unit (contract) | `pnpm --dir app exec vitest run src/releaseContract.test.ts` | ✅ (coverage exists verbatim) | ⬜ pending |
-| 40-TBD-ICON03 | TBD | TBD | ICON-03 | T-40-03 | No signing/notarization drift; unsigned-build icon check only | integration (shell check, unsigned build) | D-05 phase check script against `target/release/bundle/macos/EFX Motion Editor.app` | ❌ W0 | ⬜ pending |
-| 40-TBD-BUILD01 | TBD | TBD | BUILD-01 | — | N/A | unit (build seam) | `pnpm --dir app exec vitest run src/viteBuild.test.ts` | ✅ (new assertions added) | ⬜ pending |
-| 40-TBD-BUILD02 | TBD | TBD | BUILD-02 | T-40-02 | No global warning suppression; module-path-absence assertions pin corrected imports | triage checkpoint + build seam | `pnpm --dir app exec vitest run src/viteBuild.test.ts` | ✅ | ⬜ pending |
-| 40-TBD-BUILD03 | TBD | TBD | BUILD-03 | T-40-02 | Same as BUILD-02 | integration (real programmatic build, ~60–90s) | `pnpm --dir app exec vitest run src/viteBuild.test.ts` | ✅ (extended) | ⬜ pending |
+| 40-01-T1 | 40-01 | 1 | ICON-01, ICON-02 | T-40-01 | Trusted 794×794 source only; official `tauri icon` CLI parser (no custom decoding) | manual/generation + contract test | `pnpm --dir app exec vitest run src/releaseContract.test.ts` + git-status guard (5 modified / 0 untracked) | ✅ | ⬜ pending |
+| 40-01-T2 | 40-01 | 1 | ICON-03 | T-40-02, T-40-03 | No signing/notarization drift; unsigned-build icon check only; fail-closed on missing bundle | integration (shell check, unsigned build) | `bash .planning/phases/40-macos-icon-regeneration-build-hygiene/check-unsigned-app-icon.sh` against fresh `target/release/bundle/macos/EFX Motion Editor.app` | ❌ W0 (script created by this task) | ⬜ pending |
+| 40-01-T3 | 40-01 | 1 | ICON-04 | — | N/A | manual-only (blocking human-verify checkpoint; user is visual oracle per D-06) | — (see Manual-Only Verifications) | — | ⬜ pending |
+| 40-02-T1 | 40-02 | 1 | BUILD-01 | T-40-04 | Resolved-limit assertion reads config via configResolved; no source-text false-pass; D-11 comment wording is a verification target | unit (build seam, red-then-green) | `pnpm --dir app exec vitest run src/viteBuild.test.ts` | ✅ (assertions added by task) | ⬜ pending |
+| 40-02-T2 | 40-02 | 1 | BUILD-03 | T-40-05, T-40-06 | Unfiltered warning capture; prefix-based separation pins only; no content hashes or exact counts | unit (build seam) | `pnpm --dir app exec vitest run src/viteBuild.test.ts` | ✅ (extended by task) | ⬜ pending |
+| 40-03-T1 | 40-03 | 2 | BUILD-02 | T-40-07 | Zero source edits before approval gate (`git status` clean on app/ + packages/) | evidence capture + classification | `test -s baseline-build-warnings.txt && test -s 40-TRIAGE.md && git status clean` | ❌ (created by task) | ⬜ pending |
+| 40-03-T2 | 40-03 | 2 | BUILD-02 | T-40-07 | User approval precedes every import edit (D-08); preserve is the default (D-09) | blocking decision checkpoint | — (user gate) | — | ⬜ pending |
+| 40-03-T3 | 40-03 | 2 | BUILD-02, BUILD-03 | T-40-08, T-40-09 | No global warning suppression; module-path-absence assertions pin corrected imports; DI cases documented, never implemented | triage application + build seam non-return + full suite | `pnpm --dir app exec vitest run` + post-triage build delta vs baseline | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -53,7 +55,7 @@ created: 2026-08-04
 
 ## Wave 0 Requirements
 
-- [ ] D-05 phase check script (extract-and-run the packaged-icon block from `scripts/macos-release.sh`) — covers ICON-03 against the unsigned build
+- [ ] D-05 phase check script (extract-and-run the packaged-icon block from `scripts/macos-release.sh`) — covers ICON-03 against the unsigned build. **Planned as 40-01 Task 2** (creates `check-unsigned-app-icon.sh` in the phase directory and proves it against the fresh unsigned build); `wave_0_complete` flips when that task lands.
 
 *Both test seams (`app/src/releaseContract.test.ts`, `app/src/viteBuild.test.ts`) already exist with the needed capture patterns; no framework install, no fixtures.*
 

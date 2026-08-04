@@ -368,17 +368,19 @@ const EXPECTED_ICONS = [
 | A3 | Tauri overwrites (not merges) `target/release/bundle/macos/` on rebuild, so no manual cleanup of the stale bundle is needed | Runtime State Inventory | Low — worst case UAT checks a stale bundle; Pitfall 6's mtime check catches it |
 | A4 | macOS LaunchServices may cache the old icon, requiring cache refresh during UAT | Runtime State Inventory | Low — cosmetic UAT note only |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Which mixed-import cases (if any) are dependency-inversion reports?**
    - What we know: candidates #11 (physicPaintBridge via projectStore) is the most likely DI case; #5/#9/#10/#12 look convertible.
    - What's unclear: only resolvable with per-case cycle/timing evidence at the D-08 gate.
    - Recommendation: plan a dedicated triage task whose output is the classified list + user checkpoint; edits happen only after approval.
+   - **RESOLVED by plan:** 40-03 Tasks 1-2 implement exactly this — Task 1 produces the evidence-backed classified list in `40-TRIAGE.md`, Task 2 is the blocking D-08 approval checkpoint; DI cases are documented per D-10 in Task 3, never fixed in-phase.
 
 2. **Does `releaseContract.test.ts` need any extension for ICON-03?**
    - What we know: declared-file existence, non-empty, ICNS magic, and exact-array pins all exist verbatim; packaged-.app check lives in the shell script (not the Vitest seam) and D-05 exercises it against the unsigned build.
    - What's unclear: whether the planner wants the D-05 check itself pinned as a repeatable script in the phase dir vs. a documented one-off UAT step.
    - Recommendation: keep as a phase-local check script (discretion area), consistent with "no new machinery" (D-04).
+   - **RESOLVED by plan:** 40-01 Task 2 creates the phase-local `check-unsigned-app-icon.sh` (extract-and-eval of the release script's icon block) and runs it against the fresh unsigned build; no `releaseContract.test.ts` extension needed (coverage verified complete verbatim).
 
 ## Environment Availability
 
