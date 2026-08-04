@@ -1,7 +1,8 @@
 import type { AudioTrack } from '../../../types/audio';
 import type { EfxPaintAudioPreviewContext } from '../../../types/physicPaint';
 import { audioEngine } from '../../../lib/audioEngine';
-import { resolveTrackPlayback } from './efxPaintAudioPreviewContext';
+import { applyRevisionedEfxPaintAudioPreview, resolveTrackPlayback } from './efxPaintAudioPreviewContext';
+import { efxPaintAudioPreviewStore } from './efxPaintAudioPreviewStore';
 
 /**
  * EFX Paint child-window audio monitor (41-02 tracer).
@@ -47,6 +48,11 @@ let driftTickCounter = 0;
 // A6: the fps-mismatch note is published once per playback session (reset on
 // stop). No playbackRate scaling ever occurs.
 let fpsMismatchNoted = false;
+// Live Paint cursor + loop window, tracked from playAtCursor / positionedAt /
+// checkDrift calls — the restart position for mid-playback revisioned updates
+// (D-03).
+let liveCursorAppFrame = 0;
+let livePlaybackRangeEnd = 0;
 const preparedTrackIds = new Set<string>();
 
 export const efxPaintAudioMonitor = {
@@ -102,6 +108,8 @@ export const efxPaintAudioMonitor = {
     anchorCtx = ctx;
     anchorCtxTime = ctx.currentTime;
     driftTickCounter = 0;
+    liveCursorAppFrame = cursorAppFrame;
+    livePlaybackRangeEnd = playbackRangeEnd;
     state = 'playing';
   },
 
@@ -120,6 +128,7 @@ export const efxPaintAudioMonitor = {
   /** Reposition the anchor without sound (D-09 silent scrub). */
   positionedAt(cursorAppFrame: number): void {
     anchorAppFrame = cursorAppFrame;
+    liveCursorAppFrame = cursorAppFrame;
     if (state === 'idle') state = 'positioned';
   },
 
@@ -142,6 +151,8 @@ export const efxPaintAudioMonitor = {
    * EFX_PAINT_AUDIO_DRIFT_THRESHOLD_SEC. Playing sources are never nudged.
    */
   checkDrift(cursorAppFrame: number, playbackRangeEnd: number): void {
+    liveCursorAppFrame = cursorAppFrame;
+    livePlaybackRangeEnd = playbackRangeEnd;
     if (state !== 'playing' || !context || !anchorCtx) return;
     driftTickCounter += 1;
     if (driftTickCounter < EFX_PAINT_AUDIO_DRIFT_CHECK_INTERVAL_TICKS) return;
@@ -165,12 +176,46 @@ export const efxPaintAudioMonitor = {
     return `Audio preview sync is best-effort: playback at ${playbackFps} fps differs from the project ${projectFps} fps. Sync is guaranteed at matched fps.`;
   },
 
+  /**
+   * D-03 mid-playback revisioned update: adopt the newer context (fetch +
+   * decode any new/changed tracks through the same prepare path), then — when
+   * playing — restart audio at the CURRENT Paint cursor with the new context
+   * (stopAll + fresh dispatch, never deferred to next play). When idle or
+   * positioned, only the stored context and the anchor are updated; zero
+   * audio dispatch.
+   */
+  async applyRevisionedContext(next: EfxPaintAudioPreviewContext): Promise<void> {
+    const restartAtCursor = state === 'playing';
+    await this.prepare(next);
+    if (restartAtCursor) {
+      this.playAtCursor(liveCursorAppFrame, livePlaybackRangeEnd);
+    } else {
+      anchorAppFrame = liveCursorAppFrame;
+    }
+  },
+
   isPlaying(): boolean {
     return state === 'playing';
   },
 
-  /** Anchor accessor for the upcoming drift corrector (D-10, plan 41-03+). */
+  /** Anchor accessor for the drift corrector and scrub tests (D-09/D-10). */
   getAnchorAppFrame(): number {
     return anchorAppFrame;
   },
 };
+
+/**
+ * Single child-side funnel for pushed audio-context events (D-02/D-03,
+ * AUDIO-04): validate + strict newer-than revision guard
+ * (applyRevisionedEfxPaintAudioPreview — stale or equal revisions are dropped
+ * silently, same-revision re-delivery is a defined no-op), then hand the
+ * accepted section to the monitor. Returns null for a dropped delivery (zero
+ * audio dispatch), otherwise the monitor's apply promise.
+ */
+export function handleEfxPaintAudioContextEvent(value: unknown): Promise<void> | null {
+  const applied = applyRevisionedEfxPaintAudioPreview(efxPaintAudioPreviewStore, value);
+  if (!applied) return null;
+  const section = efxPaintAudioPreviewStore.getSection();
+  if (!section) return null;
+  return efxPaintAudioMonitor.applyRevisionedContext(section);
+}

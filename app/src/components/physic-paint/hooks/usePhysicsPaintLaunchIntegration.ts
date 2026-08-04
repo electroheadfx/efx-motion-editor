@@ -6,9 +6,10 @@ import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { applyPhysicsPaintLaunchContext } from '../bridge/physicsPaintLaunchContext';
 import { applyRevisionedEfxPaintAudioPreview } from '../audio/efxPaintAudioPreviewContext';
 import { efxPaintAudioPreviewStore } from '../audio/efxPaintAudioPreviewStore';
+import { handleEfxPaintAudioContextEvent } from '../audio/efxPaintAudioMonitor';
 import { applyRotoBackgroundMetadataToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { hydrateRotoPhysicalLaunchContext } from '../roto/rotoLaunchHydration';
-import { usePhysicsPaintLaunchBridge, usePhysicsPaintProjectContextBridge } from '../bridge/usePhysicsPaintParentBridge';
+import { useEfxPaintAudioContextBridge, usePhysicsPaintLaunchBridge, usePhysicsPaintProjectContextBridge } from '../bridge/usePhysicsPaintParentBridge';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
@@ -164,6 +165,10 @@ export function usePhysicsPaintLaunchIntegration(input: {
   }, []);
 
   usePhysicsPaintLaunchBridge(applyIncomingLaunchContext);
+  // 41-03 (D-02/D-03): live main-editor audio changes arrive as revisioned
+  // push events on the same channel/discipline as launch; the funnel applies
+  // newer-only and restarts mid-playback at the current Paint cursor.
+  useEfxPaintAudioContextBridge(handleEfxPaintAudioContextEvent);
   usePhysicsPaintProjectContextBridge((project) => {
     const current = input.peekLaunchContext();
     if (!current) return;

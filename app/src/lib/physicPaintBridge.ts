@@ -1,4 +1,5 @@
 import type { Result } from './ipc';
+import { effect } from '@preact/signals';
 import type { Layer } from '../types/layer';
 import type { EfxPaintAudioPreviewContext, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
@@ -26,6 +27,7 @@ import { assetUrl, scriptLibraryDelete, scriptLibraryEncodeThumbnailWebp, script
 
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
 export const PHYSIC_PAINT_PROJECT_CONTEXT_EVENT = 'physic-paint:project-context';
+export const PHYSIC_PAINT_AUDIO_CONTEXT_EVENT = 'physic-paint:audio-context';
 /**
  * Standalone sends rendered-output-only PhysicPaintApplyPayload here; the app
  * validates/applies it and returns PhysicPaintApplyResult on
@@ -832,6 +834,46 @@ export async function publishPhysicPaintProjectContext(): Promise<void> {
     window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, { detail: project }));
     window.opener?.postMessage?.(message, window.location.origin);
   }
+}
+
+/**
+ * D-02 push-on-change publisher: emits the full rebuilt audioPreview section
+ * to the EFX Paint window. The shared builder keeps the rev-counter ordering
+ * total across launch embed + push (truth table section 4). emitTo
+ * window-label targeting only — never broadcast emit (T-41-08) — plus the
+ * CustomEvent / opener.postMessage browser fallbacks, exactly the
+ * publishPhysicPaintProjectContext shape. Unlike the launch embed, the push
+ * fires even with zero tracks: deleting the last track while EFX Paint is
+ * open must reach the child (AUDIO-04).
+ */
+export async function publishPhysicPaintAudioContext(): Promise<void> {
+  const section = buildPhysicPaintAudioPreviewSection();
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, section);
+  }
+  if (typeof window !== 'undefined') {
+    const message = { type: PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, payload: section };
+    window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, { detail: section }));
+    window.opener?.postMessage?.(message, window.location.origin);
+  }
+}
+
+/**
+ * Main-window push trigger (D-02): a signal effect over audioStore.tracks —
+ * the effect synchronizes with an external system (the child window), the
+ * sanctioned effect use per project Preact guidelines. Every effect run
+ * publishes; debounce is NOT allowed to skip revisions — the counter absorbs
+ * frequency (T-41-09). MAIN WINDOW ONLY: installed from main.tsx. The child
+ * bundle imports this module for its event constants and must never register
+ * the publisher — its audioStore is an empty independent singleton (AUDIO-01
+ * authority boundary).
+ */
+export function installPhysicPaintAudioContextPublisher(): () => void {
+  return effect(() => {
+    audioStore.tracks.value;
+    void publishPhysicPaintAudioContext();
+  });
 }
 
 export async function installPhysicPaintStateSaveListener(): Promise<() => void> {

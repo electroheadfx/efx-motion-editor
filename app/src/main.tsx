@@ -13,7 +13,7 @@ import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
-import {installPhysicPaintApplyListener, installPhysicPaintFrameSyncListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
+import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintFrameSyncListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
 
 const root = document.getElementById('app')!;
 
@@ -39,6 +39,12 @@ if (window.location.pathname === '/physics-paint') {
     // sibling bridge installs above; the discarded cleanup handle matches the
     // app-lifetime pattern.
     await installPhysicPaintFrameSyncListener();
+
+    // 41-03 (D-02): push revisioned audio-preview context updates to the EFX
+    // Paint window on every main-editor audio change. Main window only — this
+    // branch never runs in the child bundle. App-lifetime effect; the
+    // discarded cleanup matches the sibling installs above.
+    installPhysicPaintAudioContextPublisher();
 
     // Listen for undo/redo events emitted by the native macOS menu.
     // On macOS, Cmd+Z and Cmd+Shift+Z are intercepted by the native menu

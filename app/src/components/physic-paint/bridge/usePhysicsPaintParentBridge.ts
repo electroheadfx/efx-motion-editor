@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
 import { isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryResult, isPhysicPaintScriptLibraryResultMessage } from '../../../types/physicPaint';
-import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT } from '../../../lib/physicPaintBridge';
+import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT } from '../../../lib/physicPaintBridge';
 
 export type PhysicsPaintBridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 
@@ -118,8 +118,33 @@ export function usePhysicsPaintProjectContextBridge(handleProject: (project: Phy
   }, []);
 }
 
-export function usePhysicsPaintScriptLibraryResultBridge(handleResult: (result: PhysicPaintScriptLibraryResult) => void): void {
-  const handleRef = useRef(handleResult); handleRef.current = handleResult;
+/**
+ * 41-03 (D-02/D-03): child listener for pushed revisioned audio-context
+ * updates — same triple-transport + disposed-guard idiom as
+ * usePhysicsPaintProjectContextBridge (Tauri listen + CustomEvent +
+ * origin-checked postMessage). Validation, the strict newer-than revision
+ * guard, and the mid-playback restart live inside the handler funnel
+ * (handleEfxPaintAudioContextEvent); stale or invalid payloads are dropped
+ * silently with zero audio dispatch.
+ */
+export function useEfxPaintAudioContextBridge(handleSection: (value: unknown) => void): void {
+  const handleRef = useRef(handleSection); handleRef.current = handleSection;
+  useEffect(() => {
+    let disposed = false; let unlisten: (() => void) | undefined;
+    const accept = (value: unknown) => { handleRef.current(value); };
+    const custom = (event: Event) => accept((event as CustomEvent).detail);
+    const message = (event: MessageEvent) => { if (event.origin === window.location.origin && event.data?.type === PHYSIC_PAINT_AUDIO_CONTEXT_EVENT) accept(event.data.payload); };
+    window.addEventListener(PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, custom);
+    window.addEventListener('message', message);
+    void import('@tauri-apps/api/event').then(async (eventApi) => {
+      unlisten = await eventApi.listen?.(PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, (event) => accept(event.payload));
+      if (disposed) unlisten?.();
+    }).catch(() => undefined);
+    return () => { disposed = true; unlisten?.(); window.removeEventListener(PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, custom); window.removeEventListener('message', message); };
+  }, []);
+}
+
+export function usePhysicsPaintScriptLibraryResultBridge(handleResult: (result: PhysicPaintScriptLibraryResult) => void): void {  const handleRef = useRef(handleResult); handleRef.current = handleResult;
   useEffect(() => {
     let disposed = false; let unlisten: (() => void) | undefined;
     const custom = (event: Event) => { const result = (event as CustomEvent).detail; if (isPhysicPaintScriptLibraryResult(result)) handleRef.current(result); };
