@@ -5,8 +5,8 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 41
 current_phase_name: EFX Paint Audio Preview + Monitoring Toggle
 status: planning
-stopped_at: Phase 40 context gathered
-last_updated: "2026-08-04T16:31:17.778Z"
+stopped_at: Phase 41 context gathered
+last_updated: "2026-08-04T17:30:05.685Z"
 last_activity: 2026-08-04
 last_activity_desc: Phase 40 complete, transitioned to Phase 41
 progress:
@@ -349,9 +349,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-04T12:06:51.833Z
-Stopped at: Phase 40 context gathered
-Resume file: .planning/phases/40-macos-icon-regeneration-build-hygiene/40-CONTEXT.md
+Last session: 2026-08-04T17:30:05.675Z
+Stopped at: Phase 41 context gathered
+Resume file: .planning/phases/41-efx-paint-audio-preview-monitoring-toggle/41-CONTEXT.md
 
 ## Operator Next Steps
 
