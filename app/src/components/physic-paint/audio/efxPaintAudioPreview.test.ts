@@ -6,7 +6,7 @@ import {
   resolveTrackPlayback,
 } from './efxPaintAudioPreviewContext';
 import { efxPaintAudioMonitor, handleEfxPaintAudioContextEvent, resumeEfxPaintAudioAtLiveCursor } from './efxPaintAudioMonitor';
-import { audioPreviewEnabled, efxPaintAudioPreviewStore } from './efxPaintAudioPreviewStore';
+import { audioPreviewEnabled, efxPaintAudioPreviewStore, setAudioPreviewEnabled } from './efxPaintAudioPreviewStore';
 import { EFX_PAINT_AUDIO_SUPPRESSED_NOTE, efxPaintAudioOwnership } from './efxPaintAudioOwnership';
 
 // Controllable Web Audio clock: the monitor captures ctx.currentTime at each
@@ -771,6 +771,199 @@ describe('first-player-wins ownership guard (41-04 Task 1: D-05..D-07, AUDIO-06)
     expect(efxPaintAudioOwnership.isSuppressed()).toBe(false);
     // The note clears — the main editor is no longer playing, so "Audio
     // playing in main editor" would be a stale status.
+    expect(published).toEqual(['Audio playing in main editor', null]);
+  });
+});
+
+describe('Audio Preview toggle (41-04 Task 2: D-12..D-14, AUDIO-05 edges)', () => {
+  function resetToggle() {
+    efxPaintAudioMonitor.stop(); // stop funnel first — clears any silenced flag
+    setAudioPreviewEnabled(true); // pure state reset; no resume dispatch
+    efxPaintAudioOwnership.noteVisualStop();
+    efxPaintAudioOwnership.noteMainPlaybackState(false);
+    efxPaintAudioOwnership.releaseAudio();
+    efxPaintAudioOwnership.configure({ statusPublisher: null, claimSender: null, resumeHandler: resumeEfxPaintAudioAtLiveCursor });
+  }
+
+  beforeEach(() => {
+    resetToggle();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    fakeAudioContext.currentTime = 0;
+  });
+
+  afterEach(() => {
+    resetToggle();
+  });
+
+  it('(a) toggle Off mid-playback stops audio exactly once and touches nothing visual (D-14)', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(true);
+    vi.clearAllMocks();
+    setAudioPreviewEnabled(false);
+    expect(audioPreviewEnabled.peek()).toBe(false);
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
+    // Visual playback keeps ticking with audio muted — drift checks stay inert.
+    efxPaintAudioMonitor.checkDrift(100, 288);
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('(b) toggle On mid-playback resumes at the current Paint cursor without a visual restart (D-14)', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    setAudioPreviewEnabled(false); // silenced mid-playback
+    // Visual playback keeps ticking — the live cursor advances to 110.
+    efxPaintAudioMonitor.checkDrift(110, 288);
+    vi.clearAllMocks();
+    setAudioPreviewEnabled(true);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenCalledWith(
+      'track-1',
+      (24 + 12 + (110 - 48)) / 24,
+      expect.objectContaining({ id: 'track-1' }),
+      24,
+      // effectiveEnd = min(48 + (240 - 24), 288) = 264
+      (264 - 110) / 24,
+    );
+    // The resume is a fresh dispatch from silence — no stopAll restart storm.
+    expect(mockedAudioEngine.stopAll).not.toHaveBeenCalled();
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(true);
+  });
+
+  it('(c) setting the current value is a no-op — zero engine calls (AUDIO-05 idempotency edge)', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    vi.clearAllMocks();
+    setAudioPreviewEnabled(true); // already On
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.stopAll).not.toHaveBeenCalled();
+    setAudioPreviewEnabled(false);
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+    vi.clearAllMocks();
+    setAudioPreviewEnabled(false); // already Off — no doubled stopAll side effects
+    expect(mockedAudioEngine.stopAll).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+  });
+
+  it('(d) a toggle racing a revisioned update serializes through the single funnel — Off ends silent, On ends positioned (AUDIO-05 concurrency edge)', async () => {
+    stubFetchOk();
+    await handleEfxPaintAudioContextEvent(makeAudioPreviewSection({ revision: 1 }));
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    vi.clearAllMocks();
+    // Off racing an in-flight revisioned update: the toggle stop lands inside
+    // the update's prepare await, and the update's restart decision is taken
+    // AFTER prepare — the funnel's final word is "silent".
+    const firstApply = handleEfxPaintAudioContextEvent(makeAudioPreviewSection({
+      revision: 2,
+      tracks: [makeAudioPreviewTrack({ slipOffset: 0 })],
+    }));
+    setAudioPreviewEnabled(false);
+    await firstApply;
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1); // exactly the toggle stop
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
+    // Visual playback keeps ticking while muted — the cursor advances to 120.
+    efxPaintAudioMonitor.checkDrift(120, 288);
+    vi.clearAllMocks();
+    // On racing the next update: the resume dispatches at the live cursor and
+    // the accepted update restarts at the same cursor with the newest context.
+    const secondApply = handleEfxPaintAudioContextEvent(makeAudioPreviewSection({ revision: 3 }));
+    setAudioPreviewEnabled(true);
+    await secondApply;
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(true);
+    expect(mockedAudioEngine.play).toHaveBeenLastCalledWith(
+      'track-1',
+      (24 + 12 + (120 - 48)) / 24,
+      expect.objectContaining({ id: 'track-1' }),
+      24,
+      (264 - 120) / 24,
+    );
+  });
+
+  it('(e) the session toggle defaults On and writes no storage (D-13 — never persisted)', () => {
+    expect(audioPreviewEnabled.peek()).toBe(true);
+    const storage = (globalThis as { localStorage?: Storage }).localStorage;
+    if (storage) {
+      const setItem = vi.spyOn(storage, 'setItem');
+      try {
+        setAudioPreviewEnabled(false);
+        setAudioPreviewEnabled(true);
+        expect(setItem).not.toHaveBeenCalled();
+      } finally {
+        setItem.mockRestore();
+      }
+    } else {
+      // Node runtime has no Web Storage — toggling must still be safe.
+      setAudioPreviewEnabled(false);
+      setAudioPreviewEnabled(true);
+    }
+  });
+
+  it('toggle On after a visual stop dispatches nothing — resume is mid-playback only (D-14)', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    setAudioPreviewEnabled(false); // silenced mid-playback
+    efxPaintAudioMonitor.stop();   // visual stop funnel clears the silenced flag
+    vi.clearAllMocks();
+    setAudioPreviewEnabled(true);
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.stopAll).not.toHaveBeenCalled();
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
+  });
+
+  it('a Play started while muted resumes on toggle On at the live cursor (D-14 muted-start path)', async () => {
+    setAudioPreviewEnabled(false);
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288); // muted start — zero dispatch
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
+    efxPaintAudioMonitor.checkDrift(104, 288); // visual ticks advance the cursor
+    setAudioPreviewEnabled(true);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenCalledWith(
+      'track-1',
+      (24 + 12 + (104 - 48)) / 24,
+      expect.objectContaining({ id: 'track-1' }),
+      24,
+      (264 - 104) / 24,
+    );
+  });
+
+  it('toggle Off while ownership-suppressed is a pure state change — the note lifecycle is unchanged', async () => {
+    const published: Array<string | null> = [];
+    efxPaintAudioOwnership.configure({ statusPublisher: (note) => published.push(note) });
+    efxPaintAudioOwnership.noteMainPlaybackState(true);
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288); // suppressed — note published
+    expect(published).toEqual(['Audio playing in main editor']);
+    setAudioPreviewEnabled(false);
+    // No engine dispatch, no note clearing, suppression intact.
+    expect(mockedAudioEngine.stopAll).not.toHaveBeenCalled();
+    expect(published).toEqual(['Audio playing in main editor']);
+    expect(efxPaintAudioOwnership.isSuppressed()).toBe(true);
+    // Main stops while muted: no resume (D-07 toggle condition), note clears.
+    efxPaintAudioOwnership.noteMainPlaybackState(false);
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
     expect(published).toEqual(['Audio playing in main editor', null]);
   });
 });
