@@ -12,18 +12,29 @@ import { EFX_PAINT_AUDIO_SUPPRESSED_NOTE, efxPaintAudioOwnership } from './efxPa
 // Controllable Web Audio clock: the monitor captures ctx.currentTime at each
 // seek-aligned start and compares against it in the throttled drift check
 // (D-10). Tests advance `fakeAudioContext.currentTime` to simulate drift.
-const { fakeAudioContext } = vi.hoisted(() => ({
+// `engineContextState.exists` simulates the engine's lazy AudioContext
+// lifecycle for the 41-05 release tests (D-08): ensureContext creates it,
+// closeContext discards it.
+const { fakeAudioContext, engineContextState } = vi.hoisted(() => ({
   fakeAudioContext: { currentTime: 0 },
+  engineContextState: { exists: false },
 }));
 
 vi.mock('../../../lib/audioEngine', () => ({
   audioEngine: {
-    ensureContext: vi.fn(() => fakeAudioContext),
+    ensureContext: vi.fn(() => {
+      engineContextState.exists = true;
+      return fakeAudioContext;
+    }),
     decode: vi.fn(async () => ({})),
     getBuffer: vi.fn(),
     play: vi.fn(),
     playDelayed: vi.fn(),
     stopAll: vi.fn(),
+    hasContext: vi.fn(() => engineContextState.exists),
+    closeContext: vi.fn(async () => {
+      engineContextState.exists = false;
+    }),
   },
 }));
 
@@ -965,5 +976,95 @@ describe('Audio Preview toggle (41-04 Task 2: D-12..D-14, AUDIO-05 edges)', () =
     efxPaintAudioOwnership.noteMainPlaybackState(false);
     expect(mockedAudioEngine.play).not.toHaveBeenCalled();
     expect(published).toEqual(['Audio playing in main editor', null]);
+  });
+});
+
+describe('engine release on close (41-05 Task 1: D-08, AUDIO-06)', () => {
+  // Release touches the same module-scope session state as the ownership and
+  // toggle suites — reset all of it (plus the simulated engine context
+  // lifecycle) around every test.
+  function resetReleaseState() {
+    efxPaintAudioMonitor.stop();
+    efxPaintAudioOwnership.noteVisualStop();
+    efxPaintAudioOwnership.noteMainPlaybackState(false);
+    efxPaintAudioOwnership.releaseAudio();
+    efxPaintAudioOwnership.configure({ statusPublisher: null, claimSender: null, resumeHandler: resumeEfxPaintAudioAtLiveCursor });
+    audioPreviewEnabled.value = true;
+    engineContextState.exists = false;
+  }
+
+  beforeEach(() => {
+    resetReleaseState();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    fakeAudioContext.currentTime = 0;
+  });
+
+  afterEach(() => {
+    resetReleaseState();
+  });
+
+  it('(a) release after play dispatches stopAll, then closes the AudioContext (D-08)', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    expect(engineContextState.exists).toBe(true);
+    vi.clearAllMocks();
+    efxPaintAudioMonitor.release();
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.closeContext).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.stopAll.mock.invocationCallOrder[0])
+      .toBeLessThan(mockedAudioEngine.closeContext.mock.invocationCallOrder[0]);
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
+    expect(engineContextState.exists).toBe(false);
+  });
+
+  it('(b) a second release is a no-op — one stopAll, at most one context close (idempotent)', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    vi.clearAllMocks();
+    efxPaintAudioMonitor.release();
+    efxPaintAudioMonitor.release();
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.closeContext).toHaveBeenCalledTimes(1);
+  });
+
+  it('(c) release with a never-created context is a safe no-op', () => {
+    expect(engineContextState.exists).toBe(false);
+    efxPaintAudioMonitor.release();
+    expect(mockedAudioEngine.stopAll).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.closeContext).not.toHaveBeenCalled();
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
+  });
+
+  it('(d) after release a subsequent playAtCursor creates a fresh context — a closed context is never reused (D-08)', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    efxPaintAudioMonitor.release();
+    expect(engineContextState.exists).toBe(false);
+    vi.clearAllMocks();
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    expect(mockedAudioEngine.ensureContext).toHaveBeenCalledTimes(1);
+    expect(engineContextState.exists).toBe(true);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(true);
+  });
+
+  it('release stops a delayed (future) source too — scheduled playDelayed sources never outlive the window (RESEARCH Pitfall 6)', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(24, 288); // future track → playDelayed
+    expect(mockedAudioEngine.playDelayed).toHaveBeenCalledTimes(1);
+    vi.clearAllMocks();
+    efxPaintAudioMonitor.release();
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.closeContext).toHaveBeenCalledTimes(1);
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
   });
 });
