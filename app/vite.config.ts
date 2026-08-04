@@ -182,6 +182,12 @@ export default defineConfig({
     // 'modules', which silently overrides this 'safari13' (plugin config-hook
     // returns win over the config file). Pre-existing behavior — left as-is.
     target: 'safari13',
+    // Desktop chunk budget (D-11): this is a packaged Tauri desktop app
+    // loading local assets, so network-first web heuristics do not apply.
+    // Vite's 500 kB default is a generic web threshold; 1100 is a monitored
+    // desktop entry-bundle budget, not a performance claim, and it must not
+    // be raised again without measurement.
+    chunkSizeWarningLimit: 1100,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },

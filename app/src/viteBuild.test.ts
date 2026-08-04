@@ -49,19 +49,21 @@ function collectFiles(root: string, prefix = ''): string[] {
   return out;
 }
 
-function createInputCapturePlugin(captured: { input: unknown }): Plugin {
+function createInputCapturePlugin(captured: { input: unknown; chunkLimit?: number }): Plugin {
   return {
     name: 'test-capture-rollup-input',
     enforce: 'post',
     configResolved(config) {
       captured.input = config.build.rollupOptions.input;
+      // D-14: capture the RESOLVED value so a config typo cannot false-pass.
+      captured.chunkLimit = config.build.chunkSizeWarningLimit;
     },
   };
 }
 
 describe('production vite build', () => {
   let outDir: string;
-  const captured: { input: unknown } = { input: undefined };
+  const captured: { input: unknown; chunkLimit?: number } = { input: undefined };
 
   beforeAll(async () => {
     outDir = makeTempDir('efx-build-');
@@ -94,6 +96,14 @@ describe('production vite build', () => {
       expect(entries['src/project']).toBe('./src/project.ts?project');
       // App HTML entry added with the absolute path to app/index.html.
       expect(entries['app']).toBe(join(APP_DIR, 'index.html'));
+    },
+  );
+
+  it(
+    'resolved chunkSizeWarningLimit is exactly the documented 1100 desktop budget',
+    { timeout: 180_000 },
+    () => {
+      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1100 desktop budget').toBe(1100);
     },
   );
 
