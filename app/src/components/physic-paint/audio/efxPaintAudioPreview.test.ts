@@ -1,9 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { audioEngine } from '../../../lib/audioEngine';
 import {
   applyRevisionedEfxPaintAudioPreview,
   parseEfxPaintAudioPreviewSection,
   resolveTrackPlayback,
 } from './efxPaintAudioPreviewContext';
+import { efxPaintAudioMonitor } from './efxPaintAudioMonitor';
+
+vi.mock('../../../lib/audioEngine', () => ({
+  audioEngine: {
+    ensureContext: vi.fn(),
+    decode: vi.fn(async () => ({})),
+    getBuffer: vi.fn(),
+    play: vi.fn(),
+    playDelayed: vi.fn(),
+    stopAll: vi.fn(),
+  },
+}));
 
 // RED suite for the locked frame-to-audio truth table:
 // .planning/phases/41-efx-paint-audio-preview-monitoring-toggle/41-FRAME-AUDIO-TRUTH-TABLE.md
@@ -241,5 +254,156 @@ describe('D-04 path-leak guard', () => {
     expect(serialized).not.toContain('/Users/');
     expect(serialized).not.toContain('filePath');
     expect(serialized).not.toContain('relativePath');
+  });
+});
+
+const mockedAudioEngine = vi.mocked(audioEngine);
+
+function stubFetchOk() {
+  vi.stubGlobal('fetch', vi.fn(async () => ({
+    ok: true,
+    arrayBuffer: async () => new ArrayBuffer(8),
+  })));
+}
+
+function parseOrThrow(section: unknown) {
+  const parsed = parseEfxPaintAudioPreviewSection(section);
+  expect(parsed).not.toBeNull();
+  if (!parsed) throw new Error('unreachable');
+  return parsed;
+}
+
+describe('efxPaintAudioMonitor (Play wiring, truth table section 3 dispatch)', () => {
+  beforeEach(() => {
+    efxPaintAudioMonitor.stop();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('playAtCursor dispatches play with worked-example 3 numbers (immediate, offset+trim+slip)', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({
+      revision: 1,
+      tracks: [makeAudioPreviewTrack({ offsetFrame: 48, inFrame: 24, outFrame: 240, slipOffset: 12 })],
+    }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    expect(mockedAudioEngine.ensureContext).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenCalledWith(
+      'track-1',
+      3.5,
+      expect.objectContaining({ id: 'track-1', volume: 0.8, fadeInFrames: 6 }),
+      24,
+      7.0,
+    );
+    expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+  });
+
+  it('playAtCursor dispatches playDelayed with worked-example 4 numbers (future track)', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({
+      revision: 1,
+      tracks: [makeAudioPreviewTrack({ offsetFrame: 48, inFrame: 24, outFrame: 240, slipOffset: 12 })],
+    }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(24, 288);
+    expect(mockedAudioEngine.playDelayed).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.playDelayed).toHaveBeenCalledWith(
+      'track-1',
+      1.0,
+      1.5,
+      expect.objectContaining({ id: 'track-1' }),
+      24,
+      9.0,
+    );
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+  });
+
+  it('playAtCursor caps maxPlaySec at the playback-range end (worked example 5)', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({
+      revision: 1,
+      tracks: [makeAudioPreviewTrack({ offsetFrame: 48, inFrame: 24, outFrame: 240, slipOffset: 0 })],
+    }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 200);
+    expect(mockedAudioEngine.play).toHaveBeenCalledWith(
+      'track-1',
+      3.0,
+      expect.objectContaining({ id: 'track-1' }),
+      24,
+      (200 - 96) / 24,
+    );
+  });
+
+  it('a rejecting fetch for one track warns and skips only that track; the others still play (AUDIO-06)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.stubGlobal('fetch', vi.fn(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes('missing')) throw new Error('efxasset 404');
+      return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
+    }));
+    const context = parseOrThrow(makeAudioPreviewSection({
+      revision: 1,
+      tracks: [
+        makeAudioPreviewTrack({ id: 'track-good', assetUrl: 'efxasset://localhost/Volumes/media/audio/good.wav', offsetFrame: 48, inFrame: 0, outFrame: 240, slipOffset: 0 }),
+        makeAudioPreviewTrack({ id: 'track-missing', assetUrl: 'efxasset://localhost/Volumes/media/audio/missing.wav', offsetFrame: 48, inFrame: 0, outFrame: 240, slipOffset: 0 }),
+      ],
+    }));
+    await expect(efxPaintAudioMonitor.prepare(context)).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalled();
+    expect(String(warn.mock.calls[0]?.[0])).toContain('track-missing');
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenCalledWith(
+      'track-good',
+      2.0,
+      expect.objectContaining({ id: 'track-good' }),
+      24,
+      8.0,
+    );
+    warn.mockRestore();
+  });
+
+  it('stop() after playAtCursor calls stopAll exactly once; a second stop() is a no-op', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(true);
+    efxPaintAudioMonitor.stop();
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
+    efxPaintAudioMonitor.stop();
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('playAtCursor while already playing performs stopAll before re-dispatch (seek-restart)', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.playAtCursor(96, 288);
+    efxPaintAudioMonitor.playAtCursor(120, 288);
+    expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(2);
+    expect(mockedAudioEngine.play).toHaveBeenLastCalledWith(
+      'track-1',
+      (24 + 12 + (120 - 48)) / 24,
+      expect.objectContaining({ id: 'track-1' }),
+      24,
+      (288 - 120) / 24,
+    );
+  });
+
+  it('positionedAt repositions silently — no engine dispatch (D-09 silent scrub)', async () => {
+    stubFetchOk();
+    const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
+    await efxPaintAudioMonitor.prepare(context);
+    efxPaintAudioMonitor.positionedAt(144);
+    expect(mockedAudioEngine.play).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+    expect(mockedAudioEngine.ensureContext).not.toHaveBeenCalled();
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
   });
 });
