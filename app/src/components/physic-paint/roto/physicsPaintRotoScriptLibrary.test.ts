@@ -40,6 +40,54 @@ function loadedScript(id: 'a' | 'b', name: string) {
 }
 
 describe('Roto script library controller', () => {
+  it('hydrates from the exact project context payload without reading the launch getter', async () => {
+    const test = harness(false);
+    await test.controller.updateProjectContext(context());
+    expect(test.requests.filter((request) => request.kind === 'scan')).toHaveLength(1);
+    expect(test.controller.rows.value.map((item) => item.id)).toEqual(['a', 'b']);
+    expect(test.controller.availability.value).toMatchObject({ canSave: true, saveDisabledReason: null });
+    expect(test.controller.status.value).toBe('Found 2 scripts');
+  });
+
+  it('auto-scans exactly once per context and keeps manual refresh explicit', async () => {
+    const test = harness(false);
+    const savedContext = context();
+    await test.controller.updateProjectContext(savedContext);
+    await test.controller.updateProjectContext(savedContext);
+    expect(test.requests.filter((request) => request.kind === 'scan')).toHaveLength(1);
+    expect(test.controller.availability.value).toMatchObject({ canSave: true, saveDisabledReason: null });
+    test.setLaunch(savedContext);
+    await test.controller.refresh();
+    expect(test.requests.filter((request) => request.kind === 'scan')).toHaveLength(2);
+  });
+
+  it('rejects rows from a context replaced while its scan was in flight', async () => {
+    let settle!: (value: PhysicPaintScriptLibraryResult) => void;
+    const test = harness(false);
+    test.request.mockImplementationOnce(() => new Promise((resolve) => { settle = resolve; }));
+    const staleHydration = test.controller.updateProjectContext(context());
+    const replacement = test.controller.updateProjectContext({ ...context(), project: { name: 'Other', saved: true, contextId: 'context-2' } });
+    const staleRequest = test.request.mock.calls[0][0];
+    settle(result(staleRequest, [row('z', 'Stale')]));
+    await staleHydration;
+    await replacement;
+    expect(test.requests.filter((request) => request.kind === 'scan')).toHaveLength(2);
+    expect(test.controller.rows.value.map((item) => item.id)).toEqual(['a', 'b']);
+  });
+
+  it('clears rows and refuses persistence for an unsaved project context payload', async () => {
+    const test = harness(false);
+    await test.controller.updateProjectContext(context());
+    expect(test.controller.rows.value).toHaveLength(2);
+    await test.controller.updateProjectContext({ ...context(), project: { name: 'Project', saved: false, contextId: 'context-1' } });
+    expect(test.controller.rows.value).toEqual([]);
+    expect(test.controller.availability.value).toMatchObject({ canSave: false, saveDisabledReason: 'Save the project first.' });
+    const requestCount = test.requests.length;
+    expect(await test.controller.saveActiveFrame()).toBe(false);
+    expect(test.controller.status.value).toBe('Save the project first.');
+    expect(test.requests).toHaveLength(requestCount);
+  });
+
   it('gates unsaved projects exactly and never requests persistence', async () => {
     const test = harness(false);
     expect(test.controller.availability.value).toMatchObject({ canSave: false, saveDisabledReason: 'Save the project first.' });
