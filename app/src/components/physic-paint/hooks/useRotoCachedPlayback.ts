@@ -172,6 +172,12 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
       void efxPaintAudioMonitor.prepare(audioPreview).then(() => {
         efxPaintAudioMonitor.playAtCursor(audioCursorAppFrame, audioPlaybackRangeEnd);
       });
+      // 41-03 (locked A6): matched-fps guarantee — surface a non-blocking
+      // note once per playback session when playback fps diverges from the
+      // project fps. Routed through the publishStatus gate (queued during
+      // playback, flushed on stop); playbackRate is never scaled.
+      const fpsNote = efxPaintAudioMonitor.noteFpsMismatchOnce(audioPreview.fps, playbackFps);
+      if (fpsNote) publishStatus(fpsNote);
     }
     const showNextFrame = () => {
       if (frameIndex >= cachedFrames.length) {
@@ -180,11 +186,24 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
           return;
         }
         frameIndex = 0;
+        // 41-03 (D-11): every loop wrap re-seeks audio to the mapped loop
+        // start via stopAll + restart; source metadata untouched.
+        efxPaintAudioMonitor.notifyLoopWrap(
+          cachedFrames[0].appFrame,
+          cachedFrames[cachedFrames.length - 1].appFrame + 1,
+        );
       }
       const cachedFrame = cachedFrames[frameIndex];
       playbackTick.value = { frameIndex, appFrame: cachedFrame.appFrame, frame: cachedFrame.frame ?? null };
       inputRef.current.onFrame(frameIndex, cachedFrame.appFrame);
       frameIndex += 1;
+      // 41-03 (D-10): drift check with the current Paint cursor. The monitor
+      // self-throttles (~every 10 ticks), so the tick itself keeps the 38.1
+      // D-01 single-write discipline; no per-frame audio re-sync.
+      efxPaintAudioMonitor.checkDrift(
+        cachedFrame.appFrame,
+        cachedFrames[cachedFrames.length - 1].appFrame + 1,
+      );
     };
     showNextFrame();
     timerRef.current = window.setInterval(showNextFrame, 1000 / playbackFps);

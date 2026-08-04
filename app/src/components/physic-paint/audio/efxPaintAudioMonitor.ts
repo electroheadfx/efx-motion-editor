@@ -25,9 +25,28 @@ import { resolveTrackPlayback } from './efxPaintAudioPreviewContext';
 
 type MonitorState = 'idle' | 'positioned' | 'playing';
 
+/**
+ * D-10 drift policy: audio free-runs on the Web Audio clock after a
+ * seek-aligned start; a full seek-restart corrects only when measured drift
+ * exceeds ~one frame (40ms ≈ 41.7ms at 24fps). The check is throttled — it
+ * compares only every EFX_PAINT_AUDIO_DRIFT_CHECK_INTERVAL_TICKS playback
+ * ticks, never per frame.
+ */
+export const EFX_PAINT_AUDIO_DRIFT_THRESHOLD_SEC = 0.04;
+export const EFX_PAINT_AUDIO_DRIFT_CHECK_INTERVAL_TICKS = 10;
+
 let state: MonitorState = 'idle';
 let context: EfxPaintAudioPreviewContext | null = null;
 let anchorAppFrame = 0;
+// Drift anchor (truth table section 5): captured at each seek-aligned start.
+// The anchor audioTime term cancels in |expected - actual|, so the anchor
+// needs only the appFrame and the Web Audio clock reading.
+let anchorCtx: Pick<AudioContext, 'currentTime'> | null = null;
+let anchorCtxTime = 0;
+let driftTickCounter = 0;
+// A6: the fps-mismatch note is published once per playback session (reset on
+// stop). No playbackRate scaling ever occurs.
+let fpsMismatchNoted = false;
 const preparedTrackIds = new Set<string>();
 
 export const efxPaintAudioMonitor = {
@@ -63,7 +82,7 @@ export const efxPaintAudioMonitor = {
   playAtCursor(cursorAppFrame: number, playbackRangeEnd: number): void {
     const current = context;
     if (!current) return;
-    audioEngine.ensureContext();
+    const ctx = audioEngine.ensureContext();
     if (state === 'playing') audioEngine.stopAll();
     for (const track of current.tracks) {
       if (track.muted || !preparedTrackIds.has(track.id)) continue;
@@ -80,6 +99,9 @@ export const efxPaintAudioMonitor = {
       }
     }
     anchorAppFrame = cursorAppFrame;
+    anchorCtx = ctx;
+    anchorCtxTime = ctx.currentTime;
+    driftTickCounter = 0;
     state = 'playing';
   },
 
@@ -88,6 +110,10 @@ export const efxPaintAudioMonitor = {
     if (state !== 'playing') return;
     audioEngine.stopAll();
     anchorAppFrame = 0;
+    anchorCtx = null;
+    anchorCtxTime = 0;
+    driftTickCounter = 0;
+    fpsMismatchNoted = false;
     state = context ? 'positioned' : 'idle';
   },
 
@@ -95,6 +121,48 @@ export const efxPaintAudioMonitor = {
   positionedAt(cursorAppFrame: number): void {
     anchorAppFrame = cursorAppFrame;
     if (state === 'idle') state = 'positioned';
+  },
+
+  /**
+   * D-11 loop wrap: re-seek audio to the mapped loop start via the normal
+   * seek-restart path (stopAll + play at the loop-start mapping). Source
+   * audio metadata is never touched. No-op unless playing.
+   */
+  notifyLoopWrap(loopStartAppFrame: number, playbackRangeEnd: number): void {
+    if (state !== 'playing') return;
+    this.playAtCursor(loopStartAppFrame, playbackRangeEnd);
+  },
+
+  /**
+   * D-10 drift corrector: invoked from the playback tick with the current
+   * Paint cursor; self-throttles to one comparison per
+   * EFX_PAINT_AUDIO_DRIFT_CHECK_INTERVAL_TICKS calls. Computes expected vs
+   * actual per truth table section 5 and runs a full seek-restart at the
+   * current cursor only when absolute drift exceeds
+   * EFX_PAINT_AUDIO_DRIFT_THRESHOLD_SEC. Playing sources are never nudged.
+   */
+  checkDrift(cursorAppFrame: number, playbackRangeEnd: number): void {
+    if (state !== 'playing' || !context || !anchorCtx) return;
+    driftTickCounter += 1;
+    if (driftTickCounter < EFX_PAINT_AUDIO_DRIFT_CHECK_INTERVAL_TICKS) return;
+    driftTickCounter = 0;
+    const expectedSec = (cursorAppFrame - anchorAppFrame) / context.fps;
+    const actualSec = anchorCtx.currentTime - anchorCtxTime;
+    if (Math.abs(expectedSec - actualSec) > EFX_PAINT_AUDIO_DRIFT_THRESHOLD_SEC) {
+      this.playAtCursor(cursorAppFrame, playbackRangeEnd);
+    }
+  },
+
+  /**
+   * Locked A6 (a6-matched-fps): sync is guaranteed when the child playback
+   * fps equals the project fps. On mismatch, return a non-blocking status
+   * note — once per playback session (reset by stop()). No playbackRate
+   * scaling, no pitch shift, ever.
+   */
+  noteFpsMismatchOnce(projectFps: number, playbackFps: number): string | null {
+    if (fpsMismatchNoted || playbackFps === projectFps) return null;
+    fpsMismatchNoted = true;
+    return `Audio preview sync is best-effort: playback at ${playbackFps} fps differs from the project ${projectFps} fps. Sync is guaranteed at matched fps.`;
   },
 
   isPlaying(): boolean {
