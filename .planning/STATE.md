@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-current_phase: 39
-current_phase_name: "**complete**"
-status: in_progress
+current_phase: 40
+current_phase_name: macos-icon-regeneration-build-hygiene
+status: executing
 stopped_at: Phase 40 context gathered
-last_updated: "2026-08-04T13:13:13.604Z"
+last_updated: "2026-08-04T13:17:18.613Z"
 last_activity: 2026-08-04
-last_activity_desc: Phase 39 closed by verification (quick task 260804-f2q, native UAT approved)
+last_activity_desc: Phase 40 execution started
 progress:
   total_phases: 6
   completed_phases: 0
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Milestone v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity (target release 2026-08-31). Phase 39 complete (quick 260804-f2q); Phase 40: macOS Icon Regeneration + Build Hygiene is next.
+**Current focus:** Phase 40 — macos-icon-regeneration-build-hygiene
 
 ## Current Position
 
-Phase: 39 of 44 (Scripts Auto-Hydration Fix) — **complete** (closed by verification 2026-08-04 via quick task 260804-f2q: owned regression tests green, HYDR-06 diff gate clean, `260804-f2q-VERIFICATION.md` status passed, native UAT approved)
-Plan: —
-Status: Phase 39 closed by verification; ready to plan Phase 40
-Last activity: 2026-08-04 - Phase 39 closed by verification (quick task 260804-f2q, native UAT approved)
+Phase: 40 (macos-icon-regeneration-build-hygiene) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 40
+Last activity: 2026-08-04 — Phase 40 execution started
 
 Progress: [██░░░░░░░░] 17%
 

@@ -64,12 +64,12 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 Plans:
 **Wave 1**
 
-- [ ] 40-01-PLAN.md — Icon regeneration via Tauri pipeline + packaged-icon proof on fresh unsigned build + user icon UAT (ICON-01..04)
-- [ ] 40-02-PLAN.md — chunkSizeWarningLimit: 1100 with rationale + build seam (resolved-limit, warning capture, separation pins) (BUILD-01, BUILD-03)
+- [x] 40-01-PLAN.md — Icon regeneration via Tauri pipeline + packaged-icon proof on fresh unsigned build + user icon UAT (ICON-01..04)
+- [x] 40-02-PLAN.md — chunkSizeWarningLimit: 1100 with rationale + build seam (resolved-limit, warning capture, separation pins) (BUILD-01, BUILD-03)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 40-03-PLAN.md — Mixed-import baseline, D-08 approval gate, approved corrections + non-return assertions (BUILD-02, BUILD-03)
+- [x] 40-03-PLAN.md — Mixed-import baseline, D-08 approval gate, approved corrections + non-return assertions (BUILD-02, BUILD-03)
 
 ### Phase 41: EFX Paint Audio Preview + Monitoring Toggle
 
@@ -288,7 +288,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39. Scripts Auto-Hydration Fix | v0.9.0 | 0/TBD | Not started | - |
-| 40. macOS Icon + Build Hygiene | v0.9.0 | 0/TBD | Not started | - |
+| 40. macOS Icon + Build Hygiene | v0.9.0 | 3/3 | In Progress|  |
 | 41. EFX Paint Audio Preview | v0.9.0 | 0/TBD | Not started | - |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 0/TBD | Not started | - |
 | 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 0/TBD | Not started | - |
