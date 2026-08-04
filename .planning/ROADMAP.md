@@ -88,7 +88,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 41-01-PLAN.md — Locked frame→audio truth table + RED test suite + decision checkpoint (A4/A6/revision) (AUDIO-02, AUDIO-03, AUDIO-04)
+- [x] 41-01-PLAN.md — Locked frame→audio truth table + RED test suite + decision checkpoint (A4/A6/revision) (AUDIO-02, AUDIO-03, AUDIO-04)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -309,7 +309,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39. Scripts Auto-Hydration Fix | v0.9.0 | 0/TBD | Not started | - |
 | 40. macOS Icon + Build Hygiene | v0.9.0 | 3/3 | Complete    | 2026-08-04 |
-| 41. EFX Paint Audio Preview | v0.9.0 | 0/TBD | Not started | - |
+| 41. EFX Paint Audio Preview | v0.9.0 | 1/5 | In Progress|  |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 0/TBD | Not started | - |
 | 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 0/TBD | Not started | - |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |

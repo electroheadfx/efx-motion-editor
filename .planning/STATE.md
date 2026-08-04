@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 41
-current_phase_name: EFX Paint Audio Preview + Monitoring Toggle
+current_phase_name: efx-paint-audio-preview-monitoring-toggle
 status: executing
-stopped_at: Phase 41 context gathered
-last_updated: "2026-08-04T20:24:49.265Z"
+stopped_at: Completed 41-01-PLAN.md (truth table + RED suite + decision lock)
+last_updated: "2026-08-04T20:53:59.906Z"
 last_activity: 2026-08-04
-last_activity_desc: Phase 40 complete, transitioned to Phase 41
+last_activity_desc: Phase 41 execution started
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 8
-  completed_plans: 3
+  completed_plans: 4
   percent: 17
 ---
 
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 40 — macos-icon-regeneration-build-hygiene
+**Current focus:** Phase 41 — efx-paint-audio-preview-monitoring-toggle
 
 ## Current Position
 
-Phase: 41 — EFX Paint Audio Preview + Monitoring Toggle
-Plan: Not started
+Phase: 41 (efx-paint-audio-preview-monitoring-toggle) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-08-04 — Phase 40 complete, transitioned to Phase 41
+Last activity: 2026-08-04 — Phase 41 execution started
 
-Progress: [██░░░░░░░░] 17%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -156,6 +156,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 38 P06 | user-owned native UAT session | 1 task | 1 planning file |
 | Phase 38 P07 | 16min | 3 tasks | 4 files |
 | Phase 38 P08 | 18min | 3 tasks | 4 files |
+| Phase 41 P01 | 10min across decision checkpoint | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -168,6 +169,7 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 
 - Physics paint is an additional tool; it does not replace perfect-freehand basic paint or p5.brush FX paint.
 - Failed headless adapter/batch replay remains excluded; the future editor integration seam is typed/contract-only.
+- [Phase ?]: 41-01: D-04 boundary locked — a4-protocol-url carrier, a6-matched-fps sync scope, rev-counter revision discipline, d04-proof-packaged-build proof mode for the 41-05 CSP grant
 
 ### Pending Todos
 
@@ -349,9 +351,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-04T17:30:05.675Z
-Stopped at: Phase 41 context gathered
-Resume file: .planning/phases/41-efx-paint-audio-preview-monitoring-toggle/41-CONTEXT.md
+Last session: 2026-08-04T20:53:59.898Z
+Stopped at: Completed 41-01-PLAN.md (truth table + RED suite + decision lock)
+Resume file: None
 
 ## Operator Next Steps
 

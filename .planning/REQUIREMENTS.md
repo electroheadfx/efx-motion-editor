@@ -34,9 +34,9 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### EFX Paint Audio Preview (read-only)
 
 - [ ] **AUDIO-01**: The main editor remains the sole authority for audio track IDs, assets, offset, trim, volume, mute, fades, ordering, persistence, and export mixing; EFX Paint receives only monitoring data/commands
-- [ ] **AUDIO-02**: Opening a parent Paint layer in EFX Paint provides enough launch/session context (revision, sequence, parent layer, fps, per-track timing/gain state) to resolve audible audio at the Paint frame cursor
-- [ ] **AUDIO-03**: Audio preview starts, seeks, pauses, stops, and loops in sync with the EFX Paint playback cursor across the locked frame/time mapping, without drift during sustained playback
-- [ ] **AUDIO-04**: Main-editor audio changes while EFX Paint is open arrive as revisioned bridge updates (or defined refresh/reopen behavior); no stale update overwrites newer audio context
+- [x] **AUDIO-02**: Opening a parent Paint layer in EFX Paint provides enough launch/session context (revision, sequence, parent layer, fps, per-track timing/gain state) to resolve audible audio at the Paint frame cursor
+- [x] **AUDIO-03**: Audio preview starts, seeks, pauses, stops, and loops in sync with the EFX Paint playback cursor across the locked frame/time mapping, without drift during sustained playback
+- [x] **AUDIO-04**: Main-editor audio changes while EFX Paint is open arrive as revisioned bridge updates (or defined refresh/reopen behavior); no stale update overwrites newer audio context
 - [ ] **AUDIO-05**: A session-local Audio Preview On/Off toggle silences local monitoring without mutating main-editor track mute state or export
 - [ ] **AUDIO-06**: Missing audio assets surface a non-blocking warning; audio-preview failure never blocks Paint editing; closing EFX Paint stops and releases audio resources; no doubled audio from duplicate engines
 
@@ -113,9 +113,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BUILD-02 | Phase 40 | Complete |
 | BUILD-03 | Phase 40 | Complete |
 | AUDIO-01 | Phase 41 | Pending |
-| AUDIO-02 | Phase 41 | Pending |
-| AUDIO-03 | Phase 41 | Pending |
-| AUDIO-04 | Phase 41 | Pending |
+| AUDIO-02 | Phase 41 | Complete |
+| AUDIO-03 | Phase 41 | Complete |
+| AUDIO-04 | Phase 41 | Complete |
 | AUDIO-05 | Phase 41 | Pending |
 | AUDIO-06 | Phase 41 | Pending |
 | PLAY-01 | Phase 42 | Pending |
