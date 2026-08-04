@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 41
 current_phase_name: efx-paint-audio-preview-monitoring-toggle
 status: executing
-stopped_at: Completed 41-03-PLAN.md (playback sync + revisioned push channel)
-last_updated: "2026-08-04T21:44:44.429Z"
+stopped_at: Completed 41-04-PLAN.md
+last_updated: "2026-08-04T22:36:33.628Z"
 last_activity: 2026-08-04
 last_activity_desc: Phase 41 execution started
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
   percent: 17
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 41 (efx-paint-audio-preview-monitoring-toggle) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-08-04 — Phase 41 execution started
 
-Progress: [████████░░] 75%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -159,6 +159,7 @@ Progress: [████████░░] 75%
 | Phase 41 P01 | 10min across decision checkpoint | 3 tasks | 3 files |
 | Phase 41-efx-paint-audio-preview-monitoring-toggle P02 | 15min | 2 tasks | 10 files |
 | Phase 41 P03 | 18min | 2 tasks | 9 files |
+| Phase 41 P04 | 32min | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -178,6 +179,8 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 41-03: drift anchor stores only { appFrame, ctxTime } — the audioTime term cancels in |expected-actual|; checkDrift self-throttles to one compare per 10 ticks with a 40ms named threshold
 - [Phase ?]: 41-03: audio push publisher is a gated installer called from main.tsx only — never module scope, because the child bundle shares the module and its audioStore singleton would be empty (AUDIO-01)
 - [Phase ?]: 41-03: push publishes even with zero tracks (last-track deletion must reach the child); fps-mismatch note routes through the publishStatus gate, queued during playback and flushed on stop
+- [Phase ?]: 41-04: suppression implies visually-playing by construction (set by blocked Play, cleared by the monitor stop funnel); noteVisualStop clears without publishing so the stop funnel owns the status line
+- [Phase ?]: 41-04: revisioned-update restart decision taken after the prepare await — a racing toggle always ends silent (Off) or positioned at the cursor (On); stale claims reset on every fresh child launch
 
 ### Pending Todos
 
@@ -359,8 +362,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-04T21:44:31.985Z
-Stopped at: Completed 41-03-PLAN.md (playback sync + revisioned push channel)
+Last session: 2026-08-04T22:36:33.620Z
+Stopped at: Completed 41-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
