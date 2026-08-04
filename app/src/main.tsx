@@ -13,7 +13,7 @@ import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
-import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintFrameSyncListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
+import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintFrameSyncListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
 
 const root = document.getElementById('app')!;
 
@@ -45,6 +45,11 @@ if (window.location.pathname === '/physics-paint') {
     // branch never runs in the child bundle. App-lifetime effect; the
     // discarded cleanup matches the sibling installs above.
     installPhysicPaintAudioContextPublisher();
+
+    // 41-04 (D-05 symmetric guard): record the EFX Paint window's audio
+    // ownership claim so playbackEngine.startAudioPlayback() suppresses itself
+    // while the child owns monitoring. Main window only; app-lifetime install.
+    await installPhysicPaintAudioOwnershipListener();
 
     // Listen for undo/redo events emitted by the native macOS menu.
     // On macOS, Cmd+Z and Cmd+Shift+Z are intercepted by the native menu

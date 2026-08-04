@@ -4,6 +4,7 @@ import type { PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 import { efxPaintAudioMonitor } from '../audio/efxPaintAudioMonitor';
 import { efxPaintAudioPreviewStore } from '../audio/efxPaintAudioPreviewStore';
+import { efxPaintAudioOwnership } from '../audio/efxPaintAudioOwnership';
 
 const MIN_ROTO_PLAYBACK_FPS = 1;
 const MAX_ROTO_PLAYBACK_FPS = 60;
@@ -244,6 +245,14 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
   }, []);
 
   useEffect(() => () => clearTimer(), [clearTimer]);
+
+  // 41-04 (D-06): the ownership guard publishes its suppressed/auto-resume
+  // notes through this hook's publishStatus gate (queued during playback,
+  // flushed once on stop) rather than bypassing capsule arbitration.
+  useEffect(() => {
+    efxPaintAudioOwnership.configure({ statusPublisher: publishStatus });
+    return () => efxPaintAudioOwnership.configure({ statusPublisher: null });
+  }, [publishStatus]);
 
   useEffect(() => {
     if (input.workflowMode !== 'roto') stop();

@@ -9,6 +9,15 @@ import type { EfxPaintAudioPreviewContext } from '../../../types/physicPaint';
  */
 const section = signal<EfxPaintAudioPreviewContext | null>(null);
 
+/**
+ * D-13 Audio Preview toggle: session-local, default On, resets on each EFX
+ * Paint window open (a fresh bundle per window gives the reset for free).
+ * Never written to project data, .mce files, app config, or localStorage
+ * (AUDIO-05 prohibition). The monitor gates its play funnel on this signal;
+ * the setter with the immediate mid-playback effect lands with the toggle UI.
+ */
+export const audioPreviewEnabled = signal(true);
+
 export const efxPaintAudioPreviewStore = {
   section,
   hasAudio: computed(() => (section.value?.tracks.length ?? 0) > 0),

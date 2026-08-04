@@ -1,5 +1,5 @@
 import type { Result } from './ipc';
-import { effect } from '@preact/signals';
+import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
 import type { EfxPaintAudioPreviewContext, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
@@ -28,6 +28,13 @@ import { assetUrl, scriptLibraryDelete, scriptLibraryEncodeThumbnailWebp, script
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
 export const PHYSIC_PAINT_PROJECT_CONTEXT_EVENT = 'physic-paint:project-context';
 export const PHYSIC_PAINT_AUDIO_CONTEXT_EVENT = 'physic-paint:audio-context';
+/**
+ * 41-04 (D-05..D-07): main→child playback-state broadcast ({playing}) and
+ * child→main ownership claim/release ({claim}). Transient session state on
+ * lightweight events — never forced through the revision counter (locked A5).
+ */
+export const PHYSIC_PAINT_AUDIO_PLAYBACK_STATE_EVENT = 'physic-paint:audio-playback-state';
+export const PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT = 'physic-paint:audio-ownership';
 /**
  * Standalone sends rendered-output-only PhysicPaintApplyPayload here; the app
  * validates/applies it and returns PhysicPaintApplyResult on
@@ -876,6 +883,73 @@ export function installPhysicPaintAudioContextPublisher(): () => void {
   });
 }
 
+/**
+ * 41-04 (D-05): broadcast the main editor's playback state to the EFX Paint
+ * window so the child's first-player-wins guard can suppress its audio start
+ * (D-06 note) and auto-resume when the main editor stops (D-07). Called from
+ * the only two funnel points — playbackEngine.start() (true) and stop()
+ * (false). Same publish shape as publishPhysicPaintProjectContext: emitTo
+ * window-label targeting (never broadcast emit) plus the CustomEvent /
+ * opener.postMessage browser fallbacks.
+ */
+export async function publishPhysicPaintAudioPlaybackState(playing: boolean): Promise<void> {
+  const state = { playing };
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_AUDIO_PLAYBACK_STATE_EVENT, state);
+  }
+  if (typeof window !== 'undefined') {
+    const message = { type: PHYSIC_PAINT_AUDIO_PLAYBACK_STATE_EVENT, payload: state };
+    window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_AUDIO_PLAYBACK_STATE_EVENT, { detail: state }));
+    window.opener?.postMessage?.(message, window.location.origin);
+  }
+}
+
+/**
+ * 41-04 (D-05 symmetric guard): main-side record of the child's audio
+ * ownership claim. While held, playbackEngine.startAudioPlayback() suppresses
+ * itself — visual playback proceeds but doubled audio is impossible.
+ * Transient session state (T-41-10: a spoofed event's worst case is a
+ * suppressed main start, never main-state mutation).
+ */
+const physicPaintChildAudioClaimed = signal(false);
+
+export function isPhysicPaintChildAudioClaimed(): boolean {
+  return physicPaintChildAudioClaimed.peek();
+}
+
+/**
+ * Main-side listener for the child's ownership claim/release events
+ * (PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT). MAIN WINDOW ONLY: installed from
+ * main.tsx. Tauri listen + CustomEvent + origin-checked postMessage, matching
+ * the established listener idiom; invalid payloads are ignored silently.
+ */
+export async function installPhysicPaintAudioOwnershipListener(): Promise<() => void> {
+  const accept = (value: unknown) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    const claim = (value as { claim?: unknown }).claim;
+    if (typeof claim === 'boolean') physicPaintChildAudioClaimed.value = claim;
+  };
+  let unlistenTauri: (() => void) | undefined;
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    unlistenTauri = await eventApi.listen?.(PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, (event) => accept(event.payload));
+  }
+  if (typeof window === 'undefined') return () => { unlistenTauri?.(); };
+  const custom = (event: Event) => accept((event as CustomEvent).detail);
+  const message = (event: MessageEvent) => {
+    if (event.origin !== window.location.origin || event.data?.type !== PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT) return;
+    accept(event.data.payload);
+  };
+  window.addEventListener(PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, custom);
+  window.addEventListener('message', message);
+  return () => {
+    unlistenTauri?.();
+    window.removeEventListener(PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, custom);
+    window.removeEventListener('message', message);
+  };
+}
+
 export async function installPhysicPaintStateSaveListener(): Promise<() => void> {
   const saveRequest = async (value: unknown): Promise<PhysicPaintStateSaveResult> => {
     const request = value && typeof value === 'object' && !Array.isArray(value) ? value as Partial<PhysicPaintStateSaveRequest> : null;
@@ -1236,6 +1310,11 @@ export async function openPhysicPaintCanvas(request: PhysicPaintOpenRequest): Pr
     if (!parseCanonicalPhysicsPaintLaunchValue(context)) {
       return { ok: false, error: 'Invalid canonical physical launch context' };
     }
+
+    // D-05 claim lifecycle: a (re)launched child window starts a fresh bundle
+    // and holds no audio claim — clear any stale claim left behind by a
+    // previous window that closed without its release event landing.
+    physicPaintChildAudioClaimed.value = false;
 
     const tauriRuntime = await detectTauriRuntime();
     console.info('[physicPaintBridge] launch branch', tauriRuntime ? 'tauri-native-command' : 'browser-fallback', context);

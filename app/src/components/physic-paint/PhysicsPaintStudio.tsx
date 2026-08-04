@@ -26,7 +26,8 @@ import { getOnionFrameOpacity, projectRotoOnionPreviewFrames } from './roto/roto
 import { selectPhysicsPaintMissingConditions, selectRotoPlaybackAvailable } from './view/physicsPaintStudioSelectors';
 import { buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
-import { createPhysicPaintThumbnailNativeEncoder, sendPhysicPaintApplyPayload, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
+import { createPhysicPaintThumbnailNativeEncoder, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
+import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
 import { buildBlankRotoFrame, type RenderedFramePayload } from './roto/rotoCanvasFrames';
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush } from './bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
@@ -123,6 +124,20 @@ export function PhysicsPaintStudio() {
   const bridgeMode = usePhysicsPaintBridgeMode();
   const bridgeModeRef = useRef(bridgeMode);
   bridgeModeRef.current = bridgeMode;
+  // 41-04 (D-05): the audio ownership guard sends its claim/release events
+  // through the dual-transport sender with the live bridge mode. The guard
+  // module is transport-agnostic (session state only); this effect is the
+  // single wiring point, cleaned up on Studio unmount.
+  useEffect(() => {
+    efxPaintAudioOwnership.configure({
+      claimSender: (claim) => {
+        void sendPhysicPaintAudioOwnership(claim, bridgeModeRef.current).catch((error) => {
+          console.warn('[PhysicsPaintStudio] audio ownership event failed', error);
+        });
+      },
+    });
+    return () => efxPaintAudioOwnership.configure({ claimSender: null });
+  }, []);
   // Physical selection state (D-01/D-10): selectedKeyId is the stable real-key
   // identity, rotoKeyRecords and rotoInterpolationState are derived from the
   // store's validated physical records and canonical interpolation state.

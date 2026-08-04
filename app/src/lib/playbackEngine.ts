@@ -8,6 +8,7 @@ import {audioEngine} from './audioEngine';
 import {totalFrames, frameMap, trackLayouts} from './frameMap';
 import {shuttleDirection, shuttleSpeed, resetShuttle} from './jklShuttle';
 import {isolationStore} from '../stores/isolationStore';
+import {isPhysicPaintChildAudioClaimed, publishPhysicPaintAudioPlaybackState} from './physicPaintBridge';
 
 export const isFullSpeed = signal(false);
 
@@ -54,6 +55,11 @@ export class PlaybackEngine {
     uiStore.selectSequence(null);
     timelineStore.setPlaying(true);
     this.startAudioPlayback();
+    // 41-04 (D-05..D-07): broadcast the main playback state so the EFX Paint
+    // window's first-player-wins guard can suppress (D-06 note) or later
+    // auto-resume (D-07) its audio monitoring. Fire-and-forget; start()/stop()
+    // are the only two funnel points.
+    void publishPhysicPaintAudioPlaybackState(true);
     this.rafId = requestAnimationFrame(this.tick);
   }
 
@@ -65,6 +71,9 @@ export class PlaybackEngine {
     }
     timelineStore.setPlaying(false);
     audioEngine.stopAll();
+    // 41-04 (D-07): the child auto-resumes monitoring on this broadcast when
+    // it was suppressed mid-playback with its Audio Preview toggle On.
+    void publishPhysicPaintAudioPlaybackState(false);
     timelineStore.syncDisplayFrame();
     this.syncActiveSequence();
     resetShuttle();
@@ -191,6 +200,12 @@ export class PlaybackEngine {
 
   /** Start all unmuted audio tracks at the correct offset for the current frame. */
   private startAudioPlayback(): void {
+    // 41-04 (D-05 symmetric guard): while the EFX Paint child window holds the
+    // audio claim, the main window's own audio start/restart is suppressed —
+    // visual playback proceeds untouched and doubled audio is impossible.
+    // Gating this single funnel covers start(), seek restarts, and tick
+    // loop-wrap restarts alike.
+    if (isPhysicPaintChildAudioClaimed()) return;
     const currentFrame = timelineStore.currentFrame.peek();
     const fps = projectStore.fps.peek();
     const maxFrames = totalFrames.peek();

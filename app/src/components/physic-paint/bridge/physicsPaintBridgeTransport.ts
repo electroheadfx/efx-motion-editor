@@ -1,6 +1,6 @@
 import type { PhysicPaintApplyPayload, PhysicPaintRotoAuthorityRequest, PhysicPaintScriptLibraryRequest, PhysicPaintThumbnailEncodeRequest, PhysicPaintThumbnailEncodeResult } from '../../../types/physicPaint';
 import { isPhysicPaintThumbnailEncodeResult } from '../../../types/physicPaint';
-import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT } from '../../../lib/physicPaintBridge';
+import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT } from '../../../lib/physicPaintBridge';
 import type { RotoScriptThumbnailNativeEncoder } from '../roto/physicsPaintRotoScriptThumbnail';
 import type { PhysicsPaintBridgeMode } from './usePhysicsPaintParentBridge';
 
@@ -18,6 +18,26 @@ export async function sendPhysicPaintFrameSyncMessage(frame: number, bridgeMode:
   }
   window.opener?.postMessage?.(message, '*');
   window.dispatchEvent?.(new MessageEvent('message', { data: message }));
+}
+
+/**
+ * 41-04 (D-05): child→main audio ownership claim/release — a lightweight
+ * transient event (locked A5: never revisioned), targeting the 'main' window
+ * label like the sibling request senders.
+ */
+export async function sendPhysicPaintAudioOwnership(claim: boolean, bridgeMode: PhysicsPaintBridgeMode): Promise<void> {
+  const message = { claim };
+  if (bridgeMode === 'Tauri') {
+    const eventApi = await import('@tauri-apps/api/event');
+    if (typeof eventApi.emitTo !== 'function') throw new Error('Tauri event emitTo API is unavailable');
+    await eventApi.emitTo('main', PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, message);
+    return;
+  }
+  if (bridgeMode === 'Browser fallback' && window.opener) {
+    window.opener.postMessage({ type: PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, payload: message }, window.location.origin);
+    return;
+  }
+  throw new Error('Audio ownership bridge is unavailable');
 }
 
 export async function sendPhysicPaintScriptLibraryRequest(request: PhysicPaintScriptLibraryRequest, bridgeMode: PhysicsPaintBridgeMode): Promise<void> {

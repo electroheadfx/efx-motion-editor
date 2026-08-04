@@ -7,6 +7,7 @@ import { applyPhysicsPaintLaunchContext } from '../bridge/physicsPaintLaunchCont
 import { applyRevisionedEfxPaintAudioPreview } from '../audio/efxPaintAudioPreviewContext';
 import { efxPaintAudioPreviewStore } from '../audio/efxPaintAudioPreviewStore';
 import { handleEfxPaintAudioContextEvent } from '../audio/efxPaintAudioMonitor';
+import { installEfxPaintAudioPlaybackStateListener } from '../audio/efxPaintAudioOwnership';
 import { applyRotoBackgroundMetadataToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { hydrateRotoPhysicalLaunchContext } from '../roto/rotoLaunchHydration';
 import { useEfxPaintAudioContextBridge, usePhysicsPaintLaunchBridge, usePhysicsPaintProjectContextBridge } from '../bridge/usePhysicsPaintParentBridge';
@@ -169,6 +170,10 @@ export function usePhysicsPaintLaunchIntegration(input: {
   // push events on the same channel/discipline as launch; the funnel applies
   // newer-only and restarts mid-playback at the current Paint cursor.
   useEfxPaintAudioContextBridge(handleEfxPaintAudioContextEvent);
+  // 41-04 (D-05..D-07): main-editor playback-state broadcasts feed the
+  // first-player-wins ownership guard (suppress + note + auto-resume). One
+  // listener per event, same install idiom as the sibling bridges.
+  useEffect(() => installEfxPaintAudioPlaybackStateListener(), []);
   usePhysicsPaintProjectContextBridge((project) => {
     const current = input.peekLaunchContext();
     if (!current) return;

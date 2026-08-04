@@ -2,7 +2,8 @@ import type { AudioTrack } from '../../../types/audio';
 import type { EfxPaintAudioPreviewContext } from '../../../types/physicPaint';
 import { audioEngine } from '../../../lib/audioEngine';
 import { applyRevisionedEfxPaintAudioPreview, resolveTrackPlayback } from './efxPaintAudioPreviewContext';
-import { efxPaintAudioPreviewStore } from './efxPaintAudioPreviewStore';
+import { audioPreviewEnabled, efxPaintAudioPreviewStore } from './efxPaintAudioPreviewStore';
+import { efxPaintAudioOwnership } from './efxPaintAudioOwnership';
 
 /**
  * EFX Paint child-window audio monitor (41-02 tracer).
@@ -84,10 +85,25 @@ export const efxPaintAudioMonitor = {
    * runs inside the Play gesture chain, so autoplay suspension is handled.
    * Called again while playing: stopAll first, then re-dispatch at the new
    * cursor (seek-restart discipline — the D-03/D-11 template).
+   *
+   * Two entry gates, in order (both keep the live cursor current so a later
+   * resume restarts at the true position):
+   *  1. D-13/D-14 session toggle — muted sessions dispatch nothing, silently
+   *     (the toggle button itself is the visible mute state).
+   *  2. D-05/D-06 first-player-wins ownership — a start while the main editor
+   *     owns audio is suppressed with the status note; a window already
+   *     holding the claim is never suppressed by a later main start.
    */
   playAtCursor(cursorAppFrame: number, playbackRangeEnd: number): void {
     const current = context;
     if (!current) return;
+    liveCursorAppFrame = cursorAppFrame;
+    livePlaybackRangeEnd = playbackRangeEnd;
+    if (!audioPreviewEnabled.peek()) return;
+    if (!efxPaintAudioOwnership.canStartAudio()) {
+      efxPaintAudioOwnership.noteSuppressed();
+      return;
+    }
     const ctx = audioEngine.ensureContext();
     if (state === 'playing') audioEngine.stopAll();
     for (const track of current.tracks) {
@@ -108,13 +124,20 @@ export const efxPaintAudioMonitor = {
     anchorCtx = ctx;
     anchorCtxTime = ctx.currentTime;
     driftTickCounter = 0;
-    liveCursorAppFrame = cursorAppFrame;
-    livePlaybackRangeEnd = playbackRangeEnd;
     state = 'playing';
+    // D-05 claim lifecycle: the first audio start claims ownership so a later
+    // main-editor start suppresses itself (symmetric guard).
+    efxPaintAudioOwnership.claimAudio();
   },
 
-  /** Stop all sources and clear the anchor. No-op unless playing. */
+  /**
+   * Stop all sources and clear the anchor. Also the visual-stop funnel for
+   * the ownership guard: releases the claim and drops any pending suppression
+   * (both idempotent — a second stop stays a no-op).
+   */
   stop(): void {
+    efxPaintAudioOwnership.releaseAudio();
+    efxPaintAudioOwnership.noteVisualStop();
     if (state !== 'playing') return;
     audioEngine.stopAll();
     anchorAppFrame = 0;
@@ -219,3 +242,17 @@ export function handleEfxPaintAudioContextEvent(value: unknown): Promise<void> |
   if (!section) return null;
   return efxPaintAudioMonitor.applyRevisionedContext(section);
 }
+
+/**
+ * D-07 auto-resume entry: restart monitoring at the live Paint cursor through
+ * the standard funnel (playAtCursor re-checks the session toggle and the
+ * ownership guard, so a muted or re-claimed window dispatches nothing).
+ */
+export function resumeEfxPaintAudioAtLiveCursor(): void {
+  efxPaintAudioMonitor.playAtCursor(liveCursorAppFrame, livePlaybackRangeEnd);
+}
+
+// The ownership guard drives D-07 auto-resume through this funnel. Module-
+// scope registration is safe: the monitor is child-window-only code — the
+// main window never imports it (AUDIO-01 authority boundary).
+efxPaintAudioOwnership.configure({ resumeHandler: resumeEfxPaintAudioAtLiveCursor });

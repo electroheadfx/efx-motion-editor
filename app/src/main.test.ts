@@ -71,6 +71,11 @@ describe('main.tsx editor startup', () => {
     // import('@tauri-apps/api/event'); flush once more if the frame-sync
     // handler has not been registered yet.
     if (!tauriListeners.get('physic-paint:seek-frame')?.length) await flush();
+    // 41-04: the audio-ownership listener is the LAST awaited install in the
+    // startup chain — keep flushing (bounded) until it lands. A floating late
+    // resolution escapes this file's mocked module context and rejects against
+    // the real Tauri event module (transformCallback TypeError).
+    for (let i = 0; !tauriListeners.get('physic-paint:audio-ownership')?.length && i < 5; i += 1) await flush();
   });
 
   afterEach(() => {
