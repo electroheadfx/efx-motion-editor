@@ -121,8 +121,28 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ### Active
 
+- [ ] Fix EFX Paint Scripts auto-hydration: saved-project scripts and Save Script appear without manual Refresh; no timing hacks — v0.9.0 blocking prerequisite
+- [ ] Replace unreadable macOS app icon from SPECS/efxmotioneditor-icon-2.png; tracked generated icons remain release authority — v0.9.0
+- [ ] Desktop build hygiene: chunkSizeWarningLimit 1100 documented + safe mixed-import corrections — v0.9.0
+- [ ] Read-only main-editor audio preview inside EFX Paint, frame-synchronized, session-local monitoring toggle — v0.9.0
+- [ ] PlayScript progressive vs static/hold application modes with application-time color override — v0.9.0
+- [ ] Linked Hold Loop Clips (cycle × repeat 1..∞) with filmstrip timeline visualization, no duplicated source assets — v0.9.0
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
+
+## Current Milestone: v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
+
+**Goal:** Improve the EFX Paint workflow for one parent Paint layer — restore automatic Scripts hydration, add PlayScript static/hold mode with linked repeat loops and color override, preview main-editor audio read-only inside EFX Paint, and ship a legible macOS identity with explicit desktop build hygiene. Target release 2026-08-31.
+
+**Target features:**
+- Blocking prerequisite: Scripts auto-hydration fix — saved-project scripts and Save Script appear without manual Refresh (no delays/polling hacks)
+- macOS release identity: new icon from `SPECS/efxmotioneditor-icon-2.png` (794×794 alpha source, tracked generated icons stay release authority)
+- Desktop build hygiene: `chunkSizeWarningLimit: 1100` documented budget + safe mixed-import corrections only
+- Read-only audio preview inside EFX Paint synchronized to the Paint cursor, with session-local monitoring toggle
+- PlayScript application controls: progressive vs static/hold modes, application-time color override, Hold Loop controls (cycle × repeat 1..∞)
+- Deterministic static/hold rendering with linked Loop Clips (no duplicated source assets, next-clip interruption, filmstrip timeline visualization)
+
+**Source spec:** `SPECS/milestone-v0.9.0-plan.md` (user-approved, locked ownership boundaries: main editor owns sequences/layers/audio; EFX Paint edits one parent Paint layer)
 
 ## Latest Milestone: v0.8.0 Standalone Physics Paint (Shipped 2026-08-01)
 
@@ -259,4 +279,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-01 after v0.8.0 milestone close — Standalone Physics Paint shipped (56/56 requirements, audit verdict tech_debt); next milestone TBD via /gsd-new-milestone*
+*Last updated: 2026-08-03 after milestone v0.9.0 start — PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*

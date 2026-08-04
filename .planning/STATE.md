@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.8.0
-milestone_name: Standalone Physics Paint
-status: Awaiting next milestone
-stopped_at: Milestone v0.8.0 summary generated
-last_updated: "2026-08-01T09:55:04.014Z"
-last_activity: 2026-08-01
-last_activity_desc: Milestone v0.8.0 completed and archived
+milestone: v0.9.0
+milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
+status: planning
+last_updated: "2026-08-04T07:18:50.566Z"
+last_activity: 2026-08-04
 progress:
-  total_phases: 21
-  completed_phases: 20
-  total_plans: 170
-  completed_plans: 164
-  percent: 95
-current_phase: 38
-current_phase_name: multi-copy-paste-and-tooltip-polish
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 ## Current Position
 
-Phase: Milestone v0.8.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-01 - Completed quick task 260801-sp2: Refresh README.md for v0.8.1 Standalone Physics Paint release
+Status: Defining requirements
+Last activity: 2026-08-04 — Milestone v0.9.0 started
 
 ## Performance Metrics
 
