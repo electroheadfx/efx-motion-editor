@@ -79,6 +79,7 @@ export function usePhysicsPaintLaunchIntegration(input: {
   engineRef: MutableRef<EfxPaintEngine | null>;
   lifecycle: LaunchLifecyclePorts;
   state: LaunchStatePorts;
+  peekLaunchContext: () => PhysicPaintLaunchContext | null;
   resetPersistenceForLaunch: (frames: PhysicPaintLaunchContext['cachedRotoFrames']) => void;
   resetNavigationForLaunchRef: MutableRef<(settings: PhysicPaintRotoPlaybackSettings) => void>;
   hydratePlaybackSettingsForLaunch: (context: PhysicPaintLaunchContext, settings: PhysicPaintRotoPlaybackSettings) => void;
@@ -157,12 +158,11 @@ export function usePhysicsPaintLaunchIntegration(input: {
 
   usePhysicsPaintLaunchBridge(applyIncomingLaunchContext);
   usePhysicsPaintProjectContextBridge((project) => {
-    input.state.setLaunchContext((current) => {
-      if (!current) return current;
-      const updated = { ...current, project };
-      queueMicrotask(() => input.onSettledLaunchContext?.(updated));
-      return updated;
-    });
+    const current = input.peekLaunchContext();
+    if (!current) return;
+    const updated = { ...current, project };
+    input.state.setLaunchContext(updated);
+    input.onSettledLaunchContext?.(updated);
   });
   return { getStrokeMetadata };
 }

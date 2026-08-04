@@ -937,12 +937,13 @@ export function PhysicsPaintStudio() {
     state: {
       setLaunchContext, setSettings, setApplyStatus, setApplyMessage, setLastError,
     },
+    peekLaunchContext: () => launchContext,
     resetPersistenceForLaunch: rotoPersistence.resetForLaunch,
     resetNavigationForLaunchRef: resetRotoNavigationForLaunchRef,
     hydratePlaybackSettingsForLaunch: rotoPlaybackSettingsController.hydrateForLaunch,
     resetCachedReference: resetCachedRotoReference,
     loadCachedReferenceFrame: (frame, readyEngine) => { loadCachedRotoReferenceFrame(frame, readyEngine ?? null); },
-    onSettledLaunchContext: () => { void rotoScriptLibrary.updateProjectContext(); },
+    onSettledLaunchContext: (context) => { void rotoScriptLibrary.updateProjectContext(context); },
   });
   usePhysicsPaintWorkflowIntegration({
     session: {
