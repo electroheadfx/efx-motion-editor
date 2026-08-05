@@ -4,15 +4,15 @@ milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 42
 current_phase_name: PlayScript Application Modes + Color Override
-status: planning
+status: executing
 stopped_at: Phase 42 UI-SPEC approved
-last_updated: "2026-08-05T16:07:10.175Z"
+last_updated: "2026-08-05T17:14:47.781Z"
 last_activity: 2026-08-05
 last_activity_desc: "Completed quick task 260805-ht3: Phase 41 remediation (CR-01, WR-07, WR-08)"
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 8
+  total_plans: 12
   completed_plans: 8
   percent: 33
 ---
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 Phase: 42 — PlayScript Application Modes + Color Override
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-08-05 - Completed quick task 260805-ht3: Phase 41 remediation (CR-01, WR-07, WR-08)
 
 Progress: [██████████] 100%

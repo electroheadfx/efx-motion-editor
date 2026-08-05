@@ -433,19 +433,19 @@ entry: { index: 'src/index.ts', preact: 'src/preact.tsx', animation: 'src/animat
 
 **No other unverified claims:** all file paths, type unions, field names, copy strings, and configuration values in this document were read directly from source this session and are quoted verbatim beside their citations.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **`capacity` vs `layerEndExclusive − canonicalStart` for the effective readout**
+1. **`capacity` vs `layerEndExclusive − canonicalStart` for the effective readout** — RESOLVED: 42-02 retains both signals; effective = `min(requested, layerEndExclusive − canonicalStart)` for the loop readout (D-13/D-14), `capacity` stays the generation gate.
    - What we know: Both arrive in the same authority result; generation is bounded by `capacity` (controller.ts:146); the open-status line displays `Max capacity · Fstart–F{layerEndExclusive − 1}` (controller.ts:127).
    - What's unclear: Whether `capacity < layerEndExclusive − canonicalStart` in practice (e.g., existing real keys inside the range), and which one Phase 43's resolver will treat as the "next clip" boundary.
    - Recommendation: Retain both in signals (Pitfall 5); compute effective = `min(requested, layerEndExclusive − canonicalStart)` for the loop readout (boundary truth), keep `capacity` as the generation gate (D-14). Confirm with the user during planning if the parent-side semantics matter for copy.
 
-2. **Two-line summary placement in the Scripts panel**
+2. **Two-line summary placement in the Scripts panel** — RESOLVED: 42-04 places the read-only summary block between the toolbar and the listbox; the live status line keeps transient operation status.
    - What we know: Panel structure is toolbar → listbox → status line (PhysicsPaintScriptsPanel.tsx:166-209); the status line is `aria-live="polite"`.
    - What's unclear: Whether the summary sits between toolbar and list or adjacent to the status line; exact copy is discretion (D-07).
    - Recommendation: Place directly under the toolbar as a compact read-only block; keep the live status line for transient operation status only. Not blocking.
 
-3. **Picker close affordance inside the dialog**
+3. **Picker close affordance inside the dialog** — RESOLVED: 42-03 mounts `InlineColorPicker` inline within the dialog content column (focus trap + CSS isolation preserved); popover rendering is explicitly prohibited.
    - What we know: `InlineColorPicker` has its own close (`onClose` prop, X button) and the dialog traps Tab within its surface.
    - What's unclear: Whether the picker renders inline within the dialog surface (recommended — preserves focus trap and dialog CSS isolation) or as a popover (risks Phase 36.14-style layering regressions).
    - Recommendation: Inline expansion within the dialog content column. Not blocking.
