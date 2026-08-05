@@ -104,7 +104,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 41-05-PLAN.md — Engine release on close, CSP connect-src efxasset grant (RED-first contract test), native packaged-app UAT (AUDIO-06)
+- [x] 41-05-PLAN.md — Engine release on close, CSP connect-src efxasset grant (RED-first contract test), native packaged-app UAT (AUDIO-06)
 
 **Entry artifact:** Locked frame→audio truth table (paint appFrame == main-editor global frame; per-track offset/trim/slip combinations) written and tested before implementation. Main editor remains sole authority for audio IDs, assets, offset, trim, volume, mute, fades, ordering, persistence, and export mixing.
 
@@ -309,7 +309,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39. Scripts Auto-Hydration Fix | v0.9.0 | 0/TBD | Not started | - |
 | 40. macOS Icon + Build Hygiene | v0.9.0 | 3/3 | Complete    | 2026-08-04 |
-| 41. EFX Paint Audio Preview | v0.9.0 | 4/5 | In Progress|  |
+| 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | In Progress|  |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 0/TBD | Not started | - |
 | 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 0/TBD | Not started | - |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |

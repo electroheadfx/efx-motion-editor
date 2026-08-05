@@ -4,17 +4,17 @@ milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 41
 current_phase_name: efx-paint-audio-preview-monitoring-toggle
-status: executing
-stopped_at: "41-05: Task 2 CSP grant complete (RED d4cac3f9, GREEN 532e026e, docs 015ea87f); D-04 packaged proof satisfied; fresh packaged bundle rebuilt 2026-08-05 08:31 local; awaiting Task 3 blocking native UAT"
-last_updated: "2026-08-05T06:34:20Z"
+status: verifying
+stopped_at: Completed 41-05-PLAN.md — Phase 41 all 5 plans done; native packaged UAT approved 2026-08-05; ready for phase verification
+last_updated: "2026-08-05T09:57:58.538Z"
 last_activity: 2026-08-05
 last_activity_desc: Phase 41 execution started
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
-  percent: 17
+  completed_plans: 8
+  percent: 33
 ---
 
 # Project State
@@ -30,10 +30,10 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 Phase: 41 (efx-paint-audio-preview-monitoring-toggle) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-04 — Phase 41 execution started
 
-Progress: [█████████░] 88%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -160,6 +160,7 @@ Progress: [█████████░] 88%
 | Phase 41-efx-paint-audio-preview-monitoring-toggle P02 | 15min | 2 tasks | 10 files |
 | Phase 41 P03 | 18min | 2 tasks | 9 files |
 | Phase 41 P04 | 32min | 2 tasks | 15 files |
+| Phase 41 P05 | 1 day across blocking native UAT checkpoint | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -181,6 +182,8 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 41-03: push publishes even with zero tracks (last-track deletion must reach the child); fps-mismatch note routes through the publishStatus gate, queued during playback and flushed on stop
 - [Phase ?]: 41-04: suppression implies visually-playing by construction (set by blocked Play, cleared by the monitor stop funnel); noteVisualStop clears without publishing so the stop funnel owns the status line
 - [Phase ?]: 41-04: revisioned-update restart decision taken after the prepare await — a racing toggle always ends silent (Off) or positioned at the cursor (On); stale claims reset on every fresh child launch
+- [Phase ?]: 41-05: release() idempotent via context-state check; close funnel + unmount double-fire absorbed; closed AudioContext discarded, never reused (D-08); audioEngine diff limited to read-only engineHasContext probe
+- [Phase ?]: 41-05: D-04 proof satisfied by literal packaged-build reading — verbatim connect-src refusal observed in pre-grant packaged build 2026-08-05; single-token efxasset grant pinned by contract test; native packaged UAT (8 steps) approved
 
 ### Pending Todos
 
@@ -362,9 +365,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-05T06:34:20Z
-Stopped at: 41-05: Task 2 CSP grant complete (RED d4cac3f9, GREEN 532e026e, docs 015ea87f); D-04 packaged proof satisfied; fresh packaged bundle rebuilt 2026-08-05 08:31 local; awaiting Task 3 blocking native UAT
-Resume file: .planning/phases/41-efx-paint-audio-preview-monitoring-toggle/41-05-PLAN.md
+Last session: 2026-08-05T09:57:58.529Z
+Stopped at: Completed 41-05-PLAN.md — Phase 41 all 5 plans done; native packaged UAT approved 2026-08-05; ready for phase verification
+Resume file: None
 
 ## Operator Next Steps
 
