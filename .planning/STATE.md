@@ -5,9 +5,9 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 41
 current_phase_name: efx-paint-audio-preview-monitoring-toggle
 status: executing
-stopped_at: "41-05: Tasks 1 committed; awaiting D-04 pre-grant packaged-build fetch-failure observation (checkpoint before Task 2 RED/grant)"
-last_updated: "2026-08-04T22:50:03.801Z"
-last_activity: 2026-08-04
+stopped_at: "41-05: Task 2 CSP grant complete (RED d4cac3f9, GREEN 532e026e, docs 015ea87f); D-04 packaged proof satisfied; fresh packaged bundle rebuilt 2026-08-05 08:31 local; awaiting Task 3 blocking native UAT"
+last_updated: "2026-08-05T06:34:20Z"
+last_activity: 2026-08-05
 last_activity_desc: Phase 41 execution started
 progress:
   total_phases: 6
@@ -362,8 +362,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-04T22:50:03.790Z
-Stopped at: 41-05: Tasks 1 committed; awaiting D-04 pre-grant packaged-build fetch-failure observation (checkpoint before Task 2 RED/grant)
+Last session: 2026-08-05T06:34:20Z
+Stopped at: 41-05: Task 2 CSP grant complete (RED d4cac3f9, GREEN 532e026e, docs 015ea87f); D-04 packaged proof satisfied; fresh packaged bundle rebuilt 2026-08-05 08:31 local; awaiting Task 3 blocking native UAT
 Resume file: .planning/phases/41-efx-paint-audio-preview-monitoring-toggle/41-05-PLAN.md
 
 ## Operator Next Steps
