@@ -1,5 +1,5 @@
 import { EfxPaintEngine, type PaintStroke } from '@efxlab/efx-physic-paint';
-import { buildProgressiveStrokeSchedule, getProgressiveFrameStrokes, transformRecordedStrokeForHeldPose } from '@efxlab/efx-physic-paint/animation';
+import { buildProgressiveStrokeSchedule, buildStaticStrokeSchedule, getProgressiveFrameStrokes, getStaticFrameStrokes, transformRecordedStrokeForHeldPose } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 import { mergeRotoAlphaCanvases } from './physicsPaintRotoAlphaMerge';
@@ -7,6 +7,8 @@ import { encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
 
 const MAX_FRAME_COUNT = 10_000;
 const MAX_AGGREGATE_RGBA_BYTES = 512 * 1024 * 1024;
+
+export type RotoPlayScriptRenderMode = 'progressive' | 'static';
 
 export interface RotoPlayScriptRenderInput {
   script: Readonly<RotoPaintScript>;
@@ -18,6 +20,8 @@ export interface RotoPlayScriptRenderInput {
   papers?: readonly Readonly<{ name: string; url: string }>[];
   defaultPaper?: string;
   paperTextureScale?: number;
+  mode?: RotoPlayScriptRenderMode;
+  overrideColor?: string | null;
   signal: AbortSignal;
   onProgress?: (completed: number, total: number) => void;
 }
@@ -48,25 +52,36 @@ export async function renderRotoPlayScriptFrames(input: RotoPlayScriptRenderInpu
     engine.setBgMode('transparent');
 
     const strokes = flattenScriptStrokes(input.script);
-    const schedule = buildProgressiveStrokeSchedule(strokes, input.frameCount);
+    const mode = input.mode ?? 'progressive';
+    const schedule = mode === 'static'
+      ? buildStaticStrokeSchedule(strokes, input.frameCount)
+      : buildProgressiveStrokeSchedule(strokes, input.frameCount);
 
     for (let frameIndex = 0; frameIndex < input.frameCount; frameIndex += 1) {
       throwIfAborted(input.signal);
       const destination = input.canonicalStart + frameIndex;
-      const progressive = getProgressiveFrameStrokes(schedule, frameIndex, (stroke, _scheduleFrame, strokeIndex) => (
-        stroke.points.length === 0
+      const transformFrameStroke = (stroke: PaintStroke, _scheduleFrame: number, strokeIndex: number): PaintStroke => {
+        const transformed = stroke.points.length === 0
           ? stroke
           : transformRecordedStrokeForHeldPose(stroke, {
             destinationSourceFrame: destination,
             strokeIndex,
             deformation: input.motion.deformation,
             position: input.motion.position,
-          })
-      ));
+          });
+        // Color override applies AFTER the Motion transform (the determinism seed hashes the original color),
+        // recolors paint strokes only, and never touches erase strokes (D-11).
+        return input.overrideColor != null && transformed.tool !== 'erase'
+          ? { ...transformed, color: input.overrideColor }
+          : transformed;
+      };
+      const frameStrokes = mode === 'static'
+        ? getStaticFrameStrokes(schedule, frameIndex, transformFrameStroke)
+        : getProgressiveFrameStrokes(schedule, frameIndex, transformFrameStroke);
       let scriptAlpha: HTMLCanvasElement | null = null;
       let merged: HTMLCanvasElement | null = null;
       try {
-        scriptAlpha = engine.renderProgressiveAlphaFrame(progressive);
+        scriptAlpha = engine.renderProgressiveAlphaFrame(frameStrokes);
         throwIfAborted(input.signal);
         merged = await mergeRotoAlphaCanvases(input.existingFrames.get(destination) ?? null, scriptAlpha, input.size);
         throwIfAborted(input.signal);

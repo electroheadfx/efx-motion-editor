@@ -17,6 +17,8 @@ import { isRotoPngDataUrl } from './rotoCanvasFrames';
 
 export type RotoPlayScriptPhase = 'idle' | 'preparing' | 'rendering' | 'committing' | 'regenerating' | 'complete' | 'cancelled' | 'failed';
 
+export type RotoPlayScriptMode = 'progressive' | 'static';
+
 export type RotoPlayScriptSemanticDelta = Extract<
   PhysicPaintRotoPhysicalEditSemanticDelta,
   { readonly kind: 'play-script' }
@@ -63,6 +65,10 @@ export interface RotoPlayScriptController {
   confirmationOpen: Signal<boolean>;
   countText: Signal<string>;
   capacity: Signal<number>;
+  mode: Signal<RotoPlayScriptMode>;
+  overrideColor: Signal<string | null>;
+  overrideEnabled: Signal<boolean>;
+  dialogMotion: Signal<{ deformation: number; position: number }>;
   destinationRange: ReadonlySignal<string | null>;
   validationError: ReadonlySignal<string | null>;
   disabledReason: ReadonlySignal<string | null>;
@@ -83,6 +89,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const countText = signal('Max');
   const capacity = signal(0);
   const canonicalStart = signal<number | null>(null);
+  const mode = signal<RotoPlayScriptMode>('progressive');
+  const overrideColor = signal<string | null>(null);
+  const overrideEnabled = signal(false);
+  const dialogMotion = signal<{ deformation: number; position: number }>({ deformation: 0, position: 0 });
   const phase = signal<RotoPlayScriptPhase>('idle');
   const progress = signal<{ completed: number; total: number } | null>(null);
   const status = signal<string | null>(null);
@@ -123,6 +133,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       canonicalStart.value = authority.canonicalStart;
       capacity.value = authority.capacity;
       countText.value = 'Max';
+      dialogMotion.value = { ...ports.getMotion() };
       confirmationOpen.value = true;
       phase.value = 'idle'; status.value = `Max ${authority.capacity} · F${authority.canonicalStart}–F${authority.layerEndExclusive - 1}`;
     } catch (cause) { fail(cause); }
@@ -147,11 +158,13 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const snapshot = await ports.library.loadSnapshot(selectedId);
       assertCurrent(acceptedGeneration);
       if (!snapshot || ports.library.selectedId.peek() !== selectedId) throw new Error('Selected script changed or could not be reloaded.');
-      const motion = { ...ports.getMotion() };
+      const motion = { ...dialogMotion.peek() };
+      const renderMode = mode.peek();
+      const renderOverrideColor = overrideEnabled.peek() && overrideColor.peek() ? overrideColor.peek() : null;
       const existingFrames = new Map(authority.frames.map((frame) => [frame.appFrame, frame]));
       phase.value = 'rendering'; progress.value = { completed: 0, total: count }; status.value = `Rendering 0 / ${count}`;
       const staged = await renderRotoPlayScriptFrames({
-        script: snapshot, frameCount: count, canonicalStart: start, motion, existingFrames, size: ports.getSize(), signal: abortController.signal,
+        script: snapshot, frameCount: count, canonicalStart: start, motion, mode: renderMode, overrideColor: renderOverrideColor, existingFrames, size: ports.getSize(), signal: abortController.signal,
         onProgress: (completed, total) => { if (generation === acceptedGeneration) { progress.value = { completed, total }; status.value = `Rendering ${completed} / ${total}`; } },
       });
       assertCurrent(acceptedGeneration);
@@ -201,7 +214,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   function assertCurrent(expected: number): void { if (disposed || generation !== expected) throw new DOMException('Play Script generation cancelled.', 'AbortError'); }
   function nextOperationId(kind: string): string { return `roto-play-script-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
 
-  return { confirmationOpen, countText, capacity, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel, openConfirmation, closeConfirmation, confirm, cancel, dispose: () => { disposed = true; generation += 1; abortController?.abort(); abortController = null; } };
+  return { confirmationOpen, countText, capacity, mode, overrideColor, overrideEnabled, dialogMotion, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel, openConfirmation, closeConfirmation, confirm, cancel, dispose: () => { disposed = true; generation += 1; abortController?.abort(); abortController = null; } };
 }
 
 function parseCount(value: string, capacity: number): { count: number | null; error: string | null } {

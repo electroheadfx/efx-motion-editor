@@ -144,6 +144,10 @@ describe('renderRotoPlayScriptFrames mode selection and color override', () => {
     harness.encode.mockReset().mockResolvedValue({ frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,encoded', width: 10, height: 10 });
     harness.renderedFrames.length = 0;
     harness.transform.mockReset().mockImplementation((entry: PaintStroke) => entry);
+    harness.buildStatic.mockReset();
+    harness.buildProgressive.mockReset();
+    harness.getStatic.mockReset();
+    harness.getProgressive.mockReset();
     enableScheduleFlow();
   });
 
