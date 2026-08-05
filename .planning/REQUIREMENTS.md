@@ -43,7 +43,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### PlayScript Application Controls
 
 - [x] **PLAY-01**: An explicit PlayScript application mode selects `progressive` (current accumulating behavior) or `static`/`hold` (complete script stroke set materialized on every destination frame), independent of Roto interpolation and Script Motion
-- [ ] **PLAY-02**: An optional application-time color override recolors paint strokes (erase strokes retain erase behavior) identically in both modes, without modifying the reusable source script or its thumbnail
+- [x] **PLAY-02**: An optional application-time color override recolors paint strokes (erase strokes retain erase behavior) identically in both modes, without modifying the reusable source script or its thumbnail
 - [ ] **PLAY-03**: The Scripts panel clearly shows progressive vs static/hold, original vs override color, Script Motion position/deformation controls, destination range, and generated-frame count
 - [ ] **PLAY-04**: Static/hold mode exposes Hold Loop controls — source cycle frame count (min 1), repeat count (positive integer from 1), a separate infinity toggle, requested duration (`cycleLength × repeatCount`), effective duration after next-clip/parent-end boundary, and clear truncation status
 
@@ -119,7 +119,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUDIO-05 | Phase 41 | Complete |
 | AUDIO-06 | Phase 41 | Complete |
 | PLAY-01 | Phase 42 | Complete |
-| PLAY-02 | Phase 42 | Pending |
+| PLAY-02 | Phase 42 | Complete |
 | PLAY-03 | Phase 42 | Pending |
 | PLAY-04 | Phase 42 | Pending |
 | HOLD-01 | Phase 43 | Pending |
