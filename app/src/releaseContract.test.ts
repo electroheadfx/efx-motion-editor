@@ -130,3 +130,33 @@ describe('Tauri CSP image data-url contract', () => {
     expect(source).toContain("ROTO_PNG_DATA_URL_HEADER = 'data:image/png;base64'");
   });
 });
+
+// Phase 41-05 D-04: EFX Paint audio monitoring fetches decoded bytes via the
+// efxasset:// custom protocol; fetch to a custom scheme is governed by
+// connect-src. The single-token grant below was proven necessary by a packaged
+// build observing the connect-src refusal BEFORE the grant landed
+// (d04-proof-packaged-build, truth table section 9).
+describe('Tauri CSP connect-src efxasset contract', () => {
+  const csp = tauriConfig.app?.security?.csp ?? '';
+
+  it('connect-src grants the efxasset: scheme alongside every pre-existing source', () => {
+    const tokens = cspDirectiveTokens(csp, 'connect-src');
+    expect(tokens.length, 'CSP must contain a connect-src directive').toBeGreaterThan(0);
+    for (const source of ["'self'", 'ipc:', 'http://ipc.localhost', 'https://*', 'efxasset:']) {
+      expect(tokens, `connect-src must include ${source}`).toContain(source);
+    }
+  });
+
+  it('no other directive beyond img-src/media-src/connect-src gains the efxasset: scheme', () => {
+    for (const directive of ['default-src', 'script-src', 'style-src']) {
+      const tokens = cspDirectiveTokens(csp, directive);
+      expect(tokens, `${directive} must not include efxasset:`).not.toContain('efxasset:');
+    }
+  });
+
+  it('connect-src does not grant data: or blob: (narrow-grant guard per D-04)', () => {
+    const tokens = cspDirectiveTokens(csp, 'connect-src');
+    expect(tokens, 'connect-src must not include data:').not.toContain('data:');
+    expect(tokens, 'connect-src must not include blob:').not.toContain('blob:');
+  });
+});
