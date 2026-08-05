@@ -217,7 +217,7 @@ describe('createRotoPlayScriptController', () => {
     const test = harness();
     const fixture = script(99);
     const snapshotBefore = structuredClone(fixture);
-    test.library.loadSnapshot.mockResolvedValue(fixture);
+    vi.mocked(test.library.loadSnapshot).mockResolvedValue(fixture);
     await test.controller.openConfirmation();
     expect(await test.controller.confirm()).toBe(true);
 
