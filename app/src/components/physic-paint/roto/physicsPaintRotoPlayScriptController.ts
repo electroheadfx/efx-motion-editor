@@ -1,4 +1,4 @@
-import { computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
+import { computed, effect, signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type {
   PhysicPaintLaunchContext,
   PhysicPaintRotoAuthorityResult,
@@ -69,6 +69,13 @@ export interface RotoPlayScriptController {
   overrideColor: Signal<string | null>;
   overrideEnabled: Signal<boolean>;
   dialogMotion: Signal<{ deformation: number; position: number }>;
+  repeatText: Signal<string>;
+  infinity: Signal<boolean>;
+  lastFiniteRepeat: Signal<string>;
+  layerEndExclusive: Signal<number | null>;
+  parsedRepeat: ReadonlySignal<{ count: number | null; error: string | null }>;
+  repeatError: ReadonlySignal<string | null>;
+  loopReadout: ReadonlySignal<string | null>;
   destinationRange: ReadonlySignal<string | null>;
   validationError: ReadonlySignal<string | null>;
   disabledReason: ReadonlySignal<string | null>;
@@ -81,6 +88,7 @@ export interface RotoPlayScriptController {
   closeConfirmation: () => void;
   confirm: () => Promise<boolean>;
   cancel: () => void;
+  setInfinity: (enabled: boolean) => void;
   dispose: () => void;
 }
 
@@ -93,6 +101,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const overrideColor = signal<string | null>(null);
   const overrideEnabled = signal(false);
   const dialogMotion = signal<{ deformation: number; position: number }>({ deformation: 0, position: 0 });
+  const repeatText = signal('1');
+  const infinity = signal(false);
+  const lastFiniteRepeat = signal('1');
+  const layerEndExclusive = signal<number | null>(null);
   const phase = signal<RotoPlayScriptPhase>('idle');
   const progress = signal<{ completed: number; total: number } | null>(null);
   const status = signal<string | null>(null);
@@ -120,6 +132,45 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return start === null || count === null ? null : `F${start}–F${start + count - 1}`;
   });
   const canCancel = computed(() => phase.value === 'preparing' || phase.value === 'rendering');
+  const parsedRepeat = computed(() => parseRepeat(repeatText.value, parsedCount.value.count));
+  const repeatError = computed(() => (infinity.value ? null : parsedRepeat.value.error));
+  const loopReadout = computed(() => {
+    const cycle = parsedCount.value.count;
+    const start = canonicalStart.value;
+    const layerEnd = layerEndExclusive.value;
+    if (cycle === null || start === null || layerEnd === null) return null;
+    const boundary = layerEnd - start;
+    if (infinity.value) return `Cycle ${cycle}f × ∞ · Effective: ${boundary}f`;
+    const repeat = parsedRepeat.value.count;
+    if (repeat === null) return null;
+    const requested = cycle * repeat;
+    const effective = Math.min(requested, boundary);
+    return effective === requested
+      ? `Requested: ${requested}f (${cycle}f × ${repeat}) · Effective: ${requested}f`
+      : `Requested: ${requested}f (${cycle}f × ${repeat}) · Effective: ${effective}f — shortened by the next clip`;
+  });
+
+  // D-15: first-time Static / Hold defaults apply once per session; later mode switches keep session values.
+  let staticDefaultsApplied = false;
+  const stopStaticDefaults = effect(() => {
+    if (mode.value === 'static' && !staticDefaultsApplied) {
+      staticDefaultsApplied = true;
+      countText.value = '1';
+      repeatText.value = '1';
+      infinity.value = false;
+    }
+  });
+
+  function setInfinity(enabled: boolean): void {
+    if (enabled) {
+      // Preserve the last VALID finite repeat; an invalid draft never overwrites it (Pitfall 7).
+      if (parseRepeat(repeatText.peek(), parsedCount.peek().count).count !== null) lastFiniteRepeat.value = repeatText.peek();
+      infinity.value = true;
+    } else {
+      repeatText.value = lastFiniteRepeat.peek();
+      infinity.value = false;
+    }
+  }
 
   async function openConfirmation(): Promise<void> {
     if (disposed || disabledReason.peek()) return;
@@ -132,6 +183,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       if (!authority.ok) throw new Error(authority.error ?? 'Parent authority is unavailable.');
       canonicalStart.value = authority.canonicalStart;
       capacity.value = authority.capacity;
+      layerEndExclusive.value = authority.layerEndExclusive;
       countText.value = 'Max';
       dialogMotion.value = { ...ports.getMotion() };
       confirmationOpen.value = true;
@@ -145,7 +197,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const start = canonicalStart.peek();
     const count = parsedCount.peek().count;
     const startingSelection = ports.getSelection();
-    if (disposed || !selectedId || !context?.project || start === null || count === null || disabledReason.peek() || startingSelection.appFrame !== start) return false;
+    if (disposed || !selectedId || !context?.project || start === null || count === null || repeatError.peek() !== null || disabledReason.peek() || startingSelection.appFrame !== start) return false;
 
     const acceptedGeneration = ++generation;
     abortController = new AbortController();
@@ -214,7 +266,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   function assertCurrent(expected: number): void { if (disposed || generation !== expected) throw new DOMException('Play Script generation cancelled.', 'AbortError'); }
   function nextOperationId(kind: string): string { return `roto-play-script-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
 
-  return { confirmationOpen, countText, capacity, mode, overrideColor, overrideEnabled, dialogMotion, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel, openConfirmation, closeConfirmation, confirm, cancel, dispose: () => { disposed = true; generation += 1; abortController?.abort(); abortController = null; } };
+  return { confirmationOpen, countText, capacity, mode, overrideColor, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel, openConfirmation, closeConfirmation, confirm, cancel, setInfinity, dispose: () => { disposed = true; generation += 1; stopStaticDefaults(); abortController?.abort(); abortController = null; } };
 }
 
 function parseCount(value: string, capacity: number): { count: number | null; error: string | null } {
@@ -225,6 +277,21 @@ function parseCount(value: string, capacity: number): { count: number | null; er
   const count = Number(text);
   if (!Number.isSafeInteger(count) || count <= 0) return { count: null, error: 'Enter a positive integer or Max.' };
   if (count > capacity) return { count: null, error: `Maximum available count is ${capacity}.` };
+  return { count, error: null };
+}
+
+function parseRepeat(value: string, cycleLength: number | null): { count: number | null; error: string | null } {
+  const text = value.trim();
+  if (!text || !/^\d+$/.test(text)) return { count: null, error: 'Enter a positive integer.' };
+  const count = Number(text);
+  if (!Number.isSafeInteger(count) || count <= 0) return { count: null, error: 'Enter a positive integer.' };
+  // Safe-product bound derived BEFORE any multiplication from the CURRENT cycle value, so the
+  // accepted cycle × repeat product is always a safe integer. When the cycle field is temporarily
+  // unparseable the frames validation already blocks confirm, so the product check is skipped.
+  if (cycleLength !== null && cycleLength > 0) {
+    const maxRepeat = Math.floor(Number.MAX_SAFE_INTEGER / cycleLength);
+    if (count > maxRepeat) return { count: null, error: 'Repeat is too large for this cycle length.' };
+  }
   return { count, error: null };
 }
 

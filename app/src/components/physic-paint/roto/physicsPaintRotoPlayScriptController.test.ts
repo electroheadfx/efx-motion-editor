@@ -252,6 +252,7 @@ describe('createRotoPlayScriptController', () => {
     expect(test.controller.repeatError.value).toBe('Repeat is too large for this cycle length.');
     test.controller.repeatText.value = '1'; // repeat 1 always passes format and bound
     expect(test.controller.repeatError.value).toBeNull();
+    test.controller.countText.value = '5';
     test.controller.repeatText.value = '1801439850948199';
     expect(await test.controller.confirm()).toBe(false);
     expect(rendered).not.toHaveBeenCalled();
