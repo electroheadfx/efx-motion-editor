@@ -186,3 +186,15 @@
 ## Deferred Ideas
 
 None — discussion stayed within phase scope. (Loop Clip materialization, filmstrip capsule, French capsule labels, determinism hardening = Phase 43 roadmap scope.)
+
+---
+
+## Revision Note (2026-08-05 — UI-SPEC revision, user-locked corrections)
+
+The following supersede wording recorded above and in earlier artifacts; 42-CONTEXT.md, 42-RESEARCH.md, and 42-UI-SPEC.md carry the corrected contract:
+
+1. **E1 dialog overflow is `covered`, not a backstop** — the UI-SPEC locks a structural contract (viewport-bounded max-height, only the dialog body scrolls, title/mode context and action row stay visible, no horizontal scrolling, text wraps, focused controls scroll into view with visible focus outlines). Native UAT at minimum window size is verification only.
+2. **Mode-dependent frame-field label** — the single shared numeric field shows `Frames` in Progressive and `Cycle frames` in Static / Hold (defaults Cycle frames = 1). No second field.
+3. **Panel summary updates only after success** — the free-text phrase "Panel summary shows current application values" (Q3 above) is SUPERSEDED: the two-line summary reflects the last options successfully confirmed and applied by Generate; unsaved dialog edits, cancellation, and generation failure preserve the previously successful summary and remembered options; first-time/session defaults show before the first success.
+4. **E5 failure/cancellation contract completed** — failure: progress stops, bar hides, inputs re-enable, dialog stays open, inline error shows the reason, retry or normal cancel allowed, no remembered-options/summary update, no partial frames or timeline mutations. Normal cancellation returns to the idle dialog with no error and the same preservation guarantees.
+

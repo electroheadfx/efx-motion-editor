@@ -127,7 +127,7 @@ All mode/loop/override copy is locked verbatim by CONTEXT D-05/D-06/D-08/D-12/D-
 | Mode option 1 helper | `The drawing builds stroke by stroke across frames.` |
 | Mode option 2 | `Static / Hold` |
 | Mode option 2 helper | `The complete drawing is applied to every cycle frame.` |
-| Frames field label | `Frames` (existing; IS the cycle frame count in Static / Hold per D-03 — same label, no second field) |
+| Frame field label (mode-dependent) | Progressive: `Frames` (existing) · Static / Hold: `Cycle frames` — ONE shared numeric field whose visible label changes with the selected mode (D-03; no second field); Static / Hold defaults to Cycle frames = 1 (D-15) |
 | Frames field help | `Enter a positive integer or Max.` (existing, unchanged) |
 | Color default state | `Original colors` |
 | Color reset action | Explicit control returning to `Original colors` (e.g. a small text button beside the swatch labeled `Original colors`); picker opens directly on first enable, no seed color (D-09) |
@@ -146,7 +146,15 @@ All mode/loop/override copy is locked verbatim by CONTEXT D-05/D-06/D-08/D-12/D-
 | Panel summary line 2 | `{destination range} · {generated-frame count/status}` (D-07) |
 | Destructive confirmation | None in this phase — generation is a staged, authority-checked, undo-able operation; no destructive action is added |
 
-**Tooltip update (RESEARCH Pitfall 8):** the Play Script toolbar tooltip currently reads `Play Script — Generate progressive real Roto keys` and MUST be updated to cover both modes, e.g. `Play Script — Generate real Roto keys (progressive or static/hold)`. The panel summary must reflect CURRENT session options, not the last generation.
+**Tooltip update (RESEARCH Pitfall 8):** the Play Script toolbar tooltip currently reads `Play Script — Generate progressive real Roto keys` and MUST be updated to cover both modes, e.g. `Play Script — Generate real Roto keys (progressive or static/hold)`.
+
+**Panel summary update contract (locked; supersedes the earlier "current session options" wording):**
+- The two-line Scripts-panel summary reflects the last options successfully confirmed and applied by Generate.
+- Unsaved edits inside an open dialog MUST NOT update the panel summary.
+- A successful Generate atomically updates the remembered session options and the summary together.
+- Cancel, user cancellation during generation, and generation failure preserve the previously successful summary and remembered options.
+- Before the first successful Generate, the summary shows the locked first-time/session defaults.
+- The summary remains read-only and signal-driven.
 
 ---
 
@@ -159,9 +167,12 @@ All mode/loop/override copy is locked verbatim by CONTEXT D-05/D-06/D-08/D-12/D-
 | Picker pick semantics | Opening the picker MUST NOT create an override (RESEARCH Pitfall 3: `InlineColorPicker` fires `onChange` on mount). The "override exists" boolean is owned by controller signals and flips only on a genuine user pick; close-without-interaction leaves `Original colors` intact. Contract test locks this. |
 | Infinity toggle | Separate control beside the Repeat field. On: repeat input disabled/greyed (NOT cleared), readout shows `Cycle {N}f × ∞`. Off: restores the last finite repeat value (D-12). Never render `Infinityf` from naive multiplication (RESEARCH Pitfall 7). |
 | During generation | Existing `canCancel` behavior: inputs disabled, `Cancel generation` replaces `Cancel`, progress bar shown. New controls follow the same disabled rule. |
+| Generation failure | Generation progress stops; the progress bar hides; inputs and actions re-enable; the dialog stays open; the existing inline-error pattern displays the failure reason; the user may retry or cancel normally; the pre-generation canvas/timeline state is untouched. A failed generation does NOT update the remembered session options or the Scripts-panel summary, and leaves no partial generated frames or timeline mutations. |
+| Generation cancellation | Normal user cancellation (idle `Cancel`, or `Cancel generation` mid-run) returns to the idle dialog WITHOUT displaying an error; it does NOT update the remembered session options or the Scripts-panel summary, and leaves no partial generated frames or timeline mutations. |
+| Dialog overflow structure | The dialog surface is constrained to the height available from its Studio grid/viewport container with a viewport-bounded max-height; ONLY the dialog body scrolls vertically while the dialog title/mode context and the action row remain visible; horizontal scrolling is prevented; helper and validation text wraps; keyboard-focused controls are scrolled into view with visible focus outlines preserved. Native UAT at the minimum supported window size verifies this structure (verification only — not the primary resolution). |
 | Dialog Motion controls | Editable position/deformation inputs initialized from Motion panel defaults on open; edits are application-time only (never write back, D-06). `Reset to Motion defaults` re-reads the defaults port. |
 | Keyboard | Existing dialog shortcuts preserved: `Escape` cancels, `Enter` confirms when valid. New controls must not break the Tab trap query (`input:not(:disabled), button:not(:disabled), [tabindex]:not([tabindex="-1"])`). |
-| First-time Static / Hold defaults | Frames = 1, Repeat = 1, Infinity = off (D-15). Progressive defaults untouched. |
+| First-time Static / Hold defaults | Cycle frames = 1, Repeat = 1, Infinity = off (D-15). Progressive defaults untouched. |
 
 ---
 
@@ -169,26 +180,26 @@ All mode/loop/override copy is locked verbatim by CONTEXT D-05/D-06/D-08/D-12/D-
 
 > State coverage resolved by the post-verification probe (2026-08-05) across 6 surfaces: E1 Play Script dialog, E2 color override swatch + inline picker, E3 Motion controls, E4 Hold Loop block, E5 generation-in-progress, E6 Scripts panel summary. Empty/error COPY lives in `## Copywriting Contract` above — rows below reference it.
 
-Applicable state considerations resolved: 12 covered, 1 backstop, 16 dismissed, 0 unresolved
+Applicable state considerations resolved: 13 covered, 0 backstops, 16 dismissed, 0 unresolved
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
-| empty / first-open | E1 dialog options, E4 Hold Loop | ✅ covered | D-15 first-time defaults: Frames 1, Repeat 1, Infinity off; session memory via controller signals thereafter (D-10) |
+| empty / first-open | E1 dialog options, E4 Hold Loop | ✅ covered | D-15 first-time defaults: Cycle frames 1, Repeat 1, Infinity off (Static / Hold; Progressive defaults untouched); session memory via controller signals thereafter (D-10) |
 | empty / default | E3 Motion controls | ✅ covered | Inputs initialized from Motion panel defaults on open — never blank; `Reset to Motion defaults` re-reads the defaults port (D-06) |
 | empty / first-open | E2 color override | ✅ covered | `Original colors` default state; override exists only after a deliberate pick (D-08/D-09, Pitfall 3 contract test) |
-| error | E1 Frames field, E3 Motion inputs, E4 Repeat field | ✅ covered | Inline error under field, `#a12f37` 12px, strict-regex validation mirroring `parseCount` (`Enter a positive integer up to Max {N}.`); confirm disabled while invalid |
-| error | E5 generation failure | ✅ covered | On generation failure (distinct from user cancel): inputs re-enable, progress bar hides, existing inline-error pattern shows the failure reason in the dialog; pre-generation canvas state untouched |
+| error | E1 frame field (Frames / Cycle frames), E3 Motion inputs, E4 Repeat field | ✅ covered | Inline error under field, `#a12f37` 12px, strict-regex validation mirroring `parseCount` (`Enter a positive integer up to Max {N}.`); confirm disabled while invalid |
+| error | E5 generation failure | ✅ covered | On generation failure (distinct from user cancel): generation progress stops, the progress bar hides, inputs and actions re-enable, the dialog stays open, and the existing inline-error pattern shows the failure reason; retry or normal cancellation allowed; pre-generation canvas/timeline state untouched; the remembered session options and Scripts-panel summary are NOT updated; no partial generated frames or timeline mutations are left behind. Normal user cancellation returns to the idle dialog with no error shown and likewise leaves remembered options/summary untouched with no partial mutations |
 | loading / busy | E5 generation in progress | ✅ covered | Existing `canCancel` + progress bar pattern extends to all new controls (disabled while generating; `Cancel generation` replaces `Cancel`) |
 | partial | E4 Hold Loop readout | ✅ covered | Requested/effective/truncation derived from retained `layerEndExclusive`/`canonicalStart` signals (RESEARCH Pitfall 5); untruncated form omits the truncation clause (D-13) |
 | overflow | E6 panel summary | ✅ covered | Fixed two-line block in the existing dark panel layout — no new panel surface |
 | long-text | E6 panel summary | ✅ covered | Existing ellipsis convention (`overflow: hidden; text-overflow: ellipsis; white-space: nowrap` on panel copy) applies to the two-line summary |
 | disabled | E4 Repeat field under Infinity-on | ✅ covered | Disabled/greyed at 0.5 opacity, value preserved and restored on toggle-off (D-12) |
-| overflow | E1 dialog with all options visible | 🧪 backstop | Dialog content column is `overflow-y: auto` (existing); verify at native UAT that mode + override + Motion + Hold Loop + readout all fit/scroll cleanly at minimum window size |
+| overflow | E1 dialog with all options visible | ✅ covered | Structural contract (locked): the dialog surface is constrained to the height available from its viewport/grid container with a viewport-bounded max-height; ONLY the dialog body scrolls vertically; the dialog title/mode context and the action row stay visible while the body scrolls; horizontal scrolling is prevented; helper and validation text wraps; keyboard-focused controls are scrolled into view with visible focus outlines preserved. Native UAT at the minimum supported window size is retained as verification only, not as the primary resolution |
 | loading | E1, E2, E3, E4, E6 | ✖ dismissed | All surfaces render synchronously from controller signals / defaults port — no async load path exists |
 | partial | E1, E3, E5 | ✖ dismissed | Form fields always fully initialized (E1/E3); generation is a staged atomic operation with cancel restoring pre-generation state (E5) |
 | long-text | E1, E2, E3, E4, E5 | ✖ dismissed | Dialog copy is locked short strings; numeric inputs bounded by Max validation with `tabular-nums`; swatch shows only `Original colors` or `#rrggbb` |
-| error | E2, E6 | ✖ dismissed | Structured picker has no invalid-pick path (E2); summary reflects current session options with no load path (E6) |
-| overflow | E3 | ✖ dismissed | Two numeric inputs — covered by the E1 dialog-level overflow backstop |
+| error | E2, E6 | ✖ dismissed | Structured picker has no invalid-pick path (E2); summary is a read-only signal-driven projection of the last successfully applied options with no load path (E6) |
+| overflow | E3 | ✖ dismissed | Two numeric inputs — covered by the E1 dialog-level overflow contract |
 | empty | E5 | ✖ dismissed | Progress state only exists during generation — no zero-data case |
 
 ---
@@ -205,10 +216,10 @@ Applicable state considerations resolved: 12 covered, 1 backstop, 16 dismissed, 
 ## Checker Sign-Off
 
 - [x] Dimension 1 Copywriting: PASS
-- [x] Dimension 2 Visuals: PASS (FLAG resolved post-review — focal point declared in Visual hierarchy note)
+- [x] Dimension 2 Visuals: PASS
 - [x] Dimension 3 Color: PASS
 - [x] Dimension 4 Typography: PASS
 - [x] Dimension 5 Spacing: PASS
 - [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** approved 2026-08-05 (gsd-ui-checker; Dimension 2 initially FLAG — non-blocking, resolved by the Visual hierarchy declaration)
+**Approval:** approved 2026-08-05 (gsd-ui-checker); re-verified 2026-08-05 after user-locked revision (E1 overflow covered, mode-dependent frame label, summary-updates-after-success, E5 failure/cancellation contract) — 6/6 PASS, no FLAGs

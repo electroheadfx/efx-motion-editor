@@ -21,14 +21,14 @@ Requirements: PLAY-01..04 (REQUIREMENTS.md). Source spec: `SPECS/milestone-v0.9.
 
 - **D-01:** Static/hold mode is fully working in Phase 42: selecting it generates the complete script stroke set on every destination frame of a single cycle (no loop repetition). Phase 43 adds determinism hardening, linked Loop Clips, and the filmstrip capsule. The color override is therefore provable live in both modes in Phase 42. — **Reversibility:** costly — undoing means re-scoping two roadmap phases whose boundary note is already locked in ROADMAP.md.
 - **D-02:** Phase 42 generates only the source cycle (`cycleLength` frames) as real keys. Repeat/infinity compute and display requested vs effective duration plus truncation status, but repetition never materializes in 42 — linked Loop Clips arrive in 43. No duplicated durable frames are ever written. — **Reversibility:** one-way — if duplicated frames were generated in 42, Phase 43 would inherit a data-cleanup/migration problem; generating cycle-only keeps the durable store clean for the linked-reference model.
-- **D-03:** In static/hold mode the existing Frames input IS the cycle frame count — one field, no separate cycle-length input. Progressive keeps the current Frames/Max behavior unchanged. Requested duration (`cycle × repeat`) is derived display only.
+- **D-03:** In static/hold mode the existing Frames input IS the cycle frame count — one field, no separate cycle-length input. Progressive keeps the current Frames/Max behavior unchanged. Requested duration (`cycle × repeat`) is derived display only. The single shared numeric field's visible label is mode-dependent: `Frames` in Progressive, `Cycle frames` in Static / Hold (UI-SPEC revision 2026-08-05).
 
 ### Controls placement + dialog structure
 
 - **D-04:** Application options live in the expanded Play Script confirmation dialog (mode, override color, Script Motion, Hold Loop controls); the Scripts panel gains a compact read-only summary of the current options. The dialog remains mounted directly in the Studio grid with isolated full-height styles (Phase 36.14 regression lesson — extending it must not re-introduce the constrained dark pane regression).
 - **D-05:** Mode selector is a two-option segmented control at the top of the dialog: `Progressive` | `Static / Hold`, with one short contextual helper line directly below that updates on selection change — Progressive: "The drawing builds stroke by stroke across frames." / Static / Hold: "The complete drawing is applied to every cycle frame." Mutually exclusive by construction, one-click, keyboard arrow navigation, accessible radiogroup semantics, no additional radio rows or duplicated descriptions.
 - **D-06:** Script Motion position/deformation controls are editable inside the dialog. On open they initialize from the existing Motion panel values (defaults only). Dialog edits apply only to this PlayScript application — the same script can be replayed with different Motion values, and both modes use the dialog values. Dialog edits never write back to Motion panel defaults, never modify the reusable source script, never overwrite existing per-stroke properties; only the newly generated destination frames use the application-time Motion values. The dialog provides a `Reset to Motion defaults` action; no `Save as defaults` action in Phase 42.
-- **D-07:** The panel summary is a two-line block — line 1: mode + override state + Motion values; line 2: destination range + generated-frame count/status. Together with the dialog this satisfies PLAY-03 panel clarity.
+- **D-07:** The panel summary is a two-line block — line 1: mode + override state + Motion values; line 2: destination range + generated-frame count/status. Together with the dialog this satisfies PLAY-03 panel clarity. The summary reflects the last options successfully confirmed and applied by Generate — updated atomically on successful Generate; unsaved dialog edits, cancellation, and generation failure preserve the previously successful summary and remembered session options; before the first successful Generate it shows the locked first-time/session defaults (UI-SPEC revision 2026-08-05).
 
 ### Color override UX (PLAY-02)
 
@@ -42,7 +42,7 @@ Requirements: PLAY-01..04 (REQUIREMENTS.md). Source spec: `SPECS/milestone-v0.9.
 - **D-12:** Repeat is a positive-integer field (default 1) with a separate Infinity toggle beside it. When Infinity is on, the repeat field is disabled/greyed and requested duration shows `Cycle Nf × ∞`; toggling Infinity off restores the last repeat value.
 - **D-13:** The requested/effective/truncation readout is English in the Phase 42 dialog, e.g. `Requested: 25f (5f × 5) · Effective: 18f — shortened by the next clip`. The French capsule label `Boucle raccourcie par le clip suivant` is Phase 43 filmstrip scope only.
 - **D-14:** The loop readout is informational only in 42 — it previews what the linked loop will do in 43. Generation stays bounded by the existing authority capacity check (`cycleLength ≤ Max`); truncation never blocks, warns-gates, or alters generation in this phase.
-- **D-15:** First-time defaults when switching to Static / Hold (before session memory exists): Frames = 1, Repeat = 1, Infinity = off — a minimal hold the user grows explicitly. Progressive defaults are untouched.
+- **D-15:** First-time defaults when switching to Static / Hold (before session memory exists): Cycle frames = 1, Repeat = 1, Infinity = off — a minimal hold the user grows explicitly. Progressive defaults are untouched.
 
 ### Claude's Discretion
 
@@ -107,7 +107,7 @@ Requirements: PLAY-01..04 (REQUIREMENTS.md). Source spec: `SPECS/milestone-v0.9.
 - User specified the mode control verbatim: segmented `Progressive` | `Static / Hold` at dialog top, helper line below ("The drawing builds stroke by stroke across frames." / "The complete drawing is applied to every cycle frame."), radiogroup semantics, arrow-key navigation, no extra radio rows (D-05).
 - User specified Script Motion ownership verbatim: dialog values are application-time only; never write back to Motion panel defaults; never modify the source script; never overwrite per-stroke properties; `Reset to Motion defaults` exists; no `Save as defaults` in Phase 42 (D-06).
 - User specified the English truncation readout form: `Requested: 25f (5f × 5) · Effective: 18f — shortened by the next clip` (D-13).
-- User specified first-time static/hold defaults as minimal: Frames = 1, Repeat = 1, Infinity = off (D-15).
+- User specified first-time static/hold defaults as minimal: Cycle frames = 1, Repeat = 1, Infinity = off (D-15).
 
 </specifics>
 
