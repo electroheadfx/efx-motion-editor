@@ -41,10 +41,16 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
   let selectedId: string | null = 'script-1';
   let selection: ReturnType<RotoPlayScriptControllerPorts['getSelection']> = { kind: 'real-key', keyId: 'key-4', appFrame: 4 };
   let context: PhysicPaintLaunchContext | null = { operationId: 'launch', layerId: 'layer-1', startFrame: 4, width: 10, height: 10, project: { name: 'Project', saved: true, contextId: 'context-1' } };
+  let motion = { deformation: 25, position: 40 };
+  const getMotion = vi.fn(() => ({ ...motion }));
   const selectedIdSignal = signal<string | null>(selectedId);
   const selectedSignal = signal<{ id: string } | null>({ id: 'script-1' });
   const library = {
     selectedId: selectedIdSignal, selected: selectedSignal, busy: signal(false), loadSnapshot: vi.fn(async () => script(99)),
+    // Write-capable members the Play Script flow must never invoke (PLAY-02).
+    saveActiveFrame: vi.fn(), activateAndLoad: vi.fn(), beginRename: vi.fn(), updateRenameDraft: vi.fn(),
+    commitRename: vi.fn(), cancelRename: vi.fn(), requestDelete: vi.fn(), confirmDelete: vi.fn(), cancelDelete: vi.fn(),
+    select: vi.fn(), updateProjectContext: vi.fn(), enterScripts: vi.fn(), refresh: vi.fn(),
   } as unknown as RotoPlayScriptControllerPorts['library'];
   const requestAuthority = vi.fn(async () => authority());
   const commit = vi.fn(async (publication: RotoPlayScriptPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
@@ -58,12 +64,12 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
   }));
   const stopPlayback = vi.fn(); const log = vi.fn();
   const ports: RotoPlayScriptControllerPorts = {
-    library, getLaunchContext: () => context, getSelection: () => selection, getMotion: () => ({ deformation: 25, position: 40 }),
+    library, getLaunchContext: () => context, getSelection: () => selection, getMotion,
     getOperationLocked: () => false,
     getSize: () => ({ width: 10, height: 10 }), requestAuthority, commit, stopPlayback, log, ...overrides,
   };
   const controller = createRotoPlayScriptController(ports);
-  return { controller, library, requestAuthority, commit, stopPlayback, log, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
+  return { controller, library, requestAuthority, commit, stopPlayback, log, getMotion, setMotion: (next: { deformation: number; position: number }) => { motion = next; }, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
 }
 
 type RotoPlayScriptPhysicalPublication = Parameters<RotoPlayScriptControllerPorts['commit']>[0];
@@ -175,5 +181,50 @@ describe('createRotoPlayScriptController', () => {
     const pending = cancelled.controller.confirm(); await vi.waitFor(() => expect(cancelled.controller.canCancel.value).toBe(true)); cancelled.controller.cancel();
     expect(await pending).toBe(false);
     expect(cancelled.commit).not.toHaveBeenCalled();
+  });
+
+  it('passes mode, override color, and dialog Motion into the renderer — dialog values win over the port at confirm time', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    // Dialog Motion initializes from the Motion defaults port at open (D-06).
+    expect(test.controller.dialogMotion.value).toEqual({ deformation: 25, position: 40 });
+
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '4'; // re-set after the Static / Hold first-time default applies
+    test.controller.overrideColor.value = '#3366ff';
+    test.controller.overrideEnabled.value = true;
+    test.controller.dialogMotion.value = { deformation: 5, position: 10 };
+    test.setMotion({ deformation: 90, position: 90 }); // port value changed after open — must NOT be re-read at confirm
+    expect(await test.controller.confirm()).toBe(true);
+    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ mode: 'static', overrideColor: '#3366ff', motion: { deformation: 5, position: 10 } }));
+  });
+
+  it('passes progressive defaults and a null override color when options are untouched or the override is disabled', async () => {
+    const untouched = harness();
+    await untouched.controller.openConfirmation();
+    expect(await untouched.controller.confirm()).toBe(true);
+    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ mode: 'progressive', overrideColor: null, motion: { deformation: 25, position: 40 } }));
+
+    rendered.mockClear();
+    const disabled = harness();
+    await disabled.controller.openConfirmation();
+    disabled.controller.overrideColor.value = '#3366ff'; // color present but override not enabled
+    expect(await disabled.controller.confirm()).toBe(true);
+    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ mode: 'progressive', overrideColor: null }));
+  });
+
+  it('never invokes script-library write ports during confirm and leaves the snapshot deeply unchanged', async () => {
+    const test = harness();
+    const fixture = script(99);
+    const snapshotBefore = structuredClone(fixture);
+    test.library.loadSnapshot.mockResolvedValue(fixture);
+    await test.controller.openConfirmation();
+    expect(await test.controller.confirm()).toBe(true);
+
+    const writePorts = ['saveActiveFrame', 'activateAndLoad', 'beginRename', 'updateRenameDraft', 'commitRename', 'cancelRename', 'requestDelete', 'confirmDelete', 'cancelDelete', 'select', 'updateProjectContext', 'enterScripts', 'refresh'] as const;
+    for (const port of writePorts) expect(test.library[port]).not.toHaveBeenCalled();
+    expect(test.library.loadSnapshot).toHaveBeenCalledTimes(1);
+    // The reusable source document (brushes, strokes, metadata) stays byte-identical.
+    expect(fixture).toEqual(snapshotBefore);
   });
 });
