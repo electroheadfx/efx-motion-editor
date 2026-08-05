@@ -192,20 +192,7 @@ mod tests {
                     width: Some(1000),
                     height: Some(650),
                 }],
-                roto_cache_metadata: vec![serde_json::json!({
-                    "frameIndex": 0,
-                    "appFrame": 12,
-                    "source": "real-key",
-                    "cache_path": "cache/physic-paint/phys-layer-1/frame-000012-0000.png"
-                })],
-                roto_interpolation_settings: Some(serde_json::json!({
-                    "enabled": true,
-                    "inBetweenCount": 3,
-                    "mode": "duplicate",
-                    "deform": 0,
-                    "position": 0
-                })),
-                roto_background: Some(serde_json::json!({
+                roto_physical: Some(serde_json::json!({
                     "background": "canvas2",
                     "paperGrain": "canvas3",
                     "grainStrength": 0.65
@@ -230,11 +217,7 @@ mod tests {
         assert_eq!(loaded.physic_paint_outputs[0].layer_id, "phys-layer-1");
         assert_eq!(loaded.physic_paint_outputs[0].frames[0].app_frame, 12);
         assert_eq!(loaded.physic_paint_outputs[0].frames[0].cache_path, "cache/physic-paint/phys-layer-1/frame-000012-0000.png");
-        assert_eq!(loaded.physic_paint_outputs[0].roto_cache_metadata[0]["source"], "real-key");
-        assert_eq!(loaded.physic_paint_outputs[0].roto_interpolation_settings.as_ref().unwrap()["enabled"], true);
-        assert_eq!(loaded.physic_paint_outputs[0].roto_interpolation_settings.as_ref().unwrap()["inBetweenCount"], 3);
-        assert_eq!(loaded.physic_paint_outputs[0].roto_interpolation_settings.as_ref().unwrap()["mode"], "duplicate");
-        assert_eq!(loaded.physic_paint_outputs[0].roto_background.as_ref().unwrap()["background"], "canvas2");
+        assert_eq!(loaded.physic_paint_outputs[0].roto_physical.as_ref().unwrap()["background"], "canvas2");
 
         let _ = std::fs::remove_dir_all(&test_dir);
     }
