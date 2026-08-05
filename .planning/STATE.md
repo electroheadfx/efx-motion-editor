@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: 42 — PlayScript Application Modes + Color Override
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-05 — Phase 41 complete, transitioned to Phase 42
+Last activity: 2026-08-05 - Completed quick task 260805-ht3: Phase 41 remediation (CR-01, WR-07, WR-08)
 
 Progress: [██████████] 100%
 
@@ -222,6 +222,7 @@ None yet.
 | 260801-azb | Close G-01: add Tauri listen branch to installPhysicPaintFrameSyncListener for physic-paint:seek-frame | 2026-08-01 | 8c9defa1 |  | [260801-azb-close-g-01-add-tauri-listen-branch-to-in](./quick/260801-azb-close-g-01-add-tauri-listen-branch-to-in/) |
 | 260801-o30 | Fix v0.8.1 production Tauri CSP regression (grant data: scheme in img-src for cached Roto/Physics Paint PNGs) | 2026-08-01 | 65e86af2 | Verified | [260801-o30-fix-v0-8-1-production-tauri-csp-regressi](./quick/260801-o30-fix-v0-8-1-production-tauri-csp-regressi/) |
 | 260801-sp2 | Refresh README.md for v0.8.1 Standalone Physics Paint release | 2026-08-01 | 821daff3 | Verified | [260801-sp2-refresh-readme-md-for-v0-8-1-standalone-](./quick/260801-sp2-refresh-readme-md-for-v0-8-1-standalone-/) |
+| 260805-ht3 | Phase 41 remediation: CR-01 orphaned audio guard, WR-07 efxasset range underflow, WR-08 efxasset path scoping | 2026-08-05 | b3a83841 | Verified | [260805-ht3-phase-41-remediation-cr-01-orphaned-audi](./quick/260805-ht3-phase-41-remediation-cr-01-orphaned-audi/) |
 
 ### Roadmap Evolution
 
