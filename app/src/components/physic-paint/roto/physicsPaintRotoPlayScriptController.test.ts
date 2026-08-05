@@ -338,4 +338,181 @@ describe('createRotoPlayScriptController', () => {
     expect(await infinite.controller.confirm()).toBe(true);
     expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ frameCount: 2 }));
   });
+
+  it('dialog Motion edits trigger zero port writes; only getMotion reads may occur', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.getMotion.mockClear();
+    test.requestAuthority.mockClear();
+    test.stopPlayback.mockClear();
+    test.log.mockClear();
+    test.controller.dialogMotion.value = { deformation: 5, position: 10 };
+    expect(test.getMotion).not.toHaveBeenCalled();
+    expect(test.requestAuthority).not.toHaveBeenCalled();
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.stopPlayback).not.toHaveBeenCalled();
+    expect(test.log).not.toHaveBeenCalled();
+  });
+
+  it('resetDialogMotion re-reads the CURRENT Motion defaults port at call time and writes nowhere', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.dialogMotion.value = { deformation: 5, position: 10 };
+    test.setMotion({ deformation: 70, position: 15 });
+    test.getMotion.mockClear();
+    test.controller.resetDialogMotion();
+    expect(test.controller.dialogMotion.value).toEqual({ deformation: 70, position: 15 });
+    expect(test.getMotion).toHaveBeenCalledTimes(1);
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.requestAuthority).toHaveBeenCalledTimes(1); // only the open call
+  });
+
+  it('clears a stale generation error when a new generation starts, and retry succeeds from a clean error state', async () => {
+    const commit = vi.fn()
+      .mockImplementationOnce(async (): Promise<RotoPlayScriptCommitResult> => ({ ok: false, error: 'rejected' }))
+      .mockImplementation(async (publication: RotoPlayScriptPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
+        ok: true,
+        operationId: 'accepted-operation',
+        acceptedRevision: 'revision-2',
+        records: publication.records,
+        interpolationMode: publication.interpolationMode,
+        selectedKeyId: publication.selectedKeyId,
+        selectedAppFrame: publication.selectedAppFrame,
+      }));
+    const test = harness({ commit });
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '1';
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.error.value).toBe('rejected');
+
+    let releaseRender!: () => void;
+    rendered.mockImplementationOnce(async ({ frameCount, canonicalStart }) => new Promise((resolve) => {
+      releaseRender = () => resolve(Array.from({ length: frameCount }, (_, index) => ({
+        frameIndex: 0,
+        appFrame: canonicalStart + index,
+        dataUrl: pngDataUrl(`staged-${index}`),
+        width: 10,
+        height: 10,
+      })));
+    }));
+    const retry = test.controller.confirm();
+    await vi.waitFor(() => expect(rendered).toHaveBeenCalled());
+    expect(test.controller.error.value).toBeNull(); // stale error cleared at generation start
+    releaseRender();
+    expect(await retry).toBe(true);
+    expect(test.controller.error.value).toBeNull();
+    expect(test.controller.phase.value).toBe('complete');
+  });
+
+  it('drives the generation-error lifecycle on renderer failure: failed phase, error set, progress hidden, dialog open, inputs enabled, zero mutations', async () => {
+    rendered.mockRejectedValueOnce(new Error('render boom'));
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.phase.value).toBe('failed');
+    expect(test.controller.error.value).toBe('render boom');
+    expect(test.controller.progress.value).toBeNull(); // progress bar hides
+    expect(test.controller.confirmationOpen.value).toBe(true); // dialog stays open
+    expect(test.controller.canCancel.value).toBe(false); // inputs re-enable
+    expect(test.commit).not.toHaveBeenCalled(); // zero partial destination frames or timeline mutations
+  });
+
+  it('normal user cancellation returns phase cancelled with a null error channel and zero mutations', async () => {
+    rendered.mockImplementationOnce(async ({ signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true })));
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '1';
+    const pending = test.controller.confirm();
+    await vi.waitFor(() => expect(test.controller.canCancel.value).toBe(true));
+    test.controller.cancel();
+    expect(await pending).toBe(false);
+    expect(test.controller.phase.value).toBe('cancelled');
+    expect(test.controller.error.value).toBeNull(); // never an error shown on normal cancellation
+    expect(test.controller.confirmationOpen.value).toBe(true);
+    expect(test.commit).not.toHaveBeenCalled();
+  });
+
+  it('composes the applied summary from the committed generation (static + override, layer-end boundary exact)', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '4'; // after the first-time Static / Hold default applies
+    test.controller.overrideEnabled.value = true;
+    test.controller.overrideColor.value = '#3366ff';
+    expect(await test.controller.confirm()).toBe(true);
+    expect(test.controller.appliedSummary.line1.value).toBe('Static / Hold · Override #3366ff · Motion 25/40');
+    // end = start + count − 1 = 7 = layerEndExclusive − 1 — exact at the layer-end boundary, no off-by-one
+    expect(test.controller.appliedSummary.line2.value).toBe('F4–F7 · 4 frames generated');
+  });
+
+  it('shows locked first-time defaults before the first successful Generate', async () => {
+    const test = harness();
+    expect(test.controller.appliedSummary.line1.value).toBe('Progressive · Original colors · Motion 0/0');
+    expect(test.controller.appliedSummary.line2.value).toBe('No frames generated yet');
+    await test.controller.openConfirmation();
+    expect(test.controller.appliedSummary.line1.value).toBe('Progressive · Original colors · Motion 25/40');
+    expect(test.controller.appliedSummary.line2.value).toBe('No frames generated yet');
+  });
+
+  it('keeps both summary lines byte-identical across unsaved edits, dialog cancel, generation cancellation, and failure', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+    const line1 = test.controller.appliedSummary.line1.value;
+    const line2 = test.controller.appliedSummary.line2.value;
+    expect(line2).toBe('F4–F5 · 2 frames generated');
+
+    // Unsaved dialog edits after a success.
+    await test.controller.openConfirmation();
+    test.controller.mode.value = 'static';
+    test.controller.overrideEnabled.value = true;
+    test.controller.overrideColor.value = '#3366ff';
+    test.controller.dialogMotion.value = { deformation: 1, position: 2 };
+    test.controller.repeatText.value = '9';
+    expect(test.controller.appliedSummary.line1.value).toBe(line1);
+    expect(test.controller.appliedSummary.line2.value).toBe(line2);
+
+    // Dialog cancel (idle close path).
+    test.controller.cancel();
+    expect(test.controller.appliedSummary.line1.value).toBe(line1);
+    expect(test.controller.appliedSummary.line2.value).toBe(line2);
+
+    // Generation cancellation.
+    rendered.mockImplementationOnce(async ({ signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true })));
+    const pending = test.controller.confirm();
+    await vi.waitFor(() => expect(test.controller.canCancel.value).toBe(true));
+    test.controller.cancel();
+    expect(await pending).toBe(false);
+    expect(test.controller.appliedSummary.line1.value).toBe(line1);
+    expect(test.controller.appliedSummary.line2.value).toBe(line2);
+
+    // Generation failure.
+    rendered.mockRejectedValueOnce(new Error('boom'));
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.appliedSummary.line1.value).toBe(line1);
+    expect(test.controller.appliedSummary.line2.value).toBe(line2);
+  });
+
+  it('a second successful Generate replaces both summary lines atomically from the newly committed options', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '4';
+    test.controller.overrideEnabled.value = true;
+    test.controller.overrideColor.value = '#3366ff';
+    expect(await test.controller.confirm()).toBe(true);
+    expect(test.controller.appliedSummary.line1.value).toBe('Static / Hold · Override #3366ff · Motion 25/40');
+    expect(test.controller.appliedSummary.line2.value).toBe('F4–F7 · 4 frames generated');
+
+    await test.controller.openConfirmation();
+    test.controller.mode.value = 'progressive';
+    test.controller.overrideEnabled.value = false;
+    test.controller.dialogMotion.value = { deformation: 5, position: 10 };
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+    expect(test.controller.appliedSummary.line1.value).toBe('Progressive · Original colors · Motion 5/10');
+    expect(test.controller.appliedSummary.line2.value).toBe('F4–F5 · 2 frames generated');
+  });
 });
