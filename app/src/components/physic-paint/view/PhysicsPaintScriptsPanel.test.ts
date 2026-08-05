@@ -1,6 +1,47 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+
+// Node-environment component harness for the summary-block cases: preact/hooks is mocked
+// with a cursor-based runtime (same approach as PhysicsPaintPlayScriptDialog.test.ts) so the
+// panel function can be invoked directly and its vnode tree inspected. No DOM is involved.
+const hooks = vi.hoisted(() => ({
+  values: [] as unknown[],
+  refs: new Map<number, { current: unknown }>(),
+  cursor: 0,
+  idCursor: 0,
+  reset() {
+    this.values = [];
+    this.refs = new Map();
+    this.cursor = 0;
+    this.idCursor = 0;
+  },
+}));
+
+vi.mock('preact/hooks', () => ({
+  useRef: <Value>(initial: Value) => {
+    const index = hooks.cursor++;
+    if (!hooks.refs.has(index)) hooks.refs.set(index, { current: initial });
+    return hooks.refs.get(index) as { current: Value };
+  },
+  useEffect: () => {},
+  useLayoutEffect: () => {},
+  useId: () => `mock-id-${hooks.idCursor++}`,
+  useState: <Value>(initial: Value | (() => Value)) => {
+    const index = hooks.cursor++;
+    if (!(index in hooks.values)) hooks.values[index] = typeof initial === 'function' ? (initial as () => Value)() : initial;
+    return [hooks.values[index] as Value, (next: Value | ((current: Value) => Value)) => {
+      hooks.values[index] = typeof next === 'function'
+        ? (next as (current: Value) => Value)(hooks.values[index] as Value)
+        : next;
+    }] as const;
+  },
+}));
+
+import { PhysicsPaintScriptsPanel } from './PhysicsPaintScriptsPanel';
+import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
+import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
+import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 
 const panel = readFileSync(fileURLToPath(new URL('./PhysicsPaintScriptsPanel.tsx', import.meta.url)), 'utf8');
 const playScriptDialog = readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
@@ -73,7 +114,7 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(panel).toContain('title={props.title}');
     expect(controller).toContain("saveDisabledReason: !projectSaved.value ? 'Save the project first.'");
     expect(panel).toContain('availability.saveDisabledReason');
-    expect(panel).toContain("playScript.disabledReason.value ?? 'Generate progressive real Roto keys'");
+    expect(panel).toContain("playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)'");
     expect(panel).not.toContain('Import Script');
   });
 
@@ -327,5 +368,225 @@ describe('Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap 
     const ruleEnd = css.indexOf('}', ruleStart);
     const rule = css.slice(ruleStart, ruleEnd === -1 ? css.length : ruleEnd + 1);
     expect(rule).toMatch(/row-gap:\s*([4-9]|\d{2,})px/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 42-04 component harness: fake controllers exposing plain { value } cells in
+// place of signals (the panel only ever reads .value); re-renders are manual.
+// ---------------------------------------------------------------------------
+
+interface TestVNode {
+  type: unknown;
+  props: Record<string, unknown>;
+}
+
+function sig<Value>(value: Value): { value: Value } {
+  return { value };
+}
+
+function createFakeLibrary(): RotoScriptLibraryController {
+  return {
+    rows: sig([]),
+    availability: sig({ saveDisabledReason: null, canSave: true, canRename: true, canDelete: true }),
+    selected: sig(null),
+    busy: sig(false),
+    rename: sig(null),
+    deleteConfirmation: sig(null),
+    selectedId: sig(null),
+    status: sig(null),
+    skippedInvalidCount: sig(0),
+    beginRename: vi.fn(),
+    requestDelete: vi.fn(),
+    cancelDelete: vi.fn(),
+    confirmDelete: vi.fn(async () => {}),
+    updateRenameDraft: vi.fn(),
+    commitRename: vi.fn(async () => {}),
+    cancelRename: vi.fn(),
+  } as unknown as RotoScriptLibraryController;
+}
+
+function createFakeRotoScript(): RotoScriptClipboardController {
+  return {
+    availability: sig({
+      replacementApplyDisabledReason: null,
+      canCopy: true,
+      canApply: true,
+      canDiscard: true,
+      copyDisabledReason: null,
+      applyDisabledReason: null,
+      discardDisabledReason: null,
+    }),
+  } as unknown as RotoScriptClipboardController;
+}
+
+interface FakePlayScriptSeed {
+  line1: string;
+  line2: string;
+  disabledReason?: string | null;
+  status?: string | null;
+}
+
+function createFakePlayScript(seed: FakePlayScriptSeed) {
+  const controller = {
+    disabledReason: sig(seed.disabledReason ?? null),
+    status: sig(seed.status ?? null),
+    appliedSummary: { line1: sig(seed.line1), line2: sig(seed.line2) },
+    openConfirmation: vi.fn(async () => {}),
+  } as unknown as RotoPlayScriptController;
+  return controller;
+}
+
+function renderPanel(playScript: RotoPlayScriptController): TestVNode {
+  hooks.cursor = 0;
+  hooks.idCursor = 0;
+  return PhysicsPaintScriptsPanel({
+    library: createFakeLibrary(),
+    playScript,
+    rotoScript: createFakeRotoScript(),
+    playButtonRef: { current: null },
+    onSave: () => {},
+    onActivateRow: () => {},
+    onLoadAndApply: () => {},
+    onDiscardScript: () => {},
+    onCopyScript: () => {},
+    onApplyScript: () => {},
+    onRefresh: () => {},
+  }) as unknown as TestVNode;
+}
+
+function childrenOf(vnode: TestVNode): unknown[] {
+  const children = vnode.props?.children;
+  if (children === null || children === undefined || typeof children === 'boolean') return [];
+  return Array.isArray(children) ? children : [children];
+}
+
+function* walk(node: unknown): Generator<TestVNode> {
+  if (node === null || node === undefined || typeof node === 'boolean') return;
+  if (Array.isArray(node)) {
+    for (const child of node) yield* walk(child);
+    return;
+  }
+  if (typeof node !== 'object') return;
+  const vnode = node as TestVNode;
+  yield vnode;
+  for (const child of childrenOf(vnode)) yield* walk(child);
+}
+
+function findAll(root: unknown, predicate: (vnode: TestVNode) => boolean): TestVNode[] {
+  return [...walk(root)].filter(predicate);
+}
+
+function findOne(root: unknown, predicate: (vnode: TestVNode) => boolean): TestVNode {
+  const found = findAll(root, predicate);
+  expect(found).toHaveLength(1);
+  return found[0];
+}
+
+function textOf(node: unknown): string {
+  if (node === null || node === undefined || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join('');
+  return textOf(childrenOf(node as TestVNode));
+}
+
+function hasClass(vnode: TestVNode, name: string): boolean {
+  return String(vnode.props?.class ?? '').split(/\s+/).includes(name);
+}
+
+function cssRule(selector: string): string {
+  const start = css.indexOf(selector);
+  expect(start, `CSS rule for ${selector}`).toBeGreaterThanOrEqual(0);
+  const end = css.indexOf('}', start);
+  return css.slice(start, end === -1 ? css.length : end + 1);
+}
+
+beforeEach(() => {
+  hooks.reset();
+});
+
+describe('Physics Paint Scripts panel Play Script options summary (42-04, D-07, PLAY-03)', () => {
+  it('renders the locked first-time defaults before any successful Generate', () => {
+    const playScript = createFakePlayScript({
+      line1: 'Progressive · Original colors · Motion 25/40',
+      line2: 'No frames generated yet',
+    });
+    const tree = renderPanel(playScript);
+    expect(textOf(findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary-line1'))))
+      .toBe('Progressive · Original colors · Motion 25/40');
+    expect(textOf(findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary-line2'))))
+      .toBe('No frames generated yet');
+  });
+
+  it('renders the controller-composed strings verbatim after a Static / Hold + override Generate', () => {
+    const playScript = createFakePlayScript({
+      line1: 'Static / Hold · Override #3366ff · Motion 25/40',
+      line2: 'F4–F7 · 4 frames generated',
+    });
+    const tree = renderPanel(playScript);
+    expect(textOf(findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary-line1'))))
+      .toBe('Static / Hold · Override #3366ff · Motion 25/40');
+    expect(textOf(findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary-line2'))))
+      .toBe('F4–F7 · 4 frames generated');
+  });
+
+  it('leaves the summary byte-identical across dialog cancel / generation failure — the panel has no mutation path', () => {
+    const playScript = createFakePlayScript({
+      line1: 'Static / Hold · Override #3366ff · Motion 25/40',
+      line2: 'F4–F7 · 4 frames generated',
+      status: 'Play Script cancelled.',
+    });
+    const before = renderPanel(playScript);
+    const textBefore = textOf(findOne(before, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary')));
+    // A cancelled/failed generation changes the status line but never the appliedSummary
+    // signals (42-02 controller owns the single success-only assignment site).
+    (playScript.status as { value: string | null }).value = 'Play Script failed: parent rejected the batch.';
+    const after = renderPanel(playScript);
+    const summary = findOne(after, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary'));
+    expect(textOf(summary)).toBe(textBefore);
+    // Read-only projection: no interactive element exists inside the summary block.
+    expect(findAll(summary, (vnode) => vnode.type === 'button' || vnode.type === 'input')).toHaveLength(0);
+  });
+
+  it('places the two-line summary between the toolbar and the script list', () => {
+    const playScript = createFakePlayScript({
+      line1: 'Progressive · Original colors · Motion 25/40',
+      line2: 'No frames generated yet',
+    });
+    const tree = renderPanel(playScript);
+    const topLevel = childrenOf(tree).filter(
+      (child): child is TestVNode => typeof child === 'object' && child !== null && !Array.isArray(child),
+    );
+    const toolbarIndex = topLevel.findIndex((vnode) => hasClass(vnode, 'physics-paint-scripts-toolbar'));
+    const summaryIndex = topLevel.findIndex((vnode) => hasClass(vnode, 'physics-paint-scripts-summary'));
+    const listIndex = topLevel.findIndex((vnode) => hasClass(vnode, 'physics-paint-scripts-list'));
+    expect(toolbarIndex).toBeGreaterThanOrEqual(0);
+    expect(summaryIndex).toBeGreaterThan(toolbarIndex);
+    expect(listIndex).toBeGreaterThan(summaryIndex);
+  });
+
+  it('updates the Play Script tooltip fallback to cover both modes (Pitfall 8)', () => {
+    const playScript = createFakePlayScript({
+      line1: 'Progressive · Original colors · Motion 25/40',
+      line2: 'No frames generated yet',
+    });
+    const tree = renderPanel(playScript);
+    const playButton = findOne(tree, (vnode) => vnode.props?.label === 'Play Script');
+    expect(playButton.props.title).toBe('Play Script — Generate real Roto keys (progressive or static/hold)');
+    expect(String(playButton.props.title)).not.toContain('Generate progressive real Roto keys');
+  });
+
+  it('styles the summary with existing dark-panel tokens only (10px #aeb5be metadata, #eef1f4 values, per-line ellipsis)', () => {
+    expect(cssRule('.physics-paint-scripts-summary {')).toBeTruthy();
+    const line1 = cssRule('.physics-paint-scripts-summary-line1 {');
+    expect(line1).toContain('color: #aeb5be');
+    expect(line1).toContain('font-size: 10px');
+    const line2 = cssRule('.physics-paint-scripts-summary-line2 {');
+    expect(line2).toContain('color: #eef1f4');
+    for (const rule of [line1, line2]) {
+      expect(rule).toContain('overflow: hidden');
+      expect(rule).toContain('text-overflow: ellipsis');
+      expect(rule).toContain('white-space: nowrap');
+    }
   });
 });
