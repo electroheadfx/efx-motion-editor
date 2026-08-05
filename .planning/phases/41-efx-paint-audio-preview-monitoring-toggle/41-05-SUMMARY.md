@@ -163,6 +163,11 @@ None — no external service configuration required.
 - Phase 44 (Integrated Release Acceptance) inherits: the REL-02 audio UAT steps now have a proven packaged-app pass, the connect-src grant is pinned against CSP creep, and close-release is test-pinned.
 - Follow-up candidates: the pre-existing `style-src` refusal at physics-paint:24 (above); no other open items.
 
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/41-efx-paint-audio-preview-monitoring-toggle/41-05-SUMMARY.md
+- FOUND commits: 090ee3dc, 2f4d5c93, d4cac3f9, 532e026e, 015ea87f, a3cd611a, f5bbff59
+
 ---
 *Phase: 41-efx-paint-audio-preview-monitoring-toggle*
 *Completed: 2026-08-05*
