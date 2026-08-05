@@ -69,6 +69,12 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
   const [fps, setFps] = useState(initialSettings.fps);
   const settingsRef = useRef<PhysicPaintRotoPlaybackSettings>(initialSettings);
   const timerRef = useRef<number | null>(null);
+  // 41-CR-01: monotonic playback-session generation. start() bumps it so every
+  // fresh start (including updateFps re-entry and resetForLaunch→start) gets a
+  // new generation; finishPlayback (the single stop funnel) bumps it again so
+  // any in-flight prepare from the just-ended session goes stale. Plain
+  // mutable ref — never drives rendering (no signal, no state).
+  const audioSessionRef = useRef(0);
   const inputRef = useRef(input);
   inputRef.current = input;
   // 38.1-D-01/D-08: the per-tick frame lives on a signal, not useState, so a
@@ -100,6 +106,7 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     // exactly ONE catch-up render restores full UI currency on stop.
     batch(() => {
       clearTimer();
+      audioSessionRef.current += 1;
       statusGateActiveRef.current = false;
       playbackTick.value = null;
       setIsActive(false);
@@ -150,6 +157,7 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     const missingCount = cachedFrames.filter((entry) => !entry.frame).length;
     let frameIndex = 0;
     clearTimer();
+    audioSessionRef.current += 1;
     setIsActive(true);
     currentInput.setIsPlaying(true);
     currentInput.onStart(cachedFrames.length);
@@ -170,7 +178,14 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     if (audioPreview && audioPreview.tracks.length > 0) {
       const audioCursorAppFrame = cachedFrames[0].appFrame;
       const audioPlaybackRangeEnd = cachedFrames[cachedFrames.length - 1].appFrame + 1;
+      // 41-CR-01: capture this start's session generation before the async
+      // prepare; the deferred play dispatches ONLY when playback is still
+      // active AND no newer session (or stop) has superseded this one —
+      // otherwise orphaned audio could start after a visual stop and latch
+      // the ownership claim.
+      const audioSession = audioSessionRef.current;
       void efxPaintAudioMonitor.prepare(audioPreview).then(() => {
+        if (timerRef.current === null || audioSessionRef.current !== audioSession) return;
         efxPaintAudioMonitor.playAtCursor(audioCursorAppFrame, audioPlaybackRangeEnd);
       });
       // 41-03 (locked A6): matched-fps guarantee — surface a non-blocking

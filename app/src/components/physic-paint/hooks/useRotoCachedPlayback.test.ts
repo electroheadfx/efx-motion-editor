@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hookRuntime = vi.hoisted(() => ({
   values: [] as unknown[],
@@ -30,7 +30,46 @@ vi.mock('preact/hooks', () => ({
   useEffect: () => {},
 }));
 
+// CR-01 audio mocks: the monitor/ownership modules are fully mocked so the
+// deferred prepare→playAtCursor chain can be driven with manually resolved
+// promises. playAtCursor mimics the real funnel by claiming ownership, so
+// "no ownership claim" assertions stay meaningful.
+const audioMocks = vi.hoisted(() => ({
+  prepare: vi.fn<(...args: unknown[]) => Promise<void>>(),
+  playAtCursor: vi.fn(),
+  stop: vi.fn(),
+  noteFpsMismatchOnce: vi.fn(() => null as string | null),
+  notifyLoopWrap: vi.fn(),
+  checkDrift: vi.fn(),
+  claimAudio: vi.fn(),
+  ownershipConfigure: vi.fn(),
+  getSection: vi.fn(() => null as unknown),
+}));
+
+vi.mock('../audio/efxPaintAudioMonitor', () => ({
+  efxPaintAudioMonitor: {
+    prepare: audioMocks.prepare,
+    playAtCursor: audioMocks.playAtCursor,
+    stop: audioMocks.stop,
+    noteFpsMismatchOnce: audioMocks.noteFpsMismatchOnce,
+    notifyLoopWrap: audioMocks.notifyLoopWrap,
+    checkDrift: audioMocks.checkDrift,
+  },
+}));
+
+vi.mock('../audio/efxPaintAudioPreviewStore', () => ({
+  efxPaintAudioPreviewStore: { getSection: audioMocks.getSection },
+}));
+
+vi.mock('../audio/efxPaintAudioOwnership', () => ({
+  efxPaintAudioOwnership: {
+    configure: audioMocks.ownershipConfigure,
+    claimAudio: audioMocks.claimAudio,
+  },
+}));
+
 import { clampRotoPlaybackFps, useRotoCachedPlayback, type UseRotoCachedPlaybackInput } from './useRotoCachedPlayback';
+import type { EfxPaintAudioPreviewContext } from '../../../types/physicPaint';
 
 type Frame = { id: string };
 
@@ -239,5 +278,146 @@ describe('useRotoCachedPlayback', () => {
     expect(playback.frame).toBeNull();
     expect(setIsPlaying).toHaveBeenLastCalledWith(false);
     vi.useRealTimers();
+  });
+
+  // CR-01: the deferred prepare→playAtCursor chain must be gated on the
+  // playback session that requested it — a stop (or a newer start) while
+  // prepare is in flight must make the stale completion a silent no-op.
+  describe('CR-01 audio session guard', () => {
+    function audioSection(): EfxPaintAudioPreviewContext {
+      return {
+        revision: 1,
+        fps: 24,
+        tracks: [
+          {
+            id: 'track-1',
+            assetUrl: 'efxasset://localhost/tmp/cr01-fixture.wav',
+            offsetFrame: 0,
+            inFrame: 0,
+            outFrame: 48,
+            slipOffset: 0,
+            fadeInFrames: 0,
+            fadeOutFrames: 0,
+            volume: 1,
+            muted: false,
+            fadeInCurve: 'linear',
+            fadeOutCurve: 'linear',
+          },
+        ],
+      };
+    }
+
+    function deferred<Value = void>() {
+      let resolve!: (value: Value | PromiseLike<Value>) => void;
+      let reject!: (reason?: unknown) => void;
+      const promise = new Promise<Value>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    }
+
+    async function flushMicrotasks() {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+
+    const cr01Frames = [
+      { appFrame: 8, frame: { id: 'first' } },
+      { appFrame: 9, frame: { id: 'last' } },
+    ];
+
+    function createAudioHarness() {
+      return createHarness({
+        initialSettings: { loop: false, fps: 24 },
+        workflowMode: 'roto',
+        getFrames: () => cr01Frames,
+        onStart: vi.fn(),
+        onFrame: vi.fn(),
+        setIsPlaying: vi.fn(),
+      });
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      installWindowTimers();
+      audioMocks.prepare.mockReset().mockResolvedValue(undefined);
+      audioMocks.playAtCursor.mockReset().mockImplementation(() => audioMocks.claimAudio());
+      audioMocks.stop.mockReset();
+      audioMocks.noteFpsMismatchOnce.mockReset().mockReturnValue(null);
+      audioMocks.notifyLoopWrap.mockReset();
+      audioMocks.checkDrift.mockReset();
+      audioMocks.claimAudio.mockReset();
+      audioMocks.ownershipConfigure.mockReset();
+      audioMocks.getSection.mockReset().mockReturnValue(null);
+    });
+
+    it('never dispatches playAtCursor or claims ownership when stop happens during prepare', async () => {
+      audioMocks.getSection.mockReturnValue(audioSection());
+      const gate = deferred<void>();
+      audioMocks.prepare.mockReturnValue(gate.promise);
+      const harness = createAudioHarness();
+      const playback = harness.render();
+
+      playback.start();
+      expect(audioMocks.prepare).toHaveBeenCalledTimes(1);
+
+      playback.stop();
+      gate.resolve();
+      await gate.promise;
+      await flushMicrotasks();
+
+      expect(audioMocks.playAtCursor).not.toHaveBeenCalled();
+      expect(audioMocks.claimAudio).not.toHaveBeenCalled();
+    });
+
+    it('rejects the stale prepare completion after start→stop→start; only the newest session plays', async () => {
+      audioMocks.getSection.mockReturnValue(audioSection());
+      const staleGate = deferred<void>();
+      audioMocks.prepare.mockReturnValueOnce(staleGate.promise).mockResolvedValue(undefined);
+      const harness = createAudioHarness();
+      let playback = harness.render();
+
+      playback.start();
+      playback.stop();
+      playback = harness.render();
+      playback.start();
+      await flushMicrotasks();
+
+      expect(audioMocks.playAtCursor).toHaveBeenCalledTimes(1);
+      expect(audioMocks.playAtCursor).toHaveBeenCalledWith(8, 10);
+
+      staleGate.resolve();
+      await staleGate.promise;
+      await flushMicrotasks();
+
+      expect(audioMocks.playAtCursor).toHaveBeenCalledTimes(1);
+    });
+
+    it('plays at the cursor once prepare resolves while still playing, and stops through the funnel', async () => {
+      audioMocks.getSection.mockReturnValue(audioSection());
+      const harness = createAudioHarness();
+      const playback = harness.render();
+
+      playback.start();
+      await flushMicrotasks();
+
+      expect(audioMocks.playAtCursor).toHaveBeenCalledTimes(1);
+      expect(audioMocks.playAtCursor).toHaveBeenCalledWith(8, 10);
+
+      playback.stop();
+      expect(audioMocks.stop).toHaveBeenCalled();
+    });
+
+    it('skips audio preparation entirely when no audio section is present', () => {
+      const harness = createAudioHarness();
+      const playback = harness.render();
+
+      playback.start();
+
+      expect(audioMocks.prepare).not.toHaveBeenCalled();
+      expect(audioMocks.playAtCursor).not.toHaveBeenCalled();
+    });
   });
 });
