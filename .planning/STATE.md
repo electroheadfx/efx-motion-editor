@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-current_phase: 41
-current_phase_name: efx-paint-audio-preview-monitoring-toggle
-status: verifying
+current_phase: 42
+current_phase_name: PlayScript Application Modes + Color Override
+status: planning
 stopped_at: Completed 41-05-PLAN.md — Phase 41 all 5 plans done; native packaged UAT approved 2026-08-05; ready for phase verification
-last_updated: "2026-08-05T09:57:58.538Z"
+last_updated: "2026-08-05T10:24:45.621Z"
 last_activity: 2026-08-05
-last_activity_desc: Phase 41 execution started
+last_activity_desc: Phase 41 complete, transitioned to Phase 42
 progress:
   total_phases: 6
   completed_phases: 2
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 ## Current Position
 
-Phase: 41 (efx-paint-audio-preview-monitoring-toggle) — EXECUTING
-Plan: 5 of 5
-Status: Phase complete — ready for verification
-Last activity: 2026-08-04 — Phase 41 execution started
+Phase: 42 — PlayScript Application Modes + Color Override
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-05 — Phase 41 complete, transitioned to Phase 42
 
 Progress: [██████████] 100%
 
@@ -39,7 +39,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 99 for v0.8.0
+- Total plans completed: 104 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -67,6 +67,7 @@ Progress: [██████████] 100%
 | 38.1 | 18/18 | Complete through renewed native acceptance and re-verification | - |
 | 38 | 11 | - | - |
 | 40 | 3 | - | - |
+| 41 | 5 | - | - |
 
 **Recent Trend:**
 
