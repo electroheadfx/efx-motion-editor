@@ -5,8 +5,8 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 41
 current_phase_name: efx-paint-audio-preview-monitoring-toggle
 status: executing
-stopped_at: Completed 41-04-PLAN.md
-last_updated: "2026-08-04T22:36:33.628Z"
+stopped_at: "41-05: Tasks 1 committed; awaiting D-04 pre-grant packaged-build fetch-failure observation (checkpoint before Task 2 RED/grant)"
+last_updated: "2026-08-04T22:50:03.801Z"
 last_activity: 2026-08-04
 last_activity_desc: Phase 41 execution started
 progress:
@@ -362,9 +362,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-04T22:36:33.620Z
-Stopped at: Completed 41-04-PLAN.md
-Resume file: None
+Last session: 2026-08-04T22:50:03.790Z
+Stopped at: 41-05: Tasks 1 committed; awaiting D-04 pre-grant packaged-build fetch-failure observation (checkpoint before Task 2 RED/grant)
+Resume file: .planning/phases/41-efx-paint-audio-preview-monitoring-toggle/41-05-PLAN.md
 
 ## Operator Next Steps
 
