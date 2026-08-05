@@ -120,7 +120,24 @@ Plans:
   3. The Scripts panel clearly shows progressive vs static/hold, original vs override color, Script Motion position/deformation controls, destination range, and generated-frame count
   4. User can configure Hold Loop controls — source cycle frame count (min 1), repeat count (positive integer from 1), a separate infinity toggle — and see requested duration (`cycleLength × repeatCount`), effective duration after next-clip/parent-end boundary, and clear truncation status
 
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+**Wave 1**
+
+- [ ] 42-01-PLAN.md — TDD: static/hold stroke schedule package module + additive animation exports (PLAY-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 42-02-PLAN.md — Tracer: controller + renderer wiring — mode selection, color override post-Motion, loop option state + readout, applied-summary state (PLAY-01, PLAY-02, PLAY-04)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 42-03-PLAN.md — Dialog expansion: segmented mode control, override swatch + inline picker, Motion sliders, Hold Loop block, scoped CSS (PLAY-03, PLAY-04)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 42-04-PLAN.md — Scripts panel two-line summary + tooltip update + native visual UAT (PLAY-03)
+
 **UI hint**: yes
 
 **Boundary note:** Interval and display conventions (half-open intervals, requested-vs-effective presentation) are locked in this phase so Phase 43's filmstrip and resolver share them. Static/hold schedule ships as a new package export; the regression-locked progressive module is never branched.
