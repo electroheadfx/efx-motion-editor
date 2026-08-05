@@ -128,6 +128,11 @@ After a seek-aligned start, audio **free-runs on the Web Audio clock** (D-10). T
 - Forbidden by D-04: base64 or `data:` audio URLs; reuse of the v0.8.1 `img-src data:` grant for audio; speculative CSP broadening; unrestricted filesystem paths; raw audio bytes crossing the bridge.
 - Decode is **local** in the child window: `fetch(assetUrl)` → `arrayBuffer()` → `decodeAudioData` through the existing `audioEngine` path. The `efxasset` Rust handler returns 404 for missing files; the child warns and skips that track, never blocking the others (AUDIO-06).
 - Any CSP adjustment is the single narrow directive proven necessary by a failing test, guarded by a contract test (v0.8.1 precedent); the proof mode is locked in section 9 (`d04-proof-packaged-build`).
+- **D-04 PROOF SATISFIED (2026-08-05, plan 41-05 Task 2):** the pre-grant packaged build (`app/src-tauri/target/release/bundle/macos/EFX Motion Editor.app`) was run by the user and the EFX Paint webview console showed the refusal verbatim:
+
+  > "Refused to connect to efxasset://localhost/Users/lmarques/Desktop/efx-motion-editor-project-test/phase-36.14/audio/Drex3emRush-sansRouli.aif because it does not appear in the connect-src directive of the Content Security Policy."
+
+  The single-token `efxasset:` grant in `connect-src` then landed (commit 532e026e) after the RED contract test (commit d4cac3f9), pinned by the 'Tauri CSP connect-src efxasset contract' block in `releaseContract.test.ts`. Observation (out of scope, pre-existing, not fixed): the same console showed an unrelated `style-src` refusal at physics-paint:24.
 
 ---
 
@@ -146,7 +151,7 @@ Locked by the 41-01 Task 3 blocking decision checkpoint on 2026-08-04. All four 
 | A4 | Does "no absolute filesystem paths" (D-04) tolerate the path-bearing `efxasset://localhost` URL? | **`a4-protocol-url`** — the `efxasset://` protocol URL (percent-encoded absolute path inside) is the permitted carrier | Zero Rust transport diff; D-04 read as permitting protocol URLs; no opaque-token registry is built. Payloads still never carry raw `filePath`/`relativePath` fields (section 7) |
 | A6 | What does the user hear when child playback fps ≠ project fps? | **`a6-matched-fps`** — sync guaranteed at matched fps, non-blocking status note otherwise | No `playbackRate` scaling, no pitch shift, ever; non-default playback speeds are best-effort monitoring, not sample-locked (section 6) |
 | REV | Revision discipline for the audio section | **`rev-counter`** — monotonic integer counter owned by the main-side publisher | Total order, strict newer-than compare; counter bumped exactly once per publish (section 4) |
-| D04 | Proof mode for the D-04 "failing packaged-app test" before the 41-05 CSP grant | **`d04-proof-packaged-build`** — literal D-04 reading: the `efxasset` fetch failure must be observed inside a **packaged build** before the grant lands | Plan 41-05 must run a full packaged build cycle demonstrating the pre-grant `connect-src` failure BEFORE adding the grant; the config-level contract test remains as the permanent guard afterwards but does NOT substitute for the packaged proof |
+| D04 | Proof mode for the D-04 "failing packaged-app test" before the 41-05 CSP grant | **`d04-proof-packaged-build`** — literal D-04 reading: the `efxasset` fetch failure must be observed inside a **packaged build** before the grant lands | Plan 41-05 must run a full packaged build cycle demonstrating the pre-grant `connect-src` failure BEFORE adding the grant; the config-level contract test remains as the permanent guard afterwards but does NOT substitute for the packaged proof. **PROOF SATISFIED 2026-08-05:** user observed the verbatim connect-src refusal in the pre-grant packaged build (section 7 annotation); grant landed after RED contract test |
 
 ---
 
