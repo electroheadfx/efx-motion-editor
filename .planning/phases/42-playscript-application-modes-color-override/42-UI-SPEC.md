@@ -1,10 +1,11 @@
 ---
 phase: 42
 slug: playscript-application-modes-color-override
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-08-05
+reviewed_at: 2026-08-05
 ---
 
 # Phase 42 — UI Design Contract
@@ -27,6 +28,8 @@ created: 2026-08-05
 | Font | `system-ui, sans-serif` (Physics Paint Studio scope, `physicsPaintStudio.css:11`) |
 
 **Scope discipline (Phase 36.14 regression lesson, D-04):** all new markup stays inside `.physics-paint-play-script-dialog` / `-surface` / `-content`; every new class uses the `physics-paint-play-script-*` prefix. The dialog remains mounted directly in the Studio grid (grid-row 2 / grid-column 2, stretch) with the light full-height surface. The two-line panel summary lives in the dark Scripts panel and follows existing panel tokens — no new panel color is introduced.
+
+**Visual hierarchy:** the `Progressive` | `Static / Hold` segmented control is the first-read element of the expanded dialog (top of the mode block); `Generate` is the terminal action anchor. The override swatch, Motion controls, and Hold Loop block read as secondary groups in that order, separated by the 32px section gaps.
 
 ---
 
@@ -164,20 +167,29 @@ All mode/loop/override copy is locked verbatim by CONTEXT D-05/D-06/D-08/D-12/D-
 
 ## UI Considerations
 
-> State coverage for the dialog + panel summary. Empty/error COPY lives in `## Copywriting Contract` above.
+> State coverage resolved by the post-verification probe (2026-08-05) across 6 surfaces: E1 Play Script dialog, E2 color override swatch + inline picker, E3 Motion controls, E4 Hold Loop block, E5 generation-in-progress, E6 Scripts panel summary. Empty/error COPY lives in `## Copywriting Contract` above — rows below reference it.
 
-Applicable state considerations resolved: 7 covered, 1 backstop, 0 unresolved
+Applicable state considerations resolved: 12 covered, 1 backstop, 16 dismissed, 0 unresolved
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
-| empty / first-open | Dialog options (Static / Hold) | ✅ covered | D-15 first-time defaults: Frames 1, Repeat 1, Infinity off; session memory via controller signals thereafter (D-10) |
-| empty / default | Color override | ✅ covered | `Original colors` default state; override exists only after a deliberate pick (D-08/D-09, Pitfall 3 contract test) |
-| disabled | Repeat field under Infinity-on | ✅ covered | Disabled/greyed at 0.5 opacity, value preserved and restored on toggle-off (D-12) |
-| populated / partial | Hold Loop readout | ✅ covered | Requested/effective/truncation derived from retained `layerEndExclusive`/`canonicalStart` signals (RESEARCH Pitfall 5); untruncated form omits the truncation clause (D-13) |
-| loading / busy | Generation in progress | ✅ covered | Existing `canCancel` + progress bar pattern extends to all new controls (disabled while generating) |
-| error | Frames/Repeat numeric fields | ✅ covered | Inline error under field, `#a12f37` 12px, strict-regex validation mirroring `parseCount`; confirm disabled while invalid (existing pattern) |
-| long-text | Script name / summary in panel | ✅ covered | Existing ellipsis convention (`overflow: hidden; text-overflow: ellipsis; white-space: nowrap` on panel copy) applies to the two-line summary |
-| overflow | Dialog content with all options visible | 🧪 backstop | Dialog content column is `overflow-y: auto` (existing); verify at native UAT that mode + override + Motion + Hold Loop + readout all fit/scroll cleanly at minimum window size |
+| empty / first-open | E1 dialog options, E4 Hold Loop | ✅ covered | D-15 first-time defaults: Frames 1, Repeat 1, Infinity off; session memory via controller signals thereafter (D-10) |
+| empty / default | E3 Motion controls | ✅ covered | Inputs initialized from Motion panel defaults on open — never blank; `Reset to Motion defaults` re-reads the defaults port (D-06) |
+| empty / first-open | E2 color override | ✅ covered | `Original colors` default state; override exists only after a deliberate pick (D-08/D-09, Pitfall 3 contract test) |
+| error | E1 Frames field, E3 Motion inputs, E4 Repeat field | ✅ covered | Inline error under field, `#a12f37` 12px, strict-regex validation mirroring `parseCount` (`Enter a positive integer up to Max {N}.`); confirm disabled while invalid |
+| error | E5 generation failure | ✅ covered | On generation failure (distinct from user cancel): inputs re-enable, progress bar hides, existing inline-error pattern shows the failure reason in the dialog; pre-generation canvas state untouched |
+| loading / busy | E5 generation in progress | ✅ covered | Existing `canCancel` + progress bar pattern extends to all new controls (disabled while generating; `Cancel generation` replaces `Cancel`) |
+| partial | E4 Hold Loop readout | ✅ covered | Requested/effective/truncation derived from retained `layerEndExclusive`/`canonicalStart` signals (RESEARCH Pitfall 5); untruncated form omits the truncation clause (D-13) |
+| overflow | E6 panel summary | ✅ covered | Fixed two-line block in the existing dark panel layout — no new panel surface |
+| long-text | E6 panel summary | ✅ covered | Existing ellipsis convention (`overflow: hidden; text-overflow: ellipsis; white-space: nowrap` on panel copy) applies to the two-line summary |
+| disabled | E4 Repeat field under Infinity-on | ✅ covered | Disabled/greyed at 0.5 opacity, value preserved and restored on toggle-off (D-12) |
+| overflow | E1 dialog with all options visible | 🧪 backstop | Dialog content column is `overflow-y: auto` (existing); verify at native UAT that mode + override + Motion + Hold Loop + readout all fit/scroll cleanly at minimum window size |
+| loading | E1, E2, E3, E4, E6 | ✖ dismissed | All surfaces render synchronously from controller signals / defaults port — no async load path exists |
+| partial | E1, E3, E5 | ✖ dismissed | Form fields always fully initialized (E1/E3); generation is a staged atomic operation with cancel restoring pre-generation state (E5) |
+| long-text | E1, E2, E3, E4, E5 | ✖ dismissed | Dialog copy is locked short strings; numeric inputs bounded by Max validation with `tabular-nums`; swatch shows only `Original colors` or `#rrggbb` |
+| error | E2, E6 | ✖ dismissed | Structured picker has no invalid-pick path (E2); summary reflects current session options with no load path (E6) |
+| overflow | E3 | ✖ dismissed | Two numeric inputs — covered by the E1 dialog-level overflow backstop |
+| empty | E5 | ✖ dismissed | Progress state only exists during generation — no zero-data case |
 
 ---
 
@@ -192,11 +204,11 @@ Applicable state considerations resolved: 7 covered, 1 backstop, 0 unresolved
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS (FLAG resolved post-review — focal point declared in Visual hierarchy note)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-08-05 (gsd-ui-checker; Dimension 2 initially FLAG — non-blocking, resolved by the Visual hierarchy declaration)
