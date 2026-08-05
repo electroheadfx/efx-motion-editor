@@ -291,6 +291,91 @@ fn resolve_byte_range(range_header: Option<&str>, file_size: u64) -> ByteRangeRe
     ByteRangeResolution::Satisfied { start, end }
 }
 
+/// WR-08: single shared extension→MIME source for the efxasset protocol.
+/// Both the allowlist (unknown extension → request rejected) and the
+/// Content-Type mapping read this table, so they can never drift apart.
+/// Unknown or extensionless paths return None. The audio set mirrors the
+/// audio import filter (wav/mp3/aac/flac/m4a/aif/aiff); audio files
+/// previously fell through to application/octet-stream.
+fn mime_for_efxasset_path(path: &str) -> Option<&'static str> {
+    let ext = std::path::Path::new(path).extension()?.to_str()?.to_lowercase();
+    match ext.as_str() {
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "png" => Some("image/png"),
+        "tiff" | "tif" => Some("image/tiff"),
+        "heic" | "heif" => Some("image/heic"),
+        "mp4" | "m4v" => Some("video/mp4"),
+        "mov" => Some("video/quicktime"),
+        "webm" => Some("video/webm"),
+        "avi" => Some("video/x-msvideo"),
+        "wav" => Some("audio/wav"),
+        "mp3" => Some("audio/mpeg"),
+        "aac" => Some("audio/aac"),
+        "flac" => Some("audio/flac"),
+        "m4a" => Some("audio/mp4"),
+        "aif" | "aiff" => Some("audio/aiff"),
+        _ => None,
+    }
+}
+
+/// WR-08 rejection kinds for efxasset path scoping. NotFound maps to 404;
+/// every other kind maps to 403 with an empty body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EfxassetRejection {
+    NotFound,
+    NotRegularFile,
+    UnsupportedExtension,
+    OutOfScope,
+}
+
+/// WR-08: canonicalize the percent-decoded request path (resolving symlinks
+/// BEFORE any scope comparison), require a regular file with a supported
+/// media extension, and require path-component membership under at least one
+/// canonical allowed root (Path::starts_with — never string prefix matching).
+fn resolve_efxasset_path(
+    decoded_path: &str,
+    allowed_roots: &[std::path::PathBuf],
+) -> Result<std::path::PathBuf, EfxassetRejection> {
+    let canonical = std::fs::canonicalize(decoded_path).map_err(|_| EfxassetRejection::NotFound)?;
+    let metadata = canonical.metadata().map_err(|_| EfxassetRejection::NotFound)?;
+    if !metadata.is_file() {
+        return Err(EfxassetRejection::NotRegularFile);
+    }
+    if mime_for_efxasset_path(&canonical.to_string_lossy()).is_none() {
+        return Err(EfxassetRejection::UnsupportedExtension);
+    }
+    if !allowed_roots.iter().any(|root| canonical.starts_with(root)) {
+        return Err(EfxassetRejection::OutOfScope);
+    }
+    Ok(canonical)
+}
+
+/// WR-08: allowed roots for the efxasset protocol, mirroring the
+/// assetProtocol.scope entries in tauri.conf.json ($APPDATA, $RESOURCE,
+/// $HOME, /Volumes, /tmp, /private). Each root is canonicalized (macOS
+/// symlinks /tmp → /private/tmp); roots that fail to canonicalize (absent
+/// dirs) are silently dropped.
+fn efxasset_allowed_roots(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
+    use tauri::Manager;
+    let mut roots: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(dir) = app.path().app_data_dir() {
+        roots.push(dir);
+    }
+    if let Ok(dir) = app.path().resource_dir() {
+        roots.push(dir);
+    }
+    if let Ok(dir) = app.path().home_dir() {
+        roots.push(dir);
+    }
+    roots.push(std::path::PathBuf::from("/Volumes"));
+    roots.push(std::path::PathBuf::from("/tmp"));
+    roots.push(std::path::PathBuf::from("/private"));
+    roots
+        .into_iter()
+        .filter_map(|root| std::fs::canonicalize(root).ok())
+        .collect()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -447,7 +532,7 @@ pub fn run() {
 
             Ok(())
         })
-        .register_uri_scheme_protocol("efxasset", |_app, request| {
+        .register_uri_scheme_protocol("efxasset", |app, request| {
             // Custom protocol to serve local files without asset scope restrictions.
             // Fixes 403 errors caused by macOS Unicode normalization (NFC/NFD)
             // on paths with accented characters (e.g. "Téléchargements").
@@ -460,25 +545,40 @@ pub fn run() {
                 .decode_utf8_lossy()
                 .to_string();
 
-            let lower = path.to_lowercase();
-            let mime = if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
-                "image/jpeg"
-            } else if lower.ends_with(".png") {
-                "image/png"
-            } else if lower.ends_with(".tiff") || lower.ends_with(".tif") {
-                "image/tiff"
-            } else if lower.ends_with(".heic") || lower.ends_with(".heif") {
-                "image/heic"
-            } else if lower.ends_with(".mp4") || lower.ends_with(".m4v") {
-                "video/mp4"
-            } else if lower.ends_with(".mov") {
-                "video/quicktime"
-            } else if lower.ends_with(".webm") {
-                "video/webm"
-            } else if lower.ends_with(".avi") {
-                "video/x-msvideo"
-            } else {
-                "application/octet-stream"
+            // WR-08: scope every request to canonical media roots mirroring
+            // assetProtocol.scope — traversal, symlink escapes, directories,
+            // and non-media extensions are refused before any IO.
+            let allowed_roots = efxasset_allowed_roots(app.app_handle());
+            let resolved = match resolve_efxasset_path(&path, &allowed_roots) {
+                Ok(resolved) => resolved,
+                Err(EfxassetRejection::NotFound) => {
+                    return tauri::http::Response::builder()
+                        .header("Access-Control-Allow-Origin", "*")
+                        .status(404)
+                        .body(Vec::new())
+                        .unwrap();
+                }
+                Err(_) => {
+                    return tauri::http::Response::builder()
+                        .header("Access-Control-Allow-Origin", "*")
+                        .status(403)
+                        .body(Vec::new())
+                        .unwrap();
+                }
+            };
+            let path = resolved.to_string_lossy().to_string();
+
+            // WR-08: Content-Type comes from the same shared table that gates
+            // the extension allowlist — a served path always has Some(mime).
+            let mime = match mime_for_efxasset_path(&path) {
+                Some(mime) => mime,
+                None => {
+                    return tauri::http::Response::builder()
+                        .header("Access-Control-Allow-Origin", "*")
+                        .status(403)
+                        .body(Vec::new())
+                        .unwrap();
+                }
             };
 
             let is_video = mime.starts_with("video/");
@@ -782,5 +882,178 @@ mod tests {
         assert_satisfied(Some("bytes=0-999"), 1000, 0, 999);
         assert_satisfied(Some("bytes=999-"), 1000, 999, 999);
         assert_satisfied(Some("bytes=-1"), 1000, 999, 999);
+    }
+
+    // WR-08: canonicalized path scoping + single shared extension/MIME table.
+    // Intended signatures:
+    //   fn mime_for_efxasset_path(path: &str) -> Option<&'static str>
+    //   fn resolve_efxasset_path(decoded_path: &str, allowed_roots: &[PathBuf])
+    //       -> Result<PathBuf, EfxassetRejection>
+    // with EfxassetRejection::{NotFound, NotRegularFile, UnsupportedExtension, OutOfScope}.
+    // SECURITY-TEST BOUNDARY: every fixture lives in a unique temp_dir
+    // subdirectory with synthetic content — no real user or system file is
+    // ever opened by these tests.
+
+    use std::path::PathBuf;
+
+    fn efxasset_fixture_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("efxasset-test-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn mime_for_efxasset_path_maps_existing_image_and_video_extensions() {
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.JPG"), Some("image/jpeg"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.jpeg"), Some("image/jpeg"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.png"), Some("image/png"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.tiff"), Some("image/tiff"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.tif"), Some("image/tiff"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.heic"), Some("image/heic"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.heif"), Some("image/heic"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.mp4"), Some("video/mp4"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.m4v"), Some("video/mp4"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.mov"), Some("video/quicktime"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.webm"), Some("video/webm"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.avi"), Some("video/x-msvideo"));
+    }
+
+    #[test]
+    fn mime_for_efxasset_path_maps_imported_audio_extensions() {
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.wav"), Some("audio/wav"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.mp3"), Some("audio/mpeg"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.aac"), Some("audio/aac"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.flac"), Some("audio/flac"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.m4a"), Some("audio/mp4"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.aif"), Some("audio/aiff"));
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.AIFF"), Some("audio/aiff"));
+    }
+
+    #[test]
+    fn mime_for_efxasset_path_rejects_unsupported_and_extensionless() {
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.txt"), None);
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/a.exe"), None);
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/noext"), None);
+        assert_eq!(mime_for_efxasset_path("/tmp/fixture/.png"), None);
+    }
+
+    #[test]
+    fn resolve_efxasset_path_serves_regular_media_file_inside_allowed_root() {
+        let dir = efxasset_fixture_dir("inscope");
+        let root = std::fs::canonicalize(&dir).unwrap();
+        let file = dir.join("clip.mp4");
+        std::fs::write(&file, b"fixture").unwrap();
+
+        let resolved = resolve_efxasset_path(file.to_str().unwrap(), std::slice::from_ref(&root)).unwrap();
+        assert_eq!(resolved, std::fs::canonicalize(&file).unwrap());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_efxasset_path_rejects_traversal_escaping_allowed_root() {
+        let dir = efxasset_fixture_dir("traversal");
+        let root = std::fs::canonicalize(&dir).unwrap();
+        // Synthetic media file OUTSIDE the root but still inside temp_dir.
+        let outside_name = format!("efxasset-test-outside-{}.png", std::process::id());
+        let outside_file = std::env::temp_dir().join(&outside_name);
+        std::fs::write(&outside_file, b"fixture").unwrap();
+
+        let traversal = format!("{}/../{}", dir.to_str().unwrap(), outside_name);
+        let result = resolve_efxasset_path(&traversal, std::slice::from_ref(&root));
+        assert_eq!(result, Err(EfxassetRejection::OutOfScope));
+
+        let _ = std::fs::remove_file(&outside_file);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn resolve_efxasset_path_rejects_symlink_escaping_allowed_root() {
+        let dir = efxasset_fixture_dir("symlink");
+        let root = std::fs::canonicalize(&dir).unwrap();
+        let outside_file = std::env::temp_dir().join(format!("efxasset-test-symlink-target-{}.png", std::process::id()));
+        std::fs::write(&outside_file, b"fixture").unwrap();
+        let link = dir.join("link.png");
+        std::os::unix::fs::symlink(&outside_file, &link).unwrap();
+
+        let result = resolve_efxasset_path(link.to_str().unwrap(), std::slice::from_ref(&root));
+        assert_eq!(result, Err(EfxassetRejection::OutOfScope));
+
+        let _ = std::fs::remove_file(&outside_file);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_efxasset_path_rejects_directories_and_missing_paths() {
+        let dir = efxasset_fixture_dir("notfile");
+        let root = std::fs::canonicalize(&dir).unwrap();
+        let sub = dir.join("subdir.png");
+        std::fs::create_dir_all(&sub).unwrap();
+
+        assert_eq!(
+            resolve_efxasset_path(sub.to_str().unwrap(), std::slice::from_ref(&root)),
+            Err(EfxassetRejection::NotRegularFile)
+        );
+        let missing = dir.join("missing.png");
+        assert_eq!(
+            resolve_efxasset_path(missing.to_str().unwrap(), std::slice::from_ref(&root)),
+            Err(EfxassetRejection::NotFound)
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_efxasset_path_rejects_unsupported_extension_inside_allowed_root() {
+        let dir = efxasset_fixture_dir("badext");
+        let root = std::fs::canonicalize(&dir).unwrap();
+        for name in ["notes.txt", "tool.exe", "extensionless"] {
+            let file = dir.join(name);
+            std::fs::write(&file, b"fixture").unwrap();
+            assert_eq!(
+                resolve_efxasset_path(file.to_str().unwrap(), std::slice::from_ref(&root)),
+                Err(EfxassetRejection::UnsupportedExtension),
+                "expected UnsupportedExtension for {name}"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_efxasset_path_serves_audio_extensions_inside_allowed_root() {
+        let dir = efxasset_fixture_dir("audio");
+        let root = std::fs::canonicalize(&dir).unwrap();
+        for ext in ["aif", "aiff", "wav", "mp3", "aac", "flac", "m4a"] {
+            let file = dir.join(format!("track.{ext}"));
+            std::fs::write(&file, b"fixture").unwrap();
+            let resolved = resolve_efxasset_path(file.to_str().unwrap(), std::slice::from_ref(&root))
+                .unwrap_or_else(|err| panic!("expected audio fixture .{ext} to be served, got {err:?}"));
+            let mime = mime_for_efxasset_path(resolved.to_str().unwrap()).unwrap();
+            assert!(mime.starts_with("audio/"), "expected audio/* MIME for .{ext}");
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_efxasset_path_uses_component_boundaries_not_string_prefix() {
+        let dir = efxasset_fixture_dir("boundary");
+        let root = std::fs::canonicalize(&dir).unwrap();
+        // Sibling directory whose canonical path STRING starts with the
+        // root's string but is not a path-component descendant.
+        let sibling = std::env::temp_dir().join(format!("{}-evil", dir.file_name().unwrap().to_str().unwrap()));
+        let _ = std::fs::remove_dir_all(&sibling);
+        std::fs::create_dir_all(&sibling).unwrap();
+        let file = sibling.join("stolen.png");
+        std::fs::write(&file, b"fixture").unwrap();
+
+        let result = resolve_efxasset_path(file.to_str().unwrap(), std::slice::from_ref(&root));
+        assert_eq!(result, Err(EfxassetRejection::OutOfScope));
+
+        let _ = std::fs::remove_dir_all(&sibling);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
