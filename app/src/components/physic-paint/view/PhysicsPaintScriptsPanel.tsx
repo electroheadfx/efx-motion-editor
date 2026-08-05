@@ -75,7 +75,7 @@ export function PhysicsPaintScriptsPanel({
       <div class="physics-paint-scripts-toolbar" role="toolbar" aria-label="Roto script library actions">
         <IconButton label="Save Script" title={`Save Script — ${availability.saveDisabledReason ?? 'Save the active real Roto frame'}`} disabled={!availability.canSave} disabledReason={availability.saveDisabledReason ?? undefined} descriptionId={saveReasonId} onClick={onSave}><Save size={16} /></IconButton>
         <IconButton label="Load and Apply Script" title={`Load and Apply Script — ${loadAndApplyDisabledReason ?? 'Reload the selected preset and apply it to this Roto frame'}`} disabled={loadAndApplyDisabledReason !== null} disabledReason={loadAndApplyDisabledReason ?? undefined} descriptionId={loadAndApplyReasonId} onClick={onLoadAndApply}><Paintbrush size={16} /></IconButton>
-        <IconButton buttonRef={playButtonRef} label="Play Script" title={`Play Script — ${playScript.disabledReason.value ?? 'Generate progressive real Roto keys'}`} disabled={playScript.disabledReason.value !== null} disabledReason={playScript.disabledReason.value ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
+        <IconButton buttonRef={playButtonRef} label="Play Script" title={`Play Script — ${playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)'}`} disabled={playScript.disabledReason.value !== null} disabledReason={playScript.disabledReason.value ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
         <IconButton label="Rename Script" title="Rename Script — Edit the selected preset name" disabled={!availability.canRename} onClick={library.beginRename}><Pencil size={16} /></IconButton>
         <IconButton buttonRef={deleteButtonRef} label="Delete Script" title="Delete Script — Remove the selected project preset" disabled={!availability.canDelete} onClick={library.requestDelete}><Trash2 size={16} /></IconButton>
         <IconButton label="Refresh Scripts" title="Refresh Scripts — Scan the project scripts folder" disabled={library.busy.value} onClick={onRefresh}><RefreshCw size={16} /></IconButton>
@@ -164,6 +164,10 @@ export function PhysicsPaintScriptsPanel({
           </PhysicsPaintStyledTooltip>
         </span>
       </div>
+      <p class="physics-paint-scripts-summary">
+        <span class="physics-paint-scripts-summary-line1">{playScript.appliedSummary.line1.value}</span>
+        <span class="physics-paint-scripts-summary-line2">{playScript.appliedSummary.line2.value}</span>
+      </p>
       <div class="physics-paint-scripts-list" role="listbox" aria-label="Saved Roto scripts">
         {rows.map((row) => (
           <div

@@ -144,7 +144,7 @@ describe('native-approved Physics Paint right sidebar', () => {
     expectInOrder(scriptsPanel, ['label="Save Script"', 'label="Load and Apply Script"', 'label="Play Script"', 'label="Rename Script"', 'label="Delete Script"', 'label="Refresh Scripts"']);
     expect(scriptsPanel).toContain('<Paintbrush size={16} />');
     expect(scriptsPanel).toContain('<Play size={16} />');
-    expect(scriptsPanel).toContain("label=\"Play Script\" title={`Play Script — ${playScript.disabledReason.value ?? 'Generate progressive real Roto keys'}`}");
+    expect(scriptsPanel).toContain("label=\"Play Script\" title={`Play Script — ${playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)'}`}");
     expect(scriptsPanel).toMatch(/label="Play Script"[^>]*onClick=/);
     expect(scriptsPanel).toContain('role="option"');
     expect(scriptsPanel).toContain('tabIndex={0}');
