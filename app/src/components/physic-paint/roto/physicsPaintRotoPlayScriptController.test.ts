@@ -227,4 +227,114 @@ describe('createRotoPlayScriptController', () => {
     // The reusable source document (brushes, strokes, metadata) stays byte-identical.
     expect(fixture).toEqual(snapshotBefore);
   });
+
+  it.each([
+    [''], ['0'], ['-2'], ['1.5'], ['abc'],
+  ])('rejects repeat %j with the format error and blocks confirm', async (value) => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.repeatText.value = value;
+    expect(test.controller.repeatError.value).toBe('Enter a positive integer.');
+    expect(await test.controller.confirm()).toBe(false);
+    expect(rendered).not.toHaveBeenCalled();
+  });
+
+  it('bounds repeat by the safe product floor(Number.MAX_SAFE_INTEGER / cycle) derived before multiplication', async () => {
+    const test = harness({ requestAuthority: vi.fn(async () => authority({ canonicalStart: 4, layerEndExclusive: 22, capacity: 18 })) });
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '5';
+    test.controller.repeatText.value = '1801439850948198'; // floor(MAX_SAFE_INTEGER / 5) — accepted
+    expect(test.controller.repeatError.value).toBeNull();
+    test.controller.repeatText.value = '1801439850948199'; // one above the bound
+    expect(test.controller.repeatError.value).toBe('Repeat is too large for this cycle length.');
+    test.controller.countText.value = '2';
+    test.controller.repeatText.value = '9007199254740991'; // individually safe, but 2 × value is not
+    expect(test.controller.repeatError.value).toBe('Repeat is too large for this cycle length.');
+    test.controller.repeatText.value = '1'; // repeat 1 always passes format and bound
+    expect(test.controller.repeatError.value).toBeNull();
+    test.controller.repeatText.value = '1801439850948199';
+    expect(await test.controller.confirm()).toBe(false);
+    expect(rendered).not.toHaveBeenCalled();
+  });
+
+  it('derives requested/effective/truncation from retained authority signals with locked copy', async () => {
+    const test = harness({ requestAuthority: vi.fn(async () => authority({ canonicalStart: 4, layerEndExclusive: 22, capacity: 18 })) });
+    await test.controller.openConfirmation();
+    expect(test.controller.layerEndExclusive.value).toBe(22);
+    test.controller.countText.value = '5';
+    test.controller.repeatText.value = '5';
+    expect(test.controller.loopReadout.value).toBe('Requested: 25f (5f × 5) · Effective: 18f — shortened by the next clip');
+    test.controller.repeatText.value = '1';
+    expect(test.controller.loopReadout.value).toBe('Requested: 5f (5f × 1) · Effective: 5f');
+  });
+
+  it('infinity skips repeat validation, preserves the last valid finite repeat, and renders the literal cycle form', async () => {
+    const test = harness({ requestAuthority: vi.fn(async () => authority({ canonicalStart: 4, layerEndExclusive: 22, capacity: 18 })) });
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '5';
+    test.controller.repeatText.value = '1801439850948198'; // large valid value
+    test.controller.setInfinity(true);
+    expect(test.controller.infinity.value).toBe(true);
+    expect(test.controller.repeatText.value).toBe('1801439850948198'); // preserved, never cleared
+    expect(test.controller.repeatError.value).toBeNull(); // disabled field is not validated
+    expect(test.controller.loopReadout.value).toBe('Cycle 5f × ∞ · Effective: 18f');
+    test.controller.setInfinity(false);
+    expect(test.controller.infinity.value).toBe(false);
+    expect(test.controller.repeatText.value).toBe('1801439850948198'); // restored
+
+    // Toggling on over an invalid draft keeps the last VALID finite repeat.
+    test.controller.repeatText.value = 'abc';
+    test.controller.setInfinity(true);
+    test.controller.setInfinity(false);
+    expect(test.controller.repeatText.value).toBe('1801439850948198');
+  });
+
+  it('applies first-time Static / Hold defaults (cycle 1, repeat 1, infinity off) only once', async () => {
+    const test = harness();
+    expect(test.controller.countText.value).toBe('Max'); // progressive defaults untouched
+    test.controller.mode.value = 'static';
+    expect(test.controller.countText.value).toBe('1');
+    expect(test.controller.repeatText.value).toBe('1');
+    expect(test.controller.infinity.value).toBe(false);
+    // Session memory: later mode switches never re-apply the first-time defaults.
+    test.controller.repeatText.value = '7';
+    test.controller.mode.value = 'progressive';
+    test.controller.mode.value = 'static';
+    expect(test.controller.repeatText.value).toBe('7');
+    expect(test.controller.countText.value).toBe('1');
+  });
+
+  it('keeps loop and option signals across dialog close/reopen within the session', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.mode.value = 'static';
+    test.controller.repeatText.value = '12';
+    test.controller.setInfinity(true);
+    test.controller.overrideEnabled.value = true;
+    test.controller.overrideColor.value = '#00ff00';
+    test.controller.closeConfirmation();
+    await test.controller.openConfirmation();
+    expect(test.controller.mode.value).toBe('static');
+    expect(test.controller.repeatText.value).toBe('12');
+    expect(test.controller.infinity.value).toBe(true);
+    expect(test.controller.overrideEnabled.value).toBe(true);
+    expect(test.controller.overrideColor.value).toBe('#00ff00');
+  });
+
+  it('generates exactly the cycle value regardless of repeat or infinity', async () => {
+    const bigRepeat = harness();
+    await bigRepeat.controller.openConfirmation();
+    bigRepeat.controller.countText.value = '3';
+    bigRepeat.controller.repeatText.value = '999999';
+    expect(await bigRepeat.controller.confirm()).toBe(true);
+    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ frameCount: 3 }));
+
+    rendered.mockClear();
+    const infinite = harness();
+    await infinite.controller.openConfirmation();
+    infinite.controller.countText.value = '2';
+    infinite.controller.setInfinity(true);
+    expect(await infinite.controller.confirm()).toBe(true);
+    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ frameCount: 2 }));
+  });
 });
