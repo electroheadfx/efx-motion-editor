@@ -1,6 +1,7 @@
 import type { RefObject } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { RotoPlayScriptController, RotoPlayScriptMode } from '../roto/physicsPaintRotoPlayScriptController';
+import { InlineColorPicker } from '../../sidebar/InlineColorPicker';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 export interface PhysicsPaintPlayScriptDialogProps {
@@ -14,6 +15,12 @@ const PLAY_SCRIPT_MODES: ReadonlyArray<{ value: RotoPlayScriptMode; label: strin
   { value: 'static', label: 'Static / Hold', helper: 'The complete drawing is applied to every cycle frame.' },
 ];
 
+// 0-100 clamp mirroring the Motion panel convention (PanelSlider/clampWiggleValue).
+function clampMotionValue(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.trunc(value)));
+}
+
 export function PhysicsPaintPlayScriptDialog({
   playScript,
   returnFocusRef,
@@ -22,6 +29,11 @@ export function PhysicsPaintPlayScriptDialog({
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const previousOpen = useRef(false);
+  // Pitfall 3 / D-09: InlineColorPicker fires onChange on mount. The pick handler stays disarmed
+  // until a genuine user interaction (pointer/key) inside the picker well, so opening the picker
+  // never creates an override — only a deliberate pick does.
+  const pickerArmedRef = useRef(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const confirmationOpen = playScript.confirmationOpen.value;
 
   useEffect(() => {
@@ -136,6 +148,100 @@ export function PhysicsPaintPlayScriptDialog({
             {playScript.validationError.value ? <span id="physics-play-script-error" class="physics-paint-script-inline-error">{playScript.validationError.value}</span> : null}
           </div>
           <div class="physics-paint-play-script-section">
+            <span class="physics-paint-play-script-group-label" id="physics-play-script-override-label">Color</span>
+            <div class="physics-paint-play-script-override-row" aria-labelledby="physics-play-script-override-label">
+              <button
+                type="button"
+                class="physics-paint-play-script-override-swatch"
+                disabled={busy}
+                onClick={() => {
+                  pickerArmedRef.current = false;
+                  setPickerOpen((open) => !open);
+                }}
+              >
+                {playScript.overrideEnabled.value && playScript.overrideColor.value ? (
+                  <>
+                    <span class="physics-paint-play-script-override-chip" style={{ backgroundColor: playScript.overrideColor.value }} />
+                    {playScript.overrideColor.value}
+                  </>
+                ) : 'Original colors'}
+              </button>
+              {playScript.overrideEnabled.value ? (
+                <button
+                  type="button"
+                  class="physics-paint-play-script-override-reset"
+                  disabled={busy}
+                  onClick={() => {
+                    playScript.overrideEnabled.value = false;
+                    setPickerOpen(false);
+                  }}
+                >
+                  Original colors
+                </button>
+              ) : null}
+            </div>
+            {pickerOpen ? (
+              <div
+                class="physics-paint-play-script-picker-well"
+                onPointerDownCapture={() => { pickerArmedRef.current = true; }}
+                onKeyDownCapture={() => { pickerArmedRef.current = true; }}
+              >
+                <InlineColorPicker
+                  color={playScript.overrideColor.value ?? '#ffffff'}
+                  opacity={1}
+                  onChange={(color) => {
+                    if (!pickerArmedRef.current) return;
+                    playScript.overrideColor.value = color;
+                    playScript.overrideEnabled.value = true;
+                    setPickerOpen(false);
+                  }}
+                  onClose={() => setPickerOpen(false)}
+                />
+              </div>
+            ) : null}
+          </div>
+          <div class="physics-paint-play-script-section">
+            <span class="physics-paint-play-script-group-label">Motion</span>
+            <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-deformation">
+              <span>Deformation</span>
+              <input
+                id="physics-play-script-motion-deformation"
+                type="range"
+                min={0}
+                max={100}
+                value={playScript.dialogMotion.value.deformation}
+                disabled={busy}
+                onInput={(event) => {
+                  playScript.dialogMotion.value = { ...playScript.dialogMotion.value, deformation: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
+                }}
+              />
+              <output>{playScript.dialogMotion.value.deformation}</output>
+            </label>
+            <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-position">
+              <span>Position</span>
+              <input
+                id="physics-play-script-motion-position"
+                type="range"
+                min={0}
+                max={100}
+                value={playScript.dialogMotion.value.position}
+                disabled={busy}
+                onInput={(event) => {
+                  playScript.dialogMotion.value = { ...playScript.dialogMotion.value, position: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
+                }}
+              />
+              <output>{playScript.dialogMotion.value.position}</output>
+            </label>
+            <button
+              type="button"
+              class="physics-paint-play-script-motion-reset"
+              disabled={busy}
+              onClick={() => playScript.resetDialogMotion()}
+            >
+              Reset to Motion defaults
+            </button>
+          </div>
+          <div class="physics-paint-play-script-section">
             <label for="physics-play-script-repeat">Repeat</label>
             <div class="physics-paint-play-script-repeat-row">
               <input
@@ -164,8 +270,8 @@ export function PhysicsPaintPlayScriptDialog({
             {playScript.loopReadout.value ? <p class="physics-paint-play-script-loop-readout">{playScript.loopReadout.value}</p> : null}
           </div>
           {playScript.progress.value ? <progress max={playScript.progress.value.total} value={playScript.progress.value.completed}>{playScript.progress.value.completed}/{playScript.progress.value.total}</progress> : null}
-          {playScript.error.value ? <span class="physics-paint-script-inline-error">{playScript.error.value}</span> : null}
         </div>
+        {playScript.error.value ? <span class="physics-paint-script-inline-error physics-paint-play-script-dialog-error">{playScript.error.value}</span> : null}
         <div class="physics-paint-play-script-actions">
           <button type="button" onClick={playScript.cancel}>{playScript.canCancel.value ? 'Cancel generation' : 'Cancel'}</button>
           {!playScript.canCancel.value ? <button type="button" disabled={Boolean(playScript.validationError.value)} onClick={() => { void playScript.confirm(); }}>Generate</button> : null}
