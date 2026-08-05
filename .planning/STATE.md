@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 42
-current_phase_name: PlayScript Application Modes + Color Override
+current_phase_name: playscript-application-modes-color-override
 status: executing
-stopped_at: Phase 42 UI-SPEC approved
-last_updated: "2026-08-05T17:14:47.781Z"
+stopped_at: Completed 42-01-PLAN.md
+last_updated: "2026-08-05T18:51:01.569Z"
 last_activity: 2026-08-05
-last_activity_desc: "Completed quick task 260805-ht3: Phase 41 remediation (CR-01, WR-07, WR-08)"
+last_activity_desc: Phase 42 execution started
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 12
-  completed_plans: 8
+  completed_plans: 9
   percent: 33
 ---
 
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 41 — efx-paint-audio-preview-monitoring-toggle
+**Current focus:** Phase 42 — playscript-application-modes-color-override
 
 ## Current Position
 
-Phase: 42 — PlayScript Application Modes + Color Override
-Plan: Not started
+Phase: 42 (playscript-application-modes-color-override) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-08-05 - Completed quick task 260805-ht3: Phase 41 remediation (CR-01, WR-07, WR-08)
+Last activity: 2026-08-05 — Phase 42 execution started
 
-Progress: [██████████] 100%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -162,6 +162,7 @@ Progress: [██████████] 100%
 | Phase 41 P03 | 18min | 2 tasks | 9 files |
 | Phase 41 P04 | 32min | 2 tasks | 15 files |
 | Phase 41 P05 | 1 day across blocking native UAT checkpoint | 3 tasks | 7 files |
+| Phase 42 P01 | 3min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -185,6 +186,7 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 41-04: revisioned-update restart decision taken after the prepare await — a racing toggle always ends silent (Off) or positioned at the cursor (On); stale claims reset on every fresh child launch
 - [Phase ?]: 41-05: release() idempotent via context-state check; close funnel + unmount double-fire absorbed; closed AudioContext discarded, never reused (D-08); audioEngine diff limited to read-only engineHasContext probe
 - [Phase ?]: 41-05: D-04 proof satisfied by literal packaged-build reading — verbatim connect-src refusal observed in pre-grant packaged build 2026-08-05; single-token efxasset grant pinned by contract test; native packaged UAT (8 steps) approved
+- [Phase ?]: 42-01: static/hold schedule shipped as additive sibling module; progressive module byte-untouched (regression lock)
 
 ### Pending Todos
 
@@ -367,9 +369,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-05T16:07:10.163Z
-Stopped at: Phase 42 UI-SPEC approved
-Resume file: .planning/phases/42-playscript-application-modes-color-override/42-UI-SPEC.md
+Last session: 2026-08-05T18:51:01.557Z
+Stopped at: Completed 42-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
