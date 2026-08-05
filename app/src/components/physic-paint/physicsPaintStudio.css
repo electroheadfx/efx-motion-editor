@@ -1307,6 +1307,132 @@ button.destructive {
 .physics-paint-play-script-actions button {
   min-width: 112px;
 }
+
+/* Phase 42-03 additions — additive rules only; pre-existing dialog rules above stay untouched. */
+
+/* Overflow structure (UI-SPEC E1): the surface is bounded to its grid/viewport container, only
+   .physics-paint-play-script-content scrolls vertically, and the header (title/mode context)
+   plus the action row stay outside the scroll region. */
+.physics-paint-play-script-surface { max-height: 100%; }
+
+.physics-paint-play-script-header {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.physics-paint-play-script-header strong {
+  color: #171a1f;
+  font-size: clamp(24px, 3vw, 36px);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.physics-paint-play-script-content { overflow-x: hidden; }
+
+/* Major sections (mode block / frame field / hold loop) keep the 32px rhythm: the inherited
+   12px content gap plus a 20px section offset (42-UI-SPEC spacing scale, xl). */
+.physics-paint-play-script-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.physics-paint-play-script-section + .physics-paint-play-script-section { margin-top: 20px; }
+
+/* Segmented mode control (D-05): white track, checked segment in the reserved accent. */
+.physics-paint-play-script-mode-group {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #a9afb7;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.physics-paint-play-script-mode-option {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: #20242a;
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.physics-paint-play-script-mode-option[aria-checked="true"] {
+  background: #365ed6;
+  color: #ffffff;
+}
+
+.physics-paint-play-script-mode-option[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.physics-paint-play-script-mode-helper {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+/* Hold Loop block (D-12/D-13): repeat field + Infinity toggle + requested/effective readout. */
+.physics-paint-play-script-repeat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.physics-paint-play-script-repeat-row input { flex: 1 1 auto; }
+
+.physics-paint-play-script-repeat-row input:disabled { opacity: 0.5; }
+
+.physics-paint-play-script-content input[type="checkbox"] {
+  width: auto;
+  min-height: 0;
+  flex: 0 0 auto;
+}
+
+.physics-paint-play-script-infinity-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.physics-paint-play-script-repeat-help {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.physics-paint-play-script-loop-readout {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.physics-paint-play-script-mode-helper,
+.physics-paint-play-script-repeat-help,
+.physics-paint-play-script-content span { overflow-wrap: anywhere; }
+
+/* 2px focus-visible outlines with 2px offset on every dialog control (reserved accent use). */
+.physics-paint-play-script-dialog input:focus-visible,
+.physics-paint-play-script-dialog button:focus-visible,
+.physics-paint-play-script-dialog [tabindex]:focus-visible {
+  outline: 2px solid #365ed6;
+  outline-offset: 2px;
+}
 .physics-paint-script-confirmation > div { display: flex; justify-content: flex-end; gap: 6px; }
 .physics-paint-script-confirmation .danger { color: #fff; background: #a43d3d; }
 
