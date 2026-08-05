@@ -5,8 +5,8 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 42
 current_phase_name: PlayScript Application Modes + Color Override
 status: planning
-stopped_at: Phase 42 context gathered
-last_updated: "2026-08-05T14:39:07.920Z"
+stopped_at: Phase 42 UI-SPEC approved
+last_updated: "2026-08-05T16:07:10.175Z"
 last_activity: 2026-08-05
 last_activity_desc: "Completed quick task 260805-ht3: Phase 41 remediation (CR-01, WR-07, WR-08)"
 progress:
@@ -367,9 +367,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-05T14:39:07.906Z
-Stopped at: Phase 42 context gathered
-Resume file: .planning/phases/42-playscript-application-modes-color-override/42-CONTEXT.md
+Last session: 2026-08-05T16:07:10.163Z
+Stopped at: Phase 42 UI-SPEC approved
+Resume file: .planning/phases/42-playscript-application-modes-color-override/42-UI-SPEC.md
 
 ## Operator Next Steps
 
