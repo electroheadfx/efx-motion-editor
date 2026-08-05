@@ -386,6 +386,7 @@ describe('createRotoPlayScriptController', () => {
     expect(test.controller.error.value).toBe('rejected');
 
     let releaseRender!: () => void;
+    rendered.mockClear();
     rendered.mockImplementationOnce(async ({ frameCount, canonicalStart }) => new Promise((resolve) => {
       releaseRender = () => resolve(Array.from({ length: frameCount }, (_, index) => ({
         frameIndex: 0,
@@ -423,8 +424,9 @@ describe('createRotoPlayScriptController', () => {
     const test = harness();
     await test.controller.openConfirmation();
     test.controller.countText.value = '1';
+    rendered.mockClear();
     const pending = test.controller.confirm();
-    await vi.waitFor(() => expect(test.controller.canCancel.value).toBe(true));
+    await vi.waitFor(() => expect(rendered).toHaveBeenCalled()); // cancel mid-render, not mid-prepare
     test.controller.cancel();
     expect(await pending).toBe(false);
     expect(test.controller.phase.value).toBe('cancelled');
@@ -479,10 +481,11 @@ describe('createRotoPlayScriptController', () => {
     expect(test.controller.appliedSummary.line1.value).toBe(line1);
     expect(test.controller.appliedSummary.line2.value).toBe(line2);
 
-    // Generation cancellation.
+    // Generation cancellation (mid-render so the held render consumes its abort listener).
+    rendered.mockClear();
     rendered.mockImplementationOnce(async ({ signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true })));
     const pending = test.controller.confirm();
-    await vi.waitFor(() => expect(test.controller.canCancel.value).toBe(true));
+    await vi.waitFor(() => expect(rendered).toHaveBeenCalled());
     test.controller.cancel();
     expect(await pending).toBe(false);
     expect(test.controller.appliedSummary.line1.value).toBe(line1);

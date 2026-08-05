@@ -76,6 +76,7 @@ export interface RotoPlayScriptController {
   parsedRepeat: ReadonlySignal<{ count: number | null; error: string | null }>;
   repeatError: ReadonlySignal<string | null>;
   loopReadout: ReadonlySignal<string | null>;
+  appliedSummary: { line1: Signal<string>; line2: Signal<string> };
   destinationRange: ReadonlySignal<string | null>;
   validationError: ReadonlySignal<string | null>;
   disabledReason: ReadonlySignal<string | null>;
@@ -89,6 +90,7 @@ export interface RotoPlayScriptController {
   confirm: () => Promise<boolean>;
   cancel: () => void;
   setInfinity: (enabled: boolean) => void;
+  resetDialogMotion: () => void;
   dispose: () => void;
 }
 
@@ -105,6 +107,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const infinity = signal(false);
   const lastFiniteRepeat = signal('1');
   const layerEndExclusive = signal<number | null>(null);
+  const appliedSummaryLine1 = signal('Progressive · Original colors · Motion 0/0');
+  const appliedSummaryLine2 = signal('No frames generated yet');
+  let hasSuccessfulGeneration = false;
   const phase = signal<RotoPlayScriptPhase>('idle');
   const progress = signal<{ completed: number; total: number } | null>(null);
   const status = signal<string | null>(null);
@@ -172,6 +177,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     }
   }
 
+  // D-06: the ONLY reset path the dialog calls — re-reads the CURRENT Motion defaults port; never writes anywhere.
+  function resetDialogMotion(): void {
+    dialogMotion.value = { ...ports.getMotion() };
+  }
+
   async function openConfirmation(): Promise<void> {
     if (disposed || disabledReason.peek()) return;
     ports.stopPlayback();
@@ -186,6 +196,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       layerEndExclusive.value = authority.layerEndExclusive;
       countText.value = 'Max';
       dialogMotion.value = { ...ports.getMotion() };
+      if (!hasSuccessfulGeneration) {
+        // First-time defaults refresh: before the first successful Generate line 1 tracks the
+        // current defaults (mode/override untouched at first open, Motion from the defaults port).
+        appliedSummaryLine1.value = composeSummaryLine1(mode.peek(), overrideEnabled.peek() ? overrideColor.peek() : null, dialogMotion.peek());
+      }
       confirmationOpen.value = true;
       phase.value = 'idle'; status.value = `Max ${authority.capacity} · F${authority.canonicalStart}–F${authority.layerEndExclusive - 1}`;
     } catch (cause) { fail(cause); }
@@ -249,6 +264,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         || result.selectedKeyId !== publication.selectedKeyId
         || result.selectedAppFrame !== publication.selectedAppFrame
         || !samePhysicalRecords(result.records, publication.records)) throw new Error('Parent returned a mismatched Play Script acknowledgement.');
+      // Single appliedSummary assignment site: composed atomically from the options snapshot and
+      // destination actually committed for THIS generation — never from live dialog draft values.
+      const appliedSummary = composeAppliedSummary({ mode: renderMode, overrideColor: renderOverrideColor, motion, start, count });
+      appliedSummaryLine1.value = appliedSummary.line1;
+      appliedSummaryLine2.value = appliedSummary.line2;
+      hasSuccessfulGeneration = true;
       phase.value = 'regenerating'; status.value = 'Regenerating interpolation…';
       ports.stopPlayback();
       phase.value = 'complete'; progress.value = { completed: count, total: count }; status.value = `Play Script complete · ${count} frames`;
@@ -262,11 +283,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 
   function closeConfirmation(): void { if (!isBusyPhase(phase.peek())) confirmationOpen.value = false; }
   function cancel(): void { if (canCancel.peek()) { generation += 1; abortController?.abort(); abortController = null; } else closeConfirmation(); }
-  function fail(cause: unknown): void { const message = cause instanceof Error ? cause.message : String(cause); phase.value = 'failed'; status.value = 'Play Script failed'; error.value = message; ports.log(message, true); }
+  function fail(cause: unknown): void { const message = cause instanceof Error ? cause.message : String(cause); phase.value = 'failed'; progress.value = null; status.value = 'Play Script failed'; error.value = message; ports.log(message, true); }
   function assertCurrent(expected: number): void { if (disposed || generation !== expected) throw new DOMException('Play Script generation cancelled.', 'AbortError'); }
   function nextOperationId(kind: string): string { return `roto-play-script-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
 
-  return { confirmationOpen, countText, capacity, mode, overrideColor, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel, openConfirmation, closeConfirmation, confirm, cancel, setInfinity, dispose: () => { disposed = true; generation += 1; stopStaticDefaults(); abortController?.abort(); abortController = null; } };
+  return { confirmationOpen, countText, capacity, mode, overrideColor, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel, openConfirmation, closeConfirmation, confirm, cancel, setInfinity, resetDialogMotion, dispose: () => { disposed = true; generation += 1; stopStaticDefaults(); abortController?.abort(); abortController = null; } };
 }
 
 function parseCount(value: string, capacity: number): { count: number | null; error: string | null } {
@@ -278,6 +299,24 @@ function parseCount(value: string, capacity: number): { count: number | null; er
   if (!Number.isSafeInteger(count) || count <= 0) return { count: null, error: 'Enter a positive integer or Max.' };
   if (count > capacity) return { count: null, error: `Maximum available count is ${capacity}.` };
   return { count, error: null };
+}
+
+function composeSummaryLine1(mode: RotoPlayScriptMode, overrideColor: string | null, motion: Readonly<{ deformation: number; position: number }>): string {
+  const modeLabel = mode === 'static' ? 'Static / Hold' : 'Progressive';
+  return `${modeLabel} · ${overrideColor ? `Override ${overrideColor}` : 'Original colors'} · Motion ${motion.deformation}/${motion.position}`;
+}
+
+function composeAppliedSummary(input: {
+  readonly mode: RotoPlayScriptMode;
+  readonly overrideColor: string | null;
+  readonly motion: Readonly<{ deformation: number; position: number }>;
+  readonly start: number;
+  readonly count: number;
+}): { line1: string; line2: string } {
+  return {
+    line1: composeSummaryLine1(input.mode, input.overrideColor, input.motion),
+    line2: `F${input.start}–F${input.start + input.count - 1} · ${input.count} frames generated`,
+  };
 }
 
 function parseRepeat(value: string, cycleLength: number | null): { count: number | null; error: string | null } {
