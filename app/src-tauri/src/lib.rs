@@ -226,6 +226,71 @@ fn physics_paint_url(context: &PhysicsPaintLaunchContext) -> String {
 #[cfg(target_os = "macos")]
 use services::tablet;
 
+/// WR-07: pure byte-range resolution for the efxasset video Range branch.
+/// No IO, no Response building — the handler maps `Unsatisfiable` to a 416
+/// (`Content-Range: bytes */{file_size}`) and `Satisfied` to a bounded 206
+/// read of exactly `end - start + 1` bytes, computed only after validation.
+enum ByteRangeResolution {
+    Satisfied { start: u64, end: u64 },
+    Unsatisfiable,
+}
+
+/// Parse a single `bytes=` Range spec against a known file size. Malformed
+/// specs, inverted ranges, and starts at/past the file end are all
+/// Unsatisfiable; oversized valid ends clamp to `file_size - 1`; the suffix
+/// form (`bytes=-K`) resolves with saturating arithmetic. `end - start + 1`
+/// is never computed here — the caller computes it only on `Satisfied`.
+fn resolve_byte_range(range_header: Option<&str>, file_size: u64) -> ByteRangeResolution {
+    let Some(header) = range_header else {
+        return ByteRangeResolution::Unsatisfiable;
+    };
+    let Some(spec) = header.strip_prefix("bytes=") else {
+        return ByteRangeResolution::Unsatisfiable;
+    };
+    // Single range only — multi-range sets are rejected outright.
+    if spec.contains(',') {
+        return ByteRangeResolution::Unsatisfiable;
+    }
+    let Some((start_part, end_part)) = spec.split_once('-') else {
+        return ByteRangeResolution::Unsatisfiable;
+    };
+    if start_part.is_empty() {
+        // Suffix form: last K bytes (K must be a positive integer).
+        let Ok(suffix_len) = end_part.parse::<u64>() else {
+            return ByteRangeResolution::Unsatisfiable;
+        };
+        if suffix_len == 0 {
+            return ByteRangeResolution::Unsatisfiable;
+        }
+        let length = suffix_len.min(file_size);
+        let start = file_size - length;
+        if start >= file_size {
+            return ByteRangeResolution::Unsatisfiable;
+        }
+        return ByteRangeResolution::Satisfied { start, end: file_size - 1 };
+    }
+    let Ok(start) = start_part.parse::<u64>() else {
+        return ByteRangeResolution::Unsatisfiable;
+    };
+    // Validate start BEFORE any end arithmetic so file_size - 1 never
+    // underflows (file_size > start >= 0 implies file_size >= 1).
+    if start >= file_size {
+        return ByteRangeResolution::Unsatisfiable;
+    }
+    let end = if end_part.is_empty() {
+        file_size - 1
+    } else {
+        let Ok(explicit_end) = end_part.parse::<u64>() else {
+            return ByteRangeResolution::Unsatisfiable;
+        };
+        explicit_end.min(file_size - 1)
+    };
+    if end < start {
+        return ByteRangeResolution::Unsatisfiable;
+    }
+    ByteRangeResolution::Satisfied { start, end }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -441,45 +506,62 @@ pub fn run() {
 
             if is_video {
                 if let Some(range) = range_header {
-                    // Parse "bytes=START-END" or "bytes=START-"
-                    if let Some(range_spec) = range.strip_prefix("bytes=") {
-                        let parts: Vec<&str> = range_spec.split('-').collect();
-                        let start: u64 = parts[0].parse().unwrap_or(0);
-                        let end: u64 = if parts.len() > 1 && !parts[1].is_empty() {
-                            parts[1].parse().unwrap_or(file_size - 1)
-                        } else {
-                            file_size - 1
-                        };
-                        let end = end.min(file_size - 1);
-                        let length = end - start + 1;
+                    // WR-07: resolve the spec through the pure helper — no
+                    // unguarded u64 arithmetic, no unwrap_or fallbacks.
+                    match resolve_byte_range(Some(range.as_str()), file_size) {
+                        ByteRangeResolution::Unsatisfiable => {
+                            return tauri::http::Response::builder()
+                                .header("Content-Range", format!("bytes */{}", file_size))
+                                .header("Access-Control-Allow-Origin", "*")
+                                .status(416)
+                                .body(Vec::new())
+                                .unwrap();
+                        }
+                        ByteRangeResolution::Satisfied { start, end } => {
+                            let length = end - start + 1;
 
-                        use std::io::{Read, Seek, SeekFrom};
-                        let mut file = match std::fs::File::open(&path) {
-                            Ok(f) => f,
-                            Err(_) => {
+                            use std::io::{Read, Seek, SeekFrom};
+                            let mut file = match std::fs::File::open(&path) {
+                                Ok(f) => f,
+                                Err(_) => {
+                                    return tauri::http::Response::builder()
+                                        .header("Access-Control-Allow-Origin", "*")
+                                        .status(404)
+                                        .body(Vec::new())
+                                        .unwrap();
+                                }
+                            };
+                            // WR-07: seek/read failures surface as 500 — never
+                            // a zero-filled or partial 206 body.
+                            if file.seek(SeekFrom::Start(start)).is_err() {
                                 return tauri::http::Response::builder()
                                     .header("Access-Control-Allow-Origin", "*")
-                                    .status(404)
+                                    .status(500)
                                     .body(Vec::new())
                                     .unwrap();
                             }
-                        };
-                        file.seek(SeekFrom::Start(start)).ok();
-                        let mut buf = vec![0u8; length as usize];
-                        let _ = file.read_exact(&mut buf);
+                            let mut buf = vec![0u8; length as usize];
+                            if file.read_exact(&mut buf).is_err() {
+                                return tauri::http::Response::builder()
+                                    .header("Access-Control-Allow-Origin", "*")
+                                    .status(500)
+                                    .body(Vec::new())
+                                    .unwrap();
+                            }
 
-                        return tauri::http::Response::builder()
-                            .header("Content-Type", mime)
-                            .header("Accept-Ranges", "bytes")
-                            .header(
-                                "Content-Range",
-                                format!("bytes {}-{}/{}", start, end, file_size),
-                            )
-                            .header("Content-Length", length.to_string())
-                            .header("Access-Control-Allow-Origin", "*")
-                            .status(206)
-                            .body(buf)
-                            .unwrap();
+                            return tauri::http::Response::builder()
+                                .header("Content-Type", mime)
+                                .header("Accept-Ranges", "bytes")
+                                .header(
+                                    "Content-Range",
+                                    format!("bytes {}-{}/{}", start, end, file_size),
+                                )
+                                .header("Content-Length", length.to_string())
+                                .header("Access-Control-Allow-Origin", "*")
+                                .status(206)
+                                .body(buf)
+                                .unwrap();
+                        }
                     }
                 }
 
@@ -609,5 +691,96 @@ mod tests {
         assert_eq!(cloned.start_frame, 12);
         assert_eq!(cloned.workflow_label.as_deref(), Some("PPaint #2 / Selected"));
         assert_eq!(cloned.roto_background.as_ref().unwrap()["background"], "canvas2");
+    }
+
+    // WR-07: pure byte-range resolution for the efxasset video Range branch.
+    // Intended signature:
+    //   fn resolve_byte_range(range_header: Option<&str>, file_size: u64) -> ByteRangeResolution
+    // with ByteRangeResolution::{Satisfied { start, end } | Unsatisfiable}.
+    // The helper is pure: no IO, no Response building, no unguarded u64 math.
+
+    fn assert_unsatisfiable(range_header: Option<&str>, file_size: u64) {
+        assert!(
+            matches!(resolve_byte_range(range_header, file_size), ByteRangeResolution::Unsatisfiable),
+            "expected Unsatisfiable for {range_header:?} on file_size {file_size}"
+        );
+    }
+
+    fn assert_satisfied(range_header: Option<&str>, file_size: u64, expected_start: u64, expected_end: u64) {
+        match resolve_byte_range(range_header, file_size) {
+            ByteRangeResolution::Satisfied { start, end } => {
+                assert_eq!(start, expected_start, "start mismatch for {range_header:?}");
+                assert_eq!(end, expected_end, "end mismatch for {range_header:?}");
+                assert!(start <= end, "satisfied range must be non-empty");
+                assert!(end < file_size, "satisfied end must stay inside the file");
+            }
+            ByteRangeResolution::Unsatisfiable => {
+                panic!("expected Satisfied for {range_header:?} on file_size {file_size}")
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_byte_range_rejects_inverted_range() {
+        assert_unsatisfiable(Some("bytes=100-50"), 1000);
+        assert_unsatisfiable(Some("bytes=1-0"), 1000);
+    }
+
+    #[test]
+    fn resolve_byte_range_rejects_start_beyond_file_end_without_allocation() {
+        // Crafted out-of-file start: must be 416 territory — no allocation of
+        // `end - start + 1` may ever be attempted for this input.
+        assert_unsatisfiable(Some("bytes=99999999-"), 1000);
+        assert_unsatisfiable(Some("bytes=1000-"), 1000);
+        assert_unsatisfiable(Some("bytes=1000-1005"), 1000);
+    }
+
+    #[test]
+    fn resolve_byte_range_open_ended_spans_to_file_end() {
+        assert_satisfied(Some("bytes=100-"), 1000, 100, 999);
+        assert_satisfied(Some("bytes=0-"), 1000, 0, 999);
+    }
+
+    #[test]
+    fn resolve_byte_range_suffix_form_returns_last_k_bytes_clamped() {
+        assert_satisfied(Some("bytes=-200"), 1000, 800, 999);
+        // Suffix longer than the file clamps to the whole file.
+        assert_satisfied(Some("bytes=-5000"), 1000, 0, 999);
+        assert_satisfied(Some("bytes=-1000"), 1000, 0, 999);
+    }
+
+    #[test]
+    fn resolve_byte_range_clamps_oversized_valid_end() {
+        assert_satisfied(Some("bytes=0-999999"), 1000, 0, 999);
+        assert_satisfied(Some("bytes=900-999999"), 1000, 900, 999);
+    }
+
+    #[test]
+    fn resolve_byte_range_empty_file_is_always_unsatisfiable() {
+        // file_size = 0: every form must reject without any subtraction
+        // overflow (0 - 1 would wrap a u64).
+        assert_unsatisfiable(Some("bytes=0-"), 0);
+        assert_unsatisfiable(Some("bytes=0-0"), 0);
+        assert_unsatisfiable(Some("bytes=-10"), 0);
+        assert_unsatisfiable(Some("bytes=5-10"), 0);
+    }
+
+    #[test]
+    fn resolve_byte_range_malformed_specs_are_unsatisfiable() {
+        assert_unsatisfiable(Some("items=0-10"), 1000);
+        assert_unsatisfiable(Some("bytes="), 1000);
+        assert_unsatisfiable(Some("bytes=-"), 1000);
+        assert_unsatisfiable(Some("bytes=abc-def"), 1000);
+        assert_unsatisfiable(Some("bytes=0-1,5-6"), 1000);
+        assert_unsatisfiable(Some("bytes=-0"), 1000);
+        assert_unsatisfiable(Some("bytes=10--20"), 1000);
+        assert_unsatisfiable(None, 1000);
+    }
+
+    #[test]
+    fn resolve_byte_range_exact_full_file_and_single_byte() {
+        assert_satisfied(Some("bytes=0-999"), 1000, 0, 999);
+        assert_satisfied(Some("bytes=999-"), 1000, 999, 999);
+        assert_satisfied(Some("bytes=-1"), 1000, 999, 999);
     }
 }
