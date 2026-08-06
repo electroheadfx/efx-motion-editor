@@ -35,13 +35,7 @@ vi.mock('preact/hooks', () => ({
   },
 }));
 
-// The real InlineColorPicker module instantiates a Tauri LazyStore at import time
-// (paintPreferences), which cannot load in the node test environment. The dialog contract only
-// needs the component identity and its props — the picker's own rendering is out of scope here.
-vi.mock('../../sidebar/InlineColorPicker', () => ({ InlineColorPicker: () => null }));
-
 import { PhysicsPaintPlayScriptDialog } from './PhysicsPaintPlayScriptDialog';
-import { InlineColorPicker } from '../../sidebar/InlineColorPicker';
 import type { RotoPlayScriptController, RotoPlayScriptMode } from '../roto/physicsPaintRotoPlayScriptController';
 
 const source = readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
@@ -60,6 +54,7 @@ interface FakeControllerSeed {
   countText?: string;
   repeatText?: string;
   infinity?: boolean;
+  overrideEnabled?: boolean;
   repeatError?: string | null;
   loopReadout?: string | null;
   error?: string | null;
@@ -69,16 +64,17 @@ interface FakeControllerSeed {
   phase?: string;
 }
 
-// Fake controller harness exposing the exact 42-02 interface — plain { value } cells stand in
-// for signals (the dialog only ever reads/writes .value); re-renders are invoked manually.
+// Fake controller harness exposing the post-revision 42-05 interface — plain { value } cells
+// stand in for signals (the dialog only ever reads/writes .value); re-renders are invoked
+// manually. There is NO overrideColor signal: the override color resolves live from the
+// brushColor prop / getBrushColor port (D-08R), never from dialog-side state.
 function createFakeController(seed: FakeControllerSeed = {}) {
   const signals = {
     confirmationOpen: sig(true),
     countText: sig(seed.countText ?? 'Max'),
     capacity: sig(4),
     mode: sig<RotoPlayScriptMode>(seed.mode ?? 'progressive'),
-    overrideColor: sig<string | null>(null),
-    overrideEnabled: sig(false),
+    overrideEnabled: sig(seed.overrideEnabled ?? false),
     dialogMotion: sig({ deformation: 25, position: 40 }),
     repeatText: sig(seed.repeatText ?? '1'),
     infinity: sig(seed.infinity ?? false),
@@ -113,9 +109,9 @@ function createFakeController(seed: FakeControllerSeed = {}) {
   return { controller, signals };
 }
 
-function renderDialog(controller: RotoPlayScriptController): TestVNode {
+function renderDialog(controller: RotoPlayScriptController, brushColor = '#103c65'): TestVNode {
   hooks.cursor = 0;
-  const tree = PhysicsPaintPlayScriptDialog({ playScript: controller, returnFocusRef: { current: null } });
+  const tree = PhysicsPaintPlayScriptDialog({ playScript: controller, brushColor, returnFocusRef: { current: null } });
   if (!tree) throw new Error('Dialog did not render (confirmationOpen false?)');
   return tree as unknown as TestVNode;
 }
@@ -165,20 +161,70 @@ function handler(vnode: TestVNode, name: string): (...args: unknown[]) => unknow
   return fn as (...args: unknown[]) => unknown;
 }
 
+function parentOf(root: unknown, target: TestVNode): TestVNode | null {
+  for (const vnode of walk(root)) {
+    if (childrenOf(vnode).includes(target)) return vnode;
+  }
+  return null;
+}
+
 const byId = (id: string) => (vnode: TestVNode) => vnode.props?.id === id;
 const byClass = (name: string) => (vnode: TestVNode) => hasClass(vnode, name);
+const byRadioGroup = (label: string) => (vnode: TestVNode) => vnode.props?.role === 'radiogroup' && vnode.props?.['aria-label'] === label;
 
 beforeEach(() => {
   hooks.reset();
+});
+
+describe('PhysicsPaintPlayScriptDialog card-grid layout (D-16)', () => {
+  it('renders Mode first, Timing and Color as sibling cards, Motion wiggle with a heading Reset defaults, then the summary bar before the footer', () => {
+    const readout = 'Requested: 25f (5f × 5) · Effective: 18f — shortened by the next clip';
+    const { controller } = createFakeController({ loopReadout: readout });
+    const tree = renderDialog(controller);
+    const content = findOne(tree, byClass('physics-paint-play-script-content'));
+    const cards = childrenOf(content).filter((child): child is TestVNode =>
+      typeof child === 'object' && child !== null && !Array.isArray(child) && hasClass(child as TestVNode, 'physics-paint-play-script-card'));
+    expect(cards.length).toBe(4);
+    // Mode card is the first-read element, full width.
+    expect(hasClass(cards[0], 'physics-paint-play-script-card-mode')).toBe(true);
+    expect(hasClass(cards[0], 'physics-paint-play-script-card-wide')).toBe(true);
+    // Timing and Color cards are side-by-side siblings of the same body grid.
+    expect(hasClass(cards[1], 'physics-paint-play-script-card-timing')).toBe(true);
+    expect(hasClass(cards[2], 'physics-paint-play-script-card-color')).toBe(true);
+    expect(parentOf(tree, cards[1])).toBe(content);
+    expect(parentOf(tree, cards[2])).toBe(content);
+    // Motion wiggle card spans full width; Reset defaults lives inside its section heading.
+    expect(hasClass(cards[3], 'physics-paint-play-script-card-motion')).toBe(true);
+    expect(hasClass(cards[3], 'physics-paint-play-script-card-wide')).toBe(true);
+    const heading = findOne(cards[3], byClass('physics-paint-play-script-card-heading'));
+    expect(textOf(heading)).toContain('Motion wiggle');
+    expect(textOf(findOne(heading, (vnode) => textOf(vnode) === 'Reset defaults'))).toBe('Reset defaults');
+    // Summary bar renders the controller loopReadout verbatim at the bottom of the body.
+    const summaryBar = findOne(tree, byClass('physics-paint-play-script-summary-bar'));
+    expect(textOf(summaryBar)).toBe(readout);
+    expect(parentOf(tree, summaryBar)).toBe(content);
+    // Fixed footer (progress + Cancel/Generate) stays outside the scrolling body.
+    const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
+    expect(parentOf(tree, footer)).not.toBe(content);
+    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Generate'))).toBe('Generate');
+  });
+
+  it('renders the summary bar with tabular-nums and renders nothing when the readout is null', () => {
+    const { controller } = createFakeController({ loopReadout: 'Cycle 4f × ∞ · Effective: 4f' });
+    const tree = renderDialog(controller);
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-summary-bar')))).toBe('Cycle 4f × ∞ · Effective: 4f');
+    const empty = renderDialog(createFakeController({ loopReadout: null }).controller);
+    expect(findAll(empty, byClass('physics-paint-play-script-summary-bar'))).toHaveLength(0);
+  });
 });
 
 describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', () => {
   it('renders a radiogroup with two radio options, roving tabindex, and the helper line', () => {
     const { controller } = createFakeController();
     const tree = renderDialog(controller);
-    const group = findOne(tree, (vnode) => vnode.props?.role === 'radiogroup');
+    const group = findOne(tree, byRadioGroup('Mode'));
     expect(group.props['aria-describedby']).toBe('physics-play-script-mode-helper');
-    const radios = findAll(tree, (vnode) => vnode.props?.role === 'radio');
+    const radios = findAll(group, (vnode) => vnode.props?.role === 'radio');
     expect(radios).toHaveLength(2);
     expect(textOf(radios[0])).toBe('Progressive');
     expect(textOf(radios[1])).toBe('Static / Hold');
@@ -190,10 +236,10 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
   });
 
   it('arrow keys move focus AND check with wrap-around', () => {
-    const { controller, signals } = createFakeController();
+    const { controller, signals } = createFakeController({ countText: '3' });
     let tree = renderDialog(controller);
     const radioElements = [{ focus: vi.fn() }, { focus: vi.fn() }];
-    const keydown = (key: string) => handler(findOne(tree, (vnode) => vnode.props?.role === 'radiogroup'), 'onKeyDown')({
+    const keydown = (key: string) => handler(findOne(tree, byRadioGroup('Mode')), 'onKeyDown')({
       key,
       preventDefault: vi.fn(),
       currentTarget: { querySelectorAll: () => radioElements },
@@ -204,7 +250,7 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
     expect(radioElements[1].focus).toHaveBeenCalledTimes(1);
 
     tree = renderDialog(controller);
-    const updated = findAll(tree, (vnode) => vnode.props?.role === 'radio');
+    const updated = findAll(findOne(tree, byRadioGroup('Mode')), (vnode) => vnode.props?.role === 'radio');
     expect(updated[1].props['aria-checked']).toBe(true);
     expect(updated[1].props.tabIndex).toBe(0);
     expect(updated[0].props['aria-checked']).toBe(false);
@@ -221,42 +267,70 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
   });
 
   it('checks the clicked option', () => {
-    const { controller, signals } = createFakeController();
+    const { controller, signals } = createFakeController({ countText: '3' });
     const tree = renderDialog(controller);
-    const radios = findAll(tree, (vnode) => vnode.props?.role === 'radio');
+    const radios = findAll(findOne(tree, byRadioGroup('Mode')), (vnode) => vnode.props?.role === 'radio');
     handler(radios[1], 'onClick')({ currentTarget: { focus: vi.fn() } });
     expect(signals.mode.value).toBe('static');
   });
 });
 
-describe('PhysicsPaintPlayScriptDialog frame field (D-03)', () => {
-  it('switches the single shared field label between Frames and Cycle frames with the mode', () => {
+describe('PhysicsPaintPlayScriptDialog frame field (D-03 revised)', () => {
+  it("switches the single shared field label between 'Frames' and 'Frames per cycle' with the mode", () => {
     const { controller, signals } = createFakeController();
     let tree = renderDialog(controller);
     expect(textOf(findOne(tree, (vnode) => vnode.props?.for === 'physics-play-script-count'))).toBe('Frames');
     signals.mode.value = 'static';
     tree = renderDialog(controller);
-    expect(textOf(findOne(tree, (vnode) => vnode.props?.for === 'physics-play-script-count'))).toBe('Cycle frames');
+    expect(textOf(findOne(tree, (vnode) => vnode.props?.for === 'physics-play-script-count'))).toBe('Frames per cycle');
     // Still ONE shared input — no second field appears in Static / Hold.
     expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(1);
     expect(textOf(findOne(tree, byId('physics-play-script-help')))).toBe('Enter a positive integer or Max.');
   });
 
-  it('renders the first-time Static / Hold defaults: cycle 1, repeat 1, infinity off (D-15)', () => {
-    const { controller } = createFakeController({ mode: 'static', countText: '1', repeatText: '1', infinity: false });
-    const tree = renderDialog(controller);
-    expect(findOne(tree, byId('physics-play-script-count')).props.value).toBe('1');
-    expect(findOne(tree, byId('physics-play-script-repeat')).props.value).toBe('1');
-    expect(findOne(tree, (vnode) => vnode.props?.type === 'checkbox').props.checked).toBe(false);
+  it("normalizes 'Max' to '1' when switching to Static / Hold, on click and on arrow keys", () => {
+    const { controller, signals } = createFakeController({ countText: 'Max' });
+    let tree = renderDialog(controller);
+    const radios = findAll(findOne(tree, byRadioGroup('Mode')), (vnode) => vnode.props?.role === 'radio');
+    handler(radios[1], 'onClick')({ currentTarget: { focus: vi.fn() } });
+    expect(signals.mode.value).toBe('static');
+    expect(signals.countText.value).toBe('1');
+
+    // Arrow-key path applies the same normalization.
+    signals.mode.value = 'progressive';
+    signals.countText.value = 'Max';
+    tree = renderDialog(controller);
+    handler(findOne(tree, byRadioGroup('Mode')), 'onKeyDown')({
+      key: 'ArrowRight',
+      preventDefault: vi.fn(),
+      currentTarget: { querySelectorAll: () => [{ focus: vi.fn() }, { focus: vi.fn() }] },
+    });
+    expect(signals.mode.value).toBe('static');
+    expect(signals.countText.value).toBe('1');
+
+    // A numeric value is never rewritten by a mode switch.
+    signals.mode.value = 'progressive';
+    signals.countText.value = '6';
+    tree = renderDialog(controller);
+    handler(findOne(tree, byRadioGroup('Mode')), 'onKeyDown')({
+      key: 'ArrowRight',
+      preventDefault: vi.fn(),
+      currentTarget: { querySelectorAll: () => [{ focus: vi.fn() }, { focus: vi.fn() }] },
+    });
+    expect(signals.countText.value).toBe('6');
   });
 });
 
-describe('PhysicsPaintPlayScriptDialog Hold Loop block (D-12/D-13)', () => {
-  it('renders the controller loop readout verbatim', () => {
-    const readout = 'Requested: 25f (5f × 5) · Effective: 18f — shortened by the next clip';
-    const { controller } = createFakeController({ loopReadout: readout });
-    const tree = renderDialog(controller);
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-loop-readout')))).toBe(readout);
+describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both modes)', () => {
+  it('renders Repeat + Infinity inside the Timing card in BOTH modes as session-level loop intent', () => {
+    const { controller, signals } = createFakeController();
+    for (const mode of ['progressive', 'static'] as const) {
+      signals.mode.value = mode;
+      const tree = renderDialog(controller);
+      const timingCard = findOne(tree, byClass('physics-paint-play-script-card-timing'));
+      expect(findOne(timingCard, byId('physics-play-script-repeat'))).toBeTruthy();
+      expect(findOne(timingCard, (vnode) => vnode.props?.type === 'checkbox')).toBeTruthy();
+    }
   });
 
   it('binds the repeat field aria-invalid and error span to the controller repeatError channel', () => {
@@ -284,56 +358,92 @@ describe('PhysicsPaintPlayScriptDialog Hold Loop block (D-12/D-13)', () => {
     const repeat = findOne(tree, byId('physics-play-script-repeat'));
     expect(repeat.props.disabled).toBe(true);
     expect(repeat.props.value).toBe('5');
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-loop-readout')))).toBe('Cycle 4f × ∞ · Effective: 4f');
   });
 });
 
-describe('PhysicsPaintPlayScriptDialog color override (D-08/D-09, Pitfall 3)', () => {
-  it("shows 'Original colors' by default with no override control", () => {
+describe('PhysicsPaintPlayScriptDialog color segmented control (D-08R/D-18)', () => {
+  it("renders a radiogroup with exactly two options 'Original colors' and 'Custom color' using the APG radio pattern", () => {
     const { controller } = createFakeController();
     const tree = renderDialog(controller);
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-override-swatch')))).toBe('Original colors');
-    expect(findAll(tree, byClass('physics-paint-play-script-override-reset'))).toHaveLength(0);
+    const group = findOne(tree, byRadioGroup('Color'));
+    const radios = findAll(group, (vnode) => vnode.props?.role === 'radio');
+    expect(radios).toHaveLength(2);
+    expect(textOf(radios[0])).toBe('Original colors');
+    expect(textOf(radios[1])).toBe('Custom color');
   });
 
-  it('opening the picker does NOT create an override — close without a pick leaves Original colors (Pitfall 3)', () => {
+  it("has 'Original colors' checked and the override disabled by default", () => {
     const { controller, signals } = createFakeController();
-    let tree = renderDialog(controller);
-    handler(findOne(tree, byClass('physics-paint-play-script-override-swatch')), 'onClick')({});
-    tree = renderDialog(controller);
-    const picker = findOne(tree, (vnode) => vnode.type === InlineColorPicker);
-    // The picker fires onChange on mount (isExternalUpdate starts false) — that is NOT a pick.
-    handler(picker, 'onChange')('#112233', 1);
+    const tree = renderDialog(controller);
+    const radios = findAll(findOne(tree, byRadioGroup('Color')), (vnode) => vnode.props?.role === 'radio');
+    expect(radios[0].props['aria-checked']).toBe(true);
+    expect(radios[0].props.tabIndex).toBe(0);
+    expect(radios[1].props['aria-checked']).toBe(false);
+    expect(radios[1].props.tabIndex).toBe(-1);
     expect(signals.overrideEnabled.value).toBe(false);
-    expect(signals.overrideColor.value).toBe(null);
-    handler(picker, 'onClose')({});
-    tree = renderDialog(controller);
-    expect(findAll(tree, (vnode) => vnode.type === InlineColorPicker)).toHaveLength(0);
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-override-swatch')))).toBe('Original colors');
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-color-original-row')))).toContain("Keep each stroke's original paint color.");
   });
 
-  it("a deliberate pick sets the override, the swatch shows the picked hex, and the reset control returns to 'Original colors'", () => {
+  it('arrow keys move check with wrap-around between the two color options', () => {
     const { controller, signals } = createFakeController();
     let tree = renderDialog(controller);
-    handler(findOne(tree, byClass('physics-paint-play-script-override-swatch')), 'onClick')({});
-    tree = renderDialog(controller);
-    // A genuine user interaction inside the picker well arms the pick handler.
-    const well = findOne(tree, byClass('physics-paint-play-script-picker-well'));
-    handler(well, 'onPointerDownCapture')({});
-    handler(findOne(tree, (vnode) => vnode.type === InlineColorPicker), 'onChange')('#a1b2c3', 1);
+    const radioElements = [{ focus: vi.fn() }, { focus: vi.fn() }];
+    const keydown = (key: string) => handler(findOne(tree, byRadioGroup('Color')), 'onKeyDown')({
+      key,
+      preventDefault: vi.fn(),
+      currentTarget: { querySelectorAll: () => radioElements },
+    });
+
+    keydown('ArrowRight');
     expect(signals.overrideEnabled.value).toBe(true);
-    expect(signals.overrideColor.value).toBe('#a1b2c3');
-    tree = renderDialog(controller);
-    // The picker closes on pick and the swatch shows the picked color as data.
-    expect(findAll(tree, (vnode) => vnode.type === InlineColorPicker)).toHaveLength(0);
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-override-swatch')))).toContain('#a1b2c3');
-    const reset = findOne(tree, byClass('physics-paint-play-script-override-reset'));
-    expect(textOf(reset)).toBe('Original colors');
-    handler(reset, 'onClick')({});
+    expect(radioElements[1].focus).toHaveBeenCalledTimes(1);
+    // Wrap-around: right from Custom returns to Original; left from Original lands on Custom.
+    keydown('ArrowRight');
+    expect(signals.overrideEnabled.value).toBe(false);
+    expect(radioElements[0].focus).toHaveBeenCalledTimes(1);
+    keydown('ArrowLeft');
+    expect(signals.overrideEnabled.value).toBe(true);
+    expect(radioElements[1].focus).toHaveBeenCalledTimes(2);
+  });
+
+  it("checking 'Custom color' sets overrideEnabled and renders the CURRENT brushColor prop as chip + hex + note — live, with no dialog-side copy", () => {
+    const { controller, signals } = createFakeController();
+    let tree = renderDialog(controller, '#3366ff');
+    const radios = findAll(findOne(tree, byRadioGroup('Color')), (vnode) => vnode.props?.role === 'radio');
+    handler(radios[1], 'onClick')({ currentTarget: { focus: vi.fn() } });
+    expect(signals.overrideEnabled.value).toBe(true);
+
+    tree = renderDialog(controller, '#3366ff');
+    const chip = findOne(tree, byClass('physics-paint-play-script-override-chip'));
+    expect((chip.props.style as { backgroundColor?: string }).backgroundColor).toBe('#3366ff');
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-color-custom-row')))).toContain('#3366ff');
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-color-custom-row')))).toContain("Picked from the app's brush color panel");
+
+    // The chip/hex track the prop live — re-rendering with a new brush color updates them
+    // without any dialog-side color state (D-08R/D-18).
+    tree = renderDialog(controller, '#aa5500');
+    const updatedChip = findOne(tree, byClass('physics-paint-play-script-override-chip'));
+    expect((updatedChip.props.style as { backgroundColor?: string }).backgroundColor).toBe('#aa5500');
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-color-custom-row')))).toContain('#aa5500');
+  });
+
+  it("checking 'Original colors' sets overrideEnabled false and restores the original pane", () => {
+    const { controller, signals } = createFakeController({ overrideEnabled: true });
+    let tree = renderDialog(controller);
+    const radios = findAll(findOne(tree, byRadioGroup('Color')), (vnode) => vnode.props?.role === 'radio');
+    handler(radios[0], 'onClick')({ currentTarget: { focus: vi.fn() } });
     expect(signals.overrideEnabled.value).toBe(false);
     tree = renderDialog(controller);
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-override-swatch')))).toBe('Original colors');
-    expect(findAll(tree, byClass('physics-paint-play-script-override-reset'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-color-custom-row'))).toHaveLength(0);
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-color-original-row')))).toContain("Keep each stroke's original paint color.");
+  });
+
+  it('mounts no InlineColorPicker anywhere in the dialog and keeps no pick-guard state', () => {
+    expect(source).not.toContain('InlineColorPicker');
+    expect(source).not.toContain('pickerArmed');
+    expect(source).not.toContain('pickerOpen');
+    expect(source).not.toContain('picker-well');
+    expect(source).not.toContain('override-swatch');
   });
 });
 
@@ -347,10 +457,10 @@ describe('PhysicsPaintPlayScriptDialog application-time Motion controls (D-06)',
     expect(signals.dialogMotion.value).toEqual({ deformation: 42, position: 100 });
   });
 
-  it("'Reset to Motion defaults' calls ONLY the controller resetDialogMotion operation", () => {
+  it("'Reset defaults' calls ONLY the controller resetDialogMotion operation", () => {
     const { controller } = createFakeController();
     const tree = renderDialog(controller);
-    handler(findOne(tree, (vnode) => textOf(vnode) === 'Reset to Motion defaults'), 'onClick')({});
+    handler(findOne(tree, (vnode) => textOf(vnode) === 'Reset defaults'), 'onClick')({});
     expect(controller.resetDialogMotion).toHaveBeenCalledTimes(1);
     expect(textOf(tree)).not.toContain('Save as defaults');
   });
@@ -375,7 +485,7 @@ describe('PhysicsPaintPlayScriptDialog generation states (E5)', () => {
     expect(findOne(tree, (vnode) => vnode.props?.role === 'dialog')).toBeTruthy();
   });
 
-  it('disables all new controls during generation under the existing canCancel rule', () => {
+  it('disables all controls during generation under the existing canCancel rule and keeps progress in the fixed footer', () => {
     const { controller } = createFakeController({ canCancel: true, progress: { completed: 1, total: 4 } });
     const tree = renderDialog(controller);
     for (const radio of findAll(tree, (vnode) => vnode.props?.role === 'radio')) {
@@ -384,22 +494,28 @@ describe('PhysicsPaintPlayScriptDialog generation states (E5)', () => {
     }
     expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(true);
     expect(findOne(tree, (vnode) => vnode.props?.type === 'checkbox').props.disabled).toBe(true);
-    expect(findOne(tree, byClass('physics-paint-play-script-override-swatch')).props.disabled).toBe(true);
     expect(findOne(tree, byId('physics-play-script-motion-deformation')).props.disabled).toBe(true);
+    const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
+    expect(findOne(footer, (vnode) => vnode.type === 'progress')).toBeTruthy();
     expect(textOf(tree)).toContain('Cancel generation');
   });
 });
 
-describe('PhysicsPaintPlayScriptDialog source contract (D-04/D-06, locked copy)', () => {
+describe('PhysicsPaintPlayScriptDialog source contract (D-04/D-06/D-08R, locked copy)', () => {
   it('keeps the locked copy and prohibitions in the dialog source', () => {
     expect(source).toContain('Original colors');
-    expect(source).toContain('Reset to Motion defaults');
-    expect(source).not.toContain('Save as defaults');
-    expect(source).not.toContain('updatePanelMotion');
+    expect(source).toContain('Custom color');
+    expect(source).toContain("Picked from the app's brush color panel");
+    expect(source).toContain("Keep each stroke's original paint color.");
+    expect(source).toContain('Frames per cycle');
+    expect(source).toContain('Motion wiggle');
+    expect(source).toContain('Reset defaults');
     expect(source).toContain('The drawing builds stroke by stroke across frames.');
     expect(source).toContain('The complete drawing is applied to every cycle frame.');
-    // The picker mounts INLINE inside the dialog content column — never a popover/portal.
-    expect(source).toContain('<InlineColorPicker');
+    expect(source).not.toContain('Save as defaults');
+    expect(source).not.toContain('Reset to Motion defaults');
+    expect(source).not.toContain('Cycle frames');
+    expect(source).not.toContain('updatePanelMotion');
     expect(source).not.toContain('createPortal');
   });
 });
