@@ -1,7 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import { saveRotoRealKeyTransaction } from './physicsPaintRotoKeyController';
-import { selectProjectedRealCachedRotoFrames, selectRealCachedRotoFrames, selectRotoTimelineView } from './rotoTimelineSelectors';
+import {
+  getRotoFrameKeyInteraction,
+  resolveRotoVisibleFrameResolutions,
+  selectProjectedRealCachedRotoFrames,
+  selectRealCachedRotoFrames,
+  selectRotoPhysicalTimelineStructuralView,
+  selectRotoTimelineView,
+} from './rotoTimelineSelectors';
+import {
+  derivePhysicPaintRotoLoopRanges,
+  resolvePhysicPaintRotoLoopFrame,
+} from './physicsPaintRotoPhysicalResolver';
 import { createRotoTimelineModel } from '../hooks/useRotoTimelineModel';
 
 function frame(appFrame: number, sourceFrame: number, source: PhysicPaintRotoCacheFrame['source'] = 'real-key'): PhysicPaintRotoCacheFrame {
@@ -121,5 +132,117 @@ describe('rotoTimelineSelectors', () => {
     expect(model.currentFrameSelectionKind.value).toBe('generated-interpolation');
     expect(model.currentFrameOwnerSourceFrame.value).toBe(1);
     expect(model.currentFrameIsGenerated.value).toBe(true);
+  });
+});
+
+describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () => {
+  const LOOP_SOURCE_KEYS = [
+    { keyId: 'A', appFrame: 10 },
+    { keyId: 'B', appFrame: 11 },
+    { keyId: 'C', appFrame: 12 },
+    { keyId: 'D', appFrame: 13 },
+    { keyId: 'E', appFrame: 14 },
+  ];
+  const LOOP_CLIP = {
+    loopId: 'L1',
+    placementStart: 10,
+    sourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+    repeat: 5,
+    mode: 'static' as const,
+  };
+
+  function buildLoopContext(repeat: number | 'infinity' = 5, parentEndExclusive = 600) {
+    return derivePhysicPaintRotoLoopRanges({
+      identities: LOOP_SOURCE_KEYS,
+      loopClips: [{ ...LOOP_CLIP, repeat }],
+      parentEndExclusive,
+      capacity: 600,
+    });
+  }
+
+  it('getRotoFrameKeyInteraction excludes linked and linked-unresolved frames from selection and drag (D-23/D-11)', () => {
+    const context = buildLoopContext();
+
+    expect(getRotoFrameKeyInteraction(resolvePhysicPaintRotoLoopFrame(context, 10))).toEqual({
+      keySelectable: true,
+      dragEligible: true,
+      selectedKeyId: 'A',
+    });
+    expect(getRotoFrameKeyInteraction(resolvePhysicPaintRotoLoopFrame(context, 18))).toEqual({
+      keySelectable: false,
+      dragEligible: false,
+      selectedKeyId: null,
+    });
+    expect(getRotoFrameKeyInteraction(resolvePhysicPaintRotoLoopFrame(context, 99))).toEqual({
+      keySelectable: false,
+      dragEligible: false,
+      selectedKeyId: null,
+    });
+
+    const unresolvedContext = derivePhysicPaintRotoLoopRanges({
+      identities: LOOP_SOURCE_KEYS.slice(0, 3),
+      loopClips: [LOOP_CLIP],
+      parentEndExclusive: 600,
+      capacity: 600,
+    });
+    const unresolved = resolvePhysicPaintRotoLoopFrame(unresolvedContext, 18);
+    expect(unresolved.kind).toBe('linked-unresolved');
+    expect(getRotoFrameKeyInteraction(unresolved)).toEqual({
+      keySelectable: false,
+      dragEligible: false,
+      selectedKeyId: null,
+    });
+  });
+
+  it('selectRotoPhysicalTimelineStructuralView derives the loop resolution context from loopClips', () => {
+    const structural = selectRotoPhysicalTimelineStructuralView({
+      realKeyRecords: LOOP_SOURCE_KEYS.map((identity) => ({
+        kind: 'real-key' as const,
+        keyId: identity.keyId,
+        appFrame: identity.appFrame,
+        payload: {
+          frameIndex: 0,
+          appFrame: identity.appFrame,
+          dataUrl: 'data:image/png;base64,AAAA',
+          width: 2,
+          height: 2,
+        },
+      })),
+      interpolation: { enabled: false, mode: 'duplicate' },
+      capacity: 600,
+      loopClips: [LOOP_CLIP],
+      parentEndExclusive: 600,
+    });
+
+    expect(structural.loopResolution.ranges).toHaveLength(1);
+    expect(structural.loopResolution.ranges[0]).toMatchObject({
+      loopId: 'L1',
+      placementStart: 10,
+      effectiveEnd: 35,
+    });
+    expect(resolvePhysicPaintRotoLoopFrame(structural.loopResolution, 18)).toMatchObject({
+      kind: 'linked',
+      loopId: 'L1',
+      sourceKeyId: 'D',
+    });
+  });
+
+  it('resolveRotoVisibleFrameResolutions issues exactly one lazy query per visible frame — never range-proportional (D-32)', () => {
+    const context = buildLoopContext(100000, 500010);
+    const visibleFrames = Array.from({ length: 120 }, (_, index) => index + 10);
+    const query = vi.fn(resolvePhysicPaintRotoLoopFrame);
+
+    const resolutions = resolveRotoVisibleFrameResolutions(context, visibleFrames, query);
+
+    expect(query).toHaveBeenCalledTimes(visibleFrames.length);
+    expect(resolutions.size).toBe(visibleFrames.length);
+    expect(resolutions.get(18)).toMatchObject({ kind: 'linked', loopId: 'L1' });
+    // A visible window deep inside the huge repeat resolves without any
+    // intermediate-frame querying.
+    const distantWindow = [499990, 499991, 499992];
+    const distantQuery = vi.fn(resolvePhysicPaintRotoLoopFrame);
+    const distant = resolveRotoVisibleFrameResolutions(context, distantWindow, distantQuery);
+    expect(distantQuery).toHaveBeenCalledTimes(3);
+    expect(distant.get(499991)).toMatchObject({ kind: 'linked', sourceIndex: 1, repeatInstance: 99996 });
   });
 });

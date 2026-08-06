@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  derivePhysicPaintRotoLoopRanges,
+  resolvePhysicPaintRotoLoopFrame,
+} from '../roto/physicsPaintRotoPhysicalResolver';
+import { resolveRotoVisibleFrameResolutions } from '../roto/rotoTimelineSelectors';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const source = () => readFileSync(sourcePath, 'utf8');
@@ -1062,5 +1067,70 @@ describe('PhysicsPaintWorkflowStrip Gap I action-row padding contract (36.15-13,
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 161px');
     expect(getCssRuleBlock(styles, '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 161px');
     expect(styles).not.toContain('height: 155px');
+  });
+});
+
+describe('PhysicsPaintWorkflowStrip loop resolution wiring (43-02, Pitfall 7)', () => {
+  it('declares the optional loop resolution context prop', () => {
+    const code = source();
+    expect(getWorkflowStripPropsInterface(code)).toContain('rotoLoopResolutionContext?:');
+  });
+
+  it('derives linked repetition cells for the visible frame window only', () => {
+    const code = source();
+    // The strip's cell derivation must query the lazy per-frame resolution
+    // through the visible-window helper keyed on frameCells — never a
+    // full-range scan of any loop's effective range (D-32).
+    expect(code).toContain('resolveRotoVisibleFrameResolutions(');
+    const helperCall = code.indexOf('resolveRotoVisibleFrameResolutions(');
+    const callBlock = code.slice(helperCall, code.indexOf(')', helperCall) + 200);
+    expect(callBlock).toContain('frameCells');
+  });
+
+  it('gates drag eligibility and tooltips through the exhaustiveness-checked resolution mappers', () => {
+    const code = source();
+    const mapBlock = getRotoMapBlock(code);
+    // Drag stays real-key-only: virtual occurrences never start a drag even
+    // when a loop resolution context is present (D-11/D-23).
+    expect(mapBlock).toContain('getRotoFrameKeyInteraction(');
+    expect(mapBlock).toContain('dragEligible');
+    // Linked cells keep their existing cell-state fill semantics via the
+    // presentation mapper (D-18) — no new first-class cell state.
+    expect(mapBlock).toContain('getRotoResolutionCellTooltipKind(');
+  });
+
+  it('issues exactly one resolution query per visible frame for a huge-repeat loop (D-32)', () => {
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: [
+        { keyId: 'A', appFrame: 10 },
+        { keyId: 'B', appFrame: 11 },
+        { keyId: 'C', appFrame: 12 },
+        { keyId: 'D', appFrame: 13 },
+        { keyId: 'E', appFrame: 14 },
+      ],
+      loopClips: [{
+        loopId: 'L1',
+        placementStart: 10,
+        sourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+        repeat: 100000,
+        mode: 'static',
+      }],
+      parentEndExclusive: 500010,
+      capacity: 600,
+    });
+    // A 120-cell visible window (the strip's viewport scale) inside a
+    // 500000-frame effective range issues exactly 120 lazy queries.
+    const visibleWindow = Array.from({ length: 120 }, (_, index) => 250000 + index);
+    const query = vi.fn(resolvePhysicPaintRotoLoopFrame);
+    const resolutions = resolveRotoVisibleFrameResolutions(context, visibleWindow, query);
+
+    expect(query).toHaveBeenCalledTimes(visibleWindow.length);
+    expect(resolutions.size).toBe(visibleWindow.length);
+    expect(resolutions.get(250000)).toMatchObject({
+      kind: 'linked',
+      loopId: 'L1',
+      sourceIndex: (250000 - 10) % 5,
+      repeatInstance: Math.floor((250000 - 10) / 5),
+    });
   });
 });

@@ -5,6 +5,7 @@ import {
   getRotoCellSelectedTooltipCopy, getRotoCellStateLabel, getRotoCellStateTooltipCopy, getRotoCellViewModel, getRotoMissingFrameStatus,
   getRotoDragPreviewViewModel,
   getRotoReplacementSuccessLabel, getMissingRotoFrameStatusLabel,
+  getRotoResolutionCellTooltipKind,
   getRotoStatusCapsuleIdleContext, getRotoStatusCapsuleViewModel,
   isPhysicsPaintDevExportEnabled,
   type RotoCellBaseMeaning, type RotoCellFill, type RotoCellOverlay,
@@ -369,4 +370,55 @@ describe('getRotoCellSelectedTooltipCopy (37-04, D-04, UI-SPEC copy contract)', 
     expect(getRotoCellSelectedTooltipCopy('empty')).toBe('Selected key — empty');
   });
 
+});
+
+describe('getRotoResolutionCellTooltipKind — linked frames keep existing cell-state semantics (43-02, D-18/D-23)', () => {
+  it('maps every resolution kind explicitly with no new first-class cell state', () => {
+    // Real frames report the real-key vocabulary.
+    expect(getRotoResolutionCellTooltipKind({ kind: 'real', keyId: 'A', appFrame: 10 }, 'empty')).toBe('real-key');
+
+    // Linked occurrences keep the existing empty/cached/generated semantics —
+    // the additive badge lands in 43-08; no new cell state here (D-18).
+    const linked = {
+      kind: 'linked' as const,
+      loopId: 'L1',
+      appFrame: 18,
+      sourceKeyId: 'D',
+      sourceIndex: 3,
+      repeatInstance: 1,
+    };
+    expect(getRotoResolutionCellTooltipKind(linked, 'empty')).toBe('empty');
+    expect(getRotoResolutionCellTooltipKind(linked, 'cached')).toBe('cached');
+    expect(getRotoResolutionCellTooltipKind(linked, 'generated')).toBe('generated');
+
+    // Unresolved linked frames stay non-blocking: the strip renders the
+    // existing fill; the capsule owns the error affordance (D-23).
+    const unresolved = {
+      kind: 'linked-unresolved' as const,
+      loopId: 'L1',
+      appFrame: 18,
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+      missingSourceKeyIds: ['D', 'E'],
+    };
+    expect(getRotoResolutionCellTooltipKind(unresolved, 'empty')).toBe('empty');
+    expect(getRotoResolutionCellTooltipKind(unresolved, 'background-only')).toBe('background-only');
+
+    expect(getRotoResolutionCellTooltipKind({ kind: 'empty' }, 'cached')).toBe('cached');
+  });
+
+  it('linked frames resolve to existing fill classes only', () => {
+    const linked = {
+      kind: 'linked' as const,
+      loopId: 'L1',
+      appFrame: 18,
+      sourceKeyId: 'D',
+      sourceIndex: 3,
+      repeatInstance: 1,
+    };
+    // The tooltip kind feeds the existing vocabulary/fill mapping verbatim —
+    // no linked-specific fill class exists in the presentation layer.
+    const kind = getRotoResolutionCellTooltipKind(linked, 'empty');
+    expect(getRotoCellStateTooltipCopy(kind)).toBe('Empty');
+  });
 });

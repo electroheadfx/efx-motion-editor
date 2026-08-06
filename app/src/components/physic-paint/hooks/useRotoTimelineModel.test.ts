@@ -197,3 +197,60 @@ describe('useRotoTimelineModel legacy parity (38.1 D-09)', () => {
     expect(model.cachedRotoFrames.value).toBe(cachedBefore);
   });
 });
+
+describe('useRotoTimelineModel loop resolution threading (43-02)', () => {
+  function loopInput(overrides: Partial<RotoTimelineModelInput> = {}): RotoTimelineModelInput {
+    return physicalInput({
+      rotoKeyRecords: [10, 11, 12, 13, 14].map((appFrame, index) => realKeyRecord(`key-${index}`, appFrame)),
+      rotoInterpolationState: { enabled: false, mode: 'duplicate' },
+      capacity: 600,
+      currentFrame: 0,
+      rotoLoopClips: [{
+        loopId: 'L1',
+        placementStart: 10,
+        sourceKeyIds: ['key-0', 'key-1', 'key-2', 'key-3', 'key-4'],
+        repeat: 5,
+        mode: 'static',
+      }],
+      rotoParentEndExclusive: 600,
+      ...overrides,
+    });
+  }
+
+  it('derives the loop resolution context structurally and resolves frames lazily', () => {
+    const model = createRotoTimelineModel(loopInput());
+
+    expect(model.loopResolutionContext.value.ranges).toHaveLength(1);
+    expect(model.loopResolutionContext.value.ranges[0]).toMatchObject({
+      loopId: 'L1',
+      placementStart: 10,
+      effectiveEnd: 35,
+    });
+
+    // Real frames win; virtual frames resolve linked; the typed contract also
+    // covers 'linked-unresolved' and 'empty' (kind handling lives in the
+    // exhaustiveness-guarded consumer helpers, not in this model).
+    expect(model.getFrameResolution(10)).toEqual({ kind: 'real', keyId: 'key-0', appFrame: 10 });
+    expect(model.getFrameResolution(18)).toMatchObject({ kind: 'linked', loopId: 'L1', sourceKeyId: 'key-3' });
+    expect(model.getFrameResolution(99)).toEqual({ kind: 'empty' });
+  });
+
+  it('a linked frame never produces a key selection through the model', () => {
+    const model = createRotoTimelineModel(loopInput({ currentFrame: 18 }));
+
+    // No selected keyId exists for a virtual occurrence: selection signals
+    // stay null unless a real-key keyId is explicitly selected (D-23/D-11).
+    expect(model.getFrameResolution(18).kind).toBe('linked');
+    expect(model.selectedKeyId.value).toBeNull();
+    expect(model.selectedRealKey.value).toBeNull();
+    expect(model.selectedAppFrame.value).toBeNull();
+  });
+
+  it('absent loop inputs derive an empty loop resolution context with unchanged behavior', () => {
+    const model = createRotoTimelineModel(physicalInput());
+
+    expect(model.loopResolutionContext.value.ranges).toEqual([]);
+    expect(model.getFrameResolution(0)).toEqual({ kind: 'real', keyId: 'key-0', appFrame: 0 });
+    expect(model.getFrameResolution(1)).toEqual({ kind: 'empty' });
+  });
+});
