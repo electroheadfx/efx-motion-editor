@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43
-current_phase_name: Hold Loop Clips + Filmstrip Capsule
+current_phase_name: hold-loop-clips-filmstrip-capsule
 status: executing
 stopped_at: Phase 43 plans revised per external audit (12 findings) — ready to execute
-last_updated: "2026-08-06T19:04:21.519Z"
+last_updated: "2026-08-06T19:09:00.810Z"
 last_activity: 2026-08-06
-last_activity_desc: "Phase 43 plans/CONTEXT/UI-SPEC/VALIDATION revised per external audit (12 findings): lazy interval resolution, single typed unresolved contract, placementStart identity, declared 43-09 consumers, Undo→Redo proofs, valid-loop parity, unsigned packaged smoke, bounded 43-04 deviation"
+last_activity_desc: Phase 43 execution started
 progress:
   total_phases: 6
   completed_phases: 3
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 42 — playscript-application-modes-color-override
+**Current focus:** Phase 43 — hold-loop-clips-filmstrip-capsule
 
 ## Current Position
 
-Phase: 43 — Hold Loop Clips + Filmstrip Capsule
-Plan: 43-01 (Wave 1 of 7 — revised wave table in ROADMAP.md §Phase 43)
-Status: Ready to execute
-Last activity: 2026-08-06 — Phase 43 plans/CONTEXT/UI-SPEC/VALIDATION revised per external audit (12 findings): lazy interval resolution, single typed unresolved contract, placementStart identity, declared 43-09 consumers, Undo→Redo proofs, valid-loop parity, unsigned packaged smoke, bounded 43-04 deviation
+Phase: 43 (hold-loop-clips-filmstrip-capsule) — EXECUTING
+Plan: 1 of 10
+Status: Executing Phase 43
+Last activity: 2026-08-06 — Phase 43 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 runs an UNSIGNED packaged-app smoke (capsule, loop-edit dialog, valid preview, unresolved placeholder, valid PNG export, unresolved export block — no signing material accessed). Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
