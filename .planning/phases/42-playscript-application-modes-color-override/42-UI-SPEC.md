@@ -1,7 +1,7 @@
 ---
 phase: 42
 slug: playscript-application-modes-color-override
-status: revised
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-08-05
