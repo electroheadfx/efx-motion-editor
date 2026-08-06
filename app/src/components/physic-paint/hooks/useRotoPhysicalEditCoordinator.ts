@@ -977,11 +977,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           return false;
         }
         // Staged Loop Clips (Phase 43, Q1): replay stages the immutable
-        // replay target's collection so Undo/Redo restores loop state; every
-        // ordinary kind stages the current collection unchanged.
+        // replay target's collection so Undo/Redo restores loop state; a
+        // rigid whole-cycle group drag stages the proposal's placementStart
+        // follow (D-04); every other ordinary kind stages the current
+        // collection unchanged.
         const stagedLoopClips = isReplay && replayTarget
           ? replayTarget.loopClips
-          : currentLoopClips;
+          : proposal?.nextLoopClips ?? currentLoopClips;
         const stagedRevision = buildPhysicPaintRotoPhysicalRevision(validatedStagedRecords, stagedInterpolation, stagedLoopClips);
         if (isReplay && (
           !historyProvenance

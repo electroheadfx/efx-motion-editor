@@ -78,6 +78,7 @@ import {
   isPhysicPaintRotoLoopClip,
   isPhysicPaintRotoRealKeyPayload,
   parsePhysicPaintRotoRealKeyRecordCollection,
+  PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
 } from './physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoPhysicalEditSemanticDelta } from '../../../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
@@ -176,6 +177,13 @@ export interface PhysicPaintRotoPhysicalEditInput {
   readonly intent: PhysicPaintRotoPhysicalEditIntent;
   readonly capacity: number;
   readonly interpolationEnabled: boolean;
+  /**
+   * Phase 43 durable Loop Clip collection (D-07/D-11/D-13). When present, the
+   * resolver rejects delete/move/force-spacing intents that target linked
+   * source-cycle keys and carries rigid whole-cycle drag placementStart
+   * updates on the proposal. Absent/empty preserves pre-43 behavior exactly.
+   */
+  readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
 }
 
 /**
@@ -279,6 +287,15 @@ export interface PhysicPaintRotoPhysicalEditProposal {
   readonly drag: PhysicPaintRotoPhysicalDragPresentation | null;
   /** Complete canonical next records for Duplicate/Paste; null for mapping-only edits and replay. */
   readonly nextRecords: readonly PhysicPaintRotoRealKeyRecord[] | null;
+  /**
+   * Phase 43 (D-04, placement/source correction): complete canonical next Loop
+   * Clip collection when the edit moves loop placement — a rigid whole-cycle
+   * group drag updates `placementStart` ONLY for loops whose placementStart
+   * coincided with the cycle's pre-move first key frame (original loops
+   * follow; duplicated loops keep their own placement and resolve the same
+   * source keys by id). Null when no loop record changes.
+   */
+  readonly nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null;
   /** Declared operation-specific delta validated against current and next records. */
   readonly semanticDelta: PhysicPaintRotoPhysicalEditSemanticDelta | null;
   /** Concise status derived from the validated map. */
@@ -307,7 +324,11 @@ export type PhysicPaintRotoPhysicalEditFailureCode =
   | 'moved-as-target'
   | 'malformed-records'
   | 'malformed-payload'
-  | 'invalid-semantic-delta';
+  | 'invalid-semantic-delta'
+  | 'malformed-loop-clips'
+  | 'loop-source-key-delete-rejected'
+  | 'loop-source-key-move-rejected'
+  | 'linked-frame-delete-rejected';
 
 /**
  * Discriminated failure result. The failure branch cannot carry a partial
@@ -753,6 +774,79 @@ function validateCapacity(capacity: unknown): capacity is number {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Phase 43 loop-aware intent guards (D-07/D-11).
+// ---------------------------------------------------------------------------
+
+/** Locked D-11 rejection copy (single-key drag and Force Spacing on linked source keys). */
+const LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT =
+  'Linked source-cycle keys move only as a rigid group. Select the whole cycle to drag it.';
+
+/** Locked D-07 rejection copy; N counts every loop referencing the key's source cycle. */
+function loopSourceKeyDeleteRejectedText(referencingLoopCount: number): string {
+  return `This key belongs to a source cycle used by ${referencingLoopCount} linked loop(s). Unlink the loop(s) before deleting it.`;
+}
+
+/**
+ * Validate the optional edit-input Loop Clip collection. Absent/null means the
+ * pre-43 empty collection; malformed members fail closed — never silently
+ * filtered or normalized (D-31).
+ */
+function validateEditLoopClips(
+  value: unknown,
+  operationKind: PhysicPaintRotoPhysicalEditOperationKind | null,
+): { ok: true; value: readonly PhysicPaintRotoLoopClip[] } | { ok: false; resolution: PhysicPaintRotoPhysicalEditResolution } {
+  if (value === undefined || value === null) {
+    return { ok: true, value: PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY };
+  }
+  if (!Array.isArray(value) || !value.every(isPhysicPaintRotoLoopClip)) {
+    return { ok: false, resolution: fail('malformed-loop-clips', operationKind, 'Loop Clips must be valid Loop Clip records.') };
+  }
+  return { ok: true, value };
+}
+
+/** Count every loop whose source cycle references the given keyId. */
+function countLoopsReferencingSourceKey(
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  keyId: string,
+): number {
+  let count = 0;
+  for (const clip of loopClips) {
+    if (clip.sourceKeyIds.includes(keyId)) count += 1;
+  }
+  return count;
+}
+
+/**
+ * D-04 rigid whole-cycle drag placement follow (placement/source correction):
+ * a loop's placementStart tracks the drag ONLY when the moved set contains the
+ * cycle's ENTIRE source key list AND the loop's placementStart coincided with
+ * the cycle's pre-move first key frame (an original loop). A duplicated loop
+ * keeps its own placementStart and keeps resolving the same source keys by id.
+ * Returns the complete next collection, or null when no loop record changes.
+ */
+function computeRigidLoopPlacementFollow(
+  identities: ValidatedIdentities,
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  movedKeyIds: ReadonlySet<string>,
+  mapping: ReadonlyMap<string, number>,
+): readonly PhysicPaintRotoLoopClip[] | null {
+  if (loopClips.length === 0) return null;
+  let changed = false;
+  const next = loopClips.map((clip) => {
+    const firstKeyId = clip.sourceKeyIds[0];
+    if (firstKeyId === undefined) return clip;
+    if (!clip.sourceKeyIds.every((keyId) => movedKeyIds.has(keyId))) return clip;
+    const preMoveFrame = identities.framesByKeyId.get(firstKeyId);
+    if (preMoveFrame === undefined || clip.placementStart !== preMoveFrame) return clip;
+    const postMoveFrame = mapping.get(firstKeyId);
+    if (postMoveFrame === undefined || postMoveFrame === preMoveFrame) return clip;
+    changed = true;
+    return Object.freeze({ ...clip, placementStart: postMoveFrame }) as PhysicPaintRotoLoopClip;
+  });
+  return changed ? (Object.freeze(next) as readonly PhysicPaintRotoLoopClip[]) : null;
+}
+
 interface ValidatedIdentities {
   readonly ordered: readonly PhysicPaintRotoKeyIdentity[];
   readonly keyIds: ReadonlySet<string>;
@@ -832,6 +926,8 @@ interface Candidate {
   readonly drag: PhysicPaintRotoPhysicalDragPresentation | null;
   readonly nextRecords?: readonly PhysicPaintRotoRealKeyRecord[];
   readonly semanticDelta?: PhysicPaintRotoPhysicalEditSemanticDelta;
+  /** Phase 43: complete next Loop Clip collection for rigid whole-cycle group drags; absent/null otherwise. */
+  readonly nextLoopClips?: readonly PhysicPaintRotoLoopClip[] | null;
 }
 
 /**
@@ -1422,6 +1518,7 @@ function buildMoveGroupCandidate(
   grabbedKeyId: string,
   target: PhysicPaintRotoPhysicalEditTarget,
   capacity: number,
+  loopClips: readonly PhysicPaintRotoLoopClip[],
 ): MoveBuilderResult {
   const movedSet = new Set(movedKeyIds);
   const grabbedOriginalFrame = identities.framesByKeyId.get(grabbedKeyId) as number;
@@ -1527,6 +1624,9 @@ function buildMoveGroupCandidate(
         movedKeyIds: movedKeyIdsFrozen,
         grabbedKeyId,
       }) as PhysicPaintRotoPhysicalDragPresentation,
+      // D-04: original loops follow a rigid whole-cycle drag; duplicated loops
+      // keep their own placementStart (placement/source correction).
+      nextLoopClips: computeRigidLoopPlacementFollow(identities, loopClips, movedSet, mapping),
     },
   };
 }
@@ -1963,6 +2063,7 @@ function finalizeProposal(
     removedKeyIds: candidate.removedKeyIds,
     drag: candidate.drag,
     nextRecords: candidate.nextRecords ?? null,
+    nextLoopClips: candidate.nextLoopClips ?? null,
     semanticDelta: candidate.semanticDelta ?? null,
     status,
   }) as PhysicPaintRotoPhysicalEditProposal;
@@ -2136,6 +2237,10 @@ export function resolvePhysicPaintRotoPhysicalEdit(
   if (!identitiesResult.ok) return identitiesResult.resolution;
   const identities = identitiesResult.value;
 
+  const loopClipsResult = validateEditLoopClips(input.loopClips, operationKind);
+  if (!loopClipsResult.ok) return loopClipsResult.resolution;
+  const loopClips = loopClipsResult.value;
+
   const intent = input.intent;
   if (intent.kind === 'insert-slot') {
     if (!isBoundedKeyId(intent.selectedKeyId)) {
@@ -2162,6 +2267,12 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     if (!identities.keyIds.has(intent.selectedKeyId)) {
       return fail('unknown-operation-identity', operationKind, `Delete targets unknown identity "${intent.selectedKeyId}".`);
+    }
+    // D-07: source-cycle key deletion is rejected while any loop references
+    // the cycle — fail-closed with the locked copy (Cut-tool precedent).
+    const referencingLoops = countLoopsReferencingSourceKey(loopClips, intent.selectedKeyId);
+    if (referencingLoops > 0) {
+      return fail('loop-source-key-delete-rejected', operationKind, loopSourceKeyDeleteRejectedText(referencingLoops));
     }
     const candidate = buildDeleteCandidate(identities, intent.selectedKeyId);
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled);
@@ -2191,6 +2302,13 @@ export function resolvePhysicPaintRotoPhysicalEdit(
         // Idempotency guard: an already-absent or unknown identity fails
         // closed with no proposal (37-GROUP-DELETE).
         return fail('unknown-operation-identity', operationKind, `Group delete targets unknown identity "${keyId}".`);
+      }
+    }
+    // D-07: any linked source-cycle member rejects the whole group delete.
+    for (const keyId of intent.keyIds) {
+      const referencingLoops = countLoopsReferencingSourceKey(loopClips, keyId);
+      if (referencingLoops > 0) {
+        return fail('loop-source-key-delete-rejected', operationKind, loopSourceKeyDeleteRejectedText(referencingLoops));
       }
     }
     const candidate = buildDeleteGroupCandidate(identities, intent.keyIds);
@@ -2326,6 +2444,11 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (!identities.keyIds.has(intent.movedKeyId)) {
       return fail('unknown-operation-identity', operationKind, `Move targets unknown moved identity "${intent.movedKeyId}".`);
     }
+    // D-11: a linked source key never moves alone — the cycle's internal
+    // spacing IS the loop rhythm; only a rigid whole-cycle group drag moves it.
+    if (countLoopsReferencingSourceKey(loopClips, intent.movedKeyId) > 0) {
+      return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
+    }
     if (intent.target === null || typeof intent.target !== 'object') {
       return fail('malformed-target', operationKind, 'Move target must be a discriminated record.');
     }
@@ -2337,6 +2460,30 @@ export function resolvePhysicPaintRotoPhysicalEdit(
   }
 
   if (intent.kind === 'force-spacing') {
+    // D-11: Force Spacing re-places every key in its affected set, so any
+    // linked source key in that set rejects — full-timeline scope affects
+    // every key; a scoped selection affects its members only.
+    if (loopClips.length > 0) {
+      const scopeKeyIds = intent.scopeKeyIds ?? null;
+      if (scopeKeyIds === null) {
+        let linkedKeyId: string | null = null;
+        for (const identity of identities.ordered) {
+          if (countLoopsReferencingSourceKey(loopClips, identity.keyId) > 0) {
+            linkedKeyId = identity.keyId;
+            break;
+          }
+        }
+        if (linkedKeyId !== null) {
+          return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
+        }
+      } else {
+        for (const keyId of scopeKeyIds) {
+          if (countLoopsReferencingSourceKey(loopClips, keyId) > 0) {
+            return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
+          }
+        }
+      }
+    }
     const spacingResult = buildForceSpacingCandidate(identities, intent.emptyFrames, intent.selectedKeyId, intent.scopeKeyIds);
     if (!spacingResult.ok) return spacingResult.resolution;
     const finalized = finalizeProposal(spacingResult.candidate, identities, input.capacity, input.interpolationEnabled);
@@ -2372,7 +2519,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (intent.target === null || typeof intent.target !== 'object') {
       return fail('malformed-target', operationKind, 'Group move target must be a discriminated record.');
     }
-    const moveResult = buildMoveGroupCandidate(identities, intent.movedKeyIds, intent.grabbedKeyId, intent.target, input.capacity);
+    const moveResult = buildMoveGroupCandidate(identities, intent.movedKeyIds, intent.grabbedKeyId, intent.target, input.capacity, loopClips);
     if (!moveResult.ok) return moveResult.resolution;
     const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled);
     if (!finalized.ok) return finalized.resolution;
@@ -2699,4 +2846,56 @@ export function resolvePhysicPaintRotoLoopFrame(
     }
   }
   return EMPTY_FRAME_RESOLUTION;
+}
+
+/**
+ * D-13 linked-frame Delete-key guard. Delete-key at a frame whose per-frame
+ * resolution is 'linked' or 'linked-unresolved' (no local real key) is
+ * rejected with the verbatim locked copy — it never touches the
+ * modulo-resolved source key and never unlinks. Real and empty frames return
+ * null so ordinary delete proceeds. Clear and paint materialize a local real
+ * key instead (D-12/D-13).
+ */
+export function resolvePhysicPaintRotoLinkedFrameDeleteGuard(
+  context: PhysicPaintRotoLoopResolutionContext,
+  appFrame: number,
+): PhysicPaintRotoPhysicalEditFailure | null {
+  const resolution = resolvePhysicPaintRotoLoopFrame(context, appFrame);
+  if (resolution.kind !== 'linked' && resolution.kind !== 'linked-unresolved') return null;
+  return Object.freeze({
+    code: 'linked-frame-delete-rejected',
+    operationKind: 'delete-key',
+    text: 'No real key exists at this linked frame. Use Clear to create an empty real key, or select the Loop Clip capsule to delete the loop.',
+  }) as PhysicPaintRotoPhysicalEditFailure;
+}
+
+/**
+ * D-12 materialization base: the loop-resolved source payload a new local real
+ * key is built from when painting or erasing at a linked repetition frame. The
+ * payload is returned BY REFERENCE — one source cache entry serves every
+ * occurrence (D-26); the caller retargets/composites it into the new key's own
+ * payload through the existing paste-to-empty machinery. Real, empty, and
+ * linked-unresolved frames return null — a base is never fabricated from a
+ * missing source (D-31).
+ */
+export interface PhysicPaintRotoLoopMaterializationBase {
+  readonly loopId: string;
+  readonly sourceKeyId: string;
+  readonly payload: PhysicPaintRotoRealKeyPayload;
+}
+
+export function resolvePhysicPaintRotoLoopMaterializationBase(
+  context: PhysicPaintRotoLoopResolutionContext,
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  appFrame: number,
+): PhysicPaintRotoLoopMaterializationBase | null {
+  const resolution = resolvePhysicPaintRotoLoopFrame(context, appFrame);
+  if (resolution.kind !== 'linked') return null;
+  const source = records.find((record) => record.keyId === resolution.sourceKeyId) ?? null;
+  if (source === null) return null;
+  return Object.freeze({
+    loopId: resolution.loopId,
+    sourceKeyId: resolution.sourceKeyId,
+    payload: source.payload,
+  }) as PhysicPaintRotoLoopMaterializationBase;
 }

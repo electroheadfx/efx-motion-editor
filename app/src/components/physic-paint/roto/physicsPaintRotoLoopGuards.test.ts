@@ -216,7 +216,7 @@ describe('D-07 source-key deletion guard', () => {
   });
 
   it('deletes a materialized empty key normally, re-expanding the loop (D-13)', () => {
-    const records = [...SOURCE_RECORDS(), record('K', 20, 'empty')];
+    const records = [...SOURCE_RECORDS(), record('K', 20, 'RU1QVFk=')];
     const loopClips = [loop(10, 5)];
     expect(effectiveEndOf(records, loopClips, 'L1')).toBe(20);
 
@@ -408,7 +408,9 @@ describe('D-13 linked-frame delete guard', () => {
   });
 
   it('returns the same rejection at a linked-unresolved frame — it never unlinks and never touches source keys', () => {
-    const context = derive(SOURCE_RECORDS(), [loop(10, 5, 'L3', ['A', 'B', 'MISSING', 'D', 'E'])]);
+    // One dangling reference ('MISSING') extends the cycle to 6 frames; every
+    // present source key stays owned, so the unresolved range spans frame 20.
+    const context = derive(SOURCE_RECORDS(), [loop(10, 5, 'L3', ['A', 'B', 'C', 'D', 'E', 'MISSING'])]);
     expect(resolvePhysicPaintRotoLoopFrame(context, 20).kind).toBe('linked-unresolved');
     const failure = resolvePhysicPaintRotoLinkedFrameDeleteGuard(context, 20);
     expect(failure).toMatchObject({ code: 'linked-frame-delete-rejected', operationKind: 'delete-key' });
@@ -444,7 +446,7 @@ describe('D-12/D-13 materialize local key at a linked frame', () => {
     expect(resolvePhysicPaintRotoLoopMaterializationBase(context, records, 10)).toBeNull(); // real
     expect(resolvePhysicPaintRotoLoopMaterializationBase(context, records, 70)).toBeNull(); // empty
 
-    const unresolved = derive(records, [loop(10, 5, 'L3', ['A', 'B', 'MISSING', 'D', 'E'])]);
+    const unresolved = derive(records, [loop(10, 5, 'L3', ['A', 'B', 'C', 'D', 'E', 'MISSING'])]);
     expect(resolvePhysicPaintRotoLoopMaterializationBase(unresolved, records, 20)).toBeNull();
   });
 
@@ -456,7 +458,7 @@ describe('D-12/D-13 materialize local key at a linked frame', () => {
     const emptyPayload: PhysicPaintRotoRealKeyPayload = {
       frameIndex: 0,
       appFrame: 20,
-      dataUrl: 'data:image/png;base64,empty',
+      dataUrl: 'data:image/png;base64,RU1QVFk=',
       width: 2,
       height: 2,
     };
@@ -674,7 +676,7 @@ describe('D-06/D-10 materialization one-history-command coherence', () => {
   it('Clear materialization: one Undo removes the key and re-expands the loop; one Redo restores key and shrink', async () => {
     const loopClips = [loop(10, 5)];
     const before = snapshot(SOURCE_RECORDS(), loopClips, 'C', 12);
-    const after = snapshot([...SOURCE_RECORDS(), record('K', 20, 'empty')], loopClips, 'K', 20);
+    const after = snapshot([...SOURCE_RECORDS(), record('K', 20, 'RU1QVFk=')], loopClips, 'K', 20);
     const test = historyHarness(after);
 
     test.accept(before, after, 'clear-linked-1', 'paste-key');

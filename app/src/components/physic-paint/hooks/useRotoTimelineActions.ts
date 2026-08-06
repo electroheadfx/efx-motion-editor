@@ -18,6 +18,8 @@ import {
   createPhysicPaintRotoDuplicateKeyIntent,
   createPhysicPaintRotoPasteKeyGroupIntent,
   createPhysicPaintRotoPasteKeyIntent,
+  derivePhysicPaintRotoLoopRanges,
+  resolvePhysicPaintRotoLinkedFrameDeleteGuard,
   resolvePhysicPaintRotoPhysicalEdit,
   type PhysicPaintRotoPhysicalEditFailure,
   type PhysicPaintRotoPhysicalEditIntent,
@@ -334,6 +336,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       intent: runnerInput.intent,
       capacity,
       interpolationEnabled: interpolation.enabled,
+      // Phase 43: loop-aware guards (D-07 source-key deletion) consult the
+      // durable Loop Clip collection; absent port = pre-43 empty collection.
+      loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
     });
     if (!resolution.ok) {
       input.publishStatus?.(runnerInput.rejectedCopy?.(resolution.failure) ?? (resolution.failure.text || 'The Roto timeline edit is invalid.'));
@@ -385,6 +390,26 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     // valid selection; never throw — publish a status and resolve false.
     const selectedKeyId = input.getSelectedKeyId?.() ?? null;
     if (!isBoundedKeyId(selectedKeyId)) {
+      // D-13: Delete-key at a linked repetition frame is rejected with the
+      // locked verbatim copy — no local real key exists there; it never
+      // touches the modulo-resolved source key and never unlinks.
+      const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
+      const currentAppFrame = input.getCurrentAppFrame?.() ?? null;
+      if (loopClips.length > 0 && currentAppFrame !== null && input.getRotoKeyRecords && input.getCapacity) {
+        const records = input.getRotoKeyRecords();
+        const capacity = input.getCapacity();
+        const context = derivePhysicPaintRotoLoopRanges({
+          identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+          loopClips,
+          parentEndExclusive: capacity,
+          capacity,
+        });
+        const rejection = resolvePhysicPaintRotoLinkedFrameDeleteGuard(context, currentAppFrame);
+        if (rejection) {
+          input.publishStatus?.(rejection.text);
+          return Promise.resolve(false);
+        }
+      }
       input.publishStatus?.('Select a real Roto key to delete.');
       return Promise.resolve(false);
     }
@@ -528,6 +553,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       intent: { kind: 'move-key', movedKeyId, target },
       capacity,
       interpolationEnabled: interpolation.enabled,
+      // Phase 43: D-11 rejects single-key ripple drags on linked source keys.
+      loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
     });
     if (!resolution.ok) {
       return { ok: false, reason: resolution.failure.text || 'The Roto key move is invalid.' };
@@ -618,6 +645,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       intent: { kind: 'move-key-group', movedKeyIds, grabbedKeyId, target },
       capacity,
       interpolationEnabled: interpolation.enabled,
+      // Phase 43: rigid whole-cycle drags carry the original-loop
+      // placementStart follow on the proposal (D-04).
+      loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
     });
     if (!resolution.ok) {
       // Concise UI-SPEC copy plus structured conflicts and full detail; the
@@ -734,6 +764,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       },
       capacity,
       interpolationEnabled: interpolation.enabled,
+      // Phase 43: D-11 rejects Force Spacing over any linked source key.
+      loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
     });
     if (!resolution.ok) {
       if (scopeKeyIds !== null) {

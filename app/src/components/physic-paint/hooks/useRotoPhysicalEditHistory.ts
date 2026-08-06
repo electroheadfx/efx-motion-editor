@@ -244,6 +244,7 @@ function buildReplayProposal(target: RotoPhysicalEditSnapshot<unknown>): PhysicP
     removedKeyIds: Object.freeze([]) as readonly string[],
     drag: null,
     nextRecords: null,
+    nextLoopClips: null,
     semanticDelta: null,
     status: {
       operationKind: 'move-key',
