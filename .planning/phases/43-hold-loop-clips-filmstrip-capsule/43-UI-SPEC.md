@@ -141,7 +141,7 @@ English only. All capsule/badge/tooltip copy locked verbatim by 43-CONTEXT D-13/
 | Badge — infinity | `Cycle {N}f × ∞` (never `Infinityf`) |
 | Truncation label | `Loop shortened by next clip` |
 | Capsule tooltip — truncated | `{Badge} · Requested {R}f · Effective {E}f · Loop shortened by next clip ({partial cycle \| complete cycles}) · {Progressive \| Static / Hold}` |
-| Repeat-occurrence tooltip | `Repeat {n} · Source frame {i} of {N}` (e.g. `Repeat 3 · Source frame 2 of 5`) — plus a separate seek action that moves to the modulo-resolved source frame (D-17) |
+| Repeat-occurrence tooltip | `Repeat {n} · Source frame {i} of {N}` (e.g. `Repeat 3 · Source frame 2 of 5`) — pinned on ghost-cell/band click with a dedicated action labeled exactly `Edit source frame` that seeks to the modulo-resolved real source key (D-17) |
 | Zero-effective tooltip | `Cycle {N}f × {R} = {D}f · Effective 0f — fully shortened by the next clip` |
 | Error tooltip (unresolved refs) | lists the missing source references, one per line, then: `Repair, relink, unlink, or delete the loop.` |
 | Disabled/stale tooltip | `{reason}` — one plain sentence |
@@ -151,7 +151,9 @@ English only. All capsule/badge/tooltip copy locked verbatim by 43-CONTEXT D-13/
 | Source-edit dialog title | `Edit Source Cycle` |
 | Source-edit notice | `Confirming regenerates the source cycle and updates every linked Loop Clip referencing it.` — when shared: `This source cycle is shared by {N} loops.` |
 | Source-edit confirmation CTA | `Regenerate source cycle` |
-| Apply-time choice (S4) | `Link to existing cycle` / `Create new cycle` |
+| Apply-time choice (S4) — options | `Link to existing cycle` / `Create new cycle` — segmented control; shown ONLY when a compatible identical source cycle exists (D-05). Compatibility/matching logic is a planner/research concern; the user-visible consequence is locked here |
+| Apply-time choice (S4) — Link helper | `Reuses the existing source cycle. Future source edits update every linked loop.` — rendered together with the existing source range and the number of loops already linked to that source |
+| Apply-time choice (S4) — Create helper | `Creates an independent source cycle. Future edits do not affect the existing loops.` |
 | Capsule action | `Duplicate linked loop` |
 | Capsule action | `Unlink loop` |
 | Capsule action | `Delete loop` |
@@ -177,11 +179,51 @@ English only. All capsule/badge/tooltip copy locked verbatim by 43-CONTEXT D-13/
 | Same-start collision | Rejected, or routed through an explicit replace/update flow — never resolved by hidden creation-order priority (D-14) |
 | Hover | Outline raise + tooltip (D-23) |
 | Selection | 2px accent outline around the whole capsule; the loop object is the selection unit (D-23) |
-| Keyboard | Capsule is keyboard-focusable in timeline keyboard nav with the visible accent focus ring (D-23); in dialogs, Phase 42 focus-trap and `Escape`/`Enter` conventions apply unchanged |
+| Keyboard | Canvas keyboard model below (virtual focus order, visible focus ring, Enter/Escape/Delete, arrow keys — via the existing timeline focus host, zero per-capsule DOM nodes, D-32); in dialogs, Phase 42 focus-trap and `Escape`/`Enter` conventions apply unchanged |
 | Paint/erase on a linked repetition frame | Materializes a local real key (loop-resolved pixels + new stroke); the new key becomes the next-clip boundary and the loop shortens; canvas and playhead stay put; one Undo removes the key and the loop re-expands (D-12). No confirmation UI |
 | Clear vs Delete on a linked repetition frame | Clear materializes a local empty real key (loop shortens, atomic undoable); Delete-key is rejected with the verbatim D-13 message (D-13) |
 | Re-expansion | Moving/removing blocking content or a later loop re-expands the capsule automatically with no regeneration and no UI prompt (D-08, D-14, D-25) |
 | Generation lifecycle (S3) | Identical to Phase 42: inputs disabled during regeneration, `Cancel generation` replaces `Cancel`, footer progress, failure shows `--ps-error` inline and leaves no partial state |
+
+### Canvas hit regions (S1)
+
+The capsule is pure Canvas 2D (D-32) — zero per-cell DOM nodes — so hit-testing is an explicit contract, not DOM behavior. Six distinct hit regions:
+
+| # | Hit region | Pointer contract |
+|---|-----------|------------------|
+| 1 | Source-cycle thumbnail cell | Click selects/seeks the corresponding real source key. It never selects a virtual ghost cell; the existing real-key selection behavior is preserved unchanged |
+| 2 | Repeated ghost cell / repetition band | Click selects the Loop Clip object (the whole capsule is the selection unit, D-23) and pins the flat-multiline occurrence tooltip. The playhead does NOT move automatically. The pinned tooltip shows the Repeat instance, the source-frame index, and the source key frame — `Repeat {n} · Source frame {i} of {N}` — plus a dedicated action labeled exactly `Edit source frame`. Invoking `Edit source frame` seeks to the modulo-resolved real source key (D-17) |
+| 3 | Compact math badge | Click reopens the Play Script dialog in loop-edit mode targeting that loop (D-01) |
+| 4 | Capsule outline | Click selects the Loop Clip object (same selection unit as region 2) |
+| 5 | Truncation edge | Part of the band/ghost hit region; hover/click surfaces the truncation tooltip with `(partial cycle)` / `(complete cycles)` (D-21) |
+| 6 | Zero-effective anchor flag | Mouse-selectable, keyboard-focusable, editable, unlinkable, and deletable like any capsule. The `0f` marker may stay visually ~6px high (D-22), but its canvas hit target is at least 24×24px and must not overlap or hide the blocking real key's hit target |
+
+### Canvas keyboard model (S1)
+
+Keyboard support rides the existing timeline focus/navigation host — no DOM nodes are added per capsule (D-32):
+
+- The capsule participates in the timeline virtual focus order as one focusable unit (the loop object).
+- A visible accent focus ring (2px + 2px offset) renders around the whole focused capsule on canvas.
+- `Enter` opens/pins the capsule tooltip and its actions (including `Edit source frame`, `Duplicate linked loop`, `Unlink loop`, `Delete loop`).
+- `Escape` closes the pinned tooltip/actions and returns focus to the timeline host.
+- `Delete` on a selected/focused capsule invokes the unlink-only `Delete loop` (D-03) — never real-key deletion.
+- Arrow keys follow the existing timeline navigation convention unchanged; the capsule is one stop in that order.
+- Ghost cells are never exposed as selectable real keys — to pointer selection, focus, or keyboard navigation.
+
+Every canvas interaction above has both a mouse path and a keyboard path: focus + `Enter` reaches everything pointer-click reaches.
+
+### Visual-state precedence (S1)
+
+When multiple states coincide, emphasis resolves top-down — a lower state never hides a higher one:
+
+1. Unresolved/error red (2px `#FF4444` outline + error tooltip)
+2. Keyboard focus ring (accent, 2px + 2px offset)
+3. Selected accent outline (2px around the whole capsule)
+4. Truncation amber diagonal (`#FFB020`)
+5. Hover treatment (outline raise + tooltip)
+6. Idle
+
+Error styling is never replaced by selected or hover styling. The truncation diagonal remains visible under focus and selection. No state ever alters capsule geometry — states change paint only (outline, ring, opacity), never position or size.
 
 ---
 
@@ -189,29 +231,29 @@ English only. All capsule/badge/tooltip copy locked verbatim by 43-CONTEXT D-13/
 
 > State coverage across 6 surfaces: S1 capsule, S2 loop-edit dialog, S3 source-edit dialog, S4 Link/Create choice, S5 Studio link badge, S6 guard/preflight/export surfaces.
 
-Applicable state considerations resolved: 14 covered, 0 backstops, 6 dismissed, 0 unresolved
+Applicable state considerations resolved: 15 covered, 0 backstops, 5 dismissed, 0 unresolved
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
 | empty | S1 capsule | ✅ covered | No Loop Clips → nothing rendered; no placeholder, no legend change. Zero-effective loop (Effective = 0f) renders the D-22 greyed anchor flag with `0f` marker — never invisible |
-| empty / first-open | S2 loop-edit dialog | ✅ covered | Opens prefilled from the loop record (Repeat, Infinity); readout derived from the canonical resolver — never blank |
+| empty / first-open | S2/S3 dialogs | ✅ covered | Both modes open prefilled from the canonical record (loop record: Repeat, Infinity; source cycle: mode, Frames per cycle, color, Motion); readouts derived from the canonical resolver — never blank |
 | populated | S1 source-cycle cells | ✅ covered | Real thumbnails from the existing downscaled cache path (D-15); diamonds per existing convention |
 | partial | S1 truncation | ✅ covered | Amber diagonal + tooltip `(partial cycle)` vs `(complete cycles)` (D-21); badge never changes on truncation (D-19) |
 | partial | S6 preflight | ✅ covered | Batch operations that will shorten loops surface the locked preflight line before confirm (D-06); commit + derived shrink stay one undoable outcome |
 | overflow / zoom | S1 capsule | ✅ covered | Three zoom bands with declared frameWidth thresholds (high/default/low, D-16); badge truncates via `truncateText` below 18px minimum; diagonal draws at every zoom |
-| overflow | S2/S3 dialogs | ✅ covered | Phase 42 compact-fit contract inherited: all rows visible at minimum window size, no scrollbars, no clipped content |
+| overflow | S2/S3/S4 dialogs | ✅ covered | Phase 42 compact-fit contract inherited: all rows visible at minimum window size, no scrollbars, no clipped content; S4 renders inside the same modal shell |
 | long-text | S1 badge, tooltips | ✅ covered | Badge copy is fixed compact math forms; canvas label truncation reuses `truncateText`; tooltips are flat-multiline with fixed forms |
 | error | S1 capsule, S6 export | ✅ covered | Unresolvable source refs → red outline + error tooltip listing missing refs; records preserved verbatim, repair/relink/unlink/delete-loop offered (D-23/D-31); preview shows marked placeholders (non-blocking), export BLOCKED with the locked error naming loop and frame (D-28) |
 | error | S6 guarded operations | ✅ covered | Delete-key, source-key deletion, single-key drag, and Force Spacing rejections are fail-closed with locked reason copy (D-07/D-11/D-13) — existing guarded-operation idiom |
 | disabled | S2 locked fields, S6 guarded actions | ✅ covered | Locked source fields render disabled at reduced opacity with values preserved; guarded actions follow the Phase 36.15 guarded-icon convention with reason tooltips |
 | stale | S1 capsule | ✅ covered | Missing/stale source keyIds keep the capsule visible (error outline or zero/error marker) with the unresolved record intact across save/reopen (D-31) — never silently dropped |
-| loading / busy | S3 regeneration | ✅ covered | Reuses the Phase 42 generation-in-progress lifecycle verbatim (disabled inputs, `Cancel generation`, footer progress) |
+| loading / busy | S3 regeneration | ✅ covered | Reuses the Phase 42 generation-in-progress lifecycle verbatim (disabled inputs, `Cancel generation`, footer progress); failure shows `--ps-error` inline and leaves no partial state |
 | zero-one-many | S3 affected-loop notice | ✅ covered | Shared-source count shown only when N > 1 (`This source cycle is shared by {N} loops.`); single-loop case shows the base notice |
 | loading | S1, S2, S4, S5 | ✖ dismissed | Capsule and badge render synchronously from resolver output and cache thumbnails; dialogs render from controller signals — no async load path on these surfaces |
 | empty | S4 | ✖ dismissed | The Link/Create choice renders only when an identical source cycle exists — it is never an empty surface |
-| error | S2 | ✖ dismissed | Loop-edit mode has no invalid-input path beyond the inherited Repeat validation (`Enter a positive integer.`) |
-| long-text | S3, S4 | ✖ dismissed | All copy is locked short fixed strings with `{N}`/`{F}` numeric slots |
-| partial | S2 | ✖ dismissed | Requested/Effective readout always fully derivable from the loop record + resolver |
+| error | S2 Repeat field | ✅ covered | Repeat reuses the inherited Phase 42 positive-integer AND safe-product validation verbatim: malformed, zero, negative, fractional, and unsafe-product values show the inherited inline error — `Enter a positive integer.` or `Repeat is too large for this cycle length.` `Update loop` stays disabled while Repeat is invalid. Infinity disables Repeat without clearing its last valid finite value; turning Infinity off restores that value and revalidates it against the fixed source-cycle length. The Requested/Effective readout never displays unsafe numeric results (no overflow products, no NaN) |
+| long-text | S2, S3, S4 | ✖ dismissed | All copy is locked short fixed strings with `{N}`/`{F}` numeric slots; the S2 readout uses fixed math forms (`Requested {R}f · Effective {E}f`) |
+| partial | S2/S3 | ✖ dismissed | Requested/Effective readout always fully derivable from the loop record + resolver; S3 fields always fully derivable from the source cycle record |
 | overflow | S5 | ✖ dismissed | Badge is inset-only on fixed 18px×24px cells — no layout impact |
 
 ---
@@ -227,11 +269,11 @@ Applicable state considerations resolved: 14 covered, 0 backstops, 6 dismissed, 
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED — gsd-ui-checker verdict `UI-SPEC VERIFIED`, 2026-08-06. Non-blocking FLAGs D2 (idle-capsule focal point) and D5 (2px micro-offset exceptions) were resolved and re-verified; FLAG D4 (inherited Phase 42 type scale above guideline maxima) is locked inheritance from an already-approved, already-shipped dialog — no action possible or needed, noted for the record. Re-approved 2026-08-06 after the targeted correction (S2 Repeat validation coverage, canvas interaction/keyboard contract, visual-state precedence, S4 Link/Create copy).
