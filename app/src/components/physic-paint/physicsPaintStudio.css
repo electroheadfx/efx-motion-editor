@@ -1282,6 +1282,13 @@ button.destructive {
   min-width: 0;
   padding: 15px 20px 13px;
   border-bottom: 1px solid var(--ps-border);
+  cursor: grab;
+  user-select: none;
+}
+
+/* While dragging, the root flags the state so the handle reads as grabbing. */
+.physics-paint-play-script-dialog.physics-paint-play-script-dragging .physics-paint-play-script-header {
+  cursor: grabbing;
 }
 
 .physics-paint-play-script-header strong {
@@ -1491,14 +1498,16 @@ button.destructive {
   cursor: pointer;
 }
 
-/* Color pane (D-08R): centers its compact content — the card never reserves dead space. */
+/* Color pane (D-08R): centers its compact content — the card never reserves dead space.
+   min-height matches the Custom row's outer height so toggling Original/Custom never
+   changes the card (and modal) height (UAT remediation). */
 .physics-paint-play-script-color-pane {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   justify-content: center;
   margin-top: 10px;
-  min-height: 0;
+  min-height: 45px;
 }
 
 .physics-paint-play-script-color-original-row {

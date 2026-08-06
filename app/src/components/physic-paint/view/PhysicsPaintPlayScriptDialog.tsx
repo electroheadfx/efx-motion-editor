@@ -1,5 +1,5 @@
 import type { RefObject } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { RotoPlayScriptController, RotoPlayScriptMode } from '../roto/physicsPaintRotoPlayScriptController';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
@@ -50,6 +50,58 @@ export function PhysicsPaintPlayScriptDialog({
     else if (previousOpen.current) returnFocusRef.current?.focus();
     previousOpen.current = confirmationOpen;
   }, [confirmationOpen, returnFocusRef]);
+
+  // Header drag (UAT remediation): the modal repositions by pointer drag on its compact
+  // header. The offset is a translate() on top of the grid-centered surface, so the Paint
+  // layout behind is never touched (D-19). Local component state by locality — never shared.
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const dragStart = useRef<{
+    pointerX: number;
+    pointerY: number;
+    baseX: number;
+    baseY: number;
+    rect: { left: number; top: number; width: number } | null;
+  } | null>(null);
+  const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+
+  const onHeaderPointerDown = (event: PointerEvent) => {
+    if (event.button !== 0) return;
+    const rect = surfaceRef.current?.getBoundingClientRect?.() ?? null;
+    dragStart.current = {
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      baseX: dragOffset.x,
+      baseY: dragOffset.y,
+      rect: rect ? { left: rect.left, top: rect.top, width: rect.width } : null,
+    };
+    (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
+    setDragging(true);
+    event.preventDefault();
+  };
+
+  const onHeaderPointerMove = (event: PointerEvent) => {
+    const start = dragStart.current;
+    if (!start) return;
+    let nextX = start.baseX + (event.clientX - start.pointerX);
+    let nextY = start.baseY + (event.clientY - start.pointerY);
+    // Keep at least 80px of the modal visible horizontally and the header reachable
+    // vertically. Clamping needs real viewport/rect values — skipped in DOM-less tests.
+    if (start.rect && typeof window !== 'undefined') {
+      const deltaX = nextX - start.baseX;
+      const deltaY = nextY - start.baseY;
+      const clampedX = Math.min(Math.max(deltaX, 80 - start.rect.width - start.rect.left), window.innerWidth - 80 - start.rect.left);
+      const clampedY = Math.min(Math.max(deltaY, -start.rect.top), window.innerHeight - 48 - start.rect.top);
+      nextX = start.baseX + clampedX;
+      nextY = start.baseY + clampedY;
+    }
+    setDragOffset({ x: nextX, y: nextY });
+  };
+
+  const endHeaderDrag = () => {
+    dragStart.current = null;
+    setDragging(false);
+  };
 
   if (!confirmationOpen) return null;
 
@@ -102,7 +154,7 @@ export function PhysicsPaintPlayScriptDialog({
   return (
     <div
       ref={dialogRef}
-      class="physics-paint-play-script-dialog"
+      class={`physics-paint-play-script-dialog${dragging ? ' physics-paint-play-script-dragging' : ''}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="physics-play-script-title"
@@ -132,8 +184,18 @@ export function PhysicsPaintPlayScriptDialog({
       }}
     >
       <div class="physics-paint-play-script-backdrop" aria-hidden="true" />
-      <div class="physics-paint-play-script-surface">
-        <div class="physics-paint-play-script-header">
+      <div
+        ref={surfaceRef}
+        class="physics-paint-play-script-surface"
+        style={dragOffset.x !== 0 || dragOffset.y !== 0 ? { transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)` } : undefined}
+      >
+        <div
+          class="physics-paint-play-script-header"
+          onPointerDown={onHeaderPointerDown}
+          onPointerMove={onHeaderPointerMove}
+          onPointerUp={endHeaderDrag}
+          onPointerCancel={endHeaderDrag}
+        >
           <strong id="physics-play-script-title">Play Script</strong>
           <span class="physics-paint-play-script-header-range">Max {playScript.capacity.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>
         </div>
