@@ -199,43 +199,74 @@ beforeEach(() => {
   hooks.reset();
 });
 
-describe('PhysicsPaintPlayScriptDialog card-grid layout (D-16)', () => {
-  it('renders Mode first, Timing and Color as sibling cards, Motion wiggle with a heading Reset defaults, then the summary bar before the footer', () => {
+describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
+  it('lays out Mode (span-2), then Timing LEFT beside the Color-over-Motion right stack, then the summary bar (span-2)', () => {
     const readout = 'Requested: 25f (5f × 5) · Effective: 18f — shortened by the next clip';
     const { controller } = createFakeController({ loopReadout: readout });
     const tree = renderDialog(controller);
     const content = findOne(tree, byClass('physics-paint-play-script-content'));
-    const cards = childrenOf(content).filter((child): child is TestVNode =>
-      typeof child === 'object' && child !== null && !Array.isArray(child) && hasClass(child as TestVNode, 'physics-paint-play-script-card'));
-    expect(cards.length).toBe(4);
+    const contentChildren = childrenOf(content).filter((child): child is TestVNode =>
+      typeof child === 'object' && child !== null && !Array.isArray(child));
+
     // Mode card is the first-read element, full width.
-    expect(hasClass(cards[0], 'physics-paint-play-script-card-mode')).toBe(true);
-    expect(hasClass(cards[0], 'physics-paint-play-script-card-wide')).toBe(true);
-    // Timing and Color cards are side-by-side siblings of the same body grid.
-    expect(hasClass(cards[1], 'physics-paint-play-script-card-timing')).toBe(true);
-    expect(hasClass(cards[2], 'physics-paint-play-script-card-color')).toBe(true);
-    expect(parentOf(tree, cards[1])).toBe(content);
-    expect(parentOf(tree, cards[2])).toBe(content);
-    // Motion wiggle card spans full width; Reset defaults lives inside its section heading.
-    expect(hasClass(cards[3], 'physics-paint-play-script-card-motion')).toBe(true);
-    expect(hasClass(cards[3], 'physics-paint-play-script-card-wide')).toBe(true);
-    const heading = findOne(cards[3], byClass('physics-paint-play-script-card-heading'));
+    const modeCard = findOne(content, byClass('physics-paint-play-script-card-mode'));
+    expect(hasClass(modeCard, 'physics-paint-play-script-card-wide')).toBe(true);
+    expect(parentOf(tree, modeCard)).toBe(content);
+    expect(contentChildren[0]).toBe(modeCard);
+
+    // (a) Timing card is the LEFT sibling of the right-column stack — same body grid row.
+    const timingCard = findOne(tree, byClass('physics-paint-play-script-card-timing'));
+    const sideStack = findOne(tree, byClass('physics-paint-play-script-side-stack'));
+    expect(parentOf(tree, timingCard)).toBe(content);
+    expect(parentOf(tree, sideStack)).toBe(content);
+    expect(contentChildren.indexOf(timingCard)).toBeLessThan(contentChildren.indexOf(sideStack));
+
+    // (b) Color card precedes Motion wiggle inside the right column; Motion wiggle is
+    // NEVER a separate full-width row and NEVER above Color (D-16).
+    const colorCard = findOne(tree, byClass('physics-paint-play-script-card-color'));
+    const motionCard = findOne(tree, byClass('physics-paint-play-script-card-motion'));
+    expect(parentOf(tree, colorCard)).toBe(sideStack);
+    expect(parentOf(tree, motionCard)).toBe(sideStack);
+    const stackChildren = childrenOf(sideStack).filter((child): child is TestVNode =>
+      typeof child === 'object' && child !== null && !Array.isArray(child));
+    expect(stackChildren.indexOf(colorCard)).toBeLessThan(stackChildren.indexOf(motionCard));
+    expect(hasClass(motionCard, 'physics-paint-play-script-card-wide')).toBe(false);
+
+    // Motion wiggle heading with the compact Reset defaults heading link.
+    const heading = findOne(motionCard, byClass('physics-paint-play-script-card-heading'));
     expect(textOf(heading)).toContain('Motion wiggle');
     expect(textOf(findOne(heading, (vnode) => textOf(vnode) === 'Reset defaults'))).toBe('Reset defaults');
-    // Summary bar renders the controller loopReadout verbatim at the bottom of the body.
+
+    // (d) Summary bar: Requested left / Effective right, after the main grid row.
     const summaryBar = findOne(tree, byClass('physics-paint-play-script-summary-bar'));
-    expect(textOf(summaryBar)).toBe(readout);
     expect(parentOf(tree, summaryBar)).toBe(content);
-    // Fixed footer (progress + Cancel/Generate) stays outside the scrolling body.
+    expect(contentChildren.indexOf(summaryBar)).toBeGreaterThan(contentChildren.indexOf(sideStack));
+    expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-requested')))).toBe('Requested: 25f (5f × 5)');
+    expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-effective')))).toBe('Effective: 18f — shortened by the next clip');
+
+    // Footer stays outside the body grid, inside the modal surface.
     const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
     expect(parentOf(tree, footer)).not.toBe(content);
     expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Generate'))).toBe('Generate');
   });
 
-  it('renders the summary bar with tabular-nums and renders nothing when the readout is null', () => {
+  it('keeps the body on the 1fr 1fr two-column grid with the right column as a vertical flex stack and NO scroll region (CSS contract)', () => {
+    const contentRule = playScriptCssRule('.physics-paint-play-script-content');
+    expect(contentRule).toContain('grid-template-columns: 1fr 1fr');
+    expect(contentRule).not.toMatch(/overflow/);
+    // (c) No scroll-region anywhere in the modal scope (full-scope sweep).
+    expect(playScriptCssScope()).not.toMatch(/overflow(-y)?:\s*(auto|scroll)/);
+    const stackRule = playScriptCssRule('.physics-paint-play-script-side-stack');
+    expect(stackRule).toContain('display: flex');
+    expect(stackRule).toContain('flex-direction: column');
+  });
+
+  it('splits the infinity readout as Cycle Nf × ∞ left / Effective right, and renders nothing when the readout is null', () => {
     const { controller } = createFakeController({ loopReadout: 'Cycle 4f × ∞ · Effective: 4f' });
     const tree = renderDialog(controller);
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-summary-bar')))).toBe('Cycle 4f × ∞ · Effective: 4f');
+    const bar = findOne(tree, byClass('physics-paint-play-script-summary-bar'));
+    expect(textOf(findOne(bar, byClass('physics-paint-play-script-summary-requested')))).toBe('Cycle 4f × ∞');
+    expect(textOf(findOne(bar, byClass('physics-paint-play-script-summary-effective')))).toBe('Effective: 4f');
     const empty = renderDialog(createFakeController({ loopReadout: null }).controller);
     expect(findAll(empty, byClass('physics-paint-play-script-summary-bar'))).toHaveLength(0);
   });
