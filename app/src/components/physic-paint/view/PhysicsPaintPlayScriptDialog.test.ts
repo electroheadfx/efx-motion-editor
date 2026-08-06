@@ -642,3 +642,35 @@ describe('PhysicsPaintPlayScriptDialog source contract (D-04/D-06/D-08R, locked 
     expect(source).not.toContain('createPortal');
   });
 });
+
+describe('PhysicsPaintPlayScriptDialog header drag + stable color-pane height (UAT remediation)', () => {
+  it('drags the modal via the header: pointerdown + pointermove translates the surface, pointerup ends the drag', () => {
+    const { controller } = createFakeController();
+    let tree = renderDialog(controller);
+    const header = () => findOne(tree, byClass('physics-paint-play-script-header'));
+    const surface = () => findOne(tree, byClass('physics-paint-play-script-surface'));
+    // Centered by default — no offset transform.
+    expect(surface().props?.style).toBeUndefined();
+    const handle = { setPointerCapture: vi.fn() };
+    handler(header(), 'onPointerDown')({ button: 0, clientX: 100, clientY: 100, pointerId: 1, preventDefault: vi.fn(), currentTarget: handle });
+    tree = renderDialog(controller);
+    handler(header(), 'onPointerMove')({ clientX: 115, clientY: 108, preventDefault: vi.fn(), currentTarget: handle });
+    tree = renderDialog(controller);
+    expect(surface().props?.style).toEqual({ transform: 'translate(15px, 8px)' });
+    // After pointerup the drag ends — further moves leave the offset untouched.
+    handler(header(), 'onPointerUp')({ clientX: 115, clientY: 108, preventDefault: vi.fn(), currentTarget: handle });
+    tree = renderDialog(controller);
+    handler(header(), 'onPointerMove')({ clientX: 220, clientY: 200, preventDefault: vi.fn(), currentTarget: handle });
+    tree = renderDialog(controller);
+    expect(surface().props?.style).toEqual({ transform: 'translate(15px, 8px)' });
+  });
+
+  it('marks the header as the drag handle and the root while dragging (CSS contract)', () => {
+    expect(playScriptCssRule('.physics-paint-play-script-header')).toContain('cursor: grab');
+    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-dragging .physics-paint-play-script-header')).toContain('cursor: grabbing');
+  });
+
+  it('keeps the color pane at a stable min-height so Original/Custom toggling never resizes the modal (CSS contract)', () => {
+    expect(playScriptCssRule('.physics-paint-play-script-color-pane')).toContain('min-height: 45px');
+  });
+});
