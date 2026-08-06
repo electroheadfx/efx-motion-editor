@@ -12,8 +12,9 @@ vi.mock('preact/hooks', () => ({
   useRef: <Value>(value: Value) => ({ current: value }),
 }));
 
-import type { PhysicPaintRotoRealKeyRecord } from './physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoRealKeyRecord, PhysicPaintRotoLoopClip } from './physicsPaintRotoPhysicalModel';
 import { buildPhysicPaintRotoPhysicalRevision } from './physicsPaintRotoPhysicalModel';
+import { derivePhysicPaintRotoLoopRanges } from './physicsPaintRotoPhysicalResolver';
 import type {
   RotoPhysicalEditAcceptedOutput,
   RotoPhysicalEditExecuteInput,
@@ -810,5 +811,242 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
     expect(JSON.stringify(second.records)).toBe(JSON.stringify(first.records));
     expect(second.semanticDelta.freshKeyIds).toHaveLength(0); // zero new identity on re-application
     expect(second.expectedRevision).toBe(first.expectedRevision);
+  });
+});
+
+// 43-05 Task 2 (D-06): preflight shorten warning on the confirm path. When the
+// pending generation's destination range intersects an existing loop's
+// effective range, the controller surfaces the locked line BEFORE the commit
+// proceeds; the computation delegates to the 43-02 shared derivation (Pitfall
+// 4 — never controller-local boundary math), and the accepted commit plus the
+// derived loop shrink remain one history command (43-01 snapshot contract).
+describe('createRotoPlayScriptController D-06 loop-shorten preflight', () => {
+  const SOURCE_KEY_IDS = ['A', 'B', 'C', 'D', 'E'] as const;
+
+  const loopClip = (
+    loopId: string,
+    placementStart: number,
+    repeat: number | 'infinity',
+    sourceKeyIds: readonly string[] = SOURCE_KEY_IDS,
+  ): PhysicPaintRotoLoopClip => ({ loopId, placementStart, sourceKeyIds: [...sourceKeyIds], repeat, mode: 'static' });
+
+  // Source cycle A..E at frames 0..4; loop L1 placed at 0 with repeat 6 →
+  // requested/effective range [0, 30) before any generation.
+  const loopAuthority = (overrides: Partial<PhysicPaintRotoAuthorityResult> = {}): PhysicPaintRotoAuthorityResult => authority({
+    canonicalStart: 6,
+    layerEndExclusive: 40,
+    capacity: 34,
+    physicalRecords: SOURCE_KEY_IDS.map((keyId, index) => physicalRecord(keyId, index, `src-${keyId}`)),
+    ...overrides,
+  });
+
+  const loopHarness = (
+    loopClips: readonly PhysicPaintRotoLoopClip[],
+    authorityOverrides: Partial<PhysicPaintRotoAuthorityResult> = {},
+  ) => {
+    const test = harness({
+      requestAuthority: vi.fn(async () => loopAuthority(authorityOverrides)),
+      getRotoLoopClips: () => loopClips,
+    });
+    test.setSelection({ kind: 'empty', keyId: null, appFrame: 6 });
+    return test;
+  };
+
+  const effectiveEndOf = (
+    records: readonly PhysicPaintRotoRealKeyRecord[],
+    loopClips: readonly PhysicPaintRotoLoopClip[],
+    loopId: string,
+    parentEndExclusive: number,
+  ): number => {
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      loopClips,
+      parentEndExclusive,
+      capacity: 600,
+    });
+    const range = context.ranges.find((entry) => entry.loopId === loopId);
+    if (!range) throw new Error(`Loop "${loopId}" missing from derivation.`);
+    return range.effectiveEnd;
+  };
+
+  beforeEach(() => {
+    rendered.mockReset();
+    rendered.mockImplementation(async ({ frameCount, canonicalStart, onProgress }) => {
+      const frames = Array.from({ length: frameCount }, (_, index) => ({
+        frameIndex: 0,
+        appFrame: canonicalStart + index,
+        dataUrl: pngDataUrl(`staged-${index}`),
+        width: 10,
+        height: 10,
+      }));
+      onProgress?.(frameCount, frameCount);
+      return frames;
+    });
+  });
+
+  it('surfaces the locked preflight line with N and F when the destination range intersects a loop', async () => {
+    const test = loopHarness([loopClip('L1', 0, 6)]);
+    expect(test.controller.loopShortenPreflight.value).toBeNull(); // no authority snapshot before open
+    await test.controller.openConfirmation();
+    // Default Max count (34) → destination [6, 40) intersects the loop's [0, 30) at frame 6.
+    expect(test.controller.loopShortenPreflight.value).toBe('This operation will shorten 1 linked loop(s), starting at frame 6.');
+    test.controller.countText.value = '5';
+    expect(test.controller.loopShortenPreflight.value).toBe('This operation will shorten 1 linked loop(s), starting at frame 6.');
+    test.controller.countText.value = 'garbage';
+    expect(test.controller.loopShortenPreflight.value).toBeNull(); // unparseable count → no destination, no warning
+  });
+
+  it('reports every affected loop and the earliest truncation frame', async () => {
+    // L2 duplicates the cycle at placementStart 20, repeat 3 → [20, 35); L1 is
+    // bounded by L2's start → effective [0, 20).
+    const test = loopHarness([loopClip('L1', 0, 6), loopClip('L2', 20, 3)]);
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '16'; // destination [6, 22) → L1 truncates at 6, L2 at 20
+    expect(test.controller.loopShortenPreflight.value).toBe('This operation will shorten 2 linked loop(s), starting at frame 6.');
+  });
+
+  it('shows no preflight line when no loop is affected', async () => {
+    // No loops at all.
+    const noLoops = loopHarness([]);
+    await noLoops.controller.openConfirmation();
+    noLoops.controller.countText.value = '5';
+    expect(noLoops.controller.loopShortenPreflight.value).toBeNull();
+
+    // Destination beyond the loop's effective range: loop effective [0, 30), destination [32, 37).
+    const beyond = loopHarness([loopClip('L1', 0, 6)], { canonicalStart: 32, layerEndExclusive: 40, capacity: 8 });
+    beyond.setSelection({ kind: 'empty', keyId: null, appFrame: 32 });
+    await beyond.controller.openConfirmation();
+    beyond.controller.countText.value = '5';
+    expect(beyond.controller.loopShortenPreflight.value).toBeNull();
+  });
+
+  it('regenerating over the loop’s own source cycle shows no preflight (D-24 self-exclusion)', async () => {
+    // Destination [0, 5) covers exactly the loop's own source keys — their
+    // keyIds are preserved, so the loop never truncates itself.
+    const own = loopHarness([loopClip('L1', 0, 6)], { canonicalStart: 0, layerEndExclusive: 40, capacity: 39 });
+    own.setSelection({ kind: 'real-key', keyId: 'A', appFrame: 0 });
+    await own.controller.openConfirmation();
+    own.controller.countText.value = '5';
+    expect(own.controller.loopShortenPreflight.value).toBeNull();
+  });
+
+  it('the preflight is advisory — confirm proceeds and commits with the warning visible', async () => {
+    const test = loopHarness([loopClip('L1', 0, 6)]);
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '5';
+    expect(test.controller.loopShortenPreflight.value).toBe('This operation will shorten 1 linked loop(s), starting at frame 6.');
+    expect(await test.controller.confirm()).toBe(true);
+    expect(test.commit).toHaveBeenCalledTimes(1);
+    expect(test.controller.phase.value).toBe('complete');
+  });
+
+  it('the accepted commit and the derived loop shrink are ONE history command — one Undo re-expands, one Redo re-applies', async () => {
+    const test = loopHarness([loopClip('L1', 0, 6)]);
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '5';
+    expect(await test.controller.confirm()).toBe(true);
+
+    const loops = [loopClip('L1', 0, 6)];
+    const publication = test.commit.mock.calls[0][0];
+    const toRecord = (entry: { keyId: string; appFrame: number; payload: PhysicPaintRotoRealKeyRecord['payload'] }): PhysicPaintRotoRealKeyRecord => ({
+      kind: 'real-key',
+      keyId: entry.keyId,
+      appFrame: entry.appFrame,
+      payload: entry.payload,
+    });
+    const snapshot = (
+      records: readonly PhysicPaintRotoRealKeyRecord[],
+      selectedKeyId: string | null,
+      selectedAppFrame: number | null,
+    ): RotoPhysicalEditSnapshot<null> => {
+      const interpolation = { enabled: true, mode: 'duplicate' } as const;
+      const revision = buildPhysicPaintRotoPhysicalRevision(records, interpolation, loops);
+      return {
+        launchOperationId: 'launch',
+        layerId: 'layer-1',
+        projectContextId: 'context-1',
+        records,
+        interpolation,
+        loopClips: loops,
+        capacity: 600,
+        expectedRevision: revision,
+        stagedRevision: revision,
+        selectedKeyId,
+        selectedAppFrame,
+        currentAppFrame: selectedAppFrame ?? 6,
+        dirtyFrames: new Set(),
+        editableFrames: records.map((entry) => entry.appFrame),
+        liveOverlayActionCounts: new Map(),
+        frameStates: new Map(),
+        previewFrames: new Map(),
+        capturedFrames: new Map(),
+        confirmedFrames: new Map(),
+        cachedReference: { url: null, cachedRepaintBase: null },
+        engineState: null,
+      };
+    };
+    const beforeSnapshot = snapshot(SOURCE_KEY_IDS.map((keyId, index) => toRecord(physicalRecord(keyId, index, `src-${keyId}`))), null, 6);
+    const afterSnapshot = snapshot(publication.records, publication.selectedKeyId, publication.selectedAppFrame);
+    // The committed generation truncated the loop at frame 6 (derived).
+    expect(effectiveEndOf(afterSnapshot.records, loops, 'L1', 40)).toBe(6);
+
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    let current = afterSnapshot;
+    let replayNumber = 0;
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      const source = current;
+      current = target;
+      replayNumber += 1;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: buildPhysicPaintRotoPhysicalRevision(target.records, target.interpolation, target.loopClips),
+        operationId: `replay-${replayNumber}`,
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+    const history = useRotoPhysicalEditHistory({
+      identity: { launchOperationId: 'launch', layerId: 'layer-1' },
+      availability,
+      coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => current.records,
+        getInterpolation: () => current.interpolation,
+        getCapacity: () => current.capacity,
+        getLoopClips: () => current.loopClips,
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before: beforeSnapshot,
+      after: afterSnapshot,
+      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(afterSnapshot.records, afterSnapshot.interpolation, afterSnapshot.loopClips),
+      operationId: 'accepted-operation',
+      operationKind: 'play-script',
+      historyProvenance: null,
+    };
+    expect(availability.value).toEqual({ undo: 1, redo: 0 }); // ONE command for commit + shrink
+
+    expect(await history.undo()).toBe(true);
+    expect(current.records.map((entry) => entry.keyId)).toEqual([...SOURCE_KEY_IDS]);
+    // The loop re-expands automatically with the generated keys gone.
+    expect(effectiveEndOf(current.records, current.loopClips, 'L1', 40)).toBe(30);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    expect(await history.redo()).toBe(true);
+    expect(current.records).toEqual(afterSnapshot.records);
+    expect(effectiveEndOf(current.records, current.loopClips, 'L1', 40)).toBe(6);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(executePhysicalEdit.mock.calls.map(([input]) => input.operationKind)).toEqual(['undo', 'redo']);
   });
 });
