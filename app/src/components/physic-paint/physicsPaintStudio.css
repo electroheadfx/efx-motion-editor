@@ -1499,15 +1499,16 @@ button.destructive {
 }
 
 /* Color pane (D-08R): centers its compact content — the card never reserves dead space.
-   min-height matches the Custom row's outer height so toggling Original/Custom never
-   changes the card (and modal) height (UAT remediation). */
+   min-height matches the Custom row's deterministic outer height (7px padding + meta
+   16+2+14px + 7px + 2px border = 48px) so toggling Original/Custom never changes the
+   card (and modal) height (UAT remediation). */
 .physics-paint-play-script-color-pane {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   justify-content: center;
   margin-top: 10px;
-  min-height: 45px;
+  min-height: 48px;
 }
 
 .physics-paint-play-script-color-original-row {
@@ -1564,12 +1565,14 @@ button.destructive {
   font-size: 12px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
+  line-height: 16px;
 }
 
 .physics-paint-play-script-color-note {
   overflow: hidden;
   color: var(--ps-muted);
   font-size: 10.5px;
+  line-height: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
