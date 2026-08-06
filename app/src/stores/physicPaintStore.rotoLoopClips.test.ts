@@ -20,8 +20,9 @@ import { applyPhysicPaintPayload, openPhysicPaintCanvas } from '../lib/physicPai
 // getRotoPhysicalRenderSource seam resolves linked repetition frames to the
 // SOURCE key's rendered payload under a source-scoped cache revision (D-26,
 // D-27 — one source cache entry serves every occurrence), surfaces the typed
-// 'linked-unresolved' contract instead of blanking (audit finding 3), makes
-// the end-frame read loop-aware from the interval derivation only (Pitfall 3),
+// 'linked-unresolved' per-frame result as the 'loop-placeholder' render-source
+// variant instead of blanking (audit finding 3, D-28 — 43-09), makes the
+// end-frame read loop-aware from the interval derivation only (Pitfall 3),
 // and exposes the unresolved-loop query the export preflight consumes (D-28).
 // Node env, vitest run only; no jsdom, no config changes.
 
@@ -172,13 +173,13 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
   });
 });
 
-describe('typed linked-unresolved surfacing (audit finding 3, D-31)', () => {
+describe('typed linked-unresolved surfacing as the loop-placeholder variant (audit finding 3, D-31, D-28)', () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});
     physicPaintStore.reset();
   });
 
-  it('surfaces the typed unresolved result inside the loop range and never blanks unrelated frames', () => {
+  it('maps the typed linked-unresolved query result to the loop-placeholder variant with the full contract payload and never blanks unrelated frames', () => {
     // C at frame 10 is the loop's non-owned D-24 boundary; the loop's own
     // range is [0, 6) and every non-real frame inside it is linked-unresolved.
     installRecords([record('A', 0), record('C', 10)]);
@@ -186,9 +187,12 @@ describe('typed linked-unresolved surfacing (audit finding 3, D-31)', () => {
 
     for (const frame of [1, 2, 3, 4, 5]) {
       const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, frame);
-      if (!source || source.kind !== 'linked-unresolved') {
-        throw new Error(`Expected the typed linked-unresolved result at frame ${frame}, got ${source?.kind ?? 'null'}.`);
+      if (!source || source.kind !== 'loop-placeholder') {
+        throw new Error(`Expected the loop-placeholder variant at frame ${frame}, got ${source?.kind ?? 'null'}.`);
       }
+      // The full 43-02 typed contract payload: sufficient for the capsule
+      // error state, destination placeholder, missing-source tooltip, export
+      // preflight, and repair/relink actions.
       expect(source.layerId).toBe(LAYER);
       expect(source.appFrame).toBe(frame);
       expect(source.loopId).toBe('loop-x');
