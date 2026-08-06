@@ -7,6 +7,9 @@ import { exportStore } from '../stores/exportStore';
 import { audioStore } from '../stores/audioStore';
 import { soloStore } from '../stores/soloStore';
 import { audioEngine } from './audioEngine';
+import { physicPaintStore } from '../stores/physicPaintStore';
+import type { PhysicPaintRotoPhysicalUnresolvedLoop } from '../stores/physicPaintStore';
+import type { Sequence } from '../types/sequence';
 import { exportCreateDir, exportWritePng, exportCheckFfmpeg, exportDownloadFfmpeg, exportEncodeVideo, exportCleanupPngs, exportCleanupFile } from './ipc';
 import { generateJsonSidecar, generateFcpxml } from './exportSidecar';
 import { renderMixedAudio } from './audioExportMixer';
@@ -49,6 +52,50 @@ function formatFrameFilename(
 }
 
 /**
+ * D-28 loop-resolution preflight (Phase 43): scan every physic-paint layer in
+ * the exported sequences for Loop Clips that cannot resolve inside the export
+ * range. Runs before any directory creation, image preload, or frame render —
+ * a deliverable never silently contains placeholder frames. The query reads
+ * the memoized interval records only (O(loops) per layer, no frame
+ * materialization, D-32). Returns the locked error message naming the
+ * earliest affected loop, or null when every loop in range resolves.
+ *
+ * Locked copy (UI-SPEC): S = the loop's placementStart; F = the first missing
+ * source frame = placementStart + the cycle index of the first dangling
+ * source reference (the physical source frame for an original loop, whose
+ * source cycle occupies placementStart..placementStart+cycleLength-1).
+ */
+function findUnresolvedExportLoop(
+  sequences: readonly Sequence[],
+  fromFrame: number,
+  toFrame: number,
+): string | null {
+  const hits: Array<{ layerId: string; loop: PhysicPaintRotoPhysicalUnresolvedLoop }> = [];
+  for (const seq of sequences) {
+    for (const layer of seq.layers) {
+      if (layer.type !== 'physic-paint') continue;
+      const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
+      for (const loop of physicPaintStore.getRotoPhysicalUnresolvedLoops(paintLayerId, fromFrame, toFrame)) {
+        hits.push({ layerId: paintLayerId, loop });
+      }
+    }
+  }
+  if (hits.length === 0) return null;
+  // Earliest placementStart names first; fixing it and re-exporting surfaces
+  // the next (loopId tiebreak keeps the order deterministic).
+  hits.sort((a, b) => a.loop.placementStart - b.loop.placementStart || a.loop.loopId.localeCompare(b.loop.loopId));
+  const first = hits[0];
+  const clip = physicPaintStore.getRotoPhysicalLoopClips(first.layerId)
+    .find((candidate) => candidate.loopId === first.loop.loopId);
+  const firstMissingKeyId = first.loop.missingSourceKeyIds[0];
+  const sourceIndex = clip && firstMissingKeyId !== undefined
+    ? clip.sourceKeyIds.indexOf(firstMissingKeyId)
+    : -1;
+  const missingSourceFrame = first.loop.placementStart + (sourceIndex >= 0 ? sourceIndex : 0);
+  return `Export blocked — Loop Clip at frame ${first.loop.placementStart} references a missing source frame (${missingSourceFrame}). Repair or unlink the loop, then export again.`;
+}
+
+/**
  * Start a full PNG export. Called from ExportView Export button.
  * Returns when complete, cancelled, or errored.
  */
@@ -80,6 +127,20 @@ export async function startExport(startFromFrame = 0): Promise<void> {
   const projectName = projectStore.name.peek();
   const projectWidth = projectStore.width.peek();
   const projectHeight = projectStore.height.peek();
+
+  // D-28 loop-resolution preflight: fail fast before any directory creation,
+  // image preload, or frame render when a Loop Clip inside the export range
+  // cannot resolve. The error surfaces through the standard export error
+  // channel. resumeExport delegates here, so a resumed export re-runs the
+  // preflight over the remaining window [startFromFrame, total).
+  const exportedSequences = settings.selectedSequenceOnly
+    ? allSeqs.filter((seq) => seq.id === sequenceStore.activeSequenceId.peek())
+    : allSeqs;
+  const loopBlock = findUnresolvedExportLoop(exportedSequences, startFromFrame, total);
+  if (loopBlock) {
+    exportStore.updateProgress({ status: 'error', errorMessage: loopBlock });
+    return;
+  }
 
   // Compute export resolution (D-05: project resolution * multiplier)
   // Do NOT apply devicePixelRatio (Research Pitfall 1)
