@@ -49,6 +49,11 @@ Requirements: PLAY-01..04 (REQUIREMENTS.md). Source spec: `SPECS/milestone-v0.9.
 
 - **D-16:** The dialog adopts the proposal card grid (sources: `SPECS/playscript-proposal/playscript-panel.html`, `SPECS/playscript-proposal/ui-play-script-specs.md`): **Mode** card full-width on top; **Timing** and **Color** cards side by side; **Motion wiggle** card full-width with `Reset defaults` as a link/action in the section heading (same controller `resetDialogMotion()` boundary as D-06); the D-13 Requested/Effective **summary bar** at the bottom of the body; progress line and Cancel/Generate in a fixed footer. The proposal's dark app mockup is out of scope — the dialog keeps the existing light-surface token system, the D-04 Studio-grid mounting, and the viewport-bounded body-only scrolling contract. The proposal is adopted for structure, layout, and interaction only.
 
+### Trigger + brush-color ownership (locked 2026-08-06)
+
+- **D-17:** The existing Play Script toolbar action in the Scripts panel remains the SOLE product trigger that opens the dialog. No demo trigger/button from the HTML proposal is added or copied; the dialog never auto-opens; no second Play Script action is added anywhere; the existing script-selection and availability guards on that toolbar action are preserved. The HTML proposal defines the dialog layout only — its surrounding demo shell and trigger are not product UI.
+- **D-18:** The Play Script dialog is READ-ONLY with respect to the application brush color. `setBrushColor` remains the sole writer and the right-panel brush picker the sole editing surface. Selecting `Custom color` never writes, seeds, normalizes, or otherwise mutates `settings.color` — the dialog only observes the live brush-color signal and snapshots its current resolved value when Generate is confirmed. Selecting `Original colors` only disables the application-time override; it never changes the brush color. Later brush-color changes never alter already generated frames or the success-only applied summary.
+
 ### Claude's Discretion
 
 - Exact segmented-control markup/styling within the dialog conventions (must satisfy D-05's accessibility and helper-line requirements).
