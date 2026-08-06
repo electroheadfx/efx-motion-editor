@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 42
 current_phase_name: playscript-application-modes-color-override
 status: verifying
-stopped_at: Completed 42-05-PLAN.md
-last_updated: "2026-08-06T08:56:36.256Z"
+stopped_at: Completed 42-06-PLAN.md
+last_updated: "2026-08-06T10:24:39.824Z"
 last_activity: 2026-08-05
 last_activity_desc: Phase 42 execution started
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 13
-  completed_plans: 12
+  total_plans: 14
+  completed_plans: 13
   percent: 33
 ---
 
@@ -33,7 +33,7 @@ Plan: 5 of 5
 Status: 42-05 complete — ready for 42-04 Task 2 native UAT (revised nine-step script)
 Last activity: 2026-08-05 — Phase 42 execution started
 
-Progress: [█████████░] 92%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -166,6 +166,7 @@ Progress: [█████████░] 92%
 | Phase 42 P02 | 22min | 3 tasks | 4 files |
 | Phase 42 P03 | 8min | 2 tasks | 3 files |
 | Phase 42-playscript-application-modes-color-override P05 | 29min | 2 tasks | 9 files |
+| Phase 42 P06 | 18min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -197,6 +198,8 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: Override color resolves ONLY via the getBrushColor port at confirm time; the dialog-side overrideColor signal was deleted (D-08R/D-10)
 - [Phase ?]: Malformed brush-color port values fall back to no override via a strict #rrggbb normalize guard (T-42-05-01)
 - [Phase ?]: Max→1 normalization on Static / Hold switch lives in the dialog selectMode path; controller D-15 first-time defaults unaffected
+- [Phase ?]: 42-06: Play Script dialog re-mounted as fixed-position dark modal overlay (D-19); StudioView byte-identical — out-of-flow positioning removes the grid child from layout
+- [Phase ?]: 42-06: summary bar splits controller loopReadout into Requested-left/Effective-right spans; controller D-13 composition untouched
 
 ### Pending Todos
 
@@ -379,8 +382,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-06T08:56:36.247Z
-Stopped at: Completed 42-05-PLAN.md
+Last session: 2026-08-06T10:24:39.815Z
+Stopped at: Completed 42-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
