@@ -7,7 +7,7 @@ status: draft
 nyquist_compliant: false
 wave_0_complete: false
 created: 2026-08-05
-revised: 2026-08-05 (manual plan review — matrix mapped to concrete plan/tasks; PLAY-02 manually reviewed and covered)
+revised: 2026-08-06 (approved playscript-proposal revision — picker-guard coverage superseded by color-toggle/live-link/snapshot coverage owned by 42-05; UAT script revised)
 ---
 
 # Phase 42 — Validation Strategy
@@ -49,7 +49,9 @@ Every new test file or test-case group is created by a named plan task inside it
 | `physicsPaintRotoPlayScriptController.test.ts` — mode/override/dialog-Motion renderer input, no library write port, snapshot metadata untouched (PLAY-02) | **42-02 Task 1** |
 | `physicsPaintRotoPlayScriptController.test.ts` — Repeat format + safe-product boundaries, readout derivation, Infinity preserve/restore, D-15 defaults, session memory, cycle-only generation (PLAY-04) | **42-02 Task 2** |
 | `physicsPaintRotoPlayScriptController.test.ts` — resetDialogMotion boundary, E5 failure/cancel lifecycle + atomicity, exact applied-summary composition (D-06/D-07, UI-SPEC E5) | **42-02 Task 3** |
-| `PhysicsPaintPlayScriptDialog.test.ts` (new) — radiogroup semantics/keyboard, Original-colors default, picker-open-no-override, label switching, readout copy, first-time defaults, reset spy, E5 failure/cancellation rendering | **42-03 Task 2** |
+| `PhysicsPaintPlayScriptDialog.test.ts` (new) — radiogroup semantics/keyboard, Original-colors default, ~~picker-open-no-override~~ (SUPERSEDED 2026-08-06 → 42-05-T2), label switching, readout copy, first-time defaults, reset spy, E5 failure/cancellation rendering | **42-03 Task 2** (partially superseded by 42-05 Task 2) |
+| `physicsPaintRotoPlayScriptController.test.ts` — getBrushColor port resolution at confirm, Original-colors disables, first-open compose from port, snapshot-no-retroactive-change (D-08R) | **42-05 Task 1** |
+| `PhysicsPaintPlayScriptDialog.test.ts` (rewritten) — color radiogroup (Original/Custom), live chip/hex from brushColor prop, no picker mounted, `Frames per cycle` label + Max→1 normalization, card-grid structure, Timing-card Repeat/Infinity both modes, Reset-defaults heading link spy, E5 rendering | **42-05 Task 2** |
 | `PhysicsPaintScriptsPanel.test.ts` — two-line summary rendering of appliedSummary signals, first-time defaults, stability across cancel/failure, tooltip copy | **42-04 Task 1** |
 
 *(Framework install: none — vitest already present.)*
@@ -66,7 +68,9 @@ Every new test file or test-case group is created by a named plan task inside it
 | 42-02-T2 | 42-02 | 2 | PLAY-04 | T-42-02-01, T-42-02-03 | Repeat strict-regex validation + dynamic safe-product bound floor(MAX_SAFE_INTEGER / cycleLength); Infinity never multiplied; generation pinned to cycle value | unit | quick run command above | ✅ (extend) | ⬜ pending |
 | 42-02-T3 | 42-02 | 2 | PLAY-02, PLAY-03 | T-42-02-04 | resetDialogMotion is read-only toward defaults; E5 failure/cancel atomicity (no partial frames/mutations, zero commit calls); summary byte-stable across edits/cancel/failure, exact composed strings | unit | quick run command above | ✅ (extend) | ⬜ pending |
 | 42-03-T1 | 42-03 | 3 | PLAY-03, PLAY-04 | T-42-03-01 | dialog mirrors controller validation only — no dialog-side parsing; repeatError/setInfinity wiring | unit (controller) | `pnpm --dir app exec vitest run src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts` | ✅ controller | ⬜ pending |
-| 42-03-T2 | 42-03 | 3 | PLAY-03 | T-42-03-01, T-42-03-02 | picker-open-never-overrides contract; controller-only reset boundary; E5 failure renders inline error + hides progress + re-enables controls; cancellation renders no error | unit (component) | `pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.test.ts src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts` | ❌ created by task | ⬜ pending |
+| 42-03-T2 | 42-03 | 3 | PLAY-03 | T-42-03-01, T-42-03-02 | ~~picker-open-never-overrides contract~~ (SUPERSEDED 2026-08-06 → 42-05); controller-only reset boundary; E5 failure renders inline error + hides progress + re-enables controls; cancellation renders no error | unit (component) | `pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.test.ts src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts` | ✅ (rewritten by 42-05-T2) | ⬜ pending |
+| 42-05-T1 | 42-05 | 5 | PLAY-02, PLAY-03 | T-42-05-01 | override resolves via getBrushColor port at confirm (no stale stored color); Original-colors disables; malformed port value falls back to no-override; summary snapshot immune to later brush changes; renderer byte-untouched | unit | `pnpm --dir app exec vitest run src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts src/components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer.test.ts` | ✅ (extend) | ⬜ pending |
+| 42-05-T2 | 42-05 | 5 | PLAY-03, PLAY-04 | T-42-05-02 | color radiogroup semantics; live chip/hex from prop (no dialog-side copy); picker fully removed; `Frames per cycle` label + Max→1; card-grid structure; Timing-card loop controls both modes; Reset-defaults spy; E5 rendering | unit (component) | `pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.test.ts src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts src/components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer.test.ts` | ✅ (rewritten) | ⬜ pending |
 | 42-04-T1 | 42-04 | 4 | PLAY-03 | T-42-04-01 | summary is a read-only signal projection; success-only update; dark-panel tokens only | unit (component) | `pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.test.ts` | ✅ (extend) | ⬜ pending |
 | 42-04-T2 | 42-04 | 4 | All | — | native visual UAT incl. packaged-build picker/CSP check | manual-only | user-run native UAT (project convention — automated-ready until UAT passes); recorded in `42-04-UAT.md` | — | ⬜ pending |
 
@@ -82,10 +86,11 @@ Every new test file or test-case group is created by a named plan task inside it
 - [ ] Repeat safe-product boundaries (repeat 1; exact floor maximum; maximum + 1; individually-safe-but-product-unsafe; Infinity preserving a large valid repeat; generated count == cycle frames) — 42-02-T2
 - [ ] E5 generation failure (error shown, progress hidden, controls re-enabled, dialog open, clean retry, atomicity) and normal cancellation (no error, atomicity) — 42-02-T3 controller tests + 42-03-T2 component tests
 - [ ] Success-only exact summary composition (line 1/line 2 exact strings, layer-end boundary range, atomic two-line update, byte-stability across edits/cancel/cancellation/failure, first-time defaults) — 42-02-T3
-- [ ] Dialog component states (radiogroup, labels, picker guard, defaults, readout, E5 rendering) — 42-03-T1/T2
+- [ ] Dialog component states (radiogroups, labels, ~~picker guard~~ → color toggle + live chip (42-05-T2), defaults, readout, E5 rendering) — 42-03-T1/T2 + 42-05-T2
+- [ ] Live brush-color contract (port resolution at confirm, live chip from prop, snapshot-no-retroactive-change, Original-colors disables, no picker mounted) — 42-05-T1/T2
 - [ ] Panel summary rendering (placement, verbatim signal rendering, tooltip, overflow tokens) — 42-04-T1
 - [ ] Full gates: `pnpm --dir app exec vitest run` + package animation tests + `pnpm --dir app typecheck` — every wave gate and the phase gate before UAT
-- [ ] Native + packaged-build UAT checkpoint (nine steps incl. packaged-build picker/CSP verification) — 42-04-T2
+- [ ] Native + packaged-build UAT checkpoint (nine steps on the REVISED dialog, incl. live Custom color and packaged-build checks) — 42-04-T2
 
 ---
 
@@ -99,7 +104,7 @@ Every new test file or test-case group is created by a named plan task inside it
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| Both modes live, override live in both modes, reset/E5 flows, panel clarity, loop readout, overflow structure, packaged-build picker/CSP | PLAY-01..04 | Native visual UAT is the project oracle; no Chrome DevTools MCP | User-run native UAT per 42-04 Task 2 nine-step script, recorded in `42-04-UAT.md` |
+| Both modes live, live Custom color in both modes, reset/E5 flows, panel clarity, loop-intent readout, overflow structure, packaged-build card-grid/live-color check | PLAY-01..04 | Native visual UAT is the project oracle; no Chrome DevTools MCP | User-run native UAT per 42-04 Task 2 nine-step script (revised 2026-08-06), recorded in `42-04-UAT.md` |
 
 ---
 
