@@ -50,10 +50,21 @@ function isCurrentGeneratedPngSource(source: PhysicPaintRotoPhysicalRenderableSo
 /** Exact physical-cell lookup. No generic frame or neighboring-key fallback. */
 export function findCachedRotoDisplayFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoPhysicalLookupInput<Frame>): Frame | null {
   const source = input.getPhysicalRenderSource?.(appFrame) ?? null;
-  // Phase 43 (D-28): the loop placeholder carries no payload — it is never
-  // reference or display content here; the typed result remains available
-  // through the store for the surfaces that consume it.
-  if (!source || source.kind === 'loop-placeholder') return null;
+  if (!source) return null;
+  // Phase 43 (D-28, audit finding 6): the loop placeholder is never reference
+  // or display content — excluded explicitly, and a future render-source
+  // variant is a compile-time error at this consumer (Pitfall 7 convention).
+  switch (source.kind) {
+    case 'loop-placeholder':
+      return null;
+    case 'real':
+    case 'generated':
+      break;
+    default: {
+      const exhaustive: never = source;
+      throw new Error(`Unhandled Roto physical render-source kind: ${JSON.stringify(exhaustive)}`);
+    }
+  }
   if (!isCurrentGeneratedPngSource(source)) return null;
   if (source.kind === 'real' && input.dirtyFrames?.has(appFrame)) {
     const preview = input.previewFrames?.get(appFrame);

@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
-import type { PhysicPaintRotoPhysicalDocument, PhysicPaintRotoPhysicalRenderSource, PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoPhysicalDocument, PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource, PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import { buildBlankRotoFrame, encodeRotoFrameFromCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { mergeCachedRotoAlphaFrame } from '../roto/physicsPaintRotoAlphaMerge';
 import { createRotoLivePixelCacheTransactions, type RotoLivePixelIdentity } from '../roto/rotoLivePixelCacheTransactions';
@@ -30,6 +30,31 @@ export interface UseRotoFramePersistenceCoordinatorInput {
   getBackgroundMetadata: () => PhysicPaintRotoBackgroundMetadata;
   sendCachePayload: (payload: PhysicPaintApplyPayload) => Promise<void>;
   setApplyMessage: (message: string) => void;
+}
+
+/**
+ * D-28 / audit finding 6: the 'loop-placeholder' render-source variant is
+ * NEVER Paint content. The persistence coordinator explicitly rejects it from
+ * every cache pathway — no durable-cache write, no persisted metadata, no
+ * cache ownership for that frame. The never-fallback arm keeps a future
+ * render-source variant a compile-time error at this consumer (Pitfall 7
+ * convention).
+ */
+export function rejectRotoLoopPlaceholderSource(
+  source: PhysicPaintRotoPhysicalRenderSource | null,
+): PhysicPaintRotoPhysicalRenderableSource | null {
+  if (source === null) return null;
+  switch (source.kind) {
+    case 'loop-placeholder':
+      return null;
+    case 'real':
+    case 'generated':
+      return source;
+    default: {
+      const exhaustive: never = source;
+      throw new Error(`Unhandled Roto physical render-source kind: ${JSON.stringify(exhaustive)}`);
+    }
+  }
 }
 
 function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument): PhysicPaintRotoCacheFrame[] {
@@ -130,9 +155,12 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
   const reference = useRotoReferenceController<RenderedFramePayload>({
     workflowMode: input.workflowMode,
     settingsBackground: input.backgroundMode,
-    getPhysicalRenderSource: (appFrame) => inputRef.current.launchContext
+    // D-28: the reference/cache lookup passes through the explicit
+    // placeholder rejection arm — a placeholder frame can never become a
+    // cached reference, a repaint base, or a durable-cache write.
+    getPhysicalRenderSource: (appFrame) => rejectRotoLoopPlaceholderSource(inputRef.current.launchContext
       ? inputRef.current.store.getRotoPhysicalRenderSource(inputRef.current.launchContext.layerId, appFrame)
-      : null,
+      : null),
     getPreviewFrames: () => editBuffer.bufferRef.current.previewFrames,
     getDirtyFrames: () => editBuffer.bufferRef.current.dirtyFrames,
     getLiveOverlayActionCounts: () => editBuffer.bufferRef.current.liveOverlayActionCounts,

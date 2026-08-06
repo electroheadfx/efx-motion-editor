@@ -812,10 +812,23 @@ export function PhysicsPaintStudio() {
     if (rotoPlaybackLayerId === null) return [];
     return rotoPlaybackFrameNumbers.flatMap((appFrame) => {
       const source = physicPaintStore.getRotoPhysicalRenderSource(rotoPlaybackLayerId, appFrame);
-      // Phase 43 (D-28): the loop placeholder carries no playback payload —
-      // the preview surface renders it as the marked placeholder, and Studio
-      // playback skips it without blocking.
-      return source && source.kind !== 'loop-placeholder' ? [{ appFrame, frame: source.renderedFrame }] : [];
+      if (!source) return [];
+      // Phase 43 (D-28, audit finding 6): the loop placeholder never
+      // contributes playback payload — the preview surface renders it as the
+      // marked placeholder and Studio playback continues past it without
+      // blocking. A future render-source variant is a compile-time error at
+      // this consumer (Pitfall 7 never-fallback convention).
+      switch (source.kind) {
+        case 'loop-placeholder':
+          return [];
+        case 'real':
+        case 'generated':
+          return [{ appFrame, frame: source.renderedFrame }];
+        default: {
+          const exhaustive: never = source;
+          throw new Error(`Unhandled Roto physical render-source kind: ${JSON.stringify(exhaustive)}`);
+        }
+      }
     });
   }, [rotoPlaybackLayerId, rotoPlaybackFrameNumbers]);
   const missingConditions = selectPhysicsPaintMissingConditions({

@@ -104,7 +104,23 @@ export function projectRotoOnionPreviewFrames(input: RotoPhysicalOnionInput | Ro
 
   for (const record of [...input.realKeyRecords].sort((a, b) => a.appFrame - b.appFrame)) {
     const source = input.getRenderSource(record.appFrame);
-    if (!source || source.kind !== 'real' || source.keyId !== record.keyId || source.appFrame !== record.appFrame) continue;
+    if (!source) continue;
+    // D-28 (audit finding 6): onion projection projects real keys only — the
+    // loop placeholder and generated cells are excluded explicitly, and a
+    // future render-source variant is a compile-time error at this consumer
+    // (Pitfall 7 never-fallback convention).
+    switch (source.kind) {
+      case 'loop-placeholder':
+      case 'generated':
+        continue;
+      case 'real':
+        break;
+      default: {
+        const exhaustive: never = source;
+        throw new Error(`Unhandled Roto physical render-source kind: ${JSON.stringify(exhaustive)}`);
+      }
+    }
+    if (source.keyId !== record.keyId || source.appFrame !== record.appFrame) continue;
     const preview = input.dirtyFrames?.has(record.appFrame) ? input.previewFrames?.get(record.appFrame) : null;
     const exactPreview = preview?.appFrame === record.appFrame
       && preview.keyId === record.keyId
