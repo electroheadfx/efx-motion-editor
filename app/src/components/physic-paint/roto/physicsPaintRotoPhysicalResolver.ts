@@ -68,12 +68,14 @@
 
 import type {
   PhysicPaintRotoKeyIdentity,
+  PhysicPaintRotoLoopClip,
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
 import {
   createPhysicPaintRotoKeyId,
   isPhysicPaintRotoKeyIdentity,
+  isPhysicPaintRotoLoopClip,
   isPhysicPaintRotoRealKeyPayload,
   parsePhysicPaintRotoRealKeyRecordCollection,
 } from './physicsPaintRotoPhysicalModel';
@@ -2383,4 +2385,318 @@ export function resolvePhysicPaintRotoPhysicalEdit(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 43: linked Loop Clip resolution (HOLD-05).
+//
+// Two canonical pure layers extend this resolver per D-26:
+//
+//  (a) derivePhysicPaintRotoLoopRanges — ONE compact interval record per Loop
+//      Clip (D-32, audit finding 2). Derivation cost is O(keys + loops):
+//      independent of repeat count, repeat duration, and infinity state. No
+//      frame list, projection entry, raster, cache entry, or any other
+//      duration-proportional collection is ever created.
+//
+//  (b) resolvePhysicPaintRotoLoopFrame — the lazy per-frame query returning
+//      the SINGLE typed contract shared by store, preview, timeline, Studio,
+//      capsule, and export (audit finding 3):
+//      'real' | 'linked' | 'linked-unresolved' | 'empty'.
+//
+// Locked algebra honored here:
+// - D-24 boundaries: candidates are exactly a non-owned real key at or after
+//   the placement start, another loop's placementStart strictly after this
+//   loop's, and parentEndExclusive. The loop NEVER truncates itself: its own
+//   placementStart, its virtual occurrences, and its referenced source keyIds
+//   are excluded. Caches, previews, and interpolated render-only frames are
+//   not physical keys and never appear in the identity input. A boundary at
+//   the placement start yields Effective = 0f and the loop survives (D-08).
+// - D-14 loop-loop priority: a later loop begins at its own placementStart
+//   and is never pushed; the earlier loop's effective end truncates at the
+//   later start. On an exact frame tie between a loop start and a real key,
+//   the loop start wins attribution (an original loop's first source key
+//   coincides with its placement start structurally).
+// - D-25/Q4: an infinity loop's natural end tracks parentEndExclusive
+//   dynamically and is bounded by PHYSIC_PAINT_MAX_APPLY_FRAMES; the capacity
+//   clamp folds into the 'parent-end' boundary kind. Finite loops are bounded
+//   by requested end, the D-24 candidates, and parentEndExclusive only.
+// - D-26: real keys always win — the per-frame query checks the real-key map
+//   first, which makes materialize-local-key (D-12) and shrink (D-06)
+//   emergent rather than special-cased.
+// - D-30/D-31: derivation is pure and deterministic; unresolved source
+//   references keep their full interval record with the exact missing list,
+//   never throw, and never poison unrelated loops or frames.
+// ---------------------------------------------------------------------------
+
+/** D-24 boundary kinds — the only three valid next-clip boundaries. */
+export type PhysicPaintRotoLoopBoundaryKind = 'real-key' | 'loop-start' | 'parent-end';
+
+/** The boundary that bounds (or would next bound) a loop's effective range. */
+export interface PhysicPaintRotoLoopBoundary {
+  readonly kind: PhysicPaintRotoLoopBoundaryKind;
+  readonly frame: number;
+}
+
+/**
+ * ONE compact derived interval record per Loop Clip (D-32). Half-open
+ * effective range [placementStart, effectiveEnd). `requestedEnd` is the
+ * finite placementStart + cycleLength × repeat, or the explicit 'infinity'
+ * marker (D-25). `truncated` is true exactly when the effective end falls
+ * short of the natural end (finite requested end, or the parent/capacity
+ * bound for infinity). `partialCycle` distinguishes a mid-cycle truncation
+ * from one landing exactly on a cycle boundary (D-21). `unresolved` carries
+ * the verbatim missing source keyIds when any reference dangles (D-31).
+ * Derived state is NEVER persisted (D-30) — this record is recomputed.
+ */
+export interface PhysicPaintRotoLoopRange {
+  readonly loopId: string;
+  readonly placementStart: number;
+  readonly cycleLength: number;
+  readonly sourceKeyIds: readonly string[];
+  readonly repeat: number | 'infinity';
+  readonly requestedEnd: number | 'infinity';
+  readonly effectiveEnd: number;
+  readonly boundary: PhysicPaintRotoLoopBoundary;
+  readonly truncated: boolean;
+  readonly partialCycle: boolean;
+  readonly unresolved: { readonly missingSourceKeyIds: readonly string[] } | null;
+}
+
+/**
+ * The single typed per-frame resolution contract (audit finding 3). Virtual
+ * and never persisted: 'linked' and 'linked-unresolved' results exist only
+ * as query answers for the requested frame — never as projection cells,
+ * cache entries, or frame lists. A 'linked-unresolved' result carries
+ * everything the capsule error state, destination placeholder, tooltip,
+ * export preflight, and repair/relink actions need (D-31).
+ */
+export type PhysicPaintRotoFrameResolution =
+  | { readonly kind: 'real'; readonly keyId: string; readonly appFrame: number }
+  | {
+      readonly kind: 'linked';
+      readonly loopId: string;
+      readonly appFrame: number;
+      readonly sourceKeyId: string;
+      readonly sourceIndex: number;
+      readonly repeatInstance: number;
+    }
+  | {
+      readonly kind: 'linked-unresolved';
+      readonly loopId: string;
+      readonly appFrame: number;
+      readonly placementStart: number;
+      readonly sourceKeyIds: readonly string[];
+      readonly missingSourceKeyIds: readonly string[];
+    }
+  | { readonly kind: 'empty' };
+
+/**
+ * Immutable derivation input: the same-authority physical identities, the
+ * parsed Loop Clip collection, the parent sequence end (exclusive, may exceed
+ * the physical capacity on the main timeline), and the physical capacity.
+ */
+export interface PhysicPaintRotoLoopDerivationInput {
+  readonly identities: readonly PhysicPaintRotoKeyIdentity[];
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly parentEndExclusive: number;
+  readonly capacity: number;
+}
+
+/**
+ * Prepared resolution context: the sorted interval records plus the real-key
+ * frame index. Build once per document revision, then query per requested
+ * frame or visible window — never per effective-range frame (D-32).
+ */
+export interface PhysicPaintRotoLoopResolutionContext {
+  /** Interval records sorted by placementStart (loopId tiebreak). */
+  readonly ranges: readonly PhysicPaintRotoLoopRange[];
+  /** Real-key lookup index, O(keys) — sized by key count, never by loops. */
+  readonly keyIdByAppFrame: ReadonlyMap<number, string>;
+}
+
+const LOOP_BOUNDARY_KIND_RANK: Readonly<Record<PhysicPaintRotoLoopBoundaryKind, number>> = {
+  'loop-start': 0,
+  'real-key': 1,
+  'parent-end': 2,
+};
+
+/**
+ * Derive ONE compact interval record per Loop Clip. Pure and deterministic
+ * (D-30): identical documents derive identical records. Runs in
+ * O(keys + loops) — one pass over the identities, one pass per loop over the
+ * candidate sets — independent of repeat count or infinity state (D-32).
+ *
+ * Fail-closed on malformed input (the parsed physical document already
+ * guarantees shape); never throws on unresolved source references (D-31).
+ */
+export function derivePhysicPaintRotoLoopRanges(
+  input: PhysicPaintRotoLoopDerivationInput,
+): PhysicPaintRotoLoopResolutionContext {
+  if (!isRecord(input)) {
+    throw new Error('PhysicPaintRotoLoopRanges: derivation input must be a record.');
+  }
+  if (!validateCapacity(input.capacity)) {
+    throw new Error('PhysicPaintRotoLoopRanges: capacity must be an integer from 1 through PHYSIC_PAINT_MAX_APPLY_FRAMES.');
+  }
+  if (!isNonNegativeInteger(input.parentEndExclusive)) {
+    throw new Error('PhysicPaintRotoLoopRanges: parentEndExclusive must be a nonnegative integer.');
+  }
+  if (!Array.isArray(input.identities) || !input.identities.every(isPhysicPaintRotoKeyIdentity)) {
+    throw new Error('PhysicPaintRotoLoopRanges: identities must be valid physical identities.');
+  }
+  if (!Array.isArray(input.loopClips) || !input.loopClips.every(isPhysicPaintRotoLoopClip)) {
+    throw new Error('PhysicPaintRotoLoopRanges: loopClips must be valid Loop Clip records.');
+  }
+
+  const keyIdByAppFrame = new Map<number, string>();
+  const existingKeyIds = new Set<string>();
+  for (const identity of input.identities) {
+    if (keyIdByAppFrame.has(identity.appFrame)) {
+      throw new Error(`PhysicPaintRotoLoopRanges: duplicate appFrame ${identity.appFrame}.`);
+    }
+    if (existingKeyIds.has(identity.keyId)) {
+      throw new Error(`PhysicPaintRotoLoopRanges: duplicate keyId "${identity.keyId}".`);
+    }
+    keyIdByAppFrame.set(identity.appFrame, identity.keyId);
+    existingKeyIds.add(identity.keyId);
+  }
+
+  // Q4: an infinity loop's natural end tracks the parent end dynamically and
+  // is bounded by the physical capacity; the clamp folds into 'parent-end'.
+  const infinityNaturalEnd = Math.min(input.parentEndExclusive, input.capacity);
+
+  const ranges = input.loopClips.map((clip) => {
+    const cycleLength = clip.sourceKeyIds.length;
+    const ownedSourceKeyIds = new Set(clip.sourceKeyIds);
+    const finite = typeof clip.repeat === 'number';
+    const requestedEnd: number | 'infinity' = finite
+      ? clip.placementStart + cycleLength * (clip.repeat as number)
+      : 'infinity';
+    const naturalEnd = finite ? (requestedEnd as number) : infinityNaturalEnd;
+
+    // D-24 candidate scan. A loop never truncates itself: its own start, its
+    // virtual occurrences, and its referenced source keyIds are excluded.
+    let boundaryKind: PhysicPaintRotoLoopBoundaryKind = 'parent-end';
+    let boundaryFrame = finite ? input.parentEndExclusive : infinityNaturalEnd;
+    const consider = (kind: PhysicPaintRotoLoopBoundaryKind, frame: number): void => {
+      if (
+        frame < boundaryFrame
+        || (frame === boundaryFrame && LOOP_BOUNDARY_KIND_RANK[kind] < LOOP_BOUNDARY_KIND_RANK[boundaryKind])
+      ) {
+        boundaryKind = kind;
+        boundaryFrame = frame;
+      }
+    };
+    for (const identity of input.identities) {
+      if (identity.appFrame < clip.placementStart) continue;
+      if (ownedSourceKeyIds.has(identity.keyId)) continue;
+      consider('real-key', identity.appFrame);
+    }
+    for (const other of input.loopClips) {
+      if (other.loopId === clip.loopId) continue;
+      // D-14: only strictly later starts bound this loop; same-start
+      // collisions are rejected at creation, never resolved by hidden order.
+      if (other.placementStart <= clip.placementStart) continue;
+      consider('loop-start', other.placementStart);
+    }
+
+    const effectiveEnd = Math.max(clip.placementStart, Math.min(naturalEnd, boundaryFrame));
+    const missingSourceKeyIds = clip.sourceKeyIds.filter((keyId) => !existingKeyIds.has(keyId));
+    return Object.freeze({
+      loopId: clip.loopId,
+      placementStart: clip.placementStart,
+      cycleLength,
+      sourceKeyIds: Object.freeze([...clip.sourceKeyIds]),
+      repeat: clip.repeat,
+      requestedEnd,
+      effectiveEnd,
+      boundary: Object.freeze({ kind: boundaryKind, frame: boundaryFrame }) as PhysicPaintRotoLoopBoundary,
+      truncated: effectiveEnd < naturalEnd,
+      partialCycle: (effectiveEnd - clip.placementStart) % cycleLength !== 0,
+      unresolved: missingSourceKeyIds.length > 0
+        ? Object.freeze({ missingSourceKeyIds: Object.freeze(missingSourceKeyIds) })
+        : null,
+    }) as PhysicPaintRotoLoopRange;
+  });
+
+  ranges.sort((left, right) => left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId));
+
+  return Object.freeze({
+    ranges: Object.freeze(ranges),
+    keyIdByAppFrame,
+  }) as PhysicPaintRotoLoopResolutionContext;
+}
+
+const EMPTY_FRAME_RESOLUTION: PhysicPaintRotoFrameResolution = Object.freeze({ kind: 'empty' }) as PhysicPaintRotoFrameResolution;
+
+/**
+ * Lazy per-frame resolution — the single typed contract (audit finding 3).
+ *
+ * Order: real key first (real always wins, D-26), then the applicable
+ * effective interval, then O(1) modulo. The interval lookup is a binary
+ * search over the placementStart-sorted interval records — O(log loops) per
+ * query (NOT O(1); no hashed interval index exists in the physical document
+ * convention). The modulo step is O(1): sourceIndex = (frame -
+ * placementStart) % cycleLength, repeatInstance = floor((frame -
+ * placementStart) / cycleLength). Never throws on unresolved loops (D-31);
+ * out-of-domain frames resolve 'empty'. Frames at or beyond effectiveEnd
+ * resolve 'empty' (half-open ranges).
+ */
+export function resolvePhysicPaintRotoLoopFrame(
+  context: PhysicPaintRotoLoopResolutionContext,
+  appFrame: number,
+): PhysicPaintRotoFrameResolution {
+  if (!isRecord(context) || !Array.isArray(context.ranges) || !(context.keyIdByAppFrame instanceof Map)) {
+    throw new Error('PhysicPaintRotoLoopResolution: malformed resolution context.');
+  }
+  if (!isNonNegativeInteger(appFrame)) {
+    return EMPTY_FRAME_RESOLUTION;
+  }
+
+  const realKeyId = context.keyIdByAppFrame.get(appFrame);
+  if (realKeyId !== undefined) {
+    return Object.freeze({ kind: 'real', keyId: realKeyId, appFrame }) as PhysicPaintRotoFrameResolution;
+  }
+
+  // Binary search: the last interval whose placementStart is <= appFrame is
+  // the only possible container — effective ranges never overlap (D-14).
+  const ranges = context.ranges;
+  let low = 0;
+  let high = ranges.length - 1;
+  let candidateIndex = -1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (ranges[mid].placementStart <= appFrame) {
+      candidateIndex = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  if (candidateIndex >= 0) {
+    const range = ranges[candidateIndex];
+    if (appFrame < range.effectiveEnd) {
+      if (range.unresolved !== null) {
+        return Object.freeze({
+          kind: 'linked-unresolved',
+          loopId: range.loopId,
+          appFrame,
+          placementStart: range.placementStart,
+          sourceKeyIds: range.sourceKeyIds,
+          missingSourceKeyIds: range.unresolved.missingSourceKeyIds,
+        }) as PhysicPaintRotoFrameResolution;
+      }
+      const offset = appFrame - range.placementStart;
+      const sourceIndex = offset % range.cycleLength;
+      return Object.freeze({
+        kind: 'linked',
+        loopId: range.loopId,
+        appFrame,
+        sourceKeyId: range.sourceKeyIds[sourceIndex],
+        sourceIndex,
+        repeatInstance: Math.floor(offset / range.cycleLength),
+      }) as PhysicPaintRotoFrameResolution;
+    }
+  }
+  return EMPTY_FRAME_RESOLUTION;
 }
