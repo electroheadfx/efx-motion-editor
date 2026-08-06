@@ -53,7 +53,8 @@ Canvas colors follow the existing `TimelineRenderer` split: theme-derived via `g
 | Element | Value | Source / Notes |
 |---------|-------|----------------|
 | Source-cycle cell border | `rgba(255, 255, 255, 0.22)` | matches existing inactive Play Script marker outline |
-| Source-cycle real-key diamond | `#F5A623` fill, no stroke | existing convention (C-04) — unchanged; ONLY source keys keep diamonds (D-23) |
+| Source-cycle real-key diamond | `#F5A623` fill, no stroke | existing convention (C-04) — unchanged; ONLY real source keys keep diamonds (D-23). Duplicated-loop first-cycle cells are linked/virtual at their placement and NEVER show diamonds (placement/source correction, approved audit finding 4) |
+| Duplicated-loop first-cycle cell | shared source thumbnail + LOOP_GHOST_BORDER `rgba(255, 255, 255, 0.24)` 1px dashed | placement/source correction: a duplicated loop placed away from its source keys renders first-cycle cells with the shared source thumbnails but the linked/virtual dashed border — visually distinct from real-key source cells, no diamond |
 | Repetition band base | `rgba(255, 255, 255, 0.05)` over `colors.fxTrackBg` | new constant `LOOP_BAND_BASE` |
 | Repetition band hatch | `rgba(255, 255, 255, 0.14)`, 45° diagonal, 4px period, 1px lines | new constant `LOOP_BAND_HATCH` (perforated/hatched band, D-16 default zoom) |
 | Ghost cell fill (high zoom) | `rgba(255, 255, 255, 0.06)` | new constant `LOOP_GHOST_FILL` — visually lighter than source cells, no thumbnails (D-16) |
@@ -114,7 +115,7 @@ Declared capsule metrics (multiples of 4 unless noted):
 | Band hatch period | 4px |
 | Ghost cell border dash | 4px dash / 4px gap |
 | Truncation diagonal | spans the full capsule band height; 1.5px stroke |
-| Zero-effective anchor flag | ~6px-high slim pill (locked D-22 approximate marker — declared exception to the multiples-of-4 rule, matching the playhead-triangle marker exception), width 24px, `0f` text centered; pinned at the loop's canonical start frame |
+| Zero-effective anchor flag | ~6px-high slim pill (locked D-22 approximate marker — declared exception to the multiples-of-4 rule, matching the playhead-triangle marker exception), width 24px, `0f` text centered; pinned at the loop's placement start frame |
 | Studio link dot | 4px diameter, 2px top-right inset |
 
 Exceptions: anchor-flag ~6px height (D-22, approximate marker glyph, not layout spacing); Studio link-dot 2px top-right inset (functional micro-offset that keeps the dot fully inside the 18px×24px cell without touching the inset border); capsule focus-ring 2px offset (matches the existing dialog `:focus-visible` convention — functional ring offset, not layout spacing); Phase 42 dialog metrics (locked, inherited).
@@ -191,7 +192,7 @@ The capsule is pure Canvas 2D (D-32) — zero per-cell DOM nodes — so hit-test
 
 | # | Hit region | Pointer contract |
 |---|-----------|------------------|
-| 1 | Source-cycle thumbnail cell | Click selects/seeks the corresponding real source key. It never selects a virtual ghost cell; the existing real-key selection behavior is preserved unchanged |
+| 1 | Source-cycle thumbnail cell (real-key-backed) | Click selects/seeks the corresponding real source key. It never selects a virtual ghost cell; the existing real-key selection behavior is preserved unchanged. This contract applies ONLY to first-cycle cells backed by real source keys (an original loop whose placement overlaps its source keys). Duplicated-loop first-cycle cells are linked occurrences at their placement: they follow region 2 behavior — click selects the Loop Clip object and pins the occurrence tooltip (repeat instance 0, `Source frame {i} of {N}`) — never real-key selection at the destination (placement/source correction, approved audit finding 4) |
 | 2 | Repeated ghost cell / repetition band | Click selects the Loop Clip object (the whole capsule is the selection unit, D-23) and pins the flat-multiline occurrence tooltip. The playhead does NOT move automatically. The pinned tooltip shows the Repeat instance, the source-frame index, and the source key frame — `Repeat {n} · Source frame {i} of {N}` — plus a dedicated action labeled exactly `Edit source frame`. Invoking `Edit source frame` seeks to the modulo-resolved real source key (D-17) |
 | 3 | Compact math badge | Click reopens the Play Script dialog in loop-edit mode targeting that loop (D-01) |
 | 4 | Capsule outline | Click selects the Loop Clip object (same selection unit as region 2) |
@@ -276,4 +277,4 @@ Applicable state considerations resolved: 15 covered, 0 backstops, 5 dismissed, 
 - [x] Dimension 5 Spacing: PASS
 - [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** APPROVED — gsd-ui-checker verdict `UI-SPEC VERIFIED`, 2026-08-06. Non-blocking FLAGs D2 (idle-capsule focal point) and D5 (2px micro-offset exceptions) were resolved and re-verified; FLAG D4 (inherited Phase 42 type scale above guideline maxima) is locked inheritance from an already-approved, already-shipped dialog — no action possible or needed, noted for the record. Re-approved 2026-08-06 after the targeted correction (S2 Repeat validation coverage, canvas interaction/keyboard contract, visual-state precedence, S4 Link/Create copy).
+**Approval:** APPROVED — gsd-ui-checker verdict `UI-SPEC VERIFIED`, 2026-08-06. Non-blocking FLAGs D2 (idle-capsule focal point) and D5 (2px micro-offset exceptions) were resolved and re-verified; FLAG D4 (inherited Phase 42 type scale above guideline maxima) is locked inheritance from an already-approved, already-shipped dialog — no action possible or needed, noted for the record. Re-approved 2026-08-06 after the targeted correction (S2 Repeat validation coverage, canvas interaction/keyboard contract, visual-state precedence, S4 Link/Create copy). Placement/source coordinate correction applied 2026-08-06 per user-approved audit finding 4: `placementStart` identity (original loop = first source key frame; duplicated loop = destination frame), duplicated-loop first-cycle cell contract (shared thumbnails, dashed linked border, no diamonds, linked-occurrence click behavior), zero-effective anchor flag pinned at placement start.

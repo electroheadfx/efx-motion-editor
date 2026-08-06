@@ -159,31 +159,34 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 43-01-PLAN.md — Tracer: loopClips persistence gauntlet (four allowlists) + revision/snapshot integration (HOLD-05)
-- [ ] 43-04-PLAN.md — HOLD-01..04 hardening specs: determinism, adjacent ranges, commit atomicity, single raster (HOLD-01..04)
+- [ ] 43-01-PLAN.md — Tracer: loopClips persistence gauntlet (four allowlists, placementStart identity) + revision/snapshot integration with Undo AND Redo proofs (HOLD-05)
+- [ ] 43-04-PLAN.md — HOLD-01..04 hardening specs: determinism, adjacent ranges, commit atomicity, single raster; test-only with bounded deviation protocol (HOLD-01..04)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 43-02-PLAN.md — Resolver: linked-loop virtual cells, D-24 boundary algebra, shared derivation, Pitfall-7 audit (HOLD-05)
+- [ ] 43-02-PLAN.md — Resolver: lazy interval derivation + per-frame typed contract (real / linked / linked-unresolved / empty), D-24 boundary algebra, Pitfall-7 exhaustiveness sweep (HOLD-05)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [ ] 43-03-PLAN.md — Store: linked-loop render source, loop-aware end frame, atomic loopClips commit acceptance (HOLD-04, HOLD-05)
-- [ ] 43-05-PLAN.md — Guards: D-07/D-11/D-13 rejections, D-12 materialization, D-06 preflight warning (HOLD-05)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 43-06-PLAN.md — Dialog loop-edit/source-edit modes, Link/Create, loop ops, parent→child bridge message (HOLD-05)
+- [ ] 43-05-PLAN.md — Guards: D-07/D-11/D-13 rejections, D-12 materialization, D-06 preflight warning (HOLD-05)
 - [ ] 43-07-PLAN.md — Capsule: pure geometry, frameMap feed, TimelineRenderer drawing at all zoom bands (HOLD-06)
-- [ ] 43-09-PLAN.md — D-28: export preflight block + preview marked placeholder (HOLD-04, HOLD-05)
+- [ ] 43-09-PLAN.md — D-28: export preflight block + placeholder variant with declared consumers + valid-loop preview/export parity (HOLD-04, HOLD-05)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 43-08-PLAN.md — Capsule interaction: hit regions, tooltip host, keyboard model, Studio strip link badge (HOLD-06)
+- [ ] 43-06-PLAN.md — Dialog loop-edit/source-edit modes, Link/Create, loop ops (Update/Unlink/Duplicate/Repair/Relink with Undo→Redo proofs), parent→child bridge message (HOLD-05)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 43-10-PLAN.md — Full gates + native visual UAT checkpoint (HOLD-01..06)
+- [ ] 43-08-PLAN.md — Capsule interaction: hit regions, tooltip host, keyboard model, Studio strip link badge (HOLD-06)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 43-10-PLAN.md — Full gates (vitest + typecheck + build + dependency diff) + native visual UAT + unsigned packaged smoke (HOLD-01..06)
 
 **UI hint**: yes
 
@@ -197,7 +200,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
 
   1. All automated gates pass: `pnpm --dir app exec vitest run`, typecheck, `pnpm build`, cargo tests, release script syntax check and preflight
-  2. User-run packaged-app UAT passes every spec step: icon surfaces, hydration without Refresh, audio sync/seek/loop/stop without drift or doubling, toggle isolation, progressive apply, 5-frame cycle × 5 repeat badge and resolution, infinity to next clip, partial-cycle truncation label, next-clip move/remove re-expansion, color override with unchanged source, save/reopen/export
+  2. User-run packaged-app UAT passes every spec step: icon surfaces, hydration without Refresh, audio sync/seek/loop/stop without drift or doubling, toggle isolation, progressive apply, 5-frame cycle × 5 repeat badge and resolution, infinity to next clip, partial-cycle truncation label, next-clip move/remove re-expansion, color override with unchanged source, save/reopen/export — Phase 43 handoff: the signed packaged UAT explicitly covers valid linked-loop preview/export parity and the unresolved-loop export block (the unsigned packaged smoke runs earlier in Phase 43-10; the signed-artifact boundary is verified here, never silently dropped)
   3. Signed/notarized downloaded-artifact verification and visible launch complete before publication (icon verified on the downloaded artifact, not the dev machine, since icon caches lie)
 
 **Plans**: TBD
