@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
-import type { PhysicPaintRotoPhysicalRenderSource } from '../roto/physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource } from '../roto/physicsPaintRotoPhysicalModel';
 import { isRotoPngDataUrl } from '../roto/rotoCanvasFrames';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 
@@ -30,7 +30,7 @@ interface RotoPhysicalLookupInput<Frame extends RotoReferenceFrame> {
   getFrame?: (appFrame: number) => Frame | null;
 }
 
-function projectPhysicalSource<Frame extends RotoReferenceFrame>(source: PhysicPaintRotoPhysicalRenderSource): Frame {
+function projectPhysicalSource<Frame extends RotoReferenceFrame>(source: PhysicPaintRotoPhysicalRenderableSource): Frame {
   return {
     ...source.renderedFrame,
     appFrame: source.appFrame,
@@ -40,7 +40,7 @@ function projectPhysicalSource<Frame extends RotoReferenceFrame>(source: PhysicP
   } as Frame;
 }
 
-function isCurrentGeneratedPngSource(source: PhysicPaintRotoPhysicalRenderSource): boolean {
+function isCurrentGeneratedPngSource(source: PhysicPaintRotoPhysicalRenderableSource): boolean {
   if (source.kind !== 'generated') return true;
   return source.renderedFrame.appFrame === source.appFrame
     && source.cacheRevision === `${source.contentRevision}:generated:${source.interpolationMode}:${source.leftKeyId}:${source.rightKeyId}:${source.appFrame}`
@@ -50,7 +50,11 @@ function isCurrentGeneratedPngSource(source: PhysicPaintRotoPhysicalRenderSource
 /** Exact physical-cell lookup. No generic frame or neighboring-key fallback. */
 export function findCachedRotoDisplayFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoPhysicalLookupInput<Frame>): Frame | null {
   const source = input.getPhysicalRenderSource?.(appFrame) ?? null;
-  if (!source || !isCurrentGeneratedPngSource(source)) return null;
+  // Phase 43: an unresolved linked frame carries no payload — it renders as
+  // nothing here until the 43-09 placeholder lands; the typed result remains
+  // available through the store for the surfaces that consume it.
+  if (!source || source.kind === 'linked-unresolved') return null;
+  if (!isCurrentGeneratedPngSource(source)) return null;
   if (source.kind === 'real' && input.dirtyFrames?.has(appFrame)) {
     const preview = input.previewFrames?.get(appFrame);
     if (preview?.appFrame === appFrame

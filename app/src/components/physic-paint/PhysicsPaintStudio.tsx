@@ -812,7 +812,9 @@ export function PhysicsPaintStudio() {
     if (rotoPlaybackLayerId === null) return [];
     return rotoPlaybackFrameNumbers.flatMap((appFrame) => {
       const source = physicPaintStore.getRotoPhysicalRenderSource(rotoPlaybackLayerId, appFrame);
-      return source ? [{ appFrame, frame: source.renderedFrame }] : [];
+      // Phase 43: unresolved linked frames carry no playback payload (43-09
+      // owns the placeholder surface).
+      return source && source.kind !== 'linked-unresolved' ? [{ appFrame, frame: source.renderedFrame }] : [];
     });
   }, [rotoPlaybackLayerId, rotoPlaybackFrameNumbers]);
   const missingConditions = selectPhysicsPaintMissingConditions({

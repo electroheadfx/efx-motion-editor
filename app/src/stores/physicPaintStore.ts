@@ -23,7 +23,10 @@ import {
   type PhysicPaintRotoScriptMotionSettings,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {
+  derivePhysicPaintRotoLoopRanges,
   projectPhysicPaintRotoPhysicalTimeline,
+  resolvePhysicPaintRotoLoopFrame,
+  type PhysicPaintRotoLoopResolutionContext,
   type PhysicPaintRotoPhysicalTimelineProjection,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 
@@ -53,6 +56,19 @@ const DEFAULT_ROTO_INTERPOLATION_SETTINGS: PhysicPaintRotoInterpolationSettings 
   mode: 'duplicate',
   position: 0,
   deform: 0,
+};
+
+/**
+ * One unresolvable Loop Clip intersecting a queried frame window (Phase 43,
+ * D-28). Carries the verbatim missing source keyIds (D-31) and the loop's
+ * effective end so the export preflight can name the blocked range without
+ * materializing frames.
+ */
+export type PhysicPaintRotoPhysicalUnresolvedLoop = {
+  readonly loopId: string;
+  readonly placementStart: number;
+  readonly effectiveEnd: number;
+  readonly missingSourceKeyIds: readonly string[];
 };
 
 const _rotoAlphaCanvasRegistry = new Map<string, HTMLCanvasElement>();
@@ -116,6 +132,12 @@ type RotoPhysicalStructuralCacheEntry = {
   loopClips: readonly PhysicPaintRotoLoopClip[];
   projection: PhysicPaintRotoPhysicalTimelineProjection | null;
   contentRevision: string;
+  // Phase 43: ONE compact interval derivation per structural revision (D-32).
+  // Memoized on the same identity quadruple; queried lazily per requested
+  // frame by getRotoPhysicalRenderSource / getRotoPhysicalUnresolvedLoops.
+  // The store's parent-end bound is the physical capacity (D-25/Q4 fold the
+  // 600-frame clamp into the 'parent-end' boundary kind for infinity loops).
+  loopResolution: PhysicPaintRotoLoopResolutionContext;
 };
 const _rotoPhysicalStructuralCache = new Map<string, RotoPhysicalStructuralCacheEntry>();
 
@@ -148,6 +170,12 @@ function _resolveRotoPhysicalStructural(layerId: string): RotoPhysicalStructural
     loopClips,
     projection: result.ok ? result.projection : null,
     contentRevision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips),
+    loopResolution: derivePhysicPaintRotoLoopRanges({
+      identities,
+      loopClips,
+      parentEndExclusive: capacity,
+      capacity,
+    }),
   };
   _rotoPhysicalStructuralCache.set(layerId, entry);
   return entry;
@@ -1472,20 +1500,73 @@ export const physicPaintStore = {
     return structural.contentRevision;
   },
 
+  /**
+   * Loop-aware physical end frame (Phase 43, Pitfall 3): max of last real
+   * key + 1 and every loop's effective end, read from the memoized interval
+   * derivation — never by iterating virtual frames (D-32). Loop effective
+   * ends are already bounded by the parent end and the capacity inside the
+   * derivation (D-25/Q4). No loops and no keys still returns null.
+   */
   getRotoPhysicalEndFrame(layerId: string): number | null {
     const records = this.getRotoRealKeyRecords(layerId);
-    return records.length === 0 ? null : records[records.length - 1].appFrame + 1;
+    const lastRealEnd = records.length === 0 ? null : records[records.length - 1].appFrame + 1;
+    let loopEnd: number | null = null;
+    const structural = _resolveRotoPhysicalStructural(layerId);
+    if (structural) {
+      for (const range of structural.loopResolution.ranges) {
+        loopEnd = loopEnd === null ? range.effectiveEnd : Math.max(loopEnd, range.effectiveEnd);
+      }
+    }
+    if (lastRealEnd === null && loopEnd === null) return null;
+    return Math.max(lastRealEnd ?? 0, loopEnd ?? 0);
   },
 
-  /** Resolve one exact real/generated runtime paint source from the validated projection. */
+  /**
+   * Unresolvable Loop Clips over a half-open frame window (Phase 43, D-28
+   * wiring). One compact entry per intersecting loop whose source references
+   * dangle — computed from the memoized interval records' missingSourceKeyIds
+   * in O(loops), with no frame materialization. The export preflight consumes
+   * this to block; the block itself lands in 43-09.
+   */
+  getRotoPhysicalUnresolvedLoops(
+    layerId: string,
+    fromFrame: number,
+    toFrame: number,
+  ): readonly PhysicPaintRotoPhysicalUnresolvedLoop[] {
+    if (!Number.isInteger(fromFrame) || !Number.isInteger(toFrame) || fromFrame < 0 || toFrame <= fromFrame) return [];
+    const structural = _resolveRotoPhysicalStructural(layerId);
+    if (!structural) return [];
+    const unresolved: PhysicPaintRotoPhysicalUnresolvedLoop[] = [];
+    for (const range of structural.loopResolution.ranges) {
+      if (range.unresolved === null) continue;
+      if (range.effectiveEnd <= fromFrame || range.placementStart >= toFrame) continue;
+      unresolved.push({
+        loopId: range.loopId,
+        placementStart: range.placementStart,
+        effectiveEnd: range.effectiveEnd,
+        missingSourceKeyIds: range.unresolved.missingSourceKeyIds,
+      });
+    }
+    return unresolved;
+  },
+
+  /**
+   * Resolve one exact runtime paint source. Real and generated projection
+   * cells stay the projection's authority; frames the projection reports
+   * empty (or does not cover) consult the Phase 43 lazy per-frame loop query
+   * (D-26/D-27): 'linked' occurrences return the SOURCE key's payload under
+   * the source-scoped cache revision `${contentRevision}:real:${sourceKeyId}`
+   * — one source cache entry serves every occurrence — and 'linked-unresolved'
+   * surfaces the typed contract instead of a blank.
+   */
   getRotoPhysicalRenderSource(layerId: string, appFrame: number): PhysicPaintRotoPhysicalRenderSource | null {
     if (!Number.isInteger(appFrame) || appFrame < 0) return null;
-    const projection = this.getRotoPhysicalProjection(layerId);
-    const contentRevision = this.getRotoPhysicalContentRevision(layerId);
-    if (!projection || !contentRevision) return null;
+    const structural = _resolveRotoPhysicalStructural(layerId);
+    if (!structural || !structural.projection) return null;
+    const projection = structural.projection;
+    const contentRevision = structural.contentRevision;
     const cell = projection.cells[appFrame];
-    if (!cell || cell.appFrame !== appFrame || cell.kind === 'empty') return null;
-    if (cell.kind === 'real') {
+    if (cell && cell.appFrame === appFrame && cell.kind === 'real') {
       const record = this.getRotoRealKeyRecord(layerId, cell.keyId);
       if (!record || record.appFrame !== appFrame || record.payload.appFrame !== appFrame) return null;
       return {
@@ -1498,34 +1579,86 @@ export const physicPaintStore = {
         renderedFrame: record.payload,
       };
     }
-    const left = this.getRotoRealKeyRecord(layerId, cell.leftKeyId);
-    const right = this.getRotoRealKeyRecord(layerId, cell.rightKeyId);
-    if (!left || !right || !(left.appFrame < appFrame && appFrame < right.appFrame)) return null;
-    const interpolation = this.getRotoPhysicalInterpolationState(layerId);
-    const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode: interpolation.mode };
-    const distance = right.appFrame - left.appFrame;
-    const rendered = interpolation.mode === 'duplicate'
-      ? renderDuplicateRotoInterpolationFrame(left.payload, appFrame, settings)
-      : renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, (appFrame - left.appFrame) / distance, settings);
-    if (!rendered) return null;
-    const renderedFrame: PhysicPaintRotoRealKeyPayload = {
-      frameIndex: rendered.frameIndex,
-      appFrame,
-      dataUrl: rendered.dataUrl,
-      ...(rendered.width !== undefined ? { width: rendered.width } : {}),
-      ...(rendered.height !== undefined ? { height: rendered.height } : {}),
-    };
-    return {
-      kind: 'generated',
-      layerId,
-      appFrame,
-      leftKeyId: left.keyId,
-      rightKeyId: right.keyId,
-      interpolationMode: interpolation.mode,
-      contentRevision,
-      cacheRevision: `${contentRevision}:generated:${interpolation.mode}:${left.keyId}:${right.keyId}:${appFrame}`,
-      renderedFrame,
-    };
+    if (cell && cell.appFrame === appFrame && cell.kind === 'generated') {
+      const left = this.getRotoRealKeyRecord(layerId, cell.leftKeyId);
+      const right = this.getRotoRealKeyRecord(layerId, cell.rightKeyId);
+      if (!left || !right || !(left.appFrame < appFrame && appFrame < right.appFrame)) return null;
+      const interpolation = this.getRotoPhysicalInterpolationState(layerId);
+      const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode: interpolation.mode };
+      const distance = right.appFrame - left.appFrame;
+      const rendered = interpolation.mode === 'duplicate'
+        ? renderDuplicateRotoInterpolationFrame(left.payload, appFrame, settings)
+        : renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, (appFrame - left.appFrame) / distance, settings);
+      if (!rendered) return null;
+      const renderedFrame: PhysicPaintRotoRealKeyPayload = {
+        frameIndex: rendered.frameIndex,
+        appFrame,
+        dataUrl: rendered.dataUrl,
+        ...(rendered.width !== undefined ? { width: rendered.width } : {}),
+        ...(rendered.height !== undefined ? { height: rendered.height } : {}),
+      };
+      return {
+        kind: 'generated',
+        layerId,
+        appFrame,
+        leftKeyId: left.keyId,
+        rightKeyId: right.keyId,
+        interpolationMode: interpolation.mode,
+        contentRevision,
+        cacheRevision: `${contentRevision}:generated:${interpolation.mode}:${left.keyId}:${right.keyId}:${appFrame}`,
+        renderedFrame,
+      };
+    }
+    // Empty or projection-uncovered frame: consult the lazy loop resolution.
+    const resolution = resolvePhysicPaintRotoLoopFrame(structural.loopResolution, appFrame);
+    switch (resolution.kind) {
+      case 'real': {
+        // Defensive coherence: a real key at this frame would normally have a
+        // real projection cell; resolve it exactly like the real-cell branch.
+        const record = this.getRotoRealKeyRecord(layerId, resolution.keyId);
+        if (!record || record.appFrame !== appFrame || record.payload.appFrame !== appFrame) return null;
+        return {
+          kind: 'real',
+          layerId,
+          appFrame,
+          keyId: record.keyId,
+          contentRevision,
+          cacheRevision: `${contentRevision}:real:${record.keyId}`,
+          renderedFrame: record.payload,
+        };
+      }
+      case 'linked': {
+        const record = this.getRotoRealKeyRecord(layerId, resolution.sourceKeyId);
+        // Derivation proved resolvability; a missing record here would mean
+        // the identities and the record map diverged — fail closed to null.
+        if (!record) return null;
+        return {
+          kind: 'real',
+          layerId,
+          appFrame,
+          keyId: record.keyId,
+          contentRevision,
+          cacheRevision: `${contentRevision}:real:${record.keyId}`,
+          renderedFrame: record.payload,
+        };
+      }
+      case 'linked-unresolved':
+        return {
+          kind: 'linked-unresolved',
+          layerId,
+          appFrame,
+          loopId: resolution.loopId,
+          placementStart: resolution.placementStart,
+          sourceKeyIds: resolution.sourceKeyIds,
+          missingSourceKeyIds: resolution.missingSourceKeyIds,
+        };
+      case 'empty':
+        return null;
+      default: {
+        const exhaustive: never = resolution;
+        throw new Error(`Unhandled Roto frame resolution kind: ${JSON.stringify(exhaustive)}`);
+      }
+    }
   },
 
   /** Publish live pixels only when the stable key and source content revision still match. */

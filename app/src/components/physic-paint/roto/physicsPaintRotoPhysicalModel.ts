@@ -118,7 +118,21 @@ export interface PhysicPaintRotoGeneratedCell {
   readonly rightKeyId: string;
 }
 
-/** Identity/revision-aware runtime render source shared by Studio, preview, and export. */
+/**
+ * Identity/revision-aware runtime render source shared by Studio, preview, and
+ * export.
+ *
+ * Phase 43 (D-26/D-27): linked Loop Clip occurrences resolve through the SAME
+ * 'real' variant as their source key — `keyId` is the source keyId and the
+ * cache revision is source-scoped (`${contentRevision}:real:${sourceKeyId}`),
+ * so one source cache entry serves every occurrence and one source edit
+ * invalidates them all. A frame inside an unresolvable loop range surfaces the
+ * typed 'linked-unresolved' variant (loopId, placementStart, missing source
+ * keyIds — the 43-02 contract) instead of a blank; it carries no rendered
+ * payload. Consumers that need a renderable frame narrow it away (the preview
+ * placeholder lands in 43-09; export preflight consumes the unresolved-loop
+ * query).
+ */
 export type PhysicPaintRotoPhysicalRenderSource =
   | {
       readonly kind: 'real';
@@ -139,7 +153,22 @@ export type PhysicPaintRotoPhysicalRenderSource =
       readonly contentRevision: string;
       readonly cacheRevision: string;
       readonly renderedFrame: PhysicPaintRotoRealKeyPayload;
+    }
+  | {
+      readonly kind: 'linked-unresolved';
+      readonly layerId: string;
+      readonly appFrame: number;
+      readonly loopId: string;
+      readonly placementStart: number;
+      readonly sourceKeyIds: readonly string[];
+      readonly missingSourceKeyIds: readonly string[];
     };
+
+/** The renderable subset of {@link PhysicPaintRotoPhysicalRenderSource} (carries a payload). */
+export type PhysicPaintRotoPhysicalRenderableSource = Exclude<
+  PhysicPaintRotoPhysicalRenderSource,
+  { readonly kind: 'linked-unresolved' }
+>;
 
 /** Canonical render behavior for runtime-derived interpolation cells. */
 export type PhysicPaintRotoInterpolationMode = 'duplicate' | 'blend';

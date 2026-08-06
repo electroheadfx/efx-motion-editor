@@ -125,7 +125,10 @@ export function getPreviewPhysicPaintFrameCacheKey(source: PreviewPhysicPaintFra
 function resolvePhysicPaintFrameSource(layerId: string, frame: number): PreviewPhysicPaintFrameSource | null {
   if (isPhysicalRotoWorkflowLayer(layerId)) {
     const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, frame);
-    if (!source || source.layerId !== layerId || source.appFrame !== frame) return null;
+    // Phase 43: an unresolved linked frame carries no payload; the preview
+    // placeholder lands in 43-09 and the export preflight blocks the range, so
+    // preview and export skip it identically here (D-27 parity).
+    if (!source || source.kind === 'linked-unresolved' || source.layerId !== layerId || source.appFrame !== frame) return null;
     return {
       layerId,
       frame,

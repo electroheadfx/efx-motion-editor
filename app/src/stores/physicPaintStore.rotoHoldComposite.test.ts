@@ -112,7 +112,9 @@ describe('physicPaintStore roto hold composite (HOLD-04)', () => {
     expect(physicPaintVersion.value).toBe(visualVersionBefore);
     // Every destination frame still resolves to the same single raster.
     for (const appFrame of [4, 5, 6]) {
-      expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, appFrame)?.renderedFrame.dataUrl).toBe(pngDataUrl(`hold-${appFrame}`));
+      const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, appFrame);
+      if (source?.kind !== 'real') throw new Error(`Expected a real render source at frame ${appFrame}.`);
+      expect(source.renderedFrame.dataUrl).toBe(pngDataUrl(`hold-${appFrame}`));
     }
   });
 

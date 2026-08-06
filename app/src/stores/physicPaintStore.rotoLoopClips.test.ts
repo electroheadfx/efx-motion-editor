@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   physicPaintStore,
-  rotoPhysicalRevision,
-  physicPaintVersion,
   _setPhysicPaintMarkDirtyCallback,
 } from './physicPaintStore';
 import type {
@@ -174,10 +172,12 @@ describe('typed linked-unresolved surfacing (audit finding 3, D-31)', () => {
   });
 
   it('surfaces the typed unresolved result inside the loop range and never blanks unrelated frames', () => {
-    installRecords([record('A', 0), record('B', 1), record('C', 10)]);
+    // C at frame 10 is the loop's non-owned D-24 boundary; the loop's own
+    // range is [0, 6) and every non-real frame inside it is linked-unresolved.
+    installRecords([record('A', 0), record('C', 10)]);
     installLoops([loopClip('loop-x', 0, ['A', 'missing-1'], 3)]);
 
-    for (const frame of [2, 3, 4, 5]) {
+    for (const frame of [1, 2, 3, 4, 5]) {
       const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, frame);
       if (!source || source.kind !== 'linked-unresolved') {
         throw new Error(`Expected the typed linked-unresolved result at frame ${frame}, got ${source?.kind ?? 'null'}.`);
@@ -190,10 +190,9 @@ describe('typed linked-unresolved surfacing (audit finding 3, D-31)', () => {
       expect(source.missingSourceKeyIds).toEqual(['missing-1']);
     }
 
-    // Unrelated frames resolve normally: real keys at 0, 1, and the boundary
-    // key at 10; frames outside every range stay empty (null).
+    // Unrelated frames resolve normally: the owned real key at 0 and the
+    // boundary key at 10; frames outside every range stay empty (null).
     expect(expectRealSource(LAYER, 0).keyId).toBe('A');
-    expect(expectRealSource(LAYER, 1).keyId).toBe('B');
     expect(expectRealSource(LAYER, 10).keyId).toBe('C');
     expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 6)).toBeNull();
     expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 12)).toBeNull();
@@ -251,7 +250,9 @@ describe('unresolved-loop query (D-28 wiring)', () => {
   });
 
   function installMixedLoops(): void {
-    installRecords([record('A', 0), record('B', 1)]);
+    // B sits at frame 10 so it never truncates loop-1 (a non-owned real key at
+    // or after the placement start is a D-24 boundary); loop-2 owns A and B.
+    installRecords([record('A', 0), record('B', 10)]);
     installLoops([
       loopClip('loop-1', 0, ['A', 'missing-1'], 2), // unresolved, effective [0, 4)
       loopClip('loop-2', 10, ['A', 'B'], 2), // resolved, effective [10, 14)
