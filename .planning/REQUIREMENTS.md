@@ -54,7 +54,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [ ] **HOLD-03**: Static/hold reuses the existing commit path (engine init, existing-frame merge, PNG alpha encoding, staged real-key creation, capacity/memory validation, progress, cancellation, authority/revision checks, atomic commit, undo/redo); no cancellation or failure leaves a partial destination range
 - [ ] **HOLD-04**: Generated keys remain paint content of the opened parent Paint layer; the main editor composites one resolved Paint raster per frame
 - [ ] **HOLD-05**: Loop Clips persist as canonical linked loop regions (not duplicated durable assets) with modulo source resolution, half-open interval boundaries, next-clip priority with full/partial cycle interruption, re-expansion when the next clip moves/is removed, and source-frame edits propagating to every linked occurrence
-- [ ] **HOLD-06**: The timeline filmstrip capsule shows the detailed source cycle, a linked-repetition band, `Cycle Nf × R = Df` / `× ∞` badges, requested vs effective duration, and the label `Boucle raccourcie par le clip suivant` on truncation (the term `clip bloquant` is never used)
+- [ ] **HOLD-06**: The timeline filmstrip capsule shows the detailed source cycle, a linked-repetition band, `Cycle Nf × R = Df` / `× ∞` badges, requested vs effective duration, and the English label `Loop shortened by next clip` on truncation (the earlier French truncation label is superseded as of 2026-08-06 and must not ship; the term `clip bloquant` remains prohibited in every language)
 
 ### Integrated Release Acceptance
 

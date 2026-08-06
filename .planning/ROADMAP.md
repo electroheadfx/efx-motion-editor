@@ -153,7 +153,7 @@ Plans:
   2. Identical script, destination, and options produce identical output across save/reopen and cache regeneration — zero-variation produces a stable held drawing, nonzero variation is deterministic per frame, no random render-time jitter
   3. Cancellation or failure never leaves a partial destination range; one Undo removes the accepted operation and Redo restores it, through the existing atomic commit path
   4. A 5-frame cycle repeated 5 times resolves across 25 timeline frames while storing only 5 linked source frame assets; repeat-count and infinity edits never regenerate or duplicate the source cycle, and source-frame edits propagate to every linked occurrence
-  5. Next-clip priority truncates loops after complete or partial cycles with half-open interval boundaries; moving or removing the next clip re-expands effective duration without regenerating sources, and the filmstrip capsule shows the detailed source cycle, linked-repetition band, `Cycle Nf × R = Df` / `× ∞` badges, requested vs effective duration, and the label `Boucle raccourcie par le clip suivant` on truncation (the term `clip bloquant` never appears)
+  5. Next-clip priority truncates loops after complete or partial cycles with half-open interval boundaries; moving or removing the next clip re-expands effective duration without regenerating sources, and the filmstrip capsule shows the detailed source cycle, linked-repetition band, `Cycle Nf × R = Df` / `× ∞` badges, requested vs effective duration, and the English label `Loop shortened by next clip` on truncation (the earlier French truncation label is superseded as of 2026-08-06; the term `clip bloquant` never appears in any language)
 
 **Plans**: TBD
 **UI hint**: yes
