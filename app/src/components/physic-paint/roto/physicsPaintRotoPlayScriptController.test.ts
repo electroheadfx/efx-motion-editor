@@ -43,6 +43,8 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
   let context: PhysicPaintLaunchContext | null = { operationId: 'launch', layerId: 'layer-1', startFrame: 4, width: 10, height: 10, project: { name: 'Project', saved: true, contextId: 'context-1' } };
   let motion = { deformation: 25, position: 40 };
   const getMotion = vi.fn(() => ({ ...motion }));
+  let brushColor = '#103c65';
+  const getBrushColor = vi.fn(() => brushColor);
   const selectedIdSignal = signal<string | null>(selectedId);
   const selectedSignal = signal<{ id: string } | null>({ id: 'script-1' });
   const library = {
@@ -65,11 +67,12 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
   const stopPlayback = vi.fn(); const log = vi.fn();
   const ports: RotoPlayScriptControllerPorts = {
     library, getLaunchContext: () => context, getSelection: () => selection, getMotion,
+    getBrushColor,
     getOperationLocked: () => false,
     getSize: () => ({ width: 10, height: 10 }), requestAuthority, commit, stopPlayback, log, ...overrides,
   };
   const controller = createRotoPlayScriptController(ports);
-  return { controller, library, requestAuthority, commit, stopPlayback, log, getMotion, setMotion: (next: { deformation: number; position: number }) => { motion = next; }, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
+  return { controller, library, requestAuthority, commit, stopPlayback, log, getMotion, setMotion: (next: { deformation: number; position: number }) => { motion = next; }, setBrushColor: (next: string) => { brushColor = next; }, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
 }
 
 type RotoPlayScriptPhysicalPublication = Parameters<RotoPlayScriptControllerPorts['commit']>[0];
@@ -183,7 +186,7 @@ describe('createRotoPlayScriptController', () => {
     expect(cancelled.commit).not.toHaveBeenCalled();
   });
 
-  it('passes mode, override color, and dialog Motion into the renderer — dialog values win over the port at confirm time', async () => {
+  it('resolves the override color from the getBrushColor port AT CONFIRM TIME — two confirms with different port values render different overrides', async () => {
     const test = harness();
     await test.controller.openConfirmation();
     // Dialog Motion initializes from the Motion defaults port at open (D-06).
@@ -191,15 +194,22 @@ describe('createRotoPlayScriptController', () => {
 
     test.controller.mode.value = 'static';
     test.controller.countText.value = '4'; // re-set after the Static / Hold first-time default applies
-    test.controller.overrideColor.value = '#3366ff';
     test.controller.overrideEnabled.value = true;
     test.controller.dialogMotion.value = { deformation: 5, position: 10 };
-    test.setMotion({ deformation: 90, position: 90 }); // port value changed after open — must NOT be re-read at confirm
+    test.setMotion({ deformation: 90, position: 90 }); // Motion port changed after open — must NOT be re-read at confirm
+    test.setBrushColor('#3366ff');
     expect(await test.controller.confirm()).toBe(true);
     expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ mode: 'static', overrideColor: '#3366ff', motion: { deformation: 5, position: 10 } }));
+
+    rendered.mockClear();
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    test.setBrushColor('#aa5500'); // brush color changed after the first Generate — resolved fresh at confirm, never stored
+    expect(await test.controller.confirm()).toBe(true);
+    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ overrideColor: '#aa5500' }));
   });
 
-  it('passes progressive defaults and a null override color when options are untouched or the override is disabled', async () => {
+  it('passes progressive defaults and a null override color when options are untouched or the override is disabled (Original colors)', async () => {
     const untouched = harness();
     await untouched.controller.openConfirmation();
     expect(await untouched.controller.confirm()).toBe(true);
@@ -208,9 +218,32 @@ describe('createRotoPlayScriptController', () => {
     rendered.mockClear();
     const disabled = harness();
     await disabled.controller.openConfirmation();
-    disabled.controller.overrideColor.value = '#3366ff'; // color present but override not enabled
+    // Custom color selected then Original colors re-selected — the override is disabled (D-08R).
+    disabled.controller.overrideEnabled.value = true;
+    disabled.controller.overrideEnabled.value = false;
     expect(await disabled.controller.confirm()).toBe(true);
     expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ mode: 'progressive', overrideColor: null }));
+  });
+
+  it('ignores the legacy overrideColor signal for generation and summary — the getBrushColor port is the only resolution path', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.overrideEnabled.value = true;
+    test.controller.overrideColor.value = '#00ff00'; // stale dialog-side value must never reach the renderer or the summary
+    test.setBrushColor('#1234ab');
+    expect(await test.controller.confirm()).toBe(true);
+    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ overrideColor: '#1234ab' }));
+    expect(test.controller.appliedSummary.line1.value).toBe('Progressive · Override #1234ab · Motion 25/40');
+  });
+
+  it('falls back to no override (Original-colors behavior) when the port returns a malformed color (T-42-05-01)', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.overrideEnabled.value = true;
+    test.setBrushColor('red'); // malformed port value — defensive guard mirrors existing input discipline
+    expect(await test.controller.confirm()).toBe(true);
+    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ overrideColor: null }));
+    expect(test.controller.appliedSummary.line1.value).toBe('Progressive · Original colors · Motion 25/40');
   });
 
   it('never invokes script-library write ports during confirm and leaves the snapshot deeply unchanged', async () => {
@@ -312,14 +345,14 @@ describe('createRotoPlayScriptController', () => {
     test.controller.repeatText.value = '12';
     test.controller.setInfinity(true);
     test.controller.overrideEnabled.value = true;
-    test.controller.overrideColor.value = '#00ff00';
     test.controller.closeConfirmation();
     await test.controller.openConfirmation();
     expect(test.controller.mode.value).toBe('static');
     expect(test.controller.repeatText.value).toBe('12');
     expect(test.controller.infinity.value).toBe(true);
+    // D-10: the override ENABLED STATE is remembered; the color itself is never stored — it
+    // resolves live from the brush-color port (D-08R).
     expect(test.controller.overrideEnabled.value).toBe(true);
-    expect(test.controller.overrideColor.value).toBe('#00ff00');
   });
 
   it('generates exactly the cycle value regardless of repeat or infinity', async () => {
@@ -441,11 +474,34 @@ describe('createRotoPlayScriptController', () => {
     test.controller.mode.value = 'static';
     test.controller.countText.value = '4'; // after the first-time Static / Hold default applies
     test.controller.overrideEnabled.value = true;
-    test.controller.overrideColor.value = '#3366ff';
+    test.setBrushColor('#3366ff');
     expect(await test.controller.confirm()).toBe(true);
     expect(test.controller.appliedSummary.line1.value).toBe('Static / Hold · Override #3366ff · Motion 25/40');
     // end = start + count − 1 = 7 = layerEndExclusive − 1 — exact at the layer-end boundary, no off-by-one
     expect(test.controller.appliedSummary.line2.value).toBe('F4–F7 · 4 frames generated');
+  });
+
+  it('keeps the confirm-time snapshot hex in the applied summary even when the port value changes afterwards (D-08R no-retroactive)', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.overrideEnabled.value = true;
+    test.setBrushColor('#3366ff');
+    expect(await test.controller.confirm()).toBe(true);
+    expect(test.controller.appliedSummary.line1.value).toBe('Progressive · Override #3366ff · Motion 25/40');
+    // Later brush-color changes never retroactively rewrite the success-only summary.
+    test.setBrushColor('#ff0000');
+    await test.controller.openConfirmation();
+    expect(test.controller.appliedSummary.line1.value).toBe('Progressive · Override #3366ff · Motion 25/40');
+    expect(test.controller.appliedSummary.line2.value).toBe('F4–F7 · 4 frames generated');
+  });
+
+  it('composes the first-open summary line 1 from the CURRENT port value when the override is enabled', async () => {
+    const test = harness();
+    test.controller.overrideEnabled.value = true;
+    test.setBrushColor('#7a8b9c');
+    await test.controller.openConfirmation();
+    expect(test.controller.appliedSummary.line1.value).toBe('Progressive · Override #7a8b9c · Motion 25/40');
+    expect(test.controller.appliedSummary.line2.value).toBe('No frames generated yet');
   });
 
   it('shows locked first-time defaults before the first successful Generate', async () => {
@@ -470,7 +526,6 @@ describe('createRotoPlayScriptController', () => {
     await test.controller.openConfirmation();
     test.controller.mode.value = 'static';
     test.controller.overrideEnabled.value = true;
-    test.controller.overrideColor.value = '#3366ff';
     test.controller.dialogMotion.value = { deformation: 1, position: 2 };
     test.controller.repeatText.value = '9';
     expect(test.controller.appliedSummary.line1.value).toBe(line1);
@@ -504,7 +559,7 @@ describe('createRotoPlayScriptController', () => {
     test.controller.mode.value = 'static';
     test.controller.countText.value = '4';
     test.controller.overrideEnabled.value = true;
-    test.controller.overrideColor.value = '#3366ff';
+    test.setBrushColor('#3366ff');
     expect(await test.controller.confirm()).toBe(true);
     expect(test.controller.appliedSummary.line1.value).toBe('Static / Hold · Override #3366ff · Motion 25/40');
     expect(test.controller.appliedSummary.line2.value).toBe('F4–F7 · 4 frames generated');
