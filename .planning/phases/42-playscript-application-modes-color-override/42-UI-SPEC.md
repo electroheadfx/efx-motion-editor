@@ -1,26 +1,65 @@
 ---
 phase: 42
 slug: playscript-application-modes-color-override
-status: approved
+status: revised
 shadcn_initialized: false
 preset: none
 created: 2026-08-05
 reviewed_at: 2026-08-06
-revision: 2026-08-06 — approved playscript-proposal adopted (dialog layout + two-state live brush-color control; inline picker superseded); Repeat/Infinity clarified as session-level loop intent
+revision: 2026-08-06 (2) — final visual correction: compact independent DARK modal overlay (Image #153 approved target; Image #154 light full-canvas implementation REJECTED); Timing-left / Color-over-Motion-right main grid; no-scroll compact fit
 revision_sources:
   - SPECS/playscript-proposal/playscript-panel.html
   - SPECS/playscript-proposal/ui-play-script-specs.md
   - 42-UI-REVISION-DELTA.md
+  - Image #153 (approved target visual) / Image #154 (rejected implementation)
 ---
 
-# Phase 42 — UI Design Contract (revised 2026-08-06)
+# Phase 42 — UI Design Contract (revised 2026-08-06, final visual direction)
 
-> Visual and interaction contract for the Play Script confirmation dialog expansion and Scripts panel summary.
-> Preact + Tauri desktop app; shadcn is not applicable (React-only). The design contract is the existing hand-rolled Physics Paint design system in `physicsPaintStudio.css`, extended inside the verified isolated dialog scope only.
+> Visual and interaction contract for the Play Script confirmation modal and Scripts panel summary.
+> Preact + Tauri desktop app. The Play Script modal uses its OWN dialog-scoped dark token set derived verbatim from the approved proposal — the previous light Physics Paint dialog tokens do NOT apply to this modal. The Scripts panel summary keeps the existing dark panel tokens.
 
-**Sources:** 42-CONTEXT.md D-01..D-16 (locked user decisions, incl. D-08R live-color contract and D-16 layout revision), `SPECS/playscript-proposal/playscript-panel.html` + `ui-play-script-specs.md` (approved structure/layout/interaction source — its dark app mockup is out of scope), 42-RESEARCH.md (verified code seams), existing `physicsPaintStudio.css:1216-1309` (dialog tokens, read verbatim). No open design questions remain.
+**Sources:** 42-CONTEXT.md D-01..D-19 (locked user decisions), `SPECS/playscript-proposal/playscript-panel.html` (dialog export block + dialog CSS — visual authority, tokens/metrics read verbatim), `SPECS/playscript-proposal/ui-play-script-specs.md` (color-behavior + modal semantics authority), Image #153 (approved target). No open design questions remain.
 
-**Architecture guard (locked, reiterated after UAT question 2026-08-06):** Phase 42 generates exactly ONE source cycle — `Frames` (Progressive) or `Frames per cycle` (Static / Hold) real destination frames. Repeat/Infinity are session-level loop intent consumed ONLY by the Requested/Effective readout; they never multiply `frameCount` or materialize repeated keys. Phase 43 repeats the source cycle by reference via linked Loop Clips (a repeated Progressive cycle restarts the build: `A|AB|ABC|A|AB|ABC`). No UI copy in this phase may describe Repeat as immediately generative.
+**Visual verdict (locked 2026-08-06):** Image #153 (compact dark modal) is the APPROVED target. Image #154 (large light page replacing the central canvas — wrong palette, density, dimensions, placement, container architecture) is REJECTED. Do not reinterpret the proposal through the previous light dialog tokens.
+
+**Architecture guard (unchanged):** Phase 42 generates exactly ONE source cycle — `Frames` (Progressive) or `Frames per cycle` (Static / Hold) real destination frames. Repeat/Infinity are session-level loop intent consumed ONLY by the Requested/Effective readout; they never multiply `frameCount`. Phase 43 repeats the source cycle by reference via linked Loop Clips (a repeated Progressive cycle restarts the build). No UI copy may describe Repeat as immediately generative.
+
+---
+
+## Modal Architecture (D-19)
+
+| Property | Contract |
+|----------|----------|
+| Placement | Compact modal overlay ABOVE the existing Paint interface, centered over the canvas region; the Paint canvas and Studio layout stay in their normal location behind it |
+| Trigger | Sole trigger: the existing Scripts-panel Play Script toolbar action with its existing selection/availability guards (D-17). No demo trigger, no auto-open, no second action |
+| Never | Never replaces/occupies the canvas grid cell; never a full-page or full-height editor surface; never resizes the Paint layout; never copies the proposal's demo shell |
+| Close | Cancel, Escape, or successful completion — closing never changes the Paint layout |
+| Scope | All selectors scoped to the Play Script modal (`.physics-paint-play-script-*`) — surrounding Paint UI is never restyled |
+| Fit | The complete modal fits at the minimum supported application window size with ALL rows visible — no vertical/horizontal scrollbar, no body scrolling region, no clipped card/helper/summary/footer. Compact layout, not overflow scrolling, solves the height constraint |
+
+**Layout (D-16, final):**
+
+```
+┌──────────────────────────────────────────────┐
+│ Row 1  Play Script          Max N · F0–F72   │  compact header
+├──────────────────────────────────────────────┤
+│ Row 2  Mode  [ Progressive | Static · Hold ] │  full-width card
+│        helper line                           │
+├──────────────────────┬───────────────────────┤
+│ Row 3  Timing        │  Color                │  two-column main grid;
+│        (full height) ├───────────────────────┤  right stack height ==
+│                      │  Motion wiggle        │  Timing card height
+├──────────────────────┴───────────────────────┤
+│ Row 4  Requested: …          Effective: …    │  full-width summary bar
+├──────────────────────────────────────────────┤
+│ Row 5  [progress/status]      Cancel Generate│  footer INSIDE modal
+└──────────────────────────────────────────────┘
+```
+
+- Motion wiggle is NEVER a separate full-width row and NEVER above Color.
+- Right-column stack (Color + gap + Motion wiggle) total height EQUALS the Timing card height; individual card heights may differ. If the stack needs more room, grow the shared row height for BOTH columns — never scroll.
+- Motion wiggle card: `Motion wiggle` heading with compact `Reset defaults` heading link; Deformation and Position as compact slider rows with visible numeric values; no unused vertical space.
 
 ---
 
@@ -28,209 +67,171 @@ revision_sources:
 
 | Property | Value |
 |----------|-------|
-| Tool | none (hand-rolled system; shadcn not applicable — Preact, not React) |
+| Tool | none (hand-rolled; shadcn not applicable — Preact, not React) |
 | Preset | not applicable |
-| Component library | none (in-repo components; color control is a segmented toggle reading the live brush color per D-08R — the dialog does NOT mount `InlineColorPicker`) |
+| Component library | none (in-repo; color control is a segmented toggle reading the live brush color per D-08R — the dialog does NOT mount `InlineColorPicker`) |
 | Icon library | lucide-preact ^0.577.0 (existing panel convention) |
-| Font | `system-ui, sans-serif` (Physics Paint Studio scope, `physicsPaintStudio.css:11`) |
-
-**Scope discipline (Phase 36.14 regression lesson, D-04):** all new markup stays inside `.physics-paint-play-script-dialog` / `-surface` / `-content`; every new class uses the `physics-paint-play-script-*` prefix. The dialog remains mounted directly in the Studio grid (grid-row 2 / grid-column 2, stretch) with the light full-height surface. The two-line panel summary lives in the dark Scripts panel and follows existing panel tokens — no new panel color is introduced.
-
-**Layout (D-16, approved proposal):** the dialog body is a two-column card grid:
-1. **Mode** card — spans full width (segmented control + helper line).
-2. **Timing** card | **Color** card — side by side.
-3. **Motion wiggle** card — spans full width, `Reset defaults` link in the section heading.
-4. **Summary bar** — Requested/Effective readout, spans full width at the bottom of the body.
-5. **Fixed footer** — progress line + status, `Cancel` / `Generate` actions; outside the scroll region.
-
-The proposal's dark theme is NOT adopted — the dialog keeps the existing light-surface tokens below. The viewport-bounded, body-only scrolling contract is unchanged: only the dialog body scrolls; title/mode context and the footer stay visible.
-
-**Visual hierarchy:** the `Progressive` | `Static / Hold` segmented control is the first-read element (Mode card, top); `Generate` is the terminal action anchor (footer). Timing, Color, and Motion wiggle cards read as secondary groups; the summary bar closes the body.
+| Font | `system-ui, sans-serif` |
 
 ---
 
-## Spacing Scale
+## Color — dialog-scoped dark tokens (verbatim from the approved proposal)
 
-Declared values (multiples of 4). New controls added in this phase MUST use these:
+Declared as CSS custom properties inside the Play Script modal scope only.
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| xs | 4px | Chip/dot gaps inside the Color card; content `padding-right` (existing) |
-| sm | 8px | Actions-row gap (existing); gap between label/helper groups; repeat field ↔ Infinity toggle gap; card internal gaps |
-| md | 16px | Default vertical rhythm between dialog control groups; card grid gap |
-| lg | 24px | Minimum surface padding (existing clamp floor) |
-| xl | 32px | Not used in this phase (card grid supersedes the 32px major-section gaps) |
-| 2xl | 48px | Not used in this phase |
-| 3xl | 64px | Not used in this phase |
+| `--ps-surface` | `oklch(0.215 0.008 260)` | Modal surface |
+| `--ps-raised` | `oklch(0.255 0.009 260)` | Hover raise (segmented/ghost hover) |
+| `--ps-inset` | `oklch(0.165 0.006 260)` | Inputs, segmented tracks, custom-color row, summary bar, progress track |
+| `--ps-foot` | `oklch(0.295 0.010 260)` | Footer surface |
+| `--ps-fg` | `oklch(0.93 0.005 260)` | Primary text, slider thumbs, active checkmark |
+| `--ps-muted` | `oklch(0.62 0.012 260)` | Secondary text, labels, inactive segmented options, ghost button |
+| `--ps-faint` | `oklch(0.47 0.012 260)` | Hints, slider-row micro-labels |
+| `--ps-border` | `oklch(0.32 0.009 260)` | All structural borders (modal, cards, inputs, tracks) |
+| `--ps-accent` | `oklch(0.60 0.19 262)` | Checked segmented state, Generate, progress fill, focus outlines, checked checkbox |
+| `--ps-accent-hi` | `oklch(0.66 0.19 262)` | Hover on accent surfaces |
+| `--ps-ok` | `oklch(0.72 0.15 150)` | Progress-done fill/status |
+| `--ps-error` | `oklch(0.70 0.19 25)` | Inline validation + generation-error text on the dark surface (replaces the light-surface `#a12f37` inside this modal only) |
+| `--ps-radius` | `10px` | Cards/segmented tracks (modal shell 14px; inputs/custom row/summary/buttons 8px; segmented buttons 7px; checkbox 4px; chip 6px; dots 3px) |
 
-**Inherited exceptions (preserved verbatim — do NOT "fix" to the 4-point scale):**
+**Accent reserved for (explicit, exhaustive):** checked segmented state (Mode + Color), `Generate` button, progress fill, `:focus-visible` outlines (2px solid, 2px offset), checked Infinity checkbox. NEVER for helper text, the summary bar text, or the Custom color chip — the chip shows the USER'S CURRENT BRUSH COLOR (data, not accent).
 
-| Value | Where | Why kept |
-|-------|-------|----------|
-| 18px | `.physics-paint-play-script-surface` gap | Existing approved dialog rhythm |
-| 12px | `.physics-paint-play-script-content` gap | Existing approved dialog rhythm |
-| clamp(24px, 4vw, 52px) | Surface padding | Existing responsive padding |
-| 42px | Input `min-height` | Existing touch target |
-| 10px | Input horizontal padding (`8px 10px`) | Existing input inset |
-| 112px | Action button `min-width` | Existing button sizing |
-| 6px / 7px | Border radii (inputs 6px; panel confirmation 7px) | Existing radii |
+**Scripts panel summary (unchanged):** existing dark panel tokens (`#292b2d` background, `#eef1f4` values, `#aeb5be` metadata) — the modal token set does not leak into the panel.
 
 ---
 
-## Typography
+## Typography — dialog-scoped compact scale (verbatim from the approved proposal)
 
-Exactly 4 sizes, 2 weights (matches existing dialog) plus one inherited dark-panel exception (declared below):
+| Role | Size | Weight | Usage |
+|------|------|--------|-------|
+| Modal title | 15px | 650 | `Play Script` in the compact header |
+| Section title | 12px | 650 | Card headings (`Mode`, `Timing`, `Color`, `Motion wiggle`) |
+| Segmented option | 12.5px | 600 | Mode/Color segmented buttons |
+| Input / button | 12.5px | 650 (buttons) | Text inputs, `Cancel`/`Generate` |
+| Field label | 11.5px | 600 | `Frames`/`Frames per cycle`, `Repeat`, slider-row labels, checkbox label |
+| Body/helper | 12px | 400 | Mode helper line, color panes, summary bar |
+| Hint | 11px | 400 | Field hints (`Positive integer or Max.`) |
+| Note | 10.5px | 400 | Custom color note (`Picked from the app's brush color panel`), range readout 11.5px |
 
-| Role | Size | Weight | Line Height | Usage |
-|------|------|--------|-------------|-------|
-| Body | 16px | 400 | 1.5 | Inputs, helper lines, summary-bar readout, panel summary line 2 values |
-| Label | 12px | 700 | 1.2 | Card section titles — uppercase, `letter-spacing: 0.06em`, color `#343a42` (existing `content label` rule) |
-| Secondary | 12px | 400 | 1.5 | Helper line under the segmented control, inline errors, Color card note (`Picked from the app's brush color panel`), Motion wiggle `Reset defaults` link |
-| Display | clamp(24px, 3vw, 36px) | 700 | 1.1 | Dialog title `Play Script` (existing `content strong` rule) |
+Weights 600/650 are the proposal's dialog scale — declared here as the dialog-scoped exception to the studio-wide 400/700 rule; they stay inside the modal scope. Numeric fields, the range readout, slider outputs, and the summary bar use `font-variant-numeric: tabular-nums`.
 
-**Inherited exception (preserved verbatim — not a new size):**
-
-| Value | Where | Why kept |
-|-------|-------|----------|
-| 10px / 400 | Scripts panel summary line 1 metadata at `#aeb5be` | Existing dark-panel convention (`physics-paint-script-provenance`/`physics-paint-scripts-status`) — predates this phase |
-
-**Notes:**
-- Weights are exactly 400 and 700. No 500/600 anywhere in new markup.
-- Numeric fields and the Requested/Effective summary bar use `font-variant-numeric: tabular-nums` (existing input rule) so durations do not jitter while values change.
-- Panel summary typography follows the existing dark-panel scale (10px metadata exception above); it does NOT import the dialog's light-surface label style into the dark pane.
+**Panel summary typography (unchanged):** existing dark-panel scale (10px metadata at `#aeb5be`, inherited exception predating this phase).
 
 ---
 
-## Color
+## Spacing — dialog-scoped compact metrics (verbatim from the approved proposal)
 
-Two surfaces, both already approved — the contract is to stay inside them.
+| Element | Value |
+|---------|-------|
+| Modal shell | width 700px, max-width 94%, max-height 96%, radius 14px, border 1px `--ps-border`, shadow `0 24px 64px oklch(0 0 0 / 0.6), 0 2px 8px oklch(0 0 0 / 0.4)` |
+| Header | padding `15px 20px 13px`, baseline-aligned, 1px bottom border |
+| Body | padding `14px 20px 16px`, two-column grid, gap `14px 24px` |
+| Card | padding `11px 13px 12px`, radius 10px, 1px `--ps-border` |
+| Section title | margin-bottom 9px; `Reset defaults` link auto-left-margin inside the title row |
+| Segmented track | padding 3px, gap 3px; buttons padding `7px 10px`, radius 7px |
+| Field | internal gap 6px; field + field margin-top 12px |
+| Text input | padding `7px 10px`, radius 8px, inset background |
+| Repeat row | input + Infinity checkbox gap 10px; checkbox box 15px |
+| Color custom row | padding `7px 10px`, gap 10px; chip 26px; original dots 12px with 3px gap |
+| Slider rows | grid `88px 1fr 26px` (label/track/output), row gap 10px; track height 4px; thumb 14px |
+| Summary bar | padding `8px 12px`, radius 8px, space-between, gap 12px |
+| Footer | padding `10px 20px`, `--ps-foot` background, 1px top border, gap 14px; buttons padding `8px 18px`, min-height 34px, min-width removed (compact) |
+| Progress | track height 10px radius 5px; status min-width 148px right-aligned |
 
-### Dialog surface (light, `.physics-paint-play-script-surface`)
-
-| Role | Value | Usage |
-|------|-------|-------|
-| Dominant (60%) | `#f7f5ef` | Dialog surface background |
-| Secondary (30%) | `#ffffff` | Input fields, card backgrounds, segmented-control tracks |
-| Text primary | `#20242a` (headings `#171a1f`) | All dialog copy |
-| Text muted | `#343a42` | Labels |
-| Border | `#d8d4ca` (surface/cards), `#a9afb7` (inputs) | Structure |
-| Accent (10%) | `#365ed6` | See reserved list below |
-| Destructive / error | `#a12f37` | Inline validation errors only (existing `.physics-paint-script-inline-error` in dialog scope) |
-
-### Scripts panel surface (dark, existing — summary block only)
-
-| Role | Value | Usage |
-|------|-------|-------|
-| Dominant | `#292b2d` | Panel background (existing) |
-| Text primary | `#eef1f4` | Summary values |
-| Text muted | `#aeb5be` | Summary labels/metadata |
-| Accent | `var(--color-accent, #2d5be3)` | Focus outlines only (existing row convention) |
-
-**Accent reserved for (explicit, exhaustive):**
-1. Primary `Generate` action button.
-2. Checked state of the `Progressive` | `Static / Hold` segmented control and the `Original colors` | `Custom color` segmented control.
-3. Progress bar during generation (existing `accent-color: #365ed6` on `progress`).
-4. `:focus-visible` outlines on dialog controls (2px solid, 2px offset, matching existing row convention).
-
-Accent is NEVER used for: helper text, the summary-bar readout, the Custom color chip border, disabled states, or the panel summary. The Custom color chip shows the USER'S CURRENT BRUSH COLOR — it is data, not accent.
-
-**State colors:** disabled repeat field under Infinity-on uses reduced opacity (0.5) on the existing input style — no new grey token. No hover-state color inventions beyond existing transitions.
+**Compactness prohibitions (locked):** no oversized `Play Script` heading; no large outer margins; no large card padding; no excessive vertical gaps; no tall segmented controls or inputs (no 42px touch target in this modal); no large helper-text spacing; no large empty areas; footer never attached to the canvas/window bottom. The Color card must not reserve a large empty area — the color pane centers its compact content.
 
 ---
 
 ## Copywriting Contract
 
-All mode/loop/color copy is locked verbatim by CONTEXT D-05/D-06/D-08R/D-12/D-13/D-16. English only in Phase 42 (French capsule labels are Phase 43 scope; `clip bloquant` never appears).
+All mode/loop/color copy is locked verbatim by CONTEXT D-05/D-06/D-08R/D-12/D-13. English only in Phase 42 (French capsule labels are Phase 43 scope; `clip bloquant` never appears).
 
 | Element | Copy |
 |---------|------|
-| Dialog title | `Play Script` (existing, unchanged) |
+| Modal title | `Play Script` |
+| Header range (right) | `Max {N} · F{start}–F{end}` (existing status composition, moved into the header row) |
 | Mode option 1 | `Progressive` |
 | Mode option 1 helper | `The drawing builds stroke by stroke across frames.` |
-| Mode option 2 | `Static / Hold` |
+| Mode option 2 | `Static / Hold` (D-05 locked wording wins over the proposal's `Static · Hold` glyph) |
 | Mode option 2 helper | `The complete drawing is applied to every cycle frame.` |
-| Frame field label (mode-dependent) | Progressive: `Frames` (existing) · Static / Hold: `Frames per cycle` (D-03 revised 2026-08-06) — ONE shared numeric field whose visible label changes with the selected mode (no second field); switching to Static / Hold with `Max` in the field normalizes it to `1` (D-03/D-15) |
-| Frames field help | `Enter a positive integer or Max.` (existing, unchanged) |
+| Frame field label (mode-dependent) | Progressive: `Frames` · Static / Hold: `Frames per cycle` — ONE shared numeric field whose visible label changes with the selected mode; switching to Static / Hold with `Max` in the field normalizes it to `1` (D-03) |
+| Frames field help | `Positive integer or Max.` |
 | Color card title | `Color` |
 | Color option 1 | `Original colors` (default state) |
 | Color option 1 pane | Original-color dots + `Keep each stroke's original paint color.` |
 | Color option 2 | `Custom color` |
 | Color option 2 pane | Live brush-color chip + hex + note `Picked from the app's brush color panel` |
 | Motion card title | `Motion wiggle` |
-| Motion reset action | `Reset defaults` — link/action inside the Motion wiggle section heading (D-16; calls ONLY the controller `resetDialogMotion()`; NO `Save as defaults` in Phase 42, D-06) |
+| Motion reset action | `Reset defaults` — compact link inside the Motion wiggle section heading (calls ONLY the controller `resetDialogMotion()`; NO `Save as defaults`, D-06) |
 | Repeat field label | `Repeat` (Timing card, both modes — loop intent, see Architecture guard) |
-| Infinity toggle label | `Infinity` (or `∞` with `aria-label="Infinity"`) |
-| Infinity-on requested form | `Cycle {N}f × ∞` (D-12, verbatim; repeat field disabled/greyed, value preserved) |
+| Repeat field help | `Positive integer.` |
+| Infinity toggle label | `Infinity` |
+| Infinity-on requested form | `Cycle {N}f × ∞` (D-12, verbatim; repeat field disabled at reduced opacity, value preserved) |
 | Summary-bar truncated form | `Requested: 25f (5f × 5) · Effective: 18f — shortened by the next clip` (D-13, verbatim pattern) |
-| Summary-bar untruncated form | `Requested: {R}f ({C}f × {n}) · Effective: {R}f` (no truncation clause when effective equals requested) |
-| Primary CTA | `Generate` (existing dialog confirm, unchanged — verb + implied noun) |
+| Summary-bar untruncated form | `Requested: {R}f ({C}f × {n}) · Effective: {R}f` |
+| Primary CTA | `Generate` |
 | Cancel (idle) | `Cancel` |
-| Cancel (generating) | `Cancel generation` (existing) |
-| Empty state (color) | `Original colors` selected by default — no separate empty copy needed |
-| Error state (frames/repeat) | Existing inline-error pattern: `{problem}` in `#a12f37` 12px directly under the field, e.g. `Enter a positive integer up to Max {N}.` (strict-regex validation mirroring `parseCount`, RESEARCH Pitfall: numeric parsing) |
-| Panel summary line 1 | `{Mode} · {Original colors | Override #rrggbb} · Motion {deformation}/{position}` (D-07; the override hex is the Generate-time snapshot — later brush-color changes never rewrite it, D-08R) |
+| Cancel (generating) | `Cancel generation` |
+| Empty state (color) | `Original colors` selected by default |
+| Error state (frames/repeat) | `{problem}` in `--ps-error` 12px directly under the field, e.g. `Enter a positive integer up to Max {N}.`; Repeat copies: `Enter a positive integer.` / `Repeat is too large for this cycle length.` |
+| Panel summary line 1 | `{Mode} · {Original colors | Override #rrggbb} · Motion {deformation}/{position}` (D-07; Generate-time snapshot — later brush changes never rewrite it) |
 | Panel summary line 2 | `{destination range} · {generated-frame count/status}` (D-07) |
-| Destructive confirmation | None in this phase — generation is a staged, authority-checked, undo-able operation; no destructive action is added |
+| Destructive confirmation | None — generation is staged, authority-checked, undo-able |
 
-**Tooltip update (RESEARCH Pitfall 8):** the Play Script toolbar tooltip currently reads `Play Script — Generate progressive real Roto keys` and MUST be updated to cover both modes, e.g. `Play Script — Generate real Roto keys (progressive or static/hold)`. (Landed in 42-04 Task 1.)
+**Tooltip (landed in 42-04 Task 1):** `Play Script — Generate real Roto keys (progressive or static/hold)`.
 
-**Panel summary update contract (locked):**
-- The two-line Scripts-panel summary reflects the last options successfully confirmed and applied by Generate.
-- Unsaved edits inside an open dialog MUST NOT update the panel summary.
-- A successful Generate atomically updates the remembered session options and the summary together.
-- Cancel, user cancellation during generation, and generation failure preserve the previously successful summary and remembered options.
-- Before the first successful Generate, the summary shows the locked first-time/session defaults.
-- The summary remains read-only and signal-driven.
+**Panel summary update contract (locked):** reflects the last options successfully confirmed and applied by Generate; unsaved dialog edits, cancellation, and failure preserve the previous summary; before the first successful Generate it shows the locked defaults; read-only and signal-driven.
 
 ---
 
-## Interaction Contract (accessibility-critical, from D-05/D-08R/D-12/D-16 + RESEARCH)
+## Interaction Contract (accessibility-critical, from D-05/D-08R/D-12/D-16/D-17/D-18/D-19)
 
 | Control | Contract |
 |---------|----------|
-| Mode segmented control | `role="radiogroup"` with two `role="radio"` children, `aria-checked`, roving `tabindex` (checked = `0`, unchecked = `-1`), Left/Right arrows move focus AND check with wrap-around, one Tab stop for the group (W3C APG radio pattern; integrates with the dialog's existing Tab focus-trap selector). Helper line directly below, linked via `aria-describedby`, updates on selection change. No additional radio rows or duplicated descriptions. |
-| Color segmented control | Same APG radiogroup pattern as the Mode control: two options `Original colors` / `Custom color`, `aria-checked`, roving tabindex, arrow-key navigation with wrap, one Tab stop. Selecting `Original colors` disables the override. Selecting `Custom color` immediately resolves the override color from the CURRENT right-panel brush color. |
-| Custom color live link (D-08R/D-18) | The dialog receives the Studio brush color (`settings.color`, single writer `setBrushColor`) as a live prop; the Custom pane chip + hex render it directly — no copied dialog-side color state, no DOM queries, no new store, no new global event. The dialog is READ-ONLY toward the brush color: selecting `Custom color` never writes, seeds, normalizes, or mutates `settings.color`; selecting `Original colors` only disables the override. While the dialog is open and Custom color is selected, right-panel brush-color changes re-render the chip/hex live. Generate snapshots the resolved color for that application (controller `getBrushColor` port at confirm time); later brush-color changes never retroactively change generated frames, the remembered options, or the success-only panel summary. |
-| Dialog trigger (D-17) | The existing Scripts-panel Play Script toolbar action remains the SOLE trigger that opens the dialog — no demo trigger from the proposal is copied, the dialog never auto-opens, no second Play Script action is added, and the action's existing script-selection/availability guards are preserved. |
-| Infinity toggle | Separate control beside the Repeat field in the Timing card. On: repeat input disabled/greyed (NOT cleared), summary bar shows `Cycle {N}f × ∞`. Off: restores the last finite repeat value (D-12). Never render `Infinityf` from naive multiplication (RESEARCH Pitfall 7). |
-| Repeat/Infinity loop intent | Repeat + Infinity render in the Timing card in BOTH modes. They express session-level loop intent ONLY (Requested/Effective duration, truncation, Infinity state, success-only remembered options). Phase 42 always generates exactly one source cycle (`Frames` / `Frames per cycle` real frames); Phase 43 repeats it by reference via linked Loop Clips. No copy or control may imply Repeat materializes extra real keys. |
-| Summary bar | Full-width bar at the bottom of the dialog body rendering the controller `loopReadout` verbatim (D-13 forms), `tabular-nums`. Informational only — never gates, blocks, or alters generation (D-14). |
-| During generation | Existing `canCancel` behavior: inputs disabled, `Cancel generation` replaces `Cancel`, progress bar shown in the fixed footer. New controls follow the same disabled rule. |
-| Generation failure | Generation progress stops; the progress bar hides; inputs and actions re-enable; the dialog stays open; the existing inline-error pattern displays the failure reason; the user may retry or cancel normally; the pre-generation canvas/timeline state is untouched. A failed generation does NOT update the remembered session options or the Scripts-panel summary, and leaves no partial generated frames or timeline mutations. |
-| Generation cancellation | Normal user cancellation (idle `Cancel`, or `Cancel generation` mid-run) returns to the idle dialog WITHOUT displaying an error; it does NOT update the remembered session options or the Scripts-panel summary, and leaves no partial generated frames or timeline mutations. |
-| Dialog overflow structure | The dialog surface is constrained to the height available from its Studio grid/viewport container with a viewport-bounded max-height; ONLY the dialog body scrolls vertically while the dialog title/mode context and the fixed footer (progress + actions) remain visible; horizontal scrolling is prevented; helper and validation text wraps; keyboard-focused controls are scrolled into view with visible focus outlines preserved. Native UAT at the minimum supported window size verifies this structure (verification only — not the primary resolution). |
-| Dialog Motion wiggle controls | Editable position/deformation sliders initialized from Motion panel defaults on open; edits are application-time only (never write back, D-06). `Reset defaults` (heading link) re-reads the defaults port through the controller. |
-| Keyboard | Existing dialog shortcuts preserved: `Escape` cancels, `Enter` confirms when valid. New controls must not break the Tab trap query (`input:not(:disabled), button:not(:disabled), [tabindex]:not([tabindex="-1"])`). |
+| Mode segmented control | `role="radiogroup"`, two `role="radio"` children, `aria-checked`, roving `tabindex`, Left/Right arrows move focus AND check with wrap, one Tab stop. Helper line directly below, `aria-describedby`, updates on selection. |
+| Color segmented control | Same APG radiogroup pattern: `Original colors` / `Custom color`. Selecting `Original colors` disables the override; selecting `Custom color` immediately resolves the override from the CURRENT right-panel brush color. |
+| Custom color live link (D-08R/D-18) | The modal receives the Studio brush color (`settings.color`, sole writer `setBrushColor`) as a live prop; the Custom pane chip + hex render it directly — no copied dialog-side color state, no DOM queries, no new store, no new global event. READ-ONLY: selecting `Custom color` never writes/seeds/normalizes `settings.color`; `Original colors` only disables the override. While open and Custom-selected, right-panel picks re-render the chip/hex live. Generate snapshots via the controller `getBrushColor` port; later brush changes never retroactively change generated frames, remembered options, or the success-only panel summary. |
+| Infinity toggle | Checkbox beside the Repeat field in the Timing card. On: repeat input disabled (opacity per proposal), value preserved, summary bar shows `Cycle {N}f × ∞`. Off: restores the last finite repeat (D-12). Never render `Infinityf`. |
+| Repeat/Infinity loop intent | Repeat + Infinity render in the Timing card in BOTH modes as session-level loop intent ONLY. Phase 42 always generates exactly one source cycle; Phase 43 repeats it by reference. No copy or control may imply Repeat materializes extra real keys. |
+| Summary bar | Full-width bar (Row 4) rendering the controller `loopReadout` verbatim (D-13 forms), `tabular-nums`, Requested left / Effective right. Informational only — never gates, blocks, or alters generation (D-14). |
+| During generation | Existing `canCancel` behavior: inputs disabled, `Cancel generation` replaces `Cancel`, footer progress shown. All controls follow the same disabled rule. |
+| Generation failure | Progress stops and hides; inputs/actions re-enable; modal stays open; failure reason shown in `--ps-error` inline style above the footer actions; retry or cancel normally; no partial frames/mutations; remembered options and panel summary untouched. |
+| Generation cancellation | Idle `Cancel` or mid-run `Cancel generation` returns to idle WITHOUT an error; remembered options/summary untouched; no partial mutations. |
+| Compact fit (D-19) | The complete modal fits at the minimum supported application window size with all rows visible: no vertical/horizontal scrollbar, no body scrolling region, no clipped card/helper/summary/footer. The compact layout — not overflow scrolling — solves the height constraint. Native UAT verifies at minimum window size. |
+| Dialog Motion wiggle controls | Sliders initialized from Motion panel defaults on open; edits application-time only (D-06). `Reset defaults` (heading link) re-reads the defaults port through the controller. |
+| Keyboard | `Escape` cancels/closes, `Enter` confirms when valid; focus trap inside the modal while open (`input:not(:disabled), button:not(:disabled), [tabindex]:not([tabindex="-1"])`). |
 | First-time Static / Hold defaults | Frames per cycle = 1, Repeat = 1, Infinity = off (D-15). Progressive defaults untouched. |
+| Dialog trigger (D-17) | The existing Scripts-panel Play Script toolbar action remains the SOLE trigger — no demo trigger copied, never auto-opens, no second action, existing guards preserved. Closing (Cancel/Escape/success) never changes the Paint layout. |
 
 ---
 
 ## UI Considerations
 
-> State coverage resolved across 6 surfaces: E1 Play Script dialog, E2 color segmented control + live chip, E3 Motion wiggle controls, E4 Timing card (Frames / Repeat / Infinity), E5 generation-in-progress, E6 Scripts panel summary. Empty/error COPY lives in `## Copywriting Contract` above — rows below reference it. (E2 revised 2026-08-06: inline-picker states removed — no picker exists.)
+> State coverage across 6 surfaces: E1 Play Script modal, E2 color segmented control + live chip, E3 Motion wiggle controls, E4 Timing card (Frames / Repeat / Infinity), E5 generation-in-progress, E6 Scripts panel summary.
 
 Applicable state considerations resolved: 13 covered, 0 backstops, 16 dismissed, 0 unresolved
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
-| empty / first-open | E1 dialog options, E4 Timing card | ✅ covered | D-15 first-time defaults: Frames per cycle 1, Repeat 1, Infinity off (Static / Hold; Progressive defaults untouched); session memory via controller signals thereafter (D-10) |
-| empty / default | E3 Motion wiggle controls | ✅ covered | Inputs initialized from Motion panel defaults on open — never blank; `Reset defaults` re-reads the defaults port (D-06) |
-| empty / first-open | E2 color control | ✅ covered | `Original colors` selected by default; the override exists only while `Custom color` is selected and resolves live from the brush color — no seed, no pick-guard problem (D-08R) |
-| live-update | E2 Custom color pane | ✅ covered | Chip + hex render the live Studio brush color prop; right-panel picks re-render instantly while the dialog is open and Custom is selected; Generate snapshots (D-08R) |
-| error | E1 frame field (Frames / Frames per cycle), E3 Motion inputs, E4 Repeat field | ✅ covered | Inline error under field, `#a12f37` 12px, strict-regex validation mirroring `parseCount` (`Enter a positive integer up to Max {N}.`); confirm disabled while invalid |
-| error | E5 generation failure | ✅ covered | On generation failure (distinct from user cancel): generation progress stops, the progress bar hides, inputs and actions re-enable, the dialog stays open, and the existing inline-error pattern shows the failure reason; retry or normal cancellation allowed; pre-generation canvas/timeline state untouched; the remembered session options and Scripts-panel summary are NOT updated; no partial generated frames or timeline mutations are left behind. Normal user cancellation returns to the idle dialog with no error shown and likewise leaves remembered options/summary untouched with no partial mutations |
-| loading / busy | E5 generation in progress | ✅ covered | Existing `canCancel` + footer progress bar pattern extends to all new controls (disabled while generating; `Cancel generation` replaces `Cancel`) |
-| partial | E4/E1 summary bar | ✅ covered | Requested/effective/truncation derived from retained `layerEndExclusive`/`canonicalStart` signals (RESEARCH Pitfall 5); untruncated form omits the truncation clause (D-13); readout is loop intent only, never generation input (D-14) |
+| empty / first-open | E1 modal options, E4 Timing card | ✅ covered | D-15 first-time defaults: Frames per cycle 1, Repeat 1, Infinity off (Static / Hold; Progressive defaults untouched); session memory via controller signals (D-10) |
+| empty / default | E3 Motion wiggle controls | ✅ covered | Initialized from Motion panel defaults on open — never blank; `Reset defaults` re-reads the defaults port (D-06) |
+| empty / first-open | E2 color control | ✅ covered | `Original colors` selected by default; override exists only while `Custom color` is selected and resolves live from the brush color (D-08R) |
+| live-update | E2 Custom color pane | ✅ covered | Chip + hex render the live Studio brush-color prop; right-panel picks re-render instantly while open and Custom-selected; Generate snapshots (D-08R/D-18) |
+| error | E1 frame field, E3 Motion inputs, E4 Repeat field | ✅ covered | Inline error under field, `--ps-error` 12px, strict-regex validation mirroring `parseCount`; confirm disabled while invalid |
+| error | E5 generation failure | ✅ covered | Progress stops/hides; inputs/actions re-enable; modal stays open; `--ps-error` inline error shows the reason; retry/cancel allowed; no partial frames/mutations; remembered options and panel summary untouched. Normal cancellation shows no error and is equally atomic |
+| loading / busy | E5 generation in progress | ✅ covered | `canCancel` + footer progress pattern extends to all controls (disabled while generating; `Cancel generation` replaces `Cancel`) |
+| partial | E4/E1 summary bar | ✅ covered | Requested/effective/truncation derived from retained `layerEndExclusive`/`canonicalStart` signals; untruncated form omits the clause (D-13); readout is loop intent only (D-14) |
+| overflow | E1 modal at minimum window size | ✅ covered | Compact-fit contract (locked, D-19): all rows visible, no scrollbars, no body scrolling region, no clipped content — solved by the compact layout, not scrolling. Native UAT verifies |
 | overflow | E6 panel summary | ✅ covered | Fixed two-line block in the existing dark panel layout — no new panel surface |
-| long-text | E6 panel summary | ✅ covered | Existing ellipsis convention (`overflow: hidden; text-overflow: ellipsis; white-space: nowrap` on panel copy) applies to the two-line summary |
-| disabled | E4 Repeat field under Infinity-on | ✅ covered | Disabled/greyed at 0.5 opacity, value preserved and restored on toggle-off (D-12) |
-| overflow | E1 dialog with all options visible | ✅ covered | Structural contract (locked): the dialog surface is constrained to the height available from its viewport/grid container with a viewport-bounded max-height; ONLY the dialog body scrolls vertically; the dialog title/mode context and the fixed footer stay visible while the body scrolls; horizontal scrolling is prevented; helper and validation text wraps; keyboard-focused controls are scrolled into view with visible focus outlines preserved. Native UAT at the minimum supported window size is retained as verification only, not as the primary resolution |
-| loading | E1, E2, E3, E4, E6 | ✖ dismissed | All surfaces render synchronously from controller signals / defaults port / live brush-color prop — no async load path exists |
-| partial | E1, E3, E5 | ✖ dismissed | Form fields always fully initialized (E1/E3); generation is a staged atomic operation with cancel restoring pre-generation state (E5) |
-| long-text | E1, E2, E3, E4, E5 | ✖ dismissed | Dialog copy is locked short strings; numeric inputs bounded by Max validation with `tabular-nums`; the Custom pane shows only a chip + `#rrggbb` + fixed note |
-| error | E2, E6 | ✖ dismissed | The color toggle has no invalid-input path (E2 — no picker, live signal only); summary is a read-only signal-driven projection of the last successfully applied options with no load path (E6) |
-| overflow | E3 | ✖ dismissed | Two sliders in a full-width card — covered by the E1 dialog-level overflow contract |
-| empty | E5 | ✖ dismissed | Progress state only exists during generation — no zero-data case |
+| long-text | E6 panel summary | ✅ covered | Existing ellipsis convention applies to the two-line summary |
+| disabled | E4 Repeat field under Infinity-on | ✅ covered | Disabled at reduced opacity, value preserved and restored on toggle-off (D-12) |
+| loading | E1, E2, E3, E4, E6 | ✖ dismissed | All surfaces render synchronously from controller signals / defaults port / live brush-color prop — no async load path |
+| partial | E1, E3, E5 | ✖ dismissed | Fields always fully initialized (E1/E3); generation is a staged atomic operation (E5) |
+| long-text | E1, E2, E3, E4, E5 | ✖ dismissed | Copy is locked short strings; numeric inputs bounded by Max validation with `tabular-nums`; Custom pane shows only chip + `#rrggbb` + fixed note; helper/summary text has fixed compact forms |
+| error | E2, E6 | ✖ dismissed | The color toggle has no invalid-input path (no picker, live signal only); summary is a read-only projection with no load path |
+| overflow | E3 | ✖ dismissed | Two compact slider rows inside the shared main grid — covered by the E1 compact-fit contract |
+| empty | E5 | ✖ dismissed | Progress state only exists during generation |
 
 ---
 
@@ -239,17 +240,17 @@ Applicable state considerations resolved: 13 covered, 0 backstops, 16 dismissed,
 | Registry | Blocks Used | Safety Gate |
 |----------|-------------|-------------|
 | shadcn official | none | not applicable — shadcn not initialized (Preact project; no `components.json`) |
-| third-party | none | not applicable — no third-party registries declared; zero new dependencies in this phase |
+| third-party | none | not applicable — zero new dependencies in this phase |
 
 ---
 
 ## Checker Sign-Off
 
-- [x] Dimension 1 Copywriting: PASS (re-checked 2026-08-06)
-- [x] Dimension 2 Visuals: PASS (re-checked 2026-08-06)
-- [x] Dimension 3 Color: PASS (re-checked 2026-08-06)
-- [x] Dimension 4 Typography: PASS (re-checked 2026-08-06 — 10px dark-panel size declared as an inherited exception)
-- [x] Dimension 5 Spacing: PASS (re-checked 2026-08-06)
-- [x] Dimension 6 Registry Safety: PASS (re-checked 2026-08-06)
+- [ ] Dimension 1 Copywriting: pending re-check (2026-08-06 final visual correction)
+- [ ] Dimension 2 Visuals: pending re-check (2026-08-06 final visual correction)
+- [ ] Dimension 3 Color: pending re-check (2026-08-06 final visual correction)
+- [ ] Dimension 4 Typography: pending re-check (2026-08-06 final visual correction)
+- [ ] Dimension 5 Spacing: pending re-check (2026-08-06 final visual correction)
+- [ ] Dimension 6 Registry Safety: pending re-check (2026-08-06 final visual correction)
 
-**Approval history:** approved 2026-08-05 (gsd-ui-checker); re-verified 2026-08-05 after user-locked revision (E1 overflow, mode-dependent frame label, summary-updates-after-success, E5 failure/cancellation). **2026-08-06:** revised per the approved playscript-proposal (D-08R/D-16; inline-picker contract superseded; loop-intent clarification) — re-approved 2026-08-06 (gsd-ui-checker), 6/6 PASS, no FLAGs remaining.
+**Approval history:** approved 2026-08-05; re-approved 2026-08-06 (proposal layout + live color, 6/6 PASS). **2026-08-06 (2):** final visual correction — compact dark modal overlay (Image #153 target / Image #154 rejected), Timing-left / Color-over-Motion-right grid, no-scroll compact fit (D-16 final / D-19) — pending gsd-ui-checker re-approval.

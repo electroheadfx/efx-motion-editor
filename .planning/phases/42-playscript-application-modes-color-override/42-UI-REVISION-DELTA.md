@@ -102,3 +102,33 @@ explicitly so Repeat no longer looks immediately generative.
 - `42-04-PLAN.md` — Task 2 UAT script rewritten for the new surface; depends on 42-05; wave 6
 - `42-VALIDATION.md` — scaffold/map rows revised (picker-guard → toggle/live-link; 42-05 added)
 - `42-04-UAT.md` — nine-step script rewritten for the revised UI
+
+---
+
+## Addendum 2026-08-06 (2) — final visual correction (Image #153 target / Image #154 rejected)
+
+After the first revision shipped (42-05), native UAT rejected the implementation's visual
+direction: the dialog rendered as a large LIGHT page replacing the central canvas (Image #154 —
+wrong palette, density, dimensions, placement, container architecture). The approved target is
+the proposal's compact DARK modal (Image #153). This addendum supersedes the first revision's
+"light tokens kept / Studio-grid mounting / body-scroll overflow / Timing|Color side-by-side /
+Motion full-width" decisions.
+
+| # | Area | First revision (superseded) | Final correction (locked) |
+|---|------|-----------------------------|---------------------------|
+| A | Container | Mounted in the Studio grid (full-height surface in the canvas cell) | Compact independent modal overlay ABOVE the Paint interface; canvas/layout untouched behind; never occupies the canvas cell, never resizes layout (D-19) |
+| B | Palette | Existing light dialog tokens (#f7f5ef surface, white cards) | Proposal's dark token set verbatim, dialog-scoped `--ps-*` custom properties (surface/inset/raised/foot/fg/muted/faint/border/accent/accent-hi/ok/error/radius) (D-19) |
+| C | Density | Light-dialog metrics (42px inputs, clamp padding, 16/32px gaps) | Proposal compact metrics (15px title, 11-13px card padding, 7px input padding, 14/24px grid gaps) — maximum compactness (D-19) |
+| D | Fit | Viewport-bounded body scrolling | NO scrolling: complete modal fits at minimum window size; no scrollbars, no body scroll region, no clipped content (D-19) |
+| E | Main grid | Timing \| Color side by side; Motion wiggle full-width below | Timing card LEFT full row height; RIGHT column = Color over Motion wiggle, combined height == Timing (D-16 final) |
+| F | Header | Large display title in the content flow | Compact header row: `Play Script` left, `Max {N} · F{start}–F{end}` right (D-16) |
+| G | Footer | Fixed footer (kept) | Compact footer INSIDE the modal (progress/status + Cancel/Generate), never attached to the window bottom (D-16) |
+
+Functional contracts unchanged: one-source-cycle generation, loop-intent Repeat/Infinity,
+live Custom color (read-only toward `settings.color`, snapshot at Generate), success-only
+summary, E5 atomicity, application-time Motion, source-script/thumbnail immutability, erase
+exclusion, sole toolbar trigger (D-17/D-18).
+
+**Implementation:** 42-06-PLAN.md (wave 6) — overlay re-mount + dark restyle (Task 1), final
+grid + no-scroll fit (Task 2). Controller/renderer/panel summary untouched. 42-04 UAT moved to
+wave 7 with the visual acceptance checklist.
