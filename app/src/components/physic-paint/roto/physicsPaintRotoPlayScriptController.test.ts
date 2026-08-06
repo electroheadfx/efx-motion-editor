@@ -4,6 +4,23 @@ import type { PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult } from '.
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 import { createRotoPlayScriptController, type RotoPlayScriptCommitResult, type RotoPlayScriptControllerPorts } from './physicsPaintRotoPlayScriptController';
 
+// Preact hook shims for the REAL useRotoPhysicalEditHistory hook driven by the
+// HOLD-03 one-history-command case below (same idiom as the hook's own spec).
+vi.mock('preact/hooks', () => ({
+  useCallback: <Value>(callback: Value) => callback,
+  useEffect: (setup: () => void | (() => void)) => setup(),
+  useRef: <Value>(value: Value) => ({ current: value }),
+}));
+
+import type { PhysicPaintRotoRealKeyRecord } from './physicsPaintRotoPhysicalModel';
+import { buildPhysicPaintRotoPhysicalRevision } from './physicsPaintRotoPhysicalModel';
+import type {
+  RotoPhysicalEditAcceptedOutput,
+  RotoPhysicalEditExecuteInput,
+  RotoPhysicalEditSnapshot,
+} from './rotoCoordinatorPorts';
+import { useRotoPhysicalEditHistory } from '../hooks/useRotoPhysicalEditHistory';
+
 const rendered = vi.hoisted(() => vi.fn());
 vi.mock('./physicsPaintRotoPlayScriptRenderer', () => ({ renderRotoPlayScriptFrames: rendered }));
 
@@ -573,5 +590,225 @@ describe('createRotoPlayScriptController', () => {
     expect(await test.controller.confirm()).toBe(true);
     expect(test.controller.appliedSummary.line1.value).toBe('Progressive · Original colors · Motion 5/10');
     expect(test.controller.appliedSummary.line2.value).toBe('F4–F5 · 2 frames generated');
+  });
+});
+
+// 43-04 Task 2 (HOLD-03): commit-path atomicity for static/hold generations — the
+// staged atomic commit is reused verbatim (no second commit path), mid-stage
+// cancellation and renderer failure commit zero destination frames, and an accepted
+// generation is exactly ONE history command with one-Undo/one-Redo semantics.
+// Hardening specs against shipped machinery — expected to PASS on first run; a RED
+// result routes through the bounded deviation protocol (never asserted away).
+describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
+  beforeEach(() => {
+    rendered.mockReset();
+    rendered.mockImplementation(async ({ frameCount, canonicalStart, onProgress }) => {
+      const frames = Array.from({ length: frameCount }, (_, index) => ({
+        frameIndex: 0,
+        appFrame: canonicalStart + index,
+        dataUrl: pngDataUrl(`staged-${index}`),
+        width: 10,
+        height: 10,
+      }));
+      onProgress?.(frameCount, frameCount);
+      return frames;
+    });
+  });
+
+  it('mid-stage cancellation of a static/hold generation commits zero destination keys — the document is byte-identical to before the attempt', async () => {
+    // Renderer parks between staged frames so the cancellation lands mid-stage.
+    rendered.mockImplementationOnce(async ({ frameCount, canonicalStart, onProgress, signal }) => {
+      const staged: Array<{ frameIndex: number; appFrame: number; dataUrl: string; width: number; height: number }> = [];
+      for (let index = 0; index < frameCount; index += 1) {
+        if (signal.aborted) throw new DOMException('cancelled', 'AbortError');
+        staged.push({ frameIndex: 0, appFrame: canonicalStart + index, dataUrl: pngDataUrl(`staged-${index}`), width: 10, height: 10 });
+        onProgress?.(index + 1, frameCount);
+        if (index < frameCount - 1) {
+          await new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true }));
+        }
+      }
+      return staged;
+    });
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '3';
+    const documentBefore = JSON.stringify(authority().physicalRecords);
+
+    const pending = test.controller.confirm();
+    await vi.waitFor(() => expect(test.controller.progress.value?.completed).toBe(1)); // one frame staged
+    test.controller.cancel();
+    expect(await pending).toBe(false);
+
+    expect(test.controller.phase.value).toBe('cancelled');
+    expect(test.controller.error.value).toBeNull();
+    // The commit port is the ONLY document-mutation channel: never invoked, and the
+    // partially staged range was discarded with the rejected render — no partial range.
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(JSON.stringify(authority().physicalRecords)).toBe(documentBefore);
+  });
+
+  it('a static/hold renderer failure mid-generation commits zero destination keys and surfaces the inline error', async () => {
+    rendered.mockImplementationOnce(async ({ frameCount, onProgress }) => {
+      for (let index = 0; index < 2; index += 1) onProgress?.(index + 1, frameCount); // two frames staged, then boom
+      throw new Error('renderer exploded mid-range');
+    });
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '4';
+
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.phase.value).toBe('failed');
+    expect(test.controller.error.value).toBe('renderer exploded mid-range');
+    expect(test.controller.confirmationOpen.value).toBe(true); // inline error surface
+    expect(test.commit).not.toHaveBeenCalled(); // zero committed destination frames — no partial range
+  });
+
+  it('a completed static/hold generation is exactly one history command — one Undo removes every generated key, one Redo restores them', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '3';
+    expect(await test.controller.confirm()).toBe(true);
+
+    // One atomic commit for the whole generation — no second commit path.
+    expect(test.commit).toHaveBeenCalledTimes(1);
+    const publication = test.commit.mock.calls[0][0];
+    expect(publication.records.map((record) => record.appFrame)).toEqual([1, 4, 5, 6]);
+    expect(publication.semanticDelta.kind).toBe('play-script');
+    expect(publication.semanticDelta.affectedStartAppFrame).toBe(4);
+    expect(publication.semanticDelta.affectedEndAppFrame).toBe(6);
+    expect(publication.semanticDelta.freshKeyIds).toHaveLength(3);
+
+    // Drive the REAL accepted-only history hook with the accepted play-script output
+    // to prove the one-command Undo/Redo semantics end to end.
+    const toRecord = (entry: { keyId: string; appFrame: number; payload: PhysicPaintRotoRealKeyRecord['payload'] }): PhysicPaintRotoRealKeyRecord => ({
+      kind: 'real-key',
+      keyId: entry.keyId,
+      appFrame: entry.appFrame,
+      payload: entry.payload,
+    });
+    const snapshot = (
+      records: readonly PhysicPaintRotoRealKeyRecord[],
+      selectedKeyId: string | null,
+      selectedAppFrame: number | null,
+    ): RotoPhysicalEditSnapshot<null> => {
+      const interpolation = { enabled: true, mode: 'duplicate' } as const;
+      const revision = buildPhysicPaintRotoPhysicalRevision(records, interpolation, []);
+      return {
+        launchOperationId: 'launch',
+        layerId: 'layer-1',
+        projectContextId: 'context-1',
+        records,
+        interpolation,
+        loopClips: [],
+        capacity: 600,
+        expectedRevision: revision,
+        stagedRevision: revision,
+        selectedKeyId,
+        selectedAppFrame,
+        currentAppFrame: selectedAppFrame ?? 4,
+        dirtyFrames: new Set(),
+        editableFrames: records.map((entry) => entry.appFrame),
+        liveOverlayActionCounts: new Map(),
+        frameStates: new Map(),
+        previewFrames: new Map(),
+        capturedFrames: new Map(),
+        confirmedFrames: new Map(),
+        cachedReference: { url: null, cachedRepaintBase: null },
+        engineState: null,
+      };
+    };
+    const beforeSnapshot = snapshot([toRecord(physicalRecord('key-1', 1, 'existing'))], 'key-4', 4);
+    const afterSnapshot = snapshot(publication.records, publication.selectedKeyId, publication.selectedAppFrame);
+
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    let current = afterSnapshot; // the committed generation is the live document
+    let replayNumber = 0;
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      const source = current;
+      current = target;
+      replayNumber += 1;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: buildPhysicPaintRotoPhysicalRevision(target.records, target.interpolation, target.loopClips),
+        operationId: `replay-${replayNumber}`,
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+    const history = useRotoPhysicalEditHistory({
+      identity: { launchOperationId: 'launch', layerId: 'layer-1' },
+      availability,
+      coordinator: {
+        executePhysicalEdit: executePhysicalEdit as never,
+        pendingOperationId,
+        acceptedOutput,
+      },
+      recordsPort: {
+        getRecords: () => current.records,
+        getInterpolation: () => current.interpolation,
+        getCapacity: () => current.capacity,
+        getLoopClips: () => current.loopClips,
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before: beforeSnapshot,
+      after: afterSnapshot,
+      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(afterSnapshot.records, afterSnapshot.interpolation, afterSnapshot.loopClips),
+      operationId: 'accepted-operation',
+      operationKind: 'play-script',
+      historyProvenance: null,
+    };
+    // Exactly ONE history command for the entire 3-frame generation.
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+
+    expect(await history.undo()).toBe(true);
+    expect(current.records.map((record) => record.appFrame)).toEqual([1]); // every generated key removed at once
+    expect(current.records).toEqual(beforeSnapshot.records);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    expect(await history.redo()).toBe(true);
+    expect(current.records).toEqual(afterSnapshot.records); // all three generated keys restored at once
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(executePhysicalEdit.mock.calls.map(([input]) => input.operationKind)).toEqual(['undo', 'redo']);
+  });
+
+  it('re-applying the same static/hold generation to the same inputs produces a byte-identical publication (idempotent commit path)', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '3';
+    expect(await test.controller.confirm()).toBe(true);
+    const first = test.commit.mock.calls[0][0];
+
+    // The parent accepted: a fresh authority read now reflects the committed records.
+    test.requestAuthority.mockImplementation(async () => authority({
+      physicalRecords: first.records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
+      frames: first.records.map((record) => ({ ...record.payload, source: 'real-key' as const })),
+    }));
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '3';
+    expect(await test.controller.confirm()).toBe(true);
+
+    expect(test.commit).toHaveBeenCalledTimes(2);
+    const second = test.commit.mock.calls[1][0];
+    // Same script + destination + options → the committed record set is byte-identical:
+    // existing keyIds are reused and the staged payloads are deterministic.
+    expect(JSON.stringify(second.records)).toBe(JSON.stringify(first.records));
+    expect(second.semanticDelta.freshKeyIds).toHaveLength(0); // zero new identity on re-application
+    expect(second.expectedRevision).toBe(first.expectedRevision);
   });
 });
