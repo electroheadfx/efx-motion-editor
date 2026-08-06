@@ -59,6 +59,7 @@ created: 2026-08-06
 - [ ] New persistence spec: loopClips round-trip save/reopen, absent-field v0.8.1 load, stale keyId verbatim preservation (D-31), Save As atomic copy — covers HOLD-05 / D-29..D-31
 - [ ] New determinism spec: byte-identical dataUrls across regeneration for zero and nonzero Motion — covers HOLD-02
 - [ ] History/Undo spec extension: loop-only op snapshot, generation+shrink one-undo coherence (D-06/D-10) — covers HOLD-03
+- [ ] Controller spec extension: repairLoop (regenerate + sourceKeyIds retarget as one commit; destination-overlap rejection preserves the unresolved record verbatim) and relinkLoop (guard rejections on empty/dangling/cross-authority targets; post-relink re-derivation) — covers D-31 / HOLD-05
 - [ ] No framework install needed — infrastructure exists
 
 ---
@@ -69,6 +70,7 @@ created: 2026-08-06
 |----------|-------------|------------|-------------------|
 | Filmstrip capsule visual states (badges, bands, truncation diagonal, zoom levels) | HOLD-06 | Native visual rendering is the user's oracle; MCP Chrome DevTools not allowed | User runs app, opens a loop clip project, inspects capsule at multiple zoom levels and truncation states |
 | Badge click → loop-edit dialog flow (incl. Studio closed) | HOLD-06 | Cross-window parent→child bridge behavior needs live app | User clicks capsule badge with Studio open and closed; verifies dialog reopens in loop-edit mode |
+| Unresolved-loop repair/relink recovery flow (D-31) | HOLD-05/HOLD-06 | End-to-end recovery UX (fixture project with dangling refs, dialog prefill, one-Undo atomicity) needs live app | User opens the executor-prepared fixture with a dangling loop record; verifies the red error outline + tooltip remedy line, runs `Repair loop…` → `Regenerate source cycle` (loop re-resolves, export unblocks), then `Relink loop…` on a second fixture (loop retargets to the chosen cycle); confirms an unrepaired record survives save/reopen verbatim |
 
 ---
 

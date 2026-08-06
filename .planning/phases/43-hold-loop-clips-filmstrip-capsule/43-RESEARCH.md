@@ -518,22 +518,22 @@ const truncatedTooltip =
 
 ## Open Questions
 
-1. **Revision coverage for loopClips — extend or parallel?**
+1. **Revision coverage for loopClips — extend or parallel?** (RESOLVED — 43-01: loopClips join the single canonical revision fingerprint; the parallel-snapshot route was rejected. See 43-01-PLAN.md.)
    - What we know: the canonical revision covers `(records, interpolation)` only [VERIFIED: model:595-601]; history snapshots and authority checks are built on it; `buildPhysicPaintRotoProjectEquality` (persisted equality) also exists [VERIFIED: model:635-646].
    - What's unclear: whether loopClips join the fingerprint (one authority, more call-site churn) or ride as a parallel snapshot member with composite checking (less churn, two authorities to keep coherent).
    - Recommendation: planner decides explicitly in Wave 0/1; either is defensible, but D-06/D-10 atomicity is broken if NEITHER covers loops. Extending the single fingerprint is architecturally cleaner; parallel is less invasive to regression-locked paths.
 
-2. **Where does the apply-time `Link to existing cycle` match run?**
+2. **Where does the apply-time `Link to existing cycle` match run?** (RESOLVED — 43-06: controller-side `findIdenticalSourceCycle` matching on (scriptId, mode, cycleLength, motion, overrideColor) plus canonical start when Motion ≠ 0, per the recommendation. See 43-06-PLAN.md Task 1.)
    - What we know: D-05 locks the UX; the controller holds script snapshot + options at confirm time [VERIFIED: controller:236-247].
    - What's unclear: the matching key (script id + mode + frames-per-cycle + Motion + override + color? + canonical start per Pitfall 6).
    - Recommendation: match on (scriptId, mode, cycleLength, motion, overrideColor) and include canonical start when Motion ≠ 0; surface the match count for the S4 helper copy.
 
-3. **Studio-closed badge click behavior**
+3. **Studio-closed badge click behavior** (RESOLVED — 43-06: launch-or-focus — a closed Studio is launched via the existing `openPhysicPaintCanvas` path, then the open-loop-edit message is delivered once ready. See 43-06-PLAN.md Task 3.)
    - What we know: D-01 says the badge click "reopens the Play Script dialog in a loop-edit mode"; the Studio is a separate Tauri window [VERIFIED: app/src/lib/physicPaintBridge.ts:1304-1342 `openPhysicPaintCanvas` — `tryOpenTauriPhysicPaintWindow` branch] that may not be open.
    - What's unclear: whether badge click launches/focuses the Studio window when closed (likely yes — "reopens"), and which existing launch guards apply.
    - Recommendation: planner adds an explicit task for the launch-or-focus + open-loop-edit flow; confirm with user if the window-closed case should launch Studio automatically.
 
-4. **Parent-end source for D-25 on the main timeline**
+4. **Parent-end source for D-25 on the main timeline** (RESOLVED — 43-02: capacity-bounded — an infinity loop's effective end is min(parentEndExclusive, PHYSIC_PAINT_MAX_APPLY_FRAMES = 600), per the recommendation. See 43-02-PLAN.md.)
    - What we know: the controller's `layerEndExclusive` comes from parent authority; the main timeline's required frame count comes from content frames and roto end [VERIFIED: frameMap.ts:128-142].
    - What's unclear: which value is "parent end" for an infinity loop's effective range on the main timeline when the parent sequence extends beyond the physical capacity (600).
    - Recommendation: cap effective range at physical capacity (PHYSIC_PAINT_MAX_APPLY_FRAMES = 600 [VERIFIED: app/src/types/physicPaint.ts:13 `export const PHYSIC_PAINT_MAX_APPLY_FRAMES = 600;`]) since cells are capacity-bounded; the capsule beyond capacity is out of scope (D-32 says no caps beyond existing capacity limits).
