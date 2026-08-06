@@ -39,6 +39,26 @@ import { PhysicsPaintPlayScriptDialog } from './PhysicsPaintPlayScriptDialog';
 import type { RotoPlayScriptController, RotoPlayScriptMode } from '../roto/physicsPaintRotoPlayScriptController';
 
 const source = readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
+const cssSource = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
+
+// Extract every CSS rule block whose selector lives in the .physics-paint-play-script-* scope
+// (modal-scoped contract, D-19 — surrounding Paint UI rules are excluded by construction).
+function playScriptCssScope(): string {
+  return cssSource
+    .split('}')
+    .filter((chunk) => chunk.includes('physics-paint-play-script'))
+    .map((chunk) => `${chunk}}`)
+    .join('\n');
+}
+
+// Extract the single rule block for one exact selector inside the play-script scope.
+function playScriptCssRule(selector: string): string {
+  const chunk = cssSource
+    .split('}')
+    .find((block) => block.includes('{') && block.split('{')[0].trim() === selector);
+  expect(chunk, `missing CSS rule for ${selector}`).toBeTruthy();
+  return `${chunk}}`;
+}
 
 interface TestVNode {
   type: unknown;
@@ -215,6 +235,75 @@ describe('PhysicsPaintPlayScriptDialog card-grid layout (D-16)', () => {
     expect(textOf(findOne(tree, byClass('physics-paint-play-script-summary-bar')))).toBe('Cycle 4f × ∞ · Effective: 4f');
     const empty = renderDialog(createFakeController({ loopReadout: null }).controller);
     expect(findAll(empty, byClass('physics-paint-play-script-summary-bar'))).toHaveLength(0);
+  });
+});
+
+describe('PhysicsPaintPlayScriptDialog modal overlay shell (D-19)', () => {
+  it('renders a dimmed backdrop layer and the modal surface inside the role=dialog overlay root', () => {
+    const { controller } = createFakeController();
+    const tree = renderDialog(controller);
+    const root = findOne(tree, (vnode) => vnode.props?.role === 'dialog');
+    expect(root.props['aria-modal']).toBe(true);
+    const backdrop = findOne(root, byClass('physics-paint-play-script-backdrop'));
+    expect(backdrop.props['aria-hidden']).toBe(true);
+    // Backdrop is NOT wired to close — Cancel/Escape/success only (D-17/D-19).
+    expect(backdrop.props.onClick).toBeUndefined();
+    // The modal surface is a sibling of the backdrop, directly under the overlay root.
+    const surface = findOne(root, byClass('physics-paint-play-script-surface'));
+    expect(parentOf(root, surface)).toBe(root);
+  });
+
+  it('keeps the compact header (title left, Max range right) and the footer INSIDE the modal surface', () => {
+    const { controller } = createFakeController();
+    const tree = renderDialog(controller);
+    const surface = findOne(tree, byClass('physics-paint-play-script-surface'));
+    const header = findOne(surface, byClass('physics-paint-play-script-header'));
+    expect(parentOf(surface, header)).toBe(surface);
+    // Title is the first header child; the range readout is the second (right-aligned via CSS).
+    const headerChildren = childrenOf(header).filter((child): child is TestVNode =>
+      typeof child === 'object' && child !== null && !Array.isArray(child));
+    expect(textOf(headerChildren[0])).toBe('Play Script');
+    expect(textOf(headerChildren[1])).toBe('Max 4 · F4–F7');
+    // Footer (progress + Cancel/Generate) renders inside the modal surface, after the body.
+    const footer = findOne(surface, byClass('physics-paint-play-script-footer'));
+    expect(parentOf(surface, footer)).toBe(surface);
+    const surfaceChildren = childrenOf(surface).filter((child): child is TestVNode =>
+      typeof child === 'object' && child !== null && !Array.isArray(child));
+    const bodyIndex = surfaceChildren.findIndex((child) => hasClass(child, 'physics-paint-play-script-content'));
+    const footerIndex = surfaceChildren.findIndex((child) => hasClass(child, 'physics-paint-play-script-footer'));
+    const headerIndex = surfaceChildren.findIndex((child) => hasClass(child, 'physics-paint-play-script-header'));
+    expect(headerIndex).toBeGreaterThanOrEqual(0);
+    expect(bodyIndex).toBeGreaterThan(headerIndex);
+    expect(footerIndex).toBeGreaterThan(bodyIndex);
+  });
+
+  it('mounts the overlay out of the canvas grid cell: fixed inset positioning, no grid-cell placement (CSS contract)', () => {
+    const rootRule = playScriptCssRule('.physics-paint-play-script-dialog');
+    expect(rootRule).toContain('position: fixed');
+    expect(rootRule).toContain('inset: 0');
+    expect(rootRule).not.toContain('grid-row');
+    expect(rootRule).not.toContain('grid-column');
+    // Dimmed backdrop between the Paint UI and the modal.
+    const backdropRule = playScriptCssRule('.physics-paint-play-script-backdrop');
+    expect(backdropRule).toMatch(/background:\s*oklch\(0 0 0\s*\/\s*0\.5/);
+  });
+
+  it('declares the proposal dark token set on the modal scope and removes the old light palette (CSS contract)', () => {
+    const scope = playScriptCssScope();
+    for (const token of ['--ps-surface', '--ps-raised', '--ps-inset', '--ps-foot', '--ps-fg', '--ps-muted', '--ps-faint', '--ps-border', '--ps-accent', '--ps-accent-hi', '--ps-ok', '--ps-error', '--ps-radius']) {
+      expect(scope).toContain(token);
+    }
+    // Old light Play Script palette is fully removed from the modal scope (D-19).
+    for (const lightToken of ['#f7f5ef', '#d8d4ca', '#a9afb7', '#365ed6', '#a12f37', '#20242a', '#343a42', '#171a1f']) {
+      expect(scope).not.toContain(lightToken);
+    }
+  });
+
+  it('has NO scrolling region anywhere in the modal scope (CSS contract, D-19)', () => {
+    const scope = playScriptCssScope();
+    expect(scope).not.toMatch(/overflow-y:\s*auto/);
+    expect(scope).not.toMatch(/overflow:\s*auto/);
+    expect(scope).not.toMatch(/overflow-y:\s*scroll/);
   });
 });
 
