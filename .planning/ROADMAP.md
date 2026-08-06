@@ -136,7 +136,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 42-04-PLAN.md — Scripts panel two-line summary + tooltip update + native visual UAT (PLAY-03)
+- [x] 42-04-PLAN.md — Scripts panel two-line summary + tooltip update + native visual UAT (PLAY-03)
 
 **UI hint**: yes
 
@@ -327,6 +327,6 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 39. Scripts Auto-Hydration Fix | v0.9.0 | 0/TBD | Not started | - |
 | 40. macOS Icon + Build Hygiene | v0.9.0 | 3/3 | Complete    | 2026-08-04 |
 | 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | Complete    | 2026-08-05 |
-| 42. PlayScript Modes + Color Override | v0.9.0 | 5/6 | In Progress|  |
+| 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | In Progress|  |
 | 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 0/TBD | Not started | - |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |
