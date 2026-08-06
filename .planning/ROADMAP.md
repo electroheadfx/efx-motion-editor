@@ -172,7 +172,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 43-05-PLAN.md — Guards: D-07/D-11/D-13 rejections, D-12 materialization, D-06 preflight warning (HOLD-05)
+- [x] 43-05-PLAN.md — Guards: D-07/D-11/D-13 rejections, D-12 materialization, D-06 preflight warning (HOLD-05)
 - [ ] 43-07-PLAN.md — Capsule: pure geometry, frameMap feed, TimelineRenderer drawing at all zoom bands (HOLD-06)
 - [ ] 43-09-PLAN.md — D-28: export preflight block + placeholder variant with declared consumers + valid-loop preview/export parity (HOLD-04, HOLD-05)
 
@@ -360,5 +360,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 40. macOS Icon + Build Hygiene | v0.9.0 | 3/3 | Complete    | 2026-08-04 |
 | 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | Complete    | 2026-08-05 |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
-| 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 4/10 | In Progress|  |
+| 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 5/10 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |

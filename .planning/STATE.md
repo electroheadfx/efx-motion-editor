@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43
 current_phase_name: hold-loop-clips-filmstrip-capsule
 status: executing
-stopped_at: Completed 43-03-PLAN.md
-last_updated: "2026-08-06T21:35:44.262Z"
+stopped_at: Completed 43-05-PLAN.md
+last_updated: "2026-08-06T22:07:40.887Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 43 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 24
-  completed_plans: 18
+  completed_plans: 19
   percent: 50
 ---
 
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43 (hold-loop-clips-filmstrip-capsule) — EXECUTING
-Plan: 5 of 10
+Plan: 6 of 10
 Status: Ready to execute
 Last activity: 2026-08-06 — Phase 43 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 runs an UNSIGNED packaged-app smoke (capsule, loop-edit dialog, valid preview, unresolved placeholder, valid PNG export, unresolved export block — no signing material accessed). Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [████████░░] 75%
+Progress: [████████░░] 79%
 
 ## Performance Metrics
 
@@ -175,6 +175,7 @@ Progress: [████████░░] 75%
 | Phase 43 P04 | 8min | 2 tasks | 4 files |
 | Phase 43 P02 | 28min | 3 tasks | 13 files |
 | Phase 43 P03 | 27min | 2 tasks | 8 files |
+| Phase 43 P05 | 28min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -220,6 +221,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43-03: linked occurrences reuse the 'real' render-source variant with source-scoped cacheRevision — zero consumer changes (D-27); 'linked-unresolved' joins the union, renderable-subset guards until 43-09 placeholder
 - [Phase ?]: 43-03: store-side loop derivation bounds parent end at physical capacity; dynamic main-editor parent-end tracking flagged for capsule/frameMap plans
 - [Phase ?]: 43-03: bridge loopClips acceptance was already wired by 43-01 — Task 2 landed as real-bridge characterization specs (atomic apply, stale rejection, undo/redo both directions)
+- [Phase ?]: 43-05: loop-aware guard idiom — optional loopClips on the resolver edit input (absent = pre-43 behavior); D-07 N counts every loop referencing the key; D-11 full-timeline Force Spacing rejects on any linked source key, scoped only on linked members
+- [Phase ?]: 43-05: rigid whole-cycle drag carries nextLoopClips on the proposal (nextRecords precedent) — original loops follow, duplicated loops keep placementStart; coordinator stages proposal.nextLoopClips atomically
+- [Phase ?]: 43-05: D-06 preflight lives in the resolver as derivePhysicPaintRotoLoopShortenPreflight (Pitfall 4); controller exposes advisory loopShortenPreflight signal fed by the open-time authority snapshot, refreshed inside confirm()
 
 ### Pending Todos
 
@@ -402,8 +406,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-06T21:35:44.253Z
-Stopped at: Completed 43-03-PLAN.md
+Last session: 2026-08-06T22:07:40.878Z
+Stopped at: Completed 43-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
