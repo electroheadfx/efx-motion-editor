@@ -77,8 +77,6 @@ class TestCanvas {
   offsetWidth = 0;
   offsetHeight = 0;
 
-  constructor(private operations: RecordedCanvasOp[]) {}
-
   getContext(contextId: string): RecordingCanvasContext | null {
     return contextId === '2d' ? new RecordingCanvasContext() : null;
   }
@@ -159,15 +157,12 @@ function makeRotoLayer(): Layer {
   };
 }
 
-let offscreenOperations: RecordedCanvasOp[] = [];
-
 beforeEach(() => {
   _setPhysicPaintMarkDirtyCallback(() => {});
   physicPaintStore.reset();
   clearProjectPaperRasterCache();
-  offscreenOperations = [];
   vi.stubGlobal('window', { devicePixelRatio: 1 });
-  vi.stubGlobal('document', { createElement: (tag: string) => tag === 'canvas' ? new TestCanvas(offscreenOperations) : {} });
+  vi.stubGlobal('document', { createElement: (tag: string) => tag === 'canvas' ? new TestCanvas() : {} });
   vi.stubGlobal('Image', TestImage);
   vi.stubGlobal('HTMLImageElement', TestImage);
   vi.stubGlobal('HTMLCanvasElement', TestCanvas);

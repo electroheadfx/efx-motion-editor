@@ -127,11 +127,14 @@ export interface PhysicPaintRotoGeneratedCell {
  * cache revision is source-scoped (`${contentRevision}:real:${sourceKeyId}`),
  * so one source cache entry serves every occurrence and one source edit
  * invalidates them all. A frame inside an unresolvable loop range surfaces the
- * typed 'linked-unresolved' variant (loopId, placementStart, missing source
- * keyIds — the 43-02 contract) instead of a blank; it carries no rendered
- * payload. Consumers that need a renderable frame narrow it away (the preview
- * placeholder lands in 43-09; export preflight consumes the unresolved-loop
- * query).
+ * 'loop-placeholder' variant (43-09, D-28) carrying the full 43-02 typed
+ * 'linked-unresolved' contract payload (loopId, placementStart, source keyIds,
+ * missing source keyIds) — enough for the capsule error state, the
+ * destination-frame placeholder, the missing-source tooltip, the export
+ * preflight, and the repair/relink actions. It carries no rendered payload and
+ * is NEVER Paint content: preview renders it as a marked placeholder frame,
+ * export blocks the range before the first frame renders, and renderable-only
+ * consumers narrow it away via {@link PhysicPaintRotoPhysicalRenderableSource}.
  */
 export type PhysicPaintRotoPhysicalRenderSource =
   | {
@@ -155,7 +158,7 @@ export type PhysicPaintRotoPhysicalRenderSource =
       readonly renderedFrame: PhysicPaintRotoRealKeyPayload;
     }
   | {
-      readonly kind: 'linked-unresolved';
+      readonly kind: 'loop-placeholder';
       readonly layerId: string;
       readonly appFrame: number;
       readonly loopId: string;
@@ -167,7 +170,7 @@ export type PhysicPaintRotoPhysicalRenderSource =
 /** The renderable subset of {@link PhysicPaintRotoPhysicalRenderSource} (carries a payload). */
 export type PhysicPaintRotoPhysicalRenderableSource = Exclude<
   PhysicPaintRotoPhysicalRenderSource,
-  { readonly kind: 'linked-unresolved' }
+  { readonly kind: 'loop-placeholder' }
 >;
 
 /** Canonical render behavior for runtime-derived interpolation cells. */

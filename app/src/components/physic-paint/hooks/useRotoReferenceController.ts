@@ -50,10 +50,10 @@ function isCurrentGeneratedPngSource(source: PhysicPaintRotoPhysicalRenderableSo
 /** Exact physical-cell lookup. No generic frame or neighboring-key fallback. */
 export function findCachedRotoDisplayFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoPhysicalLookupInput<Frame>): Frame | null {
   const source = input.getPhysicalRenderSource?.(appFrame) ?? null;
-  // Phase 43: an unresolved linked frame carries no payload — it renders as
-  // nothing here until the 43-09 placeholder lands; the typed result remains
-  // available through the store for the surfaces that consume it.
-  if (!source || source.kind === 'linked-unresolved') return null;
+  // Phase 43 (D-28): the loop placeholder carries no payload — it is never
+  // reference or display content here; the typed result remains available
+  // through the store for the surfaces that consume it.
+  if (!source || source.kind === 'loop-placeholder') return null;
   if (!isCurrentGeneratedPngSource(source)) return null;
   if (source.kind === 'real' && input.dirtyFrames?.has(appFrame)) {
     const preview = input.previewFrames?.get(appFrame);

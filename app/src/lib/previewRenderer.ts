@@ -15,6 +15,7 @@ import {renderPaintFrameWithBg} from './paintRenderer';
 import {paintStore} from '../stores/paintStore';
 import {physicPaintStore, physicPaintVersion} from '../stores/physicPaintStore';
 import type {PhysicPaintRenderedFrame} from '../types/physicPaint';
+import type {PhysicPaintRotoPhysicalRenderSource} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {projectStore} from '../stores/projectStore';
 import {applyMotionBlur} from './glMotionBlur';
 import {motionBlurStore} from '../stores/motionBlurStore';
@@ -125,10 +126,10 @@ export function getPreviewPhysicPaintFrameCacheKey(source: PreviewPhysicPaintFra
 function resolvePhysicPaintFrameSource(layerId: string, frame: number): PreviewPhysicPaintFrameSource | null {
   if (isPhysicalRotoWorkflowLayer(layerId)) {
     const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, frame);
-    // Phase 43: an unresolved linked frame carries no payload; the preview
-    // placeholder lands in 43-09 and the export preflight blocks the range, so
-    // preview and export skip it identically here (D-27 parity).
-    if (!source || source.kind === 'linked-unresolved' || source.layerId !== layerId || source.appFrame !== frame) return null;
+    // Phase 43 (D-28): the 'loop-placeholder' variant carries no payload — it
+    // renders through the marked placeholder path below, and export blocks the
+    // range in its preflight before any frame renders (43-09).
+    if (!source || source.kind === 'loop-placeholder' || source.layerId !== layerId || source.appFrame !== frame) return null;
     return {
       layerId,
       frame,
@@ -144,6 +145,46 @@ function resolvePhysicPaintFrameSource(layerId: string, frame: number): PreviewP
     cacheKey: `physic-paint:${layerId}:${frame}:${renderedFrame.dataUrl.slice(0, 96)}:${renderedFrame.dataUrl.length}`,
     renderedFrame,
   };
+}
+
+type PhysicPaintLoopPlaceholderSource = Extract<PhysicPaintRotoPhysicalRenderSource, { kind: 'loop-placeholder' }>;
+
+/**
+ * Resolve the D-28 loop placeholder for a frame inside an unresolvable Loop
+ * Clip range, or null. Preview/playback render this as a marked, visible
+ * placeholder frame (never blank, never blocking); export never reaches it —
+ * the export preflight blocks the range before the first frame renders.
+ */
+function resolvePhysicPaintLoopPlaceholder(layerId: string, frame: number): PhysicPaintLoopPlaceholderSource | null {
+  if (!isPhysicalRotoWorkflowLayer(layerId)) return null;
+  const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, frame);
+  return source && source.kind === 'loop-placeholder' && source.layerId === layerId && source.appFrame === frame
+    ? source
+    : null;
+}
+
+// D-28 placeholder fill discipline — the same alternating placeholder pair the
+// filmstrip/timeline renderer uses (TimelineRenderer PLACEHOLDER_BG_A/B), so
+// an unresolved loop frame reads as "marked placeholder" on every surface and
+// never as an empty frame or real Paint content.
+const LOOP_PLACEHOLDER_BG_A = '#1A1A2A';
+const LOOP_PLACEHOLDER_BG_B = '#1A2A1A';
+const LOOP_PLACEHOLDER_MARKER = 'Loop source missing';
+
+/** Paint the marked loop placeholder frame: base fill + alternating marker stripes + marker text. */
+function drawLoopClipPlaceholder(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  ctx.fillStyle = LOOP_PLACEHOLDER_BG_A;
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = LOOP_PLACEHOLDER_BG_B;
+  const stripe = 8;
+  for (let y = 0; y < h; y += stripe * 2) {
+    ctx.fillRect(0, y, w, Math.min(stripe, h - y));
+  }
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(LOOP_PLACEHOLDER_MARKER, w / 2, h / 2);
 }
 
 function hasMissingRotoBackground(layer: Layer, frame = 0): boolean {
@@ -319,7 +360,7 @@ export class PreviewRenderer {
         } else if (layer.type === 'physic-paint') {
           const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
           const frameSource = resolvePhysicPaintFrameSource(paintLayerId, paintLookupFrame);
-          if (frameSource || hasMissingRotoBackground(layer, paintLookupFrame)) {
+          if (frameSource || hasMissingRotoBackground(layer, paintLookupFrame) || resolvePhysicPaintLoopPlaceholder(paintLayerId, paintLookupFrame)) {
             hasDrawable = true;
             break;
           }
@@ -422,6 +463,19 @@ export class PreviewRenderer {
       } else if (layer.type === 'physic-paint') {
         const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
         const frameSource = resolvePhysicPaintFrameSource(paintLayerId, paintLookupFrame);
+        // D-28: an unresolved Loop Clip frame paints as a marked, visible
+        // placeholder — never a blank frame, never blocking; playback and the
+        // scrubber continue past it. Export never reaches this arm (the 43-09
+        // preflight blocks the range before the first frame renders).
+        const loopPlaceholder = frameSource ? null : resolvePhysicPaintLoopPlaceholder(paintLayerId, paintLookupFrame);
+        if (loopPlaceholder) {
+          ctx.save();
+          ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+          ctx.globalAlpha = effectiveOpacity;
+          drawLoopClipPlaceholder(ctx, logicalW, logicalH);
+          ctx.restore();
+          continue;
+        }
         const missingDraw = isPhysicalRotoWorkflowLayer(paintLayerId) ? resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame) : null;
         const physicalBackgroundDraw = frameSource ? resolvePhysicalRotoFrameBackgroundDrawForLayer(layer) : null;
         const source = frameSource ? this.getPhysicPaintImageSource(frameSource) : null;

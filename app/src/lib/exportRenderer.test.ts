@@ -72,7 +72,7 @@ function collectPhysicalFrameSources(layers: readonly Layer[], frame: number): P
   const paintLayer = layers.find((candidate) => candidate.type === 'physic-paint');
   const layerId = paintLayer?.source.type === 'physic-paint' ? paintLayer.source.layerId : null;
   const source = layerId ? physicPaintStore.getRotoPhysicalRenderSource(layerId, frame) : null;
-  return source && source.kind !== 'linked-unresolved' && layerId ? [{ layerId, frame, renderedFrame: source.renderedFrame }] : [];
+  return source && source.kind !== 'loop-placeholder' && layerId ? [{ layerId, frame, renderedFrame: source.renderedFrame }] : [];
 }
 
 beforeEach(() => {

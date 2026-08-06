@@ -812,9 +812,10 @@ export function PhysicsPaintStudio() {
     if (rotoPlaybackLayerId === null) return [];
     return rotoPlaybackFrameNumbers.flatMap((appFrame) => {
       const source = physicPaintStore.getRotoPhysicalRenderSource(rotoPlaybackLayerId, appFrame);
-      // Phase 43: unresolved linked frames carry no playback payload (43-09
-      // owns the placeholder surface).
-      return source && source.kind !== 'linked-unresolved' ? [{ appFrame, frame: source.renderedFrame }] : [];
+      // Phase 43 (D-28): the loop placeholder carries no playback payload —
+      // the preview surface renders it as the marked placeholder, and Studio
+      // playback skips it without blocking.
+      return source && source.kind !== 'loop-placeholder' ? [{ appFrame, frame: source.renderedFrame }] : [];
     });
   }, [rotoPlaybackLayerId, rotoPlaybackFrameNumbers]);
   const missingConditions = selectPhysicsPaintMissingConditions({

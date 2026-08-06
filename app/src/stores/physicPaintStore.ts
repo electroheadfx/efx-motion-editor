@@ -1557,7 +1557,7 @@ export const physicPaintStore = {
    * (D-26/D-27): 'linked' occurrences return the SOURCE key's payload under
    * the source-scoped cache revision `${contentRevision}:real:${sourceKeyId}`
    * — one source cache entry serves every occurrence — and 'linked-unresolved'
-   * surfaces the typed contract instead of a blank.
+   * surfaces as the 'loop-placeholder' variant (D-28) instead of a blank.
    */
   getRotoPhysicalRenderSource(layerId: string, appFrame: number): PhysicPaintRotoPhysicalRenderSource | null {
     if (!Number.isInteger(appFrame) || appFrame < 0) return null;
@@ -1643,8 +1643,12 @@ export const physicPaintStore = {
         };
       }
       case 'linked-unresolved':
+        // D-28 (43-09): the typed unresolved per-frame result surfaces as the
+        // 'loop-placeholder' render-source variant — a marked, visible
+        // placeholder in preview/playback, a blocked range in export, never a
+        // blank and never Paint content.
         return {
-          kind: 'linked-unresolved',
+          kind: 'loop-placeholder',
           layerId,
           appFrame,
           loopId: resolution.loopId,
