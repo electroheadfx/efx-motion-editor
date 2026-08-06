@@ -159,12 +159,15 @@ export function PhysicsPaintPlayScriptDialog({
       aria-modal="true"
       aria-labelledby="physics-play-script-title"
       onKeyDown={(event) => {
+        // CR-01: the modal owns the keyboard while open — no keydown may bubble to the
+        // Studio shortcut dispatcher (frame navigation/playback/undo behind the modal).
+        event.stopPropagation();
         if (event.key === 'Escape') {
           event.preventDefault();
           playScript.cancel();
           return;
         }
-        if (event.key === 'Enter' && !playScript.validationError.value && !playScript.canCancel.value) {
+        if (event.key === 'Enter' && !playScript.validationError.value && !playScript.repeatError.value && !playScript.canCancel.value) {
           event.preventDefault();
           void playScript.confirm();
           return;
@@ -389,7 +392,7 @@ export function PhysicsPaintPlayScriptDialog({
           </div>
           <div class="physics-paint-play-script-actions">
             <button type="button" class="physics-paint-play-script-button physics-paint-play-script-button-ghost" onClick={playScript.cancel}>{playScript.canCancel.value ? 'Cancel generation' : 'Cancel'}</button>
-            {!playScript.canCancel.value ? <button type="button" class="physics-paint-play-script-button physics-paint-play-script-button-primary" disabled={Boolean(playScript.validationError.value)} onClick={() => { void playScript.confirm(); }}>Generate</button> : null}
+            {!playScript.canCancel.value ? <button type="button" class="physics-paint-play-script-button physics-paint-play-script-button-primary" disabled={Boolean(playScript.validationError.value) || Boolean(playScript.repeatError.value)} onClick={() => { void playScript.confirm(); }}>Generate</button> : null}
           </div>
         </div>
       </div>
