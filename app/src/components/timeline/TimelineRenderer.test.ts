@@ -145,6 +145,345 @@ describe('physic-paint Roto key markers (C-04)', () => {
   });
 });
 
+describe('loop clip filmstrip capsule (HOLD-06)', () => {
+  type FakeCall = {
+    method: string;
+    args: unknown[];
+    fillStyle: unknown;
+    strokeStyle: unknown;
+    lineWidth: unknown;
+    font: unknown;
+    globalAlpha: unknown;
+    lineDash: unknown[];
+    textAlign: unknown;
+  };
+
+  function createFakeCtx() {
+    const calls: FakeCall[] = [];
+    const ctx: Record<string, unknown> = {
+      fillStyle: '#000000',
+      strokeStyle: '#000000',
+      lineWidth: 1,
+      font: '',
+      globalAlpha: 1,
+      textBaseline: 'alphabetic',
+      textAlign: 'start',
+      lineDash: [] as number[],
+      canvas: null,
+    };
+    const snapshot = () => ({
+      fillStyle: ctx.fillStyle,
+      strokeStyle: ctx.strokeStyle,
+      lineWidth: ctx.lineWidth,
+      font: ctx.font,
+      globalAlpha: ctx.globalAlpha,
+      lineDash: [...(ctx.lineDash as number[])],
+      textAlign: ctx.textAlign,
+    });
+    const record = (method: string) => (...args: unknown[]) => {
+      calls.push({ method, args, ...snapshot() });
+    };
+    for (const method of ['save', 'restore', 'beginPath', 'clip', 'rect', 'roundRect', 'fill', 'stroke',
+      'fillRect', 'strokeRect', 'moveTo', 'lineTo', 'arc', 'closePath', 'fillText', 'drawImage',
+      'translate', 'scale', 'clearRect', 'setTransform']) {
+      ctx[method] = record(method);
+    }
+    ctx.setLineDash = (segments: number[]) => {
+      ctx.lineDash = segments;
+      calls.push({ method: 'setLineDash', args: [segments], ...snapshot() });
+    };
+    ctx.measureText = (text: string) => ({ width: text.length * 6 });
+    ctx.createPattern = () => null;
+    ctx.createLinearGradient = () => ({ addColorStop: () => undefined });
+    return { ctx, calls };
+  }
+
+  async function createRendererHarness() {
+    vi.stubGlobal('window', { devicePixelRatio: 1 });
+    vi.stubGlobal('document', { documentElement: {} });
+    vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '' }));
+    const { ctx, calls } = createFakeCtx();
+    const canvas = {
+      getContext: () => ctx,
+      getBoundingClientRect: () => ({ width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600 }),
+      width: 0,
+      height: 0,
+    };
+    ctx.canvas = canvas;
+    const { TimelineRenderer, invalidateColorCache } = await import('./TimelineRenderer');
+    invalidateColorCache();
+    const renderer = new TimelineRenderer(canvas as never);
+    return { renderer, calls };
+  }
+
+  function makeCapsule(overrides: Record<string, unknown> = {}) {
+    return {
+      loopId: 'loop-1',
+      placementStart: 0,
+      cycleLength: 5,
+      repeat: 5,
+      requestedEnd: 25,
+      effectiveEnd: 25,
+      truncated: false,
+      partialCycle: false,
+      boundaryKind: 'parent-end',
+      boundaryFrame: 40,
+      mode: 'progressive',
+      unresolved: null,
+      firstCycleCells: [0, 1, 2, 3, 4].map((frame) => ({
+        sourceKeyId: `key-${frame}`,
+        sourceAppFrame: frame,
+        dataUrl: `data:image/png;base64,${String(frame).padStart(4, 'A')}`,
+        realKeyBacked: true,
+      })),
+      ...overrides,
+    };
+  }
+
+  function makeFxTrack(loopCapsules?: unknown[]) {
+    return {
+      sequenceId: 'fx-1',
+      sequenceName: 'Roto FX',
+      headerLabel: 'PPaint #1',
+      kind: 'fx' as const,
+      inFrame: 0,
+      outFrame: 40,
+      color: '#E91E63',
+      visible: true,
+      layerType: 'physic-paint' as const,
+      rotoKeyFrames: [0, 1, 2, 3, 4],
+      ...(loopCapsules ? { loopCapsules } : {}),
+    };
+  }
+
+  function drawCapsule(
+    harness: { renderer: { draw: (state: never) => void } },
+    zoom: number,
+    loopCapsules?: unknown[],
+    extras: Record<string, unknown> = {},
+  ) {
+    harness.renderer.draw({
+      frame: 0,
+      zoom,
+      scrollX: 0,
+      scrollY: 0,
+      tracks: [],
+      fxTracks: [makeFxTrack(loopCapsules)],
+      imageStore: {},
+      totalFrames: 100,
+      ...extras,
+    } as never);
+  }
+
+  function seedThumbnails(renderer: unknown, keyIds: string[]) {
+    const cache = (renderer as { thumbnailCache: { cache: Map<string, unknown> } }).thumbnailCache.cache;
+    for (const keyId of keyIds) {
+      cache.set(keyId, { complete: true, naturalWidth: 64, naturalHeight: 64 });
+    }
+  }
+
+  it('draws first-cycle thumbnails downscaled via ThumbnailCache + drawImage at high zoom (D-15)', async () => {
+    const { renderer, calls } = await createRendererHarness();
+    seedThumbnails(renderer, ['key-0', 'key-1', 'key-2', 'key-3', 'key-4']);
+    drawCapsule({ renderer }, 0.4, [makeCapsule()]); // frameWidth 24 → high zoom
+
+    const images = calls.filter((call) => call.method === 'drawImage');
+    expect(images).toHaveLength(5);
+    // First cell lands at the FX content left edge (header width), one frame wide.
+    expect(images[0]!.args.slice(1)).toEqual([80, expect.any(Number), 24, expect.any(Number)]);
+    expect(images[1]!.args[1]).toBe(80 + 24);
+    // Real-key-backed first-cycle cells keep the solid source-cell border.
+    expect(calls.some((call) => call.method === 'strokeRect'
+      && call.strokeStyle === 'rgba(255, 255, 255, 0.22)'
+      && (call.lineDash as number[]).length === 0)).toBe(true);
+  });
+
+  it('draws duplicated-loop first-cycle cells with the shared thumbnails and dashed linked border, no solid border (placement/source correction)', async () => {
+    const { renderer, calls } = await createRendererHarness();
+    seedThumbnails(renderer, ['key-0', 'key-1', 'key-2', 'key-3', 'key-4']);
+    const capsule = makeCapsule({
+      placementStart: 20,
+      firstCycleCells: [0, 1, 2, 3, 4].map((frame) => ({
+        sourceKeyId: `key-${frame}`,
+        sourceAppFrame: frame,
+        dataUrl: `data:image/png;base64,${String(frame).padStart(4, 'A')}`,
+        realKeyBacked: false,
+      })),
+    });
+    drawCapsule({ renderer }, 0.4, [capsule]);
+
+    const images = calls.filter((call) => call.method === 'drawImage');
+    expect(images).toHaveLength(5);
+    expect(images[0]!.args[1]).toBe(80 + 20 * 24);
+    // Linked first-cycle cells: dashed LOOP_GHOST_BORDER, never the solid source-cell border.
+    const cellBorders = calls.filter((call) => call.method === 'strokeRect');
+    expect(cellBorders.length).toBeGreaterThan(0);
+    expect(cellBorders.every((call) => call.strokeStyle === 'rgba(255, 255, 255, 0.24)'
+      && JSON.stringify(call.lineDash) === '[4,4]')).toBe(true);
+  });
+
+  it('expands repetitions into ghost cells at high zoom (LOOP_GHOST_FILL + dashed LOOP_GHOST_BORDER, no thumbnails)', async () => {
+    const { renderer, calls } = await createRendererHarness();
+    seedThumbnails(renderer, ['key-0', 'key-1', 'key-2', 'key-3', 'key-4']);
+    drawCapsule({ renderer }, 0.4, [makeCapsule()]);
+
+    const ghostFills = calls.filter((call) => call.method === 'fillRect'
+      && call.fillStyle === 'rgba(255, 255, 255, 0.06)');
+    expect(ghostFills).toHaveLength(4); // repeats 1..4 over [5,25)
+    expect(ghostFills[0]!.args[0]).toBe(80 + 5 * 24);
+    expect(ghostFills[0]!.args[2]).toBe(5 * 24);
+    expect(calls.some((call) => call.method === 'setLineDash'
+      && JSON.stringify(call.args[0]) === '[4,4]')).toBe(true);
+    // Ghost cells never draw thumbnails: exactly the 5 first-cycle drawImage calls.
+    expect(calls.filter((call) => call.method === 'drawImage')).toHaveLength(5);
+  });
+
+  it('renders the perforated band at default zoom (LOOP_BAND_BASE + LOOP_BAND_HATCH 45°/4px/1px)', async () => {
+    const { renderer, calls } = await createRendererHarness();
+    drawCapsule({ renderer }, 0.2, [makeCapsule()]); // frameWidth 12 → default
+
+    expect(calls.some((call) => call.method === 'fillRect'
+      && call.fillStyle === 'rgba(255, 255, 255, 0.05)')).toBe(true);
+    expect(calls.some((call) => call.method === 'stroke'
+      && call.strokeStyle === 'rgba(255, 255, 255, 0.14)'
+      && call.lineWidth === 1)).toBe(true);
+    // No ghost-cell expansion at default zoom.
+    expect(calls.some((call) => call.method === 'fillRect'
+      && call.fillStyle === 'rgba(255, 255, 255, 0.06)')).toBe(false);
+  });
+
+  it('collapses to solid band + badge only at low zoom', async () => {
+    const { renderer, calls } = await createRendererHarness();
+    drawCapsule({ renderer }, 0.1, [makeCapsule()]); // frameWidth 6 → low
+
+    expect(calls.some((call) => call.method === 'fillRect'
+      && call.fillStyle === 'rgba(255, 255, 255, 0.05)')).toBe(true);
+    expect(calls.some((call) => call.method === 'fillRect'
+      && call.fillStyle === 'rgba(255, 255, 255, 0.06)')).toBe(false);
+    expect(calls.some((call) => call.method === 'stroke'
+      && call.strokeStyle === 'rgba(255, 255, 255, 0.14)')).toBe(false);
+    expect(calls.some((call) => call.method === 'fillText'
+      && call.args[0] === 'Cycle 5f × 5 = 25f')).toBe(true);
+  });
+
+  it('draws the compact math badge pill with the locked D-19 form and metrics', async () => {
+    const { renderer, calls } = await createRendererHarness();
+    drawCapsule({ renderer }, 0.2, [makeCapsule()]);
+
+    const badgeText = calls.find((call) => call.method === 'fillText' && call.args[0] === 'Cycle 5f × 5 = 25f');
+    expect(badgeText).toBeDefined();
+    expect(badgeText!.font).toBe('600 10px system-ui, sans-serif');
+    expect(badgeText!.fillStyle).toBe('rgba(255, 255, 255, 0.85)');
+    expect(calls.some((call) => call.method === 'fill' && call.fillStyle === 'rgba(13, 13, 13, 0.85)')).toBe(true);
+  });
+
+  it('draws the infinity badge without any Infinityf suffix', async () => {
+    const { renderer, calls } = await createRendererHarness();
+    drawCapsule({ renderer }, 0.2, [makeCapsule({ repeat: 'infinity', requestedEnd: 'infinity', effectiveEnd: 40 })]);
+
+    const texts = calls.filter((call) => call.method === 'fillText').map((call) => String(call.args[0]));
+    expect(texts).toContain('Cycle 5f × ∞');
+    expect(texts.every((text) => !text.includes('Infinity'))).toBe(true);
+  });
+
+  it('draws the truncation diagonal in #FFB020 1.5px landing per the geometry module (D-21)', async () => {
+    const { renderer, calls } = await createRendererHarness();
+    const { loopCapsuleFrameToX } = await import('./loopCapsuleGeometry');
+    drawCapsule({ renderer }, 0.4, [makeCapsule({ effectiveEnd: 23, truncated: true, partialCycle: true })]);
+
+    const diagonalStroke = calls.find((call) => call.method === 'stroke'
+      && call.strokeStyle === '#FFB020' && call.lineWidth === 1.5);
+    expect(diagonalStroke).toBeDefined();
+    // Partial cycle at frameWidth 24: landing = mid-cell of [20,25) = frame 22.5.
+    const expectedX = loopCapsuleFrameToX(22.5, { inFrame: 0, frameWidth: 24, scrollX: 0, headerWidth: 80 });
+    const diagonalSegment = calls.find((call) => call.method === 'moveTo' && call.args[0] === expectedX);
+    expect(diagonalSegment).toBeDefined();
+  });
+
+  it('still draws the diagonal on the band end at low zoom', async () => {
+    const { renderer, calls } = await createRendererHarness();
+    drawCapsule({ renderer }, 0.1, [makeCapsule({ effectiveEnd: 23, truncated: true, partialCycle: true })]);
+    expect(calls.some((call) => call.method === 'stroke'
+      && call.strokeStyle === '#FFB020' && call.lineWidth === 1.5)).toBe(true);
+  });
+
+  it('renders a zero-effective loop as the greyed anchor flag pinned at the placement start (D-22)', async () => {
+    const { renderer, calls } = await createRendererHarness();
+    drawCapsule({ renderer }, 0.2, [makeCapsule({ placementStart: 10, effectiveEnd: 10, truncated: true })]);
+
+    const flagText = calls.find((call) => call.method === 'fillText' && call.args[0] === '0f');
+    expect(flagText).toBeDefined();
+    expect(flagText!.fillStyle).toBe('#E8E8E8');
+    expect(calls.some((call) => call.method === 'fill' && call.fillStyle === '#666666')).toBe(true);
+    // The anchor flag carries the marker — no badge text, no diagonal.
+    expect(calls.some((call) => call.method === 'fillText' && String(call.args[0]).startsWith('Cycle'))).toBe(false);
+    expect(calls.some((call) => call.strokeStyle === '#FFB020')).toBe(false);
+  });
+
+  it('outlines unresolved loops in #FF4444 2px — the capsule never silently disappears (D-23/D-31)', async () => {
+    const { renderer, calls } = await createRendererHarness();
+    drawCapsule({ renderer }, 0.2, [makeCapsule({ unresolved: { missingSourceKeyIds: ['key-9'] } })], {
+      selectedLoopClipId: 'loop-1',
+      hoveredLoopClipId: 'loop-1',
+    });
+
+    // Error styling wins over selected + hover (precedence: error > focus > selected > hover).
+    const errorIndex = calls.findIndex((call) => call.method === 'stroke'
+      && call.strokeStyle === '#FF4444' && call.lineWidth === 2);
+    const selectedIndex = calls.findIndex((call) => call.method === 'stroke'
+      && call.strokeStyle === '#2D5BE3' && call.lineWidth === 2);
+    expect(errorIndex).toBeGreaterThan(-1);
+    expect(selectedIndex).toBeGreaterThan(-1);
+    expect(errorIndex).toBeGreaterThan(selectedIndex);
+  });
+
+  it('paints hover raise, selected accent outline, and focus ring without changing geometry (D-23)', async () => {
+    const { renderer, calls } = await createRendererHarness();
+    drawCapsule({ renderer }, 0.2, [makeCapsule()], {
+      selectedLoopClipId: 'loop-1',
+      focusedLoopClipId: 'loop-1',
+      hoveredLoopClipId: 'loop-1',
+    });
+
+    expect(calls.some((call) => call.method === 'stroke'
+      && call.strokeStyle === 'rgba(255, 255, 255, 0.50)' && call.lineWidth === 1.5)).toBe(true);
+    const accentStrokes = calls.filter((call) => call.method === 'stroke'
+      && call.strokeStyle === '#2D5BE3' && call.lineWidth === 2);
+    expect(accentStrokes.length).toBeGreaterThanOrEqual(2); // selected outline + focus ring
+  });
+
+  it('renders nothing when the track has no Loop Clips (S1 empty — no capsule, no placeholder)', async () => {
+    const { renderer, calls } = await createRendererHarness();
+    drawCapsule({ renderer }, 0.2, undefined);
+    drawCapsule({ renderer }, 0.2, []);
+
+    expect(calls.some((call) => call.method === 'fillText' && String(call.args[0]).startsWith('Cycle'))).toBe(false);
+    expect(calls.some((call) => call.method === 'fillRect'
+      && call.fillStyle === 'rgba(255, 255, 255, 0.05)')).toBe(false);
+    expect(calls.some((call) => call.method === 'drawImage')).toBe(false);
+  });
+
+  it('consumes loopCapsuleGeometry outputs and the locked S1 constants — canvas paint calls only', () => {
+    const code = source();
+    const capsuleIndex = code.indexOf('private drawLoopCapsules');
+    expect(capsuleIndex).toBeGreaterThan(-1);
+    const capsuleSource = code.slice(capsuleIndex);
+
+    for (const constant of ['LOOP_BAND_BASE', 'LOOP_BAND_HATCH', 'LOOP_GHOST_FILL', 'LOOP_GHOST_BORDER', "'#FFB020'"]) {
+      expect(code).toContain(constant);
+    }
+    for (const consumed of ['badgeTextForLoop', 'zoomBandForFrameWidth', 'visibleGhostCells',
+      'truncationDiagonalFrame', 'anchorFlagGeometry', 'firstCycleCellFrames', 'loopCapsuleFrameToX']) {
+      expect(capsuleSource).toContain(consumed);
+    }
+    expect(capsuleSource).toContain('fxTrack.loopCapsules');
+    expect(capsuleSource).toContain('this.thumbnailCache.get');
+    expect(capsuleSource).not.toContain('document.createElement');
+    expect(capsuleSource).not.toContain('clip bloquant');
+    expect(capsuleSource).not.toContain('playScriptMarkers');
+  });
+});
+
 describe('rotoKeyFrames reactivity through fxTrackLayouts', () => {
   function makeRotoRecord(keyId: string, appFrame: number) {
     return {
