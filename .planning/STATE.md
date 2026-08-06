@@ -4,16 +4,16 @@ milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 42
 current_phase_name: playscript-application-modes-color-override
-status: executing
-stopped_at: Completed 42-03-PLAN.md
-last_updated: "2026-08-05T19:38:26.829Z"
+status: verifying
+stopped_at: Completed 42-05-PLAN.md
+last_updated: "2026-08-06T08:56:36.256Z"
 last_activity: 2026-08-05
 last_activity_desc: Phase 42 execution started
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 12
-  completed_plans: 11
+  total_plans: 13
+  completed_plans: 12
   percent: 33
 ---
 
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 42 (playscript-application-modes-color-override) — EXECUTING
-Plan: 4 of 4
-Status: Ready to execute
+Plan: 5 of 5
+Status: 42-05 complete — ready for 42-04 Task 2 native UAT (revised nine-step script)
 Last activity: 2026-08-05 — Phase 42 execution started
 
 Progress: [█████████░] 92%
@@ -165,6 +165,7 @@ Progress: [█████████░] 92%
 | Phase 42 P01 | 3min | 2 tasks | 3 files |
 | Phase 42 P02 | 22min | 3 tasks | 4 files |
 | Phase 42 P03 | 8min | 2 tasks | 3 files |
+| Phase 42-playscript-application-modes-color-override P05 | 29min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -193,6 +194,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 42-03: pick guard = capture-phase arming on the picker well (InlineColorPicker root stops propagation; capture handlers are the only reliable interception)
 - [Phase ?]: 42-03: dialog title moved into a header outside the scroll region per the locked E1 overflow structure; CSS additions strictly additive under .physics-paint-play-script-*
 - [Phase ?]: 42-03: Original colors reset flips overrideEnabled only, retaining overrideColor as session memory (D-10)
+- [Phase ?]: Override color resolves ONLY via the getBrushColor port at confirm time; the dialog-side overrideColor signal was deleted (D-08R/D-10)
+- [Phase ?]: Malformed brush-color port values fall back to no override via a strict #rrggbb normalize guard (T-42-05-01)
+- [Phase ?]: Max→1 normalization on Static / Hold switch lives in the dialog selectMode path; controller D-15 first-time defaults unaffected
 
 ### Pending Todos
 
@@ -375,8 +379,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-05T19:38:18.306Z
-Stopped at: Completed 42-03-PLAN.md
+Last session: 2026-08-06T08:56:36.247Z
+Stopped at: Completed 42-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
