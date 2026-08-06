@@ -91,6 +91,14 @@ export function PhysicsPaintPlayScriptDialog({
     (radios?.[nextIndex] as HTMLElement | undefined)?.focus?.();
   };
 
+  // D-13/D-16 Row 4: the loop readout splits into Requested (left) and Effective (right)
+  // inside the summary bar. Infinity reads 'Cycle {N}f × ∞' on the left (D-12).
+  const loopReadout = playScript.loopReadout.value;
+  const EFFECTIVE_SEPARATOR = ' · Effective: ';
+  const effectiveSplitAt = loopReadout ? loopReadout.indexOf(EFFECTIVE_SEPARATOR) : -1;
+  const summaryRequested = loopReadout ? (effectiveSplitAt >= 0 ? loopReadout.slice(0, effectiveSplitAt) : loopReadout) : null;
+  const summaryEffective = loopReadout && effectiveSplitAt >= 0 ? `Effective: ${loopReadout.slice(effectiveSplitAt + EFFECTIVE_SEPARATOR.length)}` : null;
+
   return (
     <div
       ref={dialogRef}
@@ -209,98 +217,107 @@ export function PhysicsPaintPlayScriptDialog({
               {playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{playScript.repeatError.value}</span> : null}
             </div>
           </div>
-          <div class="physics-paint-play-script-card physics-paint-play-script-card-color">
-            <span class="physics-paint-play-script-card-title">Color</span>
-            <div
-              class="physics-paint-play-script-mode-group"
-              role="radiogroup"
-              aria-label="Color"
-              onKeyDown={onColorKeyDown}
-            >
-              {PLAY_SCRIPT_COLORS.map((option) => {
-                const checked = playScript.overrideEnabled.value === option.value;
-                return (
-                  <div
-                    key={option.label}
-                    class="physics-paint-play-script-mode-option"
-                    role="radio"
-                    aria-checked={checked}
-                    aria-disabled={busy}
-                    tabIndex={!busy && checked ? 0 : -1}
-                    onClick={(event) => {
-                      if (playScript.canCancel.value) return;
-                      playScript.overrideEnabled.value = option.value;
-                      (event.currentTarget as HTMLElement | null)?.focus?.();
-                    }}
-                  >
-                    {option.label}
-                  </div>
-                );
-              })}
-            </div>
-            <div class="physics-paint-play-script-color-pane">
-              {playScript.overrideEnabled.value ? (
-                <div class="physics-paint-play-script-color-custom-row">
-                  <span class="physics-paint-play-script-override-chip" style={{ backgroundColor: brushColor }} />
-                  <div class="physics-paint-play-script-color-meta">
-                    <span class="physics-paint-play-script-color-hex">{brushColor}</span>
-                    <span class="physics-paint-play-script-color-note">Picked from the app's brush color panel</span>
-                  </div>
-                </div>
-              ) : (
-                <div class="physics-paint-play-script-color-original-row">
-                  <span class="physics-paint-play-script-color-dots" aria-hidden="true">
-                    {ORIGINAL_COLOR_DOTS.map((color) => <i key={color} style={{ background: color }} />)}
-                  </span>
-                  Keep each stroke's original paint color.
-                </div>
-              )}
-            </div>
-          </div>
-          <div class="physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-motion">
-            <div class="physics-paint-play-script-card-heading">
-              <span class="physics-paint-play-script-card-title">Motion wiggle</span>
-              <button
-                type="button"
-                class="physics-paint-play-script-heading-link"
-                disabled={busy}
-                onClick={() => playScript.resetDialogMotion()}
+          <div class="physics-paint-play-script-side-stack">
+            <div class="physics-paint-play-script-card physics-paint-play-script-card-color">
+              <span class="physics-paint-play-script-card-title">Color</span>
+              <div
+                class="physics-paint-play-script-mode-group"
+                role="radiogroup"
+                aria-label="Color"
+                onKeyDown={onColorKeyDown}
               >
-                Reset defaults
-              </button>
+                {PLAY_SCRIPT_COLORS.map((option) => {
+                  const checked = playScript.overrideEnabled.value === option.value;
+                  return (
+                    <div
+                      key={option.label}
+                      class="physics-paint-play-script-mode-option"
+                      role="radio"
+                      aria-checked={checked}
+                      aria-disabled={busy}
+                      tabIndex={!busy && checked ? 0 : -1}
+                      onClick={(event) => {
+                        if (playScript.canCancel.value) return;
+                        playScript.overrideEnabled.value = option.value;
+                        (event.currentTarget as HTMLElement | null)?.focus?.();
+                      }}
+                    >
+                      {option.label}
+                    </div>
+                  );
+                })}
+              </div>
+              <div class="physics-paint-play-script-color-pane">
+                {playScript.overrideEnabled.value ? (
+                  <div class="physics-paint-play-script-color-custom-row">
+                    <span class="physics-paint-play-script-override-chip" style={{ backgroundColor: brushColor }} />
+                    <div class="physics-paint-play-script-color-meta">
+                      <span class="physics-paint-play-script-color-hex">{brushColor}</span>
+                      <span class="physics-paint-play-script-color-note">Picked from the app's brush color panel</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div class="physics-paint-play-script-color-original-row">
+                    <span class="physics-paint-play-script-color-dots" aria-hidden="true">
+                      {ORIGINAL_COLOR_DOTS.map((color) => <i key={color} style={{ background: color }} />)}
+                    </span>
+                    Keep each stroke's original paint color.
+                  </div>
+                )}
+              </div>
             </div>
-            <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-deformation">
-              <span>Deformation</span>
-              <input
-                id="physics-play-script-motion-deformation"
-                type="range"
-                min={0}
-                max={100}
-                value={playScript.dialogMotion.value.deformation}
-                disabled={busy}
-                onInput={(event) => {
-                  playScript.dialogMotion.value = { ...playScript.dialogMotion.value, deformation: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
-                }}
-              />
-              <output>{playScript.dialogMotion.value.deformation}</output>
-            </label>
-            <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-position">
-              <span>Position</span>
-              <input
-                id="physics-play-script-motion-position"
-                type="range"
-                min={0}
-                max={100}
-                value={playScript.dialogMotion.value.position}
-                disabled={busy}
-                onInput={(event) => {
-                  playScript.dialogMotion.value = { ...playScript.dialogMotion.value, position: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
-                }}
-              />
-              <output>{playScript.dialogMotion.value.position}</output>
-            </label>
+            <div class="physics-paint-play-script-card physics-paint-play-script-card-motion">
+              <div class="physics-paint-play-script-card-heading">
+                <span class="physics-paint-play-script-card-title">Motion wiggle</span>
+                <button
+                  type="button"
+                  class="physics-paint-play-script-heading-link"
+                  disabled={busy}
+                  onClick={() => playScript.resetDialogMotion()}
+                >
+                  Reset defaults
+                </button>
+              </div>
+              <div class="physics-paint-play-script-motion-rows">
+                <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-deformation">
+                  <span>Deformation</span>
+                  <input
+                    id="physics-play-script-motion-deformation"
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={playScript.dialogMotion.value.deformation}
+                    disabled={busy}
+                    onInput={(event) => {
+                      playScript.dialogMotion.value = { ...playScript.dialogMotion.value, deformation: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
+                    }}
+                  />
+                  <output>{playScript.dialogMotion.value.deformation}</output>
+                </label>
+                <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-position">
+                  <span>Position</span>
+                  <input
+                    id="physics-play-script-motion-position"
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={playScript.dialogMotion.value.position}
+                    disabled={busy}
+                    onInput={(event) => {
+                      playScript.dialogMotion.value = { ...playScript.dialogMotion.value, position: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
+                    }}
+                  />
+                  <output>{playScript.dialogMotion.value.position}</output>
+                </label>
+              </div>
+            </div>
           </div>
-          {playScript.loopReadout.value ? <p class="physics-paint-play-script-summary-bar">{playScript.loopReadout.value}</p> : null}
+          {summaryRequested ? (
+            <p class="physics-paint-play-script-summary-bar">
+              <span class="physics-paint-play-script-summary-requested">{summaryRequested}</span>
+              {summaryEffective ? <span class="physics-paint-play-script-summary-effective">{summaryEffective}</span> : null}
+            </p>
+          ) : null}
         </div>
         {playScript.error.value ? <span class="physics-paint-script-inline-error physics-paint-play-script-dialog-error">{playScript.error.value}</span> : null}
         <div class="physics-paint-play-script-footer">

@@ -1322,6 +1322,28 @@ button.destructive {
 
 .physics-paint-play-script-card-wide { grid-column: 1 / -1; }
 
+/* D-16 final Row 3: the RIGHT column is a vertical stack (Color over Motion wiggle)
+   whose combined height + gap EQUALS the Timing card height — the stack stretches to
+   the shared row track and the Motion wiggle card absorbs the remaining space. */
+.physics-paint-play-script-side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.physics-paint-play-script-card-motion { flex: 1 1 auto; }
+
+/* Motion wiggle rows center in the card's remaining space — no inner dead area (D-16). */
+.physics-paint-play-script-motion-rows {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+}
+
 .physics-paint-play-script-card-title {
   margin-bottom: 9px;
   color: var(--ps-fg);
