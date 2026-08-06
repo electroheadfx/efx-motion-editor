@@ -1,7 +1,8 @@
 ---
 phase: 43
 slug: hold-loop-clips-filmstrip-capsule
-status: draft
+status: approved
+reviewed_at: 2026-08-06
 shadcn_initialized: false
 preset: none
 created: 2026-08-06
@@ -69,6 +70,8 @@ Canvas colors follow the existing `TimelineRenderer` split: theme-derived via `g
 | Zero-effective anchor flag | fill `--color-text-muted` `#666666`, `0f` text `--color-text-primary` `#E8E8E8` | D-22 greyed pill; always visible, never invisible |
 | Placeholder frame (unavailable source, preview/playback) | existing `PLACEHOLDER_BG_A #1A1A2A` / `PLACEHOLDER_BG_B #1A2A1A` pattern | D-28 marked, visible, non-blocking |
 
+**Idle-capsule focal point (S1):** the badge pill and the source-cycle thumbnails are the primary visual anchor of the idle capsule; the repetition band and ghost cells deliberately recede (lower-contrast fills, no thumbnails, no diamonds) so the eye lands on badge + source first.
+
 ### S2/S3/S4 — Play Script dialog modes
 
 Reuse the Phase 42 `--ps-*` oklch token set **verbatim and complete** (`42-UI-SPEC.md` §Color): `--ps-surface/raised/inset/foot/fg/muted/faint/border/accent/accent-hi/ok/error/radius`. No new dialog tokens. Accent remains reserved for exactly the Phase 42 list PLUS the loop-edit primary action `Update loop` and the source-edit confirmation `Regenerate source cycle` (both render as the same accent primary button style as `Generate`). The apply-time Link/Create choice (S4) renders as a segmented control using the existing `.physics-paint-play-script-mode-group` pattern — checked segment in `--ps-accent`, no new color.
@@ -114,7 +117,7 @@ Declared capsule metrics (multiples of 4 unless noted):
 | Zero-effective anchor flag | ~6px-high slim pill (locked D-22 approximate marker — declared exception to the multiples-of-4 rule, matching the playhead-triangle marker exception), width 24px, `0f` text centered; pinned at the loop's canonical start frame |
 | Studio link dot | 4px diameter, 2px top-right inset |
 
-Exceptions: anchor-flag ~6px height (D-22, approximate marker glyph, not layout spacing); Phase 42 dialog metrics (locked, inherited).
+Exceptions: anchor-flag ~6px height (D-22, approximate marker glyph, not layout spacing); Studio link-dot 2px top-right inset (functional micro-offset that keeps the dot fully inside the 18px×24px cell without touching the inset border); capsule focus-ring 2px offset (matches the existing dialog `:focus-visible` convention — functional ring offset, not layout spacing); Phase 42 dialog metrics (locked, inherited).
 
 **Zoom-adaptive repetition rendering (D-16, prescriptive thresholds):**
 
