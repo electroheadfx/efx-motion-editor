@@ -168,7 +168,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 43-03-PLAN.md — Store: linked-loop render source, loop-aware end frame, atomic loopClips commit acceptance (HOLD-04, HOLD-05)
+- [x] 43-03-PLAN.md — Store: linked-loop render source, loop-aware end frame, atomic loopClips commit acceptance (HOLD-04, HOLD-05)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -360,5 +360,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 40. macOS Icon + Build Hygiene | v0.9.0 | 3/3 | Complete    | 2026-08-04 |
 | 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | Complete    | 2026-08-05 |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
-| 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 3/10 | In Progress|  |
+| 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 4/10 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |

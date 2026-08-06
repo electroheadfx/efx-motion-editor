@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43
 current_phase_name: hold-loop-clips-filmstrip-capsule
 status: executing
-stopped_at: Completed 43-02-PLAN.md
-last_updated: "2026-08-06T21:05:01.353Z"
+stopped_at: Completed 43-03-PLAN.md
+last_updated: "2026-08-06T21:35:44.262Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 43 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 24
-  completed_plans: 17
+  completed_plans: 18
   percent: 50
 ---
 
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43 (hold-loop-clips-filmstrip-capsule) — EXECUTING
-Plan: 4 of 10
+Plan: 5 of 10
 Status: Ready to execute
 Last activity: 2026-08-06 — Phase 43 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 runs an UNSIGNED packaged-app smoke (capsule, loop-edit dialog, valid preview, unresolved placeholder, valid PNG export, unresolved export block — no signing material accessed). Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [███████░░░] 71%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -174,6 +174,7 @@ Progress: [███████░░░] 71%
 | Phase 43 P01 | ~50min across API-quota resume | 2 tasks | 24 files |
 | Phase 43 P04 | 8min | 2 tasks | 4 files |
 | Phase 43 P02 | 28min | 3 tasks | 13 files |
+| Phase 43 P03 | 27min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -216,6 +217,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43-02: loop derivation returns a prepared context (placementStart-sorted ranges + keyIdByAppFrame) — O(log loops) binary-search lookup, O(1) modulo, O(keys + loops) re-derivation
 - [Phase ?]: 43-02: finite loops are not capacity-clamped; the 600 cap folds into the parent-end bound for infinity loops only (Q4)
 - [Phase ?]: 43-02: boundary tie attribution loop-start > real-key > parent-end; strip loop wiring is opt-in via rotoLoopResolutionContext pending 43-03 store threading
+- [Phase ?]: 43-03: linked occurrences reuse the 'real' render-source variant with source-scoped cacheRevision — zero consumer changes (D-27); 'linked-unresolved' joins the union, renderable-subset guards until 43-09 placeholder
+- [Phase ?]: 43-03: store-side loop derivation bounds parent end at physical capacity; dynamic main-editor parent-end tracking flagged for capsule/frameMap plans
+- [Phase ?]: 43-03: bridge loopClips acceptance was already wired by 43-01 — Task 2 landed as real-bridge characterization specs (atomic apply, stale rejection, undo/redo both directions)
 
 ### Pending Todos
 
@@ -398,8 +402,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-06T21:05:01.344Z
-Stopped at: Completed 43-02-PLAN.md
+Last session: 2026-08-06T21:35:44.253Z
+Stopped at: Completed 43-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
