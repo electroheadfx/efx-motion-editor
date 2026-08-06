@@ -155,7 +155,36 @@ Plans:
   4. A 5-frame cycle repeated 5 times resolves across 25 timeline frames while storing only 5 linked source frame assets; repeat-count and infinity edits never regenerate or duplicate the source cycle, and source-frame edits propagate to every linked occurrence
   5. Next-clip priority truncates loops after complete or partial cycles with half-open interval boundaries; moving or removing the next clip re-expands effective duration without regenerating sources, and the filmstrip capsule shows the detailed source cycle, linked-repetition band, `Cycle Nf × R = Df` / `× ∞` badges, requested vs effective duration, and the English label `Loop shortened by next clip` on truncation (the earlier French truncation label is superseded as of 2026-08-06; the term `clip bloquant` never appears in any language)
 
-**Plans**: TBD
+**Plans**: 10 plans
+Plans:
+**Wave 1**
+
+- [ ] 43-01-PLAN.md — Tracer: loopClips persistence gauntlet (four allowlists) + revision/snapshot integration (HOLD-05)
+- [ ] 43-04-PLAN.md — HOLD-01..04 hardening specs: determinism, adjacent ranges, commit atomicity, single raster (HOLD-01..04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 43-02-PLAN.md — Resolver: linked-loop virtual cells, D-24 boundary algebra, shared derivation, Pitfall-7 audit (HOLD-05)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 43-03-PLAN.md — Store: linked-loop render source, loop-aware end frame, atomic loopClips commit acceptance (HOLD-04, HOLD-05)
+- [ ] 43-05-PLAN.md — Guards: D-07/D-11/D-13 rejections, D-12 materialization, D-06 preflight warning (HOLD-05)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 43-06-PLAN.md — Dialog loop-edit/source-edit modes, Link/Create, loop ops, parent→child bridge message (HOLD-05)
+- [ ] 43-07-PLAN.md — Capsule: pure geometry, frameMap feed, TimelineRenderer drawing at all zoom bands (HOLD-06)
+- [ ] 43-09-PLAN.md — D-28: export preflight block + preview marked placeholder (HOLD-04, HOLD-05)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 43-08-PLAN.md — Capsule interaction: hit regions, tooltip host, keyboard model, Studio strip link badge (HOLD-06)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 43-10-PLAN.md — Full gates + native visual UAT checkpoint (HOLD-01..06)
+
 **UI hint**: yes
 
 **Boundary note:** Loop Clips persist as canonical linked loop regions in the existing physical-frame document authority. The exact persistence schema remains implementation research. v0.9.0 must not introduce a clean format break or discard existing v0.8.1 Paint projects; any required versioning or additive default must preserve open/save/reopen behavior. The clean multi-track format break remains reserved for v1.0.0. The capsule ships WITH the resolver in this phase — never split — because the filmstrip is a pure view of the resolver's outputs.
