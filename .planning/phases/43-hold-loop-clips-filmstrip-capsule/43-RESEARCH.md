@@ -238,6 +238,8 @@ export type PhysicPaintRotoPhysicalCell =
     };
 ```
 
+> **Superseded (2026-08-06):** the `canonicalStart` formula and the per-frame `linked-loop` cell assignment in this sketch predate the placement/source correction — the locked model is one compact interval record per Loop Clip plus a lazy per-frame query keyed on `placementStart`, with NO per-frame virtual cells (43-CONTEXT.md D-24/D-29/D-30; 43-02-PLAN.md prohibitions). Retained as research-time provenance.
+
 "Real keys always win" falls out for free if virtual cells are only assigned where no real cell exists — the projection already builds real cells first from the validated identity mapping [VERIFIED: resolver:2075-2084 builds `mapping` from identities then calls `buildProjectionFromMapping`].
 
 ### Pattern 2: Additive optional document collection with absent-means-default
@@ -452,6 +454,8 @@ export interface PhysicPaintRotoLoopClip {
 ```
 `RotoPlayScriptMode` is verified as `'progressive' | 'static'` [VERIFIED: physicsPaintRotoPlayScriptController.ts:20].
 
+> **Superseded (2026-08-06):** `canonicalStart` in the record shape above and in the modulo/effective-range sketches below predates the placement/source correction — the locked field is `placementStart` (this Loop Clip's presentation start; source location derived separately from `sourceKeyIds`), per 43-CONTEXT.md D-24/D-29/D-30. Retained as research-time provenance.
+
 ### Modulo resolution (D-26/D-32 O(1) per frame)
 
 ```typescript
@@ -515,6 +519,8 @@ const truncatedTooltip =
 | A3 | Revision fingerprint extension (vs parallel loop snapshot) is the recommended Undo/Redo integration | Pitfall 2 / Q1 | Medium — both are viable; the planner may choose the parallel route to minimize blast radius on regression-locked call sites |
 | A4 | Parent→child loop-edit dialog message is a new bridge event following existing transport idioms | Pitfall 5 | Low — transport module verified; message shape is discretion |
 | A5 | D-05 "identical source cycle" matching should include canonical start when Motion ≠ 0 | Pitfall 6 | Medium — semantics of "same script + options" are locked; comparison inputs are discretion; user may intend payload-equality matching instead |
+
+> **Superseded (2026-08-06):** A1's `canonicalStart` field name (and A5's "canonical start" wording) predates the placement/source correction — the locked field is `placementStart` per 43-CONTEXT.md D-24/D-29/D-30. Retained as research-time provenance.
 
 ## Open Questions
 

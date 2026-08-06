@@ -66,7 +66,7 @@ export function isPhysicPaintRotoKeyIdentity(value: unknown): value is PhysicPai
 
 ---
 
-### `physicsPaintRotoPhysicalResolver.ts` (+ `'linked-loop'` virtual cell kind)
+### `physicsPaintRotoPhysicalResolver.ts` (+ compact interval derivation + lazy per-frame typed query)
 
 **Analog:** itself — the closed cell union and the single projection seam.
 
@@ -83,7 +83,7 @@ export type PhysicPaintRotoPhysicalCell =
   | { readonly kind: 'empty'; readonly appFrame: number };
 ```
 
-**Projection seam to extend** (lines 2057-2085): `projectPhysicPaintRotoPhysicalTimeline` builds the real-key `mapping` first, then calls `buildProjectionFromMapping`. The new virtual rule slots in after real cells are assigned — "real keys always win" (D-06 shrink, D-12 materialize) is emergent if `linked-loop` cells are only assigned where no real cell exists. Loop resolution per frame is O(1) modulo: `sourceKeyIds[(appFrame - canonicalStart) % cycleLength]`; `repeatIndex = Math.floor((appFrame - canonicalStart) / cycleLength)`.
+**Projection seam as analog (lines 2057-2085):** `projectPhysicPaintRotoPhysicalTimeline` builds the real-key `mapping` first, then calls `buildProjectionFromMapping`. The loop extension does NOT join this per-frame projection map: the resolver gains (a) an exported interval derivation producing ONE compact record per Loop Clip (`loopId`, `placementStart`, `cycleLength`, ordered `sourceKeyIds`, requested/effective end, boundary, truncation/partial-cycle/unresolved state) and (b) an exported lazy per-frame query returning the typed union `'real' | 'linked' | 'linked-unresolved' | 'empty'`. "Real keys always win" (D-06 shrink, D-12 materialize) is emergent from the query checking the real-key records first — no virtual cell is ever assigned (43-02 prohibition: MUST NOT assign one linked-loop cell per frame inside an effective range, for finite AND infinite loops). Per-frame resolution after interval lookup is O(1) modulo on the placement frame: `sourceKeyIds[(appFrame - placementStart) % cycleLength]`; `repeatInstance = Math.floor((appFrame - placementStart) / cycleLength)`. The `placementStart` identity model supersedes the research-time `canonicalStart` sketches (placement/source correction, 2026-08-06 — 43-CONTEXT.md D-24/D-29/D-30).
 
 **Failure idiom to copy** (lines 2087-2096): typed `projectionFailure(code, operationKind, text)` returning a frozen `{ ok: false, failure }` — loop boundary errors and unresolved-loop surfacing reuse this, never thrown exceptions in the read path.
 
