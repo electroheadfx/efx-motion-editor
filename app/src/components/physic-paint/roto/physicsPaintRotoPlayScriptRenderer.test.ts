@@ -225,3 +225,121 @@ describe('renderRotoPlayScriptFrames mode selection and color override', () => {
     await expect(renderRotoPlayScriptFrames(input(undefined, { mode, script: frozen, overrideColor: '#00ff00' }))).resolves.toHaveLength(1);
   });
 });
+
+// 43-04 Task 1 (HOLD-01): static/hold complete-stroke-set materialization and
+// adjacent-range half-open boundaries. Hardening specs against shipped machinery —
+// expected to PASS on first run; a RED result is a genuine Phase 42 regression and
+// routes through the bounded deviation protocol (never asserted away).
+describe('renderRotoPlayScriptFrames HOLD-01 static/hold materialization', () => {
+  beforeEach(() => {
+    vi.stubGlobal('document', { createElement: vi.fn(() => ({ replaceChildren: vi.fn() })) });
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { queueMicrotask(() => callback(0)); return 1; }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    harness.scriptAlpha = canvas();
+    harness.merged = canvas();
+    harness.merge.mockReset().mockResolvedValue(harness.merged);
+    // Encode echoes the destination so staged output is traceable per frame.
+    harness.encode.mockReset().mockImplementation(async (_canvas: HTMLCanvasElement, destination: number) => ({
+      frameIndex: 0,
+      appFrame: destination,
+      dataUrl: `data:image/png;base64,encoded-${destination}`,
+      width: 10,
+      height: 10,
+    }));
+    harness.renderedFrames.length = 0;
+    harness.transform.mockReset().mockImplementation((entry: PaintStroke) => entry);
+    harness.buildStatic.mockReset();
+    harness.buildProgressive.mockReset();
+    harness.getStatic.mockReset();
+    harness.getProgressive.mockReset();
+    enableScheduleFlow();
+  });
+
+  it('materializes the complete stroke set on every destination frame under static mode', async () => {
+    const script = scriptWithStrokes(); // 3 flattened strokes: 3, 2, and 1 points
+    const staged = await renderRotoPlayScriptFrames(input(undefined, { mode: 'static', script, frameCount: 3, canonicalStart: 15 }));
+    expect(staged.map((frame) => frame.appFrame)).toEqual([15, 16, 17]);
+    expect(harness.renderedFrames).toHaveLength(3);
+    for (const frame of harness.renderedFrames) {
+      expect(frame.map((entry) => entry.stroke.color)).toEqual(['#123456', null, '#654321']);
+      expect(frame.map((entry) => entry.pointCount)).toEqual([3, 2, 1]);
+    }
+  });
+
+  it('progressive on frames 10-14 then static/hold on frames 15-19: no overlap, no gap, no cross-range strokes', async () => {
+    const progressiveScript: RotoPaintScript = {
+      provenance: { sessionId: 'session', layerId: 'layer', sourceFrame: 0 },
+      sourceFrame: 0,
+      sourceDisplayFrame: 0,
+      sourceRevision: 1,
+      brushes: [{ primary: stroke('paint', '#aaaaaa', 2, 11), continuations: [] }],
+    };
+    const holdScript: RotoPaintScript = {
+      provenance: { sessionId: 'session', layerId: 'layer', sourceFrame: 0 },
+      sourceFrame: 0,
+      sourceDisplayFrame: 0,
+      sourceRevision: 1,
+      brushes: [{ primary: stroke('paint', '#bbbbbb', 2, 22), continuations: [stroke('erase', null, 1, 33)] }],
+    };
+
+    const progressiveStaged = await renderRotoPlayScriptFrames(input(undefined, { mode: 'progressive', script: progressiveScript, frameCount: 5, canonicalStart: 10 }));
+    const progressiveFrames = harness.renderedFrames.map((frame) => frame.map((entry) => entry.stroke.color));
+
+    harness.renderedFrames.length = 0;
+    const holdStaged = await renderRotoPlayScriptFrames(input(undefined, { mode: 'static', script: holdScript, frameCount: 5, canonicalStart: 15 }));
+    const holdFrames = harness.renderedFrames.map((frame) => frame.map((entry) => entry.stroke.color));
+
+    // Half-open boundaries: [10,15) then [15,20) — no overlap, no gap.
+    expect(progressiveStaged.map((frame) => frame.appFrame)).toEqual([10, 11, 12, 13, 14]);
+    expect(holdStaged.map((frame) => frame.appFrame)).toEqual([15, 16, 17, 18, 19]);
+    const destinations = [...progressiveStaged, ...holdStaged].map((frame) => frame.appFrame);
+    expect(new Set(destinations).size).toBe(10); // zero overlap
+    expect(Math.min(...destinations)).toBe(10);
+    expect(Math.max(...destinations)).toBe(19); // zero gap
+
+    // No frame receives strokes from the other range; no frame is empty of its own script's strokes.
+    expect(progressiveFrames).toHaveLength(5);
+    for (const frame of progressiveFrames) expect(frame).toEqual(['#aaaaaa']);
+    expect(holdFrames).toHaveLength(5);
+    for (const frame of holdFrames) expect(frame).toEqual(['#bbbbbb', null]);
+  });
+
+  it('a single-stroke static script over 3 frames yields 3 frames each containing exactly that stroke', async () => {
+    const single: RotoPaintScript = {
+      provenance: { sessionId: 'session', layerId: 'layer', sourceFrame: 0 },
+      sourceFrame: 0,
+      sourceDisplayFrame: 0,
+      sourceRevision: 1,
+      brushes: [{ primary: stroke('paint', '#00ff00', 4, 7), continuations: [] }],
+    };
+    const staged = await renderRotoPlayScriptFrames(input(undefined, { mode: 'static', script: single, frameCount: 3, canonicalStart: 6 }));
+    expect(staged.map((frame) => frame.appFrame)).toEqual([6, 7, 8]);
+    expect(harness.renderedFrames).toHaveLength(3);
+    for (const frame of harness.renderedFrames) {
+      expect(frame).toHaveLength(1);
+      expect(frame[0].stroke.color).toBe('#00ff00');
+      expect(frame[0].pointCount).toBe(4);
+    }
+  });
+
+  it('seeds the held-pose transform with the destination appFrame for every frame (HOLD-02 seeding contract)', async () => {
+    const seen: Array<{ destinationSourceFrame: number; strokeIndex: number }> = [];
+    harness.transform.mockImplementation((entry: PaintStroke, pose: { destinationSourceFrame: number; strokeIndex: number }) => {
+      seen.push({ destinationSourceFrame: pose.destinationSourceFrame, strokeIndex: pose.strokeIndex });
+      return entry;
+    });
+    await renderRotoPlayScriptFrames(input(undefined, { mode: 'static', script: scriptWithStrokes(), frameCount: 3, canonicalStart: 15 }));
+    // 3 frames × 3 strokes; per frame the seed is the destination appFrame, stroke index stable.
+    expect(seen).toEqual([
+      { destinationSourceFrame: 15, strokeIndex: 0 },
+      { destinationSourceFrame: 15, strokeIndex: 1 },
+      { destinationSourceFrame: 15, strokeIndex: 2 },
+      { destinationSourceFrame: 16, strokeIndex: 0 },
+      { destinationSourceFrame: 16, strokeIndex: 1 },
+      { destinationSourceFrame: 16, strokeIndex: 2 },
+      { destinationSourceFrame: 17, strokeIndex: 0 },
+      { destinationSourceFrame: 17, strokeIndex: 1 },
+      { destinationSourceFrame: 17, strokeIndex: 2 },
+    ]);
+  });
+});
