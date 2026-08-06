@@ -319,21 +319,10 @@ describe('derivePhysicPaintRotoLoopRanges — D-24 boundary algebra', () => {
   });
 
   it('a boundary landing exactly at placementStart yields Effective = 0f and the loop survives (D-08/D-22)', () => {
-    const context = deriveBaseline(
-      [loop('L1', 10, SOURCE_KEY_IDS, 5)],
-      [...SOURCE_KEYS, { keyId: 'X', appFrame: 10 }],
-      // Note: the loop's own source keys live at 10..14 but X is NOT owned by
-      // the loop; X at the placement start is a valid zero-effective boundary.
-    );
-
-    // The own-source keys at 10..14 are excluded, but the non-owned X at 10
-    // truncates immediately: the record survives with a zero-length range.
-    const withOwnedAtStart = context.ranges[0];
-    expect(withOwnedAtStart.effectiveEnd).toBe(10);
-    expect(withOwnedAtStart.truncated).toBe(true);
-    expect(withOwnedAtStart.boundary).toEqual({ kind: 'real-key', frame: 10 });
-
-    // Duplicated placement identity: source keys elsewhere, blocker at start.
+    // A non-owned real key cannot share a frame with the loop's own source
+    // keys (one key per physical frame), so the realizable zero-effective
+    // case is a duplicated placement identity: source keys live at 10..14,
+    // this Loop Clip presents at 40, and a blocker sits exactly at 40.
     const duplicated = deriveBaseline(
       [loop('L2', 40, SOURCE_KEY_IDS, 5)],
       [...SOURCE_KEYS, { keyId: 'X', appFrame: 40 }],
@@ -485,7 +474,7 @@ describe('resolvePhysicPaintRotoLoopFrame — typed unresolved contract (D-31, a
       ['X', 50],
     ]);
     const context = deriveBaseline(
-      [loop('L1', 10, SOURCE_KEY_IDS, 5), loop('L2', 60, SOURCE_KEY_IDS, 1)],
+      [loop('L1', 10, SOURCE_KEY_IDS, 5), loop('L2', 60, ['A', 'B', 'C'], 1)],
       partialKeys,
     );
 
