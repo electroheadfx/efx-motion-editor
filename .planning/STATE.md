@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43
 current_phase_name: hold-loop-clips-filmstrip-capsule
 status: executing
-stopped_at: Completed 43-04-PLAN.md
-last_updated: "2026-08-06T20:32:44.287Z"
+stopped_at: Completed 43-02-PLAN.md
+last_updated: "2026-08-06T21:05:01.353Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 43 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 24
-  completed_plans: 16
+  completed_plans: 17
   percent: 50
 ---
 
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43 (hold-loop-clips-filmstrip-capsule) — EXECUTING
-Plan: 3 of 10
+Plan: 4 of 10
 Status: Ready to execute
 Last activity: 2026-08-06 — Phase 43 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 runs an UNSIGNED packaged-app smoke (capsule, loop-edit dialog, valid preview, unresolved placeholder, valid PNG export, unresolved export block — no signing material accessed). Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [███████░░░] 67%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
@@ -173,6 +173,7 @@ Progress: [███████░░░] 67%
 | Phase 42 P04 | multi-session across blocking native UAT checkpoint | 2 tasks | 4 files |
 | Phase 43 P01 | ~50min across API-quota resume | 2 tasks | 24 files |
 | Phase 43 P04 | 8min | 2 tasks | 4 files |
+| Phase 43 P02 | 28min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -212,6 +213,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43-01: play-script and paste-key-group commits are ordinary history-bearing kinds — generation plus derived loop shrink is one undoable/redoable outcome (D-06/D-10)
 - [Phase ?]: 43-04: determinism spec exercises the real animation modules unmocked — the hash-seeded held-pose transform is proven pure at stroke level (HOLD-02 substrate)
 - [Phase ?]: 43-04: HOLD-03 one-Undo/one-Redo proven by composing the real controller confirm output with the real useRotoPhysicalEditHistory hook — one generation = one history command
+- [Phase ?]: 43-02: loop derivation returns a prepared context (placementStart-sorted ranges + keyIdByAppFrame) — O(log loops) binary-search lookup, O(1) modulo, O(keys + loops) re-derivation
+- [Phase ?]: 43-02: finite loops are not capacity-clamped; the 600 cap folds into the parent-end bound for infinity loops only (Q4)
+- [Phase ?]: 43-02: boundary tie attribution loop-start > real-key > parent-end; strip loop wiring is opt-in via rotoLoopResolutionContext pending 43-03 store threading
 
 ### Pending Todos
 
@@ -394,8 +398,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-06T20:32:44.278Z
-Stopped at: Completed 43-04-PLAN.md
+Last session: 2026-08-06T21:05:01.344Z
+Stopped at: Completed 43-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
