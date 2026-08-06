@@ -624,6 +624,27 @@ describe('PhysicsPaintPlayScriptDialog generation states (E5)', () => {
   });
 });
 
+describe('PhysicsPaintPlayScriptDialog keyboard containment (CR-01) + Generate guard on repeatError (WR-01)', () => {
+  it('stops keydown propagation at the dialog root for every key so Studio shortcuts never fire behind the modal', () => {
+    const { controller } = createFakeController();
+    const tree = renderDialog(controller);
+    const root = findOne(tree, (vnode) => vnode.props?.role === 'dialog');
+    const onKeyDown = handler(root, 'onKeyDown');
+    for (const key of ['ArrowLeft', ' ', 'z', 'Delete', 'Escape', 'Enter', 'Tab']) {
+      const stopPropagation = vi.fn();
+      onKeyDown({ key, metaKey: key === 'z', preventDefault: vi.fn(), stopPropagation, currentTarget: null });
+      expect(stopPropagation, `keydown '${key}' must stop propagation at the dialog root`).toHaveBeenCalled();
+    }
+  });
+
+  it('disables Generate while the repeat field is invalid (repeatError channel), not only validationError', () => {
+    const { controller } = createFakeController({ repeatError: 'Enter a positive integer.' });
+    const tree = renderDialog(controller);
+    const generate = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-play-script-button-primary'));
+    expect(generate.props.disabled).toBe(true);
+  });
+});
+
 describe('PhysicsPaintPlayScriptDialog source contract (D-04/D-06/D-08R, locked copy)', () => {
   it('keeps the locked copy and prohibitions in the dialog source', () => {
     expect(source).toContain('Original colors');
