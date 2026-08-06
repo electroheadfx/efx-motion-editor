@@ -54,6 +54,7 @@ export function prepareRotoPhysicalLaunch(
       selectedKeyId: physical.selectedKeyId,
       cursorAppFrame: physical.cursorAppFrame,
       revision: physical.revision,
+      loopClips: physical.loopClips,
     });
     if (context.startFrame !== document.cursorAppFrame) {
       return { ok: false, error: 'Launch cursor does not match the canonical physical document.' };

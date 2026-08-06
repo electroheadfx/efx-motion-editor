@@ -65,6 +65,19 @@ export interface McePhysicPaintRotoPhysicalRecord {
   };
 }
 
+/**
+ * Persisted linked Loop Clip record (Phase 43, D-29/D-31). The persisted
+ * shape is identical to the runtime record: Loop Clips carry stable keyId
+ * references only — no cache paths — so the collection serializes verbatim.
+ */
+export interface McePhysicPaintRotoLoopClip {
+  readonly loopId: string;
+  readonly placementStart: number;
+  readonly sourceKeyIds: readonly string[];
+  readonly repeat: number | 'infinity';
+  readonly mode: 'progressive' | 'static';
+}
+
 export interface McePhysicPaintRotoPhysicalDocument {
   readonly capacity: number;
   readonly realKeyRecords: readonly McePhysicPaintRotoPhysicalRecord[];
@@ -74,6 +87,11 @@ export interface McePhysicPaintRotoPhysicalDocument {
   readonly selectedKeyId: string | null;
   readonly cursorAppFrame: number;
   readonly revision: string;
+  /**
+   * Additive optional loopClips collection (D-29): v0.8.1-shaped documents
+   * without the member load as an empty loop collection with no migration.
+   */
+  readonly loopClips?: readonly McePhysicPaintRotoLoopClip[];
 }
 
 export interface McePhysicPaintOutput {

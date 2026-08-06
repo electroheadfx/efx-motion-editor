@@ -188,6 +188,39 @@ export interface PhysicPaintRotoPhysicalState {
 }
 
 /**
+ * Durable linked Loop Clip record (Phase 43, D-29/D-30/D-31).
+ *
+ * - `loopId`: stable Loop Clip identity, allocated like a keyId at an
+ *   explicit creation seam.
+ * - `placementStart`: first frame of THIS Loop Clip's presentation on the
+ *   destination timeline — the first source-cycle key frame for an original
+ *   loop, the chosen destination frame for a duplicated loop. Placement and
+ *   physical source location are two independent persisted identities; the
+ *   source location is derived separately from `sourceKeyIds`. Parsers never
+ *   derive or validate placement from source key frames.
+ * - `sourceKeyIds`: ordered stable source-cycle keyId references; the
+ *   collection length IS the cycle length. Dangling references are legal at
+ *   parse time and are preserved verbatim (D-31) — never dropped, normalized,
+ *   or rewritten at load.
+ * - `repeat`: finite positive integer or the explicit `'infinity'` state.
+ * - `mode`: source-cycle provenance for presentation (`'progressive'` or
+ *   `'static'`).
+ *
+ * Derived loop state (effective duration, next-clip boundary, repeat-instance
+ * mappings, resolved destination frames) is NEVER persisted (D-30).
+ */
+export interface PhysicPaintRotoLoopClip {
+  readonly loopId: string;
+  readonly placementStart: number;
+  readonly sourceKeyIds: readonly string[];
+  readonly repeat: number | 'infinity';
+  readonly mode: 'progressive' | 'static';
+}
+
+/** Immutable empty Loop Clip collection shared by every absent-means-empty read. */
+export const PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY: readonly PhysicPaintRotoLoopClip[] = Object.freeze([]);
+
+/**
  * Complete durable physical layer document used by project persistence and
  * standalone launch reconstruction. Generated interpolation cells and runtime
  * cache objects are deliberately absent.
@@ -198,6 +231,12 @@ export interface PhysicPaintRotoPhysicalDocument extends PhysicPaintRotoPhysical
   readonly selectedKeyId: string | null;
   readonly cursorAppFrame: number;
   readonly revision: string;
+  /**
+   * Additive linked Loop Clip collection (Phase 43, D-29). Always present on
+   * the reconstructed document; a persisted document without the member loads
+   * as the empty collection with no migration.
+   */
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
 }
 
 /** Immutable disabled interpolation default. */
@@ -266,6 +305,7 @@ const PHYSIC_PAINT_ROTO_GENERATED_CELL_KEYS = new Set(['kind', 'appFrame', 'left
 const PHYSIC_PAINT_ROTO_INTERPOLATION_STATE_KEYS = new Set(['enabled', 'mode']);
 const PHYSIC_PAINT_ROTO_SCRIPT_MOTION_KEYS = new Set(['deformation', 'position']);
 const PHYSIC_PAINT_ROTO_PHYSICAL_STATE_KEYS = new Set(['realKeyRecords', 'interpolation', 'scriptMotion']);
+const PHYSIC_PAINT_ROTO_LOOP_CLIP_KEYS = new Set(['loopId', 'placementStart', 'sourceKeyIds', 'repeat', 'mode']);
 const PHYSIC_PAINT_ROTO_PHYSICAL_DOCUMENT_KEYS = new Set([
   'capacity',
   'realKeyRecords',
@@ -275,6 +315,7 @@ const PHYSIC_PAINT_ROTO_PHYSICAL_DOCUMENT_KEYS = new Set([
   'selectedKeyId',
   'cursorAppFrame',
   'revision',
+  'loopClips',
 ]);
 const PHYSIC_PAINT_ROTO_BACKGROUND_KEYS = new Set(['background', 'paperGrain', 'grainStrength', 'color']);
 
@@ -408,6 +449,63 @@ export function isPhysicPaintRotoScriptMotionSettings(value: unknown): value is 
   if (!isRecord(value)) return false;
   if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_SCRIPT_MOTION_KEYS)) return false;
   return isPercentInteger(value.deformation) && isPercentInteger(value.position);
+}
+
+/**
+ * Strict guard for {@link PhysicPaintRotoLoopClip}.
+ *
+ * Rejects non-records, unknown members (including the superseded overloaded
+ * `canonicalStart` field name — there is no compatibility alias), missing
+ * fields, empty or malformed `sourceKeyIds`, non-positive/non-integer finite
+ * `repeat` values, any `repeat` other than a positive safe integer or the
+ * explicit string `'infinity'`, and unknown modes. Source keyIds are NOT
+ * validated against existing keys — dangling references are legal and
+ * preserved verbatim (D-31). `placementStart` is NOT derived from or checked
+ * against source key frames — placement and source location are independent
+ * identities.
+ */
+export function isPhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintRotoLoopClip {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_LOOP_CLIP_KEYS)) return false;
+  if (!isBoundedKeyId(value.loopId)) return false;
+  if (!isNonNegativeInteger(value.placementStart)) return false;
+  if (!Array.isArray(value.sourceKeyIds) || value.sourceKeyIds.length === 0) return false;
+  if (!value.sourceKeyIds.every(isBoundedKeyId)) return false;
+  if (value.repeat !== 'infinity') {
+    if (typeof value.repeat !== 'number' || !Number.isSafeInteger(value.repeat) || value.repeat < 1) return false;
+  }
+  return value.mode === 'progressive' || value.mode === 'static';
+}
+
+/**
+ * Reconstruct a fresh, deeply immutable Loop Clip collection from untrusted
+ * input. Preserves the persisted order and every source keyId reference
+ * verbatim (D-31); rejects duplicate `loopId` identities. Throws a closed
+ * validation failure on any structurally malformed input.
+ */
+export function parsePhysicPaintRotoLoopClips(value: unknown): readonly PhysicPaintRotoLoopClip[] {
+  if (!Array.isArray(value)) {
+    throw new Error('PhysicPaintRotoLoopClips: expected an array of Loop Clip records.');
+  }
+  const clips: PhysicPaintRotoLoopClip[] = [];
+  const seenLoopIds = new Set<string>();
+  for (const entry of value) {
+    if (!isPhysicPaintRotoLoopClip(entry)) {
+      throw new Error('PhysicPaintRotoLoopClips: malformed Loop Clip record.');
+    }
+    if (seenLoopIds.has(entry.loopId)) {
+      throw new Error(`PhysicPaintRotoLoopClips: duplicate loopId "${entry.loopId}".`);
+    }
+    seenLoopIds.add(entry.loopId);
+    clips.push(Object.freeze({
+      loopId: entry.loopId,
+      placementStart: entry.placementStart,
+      sourceKeyIds: Object.freeze([...entry.sourceKeyIds]),
+      repeat: entry.repeat,
+      mode: entry.mode,
+    }) as PhysicPaintRotoLoopClip);
+  }
+  return Object.freeze(clips);
 }
 
 /**
@@ -641,8 +739,30 @@ export function buildPhysicPaintRotoProjectEquality(value: unknown): string {
     `background:${encodeCanonicalBackground(document.background)}`,
     `selection:${document.selectedKeyId === null ? 'null;' : encodeCanonicalString(document.selectedKeyId)}`,
     `cursor:${encodeCanonicalNumber(document.cursorAppFrame)}`,
+    // D-29/D-31: two documents differing only in Loop Clips must never share
+    // the persisted save-cache key — the collection is part of layer equality.
+    `loops:${encodeCanonicalLoopClips(document.loopClips)}`,
   ].join('');
   return `project-${hashCanonicalPhysicalValue(source)}`;
+}
+
+/**
+ * Canonical Loop Clip encoding shared by persisted project equality and (in
+ * Plan 43-01 Task 2) the content revision fingerprint. Clips are ordered by
+ * stable `loopId`; `sourceKeyIds` encode in persisted order (order is the
+ * cycle definition, not a sort key).
+ */
+function encodeCanonicalLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): string {
+  const ordered = [...loopClips].sort((a, b) => a.loopId.localeCompare(b.loopId));
+  const encoded = ordered.map((clip) => [
+    encodeCanonicalString(clip.loopId),
+    encodeCanonicalNumber(clip.placementStart),
+    `ids:${clip.sourceKeyIds.length}:`,
+    ...clip.sourceKeyIds.map(encodeCanonicalString),
+    clip.repeat === 'infinity' ? encodeCanonicalString('infinity') : encodeCanonicalNumber(clip.repeat),
+    encodeCanonicalString(clip.mode),
+  ].join('')).join('');
+  return `${ordered.length}:${encoded}`;
 }
 
 /**
@@ -684,6 +804,12 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
   if (selectedRecord && selectedRecord.appFrame !== value.cursorAppFrame) {
     throw new Error('PhysicPaintRotoPhysicalDocument: selected identity and cursorAppFrame disagree.');
   }
+  // loopClips is the first genuinely optional document member (D-29): absent
+  // means the empty collection (v0.8.1-shaped documents load with no
+  // migration); present means parsed fail-closed.
+  const loopClips = value.loopClips === undefined
+    ? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY
+    : parsePhysicPaintRotoLoopClips(value.loopClips);
   const revision = buildPhysicPaintRotoPhysicalRevision(state.realKeyRecords, state.interpolation);
   if (value.revision !== revision) {
     throw new Error('PhysicPaintRotoPhysicalDocument: canonical revision mismatch.');
@@ -698,6 +824,7 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
     selectedKeyId: value.selectedKeyId,
     cursorAppFrame: value.cursorAppFrame,
     revision,
+    loopClips,
   });
 }
 

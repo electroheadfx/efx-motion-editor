@@ -29,7 +29,6 @@ import {
   isPhysicPaintRotoLoopClip,
   parsePhysicPaintRotoLoopClips,
   parsePhysicPaintRotoPhysicalDocument,
-  type PhysicPaintRotoLoopClip,
 } from './physicsPaintRotoPhysicalModel';
 import { isPhysicPaintRotoPhysicalEditApplyPayload } from '../../../types/physicPaint';
 import { loadPhysicPaintData, savePhysicPaintData } from '../../../lib/physicPaintPersistence';
@@ -245,7 +244,7 @@ describe('physicPaintPersistence loopClips save/reopen', () => {
   it('loads a v0.8.1-shaped persisted document (loopClips member absent) as an empty collection', async () => {
     const persisted = await savePhysicPaintData('/project', runtimeOutput(baseDocument([baseLoop()])));
     const legacy = JSON.parse(JSON.stringify(persisted)) as typeof persisted;
-    const legacyDocument = legacy[0].roto_physical as Record<string, unknown>;
+    const legacyDocument = legacy[0].roto_physical as unknown as Record<string, unknown>;
     delete legacyDocument.loopClips;
 
     const hydrated = await loadPhysicPaintData('/project', legacy);
@@ -269,11 +268,11 @@ describe('physicPaintPersistence loopClips save/reopen', () => {
   it('fails closed on a structurally malformed persisted loopClips member', async () => {
     const persisted = await savePhysicPaintData('/project', runtimeOutput(baseDocument([baseLoop()])));
     const malformed = JSON.parse(JSON.stringify(persisted)) as typeof persisted;
-    (malformed[0].roto_physical as Record<string, unknown>).loopClips = 'loops';
+    (malformed[0].roto_physical as unknown as Record<string, unknown>).loopClips = 'loops';
     await expect(loadPhysicPaintData('/project', malformed)).rejects.toThrow();
 
     const malformedRecord = JSON.parse(JSON.stringify(persisted)) as typeof persisted;
-    (malformedRecord[0].roto_physical as Record<string, unknown>).loopClips = [{ ...baseLoop(), canonicalStart: 0 }];
+    (malformedRecord[0].roto_physical as unknown as Record<string, unknown>).loopClips = [{ ...baseLoop(), canonicalStart: 0 }];
     await expect(loadPhysicPaintData('/project', malformedRecord)).rejects.toThrow();
   });
 });

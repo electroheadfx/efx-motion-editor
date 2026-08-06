@@ -11,9 +11,11 @@ import {
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPhysicalRevision,
   encodePhysicPaintRotoPhysicalContent,
+  parsePhysicPaintRotoLoopClips,
   parsePhysicPaintRotoPhysicalDocument,
   parsePhysicPaintRotoRealKeyRecordCollection,
   type PhysicPaintRotoInterpolationState,
+  type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { parseCanonicalPhysicsPaintLaunchValue } from '../components/physic-paint/bridge/physicsPaintLaunchContext';
@@ -607,6 +609,7 @@ function physicalEditResult(
     ...(options.error !== undefined ? { error: options.error } : {}),
     ...(payload.semanticDelta ? { semanticDelta: payload.semanticDelta } : {}),
     ...(payload.historyProvenance ? { historyProvenance: payload.historyProvenance } : {}),
+    ...(payload.loopClips !== undefined ? { loopClips: payload.loopClips } : {}),
   };
 }
 
@@ -657,6 +660,17 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     );
   } catch (error) {
     return reject(error instanceof Error ? error.message : 'Roto physical records are malformed.');
+  }
+  // Loop Clip threading (Phase 43, D-29/D-31): a commit carrying loopClips is
+  // validated fail-closed and delivered to the store apply path unchanged; a
+  // commit without the member preserves the layer's current collection.
+  let proposedLoopClips: readonly PhysicPaintRotoLoopClip[];
+  try {
+    proposedLoopClips = payload.loopClips === undefined
+      ? physicPaintStore.getRotoPhysicalLoopClips(payload.layerId)
+      : parsePhysicPaintRotoLoopClips(payload.loopClips);
+  } catch (error) {
+    return reject(error instanceof Error ? error.message : 'Roto physical Loop Clips are malformed.');
   }
   if ((payload.selectedKeyId === null) !== (payload.selectedAppFrame === null)) {
     return reject('Roto physical selection identity and frame must both be null or both be present.');
@@ -756,6 +770,7 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     selectedKeyId: payload.selectedKeyId,
     cursorAppFrame,
     revision: stagedRevision,
+    loopClips: proposedLoopClips,
   });
   const replaceResult = physicPaintStore.replaceRotoPhysicalDocument(payload.layerId, stagedDocument);
   if (!replaceResult.ok) return reject(replaceResult.error, stagedRevision);
@@ -1294,6 +1309,7 @@ export function createPhysicPaintLaunchContext(
       selectedKeyId: document.selectedKeyId,
       cursorAppFrame: document.cursorAppFrame,
       revision: document.revision,
+      loopClips: document.loopClips,
     },
   };
   const validated = parseCanonicalPhysicsPaintLaunchValue(context);

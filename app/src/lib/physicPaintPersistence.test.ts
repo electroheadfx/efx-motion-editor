@@ -104,6 +104,7 @@ describe('physicPaintPersistence', () => {
         selectedKeyId: null,
         cursorAppFrame: 0,
         revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation),
+        loopClips: [],
       },
     }];
 

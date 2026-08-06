@@ -7,12 +7,14 @@ import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 import type { PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+  PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPhysicalRevision,
   isPhysicPaintRotoInterpolationState,
   parsePhysicPaintRotoPhysicalDocument,
   parsePhysicPaintRotoRealKeyRecordCollection,
   type PhysicPaintRotoInterpolationState,
+  type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoPhysicalRenderSource,
   type PhysicPaintRotoRealKeyPayload,
@@ -88,6 +90,9 @@ const _rotoPhysicalScriptMotion = new Map<string, PhysicPaintRotoScriptMotionSet
 const _rotoPhysicalSelectedKeyId = new Map<string, string | null>();
 const _rotoPhysicalCursorAppFrame = new Map<string, number>();
 const _rotoPhysicalCapacity = new Map<string, number>();
+// Durable linked Loop Clip collections (Phase 43, D-29). Values are always
+// frozen parser output; mutation sites REPLACE the array, never edit in place.
+const _rotoPhysicalLoopClips = new Map<string, readonly PhysicPaintRotoLoopClip[]>();
 const _rotoPlaybackSettings = new Map<string, PhysicPaintRotoPlaybackSettings>();
 export const rotoPhysicalRevision = signal(0);
 
@@ -196,6 +201,7 @@ function _clearLayerState(layerId: string): boolean {
   changed = _rotoRealKeyRecords.delete(layerId) || changed;
   changed = _rotoPhysicalInterpolationState.delete(layerId) || changed;
   changed = _rotoPhysicalScriptMotion.delete(layerId) || changed;
+  changed = _rotoPhysicalLoopClips.delete(layerId) || changed;
   changed = _rotoPhysicalSelectedKeyId.delete(layerId) || changed;
   changed = _rotoPhysicalCursorAppFrame.delete(layerId) || changed;
   changed = _rotoPhysicalCapacity.delete(layerId) || changed;
@@ -744,6 +750,7 @@ export const physicPaintStore = {
           selectedKeyId,
           cursorAppFrame,
           revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation),
+          loopClips: this.getRotoPhysicalLoopClips(layerId),
         });
         return {
           layer_id: layerId,
@@ -775,6 +782,7 @@ export const physicPaintStore = {
     const nextPhysicalRecords = new Map<string, Map<string, PhysicPaintRotoRealKeyRecord>>();
     const nextPhysicalInterpolation = new Map<string, PhysicPaintRotoInterpolationState>();
     const nextPhysicalScriptMotion = new Map<string, PhysicPaintRotoScriptMotionSettings>();
+    const nextPhysicalLoopClips = new Map<string, readonly PhysicPaintRotoLoopClip[]>();
     const nextPhysicalSelection = new Map<string, string | null>();
     const nextPhysicalCursor = new Map<string, number>();
     const nextPhysicalCapacity = new Map<string, number>();
@@ -801,6 +809,7 @@ export const physicPaintStore = {
         nextPhysicalRecords.set(output.layer_id, new Map(physical.realKeyRecords.map((record) => [record.keyId, record])));
         nextPhysicalInterpolation.set(output.layer_id, physical.interpolation);
         nextPhysicalScriptMotion.set(output.layer_id, physical.scriptMotion);
+        nextPhysicalLoopClips.set(output.layer_id, physical.loopClips);
         nextPhysicalSelection.set(output.layer_id, physical.selectedKeyId);
         nextPhysicalCursor.set(output.layer_id, physical.cursorAppFrame);
         nextPhysicalCapacity.set(output.layer_id, physical.capacity);
@@ -835,6 +844,7 @@ export const physicPaintStore = {
     _rotoRealKeyRecords.clear();
     _rotoPhysicalInterpolationState.clear();
     _rotoPhysicalScriptMotion.clear();
+    _rotoPhysicalLoopClips.clear();
     _rotoPhysicalSelectedKeyId.clear();
     _rotoPhysicalCursorAppFrame.clear();
     _rotoPhysicalCapacity.clear();
@@ -847,6 +857,7 @@ export const physicPaintStore = {
     for (const [layerId, value] of nextPhysicalRecords) _rotoRealKeyRecords.set(layerId, value);
     for (const [layerId, value] of nextPhysicalInterpolation) _rotoPhysicalInterpolationState.set(layerId, value);
     for (const [layerId, value] of nextPhysicalScriptMotion) _rotoPhysicalScriptMotion.set(layerId, value);
+    for (const [layerId, value] of nextPhysicalLoopClips) _rotoPhysicalLoopClips.set(layerId, value);
     for (const [layerId, value] of nextPhysicalSelection) _rotoPhysicalSelectedKeyId.set(layerId, value);
     for (const [layerId, value] of nextPhysicalCursor) _rotoPhysicalCursorAppFrame.set(layerId, value);
     for (const [layerId, value] of nextPhysicalCapacity) _rotoPhysicalCapacity.set(layerId, value);
@@ -1113,7 +1124,7 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
@@ -1124,6 +1135,7 @@ export const physicPaintStore = {
     _rotoRealKeyRecords.clear();
     _rotoPhysicalInterpolationState.clear();
     _rotoPhysicalScriptMotion.clear();
+    _rotoPhysicalLoopClips.clear();
     _rotoPhysicalSelectedKeyId.clear();
     _rotoPhysicalCursorAppFrame.clear();
     _rotoPhysicalCapacity.clear();
@@ -1251,6 +1263,7 @@ export const physicPaintStore = {
     _rotoRealKeyRecords.set(layerId, new Map(document.realKeyRecords.map((record) => [record.keyId, record])));
     _rotoPhysicalInterpolationState.set(layerId, document.interpolation);
     _rotoPhysicalScriptMotion.set(layerId, document.scriptMotion);
+    _rotoPhysicalLoopClips.set(layerId, document.loopClips);
     _rotoPhysicalSelectedKeyId.set(layerId, document.selectedKeyId);
     _rotoPhysicalCursorAppFrame.set(layerId, document.cursorAppFrame);
     _rotoPhysicalCapacity.set(layerId, document.capacity);
@@ -1282,6 +1295,7 @@ export const physicPaintStore = {
       // 38.1-07: memoized structural read — identical revision string without
       // the per-read dataUrl-inclusive rehash.
       revision: this.getRotoPhysicalContentRevision(layerId)!,
+      loopClips: this.getRotoPhysicalLoopClips(layerId),
     });
   },
 
@@ -1340,6 +1354,15 @@ export const physicPaintStore = {
       if (record.appFrame === appFrame) return record;
     }
     return null;
+  },
+
+  /**
+   * Read the durable linked Loop Clip collection for a layer (Phase 43,
+   * D-29). Returns the shared frozen empty collection when no physical state
+   * has been published.
+   */
+  getRotoPhysicalLoopClips(layerId: string): readonly PhysicPaintRotoLoopClip[] {
+    return _rotoPhysicalLoopClips.get(layerId) ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
   },
 
   /**
@@ -1493,6 +1516,7 @@ export const physicPaintStore = {
     _rotoRealKeyRecords.delete(layerId);
     _rotoPhysicalInterpolationState.delete(layerId);
     _rotoPhysicalScriptMotion.delete(layerId);
+    _rotoPhysicalLoopClips.delete(layerId);
     _rotoPhysicalSelectedKeyId.delete(layerId);
     _rotoPhysicalCursorAppFrame.delete(layerId);
     _rotoPhysicalCapacity.delete(layerId);

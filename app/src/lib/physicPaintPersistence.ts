@@ -1,6 +1,7 @@
 import { exists, mkdir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs';
 import {
   buildPhysicPaintRotoProjectEquality,
+  isPhysicPaintRotoLoopClip,
   parsePhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -15,7 +16,7 @@ import { isPhysicPaintRenderedFrame, isPhysicPaintRotoPlaybackSettings, type Phy
 const PHYSIC_PAINT_CACHE_DIR = 'cache/physic-paint';
 const DATA_URL_PREFIX = 'data:image/png;base64,';
 const OUTPUT_KEYS = new Set(['layer_id', 'frames', 'roto_physical', 'roto_playback']);
-const PERSISTED_DOCUMENT_KEYS = new Set(['capacity', 'realKeyRecords', 'interpolation', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision']);
+const PERSISTED_DOCUMENT_KEYS = new Set(['capacity', 'realKeyRecords', 'interpolation', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips']);
 const PERSISTED_RECORD_KEYS = new Set(['kind', 'keyId', 'appFrame', 'payload']);
 const PERSISTED_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'cache_path', 'width', 'height']);
 
@@ -186,6 +187,15 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
         selectedKeyId: physical.selectedKeyId,
         cursorAppFrame: physical.cursorAppFrame,
         revision: physical.revision,
+        // Loop Clips carry stable keyId references only (no cache paths), so
+        // the collection serializes verbatim — dangling references included (D-31).
+        loopClips: physical.loopClips.map((clip) => ({
+          loopId: clip.loopId,
+          placementStart: clip.placementStart,
+          sourceKeyIds: [...clip.sourceKeyIds],
+          repeat: clip.repeat,
+          mode: clip.mode,
+        })),
       };
     }
     persistedOutputs.push({
@@ -216,6 +226,13 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
 function parsePersistedPhysicalDocument(value: unknown): McePhysicPaintRotoPhysicalDocument {
   if (!isPlainRecord(value) || !hasOnlyKeys(value, PERSISTED_DOCUMENT_KEYS) || !Array.isArray(value.realKeyRecords)) {
     throw new Error('Persisted physical Roto document has unknown or missing members.');
+  }
+  // loopClips is the optional additive member (D-29): absent means the empty
+  // collection (v0.8.1 shape); present means every record must pass the
+  // canonical fail-closed guard. Dangling source keyIds are preserved
+  // verbatim (D-31) — this check is structural only.
+  if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isPhysicPaintRotoLoopClip))) {
+    throw new Error('Persisted physical Roto document loopClips member is malformed.');
   }
   for (const record of value.realKeyRecords) {
     if (!isPlainRecord(record) || !hasOnlyKeys(record, PERSISTED_RECORD_KEYS) || record.kind !== 'real-key') {
@@ -261,6 +278,7 @@ async function hydratePhysicalDocument(projectDir: string, value: unknown): Prom
     selectedKeyId: persisted.selectedKeyId,
     cursorAppFrame: persisted.cursorAppFrame,
     revision: persisted.revision,
+    loopClips: persisted.loopClips,
   });
 }
 
