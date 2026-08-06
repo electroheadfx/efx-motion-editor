@@ -91,6 +91,31 @@ function countOccurrences(source: string, literal: string): number {
   return source.split(literal).length - 1;
 }
 
+// Phase 43 Plan 09 Task 3 (D-28, audit finding 6): the Studio consumes the
+// 'loop-placeholder' render-source variant explicitly — the playback
+// availability path excludes it without blocking, the display path falls back
+// to the established non-blocking clear, and the frame is never offered as
+// real key content.
+describe('Physics Paint Studio loop placeholder contract (D-28)', () => {
+  it('handles the placeholder variant explicitly in the playback availability memo', () => {
+    expect(studio).toContain("case 'loop-placeholder':");
+    // The placeholder frame never contributes playback payload.
+    expect(studio).not.toContain("source.kind !== 'loop-placeholder' ? [{ appFrame, frame: source.renderedFrame }]");
+  });
+
+  it('keeps the never-fallback exhaustiveness arm so a future render-source variant is a compile-time error', () => {
+    expect(studio).toContain('Unhandled Roto physical render-source kind');
+    expect(studio).toContain('const exhaustive: never = source');
+  });
+
+  it('never offers a placeholder frame as key content — key identity derives from the projection cell only', () => {
+    expect(studio).toContain("currentPhysicalCell.kind === 'real'");
+    // The current-frame selection kind has no placeholder arm: loop frames
+    // are not real cells, so they can never become key selections.
+    expect(studio).not.toContain("currentPhysicalCell.kind === 'loop-placeholder'");
+  });
+});
+
 describe('Physics Paint navigation render localization', () => {
   it('uses dedicated compat wrappers while keeping TopBar and Play Script dialog plain', () => {
     expect(topBar).toContain('export function PhysicsPaintTopBar(');

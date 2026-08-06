@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getOnionFrameOpacity, getRotoOnionAnchorDisplayFrame, projectRotoOnionPreviewFrames, type RotoOnionFrame } from './rotoOnionPreview';
+import type { PhysicPaintRotoPhysicalRenderSource, PhysicPaintRotoRealKeyRecord } from './physicsPaintRotoPhysicalModel';
 
 const frame = (appFrame: number, patch: Partial<RotoOnionFrame> = {}): RotoOnionFrame => ({ frameIndex: 0, appFrame, dataUrl: `frame-${appFrame}`, width: 10, height: 10, ...patch });
 
@@ -120,5 +121,57 @@ describe('rotoOnionPreview', () => {
     const input = { currentFrame: 5, onion: { enabled: true, previous: true, next: false, count: 1, opacity: 50 }, launchFrames: [frame(4), frame(6)] };
     expect(projectRotoOnionPreviewFrames({ ...input, isPlaying: true })).toEqual([]);
     expect(projectRotoOnionPreviewFrames({ ...input, isPlaying: false }).map((item) => item.frame)).toEqual([4]);
+  });
+
+  // Phase 43 Plan 09 Task 3 (D-28, audit finding 6): the 'loop-placeholder'
+  // render-source variant is excluded from onion projection explicitly; a
+  // future variant is a hard error at this consumer (never-fallback).
+  describe('loop placeholder exclusion (D-28, audit finding 6)', () => {
+    const realRecord = (keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord => ({
+      kind: 'real-key',
+      keyId,
+      appFrame,
+      payload: { frameIndex: 0, appFrame, dataUrl: `data:image/png;base64,${btoa(`onion:${appFrame}`)}` },
+    });
+    const realSource = (record: PhysicPaintRotoRealKeyRecord): PhysicPaintRotoPhysicalRenderSource => ({
+      kind: 'real',
+      layerId: 'layer-1',
+      appFrame: record.appFrame,
+      keyId: record.keyId,
+      contentRevision: 'rev-1',
+      cacheRevision: `rev-1:real:${record.keyId}`,
+      renderedFrame: record.payload,
+    });
+    const physicalInput = (getRenderSource: (appFrame: number) => PhysicPaintRotoPhysicalRenderSource | null) => ({
+      currentFrame: 2,
+      isPlaying: false,
+      onion: { enabled: true, previous: true, next: true, count: 3, opacity: 50 },
+      realKeyRecords: [realRecord('A', 0), realRecord('B', 4)],
+      getRenderSource,
+    });
+
+    it('never projects the loop placeholder variant as an onion candidate', () => {
+      const records = [realRecord('A', 0), realRecord('B', 4)];
+      const placeholder: PhysicPaintRotoPhysicalRenderSource = {
+        kind: 'loop-placeholder',
+        layerId: 'layer-1',
+        appFrame: 4,
+        loopId: 'loop-1',
+        placementStart: 0,
+        sourceKeyIds: ['A', 'missing-1'],
+        missingSourceKeyIds: ['missing-1'],
+      };
+      const result = projectRotoOnionPreviewFrames(physicalInput(
+        (appFrame) => appFrame === 4 ? placeholder : realSource(records[0]),
+      ));
+      // Only the real key at frame 0 projects; the placeholder at frame 4 is
+      // excluded — never onion content.
+      expect(result.map((item) => item.frame)).toEqual([0]);
+    });
+
+    it('never-fallback: a future unknown render-source variant is a hard error, never silently skipped', () => {
+      const forged = { kind: 'future-variant', layerId: 'layer-1', appFrame: 0 } as unknown as PhysicPaintRotoPhysicalRenderSource;
+      expect(() => projectRotoOnionPreviewFrames(physicalInput(() => forged))).toThrow(/Unhandled Roto physical render-source kind/);
+    });
   });
 });

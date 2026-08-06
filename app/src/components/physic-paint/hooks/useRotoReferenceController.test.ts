@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { PhysicPaintRotoPhysicalRenderSource } from '../roto/physicsPaintRotoPhysicalModel';
 import {
   createRotoReferenceLoader,
   findCachedRotoDisplayFrame,
@@ -143,5 +144,25 @@ describe('Roto reference controller', () => {
     expect(engine.clear).toHaveBeenCalledTimes(1);
     expect(engine.clearPreviewBaseImage).toHaveBeenCalledTimes(1);
     expect(engine.resetBackground).toHaveBeenCalledTimes(1);
+  });
+
+  it('excludes the loop placeholder variant from display/reference content (D-28, audit finding 6)', () => {
+    const placeholderSource = {
+      kind: 'loop-placeholder' as const,
+      layerId: 'layer-1',
+      appFrame: 6,
+      loopId: 'loop-1',
+      placementStart: 2,
+      sourceKeyIds: ['key-4', 'missing-1'],
+      missingSourceKeyIds: ['missing-1'],
+    };
+
+    expect(findCachedRotoDisplayFrame(6, { getPhysicalRenderSource: () => placeholderSource })).toBeNull();
+    expect(findCachedRotoReferenceFrame(6, { getPhysicalRenderSource: () => placeholderSource })).toBeNull();
+  });
+
+  it('never-fallback: a future unknown render-source variant is a hard error, never silent content', () => {
+    const forged = { kind: 'future-variant', layerId: 'layer-1', appFrame: 7 } as unknown as PhysicPaintRotoPhysicalRenderSource;
+    expect(() => findCachedRotoDisplayFrame(7, { getPhysicalRenderSource: () => forged })).toThrow(/Unhandled Roto physical render-source kind/);
   });
 });
