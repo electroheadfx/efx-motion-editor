@@ -44,7 +44,7 @@ revision_sources:
 ┌──────────────────────────────────────────────┐
 │ Row 1  Play Script          Max N · F0–F72   │  compact header
 ├──────────────────────────────────────────────┤
-│ Row 2  Mode  [ Progressive | Static · Hold ] │  full-width card
+│ Row 2  Mode  [ Progressive | Static / Hold ] │  full-width card
 │        helper line                           │
 ├──────────────────────┬───────────────────────┤
 │ Row 3  Timing        │  Color                │  two-column main grid;
@@ -60,6 +60,8 @@ revision_sources:
 - Motion wiggle is NEVER a separate full-width row and NEVER above Color.
 - Right-column stack (Color + gap + Motion wiggle) total height EQUALS the Timing card height; individual card heights may differ. If the stack needs more room, grow the shared row height for BOTH columns — never scroll.
 - Motion wiggle card: `Motion wiggle` heading with compact `Reset defaults` heading link; Deformation and Position as compact slider rows with visible numeric values; no unused vertical space.
+
+**Visual hierarchy / focal point:** the Mode segmented control is the first-read element (Row 2); `Generate` (accent primary in the footer) is the terminal focal anchor — the only large accent surface in the modal; supporting accent appears only on the checked segmented state, progress fill, and focus outlines. The 60/30/10 split: `--ps-surface`/`--ps-inset` dark neutrals dominate (~60%), cards/footer/inputs as secondary structure (~30%), accent reserved for the focal action and checked states (~10%).
 
 ---
 
@@ -108,7 +110,8 @@ Declared as CSS custom properties inside the Play Script modal scope only.
 | Modal title | 15px | 650 | `Play Script` in the compact header |
 | Section title | 12px | 650 | Card headings (`Mode`, `Timing`, `Color`, `Motion wiggle`) |
 | Segmented option | 12.5px | 600 | Mode/Color segmented buttons |
-| Input / button | 12.5px | 650 (buttons) | Text inputs, `Cancel`/`Generate` |
+| Input text | inherits modal base (13px) | 400 | Text inputs (`font: inherit` per the proposal — verbatim) |
+| Buttons | 12.5px | 650 | `Cancel`/`Generate` |
 | Field label | 11.5px | 600 | `Frames`/`Frames per cycle`, `Repeat`, slider-row labels, checkbox label |
 | Body/helper | 12px | 400 | Mode helper line, color panes, summary bar |
 | Hint | 11px | 400 | Field hints (`Positive integer or Max.`) |
@@ -246,11 +249,11 @@ Applicable state considerations resolved: 13 covered, 0 backstops, 16 dismissed,
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: pending re-check (2026-08-06 final visual correction)
-- [ ] Dimension 2 Visuals: pending re-check (2026-08-06 final visual correction)
-- [ ] Dimension 3 Color: pending re-check (2026-08-06 final visual correction)
-- [ ] Dimension 4 Typography: pending re-check (2026-08-06 final visual correction)
-- [ ] Dimension 5 Spacing: pending re-check (2026-08-06 final visual correction)
-- [ ] Dimension 6 Registry Safety: pending re-check (2026-08-06 final visual correction)
+- [x] Dimension 1 Copywriting: PASS (re-checked 2026-08-06; ASCII diagram glyph aligned to D-05)
+- [x] Dimension 2 Visuals: PASS (re-checked 2026-08-06; focal point declared — `Generate` terminal anchor)
+- [x] Dimension 3 Color: PASS (re-checked 2026-08-06; 60/30/10 declared; tokens verified verbatim vs proposal)
+- [x] Dimension 4 Typography: PASS (re-checked 2026-08-06; input size reconciled to the proposal's `font: inherit`)
+- [x] Dimension 5 Spacing: PASS (re-checked 2026-08-06)
+- [x] Dimension 6 Registry Safety: PASS (re-checked 2026-08-06)
 
-**Approval history:** approved 2026-08-05; re-approved 2026-08-06 (proposal layout + live color, 6/6 PASS). **2026-08-06 (2):** final visual correction — compact dark modal overlay (Image #153 target / Image #154 rejected), Timing-left / Color-over-Motion-right grid, no-scroll compact fit (D-16 final / D-19) — pending gsd-ui-checker re-approval.
+**Approval history:** approved 2026-08-05; re-approved 2026-08-06 (proposal layout + live color). **2026-08-06 (2):** final visual correction — compact dark modal overlay (Image #153 target / Image #154 rejected), Timing-left / Color-over-Motion-right grid, no-scroll compact fit (D-16 final / D-19) — re-approved 2026-08-06 (gsd-ui-checker), 6/6 PASS, no FLAGs remaining.
