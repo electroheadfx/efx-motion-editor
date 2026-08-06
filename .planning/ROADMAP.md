@@ -160,7 +160,7 @@ Plans:
 **Wave 1**
 
 - [x] 43-01-PLAN.md — Tracer: loopClips persistence gauntlet (four allowlists, placementStart identity) + revision/snapshot integration with Undo AND Redo proofs (HOLD-05)
-- [ ] 43-04-PLAN.md — HOLD-01..04 hardening specs: determinism, adjacent ranges, commit atomicity, single raster; test-only with bounded deviation protocol (HOLD-01..04)
+- [x] 43-04-PLAN.md — HOLD-01..04 hardening specs: determinism, adjacent ranges, commit atomicity, single raster; test-only with bounded deviation protocol (HOLD-01..04)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -360,5 +360,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 40. macOS Icon + Build Hygiene | v0.9.0 | 3/3 | Complete    | 2026-08-04 |
 | 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | Complete    | 2026-08-05 |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
-| 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 1/10 | In Progress|  |
+| 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 2/10 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |

@@ -49,10 +49,10 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Deterministic Static/Hold Rendering
 
-- [ ] **HOLD-01**: Every static/hold destination frame receives the complete script stroke set, supporting progressive-then-hold workflows on adjacent ranges
-- [ ] **HOLD-02**: Static/hold reuses the deterministic Script Motion model — zero variation produces a stable held drawing; nonzero variation is deterministic per frame; identical inputs produce identical output across save/reopen and cache regeneration; no random render-time jitter
-- [ ] **HOLD-03**: Static/hold reuses the existing commit path (engine init, existing-frame merge, PNG alpha encoding, staged real-key creation, capacity/memory validation, progress, cancellation, authority/revision checks, atomic commit, undo/redo); no cancellation or failure leaves a partial destination range
-- [ ] **HOLD-04**: Generated keys remain paint content of the opened parent Paint layer; the main editor composites one resolved Paint raster per frame
+- [x] **HOLD-01**: Every static/hold destination frame receives the complete script stroke set, supporting progressive-then-hold workflows on adjacent ranges
+- [x] **HOLD-02**: Static/hold reuses the deterministic Script Motion model — zero variation produces a stable held drawing; nonzero variation is deterministic per frame; identical inputs produce identical output across save/reopen and cache regeneration; no random render-time jitter
+- [x] **HOLD-03**: Static/hold reuses the existing commit path (engine init, existing-frame merge, PNG alpha encoding, staged real-key creation, capacity/memory validation, progress, cancellation, authority/revision checks, atomic commit, undo/redo); no cancellation or failure leaves a partial destination range
+- [x] **HOLD-04**: Generated keys remain paint content of the opened parent Paint layer; the main editor composites one resolved Paint raster per frame
 - [x] **HOLD-05**: Loop Clips persist as canonical linked loop regions (not duplicated durable assets) with modulo source resolution, half-open interval boundaries, next-clip priority with full/partial cycle interruption, re-expansion when the next clip moves/is removed, and source-frame edits propagating to every linked occurrence
 - [ ] **HOLD-06**: The timeline filmstrip capsule shows the detailed source cycle, a linked-repetition band, `Cycle Nf × R = Df` / `× ∞` badges, requested vs effective duration, and the English label `Loop shortened by next clip` on truncation (the earlier French truncation label is superseded as of 2026-08-06 and must not ship; the term `clip bloquant` remains prohibited in every language)
 
@@ -122,10 +122,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PLAY-02 | Phase 42 | Complete |
 | PLAY-03 | Phase 42 | Complete |
 | PLAY-04 | Phase 42 | Complete |
-| HOLD-01 | Phase 43 | Pending |
-| HOLD-02 | Phase 43 | Pending |
-| HOLD-03 | Phase 43 | Pending |
-| HOLD-04 | Phase 43 | Pending |
+| HOLD-01 | Phase 43 | Complete |
+| HOLD-02 | Phase 43 | Complete |
+| HOLD-03 | Phase 43 | Complete |
+| HOLD-04 | Phase 43 | Complete |
 | HOLD-05 | Phase 43 | Complete |
 | HOLD-06 | Phase 43 | Pending |
 | REL-01 | Phase 44 | Pending |
