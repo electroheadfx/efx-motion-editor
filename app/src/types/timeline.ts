@@ -41,6 +41,39 @@ export interface TrackLayout {
   glTransition?: GlTransition;
 }
 
+/** One first-cycle source cell of a Loop Clip capsule (Phase 43, D-15).
+ *  `realKeyBacked` is true iff a real source key exists at this presentation
+ *  frame (an original loop whose placement overlaps its source keys);
+ *  duplicated-loop first-cycle cells are linked/virtual — they carry the
+ *  shared source thumbnail but never a real-key diamond. */
+export interface TimelineLoopCapsuleSourceCell {
+  sourceKeyId: string;
+  sourceAppFrame: number | null;  // null when the source reference dangles (D-31)
+  dataUrl: string | null;         // real-key payload dataUrl; null when dangling
+  realKeyBacked: boolean;
+}
+
+/** ONE compact interval model per Loop Clip for the filmstrip capsule
+ *  (Phase 43, HOLD-06, D-32). Derived from the 43-02 resolver interval
+ *  records through the store — never recomputed by the renderer, never a
+ *  per-frame list of virtual occurrences. Frames are layer-local physical
+ *  appFrames (same convention as `rotoKeyFrames`). */
+export interface TimelineLoopCapsule {
+  loopId: string;
+  placementStart: number;              // first presentation frame of THIS loop (D-24 identity)
+  cycleLength: number;
+  repeat: number | 'infinity';
+  requestedEnd: number | 'infinity';   // placementStart + cycleLength × repeat, or 'infinity'
+  effectiveEnd: number;                // exclusive; D-24/D-25 derived by the resolver
+  truncated: boolean;
+  partialCycle: boolean;               // mid-cycle truncation vs exact cycle boundary (D-21)
+  boundaryKind: 'real-key' | 'loop-start' | 'parent-end';
+  boundaryFrame: number;
+  mode: 'progressive' | 'static';      // source-cycle provenance (D-29)
+  unresolved: { missingSourceKeyIds: readonly string[] } | null;  // D-31 verbatim
+  firstCycleCells: readonly TimelineLoopCapsuleSourceCell[];
+}
+
 /** Layout info for an FX or content-overlay sequence range bar in the timeline */
 export interface FxTrackLayout {
   sequenceId: string;
@@ -55,6 +88,7 @@ export interface FxTrackLayout {
   layerType?: LayerType;      // used to distinguish static-image/image-sequence/video for color and rendering decisions
   playScriptMarkers?: TimelinePlayScriptMarker[]; // saved Play ranges nested inside physic-paint FX bars
   rotoKeyFrames?: number[]; // layer-local physical appFrames of real Roto keys (C-04 markers)
+  loopCapsules?: TimelineLoopCapsule[]; // resolver-derived Loop Clip capsule models (Phase 43, HOLD-06)
   fadeIn?: { duration: number };
   fadeOut?: { duration: number };
 }

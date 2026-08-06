@@ -176,7 +176,8 @@ describe('frameMap loopCapsules feed (43-02 derivation through the store)', () =
       keyId,
       appFrame,
       kind: 'real-key' as const,
-      payload: { frameIndex: 0, appFrame, dataUrl: `data:image/png;base64,AAAA${appFrame}` },
+      // Valid base64 payload (the model guard rejects malformed dataUrls).
+      payload: { frameIndex: 0, appFrame, dataUrl: `data:image/png;base64,${String(appFrame).padStart(4, 'A')}` },
     };
   }
 
@@ -280,7 +281,7 @@ describe('frameMap loopCapsules feed (43-02 derivation through the store)', () =
     expect(capsule.firstCycleCells.map((cell) => cell.sourceKeyId)).toEqual(['key-0', 'key-1', 'key-2', 'key-3', 'key-4']);
     expect(capsule.firstCycleCells.every((cell) => cell.realKeyBacked)).toBe(true);
     expect(capsule.firstCycleCells.map((cell) => cell.dataUrl)).toEqual(
-      [0, 1, 2, 3, 4].map((frame) => `data:image/png;base64,AAAA${frame}`),
+      [0, 1, 2, 3, 4].map((frame) => `data:image/png;base64,${String(frame).padStart(4, 'A')}`),
     );
     // Never a per-frame list of virtual occurrences (D-32).
     expect(JSON.stringify(Object.keys(capsule))).not.toContain('frames');

@@ -3,9 +3,11 @@ import {sequenceStore} from '../stores/sequenceStore';
 import {audioStore} from '../stores/audioStore';
 import {physicPaintStore, physicPaintVersion} from '../stores/physicPaintStore';
 import {audioPeaksCache, peaksCacheRevision} from './audioPeaksCache';
-import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange} from '../types/timeline';
+import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange, TimelineLoopCapsule} from '../types/timeline';
 import type {GlTransition, Sequence} from '../types/sequence';
 import type {Layer, LayerType, EasingType} from '../types/layer';
+import {derivePhysicPaintRotoLoopRanges} from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
+import type {PhysicPaintRotoLoopResolutionContext} from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 
 /** Flattened frame array: every frame maps to a sequence, key photo, and image (GLOBAL).
  *  Cross dissolve does NOT shorten the timeline — both sequences keep all their frames.
@@ -121,8 +123,85 @@ function getLayerId(layer: Layer): string {
   return layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
 }
 
-function getPhysicPaintRotoDisplayEndFrame(layerId: string): number | null {
-  return physicPaintStore.getRotoPhysicalEndFrame(layerId);
+/** Main-editor parent end for a physic-paint layer (43-03 flag seam): the
+ *  FX sequence's AUTHORED span in layer-local frames — D-25 dynamic parent-end
+ *  tracking. Deliberately NOT the roto-extended outFrame (that would make the
+ *  loop's effective end circularly depend on itself). */
+function getPhysicPaintAuthoredSpanFrames(seq: Sequence): number {
+  const start = seq.inFrame ?? 0;
+  const end = seq.outFrame ?? 100; // same fallback as getTimelineOverlaySequenceOutFrame
+  return Math.max(0, end - start);
+}
+
+/** The 43-02 interval derivation read through the store with the main-editor
+ *  parent end (D-25). Returns null when the layer has no Loop Clips — the
+ *  caller then keeps pre-43 behavior exactly. */
+function deriveMainEditorLoopRanges(layer: Layer, seq: Sequence): PhysicPaintRotoLoopResolutionContext | null {
+  const layerId = getLayerId(layer);
+  const loopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId);
+  if (loopClips.length === 0) return null;
+  const records = physicPaintStore.getRotoRealKeyRecords(layerId);
+  return derivePhysicPaintRotoLoopRanges({
+    identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+    loopClips,
+    parentEndExclusive: getPhysicPaintAuthoredSpanFrames(seq),
+    capacity: physicPaintStore.getRotoPhysicalCapacity(layerId),
+  });
+}
+
+/** Loop-aware display end frame on the main editor: max(last real key + 1,
+ *  max loop effective end) with the sequence-authored parent end (D-25).
+ *  Falls back to the store's capacity-bounded read when no loops exist. */
+function getPhysicPaintRotoDisplayEndFrame(layer: Layer, seq: Sequence): number | null {
+  const loopContext = deriveMainEditorLoopRanges(layer, seq);
+  if (!loopContext) return physicPaintStore.getRotoPhysicalEndFrame(getLayerId(layer));
+  const records = physicPaintStore.getRotoRealKeyRecords(getLayerId(layer));
+  const lastRealEnd = records.length === 0 ? null : records[records.length - 1].appFrame + 1;
+  let loopEnd: number | null = null;
+  for (const range of loopContext.ranges) {
+    loopEnd = loopEnd === null ? range.effectiveEnd : Math.max(loopEnd, range.effectiveEnd);
+  }
+  if (lastRealEnd === null && loopEnd === null) return null;
+  return Math.max(lastRealEnd ?? 0, loopEnd ?? 0);
+}
+
+/** ONE compact capsule model per Loop Clip (D-32) — the resolver-derived
+ *  interval plus per-first-cycle-cell real-key-backed classification and
+ *  source payload dataUrls for ThumbnailCache drawing (D-15). */
+function buildTimelineLoopCapsules(layer: Layer, seq: Sequence): TimelineLoopCapsule[] | undefined {
+  const context = deriveMainEditorLoopRanges(layer, seq);
+  if (!context) return undefined;
+  const layerId = getLayerId(layer);
+  const records = physicPaintStore.getRotoRealKeyRecords(layerId);
+  const recordByKeyId = new Map(records.map((record) => [record.keyId, record]));
+  const keyIdAtFrame = new Map(records.map((record) => [record.appFrame, record.keyId]));
+  const clipById = new Map(physicPaintStore.getRotoPhysicalLoopClips(layerId).map((clip) => [clip.loopId, clip]));
+  return context.ranges.map((range) => ({
+    loopId: range.loopId,
+    placementStart: range.placementStart,
+    cycleLength: range.cycleLength,
+    repeat: range.repeat,
+    requestedEnd: range.requestedEnd,
+    effectiveEnd: range.effectiveEnd,
+    truncated: range.truncated,
+    partialCycle: range.partialCycle,
+    boundaryKind: range.boundary.kind,
+    boundaryFrame: range.boundary.frame,
+    mode: clipById.get(range.loopId)?.mode ?? 'progressive',
+    unresolved: range.unresolved,
+    firstCycleCells: range.sourceKeyIds.map((sourceKeyId, index) => {
+      const record = recordByKeyId.get(sourceKeyId);
+      return {
+        sourceKeyId,
+        sourceAppFrame: record?.appFrame ?? null,
+        dataUrl: record?.payload.dataUrl ?? null,
+        // Real-key-backed iff THIS source key is the real key living at this
+        // presentation frame (original loop); a duplicated loop's placement
+        // frames hold no source keys, so its first-cycle cells stay linked (D-15).
+        realKeyBacked: keyIdAtFrame.get(range.placementStart + index) === sourceKeyId,
+      };
+    }),
+  }));
 }
 
 function getTimelineRequiredFrameCount(sequences: readonly Sequence[], contentFrameCount: number): number {
@@ -134,7 +213,7 @@ function getTimelineRequiredFrameCount(sequences: readonly Sequence[], contentFr
     required = Math.max(required, seqEnd);
     for (const layer of seq.layers) {
       if (layer.type !== 'physic-paint') continue;
-      const rotoEnd = getPhysicPaintRotoDisplayEndFrame(getLayerId(layer));
+      const rotoEnd = getPhysicPaintRotoDisplayEndFrame(layer, seq);
       if (rotoEnd !== null) required = Math.max(required, seqStart + rotoEnd);
     }
   }
@@ -146,7 +225,7 @@ export function getTimelineOverlaySequenceOutFrame(seq: Sequence, fallbackOutFra
   const startFrame = seq.inFrame ?? 0;
   for (const layer of seq.layers) {
     if (layer.type !== 'physic-paint') continue;
-    const rotoEnd = getPhysicPaintRotoDisplayEndFrame(getLayerId(layer));
+    const rotoEnd = getPhysicPaintRotoDisplayEndFrame(layer, seq);
     if (rotoEnd !== null) outFrame = Math.max(outFrame, startFrame + rotoEnd);
   }
   return outFrame;
@@ -196,6 +275,9 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       layerType: primaryLayer?.type,
       rotoKeyFrames: primaryLayer?.type === 'physic-paint'
         ? physicPaintStore.getRotoRealKeyRecords(getLayerId(primaryLayer)).map((record) => record.appFrame)
+        : undefined,
+      loopCapsules: primaryLayer?.type === 'physic-paint'
+        ? buildTimelineLoopCapsules(primaryLayer, seq)
         : undefined,
       fadeIn: seq.fadeIn ? { duration: seq.fadeIn.duration } : undefined,
       fadeOut: seq.fadeOut ? { duration: seq.fadeOut.duration } : undefined,
