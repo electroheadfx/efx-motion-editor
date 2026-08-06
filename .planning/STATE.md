@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43
 current_phase_name: hold-loop-clips-filmstrip-capsule
 status: executing
-stopped_at: Completed 43-05-PLAN.md
-last_updated: "2026-08-06T22:07:40.887Z"
+stopped_at: Completed 43-07-PLAN.md
+last_updated: "2026-08-06T22:32:43.408Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 43 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 24
-  completed_plans: 19
+  completed_plans: 20
   percent: 50
 ---
 
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43 (hold-loop-clips-filmstrip-capsule) — EXECUTING
-Plan: 6 of 10
+Plan: 7 of 10
 Status: Ready to execute
 Last activity: 2026-08-06 — Phase 43 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 runs an UNSIGNED packaged-app smoke (capsule, loop-edit dialog, valid preview, unresolved placeholder, valid PNG export, unresolved export block — no signing material accessed). Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [████████░░] 79%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
@@ -176,6 +176,7 @@ Progress: [████████░░] 79%
 | Phase 43 P02 | 28min | 3 tasks | 13 files |
 | Phase 43 P03 | 27min | 2 tasks | 8 files |
 | Phase 43 P05 | 28min | 2 tasks | 7 files |
+| Phase 43 P07 | ~15min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -224,6 +225,8 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43-05: loop-aware guard idiom — optional loopClips on the resolver edit input (absent = pre-43 behavior); D-07 N counts every loop referencing the key; D-11 full-timeline Force Spacing rejects on any linked source key, scoped only on linked members
 - [Phase ?]: 43-05: rigid whole-cycle drag carries nextLoopClips on the proposal (nextRecords precedent) — original loops follow, duplicated loops keep placementStart; coordinator stages proposal.nextLoopClips atomically
 - [Phase ?]: 43-05: D-06 preflight lives in the resolver as derivePhysicPaintRotoLoopShortenPreflight (Pitfall 4); controller exposes advisory loopShortenPreflight signal fed by the open-time authority snapshot, refreshed inside confirm()
+- [Phase ?]: 43-07: main-editor parent end = FX sequence authored span (never the roto-extended outFrame — avoids circular infinity-loop ends); shared by the capsule feed and the loop-aware display end frame (D-25, closes 43-03 flag)
+- [Phase ?]: 43-07: capsule realKeyBacked = source-key identity at the presentation frame; state paint precedence implemented by paint order (hover → diagonal → selected → focus → error), paint only never geometry (D-15/D-23)
 
 ### Pending Todos
 
@@ -406,8 +409,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-06T22:07:40.878Z
-Stopped at: Completed 43-05-PLAN.md
+Last session: 2026-08-06T22:32:33.155Z
+Stopped at: Completed 43-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
