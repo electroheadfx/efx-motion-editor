@@ -41,10 +41,13 @@ import type { RotoPlayScriptController, RotoPlayScriptMode } from '../roto/physi
 const source = readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
 const cssSource = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
 
+// Strip comments so selector extraction is not confused by leading block comments.
+const cssRules = cssSource.replace(/\/\*[\s\S]*?\*\//g, '');
+
 // Extract every CSS rule block whose selector lives in the .physics-paint-play-script-* scope
 // (modal-scoped contract, D-19 — surrounding Paint UI rules are excluded by construction).
 function playScriptCssScope(): string {
-  return cssSource
+  return cssRules
     .split('}')
     .filter((chunk) => chunk.includes('physics-paint-play-script'))
     .map((chunk) => `${chunk}}`)
@@ -53,7 +56,7 @@ function playScriptCssScope(): string {
 
 // Extract the single rule block for one exact selector inside the play-script scope.
 function playScriptCssRule(selector: string): string {
-  const chunk = cssSource
+  const chunk = cssRules
     .split('}')
     .find((block) => block.includes('{') && block.split('{')[0].trim() === selector);
   expect(chunk, `missing CSS rule for ${selector}`).toBeTruthy();
@@ -243,9 +246,9 @@ describe('PhysicsPaintPlayScriptDialog modal overlay shell (D-19)', () => {
     const { controller } = createFakeController();
     const tree = renderDialog(controller);
     const root = findOne(tree, (vnode) => vnode.props?.role === 'dialog');
-    expect(root.props['aria-modal']).toBe(true);
+    expect(root.props['aria-modal']).toBe('true');
     const backdrop = findOne(root, byClass('physics-paint-play-script-backdrop'));
-    expect(backdrop.props['aria-hidden']).toBe(true);
+    expect(backdrop.props['aria-hidden']).toBe('true');
     // Backdrop is NOT wired to close — Cancel/Escape/success only (D-17/D-19).
     expect(backdrop.props.onClick).toBeUndefined();
     // The modal surface is a sibling of the backdrop, directly under the overlay root.

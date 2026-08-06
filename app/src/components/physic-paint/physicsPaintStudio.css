@@ -1218,314 +1218,307 @@ button.destructive {
 .physics-paint-scripts-summary-line1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #aeb5be; font-size: 10px; }
 .physics-paint-scripts-summary-line2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #eef1f4; font-size: 12px; }
 .physics-paint-script-confirmation { position: absolute; inset: 44px 4px auto; z-index: 8; display: flex; flex-direction: column; gap: 8px; max-height: calc(100% - 52px); padding: 12px; border: 1px solid #737980; border-radius: 7px; overflow: auto; background: #292b2d; box-shadow: 0 12px 28px rgba(0,0,0,.45); font-size: 11px; }
+/* ================= Play Script modal (D-19) =================
+   Compact independent DARK modal overlay above the Paint interface: out-of-flow fixed
+   positioning (never occupies the canvas grid cell, never resizes the Paint layout),
+   dimmed backdrop, and the proposal-derived --ps-* token set declared on the modal
+   scope only — the old light Play Script palette is fully removed from this scope.
+   NO scrolling anywhere: the compact layout, not an overflow region, solves the fit. */
 .physics-paint-play-script-dialog {
-  position: relative;
-  z-index: 12;
-  grid-row: 2;
-  grid-column: 2;
-  align-self: stretch;
-  justify-self: stretch;
-  display: flex;
-  min-width: 0;
-  min-height: 0;
+  --ps-surface: oklch(0.215 0.008 260);
+  --ps-raised: oklch(0.255 0.009 260);
+  --ps-inset: oklch(0.165 0.006 260);
+  --ps-foot: oklch(0.295 0.010 260);
+  --ps-fg: oklch(0.93 0.005 260);
+  --ps-muted: oklch(0.62 0.012 260);
+  --ps-faint: oklch(0.47 0.012 260);
+  --ps-border: oklch(0.32 0.009 260);
+  --ps-accent: oklch(0.60 0.19 262);
+  --ps-accent-hi: oklch(0.66 0.19 262);
+  --ps-ok: oklch(0.72 0.15 150);
+  --ps-error: oklch(0.70 0.19 25);
+  --ps-radius: 10px;
+  position: fixed;
   inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  color: var(--ps-fg);
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+}
+
+/* Dimmed backdrop between the Paint UI and the modal — visual only, never wired to
+   close (Cancel/Escape/success only, D-17/D-19). */
+.physics-paint-play-script-backdrop {
+  position: absolute;
+  inset: 0;
+  background: oklch(0 0 0 / 0.55);
+}
+
+/* Modal shell: 700px compact dark card, flex column, overflow hidden (proposal metrics). */
+.physics-paint-play-script-surface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 700px;
+  max-width: 94%;
+  max-height: 96%;
+  border: 1px solid var(--ps-border);
+  border-radius: 14px;
+  background: var(--ps-surface);
+  box-shadow: 0 24px 64px oklch(0 0 0 / 0.6), 0 2px 8px oklch(0 0 0 / 0.4);
   overflow: hidden;
 }
 
-.physics-paint-play-script-surface {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: 18px;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  padding: clamp(24px, 4vw, 52px);
-  border: 1px solid #d8d4ca;
-  background: #f7f5ef;
-  color: #20242a;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.3);
-}
-
-/* D-16: the dialog body is a two-column card grid; Mode/Motion wiggle/summary bar span both
-   columns. Only the body scrolls (overflow contract below). */
-.physics-paint-play-script-content {
-  display: grid;
-  flex: 1 1 auto;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-content: start;
-  gap: 16px;
-  min-width: 0;
-  min-height: 0;
-  padding-right: 4px;
-  overflow-y: auto;
-}
-
-.physics-paint-play-script-content strong {
-  color: #171a1f;
-  font-size: clamp(24px, 3vw, 36px);
-  font-weight: 700;
-  line-height: 1.1;
-}
-
-.physics-paint-play-script-content label {
-  color: #343a42;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.physics-paint-play-script-content input {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-}
-
-.physics-paint-play-script-content input {
-  min-height: 42px;
-  padding: 8px 10px;
-  border: 1px solid #a9afb7;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #20242a;
-  font-size: 16px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Fixed footer (D-16): progress line + Cancel/Generate stay outside the scroll region. */
-.physics-paint-play-script-footer {
-  display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-}
-
-.physics-paint-play-script-footer progress {
-  box-sizing: border-box;
-  width: 100%;
-  height: 12px;
-  accent-color: #365ed6;
-}
-
-.physics-paint-play-script-content .physics-paint-script-inline-error {
-  color: #a12f37;
-  font-size: 12px;
-}
-
-.physics-paint-play-script-actions {
-  display: flex;
-  flex: 0 0 auto;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.physics-paint-play-script-actions button {
-  min-width: 112px;
-}
-
-/* Phase 42-03 additions — additive rules only; pre-existing dialog rules above stay untouched. */
-
-/* Overflow structure (UI-SPEC E1): the surface is bounded to its grid/viewport container, only
-   .physics-paint-play-script-content scrolls vertically, and the header (title/mode context)
-   plus the action row stay outside the scroll region. */
-.physics-paint-play-script-surface { max-height: 100%; }
-
+/* Compact header (D-16 Row 1): title left, Max range right, 1px bottom border. */
 .physics-paint-play-script-header {
   display: flex;
   flex: 0 0 auto;
-  flex-direction: column;
-  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
   min-width: 0;
+  padding: 15px 20px 13px;
+  border-bottom: 1px solid var(--ps-border);
 }
 
 .physics-paint-play-script-header strong {
-  color: #171a1f;
-  font-size: clamp(24px, 3vw, 36px);
-  font-weight: 700;
-  line-height: 1.1;
+  color: var(--ps-fg);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
 }
 
-.physics-paint-play-script-content { overflow-x: hidden; }
+.physics-paint-play-script-header-range {
+  color: var(--ps-muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
-/* Cards (D-16): white chrome on the light surface using the existing token pair; the 16px
-   internal padding/grid gap follows the 42-UI-SPEC spacing scale (md). */
+/* Body (D-16): two-column card grid; Mode/Motion wiggle/summary bar span both columns.
+   NO overflow region — the compact metrics make every row fit at minimum window size. */
+.physics-paint-play-script-content {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: 1fr 1fr;
+  align-content: start;
+  gap: 14px 24px;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 20px 16px;
+}
+
 .physics-paint-play-script-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   min-width: 0;
-  padding: 16px;
-  border: 1px solid #d8d4ca;
-  border-radius: 6px;
-  background: #ffffff;
+  padding: 11px 13px 12px;
+  border: 1px solid var(--ps-border);
+  border-radius: var(--ps-radius);
 }
 
 .physics-paint-play-script-card-wide { grid-column: 1 / -1; }
 
 .physics-paint-play-script-card-title {
-  color: #343a42;
+  margin-bottom: 9px;
+  color: var(--ps-fg);
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 650;
+  letter-spacing: 0.01em;
 }
 
 .physics-paint-play-script-card-heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
+  margin-bottom: 9px;
 }
 
-/* 'Reset defaults' heading link (D-16): 12px secondary, underline — never a filled button. */
+.physics-paint-play-script-card-heading .physics-paint-play-script-card-title { margin-bottom: 0; }
+
+/* 'Reset defaults' heading link (D-06): 11px muted underline — never a filled button. */
 .physics-paint-play-script-heading-link {
+  margin-left: auto;
   padding: 0;
   border: 0;
   background: transparent;
-  color: #343a42;
-  font-size: 12px;
+  color: var(--ps-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
   text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ps-faint);
   cursor: pointer;
 }
 
-/* Segmented mode control (D-05): white track, checked segment in the reserved accent. */
+.physics-paint-play-script-heading-link:hover:not(:disabled) { color: var(--ps-fg); text-decoration-color: var(--ps-fg); }
+.physics-paint-play-script-heading-link:disabled { opacity: 0.45; cursor: default; }
+
+/* Segmented controls (D-05/D-08R): inset track, checked segment in the reserved accent. */
 .physics-paint-play-script-mode-group {
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid #a9afb7;
-  border-radius: 6px;
-  background: #ffffff;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--ps-border);
+  border-radius: var(--ps-radius);
+  background: var(--ps-inset);
 }
 
 .physics-paint-play-script-mode-option {
-  flex: 1 1 0;
   min-width: 0;
-  padding: 8px 10px;
-  border-radius: 6px;
-  color: #20242a;
-  font-size: 16px;
-  line-height: 1.5;
+  padding: 7px 10px;
+  border-radius: 7px;
+  color: var(--ps-muted);
+  font-size: 12.5px;
+  font-weight: 600;
   text-align: center;
   cursor: pointer;
   user-select: none;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.physics-paint-play-script-mode-option:hover:not([aria-checked="true"]):not([aria-disabled="true"]) {
+  background: var(--ps-raised);
+  color: var(--ps-fg);
 }
 
 .physics-paint-play-script-mode-option[aria-checked="true"] {
-  background: #365ed6;
-  color: #ffffff;
+  background: var(--ps-accent);
+  color: oklch(0.99 0 0);
+  box-shadow: 0 1px 4px oklch(0 0 0 / 0.35);
 }
 
-.physics-paint-play-script-mode-option[aria-disabled="true"] {
-  cursor: default;
-  opacity: 0.5;
-}
+.physics-paint-play-script-mode-option[aria-checked="true"]:hover:not([aria-disabled="true"]) { background: var(--ps-accent-hi); }
+
+.physics-paint-play-script-mode-option[aria-disabled="true"] { cursor: default; opacity: 0.5; }
 
 .physics-paint-play-script-mode-helper {
+  margin-top: 8px;
+  min-height: 16px;
+  color: var(--ps-muted);
   font-size: 12px;
-  font-weight: 400;
-  line-height: 1.5;
 }
 
-/* Hold Loop block (D-12/D-13): repeat field + Infinity toggle + requested/effective readout. */
-.physics-paint-play-script-repeat-row {
+/* Timing card fields (D-16): internal gap 6px; field + field margin-top 12px. */
+.physics-paint-play-script-field {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
   min-width: 0;
 }
 
-.physics-paint-play-script-repeat-row input { flex: 1 1 auto; }
+.physics-paint-play-script-field + .physics-paint-play-script-field { margin-top: 12px; }
 
-.physics-paint-play-script-repeat-row input:disabled { opacity: 0.5; }
+.physics-paint-play-script-field label {
+  color: var(--ps-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.physics-paint-play-script-field input:not([type="checkbox"]) {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--ps-border);
+  border-radius: 8px;
+  background: var(--ps-inset);
+  color: var(--ps-fg);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.physics-paint-play-script-field input:not([type="checkbox"]):hover:not(:disabled) { border-color: var(--ps-faint); }
+.physics-paint-play-script-field input:not([type="checkbox"]):focus { border-color: var(--ps-accent); outline: none; }
+.physics-paint-play-script-field input:not([type="checkbox"]):disabled { opacity: 0.4; }
+
+.physics-paint-play-script-hint {
+  color: var(--ps-faint);
+  font-size: 11px;
+}
+
+/* Hold Loop row (D-12): repeat input + Infinity checkbox, gap 10px; 15px accent box. */
+.physics-paint-play-script-repeat-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.physics-paint-play-script-repeat-row input:not([type="checkbox"]) { flex: 1 1 auto; }
 
 .physics-paint-play-script-content input[type="checkbox"] {
-  width: auto;
-  min-height: 0;
+  width: 15px;
+  height: 15px;
+  margin: 0;
   flex: 0 0 auto;
+  accent-color: var(--ps-accent);
 }
 
 .physics-paint-play-script-infinity-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   white-space: nowrap;
+  cursor: pointer;
 }
 
-.physics-paint-play-script-repeat-help {
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.5;
-}
-
-/* Requested/Effective summary bar (D-13/D-16): full-width, 12px secondary, tabular-nums,
-   top-border separation; renders the controller loopReadout verbatim and never gates generation. */
-.physics-paint-play-script-summary-bar {
-  grid-column: 1 / -1;
-  margin: 0;
-  padding-top: 8px;
-  border-top: 1px solid #d8d4ca;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.5;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-
-.physics-paint-play-script-mode-helper,
-.physics-paint-play-script-repeat-help,
-.physics-paint-play-script-content span { overflow-wrap: anywhere; }
-
-/* 2px focus-visible outlines with 2px offset on every dialog control (reserved accent use). */
-.physics-paint-play-script-dialog input:focus-visible,
-.physics-paint-play-script-dialog button:focus-visible,
-.physics-paint-play-script-dialog [tabindex]:focus-visible {
-  outline: 2px solid #365ed6;
-  outline-offset: 2px;
-}
-
-/* 42-05 — two-state live brush-color control (D-08R) + generation-error surface. The in-dialog
-   picker mount, swatch row, and pick-guard styles were removed with the superseded D-08/D-09
-   contract; the chip below renders the USER'S CURRENT BRUSH COLOR as data — never accent. */
-.physics-paint-play-script-override-chip {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  border: 1px solid #a9afb7;
-  border-radius: 4px;
+/* Color pane (D-08R): centers its compact content — the card never reserves dead space. */
+.physics-paint-play-script-color-pane {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  margin-top: 10px;
+  min-height: 0;
 }
 
 .physics-paint-play-script-color-original-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
+  color: var(--ps-muted);
   font-size: 12px;
-  font-weight: 400;
-  line-height: 1.5;
 }
 
 .physics-paint-play-script-color-dots {
   display: inline-flex;
   flex: 0 0 auto;
-  gap: 4px;
+  gap: 3px;
 }
 
 .physics-paint-play-script-color-dots i {
   width: 12px;
   height: 12px;
-  border-radius: 50%;
+  border: 1px solid oklch(1 0 0 / 0.12);
+  border-radius: 3px;
 }
 
 .physics-paint-play-script-color-custom-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--ps-border);
+  border-radius: 8px;
+  background: var(--ps-inset);
+}
+
+/* The chip renders the USER'S CURRENT BRUSH COLOR as data — never accent (D-18). */
+.physics-paint-play-script-override-chip {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border: 1px solid oklch(1 0 0 / 0.16);
+  border-radius: 6px;
 }
 
 .physics-paint-play-script-color-meta {
@@ -1536,44 +1529,217 @@ button.destructive {
 }
 
 .physics-paint-play-script-color-hex {
-  font-size: 16px;
+  color: var(--ps-fg);
+  font-size: 12px;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
 .physics-paint-play-script-color-note {
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.5;
+  overflow: hidden;
+  color: var(--ps-muted);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+/* Motion wiggle slider rows (D-16): grid 88px 1fr 26px, 4px track, 14px thumb. */
 .physics-paint-play-script-slider-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 88px 1fr 26px;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
+}
+
+.physics-paint-play-script-slider-row + .physics-paint-play-script-slider-row { margin-top: 10px; }
+
+.physics-paint-play-script-slider-row span {
+  color: var(--ps-muted);
+  font-size: 11.5px;
+  font-weight: 600;
 }
 
 .physics-paint-play-script-slider-row input[type="range"] {
-  flex: 1 1 auto;
-  width: auto;
+  appearance: none;
+  width: 100%;
   min-width: 0;
-  min-height: 0;
+  height: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: var(--ps-border);
+  cursor: pointer;
+}
+
+.physics-paint-play-script-slider-row input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid oklch(0 0 0 / 0.4);
+  border-radius: 50%;
+  background: var(--ps-fg);
+  box-shadow: 0 1px 3px oklch(0 0 0 / 0.5);
+}
+
+.physics-paint-play-script-slider-row input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 1px solid oklch(0 0 0 / 0.4);
+  border-radius: 50%;
+  background: var(--ps-fg);
 }
 
 .physics-paint-play-script-slider-row output {
-  min-width: 3ch;
-  font-size: 16px;
+  color: var(--ps-fg);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
-/* E5: generation failure renders through the same approved inline-error style (#a12f37,
-   12px) placed above the action row, visually distinct from the per-field error spans. */
+/* Requested/Effective summary bar (D-13/D-16 Row 4): full-width inset bar, Requested
+   left / Effective right; renders the controller loopReadout — informational only (D-14). */
+.physics-paint-play-script-summary-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--ps-border);
+  border-radius: 8px;
+  background: var(--ps-inset);
+  color: var(--ps-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.physics-paint-play-script-mode-helper,
+.physics-paint-play-script-hint,
+.physics-paint-play-script-content span { overflow-wrap: anywhere; }
+
+/* 2px focus-visible outlines with 2px offset on every modal control (reserved accent use). */
+.physics-paint-play-script-dialog input:focus-visible,
+.physics-paint-play-script-dialog button:focus-visible,
+.physics-paint-play-script-dialog [tabindex]:focus-visible {
+  outline: 2px solid var(--ps-accent);
+  outline-offset: 2px;
+}
+
+.physics-paint-play-script-content .physics-paint-script-inline-error {
+  color: var(--ps-error);
+  font-size: 12px;
+}
+
+/* E5: generation failure renders the reason in --ps-error above the footer (existing
+   contract, restyled for the dark surface). */
 .physics-paint-play-script-dialog-error {
   flex: 0 0 auto;
-  color: #a12f37;
+  padding: 0 20px 8px;
+  color: var(--ps-error);
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+/* Compact footer INSIDE the modal (D-16 Row 5): progress/status left, Cancel/Generate
+   right; --ps-foot surface, 1px top border — never attached to the canvas/window bottom. */
+.physics-paint-play-script-footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 10px 20px;
+  border-top: 1px solid var(--ps-border);
+  background: var(--ps-foot);
+}
+
+.physics-paint-play-script-progress-line {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.physics-paint-play-script-progress-line progress {
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 10px;
+  border: 1px solid var(--ps-border);
+  border-radius: 5px;
+  background: var(--ps-inset);
+  overflow: hidden;
+}
+
+.physics-paint-play-script-progress-line progress::-webkit-progress-bar {
+  border-radius: 5px;
+  background: var(--ps-inset);
+}
+
+.physics-paint-play-script-progress-line progress::-webkit-progress-value {
+  border-radius: 4px;
+  background: var(--ps-accent);
+}
+
+.physics-paint-play-script-progress-line progress::-moz-progress-bar {
+  border-radius: 4px;
+  background: var(--ps-accent);
+}
+
+.physics-paint-play-script-progress-status {
+  min-width: 148px;
+  color: var(--ps-fg);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.physics-paint-play-script-actions {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.physics-paint-play-script-button {
+  appearance: none;
+  min-height: 34px;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.physics-paint-play-script-button:disabled { opacity: 0.45; cursor: default; }
+
+.physics-paint-play-script-button-ghost {
+  border: 1px solid var(--ps-border);
+  background: transparent;
+  color: var(--ps-muted);
+}
+
+.physics-paint-play-script-button-ghost:hover:not(:disabled) {
+  border-color: var(--ps-faint);
+  background: var(--ps-raised);
+  color: var(--ps-fg);
+}
+
+.physics-paint-play-script-button-primary {
+  border: 1px solid var(--ps-accent);
+  background: var(--ps-accent);
+  color: oklch(0.99 0 0);
+}
+
+.physics-paint-play-script-button-primary:hover:not(:disabled) {
+  border-color: var(--ps-accent-hi);
+  background: var(--ps-accent-hi);
 }
 .physics-paint-script-confirmation > div { display: flex; justify-content: flex-end; gap: 6px; }
 .physics-paint-script-confirmation .danger { color: #fff; background: #a43d3d; }

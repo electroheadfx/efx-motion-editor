@@ -123,10 +123,11 @@ export function PhysicsPaintPlayScriptDialog({
         }
       }}
     >
+      <div class="physics-paint-play-script-backdrop" aria-hidden="true" />
       <div class="physics-paint-play-script-surface">
         <div class="physics-paint-play-script-header">
           <strong id="physics-play-script-title">Play Script</strong>
-          <span>Max {playScript.capacity.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>
+          <span class="physics-paint-play-script-header-range">Max {playScript.capacity.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>
         </div>
         <div class="physics-paint-play-script-content">
           <div class="physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-mode">
@@ -163,46 +164,50 @@ export function PhysicsPaintPlayScriptDialog({
           </div>
           <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
             <span class="physics-paint-play-script-card-title">Timing</span>
-            <label for="physics-play-script-count">{playScript.mode.value === 'static' ? 'Frames per cycle' : 'Frames'}</label>
-            <input
-              ref={inputRef}
-              id="physics-play-script-count"
-              inputMode="numeric"
-              value={playScript.countText.value}
-              disabled={busy}
-              aria-invalid={Boolean(playScript.validationError.value)}
-              aria-describedby="physics-play-script-help physics-play-script-error"
-              onInput={(event) => {
-                playScript.countText.value = (event.currentTarget as HTMLInputElement).value;
-              }}
-            />
-            <span id="physics-play-script-help">Enter a positive integer or Max.</span>
-            {playScript.validationError.value ? <span id="physics-play-script-error" class="physics-paint-script-inline-error">{playScript.validationError.value}</span> : null}
-            <label for="physics-play-script-repeat">Repeat</label>
-            <div class="physics-paint-play-script-repeat-row">
+            <div class="physics-paint-play-script-field">
+              <label for="physics-play-script-count">{playScript.mode.value === 'static' ? 'Frames per cycle' : 'Frames'}</label>
               <input
-                id="physics-play-script-repeat"
+                ref={inputRef}
+                id="physics-play-script-count"
                 inputMode="numeric"
-                value={playScript.repeatText.value}
-                disabled={busy || playScript.infinity.value}
-                aria-invalid={Boolean(playScript.repeatError.value)}
-                aria-describedby="physics-play-script-repeat-help physics-play-script-repeat-error"
+                value={playScript.countText.value}
+                disabled={busy}
+                aria-invalid={Boolean(playScript.validationError.value)}
+                aria-describedby="physics-play-script-help physics-play-script-error"
                 onInput={(event) => {
-                  playScript.repeatText.value = (event.currentTarget as HTMLInputElement).value;
+                  playScript.countText.value = (event.currentTarget as HTMLInputElement).value;
                 }}
               />
-              <label class="physics-paint-play-script-infinity-toggle">
-                <input
-                  type="checkbox"
-                  checked={playScript.infinity.value}
-                  disabled={busy}
-                  onChange={(event) => playScript.setInfinity((event.currentTarget as HTMLInputElement).checked)}
-                />
-                Infinity
-              </label>
+              <span id="physics-play-script-help" class="physics-paint-play-script-hint">Enter a positive integer or Max.</span>
+              {playScript.validationError.value ? <span id="physics-play-script-error" class="physics-paint-script-inline-error">{playScript.validationError.value}</span> : null}
             </div>
-            <span id="physics-play-script-repeat-help" class="physics-paint-play-script-repeat-help">Enter a positive integer.</span>
-            {playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{playScript.repeatError.value}</span> : null}
+            <div class="physics-paint-play-script-field">
+              <label for="physics-play-script-repeat">Repeat</label>
+              <div class="physics-paint-play-script-repeat-row">
+                <input
+                  id="physics-play-script-repeat"
+                  inputMode="numeric"
+                  value={playScript.repeatText.value}
+                  disabled={busy || playScript.infinity.value}
+                  aria-invalid={Boolean(playScript.repeatError.value)}
+                  aria-describedby="physics-play-script-repeat-help physics-play-script-repeat-error"
+                  onInput={(event) => {
+                    playScript.repeatText.value = (event.currentTarget as HTMLInputElement).value;
+                  }}
+                />
+                <label class="physics-paint-play-script-infinity-toggle">
+                  <input
+                    type="checkbox"
+                    checked={playScript.infinity.value}
+                    disabled={busy}
+                    onChange={(event) => playScript.setInfinity((event.currentTarget as HTMLInputElement).checked)}
+                  />
+                  Infinity
+                </label>
+              </div>
+              <span id="physics-play-script-repeat-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
+              {playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{playScript.repeatError.value}</span> : null}
+            </div>
           </div>
           <div class="physics-paint-play-script-card physics-paint-play-script-card-color">
             <span class="physics-paint-play-script-card-title">Color</span>
@@ -233,22 +238,24 @@ export function PhysicsPaintPlayScriptDialog({
                 );
               })}
             </div>
-            {playScript.overrideEnabled.value ? (
-              <div class="physics-paint-play-script-color-custom-row">
-                <span class="physics-paint-play-script-override-chip" style={{ backgroundColor: brushColor }} />
-                <div class="physics-paint-play-script-color-meta">
-                  <span class="physics-paint-play-script-color-hex">{brushColor}</span>
-                  <span class="physics-paint-play-script-color-note">Picked from the app's brush color panel</span>
+            <div class="physics-paint-play-script-color-pane">
+              {playScript.overrideEnabled.value ? (
+                <div class="physics-paint-play-script-color-custom-row">
+                  <span class="physics-paint-play-script-override-chip" style={{ backgroundColor: brushColor }} />
+                  <div class="physics-paint-play-script-color-meta">
+                    <span class="physics-paint-play-script-color-hex">{brushColor}</span>
+                    <span class="physics-paint-play-script-color-note">Picked from the app's brush color panel</span>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div class="physics-paint-play-script-color-original-row">
-                <span class="physics-paint-play-script-color-dots" aria-hidden="true">
-                  {ORIGINAL_COLOR_DOTS.map((color) => <i key={color} style={{ background: color }} />)}
-                </span>
-                Keep each stroke's original paint color.
-              </div>
-            )}
+              ) : (
+                <div class="physics-paint-play-script-color-original-row">
+                  <span class="physics-paint-play-script-color-dots" aria-hidden="true">
+                    {ORIGINAL_COLOR_DOTS.map((color) => <i key={color} style={{ background: color }} />)}
+                  </span>
+                  Keep each stroke's original paint color.
+                </div>
+              )}
+            </div>
           </div>
           <div class="physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-motion">
             <div class="physics-paint-play-script-card-heading">
@@ -297,10 +304,13 @@ export function PhysicsPaintPlayScriptDialog({
         </div>
         {playScript.error.value ? <span class="physics-paint-script-inline-error physics-paint-play-script-dialog-error">{playScript.error.value}</span> : null}
         <div class="physics-paint-play-script-footer">
-          {playScript.progress.value ? <progress max={playScript.progress.value.total} value={playScript.progress.value.completed}>{playScript.progress.value.completed}/{playScript.progress.value.total}</progress> : null}
+          <div class="physics-paint-play-script-progress-line">
+            {playScript.progress.value ? <progress max={playScript.progress.value.total} value={playScript.progress.value.completed}>{playScript.progress.value.completed}/{playScript.progress.value.total}</progress> : null}
+            <span class="physics-paint-play-script-progress-status">{playScript.progress.value ? `${playScript.progress.value.completed}/${playScript.progress.value.total}` : ''}</span>
+          </div>
           <div class="physics-paint-play-script-actions">
-            <button type="button" onClick={playScript.cancel}>{playScript.canCancel.value ? 'Cancel generation' : 'Cancel'}</button>
-            {!playScript.canCancel.value ? <button type="button" disabled={Boolean(playScript.validationError.value)} onClick={() => { void playScript.confirm(); }}>Generate</button> : null}
+            <button type="button" class="physics-paint-play-script-button physics-paint-play-script-button-ghost" onClick={playScript.cancel}>{playScript.canCancel.value ? 'Cancel generation' : 'Cancel'}</button>
+            {!playScript.canCancel.value ? <button type="button" class="physics-paint-play-script-button physics-paint-play-script-button-primary" disabled={Boolean(playScript.validationError.value)} onClick={() => { void playScript.confirm(); }}>Generate</button> : null}
           </div>
         </div>
       </div>
