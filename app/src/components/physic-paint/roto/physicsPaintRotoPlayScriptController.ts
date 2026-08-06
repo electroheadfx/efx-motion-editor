@@ -52,6 +52,10 @@ export interface RotoPlayScriptControllerPorts {
   getLaunchContext: () => PhysicPaintLaunchContext | null;
   getSelection: () => { kind: RotoTimelineSelectionKind; keyId: string | null; appFrame: number };
   getMotion: () => { deformation: number; position: number };
+  // D-08R: the ONLY override-color resolution path — reads the live Studio brush color
+  // (settings.color; sole writer setBrushColor). Read at confirm time and at the first-open
+  // summary compose; the value is never stored dialog-side (D-10/D-18).
+  getBrushColor: () => string;
   getOperationLocked: () => boolean;
   getSize: () => { width: number; height: number };
   availabilityRevision?: ReadonlySignal<number>;
@@ -182,6 +186,14 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     dialogMotion.value = { ...ports.getMotion() };
   }
 
+  // D-08R single resolution path: Original colors (override disabled) → null; Custom color →
+  // the CURRENT brush-color port value, validated defensively (T-42-05-01) — a malformed port
+  // value falls back to null (Original-colors behavior), mirroring existing input discipline.
+  function resolveOverrideColor(): string | null {
+    if (!overrideEnabled.peek()) return null;
+    return normalizeBrushColor(ports.getBrushColor());
+  }
+
   async function openConfirmation(): Promise<void> {
     if (disposed || disabledReason.peek()) return;
     ports.stopPlayback();
@@ -198,8 +210,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       dialogMotion.value = { ...ports.getMotion() };
       if (!hasSuccessfulGeneration) {
         // First-time defaults refresh: before the first successful Generate line 1 tracks the
-        // current defaults (mode/override untouched at first open, Motion from the defaults port).
-        appliedSummaryLine1.value = composeSummaryLine1(mode.peek(), overrideEnabled.peek() ? overrideColor.peek() : null, dialogMotion.peek());
+        // current defaults (mode/override untouched at first open, Motion from the defaults port,
+        // override color resolved live from the brush-color port — D-08R).
+        appliedSummaryLine1.value = composeSummaryLine1(mode.peek(), resolveOverrideColor(), dialogMotion.peek());
       }
       confirmationOpen.value = true;
       phase.value = 'idle'; status.value = `Max ${authority.capacity} · F${authority.canonicalStart}–F${authority.layerEndExclusive - 1}`;
@@ -227,7 +240,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       if (!snapshot || ports.library.selectedId.peek() !== selectedId) throw new Error('Selected script changed or could not be reloaded.');
       const motion = { ...dialogMotion.peek() };
       const renderMode = mode.peek();
-      const renderOverrideColor = overrideEnabled.peek() && overrideColor.peek() ? overrideColor.peek() : null;
+      // D-08R: snapshot the CURRENT brush color via the port at confirm time. Later brush-color
+      // changes never retroactively alter generated frames or the success-only summary.
+      const renderOverrideColor = resolveOverrideColor();
       const existingFrames = new Map(authority.frames.map((frame) => [frame.appFrame, frame]));
       phase.value = 'rendering'; progress.value = { completed: 0, total: count }; status.value = `Rendering 0 / ${count}`;
       const staged = await renderRotoPlayScriptFrames({
@@ -301,8 +316,13 @@ function parseCount(value: string, capacity: number): { count: number | null; er
   return { count, error: null };
 }
 
-function composeSummaryLine1(mode: RotoPlayScriptMode, overrideColor: string | null, motion: Readonly<{ deformation: number; position: number }>): string {
-  const modeLabel = mode === 'static' ? 'Static / Hold' : 'Progressive';
+// Accepts only the canonical #rrggbb form produced by the Studio brush settings; anything else
+// (empty, named colors, short hex, non-string junk) is treated as no override.
+function normalizeBrushColor(value: unknown): string | null {
+  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.trim()) ? value.trim().toLowerCase() : null;
+}
+
+function composeSummaryLine1(mode: RotoPlayScriptMode, overrideColor: string | null, motion: Readonly<{ deformation: number; position: number }>): string {  const modeLabel = mode === 'static' ? 'Static / Hold' : 'Progressive';
   return `${modeLabel} · ${overrideColor ? `Override ${overrideColor}` : 'Original colors'} · Motion ${motion.deformation}/${motion.position}`;
 }
 

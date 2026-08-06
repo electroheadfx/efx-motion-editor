@@ -41,6 +41,7 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       getLaunchContext: () => portsRef.current.getLaunchContext(),
       getSelection: () => portsRef.current.getSelection(),
       getMotion: () => portsRef.current.getMotion(),
+      getBrushColor: () => portsRef.current.getBrushColor(),
       getOperationLocked: () => portsRef.current.getOperationLocked(),
       getSize: () => portsRef.current.getSize(),
       availabilityRevision: availabilityRevision.current,

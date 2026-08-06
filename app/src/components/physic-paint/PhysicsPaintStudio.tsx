@@ -712,6 +712,9 @@ export function PhysicsPaintStudio() {
       deformation: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).deform,
       position: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).position,
     } : { deformation: 0, position: 0 },
+    // D-08R/D-18: read-only live brush-color port — setBrushColor remains the sole writer;
+    // the controller only observes and snapshots settings.color at confirm time.
+    getBrushColor: () => settings.color,
     getOperationLocked: () => rotoScript.mutationLocked.peek() || rotoScriptNavigationLocked,
     getSize: () => ({ width: canvasWidth, height: canvasHeight }),
     executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,

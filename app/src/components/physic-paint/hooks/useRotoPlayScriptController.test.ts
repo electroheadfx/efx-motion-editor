@@ -65,6 +65,7 @@ function ports(version: number): HookPorts {
       ? { kind: 'real-key' as const, keyId: 'key-4', appFrame: 4 }
       : { kind: 'generated-interpolation' as const, keyId: null, appFrame: 9 },
     getMotion: () => ({ deformation: version * 10, position: version * 20 }),
+    getBrushColor: () => (version === 1 ? '#103c65' : '#aa5500'),
     getOperationLocked: () => version === 2,
     getSize: () => ({ width: 100 + version, height: 200 + version }),
     stopPlayback: vi.fn(),
@@ -104,6 +105,7 @@ describe('useRotoPlayScriptController', () => {
     expect(stablePorts.getSelection()).toMatchObject({ kind: 'generated-interpolation', keyId: null, appFrame: 9 });
     expect(stablePorts.getLaunchContext()).toMatchObject({ layerId: 'layer-2', project: { contextId: 'context-2' } });
     expect(stablePorts.getMotion()).toEqual({ deformation: 20, position: 40 });
+    expect(stablePorts.getBrushColor()).toBe('#aa5500');
     expect(stablePorts.getOperationLocked()).toBe(true);
     expect(stablePorts.getSize()).toEqual({ width: 102, height: 202 });
 
