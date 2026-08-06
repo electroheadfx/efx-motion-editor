@@ -9,9 +9,14 @@ import {
 import type {
   PhysicPaintRotoRealKeyRecord,
   PhysicPaintRotoInterpolationState,
+  PhysicPaintRotoLoopClip,
 } from './physicsPaintRotoPhysicalModel';
 import {
+  derivePhysicPaintRotoLoopRanges,
   projectPhysicPaintRotoPhysicalTimeline,
+  resolvePhysicPaintRotoLoopFrame,
+  type PhysicPaintRotoFrameResolution,
+  type PhysicPaintRotoLoopResolutionContext,
   type PhysicPaintRotoPhysicalTimelineProjection,
 } from './physicsPaintRotoPhysicalResolver';
 import type { RotoPhysicalTimelineCell } from './rotoPhysicalTimelinePorts';
@@ -272,12 +277,26 @@ export interface RotoPhysicalTimelineStructuralView {
   readonly interpolation: PhysicPaintRotoInterpolationState;
   readonly capacity: number;
   readonly projection: PhysicPaintRotoPhysicalTimelineProjection | null;
+  /**
+   * Phase 43: compact per-loop interval derivation plus the real-key frame
+   * index backing the lazy per-frame resolution query (D-26/D-32). Structural
+   * — rebuilt only when records, loopClips, parent end, or capacity change.
+   */
+  readonly loopResolution: PhysicPaintRotoLoopResolutionContext;
 }
 
 export function selectRotoPhysicalTimelineStructuralView(input: {
   readonly realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly interpolation: PhysicPaintRotoInterpolationState;
   readonly capacity: number;
+  /** Phase 43 additive Loop Clip collection; absent means empty (D-29). */
+  readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  /**
+   * Parent sequence end (exclusive). Defaults to the physical capacity for
+   * the Studio-owned physical timeline; the main editor passes the live
+   * parent end so infinity loops track it dynamically (D-25).
+   */
+  readonly parentEndExclusive?: number;
 }): RotoPhysicalTimelineStructuralView {
   const { realKeyRecords, interpolation, capacity } = input;
 
@@ -289,7 +308,7 @@ export function selectRotoPhysicalTimelineStructuralView(input: {
   });
 
   if (!projectionResult.ok) {
-    // Fail closed: structural empty view with no projection.
+    // Fail closed: structural empty view with no projection and no loops.
     return {
       orderedRealKeyRecords: realKeyRecords,
       physicalCells: [],
@@ -298,6 +317,12 @@ export function selectRotoPhysicalTimelineStructuralView(input: {
       interpolation,
       capacity,
       projection: null,
+      loopResolution: derivePhysicPaintRotoLoopRanges({
+        identities: [],
+        loopClips: [],
+        parentEndExclusive: 0,
+        capacity: 1,
+      }),
     };
   }
 
@@ -310,6 +335,12 @@ export function selectRotoPhysicalTimelineStructuralView(input: {
     interpolation,
     capacity,
     projection,
+    loopResolution: derivePhysicPaintRotoLoopRanges({
+      identities,
+      loopClips: input.loopClips ?? [],
+      parentEndExclusive: input.parentEndExclusive ?? capacity,
+      capacity,
+    }),
   };
 }
 
@@ -379,4 +410,64 @@ export function assembleRotoPhysicalTimelineView(
  */
 export function selectRotoPhysicalTimelineView(input: RotoPhysicalTimelineViewSelectorInput): RotoPhysicalTimelineView {
   return assembleRotoPhysicalTimelineView(selectRotoPhysicalTimelineStructuralView(input), input);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 43: linked Loop Clip frame-resolution consumers (HOLD-05, Pitfall 7).
+//
+// The typed frame-resolution union ('real' | 'linked' | 'linked-unresolved' |
+// 'empty') is consumed here with explicit arms and a never-fallback
+// exhaustiveness guard: adding a future resolution kind is a compile-time
+// error at these switches, so no consumer can silently treat a virtual
+// occurrence as a key (D-23/D-11).
+// ---------------------------------------------------------------------------
+
+/**
+ * Key-interaction eligibility derived from the typed frame resolution. Only
+ * a 'real' frame yields a selectable/draggable key identity; 'linked' and
+ * 'linked-unresolved' virtual occurrences produce no key selection, no drag
+ * start, and no Force Spacing eligibility (D-23/D-11).
+ */
+export interface RotoFrameKeyInteraction {
+  readonly keySelectable: boolean;
+  readonly dragEligible: boolean;
+  readonly selectedKeyId: string | null;
+}
+
+export function getRotoFrameKeyInteraction(resolution: PhysicPaintRotoFrameResolution): RotoFrameKeyInteraction {
+  switch (resolution.kind) {
+    case 'real':
+      return { keySelectable: true, dragEligible: true, selectedKeyId: resolution.keyId };
+    case 'linked':
+      // Virtual occurrence: presentation-only, never a key (D-23).
+      return { keySelectable: false, dragEligible: false, selectedKeyId: null };
+    case 'linked-unresolved':
+      // Error-state virtual occurrence: equally non-selectable (D-31).
+      return { keySelectable: false, dragEligible: false, selectedKeyId: null };
+    case 'empty':
+      return { keySelectable: false, dragEligible: false, selectedKeyId: null };
+    default: {
+      const exhaustive: never = resolution;
+      throw new Error(`Unhandled Roto frame resolution kind: ${JSON.stringify(exhaustive)}`);
+    }
+  }
+}
+
+/**
+ * Resolve the lazy per-frame contract for exactly the requested visible
+ * frames — one query per visible frame, O(visible frames × log loops), never
+ * proportional to any loop's effective range (D-32). The Studio strip calls
+ * this with its viewport window; the query parameter is injectable so specs
+ * can spy the query count.
+ */
+export function resolveRotoVisibleFrameResolutions(
+  context: PhysicPaintRotoLoopResolutionContext,
+  visibleFrames: readonly number[],
+  query: (context: PhysicPaintRotoLoopResolutionContext, appFrame: number) => PhysicPaintRotoFrameResolution = resolvePhysicPaintRotoLoopFrame,
+): ReadonlyMap<number, PhysicPaintRotoFrameResolution> {
+  const resolutions = new Map<number, PhysicPaintRotoFrameResolution>();
+  for (const frame of visibleFrames) {
+    resolutions.set(frame, query(context, frame));
+  }
+  return resolutions;
 }

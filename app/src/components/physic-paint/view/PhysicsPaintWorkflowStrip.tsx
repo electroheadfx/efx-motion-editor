@@ -11,6 +11,7 @@ import {
   getRotoCellSelectedTooltipCopy,
   getRotoCellStateTooltipCopy,
   getRotoDragPreviewViewModel,
+  getRotoResolutionCellTooltipKind,
   getRotoStatusCapsuleIdleContext,
   getRotoStatusCapsuleViewModel,
   type PhysicsPaintOnionState,
@@ -25,6 +26,11 @@ import type {
   PhysicPaintRotoInterpolationState,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoLoopResolutionContext } from '../roto/physicsPaintRotoPhysicalResolver';
+import {
+  getRotoFrameKeyInteraction,
+  resolveRotoVisibleFrameResolutions,
+} from '../roto/rotoTimelineSelectors';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import type {
   RotoDragPublication,
@@ -144,6 +150,15 @@ export interface PhysicsPaintWorkflowStripProps {
   rotoKeyRecords?: readonly PhysicPaintRotoRealKeyRecord[];
   /** Reactive physical timeline cells (D-10) for vacated-cell diffing during Drag preview. */
   rotoPhysicalCells?: readonly RotoPhysicalTimelineCell[];
+  /**
+   * Phase 43: prepared loop resolution context (one compact interval record
+   * per Loop Clip). When present, the strip resolves the lazy per-frame
+   * contract for its VISIBLE window only (D-32); linked occurrences keep
+   * their existing cell-state semantics and are never key-selectable or
+   * draggable (D-18/D-23). Absent means no loops — behavior is byte-identical
+   * to the pre-43 strip.
+   */
+  rotoLoopResolutionContext?: PhysicPaintRotoLoopResolutionContext | null;
   rotoDragContextKey?: string;
   hasCopiedRotoKey?: boolean;
   keyActionInFlight?: boolean;
@@ -532,6 +547,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   );
   const frameCells = useMemo(() => buildPhysicsPaintRotoFrameCells(props.currentFrame), [props.currentFrame]);
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
+  // Phase 43 loop resolution (Pitfall 7, D-32): the lazy per-frame contract
+  // is queried for EXACTLY the visible window (frameCells) — one query per
+  // visible frame, never proportional to any loop's effective range. Null
+  // when no loop context is supplied (pre-43 byte-identical path).
+  const loopResolutionContext = props.rotoLoopResolutionContext ?? null;
+  const visibleFrameResolutions = useMemo(
+    () => loopResolutionContext === null
+      ? null
+      : resolveRotoVisibleFrameResolutions(loopResolutionContext, frameCells),
+    [loopResolutionContext, frameCells],
+  );
   // Per-cell derivation cache update (38.1-04, Option A — 38.1-D-08 link 2,
   // RESEARCH Pattern 3). Full invalidation on ANY structural identity change
   // (the physical-cell Map or the cached-frame arrays — realCachedRotoFrames
@@ -1299,6 +1325,16 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 {frameCells.map(frame => {
                   const semanticCell = physicalCellByAppFrame.get(frame) ?? null;
                   const isGenerated = semanticCell?.kind === 'generated';
+                  // Phase 43: lazy per-frame resolution for this visible cell
+                  // (null when no loop context is supplied). The four-kind
+                  // contract ('real' | 'linked' | 'linked-unresolved' |
+                  // 'empty') is consumed through the exhaustiveness-checked
+                  // mappers: virtual 'linked' and 'linked-unresolved'
+                  // occurrences are gated out of selection/drag (D-11/D-23)
+                  // and keep their existing cell-state fill (D-18) — the
+                  // strip never branches on resolution kinds locally.
+                  const frameResolution = visibleFrameResolutions?.get(frame) ?? null;
+                  const frameInteraction = frameResolution === null ? null : getRotoFrameKeyInteraction(frameResolution);
                   // Cached per-cell derivation (38.1-04, Option A): recomputed
                   // for at most the previous+new current cells on a pure frame
                   // change; the value is byte-identical to the pre-cache
@@ -1312,7 +1348,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   const semanticKind = isGenerated ? 'generated' : isOccupiedRealKey ? 'real-key' : 'empty';
                   const generatedTitle = isGenerated ? getGeneratedRotoTitle(frame) : null;
                   const cellKeyId = semanticCell?.kind === 'real' ? semanticCell.keyId : keyIdByAppFrame.get(frame) ?? null;
-                  const dragEligible = isPhysicalRealKey && !rotoDragLocked;
+                  const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;
                   // Identity-based Drag preview (D-07/D-21/D-22/D-23/D-24).
                   const previewCell = rotoDragPreviewViewModel?.cellsByAppFrame.get(frame) ?? null;
                   const isDragSource = rotoDragPreview?.sourceAppFrame === frame && rotoDragPreview?.movedKeyId === cellKeyId;
@@ -1326,7 +1362,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   const dragLabel = hasTargetFeedback
                     ? (previewCell?.ariaLabel ?? rotoDragFeedback ?? vm.ariaLabel)
                     : dragEligible ? `${vm.ariaLabel} Drag this real Roto key to an empty frame.` : generatedTitle ?? vm.ariaLabel;
-                  const cellTooltipKind: RotoCellSemanticTooltipKind = isPhysicalRealKey
+                  const existingCellTooltipKind: RotoCellSemanticTooltipKind = isPhysicalRealKey
                     ? 'real-key'
                     : isGenerated
                       ? 'generated'
@@ -1335,6 +1371,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                         : vm.baseMeaning === 'background-only'
                           ? 'background-only'
                           : 'empty';
+                  // D-18: linked cells keep their existing cell-state fill and
+                  // tooltip semantics — the mapper is exhaustiveness-checked
+                  // and introduces no new first-class cell state.
+                  const cellTooltipKind: RotoCellSemanticTooltipKind = frameResolution === null
+                    ? existingCellTooltipKind
+                    : getRotoResolutionCellTooltipKind(frameResolution, existingCellTooltipKind);
                   // Secondary multi-selection treatment (D-04): the current
                   // editing key keeps only its `.current` orange ring as the
                   // strongest highlight; every other selected real key gets

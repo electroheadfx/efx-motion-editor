@@ -12,7 +12,13 @@ import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
   type PhysicPaintRotoRealKeyRecord,
   type PhysicPaintRotoInterpolationState,
+  type PhysicPaintRotoLoopClip,
 } from '../roto/physicsPaintRotoPhysicalModel';
+import {
+  resolvePhysicPaintRotoLoopFrame,
+  type PhysicPaintRotoFrameResolution,
+  type PhysicPaintRotoLoopResolutionContext,
+} from '../roto/physicsPaintRotoPhysicalResolver';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 
 export interface RotoTimelineModelInput {
@@ -27,6 +33,10 @@ export interface RotoTimelineModelInput {
   capacity?: number;
   /** Selected stable keyId, or null when no real key is selected. */
   selectedKeyId?: string | null;
+  /** Phase 43 additive Loop Clip collection; absent means empty (D-29). */
+  rotoLoopClips?: readonly PhysicPaintRotoLoopClip[];
+  /** Parent sequence end (exclusive); defaults to capacity (D-25). */
+  rotoParentEndExclusive?: number;
 }
 
 export interface RotoTimelineModel {
@@ -47,6 +57,19 @@ export interface RotoTimelineModel {
   orderedRealKeyRecords: Signal<readonly PhysicPaintRotoRealKeyRecord[]>;
   generatedCells: Signal<readonly RotoPhysicalTimelineCell[]>;
   physicalCells: Signal<readonly RotoPhysicalTimelineCell[]>;
+  /**
+   * Phase 43: structurally derived loop resolution context (one compact
+   * interval record per Loop Clip plus the real-key frame index). Rebuilt
+   * only when records/loopClips/parent end/capacity change (D-32).
+   */
+  loopResolutionContext: Signal<PhysicPaintRotoLoopResolutionContext>;
+  /**
+   * Lazy per-frame resolution returning the single typed contract 'real' |
+   * 'linked' | 'linked-unresolved' | 'empty' (audit finding 3). This model
+   * deliberately never branches on the resolution kind — kind handling lives
+   * in the exhaustiveness-guarded consumer helpers (Pitfall 7).
+   */
+  getFrameResolution(appFrame: number): PhysicPaintRotoFrameResolution;
   // Additive write seam (38.1 D-07): frame/selection writes update the
   // persistent graph in place; the structural projection is never rebuilt.
   // Writes are equality-guarded against the current peeked value (Pitfall 3).
@@ -64,6 +87,8 @@ export function createRotoTimelineModel(input: RotoTimelineModelInput): RotoTime
     rotoKeyRecords: input.rotoKeyRecords,
     rotoInterpolationState: input.rotoInterpolationState,
     capacity: input.capacity,
+    rotoLoopClips: input.rotoLoopClips,
+    rotoParentEndExclusive: input.rotoParentEndExclusive,
   });
   const currentFrame = signal(input.currentFrame);
   const selectedKeyIdInput = signal(input.selectedKeyId ?? null);
@@ -73,6 +98,8 @@ export function createRotoTimelineModel(input: RotoTimelineModelInput): RotoTime
     realKeyRecords: structuralInput.value.rotoKeyRecords ?? [],
     interpolation: structuralInput.value.rotoInterpolationState ?? PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
     capacity: structuralInput.value.capacity ?? 1,
+    loopClips: structuralInput.value.rotoLoopClips,
+    parentEndExclusive: structuralInput.value.rotoParentEndExclusive,
   }));
 
   const view = computed(() => assembleRotoTimelineView(legacyStructural.value, currentFrame.value));
@@ -97,6 +124,10 @@ export function createRotoTimelineModel(input: RotoTimelineModelInput): RotoTime
     orderedRealKeyRecords: computed(() => physicalStructural.value.orderedRealKeyRecords),
     generatedCells: computed(() => physicalStructural.value.generatedCells),
     physicalCells: computed(() => physicalStructural.value.physicalCells),
+    loopResolutionContext: computed(() => physicalStructural.value.loopResolution),
+    getFrameResolution(appFrame: number): PhysicPaintRotoFrameResolution {
+      return resolvePhysicPaintRotoLoopFrame(physicalStructural.value.loopResolution, appFrame);
+    },
     setCurrentFrame(frame: number): void {
       if (currentFrame.peek() !== frame) currentFrame.value = frame;
     },
@@ -115,6 +146,8 @@ export function useRotoTimelineModel(input: RotoTimelineModelInput): RotoTimelin
     input.rotoKeyRecords,
     input.rotoInterpolationState,
     input.capacity,
+    input.rotoLoopClips,
+    input.rotoParentEndExclusive,
   ]);
   // Sync frame/selection into the persistent graph through the guarded write
   // seam, at the top of the hook body — never in an effect, never downstream.

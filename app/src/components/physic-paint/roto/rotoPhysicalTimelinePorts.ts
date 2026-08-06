@@ -27,7 +27,10 @@ import type {
   PhysicPaintRotoInterpolationState,
   PhysicPaintRotoKeyIdentity,
 } from './physicsPaintRotoPhysicalModel';
-import type { PhysicPaintRotoPhysicalCell } from './physicsPaintRotoPhysicalResolver';
+import type {
+  PhysicPaintRotoFrameResolution,
+  PhysicPaintRotoPhysicalCell,
+} from './physicsPaintRotoPhysicalResolver';
 
 /**
  * Semantic current-cell state for the physical timeline. Real cells expose
@@ -91,6 +94,13 @@ export interface RotoPhysicalTimelinePorts {
   readonly getCurrentCell: () => RotoPhysicalTimelineCell;
   /** Immutable physical timeline view at read time. */
   readonly getView: () => RotoPhysicalTimelineView;
+  /**
+   * Phase 43: lazy per-frame resolution over linked Loop Clips (D-26).
+   * Optional — consumers without loop state omit it and keep the pre-43
+   * behavior. Returns the single typed contract; 'linked' and
+   * 'linked-unresolved' frames are virtual occurrences, never keys.
+   */
+  readonly getFrameResolution?: (appFrame: number) => PhysicPaintRotoFrameResolution;
   /** Layer identity for this port bundle. */
   readonly layerId: string;
 }
@@ -110,6 +120,8 @@ export interface RotoPhysicalTimelinePortsInput {
   readonly getRealKeyRecordByAppFrame: (appFrame: number) => PhysicPaintRotoRealKeyRecord | null;
   readonly getCurrentCell: () => RotoPhysicalTimelineCell;
   readonly getView: () => RotoPhysicalTimelineView;
+  /** Optional Phase 43 lazy per-frame loop resolution getter. */
+  readonly getFrameResolution?: (appFrame: number) => PhysicPaintRotoFrameResolution;
 }
 
 /**
@@ -131,7 +143,33 @@ export function createRotoPhysicalTimelinePorts(input: RotoPhysicalTimelinePorts
     getRealKeyRecordByAppFrame: input.getRealKeyRecordByAppFrame,
     getCurrentCell: input.getCurrentCell,
     getView: input.getView,
+    ...(input.getFrameResolution ? { getFrameResolution: input.getFrameResolution } : {}),
   };
+}
+
+/**
+ * Selection exclusion for the typed frame-resolution union (Phase 43,
+ * D-23/D-11, RESEARCH Pitfall 7). Only a 'real' resolution yields a
+ * selectable key identity; 'linked' and 'linked-unresolved' virtual
+ * occurrences never produce a key selection, a drag start, or Force Spacing
+ * eligibility. The never-fallback makes a future resolution kind a
+ * compile-time error here.
+ */
+export function getRotoPhysicalSelectableKeyId(resolution: PhysicPaintRotoFrameResolution): string | null {
+  switch (resolution.kind) {
+    case 'real':
+      return resolution.keyId;
+    case 'linked':
+      return null;
+    case 'linked-unresolved':
+      return null;
+    case 'empty':
+      return null;
+    default: {
+      const exhaustive: never = resolution;
+      throw new Error(`Unhandled Roto frame resolution kind: ${JSON.stringify(exhaustive)}`);
+    }
+  }
 }
 
 /**

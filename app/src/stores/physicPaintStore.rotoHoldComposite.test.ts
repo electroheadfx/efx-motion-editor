@@ -66,16 +66,17 @@ describe('physicPaintStore roto hold composite (HOLD-04)', () => {
       const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, appFrame);
       expect(source, `frame ${appFrame} resolves`).not.toBeNull();
       expect(source?.kind).toBe('real');
-      expect(source?.layerId).toBe(LAYER); // owned by the opened parent Paint layer
-      expect(source?.appFrame).toBe(appFrame);
-      expect(source?.keyId).toBe(`key-hold-${appFrame}`);
-      expect(source?.contentRevision).toBe(contentRevision);
-      expect(source?.cacheRevision).toBe(`${contentRevision}:real:key-hold-${appFrame}`);
+      if (source?.kind !== 'real') throw new Error(`frame ${appFrame} must resolve to a real render source`);
+      expect(source.layerId).toBe(LAYER); // owned by the opened parent Paint layer
+      expect(source.appFrame).toBe(appFrame);
+      expect(source.keyId).toBe(`key-hold-${appFrame}`);
+      expect(source.contentRevision).toBe(contentRevision);
+      expect(source.cacheRevision).toBe(`${contentRevision}:real:key-hold-${appFrame}`);
       // Exactly one resolved raster per frame — the canonical committed payload
       // itself, not a copy or a second composite.
       const stored = physicPaintStore.getRotoRealKeyRecord(LAYER, `key-hold-${appFrame}`);
       expect(stored).not.toBeNull();
-      expect(source?.renderedFrame).toBe(stored?.payload);
+      expect(source.renderedFrame).toBe(stored?.payload);
       expect(source?.renderedFrame.dataUrl).toBe(pngDataUrl(`hold-${appFrame}`));
       expect(source?.renderedFrame.appFrame).toBe(appFrame);
     }
@@ -90,7 +91,9 @@ describe('physicPaintStore roto hold composite (HOLD-04)', () => {
     expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 4.5)).toBeNull();
     expect(physicPaintStore.getRotoPhysicalRenderSource('absent-layer', 4)).toBeNull();
     // The pre-existing source key still resolves as its own single raster.
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 0)?.keyId).toBe('key-source');
+    const preexisting = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 0);
+    if (preexisting?.kind !== 'real') throw new Error('pre-existing source key must resolve to a real render source');
+    expect(preexisting.keyId).toBe('key-source');
   });
 
   it('re-committing the identical static/hold record set is a byte-identical no-op (idempotent re-application)', () => {

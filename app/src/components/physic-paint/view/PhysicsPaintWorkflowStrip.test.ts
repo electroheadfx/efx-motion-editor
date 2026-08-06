@@ -257,7 +257,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain("marker.source !== 'generated-interpolation'");
     expect(map).toContain("const isGenerated = semanticCell?.kind === 'generated'");
     expect(map).toContain("const isPhysicalRealKey = semanticCell?.kind === 'real'");
-    expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked;');
+    // 43-02 Pitfall 7: the interaction gate is a no-op for real keys (a
+    // physical real key always resolves 'real') and hard-excludes virtual
+    // linked occurrences when a loop resolution context is present.
+    expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
   });
 });
 

@@ -1,5 +1,6 @@
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type {
+  PhysicPaintRotoFrameResolution,
   PhysicPaintRotoPhysicalCell,
   PhysicPaintRotoPhysicalEditProposal,
   PhysicPaintRotoPhysicalIdentityChange,
@@ -263,6 +264,36 @@ export const ROTO_CELL_STATE_TOOLTIP_COPY: Record<RotoCellSemanticTooltipKind, s
 
 export function getRotoCellStateTooltipCopy(kind: RotoCellSemanticTooltipKind): string {
   return ROTO_CELL_STATE_TOOLTIP_COPY[kind];
+}
+
+/**
+ * Map the Phase 43 typed frame-resolution union onto the EXISTING cell-state
+ * vocabulary (D-18): linked repetition cells keep their current
+ * empty/cached/generated semantics — no new first-class cell state ships in
+ * the strip (the additive link badge lands in 43-08). A 'linked-unresolved'
+ * frame stays non-blocking with its existing fill; the capsule owns the
+ * error affordance (D-23). `existing` is the semantic kind the strip already
+ * derived from the physical cell plus cache state. The never-fallback makes
+ * a future resolution kind a compile-time error here (Pitfall 7).
+ */
+export function getRotoResolutionCellTooltipKind(
+  resolution: PhysicPaintRotoFrameResolution,
+  existing: RotoCellSemanticTooltipKind,
+): RotoCellSemanticTooltipKind {
+  switch (resolution.kind) {
+    case 'real':
+      return 'real-key';
+    case 'linked':
+      return existing;
+    case 'linked-unresolved':
+      return existing;
+    case 'empty':
+      return existing;
+    default: {
+      const exhaustive: never = resolution;
+      throw new Error(`Unhandled Roto frame resolution kind: ${JSON.stringify(exhaustive)}`);
+    }
+  }
 }
 
 /**
