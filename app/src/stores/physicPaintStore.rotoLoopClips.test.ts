@@ -1,13 +1,20 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   physicPaintStore,
+  rotoPhysicalRevision,
+  physicPaintVersion,
   _setPhysicPaintMarkDirtyCallback,
 } from './physicPaintStore';
-import type {
-  PhysicPaintRotoLoopClip,
-  PhysicPaintRotoRealKeyPayload,
-  PhysicPaintRotoRealKeyRecord,
+import {
+  buildPhysicPaintRotoPhysicalRevision,
+  type PhysicPaintRotoLoopClip,
+  type PhysicPaintRotoRealKeyPayload,
+  type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { defaultTransform, type Layer } from '../types/layer';
+import { layerStore } from './layerStore';
+import { projectStore } from './projectStore';
+import { applyPhysicPaintPayload, openPhysicPaintCanvas } from '../lib/physicPaintBridge';
 
 // Phase 43 Plan 03: store-level linked Loop Clip resolution. The canonical
 // getRotoPhysicalRenderSource seam resolves linked repetition frames to the
@@ -291,5 +298,256 @@ describe('unresolved-loop query (D-28 wiring)', () => {
     expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, 6, 2)).toEqual([]);
     expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, -1, 5)).toEqual([]);
     expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, 0, Number.NaN)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 2: the replace-roto-physical-map bridge acceptance applies records and
+// loopClips in ONE store transition under the loopClips-aware revision
+// authority (D-06/D-10), and history replays restore both in each direction.
+// These specs drive the REAL bridge entry point (applyPhysicPaintPayload)
+// against the REAL store, launching through the browser-fallback seam to
+// register the launch operation exactly like a child window session.
+// ---------------------------------------------------------------------------
+
+const BRIDGE_LAYER = 'layer-bridge-loop-clips';
+const originalWindow = globalThis.window;
+
+function bridgeLayer(): Layer {
+  return {
+    id: BRIDGE_LAYER,
+    name: 'Physics Paint',
+    type: 'physic-paint',
+    visible: true,
+    opacity: 1,
+    blendMode: 'normal',
+    transform: defaultTransform(),
+    source: { type: 'physic-paint', layerId: BRIDGE_LAYER },
+  };
+}
+
+function seedBridgeDocument(loops: readonly PhysicPaintRotoLoopClip[] = []): void {
+  const records = cycleRecords();
+  const result = physicPaintStore.replaceRotoPhysicalDocument(BRIDGE_LAYER, {
+    capacity: 600,
+    realKeyRecords: records,
+    interpolation: INTERPOLATION,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame: 0,
+    revision: buildPhysicPaintRotoPhysicalRevision(records, INTERPOLATION, loops),
+    loopClips: loops,
+  });
+  if (!result.ok) throw new Error(result.error);
+}
+
+async function launchBridge(): Promise<string> {
+  const opened = await openPhysicPaintCanvas({ layer: bridgeLayer(), frame: 0 });
+  if (!opened.ok) throw new Error(opened.error);
+  return opened.data.operationId;
+}
+
+function bridgePayload(launchOperationId: string, overrides: Record<string, unknown> = {}) {
+  return {
+    kind: 'replace-roto-physical-map' as const,
+    operationId: `op-${crypto.randomUUID()}`,
+    operationKind: 'move-key' as const,
+    layerId: BRIDGE_LAYER,
+    startFrame: 0,
+    launchOperationId,
+    expectedRevision: physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!,
+    records: physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).map(({ keyId, appFrame, payload: recordPayload }) => ({
+      keyId,
+      appFrame,
+      payload: recordPayload,
+    })),
+    interpolationEnabled: false,
+    interpolationMode: 'duplicate' as const,
+    selectedKeyId: null,
+    selectedAppFrame: null,
+    ...overrides,
+  };
+}
+
+function bridgeRecordEntries(records: readonly PhysicPaintRotoRealKeyRecord[]) {
+  return records.map(({ keyId, appFrame, payload: recordPayload }) => ({ keyId, appFrame, payload: recordPayload }));
+}
+
+describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+    vi.spyOn(layerStore.layers, 'peek').mockReturnValue([bridgeLayer()]);
+    vi.spyOn(layerStore.overlayLayers, 'peek').mockReturnValue([]);
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        open: vi.fn(() => ({ focus: vi.fn() })),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        location: { origin: 'http://localhost:1420' },
+      },
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    projectStore.closeProject();
+    Object.defineProperty(globalThis, 'window', {
+      value: originalWindow,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  it('applies records + loopClips in one state transition under the loopClips-aware revision', async () => {
+    seedBridgeDocument();
+    const launchOperationId = await launchBridge();
+    const loop = loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 3);
+    const revisionBefore = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    const physicalRevisionBefore = rotoPhysicalRevision.value;
+    const visualVersionBefore = physicPaintVersion.value;
+
+    const result = applyPhysicPaintPayload(bridgePayload(launchOperationId, { loopClips: [loop] }));
+
+    expect(result).toMatchObject({ ok: true, kind: 'replace-roto-physical-map' });
+    // One atomic transition: exactly one physical revision bump and one visual
+    // notification — the store never observed records without loops or loops
+    // without records.
+    expect(rotoPhysicalRevision.value).toBe(physicalRevisionBefore + 1);
+    expect(physicPaintVersion.value).toBe(visualVersionBefore + 1);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loop]);
+    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).map((entry) => entry.keyId)).toEqual(['A', 'B', 'C', 'D', 'E']);
+    const revisionAfter = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    expect(revisionAfter).not.toBe(revisionBefore);
+    expect(revisionAfter).toBe(buildPhysicPaintRotoPhysicalRevision(cycleRecords(), INTERPOLATION, [loop]));
+    expect('acceptedRevision' in result ? result.acceptedRevision : null).toBe(revisionAfter);
+  });
+
+  it('rejects a payload whose expectedRevision went stale through a loop-only change', async () => {
+    seedBridgeDocument([loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 3)]);
+    const launchOperationId = await launchBridge();
+    const staleRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+
+    // A loop-only change lands through the store mutation seam: the canonical
+    // revision moves even though no record changed (43-01 fingerprint).
+    const loopOnly = physicPaintStore.replaceRotoPhysicalLoopClips(BRIDGE_LAYER, [loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 5)]);
+    expect(loopOnly.ok).toBe(true);
+    const currentRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    expect(currentRevision).not.toBe(staleRevision);
+
+    const result = applyPhysicPaintPayload(bridgePayload(launchOperationId, {
+      expectedRevision: staleRevision,
+      loopClips: [loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 9)],
+    }));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('stale');
+    // Rejection mutates nothing: the loop-only state is byte-preserved.
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 5)]);
+    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).map((entry) => entry.appFrame)).toEqual([0, 1, 2, 3, 4]);
+    expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)).toBe(currentRevision);
+  });
+
+  it('undo and redo replays each restore records and loopClips together in one transition', async () => {
+    seedBridgeDocument();
+    const launchOperationId = await launchBridge();
+    const loop = loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 3);
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+
+    // Original command: moves key E 4 -> 5 AND installs the loop — one
+    // history-bearing commit carrying both sides of the state.
+    const afterRecords = [record('A', 0), record('B', 1), record('C', 2), record('D', 3), record('E', 5)];
+    const command = bridgePayload(launchOperationId, {
+      records: bridgeRecordEntries(afterRecords),
+      loopClips: [loop],
+    });
+    const accepted = applyPhysicPaintPayload(command);
+    expect(accepted.ok).toBe(true);
+    const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    expect(afterRevision).not.toBe(beforeRevision);
+
+    // Undo replay: restores the pre-command records AND the empty loop
+    // collection in one acceptance.
+    const undo = applyPhysicPaintPayload(bridgePayload(launchOperationId, {
+      operationKind: 'undo',
+      records: bridgeRecordEntries(cycleRecords()),
+      loopClips: [],
+      historyProvenance: {
+        historyCommandId: command.operationId,
+        historyDirection: 'undo',
+        sourceRevision: afterRevision,
+        targetRevision: beforeRevision,
+      },
+    }));
+    expect(undo.ok).toBe(true);
+    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).map((entry) => [entry.keyId, entry.appFrame]))
+      .toEqual([['A', 0], ['B', 1], ['C', 2], ['D', 3], ['E', 4]]);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([]);
+    expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)).toBe(beforeRevision);
+
+    // Redo replay: re-applies the moved key AND the loop in one acceptance.
+    const redo = applyPhysicPaintPayload(bridgePayload(launchOperationId, {
+      operationKind: 'redo',
+      records: bridgeRecordEntries(afterRecords),
+      loopClips: [loop],
+      historyProvenance: {
+        historyCommandId: command.operationId,
+        historyDirection: 'redo',
+        sourceRevision: beforeRevision,
+        targetRevision: afterRevision,
+      },
+    }));
+    expect(redo.ok).toBe(true);
+    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).map((entry) => [entry.keyId, entry.appFrame]))
+      .toEqual([['A', 0], ['B', 1], ['C', 2], ['D', 3], ['E', 5]]);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loop]);
+    expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)).toBe(afterRevision);
+  });
+
+  it('rejects a replay whose staged state does not match the provenance target revision', async () => {
+    seedBridgeDocument();
+    const launchOperationId = await launchBridge();
+    const loop = loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 3);
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+
+    const command = bridgePayload(launchOperationId, { loopClips: [loop] });
+    expect(applyPhysicPaintPayload(command).ok).toBe(true);
+    const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+
+    // The staged undo state keeps a loop the target revision does not cover:
+    // the staged/target mismatch must reject before any mutation.
+    const forged = applyPhysicPaintPayload(bridgePayload(launchOperationId, {
+      operationKind: 'undo',
+      loopClips: [loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 7)],
+      historyProvenance: {
+        historyCommandId: command.operationId,
+        historyDirection: 'undo',
+        sourceRevision: afterRevision,
+        targetRevision: beforeRevision,
+      },
+    }));
+    expect(forged.ok).toBe(false);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loop]);
+    expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)).toBe(afterRevision);
+  });
+
+  it('a commit without the loopClips member preserves the current collection', async () => {
+    const loop = loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 3);
+    seedBridgeDocument([loop]);
+    const launchOperationId = await launchBridge();
+
+    const moved = [record('A', 0), record('B', 1), record('C', 2), record('D', 3), record('E', 6)];
+    const result = applyPhysicPaintPayload(bridgePayload(launchOperationId, {
+      records: bridgeRecordEntries(moved),
+    }));
+
+    expect(result.ok).toBe(true);
+    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).find((entry) => entry.keyId === 'E')?.appFrame).toBe(6);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loop]);
   });
 });
