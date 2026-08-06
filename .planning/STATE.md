@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43
 current_phase_name: hold-loop-clips-filmstrip-capsule
 status: executing
-stopped_at: Phase 43 plans revised per external audit (12 findings) — ready to execute
-last_updated: "2026-08-06T19:09:00.810Z"
+stopped_at: Completed 43-01-PLAN.md
+last_updated: "2026-08-06T20:17:56.324Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 43 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 24
-  completed_plans: 14
+  completed_plans: 15
   percent: 50
 ---
 
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43 (hold-loop-clips-filmstrip-capsule) — EXECUTING
-Plan: 1 of 10
-Status: Executing Phase 43
+Plan: 2 of 10
+Status: Ready to execute
 Last activity: 2026-08-06 — Phase 43 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 runs an UNSIGNED packaged-app smoke (capsule, loop-edit dialog, valid preview, unresolved placeholder, valid PNG export, unresolved export block — no signing material accessed). Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [██████████] 100%
+Progress: [██████░░░░] 63%
 
 ## Performance Metrics
 
@@ -171,6 +171,7 @@ Progress: [██████████] 100%
 | Phase 42-playscript-application-modes-color-override P05 | 29min | 2 tasks | 9 files |
 | Phase 42 P06 | 18min | 2 tasks | 3 files |
 | Phase 42 P04 | multi-session across blocking native UAT checkpoint | 2 tasks | 4 files |
+| Phase 43 P01 | ~50min across API-quota resume | 2 tasks | 24 files |
 
 ## Accumulated Context
 
@@ -206,6 +207,8 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 42-06: summary bar splits controller loopReadout into Requested-left/Effective-right spans; controller D-13 composition untouched
 - [Phase ?]: 42-04: native visual UAT approved 2026-08-06 — steps 1-9 + 8b (drag + 48px stable Custom-row height) pass on dev run, step 9 packaged-build CSP check pass; closes the PLAY-01..04 user oracle across the 42-05/42-06/42-07 remediation surface
 - [Phase ?]: 42-04: panel summary is a pure read-only projection — zero string assembly in the panel; composition stays controller-owned (42-02)
+- [Phase ?]: 43-01: Q1 resolved — loopClips join the single canonical revision fingerprint (records, interpolation, loopClips); empty collection adds no term so v0.8.1 revisions stay byte-stable (D-29)
+- [Phase ?]: 43-01: play-script and paste-key-group commits are ordinary history-bearing kinds — generation plus derived loop shrink is one undoable/redoable outcome (D-06/D-10)
 
 ### Pending Todos
 
@@ -388,9 +391,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-06T14:13:32.621Z
-Stopped at: Phase 43 plans revised per external audit — ready to execute
-Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/43-hold-loop-clips-filmstrip-capsule/43-01-PLAN.md
+Last session: 2026-08-06T20:17:56.314Z
+Stopped at: Completed 43-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
