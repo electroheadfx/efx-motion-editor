@@ -670,7 +670,10 @@ describe('PhysicsPaintPlayScriptDialog header drag + stable color-pane height (U
     expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-dragging .physics-paint-play-script-header')).toContain('cursor: grabbing');
   });
 
-  it('keeps the color pane at a stable min-height so Original/Custom toggling never resizes the modal (CSS contract)', () => {
-    expect(playScriptCssRule('.physics-paint-play-script-color-pane')).toContain('min-height: 45px');
+  it('locks the color pane to the Custom row height so Original/Custom toggling never resizes the modal (CSS contract)', () => {
+    // Deterministic Custom row: 7px padding + meta (hex 16px + 2px gap + note 14px) + 7px + 2px border = 48px.
+    expect(playScriptCssRule('.physics-paint-play-script-color-pane')).toContain('min-height: 48px');
+    expect(playScriptCssRule('.physics-paint-play-script-color-hex')).toContain('line-height: 16px');
+    expect(playScriptCssRule('.physics-paint-play-script-color-note')).toContain('line-height: 14px');
   });
 });
