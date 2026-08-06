@@ -1,7 +1,7 @@
 ---
 phase: 42
 slug: playscript-application-modes-color-override
-status: revised
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-08-05
@@ -79,19 +79,25 @@ Declared values (multiples of 4). New controls added in this phase MUST use thes
 
 ## Typography
 
-Exactly 4 sizes, 2 weights (matches existing dialog):
+Exactly 4 sizes, 2 weights (matches existing dialog) plus one inherited dark-panel exception (declared below):
 
 | Role | Size | Weight | Line Height | Usage |
 |------|------|--------|-------------|-------|
 | Body | 16px | 400 | 1.5 | Inputs, helper lines, summary-bar readout, panel summary line 2 values |
 | Label | 12px | 700 | 1.2 | Card section titles — uppercase, `letter-spacing: 0.06em`, color `#343a42` (existing `content label` rule) |
-| Secondary | 12px | 400 | 1.5 | Helper line under the segmented control, inline errors, Color card note (`Picked from the app's brush color panel`), Motion wiggle `Reset defaults` link, panel summary line 1 (dark panel: `#aeb5be` at 10px per existing `physics-paint-script-provenance` convention — see note) |
+| Secondary | 12px | 400 | 1.5 | Helper line under the segmented control, inline errors, Color card note (`Picked from the app's brush color panel`), Motion wiggle `Reset defaults` link |
 | Display | clamp(24px, 3vw, 36px) | 700 | 1.1 | Dialog title `Play Script` (existing `content strong` rule) |
+
+**Inherited exception (preserved verbatim — not a new size):**
+
+| Value | Where | Why kept |
+|-------|-------|----------|
+| 10px / 400 | Scripts panel summary line 1 metadata at `#aeb5be` | Existing dark-panel convention (`physics-paint-script-provenance`/`physics-paint-scripts-status`) — predates this phase |
 
 **Notes:**
 - Weights are exactly 400 and 700. No 500/600 anywhere in new markup.
 - Numeric fields and the Requested/Effective summary bar use `font-variant-numeric: tabular-nums` (existing input rule) so durations do not jitter while values change.
-- Panel summary typography follows the existing dark-panel scale (10px metadata at `#aeb5be`, matching `physics-paint-script-provenance`/`physics-paint-scripts-status`); it does NOT import the dialog's light-surface label style into the dark pane.
+- Panel summary typography follows the existing dark-panel scale (10px metadata exception above); it does NOT import the dialog's light-surface label style into the dark pane.
 
 ---
 
@@ -238,11 +244,11 @@ Applicable state considerations resolved: 13 covered, 0 backstops, 16 dismissed,
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: pending re-check (2026-08-06 revision)
-- [ ] Dimension 2 Visuals: pending re-check (2026-08-06 revision)
-- [ ] Dimension 3 Color: pending re-check (2026-08-06 revision)
-- [ ] Dimension 4 Typography: pending re-check (2026-08-06 revision)
-- [ ] Dimension 5 Spacing: pending re-check (2026-08-06 revision)
-- [ ] Dimension 6 Registry Safety: pending re-check (2026-08-06 revision)
+- [x] Dimension 1 Copywriting: PASS (re-checked 2026-08-06)
+- [x] Dimension 2 Visuals: PASS (re-checked 2026-08-06)
+- [x] Dimension 3 Color: PASS (re-checked 2026-08-06)
+- [x] Dimension 4 Typography: PASS (re-checked 2026-08-06 — 10px dark-panel size declared as an inherited exception)
+- [x] Dimension 5 Spacing: PASS (re-checked 2026-08-06)
+- [x] Dimension 6 Registry Safety: PASS (re-checked 2026-08-06)
 
-**Approval history:** approved 2026-08-05 (gsd-ui-checker); re-verified 2026-08-05 after user-locked revision (E1 overflow, mode-dependent frame label, summary-updates-after-success, E5 failure/cancellation). **2026-08-06:** revised per the approved playscript-proposal (D-08R/D-16; inline-picker contract superseded; loop-intent clarification) — pending gsd-ui-checker re-approval.
+**Approval history:** approved 2026-08-05 (gsd-ui-checker); re-verified 2026-08-05 after user-locked revision (E1 overflow, mode-dependent frame label, summary-updates-after-success, E5 failure/cancellation). **2026-08-06:** revised per the approved playscript-proposal (D-08R/D-16; inline-picker contract superseded; loop-intent clarification) — re-approved 2026-08-06 (gsd-ui-checker), 6/6 PASS, no FLAGs remaining.
