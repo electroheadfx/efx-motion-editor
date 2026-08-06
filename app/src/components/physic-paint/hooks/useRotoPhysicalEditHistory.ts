@@ -13,8 +13,8 @@
  * - `operationId`: the coordinator's accepted operation ID (dedupe key);
  * - `operationKind`: the original ordinary kind (`insert-slot`,
  *   `delete-key`, `delete-key-group`, `move-key`, `move-key-group`,
- *   `force-spacing`, `duplicate-key`, or `paste-key`); replay kinds
- *   (`undo`, `redo`) are never recorded as new
+ *   `force-spacing`, `duplicate-key`, `paste-key`, `paste-key-group`, or
+ *   `play-script`); replay kinds (`undo`, `redo`) are never recorded as new
  *   commands;
  * - `before`/`after`: immutable complete `RotoPhysicalEditSnapshot`
  *   captured by the coordinator at acceptance, including records,
@@ -125,6 +125,9 @@ interface PendingReplay<EngineState> {
 function isOrdinaryOperationKind(
   kind: PhysicPaintRotoPhysicalEditOperationKind,
 ): kind is RotoPhysicalEditOrdinaryOperationKind {
+  // Phase 43 (D-06/D-10): content-producing commits — including Play Script
+  // batch generation and group paste — are ordinary history-bearing commands
+  // so a generation plus its derived loop shrink stays one undoable outcome.
   return kind === 'insert-slot'
     || kind === 'delete-key'
     || kind === 'delete-key-group'
@@ -132,7 +135,9 @@ function isOrdinaryOperationKind(
     || kind === 'move-key-group'
     || kind === 'force-spacing'
     || kind === 'duplicate-key'
-    || kind === 'paste-key';
+    || kind === 'paste-key'
+    || kind === 'paste-key-group'
+    || kind === 'play-script';
 }
 
 function snapshotRecordsEqual(
@@ -153,13 +158,29 @@ function snapshotRecordsEqual(
   }
   if (before.interpolation.enabled !== after.interpolation.enabled) return false;
   if (before.interpolation.mode !== after.interpolation.mode) return false;
+  // Loop Clips are durable canonical state (Phase 43, Q1): a loop-only
+  // difference must register as a change; derived loop state never enters
+  // the snapshot, so it can never register as one.
+  if (before.loopClips.length !== after.loopClips.length) return false;
+  for (let index = 0; index < before.loopClips.length; index += 1) {
+    const left = before.loopClips[index];
+    const right = after.loopClips[index];
+    if (left.loopId !== right.loopId) return false;
+    if (left.placementStart !== right.placementStart) return false;
+    if (left.repeat !== right.repeat) return false;
+    if (left.mode !== right.mode) return false;
+    if (left.sourceKeyIds.length !== right.sourceKeyIds.length) return false;
+    for (let keyIndex = 0; keyIndex < left.sourceKeyIds.length; keyIndex += 1) {
+      if (left.sourceKeyIds[keyIndex] !== right.sourceKeyIds[keyIndex]) return false;
+    }
+  }
   if (before.selectedKeyId !== after.selectedKeyId) return false;
   if (before.selectedAppFrame !== after.selectedAppFrame) return false;
   return true;
 }
 
 function snapshotRevision(snapshot: RotoPhysicalEditSnapshot<unknown>): string {
-  return buildPhysicPaintRotoPhysicalRevision(snapshot.records, snapshot.interpolation);
+  return buildPhysicPaintRotoPhysicalRevision(snapshot.records, snapshot.interpolation, snapshot.loopClips);
 }
 
 function snapshotReplayAuthorityEqual(
@@ -383,7 +404,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     const recordsPort = inputRef.current.recordsPort;
     const currentRecords = recordsPort.getRecords(identity.layerId);
     const currentInterpolation = recordsPort.getInterpolation(identity.layerId);
-    const currentRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation);
+    const currentRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation, recordsPort.getLoopClips(identity.layerId));
     // Undo replays from `after` back to `before`: current state must equal
     // the command's accepted `after` revision.
     if (currentRevision !== entry.acceptedRevision) {
@@ -391,7 +412,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     }
     pendingReplayRef.current = { direction: 'undo', command: entry };
     const proposal = buildReplayProposal(entry.before);
-    const beforeTargetRevision = buildPhysicPaintRotoPhysicalRevision(entry.before.records, entry.before.interpolation);
+    const beforeTargetRevision = buildPhysicPaintRotoPhysicalRevision(entry.before.records, entry.before.interpolation, entry.before.loopClips);
     const accepted = await coordinator.executePhysicalEdit({
       proposal,
       expectedLaunch: { operationId: identity.launchOperationId, layerId: identity.layerId },
@@ -436,17 +457,17 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     const recordsPort = inputRef.current.recordsPort;
     const currentRecords = recordsPort.getRecords(identity.layerId);
     const currentInterpolation = recordsPort.getInterpolation(identity.layerId);
-    const currentRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation);
+    const currentRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation, recordsPort.getLoopClips(identity.layerId));
     // Redo replays from `before` forward to `after`: current state must
     // equal the command's `before` revision (recomputed from the stored
-    // immutable `before` records/interpolation).
-    const beforeRevision = buildPhysicPaintRotoPhysicalRevision(entry.before.records, entry.before.interpolation);
+    // immutable `before` records/interpolation/loopClips).
+    const beforeRevision = buildPhysicPaintRotoPhysicalRevision(entry.before.records, entry.before.interpolation, entry.before.loopClips);
     if (currentRevision !== beforeRevision) {
       return false;
     }
     pendingReplayRef.current = { direction: 'redo', command: entry };
     const proposal = buildReplayProposal(entry.after);
-    const afterTargetRevision = buildPhysicPaintRotoPhysicalRevision(entry.after.records, entry.after.interpolation);
+    const afterTargetRevision = buildPhysicPaintRotoPhysicalRevision(entry.after.records, entry.after.interpolation, entry.after.loopClips);
     const accepted = await coordinator.executePhysicalEdit({
       proposal,
       expectedLaunch: { operationId: identity.launchOperationId, layerId: identity.layerId },

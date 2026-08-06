@@ -153,7 +153,7 @@ describe('frameMap solid/transparent entries', () => {
       background: null,
       selectedKeyId: null,
       cursorAppFrame: 0,
-      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation),
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, []),
     });
     if (!seeded.ok) throw new Error(seeded.error);
 

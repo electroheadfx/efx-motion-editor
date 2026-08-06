@@ -11,6 +11,7 @@ import {
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPhysicalRevision,
   isPhysicPaintRotoInterpolationState,
+  parsePhysicPaintRotoLoopClips,
   parsePhysicPaintRotoPhysicalDocument,
   parsePhysicPaintRotoRealKeyRecordCollection,
   type PhysicPaintRotoInterpolationState,
@@ -98,19 +99,21 @@ export const rotoPhysicalRevision = signal(0);
 
 // --- Physical structural read memo (38.1-07) ---
 // Per-layer memo for the physical projection + content revision. Validity is
-// keyed on the identity triple (recordMap, frozen interpolation object,
-// capacity): every mutation site REPLACES those values (the add/delete/move/
-// undo/redo publish path at replaceRotoPhysicalRecords, payload writes at
+// keyed on the identity quadruple (recordMap, frozen interpolation object,
+// capacity, frozen loopClips array): every mutation site REPLACES those values
+// (the add/delete/move/undo/redo publish path at replaceRotoPhysicalRecords,
+// loop replacement at replaceRotoPhysicalLoopClips, payload writes at
 // updateRotoPhysicalRealKeyPayload, interpolation publishes at
 // setRotoPhysicalInterpolationState, document replacement, and hydration), so
 // the memo needs no explicit invalidation hooks and can never serve stale
-// data. Selection/cursor writes touch none of the three identities and never
+// data. Selection/cursor writes touch none of the four identities and never
 // invalidate. Any future post-install in-place write to an installed inner
-// record map would silently break this contract and is grep-gated.
+// record map or loop array would silently break this contract and is grep-gated.
 type RotoPhysicalStructuralCacheEntry = {
   recordMap: Map<string, PhysicPaintRotoRealKeyRecord>;
   interpolation: PhysicPaintRotoInterpolationState;
   capacity: number;
+  loopClips: readonly PhysicPaintRotoLoopClip[];
   projection: PhysicPaintRotoPhysicalTimelineProjection | null;
   contentRevision: string;
 };
@@ -124,8 +127,13 @@ function _resolveRotoPhysicalStructural(layerId: string): RotoPhysicalStructural
   }
   const interpolation = _rotoPhysicalInterpolationState.get(layerId) ?? PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED;
   const capacity = _rotoPhysicalCapacity.get(layerId) ?? PHYSIC_PAINT_MAX_APPLY_FRAMES;
+  const loopClips = _rotoPhysicalLoopClips.get(layerId) ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
   const cached = _rotoPhysicalStructuralCache.get(layerId);
-  if (cached && cached.recordMap === recordMap && cached.interpolation === interpolation && cached.capacity === capacity) return cached;
+  if (cached
+    && cached.recordMap === recordMap
+    && cached.interpolation === interpolation
+    && cached.capacity === capacity
+    && cached.loopClips === loopClips) return cached;
   const records = Array.from(recordMap.values()).sort((a, b) => a.appFrame - b.appFrame);
   const identities = records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
   const result = projectPhysicPaintRotoPhysicalTimeline({
@@ -137,8 +145,9 @@ function _resolveRotoPhysicalStructural(layerId: string): RotoPhysicalStructural
     recordMap,
     interpolation,
     capacity,
+    loopClips,
     projection: result.ok ? result.projection : null,
-    contentRevision: buildPhysicPaintRotoPhysicalRevision(records, interpolation),
+    contentRevision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips),
   };
   _rotoPhysicalStructuralCache.set(layerId, entry);
   return entry;
@@ -749,7 +758,7 @@ export const physicPaintStore = {
           background: _rotoBackgroundMetadata.get(layerId) ?? null,
           selectedKeyId,
           cursorAppFrame,
-          revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation),
+          revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, this.getRotoPhysicalLoopClips(layerId)),
           loopClips: this.getRotoPhysicalLoopClips(layerId),
         });
         return {
@@ -1215,8 +1224,11 @@ export const physicPaintStore = {
     const previousPayloadDataUrls = new Set(previousRecords.map((record) => record.payload.dataUrl));
     const previousInterpolation = this.getRotoPhysicalInterpolationState(layerId);
     const previousCapacity = this.getRotoPhysicalCapacity(layerId);
-    const previousRevision = buildPhysicPaintRotoPhysicalRevision(previousRecords, previousInterpolation);
-    const nextRevision = buildPhysicPaintRotoPhysicalRevision(validatedRecords, interpolation);
+    // Records-only replacement: the Loop Clip collection is untouched, so both
+    // sides of the revision comparison carry the current collection.
+    const currentLoopClips = this.getRotoPhysicalLoopClips(layerId);
+    const previousRevision = buildPhysicPaintRotoPhysicalRevision(previousRecords, previousInterpolation, currentLoopClips);
+    const nextRevision = buildPhysicPaintRotoPhysicalRevision(validatedRecords, interpolation, currentLoopClips);
     if (_rotoRealKeyRecords.has(layerId) && previousRevision === nextRevision && previousCapacity === capacity) return { ok: true };
 
     // Atomically replace the complete record set and indexes.
@@ -1366,6 +1378,47 @@ export const physicPaintStore = {
   },
 
   /**
+   * Validate and atomically replace the complete per-layer Loop Clip
+   * collection (Phase 43, D-29). Records and interpolation are untouched.
+   * Failure changes nothing; an accepted change publishes one visible change
+   * and moves the canonical content revision (loops join the fingerprint, Q1).
+   */
+  replaceRotoPhysicalLoopClips(
+    layerId: string,
+    value: unknown,
+  ): { ok: true } | { ok: false; error: string } {
+    if (!layerId || typeof layerId !== 'string') {
+      return { ok: false, error: 'Layer ID must be a non-empty string.' };
+    }
+    if (!_rotoRealKeyRecords.has(layerId)) {
+      return { ok: false, error: 'Physical Roto layer does not exist.' };
+    }
+    let validated: readonly PhysicPaintRotoLoopClip[];
+    try {
+      validated = parsePhysicPaintRotoLoopClips(value);
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Invalid Loop Clip collection.' };
+    }
+    const current = this.getRotoPhysicalLoopClips(layerId);
+    if (current.length === validated.length && current.every((clip, index) => {
+      const next = validated[index];
+      return next !== undefined
+        && clip.loopId === next.loopId
+        && clip.placementStart === next.placementStart
+        && clip.repeat === next.repeat
+        && clip.mode === next.mode
+        && clip.sourceKeyIds.length === next.sourceKeyIds.length
+        && clip.sourceKeyIds.every((keyId, keyIndex) => keyId === next.sourceKeyIds[keyIndex]);
+    })) {
+      return { ok: true };
+    }
+    _rotoPhysicalLoopClips.set(layerId, validated);
+    rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
+    _notifyVisualChange();
+    return { ok: true };
+  },
+
+  /**
    * Read the canonical interpolation state for a layer. Returns the
    * immutable disabled default when no physical state has been published.
    */
@@ -1498,7 +1551,7 @@ export const physicPaintStore = {
     } catch (error) {
       return reject(error instanceof Error ? error.message : 'Invalid physical render payload.');
     }
-    const nextRevision = buildPhysicPaintRotoPhysicalRevision(validated, this.getRotoPhysicalInterpolationState(layerId));
+    const nextRevision = buildPhysicPaintRotoPhysicalRevision(validated, this.getRotoPhysicalInterpolationState(layerId), this.getRotoPhysicalLoopClips(layerId));
     if (nextRevision === currentRevision) return { ok: true, changed: false, contentRevision: currentRevision };
     _rotoRealKeyRecords.set(layerId, new Map(validated.map((record) => [record.keyId, record])));
     _pruneUnreferencedRotoAlphaCanvases([current.payload.dataUrl]);

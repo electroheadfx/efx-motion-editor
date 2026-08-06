@@ -50,6 +50,7 @@ import type {
 } from '../../../types/physicPaint';
 import type {
   PhysicPaintRotoInterpolationState,
+  PhysicPaintRotoLoopClip,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
@@ -252,6 +253,16 @@ function cloneRecords(records: readonly PhysicPaintRotoRealKeyRecord[]): PhysicP
       ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
       ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
     },
+  }));
+}
+
+function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPaintRotoLoopClip[] {
+  return loopClips.map((clip) => ({
+    loopId: clip.loopId,
+    placementStart: clip.placementStart,
+    sourceKeyIds: [...clip.sourceKeyIds],
+    repeat: clip.repeat,
+    mode: clip.mode,
   }));
 }
 
@@ -524,6 +535,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           enabled: interpolation.enabled,
           mode: interpolation.mode,
         },
+        loopClips: cloneLoopClips(portsRef.current.records.getLoopClips(launch.layerId)),
         capacity,
         expectedRevision,
         stagedRevision,
@@ -550,6 +562,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       if (!launch || launch.layerId !== snapshot.layerId || launch.operationId !== snapshot.launchOperationId) return false;
       const replaceResult = portsRef.current.records.replaceRecords(snapshot.layerId, snapshot.records, snapshot.interpolation);
       if (!replaceResult.ok) return false;
+      // Loop Clips ride the same snapshot (Q1/D-06): replay and rollback
+      // restore keys and loops together.
+      const loopResult = portsRef.current.records.replaceLoopClips(snapshot.layerId, snapshot.loopClips);
+      if (!loopResult.ok) return false;
       portsRef.current.buffer.replaceFrameStates(snapshot.frameStates);
       portsRef.current.buffer.replacePreviewFrames(snapshot.previewFrames);
       portsRef.current.buffer.replaceCapturedFrames(snapshot.capturedFrames);
@@ -676,6 +692,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       let currentStaged = buildPhysicPaintRotoPhysicalRevision(
         portsRef.current.records.getRecords(pending.layerId),
         portsRef.current.records.getInterpolation(pending.layerId),
+        portsRef.current.records.getLoopClips(pending.layerId),
       );
       if (pending.operationKind === 'set-interpolation-enabled'
         || pending.operationKind === 'set-interpolation-mode'
@@ -706,6 +723,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         currentStaged = buildPhysicPaintRotoPhysicalRevision(
           portsRef.current.records.getRecords(pending.layerId),
           portsRef.current.records.getInterpolation(pending.layerId),
+          portsRef.current.records.getLoopClips(pending.layerId),
         );
       }
       if (currentStaged !== pending.stagedRevision) {
@@ -840,8 +858,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         }
         const currentRecords = portsRef.current.records.getRecords(revalidatedLaunch.layerId);
         const currentInterpolation = portsRef.current.records.getInterpolation(revalidatedLaunch.layerId);
+        const currentLoopClips = portsRef.current.records.getLoopClips(revalidatedLaunch.layerId);
         const capacity = portsRef.current.records.getCapacity(revalidatedLaunch.layerId);
-        const expectedRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation);
+        const expectedRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation, currentLoopClips);
         if (isReplay && (
           !replayTarget
           || replayTarget.launchOperationId !== revalidatedLaunch.operationId
@@ -957,7 +976,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           clearPendingOnce();
           return false;
         }
-        const stagedRevision = buildPhysicPaintRotoPhysicalRevision(validatedStagedRecords, stagedInterpolation);
+        // Staged Loop Clips (Phase 43, Q1): replay stages the immutable
+        // replay target's collection so Undo/Redo restores loop state; every
+        // ordinary kind stages the current collection unchanged.
+        const stagedLoopClips = isReplay && replayTarget
+          ? replayTarget.loopClips
+          : currentLoopClips;
+        const stagedRevision = buildPhysicPaintRotoPhysicalRevision(validatedStagedRecords, stagedInterpolation, stagedLoopClips);
         if (isReplay && (
           !historyProvenance
           || historyProvenance.sourceRevision !== expectedRevision
@@ -987,6 +1012,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           records: recordsToApplyPayloadRecords(validatedStagedRecords),
           interpolationEnabled: stagedInterpolation.enabled,
           interpolationMode: stagedInterpolation.mode,
+          loopClips: cloneLoopClips(stagedLoopClips),
           selectedKeyId: input.selectedKeyId,
           selectedAppFrame: input.selectedAppFrame,
           ...(playScriptInput ? { semanticDelta: playScriptInput.semanticDelta } : proposal?.semanticDelta ? { semanticDelta: proposal.semanticDelta } : {}),

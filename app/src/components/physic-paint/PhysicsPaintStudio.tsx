@@ -404,8 +404,11 @@ export function PhysicsPaintStudio() {
     interpolation: PhysicPaintRotoInterpolationState,
   ) => {
     const beforeRecords = physicPaintStore.getRotoRealKeyRecords(layerId);
-    const nextRevision = buildPhysicPaintRotoPhysicalRevision(records, interpolation);
-    if (buildPhysicPaintRotoPhysicalRevision(beforeRecords, physicPaintStore.getRotoPhysicalInterpolationState(layerId)) === nextRevision) {
+    // Records-only replacement: both revision reads carry the current Loop
+    // Clip collection (loops are replaced via their own port).
+    const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId);
+    const nextRevision = buildPhysicPaintRotoPhysicalRevision(records, interpolation, currentLoopClips);
+    if (buildPhysicPaintRotoPhysicalRevision(beforeRecords, physicPaintStore.getRotoPhysicalInterpolationState(layerId), currentLoopClips) === nextRevision) {
       return physicPaintStore.replaceRotoPhysicalRecords(layerId, records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId));
     }
     const repaintBase = cachedRotoRepaintBaseFrameRef.current;
@@ -451,6 +454,8 @@ export function PhysicsPaintStudio() {
       getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId),
       getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId),
       getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId),
+      getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId),
+      replaceLoopClips: (layerId, loopClips) => physicPaintStore.replaceRotoPhysicalLoopClips(layerId, loopClips),
       replaceRecords: replacePhysicalRecordsWithOwnership,
     },
     buffer: {
@@ -535,6 +540,7 @@ export function PhysicsPaintStudio() {
     getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId) : null,
     getRotoKeyRecords: () => rotoKeyRecords,
     getRotoInterpolationState: () => rotoInterpolationState,
+    getRotoLoopClips: () => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId) : [],
     getPhysicalCells: () => rotoTimelineModel.physicalCells.value,
     getSelectedKeyId: () => selectedKeyId.value,
     getSelectedKeyIds: () => selectedKeyIds.value,
@@ -929,6 +935,8 @@ export function PhysicsPaintStudio() {
       getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId),
       getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId),
       getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId),
+      getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId),
+      replaceLoopClips: (layerId, loopClips) => physicPaintStore.replaceRotoPhysicalLoopClips(layerId, loopClips),
       replaceRecords: replacePhysicalRecordsWithOwnership,
     },
     undoPaint: rotoFrameEditing.undo,

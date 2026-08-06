@@ -664,7 +664,9 @@ function cloneAndFreezeRealKeyRecord(record: PhysicPaintRotoRealKeyRecord): Phys
 
 /**
  * Compute the deterministic physical content revision for a validated
- * immutable real-key collection plus canonical interpolation state.
+ * immutable real-key collection plus canonical interpolation state plus the
+ * durable Loop Clip collection (Phase 43, Q1: loops join the single canonical
+ * fingerprint — a loop-only edit is revision-visible).
  *
  * Per D-09: this revision is the canonical expected/staged/accepted
  * fingerprint used by the generic acknowledged physical-edit transaction. It
@@ -693,8 +695,9 @@ function cloneAndFreezeRealKeyRecord(record: PhysicPaintRotoRealKeyRecord): Phys
 export function buildPhysicPaintRotoPhysicalRevision(
   records: unknown,
   interpolation: unknown,
+  loopClips: unknown,
 ): string {
-  const source = encodePhysicPaintRotoPhysicalContent(records, interpolation);
+  const source = encodePhysicPaintRotoPhysicalContent(records, interpolation, loopClips);
   return `physical-${hashCanonicalPhysicalValue(source)}`;
 }
 
@@ -702,16 +705,19 @@ export function buildPhysicPaintRotoPhysicalRevision(
  * Canonical allowlisted encoding shared by content revision and persisted
  * project equality. Strings are length-prefixed, so payload text cannot create
  * delimiter collisions. Records are ordered by stable identity, not input or
- * presentation order.
+ * presentation order. Loop Clips join the fingerprint (Phase 43, Q1): any
+ * loop record change produces a different canonical revision.
  */
 export function encodePhysicPaintRotoPhysicalContent(
   records: unknown,
   interpolation: unknown,
+  loopClips: unknown,
 ): string {
   const validated = parsePhysicPaintRotoRealKeyRecordCollection(records);
   if (!isPhysicPaintRotoInterpolationState(interpolation)) {
     throw new Error('PhysicPaintRotoPhysicalRevision: invalid canonical interpolation state.');
   }
+  const validatedLoopClips = parsePhysicPaintRotoLoopClips(loopClips);
   const orderedByIdentity = [...validated].sort((a, b) => a.keyId.localeCompare(b.keyId));
   const encodedRecords = orderedByIdentity.map((record) => [
     encodeCanonicalString(record.keyId),
@@ -726,6 +732,11 @@ export function encodePhysicPaintRotoPhysicalContent(
     `records:${orderedByIdentity.length}:${encodedRecords}`,
     `interpolation:${validatedBoolean(interpolation.enabled)}`,
     `mode:${encodeCanonicalString(interpolation.mode)}`,
+    // D-29 compatibility: the empty Loop Clip collection is semantically
+    // identical to a pre-Phase-43 document with no loopClips member, so it
+    // contributes NO term — v0.8.1 documents keep their legacy revision and
+    // load with no migration. Any non-empty collection joins the fingerprint.
+    ...(validatedLoopClips.length > 0 ? [`loops:${encodeCanonicalLoopClips(validatedLoopClips)}`] : []),
   ].join('');
 }
 
@@ -733,15 +744,14 @@ export function encodePhysicPaintRotoPhysicalContent(
 export function buildPhysicPaintRotoProjectEquality(value: unknown): string {
   const document = parsePhysicPaintRotoPhysicalDocument(value);
   const source = [
-    encodePhysicPaintRotoPhysicalContent(document.realKeyRecords, document.interpolation),
+    // The content encoding already covers the Loop Clip collection (Q1), so
+    // two documents differing only in loops never share a save-cache key.
+    encodePhysicPaintRotoPhysicalContent(document.realKeyRecords, document.interpolation, document.loopClips),
     `capacity:${encodeCanonicalNumber(document.capacity)}`,
     `motion:${encodeCanonicalNumber(document.scriptMotion.deformation)}${encodeCanonicalNumber(document.scriptMotion.position)}`,
     `background:${encodeCanonicalBackground(document.background)}`,
     `selection:${document.selectedKeyId === null ? 'null;' : encodeCanonicalString(document.selectedKeyId)}`,
     `cursor:${encodeCanonicalNumber(document.cursorAppFrame)}`,
-    // D-29/D-31: two documents differing only in Loop Clips must never share
-    // the persisted save-cache key — the collection is part of layer equality.
-    `loops:${encodeCanonicalLoopClips(document.loopClips)}`,
   ].join('');
   return `project-${hashCanonicalPhysicalValue(source)}`;
 }
@@ -810,7 +820,7 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
   const loopClips = value.loopClips === undefined
     ? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY
     : parsePhysicPaintRotoLoopClips(value.loopClips);
-  const revision = buildPhysicPaintRotoPhysicalRevision(state.realKeyRecords, state.interpolation);
+  const revision = buildPhysicPaintRotoPhysicalRevision(state.realKeyRecords, state.interpolation, loopClips);
   if (value.revision !== revision) {
     throw new Error('PhysicPaintRotoPhysicalDocument: canonical revision mismatch.');
   }

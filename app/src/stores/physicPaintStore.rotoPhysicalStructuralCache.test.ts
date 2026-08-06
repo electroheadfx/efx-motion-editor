@@ -72,7 +72,7 @@ function freshStructural(): { projection: PhysicPaintRotoPhysicalTimelineProject
     capacity,
     interpolationEnabled: interpolation.enabled,
   });
-  const revision = physicalModelModule.buildPhysicPaintRotoPhysicalRevision(records, interpolation);
+  const revision = physicalModelModule.buildPhysicPaintRotoPhysicalRevision(records, interpolation, []);
   return { projection: result.ok ? result.projection : null, revision };
 }
 

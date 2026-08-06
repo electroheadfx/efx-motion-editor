@@ -5,6 +5,7 @@ import type { RotoSessionEffect } from '../roto/physicsPaintRotoSession';
 import type { RotoSessionCopiedGroupEntry } from './physicsPaintRotoSession';
 import type {
   PhysicPaintRotoInterpolationState,
+  PhysicPaintRotoLoopClip,
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
@@ -136,6 +137,12 @@ export interface RotoPhysicalEditSnapshot<EngineState> {
   readonly projectContextId: string | null;
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
   readonly interpolation: PhysicPaintRotoInterpolationState;
+  /**
+   * Durable Loop Clip collection (Phase 43, Q1/D-06/D-10): keys and loops
+   * ride ONE snapshot so a loop-only edit is restorable and a generation plus
+   * its derived loop shrink stays one coherent undoable outcome.
+   */
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
   readonly capacity: number;
   readonly expectedRevision: string;
   readonly stagedRevision: string;
@@ -204,6 +211,16 @@ export interface RotoPhysicalEditRecordsPort {
   getRecords: (layerId: string) => readonly PhysicPaintRotoRealKeyRecord[];
   getInterpolation: (layerId: string) => PhysicPaintRotoInterpolationState;
   getCapacity: (layerId: string) => number;
+  /**
+   * Durable Loop Clip reads plus complete replacement (Phase 43). Snapshot
+   * capture reads the current collection; snapshot restore republishes the
+   * captured collection so replay restores keys and loops together.
+   */
+  getLoopClips: (layerId: string) => readonly PhysicPaintRotoLoopClip[];
+  replaceLoopClips: (
+    layerId: string,
+    loopClips: readonly PhysicPaintRotoLoopClip[],
+  ) => { ok: true } | { ok: false; error: string };
   replaceRecords: (
     layerId: string,
     records: readonly PhysicPaintRotoRealKeyRecord[],

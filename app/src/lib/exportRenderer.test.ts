@@ -62,7 +62,7 @@ function seedPhysicalRoto(
     background: options.background ?? null,
     selectedKeyId: null,
     cursorAppFrame: 0,
-    revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation),
+    revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, []),
   });
   if (!result.ok) throw new Error(result.error);
 }

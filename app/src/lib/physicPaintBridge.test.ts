@@ -79,7 +79,7 @@ function seedPhysicalDocument(
     background: null,
     selectedKeyId: null,
     cursorAppFrame: records[0]?.appFrame ?? 0,
-    revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation),
+    revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, []),
   });
   if (!result.ok) throw new Error(result.error);
 }

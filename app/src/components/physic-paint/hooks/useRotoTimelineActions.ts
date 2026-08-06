@@ -8,10 +8,11 @@ import {
 } from '../roto/physicsPaintRotoKeyController';
 import type {
   PhysicPaintRotoInterpolationState,
+  PhysicPaintRotoLoopClip,
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
-import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
+import { PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import {
   createPhysicPaintRotoDuplicateKeyIntent,
@@ -199,6 +200,8 @@ export interface RotoTimelineActionsInput {
   getRotoKeyRecords?: () => readonly PhysicPaintRotoRealKeyRecord[];
   /** Canonical interpolation state from the store (D-02). */
   getRotoInterpolationState?: () => PhysicPaintRotoInterpolationState;
+  /** Durable Loop Clip collection from the store (Phase 43, Q1). */
+  getRotoLoopClips?: () => readonly PhysicPaintRotoLoopClip[];
   /** Current physical projection cells (D-10). */
   getPhysicalCells?: () => readonly RotoPhysicalTimelineCell[];
   /** Selected stable keyId (D-01). */
@@ -535,7 +538,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       return { ok: false, reason: 'This move would not change the timeline.' };
     }
     const targetSignature = targetSignatureOf(target);
-    const proposalVersion = buildProposalVersion(records, interpolation, launch);
+    const proposalVersion = buildProposalVersion(records, interpolation, input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, launch);
     return {
       ok: true,
       publication: Object.freeze({
@@ -639,7 +642,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       return { ok: false, reason: 'This move would not change the timeline.' };
     }
     const targetSignature = targetSignatureOf(target);
-    const proposalVersion = buildProposalVersion(records, interpolation, launch);
+    const proposalVersion = buildProposalVersion(records, interpolation, input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, launch);
     return {
       ok: true,
       publication: Object.freeze({
@@ -827,9 +830,10 @@ function isBoundedKeyId(value: unknown): value is string {
 function buildProposalVersion(
   records: readonly PhysicPaintRotoRealKeyRecord[],
   interpolation: PhysicPaintRotoInterpolationState,
+  loopClips: readonly PhysicPaintRotoLoopClip[],
   launch: PhysicPaintLaunchContext,
 ): string {
-  const revision = buildPhysicPaintRotoPhysicalRevision(records, interpolation);
+  const revision = buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips);
   return `${revision}:${launch.operationId}:${launch.layerId}`;
 }
 

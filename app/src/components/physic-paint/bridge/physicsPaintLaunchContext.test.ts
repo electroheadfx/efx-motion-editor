@@ -19,7 +19,7 @@ function makeRotoPhysical(overrides: Record<string, unknown> = {}) {
     background: null,
     selectedKeyId: null,
     cursorAppFrame: 4,
-    revision: buildPhysicPaintRotoPhysicalRevision([], EMPTY_INTERPOLATION),
+    revision: buildPhysicPaintRotoPhysicalRevision([], EMPTY_INTERPOLATION, []),
     ...overrides,
   };
 }

@@ -34,13 +34,14 @@ function snapshot(
   selectedKeyId: string,
   selectedAppFrame: number,
 ): RotoPhysicalEditSnapshot<null> {
-  const revision = buildPhysicPaintRotoPhysicalRevision(records, { enabled: false, mode: 'duplicate' });
+  const revision = buildPhysicPaintRotoPhysicalRevision(records, { enabled: false, mode: 'duplicate' }, []);
   return {
     launchOperationId: 'launch-1',
     layerId: 'layer-1',
     projectContextId: 'project-1',
     records,
     interpolation: { enabled: false, mode: 'duplicate' },
+    loopClips: [],
     capacity: 10,
     expectedRevision: revision,
     stagedRevision: revision,
@@ -86,7 +87,7 @@ describe('useRotoPhysicalEditHistory rigid group drag', () => {
       acceptedOutput.value = {
         before: source,
         after: target,
-        acceptedRevision: buildPhysicPaintRotoPhysicalRevision(target.records, target.interpolation),
+        acceptedRevision: buildPhysicPaintRotoPhysicalRevision(target.records, target.interpolation, target.loopClips),
         operationId: `replay-${replayNumber}`,
         operationKind: input.operationKind,
         historyProvenance: input.historyProvenance,
@@ -106,6 +107,8 @@ describe('useRotoPhysicalEditHistory rigid group drag', () => {
         getRecords: () => current.records,
         getInterpolation: () => current.interpolation,
         getCapacity: () => current.capacity,
+        getLoopClips: () => current.loopClips,
+        replaceLoopClips: () => ({ ok: true }),
         replaceRecords: () => ({ ok: true }),
       },
       undoPaint: () => false,
@@ -115,7 +118,7 @@ describe('useRotoPhysicalEditHistory rigid group drag', () => {
     acceptedOutput.value = {
       before,
       after,
-      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(after.records, after.interpolation),
+      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(after.records, after.interpolation, after.loopClips),
       operationId: 'move-group-1',
       operationKind: 'move-key-group',
       historyProvenance: null,

@@ -26,6 +26,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 import {
   buildPhysicPaintRotoPhysicalRevision,
+  encodePhysicPaintRotoPhysicalContent,
   isPhysicPaintRotoLoopClip,
   parsePhysicPaintRotoLoopClips,
   parsePhysicPaintRotoPhysicalDocument,
@@ -59,6 +60,16 @@ const baseLoop = () => ({
 const baseDocument = (loopClips?: unknown) => {
   const realKeyRecords = sourceRecords();
   const interpolation = { enabled: false, mode: 'duplicate' as const };
+  // The canonical fingerprint covers loopClips (Q1). Malformed fixtures get a
+  // placeholder revision: the document parser rejects the malformed member
+  // before the revision check runs.
+  const revision = (() => {
+    try {
+      return buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, Array.isArray(loopClips) ? loopClips : []);
+    } catch {
+      return 'invalid-fixture-revision';
+    }
+  })();
   return {
     capacity: 600,
     realKeyRecords,
@@ -67,7 +78,7 @@ const baseDocument = (loopClips?: unknown) => {
     background: null,
     selectedKeyId: null,
     cursorAppFrame: 0,
-    revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation),
+    revision,
     ...(loopClips !== undefined ? { loopClips } : {}),
   };
 };
@@ -167,6 +178,10 @@ describe('parsePhysicPaintRotoPhysicalDocument loopClips member', () => {
   it('loads a v0.8.1-shaped document (no loopClips member) as an empty collection with no migration and no error', () => {
     const document = parsePhysicPaintRotoPhysicalDocument(baseDocument());
     expect(document.loopClips).toEqual([]);
+    // The empty collection contributes no fingerprint term, so a legacy
+    // loop-free revision remains canonical after the Phase 43 upgrade.
+    expect(encodePhysicPaintRotoPhysicalContent(document.realKeyRecords, document.interpolation, [])).not.toContain('loops:');
+    expect(encodePhysicPaintRotoPhysicalContent(document.realKeyRecords, document.interpolation, [baseLoop()])).toContain('loops:');
   });
 
   it('round-trips one loop clip byte-identically through parse and serialization', () => {
@@ -242,7 +257,10 @@ describe('physicPaintPersistence loopClips save/reopen', () => {
   });
 
   it('loads a v0.8.1-shaped persisted document (loopClips member absent) as an empty collection', async () => {
-    const persisted = await savePhysicPaintData('/project', runtimeOutput(baseDocument([baseLoop()])));
+    // A genuine v0.8.1 document carries no loopClips member and a legacy
+    // loop-free revision; the empty collection contributes no fingerprint
+    // term, so the legacy revision stays canonical (D-29, no migration).
+    const persisted = await savePhysicPaintData('/project', runtimeOutput(baseDocument()));
     const legacy = JSON.parse(JSON.stringify(persisted)) as typeof persisted;
     const legacyDocument = legacy[0].roto_physical as unknown as Record<string, unknown>;
     delete legacyDocument.loopClips;

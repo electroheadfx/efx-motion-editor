@@ -116,8 +116,10 @@ interface AcceptedPhysicalCommandEntry {
   readonly operationId: string;
   readonly beforeRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly beforeInterpolation: PhysicPaintRotoInterpolationState;
+  readonly beforeLoopClips: readonly PhysicPaintRotoLoopClip[];
   readonly afterRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly afterInterpolation: PhysicPaintRotoInterpolationState;
+  readonly afterLoopClips: readonly PhysicPaintRotoLoopClip[];
   readonly acceptedRevision: string;
 }
 const acceptedPhysicalCommands = new Map<string, AcceptedPhysicalCommandEntry>();
@@ -271,7 +273,7 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
   const capacity = Math.min(remainingCapacity, physicalRemaining, PHYSIC_PAINT_MAX_APPLY_FRAMES);
   const records = physicPaintStore.getRotoRealKeyRecords(request.layerId);
   const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(request.layerId);
-  const physicalRevision = buildPhysicPaintRotoPhysicalRevision(records, interpolation);
+  const physicalRevision = buildPhysicPaintRotoPhysicalRevision(records, interpolation, physicPaintStore.getRotoPhysicalLoopClips(request.layerId));
   const physicalRecords = records.map((record) => ({
     keyId: record.keyId,
     appFrame: record.appFrame,
@@ -364,7 +366,7 @@ function fingerprintApplyPayload(payload: PhysicPaintApplyPayload): string {
     const content = encodePhysicPaintRotoPhysicalContent(canonicalRecords, {
       enabled: payload.interpolationEnabled,
       mode: payload.interpolationMode,
-    });
+    }, payload.loopClips ?? []);
     const provenance = payload.historyProvenance
       ? `${payload.historyProvenance.historyCommandId}:${payload.historyProvenance.historyDirection}:${payload.historyProvenance.sourceRevision}:${payload.historyProvenance.targetRevision}`
       : 'ordinary';
@@ -582,7 +584,7 @@ function physicalEditResult(
       stagedRevision = buildPhysicPaintRotoPhysicalRevision(records, {
         enabled: payload.interpolationEnabled,
         mode: payload.interpolationMode,
-      });
+      }, payload.loopClips ?? physicPaintStore.getRotoPhysicalLoopClips(payload.layerId));
     } catch {
       stagedRevision = 'invalid-physical-revision';
     }
@@ -640,11 +642,12 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   }
   const currentRecords = physicPaintStore.getRotoRealKeyRecords(payload.layerId);
   const currentInterpolation = physicPaintStore.getRotoPhysicalInterpolationState(payload.layerId);
+  const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(payload.layerId);
   const currentDocument = physicPaintStore.getRotoPhysicalDocument(payload.layerId);
   if (isPlayScript && !currentDocument) {
     return reject('Canonical Roto physical document is unavailable for Play Script.');
   }
-  const currentRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation);
+  const currentRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation, currentLoopClips);
   if (currentRevision !== payload.expectedRevision) {
     return reject('Roto physical revision became stale before commit.');
   }
@@ -728,7 +731,7 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     enabled: payload.interpolationEnabled,
     mode: payload.interpolationMode,
   };
-  const stagedRevision = buildPhysicPaintRotoPhysicalRevision(proposedRecords, stagedInterpolation);
+  const stagedRevision = buildPhysicPaintRotoPhysicalRevision(proposedRecords, stagedInterpolation, proposedLoopClips);
   if (payload.operationKind === 'duplicate-key' || payload.operationKind === 'paste-key' || payload.operationKind === 'paste-key-group') {
     const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
       operationKind: payload.operationKind,
@@ -750,7 +753,7 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     if (!original) return reject('Roto physical replay targets an unknown accepted command.', stagedRevision);
     if (currentRevision !== provenance.sourceRevision) return reject('Roto physical replay source revision does not match the current state.', stagedRevision);
     if (stagedRevision !== provenance.targetRevision) return reject('Roto physical replay target revision does not match the original command.', stagedRevision);
-    const originalBeforeRevision = buildPhysicPaintRotoPhysicalRevision(original.beforeRecords, original.beforeInterpolation);
+    const originalBeforeRevision = buildPhysicPaintRotoPhysicalRevision(original.beforeRecords, original.beforeInterpolation, original.beforeLoopClips);
     if (provenance.historyDirection === 'undo') {
       if (provenance.sourceRevision !== original.acceptedRevision) return reject('Roto physical undo source revision does not match the original accepted state.', stagedRevision);
       if (provenance.targetRevision !== originalBeforeRevision) return reject('Roto physical undo target revision does not match the original before state.', stagedRevision);
@@ -778,7 +781,9 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   const acceptedSelectedKeyId = acceptedDocument.selectedKeyId;
   const acceptedSelectedAppFrame = acceptedSelectedKeyId === null ? null : acceptedDocument.cursorAppFrame;
 
-  if (!isReplay && !isInterpolationChange && !isPlayScript) {
+  if (!isReplay && !isInterpolationChange) {
+    // Phase 43 (D-06/D-10): Play Script generation commits join the ledger so
+    // a generation plus its derived loop shrink replays as one Undo/Redo.
     const afterRecords = acceptedDocument.realKeyRecords.map((record) => ({
       ...record,
       payload: { ...record.payload },
@@ -793,11 +798,13 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
         enabled: currentInterpolation.enabled,
         mode: currentInterpolation.mode,
       },
+      beforeLoopClips: currentLoopClips,
       afterRecords,
       afterInterpolation: {
         enabled: acceptedDocument.interpolation.enabled,
         mode: acceptedDocument.interpolation.mode,
       },
+      afterLoopClips: acceptedDocument.loopClips,
       acceptedRevision: acceptedDocument.revision,
     });
   }
@@ -1279,7 +1286,7 @@ export function createPhysicPaintLaunchContext(
         background: physicPaintStore.getRotoBackgroundMetadata(layerId),
         selectedKeyId: null,
         cursorAppFrame: requestedFrame,
-        revision: buildPhysicPaintRotoPhysicalRevision([], PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED),
+        revision: buildPhysicPaintRotoPhysicalRevision([], PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, []),
       });
   if (storedDocument) physicPaintStore.setRotoPhysicalSelection(layerId, document.selectedKeyId, document.cursorAppFrame);
   const playbackSettings = physicPaintStore.getRotoPlaybackSettings(layerId) ?? {
