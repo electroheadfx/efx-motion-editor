@@ -126,7 +126,10 @@ describe('Physics Paint navigation render localization', () => {
     const dialogEnd = studio.indexOf('const canvasEngineReadyImplRef =', dialogStart);
     const dialogBlock = studio.slice(dialogStart, dialogEnd);
     expect(dialogStart).toBeGreaterThanOrEqual(0);
-    expect(dialogBlock).toContain('[rotoPlayScript, playButtonRef]');
+    // D-08R: settings.color is a deliberate dep — the live brush-color prop must re-resolve on
+    // right-panel picks; frame-only invalidators below stay excluded.
+    expect(dialogBlock).toContain('[rotoPlayScript, playButtonRef, settings.color]');
+    expect(dialogBlock).toContain('brushColor: settings.color');
     for (const invalidator of ['currentFrame', 'startFrame', 'rotoNavigationGeneration']) expect(dialogBlock).not.toContain(invalidator);
   });
 

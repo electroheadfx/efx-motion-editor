@@ -1246,8 +1246,11 @@ export function PhysicsPaintStudio() {
       onRefresh: () => { void rotoScriptLibrary.refresh(); },
     },
   }));
-  const playScriptDialog = playScriptDialogPropsMemo.resolve([rotoPlayScript, playButtonRef], () => ({
+  const playScriptDialog = playScriptDialogPropsMemo.resolve([rotoPlayScript, playButtonRef, settings.color], () => ({
     playScript: rotoPlayScript,
+    // D-08R: live brush color prop — the dialog re-renders on right-panel picks (settings.color
+    // identity change re-resolves the memo) while reading the single setBrushColor-owned source.
+    brushColor: settings.color,
     returnFocusRef: playButtonRef,
   }));
   const canvasEngineReadyImplRef = useRef<(readyEngine: EfxPaintEngine) => void>(() => {});

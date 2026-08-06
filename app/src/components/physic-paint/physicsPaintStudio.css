@@ -1248,11 +1248,14 @@ button.destructive {
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.3);
 }
 
+/* D-16: the dialog body is a two-column card grid; Mode/Motion wiggle/summary bar span both
+   columns. Only the body scrolls (overflow contract below). */
 .physics-paint-play-script-content {
-  display: flex;
+  display: grid;
   flex: 1 1 auto;
-  flex-direction: column;
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 16px;
   min-width: 0;
   min-height: 0;
   padding-right: 4px;
@@ -1274,8 +1277,7 @@ button.destructive {
   text-transform: uppercase;
 }
 
-.physics-paint-play-script-content input,
-.physics-paint-play-script-content progress {
+.physics-paint-play-script-content input {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -1292,7 +1294,18 @@ button.destructive {
   font-variant-numeric: tabular-nums;
 }
 
-.physics-paint-play-script-content progress {
+/* Fixed footer (D-16): progress line + Cancel/Generate stay outside the scroll region. */
+.physics-paint-play-script-footer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.physics-paint-play-script-footer progress {
+  box-sizing: border-box;
+  width: 100%;
   height: 12px;
   accent-color: #365ed6;
 }
@@ -1337,16 +1350,47 @@ button.destructive {
 
 .physics-paint-play-script-content { overflow-x: hidden; }
 
-/* Major sections (mode block / frame field / hold loop) keep the 32px rhythm: the inherited
-   12px content gap plus a 20px section offset (42-UI-SPEC spacing scale, xl). */
-.physics-paint-play-script-section {
+/* Cards (D-16): white chrome on the light surface using the existing token pair; the 16px
+   internal padding/grid gap follows the 42-UI-SPEC spacing scale (md). */
+.physics-paint-play-script-card {
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
+  padding: 16px;
+  border: 1px solid #d8d4ca;
+  border-radius: 6px;
+  background: #ffffff;
 }
 
-.physics-paint-play-script-section + .physics-paint-play-script-section { margin-top: 20px; }
+.physics-paint-play-script-card-wide { grid-column: 1 / -1; }
+
+.physics-paint-play-script-card-title {
+  color: #343a42;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.physics-paint-play-script-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 'Reset defaults' heading link (D-16): 12px secondary, underline — never a filled button. */
+.physics-paint-play-script-heading-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #343a42;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
 
 /* Segmented mode control (D-05): white track, checked segment in the reserved accent. */
 .physics-paint-play-script-mode-group {
@@ -1418,9 +1462,14 @@ button.destructive {
   line-height: 1.5;
 }
 
-.physics-paint-play-script-loop-readout {
+/* Requested/Effective summary bar (D-13/D-16): full-width, 12px secondary, tabular-nums,
+   top-border separation; renders the controller loopReadout verbatim and never gates generation. */
+.physics-paint-play-script-summary-bar {
+  grid-column: 1 / -1;
   margin: 0;
-  font-size: 16px;
+  padding-top: 8px;
+  border-top: 1px solid #d8d4ca;
+  font-size: 12px;
   font-weight: 400;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
@@ -1439,38 +1488,9 @@ button.destructive {
   outline-offset: 2px;
 }
 
-/* 42-03 Task 2 — color override, application-time Motion, generation-error surface. */
-
-.physics-paint-play-script-group-label {
-  color: #343a42;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.physics-paint-play-script-override-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-
-.physics-paint-play-script-override-swatch {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 42px;
-  padding: 8px 10px;
-  border: 1px solid #a9afb7;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #20242a;
-  font-size: 16px;
-  cursor: pointer;
-}
-
-/* The swatch chip shows the USER'S PICKED COLOR as data — never accent (42-UI-SPEC). */
+/* 42-05 — two-state live brush-color control (D-08R) + generation-error surface. The in-dialog
+   picker mount, swatch row, and pick-guard styles were removed with the superseded D-08/D-09
+   contract; the chip below renders the USER'S CURRENT BRUSH COLOR as data — never accent. */
 .physics-paint-play-script-override-chip {
   width: 20px;
   height: 20px;
@@ -1479,21 +1499,51 @@ button.destructive {
   border-radius: 4px;
 }
 
-.physics-paint-play-script-override-reset {
-  padding: 4px 8px;
-  border: 0;
-  background: transparent;
-  color: #343a42;
+.physics-paint-play-script-color-original-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   font-size: 12px;
-  text-decoration: underline;
-  cursor: pointer;
+  font-weight: 400;
+  line-height: 1.5;
 }
 
-.physics-paint-play-script-picker-well {
-  overflow: hidden;
-  border: 1px solid #a9afb7;
-  border-radius: 6px;
-  background: #ffffff;
+.physics-paint-play-script-color-dots {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.physics-paint-play-script-color-dots i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.physics-paint-play-script-color-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.physics-paint-play-script-color-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.physics-paint-play-script-color-hex {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.physics-paint-play-script-color-note {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
 }
 
 .physics-paint-play-script-slider-row {
@@ -1515,17 +1565,6 @@ button.destructive {
   font-size: 16px;
   font-variant-numeric: tabular-nums;
   text-align: right;
-}
-
-.physics-paint-play-script-motion-reset {
-  align-self: flex-start;
-  min-height: 42px;
-  padding: 8px 10px;
-  border: 1px solid #a9afb7;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #20242a;
-  cursor: pointer;
 }
 
 /* E5: generation failure renders through the same approved inline-error style (#a12f37,

@@ -225,11 +225,12 @@ describe('createRotoPlayScriptController', () => {
     expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ mode: 'progressive', overrideColor: null }));
   });
 
-  it('ignores the legacy overrideColor signal for generation and summary — the getBrushColor port is the only resolution path', async () => {
+  it('exposes no dialog-side overrideColor signal — the getBrushColor port is the only resolution path', async () => {
     const test = harness();
     await test.controller.openConfirmation();
+    // D-08R/D-10: the override color is never stored dialog-side; the port resolves it live.
+    expect('overrideColor' in test.controller).toBe(false);
     test.controller.overrideEnabled.value = true;
-    test.controller.overrideColor.value = '#00ff00'; // stale dialog-side value must never reach the renderer or the summary
     test.setBrushColor('#1234ab');
     expect(await test.controller.confirm()).toBe(true);
     expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ overrideColor: '#1234ab' }));

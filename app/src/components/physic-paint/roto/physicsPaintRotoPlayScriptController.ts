@@ -70,7 +70,6 @@ export interface RotoPlayScriptController {
   countText: Signal<string>;
   capacity: Signal<number>;
   mode: Signal<RotoPlayScriptMode>;
-  overrideColor: Signal<string | null>;
   overrideEnabled: Signal<boolean>;
   dialogMotion: Signal<{ deformation: number; position: number }>;
   repeatText: Signal<string>;
@@ -104,7 +103,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const capacity = signal(0);
   const canonicalStart = signal<number | null>(null);
   const mode = signal<RotoPlayScriptMode>('progressive');
-  const overrideColor = signal<string | null>(null);
   const overrideEnabled = signal(false);
   const dialogMotion = signal<{ deformation: number; position: number }>({ deformation: 0, position: 0 });
   const repeatText = signal('1');
@@ -302,7 +300,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   function assertCurrent(expected: number): void { if (disposed || generation !== expected) throw new DOMException('Play Script generation cancelled.', 'AbortError'); }
   function nextOperationId(kind: string): string { return `roto-play-script-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
 
-  return { confirmationOpen, countText, capacity, mode, overrideColor, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel, openConfirmation, closeConfirmation, confirm, cancel, setInfinity, resetDialogMotion, dispose: () => { disposed = true; generation += 1; stopStaticDefaults(); abortController?.abort(); abortController = null; } };
+  return { confirmationOpen, countText, capacity, mode, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel, openConfirmation, closeConfirmation, confirm, cancel, setInfinity, resetDialogMotion, dispose: () => { disposed = true; generation += 1; stopStaticDefaults(); abortController?.abort(); abortController = null; } };
 }
 
 function parseCount(value: string, capacity: number): { count: number | null; error: string | null } {
