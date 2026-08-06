@@ -202,6 +202,16 @@ describe('loop clip filmstrip capsule (HOLD-06)', () => {
     vi.stubGlobal('window', { devicePixelRatio: 1 });
     vi.stubGlobal('document', { documentElement: {} });
     vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '' }));
+    // ThumbnailCache starts an Image load for unseeded thumbnails; the stub
+    // never completes, so unseeded cells take the placeholder path.
+    vi.stubGlobal('Image', class {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      complete = false;
+      naturalWidth = 0;
+      naturalHeight = 0;
+      src = '';
+    });
     const { ctx, calls } = createFakeCtx();
     const canvas = {
       getContext: () => ctx,
