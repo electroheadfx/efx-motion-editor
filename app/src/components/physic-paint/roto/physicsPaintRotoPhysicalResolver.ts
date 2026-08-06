@@ -2899,3 +2899,81 @@ export function resolvePhysicPaintRotoLoopMaterializationBase(
     payload: source.payload,
   }) as PhysicPaintRotoLoopMaterializationBase;
 }
+
+/**
+ * D-06 preflight shorten report for batch generation. Computed ONLY through
+ * the canonical interval derivation (Pitfall 4 — no caller-local boundary
+ * math): the current document is derived once, then derived again with the
+ * pending destination range added as real keys, and the two are compared per
+ * loop. Destination frames already occupied keep their existing keyIds, so a
+ * loop's own source keys stay owned and regenerating over the source cycle
+ * never reports a self-shortening (D-24 self-exclusion). Cost is
+ * O(keys + loops + destinationCount) — independent of repeat counts (D-32,
+ * T-43-05-03).
+ *
+ * Returns null when no loop's effective range shrinks; otherwise the affected
+ * loop count N and the earliest truncation frame F for the locked line:
+ * `This operation will shorten {N} linked loop(s), starting at frame {F}.`
+ */
+export interface PhysicPaintRotoLoopShortenPreflightInput extends PhysicPaintRotoLoopDerivationInput {
+  /** First destination frame of the pending generation (inclusive). */
+  readonly destinationStart: number;
+  /** Number of consecutive destination frames the generation will write. */
+  readonly destinationCount: number;
+}
+
+export interface PhysicPaintRotoLoopShortenPreflight {
+  readonly affectedLoopCount: number;
+  readonly earliestShortenFrame: number;
+}
+
+export function derivePhysicPaintRotoLoopShortenPreflight(
+  input: PhysicPaintRotoLoopShortenPreflightInput,
+): PhysicPaintRotoLoopShortenPreflight | null {
+  if (!isRecord(input)) {
+    throw new Error('PhysicPaintRotoLoopShortenPreflight: input must be a record.');
+  }
+  if (!isNonNegativeInteger(input.destinationStart) || !isNonNegativeInteger(input.destinationCount) || input.destinationCount === 0) {
+    throw new Error('PhysicPaintRotoLoopShortenPreflight: destinationStart/destinationCount must be nonnegative integers and the count must be positive.');
+  }
+  if (input.loopClips.length === 0) return null;
+
+  const before = derivePhysicPaintRotoLoopRanges(input);
+
+  // After-state identities: the pending generation writes a real key at every
+  // destination frame. Occupied frames keep their keyIds (the commit reuses
+  // them), so owned source keys remain owned; unoccupied frames gain a
+  // synthetic non-owned key that acts as a D-24 boundary candidate.
+  const occupiedFrames = new Set<number>();
+  const takenKeyIds = new Set<string>();
+  for (const identity of input.identities) {
+    occupiedFrames.add(identity.appFrame);
+    takenKeyIds.add(identity.keyId);
+  }
+  const afterIdentities: PhysicPaintRotoKeyIdentity[] = [...input.identities];
+  const destinationEnd = Math.min(input.destinationStart + input.destinationCount, input.capacity);
+  for (let appFrame = input.destinationStart; appFrame < destinationEnd; appFrame += 1) {
+    if (occupiedFrames.has(appFrame)) continue;
+    let syntheticKeyId = `__loop-shorten-preflight-${appFrame}`;
+    while (takenKeyIds.has(syntheticKeyId)) syntheticKeyId = `_${syntheticKeyId}`;
+    takenKeyIds.add(syntheticKeyId);
+    afterIdentities.push({ keyId: syntheticKeyId, appFrame });
+  }
+  // A fully occupied destination adds no new boundaries — nothing can shrink.
+  if (afterIdentities.length === input.identities.length) return null;
+
+  const after = derivePhysicPaintRotoLoopRanges({ ...input, identities: afterIdentities });
+  const beforeByLoopId = new Map(before.ranges.map((range) => [range.loopId, range]));
+  let affectedLoopCount = 0;
+  let earliestShortenFrame: number | null = null;
+  for (const afterRange of after.ranges) {
+    const beforeRange = beforeByLoopId.get(afterRange.loopId);
+    if (!beforeRange || afterRange.effectiveEnd >= beforeRange.effectiveEnd) continue;
+    affectedLoopCount += 1;
+    if (earliestShortenFrame === null || afterRange.effectiveEnd < earliestShortenFrame) {
+      earliestShortenFrame = afterRange.effectiveEnd;
+    }
+  }
+  if (affectedLoopCount === 0 || earliestShortenFrame === null) return null;
+  return Object.freeze({ affectedLoopCount, earliestShortenFrame }) as PhysicPaintRotoLoopShortenPreflight;
+}

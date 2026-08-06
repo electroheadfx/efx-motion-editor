@@ -9,8 +9,12 @@ import type {
 import type { RotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
 import {
   createPhysicPaintRotoKeyId,
+  PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+  type PhysicPaintRotoKeyIdentity,
+  type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
+import { derivePhysicPaintRotoLoopShortenPreflight } from './physicsPaintRotoPhysicalResolver';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 import { renderRotoPlayScriptFrames } from './physicsPaintRotoPlayScriptRenderer';
 import { isRotoPngDataUrl } from './rotoCanvasFrames';
@@ -58,6 +62,11 @@ export interface RotoPlayScriptControllerPorts {
   getBrushColor: () => string;
   getOperationLocked: () => boolean;
   getSize: () => { width: number; height: number };
+  /**
+   * Phase 43 (D-06): durable Loop Clip collection for the preflight shorten
+   * warning. Absent port = pre-43 empty collection (no warning ever).
+   */
+  getRotoLoopClips?: () => readonly PhysicPaintRotoLoopClip[];
   availabilityRevision?: ReadonlySignal<number>;
   requestAuthority: (operationId: string, start: number) => Promise<PhysicPaintRotoAuthorityResult>;
   commit: (publication: RotoPlayScriptPhysicalPublication) => Promise<RotoPlayScriptCommitResult>;
@@ -79,6 +88,13 @@ export interface RotoPlayScriptController {
   parsedRepeat: ReadonlySignal<{ count: number | null; error: string | null }>;
   repeatError: ReadonlySignal<string | null>;
   loopReadout: ReadonlySignal<string | null>;
+  /**
+   * D-06 preflight shorten warning: the locked line
+   * `This operation will shorten {N} linked loop(s), starting at frame {F}.`
+   * when the pending destination range intersects an existing loop's effective
+   * range; null otherwise. Advisory only — confirm never blocks on it.
+   */
+  loopShortenPreflight: ReadonlySignal<string | null>;
   appliedSummary: { line1: Signal<string>; line2: Signal<string> };
   destinationRange: ReadonlySignal<string | null>;
   validationError: ReadonlySignal<string | null>;
@@ -141,6 +157,34 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const canCancel = computed(() => phase.value === 'preparing' || phase.value === 'rendering');
   const parsedRepeat = computed(() => parseRepeat(repeatText.value, parsedCount.value.count));
   const repeatError = computed(() => (infinity.value ? null : parsedRepeat.value.error));
+  // D-06 preflight substrate: the authority snapshot captured at dialog open.
+  // confirm() revalidates the physical revision before commit, so this
+  // snapshot is guaranteed current whenever the warning is shown.
+  const loopPreflightSnapshot = signal<{
+    readonly identities: readonly PhysicPaintRotoKeyIdentity[];
+    readonly parentEndExclusive: number;
+    readonly capacity: number;
+  } | null>(null);
+  const loopShortenPreflight = computed(() => {
+    const snapshot = loopPreflightSnapshot.value;
+    const start = canonicalStart.value;
+    const count = parsedCount.value.count;
+    if (snapshot === null || start === null || count === null) return null;
+    const loopClips = ports.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
+    if (loopClips.length === 0) return null;
+    // Pitfall 4: the warning derives ONLY from the shared 43-02 interval
+    // derivation — never controller-local boundary math.
+    const preflight = derivePhysicPaintRotoLoopShortenPreflight({
+      identities: snapshot.identities,
+      loopClips,
+      parentEndExclusive: snapshot.parentEndExclusive,
+      capacity: snapshot.capacity,
+      destinationStart: start,
+      destinationCount: count,
+    });
+    if (preflight === null) return null;
+    return `This operation will shorten ${preflight.affectedLoopCount} linked loop(s), starting at frame ${preflight.earliestShortenFrame}.`;
+  });
   const loopReadout = computed(() => {
     const cycle = parsedCount.value.count;
     const start = canonicalStart.value;
@@ -204,6 +248,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       canonicalStart.value = authority.canonicalStart;
       capacity.value = authority.capacity;
       layerEndExclusive.value = authority.layerEndExclusive;
+      loopPreflightSnapshot.value = {
+        identities: authority.physicalRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+        parentEndExclusive: authority.layerEndExclusive,
+        capacity: authority.physicalCapacity,
+      };
       countText.value = 'Max';
       dialogMotion.value = { ...ports.getMotion() };
       if (!hasSuccessfulGeneration) {
@@ -255,6 +304,15 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         || commitAuthority.physicalRevision !== authority.physicalRevision
         || commitAuthority.physicalCapacity !== authority.physicalCapacity
         || commitAuthority.layerEndExclusive !== authority.layerEndExclusive) throw new Error('Roto authority changed before commit.');
+      // D-06: refresh the preflight substrate from the revalidated authority so
+      // the warning surfaced on the confirm path is computed against the exact
+      // pre-commit physical state (revision equality above makes this a
+      // no-cost refresh of an identical snapshot).
+      loopPreflightSnapshot.value = {
+        identities: commitAuthority.physicalRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+        parentEndExclusive: commitAuthority.layerEndExclusive,
+        capacity: commitAuthority.physicalCapacity,
+      };
       const currentSelection = ports.getSelection();
       if (
         ports.library.selectedId.peek() !== selectedId
@@ -300,7 +358,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   function assertCurrent(expected: number): void { if (disposed || generation !== expected) throw new DOMException('Play Script generation cancelled.', 'AbortError'); }
   function nextOperationId(kind: string): string { return `roto-play-script-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
 
-  return { confirmationOpen, countText, capacity, mode, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel, openConfirmation, closeConfirmation, confirm, cancel, setInfinity, resetDialogMotion, dispose: () => { disposed = true; generation += 1; stopStaticDefaults(); abortController?.abort(); abortController = null; } };
+  return { confirmationOpen, countText, capacity, mode, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, loopShortenPreflight, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel, openConfirmation, closeConfirmation, confirm, cancel, setInfinity, resetDialogMotion, dispose: () => { disposed = true; generation += 1; stopStaticDefaults(); abortController?.abort(); abortController = null; } };
 }
 
 function parseCount(value: string, capacity: number): { count: number | null; error: string | null } {
