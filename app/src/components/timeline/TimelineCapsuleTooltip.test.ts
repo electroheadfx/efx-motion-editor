@@ -62,7 +62,7 @@ describe('Timeline capsule tooltip locked copy', () => {
 
   it('surfaces a disabled or stale guard reason as plain text', () => {
     const model = buildTimelineCapsuleTooltipModel(request({region: 'outline', loopId: 'loop-7'}), 'Source cycle is stale.');
-    expect(model.lines.at(-1)).toBe('Source cycle is stale.');
+    expect(model.lines[model.lines.length - 1]).toBe('Source cycle is stale.');
   });
 });
 
@@ -78,11 +78,11 @@ describe('Timeline capsule tooltip visibility discipline', () => {
     expect(changes).toEqual([]);
     visibility.leave();
     vi.advanceTimersByTime(1);
-    expect(changes.at(-1)).toBe(false);
+    expect(changes[changes.length - 1]).toBe(false);
     visibility.focus();
-    expect(changes.at(-1)).toBe(true);
+    expect(changes[changes.length - 1]).toBe(true);
     visibility.escape();
-    expect(changes.at(-1)).toBe(false);
+    expect(changes[changes.length - 1]).toBe(false);
   });
 
   it('clamps one host inside the viewport with the locked 8px margin', () => {

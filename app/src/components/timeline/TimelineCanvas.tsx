@@ -19,6 +19,7 @@ import {currentTheme} from '../../lib/themeManager';
 import {isFullSpeed} from '../../lib/playbackEngine';
 import {isolationStore} from '../../stores/isolationStore';
 import {uiStore} from '../../stores/uiStore';
+import {TimelineCapsuleTooltip} from './TimelineCapsuleTooltip';
 
 /**
  * TimelineCanvas: Preact component wrapping a canvas element with signal subscriptions.
@@ -161,6 +162,7 @@ export function TimelineCanvas() {
   return (
     <div class="flex-1 min-h-0 overflow-hidden relative" data-interactive>
       <canvas ref={canvasRef} class="w-full h-full" />
+      <TimelineCapsuleTooltip />
     </div>
   );
 }

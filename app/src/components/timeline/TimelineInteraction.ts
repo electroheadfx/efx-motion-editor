@@ -62,6 +62,7 @@ export interface TimelineLoopCapsuleTooltipRequest {
   readonly clientY: number;
   readonly pinned: boolean;
   readonly layerId: string;
+  readonly sequenceStartFrame: number;
 }
 
 export const selectedTimelineLoopClipId = signal<string | null>(null);
@@ -800,7 +801,16 @@ export class TimelineInteraction {
     clientY: number,
     pinned: boolean,
   ): void {
-    timelineLoopCapsuleTooltipRequest.value = {capsule, hit, layerId, clientX, clientY, pinned};
+    const track = fxTrackLayouts.peek().find((candidate) => candidate.loopCapsules?.some((item) => item.loopId === capsule.loopId));
+    timelineLoopCapsuleTooltipRequest.value = {
+      capsule,
+      hit,
+      layerId,
+      sequenceStartFrame: track?.inFrame ?? 0,
+      clientX,
+      clientY,
+      pinned,
+    };
   }
 
   private async openLoopEdit(loopId: string, track: FxTrackLayout): Promise<void> {
