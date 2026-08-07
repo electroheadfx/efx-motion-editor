@@ -1,411 +1,1160 @@
 # Phase 43: Hold Loop Clips + Filmstrip Capsule - Pattern Map
 
-**Mapped:** 2026-08-06
-**Files analyzed:** 18 (15 modified, 3+ new)
-**Analogs found:** 18 / 18 — this phase is almost entirely extend-in-place; every target file IS its own closest analog, and every new file has a verified in-repo idiom to copy.
+**Mapped:** 2026-08-07
+**Scope:** Correction refresh after native UAT Step 1 host failure
+**Files analyzed:** 31 new, modified, retained, or removed files
+**Analogs found:** 31 / 31
+
+## Correction Boundary
+
+This map supersedes the earlier Phase 43 pattern map wherever it assigned Loop Clip presentation or interaction ownership to the Motion Editor main timeline.
+
+- **Retain unchanged:** canonical physical model, persistence, resolver algebra, store resolution, preview/export parity, physical-edit authority, accepted history, Play Script controller, and Play Script dialog.
+- **Adapt into EFX Paint:** filmstrip capsule derivation, conditional range lane, capsule selection, occurrence details, local actions, and Loop Edit activation.
+- **Remove from the main timeline:** `frameMap` projection, timeline Loop Clip types, canvas rendering/hit testing, timeline tooltip, and the loop-specific parent-to-child request protocol once callers are gone.
+
+The dedicated Loop Clip lane is part of the existing EFX Paint/Roto strip. It is hidden when there are no Loop Clips, shares the physical timeline's horizontal coordinate system, and must not alter real-key cell navigation, selection, multi-selection, or drag behavior.
 
 ## File Classification
 
 | New/Modified File | Role | Data Flow | Closest Analog | Match Quality |
-|-------------------|------|-----------|----------------|---------------|
-| `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts` (mod) | model | validation/transform | itself — existing allowlist guards + revision fingerprint | exact |
-| `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts` (mod) | service (resolver) | transform (pure projection) | itself — `PhysicPaintRotoPhysicalCell` union + `projectPhysicPaintRotoPhysicalTimeline` | exact |
-| `app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts` (mod) | controller | request-response (authority/commit) | itself — Phase 42 signal-based controller + ports | exact |
-| `app/src/components/physic-paint/roto/rotoTimelineSelectors.ts` (mod) | selector/utility | transform | `PhysicsPaintWorkflowStrip.tsx` cell-kind consumers (`cell.kind ===` sites) | exact |
-| `app/src/stores/physicPaintStore.ts` (mod) | store | request-response (per-frame render source) | itself — `getRotoPhysicalRenderSource` real/generated branches | exact |
-| `app/src/lib/physicPaintPersistence.ts` (mod) | persistence | file-I/O | itself — `PERSISTED_DOCUMENT_KEYS` + save mapping + hydration | exact |
-| `app/src/lib/physicPaintBridge.ts` (mod) | bridge | request-response (apply payload) | itself — apply-payload validation path | exact |
-| `app/src/lib/frameMap.ts` (mod) | projection | transform (signal computed) | itself — `fxTrackLayouts` computed + `rotoKeyFrames` feed | exact |
-| `app/src/types/physicPaint.ts` (mod) | types | validation (payload allowlists) | itself — `hasOnlyKeys` guard at line 330 | exact |
-| `app/src/types/project.ts` (mod) | types | n/a (schema) | itself — `McePhysicPaintRotoPhysicalDocument` | exact |
-| `app/src/types/timeline.ts` (mod) | types | n/a (schema) | itself — `FxTrackLayout` | exact |
-| `app/src/components/timeline/TimelineRenderer.ts` (mod) | renderer | canvas paint calls | itself — `drawPhysicPaintPlayScriptMarkers` + `drawRotoKeyMarkers` | exact |
-| `app/src/components/timeline/TimelineInteraction.ts` (mod) | interaction | event-driven (pointer hit-testing) | itself — existing keyframe hit-test (line 353) | exact |
-| `app/src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.tsx` (mod) | component | event-driven (dialog modes) | itself — Phase 42 dialog + controller signals | exact |
-| `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx` (mod) | component | render (cell derivation) | itself — cell derivation block lines 1297-1343 | exact |
-| NEW: main-timeline tooltip host component | component | event-driven (hover/focus) | `app/src/components/physic-paint/view/PhysicsPaintStyledTooltip.tsx` | role-match |
-| NEW: parent→child "open loop-edit dialog" bridge message | bridge | event-driven | `physicsPaintBridgeTransport.ts` sender pattern | role-match |
-| NEW: test specs (loop resolver, loopClips persistence, HOLD-02 determinism, history extension) | test | unit | `physicsPaintRotoPlayScriptController.test.ts` harness pattern | exact |
+|---|---|---|---|---|
+| `app/src/components/physic-paint/view/PhysicsPaintLoopClipLane.tsx` (new) | component | transform + event-driven | `PhysicsPaintWorkflowStrip.tsx` | exact host/data-flow match |
+| `app/src/components/physic-paint/view/PhysicsPaintLoopClipPopover.tsx` (new) | component | event-driven + request-response | `PhysicsPaintStyledTooltip.tsx`, `UsagePopover.tsx`, local model logic from `TimelineCapsuleTooltip.tsx` | composite match |
+| `app/src/components/physic-paint/view/physicsPaintLoopClipPresentation.ts` (new or relocated) | utility | transform | `physicsPaintWorkflowPresentation.ts`, pure portions of `loopCapsuleGeometry.ts` | exact role match |
+| `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx` | component | transform + event-driven | existing ruler/physical-lane composition in the same file | exact self-analog |
+| `app/src/components/physic-paint/PhysicsPaintStudio.tsx` | component/coordinator | request-response | existing focused `useRotoTimelineModel` and `useRotoPlayScriptController` wiring | exact self-analog |
+| `app/src/components/physic-paint/hooks/useRotoTimelineModel.ts` | hook/model adapter | transform | existing Loop Clip structural view in the same file | exact self-analog |
+| `app/src/components/physic-paint/hooks/useRotoPlayScriptController.ts` | hook/controller adapter | request-response | existing accepted Play Script commit path | exact self-analog |
+| `app/src/components/physic-paint/view/physicsPaintWorkflowPresentation.ts` | utility | transform | exhaustive pure helpers in the same file | exact self-analog |
+| `app/src/components/physic-paint/physicsPaintStudio.css` | config/styles | transform | existing conditional strip/lane geometry rules | exact role match |
+| `app/src/components/physic-paint/view/PhysicsPaintStudioView.tsx` | component | request-response | existing typed `workflow` prop forwarding | exact self-analog |
+| `app/src/components/physic-paint/hooks/usePhysicsPaintStudioViewModel.ts` | hook/utility | transform | existing dependency-keyed identity memo | exact self-analog |
+| `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts` | test | transform + event-driven | existing strip geometry, source-contract, and visible-window tests | exact match |
+| `app/src/components/physic-paint/view/PhysicsPaintLoopClipLane.test.tsx` (new, or colocated equivalent) | test | transform + event-driven | `PhysicsPaintWorkflowStrip.test.ts` and relocated pure capsule assertions | composite match |
+| `app/src/components/physic-paint/view/PhysicsPaintLoopClipPopover.test.tsx` (new, or colocated equivalent) | test | event-driven + request-response | `TimelineCapsuleTooltip.test.ts` pure assertions plus local controller tests | composite match |
+| `app/src/components/physic-paint/hooks/useRotoTimelineModel.test.ts` | test | transform | existing Loop Clip lazy-resolution tests | exact self-analog |
+| `app/src/components/physic-paint/roto/physicsPaintRotoMultiSelection.test.ts` | test | event-driven | existing approved Roto selection reducer tests | exact retained regression |
+| `app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts` | test | request-response | existing local Loop Clip operation suites | exact retained regression |
+| `app/src/components/physic-paint/hooks/physicsPaintRotoLoopHistory.test.ts` | test | event-driven | existing accepted-output Undo/Redo tests | exact retained regression |
+| `app/src/lib/frameMap.ts` | utility removal | transform | no replacement; EFX uses `useRotoTimelineModel` directly | removal assignment |
+| `app/src/types/timeline.ts` | model/type removal | transform | EFX physical types and resolution context | removal assignment |
+| `app/src/components/timeline/TimelineRenderer.ts` | component removal | transform | `PhysicsPaintLoopClipLane.tsx` | host relocation |
+| `app/src/components/timeline/TimelineInteraction.ts` | controller removal | event-driven | local EFX lane/popover event handlers | host relocation |
+| `app/src/components/timeline/TimelineCanvas.tsx` | component removal | event-driven | no replacement mount in main timeline | removal assignment |
+| `app/src/components/timeline/TimelineCapsuleTooltip.tsx` | component removal | event-driven + request-response | EFX-local popover and presentation modules | host relocation |
+| `app/src/lib/physicPaintBridge.ts` | service removal (partial) | pub-sub + request-response | generic authority/apply bridge retained; loop-specific protocol has no replacement | partial removal |
+| `app/src/components/physic-paint/bridge/physicsPaintBridgeTransport.ts` | service removal (partial) | pub-sub | generic transports retained; loop-specific senders removed | partial removal |
+| `app/src/components/physic-paint/bridge/usePhysicsPaintParentBridge.ts` | hook removal (partial) | event-driven | direct local controller calls | partial removal |
+| `app/src/types/physicPaint.ts` | model/type removal (partial) | request-response | local controller intent/results | partial removal |
+| `app/src/lib/frameMap.test.ts` | test removal (partial) | transform | EFX lane/model tests | replacement match |
+| `app/src/components/timeline/TimelineRenderer.test.ts`, `TimelineInteraction.test.ts`, `TimelineCapsuleTooltip.test.ts` | test removal | transform + event-driven | EFX lane/popover tests | replacement match |
+| `app/src/lib/physicPaintBridge.test.ts`, `app/src/components/physic-paint/bridge/physicsPaintBridgeTransport.test.ts`, `app/src/lib/physicPaintLoopOperationBridge.test.ts` | test removal (partial/full) | pub-sub + request-response | local controller tests; generic bridge tests retained | replacement match |
 
 ## Pattern Assignments
 
-### `physicsPaintRotoPhysicalModel.ts` (+ `PhysicPaintRotoLoopClip` record, guards, parser, document keys)
+### `app/src/components/physic-paint/view/PhysicsPaintLoopClipLane.tsx`
 
-**Analog:** itself — extend the established fail-closed validation discipline.
+**Role:** component  
+**Data flow:** compact interval/resolution context -> visible frame-aligned presentation; pointer/keyboard events -> local selection and actions  
+**Primary analog:** `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx`
 
-**Allowlist pattern** (lines 269-278 — the set `loopClips` must join):
-```typescript
-const PHYSIC_PAINT_ROTO_PHYSICAL_DOCUMENT_KEYS = new Set([
-  'capacity',
-  'realKeyRecords',
-  'interpolation',
-  'scriptMotion',
-  'background',
-  'selectedKeyId',
-  'cursorAppFrame',
-  'revision',
-]);
+#### Imports pattern
+
+Use Preact-native local state and existing physical-domain types. Do not import main-timeline stores, playback globals, `frameMap`, or timeline layout types.
+
+**Source:** `PhysicsPaintWorkflowStrip.tsx` lines 1-5
+
+```tsx
+import {memo} from 'preact/compat';
+import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'preact/hooks';
+import {useSignal, type Signal} from '@preact/signals';
 ```
 
-**Guard idiom to copy for the loop-clip guard** (lines 322-336):
-```typescript
-function hasOnlyAllowedKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
-  return Object.keys(value).every((key) => allowed.has(key));
-}
+Prefer direct props, pure derivation, and local event handlers. A Signal is appropriate if lane selection/popover state must be updated by sibling controls or controller acknowledgements; do not mirror props into hook state through effects.
 
-export function isPhysicPaintRotoKeyIdentity(value: unknown): value is PhysicPaintRotoKeyIdentity {
-  if (!isRecord(value)) return false;
-  if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_KEY_IDENTITY_KEYS)) return false;
-  return isBoundedKeyId(value.keyId) && isNonNegativeInteger(value.appFrame);
-}
+#### Host placement pattern
+
+**Source:** `PhysicsPaintWorkflowStrip.tsx`, existing timeline scroller composition around the ruler and physical lane
+
+```tsx
+<div ref={timelineScrollRef} class="physics-paint-timeline-scroll" onScroll={updateScrollbar}>
+  <div class="physics-paint-ruler" ... />
+  <div ref={timelineContentRef} class="physics-paint-lane">
+    <div class="physics-paint-roto-cells" role="row">
+      ...
+    </div>
+  </div>
+</div>
 ```
 
-**Optional-member load rule** (new for this phase — every current member is required): `loopClips` must be the first genuinely optional document member: `value.loopClips === undefined ? [] : parse(value.loopClips)`. The parser entry point `parsePhysicPaintRotoPhysicalDocument` (lines 653-702) recomputes the canonical revision and throws on mismatch (lines 687-690) — if loopClips join the revision fingerprint (Open Question Q1), `buildPhysicPaintRotoPhysicalRevision` (lines 595-601, signature `(records, interpolation)`) and `encodePhysicPaintRotoPhysicalContent` (lines 609-632) are the exact seams.
+Insert the conditional lane in this same scroller, immediately after `.physics-paint-ruler` and before `.physics-paint-lane`:
 
-**Anti-pattern (locked):** distinguish "structurally malformed" (throw) from "well-formed but dangling keyId reference" (preserve verbatim + mark unresolved, D-31). Do NOT collapse both into one throw.
+```tsx
+{hasLoopClips && (
+  <PhysicsPaintLoopClipLane
+    resolutionContext={rotoLoopResolutionContext}
+    visibleWindow={visibleWindow}
+    framePitch={18}
+    ...
+  />
+)}
+```
+
+Do not mount it over `.physics-paint-roto-cells`. Separate DOM surfaces are the mechanism that keeps range-object selection from competing with physical-key interactions.
+
+#### Lazy derivation pattern
+
+**Source:** `PhysicsPaintWorkflowStrip.tsx`, visible-frame resolution derivation
+
+```ts
+const loopResolutionContext = props.rotoLoopResolutionContext ?? null;
+const visibleFrameResolutions = useMemo(
+  () => loopResolutionContext === null
+    ? null
+    : resolveRotoVisibleFrameResolutions(loopResolutionContext, frameCells),
+  [loopResolutionContext, frameCells],
+);
+```
+
+Apply the same bounded-window rule to capsules and repeated occurrence cells:
+
+- Keep compact Loop Clip interval records.
+- Derive only capsules/ghost cells intersecting the current visible frame window.
+- Resolve occurrences by modulo arithmetic.
+- Never materialize an Infinity list.
+- Never generate repeated durable/cache assets.
+
+#### Interaction separation pattern
+
+**Source:** `PhysicsPaintWorkflowStrip.tsx`, real-key drag eligibility
+
+```ts
+const dragEligible =
+  isPhysicalRealKey
+  && !rotoDragLocked
+  && frameInteraction?.dragEligible !== false;
+```
+
+The new lane must not change this expression or route capsule pointer events into cell handlers. Capsule body and compact badge are distinct keyboard-reachable controls:
+
+- Body click: select Loop Clip and open local occurrence/details popover.
+- Badge click: stop propagation and call local `openLoopEdit(loopId)`.
+- Enter/Space: activate the focused body or badge.
+- Escape: close the local popover/tooltip and return focus appropriately.
+- Delete/Backspace: do not become Loop Clip shortcuts.
+
+#### Visual content pattern
+
+Adapt the pure algorithms from `app/src/components/timeline/loopCapsuleGeometry.ts`, not its main-timeline coordinate transform:
+
+```ts
+badgeTextForLoop(...)
+zoomBandForFrameWidth(...)
+isZeroEffectiveLoop(...)
+visibleGhostCells(...)
+truncationDiagonalFrame(...)
+firstCycleCellFrames(...)
+```
+
+Render the locked semantics:
+
+- First source cycle thumbnails.
+- Zoom-adaptive linked repetitions.
+- Compact finite or infinity badge.
+- Requested/effective truncation.
+- Amber truncation diagonal.
+- Unresolved/error state.
+- Zero-effective anchor flag.
+
+Do not copy `loopCapsuleFrameToX(...headerWidth...)`; EFX coordinates are local to the 18px frame grid and have no main-timeline track header offset.
 
 ---
 
-### `physicsPaintRotoPhysicalResolver.ts` (+ compact interval derivation + lazy per-frame typed query)
+### `app/src/components/physic-paint/view/physicsPaintLoopClipPresentation.ts`
 
-**Analog:** itself — the closed cell union and the single projection seam.
+**Role:** utility/presentation model  
+**Data flow:** Loop Clip intervals + viewport -> immutable presentation records  
+**Primary analogs:** `physicsPaintWorkflowPresentation.ts` and pure portions of `loopCapsuleGeometry.ts`
 
-**Cell union to extend** (lines 193-201):
-```typescript
-export type PhysicPaintRotoPhysicalCell =
-  | { readonly kind: 'real'; readonly appFrame: number; readonly keyId: string }
-  | {
-      readonly kind: 'generated';
-      readonly appFrame: number;
-      readonly leftKeyId: string;
-      readonly rightKeyId: string;
+#### Pure helper pattern
+
+**Source:** `physicsPaintWorkflowPresentation.ts`, exhaustive resolution switch
+
+```ts
+export function getRotoResolutionCellTooltipKind(
+  resolution: PhysicPaintRotoFrameResolution,
+  existing: RotoCellSemanticTooltipKind,
+): RotoCellSemanticTooltipKind {
+  switch (resolution.kind) {
+    case 'real':
+      return 'real-key';
+    case 'linked':
+    case 'linked-unresolved':
+    case 'empty':
+      return existing;
+    default: {
+      const exhaustive: never = resolution;
+      throw new Error(
+        `Unhandled Roto frame resolution kind: ${JSON.stringify(exhaustive)}`,
+      );
     }
-  | { readonly kind: 'empty'; readonly appFrame: number };
-```
-
-**Projection seam as analog (lines 2057-2085):** `projectPhysicPaintRotoPhysicalTimeline` builds the real-key `mapping` first, then calls `buildProjectionFromMapping`. The loop extension does NOT join this per-frame projection map: the resolver gains (a) an exported interval derivation producing ONE compact record per Loop Clip (`loopId`, `placementStart`, `cycleLength`, ordered `sourceKeyIds`, requested/effective end, boundary, truncation/partial-cycle/unresolved state) and (b) an exported lazy per-frame query returning the typed union `'real' | 'linked' | 'linked-unresolved' | 'empty'`. "Real keys always win" (D-06 shrink, D-12 materialize) is emergent from the query checking the real-key records first — no virtual cell is ever assigned (43-02 prohibition: MUST NOT assign one linked-loop cell per frame inside an effective range, for finite AND infinite loops). Per-frame resolution after interval lookup is O(1) modulo on the placement frame: `sourceKeyIds[(appFrame - placementStart) % cycleLength]`; `repeatInstance = Math.floor((appFrame - placementStart) / cycleLength)`. The `placementStart` identity model supersedes the research-time `canonicalStart` sketches (placement/source correction, 2026-08-06 — 43-CONTEXT.md D-24/D-29/D-30).
-
-**Failure idiom to copy** (lines 2087-2096): typed `projectionFailure(code, operationKind, text)` returning a frozen `{ ok: false, failure }` — loop boundary errors and unresolved-loop surfacing reuse this, never thrown exceptions in the read path.
-
-**Mandatory follow-up (Pitfall 7):** audit every `cell.kind ===` / `cell.kind !==` consumer (`rotoTimelineSelectors.ts`, `rotoPhysicalTimelinePorts.ts`, `physicsPaintWorkflowPresentation.ts`, `useRotoTimelineModel.ts`, `PhysicsPaintWorkflowStrip.tsx:1301-1337`) with a `never`-fallback exhaustiveness switch; selection/drag ports must explicitly exclude `linked-loop` (D-23: ghost cells never key-selectable).
-
----
-
-### `physicsPaintRotoPlayScriptController.ts` (+ loop-edit/source-edit modes, Link/Create flow, D-06 preflight)
-
-**Analog:** itself — the Phase 42 signal-based controller.
-
-**Imports + ports pattern** (lines 1-66):
-```typescript
-import { computed, effect, signal, type ReadonlySignal, type Signal } from '@preact/signals';
-// ...
-export interface RotoPlayScriptControllerPorts {
-  library: RotoScriptLibraryController;
-  getLaunchContext: () => PhysicPaintLaunchContext | null;
-  // ...
-  requestAuthority: (operationId: string, start: number) => Promise<PhysicPaintRotoAuthorityResult>;
-  commit: (publication: RotoPlayScriptPhysicalPublication) => Promise<RotoPlayScriptCommitResult>;
-  stopPlayback: () => void;
-  log: (message: string, error?: boolean) => void;
-}
-```
-
-**Locked conventions the loop modes must keep:**
-- All dialog state is Preact Signals on the controller (`confirmationOpen`, `mode`, `repeatText`, `infinity` — lines 68-80); no `useState` for shared state (CLAUDE.md Preact guidelines).
-- `Regenerate source cycle` (D-02) reuses `confirm()` → staged render → `buildPhysicalPublication` verbatim — no new commit path (HOLD-03).
-- The existing inline `loopReadout` (controller lines 144-158) computes `effective = Math.min(requested, layerEndExclusive - start)` — Pitfall 4: loop-edit mode readout MUST come from the canonical resolver's boundary query instead; make the shared boundary computation a resolver export consumed by both dialog and capsule.
-- Repeat validation `parseRepeat` (lines 340-353) already bounds `cycleLength × repeat` to `Number.MAX_SAFE_INTEGER` — reuse for `Update loop`.
-
----
-
-### `physicPaintStore.ts` (+ loopClips state, virtual render-source branch, loop-aware end frame)
-
-**Analog:** itself — `getRotoPhysicalRenderSource`.
-
-**Canonical per-frame resolution to extend** (lines 1405-1453):
-```typescript
-getRotoPhysicalRenderSource(layerId: string, appFrame: number): PhysicPaintRotoPhysicalRenderSource | null {
-  if (!Number.isInteger(appFrame) || appFrame < 0) return null;
-  const projection = this.getRotoPhysicalProjection(layerId);
-  const contentRevision = this.getRotoPhysicalContentRevision(layerId);
-  if (!projection || !contentRevision) return null;
-  const cell = projection.cells[appFrame];
-  if (!cell || cell.appFrame !== appFrame || cell.kind === 'empty') return null;
-  if (cell.kind === 'real') {
-    const record = this.getRotoRealKeyRecord(layerId, cell.keyId);
-    if (!record || record.appFrame !== appFrame || record.payload.appFrame !== appFrame) return null;
-    return {
-      kind: 'real',
-      layerId,
-      appFrame,
-      keyId: record.keyId,
-      contentRevision,
-      cacheRevision: `${contentRevision}:real:${record.keyId}`,
-      renderedFrame: record.payload,
-    };
   }
-  // … 'generated' branch …
-```
-
-The NEW `linked-loop` branch resolves `cell.sourceKeyId`'s record and returns ITS payload with a source-scoped cache revision (`${contentRevision}:real:${sourceKeyId}`) so one source edit invalidates every occurrence at once (D-26). Consumers already verified: `previewRenderer.ts:127`, `PhysicsPaintStudio.tsx:808,1077`, `useRotoFramePersistenceCoordinator.ts:134`, export via `PreviewRenderer`.
-
-**End-frame Pitfall 3** (lines 1399-1402 — must become loop-aware):
-```typescript
-getRotoPhysicalEndFrame(layerId: string): number | null {
-  const records = this.getRotoRealKeyRecords(layerId);
-  return records.length === 0 ? null : records[records.length - 1].appFrame + 1;
 }
 ```
-New: `max(last real key end, max loop effective end)`, bounded by parent end (D-25) and physical capacity 600.
 
----
+Follow these constraints:
 
-### `physicPaintPersistence.ts` (+ loopClips in allowlist, save mapping, hydration)
+- No store or Signal reads inside presentation helpers.
+- No DOM access.
+- Immutable inputs and outputs.
+- Exhaustive discriminated-union handling.
+- Separate geometry/copy derivation from component lifecycle and controller calls.
 
-**Analog:** itself — the three seams that MUST all change together (Pitfall 1).
+#### Geometry adaptation pattern
 
-**Save mapping — field-by-field, unlisted fields are LOST** (lines 180-189):
-```typescript
-rotoPhysical = {
-  capacity: physical.capacity,
-  realKeyRecords,
-  interpolation: physical.interpolation,
-  scriptMotion: physical.scriptMotion,
-  background: physical.background,
-  selectedKeyId: physical.selectedKeyId,
-  cursorAppFrame: physical.cursorAppFrame,
-  revision: physical.revision,
-};
+Relocate or adapt from `loopCapsuleGeometry.ts`:
+
+```ts
+export function badgeTextForLoop(input: {
+  cycleLength: number;
+  repeat: number | 'infinity';
+}): string
+
+export function zoomBandForFrameWidth(
+  frameWidth: number,
+): 'high' | 'default' | 'low'
+
+export function visibleGhostCells(
+  interval: LoopCapsuleGeometryInterval,
+  visibleStartFrame: number,
+  visibleEndFrame: number,
+): LoopCapsuleGhostCell[]
 ```
 
-**Persisted parse guard** (lines 216-219): `parsePersistedPhysicalDocument` throws `'Persisted physical Roto document has unknown or missing members.'` on keys outside `PERSISTED_DOCUMENT_KEYS` (line 18).
+Rename timeline-specific types to EFX-owned types and derive x/width from local frame offsets:
 
-**Hydration mapping** (lines 255-264): rebuilds the runtime document field-by-field then calls `parsePhysicPaintRotoPhysicalDocument` — `loopClips` threads here too, with absent-means-`[]`.
+```ts
+const left = (frame - visibleStartFrame) * framePitch;
+const width = frameCount * framePitch;
+```
 
-**Round-trip test is mandatory:** save→reopen asserting `loopClips` survives byte-identically, plus a v0.8.1-shaped document (no `loopClips` key) loading as an empty collection.
+Keep requested and effective duration separate. Effective end remains resolver-authoritative; the presentation module must not duplicate boundary algebra.
 
 ---
 
-### `app/src/types/project.ts` + `app/src/types/physicPaint.ts` + `app/src/types/timeline.ts` (type seams)
+### `app/src/components/physic-paint/view/PhysicsPaintLoopClipPopover.tsx`
 
-**Analog:** themselves.
+**Role:** component  
+**Data flow:** selected capsule/occurrence -> local details/actions -> accepted controller result  
+**Primary analogs:** `PhysicsPaintStyledTooltip.tsx`, `UsagePopover.tsx`, and pure model/action ordering from `TimelineCapsuleTooltip.tsx`
 
-**`project.ts` document type to extend** (lines 68-77):
-```typescript
-export interface McePhysicPaintRotoPhysicalDocument {
-  readonly capacity: number;
-  readonly realKeyRecords: readonly McePhysicPaintRotoPhysicalRecord[];
-  readonly interpolation: PhysicPaintRotoInterpolationState;
-  readonly scriptMotion: PhysicPaintRotoScriptMotionSettings;
-  readonly background: PhysicPaintRotoBackgroundMetadata | null;
-  readonly selectedKeyId: string | null;
-  readonly cursorAppFrame: number;
-  readonly revision: string;
+#### Styled tooltip lifecycle
+
+**Source:** `PhysicsPaintStyledTooltip.tsx`
+
+Reuse:
+
+- 1000ms delayed hover.
+- Immediate keyboard-focus visibility.
+- Escape dismissal.
+- 8px viewport clamping.
+- Fixed-position styled surface.
+- Text nodes only; never inject unresolved IDs as HTML.
+
+Use the existing `useStyledTooltip()` controller for informational hover/focus behavior where possible rather than adding a parallel global tooltip signal.
+
+#### Actionable popover lifecycle
+
+**Source:** `app/src/components/import/UsagePopover.tsx`
+
+```ts
+useEffect(() => {
+  const handler = () => onClose();
+  document.addEventListener('mousedown', handler);
+  return () => document.removeEventListener('mousedown', handler);
+}, [onClose]);
+```
+
+```tsx
+onMouseDown={(event: MouseEvent) => event.stopPropagation()}
+```
+
+Reuse the portal, outside-click, propagation isolation, and viewport-clamping pattern. Add focused Escape handling and focus return to the capsule body. Effects are justified here because they synchronize component visibility with document-level events.
+
+#### Copy/action model to relocate
+
+**Source:** `TimelineCapsuleTooltip.tsx` lines 15-21 and 54-90
+
+```ts
+export type TimelineCapsuleTooltipAction =
+  | 'Edit source frame'
+  | 'Duplicate linked loop'
+  | 'Repair loop…'
+  | 'Relink loop…'
+  | 'Unlink loop'
+  | 'Delete loop';
+```
+
+Relocate the pure copy/action selection logic into EFX-owned names. Preserve the locked action ordering and state-dependent options:
+
+- Unresolved: Repair, Relink, Unlink, Delete.
+- Zero-effective: Duplicate, Unlink, Delete.
+- Occurrence: Edit source frame, Duplicate, Unlink, Delete.
+- Truncated/default: Duplicate, Unlink, Delete.
+
+#### Local operation routing
+
+Do **not** copy these main-timeline dependencies from `TimelineCapsuleTooltip.tsx`:
+
+```ts
+sequenceStore
+playbackEngine
+requestPhysicPaintLoopOperation
+window.prompt
+```
+
+Route actions through EFX-local ports:
+
+```ts
+interface PhysicsPaintLoopClipPopoverOps {
+  editSourceFrame(sourceAppFrame: number): void;
+  openLoopEdit(loopId: string): Promise<RotoPlayScriptLoopOpResult>;
+  duplicateLinkedLoop(loopId: string, destinationStart: number): Promise<RotoPlayScriptLoopOpResult>;
+  unlinkLoop(loopId: string): Promise<RotoPlayScriptLoopOpResult>;
+  repairLoop(loopId: string): Promise<RotoPlayScriptLoopOpResult>;
+  relinkLoop(loopId: string, sourceKeyIds: readonly string[]): Promise<RotoPlayScriptLoopOpResult>;
 }
 ```
-Add `readonly loopClips?: readonly McePhysicPaintRotoLoopClip[];` (optional — absent = empty, D-29). Rust side needs nothing: `roto_physical: Option<Value>` is opaque JSON (`app/src-tauri/src/models/project.rs:37`).
 
-**`physicPaint.ts` apply-payload allowlist** (line 330): if loop state rides the commit payload, the `hasOnlyKeys(value, [...])` key set (and the matching result allowlist at line 367) grow too. `PHYSIC_PAINT_MAX_APPLY_FRAMES = 600` (line 13) is the capacity bound for all loop math.
+`Delete loop` intentionally calls the same unlink-only controller operation as `Unlink loop`; source keys remain ordinary Roto keys.
 
-**`timeline.ts` FxTrackLayout to extend** (lines 45-60): add a loop-capsule layout field beside `rotoKeyFrames?: number[]` (line 57). Do NOT reuse `playScriptMarkers` (line 56) — it is dead, never populated by `frameMap.ts`.
+On operation result:
+
+- `ok: true`: close the popover after the accepted controller result.
+- `ok: false`: keep it open and render `reason` locally.
+- Do not close on dispatch alone.
+- Do not optimistically remove or alter the capsule.
 
 ---
 
-### `frameMap.ts` (+ capsule projection field on FxTrackLayout)
+### `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx`
 
-**Analog:** itself — the `fxTrackLayouts` computed signal (lines 171-205).
+**Role:** component host  
+**Data flow:** reactive workflow model -> ruler, conditional Loop Clip lane, physical cells
 
-**Feed pattern to copy** (lines 171-199):
-```typescript
-export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
-  physicPaintVersion.value;
-  const layouts: FxTrackLayout[] = [];
-  // ...
-  layouts.push({
-    // ...
-    rotoKeyFrames: primaryLayer?.type === 'physic-paint'
-      ? physicPaintStore.getRotoRealKeyRecords(getLayerId(primaryLayer)).map((record) => record.appFrame)
-      : undefined,
-    // ...
-  });
-  return layouts;
+#### Props pattern
+
+The file already accepts:
+
+```ts
+rotoLoopResolutionContext?: PhysicPaintRotoLoopResolutionContext | null;
+```
+
+Pass focused action ports rather than the entire Studio/controller object. Suggested prop surface:
+
+```ts
+onOpenRotoLoopEdit?: (loopId: string) => Promise<RotoPlayScriptLoopOpResult>;
+onDuplicateRotoLinkedLoop?: (loopId: string, destinationStart: number) => Promise<RotoPlayScriptLoopOpResult>;
+onUnlinkRotoLoop?: (loopId: string) => Promise<RotoPlayScriptLoopOpResult>;
+onRepairRotoLoop?: (loopId: string) => Promise<RotoPlayScriptLoopOpResult>;
+onRelinkRotoLoop?: (loopId: string, sourceKeyIds: readonly string[]) => Promise<RotoPlayScriptLoopOpResult>;
+```
+
+Use existing frame-navigation callbacks for `Edit source frame` instead of introducing playback globals.
+
+#### Physical-cell contract to preserve
+
+Keep the current plain/modifier behavior intact:
+
+```ts
+if (cellKeyId !== null && (event.metaKey || event.ctrlKey) && !event.shiftKey) {
+  current.onToggleRotoKeySelection?.(cellKeyId);
+  return;
+}
+if (cellKeyId !== null && event.shiftKey && !event.metaKey && !event.ctrlKey) {
+  current.onExtendRotoKeySelection?.(cellKeyId);
+  return;
+}
+if (
+  cellKeyId !== null
+  && !event.metaKey
+  && !event.ctrlKey
+  && !event.shiftKey
+  && current.rotoSelectedKeyIdSet.size >= 2
+) {
+  current.onCollapseRotoSelectionToKey?.(cellKeyId);
+}
+current.onNavigateToSyncedFrame(frame);
+```
+
+Do not make linked occurrence cells selectable or draggable as real keys. The existing additive linked badge/border may remain, but it is not the Loop Clip selection surface.
+
+---
+
+### `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+
+**Role:** component/coordinator  
+**Data flow:** canonical store/controller state -> focused workflow props; accepted controller actions -> parent authority
+
+#### Timeline model wiring
+
+Current analog:
+
+```ts
+const rotoTimelineModel = useRotoTimelineModel({
+  cachedRotoFrames: latestRotoFramesRef.current,
+  interpolationSettings: rotoLegacyInterpolationSettings,
+  currentFrame,
+  rotoKeyRecords,
+  rotoInterpolationState,
+  capacity: launchContext
+    ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId)
+    : 1,
+  selectedKeyId: selectedKeyId.value,
 });
 ```
-The capsule layout field reads the resolver's derived capsule model from `physicPaintStore` the same way — TimelineRenderer never recomputes canonical start or boundaries (D-24 single definition). Timeline length derives through `getTimelineRequiredFrameCount` / `getTimelineOverlaySequenceOutFrame` (lines 124-153) which consume `getRotoPhysicalEndFrame` — the loop-aware end frame lands there automatically once the store read is fixed.
+
+Add canonical Loop Clip inputs already supported by `useRotoTimelineModel`:
+
+```ts
+rotoLoopClips: launchContext
+  ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId)
+  : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+rotoParentEndExclusive: /* canonical parent boundary */,
+```
+
+Pass `rotoTimelineModel.loopResolutionContext.value` through the existing `workflow` view-model object. Do not derive a second copy from `frameMap` or sequence layout state.
+
+#### Local action wiring
+
+The existing controller is the action owner:
+
+```ts
+const rotoPlayScript = useRotoPlayScriptController({
+  ...
+  getRotoLoopClips: () => (
+    launchContext
+      ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId)
+      : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY
+  ),
+  executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
+  pendingOperationId: physicalEditCoordinator.pendingOperationId,
+  acceptedOutput: physicalEditCoordinator.acceptedOutput,
+  ...
+}, bridgeMode);
+```
+
+Expose only its focused Loop Clip methods to the workflow/lane. Do not move operation validation or publication construction into the component.
+
+#### Remove loop-specific bridge listeners
+
+Remove these Studio calls when the main-timeline callers are removed:
+
+```ts
+usePhysicsPaintOpenLoopEditBridge((loopId) => {
+  void rotoPlayScript.openLoopEdit(loopId);
+});
+
+usePhysicsPaintLoopOperationBridge(...);
+```
+
+Retain generic launch, project-context, authority, apply-result, save, and frame-sync bridge behavior.
+
+#### Accepted-only pattern
+
+Continue using the existing accepted acknowledgement helper:
+
+```ts
+async function dispatchAndWaitForAcceptedRotoPhysicalEdit<T extends {operationId: string}>(
+  pendingOperationId: {
+    peek: () => string | null;
+    subscribe: (listener: (operationId: string | null) => void) => () => void;
+  },
+  acceptedOutput: {peek: () => T | null},
+  dispatch: () => Promise<boolean>,
+): Promise<T | null>
+```
+
+The lane/popover may react to the controller's final `RotoPlayScriptLoopOpResult`; it must not infer success from a sent request or a pending operation ID.
 
 ---
 
-### `TimelineRenderer.ts` (+ capsule drawing: thumbnails, band, ghost cells, badge, diagonal, anchor flag)
+### `app/src/components/physic-paint/hooks/useRotoTimelineModel.ts`
 
-**Analog:** itself — `drawPhysicPaintPlayScriptMarkers` (lines 423-496) is the structural template for the capsule (clipped range band inside the FX bar, label truncation, theme colors); `drawRotoKeyMarkers` (lines 500-540) is the source-key diamond idiom the capsule keeps.
+**Role:** hook/model adapter  
+**Data flow:** canonical physical records -> structural timeline and Loop Clip resolution context
 
-**Geometry helper pattern** (lines 41-50 — pure exported function, unit-testable):
-```typescript
-export function getPhysicPaintRotoKeyMarkerGeometry(marker: {
-  appFrame: number;
-  inFrame: number;
-  frameWidth: number;
-  scrollX: number;
-}): PhysicPaintRotoKeyMarkerGeometry {
+This file already contains the correct data path and should be adapted only if a focused lane projection helper is needed.
+
+```ts
+rotoLoopClips?: readonly PhysicPaintRotoLoopClip[];
+rotoParentEndExclusive?: number;
+```
+
+```ts
+loopResolutionContext: Signal<PhysicPaintRotoLoopResolutionContext>;
+getFrameResolution(appFrame: number): PhysicPaintRotoFrameResolution;
+```
+
+```ts
+const physicalStructural = computed(() =>
+  selectRotoPhysicalTimelineStructuralView({
+    realKeyRecords: structuralInput.value.rotoKeyRecords ?? [],
+    interpolation:
+      structuralInput.value.rotoInterpolationState
+      ?? PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+    capacity: structuralInput.value.capacity ?? 1,
+    loopClips: structuralInput.value.rotoLoopClips,
+    parentEndExclusive: structuralInput.value.rotoParentEndExclusive,
+  }),
+);
+```
+
+Do not copy Loop Clip ranges into component-local state. Pass this computed authority directly to the strip.
+
+---
+
+### `app/src/components/physic-paint/hooks/useRotoPlayScriptController.ts`
+
+**Role:** hook/controller adapter  
+**Data flow:** UI intents -> authority request -> physical edit -> exact accepted output
+
+Retain the accepted commit pattern:
+
+```ts
+const accepted = await dispatchAndWaitForAcceptedPlayScript(
+  portsRef.current.pendingOperationId,
+  portsRef.current.acceptedOutput,
+  () => portsRef.current.executePhysicalEdit({
+    operationKind: 'play-script',
+    ...
+    ...(publication.loopClips ? {loopClips: publication.loopClips} : {}),
+  }),
+);
+
+if (!accepted || accepted.operationKind !== 'play-script') {
   return {
-    x: (marker.inFrame + marker.appFrame) * marker.frameWidth - marker.scrollX + TRACK_HEADER_WIDTH,
+    ok: false,
+    error: 'Play Script physical commit was rejected or timed out.',
   };
 }
 ```
-Capsule geometry (band extents, ghost-cell grid, diagonal landing point, anchor-flag position) should be exported pure functions in the same style — this is what `TimelineRenderer.test.ts` asserts.
 
-**Canvas drawing conventions to copy** (lines 441-495): `ctx.save()` → `roundRect` clip to bar → draw → `ctx.restore()`; theme colors via `getThemeColors()` (CSS-variable cache, lines 74-100); labels gated on `labelMaxW >= 18` with `this.truncateText` (line 1585); badge text forms are locked verbatim (D-19): `Cycle 5f × 5 = 25f`, `Cycle 5f × ∞`, `Cycle 5f × 1 = 5f`.
-
-**Thumbnail source (D-15):** `ThumbnailCache.get(imageId, thumbnailUrl)` returns a cached `HTMLImageElement` or `null` (caller draws placeholder; `onLoad` triggers redraw) — full pattern in `app/src/components/timeline/ThumbnailCache.ts:7-42`. Source-cycle thumbnails are real-key payload dataUrls downscaled via `drawImage` at draw time; no new image pipeline.
-
-**Zoom-adaptive rule (D-16):** `MIN_FRAME_WIDTH_FOR_THUMB = 4` (line 68) is the existing zoom-fallback precedent — ghost cells only above a frame-width threshold, band+badge below.
+The generic authority request remains. The correction removes only the main-timeline-specific open/edit operation protocol, not the physical authority protocol.
 
 ---
 
-### `TimelineInteraction.ts` (+ capsule hit regions, selection, keyboard focus)
+### `app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts`
 
-**Analog:** itself — single `export class TimelineInteraction` (line 28) with existing keyframe hit-testing gated at line 353 (`// Only hit-test if we have active keyframes`). Capsule hit regions (badge click → D-01 loop-edit, ghost-cell click → D-17 tooltip + seek, anchor-flag click → D-22) extend the same pointer-dispatch path. Selection unit = the whole loop object (D-23); ghost cells never produce key selection (Pitfall 7).
+**Role:** retained controller  
+**Data flow:** local request-response with parent-authoritative atomic commit
 
----
+No replacement controller should be created. Reuse its existing API:
 
-### NEW: main-timeline tooltip host (gap — Pitfall 5)
+```ts
+openLoopEdit(loopId: string): Promise<RotoPlayScriptLoopOpResult>;
+openSourceEdit(loopId: string): Promise<RotoPlayScriptLoopOpResult>;
+repairLoop(loopId: string): Promise<RotoPlayScriptLoopOpResult>;
+updateLoop(): Promise<boolean>;
+unlinkLoop(loopId: string): Promise<RotoPlayScriptLoopOpResult>;
+duplicateLinkedLoop(
+  loopId: string,
+  destinationStart: number,
+): Promise<RotoPlayScriptLoopOpResult>;
+relinkLoop(
+  loopId: string,
+  targetKeyIds: readonly string[],
+): Promise<RotoPlayScriptLoopOpResult>;
+```
 
-**Analog:** `app/src/components/physic-paint/view/PhysicsPaintStyledTooltip.tsx` (Studio-only today; no tooltip module exists under `app/src/components/timeline/`).
+All local operations already converge on:
 
-**Controller idiom to copy** (lines 28-90):
-```typescript
-export function useStyledTooltip(delayMs: number = STYLED_TOOLTIP_DELAY_MS): StyledTooltipController {
-  const [visible, setVisible] = useState(false);
-  // 1000ms hover delay, never instant; pointerleave cancels
-  // Keyboard focus shows immediately; blur hides
-  // Escape hides; window keydown listener only while visible (idempotent cleanup + mountedRef)
-  function onPointerEnter() { clearTimer(); timerRef.current = setTimeout(show, delayMs); }
-  function onPointerLeave() { hide(); }
-  function onFocus() { clearTimer(); show(); }
-  function onBlur() { hide(); }
-  // ...
+```ts
+async function runLoopOp(
+  loopId: string,
+  prepare: (
+    loop: PhysicPaintRotoLoopClip,
+    authority: PhysicPaintRotoAuthorityResult,
+  ) => readonly PhysicPaintRotoLoopClip[] | string,
+  statusLine: string,
+): Promise<RotoPlayScriptLoopOpResult>
+```
+
+Core authority/commit/error pattern:
+
+```ts
+const authority = await ports.requestAuthority(...);
+const prepared = prepare(loop, authority);
+const publication = buildLoopOnlyPublication(...);
+const result = await ports.commit(publication);
+if (!result.ok) {
+  throw new Error(
+    result.error || 'Parent rejected the Loop Clip operation.',
+  );
+}
+assertPublicationAck(publication, result);
+return {ok: true, reason: null};
+```
+
+Unlink/delete data semantics are already canonical:
+
+```ts
+function unlinkLoop(loopId: string) {
+  return runLoopOp(
+    loopId,
+    (loop) =>
+      currentLoopClips().filter(
+        (clip) => clip.loopId !== loop.loopId,
+      ),
+    'Loop Clip unlinked — source keys remain ordinary Roto keys.',
+  );
 }
 ```
-The new main-timeline surface follows this exact discipline (delay, Escape, focus immediacy, viewport margin `TOOLTIP_VIEWPORT_MARGIN = 8`, flat-multiline Phase 38 content). Tooltip copy forms are locked (D-17/D-19/D-22, e.g. `Repeat 3 · Source frame 2 of 5`, `Cycle 5f × 5 = 25f · Effective 0f — fully shortened by the next clip`). English only; `clip bloquant` prohibited in every language.
+
+Do not duplicate guards, revision checks, source validation, or publication logic in lane components.
 
 ---
 
-### NEW: parent→child "open loop-edit dialog" bridge message (gap — Pitfall 5)
+### `app/src/components/physic-paint/view/PhysicsPaintStudioView.tsx`
 
-**Analog:** `physicsPaintBridgeTransport.ts` sender pattern (whole file is 132 lines).
+**Role:** retained component shell
 
-**Sender idiom to copy** (lines 57-69):
-```typescript
-export async function sendPhysicPaintRotoAuthorityRequest(request: PhysicPaintRotoAuthorityRequest, bridgeMode: PhysicsPaintBridgeMode): Promise<void> {
-  if (bridgeMode === 'Tauri') {
-    const eventApi = await import('@tauri-apps/api/event');
-    if (typeof eventApi.emitTo !== 'function') throw new Error('Tauri event emitTo API is unavailable');
-    await eventApi.emitTo('main', PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, request);
-    return;
-  }
-  if (bridgeMode === 'Browser fallback' && window.opener) {
-    window.opener.postMessage({ type: PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, payload: request }, window.location.origin);
-    return;
-  }
-  throw new Error('Roto authority is unavailable');
+The existing prop boundary already supports the correction:
+
+```ts
+workflow: ComponentProps<typeof PhysicsPaintWorkflowStrip>;
+```
+
+```tsx
+<PhysicsPaintWorkflowStrip {...workflow} />
+```
+
+Keep the new lane inside `PhysicsPaintWorkflowStrip`; do not add a sibling authoring surface or a second timeline host in `PhysicsPaintStudioView`.
+
+---
+
+### `app/src/components/physic-paint/hooks/usePhysicsPaintStudioViewModel.ts`
+
+**Role:** utility/hook  
+**Data flow:** dependency-keyed immutable view-model construction
+
+Use the existing identity memo pattern:
+
+```ts
+export function createIdentityMemo() {
+  let lastDeps: readonly unknown[] | null = null;
+  let lastValue: unknown = null;
+  return {
+    resolve<T>(nextDeps: readonly unknown[], build: () => T): T {
+      ...
+    },
+  };
 }
 ```
-The new message reverses direction (parent→child: launch/focus Studio + open Play Script dialog in loop-edit mode with target loopId) — planner must handle the Studio-closed case (Open Question 3: launch-or-focus). Event name constant lives beside the others in `app/src/lib/physicPaintBridge.ts`; typed request payload + `isX` guard in `app/src/types/physicPaint.ts` following the `isPhysicPaintThumbnailEncodeResult` precedent.
+
+Add Loop Clip resolution context and action ports to the existing workflow memo dependencies. Do not synchronize them into duplicated state with `useEffect`.
 
 ---
 
-### `PhysicsPaintPlayScriptDialog.tsx` (+ loop-edit / source-edit modes S2/S3/S4)
+### `app/src/components/physic-paint/physicsPaintStudio.css`
 
-**Analog:** itself — Phase 42 dialog.
+**Role:** styles/config  
+**Data flow:** loop-presence modifier -> conditional vertical geometry
 
-**Conventions to keep** (lines 37-116):
-- Controller-driven: all state read from `playScript.*.value` signals; dialog holds only local UI state (drag offset) via `useState` by locality.
-- Locked option arrays with locked labels/helpers (lines 16-26: `PLAY_SCRIPT_MODES` with `Progressive` / `Static / Hold` helpers) — loop-edit mode exposes ONLY Repeat + Infinity + Requested/Effective readout (D-01); source-edit mode prefills mode/Frames/color/Motion and confirms with `Regenerate source cycle` (D-02).
-- Focus discipline (lines 48-52): focus input on open, restore `returnFocusRef` on close.
-- `if (!confirmationOpen) return null;` early-exit (line 106) — loop-edit/source-edit get their own open signals on the controller, not new dialog components.
-- Reuse the Phase 42 `--ps-*` modal overlay; do NOT build a second dialog system.
+#### Base geometry must remain exact
 
----
-
-### `PhysicsPaintWorkflowStrip.tsx` (+ additive link badge, S5)
-
-**Analog:** itself — the per-cell derivation block (lines 1297-1343).
-
-**Cell-derivation pattern to extend** (lines 1300-1314):
-```typescript
-const semanticCell = physicalCellByAppFrame.get(frame) ?? null;
-const isGenerated = semanticCell?.kind === 'generated';
-const { vm, fill } = getRotoCellDerivation(frame);
-const isPhysicalRealKey = semanticCell?.kind === 'real';
-const fillClass = isPhysicalRealKey
-  ? 'roto-fill-cached'
-  : `${getRotoFillClass(fill)} ${vm.fillClass}`;
+```css
+.physics-paint-studio {
+  display: grid;
+  grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 161px;
+}
 ```
-The `linked-loop` kind gets an ADDITIVE badge/border class layered onto the existing `cellClass` string (D-18) — no new first-class cell state, no geometry change, no palette change. `dragEligible = isPhysicalRealKey && !rotoDragLocked` (line 1315) already excludes non-real cells — linked-loop cells must also be excluded from selection/drag explicitly (Pitfall 7). Source-cycle cells keep real-key diamonds.
 
----
-
-### NEW: test specs (loop resolver, persistence round-trip, HOLD-02 determinism, history extension)
-
-**Analog:** `physicsPaintRotoPlayScriptController.test.ts` — the harness pattern.
-
-**Test-harness idiom to copy** (lines 1-67):
-```typescript
-import { signal } from '@preact/signals';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const rendered = vi.hoisted(() => vi.fn());
-vi.mock('./physicsPaintRotoPlayScriptRenderer', () => ({ renderRotoPlayScriptFrames: rendered }));
-
-/** Minimal valid PNG data URL (real signature bytes) for canonical payloads. */
-const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
-
-function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) { /* ports with vi.fn() defaults */ }
+```css
+.physics-paint-workflow-strip {
+  height: 161px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
 ```
-Conventions: colocated `*.test.ts` beside source; `vi.hoisted` + `vi.mock` for renderer seams; valid-PNG dataUrl factory; ports object with overridable `vi.fn()` defaults. Run with `pnpm --dir app exec vitest run <file>` — NEVER watch mode (CLAUDE.md). Extend `TimelineRenderer.test.ts` for capsule geometry; extend `physicsPaintRotoPhysicalResolver.test.ts` (or new spec) for modulo/boundary/priority cases per the RESEARCH test map.
+
+Projects without Loop Clips must keep these rules and the existing rendered geometry exactly.
+
+#### Conditional modifier pattern
+
+Add a loop-present class or data attribute rather than changing the base rules:
+
+```css
+.physics-paint-studio.has-roto-loop-lane {
+  grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 193px;
+}
+
+.physics-paint-workflow-strip.has-roto-loop-lane {
+  height: 193px;
+}
+
+.physics-paint-loop-clip-lane {
+  position: relative;
+  min-width: 2160px;
+  height: 32px;
+}
+```
+
+Preserve the existing grid contracts:
+
+```css
+.physics-paint-ruler {
+  height: 28px;
+  min-width: 2160px;
+}
+
+.physics-paint-lane {
+  grid-template-columns: 2160px;
+  min-width: 2160px;
+  height: 38px;
+}
+
+.physics-paint-roto-cells {
+  grid-template-columns: repeat(120, 18px);
+}
+
+.physics-paint-roto-cell {
+  height: 24px;
+}
+```
+
+The capsule is 24px high with 4px top and bottom clearance inside the 32px lane. Keep existing semantic cell colors and additive linked occurrence treatment unchanged.
 
 ## Shared Patterns
 
-### Strict allowlist validation (fail-closed)
-**Source:** `physicsPaintRotoPhysicalModel.ts:281-336`, `physicPaintPersistence.ts:216-235`
-**Apply to:** `loopClips` record parser, bridge payload guard, persisted document parser — all four seams (model keys, persistence keys + save/hydrate mapping, `types/project.ts`, bridge apply-payload allowlists) must change together in ONE task (Pitfall 1).
+### Canonical physical authority
 
-### Snapshot-based atomic Undo/Redo
-**Source:** `app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.ts:83-92, 138-163`
-```typescript
-interface RotoPhysicalEditCommand<EngineState> {
-  readonly kind: 'physical';
-  readonly operationId: string;
-  readonly operationKind: RotoPhysicalEditOrdinaryOperationKind;
-  readonly before: RotoPhysicalEditSnapshot<EngineState>;
-  readonly after: RotoPhysicalEditSnapshot<EngineState>;
-  readonly acceptedRevision: string;
-  // ...
-}
-function snapshotRevision(snapshot: RotoPhysicalEditSnapshot<unknown>): string {
-  return buildPhysicPaintRotoPhysicalRevision(snapshot.records, snapshot.interpolation);
-}
+**Sources:**
+
+- `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts`
+- `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts`
+- `app/src/stores/physicPaintStore.ts`
+
+**Apply to:** lane presentation, popover details, controller operations, preview/export regressions
+
+Rules:
+
+1. Persist one compact Loop Clip record, not repeated frames.
+2. Derive ranges through the canonical resolver.
+3. Resolve linked occurrences lazily by source-cycle modulo.
+4. Preserve verbatim unresolved references.
+5. Treat Effective duration as derived from boundaries, never as a second persisted authority.
+6. Keep the parent end and next-content truncation algebra centralized.
+
+### Accepted-only mutations
+
+**Sources:**
+
+- `physicsPaintRotoPlayScriptController.ts` `runLoopOp`
+- `useRotoPlayScriptController.ts` accepted commit handling
+- `PhysicsPaintStudio.tsx` `dispatchAndWaitForAcceptedRotoPhysicalEdit`
+- `physicsPaintRotoLoopHistory.test.ts`
+
+**Apply to:** Duplicate, Unlink, Delete, Repair, Relink, Link/Create, Loop Edit update
+
+Rules:
+
+- No optimistic durable Loop Clip mutation.
+- No local success based only on dispatch.
+- Match the exact accepted operation/revision acknowledgement.
+- Close an action popover only after accepted success.
+- Keep the popover open and display the controller reason on rejection.
+- Undo/Redo replays the whole physical snapshot atomically, including Loop Clips.
+
+### Preact state boundary
+
+**Sources:** project `CLAUDE.md`, `useRotoTimelineModel.ts`, `usePhysicsPaintStudioViewModel.ts`
+
+**Apply to:** all new EFX components/hooks
+
+Rules:
+
+- Prefer computed/direct derivation for model projections.
+- Prefer Signals for state shared beyond one component lifecycle.
+- Use local hooks only for genuinely local DOM lifecycle concerns such as focus, measured placement, outside click, or document listeners.
+- Do not copy Signal values into hook state through synchronization effects.
+- Do not expand `PhysicsPaintStudio.tsx` with presentation algorithms; keep a focused lane component and pure presentation module.
+
+### Tooltip and popover accessibility
+
+**Sources:** `PhysicsPaintStyledTooltip.tsx`, `UsagePopover.tsx`
+
+**Apply to:** capsule body, occurrence details, compact badge, action menu
+
+Rules:
+
+- Separate body and badge controls.
+- Support pointer and keyboard activation.
+- Show focus information immediately.
+- Clamp to viewport.
+- Escape closes.
+- Outside click closes actionable popover.
+- Return focus to the originating capsule control.
+- Render unresolved IDs as text only.
+- Do not register Delete/Backspace as lane operation shortcuts.
+
+### Physical-cell isolation
+
+**Sources:** `PhysicsPaintWorkflowStrip.tsx`, `physicsPaintRotoMultiSelection.test.ts`
+
+**Apply to:** the lane host and CSS
+
+Rules:
+
+- Keep real-key selection state independent from Loop Clip range selection.
+- Keep modifier selection and shift-range behavior unchanged.
+- Keep drag eligibility restricted to physical real keys.
+- Keep pending drag proposals visible until accepted.
+- Keep rejection restoration behavior unchanged.
+- Linked occurrence badges remain additive styling, not selection handles.
+
+## Removal Assignments
+
+### Main-timeline projection and types
+
+#### `app/src/lib/frameMap.ts`
+
+Remove:
+
+- `loopCapsules` output/feed.
+- Main-editor Loop Clip range projection.
+- Calls to `deriveMainEditorLoopRanges` / `buildTimelineLoopCapsules`.
+
+Do not replace this with a renamed adapter. The EFX lane consumes `useRotoTimelineModel.loopResolutionContext` directly.
+
+#### `app/src/types/timeline.ts`
+
+Remove main-timeline-only types and fields:
+
+- `TimelineLoopCapsuleSourceCell`
+- `TimelineLoopCapsule`
+- `FxTrackLayout.loopCapsules`
+
+Keep canonical physical Loop Clip and resolver types in the physical domain.
+
+### Main-timeline rendering and interaction
+
+#### `app/src/components/timeline/TimelineRenderer.ts`
+
+Remove `drawLoopCapsules` and its invocation. The main timeline must not render a read-only remnant, summary, hit target, or navigation shortcut.
+
+#### `app/src/components/timeline/TimelineInteraction.ts`
+
+Remove:
+
+- Capsule hit testing.
+- Capsule hover/focus request publishing.
+- Capsule selection state.
+- Badge/body routing.
+- Open/edit/delete keyboard handling.
+- Loop-operation requests.
+
+Do not leave invisible hit regions after drawing is removed.
+
+#### `app/src/components/timeline/TimelineCanvas.tsx`
+
+Remove:
+
+```tsx
+import {TimelineCapsuleTooltip} from './TimelineCapsuleTooltip';
 ```
-**Apply to:** every loop op (Update, Unlink, Duplicate, Clear-materialize, generation-with-shrink). `loopClips` MUST join the snapshot, `snapshotRecordsEqual`, and the revision (or ride a parallel member with composite checking — Open Question Q1, planner decides). D-06 requires keys + loops in ONE snapshot.
 
-### Preact Signals over hooks
-**Source:** `physicsPaintRotoPlayScriptController.ts:1` (`import { computed, effect, signal, ... } from '@preact/signals'`)
-**Apply to:** all new controller/dialog loop state. Local component-only UI state (drag offsets) may use `useState` by locality; shared/reactive state is always a controller signal. No `useEffect` for internal state derivation (CLAUDE.md).
+and:
 
-### Fail-closed guarded operations with reason copy
-**Source:** Cut-tool precedent (Phase 36.15); rejection plumbing through resolver `fail(code, operationKind, text)` (`physicsPaintRotoPhysicalResolver.ts:2014-2035`)
-**Apply to:** source-key deletion rejection (D-07), single-key drag / Force Spacing rejection on linked keys (D-11), Delete-key rejection with locked copy (D-13): `No real key exists at this linked frame. Use Clear to create an empty real key, or select the Loop Clip capsule to delete the loop.`
+```tsx
+<TimelineCapsuleTooltip />
+```
 
-### Deterministic held pose (do NOT hand-roll)
-**Source:** `packages/efx-physic-paint/src/animation/recordedStrokeMotion.ts:14-92` — `transformRecordedStrokeForHeldPose`, FNV-1a seed from `` `${strokeIndex}:${stroke.timestamp}:${stroke.color ?? ''}:${stroke.points.length}` ``, integer-only `poseNoise`, zero-variation returns input unchanged.
-**Apply to:** HOLD-02 — add regression proof (byte-identical dataUrls across save/reopen + cache regen), no new determinism machinery. Note Pitfall 6: seeding uses absolute `destinationSourceFrame` (`physicsPaintRotoPlayScriptRenderer.ts:66-71`), so D-05 "identical cycle" matching must include canonical start when Motion ≠ 0.
+#### `app/src/components/timeline/TimelineCapsuleTooltip.tsx`
+
+Delete the main-timeline component after relocating only the host-neutral model/action ordering needed by the EFX popover. Do not retain its `sequenceStore`, `playbackEngine`, global request Signal, or bridge request construction.
+
+### Loop-specific main-to-child protocol
+
+#### `app/src/lib/physicPaintBridge.ts`
+
+Remove after all callers are gone:
+
+```ts
+PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT
+PHYSIC_PAINT_LOOP_OPERATION_REQUEST_EVENT
+PHYSIC_PAINT_LOOP_OPERATION_RESULT_EVENT
+requestPhysicPaintLoopOperation(...)
+openPhysicPaintLoopEdit(...)
+```
+
+Retain generic EFX Paint launch, project context, physical authority, apply-result, save, and frame-sync protocols.
+
+#### `app/src/components/physic-paint/bridge/physicsPaintBridgeTransport.ts`
+
+Remove only the loop-open and loop-operation request/result transport senders. Retain generic authority/apply transport.
+
+#### `app/src/components/physic-paint/bridge/usePhysicsPaintParentBridge.ts`
+
+Remove:
+
+```ts
+usePhysicsPaintOpenLoopEditBridge(...)
+usePhysicsPaintLoopOperationBridge(...)
+```
+
+Local lane actions call the existing local controller directly.
+
+#### `app/src/types/physicPaint.ts`
+
+Remove strict request/result envelopes and guards used only by the removed loop-specific protocol. Do not remove canonical Loop Clip records, physical publication types, authority types, or accepted apply-result types.
+
+### Removal completion check
+
+Before deleting protocol definitions, search for every identifier above and require zero non-test callers. After test cleanup, require zero repository references. Do not remove generic bridge infrastructure merely because it shares the same file.
+
+## Regression Test Assignments
+
+### Conditional no-loop geometry
+
+**Primary analog:** `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts`
+
+Existing exact CSS assertions:
+
+```ts
+expect(
+  getCssRuleBlock(styles, '.physics-paint-workflow-strip {'),
+).toContain('height: 161px');
+
+expect(
+  getCssRuleBlock(styles, '.physics-paint-studio {'),
+).toContain(
+  'grid-template-rows: minmax(58px, auto) minmax(0, 1fr) 161px',
+);
+```
+
+Add regressions proving:
+
+1. Empty `resolutionContext.ranges` renders no Loop Clip lane element.
+2. Empty state does not apply the loop-present modifier.
+3. Base Studio and strip heights remain exactly 161px.
+4. Existing ruler, physical lane, and custom scrollbar geometry remain unchanged.
+5. Non-empty ranges render the lane and apply exactly 193px.
+6. The lane is exactly 32px and appears between ruler and physical lane inside the same scroller.
+7. Capsule height is exactly 24px with 4px vertical clearance.
+
+Keep existing physical geometry assertions:
+
+```ts
+expect(lane).toContain('height: 38px');
+expect(
+  getCssRuleBlock(styles, '.physics-paint-roto-cells {'),
+).toContain('repeat(120, 18px)');
+expect(
+  getCssRuleBlock(styles, '.physics-paint-roto-cell {'),
+).toContain('height: 24px');
+```
+
+### Roto cell navigation, selection, and drag preservation
+
+**Primary analogs:**
+
+- `PhysicsPaintWorkflowStrip.test.ts`
+- `physicsPaintRotoMultiSelection.test.ts`
+
+Keep the source-contract assertion:
+
+```ts
+expect(map).toContain(
+  'const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;',
+);
+```
+
+Retain and run the approved reducer/interaction suites for:
+
+- Plain cell navigation.
+- Meta/Ctrl toggle ordering.
+- Shift range extension.
+- Never-empty sole selection.
+- Multi-selection collapse.
+- Current-key transfer.
+- Real-key-only drag arming.
+- Rigid group movement.
+- Invalid release without commit.
+- Rejected move focus restoration.
+- Linked/unresolved occurrence cells remaining non-draggable.
+
+Add a lane regression proving body/badge activation does not invoke physical-cell handlers underneath.
+
+### Lazy resolution and compact Infinity behavior
+
+**Primary analogs:**
+
+- `PhysicsPaintWorkflowStrip.test.ts`
+- `useRotoTimelineModel.test.ts`
+
+Existing bounded query assertion:
+
+```ts
+expect(query).toHaveBeenCalledTimes(visibleWindow.length);
+```
+
+Existing model expectations:
+
+```ts
+expect(model.loopResolutionContext.value.ranges).toHaveLength(1);
+expect(model.getFrameResolution(18)).toMatchObject({
+  kind: 'linked',
+  loopId: 'L1',
+  sourceKeyId: 'key-3',
+});
+```
+
+Add tests for:
+
+- No-loop context yields `ranges: []`.
+- Finite and Infinity capsules derive only visible repetitions.
+- Modulo source selection is correct at distant frames.
+- No repeated durable frame/cache records are created.
+- Truncated and zero-effective presentation comes from effective range data.
+
+### Local popover copy and action routing
+
+**Primary analog:** relocate applicable pure assertions from `TimelineCapsuleTooltip.test.ts` into EFX-owned tests.
+
+Test exact state-dependent copy/actions for:
+
+- Normal finite loop.
+- Infinity loop.
+- Occurrence source index.
+- Partial-cycle truncation.
+- Complete-cycle truncation.
+- Static/Hold versus Progressive.
+- Zero-effective anchor.
+- Unresolved missing IDs rendered verbatim as text.
+
+Test routing:
+
+- Badge calls `openLoopEdit` locally and not a bridge function.
+- Edit source frame calls the EFX navigation port.
+- Delete and Unlink call unlink-only controller semantics.
+- Duplicate/Repair/Relink use existing controller ports.
+- Rejected action leaves popover open and shows reason.
+- Accepted action closes at the appropriate point.
+- Escape and outside click close without executing an operation.
+- Delete/Backspace do not execute an operation.
+
+### Accepted-only Loop Clip operations
+
+**Primary analog:** `physicsPaintRotoPlayScriptController.test.ts`, operation suites around lines 1134-1550
+
+Reuse existing tests for:
+
+- `openLoopEdit`
+- Loop-only update commit
+- `unlinkLoop`
+- `duplicateLinkedLoop`
+- `repairLoop`
+- `relinkLoop`
+- Rejected authority/commit paths
+- Exact acknowledgement validation
+
+Add the UI adapter assertion that no local visual success/closure occurs before the returned accepted result.
+
+### Atomic Loop Clip history
+
+**Primary analog:** `physicsPaintRotoLoopHistory.test.ts`
+
+Existing accepted output pattern:
+
+```ts
+acceptedOutput.value = {
+  before: source,
+  after: target,
+  acceptedRevision:
+    buildPhysicPaintRotoPhysicalRevision(
+      target.records,
+      target.interpolation,
+      target.loopClips,
+    ),
+  operationId: `replay-${replayNumber}`,
+  operationKind: input.operationKind,
+  historyProvenance: input.historyProvenance,
+};
+```
+
+Existing loop-only Undo/Redo pattern:
+
+```ts
+expect(await test.history.undo()).toBe(true);
+expect(test.getCurrent().loopClips[0].repeat).toBe(5);
+expect(await test.history.redo()).toBe(true);
+expect(test.getCurrent().loopClips[0].repeat).toBe(9);
+```
+
+Keep these tests unchanged and include them in the correction's focused regression run.
+
+### Main-timeline caller removal
+
+Replace stale positive tests with absence contracts:
+
+- `frameMap.test.ts`: no `loopCapsules` projection/output.
+- `TimelineRenderer.test.ts`: no Loop Clip drawing path.
+- `TimelineInteraction.test.ts`: no capsule hit testing or loop operation request.
+- `TimelineCanvas` source contract: no tooltip import/mount.
+- Bridge tests: no loop-open retry delivery and no loop-operation request/result protocol.
+- Repository identifier search: zero references to removed event constants, functions, hooks, timeline capsule types, and `TimelineCapsuleTooltip`.
+
+Do not delete generic bridge tests for authority, apply-result, launch, project context, save, or frame synchronization.
+
+## Retained Unchanged
+
+The correction should not redesign or relocate these authorities:
+
+| File/Area | Retained Pattern |
+|---|---|
+| `physicsPaintRotoPhysicalModel.ts` | Persisted Loop Clip records and physical document authority |
+| `physicsPaintRotoPhysicalResolver.ts` | Range derivation, boundary algebra, lazy frame resolution, physical-edit validation |
+| `physicPaintStore.ts` | Structural/render-source resolution, unresolved query, source-scoped cache identity |
+| Persistence allowlists and revision fingerprinting | Additive canonical Loop Clip persistence and revision authority |
+| Physical edit coordinator | Parent-authoritative accepted transaction path |
+| Physical history | Atomic snapshots and Undo/Redo provenance |
+| `physicsPaintRotoPlayScriptController.ts` | Local Loop/Source Edit and all Loop Clip mutations |
+| `PhysicsPaintPlayScriptDialog.tsx` | Existing EFX Paint modal host for Loop Edit and Source Edit |
+| `previewRenderer.ts` | Unresolved placeholder and canonical preview resolution |
+| `exportEngine.ts` | Fail-fast unresolved preflight and preview/export parity |
+| Generic Physics Paint bridges | Launch, project context, authority, apply-result, save, frame sync |
+
+Changes to these files should be limited to regression imports/type fallout required by removal of the unintended main-timeline surface.
 
 ## No Analog Found
 
-None. Every new file has a verified in-repo idiom (tooltip → `PhysicsPaintStyledTooltip.tsx`; parent→child bridge message → `physicsPaintBridgeTransport.ts` senders; capsule → `drawPhysicPaintPlayScriptMarkers`). The two genuine GAPS (no main-timeline tooltip surface; no parent→child dialog-open message) are new code following existing idioms, not patternless work — both are called out with their analog above.
+None. Every corrected surface has a close in-repository analog:
+
+- Strip/lane composition in `PhysicsPaintWorkflowStrip.tsx`.
+- Pure presentation in `physicsPaintWorkflowPresentation.ts` and `loopCapsuleGeometry.ts`.
+- Styled focus/hover tooltip in `PhysicsPaintStyledTooltip.tsx`.
+- Actionable portal/outside-click behavior in `UsagePopover.tsx`.
+- Local operations in `physicsPaintRotoPlayScriptController.ts`.
+- Accepted-only coordination and history in existing physical-edit modules and tests.
 
 ## Metadata
 
-**Analog search scope:** `app/src/components/physic-paint/**`, `app/src/components/timeline/**`, `app/src/stores/`, `app/src/lib/`, `app/src/types/`, `packages/efx-physic-paint/src/animation/`
-**Files scanned:** 15 primary analogs (read at cited line ranges) + 20 colocated roto test files (listed)
-**Pattern extraction date:** 2026-08-06
+**Analog search scope:**
+
+- `app/src/components/physic-paint/**`
+- `app/src/components/timeline/**`
+- `app/src/components/import/**`
+- `app/src/lib/**`
+- `app/src/stores/**`
+- `app/src/types/**`
+- Phase 43 planning authority files
+
+**Selection priority:** same role and data flow, then existing EFX Paint ownership, then host-neutral pure logic from the stale timeline implementation.
+
+**Discovery note:** the requested codebase-memory MCP tools were not available in this session. Discovery used the project skill indexes, repository text search, and direct file reads instead.
+
+**Pattern extraction date:** 2026-08-07
+
+**Planning authority:** `43-CONTEXT.md` correction decisions D-33 through D-40 supersede earlier main-timeline host assignments. `43-UI-SPEC.md` owns corrected geometry and interaction details. `43-UAT.md` is the failure evidence requiring this relocation.

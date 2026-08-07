@@ -155,7 +155,7 @@ Plans:
   4. A 5-frame cycle repeated 5 times resolves across 25 timeline frames while storing only 5 linked source frame assets; repeat-count and infinity edits never regenerate or duplicate the source cycle, and source-frame edits propagate to every linked occurrence
   5. Next-clip priority truncates loops after complete or partial cycles with half-open interval boundaries; moving or removing the next clip re-expands effective duration without regenerating sources, and the filmstrip capsule shows the detailed source cycle, linked-repetition band, `Cycle Nf × R = Df` / `× ∞` badges, requested vs effective duration, and the English label `Loop shortened by next clip` on truncation (the earlier French truncation label is superseded as of 2026-08-06; the term `clip bloquant` never appears in any language)
 
-**Plans**: 10 plans
+**Plans**: 14 plans
 Plans:
 **Wave 1**
 
@@ -186,7 +186,23 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 43-10-PLAN.md — Full gates (vitest + typecheck + build + dependency diff) + native visual UAT + unsigned packaged smoke (HOLD-01..06)
+- [ ] 43-10-PLAN.md — Full gates (vitest + typecheck + build + dependency diff) + native visual UAT + unsigned packaged smoke; Task 2 resumes after Wave 11 correction plans (HOLD-01..06)
+
+**Wave 8** *(gap closure after failed native UAT Step 1)*
+
+- [ ] 43-11-PLAN.md — Tracer: one canonical Loop Clip renders/selects/opens locally in the EFX lane while the main timeline renders none (HOLD-05, HOLD-06)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 43-12-PLAN.md — Complete EFX filmstrip, local occurrence popover, and accepted-only controller actions (HOLD-05, HOLD-06)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+
+- [ ] 43-13-PLAN.md — Remove main-timeline Loop Clip projection, types, rendering, hit testing, tooltip, and keyboard ownership (HOLD-05, HOLD-06)
+
+**Wave 11** *(blocked on Wave 10 completion)*
+
+- [ ] 43-14-PLAN.md — Remove the specialized Loop Clip bridge protocol, run HOLD-01..06 regressions, and reset UAT for the existing 43-10 checkpoint (HOLD-01..06)
 
 **UI hint**: yes
 
@@ -360,5 +376,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 40. macOS Icon + Build Hygiene | v0.9.0 | 3/3 | Complete    | 2026-08-04 |
 | 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | Complete    | 2026-08-05 |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
-| 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 9/10 | In Progress|  |
+| 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 9/14 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |
