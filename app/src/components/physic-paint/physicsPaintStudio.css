@@ -2677,6 +2677,21 @@ button.destructive {
   background: #4d535a;
 }
 
+.physics-paint-roto-cell.roto-linked-loop-badge {
+  box-shadow: inset 0 0 0 1px rgba(45, 91, 227, 0.9);
+}
+
+.physics-paint-roto-cell.roto-linked-loop-badge::after {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(45, 91, 227, 0.9);
+  content: '';
+}
+
 .physics-paint-roto-cell.roto-fill-cached,
 .physics-paint-roto-cell.roto-fill-cached-only {
   border-color: rgba(91, 216, 143, 0.78);
