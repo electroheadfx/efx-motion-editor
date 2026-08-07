@@ -3,9 +3,57 @@
 > **Audit trail only.** Do not use as input to planning, research, or execution agents.
 > Decisions are captured in CONTEXT.md — this log preserves the alternatives considered.
 
-**Date:** 2026-08-06; surface correction 2026-08-07
+**Date:** 2026-08-06; surface corrections 2026-08-07
 **Phase:** 43-hold-loop-clips-filmstrip-capsule
-**Areas discussed:** Surface ownership correction, Editing loops after creation, Loops vs other Roto ops, Capsule presentation details, Next-clip boundary definition, Resolver and caching ownership, Playback/preview/export parity, Persistence and backward compatibility, Infinite-loop and large-range performance
+**Areas discussed:** Integrated Loop Rail revision, Contextual right sidebar, Surface ownership correction, Editing loops after creation, Loops vs other Roto ops, Capsule presentation details, Next-clip boundary definition, Resolver and caching ownership, Playback/preview/export parity, Persistence and backward compatibility, Infinite-loop and large-range performance
+
+---
+
+## Integrated Loop Rail revision — 2026-08-07
+
+The first corrected tracer still failed native review. Although the Motion Editor main-timeline removal passed, the new separate Loop Clips lane consumed a row and rendered a raw UUID/plain block before a follow-up patch added a permanent Cycle badge. The user rejected that surface direction and stopped implementation before Plans 43-11 Tasks 2–3.
+
+### EFX Paint timeline integration
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Dedicated Loop Clips lane | Separate 32px row with full filmstrip capsule and permanent badge | Superseded |
+| Integrated Loop Rail | 3px visible rail in the top edge of the existing physical-frame row; zero added height; 10–12px transparent target | ✓ |
+| Scripts-panel-only management | No timeline marker | |
+
+**User's choice:** Integrated Loop Rail. Remove the separate row, full filmstrip capsule, permanent Cycle badge, and raw UUID display. Preserve blue linked-frame indicators and canonical Requested/Effective derivation.
+
+### Rail interaction
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Single click edits | Any activation opens Edit Loop Clip | |
+| Select then edit | Hover tooltip; single click selects/may open actions; double-click or Enter edits | ✓ |
+| Sidebar-only editing | Rail is display-only | |
+
+**User's choice:** Select then edit. The rail must not navigate, select, multi-select, or drag physical frames. Tooltip appears above the rail with display name, Cycle math, Effective duration, and status. Local popover retains Duplicate, Unlink, Delete, Repair, and Relink.
+
+### Contextual right sidebar
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| New Loop inspector pane | Add a dedicated sidebar section | |
+| Reuse Scripts context | Existing Play slot becomes Lucide Pencil/Edit for Loop Clip selection and existing details area shows loop facts | ✓ |
+| Popover-only facts | No persistent inspector | |
+
+**User's choice:** Reuse the existing Scripts/right-sidebar context. Normal script selection keeps Play. Loop Clip selection shows Edit plus display name, source script, placement, Cycle math, Effective duration, mode, and status. Derive the display name from the source script unless an existing loop-specific name exists; no new persisted name field without approval.
+
+### Implementation gate
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Continue patching Plan 43-11 | Refine the current lane tracer in code | |
+| Replan before code | Update context, UI-SPEC, correction plans, validation, and UAT first | ✓ |
+| Revert Phase 43 | Remove all Loop Clip work | |
+
+**User's choice:** Replan before code. Existing tracer commits are rejected substrate, not approval. The revised tracer has nine explicit native checks covering zero height, no clipping, conditional rail, tooltip, selection isolation, edit activation, sidebar context, linked indicators, and main-timeline absence.
+
+**Deferred:** Future horizontal drag-and-drop placement. Reserve compatible pointer geometry only; do not implement drag in this correction.
 
 ---
 
