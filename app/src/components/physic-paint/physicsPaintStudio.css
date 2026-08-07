@@ -2586,6 +2586,97 @@ button.destructive {
   content: '';
 }
 
+.physics-paint-loop-clip-lane {
+  position: relative;
+  flex: 0 0 32px;
+  min-width: 2160px;
+  height: 32px;
+  border-bottom: 1px solid #4d5156;
+  background: #37393a;
+}
+
+.physics-paint-loop-clip-lane-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.physics-paint-loop-clip {
+  position: absolute;
+  top: 4px;
+  box-sizing: border-box;
+  height: 24px;
+  min-width: 18px;
+  border: 1px solid #73879a;
+  border-radius: 5px;
+  overflow: hidden;
+  background: #344453;
+}
+
+.physics-paint-loop-clip.selected {
+  border-color: #f5a623;
+  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.4);
+}
+
+.physics-paint-loop-clip-body {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: transparent;
+  cursor: pointer;
+}
+
+.physics-paint-loop-clip-body:hover,
+.physics-paint-loop-clip-body:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  outline: none;
+}
+
+.physics-paint-loop-clip-badge {
+  position: absolute;
+  top: 3px;
+  left: 5px;
+  z-index: 2;
+  max-width: calc(100% - 10px);
+  height: 16px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #202a33;
+  color: #e7edf3;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.physics-paint-loop-clip-badge:hover,
+.physics-paint-loop-clip-badge:focus-visible {
+  background: #52697d;
+  color: #fff;
+  outline: 1px solid #aebdca;
+  outline-offset: -1px;
+}
+
 .physics-paint-lane {
   display: grid;
   grid-template-columns: 2160px;

@@ -10,6 +10,7 @@ import { resolveRotoVisibleFrameResolutions } from '../roto/rotoTimelineSelector
 import {
   activatePhysicsPaintLoopClipBadge,
   activatePhysicsPaintLoopClipBody,
+  PhysicsPaintLoopClipLane,
 } from './PhysicsPaintLoopClipLane';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
@@ -51,6 +52,28 @@ function getMatchingDivEnd(code: string, start: number): number {
 }
 function countOccurrences(code: string, literal: string): number {
   return code.split(literal).length - 1;
+}
+
+interface TestVNode {
+  type: unknown;
+  props?: Record<string, unknown>;
+}
+
+function findVNodes(node: unknown, predicate: (vnode: TestVNode) => boolean): TestVNode[] {
+  if (node === null || node === undefined || typeof node === 'boolean') return [];
+  if (Array.isArray(node)) return node.flatMap((child) => findVNodes(child, predicate));
+  if (typeof node !== 'object') return [];
+  const vnode = node as TestVNode;
+  const matches = predicate(vnode) ? [vnode] : [];
+  return [...matches, ...findVNodes(vnode.props?.children, predicate)];
+}
+
+function vnodeText(node: unknown): string {
+  if (node === null || node === undefined || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(vnodeText).join('');
+  if (typeof node !== 'object') return '';
+  return vnodeText((node as TestVNode).props?.children);
 }
 
 const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: string }> = [
@@ -1177,6 +1200,52 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(rulerIndex).toBeGreaterThanOrEqual(0);
     expect(loopLaneIndex).toBeGreaterThan(rulerIndex);
     expect(physicalLaneIndex).toBeGreaterThan(loopLaneIndex);
+  });
+
+  it('renders visible Cycle badge copy without exposing the raw loop UUID', () => {
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: Array.from({ length: 5 }, (_, index) => ({ keyId: `source-${index}`, appFrame: index })),
+      loopClips: [{
+        loopId: '0f65c808-raw-loop-uuid',
+        placementStart: 0,
+        sourceKeyIds: Array.from({ length: 5 }, (_, index) => `source-${index}`),
+        repeat: 5,
+        mode: 'static',
+      }],
+      parentEndExclusive: 25,
+      capacity: 120,
+    });
+    const tree = PhysicsPaintLoopClipLane({
+      ranges: context.ranges,
+      visibleFrameWindow: { startFrame: 0, endFrameExclusive: 120 },
+      framePitch: 18,
+      onOpenLoopEdit: async () => ({ ok: true }),
+    });
+    const body = findVNodes(tree, (vnode) => vnode.props?.class === 'physics-paint-loop-clip-body')[0];
+    const badge = findVNodes(tree, (vnode) => vnode.props?.class === 'physics-paint-loop-clip-badge')[0];
+
+    expect(body).toBeDefined();
+    expect(badge).toBeDefined();
+    expect(vnodeText(body)).not.toContain('0f65c808-raw-loop-uuid');
+    expect(String(body?.props?.['aria-label'])).toContain('Cycle 5f × 5 = 25f');
+    expect(vnodeText(badge)).toBe('Cycle 5f × 5 = 25f');
+    expect(badge?.props?.['aria-label']).toBe('Edit Loop Clip — Cycle 5f × 5 = 25f');
+  });
+
+  it('keeps the Cycle badge as the identifiable hit target above the capsule body', () => {
+    const styles = css();
+    const capsule = getCssRuleBlock(styles, '.physics-paint-loop-clip {');
+    const body = getCssRuleBlock(styles, '.physics-paint-loop-clip-body {');
+    const badge = getCssRuleBlock(styles, '.physics-paint-loop-clip-badge {');
+
+    expect(capsule).toContain('position: absolute');
+    expect(capsule).toContain('height: 24px');
+    expect(body).toContain('position: absolute');
+    expect(body).toContain('inset: 0');
+    expect(badge).toContain('position: absolute');
+    expect(badge).toContain('z-index: 2');
+    expect(badge).toContain('height: 16px');
+    expect(badge).toContain('pointer-events: auto');
   });
 
   it('keeps body selection lane-local and stops pointer fallthrough', () => {

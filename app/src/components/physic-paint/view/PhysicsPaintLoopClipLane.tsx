@@ -75,12 +75,10 @@ export function PhysicsPaintLoopClipLane(props: PhysicsPaintLoopClipLaneProps) {
             <button
               type="button"
               class="physics-paint-loop-clip-body"
-              aria-label={`Select Loop Clip ${range.loopId}`}
+              aria-label={`Loop Clip — ${badge}`}
               aria-pressed={selected}
               onClick={(event) => activatePhysicsPaintLoopClipBody(range.loopId, event, props.onSelectLoopClip)}
-            >
-              <span aria-hidden="true">{range.loopId}</span>
-            </button>
+            />
             <button
               type="button"
               class="physics-paint-loop-clip-badge"
