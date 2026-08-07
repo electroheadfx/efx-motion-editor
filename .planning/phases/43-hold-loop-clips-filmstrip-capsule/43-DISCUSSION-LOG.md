@@ -3,9 +3,65 @@
 > **Audit trail only.** Do not use as input to planning, research, or execution agents.
 > Decisions are captured in CONTEXT.md — this log preserves the alternatives considered.
 
-**Date:** 2026-08-06
+**Date:** 2026-08-06; surface correction 2026-08-07
 **Phase:** 43-hold-loop-clips-filmstrip-capsule
-**Areas discussed:** Editing loops after creation, Loops vs other Roto ops, Capsule presentation details, Next-clip boundary definition, Resolver and caching ownership, Playback/preview/export parity, Persistence and backward compatibility, Infinite-loop and large-range performance
+**Areas discussed:** Surface ownership correction, Editing loops after creation, Loops vs other Roto ops, Capsule presentation details, Next-clip boundary definition, Resolver and caching ownership, Playback/preview/export parity, Persistence and backward compatibility, Infinite-loop and large-range performance
+
+---
+
+## Surface ownership correction — 2026-08-07
+
+Native UAT failed at Step 1 because the Loop Clip capsule was implemented on the Motion Editor `PPaint #1` timeline row rather than inside EFX Paint/Roto where physical frames are edited. Verification stopped; this discussion reopens the host decision without patching individual visual defects.
+
+### Motion Editor main timeline
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Remove it | Remove capsule and interactions; Loop Clips are authored only in EFX Paint/Roto | ✓ |
+| Read-only summary | Keep a non-interactive secondary capsule | |
+| Navigation shortcut | Keep a capsule that only opens/focuses EFX Paint | |
+
+**User's choice:** Remove it completely.
+
+### EFX Paint placement
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Dedicated loop lane | Frame-aligned lane above existing Roto cells; separates loop and key selection | ✓ |
+| Overlay on cells | Draw capsule in the existing cell row | |
+| Scripts panel list | Manage loops in Scripts with only cell badges on the timeline | |
+
+**User's choice:** Dedicated Loop Clip lane above the physical-frame cells.
+
+### Editing and actions
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Badge edit + local popover | Capsule selects/opens local actions; badge opens Loop Edit; Roto cells keep navigation | ✓ |
+| Whole capsule opens dialog | Any click opens Loop Edit | |
+| Selection + toolbar | Operations live in persistent lane toolbar | |
+
+**User's choice:** Badge edit plus local EFX Paint popover.
+
+### Lane detail
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Full filmstrip capsule | Preserve thumbnails, repetitions, badge, truncation, unresolved state, anchor flag | ✓ |
+| Compact range capsule | Badge/range only; source detail elsewhere | |
+| Minimal range blocks | Labels only; detail in popover/dialog | |
+
+**User's choice:** Full filmstrip capsule.
+
+### Empty state
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Hidden when empty | Existing EFX Paint geometry remains unchanged until a loop exists | ✓ |
+| Always visible | Permanent empty Loop Clips row | |
+| Collapsible lane | Persistent labeled row with collapse state | |
+
+**User's choice:** Hidden when empty.
 
 ---
 

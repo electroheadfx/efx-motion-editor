@@ -2,7 +2,9 @@
 phase: 43
 plan: 10
 kind: uat-record
-status: pending
+status: failed
+failed_at: step-1
+failure_kind: scope-mismatch
 created: 2026-08-07
 builds_under_test:
   - user-run native development app
@@ -57,9 +59,13 @@ The executor completed the automated integration gates on 2026-08-07:
 - Preview order is source 1, 2, 3, 4, 5, then the same order four more times.
 - Repeated linked cells have no real-key diamonds.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [ ] pass  [x] fail
 
 **Notes:**
+
+- Scope failure: the Loop Clip capsule and its interactions were implemented on the Motion Editor main timeline (`PPaint #1`) instead of the EFX Paint/Roto physical-frame editing surface.
+- Verification stopped at Step 1. No later UAT steps were executed.
+- Correction decision: remove the main-timeline capsule and move the full workflow into a dedicated EFX Paint/Roto Loop Clip lane before UAT restarts.
 
 ---
 
