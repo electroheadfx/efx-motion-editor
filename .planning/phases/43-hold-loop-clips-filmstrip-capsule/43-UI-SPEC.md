@@ -40,6 +40,8 @@ No new design system, persisted schema, registry, UI dependency, tooltip system,
 
 ## Surfaces
 
+**Studio focal hierarchy:** the existing canvas and current physical-frame selection remain the primary visual and interaction focus. The selected Loop Rail is the timing anchor that identifies the active linked interval without displacing that primary focus. The contextual Scripts inspector is the secondary information surface for the selected Loop Clip.
+
 | ID | Surface | Contract |
 |----|---------|----------|
 | S1 | Integrated Loop Rail | 3px visible rail inside the top edge of the existing 38px physical-frame row; no new row and zero added height |
@@ -138,7 +140,7 @@ Declared project scale: **4, 8, 16, 24, 32, 48, 64px**.
 | 0f glyph | 8×6px | functional state marker exception |
 | Cell pitch | 18px | existing physical-frame grid exception |
 | Focus ring | 2px, 1px offset | keyboard visibility exception |
-| Popover anchor gap | 6px | matches tooltip notch gap |
+| Popover anchor gap | 8px | spacing-scale-compliant separation from the rail target |
 | Popover width | 272px default; max 304px | fits existing sidebar/timeline context |
 
 Exceptions are functional geometry, not additions to the spacing token family.
@@ -360,7 +362,7 @@ Double-click handling must suppress the second single-click side effect from reo
 ### Local actions popover
 
 - Use a non-modal `role="dialog"` with `aria-modal="false"` and accessible name `{displayName} actions`; do not introduce a menu-only surface because the popover includes read-only facts and status.
-- Anchor it 6px above the clicked rail target when space allows; clamp to 8px viewport margins and flip below only when required.
+- Anchor it 8px above the clicked rail target when space allows; clamp to 8px viewport margins and flip below only when required.
 - Default width 272px, maximum 304px; maximum height is available viewport space minus 16px. Overflow scrolls vertically inside the popover, never the physical row.
 - Facts appear first in this order: Source script, Placement, Cycle, Effective, Mode, Status.
 - Actions appear after facts in this order when applicable: `Duplicate`, `Repair`, `Relink`, `Unlink`, `Delete`.
