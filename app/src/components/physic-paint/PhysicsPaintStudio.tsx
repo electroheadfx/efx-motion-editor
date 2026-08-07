@@ -3,7 +3,7 @@ import { useSignal } from '@preact/signals';
 import type { CompletedPaintMutation, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample, SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings } from '../../types/physicPaint';
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
-import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
+import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
 import { paintStore } from '../../stores/paintStore';
@@ -31,7 +31,7 @@ import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
 import { efxPaintAudioMonitor } from './audio/efxPaintAudioMonitor';
 import { audioPreviewEnabled, setAudioPreviewEnabled } from './audio/efxPaintAudioPreviewStore';
 import { buildBlankRotoFrame, type RenderedFramePayload } from './roto/rotoCanvasFrames';
-import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush } from './bridge/usePhysicsPaintParentBridge';
+import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush, usePhysicsPaintOpenLoopEditBridge } from './bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
@@ -723,12 +723,18 @@ export function PhysicsPaintStudio() {
     getBrushColor: () => settings.color,
     getOperationLocked: () => rotoScript.mutationLocked.peek() || rotoScriptNavigationLocked,
     getSize: () => ({ width: canvasWidth, height: canvasHeight }),
+    // 43-06: the durable Loop Clip collection the loop-edit/source-edit modes
+    // and the atomic loop ops operate on (43-05 port, wired here).
+    getRotoLoopClips: () => (launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY),
     executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     acceptedOutput: physicalEditCoordinator.acceptedOutput,
     stopPlayback: rotoCachedPlayback.stop,
     log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
   }, bridgeMode);
+  // 43-06 (D-01/Q3): the capsule badge click reaches this Studio — open the
+  // Play Script dialog in loop-edit mode targeting the requested loop.
+  usePhysicsPaintOpenLoopEditBridge((loopId) => { void rotoPlayScript.openLoopEdit(loopId); });
   resetRotoKeySessionRef.current = rotoKeyUtilities.resetSession;
   resetRotoNavigationForLaunchRef.current = rotoNavigation.resetForLaunch;
   const rotoFrameEditing = useRotoFrameEditingController({

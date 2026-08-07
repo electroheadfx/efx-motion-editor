@@ -1179,6 +1179,24 @@ function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
+/**
+ * Parent→child open-loop-edit request (43-06, D-01/Q3): the main-timeline
+ * capsule badge click asks the Studio to open the Play Script dialog in
+ * loop-edit mode targeting this Loop Clip.
+ */
+export interface PhysicPaintOpenLoopEditRequest {
+  readonly loopId: string;
+}
+
+/**
+ * Strict guard for {@link PhysicPaintOpenLoopEditRequest} (T-43-06-01): the
+ * child must not trust the cross-window payload shape — malformed messages
+ * are rejected and ignored.
+ */
+export function isPhysicPaintOpenLoopEditRequest(value: unknown): value is PhysicPaintOpenLoopEditRequest {
+  return isRecord(value) && hasOnlyKeys(value, ['loopId']) && isBoundedPhysicalKeyId(value.loopId);
+}
+
 function optionalNumber(value: unknown): boolean {
   return value === undefined || (typeof value === 'number' && Number.isFinite(value));
 }

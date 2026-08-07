@@ -1,6 +1,6 @@
-import type { PhysicPaintApplyPayload, PhysicPaintRotoAuthorityRequest, PhysicPaintScriptLibraryRequest, PhysicPaintThumbnailEncodeRequest, PhysicPaintThumbnailEncodeResult } from '../../../types/physicPaint';
-import { isPhysicPaintThumbnailEncodeResult } from '../../../types/physicPaint';
-import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT } from '../../../lib/physicPaintBridge';
+import type { PhysicPaintApplyPayload, PhysicPaintOpenLoopEditRequest, PhysicPaintRotoAuthorityRequest, PhysicPaintScriptLibraryRequest, PhysicPaintThumbnailEncodeRequest, PhysicPaintThumbnailEncodeResult } from '../../../types/physicPaint';
+import { isPhysicPaintOpenLoopEditRequest, isPhysicPaintThumbnailEncodeResult } from '../../../types/physicPaint';
+import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_AUDIO_OWNERSHIP_EVENT, PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_REQUEST_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT, PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT, PHYSIC_PAINT_WINDOW_LABEL } from '../../../lib/physicPaintBridge';
 import type { RotoScriptThumbnailNativeEncoder } from '../roto/physicsPaintRotoScriptThumbnail';
 import type { PhysicsPaintBridgeMode } from './usePhysicsPaintParentBridge';
 
@@ -66,6 +66,31 @@ export async function sendPhysicPaintRotoAuthorityRequest(request: PhysicPaintRo
     return;
   }
   throw new Error('Roto authority is unavailable');
+}
+
+/**
+ * 43-06 (D-01/Q3): parent→child open-loop-edit message — the mirror image of
+ * the child→parent senders above: Tauri emitTo targets the Studio window
+ * label; the Browser fallback posts to the child window handle the parent
+ * kept from the launch. The payload is validated before sending (T-43-06-01).
+ */
+export async function sendPhysicPaintOpenLoopEdit(
+  request: PhysicPaintOpenLoopEditRequest,
+  bridgeMode: PhysicsPaintBridgeMode,
+  childWindow?: Window | null,
+): Promise<void> {
+  if (!isPhysicPaintOpenLoopEditRequest(request)) throw new Error('Malformed open-loop-edit request');
+  if (bridgeMode === 'Tauri') {
+    const eventApi = await import('@tauri-apps/api/event');
+    if (typeof eventApi.emitTo !== 'function') throw new Error('Tauri event emitTo API is unavailable');
+    await eventApi.emitTo(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, request);
+    return;
+  }
+  if (bridgeMode === 'Browser fallback' && childWindow) {
+    childWindow.postMessage({ type: PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, payload: request }, window.location.origin);
+    return;
+  }
+  throw new Error('Open-loop-edit bridge is unavailable');
 }
 
 export function createPhysicPaintThumbnailNativeEncoder(): RotoScriptThumbnailNativeEncoder {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
-import { isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryResult, isPhysicPaintScriptLibraryResultMessage } from '../../../types/physicPaint';
-import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT } from '../../../lib/physicPaintBridge';
+import { isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, isPhysicPaintOpenLoopEditRequest, isPhysicPaintScriptLibraryResult, isPhysicPaintScriptLibraryResultMessage } from '../../../types/physicPaint';
+import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT } from '../../../lib/physicPaintBridge';
 
 export type PhysicsPaintBridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 
@@ -173,6 +173,24 @@ export function usePhysicsPaintRotoAuthorityResultBridge(handleResult: (result: 
     const message = (event: MessageEvent) => { if (event.origin === window.location.origin && event.data?.type === PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT) accept(event.data.payload); };
     window.addEventListener('message', message);
     void import('@tauri-apps/api/event').then(async (eventApi) => { unlisten = await eventApi.listen?.(PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, (event) => accept(event.payload)); if (disposed) unlisten?.(); }).catch(() => undefined);
+    return () => { disposed = true; unlisten?.(); window.removeEventListener('message', message); };
+  }, []);
+}
+
+/**
+ * 43-06 (D-01/Q3): child-side listener for the parent→child open-loop-edit
+ * message — routes a validated loopId to the Play Script controller's
+ * openLoopEdit. Malformed payloads are rejected by the typed guard and
+ * ignored (T-43-06-01). Same install idiom as the sibling bridges.
+ */
+export function usePhysicsPaintOpenLoopEditBridge(handleRequest: (loopId: string) => void): void {
+  const handleRef = useRef(handleRequest); handleRef.current = handleRequest;
+  useEffect(() => {
+    let disposed = false; let unlisten: (() => void) | undefined;
+    const accept = (value: unknown) => { if (isPhysicPaintOpenLoopEditRequest(value)) handleRef.current(value.loopId); };
+    const message = (event: MessageEvent) => { if (event.origin === window.location.origin && event.data?.type === PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT) accept(event.data.payload); };
+    window.addEventListener('message', message);
+    void import('@tauri-apps/api/event').then(async (eventApi) => { unlisten = await eventApi.listen?.(PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, (event) => accept(event.payload)); if (disposed) unlisten?.(); }).catch(() => undefined);
     return () => { disposed = true; unlisten?.(); window.removeEventListener('message', message); };
   }, []);
 }
