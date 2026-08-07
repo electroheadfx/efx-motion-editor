@@ -172,6 +172,59 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
   it('throws on duplicate loopId', () => {
     expect(() => parsePhysicPaintRotoLoopClips([baseLoop(), baseLoop()])).toThrow();
   });
+
+  // 43-06: optional source-cycle provenance (scriptId + Motion + resolved
+  // override color) — required by the S3 source-edit prefill and the S4
+  // Link/Create matching (D-02/D-05; D-29 "provenance required by the
+  // approved UI"). All-or-nothing: any provenance key requires all three.
+  describe('source-cycle provenance (43-06)', () => {
+    const provenance = { scriptId: 'script-1', motion: { deformation: 5, position: 10 }, overrideColor: '#a1b2c3' };
+
+    it('accepts and round-trips a record carrying full provenance, frozen', () => {
+      const record = { ...baseLoop(), ...provenance };
+      expect(isPhysicPaintRotoLoopClip(record)).toBe(true);
+      const parsed = parsePhysicPaintRotoLoopClips([record]);
+      expect(parsed[0]).toEqual(record);
+      expect(Object.isFrozen(parsed[0].motion)).toBe(true);
+    });
+
+    it('accepts an explicit null overrideColor (Original-colors provenance)', () => {
+      const record = { ...baseLoop(), ...provenance, overrideColor: null };
+      expect(isPhysicPaintRotoLoopClip(record)).toBe(true);
+      expect(parsePhysicPaintRotoLoopClips([record])[0].overrideColor).toBeNull();
+    });
+
+    it.each(['scriptId', 'motion', 'overrideColor'])('rejects partial provenance missing %s (all-or-nothing)', (key) => {
+      const record: Record<string, unknown> = { ...baseLoop(), ...provenance };
+      delete record[key];
+      expect(isPhysicPaintRotoLoopClip(record)).toBe(false);
+      expect(() => parsePhysicPaintRotoLoopClips([record])).toThrow();
+    });
+
+    it('rejects malformed provenance members', () => {
+      expect(isPhysicPaintRotoLoopClip({ ...baseLoop(), ...provenance, scriptId: '' })).toBe(false);
+      expect(isPhysicPaintRotoLoopClip({ ...baseLoop(), ...provenance, motion: { deformation: 5 } })).toBe(false);
+      expect(isPhysicPaintRotoLoopClip({ ...baseLoop(), ...provenance, motion: { deformation: 5, position: 10, extra: 1 } })).toBe(false);
+      expect(isPhysicPaintRotoLoopClip({ ...baseLoop(), ...provenance, overrideColor: 'red' })).toBe(false);
+      expect(isPhysicPaintRotoLoopClip({ ...baseLoop(), ...provenance, overrideColor: '#abc' })).toBe(false);
+    });
+
+    it('provenance joins the canonical revision fingerprint', () => {
+      const records = sourceRecords();
+      const interpolation = { enabled: false, mode: 'duplicate' as const };
+      const without = buildPhysicPaintRotoPhysicalRevision(records, interpolation, [baseLoop()]);
+      const withProvenance = buildPhysicPaintRotoPhysicalRevision(records, interpolation, [{ ...baseLoop(), ...provenance }]);
+      const otherColor = buildPhysicPaintRotoPhysicalRevision(records, interpolation, [{ ...baseLoop(), ...provenance, overrideColor: '#ffffff' }]);
+      expect(withProvenance).not.toBe(without);
+      expect(otherColor).not.toBe(withProvenance);
+    });
+
+    it('persists provenance byte-identically through save and reopen', async () => {
+      const document = baseDocument([{ ...baseLoop(), ...provenance }]);
+      const parsed = parsePhysicPaintRotoPhysicalDocument(document);
+      expect(parsed.loopClips[0]).toMatchObject(provenance);
+    });
+  });
 });
 
 describe('parsePhysicPaintRotoPhysicalDocument loopClips member', () => {
