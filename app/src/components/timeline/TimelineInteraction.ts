@@ -22,8 +22,6 @@ import {
   truncationDiagonalFrame,
   zoomBandForFrameWidth,
 } from './loopCapsuleGeometry';
-import {openPhysicPaintLoopEdit} from '../../lib/physicPaintBridge';
-import {physicPaintStore} from '../../stores/physicPaintStore';
 
 export interface LoopCapsuleRect {
   readonly x: number;
@@ -817,27 +815,33 @@ export class TimelineInteraction {
     const sequence = sequenceStore.sequences.peek().find((candidate) => candidate.id === track.sequenceId);
     const layer = sequence?.layers[0];
     if (!layer) return;
+    const {openPhysicPaintLoopEdit} = await import('../../lib/physicPaintBridge');
     await openPhysicPaintLoopEdit({layer, frame: track.inFrame, loopId});
   }
 
-  private unlinkFocusedLoop(): void {
+  private async deleteFocusedLoop(): Promise<void> {
     const loopId = focusedTimelineLoopClipId.peek();
     const sequenceId = this.focusedLoopSequenceId;
     if (!loopId || !sequenceId) return;
     const sequence = sequenceStore.sequences.peek().find((candidate) => candidate.id === sequenceId);
     const layer = sequence?.layers[0];
-    if (!layer || layer.source.type !== 'physic-paint') return;
-    const layerId = layer.source.layerId;
-    const current = physicPaintStore.getRotoPhysicalLoopClips(layerId);
-    const next = current.filter((clip) => clip.loopId !== loopId);
-    if (next.length === current.length) return;
-    const result = physicPaintStore.replaceRotoPhysicalLoopClips(layerId, next);
-    if (result.ok) {
-      selectedTimelineLoopClipId.value = null;
-      focusedTimelineLoopClipId.value = null;
-      timelineLoopCapsuleTooltipRequest.value = null;
-      this.focusedLoopSequenceId = null;
-    }
+    if (!sequence || !layer || layer.source.type !== 'physic-paint') return;
+
+    const {requestPhysicPaintLoopOperation} = await import('../../lib/physicPaintBridge');
+    const result = await requestPhysicPaintLoopOperation({
+      layer,
+      frame: sequence.inFrame ?? 0,
+      loopId,
+      kind: 'delete-loop',
+    });
+    if (!result.ok) return;
+
+    // A delayed acknowledgement must not clear a newer capsule selection.
+    if (focusedTimelineLoopClipId.peek() !== loopId || this.focusedLoopSequenceId !== sequenceId) return;
+    selectedTimelineLoopClipId.value = null;
+    focusedTimelineLoopClipId.value = null;
+    timelineLoopCapsuleTooltipRequest.value = null;
+    this.focusedLoopSequenceId = null;
   }
 
   private onKeyDown(event: KeyboardEvent): void {
@@ -854,7 +858,7 @@ export class TimelineInteraction {
         timelineLoopCapsuleTooltipRequest.value = null;
         this.canvas?.focus({preventScroll: true});
       },
-      unlinkLoop: () => this.unlinkFocusedLoop(),
+      unlinkLoop: () => { void this.deleteFocusedLoop(); },
     });
     if (handled) event.preventDefault();
   }

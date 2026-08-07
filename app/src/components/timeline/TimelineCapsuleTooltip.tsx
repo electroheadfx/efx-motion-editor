@@ -1,7 +1,7 @@
 import {useSignal} from '@preact/signals';
 import {useEffect, useRef} from 'preact/hooks';
 import {playbackEngine} from '../../lib/playbackEngine';
-import {requestPhysicPaintLoopOperation, type PhysicPaintLoopOperationIntent, type PhysicPaintLoopOperationOpenRequest} from '../../lib/physicPaintBridge';
+import type {PhysicPaintLoopOperationIntent, PhysicPaintLoopOperationOpenRequest} from '../../lib/physicPaintBridge';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {badgeTextForLoop, isZeroEffectiveLoop} from './loopCapsuleGeometry';
 import {
@@ -185,7 +185,7 @@ type TimelineLoopOperationBridgeRequest = (
 
 export function createTimelineCapsuleTooltipOps(
   request: TimelineLoopCapsuleTooltipRequest,
-  bridgeRequest: TimelineLoopOperationBridgeRequest = requestPhysicPaintLoopOperation,
+  bridgeRequest?: TimelineLoopOperationBridgeRequest,
   prompts: Pick<TimelineCapsuleTooltipOps, 'promptDestinationStart' | 'promptRelinkKeyIds'> = {
     promptDestinationStart: () => {
       if (typeof window === 'undefined') return null;
@@ -202,10 +202,12 @@ export function createTimelineCapsuleTooltipOps(
   },
 ): TimelineCapsuleTooltipOps {
   const result = (ok: boolean, reason: string | null = null): TimelineCapsuleLoopOpResult => ({ok, reason});
-  const run = (loopId: string, intent: PhysicPaintLoopOperationIntent) => {
+  const run = async (loopId: string, intent: PhysicPaintLoopOperationIntent) => {
     const target = findLayerRequest(request);
-    if (!target) return Promise.resolve(result(false, 'The Physics Paint layer is unavailable.'));
-    return bridgeRequest({...target, loopId, ...intent});
+    if (!target) return result(false, 'The Physics Paint layer is unavailable.');
+    const requestOperation = bridgeRequest
+      ?? (await import('../../lib/physicPaintBridge')).requestPhysicPaintLoopOperation;
+    return requestOperation({...target, loopId, ...intent});
   };
   return {
     editSourceFrame: async (_loopId, sourceAppFrame) => {

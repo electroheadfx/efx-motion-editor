@@ -189,7 +189,7 @@ describe('focused Loop Clip keyboard Delete bridge', () => {
     const bridgeRequest = vi.spyOn(physicPaintBridge, 'requestPhysicPaintLoopOperation')
       .mockResolvedValue({ok: false, reason: 'Studio rejected the request.'});
     vi.spyOn(physicPaintStore, 'getRotoPhysicalLoopClips').mockReturnValue([{loopId: 'loop-7'}] as never);
-    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalLoopClips').mockReturnValue({ok: true, data: null});
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalLoopClips').mockReturnValue({ok: true});
     const interaction = prepareFocusedInteraction();
     const preventDefault = vi.fn();
 

@@ -1083,7 +1083,7 @@ describe('openPhysicPaintLoopEdit (43-06 launch-or-focus)', () => {
     // time and real runtime scheduling observe the same delivery sequence.
     await vi.advanceTimersByTimeAsync(3200);
     expect(openEditDeliveries()).toHaveLength(13);
-    expect(openEditDeliveries().at(-1)).toEqual([
+    expect(openEditDeliveries()[openEditDeliveries().length - 1]).toEqual([
       PHYSIC_PAINT_WINDOW_LABEL,
       PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT,
       { loopId: 'loop-8' },

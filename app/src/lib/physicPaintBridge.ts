@@ -1608,15 +1608,25 @@ export async function openPhysicPaintLoopEdit(request: PhysicPaintOpenRequest & 
   if (!isPhysicPaintOpenLoopEditRequest(payload)) {
     return { ok: false, error: 'A valid Loop Clip identity is required to open loop edit.' };
   }
-  const send = (target: Window | null, bridgeMode: 'Tauri' | 'Browser fallback') =>
+  let send = (target: Window | null, bridgeMode: 'Tauri' | 'Browser fallback') =>
     sendPhysicPaintOpenLoopEdit(payload, bridgeMode, target);
+  const sendBestEffort = async (target: Window | null, bridgeMode: 'Tauri' | 'Browser fallback'): Promise<void> => {
+    try {
+      await send(target, bridgeMode);
+    } catch {
+      // A fresh child may not have installed its transport yet; bounded retries
+      // below preserve queue-until-ready without turning that race into failure.
+    }
+  };
   const queueUntilReady = (target: Window | null, bridgeMode: 'Tauri' | 'Browser fallback'): void => {
-    // The child handler is idempotent, so a bounded resend covers the
-    // listener-install race while the fresh bundle initializes (Q3).
+    // The child handler is idempotent, so 12 bounded resends cover the
+    // listener-install race while the fresh bundle initializes (Q3). Returning
+    // an async interval callback keeps the transport promise observable to fake
+    // timers instead of detaching it with `void send(...)`.
     let attempts = 0;
-    const timer = setInterval(() => {
+    const timer = setInterval(async () => {
       attempts += 1;
-      void send(target, bridgeMode).catch(() => undefined);
+      await sendBestEffort(target, bridgeMode);
       if (attempts >= 12) clearInterval(timer);
     }, 250);
   };
@@ -1624,6 +1634,17 @@ export async function openPhysicPaintLoopEdit(request: PhysicPaintOpenRequest & 
   const tauriRuntime = await detectTauriRuntime();
   if (tauriRuntime) {
     try {
+      // Resolve the Tauri transport once before scheduling retries. Repeating a
+      // dynamic import inside each timer callback lets fake-time advancement
+      // finish before emitTo settles under full-suite scheduler load.
+      const eventApi = await import('@tauri-apps/api/event') as TauriEventApi;
+      const emitTo = eventApi.emitTo;
+      if (typeof emitTo !== 'function') {
+        return {ok: false, error: 'Open-loop-edit bridge is unavailable'};
+      }
+      send = async () => {
+        await emitTo(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, payload);
+      };
       const windowApi = await import('@tauri-apps/api/window') as TauriWindowApi;
       const paintWindow = await windowApi.Window?.getByLabel?.(PHYSIC_PAINT_WINDOW_LABEL);
       if (paintWindow) {
@@ -1638,6 +1659,7 @@ export async function openPhysicPaintLoopEdit(request: PhysicPaintOpenRequest & 
     }
     const launch = await openPhysicPaintCanvas(request);
     if (!launch.ok) return { ok: false, error: launch.error };
+    await sendBestEffort(null, 'Tauri');
     queueUntilReady(null, 'Tauri');
     return { ok: true, data: null };
   }
@@ -1653,6 +1675,7 @@ export async function openPhysicPaintLoopEdit(request: PhysicPaintOpenRequest & 
   }
   const launch = await openPhysicPaintCanvas(request);
   if (!launch.ok) return { ok: false, error: launch.error };
+  await sendBestEffort(browserFallbackWindow, 'Browser fallback');
   queueUntilReady(browserFallbackWindow, 'Browser fallback');
   return { ok: true, data: null };
 }
