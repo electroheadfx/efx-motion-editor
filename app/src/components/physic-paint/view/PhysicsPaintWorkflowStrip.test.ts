@@ -262,6 +262,25 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     // linked occurrences when a loop resolution context is present.
     expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
   });
+
+  it('layers the linked badge onto both linked resolution kinds without changing fill or drag semantics', () => {
+    const map = getRotoMapBlock(source());
+    expect(map).toContain("const hasLinkedLoopBadge = frameResolution?.kind === 'linked' || frameResolution?.kind === 'linked-unresolved';");
+    expect(map).toContain("${hasLinkedLoopBadge ? 'roto-linked-loop-badge' : ''}");
+    expect(map).toContain("const fillClass = isPhysicalRealKey");
+    expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
+
+    const styles = css();
+    const badge = getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-linked-loop-badge {');
+    const dot = getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-linked-loop-badge::after {');
+    expect(badge).toContain('box-shadow: inset 0 0 0 1px rgba(45, 91, 227, 0.9)');
+    expect(dot).toContain('width: 4px');
+    expect(dot).toContain('height: 4px');
+    expect(dot).toContain('top: 2px');
+    expect(dot).toContain('right: 2px');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 24px');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).toContain('repeat(120, 18px)');
+  });
 });
 
 describe('PhysicsPaintWorkflowStrip Cut key contract (quick 260731-9l0)', () => {
