@@ -158,7 +158,10 @@ describe('typed loop-operation protocol (43-08)', () => {
 
 describe('loop-operation transport (43-08)', () => {
   it('sends requests to the Studio and results to main in Tauri mode', async () => {
-    const result = {...duplicateRequest, ok: true, reason: null};
+    const result = {
+      operationId: 'loop-op-1', projectContextId: 'project-1', layerId: 'paint-1', loopId: 'loop-7',
+      kind: 'duplicate-linked-loop' as const, ok: true, reason: null,
+    };
     await sendPhysicPaintLoopOperationRequest(duplicateRequest, 'Tauri');
     await sendPhysicPaintLoopOperationResult(result, 'Tauri');
     expect(eventApi.emitTo).toHaveBeenCalledWith(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_LOOP_OPERATION_REQUEST_EVENT, duplicateRequest);
@@ -168,7 +171,10 @@ describe('loop-operation transport (43-08)', () => {
   it('uses the correlated Browser fallback request/result messages', async () => {
     const child = {postMessage: vi.fn()} as unknown as Window;
     const parent = {postMessage: vi.fn()} as unknown as Window;
-    const result = {...duplicateRequest, ok: true, reason: null};
+    const result = {
+      operationId: 'loop-op-1', projectContextId: 'project-1', layerId: 'paint-1', loopId: 'loop-7',
+      kind: 'duplicate-linked-loop' as const, ok: true, reason: null,
+    };
     await sendPhysicPaintLoopOperationRequest(duplicateRequest, 'Browser fallback', child);
     await sendPhysicPaintLoopOperationResult(result, 'Browser fallback', parent);
     expect(child.postMessage).toHaveBeenCalledWith({type: PHYSIC_PAINT_LOOP_OPERATION_REQUEST_EVENT, payload: duplicateRequest}, window.location.origin);
@@ -196,7 +202,10 @@ describe('loop-operation child dispatch (43-08)', () => {
     expect(duplicateLinkedLoop).toHaveBeenCalledTimes(1);
     expect(duplicateLinkedLoop).toHaveBeenCalledWith('loop-7', 40);
     expect(sendResult).toHaveBeenCalledTimes(2);
-    expect(sendResult).toHaveBeenLastCalledWith({...duplicateRequest, ok: true, reason: null});
+    expect(sendResult).toHaveBeenLastCalledWith({
+      operationId: 'loop-op-1', projectContextId: 'project-1', layerId: 'paint-1', loopId: 'loop-7',
+      kind: 'duplicate-linked-loop', ok: true, reason: null,
+    });
   });
 
   it('fails closed for stale context and operation-id reuse with changed content', async () => {
@@ -209,7 +218,10 @@ describe('loop-operation child dispatch (43-08)', () => {
     });
     await handler(duplicateRequest);
     expect(duplicateLinkedLoop).not.toHaveBeenCalled();
-    expect(sendResult).toHaveBeenLastCalledWith({...duplicateRequest, ok: false, reason: 'Physics Paint project context changed.'});
+    expect(sendResult).toHaveBeenLastCalledWith({
+      operationId: 'loop-op-1', projectContextId: 'project-1', layerId: 'paint-1', loopId: 'loop-7',
+      kind: 'duplicate-linked-loop', ok: false, reason: 'Physics Paint project context changed.',
+    });
 
     const liveHandler = createPhysicsPaintLoopOperationRequestHandler({
       getLaunchContext: () => ({projectContextId: 'project-1', layerId: 'paint-1'}),
@@ -219,7 +231,10 @@ describe('loop-operation child dispatch (43-08)', () => {
     await liveHandler(duplicateRequest);
     await liveHandler({...duplicateRequest, destinationStart: 41});
     expect(duplicateLinkedLoop).toHaveBeenCalledTimes(1);
-    expect(sendResult).toHaveBeenLastCalledWith({...duplicateRequest, destinationStart: 41, ok: false, reason: 'Operation ID was already used for a different loop-operation request.'});
+    expect(sendResult).toHaveBeenLastCalledWith({
+      operationId: 'loop-op-1', projectContextId: 'project-1', layerId: 'paint-1', loopId: 'loop-7',
+      kind: 'duplicate-linked-loop', ok: false, reason: 'Operation ID was already used for a different loop-operation request.',
+    });
   });
 
   it('preserves delete identity while dispatching unlink, and routes repair/relink canonically', async () => {

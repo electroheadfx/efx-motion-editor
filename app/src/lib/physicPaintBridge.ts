@@ -1,8 +1,8 @@
 import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
-import type { EfxPaintAudioPreviewContext, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintOpenLoopEditRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintLoopOperationRequest, PhysicPaintLoopOperationResult, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLoopOperationResult, isPhysicPaintOpenLoopEditRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import { validatePhysicPaintRotoPhysicalEditSemanticDelta } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import { isRotoPngDataUrl, prepareRotoPhysicalRealKeyPngs } from '../components/physic-paint/roto/rotoCanvasFrames';
@@ -22,7 +22,7 @@ import { parseCanonicalPhysicsPaintLaunchValue } from '../components/physic-pain
 // 43-06: the parent→child sender lives in the transport module (function-scope
 // usage only — the transport imports this module's event constants, so this
 // static cycle must never be read at module-evaluation time on either side).
-import { sendPhysicPaintOpenLoopEdit } from '../components/physic-paint/bridge/physicsPaintBridgeTransport';
+import { sendPhysicPaintLoopOperationRequest, sendPhysicPaintOpenLoopEdit } from '../components/physic-paint/bridge/physicsPaintBridgeTransport';
 import { layerStore } from '../stores/layerStore';
 import { audioStore } from '../stores/audioStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
@@ -58,6 +58,9 @@ export const PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT = 'physic-paint:thumbna
 export const PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT = 'physic-paint:thumbnail-encode-result';
 /** 43-06 (D-01/Q3): parent→child open-loop-edit request from the capsule badge click. */
 export const PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT = 'physic-paint:open-loop-edit';
+/** 43-08: correlated main-timeline Loop Clip operation request/result pair. */
+export const PHYSIC_PAINT_LOOP_OPERATION_REQUEST_EVENT = 'physic-paint:loop-operation-request';
+export const PHYSIC_PAINT_LOOP_OPERATION_RESULT_EVENT = 'physic-paint:loop-operation-result';
 
 export const PHYSIC_PAINT_WINDOW_LABEL = 'efx-physic-paint';
 const PHYSIC_PAINT_FALLBACK_PATH = '/physics-paint';
@@ -1474,6 +1477,122 @@ function openBrowserFallback(context: PhysicPaintLaunchContext): Result<null> {
 
 /** Browser-fallback child window handle (43-06: reused for focus-without-reload). */
 let browserFallbackWindow: Window | null = null;
+
+export type PhysicPaintLoopOperationIntent =
+  | {readonly kind: 'duplicate-linked-loop'; readonly destinationStart: number}
+  | {readonly kind: 'relink-loop'; readonly sourceKeyIds: readonly string[]}
+  | {readonly kind: 'unlink-loop' | 'delete-loop' | 'repair-loop'};
+
+export interface PhysicPaintLoopOperationOpenRequest extends PhysicPaintOpenRequest {
+  readonly loopId: string;
+}
+
+export interface PhysicPaintLoopOperationRequestOptions {
+  readonly timeoutMs?: number;
+  readonly retryIntervalMs?: number;
+}
+
+function isMatchingLoopOperationResult(result: PhysicPaintLoopOperationResult, request: PhysicPaintLoopOperationRequest): boolean {
+  return result.operationId === request.operationId
+    && result.projectContextId === request.projectContextId
+    && result.layerId === request.layerId
+    && result.loopId === request.loopId
+    && result.kind === request.kind;
+}
+
+/**
+ * Main-timeline mutation client. The correlated listener is installed before
+ * launch/focus and every retry reuses one operationId. The Studio owns
+ * exactly-once execution; this side only retries delivery until result/timeout.
+ */
+export async function requestPhysicPaintLoopOperation(
+  input: PhysicPaintLoopOperationOpenRequest & PhysicPaintLoopOperationIntent,
+  options: PhysicPaintLoopOperationRequestOptions = {},
+): Promise<{ok: boolean; reason: string | null}> {
+  const validation = validateOpenRequest(input);
+  if (!validation.ok) return {ok: false, reason: validation.error};
+  const layerId = validation.data.layer.source.type === 'physic-paint'
+    ? validation.data.layer.source.layerId
+    : validation.data.layer.id;
+  const common = {
+    operationId: `physic-paint-loop-op-${Date.now()}-${crypto.randomUUID()}`,
+    projectContextId: projectStore.projectContextId.peek(),
+    layerId,
+    loopId: input.loopId,
+  };
+  const request: PhysicPaintLoopOperationRequest = input.kind === 'duplicate-linked-loop'
+    ? {...common, kind: input.kind, destinationStart: input.destinationStart}
+    : input.kind === 'relink-loop'
+      ? {...common, kind: input.kind, sourceKeyIds: [...input.sourceKeyIds]}
+      : {...common, kind: input.kind};
+  const timeoutMs = Math.max(1, Math.min(30_000, options.timeoutMs ?? 5_500));
+  const retryIntervalMs = Math.max(10, Math.min(timeoutMs, options.retryIntervalMs ?? 250));
+  const bridgeMode = await detectTauriRuntime() ? 'Tauri' as const : 'Browser fallback' as const;
+
+  let unlistenTauri: (() => void) | undefined;
+  let browserListener: ((event: MessageEvent) => void) | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let retry: ReturnType<typeof setInterval> | undefined;
+  let settled = false;
+  let resolveResult: (result: {ok: boolean; reason: string | null}) => void = () => {};
+  const resultPromise = new Promise<{ok: boolean; reason: string | null}>((resolve) => { resolveResult = resolve; });
+  const settle = (result: {ok: boolean; reason: string | null}) => {
+    if (settled) return;
+    settled = true;
+    resolveResult(result);
+  };
+  const accept = (value: unknown) => {
+    if (!isPhysicPaintLoopOperationResult(value) || !isMatchingLoopOperationResult(value, request)) return;
+    settle({ok: value.ok, reason: value.reason});
+  };
+
+  try {
+    if (bridgeMode === 'Tauri') {
+      const eventApi = await import('@tauri-apps/api/event') as TauriEventApi;
+      if (typeof eventApi.listen !== 'function') return {ok: false, reason: 'Physics Paint loop-operation result bridge is unavailable.'};
+      unlistenTauri = await eventApi.listen(PHYSIC_PAINT_LOOP_OPERATION_RESULT_EVENT, (event) => accept(event.payload));
+    } else {
+      browserListener = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin || event.data?.type !== PHYSIC_PAINT_LOOP_OPERATION_RESULT_EVENT) return;
+        accept(event.data.payload);
+      };
+      window.addEventListener('message', browserListener);
+    }
+
+    if (bridgeMode === 'Tauri') {
+      const windowApi = await import('@tauri-apps/api/window') as TauriWindowApi;
+      const paintWindow = await windowApi.Window?.getByLabel?.(PHYSIC_PAINT_WINDOW_LABEL);
+      if (paintWindow) {
+        if (await paintWindow.isMinimized?.()) await paintWindow.unminimize?.();
+        await paintWindow.show?.();
+        await paintWindow.setFocus?.();
+      } else {
+        const launch = await openPhysicPaintCanvas(input);
+        if (!launch.ok) return {ok: false, reason: launch.error};
+      }
+    } else if (browserFallbackWindow && !browserFallbackWindow.closed) {
+      browserFallbackWindow.focus?.();
+    } else {
+      const launch = await openPhysicPaintCanvas(input);
+      if (!launch.ok) return {ok: false, reason: launch.error};
+    }
+
+    const send = () => {
+      void sendPhysicPaintLoopOperationRequest(request, bridgeMode, browserFallbackWindow).catch(() => undefined);
+    };
+    send();
+    retry = setInterval(send, retryIntervalMs);
+    timeout = setTimeout(() => settle({ok: false, reason: 'Physics Paint loop operation timed out.'}), timeoutMs);
+    return await resultPromise;
+  } catch (error) {
+    return {ok: false, reason: error instanceof Error ? error.message : String(error)};
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+    if (retry !== undefined) clearInterval(retry);
+    unlistenTauri?.();
+    if (browserListener) window.removeEventListener('message', browserListener);
+  }
+}
 
 /**
  * 43-06 (D-01, Q3 resolved launch-or-focus): a capsule badge click asks the

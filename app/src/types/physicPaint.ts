@@ -1197,6 +1197,85 @@ export function isPhysicPaintOpenLoopEditRequest(value: unknown): value is Physi
   return isRecord(value) && hasOnlyKeys(value, ['loopId']) && isBoundedPhysicalKeyId(value.loopId);
 }
 
+/** Main-timeline → Studio operation kinds. Delete intentionally remains a
+ * distinct UI/correlation identity while the child dispatches unlinkLoop. */
+export type PhysicPaintLoopOperationKind =
+  | 'duplicate-linked-loop'
+  | 'unlink-loop'
+  | 'delete-loop'
+  | 'repair-loop'
+  | 'relink-loop';
+
+type PhysicPaintLoopOperationRequestBase = {
+  readonly operationId: string;
+  readonly projectContextId: string;
+  readonly layerId: string;
+  readonly loopId: string;
+};
+
+export type PhysicPaintLoopOperationRequest =
+  | (PhysicPaintLoopOperationRequestBase & {
+      readonly kind: 'duplicate-linked-loop';
+      readonly destinationStart: number;
+    })
+  | (PhysicPaintLoopOperationRequestBase & {
+      readonly kind: 'relink-loop';
+      readonly sourceKeyIds: readonly string[];
+    })
+  | (PhysicPaintLoopOperationRequestBase & {
+      readonly kind: 'unlink-loop' | 'delete-loop' | 'repair-loop';
+    });
+
+export interface PhysicPaintLoopOperationResult {
+  readonly operationId: string;
+  readonly projectContextId: string;
+  readonly layerId: string;
+  readonly loopId: string;
+  readonly kind: PhysicPaintLoopOperationKind;
+  readonly ok: boolean;
+  readonly reason: string | null;
+}
+
+const LOOP_OPERATION_BASE_KEYS = ['operationId', 'projectContextId', 'layerId', 'loopId', 'kind'] as const;
+
+function hasValidLoopOperationIdentity(value: Record<string, unknown>): boolean {
+  return isBoundedOperationId(value.operationId)
+    && isBoundedOperationId(value.projectContextId)
+    && isBoundedPhysicalKeyId(value.layerId)
+    && isBoundedPhysicalKeyId(value.loopId);
+}
+
+export function isPhysicPaintLoopOperationRequest(value: unknown): value is PhysicPaintLoopOperationRequest {
+  if (!isRecord(value) || !hasValidLoopOperationIdentity(value)) return false;
+  if (value.kind === 'duplicate-linked-loop') {
+    return hasOnlyKeys(value, [...LOOP_OPERATION_BASE_KEYS, 'destinationStart'])
+      && isNonNegativeInteger(value.destinationStart)
+      && Number.isSafeInteger(value.destinationStart);
+  }
+  if (value.kind === 'relink-loop') {
+    return hasOnlyKeys(value, [...LOOP_OPERATION_BASE_KEYS, 'sourceKeyIds'])
+      && Array.isArray(value.sourceKeyIds)
+      && value.sourceKeyIds.length > 0
+      && value.sourceKeyIds.length <= PHYSIC_PAINT_MAX_APPLY_FRAMES
+      && value.sourceKeyIds.every(isBoundedPhysicalKeyId);
+  }
+  return (value.kind === 'unlink-loop' || value.kind === 'delete-loop' || value.kind === 'repair-loop')
+    && hasOnlyKeys(value, LOOP_OPERATION_BASE_KEYS);
+}
+
+export function isPhysicPaintLoopOperationResult(value: unknown): value is PhysicPaintLoopOperationResult {
+  return isRecord(value)
+    && hasOnlyKeys(value, [...LOOP_OPERATION_BASE_KEYS, 'ok', 'reason'])
+    && hasValidLoopOperationIdentity(value)
+    && (value.kind === 'duplicate-linked-loop'
+      || value.kind === 'unlink-loop'
+      || value.kind === 'delete-loop'
+      || value.kind === 'repair-loop'
+      || value.kind === 'relink-loop')
+    && typeof value.ok === 'boolean'
+    && (value.reason === null || (typeof value.reason === 'string' && value.reason.length > 0 && value.reason.length <= 2048));
+}
+
 function optionalNumber(value: unknown): boolean {
   return value === undefined || (typeof value === 'number' && Number.isFinite(value));
 }

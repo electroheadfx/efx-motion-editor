@@ -1,11 +1,8 @@
 import {useSignal} from '@preact/signals';
 import {useEffect, useRef} from 'preact/hooks';
 import {playbackEngine} from '../../lib/playbackEngine';
-import {fxTrackLayouts} from '../../lib/frameMap';
-import {openPhysicPaintLoopEdit} from '../../lib/physicPaintBridge';
+import {requestPhysicPaintLoopOperation, type PhysicPaintLoopOperationIntent, type PhysicPaintLoopOperationOpenRequest} from '../../lib/physicPaintBridge';
 import {sequenceStore} from '../../stores/sequenceStore';
-import {physicPaintStore} from '../../stores/physicPaintStore';
-import {createPhysicPaintRotoKeyId} from '../physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {badgeTextForLoop, isZeroEffectiveLoop} from './loopCapsuleGeometry';
 import {
   timelineLoopCapsuleTooltipRequest,
@@ -37,6 +34,7 @@ export interface TimelineCapsuleTooltipOps {
   readonly editSourceFrame: (loopId: string, sourceAppFrame: number) => Promise<TimelineCapsuleLoopOpResult>;
   readonly duplicateLinkedLoop: (loopId: string, destinationStart: number) => Promise<TimelineCapsuleLoopOpResult>;
   readonly unlinkLoop: (loopId: string) => Promise<TimelineCapsuleLoopOpResult>;
+  readonly deleteLoop: (loopId: string) => Promise<TimelineCapsuleLoopOpResult>;
   readonly repairLoop: (loopId: string) => Promise<TimelineCapsuleLoopOpResult>;
   readonly relinkLoop: (loopId: string, targetKeyIds: readonly string[]) => Promise<TimelineCapsuleLoopOpResult>;
   readonly promptDestinationStart: () => number | null;
@@ -169,7 +167,7 @@ export async function runTimelineCapsuleTooltipAction(
     if (!keyIds?.length) return {ok: false, reason: 'Choose a non-empty existing source cycle to relink to.'};
     return ops.relinkLoop(loopId, keyIds);
   }
-  return ops.unlinkLoop(loopId);
+  return action === 'Delete loop' ? ops.deleteLoop(loopId) : ops.unlinkLoop(loopId);
 }
 
 function findLayerRequest(request: TimelineLoopCapsuleTooltipRequest) {
@@ -181,57 +179,14 @@ function findLayerRequest(request: TimelineLoopCapsuleTooltipRequest) {
   return null;
 }
 
-function defaultOps(request: TimelineLoopCapsuleTooltipRequest): TimelineCapsuleTooltipOps {
-  const result = (ok: boolean, reason: string | null = null): TimelineCapsuleLoopOpResult => ({ok, reason});
-  const replace = (transform: (clips: ReturnType<typeof physicPaintStore.getRotoPhysicalLoopClips>) => readonly unknown[]) => {
-    const clips = physicPaintStore.getRotoPhysicalLoopClips(request.layerId);
-    const changed = transform(clips);
-    const publication = physicPaintStore.replaceRotoPhysicalLoopClips(request.layerId, changed);
-    return publication.ok ? result(true) : result(false, publication.error);
-  };
-  const openStudio = async (loopId: string) => {
-    const target = findLayerRequest(request);
-    if (!target) return result(false, 'The Physics Paint layer is unavailable.');
-    const opened = await openPhysicPaintLoopEdit({...target, loopId});
-    return opened.ok ? result(true) : result(false, opened.error);
-  };
-  return {
-    editSourceFrame: async (_loopId, sourceAppFrame) => {
-      playbackEngine.seekToFrame(request.sequenceStartFrame + sourceAppFrame);
-      return result(true);
-    },
-    duplicateLinkedLoop: async (loopId, destinationStart) => {
-      if (!Number.isSafeInteger(destinationStart) || destinationStart < 0) return result(false, 'Choose a non-negative integer destination start frame.');
-      const ranges = fxTrackLayouts.peek().flatMap((track) => track.loopCapsules ?? []);
-      if (ranges.some((range) => range.placementStart === destinationStart)) return result(false, `Another Loop Clip already starts at frame ${destinationStart}.`);
-      if (ranges.some((range) => range.placementStart < destinationStart && destinationStart < range.effectiveEnd)) {
-        return result(false, `Frame ${destinationStart} lies inside the effective range of another Loop Clip. Choose a destination outside every loop's effective range.`);
-      }
-      const clips = physicPaintStore.getRotoPhysicalLoopClips(request.layerId);
-      const source = clips.find((clip) => clip.loopId === loopId);
-      if (!source) return result(false, 'Loop Clip no longer exists.');
-      const publication = physicPaintStore.replaceRotoPhysicalLoopClips(request.layerId, [
-        ...clips,
-        {...source, loopId: createPhysicPaintRotoKeyId(), placementStart: destinationStart, sourceKeyIds: [...source.sourceKeyIds]},
-      ]);
-      return publication.ok ? result(true) : result(false, publication.error);
-    },
-    unlinkLoop: async (loopId) => replace((clips) => clips.filter((clip) => clip.loopId !== loopId)),
-    // Repair requires source regeneration and relink requires an explicit source
-    // cycle choice; launch-or-focus hands both guarded flows to the Studio.
-    repairLoop: openStudio,
-    relinkLoop: async (loopId, targetKeyIds) => {
-      const existing = new Set(physicPaintStore.getRotoRealKeyRecords(request.layerId).map((record) => record.keyId));
-      const missing = targetKeyIds.filter((keyId) => !existing.has(keyId));
-      if (missing.length > 0) return result(false, `Relink target contains keyId(s) that are not real Roto keys on this Paint layer: ${missing.join(', ')}.`);
-      const clips = physicPaintStore.getRotoPhysicalLoopClips(request.layerId);
-      if (!clips.some((clip) => clip.loopId === loopId)) return result(false, 'Loop Clip no longer exists.');
-      const publication = physicPaintStore.replaceRotoPhysicalLoopClips(
-        request.layerId,
-        clips.map((clip) => clip.loopId === loopId ? {...clip, sourceKeyIds: [...targetKeyIds]} : clip),
-      );
-      return publication.ok ? result(true) : result(false, publication.error);
-    },
+type TimelineLoopOperationBridgeRequest = (
+  request: PhysicPaintLoopOperationOpenRequest & PhysicPaintLoopOperationIntent,
+) => Promise<TimelineCapsuleLoopOpResult>;
+
+export function createTimelineCapsuleTooltipOps(
+  request: TimelineLoopCapsuleTooltipRequest,
+  bridgeRequest: TimelineLoopOperationBridgeRequest = requestPhysicPaintLoopOperation,
+  prompts: Pick<TimelineCapsuleTooltipOps, 'promptDestinationStart' | 'promptRelinkKeyIds'> = {
     promptDestinationStart: () => {
       if (typeof window === 'undefined') return null;
       const answer = window.prompt('Destination start frame');
@@ -244,6 +199,25 @@ function defaultOps(request: TimelineLoopCapsuleTooltipRequest): TimelineCapsule
       const answer = window.prompt('Existing source key IDs, comma-separated');
       return answer?.split(',').map((item) => item.trim()).filter(Boolean) ?? null;
     },
+  },
+): TimelineCapsuleTooltipOps {
+  const result = (ok: boolean, reason: string | null = null): TimelineCapsuleLoopOpResult => ({ok, reason});
+  const run = (loopId: string, intent: PhysicPaintLoopOperationIntent) => {
+    const target = findLayerRequest(request);
+    if (!target) return Promise.resolve(result(false, 'The Physics Paint layer is unavailable.'));
+    return bridgeRequest({...target, loopId, ...intent});
+  };
+  return {
+    editSourceFrame: async (_loopId, sourceAppFrame) => {
+      playbackEngine.seekToFrame(request.sequenceStartFrame + sourceAppFrame);
+      return result(true);
+    },
+    duplicateLinkedLoop: (loopId, destinationStart) => run(loopId, {kind: 'duplicate-linked-loop', destinationStart}),
+    unlinkLoop: (loopId) => run(loopId, {kind: 'unlink-loop'}),
+    deleteLoop: (loopId) => run(loopId, {kind: 'delete-loop'}),
+    repairLoop: (loopId) => run(loopId, {kind: 'repair-loop'}),
+    relinkLoop: (loopId, sourceKeyIds) => run(loopId, {kind: 'relink-loop', sourceKeyIds}),
+    ...prompts,
   };
 }
 
@@ -294,7 +268,7 @@ export function TimelineCapsuleTooltip(props: {readonly ops?: TimelineCapsuleToo
     {width, height},
     viewport,
   );
-  const ops = props.ops ?? defaultOps(current);
+  const ops = props.ops ?? createTimelineCapsuleTooltipOps(current);
 
   const activate = async (action: TimelineCapsuleTooltipAction) => {
     const operation = await runTimelineCapsuleTooltipAction(action, current, ops);

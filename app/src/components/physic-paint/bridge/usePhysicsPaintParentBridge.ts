@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
-import { isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, isPhysicPaintOpenLoopEditRequest, isPhysicPaintScriptLibraryResult, isPhysicPaintScriptLibraryResultMessage } from '../../../types/physicPaint';
-import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT } from '../../../lib/physicPaintBridge';
+import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintLoopOperationRequest, PhysicPaintLoopOperationResult, PhysicPaintRotoAuthorityResult, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
+import { isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, isPhysicPaintLoopOperationRequest, isPhysicPaintOpenLoopEditRequest, isPhysicPaintScriptLibraryResult, isPhysicPaintScriptLibraryResultMessage } from '../../../types/physicPaint';
+import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_LOOP_OPERATION_REQUEST_EVENT, PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT } from '../../../lib/physicPaintBridge';
+import { sendPhysicPaintLoopOperationResult } from './physicsPaintBridgeTransport';
 
 export type PhysicsPaintBridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 
@@ -191,6 +192,133 @@ export function usePhysicsPaintOpenLoopEditBridge(handleRequest: (loopId: string
     const message = (event: MessageEvent) => { if (event.origin === window.location.origin && event.data?.type === PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT) accept(event.data.payload); };
     window.addEventListener('message', message);
     void import('@tauri-apps/api/event').then(async (eventApi) => { unlisten = await eventApi.listen?.(PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, (event) => accept(event.payload)); if (disposed) unlisten?.(); }).catch(() => undefined);
+    return () => { disposed = true; unlisten?.(); window.removeEventListener('message', message); };
+  }, []);
+}
+
+export interface PhysicsPaintLoopOperationController {
+  readonly duplicateLinkedLoop: (loopId: string, destinationStart: number) => Promise<{ok: boolean; reason: string | null}>;
+  readonly unlinkLoop: (loopId: string) => Promise<{ok: boolean; reason: string | null}>;
+  readonly repairLoop: (loopId: string) => Promise<{ok: boolean; reason: string | null}>;
+  readonly relinkLoop: (loopId: string, sourceKeyIds: readonly string[]) => Promise<{ok: boolean; reason: string | null}>;
+}
+
+interface PhysicsPaintLoopOperationHandlerPorts {
+  readonly getLaunchContext: () => {readonly projectContextId: string; readonly layerId: string} | null;
+  readonly operations: PhysicsPaintLoopOperationController;
+  readonly sendResult: (result: PhysicPaintLoopOperationResult, parentWindow?: Window | null) => Promise<void>;
+}
+
+function loopOperationResult(
+  request: PhysicPaintLoopOperationRequest,
+  outcome: {readonly ok: boolean; readonly reason: string | null},
+): PhysicPaintLoopOperationResult {
+  return {
+    operationId: request.operationId,
+    projectContextId: request.projectContextId,
+    layerId: request.layerId,
+    loopId: request.loopId,
+    kind: request.kind,
+    ok: outcome.ok,
+    reason: outcome.reason,
+  };
+}
+
+function fingerprintLoopOperationRequest(request: PhysicPaintLoopOperationRequest): string {
+  const payload = request.kind === 'duplicate-linked-loop'
+    ? `:${request.destinationStart}`
+    : request.kind === 'relink-loop'
+      ? `:${request.sourceKeyIds.map((keyId) => `${keyId.length}:${keyId}`).join('|')}`
+      : '';
+  return `${request.operationId}:${request.projectContextId}:${request.layerId}:${request.loopId}:${request.kind}${payload}`;
+}
+
+/** One handler instance lives for one Studio mount. Its in-flight promise map
+ * makes bounded parent retries replay one result without a second history op. */
+export function createPhysicsPaintLoopOperationRequestHandler(ports: PhysicsPaintLoopOperationHandlerPorts) {
+  const delivered = new Map<string, {fingerprint: string; result: Promise<PhysicPaintLoopOperationResult>}>();
+  return async (value: unknown, parentWindow?: Window | null): Promise<void> => {
+    if (!isPhysicPaintLoopOperationRequest(value)) return;
+    const request = value;
+    const fingerprint = fingerprintLoopOperationRequest(request);
+    const publish = (result: PhysicPaintLoopOperationResult) => parentWindow
+      ? ports.sendResult(result, parentWindow)
+      : ports.sendResult(result);
+    const prior = delivered.get(request.operationId);
+    if (prior && prior.fingerprint !== fingerprint) {
+      await publish(loopOperationResult(request, {ok: false, reason: 'Operation ID was already used for a different loop-operation request.'}));
+      return;
+    }
+    let pending = prior?.result;
+    if (!pending) {
+      pending = (async (): Promise<PhysicPaintLoopOperationResult> => {
+        const context = ports.getLaunchContext();
+        if (!context || context.projectContextId !== request.projectContextId) {
+          return loopOperationResult(request, {ok: false, reason: 'Physics Paint project context changed.'});
+        }
+        if (context.layerId !== request.layerId) {
+          return loopOperationResult(request, {ok: false, reason: 'Physics Paint layer context changed.'});
+        }
+        const operation = request.kind === 'duplicate-linked-loop'
+          ? await ports.operations.duplicateLinkedLoop(request.loopId, request.destinationStart)
+          : request.kind === 'relink-loop'
+            ? await ports.operations.relinkLoop(request.loopId, request.sourceKeyIds)
+            : request.kind === 'repair-loop'
+              ? await ports.operations.repairLoop(request.loopId)
+              : await ports.operations.unlinkLoop(request.loopId);
+        return loopOperationResult(request, operation);
+      })().catch((error) => loopOperationResult(request, {
+        ok: false,
+        reason: error instanceof Error ? error.message : String(error),
+      }));
+      delivered.set(request.operationId, {fingerprint, result: pending});
+    }
+    await publish(await pending);
+  };
+}
+
+export function usePhysicsPaintLoopOperationBridge(
+  getLaunchContext: () => PhysicPaintLaunchContext | null,
+  operations: PhysicsPaintLoopOperationController,
+  bridgeMode: PhysicsPaintBridgeMode,
+): void {
+  const contextRef = useRef(getLaunchContext); contextRef.current = getLaunchContext;
+  const operationsRef = useRef(operations); operationsRef.current = operations;
+  const modeRef = useRef(bridgeMode); modeRef.current = bridgeMode;
+  const handlerRef = useRef<ReturnType<typeof createPhysicsPaintLoopOperationRequestHandler> | null>(null);
+  if (!handlerRef.current) {
+    handlerRef.current = createPhysicsPaintLoopOperationRequestHandler({
+      getLaunchContext: () => {
+        const context = contextRef.current();
+        if (!context?.project) return null;
+        return {projectContextId: context.project.contextId, layerId: context.layerId};
+      },
+      operations: {
+        duplicateLinkedLoop: (...args) => operationsRef.current.duplicateLinkedLoop(...args),
+        unlinkLoop: (...args) => operationsRef.current.unlinkLoop(...args),
+        repairLoop: (...args) => operationsRef.current.repairLoop(...args),
+        relinkLoop: (...args) => operationsRef.current.relinkLoop(...args),
+      },
+      sendResult: (result, parentWindow) => sendPhysicPaintLoopOperationResult(result, modeRef.current, parentWindow),
+    });
+  }
+  useEffect(() => {
+    let disposed = false; let unlisten: (() => void) | undefined;
+    const accept = (value: unknown, parentWindow?: Window | null) => {
+      void handlerRef.current?.(value, parentWindow).catch((error) => {
+        console.warn('[PhysicsPaintStudio] loop-operation result delivery failed', error);
+      });
+    };
+    const message = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.data?.type !== PHYSIC_PAINT_LOOP_OPERATION_REQUEST_EVENT) return;
+      const source = event.source && 'postMessage' in event.source ? event.source as Window : undefined;
+      accept(event.data.payload, source);
+    };
+    window.addEventListener('message', message);
+    void import('@tauri-apps/api/event').then(async (eventApi) => {
+      unlisten = await eventApi.listen?.(PHYSIC_PAINT_LOOP_OPERATION_REQUEST_EVENT, (event) => accept(event.payload));
+      if (disposed) unlisten?.();
+    }).catch(() => undefined);
     return () => { disposed = true; unlisten?.(); window.removeEventListener('message', message); };
   }, []);
 }

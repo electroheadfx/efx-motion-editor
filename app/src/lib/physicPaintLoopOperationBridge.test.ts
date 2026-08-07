@@ -78,6 +78,7 @@ describe('requestPhysicPaintLoopOperation parent correlation (43-08)', () => {
     const pending = requestPhysicPaintLoopOperation({
       layer: physicLayer(), frame: 4, loopId: 'loop-7', kind: 'repair-loop',
     }, {timeoutMs: 90, retryIntervalMs: 20});
+    await vi.waitFor(() => expect(child.postMessage).toHaveBeenCalled());
     await vi.advanceTimersByTimeAsync(100);
     const result = await pending;
 

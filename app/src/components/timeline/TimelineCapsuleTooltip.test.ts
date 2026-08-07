@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {sequenceStore} from '../../stores/sequenceStore';
 import type {TimelineLoopCapsule} from '../../types/timeline';
 import type {LoopCapsuleHit, TimelineLoopCapsuleTooltipRequest} from './TimelineInteraction';
 import {
@@ -98,6 +99,7 @@ describe('Timeline capsule tooltip action dispatch', () => {
       editSourceFrame: vi.fn(async () => ({ok: true, reason: null})),
       duplicateLinkedLoop: vi.fn(async () => ({ok: true, reason: null})),
       unlinkLoop: vi.fn(async () => ({ok: true, reason: null})),
+      deleteLoop: vi.fn(async () => ({ok: true, reason: null})),
       repairLoop: vi.fn(async () => ({ok: true, reason: null})),
       relinkLoop: vi.fn(async () => ({ok: true, reason: null})),
       promptDestinationStart: vi.fn(() => 40),
@@ -112,7 +114,8 @@ describe('Timeline capsule tooltip action dispatch', () => {
     await runTimelineCapsuleTooltipAction('Relink loop…', occurrence, ops);
     expect(ops.editSourceFrame).toHaveBeenCalledWith('loop-7', 21);
     expect(ops.duplicateLinkedLoop).toHaveBeenCalledWith('loop-7', 40);
-    expect(ops.unlinkLoop).toHaveBeenCalledTimes(2);
+    expect(ops.unlinkLoop).toHaveBeenCalledTimes(1);
+    expect(ops.deleteLoop).toHaveBeenCalledWith('loop-7');
     expect(ops.repairLoop).toHaveBeenCalledWith('loop-7');
     expect(ops.relinkLoop).toHaveBeenCalledWith('loop-7', ['key-1', 'key-2']);
   });
@@ -120,7 +123,7 @@ describe('Timeline capsule tooltip action dispatch', () => {
   it('returns guard rejection reasons without mutating the request', async () => {
     const original = request({region: 'outline', loopId: 'loop-7'});
     const result = await runTimelineCapsuleTooltipAction('Repair loop…', original, {
-      editSourceFrame: vi.fn(), duplicateLinkedLoop: vi.fn(), unlinkLoop: vi.fn(),
+      editSourceFrame: vi.fn(), duplicateLinkedLoop: vi.fn(), unlinkLoop: vi.fn(), deleteLoop: vi.fn(),
       repairLoop: vi.fn(async () => ({ok: false, reason: 'Missing source keys remain unresolved.'})),
       relinkLoop: vi.fn(), promptDestinationStart: vi.fn(), promptRelinkKeyIds: vi.fn(),
     });
@@ -129,6 +132,17 @@ describe('Timeline capsule tooltip action dispatch', () => {
   });
 
   it('routes default pinned mutations through the correlated Studio bridge instead of the parent store', async () => {
+    sequenceStore.sequences.value = [{
+      id: 'sequence-1',
+      kind: 'content',
+      name: 'Sequence',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      inFrame: 12,
+      keyPhotos: [],
+      layers: [{source: {type: 'physic-paint', layerId: 'paint-1'}}],
+    }] as never;
     const bridgeRequest = vi.fn(async () => ({ok: true, reason: null}));
     const ops = createTimelineCapsuleTooltipOps(
       request({region: 'outline', loopId: 'loop-7'}),
@@ -141,12 +155,15 @@ describe('Timeline capsule tooltip action dispatch', () => {
 
     await ops.duplicateLinkedLoop('loop-7', 40);
     await ops.unlinkLoop('loop-7');
+    await ops.deleteLoop('loop-7');
     await ops.repairLoop('loop-7');
     await ops.relinkLoop('loop-7', ['key-1', 'key-2']);
 
     expect(bridgeRequest).toHaveBeenNthCalledWith(1, expect.objectContaining({kind: 'duplicate-linked-loop', loopId: 'loop-7', destinationStart: 40}));
     expect(bridgeRequest).toHaveBeenNthCalledWith(2, expect.objectContaining({kind: 'unlink-loop', loopId: 'loop-7'}));
-    expect(bridgeRequest).toHaveBeenNthCalledWith(3, expect.objectContaining({kind: 'repair-loop', loopId: 'loop-7'}));
-    expect(bridgeRequest).toHaveBeenNthCalledWith(4, expect.objectContaining({kind: 'relink-loop', loopId: 'loop-7', sourceKeyIds: ['key-1', 'key-2']}));
+    expect(bridgeRequest).toHaveBeenNthCalledWith(3, expect.objectContaining({kind: 'delete-loop', loopId: 'loop-7'}));
+    expect(bridgeRequest).toHaveBeenNthCalledWith(4, expect.objectContaining({kind: 'repair-loop', loopId: 'loop-7'}));
+    expect(bridgeRequest).toHaveBeenNthCalledWith(5, expect.objectContaining({kind: 'relink-loop', loopId: 'loop-7', sourceKeyIds: ['key-1', 'key-2']}));
+    sequenceStore.sequences.value = [];
   });
 });
