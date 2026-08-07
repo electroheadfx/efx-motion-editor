@@ -2,20 +2,24 @@
 phase: 43
 slug: hold-loop-clips-filmstrip-capsule
 status: approved
-reviewed_at: 2026-08-06
+reviewed_at: 2026-08-07
 shadcn_initialized: false
 preset: none
 created: 2026-08-06
+revised: 2026-08-07
+revision_reason: native UAT host-surface correction
 ---
 
 # Phase 43 — UI Design Contract
 
-> Visual and interaction contract for the linked Loop Clip filmstrip capsule (main editor timeline), the Play Script dialog loop-edit and source-edit modes, the apply-time Link/Create choice, and the additive Studio workflow-strip link badge.
-> Preact + Tauri desktop app. No new design system: the capsule draws on the existing canvas `TimelineRenderer` physic-paint FX row; the dialog modes reuse the Phase 42 approved `--ps-*` modal token set verbatim; the Studio strip badge extends the Phase 36.15 cell palette additively (D-18).
+> Visual and interaction contract for linked Loop Clips inside the EFX Paint/Roto physical-frame workflow, plus the existing Play Script loop/source edit modes, Link/Create choice, linked-cell badge, guards, and export errors.
+> This revision supersedes the approved 2026-08-06 contract wherever that contract placed Loop Clip authoring on the Motion Editor main timeline.
 
-**Sources:** 43-CONTEXT.md D-01..D-32 (locked user decisions — all capsule presentation semantics, dialog modes, copy, and guard rails), `.planning/REQUIREMENTS.md` HOLD-01..06, `.planning/ROADMAP.md` §"Phase 43" (capsule ships WITH the resolver — never split), `42-UI-SPEC.md` (approved modal tokens/typography/metrics, reused verbatim), `app/src/index.css` theme tokens, `TimelineRenderer.ts` canvas conventions (`getThemeColors()`, hardcoded functional colors, `600 10px system-ui` marker labels, `#F5A623` real-key diamonds), `physicsPaintStudio.css` roto-cell palette. No open design questions remain; no user input was required beyond 43-CONTEXT.
+**Primary source:** `43-CONTEXT.md` D-33..D-40 and its carried-forward D-01..D-32 decisions. Supporting sources: `.planning/REQUIREMENTS.md` HOLD-01..06, `.planning/ROADMAP.md` Phase 43, `43-UAT.md` Step 1 failure evidence, `42-UI-SPEC.md` for the approved Play Script dialog, and the existing EFX Paint workflow-strip palette and geometry.
 
-**Inheritance guard:** every Play Script dialog rule from `42-UI-SPEC.md` (modal architecture D-19, compact fit, token set, typography scale, spacing metrics, focus trap, APG radiogroup pattern, generation lifecycle) applies unchanged to the loop-edit and source-edit modes. This file declares ONLY what Phase 43 adds or narrows. Where the two files would conflict, 43-CONTEXT.md D-xx decisions win.
+**Ownership boundary:** EFX Paint/Roto is the only Loop Clip visualization and authoring surface. The Motion Editor main timeline renders no Loop Clip capsule, tooltip, selection target, keyboard target, badge, or loop action. It remains a preview/playback/save/export consumer of the canonical physical-frame document only.
+
+**Inheritance guard:** every valid Play Script dialog rule from `42-UI-SPEC.md` remains unchanged for S2–S4: compact fixed dark modal, `--ps-*` token set, typography, spacing, focus trap, APG segmented controls, validation, progress, cancellation, and atomic failure behavior. This file specifies only Phase 43 additions and the corrected EFX host.
 
 ---
 
@@ -23,239 +27,312 @@ created: 2026-08-06
 
 | Property | Value |
 |----------|-------|
-| Tool | none (hand-rolled; shadcn not applicable — Preact, not React; no `components.json`) |
+| Tool | none — hand-rolled in-repo Preact UI; no `components.json` |
 | Preset | not applicable |
-| Component library | none (in-repo Preact components; canvas capsule is pure Canvas 2D paint calls in `TimelineRenderer`, zero DOM nodes per D-32) |
-| Icon library | lucide-preact ^0.577.0 (existing panel convention; capsule and band use drawn glyphs only — no icon font on canvas) |
+| Component library | none; reuse the existing EFX Paint workflow strip, styled tooltip/popover idiom, and Play Script modal |
+| Icon library | `lucide-preact` ^0.577.0 for local popover actions where an icon is already used; filmstrip capsule meaning must not depend on icons |
 | Font | `system-ui, sans-serif` |
+
+No new UI dependency, registry, global token family, or parallel dialog/tooltip system is introduced.
 
 ---
 
 ## Surfaces
 
-| ID | Surface | Host |
-|----|---------|------|
-| S1 | Loop Clip filmstrip capsule (source-cycle thumbnails, repetition band/ghost cells, badge, truncation diagonal, zero-effective anchor flag) | `TimelineRenderer` physic-paint FX row (Canvas 2D) |
-| S2 | Play Script dialog — loop-edit mode (Repeat + Infinity + Requested/Effective readout, `Update loop`) | `PhysicsPaintPlayScriptDialog.tsx` reusing Phase 42 `--ps-*` modal |
-| S3 | Play Script dialog — source-edit mode (full dialog prefilled, affected-loop count, `Regenerate source cycle`) | same modal shell |
-| S4 | Apply-time source-cycle choice (`Link to existing cycle` / `Create new cycle`) | inside the Phase 42 modal, shown only when an identical source cycle exists (D-05) |
-| S5 | Studio workflow strip — additive link badge on linked repetition cells | `PhysicsPaintWorkflowStrip.tsx` / `physicsPaintStudio.css` |
-| S6 | Guarded rejection / preflight surfaces (Delete-key rejection, source-key deletion rejection, single-key drag + Force Spacing rejection, batch preflight shorten warning, export-blocked error) | existing guarded-operation + dialog/preflight idioms (Phase 36.15 guarded-icon, Phase 42 footer/preflight conventions) |
+| ID | Surface | Host and responsibility |
+|----|---------|-------------------------|
+| S1 | Dedicated Loop Clip lane with filmstrip capsules | Inside the EFX Paint workflow strip, immediately above the existing physical-frame cells, sharing their horizontal frame grid and scroll position |
+| S1a | Local Loop Clip occurrence popover | EFX Paint-local anchored popover opened from a capsule body; shows occurrence facts and applicable loop actions |
+| S2 | Play Script dialog — Loop Edit mode | Existing EFX Paint Play Script modal; Repeat, Infinity, Requested/Effective, `Update loop`, `Edit source cycle…` |
+| S3 | Play Script dialog — Source Edit / Repair mode | Existing EFX Paint Play Script modal, prefilled from source provenance; `Regenerate source cycle` |
+| S4 | Apply-time source-cycle choice | Existing Play Script modal; `Link to existing cycle` / `Create new cycle` when a compatible source exists |
+| S5 | Additive linked-occurrence treatment on Roto cells | Existing EFX Paint physical-frame cells retain their palette and geometry, with the already-defined inset link border and corner dot |
+| S6 | Guard, preflight, placeholder, and export-error surfaces | Existing EFX Paint guarded-action/status idioms, preview placeholder, Play Script preflight, and export error path |
 
----
+### S1 placement and geometry
 
-## Color
+- The Loop Clip lane is a separate range-object lane. It is never merged into the Roto cell row and never overlays the cells' pointer targets.
+- The lane appears only when at least one Loop Clip record exists, including unresolved and zero-effective records.
+- With zero Loop Clips, the lane has no DOM/layout footprint and the current workflow-strip geometry remains exactly unchanged: 161px total strip height, 28px ruler, 38px physical lane, 34px action row, and 14px scrollbar.
+- With one or more Loop Clips, insert a 32px lane between the ruler and the 38px physical lane and expand the workflow-strip region by exactly 32px to 193px. The canvas region yields this space; no content overlaps, clips, or becomes internally scrollable vertically.
+- Lane background is `#303335`, separated from the physical lane by a 1px bottom border `#5c6066`. Capsule visual height is 24px with 4px top and bottom clearance.
+- Frame pitch and origin are identical to the Roto cells. At the current EFX strip pitch, one frame is 18px. The lane and cells move through the same horizontal scroller; there is one scrollbar and one scroll position.
+- The lane has no visible fixed label that would offset frame 0 or cover a capsule. Its accessible name is `Loop Clips`.
+- The playhead/current-frame alignment, if visually projected through the strip, crosses both lanes at the same x-coordinate. The Loop Clip lane must not create a second cursor or independent scroll state.
 
-### S1 — Timeline canvas capsule (Canvas 2D)
+### S1 capsule composition
 
-Canvas colors follow the existing `TimelineRenderer` split: theme-derived via `getThemeColors()` where a CSS variable exists, hardcoded functional constants where the color is a high-visibility functional signal. New additive entries only; no existing token or cell color changes.
+From left to right, every non-zero capsule contains:
 
-| Element | Value | Source / Notes |
-|---------|-------|----------------|
-| Source-cycle cell border | `rgba(255, 255, 255, 0.22)` | matches existing inactive Play Script marker outline |
-| Source-cycle real-key diamond | `#F5A623` fill, no stroke | existing convention (C-04) — unchanged; ONLY real source keys keep diamonds (D-23). Duplicated-loop first-cycle cells are linked/virtual at their placement and NEVER show diamonds (placement/source correction, approved audit finding 4) |
-| Duplicated-loop first-cycle cell | shared source thumbnail + LOOP_GHOST_BORDER `rgba(255, 255, 255, 0.24)` 1px dashed | placement/source correction: a duplicated loop placed away from its source keys renders first-cycle cells with the shared source thumbnails but the linked/virtual dashed border — visually distinct from real-key source cells, no diamond |
-| Repetition band base | `rgba(255, 255, 255, 0.05)` over `colors.fxTrackBg` | new constant `LOOP_BAND_BASE` |
-| Repetition band hatch | `rgba(255, 255, 255, 0.14)`, 45° diagonal, 4px period, 1px lines | new constant `LOOP_BAND_HATCH` (perforated/hatched band, D-16 default zoom) |
-| Ghost cell fill (high zoom) | `rgba(255, 255, 255, 0.06)` | new constant `LOOP_GHOST_FILL` — visually lighter than source cells, no thumbnails (D-16) |
-| Ghost cell border | `rgba(255, 255, 255, 0.24)`, 1px dashed | new constant `LOOP_GHOST_BORDER`; ghost cells never show diamonds, never key-selectable (D-23) |
-| Capsule outline (idle) | `rgba(255, 255, 255, 0.22)`, 1px, radius = half row-height pill | matches existing marker outline idiom |
-| Capsule outline (hover raise) | `rgba(255, 255, 255, 0.50)`, 1.5px | D-23 hover = raise + tooltip |
-| Capsule outline (selected) | `colors.accent` (`--color-accent` `#2D5BE3`), 2px around the WHOLE capsule | D-23 selection unit = the loop object |
-| Keyboard focus ring | `colors.accent`, 2px with 2px offset | matches dialog `:focus-visible` convention |
-| Disabled / stale | whole capsule at 55% opacity + reason tooltip | D-23 |
-| Error (unresolvable source refs) | `--color-usage-badge-red` `#FF4444` (canvas fallback `#FF4444`), 2px outline + error tooltip | D-23/D-31; existing semantic red; capsule NEVER silently disappears |
-| Truncation diagonal | `#FFB020`, 1.5px | new hardcoded functional constant `LOOP_TRUNCATION_COLOR` — amber/warning tone (D-21); deliberately distinct from playhead `#E55A2B`, real-key diamond `#F5A623`, accent `#2D5BE3`, and all cell fills |
-| Badge pill fill | `rgba(13, 13, 13, 0.85)` | derived from `colors.fxHeaderBg` family |
-| Badge text | `rgba(255, 255, 255, 0.85)` | matches inactive marker label tone |
-| Zero-effective anchor flag | fill `--color-text-muted` `#666666`, `0f` text `--color-text-primary` `#E8E8E8` | D-22 greyed pill; always visible, never invisible |
-| Placeholder frame (unavailable source, preview/playback) | existing `PLACEHOLDER_BG_A #1A1A2A` / `PLACEHOLDER_BG_B #1A2A1A` pattern | D-28 marked, visible, non-blocking |
+1. **Source-cycle region:** one frame-aligned thumbnail cell per ordered source frame. Original source cells backed by real keys may show the existing real-key diamond. A duplicated loop placed away from its source uses the shared thumbnails with linked/dashed treatment and no diamond.
+2. **Linked-repetition region:** every destination after the first cycle is virtual and visually subordinate. It never receives a real-key diamond or independent durable thumbnail asset.
+3. **Compact math badge:** overlays the capsule near its visible leading edge without changing frame geometry.
+4. **Trailing truncation edge:** amber forward-leaning diagonal when Effective is shorter than Requested.
 
-**Idle-capsule focal point (S1):** the badge pill and the source-cycle thumbnails are the primary visual anchor of the idle capsule; the repetition band and ghost cells deliberately recede (lower-contrast fills, no thumbnails, no diamonds) so the eye lands on badge + source first.
+A zero-effective record renders a visible anchor flag at `placementStart` instead of the full capsule.
 
-### S2/S3/S4 — Play Script dialog modes
+### Responsive/zoom behavior
 
-Reuse the Phase 42 `--ps-*` oklch token set **verbatim and complete** (`42-UI-SPEC.md` §Color): `--ps-surface/raised/inset/foot/fg/muted/faint/border/accent/accent-hi/ok/error/radius`. No new dialog tokens. Accent remains reserved for exactly the Phase 42 list PLUS the loop-edit primary action `Update loop` and the source-edit confirmation `Regenerate source cycle` (both render as the same accent primary button style as `Generate`). The apply-time Link/Create choice (S4) renders as a segmented control using the existing `.physics-paint-play-script-mode-group` pattern — checked segment in `--ps-accent`, no new color.
+The capsule responds to the host's effective frame pitch; this phase adds no new zoom control.
 
-### S5 — Studio workflow strip link badge (additive, D-18)
+| Zoom band | Effective frame pitch | Linked-repetition rendering |
+|-----------|-----------------------|-----------------------------|
+| High | ≥16px/frame | Individual lighter ghost cells, 1px dashed borders, no thumbnails, no diamonds |
+| Default | 8–15px/frame | Compact perforated/hatched band plus badge |
+| Low | <8px/frame | Solid compact band plus badge; badge truncates or hides cleanly when it cannot fit |
 
-| Element | Value |
-|---------|-------|
-| Link border | `box-shadow: inset 0 0 0 1px rgba(45, 91, 227, 0.9)` (accent-derived) on linked repetition cells — inset only, zero geometry change |
-| Link corner dot | 4px filled circle, `--color-accent #2D5BE3`, positioned top-right inside the cell with 2px offset |
-| Cell palette | UNCHANGED — empty `#4d535a`, cached `#2d6f48`, generated `#365ed6`, background-only hatch (Phase 36.15 legend). The badge is strictly additive; no new first-class cell state, no palette redefinition |
-
-**60/30/10:** dark FX-track surfaces dominate (~60%); capsule structure (band base/hatch, ghost cells, outlines) forms the secondary layer (~30%); accent and functional signal colors (selection outline, focus ring, truncation amber, error red, link badge) are the ~10% — each reserved to its declared element only.
-
----
-
-## Typography
-
-| Role | Size | Weight | Line Height | Usage |
-|------|------|--------|-------------|-------|
-| Capsule badge / `0f` marker | 10px | 600 | n/a (canvas, `textBaseline: middle`) | `Cycle 5f × 5 = 25f` family; `system-ui, sans-serif`, `font-variant-numeric: tabular-nums` — matches existing `600 10px system-ui` marker label convention |
-| Tooltip body | existing tooltip scale | 400 | flat-multiline (Phase 38 convention — one fact per line, no rich formatting) | repeat-occurrence, truncation, zero-effective, and error tooltips |
-| Dialog (S2/S3/S4) | Phase 42 scale verbatim | 400/600/650 | Phase 42 | modal title 15px/650, section title 12px/650, buttons 12.5px/650, field label 11.5px/600, body/helper 12px/400, hint 11px/400, note 10.5px/400 |
-
-No new type sizes or weights are introduced anywhere in this phase.
+The existing 18px EFX frame pitch therefore uses the High presentation by default. The source-cycle thumbnails remain the first visual anchor where space permits. The truncation diagonal remains visible in every zoom band.
 
 ---
 
 ## Spacing Scale
 
-Global 8-point scale (4/8/16/24/32/48/64) confirmed; dialog metrics reuse the locked Phase 42 compact metrics verbatim. Canvas capsule geometry is frame-grid-derived (frameWidth × frames), not token-driven.
+Declared global values: 4, 8, 16, 24, 32, 48, 64px. Existing Phase 42 modal metrics remain inherited exceptions.
 
-Declared capsule metrics (multiples of 4 unless noted):
+| Token / metric | Value | Usage |
+|----------------|-------|-------|
+| xs | 4px | Lane vertical clearance, capsule internal micro-gaps |
+| sm | 8px | Badge horizontal padding, popover action spacing |
+| md | 16px | Popover content padding, section separation |
+| lg | 24px | Capsule visual height; minimum interactive height for the zero-effective anchor |
+| xl | 32px | Added Loop Clip lane height |
+| 2xl | 48px | Major layout separation only; not introduced inside the compact strip |
+| 3xl | 64px | Page-level spacing only; not introduced inside the strip |
+| Frame pitch | 18px currently | Shared Loop Clip and Roto frame grid; not independently adjustable by the lane |
+| Capsule radius | 6px | Compact rounded range object; not a full-height pill |
+| Badge | 16px height, 8px horizontal padding, 8px radius | Compact math badge, clipped to the visible capsule bounds |
+| Truncation diagonal | 1.5px stroke | Full 24px capsule height |
+| Popover | 8px gap from anchor, 8px radius, 16px padding, 8px row gap | Reuse compact EFX floating-surface rhythm |
+| Popover min/max width | 260px / 320px | Facts remain readable without covering excessive timeline width |
+| Zero-effective visible flag | 6px high × 24px wide | Visual marker centered in a 24×24px interactive control |
 
-| Element | Value |
-|---------|-------|
-| Capsule pill radius | half of the FX-row marker band height (existing marker idiom — `roundRect` with `rangeH / 2`) |
-| Badge pill | height 16px, horizontal padding 8px, corner radius 8px, 4px inset from capsule start; clipped to the visible capsule range like existing marker labels |
-| Badge text inset | 4px left minimum, matching existing `labelX` clamp convention |
-| Band hatch period | 4px |
-| Ghost cell border dash | 4px dash / 4px gap |
-| Truncation diagonal | spans the full capsule band height; 1.5px stroke |
-| Zero-effective anchor flag | ~6px-high slim pill (locked D-22 approximate marker — declared exception to the multiples-of-4 rule, matching the playhead-triangle marker exception), width 24px, `0f` text centered; pinned at the loop's placement start frame |
-| Studio link dot | 4px diameter, 2px top-right inset |
+**Exceptions:** 1px borders, 1.5px truncation stroke, 2px focus offset, 6px visible zero-effective glyph, and the existing 18px frame pitch are functional geometry, not layout-spacing tokens.
 
-Exceptions: anchor-flag ~6px height (D-22, approximate marker glyph, not layout spacing); Studio link-dot 2px top-right inset (functional micro-offset that keeps the dot fully inside the 18px×24px cell without touching the inset border); capsule focus-ring 2px offset (matches the existing dialog `:focus-visible` convention — functional ring offset, not layout spacing); Phase 42 dialog metrics (locked, inherited).
+---
 
-**Zoom-adaptive repetition rendering (D-16, prescriptive thresholds):**
+## Typography
 
-| Zoom band | frameWidth | Rendering |
-|-----------|-----------|-----------|
-| High | ≥ 16px | Repetitions expand into ghost linked cells (fill `LOOP_GHOST_FILL`, dashed border, no thumbnails, no diamonds) |
-| Default | 8px – 15px | Compact perforated/hatched band (`LOOP_BAND_BASE` + `LOOP_BAND_HATCH`) + badge |
-| Low | < 8px | Solid band + badge only; badge text truncates via the existing `truncateText` path and hides below the existing 18px label minimum |
+Exactly four size roles and two normal weights are used by the new EFX lane/popover. The inherited Phase 42 modal retains its already-approved scoped type scale.
 
-The truncation diagonal draws at every zoom: at high/default zoom it lands mid-ghost-cell for a partial cycle and exactly on a cycle boundary for complete cycles; at low zoom it still draws on the band end (D-21).
+| Role | Size | Weight | Line Height | Usage |
+|------|------|--------|-------------|-------|
+| Micro | 10px | 600 | 1.2 | Capsule badge, `0f`, compact metadata |
+| Label | 11px | 600 | 1.2 | Popover labels and action text |
+| Body | 12px | 400 | 1.5 | Popover values, helper/error detail |
+| Heading | 14px | 600 | 1.2 | Popover title `Loop Clip` |
+
+- Font is `system-ui, sans-serif`.
+- Badge, frame, duration, repeat, and source-index values use `font-variant-numeric: tabular-nums`.
+- Badge text is single-line. Popover detail and error reference lists may wrap; action labels do not wrap.
+- No uppercase body copy. If implementation needs a visually hidden lane label, its accessible copy remains title case: `Loop Clips`.
+
+---
+
+## Color
+
+### 60/30/10 contract
+
+| Role | Value | Usage |
+|------|-------|-------|
+| Dominant (60%) | `#37393A` / surrounding `#3E3F41` | Existing workflow-strip and physical-lane surfaces |
+| Secondary (30%) | Loop lane `#303335`, popover `#20262D`, band/ghost neutrals | Separate Loop Clip range layer, capsule structure, floating details |
+| Accent (10%) | `#2D5BE3` | Selected capsule outline, keyboard focus ring, badge-active affordance, existing linked-cell border/dot only |
+| Warning | `#FFB020` | Truncation diagonal and truncation emphasis only |
+| Error | `#FF4444` | Unresolved capsule outline and error emphasis only |
+| Destructive | existing EFX destructive red family (`#FF9999` text / red border treatment) | `Delete loop` action only; not the capsule's idle state |
+
+**Accent reserved for:** selected Loop Clip outline, focus-visible ring, badge hover/focus affordance, and the existing additive linked-cell border/dot. Accent is not used for every popover action, ordinary body text, thumbnails, or the truncation state.
+
+### S1 capsule palette
+
+| Element | Value | Contract |
+|---------|-------|----------|
+| Source thumbnail border | `rgba(255,255,255,0.22)` | Neutral cell separation |
+| Real source-key diamond | `#F5A623` | Existing real-key convention; source-backed cells only |
+| Duplicated first-cycle border | `rgba(255,255,255,0.24)`, 1px dashed | Shared source image at a virtual placement; no diamond |
+| Repetition band base | `rgba(255,255,255,0.05)` | Secondary structure over the loop lane |
+| Repetition hatch | `rgba(255,255,255,0.14)`, 45°, 4px period | Default zoom only |
+| High-zoom ghost fill | `rgba(255,255,255,0.06)` | Repeated linked cells |
+| High-zoom ghost border | `rgba(255,255,255,0.24)`, 1px dashed | Repeated linked cells |
+| Idle capsule outline | `rgba(255,255,255,0.22)`, 1px | Quiet range boundary |
+| Hover outline | `rgba(255,255,255,0.50)`, 1.5px | Paint-only hover raise |
+| Selected outline | `#2D5BE3`, 2px | Whole Loop Clip object |
+| Focus ring | `#2D5BE3`, 2px with 2px offset | Focus-visible only |
+| Badge fill | `rgba(13,13,13,0.88)` | Math badge surface |
+| Badge text | `rgba(255,255,255,0.88)` | Compact math |
+| Truncation | `#FFB020`, 1.5px | Forward diagonal across full capsule height |
+| Unresolved | `#FF4444`, 2px outline | Never hidden by selection or hover |
+| Stale/temporarily unavailable | whole capsule 55% opacity | Reason remains available in popover |
+| Zero-effective flag | `#666666` fill, `#E8E8E8` text | Visible `0f` anchor |
+
+### S1a popover palette
+
+- Surface `#20262D`; border `#69727C`; primary text `#E5EDF8`; secondary text `#AEB5BE`.
+- Ordinary actions use the existing neutral compact-button treatment. `Edit source frame` is the first action but not a large accent button.
+- `Delete loop` uses the existing destructive action treatment. `Unlink loop` remains neutral because it is unlink-only and source-preserving.
+- Unresolved reference lines use `#FF9999`; repair/relink actions remain actionable neutral controls rather than red-filled buttons.
+
+### S2/S3/S4
+
+Reuse the complete Phase 42 `--ps-*` token set verbatim. Accent adds only `Update loop` and `Regenerate source cycle` as primary modal actions. No new dialog colors are introduced.
+
+### S5 linked-cell treatment
+
+Retain the existing inset accent border `rgba(45,91,227,0.9)` and 4px top-right dot. Existing empty/cached/generated/background-only fills and all current/selected/drag outlines remain unchanged.
 
 ---
 
 ## Copywriting Contract
 
-English only. All capsule/badge/tooltip copy locked verbatim by 43-CONTEXT D-13/D-17/D-19/D-20/D-22; the earlier French truncation label is SUPERSEDED and must not ship; `clip bloquant` never appears in any language (D-20).
+English only. The earlier French truncation copy is superseded. The term `clip bloquant` must not appear in any language.
 
 | Element | Copy |
 |---------|------|
-| Badge — finite | `Cycle {N}f × {R} = {D}f` (e.g. `Cycle 5f × 5 = 25f`; single cycle `Cycle 5f × 1 = 5f`) |
-| Badge — infinity | `Cycle {N}f × ∞` (never `Infinityf`) |
+| Badge — finite | `Cycle {N}f × {R} = {D}f` |
+| Badge — infinity | `Cycle {N}f × ∞` |
 | Truncation label | `Loop shortened by next clip` |
-| Capsule tooltip — truncated | `{Badge} · Requested {R}f · Effective {E}f · Loop shortened by next clip ({partial cycle \| complete cycles}) · {Progressive \| Static / Hold}` |
-| Repeat-occurrence tooltip | `Repeat {n} · Source frame {i} of {N}` (e.g. `Repeat 3 · Source frame 2 of 5`) — pinned on ghost-cell/band click with a dedicated action labeled exactly `Edit source frame` that seeks to the modulo-resolved real source key (D-17) |
-| Zero-effective tooltip | `Cycle {N}f × {R} = {D}f · Effective 0f — fully shortened by the next clip` |
-| Error tooltip (unresolved refs) | lists the missing source references, one per line, then: `Repair, relink, unlink, or delete the loop.` |
-| Disabled/stale tooltip | `{reason}` — one plain sentence |
-| Loop-edit dialog title | `Edit Loop Clip` (range readout right: `F{start} · Cycle {N}f`) |
+| Local popover title | `Loop Clip` |
+| Popover placement fact | `Starts at F{start}` |
+| Popover requested/effective fact | `Requested {R}f · Effective {E}f` |
+| Popover mode fact | `{Progressive | Static / Hold}` |
+| Occurrence fact | `Repeat {n} · Source frame {i} of {N}` |
+| Truncation fact | `Loop shortened by next clip ({partial cycle | complete cycles})` |
+| Zero-effective fact | `Cycle {N}f × {R} = {D}f · Effective 0f — fully shortened by the next clip` |
+| Unresolved fact | Missing source references, one per line, followed by `Repair, relink, unlink, or delete the loop.` |
+| Popover action | `Edit source frame` |
+| Popover action | `Duplicate linked loop` |
+| Popover action | `Unlink loop` |
+| Popover action | `Delete loop` |
+| Popover action — unresolved only | `Repair loop…` |
+| Popover action — unresolved with compatible source | `Relink loop…` |
+| Loop-edit dialog title | `Edit Loop Clip` |
 | Loop-edit primary CTA | `Update loop` |
 | Loop-edit secondary action | `Edit source cycle…` |
 | Source-edit dialog title | `Edit Source Cycle` |
-| Source-edit notice | `Confirming regenerates the source cycle and updates every linked Loop Clip referencing it.` — when shared: `This source cycle is shared by {N} loops.` |
-| Source-edit confirmation CTA | `Regenerate source cycle` |
-| Apply-time choice (S4) — options | `Link to existing cycle` / `Create new cycle` — segmented control; shown ONLY when a compatible identical source cycle exists (D-05). Compatibility/matching logic is a planner/research concern; the user-visible consequence is locked here |
-| Apply-time choice (S4) — Link helper | `Reuses the existing source cycle. Future source edits update every linked loop.` — rendered together with the existing source range and the number of loops already linked to that source |
-| Apply-time choice (S4) — Create helper | `Creates an independent source cycle. Future edits do not affect the existing loops.` |
-| Capsule action | `Duplicate linked loop` |
-| Capsule action | `Unlink loop` |
-| Capsule action | `Delete loop` |
-| Delete-key rejection (verbatim, D-13) | `No real key exists at this linked frame. Use Clear to create an empty real key, or select the Loop Clip capsule to delete the loop.` |
-| Source-key deletion rejection (D-07) | `This key belongs to a source cycle used by {N} linked loop(s). Unlink the loop(s) before deleting it.` |
-| Single-key drag / Force Spacing rejection (D-11) | `Linked source-cycle keys move only as a rigid group. Select the whole cycle to drag it.` |
-| Batch preflight warning (D-06, verbatim pattern) | `This operation will shorten {N} linked loop(s), starting at frame {F}.` |
-| Export-blocked error (D-28) | `Export blocked — Loop Clip at frame {S} references a missing source frame ({F}). Repair or unlink the loop, then export again.` |
-| Empty state | none — a timeline without Loop Clips renders no capsule and no placeholder; the Scripts panel is unchanged from Phase 42 |
-| Destructive confirmation | none — `Delete loop` is unlink-only and non-destructive by construction (D-03); `Update loop`, `Unlink loop`, and `Duplicate linked loop` are each one atomic undoable operation (D-10, D-05) |
+| Source-edit notice | `Confirming regenerates the source cycle and updates every linked Loop Clip referencing it.` |
+| Shared-source notice | `This source cycle is shared by {N} loops.` |
+| Source-edit primary CTA | `Regenerate source cycle` |
+| Apply-time choices | `Link to existing cycle` / `Create new cycle` |
+| Link helper | `Reuses the existing source cycle. Future source edits update every linked loop.` |
+| Create helper | `Creates an independent source cycle. Future edits do not affect the existing loops.` |
+| Source-key deletion rejection | `This key belongs to a source cycle used by {N} linked loop(s). Unlink the loop(s) before deleting it.` |
+| Single-key drag / Force Spacing rejection | `Linked source-cycle keys move only as a rigid group. Select the whole cycle to drag it.` |
+| Linked-frame Delete rejection | `No real key exists at this linked frame. Use Clear to create an empty real key, or select the Loop Clip capsule to delete the loop.` |
+| Batch preflight | `This operation will shorten {N} linked loop(s), starting at frame {F}.` |
+| Preview placeholder | `Loop source missing` |
+| Export-blocked error | `Export blocked — Loop Clip at frame {S} references a missing source frame ({F}). Repair or unlink the loop, then export again.` |
+| Empty state | None. With no Loop Clips, the lane is absent and existing EFX geometry remains unchanged. |
+| Destructive confirmation | None. `Delete loop` and `Unlink loop` remove only the link record, preserve source keys, and remain atomic Undo/Redo operations. |
 
 ---
 
 ## Interaction Contract
 
+### Ownership and selection separation
+
+- Capsule interaction occurs only in the dedicated EFX Loop Clip lane.
+- A Loop Clip selection is a lane-local range-object selection. It does not mutate, collapse, extend, or replace the existing real-key selection set.
+- Existing Roto cells below retain their exact contracts: plain click navigates; real-key modifier clicks select; Shift extends selection; multi-select and single/group drag remain unchanged.
+- Linked Roto cells remain navigation cells with additive link styling. They never become Loop Clip selection targets and never expose loop actions.
+- Opening or closing a Loop Clip popover does not move the playhead. Only `Edit source frame` intentionally navigates to and selects the modulo-resolved real source key.
+
+### Capsule controls
+
 | Control | Contract |
 |---------|----------|
-| Capsule badge click | Reopens the Play Script dialog in loop-edit mode targeting that loop (D-01). Loop-edit mode exposes ONLY Repeat + Infinity plus the Requested/Effective readout; Frames-per-cycle and all source fields are locked (rendered disabled at reduced opacity, values preserved). Primary `Update loop`, secondary `Edit source cycle…` |
-| Source-edit mode | Full Play Script dialog prefilled with the source cycle's current mode, Frames per cycle, color, and Motion values; shows the affected-loop notice (and shared count); confirmation `Regenerate source cycle` reuses the existing staged atomic commit, capacity, authority, cancellation, Undo/Redo path (D-02). Cancel changes nothing; after success all linked loops re-resolve requested/effective duration and truncation |
-| `Duplicate linked loop` | Prompts for a destination start frame, validates same-start collision and overlap per D-14, creates a new Loop Clip sharing the source cycle with NO regeneration; one atomic undoable operation (D-05) |
-| `Delete loop` | Unlink-only: the loop record is removed; source-cycle real keys remain as ordinary Roto keys (D-03) |
-| Loop movement | No independent loop drag (D-04). The existing Phase 37 rigid group drag on source keys moves the loop. Single-key drag and Force Spacing on linked source keys are rejected with the locked reason (D-11) |
-| Same-start collision | Rejected, or routed through an explicit replace/update flow — never resolved by hidden creation-order priority (D-14) |
-| Hover | Outline raise + tooltip (D-23) |
-| Selection | 2px accent outline around the whole capsule; the loop object is the selection unit (D-23) |
-| Keyboard | Canvas keyboard model below (virtual focus order, visible focus ring, Enter/Escape/Delete, arrow keys — via the existing timeline focus host, zero per-capsule DOM nodes, D-32); in dialogs, Phase 42 focus-trap and `Escape`/`Enter` conventions apply unchanged |
-| Paint/erase on a linked repetition frame | Materializes a local real key (loop-resolved pixels + new stroke); the new key becomes the next-clip boundary and the loop shortens; canvas and playhead stay put; one Undo removes the key and the loop re-expands (D-12). No confirmation UI |
-| Clear vs Delete on a linked repetition frame | Clear materializes a local empty real key (loop shortens, atomic undoable); Delete-key is rejected with the verbatim D-13 message (D-13) |
-| Re-expansion | Moving/removing blocking content or a later loop re-expands the capsule automatically with no regeneration and no UI prompt (D-08, D-14, D-25) |
-| Generation lifecycle (S3) | Identical to Phase 42: inputs disabled during regeneration, `Cancel generation` replaces `Cancel`, footer progress, failure shows `--ps-error` inline and leaves no partial state |
+| Capsule body | Selects the whole Loop Clip object and opens the local occurrence popover anchored to the clicked capsule segment. The popover reports the clicked occurrence/source index when derivable. No automatic frame navigation. |
+| Compact badge | Opens the existing Play Script dialog directly in Loop Edit mode for that Loop Clip. It does not first open the occurrence popover. |
+| Truncation edge | Part of the capsule-body target; opens the popover with truncation fact and partial/complete-cycle wording. |
+| Zero-effective anchor | Same body behavior as a normal capsule; visible glyph 6px high, interactive target 24×24px inside the dedicated lane. |
+| Outside click | Closes the popover and clears lane-local selection emphasis; Roto key selection remains unchanged. |
+| Escape | Closes the local popover and returns focus to the capsule body. If the Play Script modal is open, the inherited modal Escape contract applies. |
+| Tab | Uses ordinary DOM order among visible capsule body controls and their badge controls, then continues through the existing EFX strip. No virtual canvas focus model is introduced. |
+| Enter / Space | Activates the focused body or badge exactly like pointer click. |
+| Delete / Backspace while capsule focused | No Loop Clip shortcut. Do not intercept these keys for the lane; deletion is available through the explicit `Delete loop` popover action so Roto keyboard semantics are not overloaded. |
 
-### Canvas hit regions (S1)
+Each visible capsule exposes two keyboard-reachable controls: body and badge. The body accessible name includes badge math plus Requested/Effective status; the badge accessible name is `Edit Loop Clip — {badge}`. Ghost cells are visual subdivisions, not separate Tab stops.
 
-The capsule is pure Canvas 2D (D-32) — zero per-cell DOM nodes — so hit-testing is an explicit contract, not DOM behavior. Six distinct hit regions:
+### Local occurrence popover (S1a)
 
-| # | Hit region | Pointer contract |
-|---|-----------|------------------|
-| 1 | Source-cycle thumbnail cell (real-key-backed) | Click selects/seeks the corresponding real source key. It never selects a virtual ghost cell; the existing real-key selection behavior is preserved unchanged. This contract applies ONLY to first-cycle cells backed by real source keys (an original loop whose placement overlaps its source keys). Duplicated-loop first-cycle cells are linked occurrences at their placement: they follow region 2 behavior — click selects the Loop Clip object and pins the occurrence tooltip (repeat instance 0, `Source frame {i} of {N}`) — never real-key selection at the destination (placement/source correction, approved audit finding 4) |
-| 2 | Repeated ghost cell / repetition band | Click selects the Loop Clip object (the whole capsule is the selection unit, D-23) and pins the flat-multiline occurrence tooltip. The playhead does NOT move automatically. The pinned tooltip shows the Repeat instance, the source-frame index, and the source key frame — `Repeat {n} · Source frame {i} of {N}` — plus a dedicated action labeled exactly `Edit source frame`. Invoking `Edit source frame` seeks to the modulo-resolved real source key (D-17) |
-| 3 | Compact math badge | Click reopens the Play Script dialog in loop-edit mode targeting that loop (D-01) |
-| 4 | Capsule outline | Click selects the Loop Clip object (same selection unit as region 2) |
-| 5 | Truncation edge | Part of the band/ghost hit region; hover/click surfaces the truncation tooltip with `(partial cycle)` / `(complete cycles)` (D-21) |
-| 6 | Zero-effective anchor flag | Mouse-selectable, keyboard-focusable, editable, unlinkable, and deletable like any capsule. The `0f` marker may stay visually ~6px high (D-22), but its canvas hit target is at least 24×24px and must not overlap or hide the blocking real key's hit target |
+- Popover is inside EFX Paint, anchored within the workflow strip viewport, and repositions horizontally to stay visible.
+- It opens on body click or body Enter/Space. Hover alone may show a short styled tooltip, but hover never opens the actionable popover.
+- Facts appear before actions in this order: badge math; start; Requested/Effective; mode; clicked occurrence; truncation or unresolved detail.
+- Action order is prescriptive:
+  1. `Edit source frame`
+  2. `Duplicate linked loop`
+  3. `Repair loop…` when unresolved and provenance supports repair
+  4. `Relink loop…` when unresolved and a compatible source exists
+  5. `Unlink loop`
+  6. `Delete loop`
+- Inapplicable actions are omitted rather than shown disabled. Busy/mutation-locked actions may remain visible with `aria-disabled="true"` and the existing styled reason tooltip; they must not silently no-op.
+- After an accepted Duplicate/Repair/Relink/Unlink/Delete operation, close the popover and update the lane from accepted authority state. On rejection, keep it open, retain selection/focus, and show the controller-provided reason.
+- `Duplicate linked loop` requests a destination start using the existing local EFX interaction/dialog idiom; same-start collision and invalid overlap reject explicitly. It never regenerates source assets.
+- `Unlink loop` and `Delete loop` are equivalent in data effect (unlink-only) but retain their locked visible labels and atomic Undo/Redo behavior.
 
-### Canvas keyboard model (S1)
+### Loop Edit and Source Edit (S2/S3)
 
-Keyboard support rides the existing timeline focus/navigation host — no DOM nodes are added per capsule (D-32):
+| Mode | Contract |
+|------|----------|
+| Loop Edit | Exposes Repeat, Infinity, and canonical Requested/Effective readout. Frames per cycle and source-generation fields remain visible only where required for context, locked at reduced opacity with values preserved. Primary `Update loop`; secondary `Edit source cycle…`. |
+| Source Edit | Full Play Script modal prefilled from source provenance. Shows the affected-loop notice and shared count when N > 1. `Regenerate source cycle` uses the existing staged progress/cancel/failure lifecycle. |
+| Repair | Opens the Source Edit flow prefilled from retained provenance. Successful regeneration recreates/retargets in one atomic operation; failure leaves the unresolved record unchanged. |
+| Relink | Chooses a compatible existing source cycle without regeneration. Successful relink resolves the lane and preview in one atomic operation. |
 
-- The capsule participates in the timeline virtual focus order as one focusable unit (the loop object).
-- A visible accent focus ring (2px + 2px offset) renders around the whole focused capsule on canvas.
-- `Enter` opens/pins the capsule tooltip and its actions (including `Edit source frame`, `Duplicate linked loop`, `Unlink loop`, `Delete loop`).
-- `Escape` closes the pinned tooltip/actions and returns focus to the timeline host.
-- `Delete` on a selected/focused capsule invokes the unlink-only `Delete loop` (D-03) — never real-key deletion.
-- Arrow keys follow the existing timeline navigation convention unchanged; the capsule is one stop in that order.
-- Ghost cells are never exposed as selectable real keys — to pointer selection, focus, or keyboard navigation.
+Repeat validation remains inherited: positive integer, safe product, invalid CTA disabled, Infinity preserves the last valid finite value, and the readout never shows NaN or overflow.
 
-Every canvas interaction above has both a mouse path and a keyboard path: focus + `Enter` reaches everything pointer-click reaches.
+### Materialization, guards, and re-expansion
 
-### Visual-state precedence (S1)
+- Painting or erasing on a linked occurrence materializes a local real key from the resolved pixels plus the new stroke. The loop shortens at that frame; playhead and canvas remain there; one Undo removes the local key and re-expands the loop.
+- Clear on a linked occurrence materializes a local empty real key and shortens the loop. Delete/Backspace rejects with the locked linked-frame copy and never touches the source or loop.
+- Source-key deletion, single-key linked-source drag, and Force Spacing remain fail-closed with the locked copy.
+- Moving/removing later blocking content re-expands the capsule immediately with no regeneration or prompt.
+- The range lane updates Requested/Effective, truncation, unresolved state, and source thumbnails only from canonical accepted state. No optimistic geometry that disagrees with preview/export is allowed.
 
-When multiple states coincide, emphasis resolves top-down — a lower state never hides a higher one:
+### Visual-state precedence
 
-1. Unresolved/error red (2px `#FF4444` outline + error tooltip)
-2. Keyboard focus ring (accent, 2px + 2px offset)
-3. Selected accent outline (2px around the whole capsule)
-4. Truncation amber diagonal (`#FFB020`)
-5. Hover treatment (outline raise + tooltip)
+When states coincide, higher entries remain visible:
+
+1. Unresolved/error red outline and missing-reference content
+2. Keyboard focus ring
+3. Selected accent outline
+4. Truncation amber diagonal
+5. Hover raise
 6. Idle
 
-Error styling is never replaced by selected or hover styling. The truncation diagonal remains visible under focus and selection. No state ever alters capsule geometry — states change paint only (outline, ring, opacity), never position or size.
+State changes affect paint only, never frame position, width, lane height, or Roto-cell geometry. The truncation diagonal remains visible under focus and selection. Error is never replaced by selected or hover styling.
 
 ---
 
 ## UI Considerations
 
-> State coverage across 6 surfaces: S1 capsule, S2 loop-edit dialog, S3 source-edit dialog, S4 Link/Create choice, S5 Studio link badge, S6 guard/preflight/export surfaces.
+> State coverage across S1 Loop Clip lane/capsules, S1a local popover, S2 Loop Edit, S3 Source Edit/Repair, S4 Link/Create, S5 linked Roto cells, and S6 guard/placeholder/export surfaces.
 
-Applicable state considerations resolved: 15 covered, 0 backstops, 5 dismissed, 0 unresolved
+Applicable state considerations resolved: 17 covered, 5 dismissed, 0 backstops, 0 unresolved
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
-| empty | S1 capsule | ✅ covered | No Loop Clips → nothing rendered; no placeholder, no legend change. Zero-effective loop (Effective = 0f) renders the D-22 greyed anchor flag with `0f` marker — never invisible |
-| empty / first-open | S2/S3 dialogs | ✅ covered | Both modes open prefilled from the canonical record (loop record: Repeat, Infinity; source cycle: mode, Frames per cycle, color, Motion); readouts derived from the canonical resolver — never blank |
-| populated | S1 source-cycle cells | ✅ covered | Real thumbnails from the existing downscaled cache path (D-15); diamonds per existing convention |
-| partial | S1 truncation | ✅ covered | Amber diagonal + tooltip `(partial cycle)` vs `(complete cycles)` (D-21); badge never changes on truncation (D-19) |
-| partial | S6 preflight | ✅ covered | Batch operations that will shorten loops surface the locked preflight line before confirm (D-06); commit + derived shrink stay one undoable outcome |
-| overflow / zoom | S1 capsule | ✅ covered | Three zoom bands with declared frameWidth thresholds (high/default/low, D-16); badge truncates via `truncateText` below 18px minimum; diagonal draws at every zoom |
-| overflow | S2/S3/S4 dialogs | ✅ covered | Phase 42 compact-fit contract inherited: all rows visible at minimum window size, no scrollbars, no clipped content; S4 renders inside the same modal shell |
-| long-text | S1 badge, tooltips | ✅ covered | Badge copy is fixed compact math forms; canvas label truncation reuses `truncateText`; tooltips are flat-multiline with fixed forms |
-| error | S1 capsule, S6 export | ✅ covered | Unresolvable source refs → red outline + error tooltip listing missing refs; records preserved verbatim, repair/relink/unlink/delete-loop offered (D-23/D-31); preview shows marked placeholders (non-blocking), export BLOCKED with the locked error naming loop and frame (D-28) |
-| error | S6 guarded operations | ✅ covered | Delete-key, source-key deletion, single-key drag, and Force Spacing rejections are fail-closed with locked reason copy (D-07/D-11/D-13) — existing guarded-operation idiom |
-| disabled | S2 locked fields, S6 guarded actions | ✅ covered | Locked source fields render disabled at reduced opacity with values preserved; guarded actions follow the Phase 36.15 guarded-icon convention with reason tooltips |
-| stale | S1 capsule | ✅ covered | Missing/stale source keyIds keep the capsule visible (error outline or zero/error marker) with the unresolved record intact across save/reopen (D-31) — never silently dropped |
-| loading / busy | S3 regeneration | ✅ covered | Reuses the Phase 42 generation-in-progress lifecycle verbatim (disabled inputs, `Cancel generation`, footer progress); failure shows `--ps-error` inline and leaves no partial state |
-| zero-one-many | S3 affected-loop notice | ✅ covered | Shared-source count shown only when N > 1 (`This source cycle is shared by {N} loops.`); single-loop case shows the base notice |
-| loading | S1, S2, S4, S5 | ✖ dismissed | Capsule and badge render synchronously from resolver output and cache thumbnails; dialogs render from controller signals — no async load path on these surfaces |
-| empty | S4 | ✖ dismissed | The Link/Create choice renders only when an identical source cycle exists — it is never an empty surface |
-| error | S2 Repeat field | ✅ covered | Repeat reuses the inherited Phase 42 positive-integer AND safe-product validation verbatim: malformed, zero, negative, fractional, and unsafe-product values show the inherited inline error — `Enter a positive integer.` or `Repeat is too large for this cycle length.` `Update loop` stays disabled while Repeat is invalid. Infinity disables Repeat without clearing its last valid finite value; turning Infinity off restores that value and revalidates it against the fixed source-cycle length. The Requested/Effective readout never displays unsafe numeric results (no overflow products, no NaN) |
-| long-text | S2, S3, S4 | ✖ dismissed | All copy is locked short fixed strings with `{N}`/`{F}` numeric slots; the S2 readout uses fixed math forms (`Requested {R}f · Effective {E}f`) |
-| partial | S2/S3 | ✖ dismissed | Requested/Effective readout always fully derivable from the loop record + resolver; S3 fields always fully derivable from the source cycle record |
-| overflow | S5 | ✖ dismissed | Badge is inset-only on fixed 18px×24px cells — no layout impact |
+| empty | S1 lane | ✅ covered | Zero Loop Clips removes the lane's complete layout footprint; the existing 161px workflow strip and Roto geometry remain exactly unchanged |
+| zero-one-many | S1 lane | ✅ covered | One or many Loop Clips share one 32px lane; capsules use frame ranges and may be clipped only by the horizontal viewport, never stacked into extra lane rows |
+| populated | S1 capsule | ✅ covered | Source thumbnails lead, repetitions recede, badge remains readable, and accepted resolver geometry aligns to the same frame grid as Roto cells |
+| partial | S1 truncation | ✅ covered | Amber diagonal encodes effective end; popover states partial vs complete cycles; badge continues to show Requested math |
+| partial | S6 preflight | ✅ covered | Batch content operations report the locked shorten warning before confirm; accepted content plus derived shrink is one Undo outcome |
+| overflow / zoom | S1 capsule | ✅ covered | Three declared frame-pitch bands; low zoom collapses detail cleanly; badge truncates/hides rather than overlapping unrelated content |
+| overflow | S1a popover | ✅ covered | 260–320px floating surface repositions within the workflow viewport; body detail wraps, actions remain single-line |
+| long-text | S1a unresolved detail | ✅ covered | Missing references render one per line and wrap/break safely; popover stays bounded and vertically scrolls only if the reference list exceeds the available application height |
+| error | S1/S1a unresolved loop | ✅ covered | Loop remains visible with red outline; popover lists missing refs and applicable Repair/Relink/Unlink/Delete actions; no silent disappearance |
+| error | S6 preview/export | ✅ covered | Preview shows the marked `Loop source missing` placeholder and continues; export fails before output with the locked actionable error |
+| stale / disabled | S1/S1a | ✅ covered | Capsule stays visible at 55% opacity with reason; busy actions use `aria-disabled` plus reason and preserve focus on rejection |
+| zero-effective | S1 anchor | ✅ covered | Record renders a visible `0f` flag in a 24×24px control at placement start and re-expands when the blocker moves |
+| loading / busy | S3 regeneration | ✅ covered | Inherited Phase 42 progress lifecycle: inputs disabled, `Cancel generation`, no partial state, retry after failure |
+| loading / busy | S1/S1a accepted operations | ✅ covered | Existing mutation lock prevents duplicate actions; lane updates from accepted authority state, not optimistic final geometry |
+| zero-one-many | S3 shared count | ✅ covered | Base notice for one loop; `This source cycle is shared by {N} loops.` only when N > 1 |
+| error | S2 Repeat | ✅ covered | Inherited positive-integer and safe-product validation; `Update loop` disabled while invalid; Infinity preserves/restores finite value |
+| interaction separation | S1 versus S5 | ✅ covered | Loop selection/actions stay in the dedicated lane; Roto navigation, key selection, multi-select, and drag semantics remain unchanged below |
+| empty | S4 Link/Create | ✖ dismissed | The choice exists only when a compatible source cycle exists; otherwise no choice surface is rendered |
+| loading | S2/S4/S5 | ✖ dismissed | These surfaces render synchronously from controller/resolver state; no independent loading path |
+| long-text | S2/S3/S4 | ✖ dismissed | Copy uses locked short strings and bounded numeric slots; inherited Phase 42 compact-fit rules apply |
+| overflow | S5 linked-cell badge | ✖ dismissed | Inset border and 4px dot do not affect the fixed 18×24px cell geometry |
+| destructive confirmation | S1a Delete/Unlink | ✖ dismissed | Both are unlink-only, preserve real source keys, and are atomically undoable; explicit action labels are sufficient |
 
 ---
 
@@ -263,8 +340,8 @@ Applicable state considerations resolved: 15 covered, 0 backstops, 5 dismissed, 
 
 | Registry | Blocks Used | Safety Gate |
 |----------|-------------|-------------|
-| shadcn official | none | not applicable — shadcn not initialized (Preact project; no `components.json`) |
-| third-party | none | not applicable — zero new dependencies in this phase |
+| shadcn official | none | not applicable — shadcn is not initialized |
+| third-party | none | not applicable — zero new dependencies or registry blocks |
 
 ---
 
@@ -277,4 +354,4 @@ Applicable state considerations resolved: 15 covered, 0 backstops, 5 dismissed, 
 - [x] Dimension 5 Spacing: PASS
 - [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** APPROVED — gsd-ui-checker verdict `UI-SPEC VERIFIED`, 2026-08-06. Non-blocking FLAGs D2 (idle-capsule focal point) and D5 (2px micro-offset exceptions) were resolved and re-verified; FLAG D4 (inherited Phase 42 type scale above guideline maxima) is locked inheritance from an already-approved, already-shipped dialog — no action possible or needed, noted for the record. Re-approved 2026-08-06 after the targeted correction (S2 Repeat validation coverage, canvas interaction/keyboard contract, visual-state precedence, S4 Link/Create copy). Placement/source coordinate correction applied 2026-08-06 per user-approved audit finding 4: `placementStart` identity (original loop = first source key frame; duplicated loop = destination frame), duplicated-loop first-cycle cell contract (shared thumbnails, dashed linked border, no diamonds, linked-occurrence click behavior), zero-effective anchor flag pinned at placement start.
+**Approval:** APPROVED — independently re-verified 2026-08-07 after the native UAT host-surface correction. The Motion Editor main timeline is excluded; S1 is the hidden-when-empty dedicated EFX Paint/Roto Loop Clip lane. No recommendations remain.
