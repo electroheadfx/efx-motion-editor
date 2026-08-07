@@ -1,7 +1,12 @@
 import {useRef, useEffect} from 'preact/hooks';
 import {effect} from '@preact/signals';
 import {TimelineRenderer, invalidateColorCache} from './TimelineRenderer';
-import {TimelineInteraction} from './TimelineInteraction';
+import {
+  focusedTimelineLoopClipId,
+  hoveredTimelineLoopClipId,
+  selectedTimelineLoopClipId,
+  TimelineInteraction,
+} from './TimelineInteraction';
 import {timelineStore} from '../../stores/timelineStore';
 import {trackLayouts, fxTrackLayouts, audioTrackLayouts} from '../../lib/frameMap';
 import {imageStore} from '../../stores/imageStore';
@@ -74,6 +79,9 @@ export function TimelineCanvas() {
       const fxTracks = fxTrackLayouts.value;
       const isolatedIds = isolationStore.isolatedSequenceIds.value;
       const selectedTransitionVal = uiStore.selectedTransition.value;
+      const selectedLoopClipId = selectedTimelineLoopClipId.value;
+      const hoveredLoopClipId = hoveredTimelineLoopClipId.value;
+      const focusedLoopClipId = focusedTimelineLoopClipId.value;
 
       // Map selected layer ID to FX/content-overlay sequence ID for timeline highlight
       const selectedLayerId = layerStore.selectedLayerId.value;
@@ -129,6 +137,9 @@ export function TimelineCanvas() {
         hidePlayhead: isFullSpeed.value,
         isolatedSequenceIds: isolatedIds,
         selectedTransition: selectedTransitionVal,
+        selectedLoopClipId,
+        hoveredLoopClipId,
+        focusedLoopClipId,
         audioTracks: audioTrackLayouts.value,
         selectedAudioTrackId: audioStore.selectedTrackId.value,
         beatMarkersVisible: audioStore.beatMarkersVisible.value,

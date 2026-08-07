@@ -1,6 +1,7 @@
 import {describe, expect, it, vi} from 'vitest';
 import type {TimelineLoopCapsule} from '../../types/timeline';
 import {
+  dispatchFocusedLoopCapsuleKey,
   dispatchLoopCapsuleHit,
   getLoopCapsuleHitRegions,
   hitTestLoopCapsule,
@@ -47,7 +48,7 @@ describe('Loop Clip capsule hit regions', () => {
   it('dispatches badge, source, truncation, ghost band, and outline regions in locked precedence', () => {
     const regions = getLoopCapsuleHitRegions(capsule(), layout);
     expect(hitTestLoopCapsule(capsule(), layout, center(regions.badge))?.region).toBe('badge');
-    expect(hitTestLoopCapsule(capsule(), layout, center(regions.sourceCells[0].rect))?.region).toBe('source-cell');
+    expect(hitTestLoopCapsule(capsule(), layout, center(regions.sourceCells[1].rect))?.region).toBe('source-cell');
     expect(hitTestLoopCapsule(capsule(), layout, center(regions.truncation))?.region).toBe('truncation');
     expect(hitTestLoopCapsule(capsule(), layout, center(regions.repetitionBand))?.region).toBe('occurrence');
     expect(hitTestLoopCapsule(capsule(), layout, {x: regions.outline.x + 1, y: regions.outline.y + 1})?.region).toBe('outline');
@@ -127,5 +128,16 @@ describe('Loop Clip capsule dispatch', () => {
       expect(actions.selectLoop).toHaveBeenCalledWith('loop-7');
       expect(actions.requestTooltip).toHaveBeenCalled();
     }
+  });
+
+  it('maps Enter, Escape, and Delete to the focused loop unit without key deletion', () => {
+    const actions = {pinTooltip: vi.fn(), closeTooltip: vi.fn(), unlinkLoop: vi.fn()};
+    expect(dispatchFocusedLoopCapsuleKey('Enter', actions)).toBe(true);
+    expect(dispatchFocusedLoopCapsuleKey('Escape', actions)).toBe(true);
+    expect(dispatchFocusedLoopCapsuleKey('Delete', actions)).toBe(true);
+    expect(actions.pinTooltip).toHaveBeenCalledOnce();
+    expect(actions.closeTooltip).toHaveBeenCalledOnce();
+    expect(actions.unlinkLoop).toHaveBeenCalledOnce();
+    expect(dispatchFocusedLoopCapsuleKey('ArrowRight', actions)).toBe(false);
   });
 });
