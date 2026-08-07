@@ -1,8 +1,11 @@
-# Phase 43: Hold Loop Clips + Filmstrip Capsule - Research
+# Phase 43: Hold Loop Clips + Integrated Loop Rail - Research
 
 **Researched:** 2026-08-06
-**Domain:** In-repo physical-frame document extension (linked Loop Clips), canonical per-frame resolver extension, Canvas 2D timeline capsule, Tauri parent/child bridge
-**Confidence:** HIGH (all load-bearing claims verified against source files read this session; zero external dependencies)
+**Corrected:** 2026-08-07 against `43-CONTEXT.md` D-33..D-49
+**Domain:** In-repo physical-frame document extension, canonical per-frame resolver, EFX-local integrated Loop Rail/contextual Scripts inspector, and generic preview/playback/save/export consumption
+**Confidence:** HIGH for the retained model/resolver/persistence/performance findings; presentation and edit-activation recommendations are superseded as stated below
+
+> **Correction supersession:** All research-time recommendations that place Loop Clip presentation, tooltip/hit testing, or Edit activation in the Motion Editor/main-to-child bridge are superseded by D-33..D-49. Current ownership is `PhysicsPaintWorkflowStrip` + `PhysicsPaintLoopClipRail`, the contextual `PhysicsPaintScriptsPanel`, and the Studio-local EFX controller. The Motion Editor is only a generic consumer of resolved preview/playback/save/export output. Historical capsule/bridge analysis remains below as provenance for residue removal, not implementation direction.
 
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
@@ -78,14 +81,14 @@ None — discussion stayed within phase scope. (Ping-pong loop mode LOOP-01 and 
 | HOLD-03 | Reuse existing commit path; no partial destination ranges; one Undo/Redo | The Play Script staged commit (`physicsPaintRotoPlayScriptController.ts` `confirm()` + `buildPhysicalPublication`, lines 220-438) and snapshot-based Undo/Redo (`useRotoPhysicalEditHistory.ts:83-92`) already provide this; loop records must JOIN the snapshot/revision contract (see Pitfall 2). |
 | HOLD-04 | Generated keys remain parent Paint layer content; one resolved raster per frame | Existing: real-key records persist in `roto_physical` and the main editor resolves via `physicPaintStore.getRotoPhysicalRenderSource` (`physicPaintStore.ts:1405-1453`). Loop occurrences reuse this path with a modulo-resolved source keyId. |
 | HOLD-05 | Linked Loop Clips: modulo resolution, half-open intervals, next-clip priority, re-expansion, edit propagation | New virtual cell kind in the physical projection (`projectPhysicPaintRotoPhysicalTimeline`, resolver:2057-2085) + additive `loopClips` document collection threading four strict allowlists (see Standard Stack / Persistence seam). |
-| HOLD-06 | Filmstrip capsule: source cycle, repetition band, badges, requested vs effective, English truncation label | New Canvas 2D drawing in `TimelineRenderer.ts` fed by a new `fxTrackLayouts` projection field (the existing `playScriptMarkers` field is DEAD — never populated); main-editor tooltip surface does not exist yet (see Pitfall 5). |
+| HOLD-06 | Integrated 3px Loop Rail inside the existing EFX physical row, contextual Scripts inspector/local actions, and zero Motion Editor Loop Clip UI | `PhysicsPaintWorkflowStrip.tsx`, `PhysicsPaintLoopClipRail.tsx`, `physicsPaintLoopClipPresentation.ts`, `PhysicsPaintScriptsPanel.tsx`, and the Studio-local controller own presentation and activation. Historical Canvas/main-editor recommendations are superseded by D-33..D-49. |
 </phase_requirements>
 
 ## Summary
 
-Phase 43 is almost entirely an **in-repo extension** of seams that already exist and were verified this session. The physical-frame document authority (`physicsPaintRotoPhysicalModel.ts`), the acknowledged atomic commit path (`replace-roto-physical-map`), the snapshot-based Undo/Redo history, the deterministic held-pose transform, and the single per-frame render-source resolution (`physicPaintStore.getRotoPhysicalRenderSource`, consumed by preview, Studio display, persistence coordinator, and export via `PreviewRenderer`) are all in place. Loop Clips add: (1) an additive optional `loopClips` collection on the physical document, (2) a virtual cell kind in the shared physical projection so "real keys always win" is emergent, (3) loop-aware store read APIs and timeline projection, and (4) a pure Canvas 2D filmstrip capsule on the main editor timeline.
+Phase 43 is almost entirely an **in-repo extension** of seams that already exist and were verified this session. The physical-frame document authority (`physicsPaintRotoPhysicalModel.ts`), acknowledged atomic commit path, snapshot-based Undo/Redo history, deterministic held-pose transform, and single per-frame render-source resolution remain authoritative. Loop Clips add compact persisted intent and lazy resolution; the corrected presentation is a pure EFX-local view of those accepted ranges through the integrated rail, local popover, and contextual Scripts inspector.
 
-The three highest-risk integration facts the planner must design around: **(a) four strict allowlist parsers** (model document keys, persistence document keys, `types/project.ts` document type, and the `parsePersistedPhysicalDocument` guard) all reject unknown members — `loopClips` must be threaded through every one or save/load breaks; **(b) the canonical revision fingerprint covers only realKeyRecords + interpolation** and history snapshot equality is record-scoped — a loop-only edit (Update/Unlink/Duplicate) is invisible to revision checks and Undo unless the planner extends the snapshot/revision contract or adds a parallel loop-revision; **(c) the filmstrip capsule's two interaction dependencies do not exist on the main editor timeline today**: there is no tooltip surface (the Phase 38 flat-multiline tooltip lives only inside the Studio child window) and there is no parent→child bridge message to reopen the Play Script dialog in loop-edit mode (the bridge catalog is child→parent plus `physic-paint:seek-frame`).
+The retained highest-risk integration facts are: **(a) strict allowlist parsers** must carry `loopClips` coherently or save/load fails; **(b) revision and history snapshots must include loop-only changes so Update/Unlink/Duplicate remain authoritative and undoable; and **(c) presentation must not materialize repeated frames or duplicate resolver/controller authority.** The earlier missing-main-timeline-tooltip and parent→child Edit bridge analysis is now residue-removal evidence: those surfaces are not to be completed, and their specialized protocol is removed after the EFX-local replacement has no callers.
 
 No new packages, no new external services, no Rust changes: the Tauri-side `roto_physical` field is an opaque `serde_json::Value` (`project.rs:37`), so additive persistence is pure TypeScript.
 
@@ -97,14 +100,16 @@ No new packages, no new external services, no Rust changes: the Tauri-side `roto
 |------------|-------------|----------------|-----------|
 | Loop record persistence (`loopClips`) | Physical document model (`physicsPaintRotoPhysicalModel.ts` + `physicPaintPersistence.ts`) | `types/project.ts` schema type | D-29: single persistence authority, additive optional collection, no sidecar |
 | Modulo virtual resolution (frame → source keyId) | Physical projection/resolver (`physicsPaintRotoPhysicalResolver.ts`) | Store read seam (`getRotoPhysicalRenderSource`) | D-26: resolver extension; real-key precedence is emergent from cell kinds |
-| Requested/Effective/truncation derivation | Resolver (pure derivation from document + parent end) | — | D-24/D-30: derived, never persisted; one definition shared by resolver and TimelineRenderer |
+| Requested/Effective/truncation derivation | Resolver (pure derivation from document + parent end) | EFX presentation projection consumes accepted ranges | D-24/D-30/D-47: derived, never persisted; the rail/sidebar do not recompute boundary algebra |
 | Per-frame raster for preview/export/Studio | Store `getRotoPhysicalRenderSource` (existing canonical seam) | `previewRenderer.ts` / `exportRenderer.ts` consumers | D-27: already one canonical path; linked occurrence returns the SOURCE key's render source |
-| Filmstrip capsule rendering | Main editor timeline (`TimelineRenderer.ts`, Canvas 2D) | `frameMap.ts` `fxTrackLayouts` projection feed | HOLD-06; capsule is a pure view of resolver outputs (roadmap boundary note) |
-| Capsule tooltip + hit regions | Main editor timeline interaction layer (`TimelineInteraction.ts` + new tooltip surface) | Studio `PhysicsPaintStyledTooltip` as copy/idiom reference | Gap: main timeline has hit-testing but NO tooltip component today (Pitfall 5) |
-| Loop-edit / source-edit dialog modes | Studio child window (`PhysicsPaintPlayScriptDialog.tsx` + controller) | Parent→child bridge message to open loop-edit mode (NEW) | D-01/D-02; dialog lives in the child window; badge click originates in the parent |
+| Integrated Loop Rail rendering | EFX workflow strip (`PhysicsPaintWorkflowStrip.tsx` + `PhysicsPaintLoopClipRail.tsx`) | `physicsPaintLoopClipPresentation.ts` visible-window projection | D-34R..D-38R: 3px paint, 12px target, zero added height, compact accepted-range view |
+| Rail tooltip, selection, and local actions | EFX-local rail/popover (`PhysicsPaintLoopClipRail.tsx`, `PhysicsPaintLoopClipPopover.tsx`) | `PhysicsPaintStyledTooltip.tsx` and existing controller ports | D-38R..D-40R: no Motion Editor hit/tooltip/action ownership |
+| Loop-edit / source-edit dialog modes | Studio-local `PhysicsPaintPlayScriptDialog.tsx` + `physicsPaintRotoPlayScriptController.ts` | contextual `PhysicsPaintScriptsPanel.tsx` Edit slot | D-40R/D-43: rail Enter/double-click and sidebar Edit call local `openLoopEdit(loopId)`; parent→child Loop Clip activation is superseded and removed |
 | Loop ops Undo/Redo | Existing snapshot history (`useRotoPhysicalEditHistory.ts`) + `replace-roto-physical-map` commit | `physicPaint.ts` apply-payload allowlists | D-06/D-10: snapshot + revision must cover loopClips (Pitfall 2) |
 | Source-cycle regeneration | Existing Play Script staged commit (`physicsPaintRotoPlayScriptController.ts` / Renderer) | — | D-02: reuse verbatim, no new commit path |
-| Studio strip link badge | `PhysicsPaintWorkflowStrip.tsx` + `physicsPaintWorkflowPresentation.ts` | — | D-18: additive badge on existing cell semantics, no new first-class state |
+| Contextual Scripts inspector | `PhysicsPaintScriptsPanel.tsx` inside the existing Scripts tab | Studio selected-loop Signal/view-model boundary | D-43..D-45: Play-to-Edit slot swap, seven facts, text-only script rename, no separate pane |
+| Linked physical-cell indicator | `PhysicsPaintWorkflowStrip.tsx` + `physicsPaintWorkflowPresentation.ts` | — | D-42: preserve the accepted blue inset border and 4px dot as additive cell styling, not Loop Clip selection UI |
+| Motion Editor consumption | generic preview/playback/save/export consumers | canonical store/resolver render-source seam | D-33/D-46: consume resolved pixels only; no Loop Clip presentation or edit activation |
 
 ## Standard Stack
 
@@ -124,11 +129,12 @@ No new packages, no new external services, no Rust changes: the Tauri-side `roto
 
 | Module | Purpose | When to Use |
 |--------|---------|-------------|
-| `app/src/components/timeline/TimelineRenderer.ts` | Canvas capsule host (physic-paint FX row) | S1 surface: band/ghost cells/badge/diagonal/anchor flag |
-| `app/src/lib/frameMap.ts` (`fxTrackLayouts`) | Feeds timeline layout data from stores | New loop-capsule projection field threads here |
-| `app/src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.tsx` + `physicsPaintRotoPlayScriptController.ts` | Dialog extended with loop-edit and source-edit modes | D-01/D-02 (S2/S3/S4 surfaces) |
-| `app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.ts` | Snapshot Undo/Redo | Extend `RotoPhysicalEditSnapshot` coverage to loopClips |
-| `app/src/components/physic-paint/bridge/physicsPaintBridgeTransport.ts` | Tauri event + postMessage bridge | NEW parent→child "open loop-edit dialog" message |
+| `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx` + `PhysicsPaintLoopClipRail.tsx` | Integrated rail host and focused interaction surface | S1: compact visible-window rail inside the existing physical row |
+| `app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.tsx` | Existing contextual inspector host | S1c: Play-to-Edit swap and selected-loop facts |
+| `app/src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.tsx` + `physicsPaintRotoPlayScriptController.ts` | Studio-local dialog and operation owner | D-01/D-02/D-39R/D-40R; all EFX-local edit/action entry points converge here |
+| `app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.ts` | Snapshot Undo/Redo | Retain `loopClips` coverage in accepted physical snapshots |
+| `app/src/components/timeline/TimelineRenderer.ts`, `app/src/lib/frameMap.ts` | superseded presentation residue | Remove Loop Clip projection/drawing; retain generic timeline behavior only |
+| `app/src/components/physic-paint/bridge/physicsPaintBridgeTransport.ts` | generic Tauri/postMessage transport | Remove specialized Loop Clip open/operation messages after callers are gone; retain authority/apply/context/save/frame-sync |
 
 ### Alternatives Considered
 
@@ -154,53 +160,47 @@ No external packages are installed in this phase (43-UI-SPEC Registry Safety: "z
 ### System Architecture Diagram
 
 ```
-Play Script Apply / loop ops (Studio child window)
-   │  confirm() → staged render (Renderer) → atomic commit
+EFX rail / popover / contextual Scripts inspector
+   │  local focused ports: openLoopEdit, Duplicate, Repair, Relink, Unlink/Delete
    ▼
-replace-roto-physical-map commit path (parent, physicPaintBridge.ts)
-   │  validates expectedRevision, applies complete records (+ loopClips) snapshot
+physicsPaintRotoPlayScriptController
+   │  authority request → exact accepted physical commit → atomic history
    ▼
-physicPaintStore  ── owns ──►  realKeyRecords + loopClips (document authority)
+physicPaintStore owns realKeyRecords + compact loopClips
    │
-   │  _resolveRotoPhysicalStructural → projectPhysicPaintRotoPhysicalTimeline
-   ▼
-Physical projection: cells 0..capacity-1  = real | generated | empty | linked-loop (NEW)
-   │                                        (real always wins; linked-loop = modulo ref)
-   ├─► getRotoPhysicalRenderSource(layerId, appFrame)  ──► previewRenderer (main editor preview)
-   │                                                     ──► exportRenderer (PNG export; D-28 block check)
-   │                                                     ──► PhysicsPaintStudio frame display
-   │                                                     ──► useRotoFramePersistenceCoordinator (live cache)
-   ├─► rotoPhysicalTimelinePorts / selectors            ──► Studio workflow strip (D-18 badge)
-   └─► frameMap.fxTrackLayouts (NEW loop capsule field) ──► TimelineRenderer capsule (S1)
-                                                                        │ badge click
-                                                                        ▼
-                                              NEW parent→child bridge msg → Studio dialog loop-edit mode (D-01)
+   ├─► canonical resolver ranges + visible window ──► PhysicsPaintLoopClipRail
+   │                                                 └─► PhysicsPaintScriptsPanel facts
+   ├─► getRotoPhysicalRenderSource ──► Studio frame display
+   │                                  ├─► Motion Editor preview/playback
+   │                                  └─► export/save/reopen consumers
+   └─► generic authority/apply/context/save/frame-sync bridges
+
+Motion Editor timeline projection/render/hit/tooltip/edit routes: superseded and removed.
+Specialized parent→child Loop Clip activation protocol: superseded and removed after zero callers.
 ```
 
 ### Recommended Project Structure (files touched, by seam)
 
 ```
 app/src/
-├── components/physic-paint/roto/
-│   ├── physicsPaintRotoPhysicalModel.ts        # + PhysicPaintRotoLoopClip record, guards, parser, document keys
-│   ├── physicsPaintRotoPhysicalResolver.ts     # + 'linked-loop' virtual cell kind in projection
-│   ├── physicsPaintRotoPlayScriptController.ts # + loop-edit/source-edit modes, Link/Create choice, preflight (D-06)
-│   └── rotoTimelineSelectors.ts                # + loop-aware cell view models
-├── stores/physicPaintStore.ts                  # + loopClips state, virtual render-source branch, loop-aware end frame
-├── lib/
-│   ├── physicPaintPersistence.ts               # + loopClips in PERSISTED_DOCUMENT_KEYS, save/hydrate mapping
-│   ├── physicPaintBridge.ts                    # + loopClips in apply payload validation + acceptance
-│   └── frameMap.ts                             # + capsule projection field on FxTrackLayout
-├── types/
-│   ├── physicPaint.ts                          # + apply-payload/result allowlist keys for loopClips; semantic-delta kinds
-│   ├── project.ts                              # + loopClips on McePhysicPaintRotoPhysicalDocument
-│   └── timeline.ts                             # + capsule layout type on FxTrackLayout
-└── components/
-    ├── timeline/TimelineRenderer.ts            # + capsule drawing (band, ghosts, badge, diagonal, anchor flag)
-    ├── timeline/TimelineInteraction.ts         # + capsule hit regions + selection + keyboard focus unit
-    └── physic-paint/view/
-        ├── PhysicsPaintPlayScriptDialog.tsx    # + loop-edit / source-edit modes (S2/S3/S4)
-        └── PhysicsPaintWorkflowStrip.tsx       # + additive link badge (S5)
+├── components/physic-paint/
+│   ├── roto/
+│   │   ├── physicsPaintRotoPhysicalModel.ts        # retained compact record authority
+│   │   ├── physicsPaintRotoPhysicalResolver.ts     # retained canonical ranges/lazy resolution
+│   │   └── physicsPaintRotoPlayScriptController.ts # retained local Edit/actions + authority
+│   ├── view/
+│   │   ├── PhysicsPaintLoopClipRail.tsx            # integrated 3px/12px EFX rail
+│   │   ├── physicsPaintLoopClipPresentation.ts     # pure visible-window geometry/copy/state
+│   │   ├── PhysicsPaintLoopClipPopover.tsx         # local facts/actions and focus restoration
+│   │   ├── PhysicsPaintWorkflowStrip.tsx           # existing physical-row host
+│   │   ├── PhysicsPaintScriptsPanel.tsx            # contextual inspector and Play→Edit slot
+│   │   └── PhysicsPaintPlayScriptDialog.tsx        # existing Studio-local modal
+│   ├── hooks/usePhysicsPaintStudioViewModel.ts     # shared selected-loop Signal boundary
+│   └── physicsPaintStudio.css                      # zero-height-change rail/sidebar styles
+├── stores/physicPaintStore.ts                      # retained canonical render-source seam
+├── lib/physicPaintPersistence.ts                   # retained additive persistence
+├── components/timeline/                            # remove Loop Clip projection/render/input residue
+└── lib/physicPaintBridge.ts                        # retain generic bridge; remove specialized Loop Clip protocol
 ```
 
 ### Pattern 1: Virtual linked-loop cell in the shared projection
@@ -414,11 +414,11 @@ consumed by `getTimelineRequiredFrameCount`/`getTimelineOverlaySequenceOutFrame`
 **How to avoid:** The loop-edit mode's Requested/Effective readout (D-01) must come from the canonical resolver, and the apply-time preview should route through the same boundary query the resolver uses. Planner should make the shared boundary computation a resolver export consumed by both.
 **Warning signs:** Dialog says `Effective: 25f` but the capsule truncates at 18f because a real key sits at frame 18.
 
-### Pitfall 5: Main-editor timeline has no tooltip surface and no capsule→dialog bridge message
-**What goes wrong:** D-01 (badge click reopens dialog in loop-edit mode), D-17/D-19/D-21/D-22 (tooltips) assume machinery that exists only in the Studio child window: the flat-multiline tooltip component is `app/src/components/physic-paint/view/PhysicsPaintStyledTooltip.tsx` (Studio-only — grep confirms no tooltip module under `app/src/components/timeline/`), and the bridge transport catalog [VERIFIED: app/src/components/physic-paint/bridge/physicsPaintBridgeTransport.ts] contains child→parent events and `physic-paint:seek-frame` only — no parent→child "open dialog in mode X" message. The Studio may also be CLOSED when the badge is clicked.
-**Why it happens:** The capsule is the first main-timeline element that needs rich hover/click affordances and cross-window dialog control.
-**How to avoid:** Plan explicit tasks for (a) a main-timeline tooltip host following the Phase 38 flat-multiline idiom, (b) a new parent→child bridge message (launch/focus Studio + open Play Script dialog in loop-edit mode with target loopId), and (c) capsule hit-testing in `TimelineInteraction.ts` (which already hit-tests keyframes [CITED: TimelineInteraction.ts:353 "Only hit-test if we have active keyframes"]).
-**Warning signs:** Plan tasks cover capsule drawing but nothing owns tooltip rendering or the badge-click path.
+### Pitfall 5: Superseded Motion Editor tooltip/bridge ownership
+**Historical finding:** The rejected Motion Editor capsule required a new tooltip surface, hit testing, and parent→child open-dialog protocol that did not previously exist.
+**Current disposition:** D-33..D-49 remove that ownership rather than completing it. The EFX-local rail reuses `PhysicsPaintStyledTooltip`, local popover patterns, the contextual Scripts inspector, and direct `openLoopEdit(loopId)` controller access.
+**How to avoid:** Do not add or preserve main-timeline Loop Clip tooltip/hit/edit routes. Remove the specialized protocol after zero callers while retaining generic launch/context/authority/apply/save/frame-sync bridges.
+**Warning signs:** A correction task references `TimelineInteraction` as the Loop Clip interaction owner, adds a Motion Editor tooltip, or routes rail/sidebar Edit through a bridge request.
 
 ### Pitfall 6: Source-cycle Motion seeding depends on absolute destination frame
 **What goes wrong:** The renderer passes `destinationSourceFrame: destination` (the absolute appFrame) into the held-pose transform [VERIFIED: app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer.ts:66-71]. With nonzero Motion, the SAME script applied at a different start frame produces different pixels. D-05's "identical source cycle exists (same script + options)" matching is therefore start-sensitive when Motion ≠ 0/0: a cycle generated at F10 is not pixel-identical to one generated at F40.

@@ -241,6 +241,8 @@ Do not begin the resumed Plan 43-10 Task 2 until the entries above contain actua
 - Invalid/rejected Duplicate preserves the active flow, input, focus, selection, and reason; accepted Duplicate creates one new loop sharing source references with no regeneration.
 - Unlink and Delete remove only the loop record and preserve source keys/assets.
 - No operation double-dispatches while pending.
+- Accepted Duplicate returns selection and keyboard focus to the surviving selected rail target.
+- Accepted Unlink or Delete moves selection and focus to the nearest visible Loop Clip by canonical placement order; if no Loop Clip survives, focus moves to the Scripts tab and normal script context with Play is restored.
 - Undo/Redo restores/reapplies exact loop placement/source identity.
 
 **Result:** [ ] pass  [ ] fail
@@ -260,7 +262,7 @@ Do not begin the resumed Plan 43-10 Task 2 until the entries above contain actua
 - Unresolved loop remains visible/selectable with `Source missing`; no raw UUID becomes product name.
 - `Loop source missing` marks preview; export fails before partial output with the carried-forward actionable copy.
 - Rejection preserves record, selection, focus, inputs, and geometry.
-- Repair/regenerate and Relink use existing atomic authority paths; Undo restores dangling references byte-for-byte and Redo reapplies repair/relink.
+- Repair/regenerate and Relink use existing atomic authority paths; after acceptance, selection and keyboard focus return to the surviving selected rail target. Undo restores dangling references byte-for-byte and Redo reapplies repair/relink.
 - Unrepaired save/reopen preserves the unresolved record verbatim.
 
 **Result:** [ ] pass  [ ] fail
