@@ -1072,10 +1072,22 @@ describe('openPhysicPaintLoopEdit (43-06 launch-or-focus)', () => {
     expect(invoke).toHaveBeenCalledWith('open_physics_paint_window', {
       context: expect.objectContaining({ layerId: 'phys-layer-1', startFrame: 4 }),
     });
-    // Queue-until-ready: the delivery repeats on a bounded interval so the
-    // still-initializing child receives it once its listener is installed.
+    const openEditDeliveries = () => emitTo.mock.calls.filter(([, eventName]) => eventName === PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT);
+    // A fresh child receives one best-effort delivery before this helper
+    // resolves; unrelated project-context emissions never satisfy the contract.
+    expect(openEditDeliveries()).toEqual([
+      [PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, { loopId: 'loop-8' }],
+    ]);
+
+    // Queue-until-ready then adds exactly 12 bounded, awaited retries so fake
+    // time and real runtime scheduling observe the same delivery sequence.
     await vi.advanceTimersByTimeAsync(3200);
-    expect(emitTo).toHaveBeenCalledWith(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, { loopId: 'loop-8' });
+    expect(openEditDeliveries()).toHaveLength(13);
+    expect(openEditDeliveries().at(-1)).toEqual([
+      PHYSIC_PAINT_WINDOW_LABEL,
+      PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT,
+      { loopId: 'loop-8' },
+    ]);
   });
 
   it('rejects an invalid loopId without touching the window or the transport', async () => {
@@ -1117,8 +1129,14 @@ describe('openPhysicPaintLoopEdit (43-06 launch-or-focus)', () => {
     const first = await openLoopEdit({ layer: physicLayer(), frame: 4, loopId: 'loop-1' });
     expect(first.ok).toBe(true);
     expect(open).toHaveBeenCalledTimes(1);
+    expect(childHandle.postMessage).toHaveBeenCalledTimes(1);
+    expect(childHandle.postMessage).toHaveBeenLastCalledWith(
+      { type: PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, payload: { loopId: 'loop-1' } },
+      'http://localhost:1420',
+    );
     await vi.advanceTimersByTimeAsync(3200);
-    expect(childHandle.postMessage).toHaveBeenCalledWith(
+    expect(childHandle.postMessage).toHaveBeenCalledTimes(13);
+    expect(childHandle.postMessage).toHaveBeenLastCalledWith(
       { type: PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, payload: { loopId: 'loop-1' } },
       'http://localhost:1420',
     );

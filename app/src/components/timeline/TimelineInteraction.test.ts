@@ -1,10 +1,17 @@
-import {describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
+import * as physicPaintBridge from '../../lib/physicPaintBridge';
+import {physicPaintStore} from '../../stores/physicPaintStore';
+import {sequenceStore} from '../../stores/sequenceStore';
 import type {TimelineLoopCapsule} from '../../types/timeline';
 import {
   dispatchFocusedLoopCapsuleKey,
   dispatchLoopCapsuleHit,
+  focusedTimelineLoopClipId,
   getLoopCapsuleHitRegions,
   hitTestLoopCapsule,
+  selectedTimelineLoopClipId,
+  TimelineInteraction,
+  timelineLoopCapsuleTooltipRequest,
   type LoopCapsuleHit,
 } from './TimelineInteraction';
 
@@ -139,5 +146,80 @@ describe('Loop Clip capsule dispatch', () => {
     expect(actions.closeTooltip).toHaveBeenCalledOnce();
     expect(actions.unlinkLoop).toHaveBeenCalledOnce();
     expect(dispatchFocusedLoopCapsuleKey('ArrowRight', actions)).toBe(false);
+  });
+});
+
+describe('focused Loop Clip keyboard Delete bridge', () => {
+  const layer = {id: 'fx-layer-1', source: {type: 'physic-paint', layerId: 'paint-1'}} as never;
+
+  function prepareFocusedInteraction() {
+    sequenceStore.sequences.value = [{
+      id: 'sequence-1',
+      kind: 'fx',
+      name: 'Physics Paint',
+      inFrame: 12,
+      outFrame: 60,
+      layers: [layer],
+    }] as never;
+    selectedTimelineLoopClipId.value = 'loop-7';
+    focusedTimelineLoopClipId.value = 'loop-7';
+    timelineLoopCapsuleTooltipRequest.value = {
+      capsule: capsule(),
+      hit: {region: 'outline', loopId: 'loop-7'},
+      clientX: 200,
+      clientY: 100,
+      pinned: true,
+      layerId: 'paint-1',
+      sequenceStartFrame: 12,
+    };
+    const interaction = new TimelineInteraction();
+    (interaction as unknown as {focusedLoopSequenceId: string | null}).focusedLoopSequenceId = 'sequence-1';
+    return interaction;
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    sequenceStore.sequences.value = [];
+    selectedTimelineLoopClipId.value = null;
+    focusedTimelineLoopClipId.value = null;
+    timelineLoopCapsuleTooltipRequest.value = null;
+  });
+
+  it('routes Delete through the typed Studio bridge and retains focus when the request is rejected', async () => {
+    const bridgeRequest = vi.spyOn(physicPaintBridge, 'requestPhysicPaintLoopOperation')
+      .mockResolvedValue({ok: false, reason: 'Studio rejected the request.'});
+    vi.spyOn(physicPaintStore, 'getRotoPhysicalLoopClips').mockReturnValue([{loopId: 'loop-7'}] as never);
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalLoopClips').mockReturnValue({ok: true, data: null});
+    const interaction = prepareFocusedInteraction();
+    const preventDefault = vi.fn();
+
+    (interaction as unknown as {onKeyDown: (event: KeyboardEvent) => void}).onKeyDown({key: 'Delete', preventDefault} as never);
+
+    await vi.waitFor(() => expect(bridgeRequest).toHaveBeenCalledWith({
+      layer,
+      frame: 12,
+      loopId: 'loop-7',
+      kind: 'delete-loop',
+    }));
+    expect(replace).not.toHaveBeenCalled();
+    expect(selectedTimelineLoopClipId.value).toBe('loop-7');
+    expect(focusedTimelineLoopClipId.value).toBe('loop-7');
+    expect(timelineLoopCapsuleTooltipRequest.value?.capsule.loopId).toBe('loop-7');
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('clears focused UI state only after the Studio acknowledges Delete', async () => {
+    const bridgeRequest = vi.spyOn(physicPaintBridge, 'requestPhysicPaintLoopOperation')
+      .mockResolvedValue({ok: true, reason: null});
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalLoopClips');
+    const interaction = prepareFocusedInteraction();
+
+    (interaction as unknown as {onKeyDown: (event: KeyboardEvent) => void}).onKeyDown({key: 'Backspace', preventDefault: vi.fn()} as never);
+
+    await vi.waitFor(() => expect(bridgeRequest).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(focusedTimelineLoopClipId.value).toBe(null));
+    expect(replace).not.toHaveBeenCalled();
+    expect(selectedTimelineLoopClipId.value).toBe(null);
+    expect(timelineLoopCapsuleTooltipRequest.value).toBe(null);
   });
 });
