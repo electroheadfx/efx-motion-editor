@@ -62,9 +62,10 @@ export function PhysicsPaintPlayScriptDialog({
   useEffect(() => {
     // Focus discipline (Phase 42): the editable primary field takes focus on
     // open — the Repeat input in loop-edit (Frames-per-cycle is locked).
-    const target = playScript.dialogMode.value === 'loop-edit' ? repeatInputRef.current : inputRef.current;
-    if (confirmationOpen) target?.focus();
-    else if (previousOpen.current) returnFocusRef.current?.focus();
+    if (confirmationOpen) {
+      if (playScript.dialogMode.value === 'loop-edit') repeatInputRef.current?.focus();
+      else inputRef.current?.focus();
+    } else if (previousOpen.current) returnFocusRef.current?.focus();
     previousOpen.current = confirmationOpen;
   }, [confirmationOpen, returnFocusRef, playScript]);
 
@@ -236,9 +237,9 @@ export function PhysicsPaintPlayScriptDialog({
           onPointerCancel={endHeaderDrag}
         >
           <strong id="physics-play-script-title">{loopEdit ? 'Edit Loop Clip' : sourceEdit ? 'Edit Source Cycle' : 'Play Script'}</strong>
-          <span class="physics-paint-play-script-header-range">{loopEdit && editTarget
-            ? `F${editTarget.placementStart} · Cycle ${editTarget.sourceKeyIds.length}f`
-            : `Max ${playScript.capacity.value}${playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}`}</span>
+          {loopEdit && editTarget
+            ? <span class="physics-paint-play-script-header-range">{`F${editTarget.placementStart} · Cycle ${editTarget.sourceKeyIds.length}f`}</span>
+            : <span class="physics-paint-play-script-header-range">Max {playScript.capacity.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>}
         </div>
         <div class="physics-paint-play-script-content">
           {sourceEdit ? (
