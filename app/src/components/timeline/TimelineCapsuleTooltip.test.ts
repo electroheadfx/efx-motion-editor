@@ -4,6 +4,7 @@ import type {LoopCapsuleHit, TimelineLoopCapsuleTooltipRequest} from './Timeline
 import {
   buildTimelineCapsuleTooltipModel,
   computeTimelineCapsuleTooltipPosition,
+  createTimelineCapsuleTooltipOps,
   runTimelineCapsuleTooltipAction,
   TimelineCapsuleTooltipVisibility,
   TIMELINE_CAPSULE_TOOLTIP_DELAY_MS,
@@ -125,5 +126,27 @@ describe('Timeline capsule tooltip action dispatch', () => {
     });
     expect(result).toEqual({ok: false, reason: 'Missing source keys remain unresolved.'});
     expect(original.capsule.unresolved).toBe(null);
+  });
+
+  it('routes default pinned mutations through the correlated Studio bridge instead of the parent store', async () => {
+    const bridgeRequest = vi.fn(async () => ({ok: true, reason: null}));
+    const ops = createTimelineCapsuleTooltipOps(
+      request({region: 'outline', loopId: 'loop-7'}),
+      bridgeRequest,
+      {
+        promptDestinationStart: () => 40,
+        promptRelinkKeyIds: () => ['key-1', 'key-2'],
+      },
+    );
+
+    await ops.duplicateLinkedLoop('loop-7', 40);
+    await ops.unlinkLoop('loop-7');
+    await ops.repairLoop('loop-7');
+    await ops.relinkLoop('loop-7', ['key-1', 'key-2']);
+
+    expect(bridgeRequest).toHaveBeenNthCalledWith(1, expect.objectContaining({kind: 'duplicate-linked-loop', loopId: 'loop-7', destinationStart: 40}));
+    expect(bridgeRequest).toHaveBeenNthCalledWith(2, expect.objectContaining({kind: 'unlink-loop', loopId: 'loop-7'}));
+    expect(bridgeRequest).toHaveBeenNthCalledWith(3, expect.objectContaining({kind: 'repair-loop', loopId: 'loop-7'}));
+    expect(bridgeRequest).toHaveBeenNthCalledWith(4, expect.objectContaining({kind: 'relink-loop', loopId: 'loop-7', sourceKeyIds: ['key-1', 'key-2']}));
   });
 });
