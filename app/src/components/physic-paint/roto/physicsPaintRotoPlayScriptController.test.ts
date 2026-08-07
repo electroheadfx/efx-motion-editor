@@ -2,7 +2,7 @@ import { signal } from '@preact/signals';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult } from '../../../types/physicPaint';
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
-import { createRotoPlayScriptController, type RotoPlayScriptCommitResult, type RotoPlayScriptControllerPorts } from './physicsPaintRotoPlayScriptController';
+import { createRotoPlayScriptController, type RotoPlayScriptCommitResult, type RotoPlayScriptControllerPorts, type RotoPlayScriptSourceCycleMatchInput } from './physicsPaintRotoPlayScriptController';
 
 // Preact hook shims for the REAL useRotoPhysicalEditHistory hook driven by the
 // HOLD-03 one-history-command case below (same idiom as the hook's own spec).
@@ -81,6 +81,8 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
     interpolationMode: publication.interpolationMode,
     selectedKeyId: publication.selectedKeyId,
     selectedAppFrame: publication.selectedAppFrame,
+    // 43-06: the parent echoes the submitted loopClips collection when present.
+    ...(publication.loopClips ? { loopClips: publication.loopClips } : {}),
   }));
   const stopPlayback = vi.fn(); const log = vi.fn();
   const ports: RotoPlayScriptControllerPorts = {
@@ -1561,7 +1563,11 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       overrideColor: null,
       start: 20,
     };
-    const find = (test: ReturnType<typeof loopOpHarness>, input = baseInput, loopClips: readonly PhysicPaintRotoLoopClip[] = [loopClip('L1', 10, 3)]) =>
+    const find = (
+      test: ReturnType<typeof loopOpHarness>,
+      input: Omit<RotoPlayScriptSourceCycleMatchInput, 'loopClips' | 'identities'> = baseInput,
+      loopClips: readonly PhysicPaintRotoLoopClip[] = [loopClip('L1', 10, 3)],
+    ) =>
       test.controller.findIdenticalSourceCycle({ ...input, loopClips, identities });
 
     it('matches on (scriptId, mode, cycleLength, motion, overrideColor) and reports the linked loop count', () => {
@@ -1754,7 +1760,8 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
     it('rejects an unsafe cycle × repeat product against the fixed cycle length', async () => {
       const test = loopOpHarness([loopClip('L1', 10, 3)]);
       await test.controller.openLoopEdit('L1');
-      test.controller.repeatText.value = '9999999999999999999';
+      // A safe integer beyond floor(MAX_SAFE_INTEGER / 5) trips the product bound.
+      test.controller.repeatText.value = '1801439850948199';
       expect(test.controller.repeatError.value).toBe('Repeat is too large for this cycle length.');
       expect(test.controller.loopReadout.value).toBeNull(); // never NaN, never an overflow product
       expect(await test.controller.confirm()).toBe(false);

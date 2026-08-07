@@ -14,7 +14,7 @@ import {
   type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
-import { derivePhysicPaintRotoLoopShortenPreflight } from './physicsPaintRotoPhysicalResolver';
+import { derivePhysicPaintRotoLoopRanges, derivePhysicPaintRotoLoopShortenPreflight } from './physicsPaintRotoPhysicalResolver';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 import { renderRotoPlayScriptFrames } from './physicsPaintRotoPlayScriptRenderer';
 import { isRotoPngDataUrl } from './rotoCanvasFrames';
@@ -22,6 +22,22 @@ import { isRotoPngDataUrl } from './rotoCanvasFrames';
 export type RotoPlayScriptPhase = 'idle' | 'preparing' | 'rendering' | 'committing' | 'regenerating' | 'complete' | 'cancelled' | 'failed';
 
 export type RotoPlayScriptMode = 'progressive' | 'static';
+
+/** 43-06 dialog modes (D-01/D-02): apply is the Phase 42 generation surface. */
+export type RotoPlayScriptDialogMode = 'apply' | 'loop-edit' | 'source-edit';
+
+/** Uniform result for the atomic loop ops — a rejection always names its reason. */
+export interface RotoPlayScriptLoopOpResult {
+  readonly ok: boolean;
+  readonly reason: string | null;
+}
+
+/** S4 match result (D-05, Q2): the existing identical source cycle. */
+export interface RotoPlayScriptIdenticalSourceCycle {
+  readonly sourceKeyIds: readonly string[];
+  readonly loopCount: number;
+  readonly sourceStart: number;
+}
 
 export type RotoPlayScriptSemanticDelta = Extract<
   PhysicPaintRotoPhysicalEditSemanticDelta,
@@ -35,8 +51,14 @@ export interface RotoPlayScriptPhysicalPublication {
   readonly interpolationEnabled: boolean;
   readonly interpolationMode: PhysicPaintRotoAuthorityResult['interpolationMode'];
   readonly semanticDelta: RotoPlayScriptSemanticDelta;
-  readonly selectedKeyId: string;
-  readonly selectedAppFrame: number;
+  readonly selectedKeyId: string | null;
+  readonly selectedAppFrame: number | null;
+  /**
+   * Complete staged Loop Clip collection (43-06). Present exactly when the op
+   * changes loop state (apply-time loop creation, Update/Unlink/Duplicate/
+   * Repair/Relink); absent preserves the layer's current collection.
+   */
+  readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
 }
 
 export type RotoPlayScriptCommitResult =
@@ -46,13 +68,26 @@ export type RotoPlayScriptCommitResult =
       readonly acceptedRevision: string;
       readonly records: readonly PhysicPaintRotoRealKeyRecord[];
       readonly interpolationMode: PhysicPaintRotoAuthorityResult['interpolationMode'];
-      readonly selectedKeyId: string;
-      readonly selectedAppFrame: number;
+      readonly selectedKeyId: string | null;
+      readonly selectedAppFrame: number | null;
+      /** Echo of the submitted loopClips collection when the publication carried one. */
+      readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
     }
   | { readonly ok: false; readonly error: string };
 
-export interface RotoPlayScriptControllerPorts {
-  library: RotoScriptLibraryController;
+/** Q2 matching input for the S4 identical-source-cycle query. */
+export interface RotoPlayScriptSourceCycleMatchInput {
+  readonly scriptId: string;
+  readonly mode: RotoPlayScriptMode;
+  readonly cycleLength: number;
+  readonly motion: { readonly deformation: number; readonly position: number };
+  readonly overrideColor: string | null;
+  readonly start: number;
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly identities: readonly PhysicPaintRotoKeyIdentity[];
+}
+
+export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryController;
   getLaunchContext: () => PhysicPaintLaunchContext | null;
   getSelection: () => { kind: RotoTimelineSelectionKind; keyId: string | null; appFrame: number };
   getMotion: () => { deformation: number; position: number };
@@ -104,6 +139,31 @@ export interface RotoPlayScriptController {
   status: Signal<string | null>;
   error: Signal<string | null>;
   canCancel: ReadonlySignal<boolean>;
+  // --- 43-06 loop modes and loop ops (D-01/D-02/D-03/D-05/D-10/D-31) ---
+  /** Active dialog mode; 'apply' is the Phase 42 generation surface. */
+  dialogMode: Signal<RotoPlayScriptDialogMode>;
+  /** Target Loop Clip identity for loop-edit/source-edit; null in apply mode. */
+  loopEditTargetId: Signal<string | null>;
+  /** The resolved target record from the durable collection (null when absent). */
+  loopEditTarget: ReadonlySignal<PhysicPaintRotoLoopClip | null>;
+  /** Resolved first source-key frame of the target loop; null when dangling. */
+  loopEditSourceStart: ReadonlySignal<number | null>;
+  /** Loops sharing the target's source cycle (target included) — the S3 {N}. */
+  sourceEditSharedLoopCount: ReadonlySignal<number>;
+  /** True when the apply draft expresses loop intent (repeat > 1 or Infinity). */
+  loopIntentActive: ReadonlySignal<boolean>;
+  /** S4 match — non-null only in apply mode with loop intent and an identical cycle. */
+  identicalSourceCycle: ReadonlySignal<RotoPlayScriptIdenticalSourceCycle | null>;
+  /** S4 selection; consulted only when identicalSourceCycle is non-null. */
+  linkChoice: Signal<'link' | 'create'>;
+  openLoopEdit: (loopId: string) => Promise<RotoPlayScriptLoopOpResult>;
+  openSourceEdit: (loopId: string) => Promise<RotoPlayScriptLoopOpResult>;
+  repairLoop: (loopId: string) => Promise<RotoPlayScriptLoopOpResult>;
+  updateLoop: () => Promise<boolean>;
+  unlinkLoop: (loopId: string) => Promise<RotoPlayScriptLoopOpResult>;
+  duplicateLinkedLoop: (loopId: string, destinationStart: number) => Promise<RotoPlayScriptLoopOpResult>;
+  relinkLoop: (loopId: string, targetKeyIds: readonly string[]) => Promise<RotoPlayScriptLoopOpResult>;
+  findIdenticalSourceCycle: (input: RotoPlayScriptSourceCycleMatchInput) => RotoPlayScriptIdenticalSourceCycle | null;
   openConfirmation: () => Promise<void>;
   closeConfirmation: () => void;
   confirm: () => Promise<boolean>;
@@ -132,6 +192,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const progress = signal<{ completed: number; total: number } | null>(null);
   const status = signal<string | null>(null);
   const error = signal<string | null>(null);
+  // 43-06 loop modes (D-01/D-02): apply is the default Phase 42 surface.
+  const dialogMode = signal<RotoPlayScriptDialogMode>('apply');
+  const loopEditTargetId = signal<string | null>(null);
+  const sourceEditRepairId = signal<string | null>(null);
+  const linkChoice = signal<'link' | 'create'>('link');
   let generation = 0;
   let abortController: AbortController | null = null;
   let disposed = false;
@@ -186,6 +251,32 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return `This operation will shorten ${preflight.affectedLoopCount} linked loop(s), starting at frame ${preflight.earliestShortenFrame}.`;
   });
   const loopReadout = computed(() => {
+    // 43-06 (Pitfall 4): loop-edit mode derives Requested/Effective from the
+    // shared 43-02 interval derivation with the DRAFT repeat substituted —
+    // never controller-local boundary math.
+    if (dialogMode.value === 'loop-edit') {
+      const target = loopEditTarget.value;
+      const snapshot = loopPreflightSnapshot.value;
+      if (!target || !snapshot) return null;
+      const cycle = target.sourceKeyIds.length;
+      const draftRepeat: number | 'infinity' | null = infinity.value ? 'infinity' : parsedRepeat.value.count;
+      if (draftRepeat === null) return null;
+      const loopClips = currentLoopClips().map((clip) => (clip.loopId === target.loopId ? { ...clip, repeat: draftRepeat } : clip));
+      const context = derivePhysicPaintRotoLoopRanges({
+        identities: snapshot.identities,
+        loopClips,
+        parentEndExclusive: snapshot.parentEndExclusive,
+        capacity: snapshot.capacity,
+      });
+      const range = context.ranges.find((entry) => entry.loopId === target.loopId);
+      if (!range) return null;
+      const effective = range.effectiveEnd - range.placementStart;
+      if (draftRepeat === 'infinity') return `Cycle ${cycle}f × ∞ · Effective: ${effective}f`;
+      const requested = cycle * draftRepeat;
+      return range.truncated
+        ? `Requested: ${requested}f (${cycle}f × ${draftRepeat}) · Effective: ${effective}f — shortened by the next clip`
+        : `Requested: ${requested}f (${cycle}f × ${draftRepeat}) · Effective: ${effective}f`;
+    }
     const cycle = parsedCount.value.count;
     const start = canonicalStart.value;
     const layerEnd = layerEndExclusive.value;
@@ -200,6 +291,72 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       ? `Requested: ${requested}f (${cycle}f × ${repeat}) · Effective: ${requested}f`
       : `Requested: ${requested}f (${cycle}f × ${repeat}) · Effective: ${effective}f — shortened by the next clip`;
   });
+
+  // --- 43-06 loop-mode computeds ---
+  const loopEditTarget = computed(() => {
+    const id = loopEditTargetId.value;
+    if (!id) return null;
+    return currentLoopClips().find((clip) => clip.loopId === id) ?? null;
+  });
+  const loopEditSourceStart = computed(() => {
+    const target = loopEditTarget.value;
+    const snapshot = loopPreflightSnapshot.value;
+    if (!target || !snapshot) return null;
+    const identity = snapshot.identities.find((entry) => entry.keyId === target.sourceKeyIds[0]);
+    return identity ? identity.appFrame : null;
+  });
+  const sourceEditSharedLoopCount = computed(() => {
+    const target = loopEditTarget.value;
+    if (!target) return 0;
+    return currentLoopClips().filter((clip) => sameOrderedIds(clip.sourceKeyIds, target.sourceKeyIds)).length;
+  });
+  const loopIntentActive = computed(() => infinity.value || (parsedRepeat.value.count !== null && parsedRepeat.value.count > 1));
+  const identicalSourceCycle = computed<RotoPlayScriptIdenticalSourceCycle | null>(() => {
+    if (dialogMode.value !== 'apply' || !loopIntentActive.value) return null;
+    const selectedId = ports.library.selectedId.value;
+    const start = canonicalStart.value;
+    const cycleLength = parsedCount.value.count;
+    const snapshot = loopPreflightSnapshot.value;
+    if (!selectedId || start === null || cycleLength === null || !snapshot) return null;
+    const draftOverride = overrideEnabled.value ? normalizeBrushColor(ports.getBrushColor()) : null;
+    return findIdenticalSourceCycle({
+      scriptId: selectedId,
+      mode: mode.value,
+      cycleLength,
+      motion: dialogMotion.value,
+      overrideColor: draftOverride,
+      start,
+      loopClips: currentLoopClips(),
+      identities: snapshot.identities,
+    });
+  });
+
+  function currentLoopClips(): readonly PhysicPaintRotoLoopClip[] {
+    return ports.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
+  }
+
+  function findIdenticalSourceCycle(input: RotoPlayScriptSourceCycleMatchInput): RotoPlayScriptIdenticalSourceCycle | null {
+    const frameByKeyId = new Map(input.identities.map((entry) => [entry.keyId, entry.appFrame]));
+    const motionZero = input.motion.deformation === 0 && input.motion.position === 0;
+    for (const clip of input.loopClips) {
+      if (clip.scriptId === undefined || !clip.motion) continue; // no provenance → never matches
+      if (clip.scriptId !== input.scriptId) continue;
+      if (clip.mode !== input.mode) continue;
+      if (clip.sourceKeyIds.length !== input.cycleLength) continue;
+      if (clip.motion.deformation !== input.motion.deformation || clip.motion.position !== input.motion.position) continue;
+      if ((clip.overrideColor ?? null) !== input.overrideColor) continue;
+      const frames = clip.sourceKeyIds.map((keyId) => frameByKeyId.get(keyId));
+      if (frames.some((frame) => frame === undefined)) continue; // never link to an unresolved cycle
+      const sourceStart = frames[0]!;
+      // Pitfall 6: with Motion nonzero the held-pose transform is seeded by the
+      // absolute destination frame, so only a cycle generated AT this start is
+      // pixel-identical; with Motion 0/0 the transform is identity.
+      if (!motionZero && sourceStart !== input.start) continue;
+      const loopCount = input.loopClips.filter((candidate) => sameOrderedIds(candidate.sourceKeyIds, clip.sourceKeyIds)).length;
+      return { sourceKeyIds: Object.freeze([...clip.sourceKeyIds]), loopCount, sourceStart };
+    }
+    return null;
+  }
 
   // D-15: first-time Static / Hold defaults apply once per session; later mode switches keep session values.
   let staticDefaultsApplied = false;
@@ -253,6 +410,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         parentEndExclusive: authority.layerEndExclusive,
         capacity: authority.physicalCapacity,
       };
+      // 43-06: every apply-mode open resets the loop-mode state.
+      dialogMode.value = 'apply';
+      loopEditTargetId.value = null;
+      sourceEditRepairId.value = null;
+      linkChoice.value = 'link';
       countText.value = 'Max';
       dialogMotion.value = { ...ports.getMotion() };
       if (!hasSuccessfulGeneration) {
@@ -266,13 +428,315 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     } catch (cause) { fail(cause); }
   }
 
+  // --- 43-06 loop-edit / source-edit opens (D-01/D-02/D-31) ---
+
+  function loopOpGuard(): string | null {
+    if (disposed) return 'The Play Script controller is disposed.';
+    if (ports.getOperationLocked() || isBusyPhase(phase.peek())) return 'Finish the current Roto operation.';
+    const context = ports.getLaunchContext();
+    if (!context?.project?.saved) return 'Save the project first.';
+    return null;
+  }
+
+  function rejectLoopOp(reason: string): RotoPlayScriptLoopOpResult {
+    phase.value = 'idle'; status.value = null;
+    error.value = null;
+    ports.log(reason, true);
+    return { ok: false, reason };
+  }
+
+  /** Shared prefill for the two edit modes (D-01/D-02 locked field semantics). */
+  function prefillEditMode(loop: PhysicPaintRotoLoopClip, authority: PhysicPaintRotoAuthorityResult, destination: number, mode_: RotoPlayScriptDialogMode, repair: boolean): void {
+    loopPreflightSnapshot.value = {
+      identities: authority.physicalRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+      parentEndExclusive: authority.layerEndExclusive,
+      capacity: authority.physicalCapacity,
+    };
+    canonicalStart.value = destination;
+    capacity.value = authority.capacity;
+    layerEndExclusive.value = authority.layerEndExclusive;
+    // mode first: the Static / Hold first-time defaults effect fires synchronously
+    // on the mode write, so the prefill assignments below always land after it.
+    mode.value = loop.mode;
+    dialogMode.value = mode_;
+    loopEditTargetId.value = loop.loopId;
+    sourceEditRepairId.value = repair ? loop.loopId : null;
+    linkChoice.value = 'link';
+    countText.value = String(loop.sourceKeyIds.length);
+    if (loop.motion) dialogMotion.value = { ...loop.motion };
+    overrideEnabled.value = (loop.overrideColor ?? null) !== null;
+    if (loop.repeat === 'infinity') {
+      infinity.value = true; // repeatText keeps the preserved finite draft (Pitfall 7)
+    } else {
+      infinity.value = false;
+      repeatText.value = String(loop.repeat);
+      lastFiniteRepeat.value = String(loop.repeat);
+    }
+  }
+
+  async function openLoopEdit(loopId: string): Promise<RotoPlayScriptLoopOpResult> {
+    const guard = loopOpGuard();
+    if (guard) return { ok: false, reason: guard };
+    const loop = currentLoopClips().find((clip) => clip.loopId === loopId);
+    if (!loop) return rejectLoopOp(`Loop Clip "${loopId}" no longer exists.`);
+    ports.stopPlayback();
+    phase.value = 'preparing'; status.value = 'Preparing Loop Clip…'; error.value = null;
+    try {
+      const authority = await ports.requestAuthority(nextOperationId('loop-edit'), loop.placementStart);
+      if (!authority.ok) throw new Error(authority.error ?? 'Parent authority is unavailable.');
+      prefillEditMode(loop, authority, loop.placementStart, 'loop-edit', false);
+      confirmationOpen.value = true;
+      phase.value = 'idle'; status.value = `Loop Clip · F${loop.placementStart} · Cycle ${loop.sourceKeyIds.length}f`;
+      return { ok: true, reason: null };
+    } catch (cause) {
+      fail(cause);
+      return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
+    }
+  }
+
+  async function openSourceEdit(loopId: string): Promise<RotoPlayScriptLoopOpResult> {
+    const guard = loopOpGuard();
+    if (guard) return { ok: false, reason: guard };
+    const loop = currentLoopClips().find((clip) => clip.loopId === loopId);
+    if (!loop) return rejectLoopOp(`Loop Clip "${loopId}" no longer exists.`);
+    if (loop.scriptId === undefined || !loop.motion) {
+      return rejectLoopOp('This Loop Clip has no source-cycle provenance and cannot be source-edited.');
+    }
+    ports.stopPlayback();
+    phase.value = 'preparing'; status.value = 'Preparing source cycle…'; error.value = null;
+    try {
+      const authority = await ports.requestAuthority(nextOperationId('source-edit'), loop.placementStart);
+      if (!authority.ok) throw new Error(authority.error ?? 'Parent authority is unavailable.');
+      const existingKeyIds = new Set(authority.physicalRecords.map((record) => record.keyId));
+      if (loop.sourceKeyIds.some((keyId) => !existingKeyIds.has(keyId))) {
+        return rejectLoopOp('This Loop Clip references missing source frames. Use Repair loop to regenerate the source cycle.');
+      }
+      const sourceStart = authority.physicalRecords.find((record) => record.keyId === loop.sourceKeyIds[0])!.appFrame;
+      prefillEditMode(loop, authority, sourceStart, 'source-edit', false);
+      confirmationOpen.value = true;
+      phase.value = 'idle'; status.value = `Source cycle · F${sourceStart} · Cycle ${loop.sourceKeyIds.length}f`;
+      return { ok: true, reason: null };
+    } catch (cause) {
+      fail(cause);
+      return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
+    }
+  }
+
+  async function repairLoop(loopId: string): Promise<RotoPlayScriptLoopOpResult> {
+    const guard = loopOpGuard();
+    if (guard) return { ok: false, reason: guard };
+    const loop = currentLoopClips().find((clip) => clip.loopId === loopId);
+    if (!loop) return rejectLoopOp(`Loop Clip "${loopId}" no longer exists.`);
+    if (loop.scriptId === undefined || !loop.motion) {
+      return rejectLoopOp('This Loop Clip has no source-cycle provenance and cannot be repaired.');
+    }
+    ports.stopPlayback();
+    phase.value = 'preparing'; status.value = 'Preparing loop repair…'; error.value = null;
+    try {
+      const authority = await ports.requestAuthority(nextOperationId('repair'), loop.placementStart);
+      if (!authority.ok) throw new Error(authority.error ?? 'Parent authority is unavailable.');
+      // Fail-closed (guarded-operation precedent): the regeneration destination
+      // must not overlap real keys this loop does not own — the unresolved
+      // record stays verbatim on rejection (D-31).
+      const cycleLength = loop.sourceKeyIds.length;
+      const owned = new Set(loop.sourceKeyIds);
+      const overlap = authority.physicalRecords.filter((record) => record.appFrame >= loop.placementStart
+        && record.appFrame < loop.placementStart + cycleLength
+        && !owned.has(record.keyId));
+      if (overlap.length > 0) {
+        return rejectLoopOp(`Repair destination F${loop.placementStart}–F${loop.placementStart + cycleLength - 1} overlaps ${overlap.length} real key(s) not owned by this loop. Move or delete them first.`);
+      }
+      prefillEditMode(loop, authority, loop.placementStart, 'source-edit', true);
+      confirmationOpen.value = true;
+      phase.value = 'idle'; status.value = `Repair loop · F${loop.placementStart} · Cycle ${cycleLength}f`;
+      return { ok: true, reason: null };
+    } catch (cause) {
+      fail(cause);
+      return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
+    }
+  }
+
+  // --- 43-06 atomic loop ops through the ONE existing commit port (D-03/D-05/D-10/D-31) ---
+
+  function resolvePublicationSelection(authority: PhysicPaintRotoAuthorityResult): { selectedKeyId: string | null; selectedAppFrame: number | null } {
+    const selection = ports.getSelection();
+    if (selection.kind === 'real-key' && selection.keyId) {
+      const record = authority.physicalRecords.find((entry) => entry.keyId === selection.keyId && entry.appFrame === selection.appFrame);
+      if (record) return { selectedKeyId: record.keyId, selectedAppFrame: record.appFrame };
+    }
+    return { selectedKeyId: null, selectedAppFrame: null };
+  }
+
+  function buildLoopOnlyPublication(input: {
+    authority: PhysicPaintRotoAuthorityResult;
+    anchor: number;
+    loopClips: readonly PhysicPaintRotoLoopClip[];
+    expectedLaunch: RotoPlayScriptPhysicalPublication['expectedLaunch'];
+  }): RotoPlayScriptPhysicalPublication {
+    const { authority, anchor, loopClips, expectedLaunch } = input;
+    const records = authority.physicalRecords.map((record) => ({
+      kind: 'real-key' as const,
+      keyId: record.keyId,
+      appFrame: record.appFrame,
+      payload: clonePhysicalPayload(record.payload),
+    }));
+    const selection = resolvePublicationSelection(authority);
+    return {
+      expectedLaunch,
+      expectedRevision: authority.physicalRevision,
+      records,
+      interpolationEnabled: authority.interpolationEnabled,
+      interpolationMode: authority.interpolationMode,
+      semanticDelta: {
+        kind: 'play-script',
+        // Empty affected range convention: the op changes loop state only.
+        affectedStartAppFrame: anchor,
+        affectedEndAppFrame: anchor - 1,
+        expectedLayerCapacity: authority.physicalCapacity,
+        expectedLayerEndExclusive: authority.layerEndExclusive,
+        proposedRecords: records.map(toPhysicalEditRecord),
+        freshKeyIds: [],
+        loopOnly: true,
+      },
+      selectedKeyId: selection.selectedKeyId,
+      selectedAppFrame: selection.selectedAppFrame,
+      loopClips,
+    };
+  }
+
+  async function runLoopOp(
+    loopId: string,
+    prepare: (loop: PhysicPaintRotoLoopClip, authority: PhysicPaintRotoAuthorityResult) => readonly PhysicPaintRotoLoopClip[] | string,
+    statusLine: string,
+  ): Promise<RotoPlayScriptLoopOpResult> {
+    const guard = loopOpGuard();
+    if (guard) return { ok: false, reason: guard };
+    const loop = currentLoopClips().find((clip) => clip.loopId === loopId);
+    if (!loop) return rejectLoopOp(`Loop Clip "${loopId}" no longer exists.`);
+    const context = ports.getLaunchContext()!;
+    ports.stopPlayback();
+    phase.value = 'preparing'; status.value = statusLine; error.value = null;
+    try {
+      const authority = await ports.requestAuthority(nextOperationId('loop-op'), loop.placementStart);
+      if (!authority.ok) throw new Error(authority.error ?? 'Parent authority is unavailable.');
+      const prepared = prepare(loop, authority);
+      if (typeof prepared === 'string') return rejectLoopOp(prepared);
+      const publication = buildLoopOnlyPublication({
+        authority,
+        anchor: loop.placementStart,
+        loopClips: prepared,
+        expectedLaunch: { operationId: context.operationId, layerId: context.layerId },
+      });
+      phase.value = 'committing'; status.value = statusLine;
+      const result = await ports.commit(publication);
+      if (!result.ok) throw new Error(result.error || 'Parent rejected the Loop Clip operation.');
+      assertPublicationAck(publication, result);
+      phase.value = 'complete'; status.value = statusLine;
+      ports.log(statusLine);
+      return { ok: true, reason: null };
+    } catch (cause) {
+      fail(cause);
+      return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
+    }
+  }
+
+  async function updateLoop(): Promise<boolean> {
+    const target = loopEditTarget.peek();
+    if (dialogMode.peek() !== 'loop-edit' || !target) return false;
+    if (loopOpGuard() !== null || repeatError.peek() !== null) return false;
+    const draftRepeat: number | 'infinity' | null = infinity.peek() ? 'infinity' : parsedRepeat.peek().count;
+    if (draftRepeat === null) return false;
+    if (draftRepeat === target.repeat) { closeConfirmation(); return true; } // no phantom history entry
+    const cycle = target.sourceKeyIds.length;
+    const result = await runLoopOp(
+      target.loopId,
+      (loop) => currentLoopClips().map((clip) => (clip.loopId === loop.loopId ? { ...clip, repeat: draftRepeat } : clip)),
+      `Loop updated · Cycle ${cycle}f × ${draftRepeat === 'infinity' ? '∞' : draftRepeat}`,
+    );
+    if (result.ok) confirmationOpen.value = false;
+    return result.ok;
+  }
+
+  function unlinkLoop(loopId: string): Promise<RotoPlayScriptLoopOpResult> {
+    return runLoopOp(
+      loopId,
+      (loop) => currentLoopClips().filter((clip) => clip.loopId !== loop.loopId),
+      'Loop Clip unlinked — source keys remain ordinary Roto keys.',
+    );
+  }
+
+  async function duplicateLinkedLoop(loopId: string, destinationStart: number): Promise<RotoPlayScriptLoopOpResult> {
+    if (!Number.isSafeInteger(destinationStart) || destinationStart < 0) {
+      return { ok: false, reason: 'Choose a non-negative integer destination start frame.' };
+    }
+    return runLoopOp(
+      loopId,
+      (loop, authority) => {
+        const clips = currentLoopClips();
+        // D-14: same-start collisions compare placementStart — never hidden order.
+        if (clips.some((clip) => clip.placementStart === destinationStart)) {
+          return `Another Loop Clip already starts at frame ${destinationStart}.`;
+        }
+        const context = derivePhysicPaintRotoLoopRanges({
+          identities: authority.physicalRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+          loopClips: clips,
+          parentEndExclusive: authority.layerEndExclusive,
+          capacity: authority.physicalCapacity,
+        });
+        const container = context.ranges.find((range) => range.placementStart < destinationStart && destinationStart < range.effectiveEnd);
+        if (container) {
+          return `Frame ${destinationStart} lies inside the effective range of another Loop Clip. Choose a destination outside every loop's effective range.`;
+        }
+        const duplicate: PhysicPaintRotoLoopClip = {
+          ...loop,
+          loopId: createPhysicPaintRotoKeyId(),
+          placementStart: destinationStart,
+          sourceKeyIds: Object.freeze([...loop.sourceKeyIds]),
+        };
+        return Object.freeze([...clips, duplicate]);
+      },
+      'Linked loop duplicated — shares the existing source cycle.',
+    );
+  }
+
+  function relinkLoop(loopId: string, targetKeyIds: readonly string[]): Promise<RotoPlayScriptLoopOpResult> {
+    if (!Array.isArray(targetKeyIds) || targetKeyIds.length === 0 || targetKeyIds.some((keyId) => typeof keyId !== 'string' || keyId.length === 0)) {
+      return Promise.resolve({ ok: false, reason: 'Choose a non-empty existing source cycle to relink to.' });
+    }
+    return runLoopOp(
+      loopId,
+      (loop, authority) => {
+        const existing = new Set(authority.physicalRecords.map((record) => record.keyId));
+        const missing = targetKeyIds.filter((keyId) => !existing.has(keyId));
+        if (missing.length > 0) {
+          return `Relink target contains keyId(s) that are not real Roto keys on this Paint layer: ${missing.join(', ')}.`;
+        }
+        // D-30: cycle length and requested duration re-derive from the new
+        // sourceKeyIds; no source key or asset is modified (D-31).
+        return currentLoopClips().map((clip) => (clip.loopId === loop.loopId ? { ...clip, sourceKeyIds: Object.freeze([...targetKeyIds]) } : clip));
+      },
+      'Loop Clip relinked to the chosen source cycle.',
+    );
+  }
+
   async function confirm(): Promise<boolean> {
-    const selectedId = ports.library.selectedId.peek();
+    if (dialogMode.peek() === 'loop-edit') return updateLoop();
+    return confirmGeneration();
+  }
+  async function confirmGeneration(): Promise<boolean> {
+    const isSourceEdit = dialogMode.peek() === 'source-edit';
+    const editTarget = isSourceEdit ? loopEditTarget.peek() : null;
+    const repairId = isSourceEdit ? sourceEditRepairId.peek() : null;
+    // Source-edit/repair render the PROVENANCE script (D-02/D-31); apply renders the library selection.
+    const selectedId = isSourceEdit ? (editTarget?.scriptId ?? null) : ports.library.selectedId.peek();
     const context = ports.getLaunchContext();
     const start = canonicalStart.peek();
     const count = parsedCount.peek().count;
     const startingSelection = ports.getSelection();
-    if (disposed || !selectedId || !context?.project || start === null || count === null || repeatError.peek() !== null || disabledReason.peek() || startingSelection.appFrame !== start) return false;
+    if (disposed || !selectedId || !context?.project || start === null || count === null || repeatError.peek() !== null) return false;
+    if (isSourceEdit) {
+      if (!editTarget || loopOpGuard() !== null) return false;
+    } else if (disabledReason.peek() || startingSelection.appFrame !== start) return false;
 
     const acceptedGeneration = ++generation;
     abortController = new AbortController();
@@ -282,14 +746,59 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const authority = await ports.requestAuthority(nextOperationId('confirm'), start);
       assertCurrent(acceptedGeneration);
       if (!authority.ok || count > authority.capacity) throw new Error(authority.error ?? 'Requested frame count exceeds current capacity.');
-      const snapshot = await ports.library.loadSnapshot(selectedId);
-      assertCurrent(acceptedGeneration);
-      if (!snapshot || ports.library.selectedId.peek() !== selectedId) throw new Error('Selected script changed or could not be reloaded.');
       const motion = { ...dialogMotion.peek() };
       const renderMode = mode.peek();
       // D-08R: snapshot the CURRENT brush color via the port at confirm time. Later brush-color
       // changes never retroactively alter generated frames or the success-only summary.
       const renderOverrideColor = resolveOverrideColor();
+
+      // 43-06 S4 (D-05): Link to existing cycle — one loop-only atomic commit,
+      // NO regeneration; the new Loop Clip shares the matched sourceKeyIds.
+      // The branch engages only when the S4 choice was actually offered.
+      if (!isSourceEdit && linkChoice.peek() === 'link' && loopIntentActive.peek() && identicalSourceCycle.peek() !== null) {
+        const freshMatch = findIdenticalSourceCycle({
+          scriptId: selectedId,
+          mode: renderMode,
+          cycleLength: count,
+          motion,
+          overrideColor: renderOverrideColor,
+          start,
+          loopClips: currentLoopClips(),
+          identities: authority.physicalRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+        });
+        if (!freshMatch) throw new Error('The identical source cycle changed before commit.');
+        const linkedLoop: PhysicPaintRotoLoopClip = {
+          loopId: createPhysicPaintRotoKeyId(),
+          placementStart: start,
+          sourceKeyIds: freshMatch.sourceKeyIds,
+          repeat: infinity.peek() ? 'infinity' : parsedRepeat.peek().count!,
+          mode: renderMode,
+          scriptId: selectedId,
+          motion: { ...motion },
+          overrideColor: renderOverrideColor,
+        };
+        const publication = buildLoopOnlyPublication({
+          authority,
+          anchor: start,
+          loopClips: Object.freeze([...currentLoopClips(), linkedLoop]),
+          expectedLaunch: { operationId: context.operationId, layerId: context.layerId },
+        });
+        phase.value = 'committing'; status.value = 'Linking Loop Clip…'; abortController = null;
+        const result = await ports.commit(publication);
+        assertCurrent(acceptedGeneration);
+        if (!result.ok) throw new Error(result.error || 'Parent rejected the Loop Clip link.');
+        assertPublicationAck(publication, result);
+        const appliedSummary = composeAppliedSummary({ mode: renderMode, overrideColor: renderOverrideColor, motion, start, count });
+        appliedSummaryLine1.value = appliedSummary.line1;
+        appliedSummaryLine2.value = `F${start} · Linked to the existing source cycle · Cycle ${count}f × ${infinity.peek() ? '∞' : parsedRepeat.peek().count}`;
+        hasSuccessfulGeneration = true;
+        phase.value = 'complete'; progress.value = null; status.value = 'Loop Clip linked';
+        confirmationOpen.value = false; ports.log(status.value); return true;
+      }
+
+      const snapshot = await ports.library.loadSnapshot(selectedId);
+      assertCurrent(acceptedGeneration);
+      if (!snapshot || (!isSourceEdit && ports.library.selectedId.peek() !== selectedId)) throw new Error('Selected script changed or could not be reloaded.');
       const existingFrames = new Map(authority.frames.map((frame) => [frame.appFrame, frame]));
       phase.value = 'rendering'; progress.value = { completed: 0, total: count }; status.value = `Rendering 0 / ${count}`;
       const staged = await renderRotoPlayScriptFrames({
@@ -314,32 +823,86 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         capacity: commitAuthority.physicalCapacity,
       };
       const currentSelection = ports.getSelection();
-      if (
+      if (!isSourceEdit && (
         ports.library.selectedId.peek() !== selectedId
         || currentSelection.kind === 'generated-interpolation'
         || currentSelection.appFrame !== start
         || currentSelection.keyId !== startingSelection.keyId
-      ) throw new Error('Play Script start, physical key identity, or selected preset changed before commit.');
-      const publication = buildPhysicalPublication({
+      )) throw new Error('Play Script start, physical key identity, or selected preset changed before commit.');
+      const basePublication = buildPhysicalPublication({
         authority: commitAuthority,
         staged,
         start,
         count,
         expectedLaunch: { operationId: context.operationId, layerId: context.layerId },
       });
+      // 43-06: loop state rides the SAME staged publication (HOLD-03 — no
+      // second commit path). The committed cycle keyIds are the records in the
+      // affected range in frame order (occupied destinations keep identities).
+      const cycleKeyIds = basePublication.records
+        .filter((record) => record.appFrame >= start && record.appFrame <= start + count - 1)
+        .map((record) => record.keyId);
+      let loopClips: readonly PhysicPaintRotoLoopClip[] | undefined;
+      if (repairId) {
+        // D-31 repair: regenerate + retarget the loop's sourceKeyIds atomically.
+        loopClips = currentLoopClips().map((clip) => (clip.loopId === repairId
+          ? { ...clip, sourceKeyIds: Object.freeze([...cycleKeyIds]), mode: renderMode, scriptId: selectedId, motion: { ...motion }, overrideColor: renderOverrideColor }
+          : clip));
+      } else if (isSourceEdit && editTarget) {
+        // D-02: regeneration updates EVERY linked Loop Clip referencing the
+        // source cycle — retarget to the committed cycle keyIds; the target's
+        // own repeat draft rides the same commit.
+        loopClips = currentLoopClips().map((clip) => {
+          if (!sameOrderedIds(clip.sourceKeyIds, editTarget.sourceKeyIds)) return clip;
+          const draftRepeat: number | 'infinity' | null = infinity.peek() ? 'infinity' : parsedRepeat.peek().count;
+          return {
+            ...clip,
+            sourceKeyIds: Object.freeze([...cycleKeyIds]),
+            mode: renderMode,
+            scriptId: selectedId,
+            motion: { ...motion },
+            overrideColor: renderOverrideColor,
+            ...(clip.loopId === editTarget.loopId && draftRepeat !== null ? { repeat: draftRepeat } : {}),
+          };
+        });
+      } else if (!isSourceEdit && loopIntentActive.peek()) {
+        // D-09: new loops are created via Play Script Apply — the loop
+        // references the freshly committed cycle keyIds.
+        const newLoop: PhysicPaintRotoLoopClip = {
+          loopId: createPhysicPaintRotoKeyId(),
+          placementStart: start,
+          sourceKeyIds: Object.freeze([...cycleKeyIds]),
+          repeat: infinity.peek() ? 'infinity' : parsedRepeat.peek().count!,
+          mode: renderMode,
+          scriptId: selectedId,
+          motion: { ...motion },
+          overrideColor: renderOverrideColor,
+        };
+        loopClips = Object.freeze([...currentLoopClips(), newLoop]);
+      }
+      const publication: RotoPlayScriptPhysicalPublication = isSourceEdit
+        ? {
+            ...basePublication,
+            // Opened from a Loop Clip, not a timeline selection — preserve it.
+            semanticDelta: { ...basePublication.semanticDelta, preserveSelection: true },
+            ...resolvePublicationSelection(commitAuthority),
+            ...(loopClips ? { loopClips } : {}),
+          }
+        : { ...basePublication, ...(loopClips ? { loopClips } : {}) };
       phase.value = 'committing'; status.value = 'Committing Play Script…'; abortController = null;
       const result = await ports.commit(publication);
       assertCurrent(acceptedGeneration);
       if (!result.ok) throw new Error(result.error || 'Parent rejected the Play Script batch.');
-      if (result.interpolationMode !== publication.interpolationMode
-        || result.selectedKeyId !== publication.selectedKeyId
-        || result.selectedAppFrame !== publication.selectedAppFrame
-        || !samePhysicalRecords(result.records, publication.records)) throw new Error('Parent returned a mismatched Play Script acknowledgement.');
+      assertPublicationAck(publication, result);
       // Single appliedSummary assignment site: composed atomically from the options snapshot and
       // destination actually committed for THIS generation — never from live dialog draft values.
       const appliedSummary = composeAppliedSummary({ mode: renderMode, overrideColor: renderOverrideColor, motion, start, count });
       appliedSummaryLine1.value = appliedSummary.line1;
-      appliedSummaryLine2.value = appliedSummary.line2;
+      appliedSummaryLine2.value = repairId
+        ? `F${start}–F${start + count - 1} · Loop repaired — source cycle regenerated`
+        : isSourceEdit
+          ? `F${start}–F${start + count - 1} · Source cycle regenerated · ${sourceEditSharedLoopCount.peek()} linked loop(s) updated`
+          : appliedSummary.line2;
       hasSuccessfulGeneration = true;
       phase.value = 'regenerating'; status.value = 'Regenerating interpolation…';
       ports.stopPlayback();
@@ -352,13 +915,28 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     } finally { if (generation === acceptedGeneration) abortController = null; }
   }
 
+  function assertPublicationAck(publication: RotoPlayScriptPhysicalPublication, result: Extract<RotoPlayScriptCommitResult, { ok: true }>): void {
+    if (result.interpolationMode !== publication.interpolationMode
+      || result.selectedKeyId !== publication.selectedKeyId
+      || result.selectedAppFrame !== publication.selectedAppFrame
+      || !samePhysicalRecords(result.records, publication.records)) throw new Error('Parent returned a mismatched Play Script acknowledgement.');
+    if (publication.loopClips !== undefined && !sameLoopClipCollections(result.loopClips, publication.loopClips)) {
+      throw new Error('Parent returned a mismatched Loop Clip acknowledgement.');
+    }
+  }
+
   function closeConfirmation(): void { if (!isBusyPhase(phase.peek())) confirmationOpen.value = false; }
   function cancel(): void { if (canCancel.peek()) { generation += 1; abortController?.abort(); abortController = null; } else closeConfirmation(); }
   function fail(cause: unknown): void { const message = cause instanceof Error ? cause.message : String(cause); phase.value = 'failed'; progress.value = null; status.value = 'Play Script failed'; error.value = message; ports.log(message, true); }
   function assertCurrent(expected: number): void { if (disposed || generation !== expected) throw new DOMException('Play Script generation cancelled.', 'AbortError'); }
   function nextOperationId(kind: string): string { return `roto-play-script-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
 
-  return { confirmationOpen, countText, capacity, mode, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, loopShortenPreflight, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel, openConfirmation, closeConfirmation, confirm, cancel, setInfinity, resetDialogMotion, dispose: () => { disposed = true; generation += 1; stopStaticDefaults(); abortController?.abort(); abortController = null; } };
+  return {
+    confirmationOpen, countText, capacity, mode, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, loopShortenPreflight, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel,
+    dialogMode, loopEditTargetId, loopEditTarget, loopEditSourceStart, sourceEditSharedLoopCount, loopIntentActive, identicalSourceCycle, linkChoice,
+    openLoopEdit, openSourceEdit, repairLoop, updateLoop, unlinkLoop, duplicateLinkedLoop, relinkLoop, findIdenticalSourceCycle,
+    openConfirmation, closeConfirmation, confirm, cancel, setInfinity, resetDialogMotion, dispose: () => { disposed = true; generation += 1; stopStaticDefaults(); abortController?.abort(); abortController = null; },
+  };
 }
 
 function parseCount(value: string, capacity: number): { count: number | null; error: string | null } {
@@ -533,3 +1111,30 @@ function samePhysicalRecords(
 
 function isBusyPhase(phase: RotoPlayScriptPhase): boolean { return phase === 'preparing' || phase === 'rendering' || phase === 'committing' || phase === 'regenerating'; }
 function isAbort(error: unknown): boolean { return error instanceof DOMException && error.name === 'AbortError'; }
+
+/** Ordered keyId-list equality — the source-cycle sharing identity (D-05). */
+function sameOrderedIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((keyId, index) => keyId === right[index]);
+}
+
+/** Field-exact Loop Clip collection comparison for the commit acknowledgement. */
+function sameLoopClipCollections(
+  left: readonly PhysicPaintRotoLoopClip[] | undefined,
+  right: readonly PhysicPaintRotoLoopClip[],
+): boolean {
+  if (!left || left.length !== right.length) return false;
+  return left.every((clip, index) => {
+    const candidate = right[index];
+    return candidate !== undefined
+      && clip.loopId === candidate.loopId
+      && clip.placementStart === candidate.placementStart
+      && sameOrderedIds(clip.sourceKeyIds, candidate.sourceKeyIds)
+      && clip.repeat === candidate.repeat
+      && clip.mode === candidate.mode
+      && clip.scriptId === candidate.scriptId
+      && (clip.motion === undefined) === (candidate.motion === undefined)
+      && (clip.motion === undefined
+        || (clip.motion.deformation === candidate.motion!.deformation && clip.motion.position === candidate.motion!.position))
+      && (clip.overrideColor ?? null) === (candidate.overrideColor ?? null);
+  });
+}

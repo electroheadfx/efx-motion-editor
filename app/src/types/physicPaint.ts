@@ -105,6 +105,21 @@ export type PhysicPaintRotoPhysicalEditSemanticDelta =
       readonly expectedLayerEndExclusive: number;
       readonly proposedRecords: readonly PhysicPaintRotoPhysicalEditRecord[];
       readonly freshKeyIds: readonly string[];
+      /**
+       * Phase 43-06 loop-only declaration (D-01/D-03/D-05/D-10/D-31): the op
+       * changes ONLY the Loop Clip collection (payload.loopClips required) and
+       * leaves every physical record byte-identical. Encoded as the empty
+       * affected range `affectedEndAppFrame === affectedStartAppFrame - 1`
+       * anchored at the loop's placement start; freshKeyIds is empty.
+       */
+      readonly loopOnly?: true;
+      /**
+       * Phase 43-06 source-edit/repair regeneration (D-02/D-31): records
+       * change inside the affected range but the op was opened from a Loop
+       * Clip, not from a timeline selection at the start — the current
+       * selection is preserved instead of selecting the range start.
+       */
+      readonly preserveSelection?: true;
     };
 
 /**
@@ -283,9 +298,18 @@ export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): valu
     });
   }
   if (value.kind === 'play-script') {
-    if (!hasOnlyKeys(value, ['kind', 'affectedStartAppFrame', 'affectedEndAppFrame', 'expectedLayerCapacity', 'expectedLayerEndExclusive', 'proposedRecords', 'freshKeyIds'])) return false;
-    if (!isNonNegativeInteger(value.affectedStartAppFrame) || !isNonNegativeInteger(value.affectedEndAppFrame)) return false;
-    if (value.affectedEndAppFrame < value.affectedStartAppFrame) return false;
+    if (!hasOnlyKeys(value, ['kind', 'affectedStartAppFrame', 'affectedEndAppFrame', 'expectedLayerCapacity', 'expectedLayerEndExclusive', 'proposedRecords', 'freshKeyIds', 'loopOnly', 'preserveSelection'])) return false;
+    if (!isNonNegativeInteger(value.affectedStartAppFrame)) return false;
+    if (value.loopOnly !== undefined && value.loopOnly !== true) return false;
+    if (value.preserveSelection !== undefined && value.preserveSelection !== true) return false;
+    if (value.loopOnly === true) {
+      // Empty affected range convention: affectedEnd === affectedStart - 1
+      // (may be -1 when the loop sits at frame 0).
+      if (!Number.isInteger(value.affectedEndAppFrame) || value.affectedEndAppFrame !== value.affectedStartAppFrame - 1) return false;
+    } else {
+      if (!isNonNegativeInteger(value.affectedEndAppFrame)) return false;
+      if (value.affectedEndAppFrame < value.affectedStartAppFrame) return false;
+    }
     if (!isNonNegativeInteger(value.expectedLayerCapacity) || value.expectedLayerCapacity <= 0) return false;
     if (!isNonNegativeInteger(value.expectedLayerEndExclusive) || value.expectedLayerEndExclusive <= value.affectedEndAppFrame || value.expectedLayerEndExclusive > value.expectedLayerCapacity) return false;
     if (!Array.isArray(value.proposedRecords) || !value.proposedRecords.every(isPhysicPaintRotoPhysicalEditRecord)) return false;

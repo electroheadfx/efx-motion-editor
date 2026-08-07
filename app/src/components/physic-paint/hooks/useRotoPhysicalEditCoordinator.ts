@@ -101,6 +101,7 @@ interface PendingPhysicalEditContext extends PendingPhysicPaintRotoPhysicalEdit 
   readonly historyProvenance: import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditReplayProvenance | null;
   readonly deferredRecords: readonly PhysicPaintRotoRealKeyRecord[] | null;
   readonly deferredInterpolation: PhysicPaintRotoInterpolationState | null;
+  readonly deferredLoopClips: readonly PhysicPaintRotoLoopClip[] | null;
 }
 
 export interface RotoInterpolationEnabledExecuteInput {
@@ -129,8 +130,13 @@ export interface RotoPlayScriptExecuteInput {
   readonly interpolationEnabled: boolean;
   readonly interpolationMode: PhysicPaintRotoInterpolationState['mode'];
   readonly semanticDelta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'play-script' }>;
-  readonly selectedKeyId: string;
-  readonly selectedAppFrame: number;
+  readonly selectedKeyId: string | null;
+  readonly selectedAppFrame: number | null;
+  /**
+   * Complete staged Loop Clip collection (43-06). Present when the op changes
+   * loop state; absent stages the layer's current collection unchanged.
+   */
+  readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
 }
 
 export type RotoPhysicalEditCoordinatorExecuteInput<EngineState = unknown> =
@@ -263,6 +269,10 @@ function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPa
     sourceKeyIds: [...clip.sourceKeyIds],
     repeat: clip.repeat,
     mode: clip.mode,
+    // 43-06 provenance rides every clone.
+    ...(clip.scriptId !== undefined
+      ? { scriptId: clip.scriptId, motion: { ...clip.motion! }, overrideColor: clip.overrideColor ?? null }
+      : {}),
   }));
 }
 
@@ -314,12 +324,18 @@ function validatePlayScriptInput(
   capacity: number,
 ): string | null {
   const delta = input.semanticDelta;
+  // 43-06: a loop-only declaration (empty affected range) changes loop state
+  // only; a preserveSelection declaration keeps the current selection instead
+  // of selecting the range start (source-edit/repair open from a Loop Clip).
+  const loopOnly = delta.loopOnly === true;
+  const preserveSelection = loopOnly || delta.preserveSelection === true;
   if (input.expectedRevision.length === 0
     || input.interpolationEnabled !== currentInterpolation.enabled
     || input.interpolationMode !== currentInterpolation.mode
     || delta.expectedLayerCapacity !== capacity
-    || delta.affectedStartAppFrame !== input.selectedAppFrame
-    || delta.affectedEndAppFrame < delta.affectedStartAppFrame
+    || (!preserveSelection && delta.affectedStartAppFrame !== input.selectedAppFrame)
+    || (!loopOnly && delta.affectedEndAppFrame < delta.affectedStartAppFrame)
+    || (loopOnly && delta.affectedEndAppFrame !== delta.affectedStartAppFrame - 1)
     || delta.expectedLayerEndExclusive <= delta.affectedEndAppFrame
     || delta.expectedLayerEndExclusive > capacity) return 'Play Script range, capacity, revision, or interpolation metadata is stale.';
 
@@ -364,8 +380,11 @@ function validatePlayScriptInput(
   }
   if (!stringArraysEqual(expectedFreshIds, delta.freshKeyIds)
     || new Set(delta.freshKeyIds).size !== delta.freshKeyIds.length) return 'Play Script fresh identity declaration does not match the affected empty destinations.';
-  const selected = proposedByFrame.get(input.selectedAppFrame);
-  if (!selected || selected.keyId !== input.selectedKeyId) return 'Play Script selected identity does not match the accepted start destination.';
+  if (!preserveSelection) {
+    if (input.selectedAppFrame === null || input.selectedKeyId === null) return 'Play Script selected identity does not match the accepted start destination.';
+    const selected = proposedByFrame.get(input.selectedAppFrame);
+    if (!selected || selected.keyId !== input.selectedKeyId) return 'Play Script selected identity does not match the accepted start destination.';
+  }
   return null;
 }
 
@@ -423,6 +442,7 @@ function createPendingPhysicalEdit(
   deferredTarget?: {
     readonly records: readonly PhysicPaintRotoRealKeyRecord[];
     readonly interpolation: PhysicPaintRotoInterpolationState;
+    readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
   },
 ): PendingPhysicalEditContext {
   return {
@@ -447,6 +467,7 @@ function createPendingPhysicalEdit(
           mode: deferredTarget.interpolation.mode,
         }
       : null,
+    deferredLoopClips: deferredTarget?.loopClips ? cloneLoopClips(deferredTarget.loopClips) : null,
   };
 }
 
@@ -711,6 +732,15 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         if (!replaceResult.ok) {
           finalizeFailed(pending, before, 'exception', replaceResult.error);
           return 'accepted';
+        }
+        // 43-06: a play-script commit carrying loopClips settles the staged
+        // Loop Clip collection with the deferred records (one atomic accept).
+        if (pending.deferredLoopClips) {
+          const loopResult = portsRef.current.records.replaceLoopClips(pending.layerId, pending.deferredLoopClips);
+          if (!loopResult.ok) {
+            finalizeFailed(pending, before, 'exception', loopResult.error);
+            return 'accepted';
+          }
         }
         portsRef.current.selection.setSelectedKeyId(pending.selectedKeyId);
         if (pending.selectedAppFrame !== null) {
@@ -978,12 +1008,14 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         }
         // Staged Loop Clips (Phase 43, Q1): replay stages the immutable
         // replay target's collection so Undo/Redo restores loop state; a
+        // 43-06 play-script op carrying loopClips (apply-time loop creation,
+        // Update/Unlink/Duplicate/Repair/Relink) stages its collection; a
         // rigid whole-cycle group drag stages the proposal's placementStart
         // follow (D-04); every other ordinary kind stages the current
         // collection unchanged.
         const stagedLoopClips = isReplay && replayTarget
           ? replayTarget.loopClips
-          : proposal?.nextLoopClips ?? currentLoopClips;
+          : playScriptInput?.loopClips ?? proposal?.nextLoopClips ?? currentLoopClips;
         const stagedRevision = buildPhysicPaintRotoPhysicalRevision(validatedStagedRecords, stagedInterpolation, stagedLoopClips);
         if (isReplay && (
           !historyProvenance
@@ -1024,7 +1056,12 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           payload,
           stagedRevision,
           isInterpolationChange || isPlayScript
-            ? { records: validatedStagedRecords, interpolation: stagedInterpolation }
+            ? {
+                records: validatedStagedRecords,
+                interpolation: stagedInterpolation,
+                // 43-06: loop state settles with the deferred play-script target.
+                ...(isPlayScript ? { loopClips: stagedLoopClips } : {}),
+              }
             : undefined,
         );
         beforeRef.current = before;

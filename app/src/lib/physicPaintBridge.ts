@@ -484,6 +484,11 @@ function validatePlayScriptPhysicalDelta(input: {
   const { payload, layer, currentRecords, proposedRecords, capacity, currentInterpolation } = input;
   const delta = payload.semanticDelta;
   if (!delta || delta.kind !== 'play-script') return 'Play Script physical edit is missing its exact semantic declaration.';
+  // 43-06: a loop-only declaration (empty affected range, loopClips required)
+  // changes loop state only; a preserveSelection declaration keeps the current
+  // selection (source-edit/repair open from a Loop Clip, not a selection).
+  const loopOnly = delta.loopOnly === true;
+  const preserveSelection = loopOnly || delta.preserveSelection === true;
   const remainingCapacity = getTimelineRangeFrameCount(layer, delta.affectedStartAppFrame);
   const expectedLayerEndExclusive = remainingCapacity === null
     ? null
@@ -491,12 +496,14 @@ function validatePlayScriptPhysicalDelta(input: {
   if (payload.historyProvenance !== undefined
     || payload.interpolationEnabled !== currentInterpolation.enabled
     || payload.interpolationMode !== currentInterpolation.mode
-    || payload.startFrame !== delta.affectedStartAppFrame
+    || (!preserveSelection && payload.startFrame !== delta.affectedStartAppFrame)
     || delta.expectedLayerCapacity !== capacity
     || expectedLayerEndExclusive === null
     || delta.expectedLayerEndExclusive !== expectedLayerEndExclusive
-    || delta.affectedEndAppFrame < delta.affectedStartAppFrame
-    || delta.affectedEndAppFrame >= delta.expectedLayerEndExclusive) return 'Play Script range, capacity, interpolation, or history metadata is invalid.';
+    || (!loopOnly && delta.affectedEndAppFrame < delta.affectedStartAppFrame)
+    || (loopOnly && delta.affectedEndAppFrame !== delta.affectedStartAppFrame - 1)
+    || (!loopOnly && delta.affectedEndAppFrame >= delta.expectedLayerEndExclusive)) return 'Play Script range, capacity, interpolation, or history metadata is invalid.';
+  if (loopOnly && payload.loopClips === undefined) return 'Loop-only Play Script edit must carry the staged Loop Clip collection.';
 
   const proposedPayloadRecords = proposedRecords.map((record) => ({
     keyId: record.keyId,
@@ -544,10 +551,12 @@ function validatePlayScriptPhysicalDelta(input: {
   if (expectedFreshKeyIds.length !== delta.freshKeyIds.length
     || expectedFreshKeyIds.some((keyId, index) => keyId !== delta.freshKeyIds[index])
     || new Set(delta.freshKeyIds).size !== delta.freshKeyIds.length) return 'Play Script fresh key declarations do not match the affected empty destinations.';
-  const selected = proposedByFrame.get(delta.affectedStartAppFrame);
-  if (!selected
-    || payload.selectedKeyId !== selected.keyId
-    || payload.selectedAppFrame !== delta.affectedStartAppFrame) return 'Play Script selection does not match the accepted start destination.';
+  if (!preserveSelection) {
+    const selected = proposedByFrame.get(delta.affectedStartAppFrame);
+    if (!selected
+      || payload.selectedKeyId !== selected.keyId
+      || payload.selectedAppFrame !== delta.affectedStartAppFrame) return 'Play Script selection does not match the accepted start destination.';
+  }
   return null;
 }
 

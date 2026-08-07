@@ -173,6 +173,12 @@ function snapshotRecordsEqual(
     for (let keyIndex = 0; keyIndex < left.sourceKeyIds.length; keyIndex += 1) {
       if (left.sourceKeyIds[keyIndex] !== right.sourceKeyIds[keyIndex]) return false;
     }
+    // 43-06 provenance is durable canonical state too.
+    if (left.scriptId !== right.scriptId) return false;
+    if ((left.motion === undefined) !== (right.motion === undefined)) return false;
+    if (left.motion && right.motion
+      && (left.motion.deformation !== right.motion.deformation || left.motion.position !== right.motion.position)) return false;
+    if ((left.overrideColor ?? null) !== (right.overrideColor ?? null)) return false;
   }
   if (before.selectedKeyId !== after.selectedKeyId) return false;
   if (before.selectedAppFrame !== after.selectedAppFrame) return false;

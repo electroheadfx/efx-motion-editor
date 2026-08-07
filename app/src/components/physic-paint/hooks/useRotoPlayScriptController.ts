@@ -67,6 +67,8 @@ export function useRotoPlayScriptController<EngineState = unknown>(
             semanticDelta: publication.semanticDelta,
             selectedKeyId: publication.selectedKeyId,
             selectedAppFrame: publication.selectedAppFrame,
+            // 43-06: loop state rides the same staged commit (HOLD-03).
+            ...(publication.loopClips ? { loopClips: publication.loopClips } : {}),
           }),
         );
         if (!accepted || accepted.operationKind !== 'play-script') {
@@ -78,8 +80,9 @@ export function useRotoPlayScriptController<EngineState = unknown>(
           acceptedRevision: accepted.acceptedRevision,
           records: accepted.after.records,
           interpolationMode: accepted.after.interpolation.mode,
-          selectedKeyId: accepted.after.selectedKeyId ?? publication.selectedKeyId,
-          selectedAppFrame: accepted.after.selectedAppFrame ?? publication.selectedAppFrame,
+          selectedKeyId: accepted.after.selectedKeyId,
+          selectedAppFrame: accepted.after.selectedAppFrame,
+          ...(publication.loopClips ? { loopClips: accepted.after.loopClips } : {}),
         };
       },
     });

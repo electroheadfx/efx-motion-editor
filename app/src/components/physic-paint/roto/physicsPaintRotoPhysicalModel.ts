@@ -237,6 +237,14 @@ export interface PhysicPaintRotoPhysicalState {
  * - `repeat`: finite positive integer or the explicit `'infinity'` state.
  * - `mode`: source-cycle provenance for presentation (`'progressive'` or
  *   `'static'`).
+ * - `scriptId` / `motion` / `overrideColor` (43-06, optional): source-cycle
+ *   provenance required by the approved UI (D-29) — the S3 source-edit prefill
+ *   reloads the script snapshot and restores the Motion/color options, and the
+ *   S4 Link/Create matching compares them (D-05). All-or-nothing: when any
+ *   provenance key is present, all three must be present and valid
+ *   (`overrideColor` may be an explicit `null` for Original colors). Records
+ *   created before the 43-06 provenance seam (in-phase fixtures) carry none
+ *   and never participate in matching or source-edit.
  *
  * Derived loop state (effective duration, next-clip boundary, repeat-instance
  * mappings, resolved destination frames) is NEVER persisted (D-30).
@@ -247,6 +255,9 @@ export interface PhysicPaintRotoLoopClip {
   readonly sourceKeyIds: readonly string[];
   readonly repeat: number | 'infinity';
   readonly mode: 'progressive' | 'static';
+  readonly scriptId?: string;
+  readonly motion?: PhysicPaintRotoScriptMotionSettings;
+  readonly overrideColor?: string | null;
 }
 
 /** Immutable empty Loop Clip collection shared by every absent-means-empty read. */
@@ -337,7 +348,7 @@ const PHYSIC_PAINT_ROTO_GENERATED_CELL_KEYS = new Set(['kind', 'appFrame', 'left
 const PHYSIC_PAINT_ROTO_INTERPOLATION_STATE_KEYS = new Set(['enabled', 'mode']);
 const PHYSIC_PAINT_ROTO_SCRIPT_MOTION_KEYS = new Set(['deformation', 'position']);
 const PHYSIC_PAINT_ROTO_PHYSICAL_STATE_KEYS = new Set(['realKeyRecords', 'interpolation', 'scriptMotion']);
-const PHYSIC_PAINT_ROTO_LOOP_CLIP_KEYS = new Set(['loopId', 'placementStart', 'sourceKeyIds', 'repeat', 'mode']);
+const PHYSIC_PAINT_ROTO_LOOP_CLIP_KEYS = new Set(['loopId', 'placementStart', 'sourceKeyIds', 'repeat', 'mode', 'scriptId', 'motion', 'overrideColor']);
 const PHYSIC_PAINT_ROTO_PHYSICAL_DOCUMENT_KEYS = new Set([
   'capacity',
   'realKeyRecords',
@@ -506,7 +517,14 @@ export function isPhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintR
   if (value.repeat !== 'infinity') {
     if (typeof value.repeat !== 'number' || !Number.isSafeInteger(value.repeat) || value.repeat < 1) return false;
   }
-  return value.mode === 'progressive' || value.mode === 'static';
+  if (value.mode !== 'progressive' && value.mode !== 'static') return false;
+  // 43-06 provenance: all-or-nothing — any provenance key requires all three.
+  const hasProvenance = value.scriptId !== undefined || value.motion !== undefined || value.overrideColor !== undefined;
+  if (!hasProvenance) return true;
+  if (!isBoundedKeyId(value.scriptId)) return false;
+  if (!isPhysicPaintRotoScriptMotionSettings(value.motion)) return false;
+  return value.overrideColor === null
+    || (typeof value.overrideColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.overrideColor));
 }
 
 /**
@@ -535,6 +553,13 @@ export function parsePhysicPaintRotoLoopClips(value: unknown): readonly PhysicPa
       sourceKeyIds: Object.freeze([...entry.sourceKeyIds]),
       repeat: entry.repeat,
       mode: entry.mode,
+      ...(entry.scriptId !== undefined
+        ? {
+            scriptId: entry.scriptId,
+            motion: Object.freeze({ deformation: entry.motion!.deformation, position: entry.motion!.position }),
+            overrideColor: entry.overrideColor ?? null,
+          }
+        : {}),
     }) as PhysicPaintRotoLoopClip);
   }
   return Object.freeze(clips);
@@ -803,6 +828,15 @@ function encodeCanonicalLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[])
     ...clip.sourceKeyIds.map(encodeCanonicalString),
     clip.repeat === 'infinity' ? encodeCanonicalString('infinity') : encodeCanonicalNumber(clip.repeat),
     encodeCanonicalString(clip.mode),
+    // 43-06 provenance joins the fingerprint when present (all-or-nothing).
+    ...(clip.scriptId !== undefined
+      ? [
+          encodeCanonicalString(clip.scriptId),
+          encodeCanonicalNumber(clip.motion!.deformation),
+          encodeCanonicalNumber(clip.motion!.position),
+          encodeCanonicalString(clip.overrideColor ?? ''),
+        ]
+      : []),
   ].join('')).join('');
   return `${ordered.length}:${encoded}`;
 }

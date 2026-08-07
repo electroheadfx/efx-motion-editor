@@ -195,6 +195,10 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
           sourceKeyIds: [...clip.sourceKeyIds],
           repeat: clip.repeat,
           mode: clip.mode,
+          // 43-06 source-cycle provenance persists with the record.
+          ...(clip.scriptId !== undefined
+            ? { scriptId: clip.scriptId, motion: { ...clip.motion! }, overrideColor: clip.overrideColor ?? null }
+            : {}),
         })),
       };
     }

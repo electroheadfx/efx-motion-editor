@@ -76,6 +76,10 @@ export interface McePhysicPaintRotoLoopClip {
   readonly sourceKeyIds: readonly string[];
   readonly repeat: number | 'infinity';
   readonly mode: 'progressive' | 'static';
+  /** 43-06 optional source-cycle provenance (all-or-nothing). */
+  readonly scriptId?: string;
+  readonly motion?: PhysicPaintRotoScriptMotionSettings;
+  readonly overrideColor?: string | null;
 }
 
 export interface McePhysicPaintRotoPhysicalDocument {
