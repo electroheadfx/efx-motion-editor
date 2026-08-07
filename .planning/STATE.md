@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43
 current_phase_name: hold-loop-clips-filmstrip-capsule
 status: executing
-stopped_at: 43-10 Task 2 — awaiting blocking native visual UAT
-last_updated: "2026-08-07T12:02:44Z"
+stopped_at: Phase 43 surface correction context gathered
+last_updated: "2026-08-07T18:09:29.496Z"
 last_activity: 2026-08-07
-last_activity_desc: Phase 43 automated gates passed; awaiting native UAT approval
+last_activity_desc: Full automated gates and unsigned packaged app passed; 43-UAT.md ready
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 24
   completed_plans: 23
-  percent: 96
+  percent: 50
 ---
 
 # Project State
@@ -420,9 +420,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-07T12:02:44Z
-Stopped at: 43-10 Task 2 — awaiting blocking native visual UAT
-Resume file: .planning/phases/43-hold-loop-clips-filmstrip-capsule/43-UAT.md
+Last session: 2026-08-07T18:09:29.475Z
+Stopped at: Phase 43 surface correction context gathered
+Resume file: .planning/phases/43-hold-loop-clips-filmstrip-capsule/43-CONTEXT.md
 
 ## Operator Next Steps
 
