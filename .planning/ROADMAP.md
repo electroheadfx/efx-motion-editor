@@ -144,7 +144,7 @@ Plans:
 
 ### Phase 43: Hold Loop Clips + Filmstrip Capsule
 
-**Goal**: Static/hold mode materializes the complete script drawing deterministically on every destination frame, and linked Loop Clips replay a source cycle from 1 to infinity without duplicating durable source assets — visualized as a filmstrip capsule on the timeline.
+**Goal**: Static/hold mode materializes the complete script drawing deterministically on every destination frame, and linked Loop Clips replay a source cycle from 1 to infinity without duplicating durable source assets — authored exclusively inside EFX Paint/Roto through an integrated Loop Rail and contextual Scripts inspector while the Motion Editor main timeline remains free of Loop Clip UI.
 **Depends on**: Phase 42 (needs proven static/hold output and locked interval/display conventions)
 **Requirements**: HOLD-01, HOLD-02, HOLD-03, HOLD-04, HOLD-05, HOLD-06
 **Success Criteria** (what must be TRUE):
@@ -153,7 +153,7 @@ Plans:
   2. Identical script, destination, and options produce identical output across save/reopen and cache regeneration — zero-variation produces a stable held drawing, nonzero variation is deterministic per frame, no random render-time jitter
   3. Cancellation or failure never leaves a partial destination range; one Undo removes the accepted operation and Redo restores it, through the existing atomic commit path
   4. A 5-frame cycle repeated 5 times resolves across 25 timeline frames while storing only 5 linked source frame assets; repeat-count and infinity edits never regenerate or duplicate the source cycle, and source-frame edits propagate to every linked occurrence
-  5. Next-clip priority truncates loops after complete or partial cycles with half-open interval boundaries; moving or removing the next clip re-expands effective duration without regenerating sources, and the filmstrip capsule shows the detailed source cycle, linked-repetition band, `Cycle Nf × R = Df` / `× ∞` badges, requested vs effective duration, and the English label `Loop shortened by next clip` on truncation (the earlier French truncation label is superseded as of 2026-08-06; the term `clip bloquant` never appears in any language)
+  5. Next-clip priority truncates loops after complete or partial cycles with half-open interval boundaries; moving or removing the next clip re-expands Effective duration without regenerating sources. Inside EFX Paint/Roto, a conditional 3px integrated Loop Rail adds zero row height and exposes derived name, Cycle math, Effective duration, mode, and status through its tooltip and contextual Scripts inspector, including `Loop shortened by next clip`; the Motion Editor main timeline exposes no Loop Clip UI, and the term `clip bloquant` never appears in any language.
 
 **Plans**: 14 plans
 Plans:
@@ -190,19 +190,19 @@ Plans:
 
 **Wave 8** *(gap closure after failed native UAT Step 1)*
 
-- [ ] 43-11-PLAN.md — Tracer: one canonical Loop Clip renders/selects/opens locally in the EFX lane while the main timeline renders none (HOLD-05, HOLD-06)
+- [ ] 43-11-PLAN.md — Tracer: integrated 3px Loop Rail plus contextual Scripts inspector, all nine native checks, and zero Motion Editor Loop Clip UI (HOLD-05, HOLD-06)
 
 **Wave 9** *(blocked on Wave 8 completion)*
 
-- [ ] 43-12-PLAN.md — Complete EFX filmstrip, local occurrence popover, and accepted-only controller actions (HOLD-05, HOLD-06)
+- [ ] 43-12-PLAN.md — Expand rail states, accessibility, tooltip, local actions popover, and accepted-only operation behavior after tracer approval (HOLD-05, HOLD-06)
 
 **Wave 10** *(blocked on Wave 9 completion)*
 
-- [ ] 43-13-PLAN.md — Remove main-timeline Loop Clip projection, types, rendering, hit testing, tooltip, and keyboard ownership (HOLD-05, HOLD-06)
+- [ ] 43-13-PLAN.md — Remove rejected dedicated-lane/full-capsule residue and every Motion Editor Loop Clip projection or interaction while preserving generic timeline behavior (HOLD-05, HOLD-06)
 
 **Wave 11** *(blocked on Wave 10 completion)*
 
-- [ ] 43-14-PLAN.md — Remove the specialized Loop Clip bridge protocol, run HOLD-01..06 regressions, and reset UAT for the existing 43-10 checkpoint (HOLD-01..06)
+- [ ] 43-14-PLAN.md — Remove unused specialized Loop Clip transport, run the full HOLD/UI regression matrix, and prepare the existing 43-10 checkpoint to resume with the rewritten UAT (HOLD-01..06)
 
 **UI hint**: yes
 
