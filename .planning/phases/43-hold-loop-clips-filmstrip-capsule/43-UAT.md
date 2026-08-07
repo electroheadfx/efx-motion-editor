@@ -21,7 +21,7 @@ This script replaces that failed surface contract. All Loop Clip presentation an
 
 ## Automated gate evidence for the corrected build
 
-To be filled by Plan 43-14 only after the final correction state passes every command:
+To be filled by Plan 43-15 only after the final correction state passes every command:
 
 - Focused HOLD/UI matrix: pending.
 - Full `pnpm --dir app exec vitest run`: pending.
@@ -30,7 +30,7 @@ To be filled by Plan 43-14 only after the final correction state passes every co
 - Phase 43 dependency diff for `app/package.json` and `pnpm-lock.yaml`: pending.
 - 43-11 native tracer approval: pending.
 
-Do not begin the resumed Plan 43-10 Task 2 until the entries above contain actual successful outcomes and `43-11-SUMMARY.md` through `43-14-SUMMARY.md` exist.
+Do not begin the resumed Plan 43-10 Task 2 until the entries above contain actual successful outcomes and `43-11-SUMMARY.md` through `43-15-SUMMARY.md` exist.
 
 ## Test conventions
 

@@ -155,7 +155,7 @@ Plans:
   4. A 5-frame cycle repeated 5 times resolves across 25 timeline frames while storing only 5 linked source frame assets; repeat-count and infinity edits never regenerate or duplicate the source cycle, and source-frame edits propagate to every linked occurrence
   5. Next-clip priority truncates loops after complete or partial cycles with half-open interval boundaries; moving or removing the next clip re-expands Effective duration without regenerating sources. Inside EFX Paint/Roto, a conditional 3px integrated Loop Rail adds zero row height and exposes derived name, Cycle math, Effective duration, mode, and status through its tooltip and contextual Scripts inspector, including `Loop shortened by next clip`; the Motion Editor main timeline exposes no Loop Clip UI, and the term `clip bloquant` never appears in any language.
 
-**Plans**: 14 plans
+**Plans**: 15 plans
 Plans:
 **Wave 1**
 
@@ -184,10 +184,6 @@ Plans:
 
 - [x] 43-08-PLAN.md — Capsule interaction: hit regions, tooltip host, keyboard model, Studio strip link badge (HOLD-06)
 
-**Wave 7** *(blocked on Wave 6 completion)*
-
-- [ ] 43-10-PLAN.md — Full gates (vitest + typecheck + build + dependency diff) + native visual UAT + unsigned packaged smoke; Task 2 resumes after Wave 11 correction plans (HOLD-01..06)
-
 **Wave 8** *(gap closure after failed native UAT Step 1)*
 
 - [ ] 43-11-PLAN.md — Tracer: integrated 3px Loop Rail plus contextual Scripts inspector, all nine native checks, and zero Motion Editor Loop Clip UI (HOLD-05, HOLD-06)
@@ -198,11 +194,19 @@ Plans:
 
 **Wave 10** *(blocked on Wave 9 completion)*
 
-- [ ] 43-13-PLAN.md — Remove rejected dedicated-lane/full-capsule residue and every Motion Editor Loop Clip projection or interaction while preserving generic timeline behavior (HOLD-05, HOLD-06)
+- [ ] 43-13-PLAN.md — Remove active Motion Editor Loop Clip projection, public types, rendering, input routing, and tooltip mount while preserving generic timeline behavior (HOLD-05, HOLD-06)
 
 **Wave 11** *(blocked on Wave 10 completion)*
 
-- [ ] 43-14-PLAN.md — Remove unused specialized Loop Clip transport, run the full HOLD/UI regression matrix, and prepare the existing 43-10 checkpoint to resume with the rewritten UAT (HOLD-01..06)
+- [ ] 43-14-PLAN.md — Delete stale Motion Editor tooltip/geometry and rejected EFX lane/full-filmstrip residue, then remove specialized child listeners while preserving local controller authority (HOLD-05, HOLD-06)
+
+**Wave 12** *(blocked on Wave 11 completion)*
+
+- [ ] 43-15-PLAN.md — Remove specialized public Loop Clip transport, run the full HOLD/UI regression matrix, record UAT evidence, and release the final native checkpoint (HOLD-01..06)
+
+**Wave 13** *(blocked on Wave 12 completion)*
+
+- [ ] 43-10-PLAN.md — Sole final native UAT checkpoint; execute only the corrected 43-UAT.md after 43-15 evidence is green, including native focus restoration and unsigned packaged smoke (HOLD-01..06)
 
 **UI hint**: yes
 
@@ -376,5 +380,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 40. macOS Icon + Build Hygiene | v0.9.0 | 3/3 | Complete    | 2026-08-04 |
 | 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | Complete    | 2026-08-05 |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
-| 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 9/14 | In Progress|  |
+| 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 9/15 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |

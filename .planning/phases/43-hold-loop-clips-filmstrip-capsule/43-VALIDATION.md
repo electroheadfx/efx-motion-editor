@@ -11,7 +11,7 @@ revision_reason: integrated Loop Rail and contextual Scripts inspector correctio
 
 # Phase 43 — Validation Strategy
 
-> Canonical validation map for the current Phase 43 branch. Plans 43-01 through 43-09 remain accepted automated substrate; 43-10 remains the sole native checkpoint; correction Plans 43-11 through 43-14 replace the rejected lane/capsule/main-timeline presentation. No row below reports a new native pass.
+> Canonical validation map for the current Phase 43 branch. Plans 43-01 through 43-09 remain accepted automated substrate; 43-10 remains the sole native checkpoint with only its bounded stale-checkpoint correction; correction Plans 43-11 through 43-15 replace the rejected lane/capsule/main-timeline presentation. No row below reports a new native pass.
 
 ## Test Infrastructure
 
@@ -30,11 +30,12 @@ Rules: one-shot `vitest run` only; do not start the server; do not alter test co
 
 | Wave | Plan | Gate |
 |---|---|---|
-| 8 | 43-11 integrated rail/sidebar production tracer | Fresh RED→GREEN automated tracer, then blocking-human approval of all nine checks together |
-| 9 | 43-12 state/accessibility/tooltip/popover expansion | Cannot begin until 43-11 native approval |
-| 10 | 43-13 rejected residue and Motion Editor removal | Cannot begin until the complete EFX replacement is green |
-| 11 | 43-14 specialized transport cleanup and full gates | Removes protocol only after all callers are gone; hands back to 43-10 |
-| 7 resumed | 43-10 Task 2 | Sole final native UAT checkpoint; file remains byte-identical |
+| 8 | 43-11 integrated rail/sidebar production tracer | One named RED→GREEN sentinel, then blocking-human approval of all nine checks together |
+| 9 | 43-12 rail/popover/sidebar state expansion | Cannot begin until 43-11 native approval; each TDD task uses one exact named sentinel |
+| 10 | 43-13 active Motion Editor removal | Removes projection/render/input/tooltip mount after the complete EFX replacement is green |
+| 11 | 43-14 specialized EFX residue and child-listener cleanup | Deletes stale tooltip/geometry/lane/style residue and removes specialized child listeners |
+| 12 | 43-15 public transport cleanup and full evidence | Removes specialized protocol after all callers are gone; runs the full matrix and updates UAT evidence |
+| 13 | 43-10 Task 2 | Sole final native UAT checkpoint; executes only the current corrected 43-UAT.md |
 
 ## Nine-Check Tracer Gate — Plan 43-11
 
@@ -70,50 +71,78 @@ All 32 covered rows from `43-UI-SPEC.md` are mandatory; the 8 dismissed rows rem
 
 | Requirement | Correction verification |
 |---|---|
-| HOLD-01 | 43-14 reruns complete static/hold stroke-set tests |
-| HOLD-02 | 43-14 reruns deterministic regeneration/save-reopen tests |
-| HOLD-03 | 43-14 reruns cancellation/failure/atomic Undo/Redo tests |
-| HOLD-04 | 43-14 reruns one-raster composite and preview/export parity tests |
-| HOLD-05 | 43-11/12 retain canonical resolver/controller paths; 43-14 reruns persistence, boundary, guards, history, unresolved, preview/export suites |
-| HOLD-06 | 43-11/12 integrated rail/tooltip/sidebar/popover; 43-13 main-timeline and rejected-lane removal; native checks in rewritten UAT |
+| HOLD-01 | 43-15 reruns complete static/hold stroke-set tests |
+| HOLD-02 | 43-15 reruns deterministic regeneration/save-reopen tests |
+| HOLD-03 | 43-15 reruns cancellation/failure/atomic Undo/Redo tests |
+| HOLD-04 | 43-15 reruns one-raster composite and preview/export parity tests |
+| HOLD-05 | 43-11/12 retain canonical resolver/controller paths; 43-15 reruns persistence, boundary, guards, history, unresolved, preview/export suites |
+| HOLD-06 | 43-11/12 integrated rail/tooltip/sidebar/popover; 43-13 active main-timeline removal; 43-14 residue/listener cleanup; native checks in rewritten UAT |
 
 Decision groups:
 
-- D-01 through D-14: existing Loop/Source Edit, Link/Create, unlink-only deletion, placement/source identity, guards, materialization, loop priority, and atomic history are rerun in 43-12/43-14.
-- D-15 through D-23: retained status/copy/accessibility/truncation/unresolved/zero-effective semantics move to the rail/tooltip/sidebar/popover; superseded persistent filmstrip details are removed.
-- D-24 through D-32: resolver algebra, dynamic parent end, preview/export parity, additive persistence, derived Effective duration, verbatim unresolved references, and lazy modulo remain unchanged and are rerun in 43-14.
-- D-33 through D-49: mapped directly to Plans 43-11 through 43-14 and the nine-check gate above.
+- D-01 through D-14: existing Loop/Source Edit, Link/Create, unlink-only deletion, placement/source identity, guards, materialization, loop priority, and atomic history are rerun in 43-12/43-15.
+- D-15 through D-23: retained status/copy/accessibility/truncation/unresolved/zero-effective semantics move to the rail/tooltip/sidebar/popover; superseded persistent filmstrip details are removed in 43-14.
+- D-24 through D-32: resolver algebra, dynamic parent end, preview/export parity, additive persistence, derived Effective duration, verbatim unresolved references, and lazy modulo remain unchanged and are rerun in 43-15.
+- D-33 through D-49: mapped directly to Plans 43-11 through 43-15 and the nine-check gate above.
 - D-41 horizontal placement drag is excluded; only compatible non-capturing pointer geometry is reserved.
 
 ## Focused Automated Commands
 
 ### Plan 43-11
 
-`pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.tsx src/components/timeline/TimelineRenderer.test.ts src/components/timeline/TimelineInteraction.test.ts`
+RED and GREEN, byte-for-byte identical:
+
+`pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx -t "integrates Loop Clip ownership through all nine tracer checks"`
+
+After GREEN only:
+
+`pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.tsx src/lib/frameMap.test.ts src/components/timeline/TimelineRenderer.test.ts src/components/timeline/TimelineInteraction.test.ts`
 
 ### Plan 43-12
 
-`pnpm --dir app exec vitest run src/components/physic-paint/view/physicsPaintLoopClipPresentation.test.ts src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx`
+RED and GREEN, byte-for-byte identical:
 
-`pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintLoopClipPopover.test.tsx src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts src/components/physic-paint/hooks/physicsPaintRotoLoopHistory.test.ts`
+`pnpm --dir app exec vitest run src/components/physic-paint/view/physicsPaintLoopClipPresentation.test.ts -t "projects exhaustive rail states without changing accepted geometry"`
 
-`pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.tsx src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.test.tsx`
+`pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintLoopClipPopover.test.tsx -t "keeps rejected local actions open and restores accepted focus deterministically"`
+
+`pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.tsx -t "preserves contextual loop facts through busy rejection and text-only rename"`
+
+After each corresponding GREEN only, run the broader command declared in 43-12-PLAN.md.
 
 ### Plan 43-13
 
-`pnpm --dir app exec vitest run src/lib/frameMap.test.ts src/components/timeline/TimelineRenderer.test.ts`
+RED and GREEN, byte-for-byte identical:
 
-`pnpm --dir app exec vitest run src/components/timeline/TimelineInteraction.test.ts src/components/timeline/TimelineRenderer.test.ts src/components/physic-paint/view/physicsPaintLoopClipPresentation.test.ts src/components/physic-paint/view/PhysicsPaintLoopClipPopover.test.tsx`
+`pnpm --dir app exec vitest run src/lib/frameMap.test.ts -t "omits Loop Clip projection from the Motion Editor frame map"`
 
-`pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx src/components/physic-paint/roto/physicsPaintRotoMultiSelection.test.ts`
+`pnpm --dir app exec vitest run src/components/timeline/TimelineInteraction.test.ts -t "ignores former Loop Clip coordinates and keys in the Motion Editor"`
 
-### Plan 43-14 bridge cleanup
+After each corresponding GREEN only, run the broader command declared in 43-13-PLAN.md.
+
+### Plan 43-14 specialized EFX/timeline residue and child-listener cleanup
+
+RED and GREEN, byte-for-byte identical:
+
+`pnpm --dir app exec vitest run src/components/timeline/TimelineCapsuleTooltip.test.ts -t "has no Motion Editor Loop Clip tooltip module after ownership removal"`
+
+`pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts -t "keeps only the integrated rail inside the unchanged physical row"`
+
+`pnpm --dir app exec vitest run src/lib/physicPaintLoopOperationBridge.test.ts -t "routes Loop Clip operations locally without specialized child listeners"`
+
+After each corresponding GREEN only, run the broader command declared in 43-14-PLAN.md.
+
+### Plan 43-15 public transport cleanup
+
+RED and GREEN, byte-for-byte identical:
+
+`pnpm --dir app exec vitest run src/lib/physicPaintBridge.test.ts -t "exposes only generic Physics Paint transport after the local Loop Clip cutover"`
+
+After GREEN only:
 
 `pnpm --dir app exec vitest run src/lib/physicPaintBridge.test.ts src/components/physic-paint/bridge/physicsPaintBridgeTransport.test.ts`
 
-`pnpm --dir app exec vitest run src/components/physic-paint/PhysicsPaintStudio.test.ts src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts`
-
-### Plan 43-14 full correction matrix
+### Plan 43-15 full correction matrix
 
 `pnpm --dir app exec vitest run src/components/physic-paint/roto/physicsPaintRotoHoldDeterminism.test.ts src/components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer.test.ts src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts src/stores/physicPaintStore.rotoHoldComposite.test.ts src/components/physic-paint/hooks/useRotoTimelineModel.test.ts src/components/physic-paint/hooks/physicsPaintRotoLoopHistory.test.ts src/components/physic-paint/view/physicsPaintLoopClipPresentation.test.ts src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx src/components/physic-paint/view/PhysicsPaintLoopClipPopover.test.tsx src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.tsx src/lib/frameMap.test.ts src/components/timeline/TimelineRenderer.test.ts src/components/timeline/TimelineInteraction.test.ts src/lib/physicPaintBridge.test.ts src/components/physic-paint/bridge/physicsPaintBridgeTransport.test.ts src/lib/exportEngine.loops.test.ts src/lib/previewRenderer.loops.test.ts`
 
@@ -144,10 +173,10 @@ No native result is pre-approved. The old Step 1 failure remains historical evid
 
 - [ ] Plan 43-11 RED and GREEN commits exist in order.
 - [ ] All nine tracer checks are approved together by the user.
-- [ ] Plans 43-12 through 43-14 focused commands pass.
+- [ ] Plans 43-12 through 43-15 focused commands pass, with one exact named RED/GREEN sentinel per TDD task.
 - [ ] Full Vitest, typecheck, build, and dependency-diff gates pass on the final correction state.
-- [ ] Protected Plans 43-01 through 43-10 remain byte-identical.
-- [ ] `43-UAT.md` records automated evidence separately and leaves native results pending.
-- [ ] Existing Plan 43-10 Task 2 resumes as the sole human checkpoint.
+- [ ] Plans 43-01 through 43-09 remain byte-identical; 43-10 contains only the bounded corrected-checkpoint revision.
+- [ ] `43-UAT.md` records automated evidence separately, requires summaries through 43-15, and leaves native results pending.
+- [ ] Plan 43-10 Task 2 resumes as the sole human checkpoint and executes only the current corrected 43-UAT.md.
 
 **Approval:** pending user native UAT.
