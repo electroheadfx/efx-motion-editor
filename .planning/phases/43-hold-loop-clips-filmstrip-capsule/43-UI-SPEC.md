@@ -1,11 +1,12 @@
 ---
 phase: 43
 slug: hold-loop-clips-filmstrip-capsule
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-08-07
 revised: 2026-08-07
+reviewed_at: 2026-08-07T21:03:55Z
 revision_reason: replace rejected dedicated lane with integrated Loop Rail and contextual Scripts sidebar
 ---
 
@@ -443,36 +444,50 @@ Double-click handling must suppress the second single-click side effect from reo
 
 ## UI Considerations
 
-Applicable state considerations resolved: **22 covered, 4 dismissed, 0 backstops, 0 unresolved**.
+Compiled probe coverage resolved with user-confirmed authored element kinds: **32 covered, 8 dismissed, 0 backstops, 0 unresolved**.
 
-| Category | Element(s) | Status | Resolution / Reason |
-|----------|------------|--------|---------------------|
-| empty | Integrated rail | ✅ covered | Zero Loop Clips removes the rail DOM and layout footprint; strip remains exactly 161px |
-| empty | Contextual sidebar | ✅ covered | With no selected loop, existing normal Scripts context and Play action remain |
-| populated | Rail | ✅ covered | One or many loops render as compact 3px canonical ranges in one overlay with no stacking or new row |
-| zero-one-many | Rail | ✅ covered | Zero hides; one shows one target; many use placement order and canonical non-overlapping Effective ranges |
-| partial | Truncated loop | ✅ covered | Amber terminal 6px plus `Loop shortened by next clip` text; canonical Effective stays visible |
-| error | Unresolved loop | ✅ covered | Red rail/flag remains selectable; tooltip/sidebar say `Source missing`; applicable repair actions remain |
-| zero-effective | Rail | ✅ covered | 8×6px flag in a 12×12px target at placement start; never silently disappears |
-| loading | Rail/sidebar | ✅ covered | Existing geometry remains at 55% opacity; `aria-busy`; no optimistic values |
-| error | Rejected operation | ✅ covered | Prior state, focus, selection, and inputs remain; actionable reason announced |
-| overflow | Long loop | ✅ covered | Range clips at horizontal viewport and returns on scroll; no wrap, stack, or second scrollbar |
-| overflow | Popover | ✅ covered | 272–304px clamped surface; vertical internal scroll only when viewport requires it |
-| overflow | Sidebar facts | ✅ covered | Fixed label/value grid; one-line ellipsis; full text via tooltip/accessibility name |
-| long-text | Display/source name | ✅ covered | One-line ellipsis in sidebar; tooltip/popover wrap; UUID fallback prohibited |
-| interaction separation | Rail vs cells | ✅ covered | Rail stops events; no cell navigation/selection/multi-select/drag route is called |
-| populated | Linked physical cells | ✅ covered | Existing blue inset border/dot is preserved without a new cell state |
-| loading | Local operations | ✅ covered | Actions expose busy reasons and await accepted authority before closing/updating |
-| error | Preview/export | ✅ covered | Marked preview placeholder continues; export blocks before output with carried-forward copy |
-| populated | Sidebar Loop context | ✅ covered | Exact heading/fact order and Play→Edit slot swap are specified |
-| interaction separation | Edit vs rename | ✅ covered | Pencil primary action edits Loop Clip; source-name text click alone starts script rename |
-| focus | Tooltip/popover/modal | ✅ covered | Exact focus entry/restoration and Escape behavior specified |
-| responsive | 1280×720 | ✅ covered | Strip remains 161px; existing sidebar width/breakpoint and one shared scroller remain |
-| reduced-motion | All new surfaces | ✅ covered | No geometry animation; new transitions disabled under reduced motion |
-| loading | Rail data fetch | ✖ dismissed | Rail derives synchronously from already-authoritative in-memory resolver state; no independent fetch state |
-| empty | Popover | ✖ dismissed | Popover exists only for a selected existing Loop Clip and always has at least Unlink/Delete when not busy |
-| destructive confirmation | Unlink/Delete Loop Clip | ✖ dismissed | Both are unlink-only, preserve source keys, and are atomically undoable; explicit labels suffice |
-| internationalization/RTL | Phase surface | ✖ dismissed | Milestone product copy is locked to English; frame progression and timeline direction remain existing LTR behavior |
+| Element | Category | Status | Resolution / Reason |
+|---------|----------|--------|---------------------|
+| S1 Integrated Loop Rail | empty | ✅ covered | Zero Loop Clips removes the rail DOM, focus targets, and layout footprint; the strip remains exactly 161px. |
+| S1 Integrated Loop Rail | loading | ✅ covered | During controller preparation/commit, accepted geometry remains visible at 55% opacity with `aria-busy`; no optimistic width or facts. |
+| S1 Integrated Loop Rail | error | ✅ covered | Unresolved ranges use red treatment and remain selectable; rejected operations preserve prior geometry, selection, and actionable error copy. |
+| S1 Integrated Loop Rail | populated | ✅ covered | Canonical ranges render as compact 3px segments in one overlay with no stacking, extra row, or repeated-frame materialization. |
+| S1 Integrated Loop Rail | partial | ✅ covered | Truncated loops use the amber terminal treatment and expose `Loop shortened by next clip` with canonical Effective duration. |
+| S1 Integrated Loop Rail | overflow | ✅ covered | Long ranges clip at the shared horizontal viewport and return on scroll; they never wrap, stack, or add a scrollbar. |
+| S1 Integrated Loop Rail | zero-one-many | ✅ covered | Zero hides the rail; one renders one target; many follow placement order and canonical non-overlapping Effective ranges. |
+| S1 Integrated Loop Rail | long-text | ✖ dismissed | The rail contains no persistent product text; names and Cycle copy live in the tooltip/sidebar, and raw UUID text is prohibited. |
+| S1a Rail tooltip | overflow | ✅ covered | Tooltip clamps to 8px viewport margins, stays above when space permits, and uses the existing flip behavior only when required. |
+| S1a Rail tooltip | long-text | ✅ covered | Long display/source names wrap within the tooltip; full values remain accessible and never fall back to a UUID. |
+| S1b Local actions popover | empty | ✖ dismissed | The popover only opens for a selected existing Loop Clip and always has facts plus at least Unlink/Delete when not busy. |
+| S1b Local actions popover | loading | ✅ covered | Busy actions remain visible only when their reason must be discoverable, use `aria-disabled`, and wait for accepted authority state. |
+| S1b Local actions popover | error | ✅ covered | Rejection keeps the popover open, preserves focus/selection, and announces `Loop Clip was not changed. {reason}`. |
+| S1b Local actions popover | populated | ✅ covered | Facts appear in the locked order followed by applicable Duplicate, Repair, Relink, Unlink, and Delete actions. |
+| S1b Local actions popover | partial | ✅ covered | Inapplicable actions are omitted; partially available/busy actions expose an explicit unavailable reason instead of silently no-oping. |
+| S1b Local actions popover | overflow | ✅ covered | Width is 272–304px, clamped to the viewport; only the popover body may scroll vertically. |
+| S1b Local actions popover | zero-one-many | ✅ covered | The action set varies deterministically by loop state while retaining one labelled non-modal dialog anchored to one selected rail target. |
+| S1b Local actions popover | long-text | ✅ covered | Fact values wrap or ellipsize within the clamped surface and expose the full accessible value. |
+| S1c Contextual Scripts sidebar | empty | ✅ covered | With no selected Loop Clip, the existing normal Scripts context and Play action remain unchanged. |
+| S1c Contextual Scripts sidebar | loading | ✅ covered | The inspector stays visible during preparation/commit; Edit remains focusable only with a discoverable unavailable reason. |
+| S1c Contextual Scripts sidebar | error | ✅ covered | Unresolved/rejected state keeps prior facts and selection, shows status/recovery copy, and exposes Repair/Relink through existing flows. |
+| S1c Contextual Scripts sidebar | populated | ✅ covered | Selected Loop Clip replaces Play with Edit and shows name, source, placement, Cycle, Effective, mode, and status in exact order. |
+| S1c Contextual Scripts sidebar | partial | ✅ covered | Missing source data is represented explicitly as unresolved; no field silently disappears and no UUID becomes product copy. |
+| S1c Contextual Scripts sidebar | overflow | ✅ covered | The fixed 88px label column plus `minmax(0, 1fr)` values avoid horizontal scrolling at the 1280×720 minimum. |
+| S1c Contextual Scripts sidebar | zero-one-many | ✅ covered | Zero loop selection shows normal script context; exactly one current loop drives the inspector even when many loops exist. |
+| S1c Contextual Scripts sidebar | long-text | ✅ covered | Display/source names ellipsize on one line; tooltip/accessibility text exposes the full value and rename remains text-only. |
+| S2 Edit Loop Clip modal | empty | ✖ dismissed | `openLoopEdit` rejects a missing Loop Clip before opening, so an empty modal state cannot occur. |
+| S2 Edit Loop Clip modal | loading | ✅ covered | Existing `Preparing Loop Clip…` and commit progress remain visible without optimistic values or layout replacement. |
+| S2 Edit Loop Clip modal | error | ✅ covered | Validation/authority rejection preserves inputs, keeps the modal available, and announces the exact controller reason. |
+| S2 Edit Loop Clip modal | partial | ✅ covered | Unresolved references route to the existing repair/relink-capable mode instead of presenting silently missing fields. |
+| S2 Edit Loop Clip modal | overflow | ✅ covered | The carried-forward compact modal remains contained at the minimum application window without changing the Studio layout. |
+| S2 Edit Loop Clip modal | long-text | ✅ covered | Existing modal wrapping/ellipsis and accessible labels handle long script/loop values without exposing UUID copy. |
+| S5 Linked physical-cell indicator | empty | ✅ covered | Unlinked physical cells render no blue inset border/dot and retain their existing state palette. |
+| S5 Linked physical-cell indicator | loading | ✖ dismissed | The indicator derives synchronously from accepted in-memory resolver state and has no independent loading lifecycle. |
+| S5 Linked physical-cell indicator | error | ✖ dismissed | Unresolved/error communication belongs to the rail, tooltip, sidebar, and preview/export surfaces; the linked-cell indicator has no separate error state. |
+| S5 Linked physical-cell indicator | populated | ✅ covered | Linked cells preserve the accepted blue inset border and 4px dot across normal/current/selected/drag states without becoming selectable loop UI. |
+| M1 Motion Editor exclusion | loading | ✖ dismissed | No Loop Clip surface exists there in any lifecycle state; generic main-timeline loading remains unchanged. |
+| M1 Motion Editor exclusion | error | ✖ dismissed | No Loop Clip error UI exists there; unresolved state remains exclusively inside EFX Paint and shared preview/export behavior. |
+| M1 Motion Editor exclusion | overflow | ✅ covered | At every zoom/scroll boundary, no hidden Loop Clip draw, hit region, tooltip mount, keyboard target, or action may remain. |
+| M1 Motion Editor exclusion | long-text | ✖ dismissed | The Motion Editor renders no Loop Clip label, badge, name, or other product text. |
 
 ---
 
@@ -519,11 +534,11 @@ The tracer is accepted only when all nine checks pass together in the same EFX P
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending checker validation. This replacement contract is intentionally `draft`; the checker upgrades status after verifying the integrated rail baseline.
+**Approval:** approved 2026-08-07T21:03:55Z after one bounded spacing revision. UI consideration probe: 32 covered, 8 dismissed, 0 backstops, 0 unresolved.
