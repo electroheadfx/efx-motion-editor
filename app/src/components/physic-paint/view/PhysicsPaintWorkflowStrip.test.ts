@@ -7,6 +7,10 @@ import {
   resolvePhysicPaintRotoLoopFrame,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import { resolveRotoVisibleFrameResolutions } from '../roto/rotoTimelineSelectors';
+import {
+  activatePhysicsPaintLoopClipBadge,
+  activatePhysicsPaintLoopClipBody,
+} from './PhysicsPaintLoopClipLane';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const source = () => readFileSync(sourcePath, 'utf8');
@@ -1154,5 +1158,67 @@ describe('PhysicsPaintWorkflowStrip loop resolution wiring (43-02, Pitfall 7)', 
       sourceIndex: (250000 - 10) % 5,
       repeatInstance: Math.floor((250000 - 10) / 5),
     });
+  });
+});
+
+
+describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () => {
+  it('hosts one canonical Loop Clips lane between the ruler and physical cells', () => {
+    const code = source();
+    const rulerIndex = code.indexOf('class="physics-paint-ruler"');
+    const loopLaneIndex = code.indexOf('<PhysicsPaintLoopClipLane');
+    const physicalLaneIndex = code.indexOf('class="physics-paint-lane"');
+
+    expect(getWorkflowStripPropsInterface(code)).toContain('onSelectRotoLoopClip?: (loopId: string) => void;');
+    expect(getWorkflowStripPropsInterface(code)).toContain('onOpenRotoLoopEdit?: (loopId: string) => Promise<');
+    expect(code).toContain('loopResolutionContext.ranges.length > 0');
+    expect(code).toContain('ranges={loopResolutionContext.ranges}');
+    expect(code).toContain('visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}');
+    expect(rulerIndex).toBeGreaterThanOrEqual(0);
+    expect(loopLaneIndex).toBeGreaterThan(rulerIndex);
+    expect(physicalLaneIndex).toBeGreaterThan(loopLaneIndex);
+  });
+
+  it('keeps body selection lane-local and stops pointer fallthrough', () => {
+    const onSelectLoopClip = vi.fn();
+    const stopPropagation = vi.fn();
+    const preventDefault = vi.fn();
+
+    activatePhysicsPaintLoopClipBody('loop-1', { stopPropagation, preventDefault }, onSelectLoopClip);
+
+    expect(stopPropagation).toHaveBeenCalledTimes(1);
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(onSelectLoopClip).toHaveBeenCalledExactlyOnceWith('loop-1');
+  });
+
+  it('opens Loop Edit from the badge exactly once without selecting the body', async () => {
+    const onOpenLoopEdit = vi.fn(async () => ({ ok: true as const }));
+    const onSelectLoopClip = vi.fn();
+    const stopPropagation = vi.fn();
+    const preventDefault = vi.fn();
+
+    await activatePhysicsPaintLoopClipBadge('loop-1', { stopPropagation, preventDefault }, onOpenLoopEdit);
+
+    expect(stopPropagation).toHaveBeenCalledTimes(1);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    expect(onOpenLoopEdit).toHaveBeenCalledExactlyOnceWith('loop-1');
+    expect(onSelectLoopClip).not.toHaveBeenCalled();
+  });
+
+  it('does not alter physical-cell click ordering or the real-key-only drag guard', () => {
+    const code = source();
+    const handlerStart = code.indexOf('const handleRotoTimelineCellClick = useCallback(');
+    const handlerEnd = code.indexOf('const handleRotoTimelineCellPointerDown = useCallback(', handlerStart);
+    const handler = code.slice(handlerStart, handlerEnd);
+    const toggleIndex = handler.indexOf('current.onToggleRotoKeySelection?.(cellKeyId);');
+    const extendIndex = handler.indexOf('current.onExtendRotoKeySelection?.(cellKeyId);');
+    const collapseIndex = handler.indexOf('current.onCollapseRotoSelectionToKey?.(cellKeyId);');
+    const navigateIndex = handler.lastIndexOf('current.onNavigateToSyncedFrame(frame);');
+
+    expect(toggleIndex).toBeGreaterThanOrEqual(0);
+    expect(extendIndex).toBeGreaterThan(toggleIndex);
+    expect(collapseIndex).toBeGreaterThan(extendIndex);
+    expect(navigateIndex).toBeGreaterThan(collapseIndex);
+    expect(code).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
   });
 });
