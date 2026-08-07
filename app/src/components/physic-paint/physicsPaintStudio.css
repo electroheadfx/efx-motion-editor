@@ -1434,6 +1434,18 @@ button.destructive {
   font-size: 12px;
 }
 
+/* 43-06 (D-01/D-02): loop-edit locked source fields and the source-edit
+   notice — opacity only, no new color tokens (43-UI-SPEC inheritance guard). */
+.physics-paint-play-script-locked { opacity: 0.55; }
+
+.physics-paint-play-script-notice {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ps-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* Timing card fields (D-16): internal gap 6px; field + field margin-top 12px. */
 .physics-paint-play-script-field {
   display: flex;

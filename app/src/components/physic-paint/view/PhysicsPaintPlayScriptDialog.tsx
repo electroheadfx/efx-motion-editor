@@ -18,6 +18,13 @@ const PLAY_SCRIPT_MODES: ReadonlyArray<{ value: RotoPlayScriptMode; label: strin
   { value: 'static', label: 'Static / Hold', helper: 'The complete drawing is applied to every cycle frame.' },
 ];
 
+// 43-06 S4 (D-05): locked apply-time source-cycle choice options and helper copy
+// (43-UI-SPEC Copywriting Contract — English only).
+const PLAY_SCRIPT_SOURCE_CHOICES = [
+  { value: 'link' as const, label: 'Link to existing cycle', helper: 'Reuses the existing source cycle. Future source edits update every linked loop.' },
+  { value: 'create' as const, label: 'Create new cycle', helper: 'Creates an independent source cycle. Future edits do not affect the existing loops.' },
+];
+
 // D-08R: locked color options — value is the overrideEnabled target (false = Original colors
 // disables the override; true = Custom color resolves live from the brush color).
 const PLAY_SCRIPT_COLORS: ReadonlyArray<{ value: boolean; label: string }> = [
@@ -42,14 +49,24 @@ export function PhysicsPaintPlayScriptDialog({
   recordPhysicsPaintPerformanceCounter('render.playScriptDialog');
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const repeatInputRef = useRef<HTMLInputElement>(null);
   const previousOpen = useRef(false);
   const confirmationOpen = playScript.confirmationOpen.value;
+  // 43-06 dialog modes (D-01/D-02): loop-edit locks every source field;
+  // source-edit re-prefills the full form; apply is the Phase 42 surface.
+  const dialogMode = playScript.dialogMode.value;
+  const loopEdit = dialogMode === 'loop-edit';
+  const sourceEdit = dialogMode === 'source-edit';
+  const editTarget = playScript.loopEditTarget.value;
 
   useEffect(() => {
-    if (confirmationOpen) inputRef.current?.focus();
+    // Focus discipline (Phase 42): the editable primary field takes focus on
+    // open — the Repeat input in loop-edit (Frames-per-cycle is locked).
+    const target = playScript.dialogMode.value === 'loop-edit' ? repeatInputRef.current : inputRef.current;
+    if (confirmationOpen) target?.focus();
     else if (previousOpen.current) returnFocusRef.current?.focus();
     previousOpen.current = confirmationOpen;
-  }, [confirmationOpen, returnFocusRef]);
+  }, [confirmationOpen, returnFocusRef, playScript]);
 
   // Header drag (UAT remediation): the modal repositions by pointer drag on its compact
   // header. The offset is a translate() on top of the grid-centered surface, so the Paint
@@ -111,6 +128,7 @@ export function PhysicsPaintPlayScriptDialog({
   // D-03 revised: switching to Static / Hold with 'Max' in the field normalizes it to '1';
   // a numeric value is never rewritten by a mode switch.
   const selectMode = (value: RotoPlayScriptMode) => {
+    if (loopEdit) return; // D-01: source fields are locked in loop-edit mode
     playScript.mode.value = value;
     if (value === 'static' && playScript.countText.value.trim().toLowerCase() === 'max') playScript.countText.value = '1';
   };
@@ -120,7 +138,7 @@ export function PhysicsPaintPlayScriptDialog({
   const onModeKeyDown = (event: KeyboardEvent) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
-    if (playScript.canCancel.value) return;
+    if (playScript.canCancel.value || loopEdit) return;
     const currentIndex = PLAY_SCRIPT_MODES.findIndex((option) => option.value === playScript.mode.value);
     const delta = event.key === 'ArrowRight' ? 1 : -1;
     const nextIndex = (currentIndex + delta + PLAY_SCRIPT_MODES.length) % PLAY_SCRIPT_MODES.length;
@@ -134,7 +152,7 @@ export function PhysicsPaintPlayScriptDialog({
   const onColorKeyDown = (event: KeyboardEvent) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
-    if (playScript.canCancel.value) return;
+    if (playScript.canCancel.value || loopEdit) return;
     const currentIndex = PLAY_SCRIPT_COLORS.findIndex((option) => option.value === playScript.overrideEnabled.value);
     const delta = event.key === 'ArrowRight' ? 1 : -1;
     const nextIndex = (currentIndex + delta + PLAY_SCRIPT_COLORS.length) % PLAY_SCRIPT_COLORS.length;
@@ -150,6 +168,24 @@ export function PhysicsPaintPlayScriptDialog({
   const effectiveSplitAt = loopReadout ? loopReadout.indexOf(EFFECTIVE_SEPARATOR) : -1;
   const summaryRequested = loopReadout ? (effectiveSplitAt >= 0 ? loopReadout.slice(0, effectiveSplitAt) : loopReadout) : null;
   const summaryEffective = loopReadout && effectiveSplitAt >= 0 ? `Effective: ${loopReadout.slice(effectiveSplitAt + EFFECTIVE_SEPARATOR.length)}` : null;
+
+  // 43-06 S4 (D-05): the apply-time Link/Create choice renders only when the
+  // controller reports an identical source cycle.
+  const identicalCycle = !loopEdit && !sourceEdit ? playScript.identicalSourceCycle.value : null;
+  const activeSourceChoice = PLAY_SCRIPT_SOURCE_CHOICES.find((option) => option.value === playScript.linkChoice.value) ?? PLAY_SCRIPT_SOURCE_CHOICES[0];
+
+  // Same APG radio pattern as Mode/Color for the S4 segmented control.
+  const onSourceChoiceKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    if (playScript.canCancel.value) return;
+    const currentIndex = PLAY_SCRIPT_SOURCE_CHOICES.findIndex((option) => option.value === playScript.linkChoice.value);
+    const delta = event.key === 'ArrowRight' ? 1 : -1;
+    const nextIndex = (currentIndex + delta + PLAY_SCRIPT_SOURCE_CHOICES.length) % PLAY_SCRIPT_SOURCE_CHOICES.length;
+    playScript.linkChoice.value = PLAY_SCRIPT_SOURCE_CHOICES[nextIndex].value;
+    const radios = (event.currentTarget as HTMLElement | null)?.querySelectorAll?.('[role="radio"]');
+    (radios?.[nextIndex] as HTMLElement | undefined)?.focus?.();
+  };
 
   return (
     <div
@@ -199,11 +235,19 @@ export function PhysicsPaintPlayScriptDialog({
           onPointerUp={endHeaderDrag}
           onPointerCancel={endHeaderDrag}
         >
-          <strong id="physics-play-script-title">Play Script</strong>
-          <span class="physics-paint-play-script-header-range">Max {playScript.capacity.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>
+          <strong id="physics-play-script-title">{loopEdit ? 'Edit Loop Clip' : sourceEdit ? 'Edit Source Cycle' : 'Play Script'}</strong>
+          <span class="physics-paint-play-script-header-range">{loopEdit && editTarget
+            ? `F${editTarget.placementStart} · Cycle ${editTarget.sourceKeyIds.length}f`
+            : `Max ${playScript.capacity.value}${playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}`}</span>
         </div>
         <div class="physics-paint-play-script-content">
-          <div class="physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-mode">
+          {sourceEdit ? (
+            <p class="physics-paint-play-script-notice">
+              Confirming regenerates the source cycle and updates every linked Loop Clip referencing it.
+              {playScript.sourceEditSharedLoopCount.value > 1 ? ` This source cycle is shared by ${playScript.sourceEditSharedLoopCount.value} loops.` : ''}
+            </p>
+          ) : null}
+          <div class={`physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-mode${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
             <span class="physics-paint-play-script-card-title">Mode</span>
             <div
               class="physics-paint-play-script-mode-group"
@@ -220,10 +264,10 @@ export function PhysicsPaintPlayScriptDialog({
                     class="physics-paint-play-script-mode-option"
                     role="radio"
                     aria-checked={checked}
-                    aria-disabled={busy}
-                    tabIndex={!busy && checked ? 0 : -1}
+                    aria-disabled={busy || loopEdit}
+                    tabIndex={!busy && !loopEdit && checked ? 0 : -1}
                     onClick={(event) => {
-                      if (playScript.canCancel.value) return;
+                      if (playScript.canCancel.value || loopEdit) return;
                       selectMode(option.value);
                       (event.currentTarget as HTMLElement | null)?.focus?.();
                     }}
@@ -237,14 +281,14 @@ export function PhysicsPaintPlayScriptDialog({
           </div>
           <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
             <span class="physics-paint-play-script-card-title">Timing</span>
-            <div class="physics-paint-play-script-field">
-              <label for="physics-play-script-count">{playScript.mode.value === 'static' ? 'Frames per cycle' : 'Frames'}</label>
+            <div class={`physics-paint-play-script-field${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
+              <label for="physics-play-script-count">{playScript.mode.value === 'static' || loopEdit ? 'Frames per cycle' : 'Frames'}</label>
               <input
                 ref={inputRef}
                 id="physics-play-script-count"
                 inputMode="numeric"
                 value={playScript.countText.value}
-                disabled={busy}
+                disabled={busy || loopEdit}
                 aria-invalid={Boolean(playScript.validationError.value)}
                 aria-describedby="physics-play-script-help physics-play-script-error"
                 onInput={(event) => {
@@ -258,6 +302,7 @@ export function PhysicsPaintPlayScriptDialog({
               <label for="physics-play-script-repeat">Repeat</label>
               <div class="physics-paint-play-script-repeat-row">
                 <input
+                  ref={repeatInputRef}
                   id="physics-play-script-repeat"
                   inputMode="numeric"
                   value={playScript.repeatText.value}
@@ -283,7 +328,7 @@ export function PhysicsPaintPlayScriptDialog({
             </div>
           </div>
           <div class="physics-paint-play-script-side-stack">
-            <div class="physics-paint-play-script-card physics-paint-play-script-card-color">
+            <div class={`physics-paint-play-script-card physics-paint-play-script-card-color${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
               <span class="physics-paint-play-script-card-title">Color</span>
               <div
                 class="physics-paint-play-script-mode-group"
@@ -299,10 +344,10 @@ export function PhysicsPaintPlayScriptDialog({
                       class="physics-paint-play-script-mode-option"
                       role="radio"
                       aria-checked={checked}
-                      aria-disabled={busy}
-                      tabIndex={!busy && checked ? 0 : -1}
+                      aria-disabled={busy || loopEdit}
+                      tabIndex={!busy && !loopEdit && checked ? 0 : -1}
                       onClick={(event) => {
-                        if (playScript.canCancel.value) return;
+                        if (playScript.canCancel.value || loopEdit) return;
                         playScript.overrideEnabled.value = option.value;
                         (event.currentTarget as HTMLElement | null)?.focus?.();
                       }}
@@ -331,13 +376,13 @@ export function PhysicsPaintPlayScriptDialog({
                 )}
               </div>
             </div>
-            <div class="physics-paint-play-script-card physics-paint-play-script-card-motion">
+            <div class={`physics-paint-play-script-card physics-paint-play-script-card-motion${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
               <div class="physics-paint-play-script-card-heading">
                 <span class="physics-paint-play-script-card-title">Motion wiggle</span>
                 <button
                   type="button"
                   class="physics-paint-play-script-heading-link"
-                  disabled={busy}
+                  disabled={busy || loopEdit}
                   onClick={() => playScript.resetDialogMotion()}
                 >
                   Reset defaults
@@ -352,7 +397,7 @@ export function PhysicsPaintPlayScriptDialog({
                     min={0}
                     max={100}
                     value={playScript.dialogMotion.value.deformation}
-                    disabled={busy}
+                    disabled={busy || loopEdit}
                     onInput={(event) => {
                       playScript.dialogMotion.value = { ...playScript.dialogMotion.value, deformation: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
                     }}
@@ -367,7 +412,7 @@ export function PhysicsPaintPlayScriptDialog({
                     min={0}
                     max={100}
                     value={playScript.dialogMotion.value.position}
-                    disabled={busy}
+                    disabled={busy || loopEdit}
                     onInput={(event) => {
                       playScript.dialogMotion.value = { ...playScript.dialogMotion.value, position: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
                     }}
@@ -377,6 +422,45 @@ export function PhysicsPaintPlayScriptDialog({
               </div>
             </div>
           </div>
+          {identicalCycle ? (
+            <div class="physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-source-choice">
+              <span class="physics-paint-play-script-card-title">Source cycle</span>
+              <div
+                class="physics-paint-play-script-mode-group"
+                role="radiogroup"
+                aria-label="Source cycle"
+                aria-describedby="physics-play-script-source-helper"
+                onKeyDown={onSourceChoiceKeyDown}
+              >
+                {PLAY_SCRIPT_SOURCE_CHOICES.map((option) => {
+                  const checked = playScript.linkChoice.value === option.value;
+                  return (
+                    <div
+                      key={option.value}
+                      class="physics-paint-play-script-mode-option"
+                      role="radio"
+                      aria-checked={checked}
+                      aria-disabled={busy}
+                      tabIndex={!busy && checked ? 0 : -1}
+                      onClick={(event) => {
+                        if (playScript.canCancel.value) return;
+                        playScript.linkChoice.value = option.value;
+                        (event.currentTarget as HTMLElement | null)?.focus?.();
+                      }}
+                    >
+                      {option.label}
+                    </div>
+                  );
+                })}
+              </div>
+              <span id="physics-play-script-source-helper" class="physics-paint-play-script-mode-helper">
+                {activeSourceChoice.helper}
+                {playScript.linkChoice.value === 'link'
+                  ? ` Source F${identicalCycle.sourceStart}–F${identicalCycle.sourceStart + identicalCycle.sourceKeyIds.length - 1} · ${identicalCycle.loopCount} linked loop(s).`
+                  : ''}
+              </span>
+            </div>
+          ) : null}
           {summaryRequested ? (
             <p class="physics-paint-play-script-summary-bar">
               <span class="physics-paint-play-script-summary-requested">{summaryRequested}</span>
@@ -392,7 +476,28 @@ export function PhysicsPaintPlayScriptDialog({
           </div>
           <div class="physics-paint-play-script-actions">
             <button type="button" class="physics-paint-play-script-button physics-paint-play-script-button-ghost" onClick={playScript.cancel}>{playScript.canCancel.value ? 'Cancel generation' : 'Cancel'}</button>
-            {!playScript.canCancel.value ? <button type="button" class="physics-paint-play-script-button physics-paint-play-script-button-primary" disabled={Boolean(playScript.validationError.value) || Boolean(playScript.repeatError.value)} onClick={() => { void playScript.confirm(); }}>Generate</button> : null}
+            {loopEdit && !playScript.canCancel.value ? (
+              <button
+                type="button"
+                class="physics-paint-play-script-button physics-paint-play-script-button-ghost"
+                onClick={() => {
+                  const targetId = playScript.loopEditTargetId.value;
+                  if (targetId) void playScript.openSourceEdit(targetId);
+                }}
+              >
+                Edit source cycle…
+              </button>
+            ) : null}
+            {!playScript.canCancel.value ? (
+              <button
+                type="button"
+                class="physics-paint-play-script-button physics-paint-play-script-button-primary"
+                disabled={Boolean(playScript.validationError.value) || Boolean(playScript.repeatError.value)}
+                onClick={() => { void playScript.confirm(); }}
+              >
+                {loopEdit ? 'Update loop' : sourceEdit ? 'Regenerate source cycle' : 'Generate'}
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

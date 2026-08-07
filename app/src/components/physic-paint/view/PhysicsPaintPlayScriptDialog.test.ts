@@ -85,6 +85,15 @@ interface FakeControllerSeed {
   canCancel?: boolean;
   validationError?: string | null;
   phase?: string;
+  // 43-06 loop modes
+  dialogMode?: 'apply' | 'loop-edit' | 'source-edit';
+  loopEditTargetId?: string | null;
+  loopEditTarget?: { loopId: string; placementStart: number; sourceKeyIds: string[]; repeat: number | 'infinity'; mode: 'progressive' | 'static' } | null;
+  loopEditSourceStart?: number | null;
+  sourceEditSharedLoopCount?: number;
+  loopIntentActive?: boolean;
+  identicalSourceCycle?: { sourceKeyIds: readonly string[]; loopCount: number; sourceStart: number } | null;
+  linkChoice?: 'link' | 'create';
 }
 
 // Fake controller harness exposing the post-revision 42-05 interface — plain { value } cells
@@ -114,6 +123,15 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     status: sig<string | null>(null),
     error: sig<string | null>(seed.error ?? null),
     canCancel: sig(seed.canCancel ?? false),
+    // 43-06 loop modes
+    dialogMode: sig<'apply' | 'loop-edit' | 'source-edit'>(seed.dialogMode ?? 'apply'),
+    loopEditTargetId: sig<string | null>(seed.loopEditTargetId ?? null),
+    loopEditTarget: sig(seed.loopEditTarget ?? null),
+    loopEditSourceStart: sig<number | null>(seed.loopEditSourceStart ?? null),
+    sourceEditSharedLoopCount: sig(seed.sourceEditSharedLoopCount ?? 0),
+    loopIntentActive: sig(seed.loopIntentActive ?? false),
+    identicalSourceCycle: sig(seed.identicalSourceCycle ?? null),
+    linkChoice: sig<'link' | 'create'>(seed.linkChoice ?? 'link'),
   };
   const controller = {
     ...signals,
@@ -128,6 +146,14 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     setInfinity: vi.fn(),
     resetDialogMotion: vi.fn(),
     dispose: vi.fn(),
+    openLoopEdit: vi.fn(async () => ({ ok: true, reason: null })),
+    openSourceEdit: vi.fn(async () => ({ ok: true, reason: null })),
+    repairLoop: vi.fn(async () => ({ ok: true, reason: null })),
+    updateLoop: vi.fn(async () => true),
+    unlinkLoop: vi.fn(async () => ({ ok: true, reason: null })),
+    duplicateLinkedLoop: vi.fn(async () => ({ ok: true, reason: null })),
+    relinkLoop: vi.fn(async () => ({ ok: true, reason: null })),
+    findIdenticalSourceCycle: vi.fn(() => null),
   } as unknown as RotoPlayScriptController;
   return { controller, signals };
 }
@@ -696,5 +722,175 @@ describe('PhysicsPaintPlayScriptDialog header drag + stable color-pane height (U
     expect(playScriptCssRule('.physics-paint-play-script-color-pane')).toContain('min-height: 48px');
     expect(playScriptCssRule('.physics-paint-play-script-color-hex')).toContain('line-height: 16px');
     expect(playScriptCssRule('.physics-paint-play-script-color-note')).toContain('line-height: 14px');
+  });
+});
+
+// 43-06 Task 2 (D-01/D-02/D-05): loop-edit (S2), source-edit (S3), and the
+// apply-time Link/Create choice (S4) on the SAME Phase 42 modal shell.
+describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
+  const target = { loopId: 'L1', placementStart: 10, sourceKeyIds: ['S1', 'S2', 'S3', 'S4', 'S5'], repeat: 3 as const, mode: 'static' as const };
+  const loopEditSeed = {
+    dialogMode: 'loop-edit' as const,
+    loopEditTargetId: 'L1',
+    loopEditTarget: target,
+    loopEditSourceStart: 10,
+    mode: 'static' as const,
+    countText: '5',
+    repeatText: '3',
+    loopReadout: 'Requested: 15f (5f × 3) · Effective: 8f — shortened by the next clip',
+  };
+
+  it('renders the locked title, range readout, and the Update loop / Edit source cycle… actions', () => {
+    const { controller } = createFakeController(loopEditSeed);
+    const tree = renderDialog(controller);
+    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe('Edit Loop Clip');
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-header-range')))).toBe('F10 · Cycle 5f');
+    const footer = findOne(tree, byClass('physics-paint-play-script-actions'));
+    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Update loop'))).toBe('Update loop');
+    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Edit source cycle…'))).toBe('Edit source cycle…');
+    expect(findAll(footer, (vnode) => textOf(vnode) === 'Generate')).toHaveLength(0);
+    expect(findAll(footer, (vnode) => textOf(vnode) === 'Regenerate source cycle')).toHaveLength(0);
+  });
+
+  it('locks Frames-per-cycle and every source field at reduced opacity with values preserved; ONLY Repeat + Infinity stay editable', () => {
+    const { controller } = createFakeController(loopEditSeed);
+    const tree = renderDialog(controller);
+    // Frames-per-cycle input: disabled, value preserved.
+    const countInput = findOne(tree, byId('physics-play-script-count'));
+    expect(countInput.props.disabled).toBe(true);
+    expect(countInput.props.value).toBe('5');
+    // Mode/Color/Motion cards + the count field carry the locked treatment.
+    expect(hasClass(findOne(tree, byClass('physics-paint-play-script-card-mode')), 'physics-paint-play-script-locked')).toBe(true);
+    expect(hasClass(findOne(tree, byClass('physics-paint-play-script-card-color')), 'physics-paint-play-script-locked')).toBe(true);
+    expect(hasClass(findOne(tree, byClass('physics-paint-play-script-card-motion')), 'physics-paint-play-script-locked')).toBe(true);
+    expect(hasClass(parentOf(tree, countInput)!, 'physics-paint-play-script-locked')).toBe(true);
+    // Every mode/color radio is disabled; the Motion sliders and Reset defaults are disabled.
+    for (const radio of findAll(tree, (vnode) => vnode.props?.role === 'radio')) {
+      expect(radio.props['aria-disabled']).toBe(true);
+    }
+    expect(findOne(tree, byId('physics-play-script-motion-deformation')).props.disabled).toBe(true);
+    expect(findOne(tree, byId('physics-play-script-motion-position')).props.disabled).toBe(true);
+    expect(findOne(tree, (vnode) => textOf(vnode) === 'Reset defaults').props.disabled).toBe(true);
+    // Repeat + Infinity remain editable.
+    expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(false);
+    const infinityToggle = findOne(tree, (vnode) => vnode.props?.type === 'checkbox');
+    expect(infinityToggle.props.disabled).toBe(false);
+    // The Requested/Effective readout renders in the summary bar.
+    const bar = findOne(tree, byClass('physics-paint-play-script-summary-bar'));
+    expect(textOf(findOne(bar, byClass('physics-paint-play-script-summary-requested')))).toBe('Requested: 15f (5f × 3)');
+    expect(textOf(findOne(bar, byClass('physics-paint-play-script-summary-effective')))).toBe('Effective: 8f — shortened by the next clip');
+  });
+
+  it('Update loop confirms; Edit source cycle… opens the source-edit mode for the target loop', () => {
+    const { controller } = createFakeController(loopEditSeed);
+    const tree = renderDialog(controller);
+    handler(findOne(tree, (vnode) => textOf(vnode) === 'Update loop'), 'onClick')();
+    expect(controller.confirm).toHaveBeenCalledTimes(1);
+    handler(findOne(tree, (vnode) => textOf(vnode) === 'Edit source cycle…'), 'onClick')();
+    expect(controller.openSourceEdit).toHaveBeenCalledWith('L1');
+  });
+
+  it('keeps Update loop disabled while Repeat is invalid', () => {
+    const { controller } = createFakeController({ ...loopEditSeed, repeatError: 'Enter a positive integer.' });
+    const tree = renderDialog(controller);
+    expect(findOne(tree, (vnode) => textOf(vnode) === 'Update loop').props.disabled).toBe(true);
+  });
+});
+
+describe('PhysicsPaintPlayScriptDialog source-edit mode (S3, D-02)', () => {
+  const sourceEditSeed = {
+    dialogMode: 'source-edit' as const,
+    loopEditTargetId: 'L1',
+    loopEditTarget: { loopId: 'L1', placementStart: 10, sourceKeyIds: ['S1', 'S2', 'S3', 'S4', 'S5'], repeat: 3 as const, mode: 'static' as const },
+    mode: 'static' as const,
+    countText: '5',
+    repeatText: '3',
+    sourceEditSharedLoopCount: 1,
+  };
+
+  it('renders the locked title, the base notice, and the Regenerate source cycle confirmation', () => {
+    const { controller } = createFakeController(sourceEditSeed);
+    const tree = renderDialog(controller);
+    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe('Edit Source Cycle');
+    const notice = findOne(tree, byClass('physics-paint-play-script-notice'));
+    expect(textOf(notice)).toContain('Confirming regenerates the source cycle and updates every linked Loop Clip referencing it.');
+    expect(textOf(notice)).not.toContain('shared by');
+    expect(textOf(findOne(tree, (vnode) => textOf(vnode) === 'Regenerate source cycle'))).toBe('Regenerate source cycle');
+    // The full form stays editable (prefill values preserved).
+    expect(findOne(tree, byId('physics-play-script-count')).props.disabled).toBe(false);
+    expect(findOne(tree, byId('physics-play-script-count')).props.value).toBe('5');
+    expect(findOne(tree, byId('physics-play-script-motion-deformation')).props.disabled).toBe(false);
+  });
+
+  it('shows the shared-source count only when more than one loop references the cycle', () => {
+    const { controller } = createFakeController({ ...sourceEditSeed, sourceEditSharedLoopCount: 3 });
+    const tree = renderDialog(controller);
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-notice')))).toContain('This source cycle is shared by 3 loops.');
+  });
+
+  it('keeps the Phase 42 generation lifecycle: inputs disabled and Cancel generation while busy', () => {
+    const { controller } = createFakeController({ ...sourceEditSeed, canCancel: true, progress: { completed: 1, total: 5 } });
+    const tree = renderDialog(controller);
+    expect(findOne(tree, byId('physics-play-script-count')).props.disabled).toBe(true);
+    expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Cancel generation'))).toBe('Cancel generation');
+    expect(findAll(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate source cycle')).toHaveLength(0);
+  });
+});
+
+describe('PhysicsPaintPlayScriptDialog apply-time Link/Create choice (S4, D-05)', () => {
+  const identical = { sourceKeyIds: ['S1', 'S2', 'S3', 'S4', 'S5'], loopCount: 2, sourceStart: 10 };
+
+  it('renders nothing when the controller reports no identical source cycle', () => {
+    const { controller } = createFakeController({ identicalSourceCycle: null, loopIntentActive: true });
+    const tree = renderDialog(controller);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-source-choice'))).toHaveLength(0);
+  });
+
+  it('renders the segmented control with locked options and helpers, Link selected by default with the source range and linked count', () => {
+    const { controller } = createFakeController({ identicalSourceCycle: identical, loopIntentActive: true, linkChoice: 'link' });
+    const tree = renderDialog(controller);
+    const card = findOne(tree, byClass('physics-paint-play-script-card-source-choice'));
+    expect(textOf(findOne(card, (vnode) => textOf(vnode) === 'Link to existing cycle'))).toBe('Link to existing cycle');
+    expect(textOf(findOne(card, (vnode) => textOf(vnode) === 'Create new cycle'))).toBe('Create new cycle');
+    const helper = findOne(card, byId('physics-play-script-source-helper'));
+    expect(textOf(helper)).toContain('Reuses the existing source cycle. Future source edits update every linked loop.');
+    expect(textOf(helper)).toContain('Source F10–F14 · 2 linked loop(s).');
+    const linkRadio = findOne(card, (vnode) => textOf(vnode) === 'Link to existing cycle');
+    expect(linkRadio.props['aria-checked']).toBe(true);
+  });
+
+  it('switching to Create new cycle updates the controller linkChoice and shows the Create helper', () => {
+    const { controller, signals } = createFakeController({ identicalSourceCycle: identical, loopIntentActive: true, linkChoice: 'link' });
+    let tree = renderDialog(controller);
+    handler(findOne(tree, (vnode) => textOf(vnode) === 'Create new cycle'), 'onClick')({ currentTarget: null });
+    expect(signals.linkChoice.value).toBe('create');
+    tree = renderDialog(controller);
+    const helper = findOne(tree, byId('physics-play-script-source-helper'));
+    expect(textOf(helper)).toContain('Creates an independent source cycle. Future edits do not affect the existing loops.');
+  });
+});
+
+describe('PhysicsPaintPlayScriptDialog 43-06 copy + token contract', () => {
+  it('ships every locked 43-06 dialog string verbatim and never the prohibited terms (D-20)', () => {
+    for (const locked of ['Edit Loop Clip', 'Edit Source Cycle', 'Update loop', 'Edit source cycle…', 'Regenerate source cycle', 'Link to existing cycle', 'Create new cycle']) {
+      expect(source).toContain(locked);
+    }
+    expect(source).not.toContain('clip bloquant');
+    expect((source.match(/clip bloquant/g) ?? []).length).toBe(0);
+  });
+
+  it('introduces no new CSS color tokens — the locked/notice rules reference only the Phase 42 --ps-* set', () => {
+    const lockedRule = playScriptCssRule('.physics-paint-play-script-locked');
+    expect(lockedRule).toContain('opacity');
+    expect(lockedRule).not.toMatch(/#[0-9a-fA-F]{3,8}\b|oklch|rgb\(/);
+    const noticeRule = playScriptCssRule('.physics-paint-play-script-notice');
+    expect(noticeRule).not.toMatch(/#[0-9a-fA-F]{3,8}\b|oklch|rgb\(/);
+    expect(noticeRule).toContain('var(--ps-muted)');
+    // The defined token set is exactly the locked Phase 42 set — 43-06 adds none.
+    const defined = [...playScriptCssScope().matchAll(/--ps-[a-z-]+:/g)].map((match) => match[0]);
+    expect([...new Set(defined)].sort()).toEqual([
+      '--ps-accent-hi:', '--ps-accent:', '--ps-border:', '--ps-error:', '--ps-faint:', '--ps-fg:',
+      '--ps-foot:', '--ps-inset:', '--ps-muted:', '--ps-ok:', '--ps-radius:', '--ps-raised:', '--ps-surface:',
+    ]);
   });
 });
