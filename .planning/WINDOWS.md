@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 7
+open_count: 8
 waived_count: 1
 fixed_count: 19
-total_count: 27
-last_updated: 2026-08-04T22:36:07.192Z
+total_count: 28
+last_updated: 2026-08-07T11:01:42.037Z
 ---
 
 # Broken Windows Ledger
@@ -42,6 +42,7 @@ last_updated: 2026-08-04T22:36:07.192Z
 | 25 | 38 | deviation | app/src/components/physic-paint/view/PhysicsPaintStyledTooltip.test.ts |  | Applied the user-approved flat #62666d tooltip visual over stale plan wording | fixed | Verified by the focused 9-test file and full Phase 38 closing suite. | 2026-07-29T16:15:36.934Z | 2026-07-29T16:15:38.053Z |
 | 26 | quick-260801-jun | unrun-verify | app/src-tauri/src/services/project_io.rs |  | Pre-existing cargo test lib-test compile failure (stale roto field names); verification battery item 5 red | open |  | 2026-08-01T13:41:39.096Z |  |
 | 27 | 41 | deviation | app/src/components/physic-paint/audio/efxPaintAudioMonitor.ts |  | 41-04 deviation: revisioned-update restart decision moved after prepare await (toggle race serialization) | open |  | 2026-08-04T22:36:07.192Z |  |
+| 28 | 43 | unmet-truth | app/src/viteBuild.test.ts | 184 | Pre-existing main desktop chunk exceeds the locked 1100 kB warning budget (1,112.66 kB at pre-GREEN baseline 02fa699d). | open |  | 2026-08-07T11:01:42.037Z |  |
 
 ````json
 [
@@ -367,6 +368,18 @@ last_updated: 2026-08-04T22:36:07.192Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-04T22:36:07.192Z",
+    "resolved_at": null
+  },
+  {
+    "id": 28,
+    "kind": "unmet-truth",
+    "phase": "43",
+    "file": "app/src/viteBuild.test.ts",
+    "line": 184,
+    "description": "Pre-existing main desktop chunk exceeds the locked 1100 kB warning budget (1,112.66 kB at pre-GREEN baseline 02fa699d).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-07T11:01:42.037Z",
     "resolved_at": null
   }
 ]

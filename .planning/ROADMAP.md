@@ -182,7 +182,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 43-08-PLAN.md — Capsule interaction: hit regions, tooltip host, keyboard model, Studio strip link badge (HOLD-06)
+- [x] 43-08-PLAN.md — Capsule interaction: hit regions, tooltip host, keyboard model, Studio strip link badge (HOLD-06)
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
@@ -360,5 +360,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 40. macOS Icon + Build Hygiene | v0.9.0 | 3/3 | Complete    | 2026-08-04 |
 | 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | Complete    | 2026-08-05 |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
-| 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 8/10 | In Progress|  |
+| 43. Hold Loop Clips + Filmstrip Capsule | v0.9.0 | 9/10 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |

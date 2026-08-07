@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43
 current_phase_name: hold-loop-clips-filmstrip-capsule
 status: executing
-stopped_at: Completed 43-06-PLAN.md
-last_updated: "2026-08-07T08:01:27.639Z"
-last_activity: 2026-08-06
-last_activity_desc: Phase 43 execution started
+stopped_at: Completed 43-08-PLAN.md
+last_updated: "2026-08-07T11:02:06.105Z"
+last_activity: 2026-08-07
+last_activity_desc: Completed Phase 43 Plan 08; Plan 43-10 native UAT remains
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 24
-  completed_plans: 22
-  percent: 50
+  completed_plans: 23
+  percent: 96
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43 (hold-loop-clips-filmstrip-capsule) — EXECUTING
-Plan: 9 of 10
-Status: Ready to execute
-Last activity: 2026-08-06 — Phase 43 execution started
+Plan: 10 of 10
+Status: Ready to execute native UAT
+Last activity: 2026-08-07 — Completed Plan 43-08; Plan 43-10 is next
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 runs an UNSIGNED packaged-app smoke (capsule, loop-edit dialog, valid preview, unresolved placeholder, valid PNG export, unresolved export block — no signing material accessed). Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [█████████░] 92%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -179,6 +179,7 @@ Progress: [█████████░] 92%
 | Phase 43 P07 | ~15min | 2 tasks | 6 files |
 | Phase 43 P09 | ~30min | 3 tasks | 16 files |
 | Phase 43 P06 | ~95min | 3 tasks | 18 files |
+| Phase 43 P08 | 63m | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -234,6 +235,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43-09: valid-loop preview/export parity pinned by six-scenario spec driving the real renderGlobalFrame loop vs the preview collect seam — same sourceKeyId/cacheRevision/raster per frame (D-27, audit finding 8)
 - [Phase ?]: [Phase 43]: 43-06: apply-time loop creation threshold — a Loop Clip record is persisted only on loop intent (repeat > 1 or Infinity); S4 Link skips generation (one loop-only commit); loopOnly/preserveSelection declarations extend the play-script delta barriers
 - [Phase ?]: [Phase 43]: 43-06: Loop Clip provenance (scriptId/motion/overrideColor, optional all-or-nothing) powers the S3 prefill and S4 matching; loops without provenance never match and cannot be source-edited/repaired
+- [Phase ?]: Plan 43-08: Main-timeline Loop Clip mutations route through a strict correlated bridge; the standalone Studio controller remains the sole physical-edit/history authority.
+- [Phase ?]: Plan 43-08: Delete keeps delete-loop correlation identity but dispatches unlinkLoop, preserving D-03 unlink-only semantics.
+- [Phase ?]: Plan 43-08: Retry delivery reuses one operationId; Studio deduplicates identical in-flight requests and rejects changed-content ID reuse.
 
 ### Pending Todos
 
@@ -416,8 +420,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-07T08:01:27.630Z
-Stopped at: Completed 43-06-PLAN.md
+Last session: 2026-08-07T11:02:06.095Z
+Stopped at: Completed 43-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
