@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43
 current_phase_name: hold-loop-clips-filmstrip-capsule
 status: executing
-stopped_at: Completed 43-09-PLAN.md
-last_updated: "2026-08-06T23:06:46.074Z"
+stopped_at: Completed 43-06-PLAN.md
+last_updated: "2026-08-07T08:01:27.639Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 43 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 24
-  completed_plans: 21
+  completed_plans: 22
   percent: 50
 ---
 
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43 (hold-loop-clips-filmstrip-capsule) — EXECUTING
-Plan: 8 of 10
+Plan: 9 of 10
 Status: Ready to execute
 Last activity: 2026-08-06 — Phase 43 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 runs an UNSIGNED packaged-app smoke (capsule, loop-edit dialog, valid preview, unresolved placeholder, valid PNG export, unresolved export block — no signing material accessed). Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -178,6 +178,7 @@ Progress: [█████████░] 88%
 | Phase 43 P05 | 28min | 2 tasks | 7 files |
 | Phase 43 P07 | ~15min | 2 tasks | 6 files |
 | Phase 43 P09 | ~30min | 3 tasks | 16 files |
+| Phase 43 P06 | ~95min | 3 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -231,6 +232,8 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43-09: export preflight fails fast before any frame render with the locked D-28 error; F = placementStart + first dangling cycle index (interval math only, no frame materialization)
 - [Phase ?]: 43-09: render-source variant renamed 'linked-unresolved' → 'loop-placeholder' carrying the full 43-02 typed contract — one contract, every consumer never-fallback exhaustive (audit finding 6)
 - [Phase ?]: 43-09: valid-loop preview/export parity pinned by six-scenario spec driving the real renderGlobalFrame loop vs the preview collect seam — same sourceKeyId/cacheRevision/raster per frame (D-27, audit finding 8)
+- [Phase ?]: [Phase 43]: 43-06: apply-time loop creation threshold — a Loop Clip record is persisted only on loop intent (repeat > 1 or Infinity); S4 Link skips generation (one loop-only commit); loopOnly/preserveSelection declarations extend the play-script delta barriers
+- [Phase ?]: [Phase 43]: 43-06: Loop Clip provenance (scriptId/motion/overrideColor, optional all-or-nothing) powers the S3 prefill and S4 matching; loops without provenance never match and cannot be source-edited/repaired
 
 ### Pending Todos
 
@@ -413,8 +416,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-06T23:06:46.064Z
-Stopped at: Completed 43-09-PLAN.md
+Last session: 2026-08-07T08:01:27.630Z
+Stopped at: Completed 43-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
