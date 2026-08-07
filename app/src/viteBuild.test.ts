@@ -91,14 +91,21 @@ describe('production vite build', () => {
 
   beforeAll(async () => {
     outDir = makeTempDir('efx-build-');
-    await build({
-      root: APP_DIR,
-      configFile: join(APP_DIR, 'vite.config.ts'),
-      // customLogger replaces logLevel gating — the wrap sees all warn calls.
-      customLogger: logger,
-      plugins: [createInputCapturePlugin(captured)],
-      build: { outDir, emptyOutDir: true }, // hermetic — never touches app/dist
-    });
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      await build({
+        root: APP_DIR,
+        configFile: join(APP_DIR, 'vite.config.ts'),
+        // customLogger replaces logLevel gating — the wrap sees all warn calls.
+        customLogger: logger,
+        plugins: [createInputCapturePlugin(captured)],
+        build: { outDir, emptyOutDir: true }, // hermetic — never touches app/dist
+      });
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
   }, BUILD_TIMEOUT);
 
   afterAll(() => {
