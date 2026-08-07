@@ -1188,7 +1188,8 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
 
     expect(stopPropagation).toHaveBeenCalledTimes(1);
     expect(preventDefault).not.toHaveBeenCalled();
-    expect(onSelectLoopClip).toHaveBeenCalledExactlyOnceWith('loop-1');
+    expect(onSelectLoopClip).toHaveBeenCalledTimes(1);
+    expect(onSelectLoopClip).toHaveBeenCalledWith('loop-1');
   });
 
   it('opens Loop Edit from the badge exactly once without selecting the body', async () => {
@@ -1201,7 +1202,8 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
 
     expect(stopPropagation).toHaveBeenCalledTimes(1);
     expect(preventDefault).toHaveBeenCalledTimes(1);
-    expect(onOpenLoopEdit).toHaveBeenCalledExactlyOnceWith('loop-1');
+    expect(onOpenLoopEdit).toHaveBeenCalledTimes(1);
+    expect(onOpenLoopEdit).toHaveBeenCalledWith('loop-1');
     expect(onSelectLoopClip).not.toHaveBeenCalled();
   });
 

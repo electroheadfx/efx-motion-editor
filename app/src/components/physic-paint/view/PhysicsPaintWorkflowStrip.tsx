@@ -32,6 +32,7 @@ import {
   resolveRotoVisibleFrameResolutions,
 } from '../roto/rotoTimelineSelectors';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
+import { PhysicsPaintLoopClipLane } from './PhysicsPaintLoopClipLane';
 import type {
   RotoDragPublication,
   RotoDragPreparationResult,
@@ -159,6 +160,10 @@ export interface PhysicsPaintWorkflowStripProps {
    * to the pre-43 strip.
    */
   rotoLoopResolutionContext?: PhysicPaintRotoLoopResolutionContext | null;
+  /** Lane-local selection notification; never navigates or mutates physical keys. */
+  onSelectRotoLoopClip?: (loopId: string) => void;
+  /** Existing Studio-local Loop Edit controller port (D-37/D-39). */
+  onOpenRotoLoopEdit?: (loopId: string) => Promise<unknown>;
   rotoDragContextKey?: string;
   hasCopiedRotoKey?: boolean;
   keyActionInFlight?: boolean;
@@ -529,6 +534,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const mountedRef = useRef(true);
   const currentFrameSignal = useSignal(props.currentFrame);
   if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
+  const selectedLoopClipId = useSignal<string | null>(null);
   const interpolationEnabled = props.rotoInterpolationEnabled === true;
   const interpolationMode = props.rotoInterpolationMode ?? 'duplicate';
   const currentPhysicalCells = props.rotoPhysicalCells ?? [];
@@ -1319,6 +1325,20 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <span key={frame} class="physics-paint-ruler-tick">{frame}</span>
             ))}
           </div>
+
+          {loopResolutionContext !== null && loopResolutionContext.ranges.length > 0 ? (
+            <PhysicsPaintLoopClipLane
+              ranges={loopResolutionContext.ranges}
+              visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
+              framePitch={ROTO_CELL_WIDTH_PX}
+              selectedLoopClipId={selectedLoopClipId.value}
+              onSelectLoopClip={(loopId) => {
+                selectedLoopClipId.value = loopId;
+                props.onSelectRotoLoopClip?.(loopId);
+              }}
+              onOpenLoopEdit={props.onOpenRotoLoopEdit ?? (async () => undefined)}
+            />
+          ) : null}
 
             <div ref={timelineContentRef} class="physics-paint-lane">
               <div class="physics-paint-roto-cells" role="row">
