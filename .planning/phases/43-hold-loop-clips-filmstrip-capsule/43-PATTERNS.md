@@ -9,7 +9,7 @@
 Loop Clip identity, presentation details, and edit activation are owned exclusively by EFX Paint/Roto. The Motion Editor owns only passive interval paint.
 
 - **Retain and extend narrowly:** canonical physical model, persistence, resolver algebra, store resolution, preview/export parity, physical-edit authority, accepted history, Play Script controller/dialog, and the current-document background field. Extend only the existing physical publication to carry Play Script background and complete `nextLoopClips` staging.
-- **Own inside EFX Paint/Roto:** the integrated 3px Loop Rail, its 12px interaction targets, plural rail selection plus one primary inspector identity, rail tooltip, local actions popover, contextual Scripts inspector, Studio-local `openLoopEdit(loopId)` activation, and mode-specific Key Spacing authorization.
+- **Own inside EFX Paint/Roto:** the integrated 3px Loop Rail, its 12px interaction targets, plural rail selection plus one primary inspector identity, rail tooltip, contextual Scripts inspector, Studio-local `openLoopEdit(loopId)` activation, and mode-specific Key Spacing authorization. The proposed dedicated actions popover is superseded.
 - **Retain minimally in the Motion Editor:** a paint-only interval type `{startFrame, frameCount, mode}`, projection from canonical effective ranges, and a pure Canvas painter for 3px purple/cyan strips with white canonical endpoint cuts inside the existing PPaint FX bar.
 - **Remove from the Motion Editor:** `loopCapsules`/`loopClips`, IDs, source keys, repeat metadata, status, selection, callbacks, commands, rich capsule drawing, hit testing, tooltip mounting, hover/focus, keyboard/action routing, navigation, mutation, and the specialized main-to-child Loop Clip protocol after callers are gone.
 - **Preserve generic Motion Editor consumption:** resolved Paint pixels for preview, playback, save/reopen, export, and generic FX-track behavior beneath the passive paint.
@@ -20,17 +20,15 @@ The rail is an absolute overlay at the top edge of the existing 38px physical-fr
 
 | File | Role | Data flow | Closest current analog |
 |---|---|---|---|
-| `app/src/components/physic-paint/view/PhysicsPaintLoopClipRail.tsx` | focused Preact component | canonical visible ranges + shared selection → rail paint, tooltip, focus, local actions | `PhysicsPaintWorkflowStrip.tsx`, `PhysicsPaintStyledTooltip.tsx` |
+| `app/src/components/physic-paint/view/PhysicsPaintLoopClipRail.tsx` | focused Preact component | canonical visible ranges + shared selection → rail paint, tooltip, focus, and Studio-local Edit activation | `PhysicsPaintWorkflowStrip.tsx`, `PhysicsPaintStyledTooltip.tsx` |
 | `app/src/components/physic-paint/view/physicsPaintLoopClipPresentation.ts` | pure presentation utility | resolver ranges + visible window → immutable rail geometry/copy/state | `physicsPaintWorkflowPresentation.ts` |
-| `app/src/components/physic-paint/view/PhysicsPaintLoopClipPopover.tsx` | EFX-local non-modal dialog | selected loop + controller ports → accepted-only operations and focus restoration | `UsagePopover.tsx`, `PhysicsPaintStyledTooltip.tsx` |
 | `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx` | rail host | workflow view model → ruler + physical row containing rail overlay + cells | existing physical-row composition in the same file |
 | `app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.tsx` | contextual inspector | selected-loop projection → Play/Edit slot and seven facts | existing Scripts selection, summary, and inline rename patterns |
-| `app/src/components/physic-paint/PhysicsPaintStudio.tsx` | coordinator | controller/signals → focused rail, popover, and sidebar ports | existing Roto timeline and Play Script controller wiring |
+| `app/src/components/physic-paint/PhysicsPaintStudio.tsx` | coordinator | controller/signals → focused rail and sidebar/Edit ports | existing Roto timeline and Play Script controller wiring |
 | `app/src/components/physic-paint/hooks/usePhysicsPaintStudioViewModel.ts` | identity-memo boundary | Signals/controller state → stable workflow/sidebar props | existing dependency-keyed identity memo |
-| `app/src/components/physic-paint/physicsPaintStudio.css` | geometry and state styles | rail/sidebar/popover state → paint without layout mutation | existing strip, cell, sidebar, tooltip, and focus tokens |
-| `app/src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx` | component contract | geometry, events, keyboard, focus, tooltip, accepted-operation focus | `PhysicsPaintWorkflowStrip.test.ts` |
+| `app/src/components/physic-paint/physicsPaintStudio.css` | geometry and state styles | rail/sidebar state → paint without layout mutation | existing strip, cell, sidebar, tooltip, and focus tokens |
+| `app/src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx` | component contract | geometry, events, keyboard, focus, tooltip, and exact-once Edit activation | `PhysicsPaintWorkflowStrip.test.ts` |
 | `app/src/components/physic-paint/view/physicsPaintLoopClipPresentation.test.ts` | pure contract | canonical fixtures → geometry, copy, state precedence | pure workflow presentation tests |
-| `app/src/components/physic-paint/view/PhysicsPaintLoopClipPopover.test.tsx` | interaction contract | operation result fixtures → lifecycle and focus destinations | controller/history tests plus popover tests |
 | `app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.tsx` | contextual UI contract | normal/loop/busy/error fixtures → inspector and action-slot behavior | existing Scripts panel tests |
 | `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts` | host regression | loop/no-loop fixtures → unchanged strip/cell/toolbar geometry | existing exact CSS/source contracts |
 | `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts` | timing/provenance authority | ordered real source keys → offsets/cycle duration; selected linked frames → exact source-position provenance | existing canonical per-frame loop resolution |
@@ -41,9 +39,9 @@ The rail is an absolute overlay at the top edge of the existing 38px physical-fr
 | `app/src/lib/frameMap.ts` | Motion Editor minimal projection | canonical effective ranges → paint-only `{startFrame, frameCount, mode}` markers | no identity or authoring metadata in this tier |
 | `app/src/types/timeline.ts` | Passive marker type boundary | minimal paint marker type only; rich `TimelineLoopCapsule` types removed | canonical Loop Clip types remain in physic-paint domain |
 | `app/src/components/timeline/TimelineRenderer.ts` | Passive marker paint | pure Canvas painter draws 3px purple/cyan strips and white canonical endpoint cuts inside the existing PPaint FX bar | EFX rail remains the sole interactive Loop Clip presentation |
-| `app/src/components/timeline/TimelineInteraction.ts` | Motion Editor input removal | generic timeline interaction only; marker is never hit-tested | EFX rail/popover own Loop Clip input |
-| `app/src/components/timeline/TimelineCanvas.tsx` | Motion Editor mount removal | no Loop Clip floating UI | EFX-local tooltip/popover mount |
-| `app/src/components/timeline/TimelineCapsuleTooltip.tsx` | delete obsolete surface | no retained caller | EFX tooltip/popover cover approved facts/actions |
+| `app/src/components/timeline/TimelineInteraction.ts` | Motion Editor input removal | generic timeline interaction only; marker is never hit-tested | EFX rail/sidebar own Loop Clip input |
+| `app/src/components/timeline/TimelineCanvas.tsx` | Motion Editor mount removal | no Loop Clip floating UI | EFX-local tooltip/sidebar/Edit surfaces |
+| `app/src/components/timeline/TimelineCapsuleTooltip.tsx` | delete obsolete surface | no retained caller | EFX tooltip/sidebar cover approved facts |
 | `app/src/components/timeline/loopCapsuleGeometry.ts` | delete obsolete namespace | no retained caller | `physicsPaintLoopClipPresentation.ts` owns compact rail projection |
 | `app/src/lib/physicPaintBridge.ts` | partial protocol removal | generic launch/context/authority/apply/save/frame-sync only | local Studio controller owns Loop Clip actions |
 | `app/src/components/physic-paint/bridge/physicsPaintBridgeTransport.ts` | partial protocol removal | generic Browser/Tauri transport only | existing generic transport tests |
@@ -127,20 +125,14 @@ Reuse `PhysicsPaintStyledTooltip.tsx` conventions:
 - escaped text and full accessible values;
 - Escape hides transient tooltip state without changing loop selection.
 
-### Local actions popover
+### No dedicated actions popover
 
-Use the portal/outside-click isolation pattern from `UsagePopover.tsx`, adapted as a non-modal labelled dialog.
+D-59 supersedes the proposed `PhysicsPaintLoopClipPopover` and its anchored facts/actions lifecycle.
 
-- Facts appear before actions.
-- Actions follow Duplicate, Repair, Relink, Unlink, Delete order when applicable.
-- Forward only existing EFX-local controller ports.
-- Await explicit accepted results; never infer success from dispatch or pending state.
-- Rejection keeps the surface open, preserves selection/focus/input/geometry, and announces the exact reason.
-- Pointer-open preserves the rail trigger; Space-open focuses the first applicable action.
-- Escape restores the invoking rail target.
-- Accepted Duplicate/Repair/Relink restore the surviving selected rail target.
-- Accepted Unlink/Delete select and focus the nearest visible loop by canonical placement order.
-- If no loop survives, clear loop selection, restore normal Scripts context, and focus the Scripts tab.
+- Plain/range/toggle rail gestures update session selection and contextual Scripts inspector state only.
+- Do not add portal placement, outside-click listeners, popover focus state, action ordering, or trigger-to-action keyboard flow.
+- Canonical Duplicate, Repair, Relink, Unlink, and Delete controller methods remain internal authority and regression oracles; Phase 43 does not expose them through a new component.
+- Do not compensate with a specialized bridge, hidden menu, context menu, or rail keyboard shortcut.
 
 ### Edit activation
 
@@ -150,7 +142,7 @@ Rail double-click, focused Enter, and contextual sidebar Edit all call:
 physicsPaintRotoPlayScriptController.openLoopEdit(loopId)
 ```
 
-The call is Studio-local and occurs exactly once. Double-click closes tooltip/popover and suppresses the second single-click effect. No Motion Editor request, retry, listener, or launch bridge participates.
+The call is Studio-local and occurs exactly once. Double-click hides the tooltip and does not create another transient surface. No Motion Editor request, retry, listener, or launch bridge participates.
 
 ## Contextual Scripts Inspector Pattern
 
@@ -307,9 +299,9 @@ Stage records first and then the complete Loop Clip collection before publicatio
 The rail target owns only Loop Clip intent in the top 12px band.
 
 - Stop `pointerdown`, `click`, `dblclick`, Enter, Space, and Escape propagation before cell handlers.
-- Plain click selects the loop and its complete source cycle, clears physical selection/proxy scope, focuses the target, and may open local actions; Shift/Cmd gestures update the rail set without starting drag.
+- Plain click selects the loop and its complete source cycle, clears physical selection/proxy scope, focuses the target, and updates the contextual Scripts inspector; Shift/Cmd gestures update the rail set without starting drag.
 - Pointer down does not navigate, select a real key, arm drag, or capture the pointer.
-- Enter edits; Space selects and opens actions; Escape closes transient UI.
+- Enter edits; Space selects; Escape hides the tooltip. No rail gesture opens a dedicated actions surface.
 - Delete/Backspace do not mutate the loop from rail focus.
 - Arrow keys do not move the loop.
 - Existing physical-cell behavior remains unchanged below the rail band and for full-cell keyboard activation.
@@ -374,20 +366,17 @@ Prove together:
 - tooltip order, viewport clamp, long text, and reduced motion;
 - no placement drag behavior.
 
-### Popover and focus restoration
+### Selection, Edit activation, and no-popover boundary
 
-`PhysicsPaintLoopClipPopover.test.tsx` owns:
+`PhysicsPaintLoopClipRail.test.tsx`, `PhysicsPaintWorkflowStrip.test.ts`, `PhysicsPaintScriptsPanel.test.tsx`, and `PhysicsPaintStudio.test.ts` own:
 
-- facts/action order and applicability;
-- accepted-only close/update;
-- rejection preservation and exact reason;
-- outside click and Escape;
-- viewport overflow and long text;
-- Duplicate/Repair/Relink focus to the surviving selected target;
-- Unlink/Delete focus to the nearest loop by placement order;
-- empty result focus to Scripts with normal context restored.
+- plain/range/toggle rail selection and line-only selection paint;
+- exact-once double-click, focused Enter, and sidebar Edit activation;
+- tooltip/selection isolation from physical-cell navigation and drag;
+- contextual inspector close/normal-context restoration;
+- source contracts proving no `PhysicsPaintLoopClipPopover` mount or specialized bridge listener.
 
-Controller/history suites remain verification oracles unless production behavior genuinely requires an added assertion.
+Controller/history suites remain verification oracles for canonical unexposed loop operations unless production behavior genuinely requires an added assertion.
 
 ### Sidebar and modal
 

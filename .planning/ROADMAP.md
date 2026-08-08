@@ -153,7 +153,7 @@ Plans:
   2. Identical script, destination, and options produce identical output across save/reopen and cache regeneration — zero-variation produces a stable held drawing, nonzero variation is deterministic per frame, no random render-time jitter
   3. Cancellation, staging failure, transport rejection, timeout, or settlement mismatch never leaves partial records, Loop Clips, background metadata, or history. One Undo removes the accepted operation and Redo restores it through the existing atomic commit path. A first Play Script on a fresh layer creates the physical document with the current active Paint background, and main Studio, preview, export, and save/reopen use that accepted background.
   4. A 5-position source cycle repeated 5 times resolves across five repetitions while storing only the 5 authoritative source keys; source-key `appFrame` offsets define runtime cadence and cycle duration. Plain/Shift/Cmd rail selection authorizes one or more complete source cycles, deduplicates identical cycles, and processes them in canonical placement order. Each group is spaced after prior cumulative growth, all later real keys ripple by the exact growth, and source-attached downstream Loop Clip placement follows its first key. Physical selection remains exact for ordinary operations and partial spacing within one cycle; cross-cycle physical spacing rejects with Loop Rail guidance. Rail/physical modes are mutually exclusive, Select All has no hidden scope, Interpolation remains unchanged, and one Undo/Redo covers records plus allowed placement changes.
-  5. Next-clip priority truncates loops after complete or partial cycles with half-open interval boundaries; moving or removing the next clip re-expands Effective duration without regenerating sources. Inside EFX Paint/Roto, a conditional 3px integrated Loop Rail adds zero row height and exposes derived name, Cycle math, Effective duration, mode, status, and rail-owned selection through its tooltip and contextual Scripts inspector. Rail selection paints only the selected 3px line: its complete source cycle remains the invisible Apply-time Key Spacing scope and does not mark or aria-select source frames. Explicit physical same-cycle proxy selection may visibly mark equivalent source positions, while linked/generated/gap/unresolved cells remain non-draggable navigation where applicable. The Motion Editor PPaint FX bar paints passive purple Progressive or cyan Static/Hold 3px intervals with white canonical endpoint cuts from `{startFrame, frameCount, mode}` only, with no identity, source/repeat metadata, text, badge, own hit target, tooltip, hover/focus, selection, keyboard route, navigation, Edit, drag, context menu, callback, command, or mutation; the term `clip bloquant` never appears in any language.
+  5. Next-clip priority truncates loops after complete or partial cycles with half-open interval boundaries; moving or removing the next clip re-expands Effective duration without regenerating sources. Inside EFX Paint/Roto, a conditional 3px integrated Loop Rail adds zero row height and exposes derived name, Cycle math, Effective duration, mode, status, and rail-owned selection through its tooltip and contextual Scripts inspector, with no dedicated actions popover or replacement specialized transport. Rail selection paints only the selected 3px line: its complete source cycle remains the invisible Apply-time Key Spacing scope and does not mark or aria-select source frames. Explicit physical same-cycle proxy selection may visibly mark equivalent source positions, while linked/generated/gap/unresolved cells remain non-draggable navigation where applicable. The Motion Editor PPaint FX bar paints passive purple Progressive or cyan Static/Hold 3px intervals with white canonical endpoint cuts from `{startFrame, frameCount, mode}` only, with no identity, source/repeat metadata, text, badge, own hit target, tooltip, hover/focus, selection, keyboard route, navigation, Edit, drag, context menu, callback, command, or mutation; the term `clip bloquant` never appears in any language.
 
 **Plans**: 15 plans
 Plans:
@@ -186,23 +186,23 @@ Plans:
 
 **Wave 8** *(gap closure after failed native UAT Step 1)*
 
-- [ ] 43-11-PLAN.md — Current blocking tracer/checkpoint: integrated 3px Loop Rail plus contextual Scripts inspector, all nine ownership checks, the exact passive Motion Editor PPaint FX-bar marker, and Issue #2 validated source-position Key Spacing proxies with shared timed-loop cadence and zero occurrence materialization (HOLD-05, HOLD-06)
+- [x] 43-11-PLAN.md — Current blocking tracer/checkpoint: integrated 3px Loop Rail plus contextual Scripts inspector, all nine ownership checks, the exact passive Motion Editor PPaint FX-bar marker, and Issue #2 validated source-position Key Spacing proxies with shared timed-loop cadence and zero occurrence materialization (HOLD-05, HOLD-06)
 
 **Wave 9** *(blocked on Wave 8 completion)*
 
-- [ ] 43-12-PLAN.md — Expand rail states, accessibility, tooltip, local actions popover, and accepted-only operation behavior after tracer approval (HOLD-05, HOLD-06)
+- [x] 43-12-PLAN.md — Expand rail states, accessibility, tooltip, contextual Scripts sidebar, exact-once local Edit activation, and the explicit no-popover boundary after tracer approval (HOLD-05, HOLD-06)
 
 **Wave 10** *(blocked on Wave 9 completion)*
 
-- [ ] 43-13-PLAN.md — Preserve the minimal passive marker type/projection/pure Canvas renderer while removing stale rich capsule types/drawing and every Motion Editor Loop Clip-specific input/tooltip route (HOLD-05, HOLD-06)
+- [x] 43-13-PLAN.md — Preserve the minimal passive marker type/projection/pure Canvas renderer while removing stale rich capsule types/drawing and every Motion Editor Loop Clip-specific input/tooltip route (HOLD-05, HOLD-06)
 
 **Wave 11** *(blocked on Wave 10 completion)*
 
-- [ ] 43-14-PLAN.md — Delete stale Motion Editor tooltip/geometry and rejected EFX lane/full-filmstrip residue, then remove specialized child listeners while preserving local controller authority (HOLD-05, HOLD-06)
+- [x] 43-14-PLAN.md — Delete stale Motion Editor tooltip/geometry and rejected EFX lane/full-filmstrip residue, then remove specialized child listeners while preserving local controller authority (HOLD-05, HOLD-06)
 
 **Wave 12** *(blocked on Wave 11 completion)*
 
-- [ ] 43-15-PLAN.md — Remove specialized public Loop Clip transport, run the full HOLD/UI regression matrix, record UAT evidence, and release the final native checkpoint (HOLD-01..06)
+- [x] 43-15-PLAN.md — Remove specialized public Loop Clip transport, run the full HOLD/UI regression matrix, record UAT evidence, and release the final native checkpoint (HOLD-01..06)
 
 **Wave 13** *(blocked on Wave 12 completion)*
 

@@ -1,7 +1,7 @@
 # Phase 43: Hold Loop Clips + Integrated Loop Rail - Context
 
 **Gathered:** 2026-08-07
-**Status:** Ready for UI contract and correction replanning
+**Status:** Approved; closure authority reconciled 2026-08-08
 
 <domain>
 ## Phase Boundary
@@ -12,7 +12,7 @@ The Motion Editor main timeline may receive only minimal passive marker data `{s
 
 Inside EFX Paint/Roto, Loop Clips are represented by an integrated Loop Rail in the top edge of the existing physical-frame row. The correction adds no timeline row and no track height. It also makes the existing right-sidebar Scripts context the persistent inspector for the selected Loop Clip.
 
-This is a bounded presentation and interaction correction, not a rewrite of the Loop Clip persistence model. HOLD-01..05 behavior, persistence, boundary algebra, atomic history, unresolved-source policy, preview/export parity, source-cycle sharing, and generic accepted physical-edit bridges remain authoritative, with two explicit current corrections: validated exact source positions may act as session-only Key Spacing proxies and retime the authoritative real source-key `appFrame` positions for every loop sharing the same ordered source cycle; and every Progressive or Static/Hold Apply creates a Loop Clip even at finite Repeat 1. HOLD-06's information contract is redistributed across the rail tooltip and contextual sidebar; its earlier persistent full-filmstrip capsule, repetition band, and permanent Cycle badge presentation is superseded.
+This is a bounded presentation and interaction correction, not a rewrite of the Loop Clip persistence model. HOLD-01..05 behavior, persistence, boundary algebra, atomic history, unresolved-source policy, preview/export parity, source-cycle sharing, and generic accepted physical-edit bridges remain authoritative, with two explicit current corrections: validated exact source positions may act as session-only Key Spacing proxies and retime the authoritative real source-key `appFrame` positions for every loop sharing the same ordered source cycle; and every Progressive or Static/Hold Apply creates a Loop Clip even at finite Repeat 1. HOLD-06's information contract is redistributed across the rail tooltip and contextual sidebar; its earlier persistent full-filmstrip capsule, repetition band, permanent Cycle badge, and proposed dedicated local-actions popover are superseded.
 
 Requirements: HOLD-01..06 in `.planning/REQUIREMENTS.md`. The integrated-rail decisions below supersede the earlier Phase 43 dedicated-lane correction, the current `43-UI-SPEC.md`, Plans 43-11..14, `43-VALIDATION.md`, and the failed Step 1 wording in `43-UAT.md`. `.planning` remains the sole planning authority for Phase 43; SPECS is not active unless the user explicitly re-enables it.
 
@@ -32,7 +32,7 @@ Requirements: HOLD-01..06 in `.planning/REQUIREMENTS.md`. The integrated-rail de
 ### Rail information and interactions
 
 - **D-38R:** Hovering the rail shows a tooltip above it containing the Loop Clip display name, `Cycle Nf × R = Tf` or `Cycle Nf × ∞`, Effective duration, and normal/truncated/unresolved status. Truncation keeps the approved English meaning `Loop shortened by next clip`; `clip bloquant` remains prohibited in every language.
-- **D-39R:** Single click selects only the Loop Clip and may open the existing local actions popover. It must not navigate, select, multi-select, or alter a physical frame. The local popover retains `Duplicate`, `Unlink`, `Delete`, `Repair`, and `Relink` as applicable, with the existing fail-closed guards and accepted-only completion behavior.
+- **D-39R (superseded in part by D-59):** Single click selects only the Loop Clip, updates the contextual Scripts inspector, and establishes its complete source cycle as the session-only rail Key Spacing scope. It must not navigate, select, multi-select, or alter a physical frame. The proposed dedicated local-actions popover is not part of the approved surface.
 - **D-40R:** Double-clicking the rail, or pressing Enter while the rail is keyboard-focused, opens the existing Studio-local `Edit Loop Clip` modal with current values through `openLoopEdit(loopId)`. No parent-to-child Loop Clip open request is used.
 - **D-41:** Reserve pointer geometry compatible with a future horizontal drag-and-drop placement feature, but do not implement Loop Clip dragging in this correction without separate user approval.
 - **D-42:** Physical-cell navigation, real-key selection, multi-select, and drag behavior below the rail remain unchanged. The rail's event target must be structurally isolated from physical-cell handlers, and the accepted blue linked-frame indicators remain intact.
@@ -64,11 +64,12 @@ Requirements: HOLD-01..06 in `.planning/REQUIREMENTS.md`. The integrated-rail de
 - **D-55 (accepted Play Script current-frame reconciliation):** When an accepted Play Script transaction settles deferred records, the coordinator immediately reconciles `after.currentAppFrame` through the existing reference/canvas reload port. The first generated frame must appear on the Studio canvas without moving the playhead. Rejection/rollback and Undo/Redo retain their existing reconciliation behavior.
 - **D-57 (supersedes D-50's selection and movement model):** Loop Rails own multi-capsule Key Spacing. Plain rail click selects exactly one Loop Clip and its complete ordered source cycle while retaining the Scripts inspector target; Shift-click selects the inclusive contiguous Loop Clip range from the stable rail anchor in canonical placement order; Cmd/Ctrl-click toggles non-contiguous Loop Clips. Selected clips derive complete source cycles from current records at Apply time, identical cycles deduplicate, and stale, reordered, duplicate-covered, missing, or ambiguous authorization rejects before coordinator execution. Physical real-key selection remains available for ordinary operations and partial Key Spacing inside at most one current source cycle; a physical selection spanning multiple linked cycles rejects with guidance to select Loop Rails. Rail and physical selection are synchronously mutually exclusive, and Select All clears rail/proxy state so its visible physical keys are the exact operation scope. For accepted spacing, process selected cycle groups left-to-right: each group's first selected key is anchored at its original frame plus prior cumulative growth, internal destinations use the requested spacing, and every later real key ripples by the group's signed growth. A Loop Clip whose pre-edit `placementStart` equals its first source key's pre-edit frame follows that key; duplicated placements remain fixed. Loop IDs, ordered source IDs, mode, repeat, Infinity, script provenance, motion, and override color remain byte-identical. Interpolation is passed through unchanged—Off leaves empty gaps, On derives generated interiors—and the complete records-plus-Loop-Clips result is staged, accepted, rolled back, and recorded as one history command. No linked occurrence or selection/provenance state is persisted or materialized.
 - **D-58 (Play Script background transaction):** Every `play-script` physical publication carries a valid snapshot of the current `buildRotoBackgroundMetadata(settings)` value. The first accepted Play Script on a fresh layer creates the canonical physical document with that background in the same `replaceRotoPhysicalDocument` transaction; later Play Scripts replace stale parent metadata with the current snapshot. Ordinary physical edit kinds reject `rotoBackground`. No separate optimistic background mutation, repeated destination materialization, project-data repair, or schema migration is added; main Studio, preview, export, and save/reopen consume the accepted document background.
+- **D-59 (supersedes the dedicated-popover portions of D-39R, D-46, and the initial 43-12 contract):** The final user-approved Loop Clip authoring surface is the integrated rail, its styled tooltip, the contextual Scripts sidebar, and the existing Studio-local Edit Loop Clip floating dialog. Plain/range/toggle rail gestures update selection and sidebar context only; focused Enter, rail double-click, and sidebar Edit converge on `openLoopEdit(loopId)` exactly once. No `PhysicsPaintLoopClipPopover`, anchored actions dialog, popover focus lifecycle, or rail-triggered Duplicate/Repair/Relink/Unlink/Delete controls are introduced. Those controller capabilities remain canonical internal operations and regression-protected authority, but exposing them through a new surface is deferred beyond Phase 43. No specialized cross-window protocol is retained to compensate for the removed popover.
 
 ### Claude's Discretion
 
 - Exact DOM/component split for the 3px rail, provided it is a focused EFX Paint module and not more logic added directly to `PhysicsPaintStudio.tsx`.
-- Exact tooltip and local-popover primitives, provided tooltip placement is above the rail and the interaction/accessibility contract is met.
+- Exact styled-tooltip primitive, provided placement is above the rail and the interaction/accessibility contract is met; no dedicated actions popover is added.
 - Exact selected/focus accent values and zero-effective marker shape within the revised UI-SPEC tokens.
 - Exact non-persisted display-name derivation helper and fallback copy, excluding raw UUID as product text.
 
@@ -80,12 +81,12 @@ Requirements: HOLD-01..06 in `.planning/REQUIREMENTS.md`. The integrated-rail de
 **Downstream agents MUST read these before planning or implementing.**
 
 ### Requirements, roadmap, and failed acceptance
-- `.planning/REQUIREMENTS.md` — HOLD-01..06; D-34R..D-58 are the latest interpretation of timing, presentation, Loop Clip creation, rail-owned spacing, atomic ripple, and Play Script background acceptance.
-- `.planning/ROADMAP.md` §“Phase 43” — phase goal and linked-loop success criteria; persistent full-filmstrip wording must be reconciled during correction replanning.
-- `.planning/phases/43-hold-loop-clips-filmstrip-capsule/43-UAT.md` — failed native acceptance artifact to rewrite around the integrated rail and contextual sidebar.
-- `.planning/phases/43-hold-loop-clips-filmstrip-capsule/43-VALIDATION.md` — validation mapping to revise before execution resumes.
-- `.planning/phases/43-hold-loop-clips-filmstrip-capsule/43-UI-SPEC.md` — stale dedicated-lane contract; must be replaced, not patched incrementally.
-- `.planning/phases/43-hold-loop-clips-filmstrip-capsule/43-11-PLAN.md` through `43-14-PLAN.md` — stale correction plans to rewrite against D-34R..D-49.
+- `.planning/REQUIREMENTS.md` — HOLD-01..06; D-34R..D-59 are the latest interpretation of timing, presentation, Loop Clip creation, rail-owned spacing, atomic ripple, Play Script background acceptance, and the final no-popover surface boundary.
+- `.planning/ROADMAP.md` §“Phase 43” — final integrated-rail, contextual-sidebar, passive-marker, and cleanup plan map.
+- `.planning/phases/43-hold-loop-clips-filmstrip-capsule/43-UAT.md` — approved native acceptance record reconciled to the final rail/sidebar/Edit surface.
+- `.planning/phases/43-hold-loop-clips-filmstrip-capsule/43-VALIDATION.md` — final automated/native coverage map.
+- `.planning/phases/43-hold-loop-clips-filmstrip-capsule/43-UI-SPEC.md` — final visual and interaction contract.
+- `.planning/phases/43-hold-loop-clips-filmstrip-capsule/43-11-PLAN.md` through `43-15-PLAN.md` — executed correction and structural cleanup plans.
 
 ### Prior locked behavior
 - `.planning/phases/42-playscript-application-modes-color-override/42-CONTEXT.md` — approved Play Script dialog shell, cycle-only generation, requested/effective conventions, and static/hold behavior reused by Loop Edit and Source Edit.
@@ -118,7 +119,7 @@ Requirements: HOLD-01..06 in `.planning/REQUIREMENTS.md`. The integrated-rail de
 - `RotoTimelineCellButtonImpl` already uses the project's styled-tooltip pattern around physical-cell anchors. Reuse the local tooltip conventions while keeping the rail target outside the cell button's navigation/drag path.
 - `PhysicsPaintRightPanel.tsx` already hosts the default-open Scripts tab and delegates its content through `PhysicsPaintScriptsPanelProps`; selection-aware inspector data belongs in this existing path rather than a new pane.
 - `physicsPaintRotoPlayScriptController.openLoopEdit(loopId)` already stops playback, requests authority, prefills current loop values, and opens the existing confirmation modal. Rail double-click, Enter, and sidebar Edit should converge on this one action.
-- Existing controller operations and accepted acknowledgements already implement Duplicate, Unlink/Delete semantics, Repair, and Relink; the rail/popover must not create a second mutation path.
+- Existing controller operations and accepted acknowledgements already implement Duplicate, Unlink/Delete semantics, Repair, and Relink. They remain internal canonical authority; the approved rail/sidebar/Edit surface does not add a second mutation path or expose a dedicated actions popover.
 
 ### Established Patterns
 - Preact Signals carry shared Studio/session selection state; avoid hook/effect mirroring and prop-drilling sprawl.
@@ -129,7 +130,7 @@ Requirements: HOLD-01..06 in `.planning/REQUIREMENTS.md`. The integrated-rail de
 ### Integration Points
 - Replace `PhysicsPaintLoopClipLane` and its extra-row mount in `PhysicsPaintWorkflowStrip` with a focused integrated rail component/presentation helper attached to the existing physical-row wrapper.
 - Feed selected Loop Clip identity and derived inspector data through `usePhysicsPaintStudioViewModel`/Studio signals into both the rail and `PhysicsPaintScriptsPanel` context.
-- Keep the local actions popover and Edit modal inside EFX Paint. Remove the specialized main-timeline Loop Clip request protocol after main-timeline callers and tests are gone.
+- Keep the rail tooltip, contextual Scripts sidebar, and Edit modal inside EFX Paint. Do not mount a dedicated actions popover. Remove the specialized main-timeline Loop Clip request protocol after main-timeline callers and tests are gone.
 - Project only `{startFrame, frameCount, mode}` into the Motion Editor and paint passive purple/cyan 3px strips with canonical white endpoint cuts through the pure Canvas helper inside the existing PPaint FX bar; never expose identity or attach Loop Clip-specific input routes.
 - Preserve existing blue linked-frame indicators and all physical-cell pointer/keyboard/drag routes below the rail.
 

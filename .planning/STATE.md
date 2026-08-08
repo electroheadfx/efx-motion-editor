@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-current_phase: 43
-current_phase_name: hold-loop-clips-filmstrip-capsule
-status: executing
-stopped_at: Phase 43 native UAT approved; commit-dependent plan-close artifacts pending
-last_updated: "2026-08-08T20:41:12.000Z"
+current_phase: 44
+current_phase_name: integrated-uat-signed-release
+status: ready
+stopped_at: Phase 43 complete and approved; Phase 44 ready for planning/execution
+last_updated: "2026-08-08T23:30:00.000Z"
 last_activity: 2026-08-08
-last_activity_desc: Phase 43 full native UAT and final automated gates approved
+last_activity_desc: Phase 43 implementation, structural cleanup, native approval, and summaries completed
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 29
-  completed_plans: 23
-  percent: 50
+  completed_plans: 29
+  percent: 67
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 43 — hold-loop-clips-filmstrip-capsule
+**Current focus:** Phase 44 — integrated UAT and signed release
 
 ## Current Position
 
-Phase: 43 (hold-loop-clips-filmstrip-capsule) — NATIVE APPROVED
-Plan: Correction implementation and sole native checkpoint complete; plan summaries/commits pending
-Status: Final full suite, typecheck, build, dependency, and patch gates passed
-Last activity: 2026-08-08 — user approved all Phase 43 native UAT
+Phase: 43 (hold-loop-clips-filmstrip-capsule) — COMPLETE AND APPROVED
+Plan: All 15 plans complete; 43-10 through 43-15 summaries recorded
+Status: Implementation `45677643`, structural cleanup `973ee5ab`, final gates, and native UAT complete
+Last activity: 2026-08-08 — Phase 43 closed after explicit user approval
 
-**Phase 44 handoff (audit finding 9 decision):** Phase 43-10 runs an UNSIGNED packaged-app smoke (capsule, loop-edit dialog, valid preview, unresolved placeholder, valid PNG export, unresolved export block — no signing material accessed). Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
+**Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [██████████] 99%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -71,6 +71,7 @@ Progress: [██████████] 99%
 | 40 | 3 | - | - |
 | 41 | 5 | - | - |
 | 42 | 6 | - | - |
+| 43 | 15/15 | Complete through corrected implementation, cleanup, native UAT, and summary closure | - |
 
 **Recent Trend:**
 

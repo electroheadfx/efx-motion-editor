@@ -17,14 +17,15 @@ packaged_app: /Users/lmarques/Dev/efx-motion-editor/app/src-tauri/target/release
 
 The first native attempt stopped at old Step 1 on 2026-08-07. The rejected rich Loop Clip capsule system—identity-bearing capsule visuals plus interactions—had been placed on the Motion Editor main timeline (`PPaint #1`) instead of keeping authoring inside EFX Paint/Roto. No later step was executed. That interactive filmstrip/capsule direction is not acceptance evidence.
 
-This script replaces that failed authoring contract. Loop Clip authoring remains exclusively inside EFX Paint/Roto through the integrated Loop Rail, local actions popover, contextual Scripts sidebar, and existing Studio-local edit modal. The Motion Editor main timeline is allowed only one passive Repeat-duration marker per canonical effective interval: an exact 3px Progressive-purple or Static/Hold-cyan strip with white canonical endpoint cuts inside the existing PPaint FX bar, from paint-only `{startFrame, frameCount, mode}` data and with zero Loop Clip-specific interaction.
+This script replaces that failed authoring contract. Loop Clip authoring remains exclusively inside EFX Paint/Roto through the integrated Loop Rail, styled rail tooltip, contextual Scripts sidebar, and existing Studio-local edit modal. The proposed dedicated local-actions popover was explicitly superseded during closure reconciliation and is not part of the approved surface. The Motion Editor main timeline is allowed only one passive Repeat-duration marker per canonical effective interval: an exact 3px Progressive-purple or Static/Hold-cyan strip with white canonical endpoint cuts inside the existing PPaint FX bar, from paint-only `{startFrame, frameCount, mode}` data and with zero Loop Clip-specific interaction.
 
 ## Automated gate evidence for the corrected build
 
 Recorded on the final correction state on 2026-08-08:
 
-- Focused D-57/D-58 recovery matrix: **pass** — 13 test files passed; 356 tests passed, 1 skipped.
-- Full `pnpm --dir app exec vitest run`: **pass** — 117 test files passed, 3 skipped; 1,588 tests passed, 1 skipped, 101 todo.
+- Focused D-57/D-58 recovery matrix: **pass** — 13 test files passed; 353 tests passed, 1 skipped.
+- Focused structural cleanup matrix: **pass** — 9 test files passed; 175 tests passed, 1 skipped.
+- Full `pnpm --dir app exec vitest run`: **pass** — 116 test files passed, 3 skipped; 1,521 tests passed, 1 skipped, 101 todo.
 - `pnpm --dir app run typecheck`: **pass** — `tsc --noEmit` exited 0.
 - `pnpm build`: **pass** — `@efxlab/efx-physic-paint` package and `efx-motion-editor` app builds exited 0.
 - Phase 43 dependency diff for `app/package.json` and `pnpm-lock.yaml`: **pass** — no dependency-file changes.
@@ -185,7 +186,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 2. The 24px cells, current/selected outlines, drag feedback, blue linked indicator, and 34px action toolbar remain fully visible and operable.
 3. A loop renders exactly a 3px rail with a 12px interaction band; zero loops render no rail DOM, label, placeholder, or reserved space.
 4. Hover shows the styled tooltip above the rail with derived display name, Cycle math, Effective duration, and status.
-5. Plain rail click selects exactly one Loop Clip and its complete source cycle, opens local actions, updates the sidebar, clears physical selection/proxy scope, and leaves the playhead and drag state unchanged. Shift/Cmd rail gestures extend or toggle the rail set without activating physical selection.
+5. Plain rail click selects exactly one Loop Clip and its complete source cycle, updates the contextual Scripts sidebar, clears physical selection/proxy scope, and leaves the playhead and drag state unchanged. Shift/Cmd rail gestures extend or toggle the rail set without activating physical selection or opening another surface.
 6. Double-click and focused Enter each open the existing `Edit Loop Clip` modal exactly once.
 7. Normal script context shows Play; selected-loop context swaps that same slot to Lucide Pencil/Edit and shows name, source script, placement, Cycle, Effective, mode, and status.
 8. Linked physical cells retain the accepted blue inset border and 4px top-right dot across normal/current/selected/drag states.
@@ -289,20 +290,20 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 
 ---
 
-## 7. Local actions popover and keyboard model
+## 7. Rail keyboard model and no-popover boundary
 
 **Actions**
 
 1. Single-click a rail, then separately focus it and press Space.
-2. Inspect facts/actions, Tab order, Escape, outside click, Enter, Delete, Backspace, and arrow keys.
+2. Inspect selection, sidebar context, Tab order, Escape, Enter, Delete, Backspace, and arrow keys.
 
 **Expected outcome**
 
-- One labelled non-modal popover shows Source script, Placement, Cycle, Effective, Mode, Status, then applicable actions in this order: Duplicate, Repair, Relink, Unlink, Delete.
-- Pointer-open preserves the rail trigger; Space-open moves to the first action; Escape restores the trigger; outside click closes only the popover and retains loop selection/sidebar context.
-- Enter opens Edit Loop Clip exactly once.
+- Single click and Space select the rail and update the contextual Scripts sidebar without mounting an anchored facts/actions dialog.
+- Escape hides transient tooltip state without clearing rail selection or moving focus.
+- Enter opens Edit Loop Clip exactly once through the Studio-local route.
 - Delete/Backspace do not mutate the loop from rail focus; arrow keys do not move it.
-- Popover clamps to the viewport, wraps/ellipsizes long facts, and scrolls only internally.
+- No `PhysicsPaintLoopClipPopover`, outside-click lifecycle, popover focus transfer, hidden menu, context menu, or specialized bridge substitute appears.
 
 **Result:** [x] pass  [ ] fail
 
@@ -349,22 +350,19 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 
 ---
 
-## 10. Duplicate, Unlink, and Delete
+## 10. Canonical loop operations and deferred action surface
 
 **Actions**
 
-1. Duplicate to a valid empty destination; test Cancel and an invalid/rejected destination first.
-2. Undo/Redo the accepted duplicate.
-3. Unlink and Delete through explicit popover controls, with Undo/Redo for each.
+1. Inspect the rail and contextual Scripts sidebar for the final approved controls.
+2. Confirm the existing Edit Loop Clip / Edit Source Cycle flow remains available and no dedicated action popover appears.
 
 **Expected outcome**
 
-- Invalid/rejected Duplicate preserves the active flow, input, focus, selection, and reason; accepted Duplicate creates one new loop sharing source references with no regeneration.
-- Unlink and Delete remove only the loop record and preserve source keys/assets.
-- No operation double-dispatches while pending.
-- Accepted Duplicate returns selection and keyboard focus to the surviving selected rail target.
-- Accepted Unlink or Delete moves selection and focus to the nearest visible Loop Clip by canonical placement order; if no Loop Clip survives, focus moves to the Scripts tab and normal script context with Play is restored.
-- Undo/Redo restores/reapplies exact loop placement/source identity.
+- The final surface exposes rail selection, tooltip facts, contextual sidebar facts, sidebar/rail Edit, and the existing floating Edit dialog only.
+- Duplicate, Repair, Relink, Unlink, and Delete remain canonical controller operations with atomic authority/history regression coverage, but Phase 43 makes no native claim for new rail-triggered controls exposing them.
+- No hidden menu, context menu, anchored dialog, optimistic mutation path, or specialized cross-window substitute is introduced.
+- Existing controller tests continue proving unlink-only semantics, source preservation, exact acknowledgement, and atomic Undo/Redo independently of UI exposure.
 
 **Result:** [x] pass  [ ] fail
 
@@ -375,7 +373,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 **Actions**
 
 1. Open an unresolved fixture whose loop retains dangling source references verbatim.
-2. Inspect red rail, tooltip/sidebar/popover, marked preview placeholder, and export block.
+2. Inspect red rail, tooltip/sidebar status, marked preview placeholder, and export block.
 3. Test Repair and Relink with rejection, acceptance, Undo, Redo, and save/reopen of an unrepaired copy.
 
 **Expected outcome**
@@ -512,7 +510,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 **Actions**
 
 1. Create several non-overlapping loops across a long physical timeline with long script names.
-2. Scroll horizontally and inspect tab order, rail clipping/reappearance, tooltip, popover, and sidebar.
+2. Scroll horizontally and inspect tab order, rail clipping/reappearance, tooltip, and sidebar.
 
 **Expected outcome**
 
@@ -555,12 +553,12 @@ This is a local unsigned package smoke. Do not sign, notarize, staple, inspect c
 
 1. Launch the unsigned packaged app using the normal local workflow.
 2. Open valid and unresolved loop projects.
-3. Check integrated rail/sidebar/popover/Edit behavior, valid preview/export, unresolved placeholder/export block, and the Motion Editor passive-marker-only contract.
+3. Check integrated rail/tooltip/sidebar/Edit behavior and the absence of a dedicated actions popover, plus valid preview/export, unresolved placeholder/export block, and the Motion Editor passive-marker-only contract.
 
 **Expected outcome**
 
 - App launches without a dev server.
-- Integrated rail remains 3px inside the unchanged row; sidebar/popover/Edit work locally.
+- Integrated rail remains 3px inside the unchanged row; tooltip/sidebar/Edit work locally and no dedicated actions popover is mounted.
 - Valid preview/export parity and unresolved placeholder/export block match development behavior.
 - Motion Editor shows only passive 3px mode-colored PPaint FX-bar markers with white actual endpoint cuts and exposes zero Loop Clip-specific interaction.
 - No signing/notarization/credential/certificate flow occurs; signed downloaded-artifact UAT remains Phase 44 scope.
