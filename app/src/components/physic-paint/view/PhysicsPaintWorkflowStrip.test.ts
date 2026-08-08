@@ -264,7 +264,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     // 43-02 Pitfall 7: the interaction gate is a no-op for real keys (a
     // physical real key always resolves 'real') and hard-excludes virtual
     // linked occurrences when a loop resolution context is present.
-    expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
+    expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
   });
 
   it('gives linked occurrences a darker capsule fill without changing drag semantics', () => {
@@ -274,7 +274,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(map).toContain("frameResolution?.kind === 'linked-unresolved'");
     expect(map).toContain("${hasLinkedLoopBadge ? 'roto-linked-loop-badge' : ''}");
     expect(map).toContain("const fillClass = isPhysicalRealKey");
-    expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
+    expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
     expect(map).toContain('getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById)');
     expect(map).toContain('const cellAriaLabel =');
 
@@ -1134,7 +1134,7 @@ describe('PhysicsPaintWorkflowStrip loop resolution wiring (43-02, Pitfall 7)', 
     expect(mapBlock).toContain('getRotoResolutionCellTooltipCopy(');
     expect(mapBlock).toContain("frameResolution?.kind === 'linked-generated'");
     expect(mapBlock).toContain("frameResolution?.kind === 'linked-gap'");
-    expect(mapBlock).toContain('const cellAriaLabel = hasLinkedLoopBadge');
+    expect(mapBlock).toContain('const cellAriaLabel = isSpacingProxySelected');
   });
 
   it('issues exactly one resolution query per visible frame for a huge-repeat loop (D-32)', () => {

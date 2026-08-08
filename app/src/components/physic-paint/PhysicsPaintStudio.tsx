@@ -6,6 +6,15 @@ import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintSt
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
+import {
+  extendPhysicsPaintRotoSpacingProxyRange,
+  reconcilePhysicsPaintRotoSpacingSelection,
+  selectPhysicsPaintRotoSpacingProxyPlain,
+  togglePhysicsPaintRotoSpacingProxy,
+  type PhysicsPaintRotoSpacingProxy,
+  type PhysicsPaintRotoSpacingSelection,
+  type PhysicsPaintRotoSpacingSelectionGesture,
+} from './roto/physicsPaintRotoSpacingSelection';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
@@ -74,6 +83,7 @@ export function PhysicsPaintStudio() {
   // persisted, never sent across the bridge — only selectedKeyId persists.
   const selectedKeyIds = useSignal<readonly string[]>([]);
   const selectionAnchorKeyId = useSignal<string | null>(null);
+  const rotoSpacingSelection = useSignal<PhysicsPaintRotoSpacingSelection | null>(null);
   const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(launchContext?.cachedRotoFrames ?? []);
   const setLaunchContext = useCallback((update: PhysicPaintLaunchContext | null | ((current: PhysicPaintLaunchContext | null) => PhysicPaintLaunchContext | null)) => {
     setLaunchContextState((current) => {
@@ -87,6 +97,7 @@ export function PhysicsPaintStudio() {
         // stale set or anchor.
         selectedKeyIds.value = selectedKeyId.value === null ? [] : [selectedKeyId.value];
         selectionAnchorKeyId.value = selectedKeyId.value;
+        rotoSpacingSelection.value = null;
       } else if (next && next.startFrame !== current?.startFrame) {
         selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, next.startFrame)?.keyId ?? null;
         physicPaintStore.setRotoPhysicalSelection(next.layerId, selectedKeyId.value, next.startFrame);
@@ -154,6 +165,12 @@ export function PhysicsPaintStudio() {
   const rotoKeyRecords = useMemo(() => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId) : [], [launchContext?.layerId, physicPaintVersion.value]);
   const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, physicPaintVersion.value]);
   const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, physicPaintVersion.value]);
+  const effectiveRotoSpacingSelection = reconcilePhysicsPaintRotoSpacingSelection(
+    rotoSpacingSelection.value,
+    rotoLoopClips
+      .filter((loopClip) => loopClip.sourceKeyIds.every((keyId) => rotoKeyRecords.some((record) => record.keyId === keyId)))
+      .map((loopClip) => ({ sourceKeyIds: loopClip.sourceKeyIds })),
+  );
   // 38.1 D-07: the legacy interpolation settings read MUST be memoized on the
   // same structural inputs (physicPaintVersion + layerId) as the records
   // above — the store getter returns a fresh clone per call, and an unstable
@@ -550,6 +567,15 @@ export function PhysicsPaintStudio() {
     getPhysicalCells: () => rotoTimelineModel.physicalCells.value,
     getSelectedKeyId: () => selectedKeyId.value,
     getSelectedKeyIds: () => selectedKeyIds.value,
+    getRotoSpacingSelection: () => reconcilePhysicsPaintRotoSpacingSelection(
+      rotoSpacingSelection.peek(),
+      (launchContextRef.current ? physicPaintStore.getRotoPhysicalLoopClips(launchContextRef.current.layerId) : [])
+        .filter((loopClip) => {
+          const currentKeyIds = new Set(launchContextRef.current ? physicPaintStore.getRotoRealKeyRecords(launchContextRef.current.layerId).map((record) => record.keyId) : []);
+          return loopClip.sourceKeyIds.every((keyId) => currentKeyIds.has(keyId));
+        })
+        .map((loopClip) => ({ sourceKeyIds: loopClip.sourceKeyIds })),
+    ),
     getCurrentAppFrame: () => currentFrame,
     getLaunchContext: () => launchContextRef.current,
     getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 1,
@@ -796,7 +822,11 @@ export function PhysicsPaintStudio() {
     },
     bridgeMode,
   );
-  resetRotoKeySessionRef.current = rotoKeyUtilities.resetSession;
+  const resetRotoSpacingSelectionSession = useCallback((options?: { clearClipboard?: boolean }) => {
+    rotoSpacingSelection.value = null;
+    rotoKeyUtilities.resetSession(options);
+  }, [rotoKeyUtilities]);
+  resetRotoKeySessionRef.current = resetRotoSpacingSelectionSession;
   resetRotoNavigationForLaunchRef.current = rotoNavigation.resetForLaunch;
   const rotoFrameEditing = useRotoFrameEditingController({
     workflowMode, currentFrame, currentFrameSelectionKind,
@@ -1196,6 +1226,20 @@ export function PhysicsPaintStudio() {
   const handleRotoInterpolationModeChange = useCallback((mode: PhysicPaintRotoInterpolationState['mode']) => {
     void updateRotoInterpolationSettingsRef.current({ mode });
   }, []);
+  const handleSelectRotoSpacingProxy = useCallback((
+    proxy: PhysicsPaintRotoSpacingProxy,
+    gesture: PhysicsPaintRotoSpacingSelectionGesture,
+  ) => {
+    const current = rotoSpacingSelection.peek();
+    rotoSpacingSelection.value = gesture === 'toggle'
+      ? togglePhysicsPaintRotoSpacingProxy(current, proxy)
+      : gesture === 'range'
+        ? extendPhysicsPaintRotoSpacingProxyRange(current, proxy)
+        : selectPhysicsPaintRotoSpacingProxyPlain(current, proxy);
+  }, []);
+  const handleClearRotoSpacingSelection = useCallback(() => {
+    rotoSpacingSelection.value = null;
+  }, []);
   const handleToggleRotoKeySelection = useCallback((keyId: string) => {
     const result = toggleRotoKeySelection(
       { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() },
@@ -1506,6 +1550,9 @@ export function PhysicsPaintStudio() {
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).
         rotoSelectedKeyIds: selectedKeyIds.value,
+        rotoSpacingSelection: effectiveRotoSpacingSelection,
+        onSelectRotoSpacingProxy: handleSelectRotoSpacingProxy,
+        onClearRotoSpacingSelection: handleClearRotoSpacingSelection,
         onToggleRotoKeySelection: handleToggleRotoKeySelection,
         onCollapseRotoSelectionToKey: handleCollapseRotoSelectionToKey,
         // Shift-click range selection (37-04; D-01): contiguous real-key range

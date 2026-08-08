@@ -31,6 +31,7 @@ describe('Physics Paint Roto source-position spacing selection', () => {
       anchorSourceIndex: 1,
     });
     expect(Object.isFrozen(selected)).toBe(true);
+    if (selected === null) throw new Error('Expected a plain spacing selection.');
     expect(Object.isFrozen(selected.sourceKeyIds)).toBe(true);
     expect(Object.isFrozen(selected.selectedSourceKeyIds)).toBe(true);
   });

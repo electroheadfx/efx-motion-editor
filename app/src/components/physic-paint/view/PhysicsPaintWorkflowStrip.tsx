@@ -31,7 +31,13 @@ import type { PhysicPaintRotoLoopResolutionContext } from '../roto/physicsPaintR
 import {
   getRotoFrameKeyInteraction,
   resolveRotoVisibleFrameResolutions,
+  resolveRotoVisibleSpacingProxies,
 } from '../roto/rotoTimelineSelectors';
+import type {
+  PhysicsPaintRotoSpacingProxy,
+  PhysicsPaintRotoSpacingSelection,
+  PhysicsPaintRotoSpacingSelectionGesture,
+} from '../roto/physicsPaintRotoSpacingSelection';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import { PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
 import type { PhysicsPaintLoopClipPresentation } from './physicsPaintLoopClipPresentation';
@@ -132,6 +138,12 @@ export interface PhysicsPaintWorkflowStripProps {
   rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
   /** Controller-owned multi-selection set (37-02 signal). The strip never mutates or reorders it (D-05). */
   rotoSelectedKeyIds?: readonly string[];
+  /** Session-only exact source-position selection shared across equivalent Loop Clip occurrences. */
+  rotoSpacingSelection?: PhysicsPaintRotoSpacingSelection | null;
+  /** Plain/toggle/range selection intent for one exact Loop Clip source position. */
+  onSelectRotoSpacingProxy?: (proxy: PhysicsPaintRotoSpacingProxy, gesture: PhysicsPaintRotoSpacingSelectionGesture) => void;
+  /** Ordinary real-key selection clears the disjoint spacing-proxy selection. */
+  onClearRotoSpacingSelection?: () => void;
   /** Cmd/Ctrl-click toggle intent on a real-key cell (D-01). Never navigates. */
   onToggleRotoKeySelection?: (keyId: string) => void;
   /** Plain-click collapse intent: reduce the multi-selection to the clicked key (D-02). */
@@ -191,6 +203,7 @@ const RULER_STEP = 3;
 const ROTO_CELL_WIDTH_PX = 18;
 const ROTO_LANE_WIDTH_PX = VIRTUAL_TIMELINE_FRAME_COUNT * ROTO_CELL_WIDTH_PX;
 const EMPTY_LOOP_PRESENTATIONS: ReadonlyMap<string, PhysicsPaintLoopClipPresentation> = new Map();
+const EMPTY_SPACING_PROXIES: ReadonlyMap<number, PhysicsPaintRotoSpacingProxy> = new Map();
 
 export function buildPhysicsPaintRotoFrameCells(currentFrame: number): number[] {
   const visibleCount = VIRTUAL_TIMELINE_FRAME_COUNT;
@@ -570,6 +583,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       : resolveRotoVisibleFrameResolutions(loopResolutionContext, frameCells),
     [loopResolutionContext, frameCells],
   );
+  const visibleSpacingProxies = useMemo(
+    () => loopResolutionContext === null
+      ? null
+      : resolveRotoVisibleSpacingProxies(loopResolutionContext, frameCells),
+    [loopResolutionContext, frameCells],
+  );
   const loopSourceFrameCountById = useMemo(
     () => new Map((loopResolutionContext?.ranges ?? []).map((range) => [range.loopId, range.sourceFrameCount] as const)),
     [loopResolutionContext],
@@ -721,6 +740,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // Controller-owned selection set (37-02; D-05): read-only here, never
   // reordered, never derived from frames or DOM order.
   const rotoSelectedKeyIdSet = useMemo(() => new Set(props.rotoSelectedKeyIds ?? []), [props.rotoSelectedKeyIds]);
+  const rotoSpacingSelectedSourceKeyIdSet = useMemo(
+    () => new Set(props.rotoSpacingSelection?.selectedSourceKeyIds ?? []),
+    [props.rotoSpacingSelection],
+  );
   // Structural memo (38.1-04, 38.1-D-08 link 2): the O(N) template-string
   // build now recomputes only when one of the five values it interpolates
   // changes identity — never on unrelated renders (drag preview ticks,
@@ -780,7 +803,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const rotoCellClickStateRef = useRef({
     keyIdByAppFrame,
     rotoSelectedKeyIdSet,
+    spacingProxyByAppFrame: visibleSpacingProxies ?? EMPTY_SPACING_PROXIES,
     onNavigateToSyncedFrame: props.onNavigateToSyncedFrame,
+    onSelectRotoSpacingProxy: props.onSelectRotoSpacingProxy,
+    onClearRotoSpacingSelection: props.onClearRotoSpacingSelection,
     onToggleRotoKeySelection: props.onToggleRotoKeySelection,
     onExtendRotoKeySelection: props.onExtendRotoKeySelection,
     onCollapseRotoSelectionToKey: props.onCollapseRotoSelectionToKey,
@@ -788,7 +814,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   rotoCellClickStateRef.current = {
     keyIdByAppFrame,
     rotoSelectedKeyIdSet,
+    spacingProxyByAppFrame: visibleSpacingProxies ?? EMPTY_SPACING_PROXIES,
     onNavigateToSyncedFrame: props.onNavigateToSyncedFrame,
+    onSelectRotoSpacingProxy: props.onSelectRotoSpacingProxy,
+    onClearRotoSpacingSelection: props.onClearRotoSpacingSelection,
     onToggleRotoKeySelection: props.onToggleRotoKeySelection,
     onExtendRotoKeySelection: props.onExtendRotoKeySelection,
     onCollapseRotoSelectionToKey: props.onCollapseRotoSelectionToKey,
@@ -799,6 +828,22 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       return;
     }
     const current = rotoCellClickStateRef.current;
+    const spacingProxy = current.spacingProxyByAppFrame.get(frame) ?? null;
+    if (spacingProxy !== null) {
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey) {
+        current.onSelectRotoSpacingProxy?.(spacingProxy, 'toggle');
+        return;
+      }
+      if (event.shiftKey && !event.metaKey && !event.ctrlKey) {
+        current.onSelectRotoSpacingProxy?.(spacingProxy, 'range');
+        return;
+      }
+      if (!event.metaKey && !event.ctrlKey && !event.shiftKey) {
+        current.onSelectRotoSpacingProxy?.(spacingProxy, 'plain');
+        current.onNavigateToSyncedFrame(frame);
+        return;
+      }
+    }
     if (vm.baseMeaning === 'generated' || vm.isEditableTarget === false) {
       current.onNavigateToSyncedFrame(frame);
       return;
@@ -808,6 +853,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     // steal navigation and never arm a drag session (the pointer-down guard
     // rejects modifier presses, so a modifier-click is selection-only).
     const cellKeyId = current.keyIdByAppFrame.get(frame) ?? null;
+    if (cellKeyId !== null) current.onClearRotoSpacingSelection?.();
     if (cellKeyId !== null && (event.metaKey || event.ctrlKey) && !event.shiftKey) {
       current.onToggleRotoKeySelection?.(cellKeyId);
       return;
@@ -1362,6 +1408,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   // (D-18). The local badge/aria predicate intentionally groups
                   // the four linked variants as presentation-only occurrences.
                   const frameResolution = visibleFrameResolutions?.get(frame) ?? null;
+                  const spacingProxy = visibleSpacingProxies?.get(frame) ?? null;
+                  const isSpacingProxySelected = spacingProxy !== null
+                    && props.rotoSpacingSelection?.sourceCycleId === spacingProxy.sourceCycleId
+                    && rotoSpacingSelectedSourceKeyIdSet.has(spacingProxy.sourceKeyId);
                   const hasLinkedLoopBadge = frameResolution?.kind === 'linked'
                     || frameResolution?.kind === 'linked-generated'
                     || frameResolution?.kind === 'linked-gap'
@@ -1380,7 +1430,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   const semanticKind = isGenerated ? 'generated' : isOccupiedRealKey ? 'real-key' : 'empty';
                   const generatedTitle = isGenerated ? getGeneratedRotoTitle(frame) : null;
                   const cellKeyId = semanticCell?.kind === 'real' ? semanticCell.keyId : keyIdByAppFrame.get(frame) ?? null;
-                  const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;
+                  const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;
                   // Identity-based Drag preview (D-07/D-21/D-22/D-23/D-24).
                   const previewCell = rotoDragPreviewViewModel?.cellsByAppFrame.get(frame) ?? null;
                   const isDragSource = rotoDragPreview?.sourceAppFrame === frame && rotoDragPreview?.movedKeyId === cellKeyId;
@@ -1412,15 +1462,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   const cellTooltipCopy = frameResolution === null
                     ? getRotoCellStateTooltipCopy(existingCellTooltipKind)
                     : getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById);
-                  const cellAriaLabel = hasLinkedLoopBadge
-                    ? `${cellTooltipCopy} · Frame ${frame}`
-                    : dragLabel;
+                  const cellAriaLabel = isSpacingProxySelected
+                    ? `${cellTooltipCopy} · Frame ${frame}. Loop Clip source position selected for Key Spacing.`
+                    : hasLinkedLoopBadge
+                      ? `${cellTooltipCopy} · Frame ${frame}`
+                      : dragLabel;
                   // Secondary multi-selection treatment (D-04): the current
                   // editing key keeps only its `.current` orange ring as the
-                  // strongest highlight; every other selected real key gets
-                  // the `.selected` outline when the set has >= 2 members.
-                  const isSecondarySelected = cellKeyId !== null && rotoSelectedKeyIdSet.has(cellKeyId) && rotoSelectedKeyIdSet.size >= 2 && !vm.overlays.includes('current');
-                  const cellClass = `physics-paint-roto-cell ${fillClass} ${hasLinkedLoopBadge ? 'roto-linked-loop-badge' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
+                  // strongest highlight; every other selected ordinary real key
+                  // gets the `.selected` outline. Spacing proxies use their own
+                  // source-identity treatment, never ordinary selection.
+                  const isSecondarySelected = spacingProxy === null && cellKeyId !== null && rotoSelectedKeyIdSet.has(cellKeyId) && rotoSelectedKeyIdSet.size >= 2 && !vm.overlays.includes('current');
+                  const cellClass = `physics-paint-roto-cell ${fillClass} ${hasLinkedLoopBadge ? 'roto-linked-loop-badge' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'selected roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
                   return (
                     <RotoTimelineCellButton
                       key={frame}
@@ -1431,8 +1484,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       cellKeyId={cellKeyId}
                       dragEligible={dragEligible}
                       ariaLabel={isSecondarySelected ? `${cellAriaLabel} Selected.` : cellAriaLabel}
-                      ariaSelected={isSecondarySelected}
-                      tooltipCopy={isSecondarySelected ? getRotoCellSelectedTooltipCopy(cellTooltipKind) : cellTooltipCopy}
+                      ariaSelected={isSpacingProxySelected || isSecondarySelected}
+                      tooltipCopy={isSpacingProxySelected ? 'Loop Clip source position selected for Key Spacing.' : isSecondarySelected ? getRotoCellSelectedTooltipCopy(cellTooltipKind) : cellTooltipCopy}
                       onCellPointerDown={handleRotoTimelineCellPointerDown}
                       onCellClick={handleRotoTimelineCellClick}
                     />

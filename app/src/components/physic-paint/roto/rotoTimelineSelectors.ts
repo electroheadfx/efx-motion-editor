@@ -15,11 +15,13 @@ import {
   derivePhysicPaintRotoLoopRanges,
   projectPhysicPaintRotoPhysicalTimeline,
   resolvePhysicPaintRotoLoopFrame,
+  resolvePhysicPaintRotoSpacingProxy,
   type PhysicPaintRotoFrameResolution,
   type PhysicPaintRotoLoopResolutionContext,
   type PhysicPaintRotoPhysicalTimelineProjection,
 } from './physicsPaintRotoPhysicalResolver';
 import type { RotoPhysicalTimelineCell } from './rotoPhysicalTimelinePorts';
+import type { PhysicsPaintRotoSpacingProxy } from './physicsPaintRotoSpacingSelection';
 
 // Inlined source/display model helpers (formerly from rotoSourceDisplayModel.ts).
 // These remain temporarily for the legacy selectRotoTimelineView function and
@@ -476,4 +478,16 @@ export function resolveRotoVisibleFrameResolutions(
     resolutions.set(frame, query(context, frame));
   }
   return resolutions;
+}
+
+export function resolveRotoVisibleSpacingProxies(
+  context: PhysicPaintRotoLoopResolutionContext,
+  visibleFrames: readonly number[],
+): ReadonlyMap<number, PhysicsPaintRotoSpacingProxy> {
+  const proxies = new Map<number, PhysicsPaintRotoSpacingProxy>();
+  for (const frame of visibleFrames) {
+    const proxy = resolvePhysicPaintRotoSpacingProxy(context, frame);
+    if (proxy !== null) proxies.set(frame, proxy);
+  }
+  return proxies;
 }

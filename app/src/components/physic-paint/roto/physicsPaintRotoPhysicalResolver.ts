@@ -82,6 +82,10 @@ import {
 } from './physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoPhysicalEditSemanticDelta } from '../../../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
+import {
+  getPhysicsPaintRotoSourceCycleId,
+  type PhysicsPaintRotoSpacingProxy,
+} from './physicsPaintRotoSpacingSelection';
 
 // ---------------------------------------------------------------------------
 // Closed edit intent, input, and result contracts.
@@ -106,6 +110,12 @@ export type PhysicPaintRotoPhysicalEditTarget =
  * Group Drag: the grabbed key anchors the drop, every selected key shifts by
  * the same physical delta, and every unselected key keeps its frame.
  */
+export interface PhysicPaintRotoLinkedSourceSpacingScope {
+  readonly sourceCycleId: string;
+  readonly sourceKeyIds: readonly string[];
+  readonly selectedSourceKeyIds: readonly string[];
+}
+
 export type PhysicPaintRotoPhysicalEditIntent =
   | { readonly kind: 'insert-slot'; readonly selectedKeyId: string }
   | { readonly kind: 'delete-key'; readonly selectedKeyId: string }
@@ -127,6 +137,8 @@ export type PhysicPaintRotoPhysicalEditIntent =
       readonly selectedKeyId: string | null;
       /** Phase 37 D-10..D-12: selected-keys-only scope; null/undefined = full timeline. */
       readonly scopeKeyIds?: readonly string[] | null;
+      /** Phase 43: session-only authorization for exact linked source-cycle positions. */
+      readonly linkedSourceSpacingScope?: PhysicPaintRotoLinkedSourceSpacingScope | null;
     }
   | {
       readonly kind: 'duplicate-key';
@@ -328,6 +340,8 @@ export type PhysicPaintRotoPhysicalEditFailureCode =
   | 'malformed-loop-clips'
   | 'loop-source-key-delete-rejected'
   | 'loop-source-key-move-rejected'
+  | 'invalid-linked-source-spacing-scope'
+  | 'linked-source-spacing-order-rejected'
   | 'linked-frame-delete-rejected';
 
 /**
@@ -2114,6 +2128,79 @@ function buildStatusText(
   return 'No change';
 }
 
+function validateLinkedSourceSpacingScope(
+  value: unknown,
+  scopeKeyIds: readonly string[] | null | undefined,
+  identities: ValidatedIdentities,
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+): { ok: true; scope: PhysicPaintRotoLinkedSourceSpacingScope } | { ok: false; resolution: PhysicPaintRotoPhysicalEditResolution } {
+  const invalid = (text: string) => ({
+    ok: false as const,
+    resolution: fail('invalid-linked-source-spacing-scope', 'force-spacing', text),
+  });
+  if (!isRecord(value)) return invalid('Linked source spacing authorization must be a record.');
+  const sourceKeyIds = value.sourceKeyIds;
+  const selectedSourceKeyIds = value.selectedSourceKeyIds;
+  if (!Array.isArray(sourceKeyIds) || sourceKeyIds.length < 2 || !sourceKeyIds.every(isBoundedKeyId)) {
+    return invalid('Linked source spacing authorization requires an ordered source cycle.');
+  }
+  if (new Set(sourceKeyIds).size !== sourceKeyIds.length) {
+    return invalid('Linked source spacing source cycle must contain unique identities.');
+  }
+  if (value.sourceCycleId !== getPhysicsPaintRotoSourceCycleId(sourceKeyIds)) {
+    return invalid('Linked source spacing cycle identity does not match its ordered source keys.');
+  }
+  const exactCycleExists = loopClips.some((loopClip) => (
+    loopClip.sourceKeyIds.length === sourceKeyIds.length
+    && loopClip.sourceKeyIds.every((keyId, index) => keyId === sourceKeyIds[index])
+  ));
+  if (!exactCycleExists) return invalid('Linked source spacing source cycle is not current.');
+  if (sourceKeyIds.some((keyId) => !identities.keyIds.has(keyId))) {
+    return invalid('Linked source spacing source cycle contains a stale identity.');
+  }
+  if (!Array.isArray(selectedSourceKeyIds) || selectedSourceKeyIds.length < 2 || !selectedSourceKeyIds.every(isBoundedKeyId)) {
+    return invalid('Linked source spacing requires at least two selected source positions.');
+  }
+  if (new Set(selectedSourceKeyIds).size !== selectedSourceKeyIds.length) {
+    return invalid('Linked source spacing selected identities must be unique.');
+  }
+  if (selectedSourceKeyIds.some((keyId) => !sourceKeyIds.includes(keyId))) {
+    return invalid('Linked source spacing selection contains a stale source identity.');
+  }
+  if (!Array.isArray(scopeKeyIds)
+    || scopeKeyIds.length !== selectedSourceKeyIds.length
+    || scopeKeyIds.some((keyId, index) => keyId !== selectedSourceKeyIds[index])) {
+    return invalid('Force Spacing scope does not match the authorized linked source selection.');
+  }
+  return {
+    ok: true,
+    scope: Object.freeze({
+      sourceCycleId: value.sourceCycleId,
+      sourceKeyIds: Object.freeze([...sourceKeyIds]),
+      selectedSourceKeyIds: Object.freeze([...selectedSourceKeyIds]),
+    }) as PhysicPaintRotoLinkedSourceSpacingScope,
+  };
+}
+
+function validateLinkedSourceSpacingOrder(
+  mapping: ReadonlyMap<string, number>,
+  sourceKeyIds: readonly string[],
+): PhysicPaintRotoPhysicalEditResolution | null {
+  let previousFrame = -1;
+  for (const keyId of sourceKeyIds) {
+    const frame = mapping.get(keyId);
+    if (frame === undefined || frame <= previousFrame) {
+      return fail(
+        'linked-source-spacing-order-rejected',
+        'force-spacing',
+        'Key Spacing would cross an unselected Loop Clip source position.',
+      );
+    }
+    previousFrame = frame;
+  }
+  return null;
+}
+
 function validateSemanticInputRecords(
   input: unknown,
   identities: ValidatedIdentities,
@@ -2460,10 +2547,16 @@ export function resolvePhysicPaintRotoPhysicalEdit(
   }
 
   if (intent.kind === 'force-spacing') {
-    // D-11: Force Spacing re-places every key in its affected set, so any
-    // linked source key in that set rejects — full-timeline scope affects
-    // every key; a scoped selection affects its members only.
-    if (loopClips.length > 0) {
+    const linkedAuthorization = intent.linkedSourceSpacingScope === undefined || intent.linkedSourceSpacingScope === null
+      ? null
+      : validateLinkedSourceSpacingScope(intent.linkedSourceSpacingScope, intent.scopeKeyIds, identities, loopClips);
+    if (linkedAuthorization !== null && !linkedAuthorization.ok) return linkedAuthorization.resolution;
+
+    // D-11: ordinary Force Spacing still rejects every affected linked source
+    // key. The only exception is the independently validated session-only
+    // source-position authorization above; it names the exact ordered cycle and
+    // exact selected subset that may move.
+    if (linkedAuthorization === null && loopClips.length > 0) {
       const scopeKeyIds = intent.scopeKeyIds ?? null;
       if (scopeKeyIds === null) {
         let linkedKeyId: string | null = null;
@@ -2486,6 +2579,13 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     const spacingResult = buildForceSpacingCandidate(identities, intent.emptyFrames, intent.selectedKeyId, intent.scopeKeyIds);
     if (!spacingResult.ok) return spacingResult.resolution;
+    if (linkedAuthorization?.ok) {
+      const orderFailure = validateLinkedSourceSpacingOrder(
+        spacingResult.candidate.mapping,
+        linkedAuthorization.scope.sourceKeyIds,
+      );
+      if (orderFailure !== null) return orderFailure;
+    }
     const finalized = finalizeProposal(spacingResult.candidate, identities, input.capacity, input.interpolationEnabled);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
@@ -2953,6 +3053,46 @@ export function resolvePhysicPaintRotoLoopFrame(
     }
   }
   return EMPTY_FRAME_RESOLUTION;
+}
+
+/**
+ * Resolve a session-only Key Spacing proxy at an exact ordered source position.
+ * This deliberately does not reuse ordinary key selectability: an original
+ * source record under its Loop Clip resolves as `real`, while an equivalent
+ * repeat resolves as `linked`; both name the same source-cycle position.
+ * Strict interiors, unresolved ranges, non-loop real keys, and empty frames
+ * fail closed to null.
+ */
+export function resolvePhysicPaintRotoSpacingProxy(
+  context: PhysicPaintRotoLoopResolutionContext,
+  appFrame: number,
+): PhysicsPaintRotoSpacingProxy | null {
+  const resolution = resolvePhysicPaintRotoLoopFrame(context, appFrame);
+  if (resolution.kind !== 'real' && resolution.kind !== 'linked') return null;
+
+  for (let index = context.ranges.length - 1; index >= 0; index -= 1) {
+    const range = context.ranges[index];
+    if (appFrame < range.placementStart || appFrame >= range.effectiveEnd) continue;
+    if (range.unresolved !== null || range.sourceKeyIds.length < 2) return null;
+    const cycleOffset = (appFrame - range.placementStart) % range.cycleLength;
+    const sourceIndex = range.sourceOffsets.indexOf(cycleOffset);
+    if (sourceIndex < 0) return null;
+    const sourceKeyId = range.sourceKeyIds[sourceIndex];
+    if (resolution.kind === 'real' && resolution.keyId !== sourceKeyId) return null;
+    if (resolution.kind === 'linked' && (
+      resolution.loopId !== range.loopId
+      || resolution.sourceKeyId !== sourceKeyId
+      || resolution.sourceIndex !== sourceIndex
+    )) return null;
+    return Object.freeze({
+      loopId: range.loopId,
+      sourceCycleId: getPhysicsPaintRotoSourceCycleId(range.sourceKeyIds),
+      sourceKeyIds: range.sourceKeyIds,
+      sourceKeyId,
+      sourceIndex,
+    }) as PhysicsPaintRotoSpacingProxy;
+  }
+  return null;
 }
 
 /**

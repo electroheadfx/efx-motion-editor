@@ -28,6 +28,7 @@ import {
   type PhysicPaintRotoPhysicalEditTarget,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import type { RotoSessionCopiedGroupEntry } from '../roto/physicsPaintRotoSession';
+import type { PhysicsPaintRotoSpacingSelection } from '../roto/physicsPaintRotoSpacingSelection';
 import type {
   RotoPhysicalEditExecuteInput,
   RotoPhysicalKeyUtilityPort,
@@ -214,6 +215,8 @@ export interface RotoTimelineActionsInput {
    * never persists it or sends it across the bridge.
    */
   getSelectedKeyIds?: () => readonly string[];
+  /** Reconciled session-only exact Loop Clip source-position selection. */
+  getRotoSpacingSelection?: () => PhysicsPaintRotoSpacingSelection | null;
   /** Current direct physical navigation frame. */
   getCurrentAppFrame?: () => number;
   /** Launch context identity at action time (D-09). */
@@ -742,10 +745,28 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     // derives exact interiors, and rejects an over-capacity complete map.
     const records = input.getRotoKeyRecords();
     const selectedKeyId = input.getSelectedKeyId?.() ?? null;
-    // D-10: exactly one key selected = full timeline; two or more =
-    // selected-only scope. Null scope is the byte-identical 36.14 path.
+    const spacingSelection = input.getRotoSpacingSelection?.() ?? null;
+    if (spacingSelection !== null && spacingSelection.selectedSourceKeyIds.length < 2) {
+      input.publishStatus?.('Select at least two Loop Clip source positions to apply Key Spacing.');
+      return false;
+    }
+    // A reconciled Loop Clip proxy selection is authoritative and never falls
+    // back to ordinary selected-key or full-timeline spacing. Without one, the
+    // pre-43 rule remains byte-identical: two or more ordinary keys scope the
+    // edit; zero/one ordinary key applies to the full timeline.
     const selectedKeyIds = input.getSelectedKeyIds?.() ?? [];
-    const scopeKeyIds = selectedKeyIds.length >= 2 ? Object.freeze([...selectedKeyIds]) as readonly string[] : null;
+    const scopeKeyIds = spacingSelection !== null
+      ? Object.freeze([...spacingSelection.selectedSourceKeyIds]) as readonly string[]
+      : selectedKeyIds.length >= 2
+        ? Object.freeze([...selectedKeyIds]) as readonly string[]
+        : null;
+    const linkedSourceSpacingScope = spacingSelection === null
+      ? null
+      : Object.freeze({
+          sourceCycleId: spacingSelection.sourceCycleId,
+          sourceKeyIds: Object.freeze([...spacingSelection.sourceKeyIds]),
+          selectedSourceKeyIds: Object.freeze([...spacingSelection.selectedSourceKeyIds]),
+        });
     const interpolation = input.getRotoInterpolationState();
     const capacity = input.getCapacity();
     const expectedLaunch = {
@@ -763,6 +784,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         emptyFrames,
         selectedKeyId,
         scopeKeyIds,
+        linkedSourceSpacingScope,
       },
       capacity,
       interpolationEnabled: interpolation.enabled,
