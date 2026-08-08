@@ -68,6 +68,13 @@ function ports(version: number): HookPorts {
     getBrushColor: () => (version === 1 ? '#103c65' : '#aa5500'),
     getOperationLocked: () => version === 2,
     getSize: () => ({ width: 100 + version, height: 200 + version }),
+    getRotoLoopClips: () => [{
+      loopId: `loop-${version}`,
+      placementStart: version,
+      sourceKeyIds: [`key-${version}`],
+      repeat: 2,
+      mode: 'static' as const,
+    }],
     getLoopEditSnapshot: (placementStart) => ({
       identities: [{ keyId: `key-${version}`, appFrame: version }],
       physicalCapacity: 100 + version,
@@ -114,6 +121,13 @@ describe('useRotoPlayScriptController', () => {
     expect(stablePorts.getBrushColor()).toBe('#aa5500');
     expect(stablePorts.getOperationLocked()).toBe(true);
     expect(stablePorts.getSize()).toEqual({ width: 102, height: 202 });
+    expect(stablePorts.getRotoLoopClips?.()).toEqual([{
+      loopId: 'loop-2',
+      placementStart: 2,
+      sourceKeyIds: ['key-2'],
+      repeat: 2,
+      mode: 'static',
+    }]);
     expect(stablePorts.getLoopEditSnapshot?.(9)).toEqual({
       identities: [{ keyId: 'key-2', appFrame: 2 }],
       physicalCapacity: 102,

@@ -15,7 +15,6 @@ export interface PhysicsPaintScriptsPanelProps {
   selectedLoopClip?: PhysicsPaintLoopClipPresentation | null;
   onOpenLoopEdit: (loopId: string) => Promise<unknown>;
   onCloseLoopClip: () => void;
-  loopEditDiagnostic?: string | null;
   onSave: () => void;
   onActivateRow: (id: string) => void;
   onLoadAndApply: () => void;
@@ -33,7 +32,6 @@ export function PhysicsPaintScriptsPanel({
   selectedLoopClip = null,
   onOpenLoopEdit,
   onCloseLoopClip,
-  loopEditDiagnostic = null,
   onSave,
   onActivateRow,
   onLoadAndApply,
@@ -113,9 +111,6 @@ export function PhysicsPaintScriptsPanel({
             <span>Close</span>
           </button>
         </div>
-        {loopEditDiagnostic ? (
-          <p class="physics-paint-loop-edit-diagnostic" aria-live="polite">{loopEditDiagnostic}</p>
-        ) : null}
       </div>
     );
   }

@@ -113,9 +113,6 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(panel.indexOf('selectedLoopClip ?')).toBeLessThan(panel.indexOf('label="Delete Script"'));
     expect(panel.indexOf('label="Delete Script"')).toBeLessThan(panel.indexOf('label="Refresh Scripts"'));
     expect(panel).toContain('label={`Edit Loop Clip — ${selectedLoopClip.displayName}`}');
-    expect(panel).toContain('class="physics-paint-loop-edit-diagnostic"');
-    expect(panel).toContain('aria-live="polite"');
-    expect(css).toContain('.physics-paint-loop-edit-diagnostic');
     expect(panel).toContain('label="Play Script"');
     expect(panel).not.toContain('label="Rename Script"');
     expect(panel).toContain('aria-label={props.label}');

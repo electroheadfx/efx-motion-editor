@@ -6,6 +6,7 @@ import {
   type RotoPlayScriptController,
   type RotoPlayScriptControllerPorts,
 } from '../roto/physicsPaintRotoPlayScriptController';
+import { PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalEditAcceptedOutput } from '../roto/rotoCoordinatorPorts';
 import type { RotoPlayScriptExecuteInput } from './useRotoPhysicalEditCoordinator';
 import { sendPhysicPaintRotoAuthorityRequest } from '../bridge/physicsPaintBridgeTransport';
@@ -44,6 +45,7 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       getBrushColor: () => portsRef.current.getBrushColor(),
       getOperationLocked: () => portsRef.current.getOperationLocked(),
       getSize: () => portsRef.current.getSize(),
+      getRotoLoopClips: () => portsRef.current.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
       getLoopEditSnapshot: (placementStart) => portsRef.current.getLoopEditSnapshot?.(placementStart) ?? null,
       availabilityRevision: availabilityRevision.current,
       stopPlayback: () => portsRef.current.stopPlayback(),

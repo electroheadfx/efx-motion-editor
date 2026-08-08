@@ -317,6 +317,9 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(physicsPaintStudioCss).toContain('linear-gradient(to right, #f59e0b 0 calc(100% - 6px), #fbbf24 calc(100% - 6px))');
     expect(physicsPaintStudioCss).toContain('linear-gradient(to right, #a78bfa 0 calc(100% - 6px), #fbbf24 calc(100% - 6px))');
     expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 12px');
+    const railTargetHoverRule = cssRule('.physics-paint-loop-clip-rail-target:hover:not(:disabled),');
+    expect(railTargetHoverRule).toContain('background: transparent');
+    expect(railTargetHoverRule).toContain('box-shadow: none');
     expect(cssRule('.physics-paint-loop-clip-rail-anchor {')).toContain('min-width: 12px');
     expect(physicsPaintStudioCss).not.toContain('.physics-paint-loop-clip-rail-target::after');
 
@@ -418,7 +421,9 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(linkedCells[0].props.tooltipCopy).toBe('Linked · Repeat 1 · Source frame 1 of 5');
     expect(linkedCells[0].props.ariaLabel).toContain('Linked · Repeat 1 · Source frame 1 of 5');
     expect(String(linkedCells[0].props.ariaLabel)).not.toContain('No Roto content');
-    expect(cssRule('.physics-paint-roto-cell.roto-linked-loop-badge {')).toContain('rgba(211, 215, 221, 0.82)');
+    const linkedBadgeRule = cssRule('.physics-paint-roto-cell.roto-linked-loop-badge {');
+    expect(linkedBadgeRule).toContain('background: #34383c');
+    expect(linkedBadgeRule).toContain('rgba(211, 215, 221, 0.82)');
     const linkedDotRule = cssRule('.physics-paint-roto-cell.roto-linked-loop-badge::after {');
     expect(linkedDotRule).toContain('width: 4px');
     expect(linkedDotRule).toContain('height: 4px');

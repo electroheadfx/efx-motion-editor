@@ -58,7 +58,6 @@ export function PhysicsPaintStudio() {
     ? (sample: PaintPerformanceSample) => recordPhysicsPaintPerformance(sample)
     : undefined;
   const [isPlaying, setIsPlaying] = useState(false);
-  const [loopEditDiagnostic, setLoopEditDiagnostic] = useState('Diagnostic ready — click Edit once.');
   // 38.1-D-01/D-08: the playback per-tick surface is signal-backed — written
   // by onStart/onFrame per tick and read ONLY via .peek() (statusMessage) or
   // by the narrow sanctioned live surfaces (playback canvas image, nav-pill
@@ -757,17 +756,9 @@ export function PhysicsPaintStudio() {
     selectedLoopClipId.value = loopId;
   }, []);
   const handleOpenRotoLoopEdit = useCallback(
-    async (loopId: string) => {
+    (loopId: string) => {
       selectedLoopClipId.value = loopId;
-      setLoopEditDiagnostic('Edit trace · action received · waiting for controller result…');
-      const result = await rotoPlayScript.openLoopEdit(loopId);
-      const signalOpen = rotoPlayScript.confirmationOpen.peek();
-      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-      const modalPresent = document.querySelector('.physics-paint-play-script-dialog') !== null;
-      setLoopEditDiagnostic(
-        `Edit trace · result=${result.ok ? 'ok' : `blocked: ${result.reason ?? 'unknown'}`} · signal=${signalOpen ? 'open' : 'closed'} · modal DOM=${modalPresent ? 'present' : 'missing'}`,
-      );
-      return result;
+      return rotoPlayScript.openLoopEdit(loopId);
     },
     [rotoPlayScript],
   );
@@ -1307,7 +1298,7 @@ export function PhysicsPaintStudio() {
   // fresh per-render getRotoInterpolationSettings clone. Signal-backed
   // controllers pass through by identity so their signal subscriptions
   // (ScriptsPanel rows/busy/selection) keep flowing independent of the memo.
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, loopEditDiagnostic, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
     activeTool: settings.tool,
     color: settings.color,
     opacity: settings.opacity,
@@ -1339,7 +1330,6 @@ export function PhysicsPaintStudio() {
       selectedLoopClip,
       onOpenLoopEdit: handleOpenRotoLoopEdit,
       onCloseLoopClip: handleCloseRotoLoopClip,
-      loopEditDiagnostic,
       onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
       onActivateRow: (id: string) => { void handleScriptRowActivate(id); },
       onLoadAndApply: () => { void handleSelectedScriptLoadAndApply(); },
