@@ -3,7 +3,7 @@ import {sequenceStore} from '../stores/sequenceStore';
 import {audioStore} from '../stores/audioStore';
 import {physicPaintStore, physicPaintVersion} from '../stores/physicPaintStore';
 import {audioPeaksCache, peaksCacheRevision} from './audioPeaksCache';
-import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange} from '../types/timeline';
+import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange, TimelineRepeatDurationMarker} from '../types/timeline';
 import type {GlTransition, Sequence} from '../types/sequence';
 import type {Layer, LayerType, EasingType} from '../types/layer';
 import {derivePhysicPaintRotoLoopRanges} from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
@@ -149,6 +149,23 @@ function deriveMainEditorLoopRanges(layer: Layer, seq: Sequence): PhysicPaintRot
   });
 }
 
+function getTimelineRepeatDurationMarkers(
+  layer: Layer,
+  seq: Sequence,
+): TimelineRepeatDurationMarker[] | undefined {
+  const context = deriveMainEditorLoopRanges(layer, seq);
+  if (!context) return undefined;
+
+  const markers = context.ranges.flatMap((range) => {
+    const frameCount = range.effectiveEnd - range.placementStart;
+    return frameCount > 0
+      ? [{ startFrame: range.placementStart, frameCount }]
+      : [];
+  });
+
+  return markers.length > 0 ? markers : undefined;
+}
+
 /** Loop-aware display end frame on the main editor: max(last real key + 1,
  *  max loop effective end) with the sequence-authored parent end (D-25).
  *  Falls back to the store's capacity-bounded read when no loops exist. */
@@ -236,6 +253,9 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       layerType: primaryLayer?.type,
       rotoKeyFrames: primaryLayer?.type === 'physic-paint'
         ? physicPaintStore.getRotoRealKeyRecords(getLayerId(primaryLayer)).map((record) => record.appFrame)
+        : undefined,
+      repeatDurationMarkers: primaryLayer?.type === 'physic-paint'
+        ? getTimelineRepeatDurationMarkers(primaryLayer, seq)
         : undefined,
       fadeIn: seq.fadeIn ? { duration: seq.fadeIn.duration } : undefined,
       fadeOut: seq.fadeOut ? { duration: seq.fadeOut.duration } : undefined,

@@ -540,7 +540,12 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       inFrame: 0,
       outFrame: 40,
       rotoKeyFrames: [0, 1, 2, 3, 4],
+      repeatDurationMarkers: [{ startFrame: 10, frameCount: 25 }],
     }));
+    expect(Object.keys(mainTimelineOutput.fxTracks[0].repeatDurationMarkers![0])).toEqual([
+      'startFrame',
+      'frameCount',
+    ]);
     expect(JSON.stringify(mainTimelineOutput)).not.toContain(rawLoopId);
     expect(Object.keys(mainTimelineOutput.fxTracks[0])).not.toContain('loopCapsules');
     expect(Object.keys(mainTimelineOutput.fxTracks[0])).not.toContain('loopClips');

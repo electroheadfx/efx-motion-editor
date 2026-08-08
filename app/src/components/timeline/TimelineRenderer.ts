@@ -1,4 +1,4 @@
-import type {TrackLayout, FxTrackLayout, AudioTrackLayout, TimelinePlayScriptMarker} from '../../types/timeline';
+import type {TrackLayout, FxTrackLayout, AudioTrackLayout, TimelinePlayScriptMarker, TimelineRepeatDurationMarker} from '../../types/timeline';
 import type {imageStore as ImageStoreType} from '../../stores/imageStore';
 import {computeDownbeatFrames} from '../../lib/beatMarkerEngine';
 import {createCanvasGradient} from '../../lib/previewRenderer';
@@ -27,6 +27,24 @@ export function getTimelinePlayScriptMarkerGeometry(
   return {
     x: marker.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH,
     width: marker.frameCount * frameWidth,
+  };
+}
+
+export interface TimelineRepeatDurationMarkerGeometry {
+  x: number;
+  width: number;
+}
+
+export function getTimelineRepeatDurationMarkerGeometry(marker: {
+  startFrame: number;
+  frameCount: number;
+  inFrame: number;
+  frameWidth: number;
+  scrollX: number;
+}): TimelineRepeatDurationMarkerGeometry {
+  return {
+    x: (marker.inFrame + marker.startFrame) * marker.frameWidth - marker.scrollX + TRACK_HEADER_WIDTH,
+    width: marker.frameCount * marker.frameWidth,
   };
 }
 
@@ -497,6 +515,51 @@ export class TimelineRenderer {
     ctx.restore();
   }
 
+  private drawPhysicPaintRepeatDurationMarkers(
+    ctx: CanvasRenderingContext2D,
+    markers: TimelineRepeatDurationMarker[],
+    inFrame: number,
+    barX: number,
+    barW: number,
+    barY: number,
+    barH: number,
+    frameWidth: number,
+    scrollX: number,
+    canvasWidth: number,
+  ): void {
+    if (markers.length === 0 || barW <= 0) return;
+
+    const trackLeft = Math.max(barX, TRACK_HEADER_WIDTH);
+    const trackRight = Math.min(barX + barW, canvasWidth);
+    if (trackRight <= trackLeft) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(trackLeft, barY, trackRight - trackLeft, barH, 3);
+    ctx.clip();
+
+    const markerY = barY + 1;
+    const markerH = 3;
+    ctx.fillStyle = '#8B5CF6';
+
+    for (const marker of markers) {
+      if (marker.frameCount <= 0) continue;
+      const { x: markerX, width: markerW } = getTimelineRepeatDurationMarkerGeometry({
+        ...marker,
+        inFrame,
+        frameWidth,
+        scrollX,
+      });
+      const clippedLeft = Math.max(markerX, barX, TRACK_HEADER_WIDTH);
+      const clippedRight = Math.min(markerX + markerW, barX + barW, canvasWidth);
+      const clippedW = Math.max(0, clippedRight - clippedLeft);
+      if (clippedW <= 0) continue;
+      ctx.fillRect(clippedLeft, markerY, clippedW, markerH);
+    }
+
+    ctx.restore();
+  }
+
   /** Draw always-visible orange diamonds for real Roto keys on a physic-paint FX row (C-04).
    *  Pure canvas drawing: #F5A623 fill, no stroke, no shadow, no interaction surface (D-08/D-09). */
   private drawRotoKeyMarkers(
@@ -631,6 +694,21 @@ export class TimelineRenderer {
             }
           }
         }
+      }
+
+      if (fxTrack.layerType === 'physic-paint' && fxTrack.repeatDurationMarkers?.length) {
+        this.drawPhysicPaintRepeatDurationMarkers(
+          ctx,
+          fxTrack.repeatDurationMarkers,
+          fxTrack.inFrame,
+          barX,
+          barW,
+          barY,
+          barH,
+          frameWidth,
+          scrollX,
+          canvasWidth,
+        );
       }
 
       if (fxTrack.layerType === 'physic-paint' && fxTrack.playScriptMarkers && fxTrack.playScriptMarkers.length > 0) {

@@ -5,6 +5,7 @@ import {frameMap, fxTrackLayouts} from './frameMap';
 import {physicPaintStore} from '../stores/physicPaintStore';
 import {buildPhysicPaintRotoPhysicalRevision} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type {Sequence} from '../types/sequence';
+import type {PhysicPaintRotoLoopClip, PhysicPaintRotoRealKeyRecord} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
 /** Build a test sequence with `as any` for solidColor/isTransparent fields
  *  that don't exist on KeyPhoto yet (Plan 01 will add them). */
@@ -34,6 +35,67 @@ function makeFxSequence(id: string, name: string, layer: Layer): Sequence {
     inFrame: 0,
     outFrame: 24,
   };
+}
+
+function makePhysicPaintLayer(layerId: string): Layer {
+  return {
+    id: layerId,
+    name: 'Physic Paint',
+    type: 'physic-paint',
+    visible: true,
+    opacity: 1,
+    blendMode: 'normal',
+    transform: defaultTransform(),
+    source: { type: 'physic-paint', layerId },
+  };
+}
+
+function makeRotoRecord(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
+  return {
+    keyId,
+    appFrame,
+    kind: 'real-key',
+    payload: {
+      frameIndex: 0,
+      appFrame,
+      dataUrl: `data:image/png;base64,${String(appFrame).padStart(4, 'A')}`,
+    },
+  };
+}
+
+function makeLoopClip(
+  loopId: string,
+  placementStart: number,
+  repeat: number | 'infinity',
+): PhysicPaintRotoLoopClip {
+  return {
+    loopId,
+    placementStart,
+    sourceKeyIds: ['key-0', 'key-1', 'key-2', 'key-3', 'key-4'],
+    repeat,
+    mode: 'progressive',
+  };
+}
+
+function installRotoDocument(
+  layerId: string,
+  recordFrames: readonly number[],
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+): void {
+  const records = recordFrames.map((appFrame) => makeRotoRecord(`key-${appFrame}`, appFrame));
+  const interpolation = { enabled: false, mode: 'duplicate' as const };
+  const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, {
+    capacity: 120,
+    realKeyRecords: records,
+    interpolation,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame: 0,
+    loopClips,
+    revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips),
+  });
+  if (!result.ok) throw new Error(result.error);
 }
 
 describe('frameMap solid/transparent entries', () => {
@@ -226,5 +288,83 @@ describe('frameMap solid/transparent entries', () => {
       { sequenceId: 'paint', sequenceName: 'Paint Sequence', headerLabel: 'Paint Sequence' },
       { sequenceId: 'physics-b', sequenceName: 'Persisted Physics B', headerLabel: 'PPaint #2' },
     ]);
+  });
+});
+
+describe('Motion Editor passive Loop Clip markers (D-33R)', () => {
+  it('projects only passive Loop Clip intervals to the Motion Editor frame map', () => {
+    const layerId = 'passive-loop-layer';
+    const sequence = {
+      ...makeFxSequence('passive-loop-sequence', 'Passive Loop', makePhysicPaintLayer(layerId)),
+      outFrame: 40,
+    };
+    sequenceStore.sequences.value = [sequence];
+    installRotoDocument(layerId, [0, 1, 2, 3, 4], [makeLoopClip('loop-private', 10, 5)]);
+
+    const layout = fxTrackLayouts.value[0];
+    expect(layout.repeatDurationMarkers).toEqual([{ startFrame: 10, frameCount: 25 }]);
+    expect(Object.keys(layout.repeatDurationMarkers![0])).toEqual(['startFrame', 'frameCount']);
+    expect(JSON.stringify(layout.repeatDurationMarkers)).not.toContain('loop-private');
+  });
+
+  it('uses resolver effective ends for real-key truncation and later-loop priority', () => {
+    const layerId = 'bounded-loop-layer';
+    const sequence = {
+      ...makeFxSequence('bounded-loop-sequence', 'Bounded Loop', makePhysicPaintLayer(layerId)),
+      outFrame: 40,
+    };
+    sequenceStore.sequences.value = [sequence];
+    installRotoDocument(
+      layerId,
+      [0, 1, 2, 3, 4, 22],
+      [makeLoopClip('loop-a', 10, 5), makeLoopClip('loop-b', 20, 2)],
+    );
+
+    expect(fxTrackLayouts.value[0].repeatDurationMarkers).toEqual([
+      { startFrame: 10, frameCount: 10 },
+      { startFrame: 20, frameCount: 2 },
+    ]);
+  });
+
+  it('keeps Infinity parent-bounded and marker frames layer-local', () => {
+    const layerId = 'infinity-loop-layer';
+    const sequence = {
+      ...makeFxSequence('infinity-loop-sequence', 'Infinity Loop', makePhysicPaintLayer(layerId)),
+      inFrame: 7,
+      outFrame: 39,
+    };
+    sequenceStore.sequences.value = [sequence];
+    installRotoDocument(layerId, [0, 1, 2, 3, 4], [makeLoopClip('loop-infinity', 10, 'infinity')]);
+
+    expect(fxTrackLayouts.value[0].repeatDurationMarkers).toEqual([
+      { startFrame: 10, frameCount: 22 },
+    ]);
+  });
+
+  it('omits zero-effective, empty, and non-Physic-Paint marker projections', () => {
+    const layerId = 'zero-loop-layer';
+    const physicsSequence = {
+      ...makeFxSequence('zero-loop-sequence', 'Zero Loop', makePhysicPaintLayer(layerId)),
+      outFrame: 40,
+    };
+    sequenceStore.sequences.value = [physicsSequence];
+    installRotoDocument(layerId, [0, 1, 2, 3, 4, 10], [makeLoopClip('loop-zero', 10, 5)]);
+    expect(fxTrackLayouts.value[0].repeatDurationMarkers).toBeUndefined();
+
+    installRotoDocument(layerId, [0, 1, 2, 3, 4], []);
+    expect(fxTrackLayouts.value[0].repeatDurationMarkers).toBeUndefined();
+
+    const paintLayer: Layer = {
+      id: 'paint-layer',
+      name: 'Paint',
+      type: 'paint',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'paint', layerId: 'paint-layer' },
+    };
+    sequenceStore.sequences.value = [makeFxSequence('paint-sequence', 'Paint', paintLayer)];
+    expect(fxTrackLayouts.value[0].repeatDurationMarkers).toBeUndefined();
   });
 });

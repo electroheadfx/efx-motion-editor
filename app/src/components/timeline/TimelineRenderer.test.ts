@@ -145,14 +145,52 @@ describe('physic-paint Roto key markers (C-04)', () => {
   });
 });
 
-describe('Loop Clip rendering ownership (43-11, D-33)', () => {
-  it('does not invoke the stale main-timeline Loop Clip drawing path', () => {
+describe('Loop Clip rendering ownership (43-11, D-33R)', () => {
+  it('projects layer-local passive marker geometry into main-timeline coordinates', async () => {
+    const { getTimelineRepeatDurationMarkerGeometry, TRACK_HEADER_WIDTH } = await import('./TimelineRenderer');
+
+    expect(getTimelineRepeatDurationMarkerGeometry({
+      startFrame: 5,
+      frameCount: 12,
+      inFrame: 10,
+      frameWidth: 4,
+      scrollX: 12,
+    })).toEqual({
+      x: (10 + 5) * 4 - 12 + TRACK_HEADER_WIDTH,
+      width: 12 * 4,
+    });
+  });
+
+  it('draws exact passive strips without restoring the rich capsule path or interaction state', () => {
     const code = source();
+    const markerIndex = code.indexOf('private drawPhysicPaintRepeatDurationMarkers');
+    const markerSource = code.slice(markerIndex, code.indexOf('private drawRotoKeyMarkers'));
     const fxTrackSource = code.slice(
       code.indexOf('private drawFxTrack'),
       code.indexOf('/** Draw a Photoshop-style checkerboard'),
     );
 
+    expect(markerIndex).toBeGreaterThan(-1);
+    expect(markerSource).toContain("ctx.fillStyle = '#8B5CF6'");
+    expect(markerSource).toContain('const markerY = barY + 1');
+    expect(markerSource).toContain('const markerH = 3');
+    expect(markerSource).toContain('Math.max(markerX, barX, TRACK_HEADER_WIDTH)');
+    expect(markerSource).toContain('Math.min(markerX + markerW, barX + barW, canvasWidth)');
+    expect(markerSource).toContain('ctx.fillRect(clippedLeft, markerY, clippedW, markerH)');
+    expect(markerSource).not.toContain('fillText');
+    expect(markerSource).not.toContain('selected');
+    expect(markerSource).not.toContain('hover');
+    expect(markerSource).not.toContain('focus');
+    expect(markerSource).not.toContain('tooltip');
+
+    expect(fxTrackSource).toContain('fxTrack.repeatDurationMarkers');
+    expect(fxTrackSource).toContain('this.drawPhysicPaintRepeatDurationMarkers');
+    expect(fxTrackSource.indexOf('this.drawPhysicPaintRepeatDurationMarkers')).toBeLessThan(
+      fxTrackSource.indexOf('this.drawPhysicPaintPlayScriptMarkers'),
+    );
+    expect(fxTrackSource.indexOf('this.drawPhysicPaintRepeatDurationMarkers')).toBeLessThan(
+      fxTrackSource.indexOf('this.drawRotoKeyMarkers'),
+    );
     expect(fxTrackSource).not.toContain('this.drawLoopCapsules(');
     expect(fxTrackSource).not.toContain('fxTrack.loopCapsules');
   });

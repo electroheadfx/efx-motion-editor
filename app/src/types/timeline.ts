@@ -9,6 +9,11 @@ export interface TimelinePlayScriptMarker {
   active: boolean;
 }
 
+export interface TimelineRepeatDurationMarker {
+  startFrame: number;
+  frameCount: number;
+}
+
 export interface TimelineState {
   currentFrame: number;
   isPlaying: boolean;
@@ -88,6 +93,7 @@ export interface FxTrackLayout {
   layerType?: LayerType;      // used to distinguish static-image/image-sequence/video for color and rendering decisions
   playScriptMarkers?: TimelinePlayScriptMarker[]; // saved Play ranges nested inside physic-paint FX bars
   rotoKeyFrames?: number[]; // layer-local physical appFrames of real Roto keys (C-04 markers)
+  repeatDurationMarkers?: TimelineRepeatDurationMarker[];
   loopCapsules?: TimelineLoopCapsule[]; // resolver-derived Loop Clip capsule models (Phase 43, HOLD-06)
   fadeIn?: { duration: number };
   fadeOut?: { duration: number };
