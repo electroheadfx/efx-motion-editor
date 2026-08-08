@@ -1,8 +1,8 @@
 import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
-import type { EfxPaintAudioPreviewContext, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintLoopOperationRequest, PhysicPaintLoopOperationResult, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLoopOperationResult, isPhysicPaintOpenLoopEditRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import { validatePhysicPaintRotoPhysicalEditSemanticDelta } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import { isRotoPngDataUrl, prepareRotoPhysicalRealKeyPngs } from '../components/physic-paint/roto/rotoCanvasFrames';
@@ -19,10 +19,6 @@ import {
   type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { parseCanonicalPhysicsPaintLaunchValue } from '../components/physic-paint/bridge/physicsPaintLaunchContext';
-// 43-06: the parent→child sender lives in the transport module (function-scope
-// usage only — the transport imports this module's event constants, so this
-// static cycle must never be read at module-evaluation time on either side).
-import { sendPhysicPaintLoopOperationRequest, sendPhysicPaintOpenLoopEdit } from '../components/physic-paint/bridge/physicsPaintBridgeTransport';
 import { layerStore } from '../stores/layerStore';
 import { audioStore } from '../stores/audioStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
@@ -56,11 +52,6 @@ export const PHYSIC_PAINT_STATE_SAVE_REQUEST_EVENT = 'physic-paint:state-save-re
 export const PHYSIC_PAINT_STATE_SAVE_RESULT_EVENT = 'physic-paint:state-save-result';
 export const PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT = 'physic-paint:thumbnail-encode-request';
 export const PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT = 'physic-paint:thumbnail-encode-result';
-/** 43-06 (D-01/Q3): parent→child open-loop-edit request from the capsule badge click. */
-export const PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT = 'physic-paint:open-loop-edit';
-/** 43-08: correlated main-timeline Loop Clip operation request/result pair. */
-export const PHYSIC_PAINT_LOOP_OPERATION_REQUEST_EVENT = 'physic-paint:loop-operation-request';
-export const PHYSIC_PAINT_LOOP_OPERATION_RESULT_EVENT = 'physic-paint:loop-operation-result';
 
 export const PHYSIC_PAINT_WINDOW_LABEL = 'efx-physic-paint';
 const PHYSIC_PAINT_FALLBACK_PATH = '/physics-paint';
@@ -1470,212 +1461,6 @@ function openBrowserFallback(context: PhysicPaintLaunchContext): Result<null> {
   }
 
   opened.focus?.();
-  browserFallbackWindow = opened;
-  return { ok: true, data: null };
-}
-
-/** Browser-fallback child window handle (43-06: reused for focus-without-reload). */
-let browserFallbackWindow: Window | null = null;
-
-export type PhysicPaintLoopOperationIntent =
-  | {readonly kind: 'duplicate-linked-loop'; readonly destinationStart: number}
-  | {readonly kind: 'relink-loop'; readonly sourceKeyIds: readonly string[]}
-  | {readonly kind: 'unlink-loop' | 'delete-loop' | 'repair-loop'};
-
-export interface PhysicPaintLoopOperationOpenRequest extends PhysicPaintOpenRequest {
-  readonly loopId: string;
-}
-
-export interface PhysicPaintLoopOperationRequestOptions {
-  readonly timeoutMs?: number;
-  readonly retryIntervalMs?: number;
-}
-
-function isMatchingLoopOperationResult(result: PhysicPaintLoopOperationResult, request: PhysicPaintLoopOperationRequest): boolean {
-  return result.operationId === request.operationId
-    && result.projectContextId === request.projectContextId
-    && result.layerId === request.layerId
-    && result.loopId === request.loopId
-    && result.kind === request.kind;
-}
-
-/**
- * Main-timeline mutation client. The correlated listener is installed before
- * launch/focus and every retry reuses one operationId. The Studio owns
- * exactly-once execution; this side only retries delivery until result/timeout.
- */
-export async function requestPhysicPaintLoopOperation(
-  input: PhysicPaintLoopOperationOpenRequest & PhysicPaintLoopOperationIntent,
-  options: PhysicPaintLoopOperationRequestOptions = {},
-): Promise<{ok: boolean; reason: string | null}> {
-  const validation = validateOpenRequest(input);
-  if (!validation.ok) return {ok: false, reason: validation.error};
-  const layerId = validation.data.layer.source.type === 'physic-paint'
-    ? validation.data.layer.source.layerId
-    : validation.data.layer.id;
-  const common = {
-    operationId: `physic-paint-loop-op-${Date.now()}-${crypto.randomUUID()}`,
-    projectContextId: projectStore.projectContextId.peek(),
-    layerId,
-    loopId: input.loopId,
-  };
-  const request: PhysicPaintLoopOperationRequest = input.kind === 'duplicate-linked-loop'
-    ? {...common, kind: input.kind, destinationStart: input.destinationStart}
-    : input.kind === 'relink-loop'
-      ? {...common, kind: input.kind, sourceKeyIds: [...input.sourceKeyIds]}
-      : {...common, kind: input.kind};
-  const timeoutMs = Math.max(1, Math.min(30_000, options.timeoutMs ?? 5_500));
-  const retryIntervalMs = Math.max(10, Math.min(timeoutMs, options.retryIntervalMs ?? 250));
-  const bridgeMode = await detectTauriRuntime() ? 'Tauri' as const : 'Browser fallback' as const;
-
-  let unlistenTauri: (() => void) | undefined;
-  let browserListener: ((event: MessageEvent) => void) | undefined;
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  let retry: ReturnType<typeof setInterval> | undefined;
-  let settled = false;
-  let resolveResult: (result: {ok: boolean; reason: string | null}) => void = () => {};
-  const resultPromise = new Promise<{ok: boolean; reason: string | null}>((resolve) => { resolveResult = resolve; });
-  const settle = (result: {ok: boolean; reason: string | null}) => {
-    if (settled) return;
-    settled = true;
-    resolveResult(result);
-  };
-  const accept = (value: unknown) => {
-    if (!isPhysicPaintLoopOperationResult(value) || !isMatchingLoopOperationResult(value, request)) return;
-    settle({ok: value.ok, reason: value.reason});
-  };
-
-  try {
-    if (bridgeMode === 'Tauri') {
-      const eventApi = await import('@tauri-apps/api/event') as TauriEventApi;
-      if (typeof eventApi.listen !== 'function') return {ok: false, reason: 'Physics Paint loop-operation result bridge is unavailable.'};
-      unlistenTauri = await eventApi.listen(PHYSIC_PAINT_LOOP_OPERATION_RESULT_EVENT, (event) => accept(event.payload));
-    } else {
-      browserListener = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin || event.data?.type !== PHYSIC_PAINT_LOOP_OPERATION_RESULT_EVENT) return;
-        accept(event.data.payload);
-      };
-      window.addEventListener('message', browserListener);
-    }
-
-    if (bridgeMode === 'Tauri') {
-      const windowApi = await import('@tauri-apps/api/window') as TauriWindowApi;
-      const paintWindow = await windowApi.Window?.getByLabel?.(PHYSIC_PAINT_WINDOW_LABEL);
-      if (paintWindow) {
-        if (await paintWindow.isMinimized?.()) await paintWindow.unminimize?.();
-        await paintWindow.show?.();
-        await paintWindow.setFocus?.();
-      } else {
-        const launch = await openPhysicPaintCanvas(input);
-        if (!launch.ok) return {ok: false, reason: launch.error};
-      }
-    } else if (browserFallbackWindow && !browserFallbackWindow.closed) {
-      browserFallbackWindow.focus?.();
-    } else {
-      const launch = await openPhysicPaintCanvas(input);
-      if (!launch.ok) return {ok: false, reason: launch.error};
-    }
-
-    const send = () => {
-      void sendPhysicPaintLoopOperationRequest(request, bridgeMode, browserFallbackWindow).catch(() => undefined);
-    };
-    send();
-    retry = setInterval(send, retryIntervalMs);
-    timeout = setTimeout(() => settle({ok: false, reason: 'Physics Paint loop operation timed out.'}), timeoutMs);
-    return await resultPromise;
-  } catch (error) {
-    return {ok: false, reason: error instanceof Error ? error.message : String(error)};
-  } finally {
-    if (timeout !== undefined) clearTimeout(timeout);
-    if (retry !== undefined) clearInterval(retry);
-    unlistenTauri?.();
-    if (browserListener) window.removeEventListener('message', browserListener);
-  }
-}
-
-/**
- * 43-06 (D-01, Q3 resolved launch-or-focus): a capsule badge click asks the
- * Studio to open the Play Script dialog in loop-edit mode targeting the loop.
- * With the Studio open, the window is focused and the message is delivered —
- * never relaunched (a relaunch would replace the launch context and reset the
- * child). With the Studio closed, the existing openPhysicPaintCanvas path
- * launches it and the message is delivered queue-until-ready: the child
- * handler is idempotent, so a bounded resend covers the listener-install race.
- */
-export async function openPhysicPaintLoopEdit(request: PhysicPaintOpenRequest & { loopId: string }): Promise<Result<null>> {
-  const payload = { loopId: request.loopId };
-  if (!isPhysicPaintOpenLoopEditRequest(payload)) {
-    return { ok: false, error: 'A valid Loop Clip identity is required to open loop edit.' };
-  }
-  let send = (target: Window | null, bridgeMode: 'Tauri' | 'Browser fallback') =>
-    sendPhysicPaintOpenLoopEdit(payload, bridgeMode, target);
-  const sendBestEffort = async (target: Window | null, bridgeMode: 'Tauri' | 'Browser fallback'): Promise<void> => {
-    try {
-      await send(target, bridgeMode);
-    } catch {
-      // A fresh child may not have installed its transport yet; bounded retries
-      // below preserve queue-until-ready without turning that race into failure.
-    }
-  };
-  const queueUntilReady = (target: Window | null, bridgeMode: 'Tauri' | 'Browser fallback'): void => {
-    // The child handler is idempotent, so 12 bounded resends cover the
-    // listener-install race while the fresh bundle initializes (Q3). Returning
-    // an async interval callback keeps the transport promise observable to fake
-    // timers instead of detaching it with `void send(...)`.
-    let attempts = 0;
-    const timer = setInterval(async () => {
-      attempts += 1;
-      await sendBestEffort(target, bridgeMode);
-      if (attempts >= 12) clearInterval(timer);
-    }, 250);
-  };
-
-  const tauriRuntime = await detectTauriRuntime();
-  if (tauriRuntime) {
-    try {
-      // Resolve the Tauri transport once before scheduling retries. Repeating a
-      // dynamic import inside each timer callback lets fake-time advancement
-      // finish before emitTo settles under full-suite scheduler load.
-      const eventApi = await import('@tauri-apps/api/event') as TauriEventApi;
-      const emitTo = eventApi.emitTo;
-      if (typeof emitTo !== 'function') {
-        return {ok: false, error: 'Open-loop-edit bridge is unavailable'};
-      }
-      send = async () => {
-        await emitTo(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, payload);
-      };
-      const windowApi = await import('@tauri-apps/api/window') as TauriWindowApi;
-      const paintWindow = await windowApi.Window?.getByLabel?.(PHYSIC_PAINT_WINDOW_LABEL);
-      if (paintWindow) {
-        if (await paintWindow.isMinimized?.()) await paintWindow.unminimize?.();
-        await paintWindow.show?.();
-        await paintWindow.setFocus?.();
-        await send(null, 'Tauri');
-        return { ok: true, data: null };
-      }
-    } catch (error) {
-      return { ok: false, error: String(error) };
-    }
-    const launch = await openPhysicPaintCanvas(request);
-    if (!launch.ok) return { ok: false, error: launch.error };
-    await sendBestEffort(null, 'Tauri');
-    queueUntilReady(null, 'Tauri');
-    return { ok: true, data: null };
-  }
-
-  if (browserFallbackWindow && !browserFallbackWindow.closed) {
-    browserFallbackWindow.focus?.();
-    try {
-      await send(browserFallbackWindow, 'Browser fallback');
-    } catch (error) {
-      return { ok: false, error: String(error) };
-    }
-    return { ok: true, data: null };
-  }
-  const launch = await openPhysicPaintCanvas(request);
-  if (!launch.ok) return { ok: false, error: launch.error };
-  await sendBestEffort(browserFallbackWindow, 'Browser fallback');
-  queueUntilReady(browserFallbackWindow, 'Browser fallback');
   return { ok: true, data: null };
 }
 

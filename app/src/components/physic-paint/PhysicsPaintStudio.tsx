@@ -43,7 +43,7 @@ import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
 import { efxPaintAudioMonitor } from './audio/efxPaintAudioMonitor';
 import { audioPreviewEnabled, setAudioPreviewEnabled } from './audio/efxPaintAudioPreviewStore';
 import { buildBlankRotoFrame, type RenderedFramePayload } from './roto/rotoCanvasFrames';
-import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush, usePhysicsPaintLoopOperationBridge, usePhysicsPaintOpenLoopEditBridge } from './bridge/usePhysicsPaintParentBridge';
+import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush } from './bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
@@ -876,19 +876,6 @@ export function PhysicsPaintStudio() {
   const selectedLoopClip = selectedLoopClipId.value === null
     ? null
     : loopPresentations.get(selectedLoopClipId.value) ?? null;
-  // 43-06 (D-01/Q3): the capsule badge click reaches this Studio — open the
-  // Play Script dialog in loop-edit mode targeting the requested loop.
-  usePhysicsPaintOpenLoopEditBridge((loopId) => { void rotoPlayScript.openLoopEdit(loopId); });
-  usePhysicsPaintLoopOperationBridge(
-    () => launchContextRef.current,
-    {
-      duplicateLinkedLoop: rotoPlayScript.duplicateLinkedLoop,
-      unlinkLoop: rotoPlayScript.unlinkLoop,
-      repairLoop: rotoPlayScript.repairLoop,
-      relinkLoop: rotoPlayScript.relinkLoop,
-    },
-    bridgeMode,
-  );
   const resetRotoSpacingSelectionSession = useCallback((options?: { clearClipboard?: boolean }) => {
     rotoSpacingSelection.value = null;
     clearRotoLoopSelection();

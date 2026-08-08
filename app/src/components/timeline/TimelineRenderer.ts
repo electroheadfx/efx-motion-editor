@@ -149,9 +149,6 @@ export interface DrawState {
   selectedAudioTrackId?: string | null;
   beatMarkersVisible?: boolean;
   snapToBeatsEnabled?: boolean;
-  selectedLoopClipId?: string | null;  // selected Loop Clip capsule (D-23; wired by 43-08)
-  hoveredLoopClipId?: string | null;   // hovered capsule (raise; wired by 43-08)
-  focusedLoopClipId?: string | null;   // keyboard-focused capsule (focus ring; wired by 43-08)
 }
 
 /**

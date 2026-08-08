@@ -12,209 +12,6 @@ import {snapToBeat} from '../../lib/beatMarkerEngine';
 import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, FX_TRACK_HEIGHT, TRACK_HEIGHT} from './TimelineRenderer';
 import type {TimelineRenderer} from './TimelineRenderer';
 import {isolationStore} from '../../stores/isolationStore';
-import {signal} from '@preact/signals';
-import type {FxTrackLayout, TimelineLoopCapsule} from '../../types/timeline';
-import {
-  firstCycleCellFrames,
-  isZeroEffectiveLoop,
-  loopCapsuleFrameToX,
-  repetitionRegionStartFrame,
-  truncationDiagonalFrame,
-  zoomBandForFrameWidth,
-} from './loopCapsuleGeometry';
-
-export interface LoopCapsuleRect {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
-
-export interface LoopCapsuleHitLayout {
-  readonly inFrame: number;
-  readonly frameWidth: number;
-  readonly scrollX: number;
-  readonly headerWidth: number;
-  readonly rangeY: number;
-  readonly rangeHeight: number;
-}
-
-export type LoopCapsuleHit =
-  | {readonly region: 'badge' | 'anchor' | 'truncation' | 'outline'; readonly loopId: string}
-  | {readonly region: 'source-cell'; readonly loopId: string; readonly sourceIndex: number; readonly sourceAppFrame: number | null; readonly realKeyBacked: true}
-  | {readonly region: 'occurrence'; readonly loopId: string; readonly repeatInstance: number; readonly sourceIndex: number};
-
-export interface LoopCapsuleHitRegions {
-  readonly badge: LoopCapsuleRect;
-  readonly anchor: LoopCapsuleRect | null;
-  readonly sourceCells: readonly {readonly rect: LoopCapsuleRect; readonly sourceIndex: number}[];
-  readonly truncation: LoopCapsuleRect;
-  readonly repetitionBand: LoopCapsuleRect;
-  readonly outline: LoopCapsuleRect;
-}
-
-export interface TimelineLoopCapsuleTooltipRequest {
-  readonly capsule: TimelineLoopCapsule;
-  readonly hit: LoopCapsuleHit;
-  readonly clientX: number;
-  readonly clientY: number;
-  readonly pinned: boolean;
-  readonly layerId: string;
-  readonly sequenceStartFrame: number;
-}
-
-export const selectedTimelineLoopClipId = signal<string | null>(null);
-export const focusedTimelineLoopClipId = signal<string | null>(null);
-export const hoveredTimelineLoopClipId = signal<string | null>(null);
-export const timelineLoopCapsuleTooltipRequest = signal<TimelineLoopCapsuleTooltipRequest | null>(null);
-
-function containsPoint(rect: LoopCapsuleRect, point: {x: number; y: number}): boolean {
-  return point.x >= rect.x && point.x <= rect.x + rect.width
-    && point.y >= rect.y && point.y <= rect.y + rect.height;
-}
-
-/** Geometry shared by pointer hit-testing and focused-capsule recovery. The
- * anchor target deliberately lands to the LEFT of the blocking frame so its
- * 24px target cannot steal the blocking real key's hit region. */
-export function getLoopCapsuleHitRegions(
-  capsule: TimelineLoopCapsule,
-  layout: LoopCapsuleHitLayout,
-): LoopCapsuleHitRegions {
-  const view = {
-    inFrame: layout.inFrame,
-    frameWidth: layout.frameWidth,
-    scrollX: layout.scrollX,
-    headerWidth: layout.headerWidth,
-  };
-  const left = loopCapsuleFrameToX(capsule.placementStart, view);
-  const right = loopCapsuleFrameToX(Math.max(capsule.placementStart, capsule.effectiveEnd), view);
-  const width = Math.max(1, right - left);
-  // The leading 18px of the visual badge is the action target. Keeping the
-  // target compact preserves pointer access to source thumbnails beneath the
-  // remainder of the painted label.
-  const badgeWidth = isZeroEffectiveLoop(capsule) ? 0 : Math.min(Math.max(0, width - 8), 18);
-  const badge = {
-    x: left + 4,
-    y: layout.rangeY,
-    width: badgeWidth,
-    height: Math.min(16, layout.rangeHeight),
-  };
-  const sourceCells = firstCycleCellFrames(capsule).map(({index, frame}) => ({
-    sourceIndex: index,
-    rect: {
-      x: loopCapsuleFrameToX(frame, view),
-      y: layout.rangeY,
-      width: layout.frameWidth,
-      height: layout.rangeHeight,
-    },
-  }));
-  const repetitionX = loopCapsuleFrameToX(repetitionRegionStartFrame(capsule), view);
-  const repetitionBand = {
-    x: repetitionX,
-    y: layout.rangeY,
-    width: Math.max(0, right - repetitionX),
-    height: layout.rangeHeight,
-  };
-  const diagonalFrame = truncationDiagonalFrame(capsule, zoomBandForFrameWidth(layout.frameWidth));
-  const diagonalX = diagonalFrame === null ? right : loopCapsuleFrameToX(diagonalFrame, view);
-  const truncation = {
-    x: diagonalX - 6,
-    y: layout.rangeY - 2,
-    width: 12,
-    height: layout.rangeHeight + 4,
-  };
-  const anchor = isZeroEffectiveLoop(capsule)
-    ? {
-        x: left - 24,
-        y: layout.rangeY + layout.rangeHeight / 2 - 12,
-        width: 24,
-        height: 24,
-      }
-    : null;
-  return {
-    badge,
-    anchor,
-    sourceCells,
-    truncation,
-    repetitionBand,
-    outline: {x: left - 3, y: layout.rangeY - 3, width: width + 6, height: layout.rangeHeight + 6},
-  };
-}
-
-/** Locked six-region precedence: badge, zero-effective anchor, first-cycle
- * source cell, truncation edge, linked occurrence/band, then outline. */
-export function hitTestLoopCapsule(
-  capsule: TimelineLoopCapsule,
-  layout: LoopCapsuleHitLayout,
-  point: {x: number; y: number},
-): LoopCapsuleHit | null {
-  const regions = getLoopCapsuleHitRegions(capsule, layout);
-  if (containsPoint(regions.badge, point)) return {region: 'badge', loopId: capsule.loopId};
-  if (regions.anchor && containsPoint(regions.anchor, point)) return {region: 'anchor', loopId: capsule.loopId};
-  for (const source of regions.sourceCells) {
-    if (!containsPoint(source.rect, point)) continue;
-    const cell = capsule.firstCycleCells[source.sourceIndex];
-    if (cell?.realKeyBacked) {
-      return {
-        region: 'source-cell',
-        loopId: capsule.loopId,
-        sourceIndex: source.sourceIndex,
-        sourceAppFrame: cell.sourceAppFrame,
-        realKeyBacked: true,
-      };
-    }
-    return {region: 'occurrence', loopId: capsule.loopId, repeatInstance: 0, sourceIndex: source.sourceIndex};
-  }
-  if (capsule.truncated && containsPoint(regions.truncation, point)) {
-    return {region: 'truncation', loopId: capsule.loopId};
-  }
-  if (containsPoint(regions.repetitionBand, point)) {
-    const frameOffset = Math.max(0, Math.floor((point.x - regions.repetitionBand.x) / layout.frameWidth));
-    return {
-      region: 'occurrence',
-      loopId: capsule.loopId,
-      repeatInstance: Math.floor(frameOffset / capsule.cycleLength) + 1,
-      sourceIndex: frameOffset % capsule.cycleLength,
-    };
-  }
-  if (containsPoint(regions.outline, point)) return {region: 'outline', loopId: capsule.loopId};
-  return null;
-}
-
-export interface LoopCapsuleDispatchActions {
-  readonly selectLoop: (loopId: string) => void;
-  readonly selectRealKey: (sourceAppFrame: number) => void;
-  readonly requestTooltip: (hit: LoopCapsuleHit, pinned: boolean) => void;
-  readonly openLoopEdit: (loopId: string) => void;
-}
-
-export function dispatchLoopCapsuleHit(hit: LoopCapsuleHit, actions: LoopCapsuleDispatchActions): void {
-  if (hit.region === 'badge') {
-    actions.openLoopEdit(hit.loopId);
-    return;
-  }
-  if (hit.region === 'source-cell') {
-    if (hit.sourceAppFrame !== null) actions.selectRealKey(hit.sourceAppFrame);
-    return;
-  }
-  actions.selectLoop(hit.loopId);
-  actions.requestTooltip(hit, hit.region !== 'outline');
-}
-
-export function dispatchFocusedLoopCapsuleKey(
-  key: string,
-  actions: {
-    readonly pinTooltip: () => void;
-    readonly closeTooltip: () => void;
-    readonly unlinkLoop: () => void;
-  },
-): boolean {
-  if (key === 'Enter') actions.pinTooltip();
-  else if (key === 'Escape') actions.closeTooltip();
-  else if (key === 'Delete' || key === 'Backspace') actions.unlinkLoop();
-  else return false;
-  return true;
-}
 
 /**
  * TimelineInteraction: Pointer/wheel/touch event handling for the timeline canvas.
@@ -284,9 +81,6 @@ export class TimelineInteraction {
   private handleWheel = this.onWheel.bind(this);
   private handleGestureChange = this.onGestureChange.bind(this);
   private handleGestureStart = this.onGestureStart.bind(this);
-  private handleKeyDown = this.onKeyDown.bind(this);
-  private handlePointerLeave = this.onPointerLeave.bind(this);
-  private focusedLoopSequenceId: string | null = null;
 
   attach(canvas: HTMLCanvasElement, renderer: TimelineRenderer) {
     this.canvas = canvas;
@@ -295,9 +89,6 @@ export class TimelineInteraction {
     canvas.addEventListener('pointerdown', this.handlePointerDown);
     canvas.addEventListener('pointermove', this.handlePointerMove);
     canvas.addEventListener('pointerup', this.handlePointerUp);
-    canvas.addEventListener('pointerleave', this.handlePointerLeave);
-    canvas.addEventListener('keydown', this.handleKeyDown);
-    if (canvas.tabIndex < 0) canvas.tabIndex = 0;
     canvas.addEventListener('wheel', this.handleWheel, {passive: false});
     // macOS pinch-to-zoom via gesture events
     canvas.addEventListener('gesturestart', this.handleGestureStart as EventListener);
@@ -311,8 +102,6 @@ export class TimelineInteraction {
     canvas.removeEventListener('pointerdown', this.handlePointerDown);
     canvas.removeEventListener('pointermove', this.handlePointerMove);
     canvas.removeEventListener('pointerup', this.handlePointerUp);
-    canvas.removeEventListener('pointerleave', this.handlePointerLeave);
-    canvas.removeEventListener('keydown', this.handleKeyDown);
     canvas.removeEventListener('wheel', this.handleWheel);
     canvas.removeEventListener('gesturestart', this.handleGestureStart as EventListener);
     canvas.removeEventListener('gesturechange', this.handleGestureChange as EventListener);
@@ -744,131 +533,6 @@ export class TimelineInteraction {
     return null;
   }
 
-  private loopCapsuleHitTest(clientX: number, clientY: number): {
-    hit: LoopCapsuleHit;
-    capsule: TimelineLoopCapsule;
-    track: FxTrackLayout;
-    layerId: string;
-  } | null {
-    if (!this.canvas || !this.renderer || !this.isInFxArea(clientY)) return null;
-    const fxIndex = this.fxTrackIndexFromY(clientY);
-    const track = fxTrackLayouts.peek()[fxIndex];
-    if (!track || track.layerType !== 'physic-paint' || !track.loopCapsules?.length) return null;
-    const rect = this.canvas.getBoundingClientRect();
-    const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
-    const trackY = RULER_HEIGHT + fxIndex * FX_TRACK_HEIGHT - this.renderer.getScrollY();
-    const barY = trackY + 4;
-    const barHeight = FX_TRACK_HEIGHT - 8;
-    const rangeHeight = Math.max(10, Math.min(14, Math.round(barHeight * 0.7)));
-    const rangeY = barY + barHeight - rangeHeight - 2;
-    const point = {x: clientX - rect.left, y: clientY - rect.top};
-    const layout = {
-      inFrame: track.inFrame,
-      frameWidth,
-      scrollX: timelineStore.scrollX.peek(),
-      headerWidth: TRACK_HEADER_WIDTH,
-      rangeY,
-      rangeHeight,
-    };
-    const sequence = sequenceStore.sequences.peek().find((candidate) => candidate.id === track.sequenceId);
-    const layer = sequence?.layers[0];
-    if (!layer) return null;
-    const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-    // Reverse order mirrors renderer stacking when resolver intervals touch.
-    for (let index = track.loopCapsules.length - 1; index >= 0; index--) {
-      const capsule = track.loopCapsules[index];
-      const hit = hitTestLoopCapsule(capsule, layout, point);
-      if (hit) return {hit, capsule, track, layerId};
-    }
-    return null;
-  }
-
-  private selectLoopCapsule(loopId: string, sequenceId: string): void {
-    selectedTimelineLoopClipId.value = loopId;
-    focusedTimelineLoopClipId.value = loopId;
-    this.focusedLoopSequenceId = sequenceId;
-    keyframeStore.clearSelection();
-    this.canvas?.focus({preventScroll: true});
-  }
-
-  private requestLoopTooltip(
-    capsule: TimelineLoopCapsule,
-    hit: LoopCapsuleHit,
-    layerId: string,
-    clientX: number,
-    clientY: number,
-    pinned: boolean,
-  ): void {
-    const track = fxTrackLayouts.peek().find((candidate) => candidate.loopCapsules?.some((item) => item.loopId === capsule.loopId));
-    timelineLoopCapsuleTooltipRequest.value = {
-      capsule,
-      hit,
-      layerId,
-      sequenceStartFrame: track?.inFrame ?? 0,
-      clientX,
-      clientY,
-      pinned,
-    };
-  }
-
-  private async openLoopEdit(loopId: string, track: FxTrackLayout): Promise<void> {
-    const sequence = sequenceStore.sequences.peek().find((candidate) => candidate.id === track.sequenceId);
-    const layer = sequence?.layers[0];
-    if (!layer) return;
-    const {openPhysicPaintLoopEdit} = await import('../../lib/physicPaintBridge');
-    await openPhysicPaintLoopEdit({layer, frame: track.inFrame, loopId});
-  }
-
-  private async deleteFocusedLoop(): Promise<void> {
-    const loopId = focusedTimelineLoopClipId.peek();
-    const sequenceId = this.focusedLoopSequenceId;
-    if (!loopId || !sequenceId) return;
-    const sequence = sequenceStore.sequences.peek().find((candidate) => candidate.id === sequenceId);
-    const layer = sequence?.layers[0];
-    if (!sequence || !layer || layer.source.type !== 'physic-paint') return;
-
-    const {requestPhysicPaintLoopOperation} = await import('../../lib/physicPaintBridge');
-    const result = await requestPhysicPaintLoopOperation({
-      layer,
-      frame: sequence.inFrame ?? 0,
-      loopId,
-      kind: 'delete-loop',
-    });
-    if (!result.ok) return;
-
-    // A delayed acknowledgement must not clear a newer capsule selection.
-    if (focusedTimelineLoopClipId.peek() !== loopId || this.focusedLoopSequenceId !== sequenceId) return;
-    selectedTimelineLoopClipId.value = null;
-    focusedTimelineLoopClipId.value = null;
-    timelineLoopCapsuleTooltipRequest.value = null;
-    this.focusedLoopSequenceId = null;
-  }
-
-  private onKeyDown(event: KeyboardEvent): void {
-    const loopId = focusedTimelineLoopClipId.peek();
-    if (!loopId) return;
-    const handled = dispatchFocusedLoopCapsuleKey(event.key, {
-      pinTooltip: () => {
-        const request = timelineLoopCapsuleTooltipRequest.peek();
-        if (request?.capsule.loopId === loopId) {
-          timelineLoopCapsuleTooltipRequest.value = {...request, pinned: true};
-        }
-      },
-      closeTooltip: () => {
-        timelineLoopCapsuleTooltipRequest.value = null;
-        this.canvas?.focus({preventScroll: true});
-      },
-      unlinkLoop: () => { void this.deleteFocusedLoop(); },
-    });
-    if (handled) event.preventDefault();
-  }
-
-  private onPointerLeave(): void {
-    hoveredTimelineLoopClipId.value = null;
-    const request = timelineLoopCapsuleTooltipRequest.peek();
-    if (request && !request.pinned) timelineLoopCapsuleTooltipRequest.value = null;
-  }
-
   /** Delete selected keyframe diamonds (called from shortcuts) */
   deleteSelectedKeyframes(): void {
     const selectedFrames = keyframeStore.selectedKeyframeFrames.peek();
@@ -896,40 +560,6 @@ export class TimelineInteraction {
       // Always select the FX layer when clicking anywhere in its track
       if (fxIdx >= 0 && fxIdx < fxTracks.length) {
         this.selectFxSequenceLayer(fxTracks[fxIdx].sequenceId);
-      }
-
-      // Loop Clip capsule regions precede generic range dragging. A
-      // real-key-backed source cell deliberately reuses the existing key path;
-      // every linked/ghost occurrence selects only the loop object.
-      const loopHit = this.loopCapsuleHitTest(e.clientX, e.clientY);
-      if (loopHit) {
-        dispatchLoopCapsuleHit(loopHit.hit, {
-          selectLoop: (loopId) => this.selectLoopCapsule(loopId, loopHit.track.sequenceId),
-          selectRealKey: (sourceAppFrame) => {
-            keyframeStore.selectKeyframe(sourceAppFrame, e.shiftKey);
-            playbackEngine.seekToFrame(loopHit.track.inFrame + sourceAppFrame);
-            const selectedLayerId = layerStore.selectedLayerId.peek();
-            if (selectedLayerId) {
-              this.isDraggingKeyframe = true;
-              this.kfDragLayerId = selectedLayerId;
-              this.kfDragFromFrame = sourceAppFrame;
-              this.kfDragSequenceStartFrame = loopHit.track.inFrame;
-              timelineStore.setTimelineDragging(true);
-              this.canvas?.setPointerCapture(e.pointerId);
-              startCoalescing();
-            }
-          },
-          requestTooltip: (hit, pinned) => this.requestLoopTooltip(
-            loopHit.capsule,
-            hit,
-            loopHit.layerId,
-            e.clientX,
-            e.clientY,
-            pinned,
-          ),
-          openLoopEdit: (loopId) => { void this.openLoopEdit(loopId, loopHit.track); },
-        });
-        return;
       }
 
       // Header: check for bullet click or initiate FX reorder drag
@@ -1297,29 +927,6 @@ export class TimelineInteraction {
     // Hover detection: name labels > keyframes > transitions
     // (name labels use precise bounding box; keyframes use broad X-based hit zone)
     if (this.canvas && !this.isInRuler(e.clientY)) {
-      const loopHover = this.loopCapsuleHitTest(e.clientX, e.clientY);
-      if (loopHover) {
-        if (hoveredTimelineLoopClipId.peek() !== loopHover.capsule.loopId) {
-          hoveredTimelineLoopClipId.value = loopHover.capsule.loopId;
-          this.requestLoopTooltip(
-            loopHover.capsule,
-            loopHover.hit,
-            loopHover.layerId,
-            e.clientX,
-            e.clientY,
-            false,
-          );
-        }
-        this.canvas.style.cursor = 'pointer';
-        if (this.renderer) this.renderer.setHoveredKeyframe(null);
-        return;
-      }
-      if (hoveredTimelineLoopClipId.peek() !== null) {
-        hoveredTimelineLoopClipId.value = null;
-        const request = timelineLoopCapsuleTooltipRequest.peek();
-        if (request && !request.pinned) timelineLoopCapsuleTooltipRequest.value = null;
-      }
-
       // Name label hover: pointer cursor + highlight (checked first — precise hit area)
       const nameHoverEarly = this.nameLabelHitTest(e.clientX, e.clientY);
       if (nameHoverEarly) {

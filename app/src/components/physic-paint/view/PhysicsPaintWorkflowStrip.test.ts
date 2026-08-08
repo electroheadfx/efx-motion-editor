@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -13,6 +13,7 @@ import {
 } from './physicsPaintLoopClipPresentation';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
+const legacyLanePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintLoopClipLane.tsx');
 const source = () => readFileSync(sourcePath, 'utf8');
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
 const css = () => readFileSync(cssPath, 'utf8');
@@ -1188,7 +1189,7 @@ describe('PhysicsPaintWorkflowStrip loop resolution wiring (43-02, Pitfall 7)', 
 
 
 describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () => {
-  it('hosts the integrated Loop Rail inside the unchanged physical row', () => {
+  it('keeps only the integrated rail inside the unchanged physical row', () => {
     const code = source();
     const rulerIndex = code.indexOf('class="physics-paint-ruler"');
     const physicalLaneIndex = code.indexOf('class="physics-paint-lane"');
@@ -1208,6 +1209,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(loopRailIndex).toBeGreaterThan(physicalLaneIndex);
     expect(cellsIndex).toBeGreaterThan(loopRailIndex);
     expect(code).not.toContain('PhysicsPaintLoopClipLane');
+    expect(existsSync(legacyLanePath)).toBe(false);
   });
 
   it('derives accessible product copy without exposing the raw loop UUID', () => {

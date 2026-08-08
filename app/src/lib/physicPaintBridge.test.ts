@@ -1082,165 +1082,40 @@ describe('physicPaintBridge', () => {
   });
 });
 
-// 43-06 Task 3 (D-01, Q3): badge click launch-or-focus — a closed Studio is
-// launched via the existing openPhysicPaintCanvas path and the open-loop-edit
-// message is delivered queue-until-ready; an open Studio is focused only
-// (a relaunch would reset the child window state).
-describe('openPhysicPaintLoopEdit (43-06 launch-or-focus)', () => {
-  beforeEach(() => {
-    physicPaintStore.reset();
-    Object.defineProperty(globalThis, 'window', {
-      value: {
-        open: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-        location: { origin: 'http://localhost:1420' },
-      },
-      writable: true,
-      configurable: true,
-    });
-  });
+describe('public Physics Paint transport cleanup', () => {
+  it('exposes only generic Physics Paint transport after the local Loop Clip cutover', async () => {
+    const bridge = await import('./physicPaintBridge') as Record<string, unknown>;
+    const transport = await import('../components/physic-paint/bridge/physicsPaintBridgeTransport') as Record<string, unknown>;
+    const parentBridge = await import('../components/physic-paint/bridge/usePhysicsPaintParentBridge') as Record<string, unknown>;
+    const types = await import('../types/physicPaint') as Record<string, unknown>;
 
-  afterEach(() => {
-    // Restore the real window FIRST: a stale __TAURI_INTERNALS__ on the mock
-    // would flip isTauriRuntime() for the signal publishers that fire during
-    // projectStore.closeProject().
-    Object.defineProperty(globalThis, 'window', { value: originalWindow, writable: true, configurable: true });
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-    vi.doUnmock('@tauri-apps/api/core');
-    vi.doUnmock('@tauri-apps/api/event');
-    vi.doUnmock('@tauri-apps/api/window');
-    vi.resetModules();
-    projectStore.closeProject();
-  });
+    expect(bridge.openPhysicPaintCanvas).toBeTypeOf('function');
+    expect(transport.sendPhysicPaintApplyPayload).toBeTypeOf('function');
 
-  it('focuses the existing Studio window and delivers the message — never relaunches', async () => {
-    const invoke = vi.fn();
-    const emitTo = vi.fn().mockResolvedValue(undefined);
-    const setFocus = vi.fn().mockResolvedValue(undefined);
-    const show = vi.fn().mockResolvedValue(undefined);
-    const unminimize = vi.fn().mockResolvedValue(undefined);
-    vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke }));
-    vi.doMock('@tauri-apps/api/event', () => ({ emitTo, emit: vi.fn(), listen: vi.fn(async () => vi.fn()) }));
-    vi.doMock('@tauri-apps/api/window', () => ({
-      Window: { getByLabel: vi.fn(async () => ({ isMinimized: async () => false, unminimize, show, setFocus })) },
-    }));
-    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: vi.fn(async () => ({})) }, configurable: true });
-    const { openPhysicPaintLoopEdit: openLoopEdit, PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, PHYSIC_PAINT_WINDOW_LABEL } = await import('./physicPaintBridge');
+    for (const name of [
+      'PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT',
+      'PHYSIC_PAINT_LOOP_OPERATION_REQUEST_EVENT',
+      'PHYSIC_PAINT_LOOP_OPERATION_RESULT_EVENT',
+      'openPhysicPaintLoopEdit',
+      'requestPhysicPaintLoopOperation',
+    ]) expect(name in bridge).toBe(false);
 
-    const result = await openLoopEdit({ layer: physicLayer(), frame: 4, loopId: 'loop-7' });
+    for (const name of [
+      'sendPhysicPaintOpenLoopEdit',
+      'sendPhysicPaintLoopOperationRequest',
+      'sendPhysicPaintLoopOperationResult',
+    ]) expect(name in transport).toBe(false);
 
-    expect(result.ok).toBe(true);
-    expect(setFocus).toHaveBeenCalledTimes(1);
-    expect(emitTo).toHaveBeenCalledWith(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, { loopId: 'loop-7' });
-    // The Studio was already open — the native launch command never ran.
-    expect(invoke).not.toHaveBeenCalledWith('open_physics_paint_window', expect.anything());
-  });
+    for (const name of [
+      'usePhysicsPaintOpenLoopEditBridge',
+      'usePhysicsPaintLoopOperationBridge',
+      'createPhysicsPaintLoopOperationRequestHandler',
+    ]) expect(name in parentBridge).toBe(false);
 
-  it('launches a closed Studio via the existing path, then delivers the message queue-until-ready', async () => {
-    vi.useFakeTimers();
-    const invoke = vi.fn().mockResolvedValue({
-      label: 'efx-physic-paint',
-      visibleBefore: false,
-      minimizedBefore: false,
-      visible: true,
-      minimized: false,
-    });
-    const emitTo = vi.fn().mockResolvedValue(undefined);
-    vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke }));
-    vi.doMock('@tauri-apps/api/event', () => ({ emitTo, emit: vi.fn(), listen: vi.fn(async () => vi.fn()) }));
-    vi.doMock('@tauri-apps/api/window', () => ({ Window: { getByLabel: vi.fn(async () => null) } }));
-    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: vi.fn(async () => ({})) }, configurable: true });
-    const { openPhysicPaintLoopEdit: openLoopEdit, PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, PHYSIC_PAINT_WINDOW_LABEL } = await import('./physicPaintBridge');
-
-    const result = await openLoopEdit({ layer: physicLayer(), frame: 4, loopId: 'loop-8' });
-
-    expect(result.ok).toBe(true);
-    expect(invoke).toHaveBeenCalledWith('open_physics_paint_window', {
-      context: expect.objectContaining({ layerId: 'phys-layer-1', startFrame: 4 }),
-    });
-    const openEditDeliveries = () => emitTo.mock.calls.filter(([, eventName]) => eventName === PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT);
-    // A fresh child receives one best-effort delivery before this helper
-    // resolves; unrelated project-context emissions never satisfy the contract.
-    expect(openEditDeliveries()).toEqual([
-      [PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, { loopId: 'loop-8' }],
-    ]);
-
-    // Queue-until-ready then adds exactly 12 bounded, awaited retries so fake
-    // time and real runtime scheduling observe the same delivery sequence.
-    await vi.advanceTimersByTimeAsync(3200);
-    expect(openEditDeliveries()).toHaveLength(13);
-    expect(openEditDeliveries()[openEditDeliveries().length - 1]).toEqual([
-      PHYSIC_PAINT_WINDOW_LABEL,
-      PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT,
-      { loopId: 'loop-8' },
-    ]);
-  });
-
-  it('rejects an invalid loopId without touching the window or the transport', async () => {
-    const invoke = vi.fn();
-    const emitTo = vi.fn().mockResolvedValue(undefined);
-    const getByLabel = vi.fn(async () => null);
-    vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke }));
-    vi.doMock('@tauri-apps/api/event', () => ({ emitTo, emit: vi.fn(), listen: vi.fn(async () => vi.fn()) }));
-    vi.doMock('@tauri-apps/api/window', () => ({ Window: { getByLabel } }));
-    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: vi.fn(async () => ({})) }, configurable: true });
-    const { openPhysicPaintLoopEdit: openLoopEdit } = await import('./physicPaintBridge');
-
-    const result = await openLoopEdit({ layer: physicLayer(), frame: 4, loopId: '' });
-
-    expect(result.ok).toBe(false);
-    expect(getByLabel).not.toHaveBeenCalled();
-    expect(emitTo).not.toHaveBeenCalled();
-    expect(invoke).not.toHaveBeenCalled();
-  });
-
-  it('browser fallback: focuses the stored child handle without reopening; launches once when closed', async () => {
-    vi.useFakeTimers();
-    const childHandle = { closed: false, focus: vi.fn(), postMessage: vi.fn() };
-    const open = vi.fn(() => childHandle);
-    Object.defineProperty(globalThis, 'window', {
-      value: {
-        open,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-        location: { origin: 'http://localhost:1420' },
-      },
-      writable: true,
-      configurable: true,
-    });
-    const { openPhysicPaintLoopEdit: openLoopEdit, PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT } = await import('./physicPaintBridge');
-
-    // First click: no handle — the Studio launches through the browser fallback.
-    const first = await openLoopEdit({ layer: physicLayer(), frame: 4, loopId: 'loop-1' });
-    expect(first.ok).toBe(true);
-    expect(open).toHaveBeenCalledTimes(1);
-    expect(childHandle.postMessage).toHaveBeenCalledTimes(1);
-    expect(childHandle.postMessage).toHaveBeenLastCalledWith(
-      { type: PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, payload: { loopId: 'loop-1' } },
-      'http://localhost:1420',
-    );
-    await vi.advanceTimersByTimeAsync(3200);
-    expect(childHandle.postMessage).toHaveBeenCalledTimes(13);
-    expect(childHandle.postMessage).toHaveBeenLastCalledWith(
-      { type: PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, payload: { loopId: 'loop-1' } },
-      'http://localhost:1420',
-    );
-
-    // Second click: the handle is open — focus + direct postMessage, NO reopen.
-    childHandle.postMessage.mockClear();
-    childHandle.focus.mockClear(); // the launch itself focused once
-    const second = await openLoopEdit({ layer: physicLayer(), frame: 4, loopId: 'loop-2' });
-    expect(second.ok).toBe(true);
-    expect(open).toHaveBeenCalledTimes(1);
-    expect(childHandle.focus).toHaveBeenCalledTimes(1);
-    expect(childHandle.postMessage).toHaveBeenCalledWith(
-      { type: PHYSIC_PAINT_OPEN_LOOP_EDIT_EVENT, payload: { loopId: 'loop-2' } },
-      'http://localhost:1420',
-    );
+    for (const name of [
+      'isPhysicPaintOpenLoopEditRequest',
+      'isPhysicPaintLoopOperationRequest',
+      'isPhysicPaintLoopOperationResult',
+    ]) expect(name in types).toBe(false);
   });
 });
