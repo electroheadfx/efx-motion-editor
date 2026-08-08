@@ -273,11 +273,14 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(map).toContain("${hasLinkedLoopBadge ? 'roto-linked-loop-badge' : ''}");
     expect(map).toContain("const fillClass = isPhysicalRealKey");
     expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
+    expect(map).toContain('getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopCycleLengthById)');
+    expect(map).toContain('const cellAriaLabel =');
 
     const styles = css();
     const badge = getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-linked-loop-badge {');
     const dot = getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-linked-loop-badge::after {');
-    expect(badge).toContain('box-shadow: inset 0 0 0 1px rgba(45, 91, 227, 0.9)');
+    expect(badge).toContain('box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.92)');
+    expect(dot).toContain('background: rgba(255, 255, 255, 0.96)');
     expect(dot).toContain('width: 4px');
     expect(dot).toContain('height: 4px');
     expect(dot).toContain('top: 2px');
@@ -1120,9 +1123,11 @@ describe('PhysicsPaintWorkflowStrip loop resolution wiring (43-02, Pitfall 7)', 
     // when a loop resolution context is present (D-11/D-23).
     expect(mapBlock).toContain('getRotoFrameKeyInteraction(');
     expect(mapBlock).toContain('dragEligible');
-    // Linked cells keep their existing cell-state fill semantics via the
-    // presentation mapper (D-18) — no new first-class cell state.
+    // Linked cells keep their existing fill while product tooltip/aria copy
+    // consumes the typed resolution and compact cycle-length index.
     expect(mapBlock).toContain('getRotoResolutionCellTooltipKind(');
+    expect(mapBlock).toContain('getRotoResolutionCellTooltipCopy(');
+    expect(mapBlock).toContain("frameResolution?.kind === 'linked' || frameResolution?.kind === 'linked-unresolved'");
   });
 
   it('issues exactly one resolution query per visible frame for a huge-repeat loop (D-32)', () => {
@@ -1236,8 +1241,9 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
       { startFrame: 0, endFrameExclusive: 120 },
       18,
     )).toEqual({ left: 180, width: 450 });
-    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-segment\s*\{[^}]*height:\s*3px/s);
+    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-segment\s*\{[^}]*height:\s*3px[^}]*background:\s*#2fa56a/s);
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\s*\{[^}]*height:\s*12px/s);
+    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target::after\s*\{[^}]*height:\s*24px[^}]*pointer-events:\s*none/s);
   });
 
   it('does not alter physical-cell click ordering or the real-key-only drag guard', () => {

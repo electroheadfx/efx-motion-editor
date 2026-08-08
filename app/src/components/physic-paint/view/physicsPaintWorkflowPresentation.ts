@@ -269,11 +269,10 @@ export function getRotoCellStateTooltipCopy(kind: RotoCellSemanticTooltipKind): 
 /**
  * Map the Phase 43 typed frame-resolution union onto the EXISTING cell-state
  * vocabulary (D-18): linked repetition cells keep their current
- * empty/cached/generated semantics — no new first-class cell state ships in
- * the strip (the additive link badge lands in 43-08). A 'linked-unresolved'
- * frame stays non-blocking with its existing fill; the capsule owns the
- * error affordance (D-23). `existing` is the semantic kind the strip already
- * derived from the physical cell plus cache state. The never-fallback makes
+ * empty/cached/generated FILL semantics — no new first-class cell state ships
+ * in the strip. Product tooltip and aria copy are derived separately from the
+ * typed linked resolution below. `existing` is the semantic kind the strip
+ * already derived from the physical cell plus cache state. The never-fallback makes
  * a future resolution kind a compile-time error here (Pitfall 7).
  */
 export function getRotoResolutionCellTooltipKind(
@@ -289,6 +288,35 @@ export function getRotoResolutionCellTooltipKind(
       return existing;
     case 'empty':
       return existing;
+    default: {
+      const exhaustive: never = resolution;
+      throw new Error(`Unhandled Roto frame resolution kind: ${JSON.stringify(exhaustive)}`);
+    }
+  }
+}
+
+/** Product tooltip copy for the typed frame-resolution contract. */
+export function getRotoResolutionCellTooltipCopy(
+  resolution: PhysicPaintRotoFrameResolution,
+  existing: RotoCellSemanticTooltipKind,
+  cycleLengthByLoopId: ReadonlyMap<string, number>,
+): string {
+  switch (resolution.kind) {
+    case 'real':
+      return ROTO_CELL_STATE_TOOLTIP_COPY['real-key'];
+    case 'linked': {
+      const cycleLength = cycleLengthByLoopId.get(resolution.loopId);
+      const sourceCopy = cycleLength === undefined
+        ? `Source frame ${resolution.sourceIndex + 1}`
+        : `Source frame ${resolution.sourceIndex + 1} of ${cycleLength}`;
+      return `Linked · Repeat ${resolution.repeatInstance + 1} · ${sourceCopy}`;
+    }
+    case 'linked-unresolved': {
+      const missingCount = resolution.missingSourceKeyIds.length;
+      return `Linked loop unresolved · ${missingCount} source frame${missingCount === 1 ? '' : 's'} missing`;
+    }
+    case 'empty':
+      return ROTO_CELL_STATE_TOOLTIP_COPY[existing];
     default: {
       const exhaustive: never = resolution;
       throw new Error(`Unhandled Roto frame resolution kind: ${JSON.stringify(exhaustive)}`);

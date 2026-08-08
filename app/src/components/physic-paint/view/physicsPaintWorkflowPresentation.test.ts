@@ -5,7 +5,7 @@ import {
   getRotoCellSelectedTooltipCopy, getRotoCellStateLabel, getRotoCellStateTooltipCopy, getRotoCellViewModel, getRotoMissingFrameStatus,
   getRotoDragPreviewViewModel,
   getRotoReplacementSuccessLabel, getMissingRotoFrameStatusLabel,
-  getRotoResolutionCellTooltipKind,
+  getRotoResolutionCellTooltipCopy, getRotoResolutionCellTooltipKind,
   getRotoStatusCapsuleIdleContext, getRotoStatusCapsuleViewModel,
   isPhysicsPaintDevExportEnabled,
   type RotoCellBaseMeaning, type RotoCellFill, type RotoCellOverlay,
@@ -407,18 +407,31 @@ describe('getRotoResolutionCellTooltipKind — linked frames keep existing cell-
     expect(getRotoResolutionCellTooltipKind({ kind: 'empty' }, 'cached')).toBe('cached');
   });
 
-  it('linked frames resolve to existing fill classes only', () => {
+  it('keeps linked fill semantics while exposing linked occurrence product copy', () => {
     const linked = {
       kind: 'linked' as const,
       loopId: 'L1',
       appFrame: 18,
       sourceKeyId: 'D',
-      sourceIndex: 3,
-      repeatInstance: 1,
+      sourceIndex: 1,
+      repeatInstance: 2,
     };
-    // The tooltip kind feeds the existing vocabulary/fill mapping verbatim —
-    // no linked-specific fill class exists in the presentation layer.
-    const kind = getRotoResolutionCellTooltipKind(linked, 'empty');
-    expect(getRotoCellStateTooltipCopy(kind)).toBe('Empty');
+    // Fill remains the existing empty treatment; tooltip copy is never Empty.
+    expect(getRotoResolutionCellTooltipKind(linked, 'empty')).toBe('empty');
+    expect(getRotoResolutionCellTooltipCopy(linked, 'empty', new Map([['L1', 5]])))
+      .toBe('Linked · Repeat 3 · Source frame 2 of 5');
+  });
+
+  it('uses explicit unresolved linked-loop copy instead of the base Empty copy', () => {
+    const unresolved = {
+      kind: 'linked-unresolved' as const,
+      loopId: 'L1',
+      appFrame: 18,
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+      missingSourceKeyIds: ['D', 'E'],
+    };
+    expect(getRotoResolutionCellTooltipCopy(unresolved, 'empty', new Map([['L1', 5]])))
+      .toBe('Linked loop unresolved · 2 source frames missing');
   });
 });

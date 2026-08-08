@@ -732,6 +732,20 @@ export function PhysicsPaintStudio() {
     // 43-06: the durable Loop Clip collection the loop-edit/source-edit modes
     // and the atomic loop ops operate on (43-05 port, wired here).
     getRotoLoopClips: () => (launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY),
+    // 43-11: opening Loop Edit reads the already-accepted child document
+    // synchronously. Mutation commits still request fresh parent authority.
+    getLoopEditSnapshot: (placementStart) => {
+      if (!launchContext) return null;
+      const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId);
+      if (!document) return null;
+      const physicalCapacity = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId);
+      return {
+        identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        physicalCapacity,
+        layerEndExclusive: physicalCapacity,
+        remainingCapacity: Math.max(0, physicalCapacity - placementStart),
+      };
+    },
     executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     acceptedOutput: physicalEditCoordinator.acceptedOutput,

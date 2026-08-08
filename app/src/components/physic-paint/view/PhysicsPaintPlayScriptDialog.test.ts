@@ -765,6 +765,12 @@ describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', 
       getOperationLocked: () => false,
       getSize: () => ({ width: 1920, height: 1080 }),
       getRotoLoopClips: () => [loop],
+      getLoopEditSnapshot: (placementStart) => ({
+        identities: loop.sourceKeyIds.map((keyId, index) => ({ keyId, appFrame: placementStart + index })),
+        physicalCapacity: 600,
+        layerEndExclusive: 600,
+        remainingCapacity: 600 - placementStart,
+      }),
       requestAuthority,
       commit: vi.fn(async () => ({ ok: false as const, error: 'not used by this reproduction' })),
       stopPlayback: vi.fn(),
@@ -773,7 +779,7 @@ describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', 
 
     void controller.openLoopEdit(loop.loopId);
 
-    expect(requestAuthority).toHaveBeenCalledTimes(1);
+    expect(requestAuthority).not.toHaveBeenCalled();
     hooks.cursor = 0;
     const tree = PhysicsPaintPlayScriptDialog({
       playScript: controller,

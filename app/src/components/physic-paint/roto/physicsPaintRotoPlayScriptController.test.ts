@@ -1096,7 +1096,14 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
     authorityOverrides: Partial<PhysicPaintRotoAuthorityResult> = {},
     portOverrides: Partial<RotoPlayScriptControllerPorts> = {},
   ) => {
-    const requestAuthority = vi.fn(async () => loopAuthority(authorityOverrides));
+    const localAuthority = loopAuthority(authorityOverrides);
+    const requestAuthority = vi.fn(async () => localAuthority);
+    const getLoopEditSnapshot = vi.fn((placementStart: number) => ({
+      identities: localAuthority.physicalRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      physicalCapacity: localAuthority.physicalCapacity,
+      layerEndExclusive: localAuthority.layerEndExclusive,
+      remainingCapacity: Math.max(0, localAuthority.physicalCapacity - placementStart),
+    }));
     const commit = vi.fn(async (publication: RotoPlayScriptPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
       ok: true,
       operationId: 'accepted-operation',
@@ -1107,8 +1114,8 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       selectedAppFrame: publication.selectedAppFrame,
       ...(publication.loopClips ? { loopClips: publication.loopClips } : {}),
     }));
-    const test = harness({ requestAuthority, commit, getRotoLoopClips: () => loopClips, ...portOverrides });
-    return { ...test, requestAuthority, commit };
+    const test = harness({ requestAuthority, commit, getRotoLoopClips: () => loopClips, getLoopEditSnapshot, ...portOverrides });
+    return { ...test, requestAuthority, getLoopEditSnapshot, commit };
   };
 
   const asRealKeyRecords = (records: PhysicPaintRotoAuthorityResult['physicalRecords']): PhysicPaintRotoRealKeyRecord[] =>
@@ -1246,6 +1253,8 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       // Frames-per-cycle is locked at the cycle length with its value preserved.
       expect(test.controller.countText.value).toBe('5');
       expect(test.controller.loopEditSourceStart.value).toBe(10);
+      expect(test.getLoopEditSnapshot).toHaveBeenCalledWith(10);
+      expect(test.requestAuthority).not.toHaveBeenCalled();
     });
 
     it('prefills the infinity state without clearing the last valid finite repeat', async () => {
@@ -1265,7 +1274,14 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
           physicalRecord('K', 18, 'foreign'),
         ],
       });
-      const test = loopOpHarness([loopClip('L1', 10, 3)], {}, { requestAuthority: vi.fn(async () => withBoundary) });
+      const test = loopOpHarness([loopClip('L1', 10, 3)], {}, {
+        getLoopEditSnapshot: (placementStart) => ({
+          identities: withBoundary.physicalRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+          physicalCapacity: withBoundary.physicalCapacity,
+          layerEndExclusive: withBoundary.layerEndExclusive,
+          remainingCapacity: withBoundary.physicalCapacity - placementStart,
+        }),
+      });
       await test.controller.openLoopEdit('L1');
       // Controller-local Phase 42 math would read Effective: 15f; the shared
       // derivation sees the non-owned real key at 18 and truncates.
@@ -1288,6 +1304,18 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.confirmationOpen.value).toBe(false);
       expect(test.commit).not.toHaveBeenCalled();
     });
+
+    it('fails immediately when the accepted local physical document is unavailable', async () => {
+      const requestAuthority = vi.fn(() => new Promise<never>(() => {}));
+      const test = loopOpHarness([loopClip('L1', 10, 3)], {}, {
+        getLoopEditSnapshot: () => null,
+        requestAuthority,
+      });
+      const result = await test.controller.openLoopEdit('L1');
+      expect(result).toEqual({ ok: false, reason: 'The accepted local Roto physical document is unavailable.' });
+      expect(test.controller.confirmationOpen.value).toBe(false);
+      expect(requestAuthority).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateLoop (D-10)', () => {
@@ -1296,6 +1324,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       await test.controller.openLoopEdit('L1');
       test.controller.repeatText.value = '5';
       expect(await test.controller.confirm()).toBe(true);
+      expect(test.requestAuthority).toHaveBeenCalledTimes(1);
       expect(test.commit).toHaveBeenCalledTimes(1);
       expect(rendered).not.toHaveBeenCalled(); // no regeneration on a referential op
       const publication = test.commit.mock.calls[0][0];

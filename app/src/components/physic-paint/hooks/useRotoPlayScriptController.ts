@@ -44,6 +44,7 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       getBrushColor: () => portsRef.current.getBrushColor(),
       getOperationLocked: () => portsRef.current.getOperationLocked(),
       getSize: () => portsRef.current.getSize(),
+      getLoopEditSnapshot: (placementStart) => portsRef.current.getLoopEditSnapshot?.(placementStart) ?? null,
       availabilityRevision: availabilityRevision.current,
       stopPlayback: () => portsRef.current.stopPlayback(),
       log: (...args) => portsRef.current.log(...args),

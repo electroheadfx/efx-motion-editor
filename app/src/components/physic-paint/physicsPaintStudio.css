@@ -2633,30 +2633,57 @@ button.destructive {
   position: absolute;
   inset: 0 0 auto;
   height: 3px;
-  background: #70869b;
+  background: #2fa56a;
   pointer-events: none;
 }
 
-.physics-paint-loop-clip-rail-target:hover .physics-paint-loop-clip-rail-segment,
-.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {
-  background: #8fa9c0;
+.physics-paint-loop-clip-rail-target::after {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 24px;
+  border: 1px solid rgba(76, 214, 139, 0.9);
+  opacity: 0;
+  pointer-events: none;
+  content: '';
 }
 
+.physics-paint-loop-clip-rail-target:hover .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target:focus-visible .physics-paint-loop-clip-rail-segment,
 .physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {
-  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.85);
+  background: #4cd68b;
+}
+
+.physics-paint-loop-clip-rail-target:hover::after,
+.physics-paint-loop-clip-rail-target:focus-visible::after,
+.physics-paint-loop-clip-rail-target.selected::after {
+  opacity: 1;
 }
 
 .physics-paint-loop-clip-rail-target.truncated .physics-paint-loop-clip-rail-segment {
-  background: linear-gradient(to right, #70869b 0 calc(100% - 6px), #f59e0b calc(100% - 6px));
+  background: linear-gradient(to right, #2fa56a 0 calc(100% - 6px), #f59e0b calc(100% - 6px));
+}
+
+.physics-paint-loop-clip-rail-target.truncated:hover .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.truncated:focus-visible .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.truncated.selected .physics-paint-loop-clip-rail-segment {
+  background: linear-gradient(to right, #4cd68b 0 calc(100% - 6px), #fbbf24 calc(100% - 6px));
 }
 
 .physics-paint-loop-clip-rail-target.unresolved .physics-paint-loop-clip-rail-segment {
   background: #ef4444;
 }
 
+.physics-paint-loop-clip-rail-target.unresolved:hover .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.unresolved:focus-visible .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.unresolved.selected .physics-paint-loop-clip-rail-segment {
+  background: #ff6666;
+}
+
 .physics-paint-loop-clip-rail-target:focus-visible {
-  outline: 2px solid #f5a623;
-  outline-offset: -2px;
+  outline: none;
 }
 
 .physics-paint-loop-clip-tooltip-copy {
@@ -2765,7 +2792,7 @@ button.destructive {
 }
 
 .physics-paint-roto-cell.roto-linked-loop-badge {
-  box-shadow: inset 0 0 0 1px rgba(45, 91, 227, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.92);
 }
 
 .physics-paint-roto-cell.roto-linked-loop-badge::after {
@@ -2775,7 +2802,7 @@ button.destructive {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: rgba(45, 91, 227, 0.9);
+  background: rgba(255, 255, 255, 0.96);
   content: '';
 }
 

@@ -72,6 +72,10 @@ describe('Physics Paint Play Script integration contract', () => {
 
   it('routes rail, keyboard, and sidebar Loop Clip edits through one Studio-local controller callback', () => {
     expect(studio).toContain('selectedLoopClipId.value = loopId;\n      return rotoPlayScript.openLoopEdit(loopId);');
+    expect(studio).toContain('getLoopEditSnapshot: (placementStart) => {');
+    expect(studio).toContain('physicPaintStore.getRotoPhysicalDocument(launchContext.layerId)');
+    expect(studio).toContain('layerEndExclusive: physicalCapacity');
+    expect(studio).toContain('remainingCapacity: Math.max(0, physicalCapacity - placementStart)');
     expect(studio).toContain('onOpenLoopEdit: handleOpenRotoLoopEdit,');
     expect(studio).toContain('onOpenRotoLoopEdit: handleOpenRotoLoopEdit,');
     expect(studio).toContain('onCloseLoopClip: handleCloseRotoLoopClip,');

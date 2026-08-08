@@ -68,6 +68,12 @@ function ports(version: number): HookPorts {
     getBrushColor: () => (version === 1 ? '#103c65' : '#aa5500'),
     getOperationLocked: () => version === 2,
     getSize: () => ({ width: 100 + version, height: 200 + version }),
+    getLoopEditSnapshot: (placementStart) => ({
+      identities: [{ keyId: `key-${version}`, appFrame: version }],
+      physicalCapacity: 100 + version,
+      layerEndExclusive: 100 + version,
+      remainingCapacity: 100 + version - placementStart,
+    }),
     stopPlayback: vi.fn(),
     log: vi.fn(),
     executePhysicalEdit: vi.fn(async () => true),
@@ -108,6 +114,12 @@ describe('useRotoPlayScriptController', () => {
     expect(stablePorts.getBrushColor()).toBe('#aa5500');
     expect(stablePorts.getOperationLocked()).toBe(true);
     expect(stablePorts.getSize()).toEqual({ width: 102, height: 202 });
+    expect(stablePorts.getLoopEditSnapshot?.(9)).toEqual({
+      identities: [{ keyId: 'key-2', appFrame: 2 }],
+      physicalCapacity: 102,
+      layerEndExclusive: 102,
+      remainingCapacity: 93,
+    });
 
     stablePorts.stopPlayback();
     stablePorts.log('current');

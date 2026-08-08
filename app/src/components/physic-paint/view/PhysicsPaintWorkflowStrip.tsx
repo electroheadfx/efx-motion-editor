@@ -11,6 +11,7 @@ import {
   getRotoCellSelectedTooltipCopy,
   getRotoCellStateTooltipCopy,
   getRotoDragPreviewViewModel,
+  getRotoResolutionCellTooltipCopy,
   getRotoResolutionCellTooltipKind,
   getRotoStatusCapsuleIdleContext,
   getRotoStatusCapsuleViewModel,
@@ -568,6 +569,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       ? null
       : resolveRotoVisibleFrameResolutions(loopResolutionContext, frameCells),
     [loopResolutionContext, frameCells],
+  );
+  const loopCycleLengthById = useMemo(
+    () => new Map((loopResolutionContext?.ranges ?? []).map((range) => [range.loopId, range.cycleLength] as const)),
+    [loopResolutionContext],
   );
   // Per-cell derivation cache update (38.1-04, Option A — 38.1-D-08 link 2,
   // RESEARCH Pattern 3). Full invalidation on ANY structural identity change
@@ -1397,12 +1402,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                         : vm.baseMeaning === 'background-only'
                           ? 'background-only'
                           : 'empty';
-                  // D-18: linked cells keep their existing cell-state fill and
-                  // tooltip semantics — the mapper is exhaustiveness-checked
-                  // and introduces no new first-class cell state.
+                  // D-18: linked cells keep their existing cell-state fill,
+                  // while tooltip/aria copy comes from the typed resolution and
+                  // the one compact loopId → cycleLength index built above.
                   const cellTooltipKind: RotoCellSemanticTooltipKind = frameResolution === null
                     ? existingCellTooltipKind
                     : getRotoResolutionCellTooltipKind(frameResolution, existingCellTooltipKind);
+                  const cellTooltipCopy = frameResolution === null
+                    ? getRotoCellStateTooltipCopy(existingCellTooltipKind)
+                    : getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopCycleLengthById);
+                  const cellAriaLabel = frameResolution?.kind === 'linked' || frameResolution?.kind === 'linked-unresolved'
+                    ? `${cellTooltipCopy} · Frame ${frame}`
+                    : dragLabel;
                   // Secondary multi-selection treatment (D-04): the current
                   // editing key keeps only its `.current` orange ring as the
                   // strongest highlight; every other selected real key gets
@@ -1418,9 +1429,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       semanticKind={semanticKind}
                       cellKeyId={cellKeyId}
                       dragEligible={dragEligible}
-                      ariaLabel={isSecondarySelected ? `${dragLabel} Selected.` : dragLabel}
+                      ariaLabel={isSecondarySelected ? `${cellAriaLabel} Selected.` : cellAriaLabel}
                       ariaSelected={isSecondarySelected}
-                      tooltipCopy={isSecondarySelected ? getRotoCellSelectedTooltipCopy(cellTooltipKind) : getRotoCellStateTooltipCopy(cellTooltipKind)}
+                      tooltipCopy={isSecondarySelected ? getRotoCellSelectedTooltipCopy(cellTooltipKind) : cellTooltipCopy}
                       onCellPointerDown={handleRotoTimelineCellPointerDown}
                       onCellClick={handleRotoTimelineCellClick}
                     />

@@ -32,6 +32,14 @@ export interface RotoPlayScriptLoopOpResult {
   readonly reason: string | null;
 }
 
+/** Accepted child-side facts sufficient to open Loop Edit without parent authority. */
+export interface RotoPlayScriptLoopEditSnapshot {
+  readonly identities: readonly PhysicPaintRotoKeyIdentity[];
+  readonly physicalCapacity: number;
+  readonly layerEndExclusive: number;
+  readonly remainingCapacity: number;
+}
+
 /** S4 match result (D-05, Q2): the existing identical source cycle. */
 export interface RotoPlayScriptIdenticalSourceCycle {
   readonly sourceKeyIds: readonly string[];
@@ -102,6 +110,8 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
    * warning. Absent port = pre-43 empty collection (no warning ever).
    */
   getRotoLoopClips?: () => readonly PhysicPaintRotoLoopClip[];
+  /** Accepted local document snapshot used only to open Loop Edit immediately. */
+  getLoopEditSnapshot?: (placementStart: number) => RotoPlayScriptLoopEditSnapshot | null;
   availabilityRevision?: ReadonlySignal<number>;
   requestAuthority: (operationId: string, start: number) => Promise<PhysicPaintRotoAuthorityResult>;
   commit: (publication: RotoPlayScriptPhysicalPublication) => Promise<RotoPlayScriptCommitResult>;
@@ -446,15 +456,15 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   }
 
   /** Shared prefill for the two edit modes (D-01/D-02 locked field semantics). */
-  function prefillEditMode(loop: PhysicPaintRotoLoopClip, authority: PhysicPaintRotoAuthorityResult, destination: number, mode_: RotoPlayScriptDialogMode, repair: boolean): void {
+  function prefillEditMode(loop: PhysicPaintRotoLoopClip, snapshot: RotoPlayScriptLoopEditSnapshot, destination: number, mode_: RotoPlayScriptDialogMode, repair: boolean): void {
     loopPreflightSnapshot.value = {
-      identities: authority.physicalRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
-      parentEndExclusive: authority.layerEndExclusive,
-      capacity: authority.physicalCapacity,
+      identities: snapshot.identities,
+      parentEndExclusive: snapshot.layerEndExclusive,
+      capacity: snapshot.physicalCapacity,
     };
     canonicalStart.value = destination;
-    capacity.value = authority.capacity;
-    layerEndExclusive.value = authority.layerEndExclusive;
+    capacity.value = snapshot.remainingCapacity;
+    layerEndExclusive.value = snapshot.layerEndExclusive;
     // mode first: the Static / Hold first-time defaults effect fires synchronously
     // on the mode write, so the prefill assignments below always land after it.
     mode.value = loop.mode;
@@ -474,24 +484,28 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     }
   }
 
+  function snapshotFromAuthority(authority: PhysicPaintRotoAuthorityResult): RotoPlayScriptLoopEditSnapshot {
+    return {
+      identities: authority.physicalRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+      physicalCapacity: authority.physicalCapacity,
+      layerEndExclusive: authority.layerEndExclusive,
+      remainingCapacity: authority.capacity,
+    };
+  }
+
   async function openLoopEdit(loopId: string): Promise<RotoPlayScriptLoopOpResult> {
     const guard = loopOpGuard();
     if (guard) return { ok: false, reason: guard };
     const loop = currentLoopClips().find((clip) => clip.loopId === loopId);
     if (!loop) return rejectLoopOp(`Loop Clip "${loopId}" no longer exists.`);
+    const snapshot = ports.getLoopEditSnapshot?.(loop.placementStart) ?? null;
+    if (!snapshot) return rejectLoopOp('The accepted local Roto physical document is unavailable.');
     ports.stopPlayback();
     phase.value = 'preparing'; status.value = 'Preparing Loop Clip…'; error.value = null;
-    try {
-      const authority = await ports.requestAuthority(nextOperationId('loop-edit'), loop.placementStart);
-      if (!authority.ok) throw new Error(authority.error ?? 'Parent authority is unavailable.');
-      prefillEditMode(loop, authority, loop.placementStart, 'loop-edit', false);
-      confirmationOpen.value = true;
-      phase.value = 'idle'; status.value = `Loop Clip · F${loop.placementStart} · Cycle ${loop.sourceKeyIds.length}f`;
-      return { ok: true, reason: null };
-    } catch (cause) {
-      fail(cause);
-      return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
-    }
+    prefillEditMode(loop, snapshot, loop.placementStart, 'loop-edit', false);
+    confirmationOpen.value = true;
+    phase.value = 'idle'; status.value = `Loop Clip · F${loop.placementStart} · Cycle ${loop.sourceKeyIds.length}f`;
+    return { ok: true, reason: null };
   }
 
   async function openSourceEdit(loopId: string): Promise<RotoPlayScriptLoopOpResult> {
@@ -512,7 +526,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         return rejectLoopOp('This Loop Clip references missing source frames. Use Repair loop to regenerate the source cycle.');
       }
       const sourceStart = authority.physicalRecords.find((record) => record.keyId === loop.sourceKeyIds[0])!.appFrame;
-      prefillEditMode(loop, authority, sourceStart, 'source-edit', false);
+      prefillEditMode(loop, snapshotFromAuthority(authority), sourceStart, 'source-edit', false);
       confirmationOpen.value = true;
       phase.value = 'idle'; status.value = `Source cycle · F${sourceStart} · Cycle ${loop.sourceKeyIds.length}f`;
       return { ok: true, reason: null };
@@ -546,7 +560,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       if (overlap.length > 0) {
         return rejectLoopOp(`Repair destination F${loop.placementStart}–F${loop.placementStart + cycleLength - 1} overlaps ${overlap.length} real key(s) not owned by this loop. Move or delete them first.`);
       }
-      prefillEditMode(loop, authority, loop.placementStart, 'source-edit', true);
+      prefillEditMode(loop, snapshotFromAuthority(authority), loop.placementStart, 'source-edit', true);
       confirmationOpen.value = true;
       phase.value = 'idle'; status.value = `Repair loop · F${loop.placementStart} · Cycle ${cycleLength}f`;
       return { ok: true, reason: null };
