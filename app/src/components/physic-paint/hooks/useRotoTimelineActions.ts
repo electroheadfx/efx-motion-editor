@@ -395,14 +395,16 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       // touches the modulo-resolved source key and never unlinks.
       const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
       const currentAppFrame = input.getCurrentAppFrame?.() ?? null;
-      if (loopClips.length > 0 && currentAppFrame !== null && input.getRotoKeyRecords && input.getCapacity) {
+      if (loopClips.length > 0 && currentAppFrame !== null && input.getRotoKeyRecords && input.getRotoInterpolationState && input.getCapacity) {
         const records = input.getRotoKeyRecords();
+        const interpolation = input.getRotoInterpolationState();
         const capacity = input.getCapacity();
         const context = derivePhysicPaintRotoLoopRanges({
           identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
           loopClips,
           parentEndExclusive: capacity,
           capacity,
+          interpolationEnabled: interpolation.enabled,
         });
         const rejection = resolvePhysicPaintRotoLinkedFrameDeleteGuard(context, currentAppFrame);
         if (rejection) {

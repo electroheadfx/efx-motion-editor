@@ -312,11 +312,19 @@ describe('export loop preflight (failure path, D-28)', () => {
       'Export blocked — Loop Clip at frame 6 references a missing source frame (7). Repair or unlink the loop, then export again.',
     );
 
-    // Repair the earliest loop (relink its dangling reference to an existing
-    // key); the next export surfaces the remaining unresolved loop.
+    // Repair the earliest loop with a distinct later source key. Repeating the
+    // same keyId would remain unresolved because physical source timing must be
+    // strictly increasing; the next export surfaces the remaining late loop.
+    const repairedRecords = physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER,
+      [record('A', 0), record('B', 1)],
+      INTERPOLATION,
+      CAPACITY,
+    );
+    expect(repairedRecords.ok).toBe(true);
     const repaired = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, [
       loopClip('loop-late', 20, ['A', 'missing-late'], 2),
-      loopClip('loop-early', 6, ['A', 'A'], 2),
+      loopClip('loop-early', 6, ['A', 'B'], 2),
     ]);
     expect(repaired.ok).toBe(true);
 

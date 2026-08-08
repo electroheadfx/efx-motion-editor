@@ -385,6 +385,7 @@ describe('getRotoResolutionCellTooltipKind — linked frames keep existing cell-
       appFrame: 18,
       sourceKeyId: 'D',
       sourceIndex: 3,
+      cycleOffset: 3,
       repeatInstance: 1,
     };
     expect(getRotoResolutionCellTooltipKind(linked, 'empty')).toBe('empty');

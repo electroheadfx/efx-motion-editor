@@ -570,8 +570,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       : resolveRotoVisibleFrameResolutions(loopResolutionContext, frameCells),
     [loopResolutionContext, frameCells],
   );
-  const loopCycleLengthById = useMemo(
-    () => new Map((loopResolutionContext?.ranges ?? []).map((range) => [range.loopId, range.cycleLength] as const)),
+  const loopSourceFrameCountById = useMemo(
+    () => new Map((loopResolutionContext?.ranges ?? []).map((range) => [range.loopId, range.sourceFrameCount] as const)),
     [loopResolutionContext],
   );
   // Per-cell derivation cache update (38.1-04, Option A — 38.1-D-08 link 2,
@@ -1356,15 +1356,16 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   const semanticCell = physicalCellByAppFrame.get(frame) ?? null;
                   const isGenerated = semanticCell?.kind === 'generated';
                   // Phase 43: lazy per-frame resolution for this visible cell
-                  // (null when no loop context is supplied). The four-kind
-                  // contract ('real' | 'linked' | 'linked-unresolved' |
-                  // 'empty') is consumed through the exhaustiveness-checked
-                  // mappers: virtual 'linked' and 'linked-unresolved'
-                  // occurrences are gated out of selection/drag (D-11/D-23)
-                  // and keep their existing cell-state fill (D-18) — the
-                  // strip never branches on resolution kinds locally.
+                  // (null when no loop context is supplied). Exhaustive mappers
+                  // gate every virtual linked occurrence out of selection/drag
+                  // (D-11/D-23) while preserving the existing cell-state fill
+                  // (D-18). The local badge/aria predicate intentionally groups
+                  // the four linked variants as presentation-only occurrences.
                   const frameResolution = visibleFrameResolutions?.get(frame) ?? null;
-                  const hasLinkedLoopBadge = frameResolution?.kind === 'linked' || frameResolution?.kind === 'linked-unresolved';
+                  const hasLinkedLoopBadge = frameResolution?.kind === 'linked'
+                    || frameResolution?.kind === 'linked-generated'
+                    || frameResolution?.kind === 'linked-gap'
+                    || frameResolution?.kind === 'linked-unresolved';
                   const frameInteraction = frameResolution === null ? null : getRotoFrameKeyInteraction(frameResolution);
                   // Cached per-cell derivation (38.1-04, Option A): recomputed
                   // for at most the previous+new current cells on a pure frame
@@ -1404,14 +1405,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                           : 'empty';
                   // D-18: linked cells keep their existing cell-state fill,
                   // while tooltip/aria copy comes from the typed resolution and
-                  // the one compact loopId → cycleLength index built above.
+                  // the one compact loopId → source-frame-count index above.
                   const cellTooltipKind: RotoCellSemanticTooltipKind = frameResolution === null
                     ? existingCellTooltipKind
                     : getRotoResolutionCellTooltipKind(frameResolution, existingCellTooltipKind);
                   const cellTooltipCopy = frameResolution === null
                     ? getRotoCellStateTooltipCopy(existingCellTooltipKind)
-                    : getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopCycleLengthById);
-                  const cellAriaLabel = frameResolution?.kind === 'linked' || frameResolution?.kind === 'linked-unresolved'
+                    : getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById);
+                  const cellAriaLabel = hasLinkedLoopBadge
                     ? `${cellTooltipCopy} · Frame ${frame}`
                     : dragLabel;
                   // Secondary multi-selection treatment (D-04): the current

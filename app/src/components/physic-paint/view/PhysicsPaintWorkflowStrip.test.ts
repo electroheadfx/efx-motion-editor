@@ -269,11 +269,13 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('gives linked occurrences a darker capsule fill without changing drag semantics', () => {
     const map = getRotoMapBlock(source());
-    expect(map).toContain("const hasLinkedLoopBadge = frameResolution?.kind === 'linked' || frameResolution?.kind === 'linked-unresolved';");
+    expect(map).toContain("frameResolution?.kind === 'linked-generated'");
+    expect(map).toContain("frameResolution?.kind === 'linked-gap'");
+    expect(map).toContain("frameResolution?.kind === 'linked-unresolved'");
     expect(map).toContain("${hasLinkedLoopBadge ? 'roto-linked-loop-badge' : ''}");
     expect(map).toContain("const fillClass = isPhysicalRealKey");
     expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
-    expect(map).toContain('getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopCycleLengthById)');
+    expect(map).toContain('getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById)');
     expect(map).toContain('const cellAriaLabel =');
 
     const styles = css();
@@ -1125,10 +1127,12 @@ describe('PhysicsPaintWorkflowStrip loop resolution wiring (43-02, Pitfall 7)', 
     expect(mapBlock).toContain('getRotoFrameKeyInteraction(');
     expect(mapBlock).toContain('dragEligible');
     // Linked cells keep their existing fill while product tooltip/aria copy
-    // consumes the typed resolution and compact cycle-length index.
+    // consumes the typed resolution and compact source-count index.
     expect(mapBlock).toContain('getRotoResolutionCellTooltipKind(');
     expect(mapBlock).toContain('getRotoResolutionCellTooltipCopy(');
-    expect(mapBlock).toContain("frameResolution?.kind === 'linked' || frameResolution?.kind === 'linked-unresolved'");
+    expect(mapBlock).toContain("frameResolution?.kind === 'linked-generated'");
+    expect(mapBlock).toContain("frameResolution?.kind === 'linked-gap'");
+    expect(mapBlock).toContain('const cellAriaLabel = hasLinkedLoopBadge');
   });
 
   it('issues exactly one resolution query per visible frame for a huge-repeat loop (D-32)', () => {
@@ -1149,6 +1153,7 @@ describe('PhysicsPaintWorkflowStrip loop resolution wiring (43-02, Pitfall 7)', 
       }],
       parentEndExclusive: 500010,
       capacity: 600,
+      interpolationEnabled: false,
     });
     // A 120-cell visible window (the strip's viewport scale) inside a
     // 500000-frame effective range issues exactly 120 lazy queries.
@@ -1205,6 +1210,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
       loopClips: [clip],
       parentEndExclusive: 25,
       capacity: 120,
+      interpolationEnabled: false,
     });
     const presentation = projectPhysicsPaintLoopClipPresentation(context.ranges[0], clip, 'Walk');
 
@@ -1260,6 +1266,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
       }],
       parentEndExclusive: 40,
       capacity: 120,
+      interpolationEnabled: false,
     });
 
     expect(projectPhysicsPaintLoopClipGeometry(

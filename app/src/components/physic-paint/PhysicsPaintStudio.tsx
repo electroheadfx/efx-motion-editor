@@ -744,6 +744,7 @@ export function PhysicsPaintStudio() {
         physicalCapacity,
         layerEndExclusive: physicalCapacity,
         remainingCapacity: Math.max(0, physicalCapacity - placementStart),
+        interpolationEnabled: document.interpolation.enabled,
       };
     },
     executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,

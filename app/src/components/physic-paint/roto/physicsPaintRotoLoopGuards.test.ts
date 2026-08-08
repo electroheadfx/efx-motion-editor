@@ -131,6 +131,7 @@ function derive(
     loopClips,
     parentEndExclusive: CAPACITY,
     capacity: CAPACITY,
+    interpolationEnabled: false,
   });
 }
 

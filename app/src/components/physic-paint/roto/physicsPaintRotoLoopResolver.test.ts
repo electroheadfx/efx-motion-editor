@@ -183,6 +183,7 @@ describe('derivePhysicPaintRotoLoopRanges — compact interval derivation (D-32)
       appFrame: 499995,
       sourceKeyId: 'A',
       sourceIndex: 0,
+      cycleOffset: 0,
       repeatInstance: 99997,
     });
   });
@@ -218,6 +219,7 @@ describe('resolvePhysicPaintRotoLoopFrame — lazy per-frame typed contract (D-2
       appFrame: 15,
       sourceKeyId: 'A',
       sourceIndex: 0,
+      cycleOffset: 0,
       repeatInstance: 1,
     });
     expect(resolvePhysicPaintRotoLoopFrame(context, 34)).toEqual({
@@ -226,6 +228,7 @@ describe('resolvePhysicPaintRotoLoopFrame — lazy per-frame typed contract (D-2
       appFrame: 34,
       sourceKeyId: 'E',
       sourceIndex: 4,
+      cycleOffset: 4,
       repeatInstance: 4,
     });
 
@@ -292,6 +295,7 @@ describe('resolvePhysicPaintRotoLoopFrame — lazy per-frame typed contract (D-2
       appFrame: 40,
       sourceKeyId: 'A',
       sourceIndex: 0,
+      cycleOffset: 0,
       repeatInstance: 0,
     });
     expect(resolvePhysicPaintRotoLoopFrame(context, 49)).toEqual({
@@ -300,6 +304,7 @@ describe('resolvePhysicPaintRotoLoopFrame — lazy per-frame typed contract (D-2
       appFrame: 49,
       sourceKeyId: 'E',
       sourceIndex: 4,
+      cycleOffset: 4,
       repeatInstance: 1,
     });
     expect(resolvePhysicPaintRotoLoopFrame(context, 50)).toEqual({ kind: 'empty' });
@@ -320,6 +325,7 @@ describe('resolvePhysicPaintRotoLoopFrame — lazy per-frame typed contract (D-2
       appFrame: 30,
       sourceKeyId: 'S',
       sourceIndex: 0,
+      cycleOffset: 0,
       repeatInstance: 0,
     });
     expect(resolvePhysicPaintRotoLoopFrame(context, 31)).toEqual({ kind: 'empty' });
@@ -337,6 +343,7 @@ describe('resolvePhysicPaintRotoLoopFrame — lazy per-frame typed contract (D-2
         appFrame: frame,
         sourceKeyId: SOURCE_KEY_IDS[frame - 40],
         sourceIndex: frame - 40,
+        cycleOffset: frame - 40,
         repeatInstance: 0,
       });
     }
@@ -473,6 +480,7 @@ describe('derivePhysicPaintRotoLoopRanges — D-14 loop-loop priority', () => {
       appFrame: 25,
       sourceKeyId: 'F',
       sourceIndex: 0,
+      cycleOffset: 0,
       repeatInstance: 1,
     });
   });
@@ -516,6 +524,7 @@ describe('derivePhysicPaintRotoLoopRanges — Infinity loops (D-25, Q4)', () => 
       kind: 'linked',
       sourceKeyId: 'E',
       sourceIndex: 4,
+      cycleOffset: 4,
       repeatInstance: 117,
     });
     expect(resolvePhysicPaintRotoLoopFrame(context, 600)).toEqual({ kind: 'empty' });
@@ -588,8 +597,39 @@ describe('resolvePhysicPaintRotoLoopFrame — typed unresolved contract (D-31, a
       appFrame: 60,
       sourceKeyId: 'A',
       sourceIndex: 0,
+      cycleOffset: 0,
       repeatInstance: 0,
     });
+  });
+
+  it('fails closed when ordered source positions are not strictly increasing without poisoning sibling loops', () => {
+    const spaced = ids([
+      ['A', 0],
+      ['B', 3],
+      ['C', 6],
+    ]);
+    const context = deriveBaseline([
+      loop('invalid-order', 10, ['A', 'C', 'B'], 2),
+      loop('valid-sibling', 30, ['A', 'B', 'C'], 1),
+    ], spaced, 100, true);
+
+    expect(context.ranges.find((range) => range.loopId === 'invalid-order')).toMatchObject({
+      sourceFrameCount: 3,
+      sourceOffsets: [],
+      cycleLength: 3,
+      unresolved: { missingSourceKeyIds: [], invalidSourceTiming: true },
+    });
+    expect(resolvePhysicPaintRotoLoopFrame(context, 11)).toMatchObject({
+      kind: 'linked-unresolved',
+      loopId: 'invalid-order',
+      missingSourceKeyIds: [],
+    });
+    expect(context.ranges.find((range) => range.loopId === 'valid-sibling')).toMatchObject({
+      sourceOffsets: [0, 3, 6],
+      cycleLength: 7,
+      unresolved: null,
+    });
+    expect(resolvePhysicPaintRotoLoopFrame(context, 31)).toMatchObject({ kind: 'linked-generated', progress: 1 / 3 });
   });
 
   it('preserves a fully unresolved loop verbatim — every source keyId missing', () => {

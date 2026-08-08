@@ -2598,15 +2598,23 @@ export interface PhysicPaintRotoLoopBoundary {
 export interface PhysicPaintRotoLoopRange {
   readonly loopId: string;
   readonly placementStart: number;
+  /** Physical duration of one source cycle: last normalized source offset + 1. */
   readonly cycleLength: number;
+  /** Number of durable source keys in the ordered cycle. */
+  readonly sourceFrameCount: number;
   readonly sourceKeyIds: readonly string[];
+  /** Physical positions normalized to the first ordered source key. */
+  readonly sourceOffsets: readonly number[];
   readonly repeat: number | 'infinity';
   readonly requestedEnd: number | 'infinity';
   readonly effectiveEnd: number;
   readonly boundary: PhysicPaintRotoLoopBoundary;
   readonly truncated: boolean;
   readonly partialCycle: boolean;
-  readonly unresolved: { readonly missingSourceKeyIds: readonly string[] } | null;
+  readonly unresolved: {
+    readonly missingSourceKeyIds: readonly string[];
+    readonly invalidSourceTiming?: true;
+  } | null;
 }
 
 /**
@@ -2625,6 +2633,30 @@ export type PhysicPaintRotoFrameResolution =
       readonly appFrame: number;
       readonly sourceKeyId: string;
       readonly sourceIndex: number;
+      readonly cycleOffset: number;
+      readonly repeatInstance: number;
+    }
+  | {
+      readonly kind: 'linked-generated';
+      readonly loopId: string;
+      readonly appFrame: number;
+      readonly leftSourceKeyId: string;
+      readonly rightSourceKeyId: string;
+      readonly leftSourceIndex: number;
+      readonly rightSourceIndex: number;
+      readonly progress: number;
+      readonly cycleOffset: number;
+      readonly repeatInstance: number;
+    }
+  | {
+      readonly kind: 'linked-gap';
+      readonly loopId: string;
+      readonly appFrame: number;
+      readonly leftSourceKeyId: string;
+      readonly rightSourceKeyId: string;
+      readonly leftSourceIndex: number;
+      readonly rightSourceIndex: number;
+      readonly cycleOffset: number;
       readonly repeatInstance: number;
     }
   | {
@@ -2647,6 +2679,8 @@ export interface PhysicPaintRotoLoopDerivationInput {
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
   readonly parentEndExclusive: number;
   readonly capacity: number;
+  /** Whether strict interiors between physical source positions render generated frames or gaps. */
+  readonly interpolationEnabled: boolean;
 }
 
 /**
@@ -2659,6 +2693,7 @@ export interface PhysicPaintRotoLoopResolutionContext {
   readonly ranges: readonly PhysicPaintRotoLoopRange[];
   /** Real-key lookup index, O(keys) — sized by key count, never by loops. */
   readonly keyIdByAppFrame: ReadonlyMap<number, string>;
+  readonly interpolationEnabled: boolean;
 }
 
 const LOOP_BOUNDARY_KIND_RANK: Readonly<Record<PhysicPaintRotoLoopBoundaryKind, number>> = {
@@ -2694,8 +2729,12 @@ export function derivePhysicPaintRotoLoopRanges(
   if (!Array.isArray(input.loopClips) || !input.loopClips.every(isPhysicPaintRotoLoopClip)) {
     throw new Error('PhysicPaintRotoLoopRanges: loopClips must be valid Loop Clip records.');
   }
+  if (typeof input.interpolationEnabled !== 'boolean') {
+    throw new Error('PhysicPaintRotoLoopRanges: interpolationEnabled must be boolean.');
+  }
 
   const keyIdByAppFrame = new Map<number, string>();
+  const appFrameByKeyId = new Map<string, number>();
   const existingKeyIds = new Set<string>();
   for (const identity of input.identities) {
     if (keyIdByAppFrame.has(identity.appFrame)) {
@@ -2705,6 +2744,7 @@ export function derivePhysicPaintRotoLoopRanges(
       throw new Error(`PhysicPaintRotoLoopRanges: duplicate keyId "${identity.keyId}".`);
     }
     keyIdByAppFrame.set(identity.appFrame, identity.keyId);
+    appFrameByKeyId.set(identity.keyId, identity.appFrame);
     existingKeyIds.add(identity.keyId);
   }
 
@@ -2713,7 +2753,20 @@ export function derivePhysicPaintRotoLoopRanges(
   const infinityNaturalEnd = Math.min(input.parentEndExclusive, input.capacity);
 
   const ranges = input.loopClips.map((clip) => {
-    const cycleLength = clip.sourceKeyIds.length;
+    const sourceFrameCount = clip.sourceKeyIds.length;
+    const sourcePositions = clip.sourceKeyIds.map((keyId) => appFrameByKeyId.get(keyId));
+    const missingSourceKeyIds = clip.sourceKeyIds.filter((keyId) => !existingKeyIds.has(keyId));
+    const sourceTimingIsValid = missingSourceKeyIds.length === 0
+      && sourcePositions.every((position): position is number => position !== undefined)
+      && sourcePositions.every((position, index) => index === 0 || sourcePositions[index - 1]! < position);
+    const sourceOffsets = sourceTimingIsValid
+      ? sourcePositions.map((position) => position - sourcePositions[0]!)
+      : [];
+    // Unresolved clips retain their prior compact placeholder duration so a
+    // dangling or invalid source cycle remains visible and repairable.
+    const cycleLength = sourceTimingIsValid
+      ? sourceOffsets[sourceOffsets.length - 1]! + 1
+      : sourceFrameCount;
     const ownedSourceKeyIds = new Set(clip.sourceKeyIds);
     const finite = typeof clip.repeat === 'number';
     const requestedEnd: number | 'infinity' = finite
@@ -2748,20 +2801,24 @@ export function derivePhysicPaintRotoLoopRanges(
     }
 
     const effectiveEnd = Math.max(clip.placementStart, Math.min(naturalEnd, boundaryFrame));
-    const missingSourceKeyIds = clip.sourceKeyIds.filter((keyId) => !existingKeyIds.has(keyId));
     return Object.freeze({
       loopId: clip.loopId,
       placementStart: clip.placementStart,
       cycleLength,
+      sourceFrameCount,
       sourceKeyIds: Object.freeze([...clip.sourceKeyIds]),
+      sourceOffsets: Object.freeze(sourceOffsets),
       repeat: clip.repeat,
       requestedEnd,
       effectiveEnd,
       boundary: Object.freeze({ kind: boundaryKind, frame: boundaryFrame }) as PhysicPaintRotoLoopBoundary,
       truncated: effectiveEnd < naturalEnd,
       partialCycle: (effectiveEnd - clip.placementStart) % cycleLength !== 0,
-      unresolved: missingSourceKeyIds.length > 0
-        ? Object.freeze({ missingSourceKeyIds: Object.freeze(missingSourceKeyIds) })
+      unresolved: !sourceTimingIsValid
+        ? Object.freeze({
+            missingSourceKeyIds: Object.freeze(missingSourceKeyIds),
+            ...(missingSourceKeyIds.length === 0 ? { invalidSourceTiming: true as const } : {}),
+          })
         : null,
     }) as PhysicPaintRotoLoopRange;
   });
@@ -2771,6 +2828,7 @@ export function derivePhysicPaintRotoLoopRanges(
   return Object.freeze({
     ranges: Object.freeze(ranges),
     keyIdByAppFrame,
+    interpolationEnabled: input.interpolationEnabled,
   }) as PhysicPaintRotoLoopResolutionContext;
 }
 
@@ -2793,7 +2851,12 @@ export function resolvePhysicPaintRotoLoopFrame(
   context: PhysicPaintRotoLoopResolutionContext,
   appFrame: number,
 ): PhysicPaintRotoFrameResolution {
-  if (!isRecord(context) || !Array.isArray(context.ranges) || !(context.keyIdByAppFrame instanceof Map)) {
+  if (
+    !isRecord(context)
+    || !Array.isArray(context.ranges)
+    || !(context.keyIdByAppFrame instanceof Map)
+    || typeof context.interpolationEnabled !== 'boolean'
+  ) {
     throw new Error('PhysicPaintRotoLoopResolution: malformed resolution context.');
   }
   if (!isNonNegativeInteger(appFrame)) {
@@ -2834,14 +2897,58 @@ export function resolvePhysicPaintRotoLoopFrame(
         }) as PhysicPaintRotoFrameResolution;
       }
       const offset = appFrame - range.placementStart;
-      const sourceIndex = offset % range.cycleLength;
-      return Object.freeze({
-        kind: 'linked',
+      const cycleOffset = offset % range.cycleLength;
+      const repeatInstance = Math.floor(offset / range.cycleLength);
+
+      // Binary-search the last source position at or before this physical cycle
+      // offset. Exact positions share the source key; strict interiors are
+      // generated or gaps according to the canonical interpolation state.
+      let sourceLow = 0;
+      let sourceHigh = range.sourceOffsets.length - 1;
+      let leftSourceIndex = -1;
+      while (sourceLow <= sourceHigh) {
+        const mid = (sourceLow + sourceHigh) >> 1;
+        if (range.sourceOffsets[mid] <= cycleOffset) {
+          leftSourceIndex = mid;
+          sourceLow = mid + 1;
+        } else {
+          sourceHigh = mid - 1;
+        }
+      }
+      if (leftSourceIndex < 0) return EMPTY_FRAME_RESOLUTION;
+      if (range.sourceOffsets[leftSourceIndex] === cycleOffset) {
+        return Object.freeze({
+          kind: 'linked',
+          loopId: range.loopId,
+          appFrame,
+          sourceKeyId: range.sourceKeyIds[leftSourceIndex],
+          sourceIndex: leftSourceIndex,
+          cycleOffset,
+          repeatInstance,
+        }) as PhysicPaintRotoFrameResolution;
+      }
+
+      const rightSourceIndex = leftSourceIndex + 1;
+      if (rightSourceIndex >= range.sourceOffsets.length) return EMPTY_FRAME_RESOLUTION;
+      const sharedInterior = {
         loopId: range.loopId,
         appFrame,
-        sourceKeyId: range.sourceKeyIds[sourceIndex],
-        sourceIndex,
-        repeatInstance: Math.floor(offset / range.cycleLength),
+        leftSourceKeyId: range.sourceKeyIds[leftSourceIndex],
+        rightSourceKeyId: range.sourceKeyIds[rightSourceIndex],
+        leftSourceIndex,
+        rightSourceIndex,
+        cycleOffset,
+        repeatInstance,
+      };
+      if (!context.interpolationEnabled) {
+        return Object.freeze({ kind: 'linked-gap', ...sharedInterior }) as PhysicPaintRotoFrameResolution;
+      }
+      const leftOffset = range.sourceOffsets[leftSourceIndex];
+      const rightOffset = range.sourceOffsets[rightSourceIndex];
+      return Object.freeze({
+        kind: 'linked-generated',
+        ...sharedInterior,
+        progress: (cycleOffset - leftOffset) / (rightOffset - leftOffset),
       }) as PhysicPaintRotoFrameResolution;
     }
   }
@@ -2861,7 +2968,12 @@ export function resolvePhysicPaintRotoLinkedFrameDeleteGuard(
   appFrame: number,
 ): PhysicPaintRotoPhysicalEditFailure | null {
   const resolution = resolvePhysicPaintRotoLoopFrame(context, appFrame);
-  if (resolution.kind !== 'linked' && resolution.kind !== 'linked-unresolved') return null;
+  if (
+    resolution.kind !== 'linked'
+    && resolution.kind !== 'linked-generated'
+    && resolution.kind !== 'linked-gap'
+    && resolution.kind !== 'linked-unresolved'
+  ) return null;
   return Object.freeze({
     code: 'linked-frame-delete-rejected',
     operationKind: 'delete-key',

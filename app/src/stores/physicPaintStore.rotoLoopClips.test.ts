@@ -237,8 +237,11 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
       }
     }
     expect(expectRealSource(LAYER, 10).keyId).toBe('A');
-    expect(expectRealSource(LAYER, 11).keyId).toBe('B');
-    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 12)).toBeNull();
+    for (const frame of [11, 12, 13]) {
+      expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, frame)).toMatchObject({ kind: 'generated', appFrame: frame });
+    }
+    expect(expectRealSource(LAYER, 14).keyId).toBe('B');
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 15)).toBeNull();
   });
 });
 

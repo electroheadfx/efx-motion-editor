@@ -322,6 +322,7 @@ export function selectRotoPhysicalTimelineStructuralView(input: {
         loopClips: [],
         parentEndExclusive: 0,
         capacity: 1,
+        interpolationEnabled: interpolation.enabled,
       }),
     };
   }
@@ -340,6 +341,7 @@ export function selectRotoPhysicalTimelineStructuralView(input: {
       loopClips: input.loopClips ?? [],
       parentEndExclusive: input.parentEndExclusive ?? capacity,
       capacity,
+      interpolationEnabled: interpolation.enabled,
     }),
   };
 }
@@ -440,6 +442,10 @@ export function getRotoFrameKeyInteraction(resolution: PhysicPaintRotoFrameResol
       return { keySelectable: true, dragEligible: true, selectedKeyId: resolution.keyId };
     case 'linked':
       // Virtual occurrence: presentation-only, never a key (D-23).
+      return { keySelectable: false, dragEligible: false, selectedKeyId: null };
+    case 'linked-generated':
+      return { keySelectable: false, dragEligible: false, selectedKeyId: null };
+    case 'linked-gap':
       return { keySelectable: false, dragEligible: false, selectedKeyId: null };
     case 'linked-unresolved':
       // Error-state virtual occurrence: equally non-selectable (D-31).

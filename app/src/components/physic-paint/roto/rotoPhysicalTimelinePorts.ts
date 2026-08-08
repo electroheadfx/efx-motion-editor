@@ -161,6 +161,10 @@ export function getRotoPhysicalSelectableKeyId(resolution: PhysicPaintRotoFrameR
       return resolution.keyId;
     case 'linked':
       return null;
+    case 'linked-generated':
+      return null;
+    case 'linked-gap':
+      return null;
     case 'linked-unresolved':
       return null;
     case 'empty':

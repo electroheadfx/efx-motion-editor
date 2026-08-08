@@ -38,6 +38,7 @@ export interface RotoPlayScriptLoopEditSnapshot {
   readonly physicalCapacity: number;
   readonly layerEndExclusive: number;
   readonly remainingCapacity: number;
+  readonly interpolationEnabled: boolean;
 }
 
 /** S4 match result (D-05, Q2): the existing identical source cycle. */
@@ -230,8 +231,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return start === null || count === null ? null : `F${start}–F${start + count - 1}`;
   });
   const canCancel = computed(() => phase.value === 'preparing' || phase.value === 'rendering');
-  const parsedRepeat = computed(() => parseRepeat(repeatText.value, parsedCount.value.count));
-  const repeatError = computed(() => (infinity.value ? null : parsedRepeat.value.error));
   // D-06 preflight substrate: the authority snapshot captured at dialog open.
   // confirm() revalidates the physical revision before commit, so this
   // snapshot is guaranteed current whenever the warning is shown.
@@ -239,7 +238,27 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     readonly identities: readonly PhysicPaintRotoKeyIdentity[];
     readonly parentEndExclusive: number;
     readonly capacity: number;
+    readonly interpolationEnabled: boolean;
   } | null>(null);
+  const parsedRepeat = computed(() => {
+    let cycleDuration = parsedCount.value.count;
+    if (dialogMode.value === 'loop-edit') {
+      const targetId = loopEditTargetId.value;
+      const target = targetId === null ? null : currentLoopClips().find((clip) => clip.loopId === targetId) ?? null;
+      const snapshot = loopPreflightSnapshot.value;
+      if (target && snapshot) {
+        cycleDuration = derivePhysicPaintRotoLoopRanges({
+          identities: snapshot.identities,
+          loopClips: currentLoopClips(),
+          parentEndExclusive: snapshot.parentEndExclusive,
+          capacity: snapshot.capacity,
+          interpolationEnabled: snapshot.interpolationEnabled,
+        }).ranges.find((range) => range.loopId === target.loopId)?.cycleLength ?? cycleDuration;
+      }
+    }
+    return parseRepeat(repeatText.value, cycleDuration);
+  });
+  const repeatError = computed(() => (infinity.value ? null : parsedRepeat.value.error));
   const loopShortenPreflight = computed(() => {
     const snapshot = loopPreflightSnapshot.value;
     const start = canonicalStart.value;
@@ -256,6 +275,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       capacity: snapshot.capacity,
       destinationStart: start,
       destinationCount: count,
+      interpolationEnabled: snapshot.interpolationEnabled,
     });
     if (preflight === null) return null;
     return `This operation will shorten ${preflight.affectedLoopCount} linked loop(s), starting at frame ${preflight.earliestShortenFrame}.`;
@@ -268,7 +288,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const target = loopEditTarget.value;
       const snapshot = loopPreflightSnapshot.value;
       if (!target || !snapshot) return null;
-      const cycle = target.sourceKeyIds.length;
       const draftRepeat: number | 'infinity' | null = infinity.value ? 'infinity' : parsedRepeat.value.count;
       if (draftRepeat === null) return null;
       const loopClips = currentLoopClips().map((clip) => (clip.loopId === target.loopId ? { ...clip, repeat: draftRepeat } : clip));
@@ -277,15 +296,17 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         loopClips,
         parentEndExclusive: snapshot.parentEndExclusive,
         capacity: snapshot.capacity,
+        interpolationEnabled: snapshot.interpolationEnabled,
       });
       const range = context.ranges.find((entry) => entry.loopId === target.loopId);
       if (!range) return null;
+      const cycleDuration = range.cycleLength;
       const effective = range.effectiveEnd - range.placementStart;
-      if (draftRepeat === 'infinity') return `Cycle ${cycle}f × ∞ · Effective: ${effective}f`;
-      const requested = cycle * draftRepeat;
+      if (draftRepeat === 'infinity') return `Cycle ${cycleDuration}f × ∞ · Effective: ${effective}f`;
+      const requested = cycleDuration * draftRepeat;
       return range.truncated
-        ? `Requested: ${requested}f (${cycle}f × ${draftRepeat}) · Effective: ${effective}f — shortened by the next clip`
-        : `Requested: ${requested}f (${cycle}f × ${draftRepeat}) · Effective: ${effective}f`;
+        ? `Requested: ${requested}f (${cycleDuration}f × ${draftRepeat}) · Effective: ${effective}f — shortened by the next clip`
+        : `Requested: ${requested}f (${cycleDuration}f × ${draftRepeat}) · Effective: ${effective}f`;
     }
     const cycle = parsedCount.value.count;
     const start = canonicalStart.value;
@@ -419,6 +440,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         identities: authority.physicalRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
         parentEndExclusive: authority.layerEndExclusive,
         capacity: authority.physicalCapacity,
+        interpolationEnabled: authority.interpolationEnabled,
       };
       // 43-06: every apply-mode open resets the loop-mode state.
       dialogMode.value = 'apply';
@@ -469,6 +491,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       identities: snapshot.identities,
       parentEndExclusive: snapshot.layerEndExclusive,
       capacity: snapshot.physicalCapacity,
+      interpolationEnabled: snapshot.interpolationEnabled,
     };
     canonicalStart.value = destination;
     capacity.value = snapshot.remainingCapacity;
@@ -499,6 +522,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       physicalCapacity: authority.physicalCapacity,
       layerEndExclusive: authority.layerEndExclusive,
       remainingCapacity: authority.capacity,
+      interpolationEnabled: authority.interpolationEnabled,
     };
   }
 
@@ -673,11 +697,21 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const draftRepeat: number | 'infinity' | null = infinity.peek() ? 'infinity' : parsedRepeat.peek().count;
     if (draftRepeat === null) return false;
     if (draftRepeat === target.repeat) { closeConfirmation(); return true; } // no phantom history entry
-    const cycle = target.sourceKeyIds.length;
+    const snapshot = loopPreflightSnapshot.peek();
+    const stagedLoops = currentLoopClips().map((clip) => (clip.loopId === target.loopId ? { ...clip, repeat: draftRepeat } : clip));
+    const cycleDuration = snapshot
+      ? derivePhysicPaintRotoLoopRanges({
+          identities: snapshot.identities,
+          loopClips: stagedLoops,
+          parentEndExclusive: snapshot.parentEndExclusive,
+          capacity: snapshot.capacity,
+          interpolationEnabled: snapshot.interpolationEnabled,
+        }).ranges.find((range) => range.loopId === target.loopId)?.cycleLength ?? target.sourceKeyIds.length
+      : target.sourceKeyIds.length;
     const result = await runLoopOp(
       target.loopId,
-      (loop) => currentLoopClips().map((clip) => (clip.loopId === loop.loopId ? { ...clip, repeat: draftRepeat } : clip)),
-      `Loop updated · Cycle ${cycle}f × ${draftRepeat === 'infinity' ? '∞' : draftRepeat}`,
+      () => stagedLoops,
+      `Loop updated · Cycle ${cycleDuration}f × ${draftRepeat === 'infinity' ? '∞' : draftRepeat}`,
     );
     if (result.ok) confirmationOpen.value = false;
     return result.ok;
@@ -708,6 +742,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           loopClips: clips,
           parentEndExclusive: authority.layerEndExclusive,
           capacity: authority.physicalCapacity,
+          interpolationEnabled: authority.interpolationEnabled,
         });
         const container = context.ranges.find((range) => range.placementStart < destinationStart && destinationStart < range.effectiveEnd);
         if (container) {
@@ -847,6 +882,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         identities: commitAuthority.physicalRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
         parentEndExclusive: commitAuthority.layerEndExclusive,
         capacity: commitAuthority.physicalCapacity,
+        interpolationEnabled: commitAuthority.interpolationEnabled,
       };
       const currentSelection = ports.getSelection();
       if (!isSourceEdit && (

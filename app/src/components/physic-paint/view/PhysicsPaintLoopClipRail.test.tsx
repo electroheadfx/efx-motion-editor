@@ -266,6 +266,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       loopClips: [clip],
       parentEndExclusive: 40,
       capacity: 120,
+      interpolationEnabled: false,
     });
     const range = loopContext.ranges[0];
     const presentation = projectPhysicsPaintLoopClipPresentation(range, clip, 'Walk');

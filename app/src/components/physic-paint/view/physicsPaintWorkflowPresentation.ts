@@ -284,6 +284,10 @@ export function getRotoResolutionCellTooltipKind(
       return 'real-key';
     case 'linked':
       return existing;
+    case 'linked-generated':
+      return existing;
+    case 'linked-gap':
+      return existing;
     case 'linked-unresolved':
       return existing;
     case 'empty':
@@ -299,18 +303,32 @@ export function getRotoResolutionCellTooltipKind(
 export function getRotoResolutionCellTooltipCopy(
   resolution: PhysicPaintRotoFrameResolution,
   existing: RotoCellSemanticTooltipKind,
-  cycleLengthByLoopId: ReadonlyMap<string, number>,
+  sourceFrameCountByLoopId: ReadonlyMap<string, number>,
 ): string {
+  const sourceSpanCopy = (
+    loopId: string,
+    leftSourceIndex: number,
+    rightSourceIndex: number,
+  ): string => {
+    const sourceFrameCount = sourceFrameCountByLoopId.get(loopId);
+    return sourceFrameCount === undefined
+      ? `Between source frames ${leftSourceIndex + 1} and ${rightSourceIndex + 1}`
+      : `Between source frames ${leftSourceIndex + 1} and ${rightSourceIndex + 1} of ${sourceFrameCount}`;
+  };
   switch (resolution.kind) {
     case 'real':
       return ROTO_CELL_STATE_TOOLTIP_COPY['real-key'];
     case 'linked': {
-      const cycleLength = cycleLengthByLoopId.get(resolution.loopId);
-      const sourceCopy = cycleLength === undefined
+      const sourceFrameCount = sourceFrameCountByLoopId.get(resolution.loopId);
+      const sourceCopy = sourceFrameCount === undefined
         ? `Source frame ${resolution.sourceIndex + 1}`
-        : `Source frame ${resolution.sourceIndex + 1} of ${cycleLength}`;
+        : `Source frame ${resolution.sourceIndex + 1} of ${sourceFrameCount}`;
       return `Linked · Repeat ${resolution.repeatInstance + 1} · ${sourceCopy}`;
     }
+    case 'linked-generated':
+      return `Linked generated · Repeat ${resolution.repeatInstance + 1} · ${sourceSpanCopy(resolution.loopId, resolution.leftSourceIndex, resolution.rightSourceIndex)}`;
+    case 'linked-gap':
+      return `Linked gap · Repeat ${resolution.repeatInstance + 1} · ${sourceSpanCopy(resolution.loopId, resolution.leftSourceIndex, resolution.rightSourceIndex)}`;
     case 'linked-unresolved': {
       const missingCount = resolution.missingSourceKeyIds.length;
       return `Linked loop unresolved · ${missingCount} source frame${missingCount === 1 ? '' : 's'} missing`;

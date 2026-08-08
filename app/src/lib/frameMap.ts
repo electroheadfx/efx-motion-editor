@@ -146,6 +146,7 @@ function deriveMainEditorLoopRanges(layer: Layer, seq: Sequence): PhysicPaintRot
     loopClips,
     parentEndExclusive: getPhysicPaintAuthoredSpanFrames(seq),
     capacity: physicPaintStore.getRotoPhysicalCapacity(layerId),
+    interpolationEnabled: physicPaintStore.getRotoPhysicalInterpolationState(layerId).enabled,
   });
 }
 

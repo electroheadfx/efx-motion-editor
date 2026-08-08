@@ -865,6 +865,7 @@ describe('createRotoPlayScriptController D-06 loop-shorten preflight', () => {
       loopClips,
       parentEndExclusive,
       capacity: 600,
+      interpolationEnabled: false,
     });
     const range = context.ranges.find((entry) => entry.loopId === loopId);
     if (!range) throw new Error(`Loop "${loopId}" missing from derivation.`);
@@ -1102,6 +1103,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       identities: localAuthority.physicalRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       physicalCapacity: localAuthority.physicalCapacity,
       layerEndExclusive: localAuthority.layerEndExclusive,
+      interpolationEnabled: localAuthority.interpolationEnabled,
       remainingCapacity: Math.max(0, localAuthority.physicalCapacity - placementStart),
     }));
     const commit = vi.fn(async (publication: RotoPlayScriptPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
@@ -1132,6 +1134,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       loopClips,
       parentEndExclusive,
       capacity: 600,
+      interpolationEnabled: false,
     });
     const range = context.ranges.find((entry) => entry.loopId === loopId);
     if (!range) throw new Error(`Loop "${loopId}" missing from derivation.`);
@@ -1279,6 +1282,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
           identities: withBoundary.physicalRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
           physicalCapacity: withBoundary.physicalCapacity,
           layerEndExclusive: withBoundary.layerEndExclusive,
+          interpolationEnabled: withBoundary.interpolationEnabled,
           remainingCapacity: withBoundary.physicalCapacity - placementStart,
         }),
       });
@@ -1366,6 +1370,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         identities: localAuthority.physicalRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
         physicalCapacity: localAuthority.physicalCapacity,
         layerEndExclusive: localAuthority.layerEndExclusive,
+        interpolationEnabled: localAuthority.interpolationEnabled,
         remainingCapacity: localAuthority.physicalCapacity - placementStart,
       });
       const commit = vi.fn(async (publication: RotoPlayScriptPhysicalPublication): Promise<RotoPlayScriptCommitResult> => {

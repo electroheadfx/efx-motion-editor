@@ -79,6 +79,7 @@ function ports(version: number): HookPorts {
       identities: [{ keyId: `key-${version}`, appFrame: version }],
       physicalCapacity: 100 + version,
       layerEndExclusive: 100 + version,
+      interpolationEnabled: false,
       remainingCapacity: 100 + version - placementStart,
     }),
     stopPlayback: vi.fn(),

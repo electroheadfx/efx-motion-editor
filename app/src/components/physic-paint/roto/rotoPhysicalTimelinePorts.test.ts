@@ -53,6 +53,7 @@ function buildLoopContext() {
     }],
     parentEndExclusive: 600,
     capacity: 600,
+    interpolationEnabled: false,
   });
 }
 
@@ -75,6 +76,7 @@ describe('getRotoPhysicalSelectableKeyId — virtual occurrence exclusion (D-23/
       }],
       parentEndExclusive: 600,
       capacity: 600,
+      interpolationEnabled: false,
     });
     const unresolved = resolvePhysicPaintRotoLoopFrame(unresolvedContext, 18);
     expect(unresolved.kind).toBe('linked-unresolved');

@@ -175,6 +175,7 @@ function _resolveRotoPhysicalStructural(layerId: string): RotoPhysicalStructural
       loopClips,
       parentEndExclusive: capacity,
       capacity,
+      interpolationEnabled: interpolation.enabled,
     }),
   };
   _rotoPhysicalStructuralCache.set(layerId, entry);
@@ -1642,6 +1643,40 @@ export const physicPaintStore = {
           renderedFrame: record.payload,
         };
       }
+      case 'linked-generated': {
+        const left = this.getRotoRealKeyRecord(layerId, resolution.leftSourceKeyId);
+        const right = this.getRotoRealKeyRecord(layerId, resolution.rightSourceKeyId);
+        if (!left || !right) return null;
+        const interpolation = this.getRotoPhysicalInterpolationState(layerId);
+        if (!interpolation.enabled) return null;
+        const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode: interpolation.mode };
+        const rendered = interpolation.mode === 'duplicate'
+          ? renderDuplicateRotoInterpolationFrame(left.payload, appFrame, settings)
+          : renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, resolution.progress, settings);
+        if (!rendered) return null;
+        const renderedFrame: PhysicPaintRotoRealKeyPayload = {
+          frameIndex: rendered.frameIndex,
+          appFrame,
+          dataUrl: rendered.dataUrl,
+          ...(rendered.width !== undefined ? { width: rendered.width } : {}),
+          ...(rendered.height !== undefined ? { height: rendered.height } : {}),
+        };
+        return {
+          kind: 'generated',
+          layerId,
+          appFrame,
+          leftKeyId: left.keyId,
+          rightKeyId: right.keyId,
+          interpolationMode: interpolation.mode,
+          contentRevision,
+          // Cycle-local identity: equivalent source cycles share generated
+          // cache entries across repeat destinations and Loop Clip instances.
+          cacheRevision: `${contentRevision}:linked-generated:${interpolation.mode}:${left.keyId}:${right.keyId}:${resolution.cycleOffset}`,
+          renderedFrame,
+        };
+      }
+      case 'linked-gap':
+        return null;
       case 'linked-unresolved':
         // D-28 (43-09): the typed unresolved per-frame result surfaces as the
         // 'loop-placeholder' render-source variant — a marked, visible

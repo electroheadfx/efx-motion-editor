@@ -157,6 +157,7 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
       loopClips: [{ ...LOOP_CLIP, repeat }],
       parentEndExclusive,
       capacity: 600,
+      interpolationEnabled: false,
     });
   }
 
@@ -184,6 +185,7 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
       loopClips: [LOOP_CLIP],
       parentEndExclusive: 600,
       capacity: 600,
+      interpolationEnabled: false,
     });
     const unresolved = resolvePhysicPaintRotoLoopFrame(unresolvedContext, 18);
     expect(unresolved.kind).toBe('linked-unresolved');
