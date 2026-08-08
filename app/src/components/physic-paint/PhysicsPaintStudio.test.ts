@@ -172,8 +172,37 @@ describe('Physics Paint navigation render localization', () => {
     for (const invalidator of ['currentFrame', 'startFrame', 'rotoNavigationGeneration']) expect(dialogBlock).not.toContain(invalidator);
   });
 
-  it('preserves internal dialog Signal and focus-keyboard subscriptions beneath the memo', () => {
-    expect(playScriptDialog).toContain('const confirmationOpen = playScript.confirmationOpen.value;');
+  it('propagates the primitive open transition through the exact memoized dialog props contract', () => {
+    const dialogStart = studio.indexOf('const playScriptDialog = playScriptDialogPropsMemo.resolve(');
+    const dialogEnd = studio.indexOf('const canvasEngineReadyImplRef =', dialogStart);
+    const dialogBlock = studio.slice(dialogStart, dialogEnd);
+    const dialogDeps = dialogBlock.slice(0, dialogBlock.indexOf('], () =>'));
+    const dialogPropsStart = playScriptDialog.indexOf('export interface PhysicsPaintPlayScriptDialogProps');
+    const dialogPropsEnd = playScriptDialog.indexOf('// D-05:', dialogPropsStart);
+    const dialogPropsBlock = playScriptDialog.slice(dialogPropsStart, dialogPropsEnd);
+    const dialogComponentStart = playScriptDialog.indexOf('export function PhysicsPaintPlayScriptDialog');
+    const dialogComponent = playScriptDialog.slice(dialogComponentStart);
+    const dialogSignatureEnd = dialogComponent.indexOf('}: PhysicsPaintPlayScriptDialogProps) {');
+    const dialogSignature = dialogComponent.slice(0, dialogSignatureEnd);
+
+    expect(dialogStart).toBeGreaterThanOrEqual(0);
+    expect(dialogSignatureEnd).toBeGreaterThanOrEqual(0);
+    expect({
+      studioMemoDependsOnPrimitiveOpen: dialogDeps.includes('rotoPlayScript.confirmationOpen.value'),
+      studioPassesPrimitiveOpenProp: dialogBlock.includes('confirmationOpen: rotoPlayScript.confirmationOpen.value'),
+      dialogDeclaresPrimitiveOpenProp: dialogPropsBlock.includes('confirmationOpen: boolean;'),
+      dialogConsumesPrimitiveOpenProp: dialogSignature.includes('confirmationOpen,') && dialogComponent.includes('if (!confirmationOpen) return null;'),
+      dialogDoesNotHideOpenSubscriptionBehindMemo: !dialogComponent.includes('playScript.confirmationOpen.value'),
+    }).toEqual({
+      studioMemoDependsOnPrimitiveOpen: true,
+      studioPassesPrimitiveOpenProp: true,
+      dialogDeclaresPrimitiveOpenProp: true,
+      dialogConsumesPrimitiveOpenProp: true,
+      dialogDoesNotHideOpenSubscriptionBehindMemo: true,
+    });
+  });
+
+  it('preserves focus and keyboard behavior beneath the memoized dialog boundary', () => {
     expect(playScriptDialog).toContain('inputRef.current?.focus()');
     expect(playScriptDialog).toContain('returnFocusRef.current?.focus()');
     expect(playScriptDialog).toContain("event.key === 'Escape'");

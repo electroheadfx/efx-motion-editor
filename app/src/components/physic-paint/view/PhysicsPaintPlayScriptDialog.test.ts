@@ -798,6 +798,72 @@ describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', 
       title: 'Edit Loop Clip',
     });
   });
+
+  it('renders Edit Loop Clip from a valid local snapshot while the project has unsaved changes', async () => {
+    const loop: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-dirty',
+      placementStart: 10,
+      sourceKeyIds: ['source-1', 'source-2', 'source-3'],
+      repeat: 4,
+      mode: 'static',
+    };
+    const launchContext: PhysicPaintLaunchContext = {
+      operationId: 'launch-dirty',
+      layerId: 'layer-1',
+      startFrame: 10,
+      width: 1920,
+      height: 1080,
+      project: { name: 'Dirty project', saved: false, contextId: 'project-context-1' },
+    };
+    const requestAuthority = vi.fn(() => new Promise<never>(() => {}));
+    const library = {
+      selectedId: signal<string | null>('script-1'),
+      selected: signal({ id: 'script-1' }),
+      busy: signal(false),
+    } as unknown as RotoPlayScriptControllerPorts['library'];
+    const controller = createRotoPlayScriptController({
+      library,
+      getLaunchContext: () => launchContext,
+      getSelection: () => ({ kind: 'real-key', keyId: 'source-1', appFrame: 10 }),
+      getMotion: () => ({ deformation: 0, position: 0 }),
+      getBrushColor: () => '#103c65',
+      getOperationLocked: () => false,
+      getSize: () => ({ width: 1920, height: 1080 }),
+      getRotoLoopClips: () => [loop],
+      getLoopEditSnapshot: (placementStart) => ({
+        identities: loop.sourceKeyIds.map((keyId, index) => ({ keyId, appFrame: placementStart + index })),
+        physicalCapacity: 600,
+        layerEndExclusive: 600,
+        remainingCapacity: 600 - placementStart,
+      }),
+      requestAuthority,
+      commit: vi.fn(async () => ({ ok: false as const, error: 'not used by this reproduction' })),
+      stopPlayback: vi.fn(),
+      log: vi.fn(),
+    });
+
+    const result = await controller.openLoopEdit(loop.loopId);
+    hooks.cursor = 0;
+    const tree = PhysicsPaintPlayScriptDialog({
+      playScript: controller,
+      brushColor: '#103c65',
+      returnFocusRef: { current: null },
+    }) as unknown as TestVNode | null;
+    const title = tree ? textOf(findOne(tree, byId('physics-play-script-title'))) : null;
+
+    expect(requestAuthority).not.toHaveBeenCalled();
+    expect({
+      result,
+      confirmationOpen: controller.confirmationOpen.value,
+      dialogRendered: tree !== null,
+      title,
+    }).toEqual({
+      result: { ok: true, reason: null },
+      confirmationOpen: true,
+      dialogRendered: true,
+      title: 'Edit Loop Clip',
+    });
+  });
 });
 
 // 43-06 Task 2 (D-01/D-02/D-05): loop-edit (S2), source-edit (S3), and the
