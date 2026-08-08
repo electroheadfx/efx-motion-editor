@@ -5,6 +5,7 @@ import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPain
 
 export interface PhysicsPaintPlayScriptDialogProps {
   playScript: RotoPlayScriptController;
+  confirmationOpen: boolean;
   // D-08R/D-18: the LIVE Studio brush color (settings.color; sole writer setBrushColor). The
   // dialog is read-only toward it — the Custom pane renders it and Generate snapshots it via
   // the controller getBrushColor port; the dialog never copies it into local state.
@@ -43,6 +44,7 @@ function clampMotionValue(value: number): number {
 
 export function PhysicsPaintPlayScriptDialog({
   playScript,
+  confirmationOpen,
   brushColor,
   returnFocusRef,
 }: PhysicsPaintPlayScriptDialogProps) {
@@ -51,7 +53,6 @@ export function PhysicsPaintPlayScriptDialog({
   const inputRef = useRef<HTMLInputElement>(null);
   const repeatInputRef = useRef<HTMLInputElement>(null);
   const previousOpen = useRef(false);
-  const confirmationOpen = playScript.confirmationOpen.value;
   // 43-06 dialog modes (D-01/D-02): loop-edit locks every source field;
   // source-edit re-prefills the full form; apply is the Phase 42 surface.
   const dialogMode = playScript.dialogMode.value;

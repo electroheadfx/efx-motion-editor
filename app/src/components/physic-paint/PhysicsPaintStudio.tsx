@@ -1339,8 +1339,10 @@ export function PhysicsPaintStudio() {
       onRefresh: () => { void rotoScriptLibrary.refresh(); },
     },
   }));
-  const playScriptDialog = playScriptDialogPropsMemo.resolve([rotoPlayScript, playButtonRef, settings.color], () => ({
+  const playScriptConfirmationOpen = rotoPlayScript.confirmationOpen.value;
+  const playScriptDialog = playScriptDialogPropsMemo.resolve([rotoPlayScript, playScriptConfirmationOpen, playButtonRef, settings.color], () => ({
     playScript: rotoPlayScript,
+    confirmationOpen: playScriptConfirmationOpen,
     // D-08R: live brush color prop — the dialog re-renders on right-panel picks (settings.color
     // identity change re-resolves the memo) while reading the single setBrushColor-owned source.
     brushColor: settings.color,

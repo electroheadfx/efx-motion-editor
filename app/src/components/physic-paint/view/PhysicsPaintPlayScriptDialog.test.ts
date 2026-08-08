@@ -168,7 +168,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
 
 function renderDialog(controller: RotoPlayScriptController, brushColor = '#103c65'): TestVNode {
   hooks.cursor = 0;
-  const tree = PhysicsPaintPlayScriptDialog({ playScript: controller, brushColor, returnFocusRef: { current: null } });
+  const tree = PhysicsPaintPlayScriptDialog({ playScript: controller, confirmationOpen: controller.confirmationOpen.value, brushColor, returnFocusRef: { current: null } });
   if (!tree) throw new Error('Dialog did not render (confirmationOpen false?)');
   return tree as unknown as TestVNode;
 }
@@ -783,6 +783,7 @@ describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', 
     hooks.cursor = 0;
     const tree = PhysicsPaintPlayScriptDialog({
       playScript: controller,
+      confirmationOpen: controller.confirmationOpen.value,
       brushColor: '#103c65',
       returnFocusRef: { current: null },
     }) as unknown as TestVNode | null;
@@ -846,6 +847,7 @@ describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', 
     hooks.cursor = 0;
     const tree = PhysicsPaintPlayScriptDialog({
       playScript: controller,
+      confirmationOpen: controller.confirmationOpen.value,
       brushColor: '#103c65',
       returnFocusRef: { current: null },
     }) as unknown as TestVNode | null;

@@ -167,7 +167,7 @@ describe('Physics Paint navigation render localization', () => {
     expect(dialogStart).toBeGreaterThanOrEqual(0);
     // D-08R: settings.color is a deliberate dep — the live brush-color prop must re-resolve on
     // right-panel picks; frame-only invalidators below stay excluded.
-    expect(dialogBlock).toContain('[rotoPlayScript, playButtonRef, settings.color]');
+    expect(dialogBlock).toContain('[rotoPlayScript, playScriptConfirmationOpen, playButtonRef, settings.color]');
     expect(dialogBlock).toContain('brushColor: settings.color');
     for (const invalidator of ['currentFrame', 'startFrame', 'rotoNavigationGeneration']) expect(dialogBlock).not.toContain(invalidator);
   });
@@ -188,12 +188,15 @@ describe('Physics Paint navigation render localization', () => {
     expect(dialogStart).toBeGreaterThanOrEqual(0);
     expect(dialogSignatureEnd).toBeGreaterThanOrEqual(0);
     expect({
-      studioMemoDependsOnPrimitiveOpen: dialogDeps.includes('rotoPlayScript.confirmationOpen.value'),
-      studioPassesPrimitiveOpenProp: dialogBlock.includes('confirmationOpen: rotoPlayScript.confirmationOpen.value'),
+      studioReadsPrimitiveOpenOnce: studio.match(/rotoPlayScript\.confirmationOpen\.value/g)?.length === 1
+        && studio.includes('const playScriptConfirmationOpen = rotoPlayScript.confirmationOpen.value;'),
+      studioMemoDependsOnPrimitiveOpen: dialogDeps.includes('playScriptConfirmationOpen'),
+      studioPassesPrimitiveOpenProp: dialogBlock.includes('confirmationOpen: playScriptConfirmationOpen'),
       dialogDeclaresPrimitiveOpenProp: dialogPropsBlock.includes('confirmationOpen: boolean;'),
       dialogConsumesPrimitiveOpenProp: dialogSignature.includes('confirmationOpen,') && dialogComponent.includes('if (!confirmationOpen) return null;'),
       dialogDoesNotHideOpenSubscriptionBehindMemo: !dialogComponent.includes('playScript.confirmationOpen.value'),
     }).toEqual({
+      studioReadsPrimitiveOpenOnce: true,
       studioMemoDependsOnPrimitiveOpen: true,
       studioPassesPrimitiveOpenProp: true,
       dialogDeclaresPrimitiveOpenProp: true,

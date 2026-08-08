@@ -440,6 +440,14 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 
   // --- 43-06 loop-edit / source-edit opens (D-01/D-02/D-31) ---
 
+  function loopEditOpenGuard(): string | null {
+    if (disposed) return 'The Play Script controller is disposed.';
+    if (ports.library.busy.peek()) return 'Finish the current script library operation.';
+    if (ports.getOperationLocked() || isBusyPhase(phase.peek())) return 'Finish the current Roto operation.';
+    if (!ports.getLaunchContext()?.project) return 'The project context is unavailable.';
+    return null;
+  }
+
   function loopOpGuard(): string | null {
     if (disposed) return 'The Play Script controller is disposed.';
     if (ports.getOperationLocked() || isBusyPhase(phase.peek())) return 'Finish the current Roto operation.';
@@ -494,7 +502,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   }
 
   async function openLoopEdit(loopId: string): Promise<RotoPlayScriptLoopOpResult> {
-    const guard = loopOpGuard();
+    const guard = loopEditOpenGuard();
     if (guard) return { ok: false, reason: guard };
     const loop = currentLoopClips().find((clip) => clip.loopId === loopId);
     if (!loop) return rejectLoopOp(`Loop Clip "${loopId}" no longer exists.`);
