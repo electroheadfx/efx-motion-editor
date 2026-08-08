@@ -208,6 +208,7 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
         leftSourceIndex: 0,
         rightSourceIndex: 1,
         progress: 1 / 3,
+        sourceCycleId: '1:A|1:B|1:C',
         cycleOffset: 1,
         repeatInstance: 1,
       },

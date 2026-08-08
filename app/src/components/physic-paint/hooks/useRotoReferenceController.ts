@@ -42,8 +42,19 @@ function projectPhysicalSource<Frame extends RotoReferenceFrame>(source: PhysicP
 
 function isCurrentGeneratedPngSource(source: PhysicPaintRotoPhysicalRenderableSource): boolean {
   if (source.kind !== 'generated') return true;
-  return source.renderedFrame.appFrame === source.appFrame
-    && source.cacheRevision === `${source.contentRevision}:generated:${source.interpolationMode}:${source.leftKeyId}:${source.rightKeyId}:${source.appFrame}`
+  const hasSourceCycleId = typeof source.sourceCycleId === 'string';
+  const hasCycleOffset = source.cycleOffset !== undefined;
+  if (hasSourceCycleId !== hasCycleOffset) return false;
+  const expectedCacheRevision = hasSourceCycleId
+    ? source.sourceCycleId.length > 0
+      && Number.isInteger(source.cycleOffset)
+      && source.cycleOffset! >= 0
+      ? `${source.contentRevision}:linked-generated:${source.interpolationMode}:${source.sourceCycleId}:${source.leftKeyId}:${source.rightKeyId}:${source.cycleOffset}`
+      : null
+    : `${source.contentRevision}:generated:${source.interpolationMode}:${source.leftKeyId}:${source.rightKeyId}:${source.appFrame}`;
+  return expectedCacheRevision !== null
+    && source.renderedFrame.appFrame === source.appFrame
+    && source.cacheRevision === expectedCacheRevision
     && isRotoPngDataUrl(source.renderedFrame.dataUrl);
 }
 

@@ -69,6 +69,7 @@ export type PhysicPaintRotoPhysicalUnresolvedLoop = {
   readonly placementStart: number;
   readonly effectiveEnd: number;
   readonly missingSourceKeyIds: readonly string[];
+  readonly invalidSourceTiming?: true;
 };
 
 const _rotoAlphaCanvasRegistry = new Map<string, HTMLCanvasElement>();
@@ -1546,6 +1547,7 @@ export const physicPaintStore = {
         placementStart: range.placementStart,
         effectiveEnd: range.effectiveEnd,
         missingSourceKeyIds: range.unresolved.missingSourceKeyIds,
+        ...(range.unresolved.invalidSourceTiming ? { invalidSourceTiming: true as const } : {}),
       });
     }
     return unresolved;
@@ -1668,10 +1670,13 @@ export const physicPaintStore = {
           leftKeyId: left.keyId,
           rightKeyId: right.keyId,
           interpolationMode: interpolation.mode,
+          sourceCycleId: resolution.sourceCycleId,
+          cycleOffset: resolution.cycleOffset,
           contentRevision,
           // Cycle-local identity: equivalent source cycles share generated
-          // cache entries across repeat destinations and Loop Clip instances.
-          cacheRevision: `${contentRevision}:linked-generated:${interpolation.mode}:${left.keyId}:${right.keyId}:${resolution.cycleOffset}`,
+          // cache entries across repeat destinations and Loop Clip instances,
+          // while distinct ordered cycles cannot collide on one adjacent pair.
+          cacheRevision: `${contentRevision}:linked-generated:${interpolation.mode}:${resolution.sourceCycleId}:${left.keyId}:${right.keyId}:${resolution.cycleOffset}`,
           renderedFrame,
         };
       }

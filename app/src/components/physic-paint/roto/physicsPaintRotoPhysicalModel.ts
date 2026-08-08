@@ -153,6 +153,10 @@ export type PhysicPaintRotoPhysicalRenderSource =
       readonly leftKeyId: string;
       readonly rightKeyId: string;
       readonly interpolationMode: PhysicPaintRotoInterpolationMode;
+      /** Present only for a generated frame projected from a linked source cycle. */
+      readonly sourceCycleId?: string;
+      /** Present only for a generated frame projected from a linked source cycle. */
+      readonly cycleOffset?: number;
       readonly contentRevision: string;
       readonly cacheRevision: string;
       readonly renderedFrame: PhysicPaintRotoRealKeyPayload;

@@ -2703,6 +2703,7 @@ export interface PhysicPaintRotoLoopRange {
   /** Number of durable source keys in the ordered cycle. */
   readonly sourceFrameCount: number;
   readonly sourceKeyIds: readonly string[];
+  readonly sourceCycleId: string;
   /** Physical positions normalized to the first ordered source key. */
   readonly sourceOffsets: readonly number[];
   readonly repeat: number | 'infinity';
@@ -2745,6 +2746,7 @@ export type PhysicPaintRotoFrameResolution =
       readonly leftSourceIndex: number;
       readonly rightSourceIndex: number;
       readonly progress: number;
+      readonly sourceCycleId: string;
       readonly cycleOffset: number;
       readonly repeatInstance: number;
     }
@@ -2766,6 +2768,7 @@ export type PhysicPaintRotoFrameResolution =
       readonly placementStart: number;
       readonly sourceKeyIds: readonly string[];
       readonly missingSourceKeyIds: readonly string[];
+      readonly invalidSourceTiming?: true;
     }
   | { readonly kind: 'empty' };
 
@@ -2907,6 +2910,7 @@ export function derivePhysicPaintRotoLoopRanges(
       cycleLength,
       sourceFrameCount,
       sourceKeyIds: Object.freeze([...clip.sourceKeyIds]),
+      sourceCycleId: getPhysicsPaintRotoSourceCycleId(clip.sourceKeyIds),
       sourceOffsets: Object.freeze(sourceOffsets),
       repeat: clip.repeat,
       requestedEnd,
@@ -2994,6 +2998,7 @@ export function resolvePhysicPaintRotoLoopFrame(
           placementStart: range.placementStart,
           sourceKeyIds: range.sourceKeyIds,
           missingSourceKeyIds: range.unresolved.missingSourceKeyIds,
+          ...(range.unresolved.invalidSourceTiming ? { invalidSourceTiming: true as const } : {}),
         }) as PhysicPaintRotoFrameResolution;
       }
       const offset = appFrame - range.placementStart;
@@ -3048,6 +3053,7 @@ export function resolvePhysicPaintRotoLoopFrame(
       return Object.freeze({
         kind: 'linked-generated',
         ...sharedInterior,
+        sourceCycleId: range.sourceCycleId,
         progress: (cycleOffset - leftOffset) / (rightOffset - leftOffset),
       }) as PhysicPaintRotoFrameResolution;
     }

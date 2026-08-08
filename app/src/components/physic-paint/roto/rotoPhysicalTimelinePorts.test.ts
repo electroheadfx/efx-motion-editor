@@ -91,7 +91,7 @@ describe('getRotoPhysicalSelectableKeyId — virtual occurrence exclusion (D-23/
         loopId: 'L1', appFrame: 16,
         leftSourceKeyId: 'A', rightSourceKeyId: 'B',
         leftSourceIndex: 0, rightSourceIndex: 1,
-        progress: 1 / 3, cycleOffset: 1, repeatInstance: 1,
+        progress: 1 / 3, sourceCycleId: '1:A|1:B|1:C', cycleOffset: 1, repeatInstance: 1,
       },
       {
         kind: 'linked-gap' as const,

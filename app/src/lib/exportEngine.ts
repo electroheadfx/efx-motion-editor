@@ -85,6 +85,9 @@ function findUnresolvedExportLoop(
   // the next (loopId tiebreak keeps the order deterministic).
   hits.sort((a, b) => a.loop.placementStart - b.loop.placementStart || a.loop.loopId.localeCompare(b.loop.loopId));
   const first = hits[0];
+  if (first.loop.invalidSourceTiming) {
+    return `Export blocked — Loop Clip at frame ${first.loop.placementStart} has invalid source timing. Repair or unlink the loop, then export again.`;
+  }
   const clip = physicPaintStore.getRotoPhysicalLoopClips(first.layerId)
     .find((candidate) => candidate.loopId === first.loop.loopId);
   const firstMissingKeyId = first.loop.missingSourceKeyIds[0];

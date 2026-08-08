@@ -6,6 +6,7 @@ import {
 import type { PhysicPaintRotoKeyIdentity } from './physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopClip } from './physicsPaintRotoPhysicalModel';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
+import { getPhysicsPaintRotoSourceCycleId } from './physicsPaintRotoSpacingSelection';
 
 /**
  * Phase 43-02 RED spec — linked Loop Clip resolution (HOLD-05).
@@ -164,6 +165,7 @@ describe('derivePhysicPaintRotoLoopRanges — compact interval derivation (D-32)
       'placementStart',
       'repeat',
       'requestedEnd',
+      'sourceCycleId',
       'sourceFrameCount',
       'sourceKeyIds',
       'sourceOffsets',
@@ -263,6 +265,7 @@ describe('resolvePhysicPaintRotoLoopFrame — lazy per-frame typed contract (D-2
       leftSourceIndex: 0,
       rightSourceIndex: 1,
       progress: 1 / 3,
+      sourceCycleId: getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C']),
       cycleOffset: 1,
       repeatInstance: 1,
     });

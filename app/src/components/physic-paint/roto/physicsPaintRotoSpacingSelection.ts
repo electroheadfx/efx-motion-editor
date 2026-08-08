@@ -86,7 +86,7 @@ export function togglePhysicsPaintRotoSpacingProxy(
   if (selected.has(proxy.sourceKeyId)) selected.delete(proxy.sourceKeyId);
   else selected.add(proxy.sourceKeyId);
   const ordered = proxy.sourceKeyIds.filter((keyId) => selected.has(keyId));
-  return freezeSelection(proxy.sourceKeyIds, ordered, proxy.sourceIndex);
+  return ordered.length === 0 ? null : freezeSelection(proxy.sourceKeyIds, ordered, proxy.sourceIndex);
 }
 
 export function extendPhysicsPaintRotoSpacingProxyRange(

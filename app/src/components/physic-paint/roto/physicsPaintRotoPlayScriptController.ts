@@ -891,19 +891,36 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         || currentSelection.appFrame !== start
         || currentSelection.keyId !== startingSelection.keyId
       )) throw new Error('Play Script start, physical key identity, or selected preset changed before commit.');
+      const sourceEditDestinationAppFrames = isSourceEdit && !repairId && editTarget && count === editTarget.sourceKeyIds.length
+        ? editTarget.sourceKeyIds.map((keyId) => {
+            const record = commitAuthority.physicalRecords.find((candidate) => candidate.keyId === keyId);
+            if (!record) throw new Error('Source cycle identity changed before commit.');
+            return record.appFrame;
+          })
+        : undefined;
+      if (sourceEditDestinationAppFrames
+        && sourceEditDestinationAppFrames.some((appFrame, index) => index > 0 && sourceEditDestinationAppFrames[index - 1]! >= appFrame)) {
+        throw new Error('Source cycle timing changed before commit.');
+      }
       const basePublication = buildPhysicalPublication({
         authority: commitAuthority,
         staged,
         start,
         count,
+        ...(sourceEditDestinationAppFrames ? { destinationAppFrames: sourceEditDestinationAppFrames } : {}),
         expectedLaunch: { operationId: context.operationId, layerId: context.layerId },
       });
       // 43-06: loop state rides the SAME staged publication (HOLD-03 — no
-      // second commit path). The committed cycle keyIds are the records in the
-      // affected range in frame order (occupied destinations keep identities).
-      const cycleKeyIds = basePublication.records
-        .filter((record) => record.appFrame >= start && record.appFrame <= start + count - 1)
-        .map((record) => record.keyId);
+      // second commit path). Same-count Source Edit maps the rendered outputs
+      // back onto the current ordered source positions; count-changing flows
+      // retain the existing contiguous regeneration behavior.
+      const cycleAppFrames = sourceEditDestinationAppFrames ?? Array.from({ length: count }, (_, index) => start + index);
+      const recordByAppFrame = new Map(basePublication.records.map((record) => [record.appFrame, record]));
+      const cycleKeyIds = cycleAppFrames.map((appFrame) => {
+        const record = recordByAppFrame.get(appFrame);
+        if (!record) throw new Error(`Committed source cycle is missing frame ${appFrame}.`);
+        return record.keyId;
+      });
       let loopClips: readonly PhysicPaintRotoLoopClip[] | undefined;
       if (repairId) {
         // D-31 repair: regenerate + retarget the loop's sourceKeyIds atomically.
@@ -1056,11 +1073,18 @@ function buildPhysicalPublication(input: {
   readonly staged: readonly PhysicPaintRotoCacheFrame[];
   readonly start: number;
   readonly count: number;
+  readonly destinationAppFrames?: readonly number[];
   readonly expectedLaunch: RotoPlayScriptPhysicalPublication['expectedLaunch'];
 }): RotoPlayScriptPhysicalPublication {
-  const { authority, staged, start, count, expectedLaunch } = input;
-  const affectedEndAppFrame = start + count - 1;
+  const { authority, staged, start, count, destinationAppFrames, expectedLaunch } = input;
+  const targetAppFrames = destinationAppFrames ?? Array.from({ length: count }, (_, index) => start + index);
+  const affectedStartAppFrame = targetAppFrames[0] ?? start;
+  const affectedEndAppFrame = targetAppFrames[targetAppFrames.length - 1] ?? start + count - 1;
   if (count <= 0
+    || targetAppFrames.length !== count
+    || targetAppFrames.some((appFrame, index) => !Number.isInteger(appFrame)
+      || appFrame < 0
+      || (index > 0 && targetAppFrames[index - 1]! >= appFrame))
     || affectedEndAppFrame >= authority.layerEndExclusive
     || affectedEndAppFrame >= authority.physicalCapacity
     || staged.length !== count) throw new Error('Rendered Play Script range does not match current physical capacity.');
@@ -1089,9 +1113,11 @@ function buildPhysicalPublication(input: {
   }
 
   const freshKeyIds: string[] = [];
-  for (let appFrame = start; appFrame <= affectedEndAppFrame; appFrame += 1) {
-    const frame = stagedByFrame.get(appFrame);
-    if (!frame) throw new Error(`Rendered Play Script output is missing frame ${appFrame}.`);
+  for (let index = 0; index < targetAppFrames.length; index += 1) {
+    const stagedAppFrame = start + index;
+    const appFrame = targetAppFrames[index];
+    const frame = stagedByFrame.get(stagedAppFrame);
+    if (!frame) throw new Error(`Rendered Play Script output is missing frame ${stagedAppFrame}.`);
     const existing = currentByFrame.get(appFrame);
     const keyId = existing?.keyId ?? createPhysicPaintRotoKeyId();
     if (!existing) {
@@ -1114,7 +1140,7 @@ function buildPhysicalPublication(input: {
   }
 
   const records = [...currentByFrame.values()].sort((left, right) => left.appFrame - right.appFrame);
-  const selected = currentByFrame.get(start);
+  const selected = currentByFrame.get(affectedStartAppFrame);
   if (!selected) throw new Error('Play Script start destination is missing from the physical proposal.');
   const proposedRecords = records.map(toPhysicalEditRecord);
   return {
@@ -1125,7 +1151,7 @@ function buildPhysicalPublication(input: {
     interpolationMode: authority.interpolationMode,
     semanticDelta: {
       kind: 'play-script',
-      affectedStartAppFrame: start,
+      affectedStartAppFrame,
       affectedEndAppFrame,
       expectedLayerCapacity: authority.physicalCapacity,
       expectedLayerEndExclusive: authority.layerEndExclusive,
@@ -1133,7 +1159,7 @@ function buildPhysicalPublication(input: {
       freshKeyIds,
     },
     selectedKeyId: selected.keyId,
-    selectedAppFrame: start,
+    selectedAppFrame: affectedStartAppFrame,
   };
 }
 
