@@ -134,6 +134,7 @@ describe('useRotoPlayScriptController', () => {
       physicalCapacity: 102,
       layerEndExclusive: 102,
       remainingCapacity: 93,
+      interpolationEnabled: false,
     });
 
     stablePorts.stopPlayback();
