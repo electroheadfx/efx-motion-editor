@@ -1343,7 +1343,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
     });
 
     it('supports repeated decrease through 1 and increase again when no real key is selected', async () => {
-      let loops: readonly PhysicPaintRotoLoopClip[] = [loopClip('L1', 10, 4)];
+      let loops: readonly PhysicPaintRotoLoopClip[] = [loopClip('L1', 10, 3)];
       const localAuthority = loopAuthority();
       const requestAuthority = vi.fn(async () => localAuthority);
       const getLoopEditSnapshot = (placementStart: number) => ({
@@ -1374,14 +1374,14 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         getSelection: () => ({ kind: 'empty', keyId: null, appFrame: 20 }),
       });
 
-      for (const repeat of ['2', '1', '2']) {
+      for (const repeat of ['4', '3', '2', '1', '2']) {
         expect(await test.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
         test.controller.repeatText.value = repeat;
         expect(await test.controller.confirm()).toBe(true);
         expect(loops[0].repeat).toBe(Number(repeat));
       }
 
-      expect(commit).toHaveBeenCalledTimes(3);
+      expect(commit).toHaveBeenCalledTimes(5);
       expect(rendered).not.toHaveBeenCalled();
     });
 

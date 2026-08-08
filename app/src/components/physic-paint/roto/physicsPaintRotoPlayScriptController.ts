@@ -477,6 +477,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     // on the mode write, so the prefill assignments below always land after it.
     mode.value = loop.mode;
     dialogMode.value = mode_;
+    if (loopEditTargetId.peek() === loop.loopId) loopEditTargetId.value = null;
     loopEditTargetId.value = loop.loopId;
     sourceEditRepairId.value = repair ? loop.loopId : null;
     linkChoice.value = 'link';
@@ -663,7 +664,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   }
 
   async function updateLoop(): Promise<boolean> {
-    const target = loopEditTarget.peek();
+    const targetId = loopEditTargetId.peek();
+    const target = targetId === null
+      ? null
+      : currentLoopClips().find((clip) => clip.loopId === targetId) ?? null;
     if (dialogMode.peek() !== 'loop-edit' || !target) return false;
     if (loopOpGuard() !== null || repeatError.peek() !== null) return false;
     const draftRepeat: number | 'infinity' | null = infinity.peek() ? 'infinity' : parsedRepeat.peek().count;
