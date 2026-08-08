@@ -94,6 +94,31 @@ describe('Physics Paint Play Script integration contract', () => {
   });
 });
 
+describe('Physics Paint Roto Loop Clip spacing-proxy selection wiring', () => {
+  it('owns one session-only Signal and threads one reconciled getter without hook/effect mirroring', () => {
+    expect(studio).toContain('const rotoSpacingSelection = useSignal<PhysicsPaintRotoSpacingSelection | null>(null);');
+    expect(studio).toContain('getRotoSpacingSelection: () => reconcilePhysicsPaintRotoSpacingSelection(');
+    expect(studio).toContain('rotoSpacingSelection: effectiveRotoSpacingSelection');
+    expect(studio).not.toContain('useState<PhysicsPaintRotoSpacingSelection');
+    expect(studio).not.toContain('useEffect(() => {\n    rotoSpacingSelection');
+  });
+
+  it('resets proxy selection on launch replacement and session reset, while accepted spacing and history keep source IDs', () => {
+    expect(studio).toContain('rotoSpacingSelection.value = null;');
+    expect(studio).toContain('resetRotoSpacingSelectionSession');
+    expect(studio).toContain("operationKind: accepted.operationKind");
+    expect(studio).not.toContain("accepted.operationKind === 'force-spacing'\n          ? null");
+  });
+
+  it('routes proxy gestures through pure plain/toggle/range operations and clears on ordinary real selection', () => {
+    expect(studio).toContain('selectPhysicsPaintRotoSpacingProxyPlain(');
+    expect(studio).toContain('togglePhysicsPaintRotoSpacingProxy(');
+    expect(studio).toContain('extendPhysicsPaintRotoSpacingProxyRange(');
+    expect(studio).toContain('onSelectRotoSpacingProxy: handleSelectRotoSpacingProxy');
+    expect(studio).toContain('onClearRotoSpacingSelection: handleClearRotoSpacingSelection');
+  });
+});
+
 describe('Physics Paint Roto keyboard shortcut wiring', () => {
   it('shares the exact key utility references with keyboard and visible-button paths', () => {
     expect(studio).toContain('copyRotoKey: copyRotoFrame,');

@@ -1108,15 +1108,17 @@ describe('PhysicsPaintWorkflowStrip loop resolution wiring (43-02, Pitfall 7)', 
     expect(getWorkflowStripPropsInterface(code)).toContain('rotoLoopResolutionContext?:');
   });
 
-  it('derives linked repetition cells for the visible frame window only', () => {
+  it('derives linked repetition cells and exact source-position spacing proxies for the visible frame window only', () => {
     const code = source();
-    // The strip's cell derivation must query the lazy per-frame resolution
-    // through the visible-window helper keyed on frameCells — never a
-    // full-range scan of any loop's effective range (D-32).
+    // Both lazy projections stay keyed to frameCells — never a full-range scan
+    // of any loop's effective range.
     expect(code).toContain('resolveRotoVisibleFrameResolutions(');
-    const helperCall = code.indexOf('resolveRotoVisibleFrameResolutions(');
-    const callBlock = code.slice(helperCall, code.indexOf(')', helperCall) + 200);
-    expect(callBlock).toContain('frameCells');
+    expect(code).toContain('resolveRotoVisibleSpacingProxies(');
+    for (const helperName of ['resolveRotoVisibleFrameResolutions(', 'resolveRotoVisibleSpacingProxies(']) {
+      const helperCall = code.indexOf(helperName);
+      const callBlock = code.slice(helperCall, code.indexOf(')', helperCall) + 200);
+      expect(callBlock).toContain('frameCells');
+    }
   });
 
   it('gates drag eligibility and tooltips through the exhaustiveness-checked resolution mappers', () => {
@@ -1281,20 +1283,40 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(css()).not.toContain('.physics-paint-loop-clip-rail-target::after');
   });
 
-  it('does not alter physical-cell click ordering or the real-key-only drag guard', () => {
+  it('routes spacing-proxy gestures before ordinary key selection and keeps proxies non-draggable', () => {
     const code = source();
+    const props = getWorkflowStripPropsInterface(code);
     const handlerStart = code.indexOf('const handleRotoTimelineCellClick = useCallback(');
     const handlerEnd = code.indexOf('const handleRotoTimelineCellPointerDown = useCallback(', handlerStart);
     const handler = code.slice(handlerStart, handlerEnd);
-    const toggleIndex = handler.indexOf('current.onToggleRotoKeySelection?.(cellKeyId);');
-    const extendIndex = handler.indexOf('current.onExtendRotoKeySelection?.(cellKeyId);');
-    const collapseIndex = handler.indexOf('current.onCollapseRotoSelectionToKey?.(cellKeyId);');
-    const navigateIndex = handler.lastIndexOf('current.onNavigateToSyncedFrame(frame);');
+    const proxyIndex = handler.indexOf('current.spacingProxyByAppFrame.get(frame)');
+    const toggleProxyIndex = handler.indexOf("current.onSelectRotoSpacingProxy?.(spacingProxy, 'toggle')");
+    const rangeProxyIndex = handler.indexOf("current.onSelectRotoSpacingProxy?.(spacingProxy, 'range')");
+    const plainProxyIndex = handler.indexOf("current.onSelectRotoSpacingProxy?.(spacingProxy, 'plain')");
+    const proxyNavigateIndex = handler.indexOf('current.onNavigateToSyncedFrame(frame);', plainProxyIndex);
+    const ordinaryClearIndex = handler.indexOf('current.onClearRotoSpacingSelection?.();');
+    const ordinaryToggleIndex = handler.indexOf('current.onToggleRotoKeySelection?.(cellKeyId);');
 
-    expect(toggleIndex).toBeGreaterThanOrEqual(0);
-    expect(extendIndex).toBeGreaterThan(toggleIndex);
-    expect(collapseIndex).toBeGreaterThan(extendIndex);
-    expect(navigateIndex).toBeGreaterThan(collapseIndex);
-    expect(code).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
+    expect(props).toContain('rotoSpacingSelection?: PhysicsPaintRotoSpacingSelection | null;');
+    expect(props).toContain('onSelectRotoSpacingProxy?:');
+    expect(props).toContain('onClearRotoSpacingSelection?: () => void;');
+    expect(proxyIndex).toBeGreaterThanOrEqual(0);
+    expect(toggleProxyIndex).toBeGreaterThan(proxyIndex);
+    expect(rangeProxyIndex).toBeGreaterThan(toggleProxyIndex);
+    expect(plainProxyIndex).toBeGreaterThan(rangeProxyIndex);
+    expect(proxyNavigateIndex).toBeGreaterThan(plainProxyIndex);
+    expect(ordinaryClearIndex).toBeGreaterThan(proxyNavigateIndex);
+    expect(ordinaryToggleIndex).toBeGreaterThan(ordinaryClearIndex);
+    expect(code).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked');
+  });
+
+  it('highlights every equivalent selected source position with concise accessible copy but never ordinary-selected treatment', () => {
+    const map = getRotoMapBlock(source());
+    expect(map).toContain('const spacingProxy = visibleSpacingProxies?.get(frame) ?? null;');
+    expect(map).toContain('const isSpacingProxySelected =');
+    expect(map).toContain("${isSpacingProxySelected ? 'selected roto-spacing-proxy-selected' : ''}");
+    expect(map).toContain('Loop Clip source position selected for Key Spacing.');
+    expect(map).toContain('ariaSelected={isSpacingProxySelected || isSecondarySelected}');
+    expect(map).toContain('const isSecondarySelected = spacingProxy === null');
   });
 });

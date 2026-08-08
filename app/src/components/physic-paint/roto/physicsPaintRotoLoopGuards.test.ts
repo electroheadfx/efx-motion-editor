@@ -34,6 +34,7 @@ import type {
   RotoPhysicalEditSnapshot,
 } from './rotoCoordinatorPorts';
 import { useRotoPhysicalEditHistory } from '../hooks/useRotoPhysicalEditHistory';
+import { getPhysicsPaintRotoSourceCycleId } from './physicsPaintRotoSpacingSelection';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
 
 /**
@@ -105,6 +106,17 @@ function loop(
   sourceKeyIds: readonly string[] = SOURCE_KEY_IDS,
 ): PhysicPaintRotoLoopClip {
   return { loopId, placementStart, sourceKeyIds: [...sourceKeyIds], repeat, mode: 'static' };
+}
+
+function linkedSpacingScope(
+  selectedSourceKeyIds: readonly string[],
+  sourceKeyIds: readonly string[] = SOURCE_KEY_IDS,
+) {
+  return {
+    sourceCycleId: getPhysicsPaintRotoSourceCycleId(sourceKeyIds),
+    sourceKeyIds: [...sourceKeyIds],
+    selectedSourceKeyIds: [...selectedSourceKeyIds],
+  } as const;
 }
 
 function resolveEdit(input: {
@@ -311,6 +323,126 @@ describe('D-11 rigid linked-key guard', () => {
     expect(proposal.nextLoopClips).toBeNull();
     // Source keys never moved; the derived range is identical.
     expect(effectiveEndOf(records, loopClips, 'L1')).toBe(30);
+  });
+
+  it('accepts an authorized partial source-cycle selection and keeps every shared Loop Clip record unchanged', () => {
+    const records = [record('A', 10, 'A'), record('B', 12, 'B'), record('C', 15, 'C'), record('D', 20, 'D'), record('E', 24, 'E')];
+    const loopClips = [loop(10, 3, 'L1'), loop(100, 2, 'L2')];
+    const proposal = expectOk(resolveEdit({
+      records,
+      loopClips,
+      intent: {
+        kind: 'force-spacing',
+        emptyFrames: 5,
+        selectedKeyId: null,
+        scopeKeyIds: ['B', 'D'],
+        linkedSourceSpacingScope: linkedSpacingScope(['B', 'D']),
+      },
+    }));
+
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 10, B: 12, C: 15, D: 18, E: 24 });
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('accepts the full authorized source cycle and derives the new rhythm without placement or repeat changes', () => {
+    const loopClips = [loop(10, 3, 'L1'), loop(100, 2, 'L2')];
+    const proposal = expectOk(resolveEdit({
+      records: SOURCE_RECORDS(),
+      loopClips,
+      intent: {
+        kind: 'force-spacing',
+        emptyFrames: 2,
+        selectedKeyId: null,
+        scopeKeyIds: [...SOURCE_KEY_IDS],
+        linkedSourceSpacingScope: linkedSpacingScope(SOURCE_KEY_IDS),
+      },
+    }));
+
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 10, B: 13, C: 16, D: 19, E: 22 });
+    expect(proposal.nextLoopClips).toBeNull();
+    expect(loopClips).toEqual([loop(10, 3, 'L1'), loop(100, 2, 'L2')]);
+  });
+
+  it.each([
+    ['one selected source position', ['B'], linkedSpacingScope(['B'])],
+    ['duplicate selected source positions', ['B', 'B'], linkedSpacingScope(['B', 'B'])],
+    ['stale selected source position', ['B', 'STALE'], linkedSpacingScope(['B', 'STALE'])],
+  ])('rejects authorized spacing with %s', (_label, scopeKeyIds, provenance) => {
+    const resolution = resolveEdit({
+      records: SOURCE_RECORDS(),
+      loopClips: [loop(10, 5)],
+      intent: { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null, scopeKeyIds, linkedSourceSpacingScope: provenance },
+    });
+    expect(resolution.ok).toBe(false);
+    if (!resolution.ok) expect(resolution.failure.code).toBe('invalid-linked-source-spacing-scope');
+  });
+
+  it('rejects forged cycle provenance and a scopeKeyIds mismatch', () => {
+    const forged = resolveEdit({
+      records: SOURCE_RECORDS(),
+      loopClips: [loop(10, 5)],
+      intent: {
+        kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null, scopeKeyIds: ['B', 'C'],
+        linkedSourceSpacingScope: linkedSpacingScope(['B', 'C'], ['A', 'B', 'C', 'E', 'D']),
+      },
+    });
+    const mismatched = resolveEdit({
+      records: SOURCE_RECORDS(),
+      loopClips: [loop(10, 5)],
+      intent: {
+        kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null, scopeKeyIds: ['B', 'C'],
+        linkedSourceSpacingScope: linkedSpacingScope(['B', 'D']),
+      },
+    });
+
+    for (const resolution of [forged, mismatched]) {
+      expect(resolution.ok).toBe(false);
+      if (!resolution.ok) expect(resolution.failure.code).toBe('invalid-linked-source-spacing-scope');
+    }
+  });
+
+  it('rejects selected keys crossing an unselected source hard wall before finalization', () => {
+    const records = [record('A', 10, 'A'), record('B', 12, 'B'), record('C', 15, 'C'), record('D', 20, 'D'), record('E', 24, 'E')];
+    const resolution = resolveEdit({
+      records,
+      loopClips: [loop(10, 3)],
+      intent: {
+        kind: 'force-spacing', emptyFrames: 10, selectedKeyId: null, scopeKeyIds: ['B', 'C'],
+        linkedSourceSpacingScope: linkedSpacingScope(['B', 'C']),
+      },
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (!resolution.ok) expect(resolution.failure.code).toBe('linked-source-spacing-order-rejected');
+  });
+
+  it('rejects an authorized destination collision atomically', () => {
+    const records = [record('A', 10, 'A'), record('B', 12, 'B'), record('C', 15, 'C'), record('D', 20, 'D'), record('E', 24, 'E')];
+    const resolution = resolveEdit({
+      records,
+      loopClips: [loop(10, 3)],
+      intent: {
+        kind: 'force-spacing', emptyFrames: 7, selectedKeyId: null, scopeKeyIds: ['B', 'C'],
+        linkedSourceSpacingScope: linkedSpacingScope(['B', 'C']),
+      },
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (!resolution.ok) expect(resolution.failure.code).toBe('duplicate-destination-frame');
+  });
+
+  it('rejects an authorized over-capacity full-cycle request atomically', () => {
+    const resolution = resolveEdit({
+      records: SOURCE_RECORDS(),
+      loopClips: [loop(10, 3)],
+      intent: {
+        kind: 'force-spacing', emptyFrames: 200, selectedKeyId: null, scopeKeyIds: [...SOURCE_KEY_IDS],
+        linkedSourceSpacingScope: linkedSpacingScope(SOURCE_KEY_IDS),
+      },
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (!resolution.ok) expect(resolution.failure.code).toBe('over-capacity');
   });
 });
 

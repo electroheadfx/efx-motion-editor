@@ -585,6 +585,63 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)).toBe(afterRevision);
   });
 
+  it('applies linked source spacing to every shared loop and one Undo/Redo restores the rhythm without changing loop records', async () => {
+    const loops = [
+      loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 2),
+      loopClip('loop-2', 40, ['A', 'B', 'C', 'D', 'E'], 2),
+    ];
+    seedBridgeDocument(loops);
+    const launchOperationId = await launchBridge();
+    const beforeRecords = cycleRecords();
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    expect(expectRealSource(BRIDGE_LAYER, 11).keyId).toBe('B');
+    expect(expectRealSource(BRIDGE_LAYER, 41).keyId).toBe('B');
+
+    const spacedRecords = [record('A', 0), record('B', 2), record('C', 4), record('D', 6), record('E', 8)];
+    const command = bridgePayload(launchOperationId, {
+      operationKind: 'force-spacing',
+      records: bridgeRecordEntries(spacedRecords),
+      loopClips: loops,
+    });
+    expect(applyPhysicPaintPayload(command).ok).toBe(true);
+    const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
+    expect(expectRealSource(BRIDGE_LAYER, 12).keyId).toBe('B');
+    expect(expectRealSource(BRIDGE_LAYER, 42).keyId).toBe('B');
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual(loops);
+
+    const undo = applyPhysicPaintPayload(bridgePayload(launchOperationId, {
+      operationKind: 'undo',
+      records: bridgeRecordEntries(beforeRecords),
+      loopClips: loops,
+      historyProvenance: {
+        historyCommandId: command.operationId,
+        historyDirection: 'undo',
+        sourceRevision: afterRevision,
+        targetRevision: beforeRevision,
+      },
+    }));
+    expect(undo.ok).toBe(true);
+    expect(expectRealSource(BRIDGE_LAYER, 11).keyId).toBe('B');
+    expect(expectRealSource(BRIDGE_LAYER, 41).keyId).toBe('B');
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual(loops);
+
+    const redo = applyPhysicPaintPayload(bridgePayload(launchOperationId, {
+      operationKind: 'redo',
+      records: bridgeRecordEntries(spacedRecords),
+      loopClips: loops,
+      historyProvenance: {
+        historyCommandId: command.operationId,
+        historyDirection: 'redo',
+        sourceRevision: beforeRevision,
+        targetRevision: afterRevision,
+      },
+    }));
+    expect(redo.ok).toBe(true);
+    expect(expectRealSource(BRIDGE_LAYER, 12).keyId).toBe('B');
+    expect(expectRealSource(BRIDGE_LAYER, 42).keyId).toBe('B');
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual(loops);
+  });
+
   it('rejects a replay whose staged state does not match the provenance target revision', async () => {
     seedBridgeDocument();
     const launchOperationId = await launchBridge();

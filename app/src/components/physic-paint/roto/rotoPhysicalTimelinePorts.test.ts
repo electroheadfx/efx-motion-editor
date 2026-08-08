@@ -8,6 +8,7 @@ import {
 import {
   derivePhysicPaintRotoLoopRanges,
   resolvePhysicPaintRotoLoopFrame,
+  resolvePhysicPaintRotoSpacingProxy,
 } from './physicsPaintRotoPhysicalResolver';
 import type { PhysicPaintRotoRealKeyRecord } from './physicsPaintRotoPhysicalModel';
 
@@ -102,6 +103,42 @@ describe('getRotoPhysicalSelectableKeyId — virtual occurrence exclusion (D-23/
     ];
 
     expect(variants.map(getRotoPhysicalSelectableKeyId)).toEqual([null, null]);
+  });
+});
+
+describe('resolvePhysicPaintRotoSpacingProxy — exact source positions only', () => {
+  it('finds original real source positions and linked repeat positions with one ordered cycle identity', () => {
+    const context = buildLoopContext();
+
+    const original = resolvePhysicPaintRotoSpacingProxy(context, 11);
+    const repeat = resolvePhysicPaintRotoSpacingProxy(context, 16);
+
+    expect(resolvePhysicPaintRotoLoopFrame(context, 11)).toEqual({ kind: 'real', keyId: 'B', appFrame: 11 });
+    expect(original).toMatchObject({ loopId: 'L1', sourceKeyId: 'B', sourceIndex: 1, sourceKeyIds: ['A', 'B', 'C', 'D', 'E'] });
+    expect(repeat).toMatchObject({ loopId: 'L1', sourceKeyId: 'B', sourceIndex: 1, sourceKeyIds: ['A', 'B', 'C', 'D', 'E'] });
+    expect(repeat?.sourceCycleId).toBe(original?.sourceCycleId);
+  });
+
+  it('excludes generated, gap, unresolved, non-loop real, and empty frames', () => {
+    const spacedIdentities = [
+      { keyId: 'A', appFrame: 10 },
+      { keyId: 'B', appFrame: 13 },
+      { keyId: 'C', appFrame: 16 },
+      { keyId: 'OUTSIDE', appFrame: 80 },
+    ];
+    const clip = [{ loopId: 'L1', placementStart: 10, sourceKeyIds: ['A', 'B', 'C'], repeat: 3, mode: 'static' as const }];
+    const generatedContext = derivePhysicPaintRotoLoopRanges({ identities: spacedIdentities, loopClips: clip, parentEndExclusive: 100, capacity: 100, interpolationEnabled: true });
+    const gapContext = derivePhysicPaintRotoLoopRanges({ identities: spacedIdentities, loopClips: clip, parentEndExclusive: 100, capacity: 100, interpolationEnabled: false });
+    const unresolvedContext = derivePhysicPaintRotoLoopRanges({ identities: spacedIdentities.slice(0, 2), loopClips: clip, parentEndExclusive: 100, capacity: 100, interpolationEnabled: false });
+
+    expect(resolvePhysicPaintRotoLoopFrame(generatedContext, 11).kind).toBe('linked-generated');
+    expect(resolvePhysicPaintRotoSpacingProxy(generatedContext, 11)).toBeNull();
+    expect(resolvePhysicPaintRotoLoopFrame(gapContext, 11).kind).toBe('linked-gap');
+    expect(resolvePhysicPaintRotoSpacingProxy(gapContext, 11)).toBeNull();
+    expect(resolvePhysicPaintRotoLoopFrame(unresolvedContext, 11).kind).toBe('linked-unresolved');
+    expect(resolvePhysicPaintRotoSpacingProxy(unresolvedContext, 11)).toBeNull();
+    expect(resolvePhysicPaintRotoSpacingProxy(generatedContext, 80)).toBeNull();
+    expect(resolvePhysicPaintRotoSpacingProxy(generatedContext, 99)).toBeNull();
   });
 });
 

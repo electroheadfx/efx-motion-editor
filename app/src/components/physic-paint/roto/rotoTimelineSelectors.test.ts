@@ -4,6 +4,7 @@ import { saveRotoRealKeyTransaction } from './physicsPaintRotoKeyController';
 import {
   getRotoFrameKeyInteraction,
   resolveRotoVisibleFrameResolutions,
+  resolveRotoVisibleSpacingProxies,
   selectProjectedRealCachedRotoFrames,
   selectRealCachedRotoFrames,
   selectRotoPhysicalTimelineStructuralView,
@@ -261,6 +262,18 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
       loopId: 'L1',
       sourceKeyId: 'D',
     });
+  });
+
+  it('resolves visible spacing proxies at exact real and linked source positions only', () => {
+    const context = buildLoopContext(5, 40);
+    const proxies = resolveRotoVisibleSpacingProxies(context, [10, 11, 15, 16, 18, 40]);
+
+    expect(proxies.get(10)).toMatchObject({ sourceKeyId: 'A', sourceIndex: 0 });
+    expect(proxies.get(11)).toMatchObject({ sourceKeyId: 'B', sourceIndex: 1 });
+    expect(proxies.get(15)).toMatchObject({ sourceKeyId: 'A', sourceIndex: 0 });
+    expect(proxies.get(16)).toMatchObject({ sourceKeyId: 'B', sourceIndex: 1 });
+    expect(proxies.has(18)).toBe(true);
+    expect(proxies.has(40)).toBe(false);
   });
 
   it('resolveRotoVisibleFrameResolutions issues exactly one lazy query per visible frame — never range-proportional (D-32)', () => {

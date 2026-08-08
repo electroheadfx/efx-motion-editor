@@ -8,9 +8,14 @@ vi.mock('preact/hooks', () => ({
 
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import type {
+  PhysicPaintRotoLoopClip,
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
+import {
+  getPhysicsPaintRotoSourceCycleId,
+  type PhysicsPaintRotoSpacingSelection,
+} from '../roto/physicsPaintRotoSpacingSelection';
 import { useRotoTimelineActions, type RotoTimelineActionsInput } from './useRotoTimelineActions';
 
 const BLANK_PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo=';
@@ -36,6 +41,8 @@ function realKeyRecord(keyId: string, appFrame: number): PhysicPaintRotoRealKeyR
 
 interface HarnessOptions {
   records?: PhysicPaintRotoRealKeyRecord[];
+  loopClips?: readonly PhysicPaintRotoLoopClip[];
+  spacingSelection?: PhysicsPaintRotoSpacingSelection | null;
   currentAppFrame?: number;
   launch?: PhysicPaintLaunchContext | null;
   pendingOperationId?: string | null;
@@ -55,6 +62,8 @@ function createHarness(options: HarnessOptions = {}) {
     getModel: () => ({ settings: {}, realSourceFrames: [] }) as never,
     getRotoKeyRecords: () => records,
     getRotoInterpolationState: () => ({ enabled: false, mode: 'duplicate' }),
+    getRotoLoopClips: () => options.loopClips ?? [],
+    getRotoSpacingSelection: () => options.spacingSelection ?? null,
     getPhysicalCells: () => [],
     getSelectedKeyId: () => null,
     getSelectedKeyIds: () => options.selectedKeyIds ?? [],
@@ -68,6 +77,24 @@ function createHarness(options: HarnessOptions = {}) {
   const actions = useRotoTimelineActions(input);
   return { actions, executePhysicalEdit, publishStatus, pendingOperationId };
 }
+
+function spacingSelection(selectedSourceKeyIds: readonly string[]): PhysicsPaintRotoSpacingSelection {
+  const sourceKeyIds = ['A', 'B', 'C', 'D', 'E'] as const;
+  return {
+    sourceCycleId: getPhysicsPaintRotoSourceCycleId(sourceKeyIds),
+    sourceKeyIds,
+    selectedSourceKeyIds,
+    anchorSourceIndex: sourceKeyIds.indexOf(selectedSourceKeyIds[0] as never),
+  };
+}
+
+const linkedLoop: PhysicPaintRotoLoopClip = {
+  loopId: 'loop-1',
+  placementStart: 10,
+  sourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+  repeat: 3,
+  mode: 'static',
+};
 
 describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
   it('exposes reactive availability that is eligible on an unoccupied current frame', () => {
@@ -124,6 +151,67 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
     expect(accepted).toBe(false);
     expect(executePhysicalEdit).not.toHaveBeenCalled();
     expect(publishStatus).toHaveBeenCalledWith('Paste-to-empty destination is occupied.');
+  });
+});
+
+describe('useRotoTimelineActions linked source-position Force Spacing', () => {
+  const linkedRecords = [
+    realKeyRecord('A', 10),
+    realKeyRecord('B', 12),
+    realKeyRecord('C', 15),
+    realKeyRecord('D', 20),
+    realKeyRecord('E', 24),
+  ];
+
+  it('rejects one proxy position without resolver execution, fallback, or publication', async () => {
+    const { actions, executePhysicalEdit, publishStatus } = createHarness({
+      records: linkedRecords,
+      loopClips: [linkedLoop],
+      spacingSelection: spacingSelection(['B']),
+      capacity: 100,
+    });
+
+    const accepted = await actions.physicalActions.applyForceSpacing();
+
+    expect(accepted).toBe(false);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+    expect(publishStatus).toHaveBeenCalledWith('Select at least two Loop Clip source positions to apply Key Spacing.');
+  });
+
+  it('scopes exactly the valid proxy source IDs with immutable provenance and executes one physical edit', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: linkedRecords,
+      loopClips: [linkedLoop],
+      spacingSelection: spacingSelection(['B', 'D']),
+      capacity: 100,
+    });
+    actions.physicalActions.setForceSpacingInput('5');
+
+    const accepted = await actions.physicalActions.applyForceSpacing();
+
+    expect(accepted).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: { mapping: ReadonlyMap<string, number>; nextLoopClips: unknown };
+      operationKind: string;
+    };
+    expect(dispatched.operationKind).toBe('force-spacing');
+    expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ A: 10, B: 12, C: 15, D: 18, E: 24 });
+    expect(dispatched.proposal.nextLoopClips).toBeNull();
+  });
+
+  it('preserves the ordinary no-proxy full-timeline path exactly', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: [realKeyRecord('A', 0), realKeyRecord('B', 3), realKeyRecord('C', 8)],
+      spacingSelection: null,
+      capacity: 20,
+    });
+    actions.physicalActions.setForceSpacingInput('1');
+
+    expect(await actions.physicalActions.applyForceSpacing()).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as { proposal: { mapping: ReadonlyMap<string, number> } };
+    expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ A: 0, B: 2, C: 4 });
   });
 });
 
