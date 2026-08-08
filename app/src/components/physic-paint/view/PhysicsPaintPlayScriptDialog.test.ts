@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { signal } from '@preact/signals';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 
 // Node-environment component harness: preact/hooks is mocked with a cursor-based runtime
 // (same approach as PhysicsPaintStyledTooltip.test.ts) so the dialog function can be invoked
@@ -36,7 +38,13 @@ vi.mock('preact/hooks', () => ({
 }));
 
 import { PhysicsPaintPlayScriptDialog } from './PhysicsPaintPlayScriptDialog';
-import type { RotoPlayScriptController, RotoPlayScriptMode } from '../roto/physicsPaintRotoPlayScriptController';
+import {
+  createRotoPlayScriptController,
+  type RotoPlayScriptController,
+  type RotoPlayScriptControllerPorts,
+  type RotoPlayScriptMode,
+} from '../roto/physicsPaintRotoPlayScriptController';
+import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
 
 const source = readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
 const cssSource = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
@@ -722,6 +730,67 @@ describe('PhysicsPaintPlayScriptDialog header drag + stable color-pane height (U
     expect(playScriptCssRule('.physics-paint-play-script-color-pane')).toContain('min-height: 48px');
     expect(playScriptCssRule('.physics-paint-play-script-color-hex')).toContain('line-height: 16px');
     expect(playScriptCssRule('.physics-paint-play-script-color-note')).toContain('line-height: 14px');
+  });
+});
+
+describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', () => {
+  it('renders Edit Loop Clip immediately from the accepted local loop while authority is pending', () => {
+    const loop: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-1',
+      placementStart: 10,
+      sourceKeyIds: ['source-1', 'source-2', 'source-3'],
+      repeat: 4,
+      mode: 'static',
+    };
+    const launchContext: PhysicPaintLaunchContext = {
+      operationId: 'launch-1',
+      layerId: 'layer-1',
+      startFrame: 10,
+      width: 1920,
+      height: 1080,
+      project: { name: 'Saved project', saved: true, contextId: 'project-context-1' },
+    };
+    const requestAuthority = vi.fn(() => new Promise<never>(() => {}));
+    const library = {
+      selectedId: signal<string | null>('script-1'),
+      selected: signal({ id: 'script-1' }),
+      busy: signal(false),
+    } as unknown as RotoPlayScriptControllerPorts['library'];
+    const controller = createRotoPlayScriptController({
+      library,
+      getLaunchContext: () => launchContext,
+      getSelection: () => ({ kind: 'real-key', keyId: 'source-1', appFrame: 10 }),
+      getMotion: () => ({ deformation: 0, position: 0 }),
+      getBrushColor: () => '#103c65',
+      getOperationLocked: () => false,
+      getSize: () => ({ width: 1920, height: 1080 }),
+      getRotoLoopClips: () => [loop],
+      requestAuthority,
+      commit: vi.fn(async () => ({ ok: false as const, error: 'not used by this reproduction' })),
+      stopPlayback: vi.fn(),
+      log: vi.fn(),
+    });
+
+    void controller.openLoopEdit(loop.loopId);
+
+    expect(requestAuthority).toHaveBeenCalledTimes(1);
+    hooks.cursor = 0;
+    const tree = PhysicsPaintPlayScriptDialog({
+      playScript: controller,
+      brushColor: '#103c65',
+      returnFocusRef: { current: null },
+    }) as unknown as TestVNode | null;
+    const title = tree ? textOf(findOne(tree, byId('physics-play-script-title'))) : null;
+
+    expect({
+      confirmationOpen: controller.confirmationOpen.value,
+      dialogRendered: tree !== null,
+      title,
+    }).toEqual({
+      confirmationOpen: true,
+      dialogRendered: true,
+      title: 'Edit Loop Clip',
+    });
   });
 });
 
