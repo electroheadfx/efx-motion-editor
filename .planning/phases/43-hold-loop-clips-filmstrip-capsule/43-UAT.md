@@ -4,7 +4,7 @@ plan: 10
 kind: uat-record
 status: pending-correction-execution
 created: 2026-08-07
-revised: 2026-08-07
+revised: 2026-08-08
 builds_under_test:
   - user-run native development app
   - unsigned local packaged app
@@ -35,7 +35,7 @@ Do not begin the resumed Plan 43-10 Task 2 until the entries above contain actua
 ## Test conventions
 
 - The user starts and operates the native app; the executor does not start the server.
-- Run Steps 1–19 in the native development app and Step 20 in the unsigned packaged app.
+- Run the separate Issue #1 and Issue #2 checks plus Steps 1–19 in the native development app, then Step 20 in the unsigned packaged app.
 - Use one saved working project for normal loops and separate copies for destructive/unresolved tests.
 - Every result begins unchecked. Record `pass` or `fail`; for a failure, include the numbered check, observed behavior, and screenshot.
 - Frame ranges are half-open: F10 with duration 25 occupies F10–F34 and ends before F35.
@@ -48,6 +48,59 @@ Do not begin the resumed Plan 43-10 Task 2 until the entries above contain actua
 3. Keep a no-loop track/project available for geometry comparison.
 4. Keep an existing v0.8.1 project without `loopClips` for Step 15.
 5. Use a recognizable 5-frame source cycle for the main scenarios.
+
+---
+
+## Issue #1 — Playback confirmation (separate result)
+
+Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit failure cannot be reported as a playback-host failure or vice versa.
+
+**Actions**
+
+1. Create or open a valid linked Loop Clip with a visually distinct ordered source cycle and at least three repeats.
+2. Play through the full interval in EFX Paint/Roto, then scrub backward and replay across repeat boundaries.
+3. Confirm the same frames in main-editor preview without interacting with the passive marker.
+
+**Expected outcome**
+
+- Playback follows the complete ordered source cycle on every repeat and crosses repeat boundaries without skipping, duplicating, stalling, or materializing occurrences.
+- EFX Paint/Roto playback and main-editor preview resolve the same source/generated frame at the same app frame.
+- The integrated rail and passive Motion Editor marker remain presentation-only during playback; no selection, placement, repeat record, source key, or cache asset changes.
+- This result is recorded independently from Issue #2.
+
+**Result:** [ ] pass  [ ] fail
+
+**Notes:**
+
+---
+
+## Issue #2 — Exact source-position Key Spacing proxies
+
+**Actions**
+
+1. Use a Loop Clip whose ordered source cycle has at least five recognizable source positions and at least three repeats. Create a second Loop Clip sharing the exact same ordered `sourceKeyIds`.
+2. Ctrl/Cmd-select two exact source positions through linked occurrences in different repeats. Repeat with one original real source cell plus one linked occurrence, then select the full cycle.
+3. Verify equivalent positions in every repeat and both shared Loop Clips mirror one deduplicated proxy selection.
+4. Leave at least one source position between selected positions unselected and invoke Key Spacing.
+5. Play/scrub both loops, including generated interiors and repeat boundaries; inspect finite and Infinity variants.
+6. Undo once, then Redo once.
+7. Separately attempt Key Spacing with one unique position, mixed ordered cycles, a linked generated interior, a linked gap, an unresolved frame, and stale/ordinary linked selection without validated provenance. Attempt pointer drag and single-key drag from a linked occurrence.
+8. Save/reopen after an accepted spacing edit and inspect the project record if available through the normal project workflow.
+
+**Expected outcome**
+
+- Any 2+ unique exact source positions from one ordered cycle are eligible; selecting the full cycle also works. Original and linked selections may be mixed.
+- Equivalent positions across repeats and every Loop Clip sharing the same ordered `sourceKeyIds` deduplicate to one source index and all shared loops adopt the same accepted rhythm.
+- Unselected source positions remain fixed hard walls. Only selected authoritative real source-key `appFrame` positions move.
+- Runtime source offsets and cycle duration derive from the accepted real-key positions. Finite/Infinity repeats, generated interiors, rail Effective duration, preview/playback/export resolution, and cache regeneration use that cadence.
+- The operation publishes once and creates one atomic history entry. Undo restores the prior source rhythm across all shared loops; Redo reapplies it.
+- No occurrence is materialized, unlinked, cloned, or persisted as a new key. No real-key diamond appears on a linked occurrence. Loop Clip placement, repeat, Infinity, ordered source references, and provenance records remain unchanged; no timing field/schema migration appears.
+- Generated interiors, linked gaps, and unresolved frames remain navigation-only and never show proxy eligibility. Invalid scopes reject with the exact reason while preserving selection and accepted cadence.
+- Pointer drag, single-key drag, ordinary linked-source Force Spacing without validated provenance, Delete, Cut/Copy, placement movement, and every other linked structural mutation remain rejected.
+
+**Result:** [ ] pass  [ ] fail
+
+**Notes:**
 
 ---
 
@@ -293,12 +346,13 @@ Do not begin the resumed Plan 43-10 Task 2 until the entries above contain actua
 
 **Actions**
 
-1. Attempt source-key delete, single-key drag, invalid Force Spacing, and Delete/Backspace on a purely linked frame.
+1. Attempt source-key delete, single-key drag, Force Spacing without D-50 validated exact-source proxy provenance, and Delete/Backspace on a purely linked frame.
 2. Invoke Clear on the linked frame; Undo and Redo.
 
 **Expected outcome**
 
-- Existing exact source-key delete and rigid-group drag rejections remain.
+- Existing exact source-key delete and single-key/linked-drag rejections remain. D-11 permits only the Issue #2 validated multi-position Key Spacing transaction; every ordinary linked-source Force Spacing request rejects.
+- D-23 still treats linked occurrences as non-durable: exact source positions may only proxy Key Spacing, while generated interiors, gaps, and unresolved frames remain navigation-only.
 - Linked-frame Delete rejection now refers to selecting the Loop Clip rail to delete the loop.
 - Clear materializes one empty local real key, shortens at that boundary, preserves source, and remains atomic through Undo/Redo.
 - Rail selection and physical-cell selection do not leak into one another.
@@ -335,7 +389,7 @@ Do not begin the resumed Plan 43-10 Task 2 until the entries above contain actua
 **Expected outcome**
 
 - Loop IDs, placement, ordered source refs, Repeat/Infinity, provenance, and sharing reopen unchanged.
-- Effective duration/status/rail geometry are re-derived, not persisted stale values.
+- Accepted source real-key `appFrame` positions reopen as the timing authority; source offsets, cycle duration, generated interiors, Effective duration/status, and rail geometry are re-derived, not persisted as stale loop timing values.
 - Repeated frames still reuse source assets.
 - Existing v0.8.1 project opens without migration prompt, invented loops, or lost Paint data.
 - No persisted loop-name field exists.
@@ -354,7 +408,7 @@ Do not begin the resumed Plan 43-10 Task 2 until the entries above contain actua
 **Expected outcome**
 
 - Export frame count/order matches the selected range and on-screen preview.
-- Progressive and Static/Hold source cycles repeat deterministically.
+- Progressive and Static/Hold source cycles repeat deterministically with the authoritative non-uniform source-key cadence, including generated interiors.
 - Infinity stops at parent end; truncation stops at the canonical next boundary.
 - No valid exported frame is blank or contains an unresolved placeholder.
 - Durable source assets remain proportional to source cycles, not repetitions.
@@ -447,7 +501,7 @@ This is a local unsigned package smoke. Do not sign, notarize, staple, inspect c
 
 ## Verdict
 
-- [ ] Approved — every numbered area 1–20 matches its expected outcome.
+- [ ] Approved — separate Issue #1 and Issue #2 results plus every numbered area 1–20 match their expected outcomes.
 - [ ] Issues reported — list every failing numbered step below with screenshots.
 
 **User feedback:**

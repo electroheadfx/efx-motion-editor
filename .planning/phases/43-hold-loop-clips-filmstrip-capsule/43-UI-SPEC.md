@@ -5,16 +5,16 @@ status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-08-07
-revised: 2026-08-07
-reviewed_at: 2026-08-07T21:03:55Z
-revision_reason: replace rejected dedicated lane with integrated Loop Rail and contextual Scripts sidebar
+revised: 2026-08-08
+reviewed_at: 2026-08-08
+revision_reason: add user-approved Issue #2 source-position Key Spacing proxies to the integrated Loop Rail correction
 ---
 
 # Phase 43 — UI Design Contract
 
 > Canonical visual, interaction, accessibility, copy, and state contract for linked Loop Clips inside EFX Paint/Roto. This file fully replaces the rejected dedicated-lane baseline; it is not an incremental amendment.
 
-**Primary authority:** `43-CONTEXT.md` D-33R..D-49, gathered 2026-08-07. Supporting authority: `.planning/REQUIREMENTS.md` HOLD-01..06, accepted Phase 42 Play Script modal contracts, and the existing EFX Paint workflow strip/right sidebar implementation.
+**Primary authority:** `43-CONTEXT.md` D-33R..D-50, gathered 2026-08-07 and amended by the user-approved Issue #2 contract on 2026-08-08. Supporting authority: `.planning/REQUIREMENTS.md` HOLD-01..06, accepted Phase 42 Play Script modal contracts, and the existing EFX Paint workflow strip/right sidebar implementation.
 
 **Supersession rule:** stale ROADMAP/HOLD-06 wording that requires a persistent full-filmstrip capsule, repetition band, separate Loop Clips row, permanent Cycle badge, identity-bearing main-timeline projection, or raw Loop Clip UUID is rejected. HOLD-06 authoring information remains in the compact integrated rail tooltip, local actions popover, and contextual Scripts sidebar; the Motion Editor receives only passive effective-interval visibility.
 
@@ -54,6 +54,7 @@ No new design system, persisted schema, registry, UI dependency, tooltip system,
 | S4 | Apply-time Link/Create choice | Existing `Link to existing cycle` / `Create new cycle` contract |
 | S5 | Linked physical-cell treatment | Preserve the accepted blue inset border and 4px top-right dot without changing cell semantics or geometry |
 | S6 | Guard, placeholder, and export surfaces | Preserve accepted fail-closed guards, preview placeholder, export block, and atomic accepted-only updates |
+| S7 | Key Spacing proxy selection | Session-only selection treatment on exact source positions chosen from original real cells or equivalent linked occurrences; generated interiors, linked gaps, and unresolved frames remain navigation-only |
 | M1 | Motion Editor passive Repeat marker | One 3px `#8B5CF6` strip per canonical effective interval inside the existing PPaint FX bar; interval-only, textless, and non-interactive |
 
 ---
@@ -219,9 +220,11 @@ Highest visible state wins:
 
 Focus never hides error. Selection never replaces the amber end treatment. State changes alter paint only, never geometry.
 
-### Existing linked cells
+### Existing linked cells and Key Spacing proxy state
 
-Preserve the accepted linked-cell treatment verbatim: inset `rgba(45,91,227,0.9)` border and 4px top-right dot. Do not change cell fill, border, height, frame text behavior, current outline, selected outline, generated/cached/background semantics, or drag styling.
+Preserve the accepted linked-cell treatment verbatim: inset `rgba(45,91,227,0.9)` border and 4px top-right dot. Do not change cell fill, border, height, frame text behavior, current outline, generated/cached/background semantics, or drag styling.
+
+When an exact source position is included in a validated Key Spacing proxy selection, retain the linked inset/dot and add the existing physical multi-selection outline plus a compact non-text proxy cue inside the cell's top clearance. The cue must distinguish proxy provenance from an ordinary selected real key without changing cell dimensions or implying durability. Equivalent selected occurrences across repeats/shared loops render as the same deduplicated source-position selection state. Generated interiors, linked gaps, and unresolved frames never show the proxy cue; they may show the existing current-frame/navigation treatment only. Proxy selection has no grab/grabbing cursor, drag preview, materialization badge, real-key diamond, or persistence indicator.
 
 ---
 
@@ -315,6 +318,8 @@ For Effective `0f`, line 3 remains `Effective 0f` and line 4 states the canonica
 | Export block | `Export blocked — Loop Clip at frame {S} references a missing source frame ({F}). Repair or unlink the loop, then export again.` |
 | Source-key delete rejection | `This key belongs to a source cycle used by {N} linked loop(s). Unlink the loop(s) before deleting it.` |
 | Rigid source drag rejection | `Linked source-cycle keys move only as a rigid group. Select the whole cycle to drag it.` |
+| Invalid linked Force Spacing rejection | `Key Spacing requires at least two exact source positions from one linked source cycle.` |
+| Linked generated/gap proxy rejection | `This linked frame is navigation-only. Select exact source positions for Key Spacing.` |
 | Linked-frame Delete rejection | `No real key exists at this linked frame. Use Clear to create an empty real key, or select the Loop Clip rail to delete the loop.` |
 
 ### Empty state
@@ -337,6 +342,18 @@ There is no visual empty state for Loop Clips. With zero loops:
 - Existing physical-cell click, modifier-click, Shift range selection, keyboard navigation, single-key drag, group drag, and action toolbar behavior remain unchanged below the rail.
 - Selected Loop Clip identity drives the rail highlight and contextual Scripts sidebar. Closing a tooltip/popover does not clear Loop Clip selection.
 - Selecting a normal script or explicitly selecting a physical key may return the sidebar to normal script context according to existing Studio selection policy; this transition must not mutate the Loop Clip record.
+
+### Key Spacing proxy selection and gestures
+
+- Exact source-key positions inside a Loop Clip are eligible session-only proxies whether reached through the original real source cell or any linked occurrence whose resolved frame equals that source position exactly.
+- Use the existing physical-cell selection gestures: plain click establishes the anchor/current frame; Ctrl/Cmd-click toggles an eligible exact source position; Shift-click extends through eligible exact source positions in the same ordered source cycle. Selection must not silently include generated interiors, linked gaps, unresolved frames, or positions from another ordered `sourceKeyIds` sequence.
+- A valid Key Spacing scope contains at least two unique source indices from one ordered source cycle. Selecting the full cycle is valid. Original and linked selections may be mixed.
+- Equivalent positions across repeats and all Loop Clips sharing the same ordered `sourceKeyIds` deduplicate to one source index. Their visible proxy state mirrors the same session selection, and one spacing result updates every shared loop's cadence.
+- Unselected source positions are fixed hard walls. The spacing preview and accepted result may move only the selected authoritative source real keys within those walls; no unselected source position, Loop Clip placement, repeat count, Infinity flag, or source reference moves.
+- Invoking Key Spacing requires explicit resolver provenance for every selected proxy. Mixed cycles, fewer than two unique source positions, generated interiors, linked gaps, unresolved frames, stale mappings, or ordinary linked-source selections without provenance reject with the locked reason and preserve selection.
+- Proxy selection never materializes, clones, unlinks, or persists an occurrence and never adds a real-key diamond. It creates no schema field or durable selection record.
+- Pointer drag, single-key drag, group drag initiated from a linked occurrence, and placement drag remain rejected. Key Spacing is an explicit command, not a drag gesture.
+- On accepted Force Spacing, source real-key positions, generated interiors, timed repeats, rail duration, preview/playback/export resolution, and every shared loop update together from one atomic authority acknowledgement. Undo restores the prior source rhythm everywhere; Redo reapplies the spaced rhythm everywhere.
 
 ### Mouse and pointer behavior
 
@@ -408,6 +425,8 @@ Double-click handling must suppress the second single-click side effect from reo
 - `Edit Loop Clip`, `Edit Source Cycle`, Repair, Relink, Duplicate, Unlink, and Delete continue through the existing controller, physical-edit coordinator, authority request, atomic commit, and Undo/Redo paths.
 - Painting/erasing on a linked occurrence materializes a local real key and shortens the loop; Clear materializes an empty real key; Delete/Backspace on a purely linked frame rejects.
 - Moving/removing the next boundary re-expands the rail immediately from canonical accepted state without regeneration.
+- Runtime cycle offsets and duration derive from authoritative source real-key `appFrame` positions. Key Spacing changes those positions atomically and all finite/Infinity repeats and generated interiors re-resolve without modifying Loop Clip placement/repeat records.
+- D-11 remains fail-closed for single-key movement, drag-based linked mutations, and Force Spacing without validated proxy provenance. D-23 remains fail-closed for treating linked occurrences as durable keys; only exact source positions may participate as session-only Key Spacing proxies.
 - Unresolved loops remain selectable, repairable/relinkable/unlinkable/deletable, show preview placeholders, and block export with the carried-forward copy.
 - Source thumbnails, repetition bands, ghost cells as a first-class rail surface, permanent Cycle badges, and occurrence-seek controls are not part of S1.
 
@@ -419,6 +438,7 @@ Double-click handling must suppress the second single-click side effect from reo
 
 - Rail group: `role="group"`, `aria-label="Loop Clips"`; render only when loops exist.
 - Rail target: native `button` preferred. Accessible name exact form: `{displayName}. {Cycle math}. Effective {E} frames. Status: {status}.`
+- Eligible exact source-position proxies retain the physical cell's existing role/name and append `Exact source position {I} of {N}; available for Key Spacing.` When selected, append `Selected as Key Spacing proxy.` Generated interiors, linked gaps, and unresolved frames append `Navigation-only linked frame.` and never advertise Key Spacing selection.
 - Selected rail target: `aria-pressed="true"`; unselected targets `aria-pressed="false"`.
 - Busy rail target: `aria-busy="true"`.
 - Tooltip: existing `role="tooltip"`; connect with `aria-describedby` while visible or with a stable tooltip id.
@@ -455,7 +475,7 @@ Double-click handling must suppress the second single-click side effect from reo
 
 ## UI Considerations
 
-Compiled probe coverage resolved with user-confirmed authored element kinds: **34 covered, 8 dismissed, 0 backstops, 0 unresolved**.
+Compiled probe coverage resolved with user-confirmed authored element kinds: **40 covered, 8 dismissed, 0 backstops, 0 unresolved**.
 
 | Element | Category | Status | Resolution / Reason |
 |---------|----------|--------|---------------------|
@@ -495,6 +515,12 @@ Compiled probe coverage resolved with user-confirmed authored element kinds: **3
 | S5 Linked physical-cell indicator | loading | ✖ dismissed | The indicator derives synchronously from accepted in-memory resolver state and has no independent loading lifecycle. |
 | S5 Linked physical-cell indicator | error | ✖ dismissed | Unresolved/error communication belongs to the rail, tooltip, sidebar, and preview/export surfaces; the linked-cell indicator has no separate error state. |
 | S5 Linked physical-cell indicator | populated | ✅ covered | Linked cells preserve the accepted blue inset border and 4px dot across normal/current/selected/drag states without becoming selectable loop UI. |
+| S7 Key Spacing proxy selection | empty | ✅ covered | Fewer than two unique exact source positions leaves Key Spacing unavailable with the locked reason and no durable selection state. |
+| S7 Key Spacing proxy selection | populated | ✅ covered | Any 2+ unique exact source positions from one ordered cycle, including the full cycle and mixed original/linked selections, form one deduplicated session scope. |
+| S7 Key Spacing proxy selection | partial | ✅ covered | Unselected source positions remain fixed hard walls; selected positions alone receive preview/accepted movement. |
+| S7 Key Spacing proxy selection | error | ✅ covered | Mixed cycles, generated interiors, linked gaps, unresolved frames, stale provenance, and ordinary linked-source Force Spacing reject without mutation. |
+| S7 Key Spacing proxy selection | zero-one-many | ✅ covered | Equivalent positions across repeats and shared loops deduplicate to one source index while all sharing loops mirror the selected proxy state and adopt the accepted rhythm. |
+| S7 Key Spacing proxy selection | loading | ✅ covered | Pending authority keeps prior source cadence and proxy selection visible; no optimistic positions, materialization, or placement/repeat changes appear. |
 | M1 Motion Editor passive marker | loading | ✖ dismissed | The marker derives synchronously from accepted interval data and has no independent loading state. |
 | M1 Motion Editor passive marker | error | ✖ dismissed | The marker exposes no status variant; unresolved authoring status remains exclusively inside EFX Paint and shared preview/export behavior. |
 | M1 Motion Editor passive marker | populated | ✅ covered | Each effective interval paints one exact 3px `#8B5CF6` strip inside the existing PPaint FX bar from `{startFrame, frameCount}` only. |
@@ -522,6 +548,8 @@ All nine checks are mandatory before implementation expands beyond the revised t
 
 The tracer is accepted only when all nine checks pass together in the same EFX Paint/Roto build. Passing renderer/model tests without this visible ownership proof is insufficient.
 
+The same 43-11 blocking checkpoint also includes the separate Issue #2 Key Spacing matrix; it is not a tenth ownership check and does not create another checkpoint. Native evidence must prove: selection of any 2+ unique exact positions and the full cycle; original/linked mixed selection; deduplication across repeats and shared loops; unselected hard walls; generated interiors/gaps/unresolved navigation-only behavior; no drag/materialization/unlink/clone/persistence; timed finite and Infinity repeat cadence from source `appFrame` offsets; one accepted atomic transaction; and Undo/Redo restoring/reapplying every shared loop.
+
 ---
 
 ## Implementation Boundaries
@@ -529,6 +557,8 @@ The tracer is accepted only when all nine checks pass together in the same EFX P
 - Replace `PhysicsPaintLoopClipLane` and its extra-row mount with a focused integrated rail component/presentation helper. Do not add more presentation logic directly to the already-large `PhysicsPaintStudio.tsx`.
 - Selected Loop Clip state must be shared through the existing Studio Signal/view-model boundary so the rail and Scripts panel consume one identity; do not keep a strip-local selection that the sidebar cannot observe.
 - Rail geometry derives only visible ranges from the existing lazy resolver context. No destination-frame list, repeated DOM nodes per frame, or per-repetition cache assets.
+- Runtime loop timing derives from ordered source real-key `appFrame` positions: normalize source offsets from the first key, derive cycle duration from the final occupied source position, and resolve generated interiors/repeats from that timing. Do not add a persisted timing field.
+- Key Spacing proxy state is session-only and resolver-proven. One explicit resolver maps exact linked occurrences to source indices, deduplicates shared-cycle equivalents, rejects generated/gap/unresolved provenance, and feeds the existing Force Spacing authority path as one atomic source-key transaction.
 - All edit/actions converge on existing controller methods and accepted-only commits. Do not create a second local mutation implementation.
 - Replace specialized main-timeline Loop Clip capsule/open/action ownership with a minimal interval-only marker projection and pure Canvas painter. Protect the passive `{startFrame, frameCount}` marker path while removing `loopCapsules`, `loopClips`, IDs, metadata, status, selection, callbacks, commands, and every Loop Clip-specific interaction route; generic project/context/save/frame-sync bridges remain.
 - Do not add a persisted Loop Clip name, rename operation, schema field, or migration.
@@ -554,4 +584,4 @@ The tracer is accepted only when all nine checks pass together in the same EFX P
 - [x] Dimension 5 Spacing: PASS
 - [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** approved 2026-08-07T21:03:55Z after one bounded spacing revision. UI consideration probe: 34 covered, 8 dismissed, 0 backstops, 0 unresolved.
+**Approval:** integrated Loop Rail contract approved 2026-08-07T21:03:55Z; Issue #2 Key Spacing proxy amendment approved by the user on 2026-08-08. UI consideration probe: 40 covered, 8 dismissed, 0 backstops, 0 unresolved.

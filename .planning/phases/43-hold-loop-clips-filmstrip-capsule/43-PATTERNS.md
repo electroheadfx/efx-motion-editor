@@ -2,7 +2,7 @@
 
 **Mapped:** 2026-08-07
 **Scope:** Correction refresh after native UAT Step 1 host failure
-**Planning authority:** `43-CONTEXT.md` D-33R..D-49 and `43-UI-SPEC.md`
+**Planning authority:** `43-CONTEXT.md` D-33R..D-50 and `43-UI-SPEC.md`
 
 ## Correction Boundary
 
@@ -33,6 +33,9 @@ The rail is an absolute overlay at the top edge of the existing 38px physical-fr
 | `app/src/components/physic-paint/view/PhysicsPaintLoopClipPopover.test.tsx` | interaction contract | operation result fixtures → lifecycle and focus destinations | controller/history tests plus popover tests |
 | `app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.tsx` | contextual UI contract | normal/loop/busy/error fixtures → inspector and action-slot behavior | existing Scripts panel tests |
 | `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts` | host regression | loop/no-loop fixtures → unchanged strip/cell/toolbar geometry | existing exact CSS/source contracts |
+| `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts` | timing/provenance authority | ordered real source keys → offsets/cycle duration; selected linked frames → exact source-position provenance | existing canonical per-frame loop resolution |
+| `app/src/components/physic-paint/roto/physicsPaintRotoLoopGuards.test.ts` | D-11/D-50 guard contract | valid proxy scope → atomic spacing; every other linked structural mutation → fail closed | existing Force Spacing and source-key guard suite |
+| `app/src/components/physic-paint/roto/physicsPaintRotoLoopResolver.test.ts` | timed-loop contract | spaced source positions → finite/Infinity repeats, generated interiors, shared-loop cadence | existing lazy modulo/boundary suite |
 | `app/src/lib/frameMap.ts` | Motion Editor minimal projection | canonical effective ranges → interval-only `{startFrame, frameCount}` markers | no identity or authoring metadata in this tier |
 | `app/src/types/timeline.ts` | Passive marker type boundary | minimal marker type only; rich `TimelineLoopCapsule` types removed | canonical Loop Clip types remain in physic-paint domain |
 | `app/src/components/timeline/TimelineRenderer.ts` | Passive marker paint | pure Canvas painter draws exact 3px `#8B5CF6` strips inside the existing PPaint FX bar | EFX rail remains the sole interactive Loop Clip presentation |
@@ -205,6 +208,77 @@ The existing strip geometry remains authoritative:
 
 Apply existing UI-SPEC colors and precedence without changing geometry. Do not add a loop-present height modifier, another scrollbar, another grid row, or vertical canvas allocation. Preserve the accepted blue linked-cell inset border and 4px dot exactly.
 
+## Timed Source Cycle and Key Spacing Proxy Pattern
+
+### Runtime source offsets and cycle duration
+
+The ordered real source keys are the only timing authority.
+
+```ts
+const sourceStart = sourceKeys[0].appFrame
+const sourceOffsets = sourceKeys.map((key) => key.appFrame - sourceStart)
+const cycleDuration = sourceOffsets[sourceOffsets.length - 1] + 1
+```
+
+Requirements:
+
+- `sourceKeyIds` keeps the canonical order; each ID resolves to one real key and its authoritative `appFrame`.
+- Offsets are normalized from the first source key. Non-uniform gaps are intentional timing, not missing records.
+- `cycleDuration` is the last normalized source offset plus one occupied frame. A formerly contiguous five-key cycle remains 5f; spacing keys farther apart lengthens cadence without a new timing field.
+- Runtime finite/Infinity repeat resolution uses `cycleDuration` for modulo and maps exact source offsets to source keys. Frames between exact offsets derive through the existing generated-interior path; they are not new source keys.
+- Rail requested/effective duration, preview, playback, export, cache regeneration, and save/reopen resolution consume this same canonical timing. No surface-specific cadence math is allowed.
+- Loop Clip `placementStart`, repeat count, Infinity flag, ordered `sourceKeyIds`, and provenance remain unchanged when source timing changes.
+
+### Session-only proxy model
+
+Represent proxy selection outside the persisted physical document:
+
+```ts
+type LoopKeySpacingProxy = Readonly<{
+  orderedSourceKeyIds: readonly string[]
+  sourceKeyId: string
+  sourceIndex: number
+}>
+```
+
+The exact implementation type is discretionary, but the semantics are fixed:
+
+- Original real source cells and linked occurrences at exact source offsets resolve to the same proxy identity.
+- Proxy identity is keyed by ordered-cycle signature plus `sourceIndex`/`sourceKeyId`, never by occurrence frame or Loop Clip ID.
+- Equivalent selections across repeats and all Loop Clips with the same ordered `sourceKeyIds` deduplicate before command eligibility and preview.
+- At least two unique source indices are required; the full cycle is valid.
+- Unselected source indices are fixed hard walls for the spacing algorithm.
+- Generated interiors, linked gaps, unresolved frames, stale mappings, and mixed ordered cycles produce no proxy.
+- Selection state is session-only: no project serialization, schema field, cache key, real-key diamond, materialized occurrence, cloned key, unlink, or Loop Clip record update.
+
+### Explicit resolver provenance
+
+Do not infer provenance from visual cell kind or frame arithmetic in the action layer. Add one canonical resolver query that returns either an exact source-position result or a typed non-eligible reason.
+
+A valid result carries the ordered source-cycle identity, exact `sourceIndex`, source key ID, occurrence frame, and source `appFrame`. The action layer must:
+
+1. resolve every selected frame through that query;
+2. reject if any item is generated, gap, unresolved, stale, or from a different ordered cycle;
+3. deduplicate by ordered-cycle signature plus source index;
+4. require at least two unique positions;
+5. pass only authoritative real source-key IDs/appFrames to Force Spacing.
+
+This provenance is the only D-50 exception to D-11. Ordinary linked-source Force Spacing, single-key movement, linked drag, placement drag, Delete, Cut/Copy, paste identity, materialization, unlink, and all other linked structural mutations remain fail-closed.
+
+### One atomic Force Spacing transaction
+
+The accepted operation is one physical-edit publication and one history command:
+
+1. Build the validated deduplicated proxy scope.
+2. Run the existing Key Spacing algorithm against authoritative source real keys, treating every unselected source key as a fixed wall.
+3. Stage only the selected real source keys' new `appFrame` positions.
+4. Keep every Loop Clip record byte-identical.
+5. Re-resolve source offsets, cycle duration, generated interiors, finite/Infinity repeats, rail geometry, preview/playback/export, and all shared loops from the staged source positions.
+6. Publish once through the existing authority/coordinator path.
+7. On acceptance, commit one atomic history entry; on rejection/cancellation, publish nothing and retain selection.
+
+Undo restores the complete prior source rhythm and every shared loop in one step. Redo reapplies the spaced rhythm in one step. No per-loop update, occurrence write, optimistic cadence, or partial shared-loop publication is permitted.
+
 ## Interaction Isolation Pattern
 
 The rail target owns only Loop Clip intent in the top 12px band.
@@ -305,9 +379,23 @@ Controller/history suites remain verification oracles unless production behavior
 - Bridge tests: no specialized Loop Clip protocol while generic Browser/Tauri transport remains.
 - Repository reference checks: zero callers for removed tooltip, geometry, event, client, sender, hook, and envelope identifiers.
 
+### Timed-loop and proxy spacing regressions
+
+`physicsPaintRotoPhysicalResolver.test.ts`, `physicsPaintRotoLoopResolver.test.ts`, `physicsPaintRotoLoopGuards.test.ts`, and history/controller suites own:
+
+- contiguous and non-uniform source offsets plus `lastOffset + 1` cycle duration;
+- exact-source resolution through original cells and linked occurrences;
+- deduplication across repeats and shared Loop Clips with identical ordered `sourceKeyIds`;
+- any 2+ unique positions and full-cycle eligibility;
+- unselected source positions as hard walls;
+- generated interiors, gaps, unresolved frames, mixed cycles, stale provenance, and single-position scopes rejecting without publication;
+- unchanged Loop Clip placement/repeat/Infinity/source records and zero occurrence materialization;
+- one accepted authority publication/history command updating every shared loop cadence;
+- Undo/Redo restoring/reapplying source positions, generated interiors, timed repeats, rail duration, preview/playback/export, and cache resolution.
+
 ### Retained canonical regressions
 
-Continue running resolver, persistence, controller, history, materialization, linked-cell, preview, export, determinism, typecheck, build, and dependency-diff gates. These suites prove the UI correction did not rewrite HOLD-01..05 authority or D-24..D-32 algebra/performance.
+Continue running resolver, persistence, controller, history, materialization, linked-cell, preview, export, determinism, typecheck, build, and dependency-diff gates. These suites prove the UI correction did not loosen any authority beyond D-50's exact Key Spacing exception and did not rewrite D-24..D-32 algebra/performance.
 
 ## Retained Unchanged
 

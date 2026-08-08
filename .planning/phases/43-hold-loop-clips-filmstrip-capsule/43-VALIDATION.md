@@ -5,8 +5,8 @@ status: draft
 nyquist_compliant: true
 wave_0_complete: false
 created: 2026-08-06
-revised: 2026-08-07
-revision_reason: integrated Loop Rail and contextual Scripts inspector correction
+revised: 2026-08-08
+revision_reason: add Issue #2 timed source-position Key Spacing proxy correction to the current 43-11 checkpoint
 ---
 
 # Phase 43 — Validation Strategy
@@ -30,7 +30,7 @@ Rules: one-shot `vitest run` only; do not start the server; do not alter test co
 
 | Wave | Plan | Gate |
 |---|---|---|
-| 8 | 43-11 integrated rail/sidebar production tracer | One named RED→GREEN sentinel, then blocking-human approval of all nine checks together |
+| 8 | 43-11 integrated rail/sidebar plus timed Key Spacing proxy production tracer | Named RED→GREEN ownership and D-50 sentinels, then one blocking-human checkpoint covering all nine ownership checks plus the separate Issue #2 matrix |
 | 9 | 43-12 rail/popover/sidebar state expansion | Cannot begin until 43-11 native approval; each TDD task uses one exact named sentinel |
 | 10 | 43-13 passive-marker cutover and interaction removal | Retains minimal interval projection/paint while removing rich capsule types/rendering and every Loop Clip-specific input/tooltip route after the complete EFX replacement is green |
 | 11 | 43-14 specialized EFX residue and child-listener cleanup | Deletes stale tooltip/geometry/lane/style residue and removes specialized child listeners |
@@ -51,11 +51,11 @@ Rules: one-shot `vitest run` only; do not start the server; do not alter test co
 | 8 | Blue linked indicators preserved | WorkflowStrip CSS/source behavior tests | User checks normal/current/selected/drag states | pending |
 | 9 | Passive Motion Editor marker only | frame-map/renderer tests prove `{startFrame, frameCount}` only and exact 3px `#8B5CF6` PPaint FX-bar paint; interaction/canvas tests prove no Loop Clip-specific hit, tooltip, hover/focus, keyboard, navigation, Edit, drag, context menu, or mutation | User confirms marker visibility/geometry and absence of Loop Clip-specific interaction | pending |
 
-Plan 43-12 is blocked unless every row receives one explicit user approval in the same build.
+Plan 43-12 is blocked unless every row receives one explicit user approval in the same build and the same existing 43-11 checkpoint also passes the separate Issue #2 native matrix: exact-source proxy selection from original/linked occurrences, 2+ unique positions and full-cycle scope, repeat/shared-loop deduplication, unselected hard walls, timed finite/Infinity cadence, generated/gap/unresolved navigation-only behavior, no drag/materialization/persistence, one atomic Force Spacing transaction, and Undo/Redo.
 
 ## Covered UI Consideration Map
 
-All 34 covered rows from `43-UI-SPEC.md` are mandatory; the 8 dismissed rows remain legitimate exclusions.
+All 40 covered rows from `43-UI-SPEC.md` are mandatory; the 8 dismissed rows remain legitimate exclusions.
 
 | Surface | Covered states | Plan / verification |
 |---|---|---|
@@ -65,6 +65,7 @@ All 34 covered rows from `43-UI-SPEC.md` are mandatory; the 8 dismissed rows rem
 | S1c Contextual Scripts sidebar | empty, loading, error, populated, partial, overflow, zero-one-many, long-text | 43-11/43-12 ScriptsPanel tests and native tracer |
 | S2 Edit Loop Clip modal | loading, error, partial, overflow, long-text | 43-12 existing modal regression suite |
 | S5 Linked physical-cell indicator | empty, populated | 43-11/43-13 WorkflowStrip and selection/drag regressions |
+| S7 Key Spacing proxy selection | empty, loading, error, populated, partial, zero-one-many | 43-11 resolver/guard/history focused tests plus Issue #2 native matrix |
 | M1 Motion Editor passive marker | populated, overflow, zero-one-many | 43-11 marker-visible tracer; 43-13 interval-only projection/painter and zero-interaction contracts; native tracer |
 
 ## Requirement and Decision Coverage
@@ -75,7 +76,7 @@ All 34 covered rows from `43-UI-SPEC.md` are mandatory; the 8 dismissed rows rem
 | HOLD-02 | 43-15 reruns deterministic regeneration/save-reopen tests |
 | HOLD-03 | 43-15 reruns cancellation/failure/atomic Undo/Redo tests |
 | HOLD-04 | 43-15 reruns one-raster composite and preview/export parity tests |
-| HOLD-05 | 43-11/12 retain canonical resolver/controller paths; 43-15 reruns persistence, boundary, guards, history, unresolved, preview/export suites |
+| HOLD-05 | 43-11 adds D-50 source-offset timing, explicit proxy provenance, deduplicated shared-loop Key Spacing, and atomic history while retaining placement/repeat persistence; 43-12 keeps local UI authority; 43-15 reruns persistence, boundary, guards, history, timed repeat, unresolved, preview/export suites |
 | HOLD-06 | 43-11/12 integrated rail/tooltip/sidebar/popover plus passive main-timeline marker tracer; 43-13 interval-only marker cutover and zero-interaction removal; 43-14 obsolete rich residue/listener cleanup with passive marker protection; native checks in rewritten UAT |
 
 Decision groups:
@@ -84,6 +85,7 @@ Decision groups:
 - D-15 through D-23: retained status/copy/accessibility/truncation/unresolved/zero-effective semantics move to the rail/tooltip/sidebar/popover; superseded persistent filmstrip details are removed in 43-14.
 - D-24 through D-32: resolver algebra, dynamic parent end, preview/export parity, additive persistence, derived Effective duration, verbatim unresolved references, and lazy modulo remain unchanged and are rerun in 43-15.
 - D-33R through D-49: mapped directly to Plans 43-11 through 43-15 and the nine-check gate above.
+- D-50: mapped to the current 43-11 tracer/checkpoint, 43-13 runtime-path protection, and 43-15 focused/full evidence. It supersedes D-11/D-23 only for resolver-validated exact source-position Key Spacing proxies; every other linked structural mutation remains rejected.
 - D-41 horizontal placement drag is excluded; only compatible non-capturing pointer geometry is reserved.
 
 ## Focused Automated Commands
@@ -94,9 +96,15 @@ RED and GREEN, byte-for-byte identical:
 
 `pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx -t "integrates Loop Clip ownership through all nine tracer checks"`
 
+Issue #2 RED and GREEN, byte-for-byte identical:
+
+`pnpm --dir app exec vitest run src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.test.ts -t "derives timed loop cadence from authoritative source-key appFrame positions"`
+
+`pnpm --dir app exec vitest run src/components/physic-paint/roto/physicsPaintRotoLoopGuards.test.ts -t "spaces validated exact source-position proxies as one shared atomic transaction"`
+
 After GREEN only:
 
-`pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.tsx src/lib/frameMap.test.ts src/components/timeline/TimelineRenderer.test.ts src/components/timeline/TimelineInteraction.test.ts`
+`pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.tsx src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.test.ts src/components/physic-paint/roto/physicsPaintRotoLoopResolver.test.ts src/components/physic-paint/roto/physicsPaintRotoLoopGuards.test.ts src/components/physic-paint/hooks/physicsPaintRotoLoopHistory.test.ts src/lib/frameMap.test.ts src/components/timeline/TimelineRenderer.test.ts src/components/timeline/TimelineInteraction.test.ts`
 
 ### Plan 43-12
 
@@ -144,7 +152,7 @@ After GREEN only:
 
 ### Plan 43-15 full correction matrix
 
-`pnpm --dir app exec vitest run src/components/physic-paint/roto/physicsPaintRotoHoldDeterminism.test.ts src/components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer.test.ts src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts src/stores/physicPaintStore.rotoHoldComposite.test.ts src/components/physic-paint/hooks/useRotoTimelineModel.test.ts src/components/physic-paint/hooks/physicsPaintRotoLoopHistory.test.ts src/components/physic-paint/view/physicsPaintLoopClipPresentation.test.ts src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx src/components/physic-paint/view/PhysicsPaintLoopClipPopover.test.tsx src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.tsx src/lib/frameMap.test.ts src/components/timeline/TimelineRenderer.test.ts src/components/timeline/TimelineInteraction.test.ts src/lib/physicPaintBridge.test.ts src/components/physic-paint/bridge/physicsPaintBridgeTransport.test.ts src/lib/exportEngine.loops.test.ts src/lib/previewRenderer.loops.test.ts`
+`pnpm --dir app exec vitest run src/components/physic-paint/roto/physicsPaintRotoHoldDeterminism.test.ts src/components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer.test.ts src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.test.ts src/components/physic-paint/roto/physicsPaintRotoLoopResolver.test.ts src/components/physic-paint/roto/physicsPaintRotoLoopGuards.test.ts src/stores/physicPaintStore.rotoHoldComposite.test.ts src/components/physic-paint/hooks/useRotoTimelineModel.test.ts src/components/physic-paint/hooks/physicsPaintRotoLoopHistory.test.ts src/components/physic-paint/view/physicsPaintLoopClipPresentation.test.ts src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx src/components/physic-paint/view/PhysicsPaintLoopClipPopover.test.tsx src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.tsx src/lib/frameMap.test.ts src/components/timeline/TimelineRenderer.test.ts src/components/timeline/TimelineInteraction.test.ts src/lib/physicPaintBridge.test.ts src/components/physic-paint/bridge/physicsPaintBridgeTransport.test.ts src/lib/exportEngine.loops.test.ts src/lib/previewRenderer.loops.test.ts`
 
 Then, on the final correction state:
 
@@ -160,6 +168,8 @@ All four must exit 0. Record actual outputs in `43-UAT.md`; do not fabricate tes
 The rewritten `43-UAT.md` is the executable oracle. It covers:
 
 - the nine tracer checks;
+- Issue #1 playback confirmation as a separate native result;
+- Issue #2 exact-source Key Spacing proxies: original/linked selection, 2+ and full-cycle scopes, shared-repeat deduplication, hard walls, timed cadence, generated/gap/unresolved navigation-only behavior, no drag/materialization/persistence, one atomic commit, and Undo/Redo;
 - normal, selected, focus, truncation, unresolved, busy, rejected, and 0f rail states;
 - tooltip/sidebar/popover copy and accessibility;
 - exact passive Motion Editor marker geometry/color/data minimization plus zero Loop Clip-specific interaction;
@@ -174,6 +184,7 @@ No native result is pre-approved. The old Step 1 failure remains historical evid
 
 - [ ] Plan 43-11 RED and GREEN commits exist in order.
 - [ ] All nine tracer checks are approved together by the user.
+- [ ] The same 43-11 checkpoint records separate Issue #1 playback confirmation and passes the full Issue #2 Key Spacing proxy native matrix; no later checkpoint is created.
 - [ ] Plans 43-12 through 43-15 focused commands pass, with one exact named RED/GREEN sentinel per TDD task.
 - [ ] Full Vitest, typecheck, build, and dependency-diff gates pass on the final correction state.
 - [ ] Plans 43-01 through 43-09 remain byte-identical; 43-10 contains only the bounded corrected-checkpoint revision.
