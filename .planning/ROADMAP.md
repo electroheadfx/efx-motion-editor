@@ -24,7 +24,7 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 - [x] **Phase 40: macOS Icon Regeneration + Build Hygiene** — Legible icon from the 794×794 alpha source, tracked generated icons stay release authority, documented 1100 kB chunk budget (completed 2026-08-04)
 - [x] **Phase 41: EFX Paint Audio Preview + Monitoring Toggle** — Read-only frame-synchronized main-editor audio monitoring inside EFX Paint with session-local toggle (completed 2026-08-05)
 - [x] **Phase 42: PlayScript Application Modes + Color Override** — Explicit progressive vs static/hold modes and application-time color override with clear Scripts panel UI (completed 2026-08-06)
-- [ ] **Phase 43: Hold Loop Clips + Integrated Loop Rail** — Deterministic static/hold rendering with linked Loop Clips (cycle × repeat 1..∞), an EFX-local integrated rail/contextual inspector, and zero Motion Editor Loop Clip UI
+- [ ] **Phase 43: Hold Loop Clips + Integrated Loop Rail** — Deterministic static/hold rendering with linked Loop Clips (cycle × repeat 1..∞), an EFX-local integrated rail/contextual inspector, and one passive Motion Editor PPaint FX-bar duration marker per effective interval with zero Loop Clip-specific interaction
 - [ ] **Phase 44: Integrated UAT + Signed Release** — All automated gates, packaged native UAT per spec, signed/notarized downloaded-artifact verification, publish 2026-08-31
 
 ## Phase Details
@@ -144,7 +144,7 @@ Plans:
 
 ### Phase 43: Hold Loop Clips + Integrated Loop Rail
 
-**Goal**: Static/hold mode materializes the complete script drawing deterministically on every destination frame, and linked Loop Clips replay a source cycle from 1 to infinity without duplicating durable source assets — authored exclusively inside EFX Paint/Roto through an integrated Loop Rail and contextual Scripts inspector while the Motion Editor main timeline remains free of Loop Clip UI.
+**Goal**: Static/hold mode materializes the complete script drawing deterministically on every destination frame, and linked Loop Clips replay a source cycle from 1 to infinity without duplicating durable source assets — authored exclusively inside EFX Paint/Roto through an integrated Loop Rail and contextual Scripts inspector, while the Motion Editor main timeline shows only a passive 3px `#8B5CF6` effective-interval marker inside the existing PPaint FX bar and owns no Loop Clip-specific interaction.
 **Depends on**: Phase 42 (needs proven static/hold output and locked interval/display conventions)
 **Requirements**: HOLD-01, HOLD-02, HOLD-03, HOLD-04, HOLD-05, HOLD-06
 **Success Criteria** (what must be TRUE):
@@ -153,7 +153,7 @@ Plans:
   2. Identical script, destination, and options produce identical output across save/reopen and cache regeneration — zero-variation produces a stable held drawing, nonzero variation is deterministic per frame, no random render-time jitter
   3. Cancellation or failure never leaves a partial destination range; one Undo removes the accepted operation and Redo restores it, through the existing atomic commit path
   4. A 5-frame cycle repeated 5 times resolves across 25 timeline frames while storing only 5 linked source frame assets; repeat-count and infinity edits never regenerate or duplicate the source cycle, and source-frame edits propagate to every linked occurrence
-  5. Next-clip priority truncates loops after complete or partial cycles with half-open interval boundaries; moving or removing the next clip re-expands Effective duration without regenerating sources. Inside EFX Paint/Roto, a conditional 3px integrated Loop Rail adds zero row height and exposes derived name, Cycle math, Effective duration, mode, and status through its tooltip and contextual Scripts inspector, including `Loop shortened by next clip`; the Motion Editor main timeline exposes no Loop Clip UI, and the term `clip bloquant` never appears in any language.
+  5. Next-clip priority truncates loops after complete or partial cycles with half-open interval boundaries; moving or removing the next clip re-expands Effective duration without regenerating sources. Inside EFX Paint/Roto, a conditional 3px integrated Loop Rail adds zero row height and exposes derived name, Cycle math, Effective duration, mode, and status through its tooltip and contextual Scripts inspector, including `Loop shortened by next clip`. The Motion Editor PPaint FX bar paints one exact 3px `#8B5CF6` strip per canonical effective interval from `{startFrame, frameCount}` only, with no new row/height, identity, metadata, text, badge, capsule, own hit target, tooltip, hover/focus, selection, keyboard route, navigation, Edit, drag, context menu, callback, command, or mutation; the term `clip bloquant` never appears in any language.
 
 **Plans**: 15 plans
 Plans:
@@ -186,7 +186,7 @@ Plans:
 
 **Wave 8** *(gap closure after failed native UAT Step 1)*
 
-- [ ] 43-11-PLAN.md — Tracer: integrated 3px Loop Rail plus contextual Scripts inspector, all nine native checks, and zero Motion Editor Loop Clip UI (HOLD-05, HOLD-06)
+- [ ] 43-11-PLAN.md — Tracer: integrated 3px Loop Rail plus contextual Scripts inspector, all nine native checks, and the exact passive Motion Editor PPaint FX-bar marker with zero Loop Clip-specific interaction (HOLD-05, HOLD-06)
 
 **Wave 9** *(blocked on Wave 8 completion)*
 
@@ -194,7 +194,7 @@ Plans:
 
 **Wave 10** *(blocked on Wave 9 completion)*
 
-- [ ] 43-13-PLAN.md — Remove active Motion Editor Loop Clip projection, public types, rendering, input routing, and tooltip mount while preserving generic timeline behavior (HOLD-05, HOLD-06)
+- [ ] 43-13-PLAN.md — Preserve the minimal passive marker type/projection/pure Canvas renderer while removing stale rich capsule types/drawing and every Motion Editor Loop Clip-specific input/tooltip route (HOLD-05, HOLD-06)
 
 **Wave 11** *(blocked on Wave 10 completion)*
 
@@ -210,7 +210,7 @@ Plans:
 
 **UI hint**: yes
 
-**Boundary note:** Loop Clips persist as canonical linked loop regions in the existing physical-frame document authority. The exact persistence schema remains implementation research. v0.9.0 must not introduce a clean format break or discard existing v0.8.1 Paint projects; any required versioning or additive default must preserve open/save/reopen behavior. The clean multi-track format break remains reserved for v1.0.0. The EFX-local Integrated Loop Rail ships with the resolver in this phase because it is a pure visible-window view of accepted ranges; the Motion Editor remains only a generic resolved-output consumer.
+**Boundary note:** Loop Clips persist as canonical linked loop regions in the existing physical-frame document authority. The exact persistence schema remains implementation research. v0.9.0 must not introduce a clean format break or discard existing v0.8.1 Paint projects; any required versioning or additive default must preserve open/save/reopen behavior. The clean multi-track format break remains reserved for v1.0.0. The EFX-local Integrated Loop Rail ships with the resolver in this phase because it is a pure visible-window view of accepted ranges. Physics Paint Studio remains the exclusive owner of Loop Clip identity and interaction; the Motion Editor receives only `{startFrame, frameCount}` effective intervals for a pure passive 3px `#8B5CF6` painter inside the existing PPaint FX bar, while generic resolved-output and FX-track behavior remain unchanged.
 
 ### Phase 44: Integrated UAT + Signed Release
 

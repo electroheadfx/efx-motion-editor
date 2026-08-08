@@ -2,16 +2,17 @@
 
 **Mapped:** 2026-08-07
 **Scope:** Correction refresh after native UAT Step 1 host failure
-**Planning authority:** `43-CONTEXT.md` D-33..D-49 and `43-UI-SPEC.md`
+**Planning authority:** `43-CONTEXT.md` D-33R..D-49 and `43-UI-SPEC.md`
 
 ## Correction Boundary
 
-Loop Clip presentation and edit activation are owned exclusively by EFX Paint/Roto.
+Loop Clip identity, presentation details, and edit activation are owned exclusively by EFX Paint/Roto. The Motion Editor owns only passive interval paint.
 
 - **Retain unchanged:** canonical physical model, persistence, resolver algebra, store resolution, preview/export parity, physical-edit authority, accepted history, Play Script controller, and Play Script dialog.
 - **Own inside EFX Paint/Roto:** the integrated 3px Loop Rail, its 12px interaction targets, rail tooltip, local actions popover, contextual Scripts inspector, and Studio-local `openLoopEdit(loopId)` activation.
-- **Remove from the Motion Editor:** Loop Clip projection, timeline types, drawing, hit testing, tooltip mounting, keyboard/action routing, and the specialized main-to-child Loop Clip protocol after callers are gone.
-- **Preserve generic Motion Editor consumption:** resolved Paint pixels for preview, playback, save/reopen, and export.
+- **Retain minimally in the Motion Editor:** an interval type `{startFrame, frameCount}`, projection from canonical effective ranges, and a pure Canvas painter for one 3px `#8B5CF6` strip inside the existing PPaint FX bar.
+- **Remove from the Motion Editor:** `loopCapsules`/`loopClips`, IDs, source keys, repeat metadata, status, selection, callbacks, commands, rich capsule drawing, hit testing, tooltip mounting, hover/focus, keyboard/action routing, navigation, mutation, and the specialized main-to-child Loop Clip protocol after callers are gone.
+- **Preserve generic Motion Editor consumption:** resolved Paint pixels for preview, playback, save/reopen, export, and generic FX-track behavior beneath the passive paint.
 
 The rail is an absolute overlay at the top edge of the existing 38px physical-frame row. It adds zero row height, keeps the workflow strip at 161px, shares the existing horizontal scroller, and never changes physical-cell navigation, selection, multi-selection, drag, linked indicators, or the 34px action toolbar.
 
@@ -32,10 +33,10 @@ The rail is an absolute overlay at the top edge of the existing 38px physical-fr
 | `app/src/components/physic-paint/view/PhysicsPaintLoopClipPopover.test.tsx` | interaction contract | operation result fixtures → lifecycle and focus destinations | controller/history tests plus popover tests |
 | `app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.tsx` | contextual UI contract | normal/loop/busy/error fixtures → inspector and action-slot behavior | existing Scripts panel tests |
 | `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts` | host regression | loop/no-loop fixtures → unchanged strip/cell/toolbar geometry | existing exact CSS/source contracts |
-| `app/src/lib/frameMap.ts` | Motion Editor residue removal | generic frame-map output only | no Loop Clip replacement in this tier |
-| `app/src/types/timeline.ts` | Motion Editor type removal | generic timeline types only | canonical Loop Clip types remain in physic-paint domain |
-| `app/src/components/timeline/TimelineRenderer.ts` | Motion Editor render removal | generic timeline paint only | EFX rail is the sole Loop Clip presentation |
-| `app/src/components/timeline/TimelineInteraction.ts` | Motion Editor input removal | generic timeline interaction only | EFX rail/popover own Loop Clip input |
+| `app/src/lib/frameMap.ts` | Motion Editor minimal projection | canonical effective ranges → interval-only `{startFrame, frameCount}` markers | no identity or authoring metadata in this tier |
+| `app/src/types/timeline.ts` | Passive marker type boundary | minimal marker type only; rich `TimelineLoopCapsule` types removed | canonical Loop Clip types remain in physic-paint domain |
+| `app/src/components/timeline/TimelineRenderer.ts` | Passive marker paint | pure Canvas painter draws exact 3px `#8B5CF6` strips inside the existing PPaint FX bar | EFX rail remains the sole interactive Loop Clip presentation |
+| `app/src/components/timeline/TimelineInteraction.ts` | Motion Editor input removal | generic timeline interaction only; marker is never hit-tested | EFX rail/popover own Loop Clip input |
 | `app/src/components/timeline/TimelineCanvas.tsx` | Motion Editor mount removal | no Loop Clip floating UI | EFX-local tooltip/popover mount |
 | `app/src/components/timeline/TimelineCapsuleTooltip.tsx` | delete obsolete surface | no retained caller | EFX tooltip/popover cover approved facts/actions |
 | `app/src/components/timeline/loopCapsuleGeometry.ts` | delete obsolete namespace | no retained caller | `physicsPaintLoopClipPresentation.ts` owns compact rail projection |
@@ -226,20 +227,20 @@ All mutations continue through `physicsPaintRotoPlayScriptController.ts`, the ph
 - Undo/Redo replays complete accepted physical snapshots.
 - Delete and Unlink remain unlink-only and preserve source keys.
 
-## Motion Editor Removal Assignments
+## Motion Editor Minimal Projection and Removal Assignments
 
 After the EFX replacement is green:
 
-1. Remove `loopCapsules` projection/builders from `frameMap.ts`.
-2. Remove main-timeline capsule fields/types from `types/timeline.ts`.
-3. Remove Loop Clip drawing from `TimelineRenderer.ts`.
-4. Remove Loop Clip hit, hover, focus, selection, keyboard, and operation routing from `TimelineInteraction.ts`.
+1. Replace `loopCapsules`/`loopClips` projection and rich builders in `frameMap.ts` with interval-only `{startFrame, frameCount}` markers derived from canonical effective ranges.
+2. Retain one minimal passive marker type in `types/timeline.ts`; remove rich `TimelineLoopCapsule` source/layout/identity/status/action types.
+3. Replace old capsule drawing in `TimelineRenderer.ts` with a pure Canvas painter for exact 3px `#8B5CF6` strips inside the existing PPaint FX bar.
+4. Remove Loop Clip hit, hover, focus, selection, keyboard, navigation, context-menu, Edit, drag, and operation routing from `TimelineInteraction.ts`; markers are never hit-tested.
 5. Remove the Loop Clip tooltip mount/state from `TimelineCanvas.tsx`.
-6. Delete `TimelineCapsuleTooltip.tsx` and `loopCapsuleGeometry.ts` after zero callers are proven.
+6. Delete `TimelineCapsuleTooltip.tsx` and `loopCapsuleGeometry.ts` after zero callers are proven, while protecting the new passive marker type/projection/painter and their tests.
 7. Remove specialized Loop Clip bridge clients/events/envelopes/senders/listeners only after all callers are gone.
-8. Retain generic launch/focus, project context, authority/apply-result, save, and frame-sync transport.
+8. Retain generic launch/focus, project context, authority/apply-result, save, frame-sync transport, and generic FX-track behavior.
 
-The Motion Editor may consume resolved pixels but must not retain a read-only Loop Clip summary, hidden hit region, keyboard shortcut, navigation adapter, or edit route.
+The Motion Editor may consume resolved pixels and passive effective intervals but must not receive Loop Clip identity, source keys, repeat metadata, status, selection state, callbacks, or commands, and must not retain a hidden hit region, tooltip, keyboard shortcut, navigation adapter, edit route, or mutation path.
 
 ## Regression Test Assignments
 
@@ -263,7 +264,7 @@ Prove together:
 6. double-click and Enter open local Edit once;
 7. Play-to-Edit contextual sidebar with seven facts;
 8. accepted blue linked indicators unchanged;
-9. zero Motion Editor Loop Clip UI or input.
+9. exact passive Motion Editor marker paint and zero Loop Clip-specific input.
 
 ### Rail state and accessibility
 
@@ -297,9 +298,9 @@ Controller/history suites remain verification oracles unless production behavior
 
 ### Structural removal
 
-- `frameMap.test.ts`: no Loop Clip projection while generic ordering/layout remains.
-- `TimelineRenderer.test.ts`: no Loop Clip draw route while generic paint remains.
-- `TimelineInteraction.test.ts`: former coordinates and keys emit no Loop Clip intent.
+- `frameMap.test.ts`: only `{startFrame, frameCount}` effective-interval markers are projected; no `loopCapsules`, `loopClips`, IDs, source keys, repeat metadata, status, selection, callbacks, or commands.
+- `TimelineRenderer.test.ts`: exact 3px `#8B5CF6` marker paint appears inside the existing PPaint FX bar with no row/height change, text, badge, capsule, or status styling.
+- `TimelineInteraction.test.ts`: marker coordinates and keys emit no Loop Clip-specific hover, focus, selection, navigation, Edit, drag, context-menu, keyboard, or mutation intent while generic FX behavior remains.
 - TimelineCanvas source contract: no Loop Clip tooltip mount/state.
 - Bridge tests: no specialized Loop Clip protocol while generic Browser/Tauri transport remains.
 - Repository reference checks: zero callers for removed tooltip, geometry, event, client, sender, hook, and envelope identifiers.

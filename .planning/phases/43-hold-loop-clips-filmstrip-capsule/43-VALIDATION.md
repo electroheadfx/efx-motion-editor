@@ -32,7 +32,7 @@ Rules: one-shot `vitest run` only; do not start the server; do not alter test co
 |---|---|---|
 | 8 | 43-11 integrated rail/sidebar production tracer | One named RED→GREEN sentinel, then blocking-human approval of all nine checks together |
 | 9 | 43-12 rail/popover/sidebar state expansion | Cannot begin until 43-11 native approval; each TDD task uses one exact named sentinel |
-| 10 | 43-13 active Motion Editor removal | Removes projection/render/input/tooltip mount after the complete EFX replacement is green |
+| 10 | 43-13 passive-marker cutover and interaction removal | Retains minimal interval projection/paint while removing rich capsule types/rendering and every Loop Clip-specific input/tooltip route after the complete EFX replacement is green |
 | 11 | 43-14 specialized EFX residue and child-listener cleanup | Deletes stale tooltip/geometry/lane/style residue and removes specialized child listeners |
 | 12 | 43-15 public transport cleanup and full evidence | Removes specialized protocol after all callers are gone; runs the full matrix and updates UAT evidence |
 | 13 | 43-10 Task 2 | Sole final native UAT checkpoint; executes only the current corrected 43-UAT.md |
@@ -49,13 +49,13 @@ Rules: one-shot `vitest run` only; do not start the server; do not alter test co
 | 6 | Double-click and Enter open Edit Loop Clip exactly once | action-call count and popover suppression tests | User performs both routes | pending |
 | 7 | Scripts Play→Edit swap plus seven facts | ScriptsPanel tests | User checks normal script and selected loop contexts | pending |
 | 8 | Blue linked indicators preserved | WorkflowStrip CSS/source behavior tests | User checks normal/current/selected/drag states | pending |
-| 9 | Zero Motion Editor Loop Clip UI | renderer/interaction/canvas absence tests | User inspects drawing, hit, tooltip, keyboard, actions | pending |
+| 9 | Passive Motion Editor marker only | frame-map/renderer tests prove `{startFrame, frameCount}` only and exact 3px `#8B5CF6` PPaint FX-bar paint; interaction/canvas tests prove no Loop Clip-specific hit, tooltip, hover/focus, keyboard, navigation, Edit, drag, context menu, or mutation | User confirms marker visibility/geometry and absence of Loop Clip-specific interaction | pending |
 
 Plan 43-12 is blocked unless every row receives one explicit user approval in the same build.
 
 ## Covered UI Consideration Map
 
-All 32 covered rows from `43-UI-SPEC.md` are mandatory; the 8 dismissed rows remain legitimate exclusions.
+All 34 covered rows from `43-UI-SPEC.md` are mandatory; the 8 dismissed rows remain legitimate exclusions.
 
 | Surface | Covered states | Plan / verification |
 |---|---|---|
@@ -65,7 +65,7 @@ All 32 covered rows from `43-UI-SPEC.md` are mandatory; the 8 dismissed rows rem
 | S1c Contextual Scripts sidebar | empty, loading, error, populated, partial, overflow, zero-one-many, long-text | 43-11/43-12 ScriptsPanel tests and native tracer |
 | S2 Edit Loop Clip modal | loading, error, partial, overflow, long-text | 43-12 existing modal regression suite |
 | S5 Linked physical-cell indicator | empty, populated | 43-11/43-13 WorkflowStrip and selection/drag regressions |
-| M1 Motion Editor exclusion | overflow | 43-11 entry-point absence, 43-13 structural deletion, native tracer |
+| M1 Motion Editor passive marker | populated, overflow, zero-one-many | 43-11 marker-visible tracer; 43-13 interval-only projection/painter and zero-interaction contracts; native tracer |
 
 ## Requirement and Decision Coverage
 
@@ -76,14 +76,14 @@ All 32 covered rows from `43-UI-SPEC.md` are mandatory; the 8 dismissed rows rem
 | HOLD-03 | 43-15 reruns cancellation/failure/atomic Undo/Redo tests |
 | HOLD-04 | 43-15 reruns one-raster composite and preview/export parity tests |
 | HOLD-05 | 43-11/12 retain canonical resolver/controller paths; 43-15 reruns persistence, boundary, guards, history, unresolved, preview/export suites |
-| HOLD-06 | 43-11/12 integrated rail/tooltip/sidebar/popover; 43-13 active main-timeline removal; 43-14 residue/listener cleanup; native checks in rewritten UAT |
+| HOLD-06 | 43-11/12 integrated rail/tooltip/sidebar/popover plus passive main-timeline marker tracer; 43-13 interval-only marker cutover and zero-interaction removal; 43-14 obsolete rich residue/listener cleanup with passive marker protection; native checks in rewritten UAT |
 
 Decision groups:
 
 - D-01 through D-14: existing Loop/Source Edit, Link/Create, unlink-only deletion, placement/source identity, guards, materialization, loop priority, and atomic history are rerun in 43-12/43-15.
 - D-15 through D-23: retained status/copy/accessibility/truncation/unresolved/zero-effective semantics move to the rail/tooltip/sidebar/popover; superseded persistent filmstrip details are removed in 43-14.
 - D-24 through D-32: resolver algebra, dynamic parent end, preview/export parity, additive persistence, derived Effective duration, verbatim unresolved references, and lazy modulo remain unchanged and are rerun in 43-15.
-- D-33 through D-49: mapped directly to Plans 43-11 through 43-15 and the nine-check gate above.
+- D-33R through D-49: mapped directly to Plans 43-11 through 43-15 and the nine-check gate above.
 - D-41 horizontal placement drag is excluded; only compatible non-capturing pointer geometry is reserved.
 
 ## Focused Automated Commands
@@ -114,7 +114,7 @@ After each corresponding GREEN only, run the broader command declared in 43-12-P
 
 RED and GREEN, byte-for-byte identical:
 
-`pnpm --dir app exec vitest run src/lib/frameMap.test.ts -t "omits Loop Clip projection from the Motion Editor frame map"`
+`pnpm --dir app exec vitest run src/lib/frameMap.test.ts -t "projects only passive Loop Clip intervals to the Motion Editor frame map"`
 
 `pnpm --dir app exec vitest run src/components/timeline/TimelineInteraction.test.ts -t "ignores former Loop Clip coordinates and keys in the Motion Editor"`
 
@@ -162,6 +162,7 @@ The rewritten `43-UAT.md` is the executable oracle. It covers:
 - the nine tracer checks;
 - normal, selected, focus, truncation, unresolved, busy, rejected, and 0f rail states;
 - tooltip/sidebar/popover copy and accessibility;
+- exact passive Motion Editor marker geometry/color/data minimization plus zero Loop Clip-specific interaction;
 - Duplicate/Repair/Relink/Unlink/Delete accepted-only behavior and Undo/Redo;
 - physical-cell guards/materialization/linked indicators;
 - save/reopen, unresolved placeholder/export block, valid PNG parity, Infinity, truncation/re-expansion;

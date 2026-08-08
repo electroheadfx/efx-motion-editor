@@ -14,11 +14,11 @@ revision_reason: replace rejected dedicated lane with integrated Loop Rail and c
 
 > Canonical visual, interaction, accessibility, copy, and state contract for linked Loop Clips inside EFX Paint/Roto. This file fully replaces the rejected dedicated-lane baseline; it is not an incremental amendment.
 
-**Primary authority:** `43-CONTEXT.md` D-33..D-49, gathered 2026-08-07. Supporting authority: `.planning/REQUIREMENTS.md` HOLD-01..06, accepted Phase 42 Play Script modal contracts, and the existing EFX Paint workflow strip/right sidebar implementation.
+**Primary authority:** `43-CONTEXT.md` D-33R..D-49, gathered 2026-08-07. Supporting authority: `.planning/REQUIREMENTS.md` HOLD-01..06, accepted Phase 42 Play Script modal contracts, and the existing EFX Paint workflow strip/right sidebar implementation.
 
-**Supersession rule:** stale ROADMAP/HOLD-06 wording that requires a persistent full-filmstrip capsule, repetition band, separate Loop Clips row, permanent Cycle badge, main-timeline projection, or raw Loop Clip UUID is rejected. HOLD-06 information is redistributed between the compact integrated rail tooltip, local actions popover, and contextual Scripts sidebar.
+**Supersession rule:** stale ROADMAP/HOLD-06 wording that requires a persistent full-filmstrip capsule, repetition band, separate Loop Clips row, permanent Cycle badge, identity-bearing main-timeline projection, or raw Loop Clip UUID is rejected. HOLD-06 authoring information remains in the compact integrated rail tooltip, local actions popover, and contextual Scripts sidebar; the Motion Editor receives only passive effective-interval visibility.
 
-**Product ownership boundary:** Loop Clips exist visually and interactively only in EFX Paint/Roto. The Motion Editor main timeline renders and exposes zero Loop Clip UI: no rail, capsule, label, badge, hit target, tooltip, selection, keyboard target, context action, or edit command. The main editor remains a preview/playback/save/export consumer of the canonical physical-frame document.
+**Product ownership boundary:** Physics Paint Studio Loop Rail and Scripts inspector remain the exclusive interactive Loop Clip surfaces. The Motion Editor main timeline may paint one passive Repeat-duration marker per canonical effective interval inside the existing PPaint FX bar from interval-only data `{startFrame, frameCount}`. It receives no `loopId`, source keys, repeat metadata, status, selection state, callbacks, or commands. The marker has no Loop Clip-specific hit target, tooltip, hover/focus state, selection, keyboard target, context action, Edit, drag, navigation, or mutation; generic FX-track behavior may continue beneath the paint.
 
 **Carried-forward guard:** all still-valid Phase 43 S2–S6 contracts remain in force: the existing `Edit Loop Clip` and `Edit Source Cycle` modal modes; Link/Create choice; blue linked-frame indicators; guarded materialization and source-key operations; unresolved preview placeholder; export block; canonical resolver; accepted-only authority updates; atomic Undo/Redo. Only the rejected persistent capsule/lane presentation and main-timeline ownership are replaced.
 
@@ -54,6 +54,7 @@ No new design system, persisted schema, registry, UI dependency, tooltip system,
 | S4 | Apply-time Link/Create choice | Existing `Link to existing cycle` / `Create new cycle` contract |
 | S5 | Linked physical-cell treatment | Preserve the accepted blue inset border and 4px top-right dot without changing cell semantics or geometry |
 | S6 | Guard, placeholder, and export surfaces | Preserve accepted fail-closed guards, preview placeholder, export block, and atomic accepted-only updates |
+| M1 | Motion Editor passive Repeat marker | One 3px `#8B5CF6` strip per canonical effective interval inside the existing PPaint FX bar; interval-only, textless, and non-interactive |
 
 ---
 
@@ -111,6 +112,16 @@ The integrated Loop Rail must not change `grid-template-rows`, workflow-strip he
 - No rail paint may extend below 6px from the physical row's top edge. The 24px cells, current-frame outline, multi-selection outline, drag previews, and action toolbar remain visually uncut.
 - The 12px interaction band may structurally sit above the cell layer, but only in the defined top-edge rail band. Every point below `y: 12px` preserves the existing physical-cell pointer target. Cell keyboard focus and all full-cell programmatic activation remain unchanged.
 - The rail and each rail target stop `pointerdown`, `click`, `dblclick`, and relevant keyboard activation propagation before physical-cell handlers. They must not call the physical-cell navigation, selection, multi-select, drag, or playhead routes.
+
+### M1 Motion Editor passive marker geometry
+
+- Paint one compact strip per canonical Loop Clip effective interval inside the existing PPaint FX bar.
+- Visible height is exactly **3px** and color is exactly **`#8B5CF6`**.
+- Horizontal geometry is derived only from `{startFrame, frameCount}` using the existing timeline frame-to-x mapping and viewport clipping.
+- The marker adds no row, lane, track height, label, text, badge, capsule, end cap, tooltip, hover treatment, focus treatment, or visible status variant.
+- The marker creates no DOM or Canvas hit region of its own and is not returned by hit testing. Generic FX-track pointer behavior may continue at the same coordinates beneath the paint.
+- The main timeline must not receive `loopId`, source keys, repeat count, infinity, requested duration, status, selection state, callbacks, or commands.
+- Multiple markers share the existing FX bar and never stack into a separate lane. The painter is pure and paint-only.
 
 ### Responsive contract at 1280×720 minimum
 
@@ -444,7 +455,7 @@ Double-click handling must suppress the second single-click side effect from reo
 
 ## UI Considerations
 
-Compiled probe coverage resolved with user-confirmed authored element kinds: **32 covered, 8 dismissed, 0 backstops, 0 unresolved**.
+Compiled probe coverage resolved with user-confirmed authored element kinds: **34 covered, 8 dismissed, 0 backstops, 0 unresolved**.
 
 | Element | Category | Status | Resolution / Reason |
 |---------|----------|--------|---------------------|
@@ -484,10 +495,12 @@ Compiled probe coverage resolved with user-confirmed authored element kinds: **3
 | S5 Linked physical-cell indicator | loading | ✖ dismissed | The indicator derives synchronously from accepted in-memory resolver state and has no independent loading lifecycle. |
 | S5 Linked physical-cell indicator | error | ✖ dismissed | Unresolved/error communication belongs to the rail, tooltip, sidebar, and preview/export surfaces; the linked-cell indicator has no separate error state. |
 | S5 Linked physical-cell indicator | populated | ✅ covered | Linked cells preserve the accepted blue inset border and 4px dot across normal/current/selected/drag states without becoming selectable loop UI. |
-| M1 Motion Editor exclusion | loading | ✖ dismissed | No Loop Clip surface exists there in any lifecycle state; generic main-timeline loading remains unchanged. |
-| M1 Motion Editor exclusion | error | ✖ dismissed | No Loop Clip error UI exists there; unresolved state remains exclusively inside EFX Paint and shared preview/export behavior. |
-| M1 Motion Editor exclusion | overflow | ✅ covered | At every zoom/scroll boundary, no hidden Loop Clip draw, hit region, tooltip mount, keyboard target, or action may remain. |
-| M1 Motion Editor exclusion | long-text | ✖ dismissed | The Motion Editor renders no Loop Clip label, badge, name, or other product text. |
+| M1 Motion Editor passive marker | loading | ✖ dismissed | The marker derives synchronously from accepted interval data and has no independent loading state. |
+| M1 Motion Editor passive marker | error | ✖ dismissed | The marker exposes no status variant; unresolved authoring status remains exclusively inside EFX Paint and shared preview/export behavior. |
+| M1 Motion Editor passive marker | populated | ✅ covered | Each effective interval paints one exact 3px `#8B5CF6` strip inside the existing PPaint FX bar from `{startFrame, frameCount}` only. |
+| M1 Motion Editor passive marker | overflow | ✅ covered | At every zoom/scroll boundary, paint clips correctly while no Loop Clip-specific hit region, tooltip mount, hover/focus state, keyboard target, or action exists. |
+| M1 Motion Editor passive marker | zero-one-many | ✅ covered | Zero intervals paint nothing; one or many paint in the existing FX bar without stacking, a new row, or identity-bearing nodes. |
+| M1 Motion Editor passive marker | long-text | ✖ dismissed | The marker contains no text, label, badge, name, metadata, or raw identifier. |
 
 ---
 
@@ -505,7 +518,7 @@ All nine checks are mandatory before implementation expands beyond the revised t
 | 6 | Double-click and Enter edit | Double-click and focused Enter each call Studio-local `openLoopEdit(loopId)` once and open existing modal | Parent/main-timeline bridge ownership, duplicate calls, or popover reopening over modal |
 | 7 | Contextual sidebar swap and details | Normal script shows Play; selected loop shows Pencil/Edit in same slot plus name, source, placement, Cycle, Effective, mode, status | Separate inspector pane/tab, missing facts, Edit button starting rename, or dedicated rename Pencil |
 | 8 | Blue linked indicators preserved | Linked physical cells retain existing blue inset border and 4px dot across normal/current/selected/drag states | Indicator removed, recolored to rail state, or promoted to a new cell state |
-| 9 | Zero main-timeline Loop Clip UI | Motion Editor main timeline has no Loop Clip drawing, label, hit region, tooltip, keyboard target, or action | Any read-only capsule/rail, navigation shortcut, or hidden actionable hit region |
+| 9 | Passive main-timeline marker only | Motion Editor PPaint FX bar paints one exact 3px `#8B5CF6` strip per effective interval from `{startFrame, frameCount}` only, with no text, badge, capsule, own hit target, tooltip, hover/focus, selection, keyboard route, navigation, Edit, drag, context menu, callback, command, or mutation | Missing/incorrect marker; new row/height; `loopCapsules`, `loopClips`, raw IDs, metadata, status, selection, or any Loop Clip-specific interaction route |
 
 The tracer is accepted only when all nine checks pass together in the same EFX Paint/Roto build. Passing renderer/model tests without this visible ownership proof is insufficient.
 
@@ -517,7 +530,7 @@ The tracer is accepted only when all nine checks pass together in the same EFX P
 - Selected Loop Clip state must be shared through the existing Studio Signal/view-model boundary so the rail and Scripts panel consume one identity; do not keep a strip-local selection that the sidebar cannot observe.
 - Rail geometry derives only visible ranges from the existing lazy resolver context. No destination-frame list, repeated DOM nodes per frame, or per-repetition cache assets.
 - All edit/actions converge on existing controller methods and accepted-only commits. Do not create a second local mutation implementation.
-- Remove specialized main-timeline Loop Clip presentation/open/action ownership only after callers are gone; generic project/context/save/frame-sync bridges remain.
+- Replace specialized main-timeline Loop Clip capsule/open/action ownership with a minimal interval-only marker projection and pure Canvas painter. Protect the passive `{startFrame, frameCount}` marker path while removing `loopCapsules`, `loopClips`, IDs, metadata, status, selection, callbacks, commands, and every Loop Clip-specific interaction route; generic project/context/save/frame-sync bridges remain.
 - Do not add a persisted Loop Clip name, rename operation, schema field, or migration.
 - Do not implement horizontal Loop Clip placement drag in this phase.
 
@@ -541,4 +554,4 @@ The tracer is accepted only when all nine checks pass together in the same EFX P
 - [x] Dimension 5 Spacing: PASS
 - [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** approved 2026-08-07T21:03:55Z after one bounded spacing revision. UI consideration probe: 32 covered, 8 dismissed, 0 backstops, 0 unresolved.
+**Approval:** approved 2026-08-07T21:03:55Z after one bounded spacing revision. UI consideration probe: 34 covered, 8 dismissed, 0 backstops, 0 unresolved.

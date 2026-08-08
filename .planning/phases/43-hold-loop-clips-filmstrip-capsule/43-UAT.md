@@ -15,9 +15,9 @@ packaged_app: /Users/lmarques/Dev/efx-motion-editor/app/src-tauri/target/release
 
 ## Historical failed attempt
 
-The first native attempt stopped at old Step 1 on 2026-08-07. The Loop Clip capsule and interactions had been placed on the Motion Editor main timeline (`PPaint #1`) instead of the EFX Paint/Roto physical-frame editing surface. No later step was executed. The rejected separate-lane/full-capsule direction is not acceptance evidence.
+The first native attempt stopped at old Step 1 on 2026-08-07. The rejected rich Loop Clip capsule system—identity-bearing capsule visuals plus interactions—had been placed on the Motion Editor main timeline (`PPaint #1`) instead of keeping authoring inside EFX Paint/Roto. No later step was executed. That interactive filmstrip/capsule direction is not acceptance evidence.
 
-This script replaces that failed surface contract. All Loop Clip presentation and authoring checks now occur exclusively inside EFX Paint/Roto through the integrated Loop Rail, local actions popover, contextual Scripts sidebar, and existing Studio-local edit modal.
+This script replaces that failed authoring contract. Loop Clip authoring remains exclusively inside EFX Paint/Roto through the integrated Loop Rail, local actions popover, contextual Scripts sidebar, and existing Studio-local edit modal. The Motion Editor main timeline is allowed only one passive Repeat-duration marker per canonical effective interval: an exact 3px `#8B5CF6` strip inside the existing PPaint FX bar, with interval-only data and zero Loop Clip-specific interaction.
 
 ## Automated gate evidence for the corrected build
 
@@ -68,7 +68,7 @@ Do not begin the resumed Plan 43-10 Task 2 until the entries above contain actua
 6. Double-click and focused Enter each open the existing `Edit Loop Clip` modal exactly once.
 7. Normal script context shows Play; selected-loop context swaps that same slot to Lucide Pencil/Edit and shows name, source script, placement, Cycle, Effective, mode, and status.
 8. Linked physical cells retain the accepted blue inset border and 4px top-right dot across normal/current/selected/drag states.
-9. Motion Editor main timeline exposes no Loop Clip drawing, label, badge, hit region, tooltip, selection, keyboard target, context action, or edit command.
+9. Motion Editor PPaint FX bar shows one exact 3px `#8B5CF6` passive strip per canonical effective interval, with no new row/height, text, badge, capsule, tooltip, hover/focus styling, own hit target, selection, keyboard route, navigation, Edit, drag, context menu, callback, command, or mutation. Generic FX-track behavior remains available beneath the paint.
 
 **Result:** [ ] pass  [ ] fail
 
@@ -365,17 +365,19 @@ Do not begin the resumed Plan 43-10 Task 2 until the entries above contain actua
 
 ---
 
-## 17. Motion Editor generic timeline regression
+## 17. Motion Editor passive marker and generic timeline regression
 
 **Actions**
 
 1. Use normal main-timeline playhead, layer selection, drag, keyboard, zoom, scroll, playback, save, and preview behavior around a project containing loops.
+2. Inspect the existing PPaint FX bar at each canonical effective interval and at former capsule coordinates.
 
 **Expected outcome**
 
-- Generic timeline behavior is unchanged.
+- The PPaint FX bar paints one exact 3px `#8B5CF6` strip per canonical effective interval with no new row/height and no text, badge, capsule, tooltip, hover/focus styling, or own hit target.
+- Generic timeline behavior is unchanged beneath the marker paint.
 - Loop-resolved physical output still previews/plays/saves/exports correctly.
-- No Loop Clip UI or action appears anywhere on the Motion Editor timeline, including former capsule coordinates.
+- No Loop Clip-specific selection, keyboard route, navigation, Edit, drag, context menu, callback, command, or mutation appears anywhere on the Motion Editor timeline.
 
 **Result:** [ ] pass  [ ] fail
 
@@ -429,14 +431,14 @@ This is a local unsigned package smoke. Do not sign, notarize, staple, inspect c
 
 1. Launch the unsigned packaged app using the normal local workflow.
 2. Open valid and unresolved loop projects.
-3. Check integrated rail/sidebar/popover/Edit behavior, valid preview/export, unresolved placeholder/export block, and Motion Editor exclusion.
+3. Check integrated rail/sidebar/popover/Edit behavior, valid preview/export, unresolved placeholder/export block, and the Motion Editor passive-marker-only contract.
 
 **Expected outcome**
 
 - App launches without a dev server.
 - Integrated rail remains 3px inside the unchanged row; sidebar/popover/Edit work locally.
 - Valid preview/export parity and unresolved placeholder/export block match development behavior.
-- Motion Editor remains free of Loop Clip UI.
+- Motion Editor shows only the exact passive 3px `#8B5CF6` PPaint FX-bar marker and exposes zero Loop Clip-specific interaction.
 - No signing/notarization/credential/certificate flow occurs; signed downloaded-artifact UAT remains Phase 44 scope.
 
 **Result:** [ ] pass  [ ] fail

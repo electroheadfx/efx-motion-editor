@@ -6,9 +6,9 @@
 <domain>
 ## Phase Boundary
 
-Phase 43 retains deterministic static/hold rendering and canonical linked Loop Clips, but the rejected separate Loop Clips lane is replaced before implementation continues. Loop Clips belong exclusively to the EFX Paint/Roto timeline and right sidebar where physical frames and scripts are already edited.
+Phase 43 retains deterministic static/hold rendering and canonical linked Loop Clips, but the rejected separate Loop Clips lane is replaced before implementation continues. Physics Paint Studio Loop Rail and Scripts inspector remain the exclusive interactive authoring owners for Loop Clips.
 
-The Motion Editor main timeline must remain completely free of Loop Clip capsules, labels, hit targets, tooltips, selection, and editing actions. The main editor remains a consumer of the canonical physical-frame document for preview, playback, save/reopen, and export parity; it does not own a Loop Clip presentation or authoring surface.
+The Motion Editor main timeline may receive only minimal interval data `{startFrame, frameCount}` and paint one compact passive Repeat-duration marker per canonical Loop Clip effective interval inside the existing PPaint FX bar. The marker is a 3px `#8B5CF6` strip with no new row or height, text, badge, capsule, tooltip, hover/focus styling, or own pointer target. The main timeline receives no `loopId`, source keys, repeat metadata, status, selection state, callbacks, or commands and owns no Loop Clip-specific selection, focus, hover, Edit, drag, context menu, keyboard route, navigation, or mutation. Generic FX-track behavior may continue beneath the paint.
 
 Inside EFX Paint/Roto, Loop Clips are represented by an integrated Loop Rail in the top edge of the existing physical-frame row. The correction adds no timeline row and no track height. It also makes the existing right-sidebar Scripts context the persistent inspector for the selected Loop Clip.
 
@@ -23,7 +23,7 @@ Requirements: HOLD-01..06 in `.planning/REQUIREMENTS.md`. The integrated-rail de
 
 ### Product ownership and rail geometry
 
-- **D-33:** Remove every Loop Clip projection and interaction from the Motion Editor main timeline. It does not remain as a read-only summary or navigation shortcut. — **Reversibility:** costly — reversing this would restore a second product surface and duplicate interaction ownership.
+- **D-33R:** The Motion Editor main timeline may project only `{startFrame, frameCount}` for each canonical Loop Clip effective interval and paint one passive 3px `#8B5CF6` strip inside the existing PPaint FX bar. It adds no row or height and has no text, badge, capsule, tooltip, hover/focus styling, own pointer target, identity, metadata, status, selection, callback, command, or Loop Clip-specific interaction. Generic FX-track behavior may continue beneath the paint. This supersedes D-33's zero-visibility wording without restoring a second authoring surface. — **Reversibility:** moderate — the passive visibility can be removed without changing canonical Loop Clip authority, while adding identity or interaction would violate the ownership boundary.
 - **D-34R:** Replace the rejected separate Loop Clips lane with an integrated Loop Rail inside the top edge of each existing EFX Paint/Roto physical-frame row. The visible rail is exactly 3px high and adds zero row or track height. It must not move, cover, or clip the physical cells or their action toolbar. This supersedes the earlier dedicated-lane D-34.
 - **D-35R:** The rail has a transparent 10–12px interaction target while only 3px remains visible. It is hidden when the track has no Loop Clips, so no-loop geometry stays byte-for-byte equivalent at the layout-contract level. This supersedes the earlier 32px conditional lane.
 - **D-36R:** The persistent timeline presentation is a compact rail, not a full filmstrip capsule. Remove the separate lane, source-thumbnail filmstrip, linked-repetition band, permanent Cycle badge, and raw UUID display. Preserve existing blue linked-frame indicators inside physical cells. Use the existing canonical Requested/Effective derivation; do not introduce new boundary logic.
@@ -54,7 +54,7 @@ Requirements: HOLD-01..06 in `.planning/REQUIREMENTS.md`. The integrated-rail de
 ### Planning and verification gate
 
 - **D-48:** Stop implementation after the rejected Plan 43-11 tracer commits (`4bc8f76a`, `1ad75ff8`, `b52028b9`). They are unapproved implementation substrate to replace, not an accepted checkpoint. Before execution resumes, update `43-UI-SPEC.md`, Plans 43-11..14, `43-VALIDATION.md`, and `43-UAT.md` against this context.
-- **D-49:** The revised tracer must prove all nine user-visible checks before expansion: no extra row/height change; no cell or toolbar clipping; conditional 3px rail; correct hover tooltip; loop-only single-click selection; double-click and Enter opening Edit Loop Clip; contextual sidebar Play→Edit swap plus loop details; blue linked indicators preserved; and zero Loop Clip UI on the Motion Editor main timeline.
+- **D-49:** The revised tracer must prove all nine user-visible checks before expansion: no extra row/height change; no cell or toolbar clipping; conditional 3px rail; correct hover tooltip; loop-only single-click selection; double-click and Enter opening Edit Loop Clip; contextual sidebar Play→Edit swap plus loop details; blue linked indicators preserved; and the Motion Editor PPaint FX bar showing only the passive 3px `#8B5CF6` effective-interval marker with no Loop Clip-specific interaction.
 
 ### Claude's Discretion
 
@@ -121,6 +121,7 @@ Requirements: HOLD-01..06 in `.planning/REQUIREMENTS.md`. The integrated-rail de
 - Replace `PhysicsPaintLoopClipLane` and its extra-row mount in `PhysicsPaintWorkflowStrip` with a focused integrated rail component/presentation helper attached to the existing physical-row wrapper.
 - Feed selected Loop Clip identity and derived inspector data through `usePhysicsPaintStudioViewModel`/Studio signals into both the rail and `PhysicsPaintScriptsPanel` context.
 - Keep the local actions popover and Edit modal inside EFX Paint. Remove the specialized main-timeline Loop Clip request protocol after main-timeline callers and tests are gone.
+- Project only `{startFrame, frameCount}` into the Motion Editor and paint the passive 3px `#8B5CF6` strip with a pure Canvas helper inside the existing PPaint FX bar; never expose identity or attach Loop Clip-specific input routes.
 - Preserve existing blue linked-frame indicators and all physical-cell pointer/keyboard/drag routes below the rail.
 
 </code_context>
