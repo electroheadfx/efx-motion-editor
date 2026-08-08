@@ -14,6 +14,7 @@ import type {
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
   getPhysicsPaintRotoSourceCycleId,
+  togglePhysicsPaintRotoSpacingProxy,
   type PhysicsPaintRotoSpacingSelection,
 } from '../roto/physicsPaintRotoSpacingSelection';
 import { useRotoTimelineActions, type RotoTimelineActionsInput } from './useRotoTimelineActions';
@@ -210,6 +211,28 @@ describe('useRotoTimelineActions linked source-position Force Spacing', () => {
 
     expect(await actions.physicalActions.applyForceSpacing()).toBe(true);
     expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as { proposal: { mapping: ReadonlyMap<string, number> } };
+    expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ A: 0, B: 2, C: 4 });
+  });
+
+  it('restores ordinary Force Spacing fallback after the final proxy is toggled off', async () => {
+    const selected = spacingSelection(['B']);
+    const cleared = togglePhysicsPaintRotoSpacingProxy(selected, {
+      loopId: 'loop-shared',
+      sourceCycleId: selected.sourceCycleId,
+      sourceKeyIds: selected.sourceKeyIds,
+      sourceKeyId: 'B',
+      sourceIndex: 1,
+    });
+    expect(cleared).toBeNull();
+    const { actions, executePhysicalEdit } = createHarness({
+      records: [realKeyRecord('A', 0), realKeyRecord('B', 3), realKeyRecord('C', 8)],
+      spacingSelection: cleared,
+      capacity: 20,
+    });
+    actions.physicalActions.setForceSpacingInput('1');
+
+    expect(await actions.physicalActions.applyForceSpacing()).toBe(true);
     const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as { proposal: { mapping: ReadonlyMap<string, number> } };
     expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ A: 0, B: 2, C: 4 });
   });

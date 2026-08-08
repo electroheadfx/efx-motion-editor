@@ -16,6 +16,7 @@ import { defaultTransform, type Layer } from '../types/layer';
 import { layerStore } from './layerStore';
 import { projectStore } from './projectStore';
 import { applyPhysicPaintPayload, openPhysicPaintCanvas } from '../lib/physicPaintBridge';
+import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
 
 // Phase 43 Plan 03: store-level linked Loop Clip resolution. The canonical
 // getRotoPhysicalRenderSource seam resolves linked repetition frames to the
@@ -165,17 +166,22 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
     ]);
 
     const duplicateSources = [11, 18, 25].map((frame) => physicPaintStore.getRotoPhysicalRenderSource(LAYER, frame));
+    const sourceCycleId = getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C']);
     for (const source of duplicateSources) {
       expect(source).toMatchObject({
         kind: 'generated',
         leftKeyId: 'A',
         rightKeyId: 'B',
         interpolationMode: 'duplicate',
+        sourceCycleId,
+        cycleOffset: 1,
       });
       if (!source || source.kind !== 'generated') throw new Error('Expected linked generated duplicate source.');
       expect(source.renderedFrame.dataUrl).toBe(spaced[0].payload.dataUrl);
     }
     expect(new Set(duplicateSources.map((source) => source && 'cacheRevision' in source ? source.cacheRevision : null)).size).toBe(1);
+    const linkedCacheRevision = duplicateSources[0]?.kind === 'generated' ? duplicateSources[0].cacheRevision : null;
+    expect(linkedCacheRevision).toContain(`:linked-generated:duplicate:${sourceCycleId}:A:B:1`);
     expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 12)).toMatchObject({ kind: 'generated', appFrame: 12 });
     expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 17)).toMatchObject({ kind: 'real', keyId: 'A', appFrame: 17 });
 
@@ -207,6 +213,34 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
     } finally {
       Object.defineProperty(globalThis, 'document', { configurable: true, value: originalDocument });
     }
+  });
+
+  it('separates linked-generated cache identity for distinct ordered source cycles with the same adjacent pair and cycle offset', () => {
+    const spaced = [record('A', 0), record('B', 3), record('C', 6), record('D', 9)];
+    installRecords(spaced, 50, { enabled: true, mode: 'duplicate' });
+    installLoops([
+      loopClip('loop-abc', 12, ['A', 'B', 'C'], 1),
+      loopClip('loop-abd', 30, ['A', 'B', 'D'], 1),
+    ]);
+
+    const abc = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 13);
+    const abd = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 31);
+    expect(abc).toMatchObject({
+      kind: 'generated',
+      sourceCycleId: getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C']),
+      cycleOffset: 1,
+      leftKeyId: 'A',
+      rightKeyId: 'B',
+    });
+    expect(abd).toMatchObject({
+      kind: 'generated',
+      sourceCycleId: getPhysicsPaintRotoSourceCycleId(['A', 'B', 'D']),
+      cycleOffset: 1,
+      leftKeyId: 'A',
+      rightKeyId: 'B',
+    });
+    if (!abc || abc.kind !== 'generated' || !abd || abd.kind !== 'generated') throw new Error('Expected linked-generated sources.');
+    expect(abc.cacheRevision).not.toBe(abd.cacheRevision);
   });
 
   it('returns null for spaced linked gaps when interpolation is disabled', () => {
@@ -352,6 +386,19 @@ describe('unresolved-loop query (D-28 wiring)', () => {
       effectiveEnd: 4,
       missingSourceKeyIds: ['missing-1'],
     });
+  });
+
+  it('preserves invalid source timing when every referenced key exists but the ordered positions do not increase', () => {
+    installRecords([record('A', 0), record('B', 3), record('C', 6)]);
+    installLoops([loopClip('loop-invalid-order', 10, ['A', 'C', 'B'], 2)]);
+
+    expect(physicPaintStore.getRotoPhysicalUnresolvedLoops(LAYER, 10, 16)).toEqual([{
+      loopId: 'loop-invalid-order',
+      placementStart: 10,
+      effectiveEnd: 16,
+      missingSourceKeyIds: [],
+      invalidSourceTiming: true,
+    }]);
   });
 
   it('uses half-open intersection against the effective range', () => {

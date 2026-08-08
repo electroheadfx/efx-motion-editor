@@ -80,6 +80,28 @@ describe('Roto reference controller', () => {
       getFrame: () => frame(4, 'real-key', 'generic'),
     })).toBeNull();
 
+    const linkedGeneratedSource = {
+      ...generatedSource,
+      appFrame: 18,
+      sourceCycleId: '5:key-1|5:key-9',
+      cycleOffset: 4,
+      cacheRevision: 'rev-1:linked-generated:duplicate:5:key-1|5:key-9:key-1:key-9:4',
+      renderedFrame: { ...generatedSource.renderedFrame, appFrame: 18 },
+    };
+    expect(findCachedRotoDisplayFrame(18, { getPhysicalRenderSource: () => linkedGeneratedSource })).toMatchObject({
+      appFrame: 18,
+      dataUrl: generatedSource.renderedFrame.dataUrl,
+      cacheRevision: linkedGeneratedSource.cacheRevision,
+    });
+    for (const malformed of [
+      { ...linkedGeneratedSource, sourceCycleId: undefined },
+      { ...linkedGeneratedSource, cycleOffset: -1 },
+      { ...linkedGeneratedSource, cacheRevision: 'rev-1:linked-generated:duplicate:key-1:key-9:4' },
+      { ...linkedGeneratedSource, renderedFrame: { ...linkedGeneratedSource.renderedFrame, appFrame: 4 } },
+    ]) {
+      expect(findCachedRotoDisplayFrame(18, { getPhysicalRenderSource: () => malformed })).toBeNull();
+    }
+
     // Without a physical source there is no generic-store fallback.
     expect(findCachedRotoReferenceFrame(4, {
       getPhysicalRenderSource: () => null,

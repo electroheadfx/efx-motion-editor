@@ -296,6 +296,23 @@ describe('export loop preflight (failure path, D-28)', () => {
     expect(exportCreateDirMock).not.toHaveBeenCalled();
   });
 
+  it('reports invalid source timing truthfully when every referenced source key still exists', async () => {
+    install(
+      [record('A', 0), record('B', 3), record('C', 6)],
+      [loopClip('loop-invalid-order', 10, ['A', 'C', 'B'], 2)],
+    );
+    hoisted.fm = makeFm(16);
+
+    await startExport();
+
+    expect(exportStore.progress.peek().status).toBe('error');
+    expect(exportStore.progress.peek().errorMessage).toBe(
+      'Export blocked — Loop Clip at frame 10 has invalid source timing. Repair or unlink the loop, then export again.',
+    );
+    expect(renderGlobalFrameMock).not.toHaveBeenCalled();
+    expect(exportCreateDirMock).not.toHaveBeenCalled();
+  });
+
   it('names the earliest placementStart first; repairing it surfaces the next unresolved loop on re-export', async () => {
     install(
       [record('A', 0)],

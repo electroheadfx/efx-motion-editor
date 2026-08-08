@@ -623,6 +623,7 @@ describe('resolvePhysicPaintRotoLoopFrame — typed unresolved contract (D-31, a
       kind: 'linked-unresolved',
       loopId: 'invalid-order',
       missingSourceKeyIds: [],
+      invalidSourceTiming: true,
     });
     expect(context.ranges.find((range) => range.loopId === 'valid-sibling')).toMatchObject({
       sourceOffsets: [0, 3, 6],

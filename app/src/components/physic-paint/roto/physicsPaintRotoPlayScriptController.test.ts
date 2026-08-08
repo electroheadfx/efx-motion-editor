@@ -1898,6 +1898,38 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.confirmationOpen.value).toBe(false);
     });
 
+    it('preserves physically spaced source positions and stable IDs for same-count Source Edit across every shared loop', async () => {
+      const sourceKeyIds = ['S1', 'S2', 'S3'] as const;
+      const spacedRecords = sourceKeyIds.map((keyId, index) => physicalRecord(keyId, index * 3, `src-${keyId}`));
+      const loops = [
+        loopClip('L1', 20, 3, sourceKeyIds),
+        loopClip('L2', 50, 2, sourceKeyIds),
+      ];
+      const test = loopOpHarness(loops, {
+        canonicalStart: 20,
+        layerEndExclusive: 100,
+        capacity: 80,
+        physicalCapacity: 100,
+        physicalRecords: spacedRecords,
+      });
+      await test.controller.openSourceEdit('L1');
+
+      expect(test.controller.countText.value).toBe('3');
+      expect(await test.controller.confirm()).toBe(true);
+      expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ frameCount: 3, canonicalStart: 0 }));
+      const publication = test.commit.mock.calls[0][0];
+      expect(publication.records.map(({ keyId, appFrame }) => ({ keyId, appFrame }))).toEqual([
+        { keyId: 'S1', appFrame: 0 },
+        { keyId: 'S2', appFrame: 3 },
+        { keyId: 'S3', appFrame: 6 },
+      ]);
+      expect(publication.records.some((record) => record.appFrame === 1 || record.appFrame === 2)).toBe(false);
+      expect(publication.semanticDelta.freshKeyIds).toEqual([]);
+      for (const loop of publication.loopClips ?? []) expect(loop.sourceKeyIds).toEqual([...sourceKeyIds]);
+      expect(deriveRange(publication.records, publication.loopClips ?? [], 'L1', 100).cycleLength).toBe(7);
+      expect(deriveRange(publication.records, publication.loopClips ?? [], 'L2', 100).cycleLength).toBe(7);
+    });
+
     it('regenerates via the existing staged commit and retargets EVERY linked loop when the cycle length changes', async () => {
       const loops = [loopClip('L1', 10, 3), loopClip('L2', 30, 2)];
       const test = loopOpHarness(loops);

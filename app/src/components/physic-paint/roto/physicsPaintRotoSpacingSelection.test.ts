@@ -41,7 +41,7 @@ describe('Physics Paint Roto source-position spacing selection', () => {
     const sameSourceFromRepeat = togglePhysicsPaintRotoSpacingProxy(first, proxy('B', 1, CYCLE, 'loop-shared'));
     const reselected = togglePhysicsPaintRotoSpacingProxy(sameSourceFromRepeat, proxy('B', 1, CYCLE, 'loop-shared'));
 
-    expect(sameSourceFromRepeat?.selectedSourceKeyIds).toEqual([]);
+    expect(sameSourceFromRepeat).toBeNull();
     expect(reselected?.selectedSourceKeyIds).toEqual(['B']);
   });
 

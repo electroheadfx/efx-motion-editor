@@ -22,8 +22,9 @@ vi.mock('../stores/projectStore', () => ({
   },
 }));
 
-import { PreviewRenderer } from './previewRenderer';
+import { PreviewRenderer, getPreviewPhysicPaintFrameCacheKey } from './previewRenderer';
 import { clearProjectPaperRasterCache } from './projectPaperRaster';
+import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
 
 // Phase 43 Plan 09 Task 2: D-28 preview/playback placeholder surface. A frame
 // inside an unresolvable Loop Clip range renders as a MARKED, VISIBLE
@@ -137,8 +138,13 @@ function loopClip(
   return { loopId, placementStart, sourceKeyIds, repeat, mode: 'progressive' };
 }
 
-function install(records: readonly PhysicPaintRotoRealKeyRecord[], loops: readonly PhysicPaintRotoLoopClip[]): void {
-  const recordsResult = physicPaintStore.replaceRotoPhysicalRecords(LAYER, records, INTERPOLATION, CAPACITY);
+function install(
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  loops: readonly PhysicPaintRotoLoopClip[],
+  interpolation: { readonly enabled: boolean; readonly mode: 'duplicate' | 'blend' } = INTERPOLATION,
+  capacity = CAPACITY,
+): void {
+  const recordsResult = physicPaintStore.replaceRotoPhysicalRecords(LAYER, records, interpolation, capacity);
   if (!recordsResult.ok) throw new Error(recordsResult.error);
   const loopsResult = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, loops);
   if (!loopsResult.ok) throw new Error(loopsResult.error);
@@ -186,6 +192,37 @@ function installUnresolvedLoop(): void {
     [loopClip('loop-x', 0, ['A', 'missing-1'], 3)],
   );
 }
+
+describe('preview linked-generated cache identity', () => {
+  it('shares one key for the same ordered cycle and separates distinct cycles with matching adjacent IDs and cycle offset', () => {
+    install(
+      [record('A', 0), record('B', 3), record('C', 6), record('D', 9)],
+      [
+        loopClip('loop-abc', 12, ['A', 'B', 'C'], 2),
+        loopClip('loop-abd', 30, ['A', 'B', 'D'], 1),
+      ],
+      { enabled: true, mode: 'duplicate' },
+      50,
+    );
+    const sources = [13, 20, 31].map((frame) => physicPaintStore.getRotoPhysicalRenderSource(LAYER, frame));
+    for (const source of sources) {
+      if (!source || source.kind !== 'generated') throw new Error('Expected linked-generated preview source.');
+    }
+    const [first, repeated, distinct] = sources as Array<Extract<NonNullable<(typeof sources)[number]>, { kind: 'generated' }>>;
+    const previewKey = (source: typeof first) => getPreviewPhysicPaintFrameCacheKey({
+      layerId: LAYER,
+      frame: source.appFrame,
+      cacheKey: `physic-paint:${LAYER}:physical:${source.cacheRevision}`,
+      renderedFrame: source.renderedFrame,
+    });
+
+    expect(first.sourceCycleId).toBe(getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C']));
+    expect(repeated.sourceCycleId).toBe(first.sourceCycleId);
+    expect(distinct.sourceCycleId).toBe(getPhysicsPaintRotoSourceCycleId(['A', 'B', 'D']));
+    expect(previewKey(first)).toBe(previewKey(repeated));
+    expect(previewKey(distinct)).not.toBe(previewKey(first));
+  });
+});
 
 describe('preview loop placeholder (D-28, audit finding 3)', () => {
   it('renders an unresolved loop frame as a marked, visible placeholder — never a blank frame', () => {
