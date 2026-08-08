@@ -938,9 +938,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   }
 
   function assertPublicationAck(publication: RotoPlayScriptPhysicalPublication, result: Extract<RotoPlayScriptCommitResult, { ok: true }>): void {
+    const acknowledgedSelectedAppFrame = result.selectedKeyId === null ? null : result.selectedAppFrame;
     if (result.interpolationMode !== publication.interpolationMode
       || result.selectedKeyId !== publication.selectedKeyId
-      || result.selectedAppFrame !== publication.selectedAppFrame
+      || acknowledgedSelectedAppFrame !== publication.selectedAppFrame
       || !samePhysicalRecords(result.records, publication.records)) throw new Error('Parent returned a mismatched Play Script acknowledgement.');
     if (publication.loopClips !== undefined && !sameLoopClipCollections(result.loopClips, publication.loopClips)) {
       throw new Error('Parent returned a mismatched Loop Clip acknowledgement.');

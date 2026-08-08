@@ -2644,36 +2644,13 @@ button.destructive {
   pointer-events: none;
 }
 
-.physics-paint-loop-clip-rail-target:hover .physics-paint-loop-clip-rail-segment,
-.physics-paint-loop-clip-rail-target:focus-visible .physics-paint-loop-clip-rail-segment {
+.physics-paint-loop-clip-rail-target:hover:not(.selected) .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target:focus-visible:not(.selected) .physics-paint-loop-clip-rail-segment {
+  background: #ffffff;
+}
+
+.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {
   background: #f59e0b;
-}
-
-.physics-paint-loop-clip-rail-target.selected:not(:hover):not(:focus-visible) .physics-paint-loop-clip-rail-segment {
-  background: #a78bfa;
-}
-
-.physics-paint-loop-clip-rail-target.truncated .physics-paint-loop-clip-rail-segment {
-  background: linear-gradient(to right, #8b5cf6 0 calc(100% - 6px), #f59e0b calc(100% - 6px));
-}
-
-.physics-paint-loop-clip-rail-target.truncated:hover .physics-paint-loop-clip-rail-segment,
-.physics-paint-loop-clip-rail-target.truncated:focus-visible .physics-paint-loop-clip-rail-segment {
-  background: linear-gradient(to right, #f59e0b 0 calc(100% - 6px), #fbbf24 calc(100% - 6px));
-}
-
-.physics-paint-loop-clip-rail-target.truncated.selected:not(:hover):not(:focus-visible) .physics-paint-loop-clip-rail-segment {
-  background: linear-gradient(to right, #a78bfa 0 calc(100% - 6px), #fbbf24 calc(100% - 6px));
-}
-
-.physics-paint-loop-clip-rail-target.unresolved .physics-paint-loop-clip-rail-segment {
-  background: #ef4444;
-}
-
-.physics-paint-loop-clip-rail-target.unresolved:hover .physics-paint-loop-clip-rail-segment,
-.physics-paint-loop-clip-rail-target.unresolved:focus-visible .physics-paint-loop-clip-rail-segment,
-.physics-paint-loop-clip-rail-target.unresolved.selected .physics-paint-loop-clip-rail-segment {
-  background: #ff6666;
 }
 
 .physics-paint-loop-clip-rail-target:focus-visible {

@@ -1342,6 +1342,49 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.confirmationOpen.value).toBe(false);
     });
 
+    it('supports repeated decrease through 1 and increase again when no real key is selected', async () => {
+      let loops: readonly PhysicPaintRotoLoopClip[] = [loopClip('L1', 10, 4)];
+      const localAuthority = loopAuthority();
+      const requestAuthority = vi.fn(async () => localAuthority);
+      const getLoopEditSnapshot = (placementStart: number) => ({
+        identities: localAuthority.physicalRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        physicalCapacity: localAuthority.physicalCapacity,
+        layerEndExclusive: localAuthority.layerEndExclusive,
+        remainingCapacity: localAuthority.physicalCapacity - placementStart,
+      });
+      const commit = vi.fn(async (publication: RotoPlayScriptPhysicalPublication): Promise<RotoPlayScriptCommitResult> => {
+        loops = publication.loopClips ?? loops;
+        return {
+          ok: true,
+          operationId: `accepted-${commit.mock.calls.length}`,
+          acceptedRevision: `revision-${commit.mock.calls.length + 1}`,
+          records: publication.records,
+          interpolationMode: publication.interpolationMode,
+          selectedKeyId: null,
+          // The coordinator cursor remains meaningful even without a selected key.
+          selectedAppFrame: 20,
+          loopClips: loops,
+        };
+      });
+      const test = harness({
+        requestAuthority,
+        commit,
+        getRotoLoopClips: () => loops,
+        getLoopEditSnapshot,
+        getSelection: () => ({ kind: 'empty', keyId: null, appFrame: 20 }),
+      });
+
+      for (const repeat of ['2', '1', '2']) {
+        expect(await test.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+        test.controller.repeatText.value = repeat;
+        expect(await test.controller.confirm()).toBe(true);
+        expect(loops[0].repeat).toBe(Number(repeat));
+      }
+
+      expect(commit).toHaveBeenCalledTimes(3);
+      expect(rendered).not.toHaveBeenCalled();
+    });
+
     it('an unchanged repeat closes without a commit (no phantom history entry)', async () => {
       const test = loopOpHarness([loopClip('L1', 10, 3)]);
       await test.controller.openLoopEdit('L1');

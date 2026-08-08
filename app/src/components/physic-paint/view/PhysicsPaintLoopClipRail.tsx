@@ -6,6 +6,7 @@ import {
   type PhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
 
+export const LOOP_CLIP_FAST_DOUBLE_CLICK_MS = 220;
 export const LOOP_CLIP_SINGLE_CLICK_DELAY_MS = 250;
 
 export interface PhysicsPaintLoopClipRailProps {
@@ -22,7 +23,7 @@ export interface PhysicsPaintLoopClipRailProps {
 }
 
 interface RailMouseEvent {
-  readonly detail: number;
+  readonly timeStamp: number;
   stopPropagation(): void;
   preventDefault(): void;
 }
@@ -47,6 +48,7 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   const tooltip = useStyledTooltip();
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const pendingSingleClickRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastClickTimestampRef = useRef<number | null>(null);
   const { range, presentation } = props;
 
   const clearPendingSingleClick = () => {
@@ -54,7 +56,11 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     clearTimeout(pendingSingleClickRef.current);
     pendingSingleClickRef.current = null;
   };
-  useEffect(() => clearPendingSingleClick, []);
+  const clearClickSequence = () => {
+    clearPendingSingleClick();
+    lastClickTimestampRef.current = null;
+  };
+  useEffect(() => clearClickSequence, []);
 
   const stopPointerEvent = (event: { stopPropagation(): void }) => {
     event.stopPropagation();
@@ -62,31 +68,31 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   const handleClick = (event: RailMouseEvent) => {
     event.stopPropagation();
     tooltip.hide();
-    if (event.detail > 1) {
+    const previousTimestamp = lastClickTimestampRef.current;
+    const elapsed = previousTimestamp === null
+      ? Number.POSITIVE_INFINITY
+      : event.timeStamp - previousTimestamp;
+    if (elapsed >= 0 && elapsed <= LOOP_CLIP_FAST_DOUBLE_CLICK_MS) {
       event.preventDefault();
-      clearPendingSingleClick();
+      clearClickSequence();
+      props.onSelectLoopClip(range.loopId);
+      void props.onOpenLoopEdit(range.loopId);
       return;
     }
     clearPendingSingleClick();
+    lastClickTimestampRef.current = event.timeStamp;
     pendingSingleClickRef.current = setTimeout(() => {
       pendingSingleClickRef.current = null;
+      lastClickTimestampRef.current = null;
       props.onSelectLoopClip(props.selected ? null : range.loopId);
     }, LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
-  };
-  const handleDoubleClick = (event: RailMouseEvent) => {
-    event.stopPropagation();
-    event.preventDefault();
-    tooltip.hide();
-    clearPendingSingleClick();
-    props.onSelectLoopClip(range.loopId);
-    void props.onOpenLoopEdit(range.loopId);
   };
   const handleKeyDown = (event: RailKeyboardEvent) => {
     event.stopPropagation();
     if (event.key === 'Enter') {
       event.preventDefault();
       tooltip.hide();
-      clearPendingSingleClick();
+      clearClickSequence();
       props.onSelectLoopClip(range.loopId);
       void props.onOpenLoopEdit(range.loopId);
     }
@@ -107,7 +113,6 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
         aria-pressed={props.selected}
         onPointerDown={stopPointerEvent}
         onClick={handleClick}
-        onDblClick={handleDoubleClick}
         onKeyDown={handleKeyDown}
         onFocus={tooltip.onFocus}
         onBlur={tooltip.onBlur}

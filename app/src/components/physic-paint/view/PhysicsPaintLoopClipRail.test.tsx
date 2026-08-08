@@ -65,7 +65,7 @@ import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysica
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
-import { LOOP_CLIP_SINGLE_CLICK_DELAY_MS, PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
+import { LOOP_CLIP_FAST_DOUBLE_CLICK_MS, LOOP_CLIP_SINGLE_CLICK_DELAY_MS, PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
 import { PhysicsPaintScriptsPanel } from './PhysicsPaintScriptsPanel';
 import { PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
 import {
@@ -311,11 +311,12 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const railSegmentRule = cssRule('.physics-paint-loop-clip-rail-segment {');
     expect(railSegmentRule).toContain('height: 3px');
     expect(railSegmentRule).toContain('background: #8b5cf6');
-    expect(physicsPaintStudioCss).toContain('background: #f59e0b');
-    expect(physicsPaintStudioCss).toContain('background: #a78bfa');
-    expect(physicsPaintStudioCss).toContain('linear-gradient(to right, #8b5cf6 0 calc(100% - 6px), #f59e0b calc(100% - 6px))');
-    expect(physicsPaintStudioCss).toContain('linear-gradient(to right, #f59e0b 0 calc(100% - 6px), #fbbf24 calc(100% - 6px))');
-    expect(physicsPaintStudioCss).toContain('linear-gradient(to right, #a78bfa 0 calc(100% - 6px), #fbbf24 calc(100% - 6px))');
+    const railHoverRule = cssRule('.physics-paint-loop-clip-rail-target:hover:not(.selected) .physics-paint-loop-clip-rail-segment,');
+    expect(railHoverRule).toContain('background: #ffffff');
+    const railSelectedRule = cssRule('.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {');
+    expect(railSelectedRule).toContain('background: #f59e0b');
+    expect(physicsPaintStudioCss).not.toContain('background: #a78bfa');
+    expect(physicsPaintStudioCss).not.toContain('.physics-paint-loop-clip-rail-target.truncated .physics-paint-loop-clip-rail-segment');
     expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 12px');
     const railTargetHoverRule = cssRule('.physics-paint-loop-clip-rail-target:hover:not(:disabled),');
     expect(railTargetHoverRule).toContain('background: transparent');
@@ -335,7 +336,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(railTooltip.props.topmost).toBe(true);
     expect(cssRule('.physics-paint-styled-tooltip--topmost {')).toContain('z-index: 69');
 
-    const selectedSingleClick = { detail: 1, stopPropagation: vi.fn(), preventDefault: vi.fn() };
+    const selectedSingleClick = { detail: 1, timeStamp: 100, stopPropagation: vi.fn(), preventDefault: vi.fn() };
     (target.props.onClick as (event: typeof selectedSingleClick) => void)(selectedSingleClick);
     expect(selectedSingleClick.stopPropagation).toHaveBeenCalledOnce();
     expect(selectedSingleClick.preventDefault).not.toHaveBeenCalled();
@@ -357,20 +358,49 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     }), new Set(['PhysicsPaintLoopClipRailTarget']));
     const unselectedTarget = findOne(unselectedRailTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     onSelectLoopClip.mockClear();
-    (unselectedTarget.props.onClick as (event: typeof selectedSingleClick) => void)({ detail: 1, stopPropagation: vi.fn(), preventDefault: vi.fn() });
+    (unselectedTarget.props.onClick as (event: typeof selectedSingleClick) => void)({ detail: 1, timeStamp: 1_000, stopPropagation: vi.fn(), preventDefault: vi.fn() });
     vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
     expect(onSelectLoopClip).toHaveBeenLastCalledWith(rawLoopId);
 
+    hooks.reset();
+    const selectedAgainTree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: loopContext.ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 8, endFrameExclusive: 20 },
+      framePitch: 18,
+      selectedLoopClipId,
+      onSelectLoopClip,
+      onOpenLoopEdit,
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    const selectedAgainTarget = findOne(selectedAgainTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     onSelectLoopClip.mockClear();
-    const firstClick = { detail: 1, stopPropagation: vi.fn(), preventDefault: vi.fn() };
-    const secondClick = { detail: 2, stopPropagation: vi.fn(), preventDefault: vi.fn() };
-    (target.props.onClick as (event: typeof firstClick) => void)(firstClick);
-    (target.props.onClick as (event: typeof secondClick) => void)(secondClick);
-    (target.props.onDblClick as (event: typeof secondClick) => void)(secondClick);
+    const slowSecondClick = { detail: 2, timeStamp: 1_000 + LOOP_CLIP_FAST_DOUBLE_CLICK_MS + 50, stopPropagation: vi.fn(), preventDefault: vi.fn() };
+    (selectedAgainTarget.props.onClick as (event: typeof slowSecondClick) => void)(slowSecondClick);
+    vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
+    expect(onSelectLoopClip).toHaveBeenCalledOnce();
+    expect(onSelectLoopClip).toHaveBeenLastCalledWith(null);
+    expect(onOpenLoopEdit).not.toHaveBeenCalled();
+
+    hooks.reset();
+    const fastDoubleTree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: loopContext.ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 8, endFrameExclusive: 20 },
+      framePitch: 18,
+      selectedLoopClipId: null,
+      onSelectLoopClip,
+      onOpenLoopEdit,
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    const fastDoubleTarget = findOne(fastDoubleTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+    onSelectLoopClip.mockClear();
+    const firstClick = { detail: 1, timeStamp: 2_000, stopPropagation: vi.fn(), preventDefault: vi.fn() };
+    const secondClick = { detail: 2, timeStamp: 2_000 + LOOP_CLIP_FAST_DOUBLE_CLICK_MS - 1, stopPropagation: vi.fn(), preventDefault: vi.fn() };
+    (fastDoubleTarget.props.onClick as (event: typeof firstClick) => void)(firstClick);
+    (fastDoubleTarget.props.onClick as (event: typeof secondClick) => void)(secondClick);
     vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
     expect(firstClick.stopPropagation).toHaveBeenCalledOnce();
-    expect(secondClick.preventDefault).toHaveBeenCalledTimes(2);
+    expect(secondClick.preventDefault).toHaveBeenCalledOnce();
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
     expect(onSelectLoopClip).toHaveBeenLastCalledWith(rawLoopId);
     expect(onOpenLoopEdit).toHaveBeenCalledOnce();

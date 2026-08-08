@@ -545,6 +545,8 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       const records = portsRef.current.records.getRecords(launch.layerId);
       const interpolation = portsRef.current.records.getInterpolation(launch.layerId);
       const capacity = portsRef.current.records.getCapacity(launch.layerId);
+      const selectedKeyId = portsRef.current.selection.getSelectedKeyId();
+      const currentAppFrame = portsRef.current.selection.getCurrentAppFrame();
       const buffer = portsRef.current.buffer;
       const reference = portsRef.current.reference.getCachedReference();
       return {
@@ -560,9 +562,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         capacity,
         expectedRevision,
         stagedRevision,
-        selectedKeyId: portsRef.current.selection.getSelectedKeyId(),
-        selectedAppFrame: portsRef.current.selection.getCurrentAppFrame(),
-        currentAppFrame: portsRef.current.selection.getCurrentAppFrame(),
+        selectedKeyId,
+        selectedAppFrame: selectedKeyId === null ? null : currentAppFrame,
+        currentAppFrame,
         dirtyFrames: cloneSet(buffer.dirtyFrames),
         editableFrames: [...buffer.editableFrames],
         liveOverlayActionCounts: cloneCounts(buffer.liveOverlayActionCounts),
