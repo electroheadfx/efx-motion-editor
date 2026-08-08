@@ -24,6 +24,7 @@ import { usePhysicsPaintEngineActions } from './engine/usePhysicsPaintEngineActi
 import { useRotoBackgroundMetadataSync } from './hooks/useRotoBackgroundMetadataSync';
 import { getOnionFrameOpacity, projectRotoOnionPreviewFrames } from './roto/rotoOnionPreview';
 import { selectPhysicsPaintMissingConditions, selectRotoPlaybackAvailable } from './view/physicsPaintStudioSelectors';
+import { projectPhysicsPaintLoopClipPresentation } from './view/physicsPaintLoopClipPresentation';
 import { buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
 import { createPhysicPaintThumbnailNativeEncoder, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
@@ -68,6 +69,7 @@ export function PhysicsPaintStudio() {
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
   const selectedKeyId = useSignal<string | null>(launchContext?.rotoPhysical?.selectedKeyId ?? null);
+  const selectedLoopClipId = useSignal<string | null>(null);
   // Session-local multi-selection (Pattern 5; D-02/D-05): keyId-only, never
   // persisted, never sent across the bridge — only selectedKeyId persists.
   const selectedKeyIds = useSignal<readonly string[]>([]);
@@ -740,6 +742,26 @@ export function PhysicsPaintStudio() {
     (loopId: string) => rotoPlayScript.openLoopEdit(loopId),
     [rotoPlayScript],
   );
+  const handleSelectRotoLoopClip = useCallback((loopId: string) => {
+    selectedLoopClipId.value = loopId;
+  }, []);
+  const loopResolutionContext = rotoTimelineModel.loopResolutionContext.value;
+  const loopScriptRows = rotoScriptLibrary.rows.value;
+  const loopPresentations = useMemo(() => {
+    const clipsById = new Map(rotoLoopClips.map((clip) => [clip.loopId, clip]));
+    const scriptsById = new Map(loopScriptRows.map((row) => [row.id, row]));
+    return new Map((loopResolutionContext?.ranges ?? []).map((range) => {
+      const clip = clipsById.get(range.loopId);
+      const sourceScriptName = clip?.scriptId ? scriptsById.get(clip.scriptId)?.name ?? null : null;
+      return [
+        range.loopId,
+        projectPhysicsPaintLoopClipPresentation(range, clip, sourceScriptName),
+      ] as const;
+    }));
+  }, [loopResolutionContext, loopScriptRows, rotoLoopClips]);
+  const selectedLoopClip = selectedLoopClipId.value === null
+    ? null
+    : loopPresentations.get(selectedLoopClipId.value) ?? null;
   // 43-06 (D-01/Q3): the capsule badge click reaches this Studio — open the
   // Play Script dialog in loop-edit mode targeting the requested loop.
   usePhysicsPaintOpenLoopEditBridge((loopId) => { void rotoPlayScript.openLoopEdit(loopId); });
@@ -1256,7 +1278,7 @@ export function PhysicsPaintStudio() {
   // fresh per-render getRotoInterpolationSettings clone. Signal-backed
   // controllers pass through by identity so their signal subscriptions
   // (ScriptsPanel rows/busy/selection) keep flowing independent of the memo.
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, handleOpenRotoLoopEdit, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
     activeTool: settings.tool,
     color: settings.color,
     opacity: settings.opacity,
@@ -1285,6 +1307,8 @@ export function PhysicsPaintStudio() {
       playScript: rotoPlayScript,
       rotoScript,
       playButtonRef,
+      selectedLoopClip,
+      onOpenLoopEdit: handleOpenRotoLoopEdit,
       onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
       onActivateRow: (id: string) => { void handleScriptRowActivate(id); },
       onLoadAndApply: () => { void handleSelectedScriptLoadAndApply(); },
@@ -1453,7 +1477,7 @@ export function PhysicsPaintStudio() {
         // intent routes through the monitor funnel for immediate effect.
         audioPreviewEnabled: audioPreviewEnabled.value, onAudioPreviewToggle: handleAudioPreviewToggle,
         onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange, onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
-        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: rotoTimelineModel.loopResolutionContext.value, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
+        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipId: selectedLoopClipId.value, onSelectRotoLoopClip: handleSelectRotoLoopClip, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).

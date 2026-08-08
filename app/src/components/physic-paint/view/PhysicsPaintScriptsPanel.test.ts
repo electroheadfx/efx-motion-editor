@@ -106,10 +106,15 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(rightPanel).not.toContain('getPhysicsPaintSessionControlState');
   });
 
-  it('exposes six ordered accessible Lucide controls and exact disabled reasons', () => {
-    const labels = ['Save Script', 'Load and Apply Script', 'Play Script', 'Rename Script', 'Delete Script', 'Refresh Scripts'];
-    let cursor = -1;
-    for (const label of labels) { const next = panel.indexOf(`label="${label}"`); expect(next).toBeGreaterThan(cursor); cursor = next; }
+  it('keeps ordered accessible controls while swapping Play to contextual Loop Edit', () => {
+    const labels = ['Save Script', 'Load and Apply Script', 'Delete Script', 'Refresh Scripts'];
+    for (const label of labels) expect(panel).toContain(`label="${label}"`);
+    expect(panel.indexOf('label="Save Script"')).toBeLessThan(panel.indexOf('label="Load and Apply Script"'));
+    expect(panel.indexOf('selectedLoopClip ?')).toBeLessThan(panel.indexOf('label="Delete Script"'));
+    expect(panel.indexOf('label="Delete Script"')).toBeLessThan(panel.indexOf('label="Refresh Scripts"'));
+    expect(panel).toContain('label={`Edit Loop Clip — ${selectedLoopClip.displayName}`}');
+    expect(panel).toContain('label="Play Script"');
+    expect(panel).not.toContain('label="Rename Script"');
     expect(panel).toContain('aria-label={props.label}');
     expect(panel).toContain('title={props.title}');
     expect(controller).toContain("saveDisabledReason: !projectSaved.value ? 'Save the project first.'");

@@ -8,10 +8,9 @@ import {
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import { resolveRotoVisibleFrameResolutions } from '../roto/rotoTimelineSelectors';
 import {
-  activatePhysicsPaintLoopClipBadge,
-  activatePhysicsPaintLoopClipBody,
-  PhysicsPaintLoopClipLane,
-} from './PhysicsPaintLoopClipLane';
+  projectPhysicsPaintLoopClipGeometry,
+  projectPhysicsPaintLoopClipPresentation,
+} from './physicsPaintLoopClipPresentation';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const source = () => readFileSync(sourcePath, 'utf8');
@@ -52,28 +51,6 @@ function getMatchingDivEnd(code: string, start: number): number {
 }
 function countOccurrences(code: string, literal: string): number {
   return code.split(literal).length - 1;
-}
-
-interface TestVNode {
-  type: unknown;
-  props?: Record<string, unknown>;
-}
-
-function findVNodes(node: unknown, predicate: (vnode: TestVNode) => boolean): TestVNode[] {
-  if (node === null || node === undefined || typeof node === 'boolean') return [];
-  if (Array.isArray(node)) return node.flatMap((child) => findVNodes(child, predicate));
-  if (typeof node !== 'object') return [];
-  const vnode = node as TestVNode;
-  const matches = predicate(vnode) ? [vnode] : [];
-  return [...matches, ...findVNodes(vnode.props?.children, predicate)];
-}
-
-function vnodeText(node: unknown): string {
-  if (node === null || node === undefined || typeof node === 'boolean') return '';
-  if (typeof node === 'string' || typeof node === 'number') return String(node);
-  if (Array.isArray(node)) return node.map(vnodeText).join('');
-  if (typeof node !== 'object') return '';
-  return vnodeText((node as TestVNode).props?.children);
 }
 
 const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: string }> = [
@@ -1186,94 +1163,81 @@ describe('PhysicsPaintWorkflowStrip loop resolution wiring (43-02, Pitfall 7)', 
 
 
 describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () => {
-  it('hosts one canonical Loop Clips lane between the ruler and physical cells', () => {
+  it('hosts the integrated Loop Rail inside the unchanged physical row', () => {
     const code = source();
     const rulerIndex = code.indexOf('class="physics-paint-ruler"');
-    const loopLaneIndex = code.indexOf('<PhysicsPaintLoopClipLane');
     const physicalLaneIndex = code.indexOf('class="physics-paint-lane"');
+    const loopRailIndex = code.indexOf('<PhysicsPaintLoopClipRail');
+    const cellsIndex = code.indexOf('class="physics-paint-roto-cells"');
 
+    expect(getWorkflowStripPropsInterface(code)).toContain('selectedRotoLoopClipId?: string | null;');
     expect(getWorkflowStripPropsInterface(code)).toContain('onSelectRotoLoopClip?: (loopId: string) => void;');
     expect(getWorkflowStripPropsInterface(code)).toContain('onOpenRotoLoopEdit?: (loopId: string) => Promise<');
     expect(code).toContain('loopResolutionContext.ranges.length > 0');
     expect(code).toContain('ranges={loopResolutionContext.ranges}');
     expect(code).toContain('visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}');
     expect(rulerIndex).toBeGreaterThanOrEqual(0);
-    expect(loopLaneIndex).toBeGreaterThan(rulerIndex);
-    expect(physicalLaneIndex).toBeGreaterThan(loopLaneIndex);
+    expect(physicalLaneIndex).toBeGreaterThan(rulerIndex);
+    expect(loopRailIndex).toBeGreaterThan(physicalLaneIndex);
+    expect(cellsIndex).toBeGreaterThan(loopRailIndex);
+    expect(code).not.toContain('PhysicsPaintLoopClipLane');
   });
 
-  it('renders visible Cycle badge copy without exposing the raw loop UUID', () => {
+  it('derives accessible product copy without exposing the raw loop UUID', () => {
+    const clip = {
+      loopId: '0f65c808-raw-loop-uuid',
+      placementStart: 0,
+      sourceKeyIds: Array.from({ length: 5 }, (_, index) => `source-${index}`),
+      repeat: 5 as const,
+      mode: 'static' as const,
+      scriptId: 'script-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+    };
     const context = derivePhysicPaintRotoLoopRanges({
       identities: Array.from({ length: 5 }, (_, index) => ({ keyId: `source-${index}`, appFrame: index })),
-      loopClips: [{
-        loopId: '0f65c808-raw-loop-uuid',
-        placementStart: 0,
-        sourceKeyIds: Array.from({ length: 5 }, (_, index) => `source-${index}`),
-        repeat: 5,
-        mode: 'static',
-      }],
+      loopClips: [clip],
       parentEndExclusive: 25,
       capacity: 120,
     });
-    const tree = PhysicsPaintLoopClipLane({
-      ranges: context.ranges,
-      visibleFrameWindow: { startFrame: 0, endFrameExclusive: 120 },
-      framePitch: 18,
-      onOpenLoopEdit: async () => ({ ok: true }),
+    const presentation = projectPhysicsPaintLoopClipPresentation(context.ranges[0], clip, 'Walk');
+
+    expect(presentation.displayName).toBe('Walk Loop');
+    expect(presentation.cycleLabel).toBe('Cycle 5f × 5 = 25f');
+    expect(presentation.effectiveLabel).toBe('Effective 25f');
+    expect(presentation.statusLabel).toBe('Linked');
+    expect([
+      presentation.displayName,
+      presentation.sourceLabel,
+      presentation.placementLabel,
+      presentation.cycleLabel,
+      presentation.effectiveLabel,
+      presentation.modeLabel,
+      presentation.statusLabel,
+    ].join(' ')).not.toContain('0f65c808-raw-loop-uuid');
+  });
+
+  it('projects one compact segment without materializing repeated frames', () => {
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: Array.from({ length: 5 }, (_, index) => ({ keyId: `source-${index}`, appFrame: index })),
+      loopClips: [{
+        loopId: 'loop-1',
+        placementStart: 10,
+        sourceKeyIds: Array.from({ length: 5 }, (_, index) => `source-${index}`),
+        repeat: 5,
+        mode: 'progressive',
+      }],
+      parentEndExclusive: 40,
+      capacity: 120,
     });
-    const body = findVNodes(tree, (vnode) => vnode.props?.class === 'physics-paint-loop-clip-body')[0];
-    const badge = findVNodes(tree, (vnode) => vnode.props?.class === 'physics-paint-loop-clip-badge')[0];
 
-    expect(body).toBeDefined();
-    expect(badge).toBeDefined();
-    expect(vnodeText(body)).not.toContain('0f65c808-raw-loop-uuid');
-    expect(String(body?.props?.['aria-label'])).toContain('Cycle 5f × 5 = 25f');
-    expect(vnodeText(badge)).toBe('Cycle 5f × 5 = 25f');
-    expect(badge?.props?.['aria-label']).toBe('Edit Loop Clip — Cycle 5f × 5 = 25f');
-  });
-
-  it('keeps the Cycle badge as the identifiable hit target above the capsule body', () => {
-    const styles = css();
-    const capsule = getCssRuleBlock(styles, '.physics-paint-loop-clip {');
-    const body = getCssRuleBlock(styles, '.physics-paint-loop-clip-body {');
-    const badge = getCssRuleBlock(styles, '.physics-paint-loop-clip-badge {');
-
-    expect(capsule).toContain('position: absolute');
-    expect(capsule).toContain('height: 24px');
-    expect(body).toContain('position: absolute');
-    expect(body).toContain('inset: 0');
-    expect(badge).toContain('position: absolute');
-    expect(badge).toContain('z-index: 2');
-    expect(badge).toContain('height: 16px');
-    expect(badge).toContain('pointer-events: auto');
-  });
-
-  it('keeps body selection lane-local and stops pointer fallthrough', () => {
-    const onSelectLoopClip = vi.fn();
-    const stopPropagation = vi.fn();
-    const preventDefault = vi.fn();
-
-    activatePhysicsPaintLoopClipBody('loop-1', { stopPropagation, preventDefault }, onSelectLoopClip);
-
-    expect(stopPropagation).toHaveBeenCalledTimes(1);
-    expect(preventDefault).not.toHaveBeenCalled();
-    expect(onSelectLoopClip).toHaveBeenCalledTimes(1);
-    expect(onSelectLoopClip).toHaveBeenCalledWith('loop-1');
-  });
-
-  it('opens Loop Edit from the badge exactly once without selecting the body', async () => {
-    const onOpenLoopEdit = vi.fn(async () => ({ ok: true as const }));
-    const onSelectLoopClip = vi.fn();
-    const stopPropagation = vi.fn();
-    const preventDefault = vi.fn();
-
-    await activatePhysicsPaintLoopClipBadge('loop-1', { stopPropagation, preventDefault }, onOpenLoopEdit);
-
-    expect(stopPropagation).toHaveBeenCalledTimes(1);
-    expect(preventDefault).toHaveBeenCalledTimes(1);
-    expect(onOpenLoopEdit).toHaveBeenCalledTimes(1);
-    expect(onOpenLoopEdit).toHaveBeenCalledWith('loop-1');
-    expect(onSelectLoopClip).not.toHaveBeenCalled();
+    expect(projectPhysicsPaintLoopClipGeometry(
+      context.ranges[0],
+      { startFrame: 0, endFrameExclusive: 120 },
+      18,
+    )).toEqual({ left: 180, width: 450 });
+    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-segment\s*\{[^}]*height:\s*3px/s);
+    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\s*\{[^}]*height:\s*12px/s);
   });
 
   it('does not alter physical-cell click ordering or the real-key-only drag guard', () => {

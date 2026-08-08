@@ -3,7 +3,7 @@ import {sequenceStore} from '../stores/sequenceStore';
 import {audioStore} from '../stores/audioStore';
 import {physicPaintStore, physicPaintVersion} from '../stores/physicPaintStore';
 import {audioPeaksCache, peaksCacheRevision} from './audioPeaksCache';
-import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange, TimelineLoopCapsule} from '../types/timeline';
+import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange} from '../types/timeline';
 import type {GlTransition, Sequence} from '../types/sequence';
 import type {Layer, LayerType, EasingType} from '../types/layer';
 import {derivePhysicPaintRotoLoopRanges} from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
@@ -165,45 +165,6 @@ function getPhysicPaintRotoDisplayEndFrame(layer: Layer, seq: Sequence): number 
   return Math.max(lastRealEnd ?? 0, loopEnd ?? 0);
 }
 
-/** ONE compact capsule model per Loop Clip (D-32) — the resolver-derived
- *  interval plus per-first-cycle-cell real-key-backed classification and
- *  source payload dataUrls for ThumbnailCache drawing (D-15). */
-function buildTimelineLoopCapsules(layer: Layer, seq: Sequence): TimelineLoopCapsule[] | undefined {
-  const context = deriveMainEditorLoopRanges(layer, seq);
-  if (!context) return undefined;
-  const layerId = getLayerId(layer);
-  const records = physicPaintStore.getRotoRealKeyRecords(layerId);
-  const recordByKeyId = new Map(records.map((record) => [record.keyId, record]));
-  const keyIdAtFrame = new Map(records.map((record) => [record.appFrame, record.keyId]));
-  const clipById = new Map(physicPaintStore.getRotoPhysicalLoopClips(layerId).map((clip) => [clip.loopId, clip]));
-  return context.ranges.map((range) => ({
-    loopId: range.loopId,
-    placementStart: range.placementStart,
-    cycleLength: range.cycleLength,
-    repeat: range.repeat,
-    requestedEnd: range.requestedEnd,
-    effectiveEnd: range.effectiveEnd,
-    truncated: range.truncated,
-    partialCycle: range.partialCycle,
-    boundaryKind: range.boundary.kind,
-    boundaryFrame: range.boundary.frame,
-    mode: clipById.get(range.loopId)?.mode ?? 'progressive',
-    unresolved: range.unresolved,
-    firstCycleCells: range.sourceKeyIds.map((sourceKeyId, index) => {
-      const record = recordByKeyId.get(sourceKeyId);
-      return {
-        sourceKeyId,
-        sourceAppFrame: record?.appFrame ?? null,
-        dataUrl: record?.payload.dataUrl ?? null,
-        // Real-key-backed iff THIS source key is the real key living at this
-        // presentation frame (original loop); a duplicated loop's placement
-        // frames hold no source keys, so its first-cycle cells stay linked (D-15).
-        realKeyBacked: keyIdAtFrame.get(range.placementStart + index) === sourceKeyId,
-      };
-    }),
-  }));
-}
-
 function getTimelineRequiredFrameCount(sequences: readonly Sequence[], contentFrameCount: number): number {
   let required = contentFrameCount;
   for (const seq of sequences) {
@@ -275,9 +236,6 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       layerType: primaryLayer?.type,
       rotoKeyFrames: primaryLayer?.type === 'physic-paint'
         ? physicPaintStore.getRotoRealKeyRecords(getLayerId(primaryLayer)).map((record) => record.appFrame)
-        : undefined,
-      loopCapsules: primaryLayer?.type === 'physic-paint'
-        ? buildTimelineLoopCapsules(primaryLayer, seq)
         : undefined,
       fadeIn: seq.fadeIn ? { duration: seq.fadeIn.duration } : undefined,
       fadeOut: seq.fadeOut ? { duration: seq.fadeOut.duration } : undefined,

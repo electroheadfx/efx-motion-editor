@@ -5,12 +5,15 @@ import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScri
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
+import type { PhysicsPaintLoopClipPresentation } from './physicsPaintLoopClipPresentation';
 
 export interface PhysicsPaintScriptsPanelProps {
   library: RotoScriptLibraryController;
   playScript: RotoPlayScriptController;
   rotoScript: RotoScriptClipboardController;
   playButtonRef: RefObject<HTMLButtonElement>;
+  selectedLoopClip?: PhysicsPaintLoopClipPresentation | null;
+  onOpenLoopEdit?: (loopId: string) => Promise<unknown>;
   onSave: () => void;
   onActivateRow: (id: string) => void;
   onLoadAndApply: () => void;
@@ -25,6 +28,8 @@ export function PhysicsPaintScriptsPanel({
   playScript,
   rotoScript,
   playButtonRef,
+  selectedLoopClip = null,
+  onOpenLoopEdit,
   onSave,
   onActivateRow,
   onLoadAndApply,
@@ -75,8 +80,18 @@ export function PhysicsPaintScriptsPanel({
       <div class="physics-paint-scripts-toolbar" role="toolbar" aria-label="Roto script library actions">
         <IconButton label="Save Script" title={`Save Script — ${availability.saveDisabledReason ?? 'Save the active real Roto frame'}`} disabled={!availability.canSave} disabledReason={availability.saveDisabledReason ?? undefined} descriptionId={saveReasonId} onClick={onSave}><Save size={16} /></IconButton>
         <IconButton label="Load and Apply Script" title={`Load and Apply Script — ${loadAndApplyDisabledReason ?? 'Reload the selected preset and apply it to this Roto frame'}`} disabled={loadAndApplyDisabledReason !== null} disabledReason={loadAndApplyDisabledReason ?? undefined} descriptionId={loadAndApplyReasonId} onClick={onLoadAndApply}><Paintbrush size={16} /></IconButton>
-        <IconButton buttonRef={playButtonRef} label="Play Script" title={`Play Script — ${playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)'}`} disabled={playScript.disabledReason.value !== null} disabledReason={playScript.disabledReason.value ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
-        <IconButton label="Rename Script" title="Rename Script — Edit the selected preset name" disabled={!availability.canRename} onClick={library.beginRename}><Pencil size={16} /></IconButton>
+        {selectedLoopClip ? (
+          <IconButton
+            buttonRef={playButtonRef}
+            label={`Edit Loop Clip — ${selectedLoopClip.displayName}`}
+            title={`Edit Loop Clip — ${selectedLoopClip.displayName}`}
+            onClick={() => { void onOpenLoopEdit?.(selectedLoopClip.loopId); }}
+          >
+            <Pencil size={16} />
+          </IconButton>
+        ) : (
+          <IconButton buttonRef={playButtonRef} label="Play Script" title={`Play Script — ${playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)'}`} disabled={playScript.disabledReason.value !== null} disabledReason={playScript.disabledReason.value ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
+        )}
         <IconButton buttonRef={deleteButtonRef} label="Delete Script" title="Delete Script — Remove the selected project preset" disabled={!availability.canDelete} onClick={library.requestDelete}><Trash2 size={16} /></IconButton>
         <IconButton label="Refresh Scripts" title="Refresh Scripts — Scan the project scripts folder" disabled={library.busy.value} onClick={onRefresh}><RefreshCw size={16} /></IconButton>
         <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyScriptTooltip.onPointerEnter} onPointerLeave={copyScriptTooltip.onPointerLeave}>
@@ -164,10 +179,22 @@ export function PhysicsPaintScriptsPanel({
           </PhysicsPaintStyledTooltip>
         </span>
       </div>
-      <p class="physics-paint-scripts-summary">
-        <span class="physics-paint-scripts-summary-line1">{playScript.appliedSummary.line1.value}</span>
-        <span class="physics-paint-scripts-summary-line2">{playScript.appliedSummary.line2.value}</span>
-      </p>
+      {selectedLoopClip ? (
+        <dl class="physics-paint-loop-clip-inspector" aria-label={`Selected Loop Clip — ${selectedLoopClip.displayName}`}>
+          <div><dt>Name</dt><dd title={selectedLoopClip.displayName}>{selectedLoopClip.displayName}</dd></div>
+          <div><dt>Source script</dt><dd title={selectedLoopClip.sourceLabel}>{selectedLoopClip.sourceLabel}</dd></div>
+          <div><dt>Placement</dt><dd>{selectedLoopClip.placementLabel}</dd></div>
+          <div><dt>Cycle</dt><dd>{selectedLoopClip.cycleLabel}</dd></div>
+          <div><dt>Effective</dt><dd>{selectedLoopClip.effectiveLabel}</dd></div>
+          <div><dt>Mode</dt><dd>{selectedLoopClip.modeLabel}</dd></div>
+          <div><dt>Status</dt><dd>{selectedLoopClip.statusLabel}</dd></div>
+        </dl>
+      ) : (
+        <p class="physics-paint-scripts-summary">
+          <span class="physics-paint-scripts-summary-line1">{playScript.appliedSummary.line1.value}</span>
+          <span class="physics-paint-scripts-summary-line2">{playScript.appliedSummary.line2.value}</span>
+        </p>
+      )}
       <div class="physics-paint-scripts-list" role="listbox" aria-label="Saved Roto scripts">
         {rows.map((row) => (
           <div
@@ -202,7 +229,21 @@ export function PhysicsPaintScriptsPanel({
                   />
                   {rename.error ? <span class="physics-paint-script-inline-error">{rename.error}</span> : null}
                 </span>
-              ) : <span class="physics-paint-script-name">{row.name}</span>}
+              ) : (
+                <button
+                  type="button"
+                  class="physics-paint-script-name"
+                  aria-label={`Rename ${row.name}`}
+                  disabled={library.busy.value}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    library.select(row.id);
+                    library.beginRename();
+                  }}
+                >
+                  {row.name}
+                </button>
+              )}
               <span class="physics-paint-script-provenance">{row.source.projectName} · {row.source.layerName} · F{row.source.displayFrame}</span>
               <span class="physics-paint-script-count">{row.brushCount} {row.brushCount === 1 ? 'brush' : 'brushes'}</span>
             </span>

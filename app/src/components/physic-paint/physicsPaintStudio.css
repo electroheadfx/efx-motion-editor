@@ -1217,6 +1217,10 @@ button.destructive {
 .physics-paint-scripts-summary { display: flex; flex-direction: column; gap: 2px; min-width: 0; margin: 0; }
 .physics-paint-scripts-summary-line1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #aeb5be; font-size: 10px; }
 .physics-paint-scripts-summary-line2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #eef1f4; font-size: 12px; }
+.physics-paint-loop-clip-inspector { display: flex; flex-direction: column; gap: 3px; min-width: 0; margin: 0; padding: 0; }
+.physics-paint-loop-clip-inspector > div { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 6px; min-width: 0; }
+.physics-paint-loop-clip-inspector dt { color: #aeb5be; font-size: 10px; }
+.physics-paint-loop-clip-inspector dd { min-width: 0; margin: 0; overflow: hidden; color: #eef1f4; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .physics-paint-script-confirmation { position: absolute; inset: 44px 4px auto; z-index: 8; display: flex; flex-direction: column; gap: 8px; max-height: calc(100% - 52px); padding: 12px; border: 1px solid #737980; border-radius: 7px; overflow: auto; background: #292b2d; box-shadow: 0 12px 28px rgba(0,0,0,.45); font-size: 11px; }
 /* ================= Play Script modal (D-19) =================
    Compact independent DARK modal overlay above the Paint interface: out-of-flow fixed
@@ -2586,98 +2590,81 @@ button.destructive {
   content: '';
 }
 
-.physics-paint-loop-clip-lane {
-  position: relative;
-  flex: 0 0 32px;
-  min-width: 2160px;
-  height: 32px;
-  border-bottom: 1px solid #4d5156;
-  background: #37393a;
-}
-
-.physics-paint-loop-clip-lane-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.physics-paint-loop-clip {
-  position: absolute;
-  top: 4px;
-  box-sizing: border-box;
-  height: 24px;
-  min-width: 18px;
-  border: 1px solid #73879a;
-  border-radius: 5px;
-  overflow: hidden;
-  background: #344453;
-}
-
-.physics-paint-loop-clip.selected {
-  border-color: #f5a623;
-  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.4);
-}
-
-.physics-paint-loop-clip-body {
+.physics-paint-loop-clip-rail {
   position: absolute;
   inset: 0;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: transparent;
-  cursor: pointer;
+  z-index: 4;
+  width: 2160px;
+  height: 12px;
+  pointer-events: none;
 }
 
-.physics-paint-loop-clip-body:hover,
-.physics-paint-loop-clip-body:focus-visible {
-  background: rgba(255, 255, 255, 0.08);
-  outline: none;
-}
-
-.physics-paint-loop-clip-badge {
+.physics-paint-loop-clip-rail-anchor {
   position: absolute;
-  top: 3px;
-  left: 5px;
-  z-index: 2;
-  max-width: calc(100% - 10px);
-  height: 16px;
-  padding: 0 5px;
-  border: 0;
-  border-radius: 3px;
-  overflow: hidden;
-  background: #202a33;
-  color: #e7edf3;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 16px;
-  letter-spacing: 0;
-  text-align: left;
-  text-overflow: ellipsis;
-  text-transform: none;
-  white-space: nowrap;
-  cursor: pointer;
+  top: 0;
+  height: 12px;
+  min-width: 12px;
   pointer-events: auto;
 }
 
-.physics-paint-loop-clip-badge:hover,
-.physics-paint-loop-clip-badge:focus-visible {
-  background: #52697d;
-  color: #fff;
-  outline: 1px solid #aebdca;
-  outline-offset: -1px;
+.physics-paint-loop-clip-rail-target {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 12px;
+  min-width: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.physics-paint-loop-clip-rail-segment {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: #70869b;
+  pointer-events: none;
+}
+
+.physics-paint-loop-clip-rail-target:hover .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {
+  background: #8fa9c0;
+}
+
+.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {
+  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.85);
+}
+
+.physics-paint-loop-clip-rail-target.truncated .physics-paint-loop-clip-rail-segment {
+  background: linear-gradient(to right, #70869b 0 calc(100% - 6px), #f59e0b calc(100% - 6px));
+}
+
+.physics-paint-loop-clip-rail-target.unresolved .physics-paint-loop-clip-rail-segment {
+  background: #ef4444;
+}
+
+.physics-paint-loop-clip-rail-target:focus-visible {
+  outline: 2px solid #f5a623;
+  outline-offset: -2px;
+}
+
+.physics-paint-loop-clip-tooltip-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.physics-paint-loop-clip-tooltip-copy > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .physics-paint-lane {
+  position: relative;
   display: grid;
   grid-template-columns: 2160px;
   align-items: center;

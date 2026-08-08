@@ -32,7 +32,8 @@ import {
   resolveRotoVisibleFrameResolutions,
 } from '../roto/rotoTimelineSelectors';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
-import { PhysicsPaintLoopClipLane } from './PhysicsPaintLoopClipLane';
+import { PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
+import type { PhysicsPaintLoopClipPresentation } from './physicsPaintLoopClipPresentation';
 import type {
   RotoDragPublication,
   RotoDragPreparationResult,
@@ -160,7 +161,11 @@ export interface PhysicsPaintWorkflowStripProps {
    * to the pre-43 strip.
    */
   rotoLoopResolutionContext?: PhysicPaintRotoLoopResolutionContext | null;
-  /** Lane-local selection notification; never navigates or mutates physical keys. */
+  /** Accepted product facts keyed by the same canonical Loop Clip identity. */
+  rotoLoopPresentations?: ReadonlyMap<string, PhysicsPaintLoopClipPresentation>;
+  /** One Studio/session selection shared with the Scripts inspector. */
+  selectedRotoLoopClipId?: string | null;
+  /** Rail-only selection notification; never navigates or mutates physical keys. */
   onSelectRotoLoopClip?: (loopId: string) => void;
   /** Existing Studio-local Loop Edit controller port (D-37/D-39). */
   onOpenRotoLoopEdit?: (loopId: string) => Promise<unknown>;
@@ -184,6 +189,7 @@ const VIRTUAL_TIMELINE_FRAME_COUNT = 120;
 const RULER_STEP = 3;
 const ROTO_CELL_WIDTH_PX = 18;
 const ROTO_LANE_WIDTH_PX = VIRTUAL_TIMELINE_FRAME_COUNT * ROTO_CELL_WIDTH_PX;
+const EMPTY_LOOP_PRESENTATIONS: ReadonlyMap<string, PhysicsPaintLoopClipPresentation> = new Map();
 
 export function buildPhysicsPaintRotoFrameCells(currentFrame: number): number[] {
   const visibleCount = VIRTUAL_TIMELINE_FRAME_COUNT;
@@ -534,7 +540,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const mountedRef = useRef(true);
   const currentFrameSignal = useSignal(props.currentFrame);
   if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
-  const selectedLoopClipId = useSignal<string | null>(null);
   const interpolationEnabled = props.rotoInterpolationEnabled === true;
   const interpolationMode = props.rotoInterpolationMode ?? 'duplicate';
   const currentPhysicalCells = props.rotoPhysicalCells ?? [];
@@ -1326,21 +1331,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             ))}
           </div>
 
-          {loopResolutionContext !== null && loopResolutionContext.ranges.length > 0 ? (
-            <PhysicsPaintLoopClipLane
-              ranges={loopResolutionContext.ranges}
-              visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
-              framePitch={ROTO_CELL_WIDTH_PX}
-              selectedLoopClipId={selectedLoopClipId.value}
-              onSelectLoopClip={(loopId) => {
-                selectedLoopClipId.value = loopId;
-                props.onSelectRotoLoopClip?.(loopId);
-              }}
-              onOpenLoopEdit={props.onOpenRotoLoopEdit ?? (async () => undefined)}
-            />
-          ) : null}
-
             <div ref={timelineContentRef} class="physics-paint-lane">
+              {loopResolutionContext !== null && loopResolutionContext.ranges.length > 0 ? (
+                <PhysicsPaintLoopClipRail
+                  ranges={loopResolutionContext.ranges}
+                  presentations={props.rotoLoopPresentations ?? EMPTY_LOOP_PRESENTATIONS}
+                  visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
+                  framePitch={ROTO_CELL_WIDTH_PX}
+                  selectedLoopClipId={props.selectedRotoLoopClipId ?? null}
+                  onSelectLoopClip={(loopId) => props.onSelectRotoLoopClip?.(loopId)}
+                  onOpenLoopEdit={props.onOpenRotoLoopEdit ?? (async () => undefined)}
+                />
+              ) : null}
               <div class="physics-paint-roto-cells" role="row">
                 {frameCells.map(frame => {
                   const semanticCell = physicalCellByAppFrame.get(frame) ?? null;
