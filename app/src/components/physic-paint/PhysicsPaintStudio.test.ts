@@ -10,6 +10,7 @@ const rightPanel = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintRightP
 const toolRail = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintToolRail.tsx', import.meta.url)), 'utf8');
 const topBar = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintTopBar.tsx', import.meta.url)), 'utf8');
 const playScriptDialog = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
+const navigationCoordinator = readFileSync(fileURLToPath(new URL('./hooks/useRotoNavigationCoordinator.ts', import.meta.url)), 'utf8');
 const memoizedTopBarPath = fileURLToPath(new URL('./view/MemoizedPhysicsPaintTopBar.ts', import.meta.url));
 const memoizedTopBar = existsSync(memoizedTopBarPath) ? readFileSync(memoizedTopBarPath, 'utf8') : '';
 const memoizedPlayScriptDialogPath = fileURLToPath(new URL('./view/MemoizedPhysicsPaintPlayScriptDialog.ts', import.meta.url));
@@ -68,6 +69,14 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(types).toContain("kind: 'replace-roto-key-frames'");
     expect(studio).toContain('rotoPlayScript');
     expect(studio).toContain('rotoCachedPlayback');
+  });
+
+  it('extends Studio cached playback through the loop-aware physical end frame', () => {
+    expect(studio).toContain('getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalEndFrame(launchContext.layerId) : null,');
+    expect(studio).toContain('getFrame: findCachedRotoDisplayFrame,');
+    expect(navigationCoordinator).toContain('const playbackEndFrame = input.playback.getEndFrame();');
+    expect(navigationCoordinator).toContain('Array.from({ length: playbackEndFrame }');
+    expect(navigationCoordinator).not.toContain('const lastRealFrame = assignments.length > 0');
   });
 
   it('routes rail, keyboard, and sidebar Loop Clip edits through one Studio-local controller callback', () => {

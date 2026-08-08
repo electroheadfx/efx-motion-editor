@@ -636,7 +636,7 @@ export function PhysicsPaintStudio() {
     },
     playback: {
       initialSettings: initialRotoPlaybackSettings,
-      getProjection: () => launchContext ? physicPaintStore.getRotoPhysicalProjection(launchContext.layerId) : null,
+      getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalEndFrame(launchContext.layerId) : null,
       getFrame: findCachedRotoDisplayFrame,
       onStart: (frameCount) => { rotoPlaybackFrameCount.value = frameCount; },
       onFrame: (frameIndex) => {
