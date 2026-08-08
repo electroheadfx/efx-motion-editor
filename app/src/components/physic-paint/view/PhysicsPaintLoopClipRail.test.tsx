@@ -311,8 +311,10 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const railSegmentRule = cssRule('.physics-paint-loop-clip-rail-segment {');
     expect(railSegmentRule).toContain('height: 3px');
     expect(railSegmentRule).toContain('background: #8b5cf6');
+    expect(physicsPaintStudioCss).toContain('background: #f59e0b');
     expect(physicsPaintStudioCss).toContain('background: #a78bfa');
     expect(physicsPaintStudioCss).toContain('linear-gradient(to right, #8b5cf6 0 calc(100% - 6px), #f59e0b calc(100% - 6px))');
+    expect(physicsPaintStudioCss).toContain('linear-gradient(to right, #f59e0b 0 calc(100% - 6px), #fbbf24 calc(100% - 6px))');
     expect(physicsPaintStudioCss).toContain('linear-gradient(to right, #a78bfa 0 calc(100% - 6px), #fbbf24 calc(100% - 6px))');
     expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 12px');
     expect(cssRule('.physics-paint-loop-clip-rail-anchor {')).toContain('min-width: 12px');
