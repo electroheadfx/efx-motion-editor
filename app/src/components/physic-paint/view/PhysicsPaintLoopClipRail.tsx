@@ -1,9 +1,12 @@
+import { useEffect, useRef } from 'preact/hooks';
 import type { PhysicPaintRotoLoopRange } from '../roto/physicsPaintRotoPhysicalResolver';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
   projectPhysicsPaintLoopClipGeometry,
   type PhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
+
+export const LOOP_CLIP_SINGLE_CLICK_DELAY_MS = 250;
 
 export interface PhysicsPaintLoopClipRailProps {
   readonly ranges: readonly PhysicPaintRotoLoopRange[];
@@ -14,7 +17,7 @@ export interface PhysicsPaintLoopClipRailProps {
   };
   readonly framePitch: number;
   readonly selectedLoopClipId: string | null;
-  readonly onSelectLoopClip: (loopId: string) => void;
+  readonly onSelectLoopClip: (loopId: string | null) => void;
   readonly onOpenLoopEdit: (loopId: string) => Promise<unknown>;
 }
 
@@ -36,13 +39,22 @@ interface RailTargetProps {
   readonly left: number;
   readonly width: number;
   readonly selected: boolean;
-  readonly onSelectLoopClip: (loopId: string) => void;
+  readonly onSelectLoopClip: (loopId: string | null) => void;
   readonly onOpenLoopEdit: (loopId: string) => Promise<unknown>;
 }
 
 function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   const tooltip = useStyledTooltip();
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const pendingSingleClickRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { range, presentation } = props;
+
+  const clearPendingSingleClick = () => {
+    if (pendingSingleClickRef.current === null) return;
+    clearTimeout(pendingSingleClickRef.current);
+    pendingSingleClickRef.current = null;
+  };
+  useEffect(() => clearPendingSingleClick, []);
 
   const stopPointerEvent = (event: { stopPropagation(): void }) => {
     event.stopPropagation();
@@ -50,24 +62,39 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   const handleClick = (event: RailMouseEvent) => {
     event.stopPropagation();
     tooltip.hide();
-    if (event.detail === 2) {
+    if (event.detail > 1) {
       event.preventDefault();
-      void props.onOpenLoopEdit(range.loopId);
+      clearPendingSingleClick();
       return;
     }
+    clearPendingSingleClick();
+    pendingSingleClickRef.current = setTimeout(() => {
+      pendingSingleClickRef.current = null;
+      props.onSelectLoopClip(props.selected ? null : range.loopId);
+    }, LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
+  };
+  const handleDoubleClick = (event: RailMouseEvent) => {
+    event.stopPropagation();
+    event.preventDefault();
+    tooltip.hide();
+    clearPendingSingleClick();
     props.onSelectLoopClip(range.loopId);
+    void props.onOpenLoopEdit(range.loopId);
   };
   const handleKeyDown = (event: RailKeyboardEvent) => {
     event.stopPropagation();
     if (event.key === 'Enter') {
       event.preventDefault();
       tooltip.hide();
+      clearPendingSingleClick();
+      props.onSelectLoopClip(range.loopId);
       void props.onOpenLoopEdit(range.loopId);
     }
   };
 
   return (
     <span
+      ref={anchorRef}
       class="physics-paint-loop-clip-rail-anchor"
       style={{ left: `${props.left}px`, width: `${props.width}px` }}
       onPointerEnter={tooltip.onPointerEnter}
@@ -80,18 +107,19 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
         aria-pressed={props.selected}
         onPointerDown={stopPointerEvent}
         onClick={handleClick}
+        onDblClick={handleDoubleClick}
         onKeyDown={handleKeyDown}
         onFocus={tooltip.onFocus}
         onBlur={tooltip.onBlur}
       >
         <span class="physics-paint-loop-clip-rail-segment" aria-hidden="true" />
       </button>
-      <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom">
+      <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom" anchorRef={anchorRef} topmost>
         <span class="physics-paint-loop-clip-tooltip-copy">
           <strong>{presentation.displayName}</strong>
           <span>{presentation.cycleLabel}</span>
           <span>{presentation.effectiveLabel}</span>
-          <span>{presentation.statusLabel}</span>
+          <span>Status: {presentation.statusLabel}</span>
         </span>
       </PhysicsPaintStyledTooltip>
     </span>

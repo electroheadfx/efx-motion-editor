@@ -65,7 +65,7 @@ import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysica
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
-import { PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
+import { LOOP_CLIP_SINGLE_CLICK_DELAY_MS, PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
 import { PhysicsPaintScriptsPanel } from './PhysicsPaintScriptsPanel';
 import { PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
 import {
@@ -197,6 +197,7 @@ function createRotoScript(): RotoScriptClipboardController {
 function renderScriptsPanel(
   selectedLoopClip: PhysicsPaintLoopClipPresentation | null,
   onOpenLoopEdit: (loopId: string) => Promise<unknown>,
+  onCloseLoopClip: () => void,
 ): unknown {
   hooks.reset();
   const tree = PhysicsPaintScriptsPanel({
@@ -206,6 +207,7 @@ function renderScriptsPanel(
     playButtonRef: { current: null },
     selectedLoopClip,
     onOpenLoopEdit,
+    onCloseLoopClip,
     onSave: () => {},
     onActivateRow: () => {},
     onLoadAndApply: () => {},
@@ -221,7 +223,7 @@ function renderWorkflowStrip(
   loopContext: ReturnType<typeof derivePhysicPaintRotoLoopRanges> | null,
   presentations: ReadonlyMap<string, PhysicsPaintLoopClipPresentation>,
   selectedLoopClipId: string | null,
-  onSelectLoopClip: (loopId: string) => void,
+  onSelectLoopClip: (loopId: string | null) => void,
   onOpenLoopEdit: (loopId: string) => Promise<unknown>,
 ): unknown {
   hooks.reset();
@@ -229,7 +231,7 @@ function renderWorkflowStrip(
     currentFrame: 0,
     isPlaying: false,
     ready: true,
-    onion: { enabled: false, previous: false, next: false, opacity: 0.5 },
+    onion: { enabled: false, previous: false, next: false, count: 1, opacity: 0.5 },
     rotoLoopResolutionContext: loopContext,
     rotoLoopPresentations: presentations,
     selectedRotoLoopClipId: selectedLoopClipId,
@@ -246,6 +248,7 @@ function renderWorkflowStrip(
 
 describe('PhysicsPaintLoopClipRail ownership tracer', () => {
   it('integrates Loop Clip ownership through all nine tracer checks', async () => {
+    vi.useFakeTimers();
     const rawLoopId = '0f65c808-raw-loop-uuid';
     const sourceKeyIds = Array.from({ length: 5 }, (_, index) => `source-${index}`);
     const clip: PhysicPaintRotoLoopClip = {
@@ -313,31 +316,62 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(typeof target.props.onfocusin).toBe('function');
     (target.props.onfocusin as () => void)();
     const railCopy = `${String(target.props['aria-label'])} ${textOf(railTree)}`;
-    for (const fact of ['Walk Loop', 'Cycle 5f × 5 = 25f', 'Effective 25f', 'Linked']) {
+    for (const fact of ['Walk Loop', 'Cycle 5f × 5 = 25f', 'Effective 25f', 'Status: Linked']) {
       expect(railCopy).toContain(fact);
     }
     expect(railCopy).not.toContain(rawLoopId);
+    const railTooltip = findOne(railTree, (vnode) => typeof vnode.type === 'function' && vnode.type.name === 'PhysicsPaintStyledTooltip');
+    expect(railTooltip.props.topmost).toBe(true);
+    expect(cssRule('.physics-paint-styled-tooltip--topmost {')).toContain('z-index: 69');
 
-    const singleClick = { detail: 1, stopPropagation: vi.fn(), preventDefault: vi.fn() };
-    (target.props.onClick as (event: typeof singleClick) => void)(singleClick);
-    expect(singleClick.stopPropagation).toHaveBeenCalledOnce();
-    expect(singleClick.preventDefault).not.toHaveBeenCalled();
+    const selectedSingleClick = { detail: 1, stopPropagation: vi.fn(), preventDefault: vi.fn() };
+    (target.props.onClick as (event: typeof selectedSingleClick) => void)(selectedSingleClick);
+    expect(selectedSingleClick.stopPropagation).toHaveBeenCalledOnce();
+    expect(selectedSingleClick.preventDefault).not.toHaveBeenCalled();
+    expect(onSelectLoopClip).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
-    expect(onSelectLoopClip).toHaveBeenLastCalledWith(rawLoopId);
+    expect(onSelectLoopClip).toHaveBeenLastCalledWith(null);
     expect(onOpenLoopEdit).not.toHaveBeenCalled();
 
-    const doubleClick = { detail: 2, stopPropagation: vi.fn(), preventDefault: vi.fn() };
-    (target.props.onClick as (event: typeof doubleClick) => void)(doubleClick);
-    expect(doubleClick.stopPropagation).toHaveBeenCalledOnce();
-    expect(doubleClick.preventDefault).toHaveBeenCalledOnce();
+    hooks.reset();
+    const unselectedRailTree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: loopContext.ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 8, endFrameExclusive: 20 },
+      framePitch: 18,
+      selectedLoopClipId: null,
+      onSelectLoopClip,
+      onOpenLoopEdit,
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    const unselectedTarget = findOne(unselectedRailTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+    onSelectLoopClip.mockClear();
+    (unselectedTarget.props.onClick as (event: typeof selectedSingleClick) => void)({ detail: 1, stopPropagation: vi.fn(), preventDefault: vi.fn() });
+    vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
+    expect(onSelectLoopClip).toHaveBeenLastCalledWith(rawLoopId);
+
+    onSelectLoopClip.mockClear();
+    const firstClick = { detail: 1, stopPropagation: vi.fn(), preventDefault: vi.fn() };
+    const secondClick = { detail: 2, stopPropagation: vi.fn(), preventDefault: vi.fn() };
+    (target.props.onClick as (event: typeof firstClick) => void)(firstClick);
+    (target.props.onClick as (event: typeof secondClick) => void)(secondClick);
+    (target.props.onDblClick as (event: typeof secondClick) => void)(secondClick);
+    vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
+    expect(firstClick.stopPropagation).toHaveBeenCalledOnce();
+    expect(secondClick.preventDefault).toHaveBeenCalledTimes(2);
+    expect(onSelectLoopClip).toHaveBeenCalledOnce();
+    expect(onSelectLoopClip).toHaveBeenLastCalledWith(rawLoopId);
     expect(onOpenLoopEdit).toHaveBeenCalledOnce();
     expect(onOpenLoopEdit).toHaveBeenLastCalledWith(rawLoopId);
 
+    onSelectLoopClip.mockClear();
     const enter = { key: 'Enter', stopPropagation: vi.fn(), preventDefault: vi.fn() };
     (target.props.onKeyDown as (event: typeof enter) => void)(enter);
     expect(enter.stopPropagation).toHaveBeenCalledOnce();
     expect(enter.preventDefault).toHaveBeenCalledOnce();
+    expect(onSelectLoopClip).toHaveBeenCalledOnce();
+    expect(onSelectLoopClip).toHaveBeenLastCalledWith(rawLoopId);
     expect(onOpenLoopEdit).toHaveBeenCalledTimes(2);
     expect(onOpenLoopEdit).toHaveBeenLastCalledWith(rawLoopId);
 
@@ -378,21 +412,30 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(linkedDotRule).toContain('width: 4px');
     expect(linkedDotRule).toContain('height: 4px');
 
-    const normalPanel = renderScriptsPanel(null, onOpenLoopEdit);
+    const onCloseLoopClip = vi.fn();
+    const normalPanel = renderScriptsPanel(null, onOpenLoopEdit, onCloseLoopClip);
     expect(findAll(normalPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Play Script')).toHaveLength(1);
+    expect(findAll(normalPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-toolbar'))).toHaveLength(1);
+    expect(findAll(normalPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-list'))).toHaveLength(1);
     expect(findAll(normalPanel, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-inspector'))).toHaveLength(0);
 
     const selectedPresentation = presentations.get(selectedLoopClipId) ?? null;
     expect(selectedPresentation?.loopId).toBe(selectedLoopClipId);
-    const selectedPanel = renderScriptsPanel(selectedPresentation, onOpenLoopEdit);
+    const selectedPanel = renderScriptsPanel(selectedPresentation, onOpenLoopEdit, onCloseLoopClip);
     const editButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Edit Loop Clip — Walk Loop');
+    const closeButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Close Loop Clip inspector — Walk Loop');
     expect(findAll(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Play Script')).toHaveLength(0);
+    expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-toolbar'))).toHaveLength(0);
+    expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary'))).toHaveLength(0);
+    expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-list'))).toHaveLength(0);
     const inspector = findOne(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-inspector'));
     expect(textOf(inspector)).toBe('NameWalk LoopSource scriptWalkPlacementF10CycleCycle 5f × 5 = 25fEffectiveEffective 25fModeProgressiveStatusLinked');
     expect(textOf(inspector)).not.toContain(rawLoopId);
     (editButton.props.onClick as () => void)();
     expect(onOpenLoopEdit).toHaveBeenCalledTimes(3);
     expect(onOpenLoopEdit).toHaveBeenLastCalledWith(selectedLoopClipId);
+    (closeButton.props.onClick as () => void)();
+    expect(onCloseLoopClip).toHaveBeenCalledOnce();
 
     const layerId = 'loop-tracer-layer';
     const records: PhysicPaintRotoRealKeyRecord[] = sourceKeyIds.map((keyId, appFrame) => ({
@@ -458,5 +501,6 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     physicPaintStore.clearRotoPhysicalRecords(layerId);
     sequenceStore.reset();
     await Promise.resolve();
+    vi.useRealTimers();
   });
 });

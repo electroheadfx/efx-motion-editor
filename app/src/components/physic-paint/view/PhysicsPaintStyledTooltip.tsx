@@ -1,4 +1,5 @@
-import type { ComponentChildren } from 'preact';
+import type { ComponentChildren, RefObject } from 'preact';
+import { createPortal } from 'preact/compat';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 export const STYLED_TOOLTIP_DELAY_MS = 1000;
@@ -255,6 +256,10 @@ export interface PhysicsPaintStyledTooltipProps {
    * byte-identical 3-argument placement path for the strip mounts.
    */
   avoidRowOverlap?: boolean;
+  /** Explicit anchor used when the pill is portaled out of overflow-clipping chrome. */
+  anchorRef?: RefObject<HTMLElement>;
+  /** Render in document.body so timeline overflow cannot clip the tooltip. */
+  topmost?: boolean;
   children: ComponentChildren;
 }
 
@@ -283,14 +288,14 @@ function collectRowObstacleRects(anchor: HTMLElement, anchorRect: DOMRect): Tool
  * Preact text children — controller-supplied reason strings are never
  * injected as HTML (T-36.15-01).
  *
- * Viewport-positioned (D-12): while visible, the pill reads its anchor
- * wrapper's getBoundingClientRect() after every render — viewport
- * coordinates absorb strip horizontal scroll — and is placed through
- * computeTooltipPlacement. The containing-block audit found no transformed,
- * filtered, or containing ancestor for any mount, so `position: fixed`
- * resolves against the viewport with the pill rendered in place (no portal).
- * Coordinates and the direction class are written straight onto the element
- * before paint — no state is copied into a render cycle.
+ * Viewport-positioned (D-12): while visible, the pill reads either its
+ * explicit anchor ref or its wrapper's getBoundingClientRect() after every
+ * render — viewport coordinates absorb strip horizontal scroll — and is
+ * placed through computeTooltipPlacement. Mounts inside overflow-clipping
+ * timeline chrome may opt into a document-body portal while retaining this
+ * same placement and accessibility contract. Coordinates and the direction
+ * class are written straight onto the element before paint — no state is
+ * copied into a render cycle.
  */
 export function PhysicsPaintStyledTooltip(props: PhysicsPaintStyledTooltipProps) {
   const pillRef = useRef<HTMLSpanElement | null>(null);
@@ -298,7 +303,7 @@ export function PhysicsPaintStyledTooltip(props: PhysicsPaintStyledTooltipProps)
   useLayoutEffect(() => {
     const pill = pillRef.current;
     if (!props.visible || !pill) return;
-    const anchor = pill.parentElement;
+    const anchor = props.anchorRef?.current ?? pill.parentElement;
     if (!anchor) return;
     const pillSize = { width: pill.offsetWidth, height: pill.offsetHeight };
     const anchorRect = anchor.getBoundingClientRect();
@@ -312,7 +317,7 @@ export function PhysicsPaintStyledTooltip(props: PhysicsPaintStyledTooltipProps)
       : computeTooltipPlacement(anchorRect, props.region, pillSize);
     pill.style.left = `${placement.left}px`;
     pill.style.top = `${placement.top}px`;
-    pill.className = `physics-paint-styled-tooltip physics-paint-styled-tooltip--${placement.direction}`;
+    pill.className = `physics-paint-styled-tooltip physics-paint-styled-tooltip--${placement.direction}${props.topmost ? ' physics-paint-styled-tooltip--topmost' : ''}`;
     // The pill's locked overflow clipping would hide an absolutely positioned
     // notch child, so the notch escapes via viewport-fixed positioning: its
     // edge point is the anchor-center projection on the pill's control-facing
@@ -333,16 +338,18 @@ export function PhysicsPaintStyledTooltip(props: PhysicsPaintStyledTooltipProps)
   });
 
   if (!props.visible) return null;
-  return (
+  const pill = (
     <span
       ref={pillRef}
       id={props.id}
       role="tooltip"
-      class="physics-paint-styled-tooltip"
+      class={`physics-paint-styled-tooltip${props.topmost ? ' physics-paint-styled-tooltip--topmost' : ''}`}
       style={{ visibility: 'hidden' }}
     >
       <span class="physics-paint-styled-tooltip-notch" aria-hidden="true" />
       {props.children}
     </span>
   );
+  if (props.topmost && typeof document !== 'undefined') return createPortal(pill, document.body);
+  return pill;
 }

@@ -165,8 +165,8 @@ export interface PhysicsPaintWorkflowStripProps {
   rotoLoopPresentations?: ReadonlyMap<string, PhysicsPaintLoopClipPresentation>;
   /** One Studio/session selection shared with the Scripts inspector. */
   selectedRotoLoopClipId?: string | null;
-  /** Rail-only selection notification; never navigates or mutates physical keys. */
-  onSelectRotoLoopClip?: (loopId: string) => void;
+  /** Rail-only shared selection setter; null clears the Scripts inspector. */
+  onSelectRotoLoopClip?: (loopId: string | null) => void;
   /** Existing Studio-local Loop Edit controller port (D-37/D-39). */
   onOpenRotoLoopEdit?: (loopId: string) => Promise<unknown>;
   rotoDragContextKey?: string;
@@ -1332,15 +1332,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           </div>
 
             <div ref={timelineContentRef} class="physics-paint-lane">
-              {loopResolutionContext !== null && loopResolutionContext.ranges.length > 0 ? (
+              {loopResolutionContext !== null
+                && loopResolutionContext.ranges.length > 0
+                && props.onSelectRotoLoopClip
+                && props.onOpenRotoLoopEdit ? (
                 <PhysicsPaintLoopClipRail
                   ranges={loopResolutionContext.ranges}
                   presentations={props.rotoLoopPresentations ?? EMPTY_LOOP_PRESENTATIONS}
                   visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
                   framePitch={ROTO_CELL_WIDTH_PX}
                   selectedLoopClipId={props.selectedRotoLoopClipId ?? null}
-                  onSelectLoopClip={(loopId) => props.onSelectRotoLoopClip?.(loopId)}
-                  onOpenLoopEdit={props.onOpenRotoLoopEdit ?? (async () => undefined)}
+                  onSelectLoopClip={props.onSelectRotoLoopClip}
+                  onOpenLoopEdit={props.onOpenRotoLoopEdit}
                 />
               ) : null}
               <div class="physics-paint-roto-cells" role="row">

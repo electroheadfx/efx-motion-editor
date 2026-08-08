@@ -69,6 +69,16 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('rotoPlayScript');
     expect(studio).toContain('rotoCachedPlayback');
   });
+
+  it('routes rail, keyboard, and sidebar Loop Clip edits through one Studio-local controller callback', () => {
+    expect(studio).toContain('selectedLoopClipId.value = loopId;\n      return rotoPlayScript.openLoopEdit(loopId);');
+    expect(studio).toContain('onOpenLoopEdit: handleOpenRotoLoopEdit,');
+    expect(studio).toContain('onOpenRotoLoopEdit: handleOpenRotoLoopEdit,');
+    expect(studio).toContain('onCloseLoopClip: handleCloseRotoLoopClip,');
+    expect(studio).toContain('selectedLoopClipId.value = null;');
+    expect(scriptsPanel).toContain('void onOpenLoopEdit(selectedLoopClip.loopId);');
+    expect(scriptsPanel).not.toContain('onOpenLoopEdit?.');
+  });
 });
 
 describe('Physics Paint Roto keyboard shortcut wiring', () => {

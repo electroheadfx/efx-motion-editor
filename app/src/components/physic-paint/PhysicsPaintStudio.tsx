@@ -738,12 +738,18 @@ export function PhysicsPaintStudio() {
     stopPlayback: rotoCachedPlayback.stop,
     log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
   }, bridgeMode);
+  const handleSelectRotoLoopClip = useCallback((loopId: string | null) => {
+    selectedLoopClipId.value = loopId;
+  }, []);
   const handleOpenRotoLoopEdit = useCallback(
-    (loopId: string) => rotoPlayScript.openLoopEdit(loopId),
+    (loopId: string) => {
+      selectedLoopClipId.value = loopId;
+      return rotoPlayScript.openLoopEdit(loopId);
+    },
     [rotoPlayScript],
   );
-  const handleSelectRotoLoopClip = useCallback((loopId: string) => {
-    selectedLoopClipId.value = loopId;
+  const handleCloseRotoLoopClip = useCallback(() => {
+    selectedLoopClipId.value = null;
   }, []);
   const loopResolutionContext = rotoTimelineModel.loopResolutionContext.value;
   const loopScriptRows = rotoScriptLibrary.rows.value;
@@ -1278,7 +1284,7 @@ export function PhysicsPaintStudio() {
   // fresh per-render getRotoInterpolationSettings clone. Signal-backed
   // controllers pass through by identity so their signal subscriptions
   // (ScriptsPanel rows/busy/selection) keep flowing independent of the memo.
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, handleOpenRotoLoopEdit, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
     activeTool: settings.tool,
     color: settings.color,
     opacity: settings.opacity,
@@ -1309,6 +1315,7 @@ export function PhysicsPaintStudio() {
       playButtonRef,
       selectedLoopClip,
       onOpenLoopEdit: handleOpenRotoLoopEdit,
+      onCloseLoopClip: handleCloseRotoLoopClip,
       onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
       onActivateRow: (id: string) => { void handleScriptRowActivate(id); },
       onLoadAndApply: () => { void handleSelectedScriptLoadAndApply(); },

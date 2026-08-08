@@ -1,4 +1,4 @@
-import { Clipboard, ClipboardPen, ClipboardX, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2 } from 'lucide-preact';
+import { Clipboard, ClipboardPen, ClipboardX, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from 'lucide-preact';
 import type { ComponentChildren, Ref, RefObject } from 'preact';
 import { useEffect, useId, useRef } from 'preact/hooks';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
@@ -13,7 +13,8 @@ export interface PhysicsPaintScriptsPanelProps {
   rotoScript: RotoScriptClipboardController;
   playButtonRef: RefObject<HTMLButtonElement>;
   selectedLoopClip?: PhysicsPaintLoopClipPresentation | null;
-  onOpenLoopEdit?: (loopId: string) => Promise<unknown>;
+  onOpenLoopEdit: (loopId: string) => Promise<unknown>;
+  onCloseLoopClip: () => void;
   onSave: () => void;
   onActivateRow: (id: string) => void;
   onLoadAndApply: () => void;
@@ -30,6 +31,7 @@ export function PhysicsPaintScriptsPanel({
   playButtonRef,
   selectedLoopClip = null,
   onOpenLoopEdit,
+  onCloseLoopClip,
   onSave,
   onActivateRow,
   onLoadAndApply,
@@ -75,23 +77,50 @@ export function PhysicsPaintScriptsPanel({
   const stopRowKeyboardActivation = (event: { key: string; stopPropagation: () => void }) => {
     if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
   };
+
+  if (selectedLoopClip) {
+    return (
+      <div class="physics-paint-scripts-panel physics-paint-loop-clip-panel" role="tabpanel" aria-label={`Selected Loop Clip — ${selectedLoopClip.displayName}`}>
+        <dl class="physics-paint-loop-clip-inspector">
+          <div><dt>Name</dt><dd title={selectedLoopClip.displayName}>{selectedLoopClip.displayName}</dd></div>
+          <div><dt>Source script</dt><dd title={selectedLoopClip.sourceLabel}>{selectedLoopClip.sourceLabel}</dd></div>
+          <div><dt>Placement</dt><dd>{selectedLoopClip.placementLabel}</dd></div>
+          <div><dt>Cycle</dt><dd>{selectedLoopClip.cycleLabel}</dd></div>
+          <div><dt>Effective</dt><dd>{selectedLoopClip.effectiveLabel}</dd></div>
+          <div><dt>Mode</dt><dd>{selectedLoopClip.modeLabel}</dd></div>
+          <div><dt>Status</dt><dd>{selectedLoopClip.statusLabel}</dd></div>
+        </dl>
+        <div class="physics-paint-loop-clip-inspector-actions">
+          <button
+            ref={playButtonRef}
+            type="button"
+            class="physics-paint-loop-clip-inspector-action primary"
+            aria-label={`Edit Loop Clip — ${selectedLoopClip.displayName}`}
+            onClick={() => { void onOpenLoopEdit(selectedLoopClip.loopId); }}
+          >
+            <Pencil size={16} aria-hidden="true" />
+            <span>Edit</span>
+          </button>
+          <button
+            type="button"
+            class="physics-paint-loop-clip-inspector-action"
+            aria-label={`Close Loop Clip inspector — ${selectedLoopClip.displayName}`}
+            onClick={onCloseLoopClip}
+          >
+            <X size={16} aria-hidden="true" />
+            <span>Close</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div class="physics-paint-scripts-panel" role="tabpanel" aria-label="Project Roto scripts">
       <div class="physics-paint-scripts-toolbar" role="toolbar" aria-label="Roto script library actions">
         <IconButton label="Save Script" title={`Save Script — ${availability.saveDisabledReason ?? 'Save the active real Roto frame'}`} disabled={!availability.canSave} disabledReason={availability.saveDisabledReason ?? undefined} descriptionId={saveReasonId} onClick={onSave}><Save size={16} /></IconButton>
         <IconButton label="Load and Apply Script" title={`Load and Apply Script — ${loadAndApplyDisabledReason ?? 'Reload the selected preset and apply it to this Roto frame'}`} disabled={loadAndApplyDisabledReason !== null} disabledReason={loadAndApplyDisabledReason ?? undefined} descriptionId={loadAndApplyReasonId} onClick={onLoadAndApply}><Paintbrush size={16} /></IconButton>
-        {selectedLoopClip ? (
-          <IconButton
-            buttonRef={playButtonRef}
-            label={`Edit Loop Clip — ${selectedLoopClip.displayName}`}
-            title={`Edit Loop Clip — ${selectedLoopClip.displayName}`}
-            onClick={() => { void onOpenLoopEdit?.(selectedLoopClip.loopId); }}
-          >
-            <Pencil size={16} />
-          </IconButton>
-        ) : (
-          <IconButton buttonRef={playButtonRef} label="Play Script" title={`Play Script — ${playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)'}`} disabled={playScript.disabledReason.value !== null} disabledReason={playScript.disabledReason.value ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
-        )}
+        <IconButton buttonRef={playButtonRef} label="Play Script" title={`Play Script — ${playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)'}`} disabled={playScript.disabledReason.value !== null} disabledReason={playScript.disabledReason.value ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
         <IconButton buttonRef={deleteButtonRef} label="Delete Script" title="Delete Script — Remove the selected project preset" disabled={!availability.canDelete} onClick={library.requestDelete}><Trash2 size={16} /></IconButton>
         <IconButton label="Refresh Scripts" title="Refresh Scripts — Scan the project scripts folder" disabled={library.busy.value} onClick={onRefresh}><RefreshCw size={16} /></IconButton>
         <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyScriptTooltip.onPointerEnter} onPointerLeave={copyScriptTooltip.onPointerLeave}>
@@ -179,22 +208,10 @@ export function PhysicsPaintScriptsPanel({
           </PhysicsPaintStyledTooltip>
         </span>
       </div>
-      {selectedLoopClip ? (
-        <dl class="physics-paint-loop-clip-inspector" aria-label={`Selected Loop Clip — ${selectedLoopClip.displayName}`}>
-          <div><dt>Name</dt><dd title={selectedLoopClip.displayName}>{selectedLoopClip.displayName}</dd></div>
-          <div><dt>Source script</dt><dd title={selectedLoopClip.sourceLabel}>{selectedLoopClip.sourceLabel}</dd></div>
-          <div><dt>Placement</dt><dd>{selectedLoopClip.placementLabel}</dd></div>
-          <div><dt>Cycle</dt><dd>{selectedLoopClip.cycleLabel}</dd></div>
-          <div><dt>Effective</dt><dd>{selectedLoopClip.effectiveLabel}</dd></div>
-          <div><dt>Mode</dt><dd>{selectedLoopClip.modeLabel}</dd></div>
-          <div><dt>Status</dt><dd>{selectedLoopClip.statusLabel}</dd></div>
-        </dl>
-      ) : (
-        <p class="physics-paint-scripts-summary">
-          <span class="physics-paint-scripts-summary-line1">{playScript.appliedSummary.line1.value}</span>
-          <span class="physics-paint-scripts-summary-line2">{playScript.appliedSummary.line2.value}</span>
-        </p>
-      )}
+      <p class="physics-paint-scripts-summary">
+        <span class="physics-paint-scripts-summary-line1">{playScript.appliedSummary.line1.value}</span>
+        <span class="physics-paint-scripts-summary-line2">{playScript.appliedSummary.line2.value}</span>
+      </p>
       <div class="physics-paint-scripts-list" role="listbox" aria-label="Saved Roto scripts">
         {rows.map((row) => (
           <div

@@ -450,6 +450,8 @@ function renderPanel(playScript: RotoPlayScriptController): TestVNode {
     playScript,
     rotoScript: createFakeRotoScript(),
     playButtonRef: { current: null },
+    onOpenLoopEdit: async () => undefined,
+    onCloseLoopClip: () => {},
     onSave: () => {},
     onActivateRow: () => {},
     onLoadAndApply: () => {},

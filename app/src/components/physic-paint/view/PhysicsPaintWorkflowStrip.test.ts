@@ -1171,7 +1171,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     const cellsIndex = code.indexOf('class="physics-paint-roto-cells"');
 
     expect(getWorkflowStripPropsInterface(code)).toContain('selectedRotoLoopClipId?: string | null;');
-    expect(getWorkflowStripPropsInterface(code)).toContain('onSelectRotoLoopClip?: (loopId: string) => void;');
+    expect(getWorkflowStripPropsInterface(code)).toContain('onSelectRotoLoopClip?: (loopId: string | null) => void;');
     expect(getWorkflowStripPropsInterface(code)).toContain('onOpenRotoLoopEdit?: (loopId: string) => Promise<');
     expect(code).toContain('loopResolutionContext.ranges.length > 0');
     expect(code).toContain('ranges={loopResolutionContext.ranges}');
