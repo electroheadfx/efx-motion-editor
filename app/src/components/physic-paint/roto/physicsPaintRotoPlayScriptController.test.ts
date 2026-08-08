@@ -63,6 +63,7 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
   const getMotion = vi.fn(() => ({ ...motion }));
   let brushColor = '#103c65';
   const getBrushColor = vi.fn(() => brushColor);
+  const getBackgroundMetadata = vi.fn(() => ({ background: 'canvas1' as const, paperGrain: 'canvas2' as const, grainStrength: 0.45 }));
   const selectedIdSignal = signal<string | null>(selectedId);
   const selectedSignal = signal<{ id: string } | null>({ id: 'script-1' });
   const library = {
@@ -88,6 +89,7 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
   const ports: RotoPlayScriptControllerPorts = {
     library, getLaunchContext: () => context, getSelection: () => selection, getMotion,
     getBrushColor,
+    getBackgroundMetadata,
     getOperationLocked: () => false,
     getSize: () => ({ width: 10, height: 10 }), requestAuthority, commit, stopPlayback, log, ...overrides,
   };
@@ -164,6 +166,7 @@ describe('createRotoPlayScriptController', () => {
     expect(publication.semanticDelta.freshKeyIds).toHaveLength(2);
     expect(publication.interpolationEnabled).toBe(true);
     expect(publication.interpolationMode).toBe('duplicate');
+    expect(publication.rotoBackground).toEqual({ background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 });
     expect(publication.selectedAppFrame).toBe(4);
     expect(publication.selectedKeyId).toBe(publication.records[1].keyId);
     expect(test.stopPlayback).toHaveBeenCalledTimes(3);
@@ -432,6 +435,7 @@ describe('createRotoPlayScriptController', () => {
         interpolationMode: publication.interpolationMode,
         selectedKeyId: publication.selectedKeyId,
         selectedAppFrame: publication.selectedAppFrame,
+        ...(publication.loopClips ? { loopClips: publication.loopClips } : {}),
       }));
     const test = harness({ commit });
     await test.controller.openConfirmation();
@@ -1756,25 +1760,57 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(publication.loopClips?.[0]).toMatchObject({ placementStart: 20, repeat: 'infinity' });
     });
 
-    it('a single-cycle apply (repeat 1, no infinity) carries NO loopClips member', async () => {
+    it('persists a repeat-1 Progressive cycle as a Loop Clip so its 15-frame purple rail is visible', async () => {
       const test = applyHarness([]);
       await test.controller.openConfirmation();
-      test.controller.countText.value = '5';
+      test.controller.countText.value = '15';
       test.controller.repeatText.value = '1';
+      expect(test.controller.loopIntentActive.value).toBe(true);
       expect(await test.controller.confirm()).toBe(true);
       const publication = test.commit.mock.calls[0][0];
-      expect(publication.loopClips).toBeUndefined();
+      const cycleIds = publication.records
+        .filter((record) => record.appFrame >= 20 && record.appFrame <= 34)
+        .map((record) => record.keyId);
+      expect(cycleIds).toHaveLength(15);
+      expect(publication.loopClips).toHaveLength(1);
+      expect(publication.loopClips?.[0]).toMatchObject({
+        placementStart: 20,
+        sourceKeyIds: cycleIds,
+        repeat: 1,
+        mode: 'progressive',
+      });
     });
 
-    it('reports an identical source cycle only when loop intent is active (S4 visibility)', async () => {
+    it('persists a repeat-1 Static / Hold cycle as a Loop Clip so its 10-frame capsule is visible', async () => {
+      const test = applyHarness([]);
+      await test.controller.openConfirmation();
+      test.controller.mode.value = 'static';
+      test.controller.countText.value = '10';
+      test.controller.repeatText.value = '1';
+      expect(test.controller.loopIntentActive.value).toBe(true);
+      expect(await test.controller.confirm()).toBe(true);
+      const publication = test.commit.mock.calls[0][0];
+      const cycleIds = publication.records
+        .filter((record) => record.appFrame >= 20 && record.appFrame <= 29)
+        .map((record) => record.keyId);
+      expect(cycleIds).toHaveLength(10);
+      expect(publication.loopClips).toHaveLength(1);
+      expect(publication.loopClips?.[0]).toMatchObject({
+        placementStart: 20,
+        sourceKeyIds: cycleIds,
+        repeat: 1,
+        mode: 'static',
+      });
+    });
+
+    it('reports an identical Static / Hold source cycle at repeat 1 because Hold always has loop intent', async () => {
       const test = applyHarness([loopClip('L1', 10, 3)]);
       await test.controller.openConfirmation();
       test.controller.mode.value = 'static';
       test.controller.countText.value = '5';
       test.controller.dialogMotion.value = { deformation: 0, position: 0 }; // match the cycle provenance
       test.controller.repeatText.value = '1';
-      expect(test.controller.identicalSourceCycle.value).toBeNull(); // no loop intent → S4 hidden
-      test.controller.repeatText.value = '2';
+      expect(test.controller.loopIntentActive.value).toBe(true);
       expect(test.controller.identicalSourceCycle.value).toMatchObject({
         sourceKeyIds: [...CYCLE_IDS],
         loopCount: 1,

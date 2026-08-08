@@ -3,6 +3,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const indexCssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../index.css');
+const indexCss = () => readFileSync(indexCssPath, 'utf8');
+
 const hookRuntime = vi.hoisted(() => ({
   values: [] as unknown[],
   refs: [] as Array<{ current: unknown }>,
@@ -328,7 +331,8 @@ describe('PhysicsPaintStyledTooltip surface contract', () => {
     expect(surface).toContain('max-height: 96px');
     expect(surface).toContain('white-space: normal');
     expect(surface).toContain('pointer-events: none');
-    expect(surface).toContain('background: #62666d');
+    expect(indexCss()).toContain('--color-tooltip-bg: #17191c');
+    expect(surface).toContain('background: var(--color-tooltip-bg)');
     expect(surface).toContain('border: 0');
     expect(surface).toContain('border-radius: 4px');
     expect(surface).toContain('font-size: 12px');
@@ -341,10 +345,9 @@ describe('PhysicsPaintStyledTooltip surface contract', () => {
     expect(tooltipCss).toContain('.physics-paint-styled-tooltip--below');
     expect(tooltipCss).toContain('.physics-paint-styled-tooltip--left');
     expect(tooltipCss).toContain('.physics-paint-styled-tooltip--right');
-    expect(tooltipCss).toContain('border-top: 6px solid #62666d');
-    expect(tooltipCss).toContain('border-bottom: 6px solid #62666d');
-    expect(tooltipCss).toContain('border-left: 6px solid #62666d');
-    expect(tooltipCss).toContain('border-right: 6px solid #62666d');
-    expect(tooltipCss.match(/#62666d/g)).toHaveLength(5);
+    expect(tooltipCss).toContain('border-top: 6px solid var(--color-tooltip-bg)');
+    expect(tooltipCss).toContain('border-bottom: 6px solid var(--color-tooltip-bg)');
+    expect(tooltipCss).toContain('border-left: 6px solid var(--color-tooltip-bg)');
+    expect(tooltipCss).toContain('border-right: 6px solid var(--color-tooltip-bg)');
   });
 });

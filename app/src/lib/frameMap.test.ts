@@ -67,13 +67,14 @@ function makeLoopClip(
   loopId: string,
   placementStart: number,
   repeat: number | 'infinity',
+  mode: PhysicPaintRotoLoopClip['mode'] = 'progressive',
 ): PhysicPaintRotoLoopClip {
   return {
     loopId,
     placementStart,
     sourceKeyIds: ['key-0', 'key-1', 'key-2', 'key-3', 'key-4'],
     repeat,
-    mode: 'progressive',
+    mode,
   };
 }
 
@@ -302,8 +303,8 @@ describe('Motion Editor passive Loop Clip markers (D-33R)', () => {
     installRotoDocument(layerId, [0, 1, 2, 3, 4], [makeLoopClip('loop-private', 10, 5)]);
 
     const layout = fxTrackLayouts.value[0];
-    expect(layout.repeatDurationMarkers).toEqual([{ startFrame: 10, frameCount: 25 }]);
-    expect(Object.keys(layout.repeatDurationMarkers![0])).toEqual(['startFrame', 'frameCount']);
+    expect(layout.repeatDurationMarkers).toEqual([{ startFrame: 10, frameCount: 25, mode: 'progressive' }]);
+    expect(Object.keys(layout.repeatDurationMarkers![0])).toEqual(['startFrame', 'frameCount', 'mode']);
     expect(JSON.stringify(layout.repeatDurationMarkers)).not.toContain('loop-private');
   });
 
@@ -317,12 +318,12 @@ describe('Motion Editor passive Loop Clip markers (D-33R)', () => {
     installRotoDocument(
       layerId,
       [0, 1, 2, 3, 4, 22],
-      [makeLoopClip('loop-a', 10, 5), makeLoopClip('loop-b', 20, 2)],
+      [makeLoopClip('loop-a', 10, 5), makeLoopClip('loop-b', 20, 2, 'static')],
     );
 
     expect(fxTrackLayouts.value[0].repeatDurationMarkers).toEqual([
-      { startFrame: 10, frameCount: 10 },
-      { startFrame: 20, frameCount: 2 },
+      { startFrame: 10, frameCount: 10, mode: 'progressive' },
+      { startFrame: 20, frameCount: 2, mode: 'static' },
     ]);
   });
 
@@ -337,7 +338,7 @@ describe('Motion Editor passive Loop Clip markers (D-33R)', () => {
     installRotoDocument(layerId, [0, 1, 2, 3, 4], [makeLoopClip('loop-infinity', 10, 'infinity')]);
 
     expect(fxTrackLayouts.value[0].repeatDurationMarkers).toEqual([
-      { startFrame: 10, frameCount: 22 },
+      { startFrame: 10, frameCount: 22, mode: 'progressive' },
     ]);
   });
 

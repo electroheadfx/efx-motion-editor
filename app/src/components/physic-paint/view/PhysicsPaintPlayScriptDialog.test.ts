@@ -306,17 +306,13 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
   });
 });
 
-describe('PhysicsPaintPlayScriptDialog modal overlay shell (D-19)', () => {
-  it('renders a dimmed backdrop layer and the modal surface inside the role=dialog overlay root', () => {
+describe('PhysicsPaintPlayScriptDialog floating shell', () => {
+  it('renders a non-modal floating surface with no blocking backdrop', () => {
     const { controller } = createFakeController();
     const tree = renderDialog(controller);
     const root = findOne(tree, (vnode) => vnode.props?.role === 'dialog');
-    expect(root.props['aria-modal']).toBe('true');
-    const backdrop = findOne(root, byClass('physics-paint-play-script-backdrop'));
-    expect(backdrop.props['aria-hidden']).toBe('true');
-    // Backdrop is NOT wired to close — Cancel/Escape/success only (D-17/D-19).
-    expect(backdrop.props.onClick).toBeUndefined();
-    // The modal surface is a sibling of the backdrop, directly under the overlay root.
+    expect(root.props['aria-modal']).toBeUndefined();
+    expect(findAll(root, byClass('physics-paint-play-script-backdrop'))).toHaveLength(0);
     const surface = findOne(root, byClass('physics-paint-play-script-surface'));
     expect(parentOf(root, surface)).toBe(root);
   });
@@ -345,15 +341,15 @@ describe('PhysicsPaintPlayScriptDialog modal overlay shell (D-19)', () => {
     expect(footerIndex).toBeGreaterThan(bodyIndex);
   });
 
-  it('mounts the overlay out of the canvas grid cell: fixed inset positioning, no grid-cell placement (CSS contract)', () => {
+  it('mounts outside the canvas grid while passing pointer input through everywhere except the surface', () => {
     const rootRule = playScriptCssRule('.physics-paint-play-script-dialog');
     expect(rootRule).toContain('position: fixed');
     expect(rootRule).toContain('inset: 0');
+    expect(rootRule).toContain('pointer-events: none');
     expect(rootRule).not.toContain('grid-row');
     expect(rootRule).not.toContain('grid-column');
-    // Dimmed backdrop between the Paint UI and the modal.
-    const backdropRule = playScriptCssRule('.physics-paint-play-script-backdrop');
-    expect(backdropRule).toMatch(/background:\s*oklch\(0 0 0\s*\/\s*0\.5/);
+    expect(playScriptCssRule('.physics-paint-play-script-surface')).toContain('pointer-events: auto');
+    expect(playScriptCssScope()).not.toContain('.physics-paint-play-script-backdrop');
   });
 
   it('declares the proposal dark token set on the modal scope and removes the old light palette (CSS contract)', () => {
@@ -671,6 +667,15 @@ describe('PhysicsPaintPlayScriptDialog keyboard containment (CR-01) + Generate g
     }
   });
 
+  it('does not trap Tab inside the floating dialog', () => {
+    const { controller } = createFakeController();
+    const tree = renderDialog(controller);
+    const root = findOne(tree, (vnode) => vnode.props?.role === 'dialog');
+    const preventDefault = vi.fn();
+    handler(root, 'onKeyDown')({ key: 'Tab', preventDefault, stopPropagation: vi.fn(), currentTarget: null });
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
   it('disables Generate while the repeat field is invalid (repeatError channel), not only validationError', () => {
     const { controller } = createFakeController({ repeatError: 'Enter a positive integer.' });
     const tree = renderDialog(controller);
@@ -762,6 +767,7 @@ describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', 
       getSelection: () => ({ kind: 'real-key', keyId: 'source-1', appFrame: 10 }),
       getMotion: () => ({ deformation: 0, position: 0 }),
       getBrushColor: () => '#103c65',
+      getBackgroundMetadata: () => ({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 }),
       getOperationLocked: () => false,
       getSize: () => ({ width: 1920, height: 1080 }),
       getRotoLoopClips: () => [loop],
@@ -829,6 +835,7 @@ describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', 
       getSelection: () => ({ kind: 'real-key', keyId: 'source-1', appFrame: 10 }),
       getMotion: () => ({ deformation: 0, position: 0 }),
       getBrushColor: () => '#103c65',
+      getBackgroundMetadata: () => ({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 }),
       getOperationLocked: () => false,
       getSize: () => ({ width: 1920, height: 1080 }),
       getRotoLoopClips: () => [loop],

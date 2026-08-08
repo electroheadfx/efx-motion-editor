@@ -66,6 +66,9 @@ function ports(version: number): HookPorts {
       : { kind: 'generated-interpolation' as const, keyId: null, appFrame: 9 },
     getMotion: () => ({ deformation: version * 10, position: version * 20 }),
     getBrushColor: () => (version === 1 ? '#103c65' : '#aa5500'),
+    getBackgroundMetadata: () => version === 1
+      ? { background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 }
+      : { background: 'transparent', paperGrain: 'canvas3', grainStrength: 0.2 },
     getOperationLocked: () => version === 2,
     getSize: () => ({ width: 100 + version, height: 200 + version }),
     getRotoLoopClips: () => [{
@@ -97,6 +100,39 @@ describe('useRotoPlayScriptController', () => {
     captured.ports = null;
   });
 
+  it('forwards the publication background through the Play Script coordinator input', async () => {
+    const hookPorts = ports(1);
+    renderHook(hookPorts);
+    const stablePorts = captured.ports!;
+    const rotoBackground = { background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 } as const;
+
+    await stablePorts.commit({
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      expectedRevision: 'revision-1',
+      records: [],
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      rotoBackground,
+      semanticDelta: {
+        kind: 'play-script',
+        affectedStartAppFrame: 1,
+        affectedEndAppFrame: 0,
+        expectedLayerCapacity: 101,
+        expectedLayerEndExclusive: 101,
+        proposedRecords: [],
+        freshKeyIds: [],
+        loopOnly: true,
+      },
+      selectedKeyId: null,
+      selectedAppFrame: null,
+    });
+
+    expect(hookPorts.executePhysicalEdit).toHaveBeenCalledWith(expect.objectContaining({
+      operationKind: 'play-script',
+      rotoBackground,
+    }));
+  });
+
   it('proxies every dynamic port and refreshes availability after rerender', () => {
     const firstPorts = ports(1);
     const controller = renderHook(firstPorts);
@@ -120,6 +156,7 @@ describe('useRotoPlayScriptController', () => {
     expect(stablePorts.getLaunchContext()).toMatchObject({ layerId: 'layer-2', project: { contextId: 'context-2' } });
     expect(stablePorts.getMotion()).toEqual({ deformation: 20, position: 40 });
     expect(stablePorts.getBrushColor()).toBe('#aa5500');
+    expect(stablePorts.getBackgroundMetadata()).toEqual({ background: 'transparent', paperGrain: 'canvas3', grainStrength: 0.2 });
     expect(stablePorts.getOperationLocked()).toBe(true);
     expect(stablePorts.getSize()).toEqual({ width: 102, height: 202 });
     expect(stablePorts.getRotoLoopClips?.()).toEqual([{

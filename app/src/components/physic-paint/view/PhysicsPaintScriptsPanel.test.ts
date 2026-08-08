@@ -2,9 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// Node-environment component harness for the summary-block cases: preact/hooks is mocked
-// with a cursor-based runtime (same approach as PhysicsPaintPlayScriptDialog.test.ts) so the
-// panel function can be invoked directly and its vnode tree inspected. No DOM is involved.
+// Node-environment component harness: preact/hooks is mocked with a cursor-based runtime
+// so the panel function can be invoked directly and its vnode tree inspected. No DOM is involved.
 const hooks = vi.hoisted(() => ({
   values: [] as unknown[],
   refs: new Map<number, { current: unknown }>(),
@@ -110,9 +109,11 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     const labels = ['Save Script', 'Load and Apply Script', 'Delete Script', 'Refresh Scripts'];
     for (const label of labels) expect(panel).toContain(`label="${label}"`);
     expect(panel.indexOf('label="Save Script"')).toBeLessThan(panel.indexOf('label="Load and Apply Script"'));
-    expect(panel.indexOf('selectedLoopClip ?')).toBeLessThan(panel.indexOf('label="Delete Script"'));
+    expect(panel).toContain('if (selectedLoopClip)');
+    expect(panel.indexOf('label="Load and Apply Script"')).toBeLessThan(panel.indexOf('label="Play Script"'));
+    expect(panel.indexOf('label="Play Script"')).toBeLessThan(panel.indexOf('label="Delete Script"'));
     expect(panel.indexOf('label="Delete Script"')).toBeLessThan(panel.indexOf('label="Refresh Scripts"'));
-    expect(panel).toContain('label={`Edit Loop Clip — ${selectedLoopClip.displayName}`}');
+    expect(panel).toContain('aria-label={`Edit Loop Clip — ${selectedLoopClip.displayName}`}');
     expect(panel).toContain('label="Play Script"');
     expect(panel).not.toContain('label="Rename Script"');
     expect(panel).toContain('aria-label={props.label}');
@@ -126,13 +127,13 @@ describe('Physics Paint SCRIPTS panel contract', () => {
   it('provides an accessible Play Script dialog distinct from cached Roto playback', () => {
     expect(studioView).toContain('<MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />');
     expect(playScriptDialog).toContain('role="dialog"');
-    expect(playScriptDialog).toContain('aria-modal="true"');
+    expect(playScriptDialog).not.toContain('aria-modal="true"');
     expect(playScriptDialog).toContain('aria-labelledby="physics-play-script-title"');
     expect(playScriptDialog).toContain('Max {playScript.capacity.value}');
     expect(playScriptDialog).toContain('Enter a positive integer or Max.');
     expect(playScriptDialog).toContain("if (event.key === 'Escape')");
     expect(playScriptDialog).toContain("if (event.key === 'Enter' && !playScript.validationError.value");
-    expect(playScriptDialog).toContain("event.key !== 'Tab'");
+    expect(playScriptDialog).not.toContain("event.key !== 'Tab'");
     expect(playScriptDialog).toContain('inputRef.current?.focus()');
     expect(playScriptDialog).toContain('returnFocusRef.current?.focus()');
     expect(panel).not.toContain('toggleRotoPlayback');
@@ -155,7 +156,7 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(panel).toContain('Delete “{confirmation.name}”?');
     expect(panel).toContain('document.activeElement === first');
     expect(panel).toContain('deleteButtonRef.current?.focus()');
-    expect(panel).toContain('aria-live="polite"');
+    expect(panel).not.toContain('aria-live="polite"');
   });
 
   it('locks deterministic compact CSS without claiming pixel layout proof', () => {
@@ -426,20 +427,14 @@ function createFakeRotoScript(): RotoScriptClipboardController {
 }
 
 interface FakePlayScriptSeed {
-  line1: string;
-  line2: string;
   disabledReason?: string | null;
-  status?: string | null;
 }
 
-function createFakePlayScript(seed: FakePlayScriptSeed) {
-  const controller = {
+function createFakePlayScript(seed: FakePlayScriptSeed = {}) {
+  return {
     disabledReason: sig(seed.disabledReason ?? null),
-    status: sig(seed.status ?? null),
-    appliedSummary: { line1: sig(seed.line1), line2: sig(seed.line2) },
     openConfirmation: vi.fn(async () => {}),
   } as unknown as RotoPlayScriptController;
-  return controller;
 }
 
 function renderPanel(playScript: RotoPlayScriptController): TestVNode {
@@ -490,110 +485,37 @@ function findOne(root: unknown, predicate: (vnode: TestVNode) => boolean): TestV
   return found[0];
 }
 
-function textOf(node: unknown): string {
-  if (node === null || node === undefined || typeof node === 'boolean') return '';
-  if (typeof node === 'string' || typeof node === 'number') return String(node);
-  if (Array.isArray(node)) return node.map(textOf).join('');
-  return textOf(childrenOf(node as TestVNode));
-}
-
 function hasClass(vnode: TestVNode, name: string): boolean {
   return String(vnode.props?.class ?? '').split(/\s+/).includes(name);
-}
-
-function cssRule(selector: string): string {
-  const start = css.indexOf(selector);
-  expect(start, `CSS rule for ${selector}`).toBeGreaterThanOrEqual(0);
-  const end = css.indexOf('}', start);
-  return css.slice(start, end === -1 ? css.length : end + 1);
 }
 
 beforeEach(() => {
   hooks.reset();
 });
 
-describe('Physics Paint Scripts panel Play Script options summary (42-04, D-07, PLAY-03)', () => {
-  it('renders the locked first-time defaults before any successful Generate', () => {
-    const playScript = createFakePlayScript({
-      line1: 'Progressive · Original colors · Motion 25/40',
-      line2: 'No frames generated yet',
-    });
-    const tree = renderPanel(playScript);
-    expect(textOf(findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary-line1'))))
-      .toBe('Progressive · Original colors · Motion 25/40');
-    expect(textOf(findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary-line2'))))
-      .toBe('No frames generated yet');
-  });
+describe('Physics Paint Scripts panel compact sidebar contract', () => {
+  it('keeps generated settings and operation status out of the script library surface', () => {
+    const tree = renderPanel(createFakePlayScript());
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary'))).toHaveLength(0);
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-scripts-status'))).toHaveLength(0);
+    expect(panel).not.toContain('playScript.appliedSummary');
+    expect(panel).not.toContain('playScript.status.value');
+    expect(css).not.toContain('.physics-paint-scripts-summary');
+    expect(css).not.toContain('.physics-paint-scripts-status');
 
-  it('renders the controller-composed strings verbatim after a Static / Hold + override Generate', () => {
-    const playScript = createFakePlayScript({
-      line1: 'Static / Hold · Override #3366ff · Motion 25/40',
-      line2: 'F4–F7 · 4 frames generated',
-    });
-    const tree = renderPanel(playScript);
-    expect(textOf(findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary-line1'))))
-      .toBe('Static / Hold · Override #3366ff · Motion 25/40');
-    expect(textOf(findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary-line2'))))
-      .toBe('F4–F7 · 4 frames generated');
-  });
-
-  it('leaves the summary byte-identical across dialog cancel / generation failure — the panel has no mutation path', () => {
-    const playScript = createFakePlayScript({
-      line1: 'Static / Hold · Override #3366ff · Motion 25/40',
-      line2: 'F4–F7 · 4 frames generated',
-      status: 'Play Script cancelled.',
-    });
-    const before = renderPanel(playScript);
-    const textBefore = textOf(findOne(before, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary')));
-    // A cancelled/failed generation changes the status line but never the appliedSummary
-    // signals (42-02 controller owns the single success-only assignment site).
-    (playScript.status as { value: string | null }).value = 'Play Script failed: parent rejected the batch.';
-    const after = renderPanel(playScript);
-    const summary = findOne(after, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary'));
-    expect(textOf(summary)).toBe(textBefore);
-    // Read-only projection: no interactive element exists inside the summary block.
-    expect(findAll(summary, (vnode) => vnode.type === 'button' || vnode.type === 'input')).toHaveLength(0);
-  });
-
-  it('places the two-line summary between the toolbar and the script list', () => {
-    const playScript = createFakePlayScript({
-      line1: 'Progressive · Original colors · Motion 25/40',
-      line2: 'No frames generated yet',
-    });
-    const tree = renderPanel(playScript);
     const topLevel = childrenOf(tree).filter(
       (child): child is TestVNode => typeof child === 'object' && child !== null && !Array.isArray(child),
     );
     const toolbarIndex = topLevel.findIndex((vnode) => hasClass(vnode, 'physics-paint-scripts-toolbar'));
-    const summaryIndex = topLevel.findIndex((vnode) => hasClass(vnode, 'physics-paint-scripts-summary'));
     const listIndex = topLevel.findIndex((vnode) => hasClass(vnode, 'physics-paint-scripts-list'));
     expect(toolbarIndex).toBeGreaterThanOrEqual(0);
-    expect(summaryIndex).toBeGreaterThan(toolbarIndex);
-    expect(listIndex).toBeGreaterThan(summaryIndex);
+    expect(listIndex).toBe(toolbarIndex + 1);
   });
 
-  it('updates the Play Script tooltip fallback to cover both modes (Pitfall 8)', () => {
-    const playScript = createFakePlayScript({
-      line1: 'Progressive · Original colors · Motion 25/40',
-      line2: 'No frames generated yet',
-    });
-    const tree = renderPanel(playScript);
+  it('keeps the Play Script tooltip fallback covering both modes', () => {
+    const tree = renderPanel(createFakePlayScript());
     const playButton = findOne(tree, (vnode) => vnode.props?.label === 'Play Script');
     expect(playButton.props.title).toBe('Play Script — Generate real Roto keys (progressive or static/hold)');
     expect(String(playButton.props.title)).not.toContain('Generate progressive real Roto keys');
-  });
-
-  it('styles the summary with existing dark-panel tokens only (10px #aeb5be metadata, #eef1f4 values, per-line ellipsis)', () => {
-    expect(cssRule('.physics-paint-scripts-summary {')).toBeTruthy();
-    const line1 = cssRule('.physics-paint-scripts-summary-line1 {');
-    expect(line1).toContain('color: #aeb5be');
-    expect(line1).toContain('font-size: 10px');
-    const line2 = cssRule('.physics-paint-scripts-summary-line2 {');
-    expect(line2).toContain('color: #eef1f4');
-    for (const rule of [line1, line2]) {
-      expect(rule).toContain('overflow: hidden');
-      expect(rule).toContain('text-overflow: ellipsis');
-      expect(rule).toContain('white-space: nowrap');
-    }
   });
 });

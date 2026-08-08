@@ -208,10 +208,6 @@ export function PhysicsPaintScriptsPanel({
           </PhysicsPaintStyledTooltip>
         </span>
       </div>
-      <p class="physics-paint-scripts-summary">
-        <span class="physics-paint-scripts-summary-line1">{playScript.appliedSummary.line1.value}</span>
-        <span class="physics-paint-scripts-summary-line2">{playScript.appliedSummary.line2.value}</span>
-      </p>
       <div class="physics-paint-scripts-list" role="listbox" aria-label="Saved Roto scripts">
         {rows.map((row) => (
           <div
@@ -268,7 +264,6 @@ export function PhysicsPaintScriptsPanel({
         ))}
         {!rows.length ? <p class="physics-paint-scripts-empty">No project scripts yet.</p> : null}
       </div>
-      <p class="physics-paint-scripts-status" aria-live="polite">{playScript.status.value ?? library.status.value}{library.skippedInvalidCount.value ? ` · Skipped ${library.skippedInvalidCount.value} invalid files` : ''}</p>
       {confirmation ? (
         <div ref={confirmationRef} class="physics-paint-script-confirmation" role="dialog" aria-modal="true" aria-label={`Delete ${confirmation.name}`}
           onKeyDown={(event) => {

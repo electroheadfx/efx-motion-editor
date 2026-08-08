@@ -156,11 +156,19 @@ function getTimelineRepeatDurationMarkers(
 ): TimelineRepeatDurationMarker[] | undefined {
   const context = deriveMainEditorLoopRanges(layer, seq);
   if (!context) return undefined;
+  const modeByLoopId = new Map(
+    physicPaintStore.getRotoPhysicalLoopClips(getLayerId(layer))
+      .map((clip) => [clip.loopId, clip.mode] as const),
+  );
 
   const markers = context.ranges.flatMap((range) => {
     const frameCount = range.effectiveEnd - range.placementStart;
     return frameCount > 0
-      ? [{ startFrame: range.placementStart, frameCount }]
+      ? [{
+          startFrame: range.placementStart,
+          frameCount,
+          mode: modeByLoopId.get(range.loopId) ?? 'progressive',
+        }]
       : [];
   });
 

@@ -509,6 +509,96 @@ describe('physicPaintBridge', () => {
     expect(window.open).not.toHaveBeenCalled();
   });
 
+  it('accepts the first Progressive Play Script and Loop Clip on a fresh layer', async () => {
+    const layer = physicLayer();
+    mockLayers([layer]);
+    sequenceStore.add({
+      id: 'seq-fresh-play-script',
+      kind: 'fx',
+      name: 'Fresh Play Script',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: 50,
+    });
+    projectStore.filePath.value = '/tmp/fresh-play-script.mce';
+    projectStore.scriptLibraryAuthority.value = '/tmp/fresh-play-script/Scripts';
+    const open = vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
+
+    expect(launch.ok).toBe(true);
+    if (!launch.ok || !launch.data.rotoPhysical || !launch.data.project) return;
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toBeNull();
+
+    const records = Array.from({ length: 5 }, (_, appFrame) => {
+      const record = makePhysicalRecord(`generated-${appFrame}`, appFrame);
+      return {
+        keyId: record.keyId,
+        appFrame: record.appFrame,
+        payload: {
+          ...record.payload,
+          dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      };
+    });
+    const rotoBackground = { background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 } as const;
+    const result = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'fresh-progressive-play-script',
+      operationKind: 'play-script',
+      layerId: layer.id,
+      startFrame: 0,
+      launchOperationId: launch.data.operationId,
+      projectContextId: launch.data.project.contextId,
+      expectedRevision: launch.data.rotoPhysical.revision,
+      records,
+      interpolationEnabled: launch.data.rotoPhysical.interpolationEnabled,
+      interpolationMode: launch.data.rotoPhysical.interpolationMode,
+      rotoBackground,
+      loopClips: [{
+        loopId: 'fresh-progressive-loop',
+        placementStart: 0,
+        sourceKeyIds: records.map((record) => record.keyId),
+        repeat: 2,
+        mode: 'progressive',
+      }],
+      selectedKeyId: records[0].keyId,
+      selectedAppFrame: 0,
+      semanticDelta: {
+        kind: 'play-script',
+        affectedStartAppFrame: 0,
+        affectedEndAppFrame: 4,
+        expectedLayerCapacity: launch.data.rotoPhysical.capacity,
+        expectedLayerEndExclusive: 50,
+        proposedRecords: records,
+        freshKeyIds: records.map((record) => record.keyId),
+      },
+    });
+
+    expect(result.ok ? null : result.error).toBeNull();
+    expect(result).toMatchObject({
+      ok: true,
+      operationId: 'fresh-progressive-play-script',
+      operationKind: 'play-script',
+      appliedFrameCount: 5,
+    });
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toMatchObject({
+      selectedKeyId: records[0].keyId,
+      cursorAppFrame: 0,
+      background: rotoBackground,
+      loopClips: [expect.objectContaining({
+        placementStart: 0,
+        sourceKeyIds: records.map((record) => record.keyId),
+        repeat: 2,
+        mode: 'progressive',
+      })],
+    });
+    open.mockRestore();
+  });
+
   it('applies a still payload at the start frame and returns operation-matched success', () => {
     mockLayers([physicLayer()]);
 

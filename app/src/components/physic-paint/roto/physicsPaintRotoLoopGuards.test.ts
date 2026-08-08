@@ -171,8 +171,8 @@ function expectFailure(
 }
 
 function expectOk(resolution: PhysicPaintRotoPhysicalEditResolution) {
-  expect(resolution.ok).toBe(true);
   if (!resolution.ok) throw new Error(`Expected an accepted resolution, got ${resolution.failure.code}: ${resolution.failure.text}`);
+  expect(resolution.ok).toBe(true);
   return resolution.proposal;
 }
 
@@ -336,11 +336,11 @@ describe('D-11 rigid linked-key guard', () => {
         emptyFrames: 5,
         selectedKeyId: null,
         scopeKeyIds: ['B', 'D'],
-        linkedSourceSpacingScope: linkedSpacingScope(['B', 'D']),
+        linkedSourceSpacingScopes: [linkedSpacingScope(['B', 'D'])],
       },
     }));
 
-    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 10, B: 12, C: 15, D: 18, E: 24 });
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 10, B: 12, C: 15, D: 18, E: 22 });
     expect(proposal.nextLoopClips).toBeNull();
   });
 
@@ -354,13 +354,74 @@ describe('D-11 rigid linked-key guard', () => {
         emptyFrames: 2,
         selectedKeyId: null,
         scopeKeyIds: [...SOURCE_KEY_IDS],
-        linkedSourceSpacingScope: linkedSpacingScope(SOURCE_KEY_IDS),
+        linkedSourceSpacingScopes: [linkedSpacingScope(SOURCE_KEY_IDS)],
       },
     }));
 
     expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 10, B: 13, C: 16, D: 19, E: 22 });
     expect(proposal.nextLoopClips).toBeNull();
     expect(loopClips).toEqual([loop(10, 3, 'L1'), loop(100, 2, 'L2')]);
+  });
+
+  it('expands an earlier Progressive capsule and ripples a downstream Static/Hold capsule with its placement', () => {
+    const records = [
+      record('A', 0, 'A'),
+      record('B', 1, 'B'),
+      record('C', 2, 'C'),
+      record('X', 6, 'X'),
+      record('Y', 7, 'Y'),
+      record('Q', 20, 'Q'),
+    ];
+    const progressive: PhysicPaintRotoLoopClip = {
+      loopId: 'progressive-a',
+      placementStart: 0,
+      sourceKeyIds: ['A', 'B', 'C'],
+      repeat: 2,
+      mode: 'progressive',
+      scriptId: 'script-a',
+      motion: { deformation: 4, position: 3 },
+      overrideColor: '#123456',
+    };
+    const hold: PhysicPaintRotoLoopClip = {
+      loopId: 'hold-b',
+      placementStart: 6,
+      sourceKeyIds: ['X', 'Y'],
+      repeat: 4,
+      mode: 'static',
+      scriptId: 'script-b',
+      motion: { deformation: 0, position: 2 },
+      overrideColor: '#abcdef',
+    };
+    const loopClips = [progressive, hold];
+    const intent: PhysicPaintRotoPhysicalEditIntent = {
+      kind: 'force-spacing',
+      emptyFrames: 2,
+      selectedKeyId: null,
+      scopeKeyIds: ['A', 'B', 'C'],
+      linkedSourceSpacingScopes: [linkedSpacingScope(['A', 'B', 'C'], ['A', 'B', 'C'])],
+    };
+    const proposal = expectOk(resolveEdit({ records, loopClips, intent }));
+
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 0, B: 3, C: 6, X: 10, Y: 11, Q: 24 });
+    expect(proposal.generatedCells).toEqual([]);
+    expect(proposal.nextLoopClips).toEqual([
+      progressive,
+      { ...hold, placementStart: 10 },
+    ]);
+    expect(proposal.nextRecords).toBeNull();
+
+    const interpolated = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent,
+      loopClips,
+      capacity: CAPACITY,
+      interpolationEnabled: true,
+    });
+    expect(interpolated.ok).toBe(true);
+    if (!interpolated.ok) throw new Error('Expected interpolated spacing to resolve.');
+    expect(interpolated.proposal.generatedCells.map((cell) => cell.appFrame)).toContain(1);
+    expect(interpolated.proposal.nextRecords).toBeNull();
   });
 
   it.each([
@@ -371,7 +432,7 @@ describe('D-11 rigid linked-key guard', () => {
     const resolution = resolveEdit({
       records: SOURCE_RECORDS(),
       loopClips: [loop(10, 5)],
-      intent: { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null, scopeKeyIds, linkedSourceSpacingScope: provenance },
+      intent: { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null, scopeKeyIds, linkedSourceSpacingScopes: [provenance] },
     });
     expect(resolution.ok).toBe(false);
     if (!resolution.ok) expect(resolution.failure.code).toBe('invalid-linked-source-spacing-scope');
@@ -383,7 +444,7 @@ describe('D-11 rigid linked-key guard', () => {
       loopClips: [loop(10, 5)],
       intent: {
         kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null, scopeKeyIds: ['B', 'C'],
-        linkedSourceSpacingScope: linkedSpacingScope(['B', 'C'], ['A', 'B', 'C', 'E', 'D']),
+        linkedSourceSpacingScopes: [linkedSpacingScope(['B', 'C'], ['A', 'B', 'C', 'E', 'D'])],
       },
     });
     const mismatched = resolveEdit({
@@ -391,7 +452,7 @@ describe('D-11 rigid linked-key guard', () => {
       loopClips: [loop(10, 5)],
       intent: {
         kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null, scopeKeyIds: ['B', 'C'],
-        linkedSourceSpacingScope: linkedSpacingScope(['B', 'D']),
+        linkedSourceSpacingScopes: [linkedSpacingScope(['B', 'D'])],
       },
     });
 
@@ -401,14 +462,14 @@ describe('D-11 rigid linked-key guard', () => {
     }
   });
 
-  it('rejects selected keys crossing an unselected source hard wall before finalization', () => {
+  it('rejects selected keys crossing an unselected interior source position before finalization', () => {
     const records = [record('A', 10, 'A'), record('B', 12, 'B'), record('C', 15, 'C'), record('D', 20, 'D'), record('E', 24, 'E')];
     const resolution = resolveEdit({
       records,
       loopClips: [loop(10, 3)],
       intent: {
-        kind: 'force-spacing', emptyFrames: 10, selectedKeyId: null, scopeKeyIds: ['B', 'C'],
-        linkedSourceSpacingScope: linkedSpacingScope(['B', 'C']),
+        kind: 'force-spacing', emptyFrames: 0, selectedKeyId: null, scopeKeyIds: ['B', 'D'],
+        linkedSourceSpacingScopes: [linkedSpacingScope(['B', 'D'])],
       },
     });
 
@@ -422,8 +483,8 @@ describe('D-11 rigid linked-key guard', () => {
       records,
       loopClips: [loop(10, 3)],
       intent: {
-        kind: 'force-spacing', emptyFrames: 7, selectedKeyId: null, scopeKeyIds: ['B', 'C'],
-        linkedSourceSpacingScope: linkedSpacingScope(['B', 'C']),
+        kind: 'force-spacing', emptyFrames: 2, selectedKeyId: null, scopeKeyIds: ['B', 'D'],
+        linkedSourceSpacingScopes: [linkedSpacingScope(['B', 'D'])],
       },
     });
 
@@ -437,7 +498,7 @@ describe('D-11 rigid linked-key guard', () => {
       loopClips: [loop(10, 3)],
       intent: {
         kind: 'force-spacing', emptyFrames: 200, selectedKeyId: null, scopeKeyIds: [...SOURCE_KEY_IDS],
-        linkedSourceSpacingScope: linkedSpacingScope(SOURCE_KEY_IDS),
+        linkedSourceSpacingScopes: [linkedSpacingScope(SOURCE_KEY_IDS)],
       },
     });
 

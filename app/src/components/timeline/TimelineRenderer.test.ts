@@ -171,7 +171,10 @@ describe('Loop Clip rendering ownership (43-11, D-33R)', () => {
     );
 
     expect(markerIndex).toBeGreaterThan(-1);
-    expect(markerSource).toContain("ctx.fillStyle = '#8B5CF6'");
+    expect(markerSource).toContain("marker.mode === 'static' ? '#06B6D4' : '#8B5CF6'");
+    expect(markerSource).toContain("ctx.fillStyle = '#F8FAFC'");
+    expect(markerSource).toContain('markerX === clippedLeft');
+    expect(markerSource).toContain('markerX + markerW === clippedRight');
     expect(markerSource).toContain('const markerY = barY + 1');
     expect(markerSource).toContain('const markerH = 3');
     expect(markerSource).toContain('Math.max(markerX, barX, TRACK_HEADER_WIDTH)');

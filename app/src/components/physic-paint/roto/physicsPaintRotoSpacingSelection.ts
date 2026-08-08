@@ -19,6 +19,12 @@ export interface PhysicsPaintRotoSpacingCycle {
 
 export type PhysicsPaintRotoSpacingSelectionGesture = 'plain' | 'toggle' | 'range';
 
+export interface PhysicsPaintRotoLoopClipSelection {
+  readonly selectedLoopClipIds: readonly string[];
+  readonly anchorLoopClipId: string;
+  readonly primaryLoopClipId: string;
+}
+
 function isBoundedKeyId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 256;
 }
@@ -35,6 +41,86 @@ function arraysEqual(left: readonly string[], right: readonly string[]): boolean
 
 export function getPhysicsPaintRotoSourceCycleId(sourceKeyIds: readonly string[]): string {
   return sourceKeyIds.map((keyId) => `${keyId.length}:${keyId}`).join('|');
+}
+
+function freezeLoopClipSelection(
+  selectedLoopClipIds: readonly string[],
+  anchorLoopClipId: string,
+  primaryLoopClipId: string,
+): PhysicsPaintRotoLoopClipSelection {
+  return Object.freeze({
+    selectedLoopClipIds: Object.freeze([...selectedLoopClipIds]),
+    anchorLoopClipId,
+    primaryLoopClipId,
+  });
+}
+
+function validOrderedLoopClipIds(orderedLoopClipIds: readonly string[]): boolean {
+  return orderedLoopClipIds.length > 0
+    && orderedLoopClipIds.every(isBoundedKeyId)
+    && new Set(orderedLoopClipIds).size === orderedLoopClipIds.length;
+}
+
+export function updatePhysicsPaintRotoLoopClipSelection(
+  selection: PhysicsPaintRotoLoopClipSelection | null,
+  orderedLoopClipIds: readonly string[],
+  loopClipId: string,
+  gesture: PhysicsPaintRotoSpacingSelectionGesture,
+): PhysicsPaintRotoLoopClipSelection | null {
+  if (!validOrderedLoopClipIds(orderedLoopClipIds) || !orderedLoopClipIds.includes(loopClipId)) return null;
+  if (gesture === 'plain' || selection === null) {
+    return freezeLoopClipSelection([loopClipId], loopClipId, loopClipId);
+  }
+  const reconciled = reconcilePhysicsPaintRotoLoopClipSelection(selection, orderedLoopClipIds);
+  if (reconciled === null) {
+    return freezeLoopClipSelection([loopClipId], loopClipId, loopClipId);
+  }
+  if (gesture === 'range') {
+    const anchorIndex = orderedLoopClipIds.indexOf(reconciled.anchorLoopClipId);
+    const targetIndex = orderedLoopClipIds.indexOf(loopClipId);
+    const start = Math.min(anchorIndex, targetIndex);
+    const end = Math.max(anchorIndex, targetIndex);
+    return freezeLoopClipSelection(
+      orderedLoopClipIds.slice(start, end + 1),
+      reconciled.anchorLoopClipId,
+      loopClipId,
+    );
+  }
+  const selected = new Set(reconciled.selectedLoopClipIds);
+  if (selected.has(loopClipId)) selected.delete(loopClipId);
+  else selected.add(loopClipId);
+  const ordered = orderedLoopClipIds.filter((id) => selected.has(id));
+  if (ordered.length === 0) return null;
+  const anchor = selected.has(reconciled.anchorLoopClipId)
+    ? reconciled.anchorLoopClipId
+    : ordered[0];
+  const primary = selected.has(loopClipId)
+    ? loopClipId
+    : selected.has(reconciled.primaryLoopClipId)
+      ? reconciled.primaryLoopClipId
+      : ordered[ordered.length - 1];
+  return freezeLoopClipSelection(ordered, anchor, primary);
+}
+
+export function reconcilePhysicsPaintRotoLoopClipSelection(
+  selection: PhysicsPaintRotoLoopClipSelection | null,
+  orderedLoopClipIds: readonly string[],
+): PhysicsPaintRotoLoopClipSelection | null {
+  if (selection === null || !validOrderedLoopClipIds(orderedLoopClipIds)) return null;
+  const selected = new Set<string>();
+  for (const loopClipId of selection.selectedLoopClipIds) {
+    if (!isBoundedKeyId(loopClipId) || selected.has(loopClipId)) return null;
+    if (orderedLoopClipIds.includes(loopClipId)) selected.add(loopClipId);
+  }
+  const ordered = orderedLoopClipIds.filter((loopClipId) => selected.has(loopClipId));
+  if (ordered.length === 0) return null;
+  const anchor = selected.has(selection.anchorLoopClipId)
+    ? selection.anchorLoopClipId
+    : ordered[0];
+  const primary = selected.has(selection.primaryLoopClipId)
+    ? selection.primaryLoopClipId
+    : ordered[ordered.length - 1];
+  return freezeLoopClipSelection(ordered, anchor, primary);
 }
 
 function isValidProxy(proxy: PhysicsPaintRotoSpacingProxy): boolean {

@@ -48,6 +48,7 @@ interface HarnessOptions {
   launch?: PhysicPaintLaunchContext | null;
   pendingOperationId?: string | null;
   selectedKeyIds?: readonly string[];
+  selectedLoopClipIds?: readonly string[];
   capacity?: number;
 }
 
@@ -67,7 +68,8 @@ function createHarness(options: HarnessOptions = {}) {
     getRotoSpacingSelection: () => options.spacingSelection ?? null,
     getPhysicalCells: () => [],
     getSelectedKeyId: () => null,
-    getSelectedKeyIds: () => options.selectedKeyIds ?? [],
+    getSelectedKeyIds: () => options.selectedKeyIds ?? options.spacingSelection?.selectedSourceKeyIds ?? [],
+    getSelectedLoopClipIds: () => options.selectedLoopClipIds ?? [],
     getCurrentAppFrame: () => options.currentAppFrame ?? 3,
     getLaunchContext: () => launch,
     getCapacity: () => options.capacity ?? 10,
@@ -197,7 +199,7 @@ describe('useRotoTimelineActions linked source-position Force Spacing', () => {
       operationKind: string;
     };
     expect(dispatched.operationKind).toBe('force-spacing');
-    expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ A: 10, B: 12, C: 15, D: 18, E: 24 });
+    expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ A: 10, B: 12, C: 15, D: 18, E: 22 });
     expect(dispatched.proposal.nextLoopClips).toBeNull();
   });
 
@@ -235,6 +237,110 @@ describe('useRotoTimelineActions linked source-position Force Spacing', () => {
     expect(await actions.physicalActions.applyForceSpacing()).toBe(true);
     const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as { proposal: { mapping: ReadonlyMap<string, number> } };
     expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ A: 0, B: 2, C: 4 });
+  });
+});
+
+describe('useRotoTimelineActions rail-owned multi-capsule Force Spacing', () => {
+  const records = [
+    realKeyRecord('A', 0),
+    realKeyRecord('B', 1),
+    realKeyRecord('C', 2),
+    realKeyRecord('X', 6),
+    realKeyRecord('Y', 7),
+  ];
+  const loopClips: readonly PhysicPaintRotoLoopClip[] = [
+    {
+      loopId: 'loop-a',
+      placementStart: 0,
+      sourceKeyIds: ['A', 'B', 'C'],
+      repeat: 2,
+      mode: 'progressive',
+    },
+    {
+      loopId: 'loop-b',
+      placementStart: 6,
+      sourceKeyIds: ['X', 'Y'],
+      repeat: 4,
+      mode: 'static',
+    },
+  ];
+
+  it('derives complete selected rail cycles and processes them left-to-right', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records,
+      loopClips,
+      selectedLoopClipIds: ['loop-a', 'loop-b'],
+      capacity: 30,
+    });
+    actions.physicalActions.setForceSpacingInput('2');
+
+    expect(await actions.physicalActions.applyForceSpacing()).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: {
+        mapping: ReadonlyMap<string, number>;
+        nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null;
+      };
+    };
+    expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ A: 0, B: 3, C: 6, X: 10, Y: 13 });
+    expect(dispatched.proposal.nextLoopClips?.find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(10);
+  });
+
+  it('deduplicates identical shared source cycles selected through non-contiguous rails', async () => {
+    const sharedClips: readonly PhysicPaintRotoLoopClip[] = [
+      loopClips[0],
+      { ...loopClips[0], loopId: 'loop-shared', placementStart: 20 },
+    ];
+    const { actions, executePhysicalEdit } = createHarness({
+      records: records.slice(0, 3),
+      loopClips: sharedClips,
+      selectedLoopClipIds: ['loop-a', 'loop-shared'],
+      capacity: 30,
+    });
+    actions.physicalActions.setForceSpacingInput('2');
+
+    expect(await actions.physicalActions.applyForceSpacing()).toBe(true);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: { mapping: ReadonlyMap<string, number>; nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null };
+    };
+    expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ A: 0, B: 3, C: 6 });
+    expect(dispatched.proposal.nextLoopClips).toBeNull();
+  });
+
+  it('rejects physical selection spanning more than one linked source cycle with rail guidance', async () => {
+    const { actions, executePhysicalEdit, publishStatus } = createHarness({
+      records,
+      loopClips,
+      selectedKeyIds: ['A', 'X'],
+      capacity: 30,
+    });
+
+    expect(await actions.physicalActions.applyForceSpacing()).toBe(false);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+    expect(publishStatus).toHaveBeenCalledWith('Select Loop Rails to apply Key Spacing across multiple Loop Clips.');
+  });
+
+  it('rejects reordered rail selection and stale hidden proxy authorization before resolver execution', async () => {
+    const reordered = createHarness({
+      records,
+      loopClips,
+      selectedLoopClipIds: ['loop-b', 'loop-a'],
+      capacity: 30,
+    });
+    expect(await reordered.actions.physicalActions.applyForceSpacing()).toBe(false);
+    expect(reordered.executePhysicalEdit).not.toHaveBeenCalled();
+    expect(reordered.publishStatus).toHaveBeenCalledWith('Loop Rail selection is stale. Select the Loop Rails again.');
+
+    const staleProxy = createHarness({
+      records,
+      loopClips,
+      spacingSelection: spacingSelection(['A', 'B']),
+      selectedKeyIds: ['A', 'B', 'C', 'X', 'Y'],
+      capacity: 30,
+    });
+    expect(await staleProxy.actions.physicalActions.applyForceSpacing()).toBe(false);
+    expect(staleProxy.executePhysicalEdit).not.toHaveBeenCalled();
+    expect(staleProxy.publishStatus).toHaveBeenCalledWith('Physical Key Spacing selection is stale. Select the keys again.');
   });
 });
 

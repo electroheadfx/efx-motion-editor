@@ -12,6 +12,7 @@ export interface TimelinePlayScriptMarker {
 export interface TimelineRepeatDurationMarker {
   startFrame: number;
   frameCount: number;
+  mode: 'progressive' | 'static';
 }
 
 export interface TimelineState {

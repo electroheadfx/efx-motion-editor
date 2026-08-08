@@ -283,7 +283,7 @@ export function TimelineCapsuleTooltip(props: {readonly ops?: TimelineCapsuleToo
   return (
     <div
       role="tooltip"
-      class="fixed z-50 max-w-80 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text-primary)] shadow-lg"
+      class="fixed z-50 max-w-80 rounded-md border border-[var(--color-tooltip-border)] bg-[var(--color-tooltip-bg)] px-3 py-2 text-xs text-[var(--text-primary)] shadow-lg"
       style={{left: `${position.left}px`, top: `${position.top}px`, width: `${width}px`, pointerEvents: current.pinned ? 'auto' : 'none'}}
       onPointerLeave={() => { if (!current.pinned) visibilityRef.current?.leave(); }}
     >

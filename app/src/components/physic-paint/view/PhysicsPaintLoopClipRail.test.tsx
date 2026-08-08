@@ -61,7 +61,10 @@ import {
   type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
-import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysicalResolver';
+import {
+  derivePhysicPaintRotoLoopRanges,
+  resolvePhysicPaintRotoSpacingProxy,
+} from '../roto/physicsPaintRotoPhysicalResolver';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
@@ -222,9 +225,10 @@ function renderScriptsPanel(
 function renderWorkflowStrip(
   loopContext: ReturnType<typeof derivePhysicPaintRotoLoopRanges> | null,
   presentations: ReadonlyMap<string, PhysicsPaintLoopClipPresentation>,
-  selectedLoopClipId: string | null,
-  onSelectLoopClip: (loopId: string | null) => void,
+  selectedLoopClipIds: readonly string[],
+  onSelectLoopClip: (loopId: string | null, gesture?: 'plain' | 'toggle' | 'range') => void,
   onOpenLoopEdit: (loopId: string) => Promise<unknown>,
+  cellProps: Pick<Parameters<typeof PhysicsPaintWorkflowStrip>[0], 'rotoPhysicalCells' | 'cachedRotoFrames' | 'rotoSpacingSelection'> = {},
 ): unknown {
   hooks.reset();
   return PhysicsPaintWorkflowStrip({
@@ -234,7 +238,7 @@ function renderWorkflowStrip(
     onion: { enabled: false, previous: false, next: false, count: 1, opacity: 0.5 },
     rotoLoopResolutionContext: loopContext,
     rotoLoopPresentations: presentations,
-    selectedRotoLoopClipId: selectedLoopClipId,
+    selectedRotoLoopClipIds: selectedLoopClipIds,
     onSelectRotoLoopClip: onSelectLoopClip,
     onOpenRotoLoopEdit: onOpenLoopEdit,
     onNavigateToSyncedFrame: () => {},
@@ -243,10 +247,93 @@ function renderWorkflowStrip(
     onGoToNextFrame: () => {},
     onGoToLastFrame: () => {},
     onOnionChange: () => {},
+    ...cellProps,
   });
 }
 
 describe('PhysicsPaintLoopClipRail ownership tracer', () => {
+  it('dispatches plain, Shift range, and Cmd/Ctrl toggle rail selection gestures', () => {
+    vi.useFakeTimers();
+    const clips: PhysicPaintRotoLoopClip[] = [
+      {
+        loopId: 'loop-a',
+        placementStart: 0,
+        sourceKeyIds: ['A1', 'A2', 'A3'],
+        repeat: 1,
+        mode: 'progressive',
+      },
+      {
+        loopId: 'loop-b',
+        placementStart: 3,
+        sourceKeyIds: ['B1', 'B2', 'B3'],
+        repeat: 1,
+        mode: 'static',
+      },
+    ];
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: clips.flatMap((clip) => clip.sourceKeyIds.map((keyId, index) => ({
+        keyId,
+        appFrame: clip.placementStart + index,
+      }))),
+      loopClips: clips,
+      parentEndExclusive: 12,
+      capacity: 120,
+      interpolationEnabled: false,
+    });
+    const presentations = new Map(context.ranges.map((range) => {
+      const clip = clips.find((candidate) => candidate.loopId === range.loopId)!;
+      return [range.loopId, projectPhysicsPaintLoopClipPresentation(range, clip, null)] as const;
+    }));
+    const onSelectLoopClip = vi.fn();
+
+    hooks.reset();
+    const tree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: context.ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 0, endFrameExclusive: 12 },
+      framePitch: 18,
+      selectedLoopClipIds: [],
+      onSelectLoopClip,
+      onOpenLoopEdit: vi.fn(async () => {}),
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    const targets = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+    (targets[0].props.onClick as (event: unknown) => void)({
+      timeStamp: 100,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+    });
+    vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
+    (targets[1].props.onClick as (event: unknown) => void)({
+      timeStamp: 500,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: true,
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+    });
+    vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
+    (targets[1].props.onClick as (event: unknown) => void)({
+      timeStamp: 900,
+      metaKey: true,
+      ctrlKey: false,
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+    });
+    vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
+
+    expect(onSelectLoopClip.mock.calls).toEqual([
+      ['loop-a', 'plain'],
+      ['loop-b', 'range'],
+      ['loop-b', 'toggle'],
+    ]);
+    vi.useRealTimers();
+  });
+
   it('integrates Loop Clip ownership through all nine tracer checks', async () => {
     vi.useFakeTimers();
     const rawLoopId = '0f65c808-raw-loop-uuid';
@@ -287,7 +374,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       presentations: new Map(),
       visibleFrameWindow: { startFrame: 8, endFrameExclusive: 20 },
       framePitch: 18,
-      selectedLoopClipId: null,
+      selectedLoopClipIds: [],
       onSelectLoopClip,
       onOpenLoopEdit,
     })).toBeNull();
@@ -298,7 +385,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       presentations,
       visibleFrameWindow: { startFrame: 8, endFrameExclusive: 20 },
       framePitch: 18,
-      selectedLoopClipId,
+      selectedLoopClipIds: [selectedLoopClipId],
       onSelectLoopClip,
       onOpenLoopEdit,
     }), new Set(['PhysicsPaintLoopClipRailTarget']));
@@ -308,12 +395,15 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const segment = findOne(railTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-segment'));
     expect(anchor.props.style).toEqual({ left: '36px', width: '180px' });
     expect(target.props['aria-pressed']).toBe(true);
+    expect(hasClass(target, 'mode-progressive')).toBe(true);
+    expect(hasClass(target, 'boundary-start')).toBe(true);
+    expect(hasClass(target, 'boundary-end')).toBe(false);
     expect(segment).toBeTruthy();
     const railSegmentRule = cssRule('.physics-paint-loop-clip-rail-segment {');
     expect(railSegmentRule).toContain('height: 3px');
     expect(railSegmentRule).toContain('background: #8b5cf6');
     const railHoverRule = cssRule('.physics-paint-loop-clip-rail-target:hover:not(.selected) .physics-paint-loop-clip-rail-segment,');
-    expect(railHoverRule).toContain('background: #ffffff');
+    expect(railHoverRule).toContain('background: #c4b5fd');
     const railSelectedRule = cssRule('.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {');
     expect(railSelectedRule).toContain('background: #f59e0b');
     expect(physicsPaintStudioCss).not.toContain('background: #a78bfa');
@@ -329,7 +419,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(typeof target.props.onfocusin).toBe('function');
     (target.props.onfocusin as () => void)();
     const railCopy = `${String(target.props['aria-label'])} ${textOf(railTree)}`;
-    for (const fact of ['Walk Loop', 'Cycle 5f × 5 = 25f', 'Effective 25f', 'Status: Linked']) {
+    for (const fact of ['Loop Clip at F10', 'Cycle 5f × 5 = 25f', 'Effective 25f', 'Mode: Progressive', 'Status: Linked']) {
       expect(railCopy).toContain(fact);
     }
     expect(railCopy).not.toContain(rawLoopId);
@@ -344,7 +434,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(onSelectLoopClip).not.toHaveBeenCalled();
     vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
-    expect(onSelectLoopClip).toHaveBeenLastCalledWith(null);
+    expect(onSelectLoopClip).toHaveBeenLastCalledWith(rawLoopId, 'plain');
     expect(onOpenLoopEdit).not.toHaveBeenCalled();
 
     hooks.reset();
@@ -353,7 +443,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       presentations,
       visibleFrameWindow: { startFrame: 8, endFrameExclusive: 20 },
       framePitch: 18,
-      selectedLoopClipId: null,
+      selectedLoopClipIds: [],
       onSelectLoopClip,
       onOpenLoopEdit,
     }), new Set(['PhysicsPaintLoopClipRailTarget']));
@@ -362,7 +452,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     (unselectedTarget.props.onClick as (event: typeof selectedSingleClick) => void)({ detail: 1, timeStamp: 1_000, stopPropagation: vi.fn(), preventDefault: vi.fn() });
     vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
-    expect(onSelectLoopClip).toHaveBeenLastCalledWith(rawLoopId);
+    expect(onSelectLoopClip).toHaveBeenLastCalledWith(rawLoopId, 'plain');
 
     hooks.reset();
     const selectedAgainTree = materializeNamedComponents(PhysicsPaintLoopClipRail({
@@ -370,7 +460,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       presentations,
       visibleFrameWindow: { startFrame: 8, endFrameExclusive: 20 },
       framePitch: 18,
-      selectedLoopClipId,
+      selectedLoopClipIds: [selectedLoopClipId],
       onSelectLoopClip,
       onOpenLoopEdit,
     }), new Set(['PhysicsPaintLoopClipRailTarget']));
@@ -380,7 +470,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     (selectedAgainTarget.props.onClick as (event: typeof slowSecondClick) => void)(slowSecondClick);
     vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
-    expect(onSelectLoopClip).toHaveBeenLastCalledWith(null);
+    expect(onSelectLoopClip).toHaveBeenLastCalledWith(rawLoopId, 'plain');
     expect(onOpenLoopEdit).not.toHaveBeenCalled();
 
     hooks.reset();
@@ -389,7 +479,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       presentations,
       visibleFrameWindow: { startFrame: 8, endFrameExclusive: 20 },
       framePitch: 18,
-      selectedLoopClipId: null,
+      selectedLoopClipIds: [],
       onSelectLoopClip,
       onOpenLoopEdit,
     }), new Set(['PhysicsPaintLoopClipRailTarget']));
@@ -403,7 +493,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(firstClick.stopPropagation).toHaveBeenCalledOnce();
     expect(secondClick.preventDefault).toHaveBeenCalledOnce();
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
-    expect(onSelectLoopClip).toHaveBeenLastCalledWith(rawLoopId);
+    expect(onSelectLoopClip).toHaveBeenLastCalledWith(rawLoopId, 'plain');
     expect(onOpenLoopEdit).toHaveBeenCalledOnce();
     expect(onOpenLoopEdit).toHaveBeenLastCalledWith(rawLoopId);
 
@@ -413,7 +503,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(enter.stopPropagation).toHaveBeenCalledOnce();
     expect(enter.preventDefault).toHaveBeenCalledOnce();
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
-    expect(onSelectLoopClip).toHaveBeenLastCalledWith(rawLoopId);
+    expect(onSelectLoopClip).toHaveBeenLastCalledWith(rawLoopId, 'plain');
     expect(onOpenLoopEdit).toHaveBeenCalledTimes(2);
     expect(onOpenLoopEdit).toHaveBeenLastCalledWith(rawLoopId);
 
@@ -425,14 +515,14 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(target.props.onDragStart).toBeUndefined();
     expect(target.props.setPointerCapture).toBeUndefined();
 
-    const noLoopWorkflow = renderWorkflowStrip(null, new Map(), null, onSelectLoopClip, onOpenLoopEdit);
+    const noLoopWorkflow = renderWorkflowStrip(null, new Map(), [], onSelectLoopClip, onOpenLoopEdit);
     expect(findAll(noLoopWorkflow, (vnode) => vnode.type === PhysicsPaintLoopClipRail)).toHaveLength(0);
     expect(findAll(noLoopWorkflow, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'))).toHaveLength(0);
 
     const workflowTree = renderWorkflowStrip(
       loopContext,
       presentations,
-      selectedLoopClipId,
+      [selectedLoopClipId],
       onSelectLoopClip,
       onOpenLoopEdit,
     );
@@ -441,7 +531,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const mountedRails = findAll(physicalRow, (vnode) => vnode.type === PhysicsPaintLoopClipRail);
     expect(mountedRails).toHaveLength(1);
     expect(mountedRails[0].props.ranges).toBe(loopContext.ranges);
-    expect(mountedRails[0].props.selectedLoopClipId).toBe(selectedLoopClipId);
+    expect(mountedRails[0].props.selectedLoopClipIds).toEqual([selectedLoopClipId]);
     expect(findAll(strip, (vnode) => hasClass(vnode, 'physics-paint-lane'))).toHaveLength(1);
     expect(findAll(strip, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lane'))).toHaveLength(0);
     expect(cssRule('.physics-paint-workflow-strip {')).toContain('height: 161px');
@@ -452,13 +542,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(linkedCells[0].props.tooltipCopy).toBe('Linked · Repeat 1 · Source frame 1 of 5');
     expect(linkedCells[0].props.ariaLabel).toContain('Linked · Repeat 1 · Source frame 1 of 5');
     expect(String(linkedCells[0].props.ariaLabel)).not.toContain('No Roto content');
-    const linkedBadgeRule = cssRule('.physics-paint-roto-cell.roto-linked-loop-badge {');
-    expect(linkedBadgeRule).toContain('background: #34383c');
-    expect(linkedBadgeRule).toContain('rgba(211, 215, 221, 0.82)');
-    const linkedDotRule = cssRule('.physics-paint-roto-cell.roto-linked-loop-badge::after {');
-    expect(linkedDotRule).toContain('width: 4px');
-    expect(linkedDotRule).toContain('height: 4px');
-    expect(linkedDotRule).toContain('rgba(221, 224, 229, 0.9)');
+    expect(String(linkedCells[0].props.cellClass)).toContain('roto-linked-source-key');
 
     const onCloseLoopClip = vi.fn();
     const normalPanel = renderScriptsPanel(null, onOpenLoopEdit, onCloseLoopClip);
@@ -470,14 +554,14 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const selectedPresentation = presentations.get(selectedLoopClipId) ?? null;
     expect(selectedPresentation?.loopId).toBe(selectedLoopClipId);
     const selectedPanel = renderScriptsPanel(selectedPresentation, onOpenLoopEdit, onCloseLoopClip);
-    const editButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Edit Loop Clip — Walk Loop');
-    const closeButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Close Loop Clip inspector — Walk Loop');
+    const editButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Edit Loop Clip — Loop Clip at F10');
+    const closeButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Close Loop Clip inspector — Loop Clip at F10');
     expect(findAll(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Play Script')).toHaveLength(0);
     expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-toolbar'))).toHaveLength(0);
     expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary'))).toHaveLength(0);
     expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-list'))).toHaveLength(0);
     const inspector = findOne(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-inspector'));
-    expect(textOf(inspector)).toBe('NameWalk LoopSource scriptWalkPlacementF10CycleCycle 5f × 5 = 25fEffectiveEffective 25fModeProgressiveStatusLinked');
+    expect(textOf(inspector)).toBe('NameLoop Clip at F10Source scriptWalkPlacementF10CycleCycle 5f × 5 = 25fEffectiveEffective 25fModeProgressiveStatusLinked');
     expect(textOf(inspector)).not.toContain(rawLoopId);
     (editButton.props.onClick as () => void)();
     expect(onOpenLoopEdit).toHaveBeenCalledTimes(3);
@@ -541,11 +625,12 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       inFrame: 0,
       outFrame: 40,
       rotoKeyFrames: [0, 1, 2, 3, 4],
-      repeatDurationMarkers: [{ startFrame: 10, frameCount: 25 }],
+      repeatDurationMarkers: [{ startFrame: 10, frameCount: 25, mode: 'progressive' }],
     }));
     expect(Object.keys(mainTimelineOutput.fxTracks[0].repeatDurationMarkers![0])).toEqual([
       'startFrame',
       'frameCount',
+      'mode',
     ]);
     expect(JSON.stringify(mainTimelineOutput)).not.toContain(rawLoopId);
     expect(Object.keys(mainTimelineOutput.fxTracks[0])).not.toContain('loopCapsules');
@@ -555,5 +640,129 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     sequenceStore.reset();
     await Promise.resolve();
     vi.useRealTimers();
+  });
+
+  it('uses a cyan Static/Hold rail theme with visible cuts at both capsule endpoints', () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'hold-loop',
+      placementStart: 0,
+      sourceKeyIds: ['H1', 'H2', 'H3'],
+      repeat: 1,
+      mode: 'static',
+    };
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: clip.sourceKeyIds.map((keyId, appFrame) => ({ keyId, appFrame })),
+      loopClips: [clip],
+      parentEndExclusive: 6,
+      capacity: 120,
+      interpolationEnabled: false,
+    });
+    const presentations = new Map([[
+      clip.loopId,
+      projectPhysicsPaintLoopClipPresentation(context.ranges[0], clip, 'Hold pose'),
+    ]]);
+
+    hooks.reset();
+    const tree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: context.ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 0, endFrameExclusive: 6 },
+      framePitch: 18,
+      selectedLoopClipIds: [],
+      onSelectLoopClip: vi.fn(),
+      onOpenLoopEdit: vi.fn(async () => {}),
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+    expect(hasClass(target, 'mode-static')).toBe(true);
+    expect(hasClass(target, 'boundary-start')).toBe(true);
+    expect(hasClass(target, 'boundary-end')).toBe(true);
+    expect(`${String(target.props['aria-label'])} ${textOf(tree)}`).toContain('Mode: Static/Hold');
+    expect(cssRule('.physics-paint-loop-clip-rail-target.mode-static .physics-paint-loop-clip-rail-segment {'))
+      .toContain('background: #06b6d4');
+    expect(cssRule('.physics-paint-loop-clip-rail-target.mode-static:hover:not(.selected) .physics-paint-loop-clip-rail-segment,'))
+      .toContain('background: #67e8f9');
+    expect(cssRule('.physics-paint-loop-clip-rail-target.boundary-start .physics-paint-loop-clip-rail-segment::before,'))
+      .toContain('background: #f8fafc');
+    expect(cssRule('.physics-paint-loop-clip-rail-target.boundary-end .physics-paint-loop-clip-rail-segment::after {'))
+      .toContain('background: #f8fafc');
+  });
+
+  it('renders source-cycle generated cells blue and their repeated counterparts dark', () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-spaced',
+      placementStart: 0,
+      sourceKeyIds: ['A', 'B', 'C'],
+      repeat: 2,
+      mode: 'progressive',
+    };
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: [
+        { keyId: 'A', appFrame: 0 },
+        { keyId: 'B', appFrame: 3 },
+        { keyId: 'C', appFrame: 6 },
+      ],
+      loopClips: [clip],
+      parentEndExclusive: 14,
+      capacity: 120,
+      interpolationEnabled: true,
+    });
+    const presentations = new Map([[
+      clip.loopId,
+      projectPhysicsPaintLoopClipPresentation(context.ranges[0], clip, 'Walk'),
+    ]]);
+    const sourceProxy = resolvePhysicPaintRotoSpacingProxy(context, 0)!;
+    const tree = renderWorkflowStrip(
+      context,
+      presentations,
+      [],
+      () => {},
+      async () => {},
+      {
+        rotoPhysicalCells: [
+          { kind: 'real', appFrame: 0, keyId: 'A' },
+          { kind: 'generated', appFrame: 1, leftKeyId: 'A', rightKeyId: 'B' },
+          { kind: 'generated', appFrame: 8, leftKeyId: 'A', rightKeyId: 'B' },
+        ],
+        cachedRotoFrames: [
+          { frameIndex: 1, appFrame: 1, dataUrl: 'data:image/png;base64,source', source: 'generated-interpolation' },
+          { frameIndex: 8, appFrame: 8, dataUrl: 'data:image/png;base64,repeat', source: 'generated-interpolation' },
+        ],
+        rotoSpacingSelection: {
+          sourceCycleId: sourceProxy.sourceCycleId,
+          sourceKeyIds: sourceProxy.sourceKeyIds,
+          selectedSourceKeyIds: [sourceProxy.sourceKeyId],
+          anchorSourceIndex: sourceProxy.sourceIndex,
+        },
+      },
+    );
+    const boundaryStart = findOne(tree, (vnode) => vnode.props.frame === 0 && typeof vnode.props.cellClass === 'string');
+    const sourceGenerated = findOne(tree, (vnode) => vnode.props.frame === 1 && typeof vnode.props.cellClass === 'string');
+    const repeatedSourceKey = findOne(tree, (vnode) => vnode.props.frame === 7 && typeof vnode.props.cellClass === 'string');
+    const repeatedGenerated = findOne(tree, (vnode) => vnode.props.frame === 8 && typeof vnode.props.cellClass === 'string');
+    const boundaryEnd = findOne(tree, (vnode) => vnode.props.frame === 13 && typeof vnode.props.cellClass === 'string');
+
+    expect(boundaryStart.props.cellClass).toContain('roto-loop-boundary-start');
+    expect(boundaryStart.props.cellClass).not.toContain('roto-loop-boundary-end');
+    expect(boundaryStart.props.cellClass).toContain('current');
+    expect(sourceGenerated.props.cellClass).toContain('roto-fill-generated');
+    expect(sourceGenerated.props.cellClass).toContain('roto-linked-source-generated');
+    expect(sourceGenerated.props.cellClass).not.toContain('roto-linked-repeat');
+    expect(repeatedSourceKey.props.cellClass).toContain('roto-linked-repeat');
+    expect(repeatedSourceKey.props.cellClass).toContain('roto-linked-repeat-source-key');
+    expect(repeatedSourceKey.props.cellClass).toContain('roto-spacing-proxy-selected');
+    expect(repeatedGenerated.props.cellClass).toContain('roto-fill-generated');
+    expect(repeatedGenerated.props.cellClass).toContain('roto-linked-repeat');
+    expect(repeatedGenerated.props.cellClass).not.toContain('roto-linked-repeat-source-key');
+    expect(repeatedGenerated.props.cellClass).not.toContain('roto-spacing-proxy-selected');
+    expect(boundaryEnd.props.cellClass).not.toContain('roto-loop-boundary-start');
+    expect(boundaryEnd.props.cellClass).toContain('roto-loop-boundary-end');
+    expect(cssRule('.physics-paint-roto-cell.roto-linked-repeat.roto-linked-repeat-source-key {')).toContain('background: #43494f');
+    const selectedRepeat = cssRule('.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {');
+    expect(selectedRepeat).toContain('background: #4b6382');
+    expect(selectedRepeat).not.toContain('#f5a623');
+    expect(selectedRepeat).not.toContain('outline:');
+    expect(cssRule('.physics-paint-roto-cell.roto-loop-boundary-start {')).toContain('border-left-color: #f8fafc');
+    expect(cssRule('.physics-paint-roto-cell.roto-loop-boundary-end {')).toContain('border-right-color: #f8fafc');
   });
 });

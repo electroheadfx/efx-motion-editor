@@ -2,19 +2,19 @@
 
 **Mapped:** 2026-08-07
 **Scope:** Correction refresh after native UAT Step 1 host failure
-**Planning authority:** `43-CONTEXT.md` D-33R..D-50 and `43-UI-SPEC.md`
+**Planning authority:** `43-CONTEXT.md` D-33R..D-58 and `43-UI-SPEC.md`
 
 ## Correction Boundary
 
 Loop Clip identity, presentation details, and edit activation are owned exclusively by EFX Paint/Roto. The Motion Editor owns only passive interval paint.
 
-- **Retain unchanged:** canonical physical model, persistence, resolver algebra, store resolution, preview/export parity, physical-edit authority, accepted history, Play Script controller, and Play Script dialog.
-- **Own inside EFX Paint/Roto:** the integrated 3px Loop Rail, its 12px interaction targets, rail tooltip, local actions popover, contextual Scripts inspector, and Studio-local `openLoopEdit(loopId)` activation.
-- **Retain minimally in the Motion Editor:** an interval type `{startFrame, frameCount}`, projection from canonical effective ranges, and a pure Canvas painter for one 3px `#8B5CF6` strip inside the existing PPaint FX bar.
+- **Retain and extend narrowly:** canonical physical model, persistence, resolver algebra, store resolution, preview/export parity, physical-edit authority, accepted history, Play Script controller/dialog, and the current-document background field. Extend only the existing physical publication to carry Play Script background and complete `nextLoopClips` staging.
+- **Own inside EFX Paint/Roto:** the integrated 3px Loop Rail, its 12px interaction targets, plural rail selection plus one primary inspector identity, rail tooltip, local actions popover, contextual Scripts inspector, Studio-local `openLoopEdit(loopId)` activation, and mode-specific Key Spacing authorization.
+- **Retain minimally in the Motion Editor:** a paint-only interval type `{startFrame, frameCount, mode}`, projection from canonical effective ranges, and a pure Canvas painter for 3px purple/cyan strips with white canonical endpoint cuts inside the existing PPaint FX bar.
 - **Remove from the Motion Editor:** `loopCapsules`/`loopClips`, IDs, source keys, repeat metadata, status, selection, callbacks, commands, rich capsule drawing, hit testing, tooltip mounting, hover/focus, keyboard/action routing, navigation, mutation, and the specialized main-to-child Loop Clip protocol after callers are gone.
 - **Preserve generic Motion Editor consumption:** resolved Paint pixels for preview, playback, save/reopen, export, and generic FX-track behavior beneath the passive paint.
 
-The rail is an absolute overlay at the top edge of the existing 38px physical-frame row. It adds zero row height, keeps the workflow strip at 161px, shares the existing horizontal scroller, and never changes physical-cell navigation, selection, multi-selection, drag, linked indicators, or the 34px action toolbar.
+The rail is an absolute overlay at the top edge of the existing 38px physical-frame row. It adds zero row height, keeps the workflow strip at 161px, shares the existing horizontal scroller, and never changes physical-cell gesture semantics, drag behavior, linked indicators, or the 34px action toolbar. Rail activation clears physical selection only to enforce the explicit mutually exclusive selection modes.
 
 ## File Classification
 
@@ -34,11 +34,13 @@ The rail is an absolute overlay at the top edge of the existing 38px physical-fr
 | `app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.tsx` | contextual UI contract | normal/loop/busy/error fixtures → inspector and action-slot behavior | existing Scripts panel tests |
 | `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts` | host regression | loop/no-loop fixtures → unchanged strip/cell/toolbar geometry | existing exact CSS/source contracts |
 | `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts` | timing/provenance authority | ordered real source keys → offsets/cycle duration; selected linked frames → exact source-position provenance | existing canonical per-frame loop resolution |
-| `app/src/components/physic-paint/roto/physicsPaintRotoLoopGuards.test.ts` | D-11/D-50 guard contract | valid proxy scope → atomic spacing; every other linked structural mutation → fail closed | existing Force Spacing and source-key guard suite |
+| `app/src/components/physic-paint/roto/physicsPaintRotoLoopGuards.test.ts` | D-11/D-57 guard contract | valid rail/one-cycle physical scope → atomic ordered ripple; every other linked structural mutation → fail closed | existing Force Spacing and source-key guard suite |
+| `app/src/components/physic-paint/hooks/useRotoTimelineActions.ts` | Apply-time scope authority | current rail or physical selection + records/Loop Clips/interpolation/capacity/launch → immutable mode-specific resolver intent | existing timeline action snapshot/publication path |
+| `app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.ts` | atomic staging and background publication | records + complete Loop Clips + Play Script background → deferred accepted settlement/rollback | existing complete snapshot and history boundary |
 | `app/src/components/physic-paint/roto/physicsPaintRotoLoopResolver.test.ts` | timed-loop contract | spaced source positions → finite/Infinity repeats, generated interiors, shared-loop cadence | existing lazy modulo/boundary suite |
-| `app/src/lib/frameMap.ts` | Motion Editor minimal projection | canonical effective ranges → interval-only `{startFrame, frameCount}` markers | no identity or authoring metadata in this tier |
-| `app/src/types/timeline.ts` | Passive marker type boundary | minimal marker type only; rich `TimelineLoopCapsule` types removed | canonical Loop Clip types remain in physic-paint domain |
-| `app/src/components/timeline/TimelineRenderer.ts` | Passive marker paint | pure Canvas painter draws exact 3px `#8B5CF6` strips inside the existing PPaint FX bar | EFX rail remains the sole interactive Loop Clip presentation |
+| `app/src/lib/frameMap.ts` | Motion Editor minimal projection | canonical effective ranges → paint-only `{startFrame, frameCount, mode}` markers | no identity or authoring metadata in this tier |
+| `app/src/types/timeline.ts` | Passive marker type boundary | minimal paint marker type only; rich `TimelineLoopCapsule` types removed | canonical Loop Clip types remain in physic-paint domain |
+| `app/src/components/timeline/TimelineRenderer.ts` | Passive marker paint | pure Canvas painter draws 3px purple/cyan strips and white canonical endpoint cuts inside the existing PPaint FX bar | EFX rail remains the sole interactive Loop Clip presentation |
 | `app/src/components/timeline/TimelineInteraction.ts` | Motion Editor input removal | generic timeline interaction only; marker is never hit-tested | EFX rail/popover own Loop Clip input |
 | `app/src/components/timeline/TimelineCanvas.tsx` | Motion Editor mount removal | no Loop Clip floating UI | EFX-local tooltip/popover mount |
 | `app/src/components/timeline/TimelineCapsuleTooltip.tsx` | delete obsolete surface | no retained caller | EFX tooltip/popover cover approved facts/actions |
@@ -208,7 +210,7 @@ The existing strip geometry remains authoritative:
 
 Apply existing UI-SPEC colors and precedence without changing geometry. Do not add a loop-present height modifier, another scrollbar, another grid row, or vertical canvas allocation. Preserve the accepted blue linked-cell inset border and 4px dot exactly.
 
-## Timed Source Cycle and Key Spacing Proxy Pattern
+## Timed Source Cycle and Rail-Owned Key Spacing Pattern
 
 ### Runtime source offsets and cycle duration
 
@@ -222,70 +224,91 @@ const cycleDuration = sourceOffsets[sourceOffsets.length - 1] + 1
 
 Requirements:
 
-- `sourceKeyIds` keeps the canonical order; each ID resolves to one real key and its authoritative `appFrame`.
+- `sourceKeyIds` keeps canonical order; each ID resolves to one real key and its authoritative `appFrame`.
 - Offsets are normalized from the first source key. Non-uniform gaps are intentional timing, not missing records.
-- `cycleDuration` is the last normalized source offset plus one occupied frame. A formerly contiguous five-key cycle remains 5f; spacing keys farther apart lengthens cadence without a new timing field.
-- Runtime finite/Infinity repeat resolution uses `cycleDuration` for modulo and maps exact source offsets to source keys. Frames between exact offsets derive through the existing generated-interior path; they are not new source keys.
-- Rail requested/effective duration, preview, playback, export, cache regeneration, and save/reopen resolution consume this same canonical timing. No surface-specific cadence math is allowed.
-- Loop Clip `placementStart`, repeat count, Infinity flag, ordered `sourceKeyIds`, and provenance remain unchanged when source timing changes.
+- Runtime finite/Infinity repeat resolution uses `cycleDuration`; exact offsets resolve source keys and interior frames use the existing generated path without materialized records.
+- Rail duration, preview, playback, export, cache regeneration, and save/reopen consume the same accepted timing.
+- A source-attached Loop Clip may change `placementStart` when its first source key moves. Repeat, Infinity, ordered source IDs, mode, loop ID, script provenance, motion, and override color never change during Key Spacing.
 
-### Session-only proxy model
+### Mutually exclusive session selection model
 
-Represent proxy selection outside the persisted physical document:
+Keep physical and rail selection outside the persisted document:
 
 ```ts
-type LoopKeySpacingProxy = Readonly<{
-  orderedSourceKeyIds: readonly string[]
-  sourceKeyId: string
-  sourceIndex: number
+type PhysicalSelection = Readonly<{
+  selectedKeyIds: readonly string[]
+  anchorKeyId: string | null
+}>
+
+type LoopRailSelection = Readonly<{
+  selectedLoopClipIds: readonly string[]
+  anchorLoopClipId: string
+  primaryLoopClipId: string
 }>
 ```
 
-The exact implementation type is discretionary, but the semantics are fixed:
+Semantics:
 
-- Original real source cells and linked occurrences at exact source offsets resolve to the same proxy identity.
-- Proxy identity is keyed by ordered-cycle signature plus `sourceIndex`/`sourceKeyId`, never by occurrence frame or Loop Clip ID.
-- Equivalent selections across repeats and all Loop Clips with the same ordered `sourceKeyIds` deduplicate before command eligibility and preview.
-- At least two unique source indices are required; the full cycle is valid.
-- Unselected source indices are fixed hard walls for the spacing algorithm.
-- Generated interiors, linked gaps, unresolved frames, stale mappings, and mixed ordered cycles produce no proxy.
-- Selection state is session-only: no project serialization, schema field, cache key, real-key diamond, materialized occurrence, cloned key, unlink, or Loop Clip record update.
+- Rail mode means physical IDs, physical anchor, and physical proxy scope are empty. Physical mode means rail IDs and rail anchor are empty.
+- Plain rail click replaces the selection with one clip; Shift selects the inclusive anchor-to-target range in canonical placement order; Cmd/Ctrl toggles one rail. The primary ID drives the Scripts inspector/Edit target.
+- Plain/Cmd/Shift physical selection remains unchanged for ordinary operations and partial same-cycle spacing. Select All clears rail/proxy mode and installs every current real key in physical order.
+- Render rail selection from selected Loop Clip IDs only. Derive complete selected-rail source membership from current Loop Clip records at Apply time; do not project that membership into frame-selection props or copy source IDs into another hidden Signal.
+- Equivalent linked occurrences mirror selected source identity only during explicit physical proxy selection and remain non-draggable and non-durable. Rail selection paints only the line; generated interiors, gaps, and unresolved frames remain navigation-only.
+- Launch reset, deletion/unlink, source regeneration, and stale-cycle reconciliation clear invalid IDs and anchors.
 
-### Explicit resolver provenance
+### Apply-time authorization snapshot
 
-Do not infer provenance from visual cell kind or frame arithmetic in the action layer. Add one canonical resolver query that returns either an exact source-position result or a typed non-eligible reason.
+Snapshot physical selection, rail selection, records, Loop Clips, interpolation, capacity, and launch identity once.
 
-A valid result carries the ordered source-cycle identity, exact `sourceIndex`, source key ID, occurrence frame, and source `appFrame`. The action layer must:
+Rail mode:
 
-1. resolve every selected frame through that query;
-2. reject if any item is generated, gap, unresolved, stale, or from a different ordered cycle;
-3. deduplicate by ordered-cycle signature plus source index;
-4. require at least two unique positions;
-5. pass only authoritative real source-key IDs/appFrames to Force Spacing.
+1. require rail IDs to be unique, current, and already ordered canonically;
+2. derive each selected clip's complete ordered source cycle;
+3. reject missing, duplicate-covered, reordered, ambiguous, or overlapping different-cycle authorization;
+4. deduplicate identical source cycles;
+5. flatten complete cycle IDs as the immutable spacing scope.
 
-This provenance is the only D-50 exception to D-11. Ordinary linked-source Force Spacing, single-key movement, linked drag, placement drag, Delete, Cut/Copy, paste identity, materialization, unlink, and all other linked structural mutations remain fail-closed.
+Physical mode:
 
-### One atomic Force Spacing transaction
+1. use visible `selectedKeyIds` exactly—no hidden proxy may override them;
+2. permit linked authorization for at most one current ordered source cycle and at least two selected source positions;
+3. reject cross-cycle physical selection with guidance to select Loop Rails;
+4. reject mixed linked/unlinked scope, generated interiors, gaps, unresolved frames, stale mapping, reordered selection, and ambiguous provenance;
+5. retain legacy unlinked zero/one-key full-timeline fallback only for ordinary non-loop Key Spacing.
 
-The accepted operation is one physical-edit publication and one history command:
+### Ordered cumulative ripple
 
-1. Build the validated deduplicated proxy scope.
-2. Run the existing Key Spacing algorithm against authoritative source real keys, treating every unselected source key as a fixed wall.
-3. Stage only the selected real source keys' new `appFrame` positions.
-4. Keep every Loop Clip record byte-identical.
-5. Re-resolve source offsets, cycle duration, generated interiors, finite/Infinity repeats, rail geometry, preview/playback/export, and all shared loops from the staged source positions.
-6. Publish once through the existing authority/coordinator path.
-7. On acceptance, commit one atomic history entry; on rejection/cancellation, publish nothing and retain selection.
+Build one complete immutable key-to-frame mapping:
 
-Undo restores the complete prior source rhythm and every shared loop in one step. Redo reapplies the spaced rhythm in one step. No per-loop update, occurrence write, optimistic cadence, or partial shared-loop publication is permitted.
+1. order authorized cycle groups left-to-right;
+2. for each group, order its selected source identities by current physical frame;
+3. anchor the group's first selected key at its original frame plus cumulative growth from earlier groups;
+4. place selected group keys at `anchor + index * (emptyFrames + 1)`;
+5. compute `growth = newTail - (oldTail + cumulativeGrowth)`;
+6. add that signed growth to every real key strictly after the group's original tail;
+7. accumulate growth before processing the next group;
+8. reject a selected key crossing a fixed unselected key inside its group's interior;
+9. validate final global identity order, unique destinations, non-negative frames, and capacity before proposal creation.
+
+Interpolation is an input, never a side effect: Off leaves empty gaps; On derives generated in-betweens. Do not toggle it automatically.
+
+### Source-attached placement and atomic settlement
+
+A clip is source-attached when its pre-edit `placementStart` equals the pre-edit frame of its first source key. If that key moves, copy the clip with only the accepted placement delta; duplicated placements not attached to the source start remain fixed. Attach the complete changed collection as `candidate.nextLoopClips`; use `null` only when no placement changes.
+
+Stage records first and then the complete Loop Clip collection before publication. Any record replacement failure, Loop Clip replacement failure, transport error, timeout, rejection, or settlement mismatch restores the complete before snapshot and creates no history. Acceptance produces one complete history command; Undo restores rhythms and placements together, and Redo reapplies them together. No occurrence write, optimistic placement, separate Loop Clip transaction, persisted selection/provenance, or partial shared-loop publication is permitted.
+
+### Play Script background snapshot
+
+`PhysicsPaintStudio` exposes a live `getBackgroundMetadata()` port backed by `buildRotoBackgroundMetadata(settings)`. Snapshot it when generation builds the physical publication and forward it through the Play Script controller, hook, coordinator input, strict physical payload, and parent bridge. The strict guard requires `rotoBackground` for `operationKind === 'play-script'` and rejects it for every ordinary physical edit kind. `applyPhysicPaintRotoPhysicalMap` uses the submitted value when creating or replacing the accepted document; do not add a second background mutation or persistence migration.
 
 ## Interaction Isolation Pattern
 
 The rail target owns only Loop Clip intent in the top 12px band.
 
 - Stop `pointerdown`, `click`, `dblclick`, Enter, Space, and Escape propagation before cell handlers.
-- Single click selects only the loop, focuses the target, and may open local actions.
-- Pointer down does not navigate, select a real key, alter multi-selection, arm drag, or capture the pointer.
+- Plain click selects the loop and its complete source cycle, clears physical selection/proxy scope, focuses the target, and may open local actions; Shift/Cmd gestures update the rail set without starting drag.
+- Pointer down does not navigate, select a real key, arm drag, or capture the pointer.
 - Enter edits; Space selects and opens actions; Escape closes transient UI.
 - Delete/Backspace do not mutate the loop from rail focus.
 - Arrow keys do not move the loop.
@@ -305,9 +328,9 @@ All mutations continue through `physicsPaintRotoPlayScriptController.ts`, the ph
 
 After the EFX replacement is green:
 
-1. Replace `loopCapsules`/`loopClips` projection and rich builders in `frameMap.ts` with interval-only `{startFrame, frameCount}` markers derived from canonical effective ranges.
+1. Replace `loopCapsules`/`loopClips` projection and rich builders in `frameMap.ts` with paint-only `{startFrame, frameCount, mode}` markers derived from canonical effective ranges.
 2. Retain one minimal passive marker type in `types/timeline.ts`; remove rich `TimelineLoopCapsule` source/layout/identity/status/action types.
-3. Replace old capsule drawing in `TimelineRenderer.ts` with a pure Canvas painter for exact 3px `#8B5CF6` strips inside the existing PPaint FX bar.
+3. Replace old capsule drawing in `TimelineRenderer.ts` with a pure Canvas painter for 3px Progressive-purple or Static/Hold-cyan strips plus white actual endpoint cuts inside the existing PPaint FX bar.
 4. Remove Loop Clip hit, hover, focus, selection, keyboard, navigation, context-menu, Edit, drag, and operation routing from `TimelineInteraction.ts`; markers are never hit-tested.
 5. Remove the Loop Clip tooltip mount/state from `TimelineCanvas.tsx`.
 6. Delete `TimelineCapsuleTooltip.tsx` and `loopCapsuleGeometry.ts` after zero callers are proven, while protecting the new passive marker type/projection/painter and their tests.
@@ -372,30 +395,33 @@ Controller/history suites remain verification oracles unless production behavior
 
 ### Structural removal
 
-- `frameMap.test.ts`: only `{startFrame, frameCount}` effective-interval markers are projected; no `loopCapsules`, `loopClips`, IDs, source keys, repeat metadata, status, selection, callbacks, or commands.
-- `TimelineRenderer.test.ts`: exact 3px `#8B5CF6` marker paint appears inside the existing PPaint FX bar with no row/height change, text, badge, capsule, or status styling.
+- `frameMap.test.ts`: only `{startFrame, frameCount, mode}` effective-interval markers are projected; no `loopCapsules`, `loopClips`, IDs, source keys, repeat metadata, status, selection, callbacks, or commands.
+- `TimelineRenderer.test.ts`: exact 3px purple/cyan marker paint and white actual endpoint cuts appear inside the existing PPaint FX bar with no row/height change, text, badge, tooltip, or status styling.
 - `TimelineInteraction.test.ts`: marker coordinates and keys emit no Loop Clip-specific hover, focus, selection, navigation, Edit, drag, context-menu, keyboard, or mutation intent while generic FX behavior remains.
 - TimelineCanvas source contract: no Loop Clip tooltip mount/state.
 - Bridge tests: no specialized Loop Clip protocol while generic Browser/Tauri transport remains.
 - Repository reference checks: zero callers for removed tooltip, geometry, event, client, sender, hook, and envelope identifiers.
 
-### Timed-loop and proxy spacing regressions
+### Timed-loop, selection, ripple, and background regressions
 
-`physicsPaintRotoPhysicalResolver.test.ts`, `physicsPaintRotoLoopResolver.test.ts`, `physicsPaintRotoLoopGuards.test.ts`, and history/controller suites own:
+`physicsPaintRotoSpacingSelection.test.ts`, `PhysicsPaintStudio.test.ts`, `PhysicsPaintLoopClipRail.test.tsx`, `useRotoTimelineActions.test.ts`, `physicsPaintRotoLoopGuards.test.ts`, `useRotoPhysicalEditCoordinator.test.ts`, history/controller, bridge/type-guard, and preview/export suites own:
 
 - contiguous and non-uniform source offsets plus `lastOffset + 1` cycle duration;
-- exact-source resolution through original cells and linked occurrences;
-- deduplication across repeats and shared Loop Clips with identical ordered `sourceKeyIds`;
-- any 2+ unique positions and full-cycle eligibility;
-- unselected source positions as hard walls;
-- generated interiors, gaps, unresolved frames, mixed cycles, stale provenance, and single-position scopes rejecting without publication;
-- unchanged Loop Clip placement/repeat/Infinity/source records and zero occurrence materialization;
-- one accepted authority publication/history command updating every shared loop cadence;
-- Undo/Redo restoring/reapplying source positions, generated interiors, timed repeats, rail duration, preview/playback/export, and cache resolution.
+- plain/range/toggle rail selection, stable anchor, complete cycle derivation, identical-cycle deduplication, and mutually exclusive physical selection;
+- exact Select All scope and unchanged ordinary plain/Cmd/Shift physical-key behavior;
+- partial physical spacing within one current source cycle and explicit multi-cycle physical rejection;
+- selected rail cycles processed left-to-right with cumulative signed downstream ripple;
+- fixed keys before or inside an unselected group interior protected from crossing;
+- source-attached downstream `placementStart` follow with every other Loop Clip field unchanged;
+- Interpolation Off leaving gaps and On deriving generated interiors without automatic toggling;
+- generated interiors, gaps, unresolved frames, stale/reordered/duplicate/ambiguous provenance, collisions, crossings, and capacity failure rejecting without publication;
+- records and Loop Clips staged/rolled back/accepted/history-recorded together;
+- one Undo/Redo restoring/reapplying source positions, placements, timed repeats, rail duration, preview/playback/export, and cache resolution;
+- valid Play Script background required and persisted in fresh/current documents, ordinary physical background injection rejected, and preview/export composite parity retained.
 
 ### Retained canonical regressions
 
-Continue running resolver, persistence, controller, history, materialization, linked-cell, preview, export, determinism, typecheck, build, and dependency-diff gates. These suites prove the UI correction did not loosen any authority beyond D-50's exact Key Spacing exception and did not rewrite D-24..D-32 algebra/performance.
+Continue running selection, resolver, coordinator, persistence, controller, history, materialization, linked-cell, background, preview, export, determinism, typecheck, build, and dependency-diff gates. These suites prove the UI correction did not loosen any authority beyond D-57's explicit mode-specific Key Spacing exception and did not rewrite D-24..D-32 algebra/performance.
 
 ## Retained Unchanged
 

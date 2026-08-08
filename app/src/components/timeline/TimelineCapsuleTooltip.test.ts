@@ -1,3 +1,5 @@
+import {readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {sequenceStore} from '../../stores/sequenceStore';
 import type {TimelineLoopCapsule} from '../../types/timeline';
@@ -11,6 +13,11 @@ import {
   TIMELINE_CAPSULE_TOOLTIP_DELAY_MS,
   TIMELINE_CAPSULE_TOOLTIP_VIEWPORT_MARGIN,
 } from './TimelineCapsuleTooltip';
+
+const tooltipSource = () => readFileSync(
+  fileURLToPath(new URL('./TimelineCapsuleTooltip.tsx', import.meta.url)),
+  'utf8',
+);
 
 const capsule = (overrides: Partial<TimelineLoopCapsule> = {}): TimelineLoopCapsule => ({
   loopId: 'loop-7', placementStart: 10, cycleLength: 5, repeat: 5,
@@ -30,6 +37,10 @@ const request = (hit: LoopCapsuleHit, overrides: Partial<TimelineLoopCapsuleTool
 });
 
 describe('Timeline capsule tooltip locked copy', () => {
+  it('uses the shared very-dark tooltip surface', () => {
+    expect(tooltipSource()).toContain('bg-[var(--color-tooltip-bg)]');
+  });
+
   it('renders the exact occurrence form and source-edit action', () => {
     const model = buildTimelineCapsuleTooltipModel(request({region: 'occurrence', loopId: 'loop-7', repeatInstance: 3, sourceIndex: 1}));
     expect(model.lines).toEqual(['Repeat 3 · Source frame 2 of 5']);

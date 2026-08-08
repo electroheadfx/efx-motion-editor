@@ -1209,14 +1209,9 @@ button.destructive {
 .physics-paint-script-row-copy, .physics-paint-script-rename-wrap { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 .physics-paint-script-name, .physics-paint-script-provenance, .physics-paint-script-count { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .physics-paint-script-name { min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; font-size: 12px; font-weight: 700; }
-.physics-paint-script-provenance, .physics-paint-script-count, .physics-paint-scripts-status, .physics-paint-scripts-empty { margin: 0; color: #aeb5be; font-size: 10px; }
+.physics-paint-script-provenance, .physics-paint-script-count, .physics-paint-scripts-empty { margin: 0; color: #aeb5be; font-size: 10px; }
 .physics-paint-script-rename-wrap input { min-width: 0; width: 100%; box-sizing: border-box; }
 .physics-paint-script-inline-error { color: #ff8585; font-size: 10px; }
-/* 42-04: two-line Play Script options summary — dark-panel tokens only
-   (10px #aeb5be metadata line, #eef1f4 values line, per-line ellipsis). */
-.physics-paint-scripts-summary { display: flex; flex-direction: column; gap: 2px; min-width: 0; margin: 0; }
-.physics-paint-scripts-summary-line1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #aeb5be; font-size: 10px; }
-.physics-paint-scripts-summary-line2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #eef1f4; font-size: 12px; }
 .physics-paint-loop-clip-panel { justify-content: flex-start; }
 .physics-paint-loop-clip-inspector { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; padding: 0; }
 .physics-paint-loop-clip-inspector > div { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; min-width: 0; }
@@ -1227,11 +1222,10 @@ button.destructive {
 .physics-paint-loop-clip-inspector-action.primary { border-color: rgba(45, 91, 227, 0.8); background: rgba(45, 91, 227, 0.85); }
 .physics-paint-loop-clip-inspector-action:focus-visible { outline: 2px solid #8fa8ff; outline-offset: 2px; }
 .physics-paint-script-confirmation { position: absolute; inset: 44px 4px auto; z-index: 8; display: flex; flex-direction: column; gap: 8px; max-height: calc(100% - 52px); padding: 12px; border: 1px solid #737980; border-radius: 7px; overflow: auto; background: #292b2d; box-shadow: 0 12px 28px rgba(0,0,0,.45); font-size: 11px; }
-/* ================= Play Script modal (D-19) =================
-   Compact independent DARK modal overlay above the Paint interface: out-of-flow fixed
-   positioning (never occupies the canvas grid cell, never resizes the Paint layout),
-   dimmed backdrop, and the proposal-derived --ps-* token set declared on the modal
-   scope only — the old light Play Script palette is fully removed from this scope.
+/* ================= Play Script floating dialog =================
+   Compact independent dark surface above the Paint interface: out-of-flow fixed
+   positioning never resizes the Paint layout. The viewport root passes pointer input
+   through to Studio controls outside the draggable surface, with no dimming backdrop.
    NO scrolling anywhere: the compact layout, not an overflow region, solves the fit. */
 .physics-paint-play-script-dialog {
   --ps-surface: oklch(0.215 0.008 260);
@@ -1252,17 +1246,10 @@ button.destructive {
   z-index: 70;
   display: grid;
   place-items: center;
+  pointer-events: none;
   color: var(--ps-fg);
   font-family: system-ui, sans-serif;
   font-size: 13px;
-}
-
-/* Dimmed backdrop between the Paint UI and the modal — visual only, never wired to
-   close (Cancel/Escape/success only, D-17/D-19). */
-.physics-paint-play-script-backdrop {
-  position: absolute;
-  inset: 0;
-  background: oklch(0 0 0 / 0.55);
 }
 
 /* Modal shell: 700px compact dark card, flex column, overflow hidden (proposal metrics). */
@@ -1279,6 +1266,7 @@ button.destructive {
   background: var(--ps-surface);
   box-shadow: 0 24px 64px oklch(0 0 0 / 0.6), 0 2px 8px oklch(0 0 0 / 0.4);
   overflow: hidden;
+  pointer-events: auto;
 }
 
 /* Compact header (D-16 Row 1): title left, Max range right, 1px bottom border. */
@@ -2211,7 +2199,7 @@ button.destructive {
   padding: 5px 10px 6px;
   border: 0;
   border-radius: 4px;
-  background: #62666d;
+  background: var(--color-tooltip-bg);
   color: #f7f7f8;
   font-size: 12px;
   font-weight: 400;
@@ -2242,7 +2230,7 @@ button.destructive {
   margin-left: -5px;
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
-  border-top: 6px solid #62666d;
+  border-top: 6px solid var(--color-tooltip-bg);
 }
 
 .physics-paint-styled-tooltip--below .physics-paint-styled-tooltip-notch {
@@ -2250,14 +2238,14 @@ button.destructive {
   margin-top: -6px;
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
-  border-bottom: 6px solid #62666d;
+  border-bottom: 6px solid var(--color-tooltip-bg);
 }
 
 .physics-paint-styled-tooltip--left .physics-paint-styled-tooltip-notch {
   margin-top: -5px;
   border-top: 5px solid transparent;
   border-bottom: 5px solid transparent;
-  border-left: 6px solid #62666d;
+  border-left: 6px solid var(--color-tooltip-bg);
 }
 
 .physics-paint-styled-tooltip--right .physics-paint-styled-tooltip-notch {
@@ -2265,7 +2253,7 @@ button.destructive {
   margin-top: -5px;
   border-top: 5px solid transparent;
   border-bottom: 5px solid transparent;
-  border-right: 6px solid #62666d;
+  border-right: 6px solid var(--color-tooltip-bg);
 }
 
 .physics-paint-roto-interpolation-controls {
@@ -2644,13 +2632,40 @@ button.destructive {
   pointer-events: none;
 }
 
+.physics-paint-loop-clip-rail-target.mode-static .physics-paint-loop-clip-rail-segment {
+  background: #06b6d4;
+}
+
 .physics-paint-loop-clip-rail-target:hover:not(.selected) .physics-paint-loop-clip-rail-segment,
 .physics-paint-loop-clip-rail-target:focus-visible:not(.selected) .physics-paint-loop-clip-rail-segment {
-  background: #ffffff;
+  background: #c4b5fd;
+}
+
+.physics-paint-loop-clip-rail-target.mode-static:hover:not(.selected) .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.mode-static:focus-visible:not(.selected) .physics-paint-loop-clip-rail-segment {
+  background: #67e8f9;
 }
 
 .physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {
   background: #f59e0b;
+}
+
+.physics-paint-loop-clip-rail-target.boundary-start .physics-paint-loop-clip-rail-segment::before,
+.physics-paint-loop-clip-rail-target.boundary-end .physics-paint-loop-clip-rail-segment::after {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 3px;
+  background: #f8fafc;
+  content: '';
+}
+
+.physics-paint-loop-clip-rail-target.boundary-start .physics-paint-loop-clip-rail-segment::before {
+  left: 0;
+}
+
+.physics-paint-loop-clip-rail-target.boundary-end .physics-paint-loop-clip-rail-segment::after {
+  right: 0;
 }
 
 .physics-paint-loop-clip-rail-target:focus-visible {
@@ -2762,22 +2777,6 @@ button.destructive {
   background: #4d535a;
 }
 
-.physics-paint-roto-cell.roto-linked-loop-badge {
-  background: #34383c;
-  box-shadow: inset 0 0 0 1px rgba(211, 215, 221, 0.82);
-}
-
-.physics-paint-roto-cell.roto-linked-loop-badge::after {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: rgba(221, 224, 229, 0.9);
-  content: '';
-}
-
 .physics-paint-roto-cell.roto-fill-cached,
 .physics-paint-roto-cell.roto-fill-cached-only {
   border-color: rgba(91, 216, 143, 0.78);
@@ -2805,6 +2804,42 @@ button.destructive {
   height: 2px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.72);
+  content: '';
+}
+
+.physics-paint-roto-cell.roto-linked-source-key {
+  border-color: #747d86;
+  background: #59616a;
+}
+
+.physics-paint-roto-cell.roto-linked-source-gap {
+  border-color: #4b5157;
+  background: #34383c;
+}
+
+.physics-paint-roto-cell.roto-linked-repeat {
+  border-color: #4b5157;
+  background: #34383c;
+  box-shadow: inset 0 0 0 1px rgba(211, 215, 221, 0.82);
+}
+
+.physics-paint-roto-cell.roto-linked-repeat.roto-linked-repeat-source-key {
+  border-color: #5a626a;
+  background: #43494f;
+}
+
+.physics-paint-roto-cell.roto-linked-repeat::before {
+  content: none;
+}
+
+.physics-paint-roto-cell.roto-linked-repeat::after {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(221, 224, 229, 0.9);
   content: '';
 }
 
@@ -2847,14 +2882,34 @@ button.destructive {
 }
 
 .physics-paint-roto-cell.selected {
-  /* Secondary multi-selection treatment (37-04, D-04): cool neutral family,
-     visually subordinate to the orange current ring and distinct from every
-     drag green-white preview treatment (three-way distinction rule). The
-     z-index lift mirrors `.current` so the outline survives abutting
-     neighbors; geometry unchanged. */
   z-index: 1;
-  outline: 2px solid #F2F5F7;
+  border-color: #f5a623;
+  outline: 2px solid rgba(245, 166, 35, 0.9);
   outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.65), 0 0 10px rgba(245, 166, 35, 0.38);
+}
+
+.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {
+  z-index: 1;
+  border-color: #f5a623;
+  background: #4b6382;
+  outline: 2px solid rgba(245, 166, 35, 0.9);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.65), 0 0 10px rgba(245, 166, 35, 0.38);
+}
+
+.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {
+  background: #4b6382;
+}
+
+.physics-paint-roto-cell.roto-loop-boundary-start {
+  border-left-width: 2px;
+  border-left-color: #f8fafc;
+}
+
+.physics-paint-roto-cell.roto-loop-boundary-end {
+  border-right-width: 2px;
+  border-right-color: #f8fafc;
 }
 
 .physics-paint-roto-cell.roto-drag-eligible {

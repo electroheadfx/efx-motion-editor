@@ -11,6 +11,7 @@ const toolRail = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintToolRail
 const topBar = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintTopBar.tsx', import.meta.url)), 'utf8');
 const playScriptDialog = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
 const navigationCoordinator = readFileSync(fileURLToPath(new URL('./hooks/useRotoNavigationCoordinator.ts', import.meta.url)), 'utf8');
+const physicalEditCoordinator = readFileSync(fileURLToPath(new URL('./hooks/useRotoPhysicalEditCoordinator.ts', import.meta.url)), 'utf8');
 const memoizedTopBarPath = fileURLToPath(new URL('./view/MemoizedPhysicsPaintTopBar.ts', import.meta.url));
 const memoizedTopBar = existsSync(memoizedTopBarPath) ? readFileSync(memoizedTopBarPath, 'utf8') : '';
 const memoizedPlayScriptDialogPath = fileURLToPath(new URL('./view/MemoizedPhysicsPaintPlayScriptDialog.ts', import.meta.url));
@@ -79,6 +80,15 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(navigationCoordinator).not.toContain('const lastRealFrame = assignments.length > 0');
   });
 
+  it('refreshes the current canvas immediately after an accepted Play Script commit', () => {
+    const finalizeStart = physicalEditCoordinator.indexOf('const finalizeAccepted = useCallback(');
+    const finalizeEnd = physicalEditCoordinator.indexOf('const finalizeFailed = useCallback(', finalizeStart);
+    const finalizeAccepted = physicalEditCoordinator.slice(finalizeStart, finalizeEnd);
+    expect(finalizeStart).toBeGreaterThanOrEqual(0);
+    expect(finalizeAccepted).toContain("pending.operationKind === 'play-script'");
+    expect(finalizeAccepted).toContain('portsRef.current.reference.reconcileCurrentFrame(after.currentAppFrame);');
+  });
+
   it('routes rail, keyboard, and sidebar Loop Clip edits through one Studio-local controller callback', () => {
     expect(studio).toContain('selectedLoopClipId.value = loopId;\n      return rotoPlayScript.openLoopEdit(loopId);');
     expect(studio).toContain('getLoopEditSnapshot: (placementStart) => {');
@@ -94,28 +104,62 @@ describe('Physics Paint Play Script integration contract', () => {
   });
 });
 
-describe('Physics Paint Roto Loop Clip spacing-proxy selection wiring', () => {
-  it('owns one session-only Signal and threads one reconciled getter without hook/effect mirroring', () => {
+describe('Physics Paint Roto rail and physical spacing selection wiring', () => {
+  it('owns session-only physical and rail selection Signals without effect mirroring', () => {
     expect(studio).toContain('const rotoSpacingSelection = useSignal<PhysicsPaintRotoSpacingSelection | null>(null);');
+    expect(studio).toContain('const selectedLoopClipIds = useSignal<readonly string[]>([]);');
+    expect(studio).toContain('const loopSelectionAnchorId = useSignal<string | null>(null);');
     expect(studio).toContain('getRotoSpacingSelection: () => reconcilePhysicsPaintRotoSpacingSelection(');
+    expect(studio).toContain('getSelectedLoopClipIds: () => effectiveRotoLoopClipSelection?.selectedLoopClipIds ?? []');
+    expect(studio).toContain('selectedRotoLoopClipIds: effectiveSelectedLoopClipIds');
     expect(studio).toContain('rotoSpacingSelection: effectiveRotoSpacingSelection');
+    expect(studio).not.toContain('selectedRotoLoopSourceKeyIds');
     expect(studio).not.toContain('useState<PhysicsPaintRotoSpacingSelection');
     expect(studio).not.toContain('useEffect(() => {\n    rotoSpacingSelection');
+    expect(studio).not.toContain('useEffect(() => {\n    selectedLoopClipIds');
   });
 
-  it('resets proxy selection on launch replacement and session reset, while accepted spacing and history keep source IDs', () => {
+  it('makes rail and physical-key selection mutually exclusive in synchronous handlers', () => {
+    expect(studio).toContain('const clearRotoLoopSelection = useCallback(() => {');
+    expect(studio).toContain('selectedLoopClipIds.value = [];\n    loopSelectionAnchorId.value = null;\n    selectedLoopClipId.value = null;');
+    expect(studio).toContain('const handleSelectRotoLoopClip = useCallback((\n    loopId: string | null,\n    gesture: PhysicsPaintRotoSpacingSelectionGesture = \'plain\',');
+    expect(studio).toContain('selectedKeyIds.value = [];\n    selectionAnchorKeyId.value = null;\n    rotoSpacingSelection.value = null;');
+    expect(studio).toContain('clearRotoLoopSelection();\n    const current = rotoSpacingSelection.peek();');
+    expect(studio).toContain('clearRotoLoopSelection();\n    const result = toggleRotoKeySelection(');
+    expect(studio).toContain('clearRotoLoopSelection();\n    const next = collapseRotoKeySelection(keyId);');
+    expect(studio).toContain('clearRotoLoopSelection();\n    const result = extendRotoKeySelectionRange(');
+  });
+
+  it('keeps Select All visible and exact by clearing every rail or proxy scope first', () => {
+    const selectAllStart = studio.indexOf('const selectAllRotoKeys = useCallback(() => {');
+    const selectAllEnd = studio.indexOf('const [, setLastError]', selectAllStart);
+    const selectAll = studio.slice(selectAllStart, selectAllEnd);
+    expect(selectAllStart).toBeGreaterThanOrEqual(0);
+    expect(selectAll).toContain('rotoSpacingSelection.value = null;');
+    expect(selectAll).toContain('selectedLoopClipIds.value = [];');
+    expect(selectAll).toContain('loopSelectionAnchorId.value = null;');
+    expect(selectAll).toContain('selectedLoopClipId.value = null;');
+    expect(selectAll).toContain('selectedKeyIds.value = next.selectedKeyIds;');
+  });
+
+  it('resets all spacing selection on launch replacement and session reset, while accepted spacing keeps identities', () => {
     expect(studio).toContain('rotoSpacingSelection.value = null;');
+    expect(studio).toContain('selectedLoopClipIds.value = [];');
+    expect(studio).toContain('loopSelectionAnchorId.value = null;');
     expect(studio).toContain('resetRotoSpacingSelectionSession');
     expect(studio).toContain("operationKind: accepted.operationKind");
     expect(studio).not.toContain("accepted.operationKind === 'force-spacing'\n          ? null");
   });
 
-  it('routes proxy gestures through pure plain/toggle/range operations and clears on ordinary real selection', () => {
+  it('routes proxy gestures and clears active key selection when an empty frame is selected', () => {
     expect(studio).toContain('selectPhysicsPaintRotoSpacingProxyPlain(');
     expect(studio).toContain('togglePhysicsPaintRotoSpacingProxy(');
     expect(studio).toContain('extendPhysicsPaintRotoSpacingProxyRange(');
+    expect(studio).toContain('selectedKeyIds.value = next?.selectedSourceKeyIds ?? [];');
     expect(studio).toContain('onSelectRotoSpacingProxy: handleSelectRotoSpacingProxy');
     expect(studio).toContain('onClearRotoSpacingSelection: handleClearRotoSpacingSelection');
+    expect(studio).toContain('const handleClearRotoKeySelection = useCallback(() => {\n    selectedKeyIds.value = [];\n    selectionAnchorKeyId.value = null;');
+    expect(studio).toContain('onClearRotoKeySelection: handleClearRotoKeySelection');
   });
 });
 
@@ -244,7 +288,7 @@ describe('Physics Paint navigation render localization', () => {
     expect(playScriptDialog).toContain('returnFocusRef.current?.focus()');
     expect(playScriptDialog).toContain("event.key === 'Escape'");
     expect(playScriptDialog).toContain("event.key === 'Enter'");
-    expect(playScriptDialog).toContain("event.key !== 'Tab'");
+    expect(playScriptDialog).not.toContain("event.key !== 'Tab'");
   });
 
   it('keeps navigation-only mutation locking out of static Studio region identities', () => {

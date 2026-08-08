@@ -7,18 +7,18 @@ preset: none
 created: 2026-08-07
 revised: 2026-08-08
 reviewed_at: 2026-08-08
-revision_reason: add user-approved Issue #2 source-position Key Spacing proxies to the integrated Loop Rail correction
+revision_reason: supersede cross-capsule physical proxies with rail-owned multi-capsule spacing, cumulative ripple, selection exclusivity, and Play Script background parity
 ---
 
 # Phase 43 — UI Design Contract
 
 > Canonical visual, interaction, accessibility, copy, and state contract for linked Loop Clips inside EFX Paint/Roto. This file fully replaces the rejected dedicated-lane baseline; it is not an incremental amendment.
 
-**Primary authority:** `43-CONTEXT.md` D-33R..D-50, gathered 2026-08-07 and amended by the user-approved Issue #2 contract on 2026-08-08. Supporting authority: `.planning/REQUIREMENTS.md` HOLD-01..06, accepted Phase 42 Play Script modal contracts, and the existing EFX Paint workflow strip/right sidebar implementation.
+**Primary authority:** `43-CONTEXT.md` D-33R..D-58, gathered 2026-08-07 and amended by the user-approved rail-owned Key Spacing and Play Script background recovery contract on 2026-08-08. Supporting authority: `.planning/REQUIREMENTS.md` HOLD-01..06, accepted Phase 42 Play Script dialog contracts, and the existing EFX Paint workflow strip/right sidebar implementation.
 
 **Supersession rule:** stale ROADMAP/HOLD-06 wording that requires a persistent full-filmstrip capsule, repetition band, separate Loop Clips row, permanent Cycle badge, identity-bearing main-timeline projection, or raw Loop Clip UUID is rejected. HOLD-06 authoring information remains in the compact integrated rail tooltip, local actions popover, and contextual Scripts sidebar; the Motion Editor receives only passive effective-interval visibility.
 
-**Product ownership boundary:** Physics Paint Studio Loop Rail and Scripts inspector remain the exclusive interactive Loop Clip surfaces. The Motion Editor main timeline may paint one passive Repeat-duration marker per canonical effective interval inside the existing PPaint FX bar from interval-only data `{startFrame, frameCount}`. It receives no `loopId`, source keys, repeat metadata, status, selection state, callbacks, or commands. The marker has no Loop Clip-specific hit target, tooltip, hover/focus state, selection, keyboard target, context action, Edit, drag, navigation, or mutation; generic FX-track behavior may continue beneath the paint.
+**Product ownership boundary:** Physics Paint Studio Loop Rail and Scripts inspector remain the exclusive interactive Loop Clip surfaces. The Motion Editor main timeline may paint one passive Repeat-duration marker per canonical effective interval inside the existing PPaint FX bar from paint-only data `{startFrame, frameCount, mode}`. It receives no `loopId`, source keys, repeat metadata, status, selection state, callbacks, or commands. The marker has no Loop Clip-specific hit target, tooltip, hover/focus state, selection, keyboard target, context action, Edit, drag, navigation, or mutation; generic FX-track behavior may continue beneath the paint.
 
 **Carried-forward guard:** all still-valid Phase 43 S2–S6 contracts remain in force: the existing `Edit Loop Clip` and `Edit Source Cycle` modal modes; Link/Create choice; blue linked-frame indicators; guarded materialization and source-key operations; unresolved preview placeholder; export block; canonical resolver; accepted-only authority updates; atomic Undo/Redo. Only the rejected persistent capsule/lane presentation and main-timeline ownership are replaced.
 
@@ -46,16 +46,16 @@ No new design system, persisted schema, registry, UI dependency, tooltip system,
 | ID | Surface | Contract |
 |----|---------|----------|
 | S1 | Integrated Loop Rail | 3px visible rail inside the top edge of the existing 38px physical-frame row; no new row and zero added height |
-| S1a | Rail tooltip | Existing styled-tooltip idiom, placed above the rail, with name, Cycle math, Effective duration, and status |
+| S1a | Rail tooltip | Existing styled-tooltip idiom, placed above the rail, with name, Cycle math, Effective duration, Progressive or Static/Hold mode, and status |
 | S1b | Local Loop Clip actions popover | EFX-local non-modal anchored surface for facts and applicable Duplicate/Unlink/Delete/Repair/Relink actions |
 | S1c | Contextual Scripts sidebar | Existing Scripts tab becomes the persistent Loop Clip inspector while a loop is selected; Play slot becomes Edit |
-| S2 | Edit Loop Clip modal | Existing Studio-local Play Script modal opened through `openLoopEdit(loopId)` |
-| S3 | Edit Source Cycle / Repair modal | Existing source-edit/repair mode and atomic generation lifecycle |
-| S4 | Apply-time Link/Create choice | Existing `Link to existing cycle` / `Create new cycle` contract |
+| S2 | Edit Loop Clip floating dialog | Existing draggable Studio-local Play Script surface opened through `openLoopEdit(loopId)`; non-modal, no dimming backdrop, palette remains interactive |
+| S3 | Edit Source Cycle / Repair floating dialog | Existing source-edit/repair mode and atomic generation lifecycle on the same non-blocking surface |
+| S4 | Apply-time Link/Create choice | Existing `Link to existing cycle` / `Create new cycle` contract; every Progressive or Static/Hold Apply creates a Loop Clip, including Repeat 1 |
 | S5 | Linked physical-cell treatment | Preserve the accepted blue inset border and 4px top-right dot without changing cell semantics or geometry |
 | S6 | Guard, placeholder, and export surfaces | Preserve accepted fail-closed guards, preview placeholder, export block, and atomic accepted-only updates |
-| S7 | Key Spacing proxy selection | Session-only selection treatment on exact source positions chosen from original real cells or equivalent linked occurrences; generated interiors, linked gaps, and unresolved frames remain navigation-only |
-| M1 | Motion Editor passive Repeat marker | One 3px `#8B5CF6` strip per canonical effective interval inside the existing PPaint FX bar; interval-only, textless, and non-interactive |
+| S7 | Key Spacing selection modes | Session-only, mutually exclusive Loop Rail and physical-key selection. Rails own complete multi-capsule cycles; physical keys own ordinary operations and partial spacing within one cycle; equivalent linked source positions mirror the active scope while generated interiors, linked gaps, and unresolved frames remain navigation-only |
+| M1 | Motion Editor passive Repeat marker | One 3px mode-colored strip per canonical effective interval inside the existing PPaint FX bar: Progressive `#8B5CF6`, Static/Hold `#06B6D4`, white canonical endpoint cuts; textless and non-interactive |
 
 ---
 
@@ -106,7 +106,7 @@ The integrated Loop Rail must not change `grid-template-rows`, workflow-strip he
 | Rail focus ring | 8 | visible above rail paint; must not be clipped by the timeline container |
 | Local actions popover | 61 | above existing styled tooltip and below modal |
 | Styled tooltip | existing 60 | viewport-fixed and above the rail |
-| Play Script / Edit Loop Clip modal | existing 70 | unchanged highest Phase 43 surface |
+| Play Script / Edit Loop Clip floating dialog | existing 70 | highest Phase 43 surface; viewport root passes pointer input through outside the draggable card |
 
 - The rail host must use `overflow: visible`; the existing timeline viewport may continue clipping horizontally at its outer boundary.
 - The rail must not set overflow on `.physics-paint-lane`, `.physics-paint-roto-cells`, `.physics-paint-roto-cell`, or the action row.
@@ -117,11 +117,12 @@ The integrated Loop Rail must not change `grid-template-rows`, workflow-strip he
 ### M1 Motion Editor passive marker geometry
 
 - Paint one compact strip per canonical Loop Clip effective interval inside the existing PPaint FX bar.
-- Visible height is exactly **3px** and color is exactly **`#8B5CF6`**.
-- Horizontal geometry is derived only from `{startFrame, frameCount}` using the existing timeline frame-to-x mapping and viewport clipping.
-- The marker adds no row, lane, track height, label, text, badge, capsule, end cap, tooltip, hover treatment, focus treatment, or visible status variant.
+- Visible height is exactly **3px**. Progressive uses **`#8B5CF6`**; Static/Hold uses cyan **`#06B6D4`**.
+- Horizontal geometry is derived only from `{startFrame, frameCount, mode}` using the existing timeline frame-to-x mapping and viewport clipping.
+- Actual canonical start/end positions paint white cuts up to 2px wide; viewport-clipped edges paint no false cuts.
+- The marker adds no row, lane, track height, label, text, badge, tooltip, hover treatment, focus treatment, or visible status variant.
 - The marker creates no DOM or Canvas hit region of its own and is not returned by hit testing. Generic FX-track pointer behavior may continue at the same coordinates beneath the paint.
-- The main timeline must not receive `loopId`, source keys, repeat count, infinity, requested duration, status, selection state, callbacks, or commands.
+- The main timeline must not receive `loopId`, source keys, repeat count, infinity, requested duration, status, selection state, callbacks, or commands. `mode` is the sole paint metadata.
 - Multiple markers share the existing FX bar and never stack into a separate lane. The painter is pure and paint-only.
 
 ### Responsive contract at 1280×720 minimum
@@ -186,7 +187,7 @@ Exactly four size roles and two weights apply to new rail/sidebar/popover conten
 |------|-------|-------|
 | Dominant (60%) | `#37393A` with surrounding `#3E3F41` | existing timeline, strip, and sidebar surfaces |
 | Secondary (30%) | `#20262D`, `#343638`, `#62666D` | inspector card, popover, existing tooltip |
-| Accent (10%) | normal `#5F83FF`; selected `#8FAEFF` | Loop Rail normal/selected line, selected fact accent, existing linked-cell border/dot |
+| Accent (10%) | Progressive `#8B5CF6`; Static/Hold `#06B6D4`; selected `#F59E0B` | Mode-specific Loop Rail line, selected rail, selected fact accent, existing linked-cell border/dot |
 | Focus | `#F2F5F7` | 2px focus-visible ring only |
 | Warning | `#FFB020` | truncated end treatment and shortened status only |
 | Error | `#FF6B6B` | unresolved rail/marker and missing-source status only |
@@ -198,9 +199,10 @@ Exactly four size roles and two weights apply to new rail/sidebar/popover conten
 
 | State | Exact treatment |
 |-------|-----------------|
-| Normal | 3px solid `#5F83FF`; no fill, badge, label, shadow, thumbnail, or repetition pattern |
-| Hover | same geometry; color `#7596FF`; no translation or height growth |
-| Selected | 3px solid `#8FAEFF` plus a 1px outer glow `rgba(143,174,255,.45)`; sidebar enters Loop Clip context |
+| Normal | Progressive: 3px solid `#8B5CF6`; Static/Hold: 3px solid `#06B6D4`; no fill, badge, label, shadow, thumbnail, or repetition pattern |
+| Hover | Progressive `#C4B5FD`; Static/Hold `#67E8F9`; same geometry with no translation or height growth |
+| Selected | 3px solid `#F59E0B` for both modes; sidebar enters Loop Clip context |
+| Start/end cuts | Actual canonical start and end receive 2px `#F8FAFC` vertical cuts on the rail plus matching white left/right boundary-cell borders; clipped viewport edges receive no false cut |
 | Focused | selected/normal paint remains; add 2px `#F2F5F7` focus ring with 1px offset around the 12px target |
 | Truncated | final **6px** of the visible rail becomes `#FFB020`; if Effective is 0f, the 0f flag uses warning color |
 | Unresolved | full visible rail or 0f flag becomes `#FF6B6B`; error color has precedence over selected and truncation paint |
@@ -220,11 +222,13 @@ Highest visible state wins:
 
 Focus never hides error. Selection never replaces the amber end treatment. State changes alter paint only, never geometry.
 
-### Existing linked cells and Key Spacing proxy state
+### Existing linked cells and Key Spacing selection state
 
-Preserve the accepted linked-cell treatment verbatim: inset `rgba(45,91,227,0.9)` border and 4px top-right dot. Do not change cell fill, border, height, frame text behavior, current outline, generated/cached/background semantics, or drag styling.
+Preserve the accepted linked-cell fill, repeat dot, height, frame text behavior, current outline, generated/cached/background semantics, and drag styling. The sole boundary exception is a 2px `#F8FAFC` left border on the actual first frame and matching right border on the actual final effective frame of each Loop Clip; adjacent clips therefore show a double divider without recoloring source/generated/repeat interiors.
 
-When an exact source position is included in a validated Key Spacing proxy selection, retain the linked inset/dot and add the existing physical multi-selection outline plus a compact non-text proxy cue inside the cell's top clearance. The cue must distinguish proxy provenance from an ordinary selected real key without changing cell dimensions or implying durability. Equivalent selected occurrences across repeats/shared loops render as the same deduplicated source-position selection state. Generated interiors, linked gaps, and unresolved frames never show the proxy cue; they may show the existing current-frame/navigation treatment only. Proxy selection has no grab/grabbing cursor, drag preview, materialization badge, real-key diamond, or persistence indicator.
+Repeat zones use three distinct paints without changing geometry or interaction: ordinary repeated/generated positions use darkest gray `#34383C`; repeated positions that mirror authoritative real source keys use lighter neutral gray `#43494F`; and the repeated mirror of an explicitly selected physical key uses separate slate gray `#4B6382`. That selected mirror keeps its normal repeat border, inset, and dot but receives no orange border, outline, or glow. Only the original selected physical key retains the orange selection ring.
+
+When Loop Rails are selected, selection paint is confined to the selected 3px rail line. The complete source cycles remain the invisible Apply-time Key Spacing scope: source real cells and equivalent linked occurrences do not receive orange selected-source treatment, `aria-selected`, or selected-source tooltip copy from rail selection. When physical keys are explicitly selected, only that visible exact physical selection may show the equivalent source-position cue, and only within one current ordered source cycle for partial linked Key Spacing. The two modes never stack because rail and physical selection are mutually exclusive. Generated interiors, linked gaps, and unresolved frames never show source eligibility; they retain current-frame/navigation treatment only. Physical proxy highlights have no grab/grabbing cursor, drag preview, materialization badge, real-key diamond, or persistence indicator.
 
 ---
 
@@ -264,9 +268,10 @@ Tooltip is multiline in this exact order:
 1. `{displayName}`
 2. `{Cycle math}`
 3. `Effective {E}f`
-4. `Status: {Linked | Loop shortened by next clip | Loop shortened by parent end | Source missing}`
+4. `Mode: {Progressive | Static/Hold}`
+5. `Status: {Linked | Loop shortened by next clip | Loop shortened by parent end | Source missing}`
 
-For Effective `0f`, line 3 remains `Effective 0f` and line 4 states the canonical shortened status. Do not include UUIDs or a permanent on-rail Cycle badge.
+For Effective `0f`, line 3 remains `Effective 0f`, line 4 remains the mode, and line 5 states the canonical shortened status. Do not include UUIDs or a permanent on-rail Cycle badge.
 
 ### Local popover and sidebar facts
 
@@ -318,8 +323,10 @@ For Effective `0f`, line 3 remains `Effective 0f` and line 4 states the canonica
 | Export block | `Export blocked — Loop Clip at frame {S} references a missing source frame ({F}). Repair or unlink the loop, then export again.` |
 | Source-key delete rejection | `This key belongs to a source cycle used by {N} linked loop(s). Unlink the loop(s) before deleting it.` |
 | Rigid source drag rejection | `Linked source-cycle keys move only as a rigid group. Select the whole cycle to drag it.` |
-| Invalid linked Force Spacing rejection | `Key Spacing requires at least two exact source positions from one linked source cycle.` |
-| Linked generated/gap proxy rejection | `This linked frame is navigation-only. Select exact source positions for Key Spacing.` |
+| Incomplete same-cycle physical scope | `Select at least two Loop Clip source positions to apply Key Spacing.` |
+| Multi-cycle physical scope | `Select Loop Rails to apply Key Spacing across multiple Loop Clips.` |
+| Mixed linked/unlinked physical scope | `Select only source positions from one Loop Clip cycle, or select Loop Rails.` |
+| Linked generated/gap rejection | `This linked frame is navigation-only. Select source positions or Loop Rails for Key Spacing.` |
 | Linked-frame Delete rejection | `No real key exists at this linked frame. Use Clear to create an empty real key, or select the Loop Clip rail to delete the loop.` |
 
 ### Empty state
@@ -337,31 +344,34 @@ There is no visual empty state for Loop Clips. With zero loops:
 
 ### Selection ownership
 
-- Loop Clip selection is a separate Studio/session selection from physical real-key selection.
-- Selecting a loop does not navigate the playhead, change current frame, select/deselect a physical cell, collapse/extend the real-key selection set, start multi-select, or alter a drag session.
-- Existing physical-cell click, modifier-click, Shift range selection, keyboard navigation, single-key drag, group drag, and action toolbar behavior remain unchanged below the rail.
-- Selected Loop Clip identity drives the rail highlight and contextual Scripts sidebar. Closing a tooltip/popover does not clear Loop Clip selection.
-- Selecting a normal script or explicitly selecting a physical key may return the sidebar to normal script context according to existing Studio selection policy; this transition must not mutate the Loop Clip record.
+- Loop Rail selection and physical real-key selection are mutually exclusive Studio/session modes; neither selection nor either anchor is persisted.
+- Plain rail click replaces the rail selection with exactly one Loop Clip, paints only its 3px rail line, keeps it as the primary Scripts inspector/Edit target and invisible complete-cycle Key Spacing scope, and clears physical keys, the physical anchor, and any physical proxy scope.
+- Shift-click selects the inclusive contiguous Loop Clip range between the stable rail anchor and target in canonical `placementStart`/`loopId` order. Cmd/Ctrl-click toggles one non-contiguous rail without dropping the other selected rails.
+- Plain/Cmd/Shift physical-key selection retains its accepted ordinary behavior and synchronously clears the selected rail IDs, rail anchor, and rail-derived scope. Select All is a physical action that clears rail/proxy mode and selects every current real key in physical order; the visible selection is the exact operation scope.
+- Selecting rails does not navigate the playhead or start drag. Selecting a physical key may return the sidebar to normal script context without mutating any Loop Clip record. Closing a tooltip/popover does not clear the active mode.
+- Launch replacement, loop deletion/unlink, source regeneration, and stale-cycle reconciliation clear invalid IDs and anchors instead of inventing a fallback scope.
 
-### Key Spacing proxy selection and gestures
+### Key Spacing selection and gestures
 
-- Exact source-key positions inside a Loop Clip are eligible session-only proxies whether reached through the original real source cell or any linked occurrence whose resolved frame equals that source position exactly.
-- Use the existing physical-cell selection gestures: plain click establishes the anchor/current frame; Ctrl/Cmd-click toggles an eligible exact source position; Shift-click extends through eligible exact source positions in the same ordered source cycle. Selection must not silently include generated interiors, linked gaps, unresolved frames, or positions from another ordered `sourceKeyIds` sequence.
-- A valid Key Spacing scope contains at least two unique source indices from one ordered source cycle. Selecting the full cycle is valid. Original and linked selections may be mixed.
-- Equivalent positions across repeats and all Loop Clips sharing the same ordered `sourceKeyIds` deduplicate to one source index. Their visible proxy state mirrors the same session selection, and one spacing result updates every shared loop's cadence.
-- Unselected source positions are fixed hard walls. The spacing preview and accepted result may move only the selected authoritative source real keys within those walls; no unselected source position, Loop Clip placement, repeat count, Infinity flag, or source reference moves.
-- Invoking Key Spacing requires explicit resolver provenance for every selected proxy. Mixed cycles, fewer than two unique source positions, generated interiors, linked gaps, unresolved frames, stale mappings, or ordinary linked-source selections without provenance reject with the locked reason and preserve selection.
-- Proxy selection never materializes, clones, unlinks, or persists an occurrence and never adds a real-key diamond. It creates no schema field or durable selection record.
-- Pointer drag, single-key drag, group drag initiated from a linked occurrence, and placement drag remain rejected. Key Spacing is an explicit command, not a drag gesture.
-- On accepted Force Spacing, source real-key positions, generated interiors, timed repeats, rail duration, preview/playback/export resolution, and every shared loop update together from one atomic authority acknowledgement. Undo restores the prior source rhythm everywhere; Redo reapplies the spaced rhythm everywhere.
+- Rail mode owns multi-capsule spacing. Each selected rail derives its complete ordered `sourceKeyIds` from current Loop Clip records at Apply time; selected clips are ordered canonically and identical source cycles deduplicate.
+- Physical mode owns ordinary operations and partial linked Key Spacing. The visible selected IDs are authoritative and may authorize at most one current ordered source cycle. A physical selection containing linked IDs from multiple cycles rejects with `Select Loop Rails to apply Key Spacing across multiple Loop Clips.`
+- Exact source positions reached through original real cells or equivalent linked occurrences may participate in a valid one-cycle physical scope. Generated interiors, linked gaps, unresolved frames, stale mappings, mixed linked/unlinked scope, reordered coverage, duplicate coverage, or ambiguous provenance reject before coordinator execution with no fallback.
+- Selected rail cycles are processed left-to-right in one immutable mapping. Each group's first selected key is anchored at its original frame plus cumulative growth from prior groups, internal destinations use `emptyFrames + 1`, and every real key strictly after the group's original tail shifts by that group's signed growth.
+- A Loop Clip follows the edit only when its pre-edit `placementStart` equals the pre-edit frame of its first source key. Its new placement follows that first key's accepted delta; duplicated placements remain fixed. Loop ID, source IDs, mode, repeat, Infinity, script provenance, motion, and override color remain byte-identical.
+- Final identity order, destination uniqueness, non-negative frames, capacity, and complete mode-specific authorization are validated before proposal creation. A selected key may not cross a fixed unselected key inside its selected group's interior.
+- Interpolation is never toggled by Key Spacing. Off leaves intentional empty gaps; On derives generated blue in-betweens without materialized records.
+- Selection never materializes, clones, unlinks, or persists an occurrence and never adds a real-key diamond or schema field. Pointer drag, single-key drag from a linked occurrence, and placement drag remain rejected.
+- Records and the complete next Loop Clip collection stage and settle together. Failure or rejection restores both and creates no history; acceptance creates one history command, one Undo restores source rhythms and placements, and one Redo reapplies them.
 
 ### Mouse and pointer behavior
 
 | Input | Result |
 |-------|--------|
 | Hover rail target | after existing 1000ms styled-tooltip delay, show tooltip above the rail |
-| Single click rail | stop propagation; select only the Loop Clip; focus the rail target; open the local actions popover |
-| Double-click rail | stop propagation; close tooltip/popover; call existing local `openLoopEdit(loopId)` once |
+| Single click rail | stop propagation; replace rail selection with this Loop Clip and its complete source cycle; clear physical selection/proxy scope; focus the rail target; open the local actions popover |
+| Shift-click rail | select the inclusive contiguous rail range from the stable rail anchor; clear physical selection/proxy scope; keep the clicked rail as primary inspector target |
+| Cmd/Ctrl-click rail | toggle this rail without changing the remaining non-contiguous rail selection; clear physical selection/proxy scope |
+| Double-click rail | stop propagation; make this rail the primary plain selection; close tooltip/popover; call existing local `openLoopEdit(loopId)` once |
 | Click sidebar Edit | call the same `openLoopEdit(loopId)` path |
 | Click outside popover | close popover only; retain loop selection and sidebar context |
 | Pointer down on rail | no physical-cell navigation and no drag session; no pointer capture |
@@ -374,7 +384,7 @@ Double-click handling must suppress the second single-click side effect from reo
 - Each visible Loop Clip range exposes exactly one tab stop: a native button or equivalent `role="button"` with `tabIndex=0`.
 - Tab order follows canonical `placementStart`, then existing strip controls. Rail subdivisions are not separate focus targets.
 - **Enter** on a focused rail target closes tooltip/popover and opens `Edit Loop Clip` through `openLoopEdit(loopId)`.
-- **Space** prevents page scroll, selects the loop, and opens the local actions popover.
+- **Space** prevents page scroll, plain-selects the loop and its complete source cycle, clears physical selection/proxy scope, and opens the local actions popover.
 - **Escape** closes the popover and restores focus to its rail trigger. If only the tooltip is open, Escape hides it without changing selection.
 - Arrow keys are not intercepted by the rail in this phase; existing physical-frame navigation shortcuts remain unchanged when focus is not on a rail action.
 - Delete/Backspace do not delete or unlink a Loop Clip from rail focus. Destructive actions remain explicit popover controls.
@@ -425,8 +435,8 @@ Double-click handling must suppress the second single-click side effect from reo
 - `Edit Loop Clip`, `Edit Source Cycle`, Repair, Relink, Duplicate, Unlink, and Delete continue through the existing controller, physical-edit coordinator, authority request, atomic commit, and Undo/Redo paths.
 - Painting/erasing on a linked occurrence materializes a local real key and shortens the loop; Clear materializes an empty real key; Delete/Backspace on a purely linked frame rejects.
 - Moving/removing the next boundary re-expands the rail immediately from canonical accepted state without regeneration.
-- Runtime cycle offsets and duration derive from authoritative source real-key `appFrame` positions. Key Spacing changes those positions atomically and all finite/Infinity repeats and generated interiors re-resolve without modifying Loop Clip placement/repeat records.
-- D-11 remains fail-closed for single-key movement, drag-based linked mutations, and Force Spacing without validated proxy provenance. D-23 remains fail-closed for treating linked occurrences as durable keys; only exact source positions may participate as session-only Key Spacing proxies.
+- Runtime cycle offsets and duration derive from authoritative source real-key `appFrame` positions. Rail-owned Key Spacing retimes selected cycles and cumulatively ripples later records; only source-attached Loop Clip `placementStart` may follow its first source key, while every other Loop Clip field remains unchanged.
+- D-11 remains fail-closed for single-key linked movement, drag-based linked mutations, and Force Spacing without current rail or one-cycle physical authorization. D-23 remains fail-closed for treating linked occurrences as durable keys; exact source positions may only reflect a valid session selection.
 - Unresolved loops remain selectable, repairable/relinkable/unlinkable/deletable, show preview placeholders, and block export with the carried-forward copy.
 - Source thumbnails, repetition bands, ghost cells as a first-class rail surface, permanent Cycle badges, and occurrence-seek controls are not part of S1.
 
@@ -438,7 +448,7 @@ Double-click handling must suppress the second single-click side effect from reo
 
 - Rail group: `role="group"`, `aria-label="Loop Clips"`; render only when loops exist.
 - Rail target: native `button` preferred. Accessible name exact form: `{displayName}. {Cycle math}. Effective {E} frames. Status: {status}.`
-- Eligible exact source-position proxies retain the physical cell's existing role/name and append `Exact source position {I} of {N}; available for Key Spacing.` When selected, append `Selected as Key Spacing proxy.` Generated interiors, linked gaps, and unresolved frames append `Navigation-only linked frame.` and never advertise Key Spacing selection.
+- Exact source positions retain the physical cell's existing role/name. When selected through physical mode, append `Selected source position {I} of {N} for Key Spacing.` When included through rail mode, append `Selected through Loop Rail {loopName}.` Generated interiors, linked gaps, and unresolved frames append `Navigation-only linked frame.` and never advertise Key Spacing eligibility.
 - Selected rail target: `aria-pressed="true"`; unselected targets `aria-pressed="false"`.
 - Busy rail target: `aria-busy="true"`.
 - Tooltip: existing `role="tooltip"`; connect with `aria-describedby` while visible or with a stable tooltip id.
@@ -509,21 +519,21 @@ Compiled probe coverage resolved with user-confirmed authored element kinds: **4
 | S2 Edit Loop Clip modal | loading | ✅ covered | Existing `Preparing Loop Clip…` and commit progress remain visible without optimistic values or layout replacement. |
 | S2 Edit Loop Clip modal | error | ✅ covered | Validation/authority rejection preserves inputs, keeps the modal available, and announces the exact controller reason. |
 | S2 Edit Loop Clip modal | partial | ✅ covered | Unresolved references route to the existing repair/relink-capable mode instead of presenting silently missing fields. |
-| S2 Edit Loop Clip modal | overflow | ✅ covered | The carried-forward compact modal remains contained at the minimum application window without changing the Studio layout. |
+| S2 Edit Loop Clip floating dialog | overflow | ✅ covered | The compact draggable surface remains contained at the minimum application window without changing Studio layout; its backdrop-free viewport root passes pointer input to the palette outside the card. |
 | S2 Edit Loop Clip modal | long-text | ✅ covered | Existing modal wrapping/ellipsis and accessible labels handle long script/loop values without exposing UUID copy. |
 | S5 Linked physical-cell indicator | empty | ✅ covered | Unlinked physical cells render no blue inset border/dot and retain their existing state palette. |
 | S5 Linked physical-cell indicator | loading | ✖ dismissed | The indicator derives synchronously from accepted in-memory resolver state and has no independent loading lifecycle. |
 | S5 Linked physical-cell indicator | error | ✖ dismissed | Unresolved/error communication belongs to the rail, tooltip, sidebar, and preview/export surfaces; the linked-cell indicator has no separate error state. |
 | S5 Linked physical-cell indicator | populated | ✅ covered | Linked cells preserve the accepted blue inset border and 4px dot across normal/current/selected/drag states without becoming selectable loop UI. |
-| S7 Key Spacing proxy selection | empty | ✅ covered | Fewer than two unique exact source positions leaves Key Spacing unavailable with the locked reason and no durable selection state. |
-| S7 Key Spacing proxy selection | populated | ✅ covered | Any 2+ unique exact source positions from one ordered cycle, including the full cycle and mixed original/linked selections, form one deduplicated session scope. |
-| S7 Key Spacing proxy selection | partial | ✅ covered | Unselected source positions remain fixed hard walls; selected positions alone receive preview/accepted movement. |
-| S7 Key Spacing proxy selection | error | ✅ covered | Mixed cycles, generated interiors, linked gaps, unresolved frames, stale provenance, and ordinary linked-source Force Spacing reject without mutation. |
-| S7 Key Spacing proxy selection | zero-one-many | ✅ covered | Equivalent positions across repeats and shared loops deduplicate to one source index while all sharing loops mirror the selected proxy state and adopt the accepted rhythm. |
-| S7 Key Spacing proxy selection | loading | ✅ covered | Pending authority keeps prior source cadence and proxy selection visible; no optimistic positions, materialization, or placement/repeat changes appear. |
+| S7 Key Spacing selection modes | empty | ✅ covered | No rail or physical selection leaves no hidden scope; ordinary zero/one-key unlinked fallback remains the only legacy fallback. |
+| S7 Key Spacing selection modes | populated | ✅ covered | Plain/range/toggle rail selection derives complete ordered cycles; physical selection exposes its exact visible IDs and may authorize partial spacing inside one current cycle only. |
+| S7 Key Spacing selection modes | partial | ✅ covered | A partial physical same-cycle scope preserves fixed keys before or inside an unselected interior boundary, while an accepted group ripples all records after its original tail. |
+| S7 Key Spacing selection modes | error | ✅ covered | Multi-cycle physical selection, generated interiors, gaps, unresolved frames, stale/reordered/duplicate/ambiguous provenance, collision, crossing, or capacity failure rejects before publication. |
+| S7 Key Spacing selection modes | zero-one-many | ✅ covered | One or many selected rails process complete cycles in canonical order, deduplicate identical cycles, and produce cumulative ripple; Select All remains exact physical scope. |
+| S7 Key Spacing selection modes | loading | ✅ covered | Pending authority keeps the selected mode and prior cadence visible; no optimistic records, Loop Clip placement, interpolation change, materialization, or history appears. |
 | M1 Motion Editor passive marker | loading | ✖ dismissed | The marker derives synchronously from accepted interval data and has no independent loading state. |
 | M1 Motion Editor passive marker | error | ✖ dismissed | The marker exposes no status variant; unresolved authoring status remains exclusively inside EFX Paint and shared preview/export behavior. |
-| M1 Motion Editor passive marker | populated | ✅ covered | Each effective interval paints one exact 3px `#8B5CF6` strip inside the existing PPaint FX bar from `{startFrame, frameCount}` only. |
+| M1 Motion Editor passive marker | populated | ✅ covered | Each effective interval paints one exact 3px purple Progressive or cyan Static/Hold strip with white canonical endpoint cuts inside the existing PPaint FX bar from `{startFrame, frameCount, mode}` only. |
 | M1 Motion Editor passive marker | overflow | ✅ covered | At every zoom/scroll boundary, paint clips correctly while no Loop Clip-specific hit region, tooltip mount, hover/focus state, keyboard target, or action exists. |
 | M1 Motion Editor passive marker | zero-one-many | ✅ covered | Zero intervals paint nothing; one or many paint in the existing FX bar without stacking, a new row, or identity-bearing nodes. |
 | M1 Motion Editor passive marker | long-text | ✖ dismissed | The marker contains no text, label, badge, name, metadata, or raw identifier. |
@@ -540,27 +550,27 @@ All nine checks are mandatory before implementation expands beyond the revised t
 | 2 | No cell or toolbar clipping | 24px cells, current/selected outlines, drag feedback, and 34px action toolbar remain fully visible and operable | Rail paint/overflow clips cells, linked dot, outline, or toolbar |
 | 3 | Conditional 3px rail | Loops show exactly 3px visible rail with 12px target; zero loops show no rail DOM/space | Persistent empty rail, badge, capsule, label, or height reservation |
 | 4 | Correct hover tooltip | After existing delay, tooltip appears above rail with display name, Cycle math, Effective, and status | Tooltip below by default, missing required facts, UUID copy, or permanent on-rail text |
-| 5 | Loop-only single-click selection | Single click selects loop, opens local actions, updates sidebar, and leaves playhead/physical selection unchanged | Any frame navigation, real-key selection change, multi-select collapse, or drag start |
+| 5 | Rail-owned selection isolation | Plain click selects exactly one rail and its complete source cycle, opens local actions, updates the sidebar, clears physical selection/proxy scope, and leaves the playhead unchanged; Shift/Cmd gestures extend or toggle rails | Any frame navigation, simultaneous rail/physical selection, stale hidden scope, or drag start |
 | 6 | Double-click and Enter edit | Double-click and focused Enter each call Studio-local `openLoopEdit(loopId)` once and open existing modal | Parent/main-timeline bridge ownership, duplicate calls, or popover reopening over modal |
 | 7 | Contextual sidebar swap and details | Normal script shows Play; selected loop shows Pencil/Edit in same slot plus name, source, placement, Cycle, Effective, mode, status | Separate inspector pane/tab, missing facts, Edit button starting rename, or dedicated rename Pencil |
 | 8 | Blue linked indicators preserved | Linked physical cells retain existing blue inset border and 4px dot across normal/current/selected/drag states | Indicator removed, recolored to rail state, or promoted to a new cell state |
-| 9 | Passive main-timeline marker only | Motion Editor PPaint FX bar paints one exact 3px `#8B5CF6` strip per effective interval from `{startFrame, frameCount}` only, with no text, badge, capsule, own hit target, tooltip, hover/focus, selection, keyboard route, navigation, Edit, drag, context menu, callback, command, or mutation | Missing/incorrect marker; new row/height; `loopCapsules`, `loopClips`, raw IDs, metadata, status, selection, or any Loop Clip-specific interaction route |
+| 9 | Passive main-timeline marker only | Motion Editor PPaint FX bar paints one exact 3px mode-colored strip per effective interval from `{startFrame, frameCount, mode}` only, with white actual endpoint cuts and no text, badge, own hit target, tooltip, hover/focus, selection, keyboard route, navigation, Edit, drag, context menu, callback, command, or mutation | Missing/incorrect marker; new row/height; `loopCapsules`, `loopClips`, raw IDs, metadata, status, selection, or any Loop Clip-specific interaction route |
 
 The tracer is accepted only when all nine checks pass together in the same EFX Paint/Roto build. Passing renderer/model tests without this visible ownership proof is insufficient.
 
-The same 43-11 blocking checkpoint also includes the separate Issue #2 Key Spacing matrix; it is not a tenth ownership check and does not create another checkpoint. Native evidence must prove: selection of any 2+ unique exact positions and the full cycle; original/linked mixed selection; deduplication across repeats and shared loops; unselected hard walls; generated interiors/gaps/unresolved navigation-only behavior; no drag/materialization/unlink/clone/persistence; timed finite and Infinity repeat cadence from source `appFrame` offsets; one accepted atomic transaction; and Undo/Redo restoring/reapplying every shared loop.
+The same checkpoint also includes the separate recovery matrix; it is not a tenth ownership check and does not create another checkpoint. Native evidence must prove: plain/range/toggle rail selection of complete cycles; mutual exclusion with physical selection; exact Select All scope; same-cycle physical partial spacing and multi-cycle physical rejection; left-to-right cumulative ripple; source-attached downstream placement follow; unchanged Interpolation Off/On semantics; generated/gap/unresolved navigation-only behavior; no drag/materialization/unlink/clone/persisted selection; one accepted records-plus-Loop-Clips history transaction with Undo/Redo; and current Play Script background parity on fresh and existing documents.
 
 ---
 
 ## Implementation Boundaries
 
 - Replace `PhysicsPaintLoopClipLane` and its extra-row mount with a focused integrated rail component/presentation helper. Do not add more presentation logic directly to the already-large `PhysicsPaintStudio.tsx`.
-- Selected Loop Clip state must be shared through the existing Studio Signal/view-model boundary so the rail and Scripts panel consume one identity; do not keep a strip-local selection that the sidebar cannot observe.
+- Rail selection state must be shared through the existing Studio Signal/view-model boundary as plural selected Loop Clip IDs plus one rail anchor and one primary inspector/Edit identity. Keep it session-only, derive source membership from current Loop Clip records, and do not mirror it through effects.
 - Rail geometry derives only visible ranges from the existing lazy resolver context. No destination-frame list, repeated DOM nodes per frame, or per-repetition cache assets.
 - Runtime loop timing derives from ordered source real-key `appFrame` positions: normalize source offsets from the first key, derive cycle duration from the final occupied source position, and resolve generated interiors/repeats from that timing. Do not add a persisted timing field.
-- Key Spacing proxy state is session-only and resolver-proven. One explicit resolver maps exact linked occurrences to source indices, deduplicates shared-cycle equivalents, rejects generated/gap/unresolved provenance, and feeds the existing Force Spacing authority path as one atomic source-key transaction.
-- All edit/actions converge on existing controller methods and accepted-only commits. Do not create a second local mutation implementation.
-- Replace specialized main-timeline Loop Clip capsule/open/action ownership with a minimal interval-only marker projection and pure Canvas painter. Protect the passive `{startFrame, frameCount}` marker path while removing `loopCapsules`, `loopClips`, IDs, metadata, status, selection, callbacks, commands, and every Loop Clip-specific interaction route; generic project/context/save/frame-sync bridges remain.
+- Snapshot the active selection mode, records, Loop Clips, interpolation, capacity, and launch identity once at Apply time. Validate plural rail cycles or one-cycle physical provenance exactly, then feed one immutable ordered ripple mapping into the existing Force Spacing authority path with complete `nextLoopClips` when source-attached placement changes.
+- All edit/actions converge on existing controller methods and accepted-only commits. Play Script additionally forwards the live background snapshot through the existing physical transaction; do not create a second local mutation or optimistic background path.
+- Replace specialized main-timeline Loop Clip capsule/open/action ownership with a minimal paint-only marker projection and pure Canvas painter. Protect the passive `{startFrame, frameCount, mode}` marker path while removing `loopCapsules`, `loopClips`, IDs, metadata, status, selection, callbacks, commands, and every Loop Clip-specific interaction route; generic project/context/save/frame-sync bridges remain.
 - Do not add a persisted Loop Clip name, rename operation, schema field, or migration.
 - Do not implement horizontal Loop Clip placement drag in this phase.
 
@@ -584,4 +594,4 @@ The same 43-11 blocking checkpoint also includes the separate Issue #2 Key Spaci
 - [x] Dimension 5 Spacing: PASS
 - [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** integrated Loop Rail contract approved 2026-08-07T21:03:55Z; Issue #2 Key Spacing proxy amendment approved by the user on 2026-08-08. UI consideration probe: 40 covered, 8 dismissed, 0 backstops, 0 unresolved.
+**Approval:** integrated Loop Rail contract approved 2026-08-07T21:03:55Z; the rail-owned multi-capsule Key Spacing, cumulative ripple, selection exclusivity, exact Select All, unchanged Interpolation, atomic placement-follow, and Play Script background recovery amendment was approved by the user on 2026-08-08. UI consideration probe: 40 covered, 8 dismissed, 0 backstops, 0 unresolved.

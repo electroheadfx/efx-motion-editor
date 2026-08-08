@@ -669,9 +669,6 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   const currentInterpolation = physicPaintStore.getRotoPhysicalInterpolationState(payload.layerId);
   const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(payload.layerId);
   const currentDocument = physicPaintStore.getRotoPhysicalDocument(payload.layerId);
-  if (isPlayScript && !currentDocument) {
-    return reject('Canonical Roto physical document is unavailable for Play Script.');
-  }
   const currentRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation, currentLoopClips);
   if (currentRevision !== payload.expectedRevision) {
     return reject('Roto physical revision became stale before commit.');
@@ -794,7 +791,9 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     realKeyRecords: proposedRecords,
     interpolation: stagedInterpolation,
     scriptMotion: currentDocument?.scriptMotion ?? PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
-    background: currentDocument?.background ?? physicPaintStore.getRotoBackgroundMetadata(payload.layerId),
+    background: isPlayScript
+      ? payload.rotoBackground!
+      : currentDocument?.background ?? physicPaintStore.getRotoBackgroundMetadata(payload.layerId),
     selectedKeyId: payload.selectedKeyId,
     cursorAppFrame,
     revision: stagedRevision,

@@ -137,8 +137,8 @@ export type PhysicPaintRotoPhysicalEditIntent =
       readonly selectedKeyId: string | null;
       /** Phase 37 D-10..D-12: selected-keys-only scope; null/undefined = full timeline. */
       readonly scopeKeyIds?: readonly string[] | null;
-      /** Phase 43: session-only authorization for exact linked source-cycle positions. */
-      readonly linkedSourceSpacingScope?: PhysicPaintRotoLinkedSourceSpacingScope | null;
+      /** Phase 43: ordered session-only authorizations for exact linked source-cycle groups. */
+      readonly linkedSourceSpacingScopes?: readonly PhysicPaintRotoLinkedSourceSpacingScope[] | null;
     }
   | {
       readonly kind: 'duplicate-key';
@@ -839,18 +839,18 @@ function countLoopsReferencingSourceKey(
  * keeps its own placementStart and keeps resolving the same source keys by id.
  * Returns the complete next collection, or null when no loop record changes.
  */
-function computeRigidLoopPlacementFollow(
+function computeSourceAttachedLoopPlacementFollow(
   identities: ValidatedIdentities,
   loopClips: readonly PhysicPaintRotoLoopClip[],
-  movedKeyIds: ReadonlySet<string>,
   mapping: ReadonlyMap<string, number>,
+  eligible: (clip: PhysicPaintRotoLoopClip) => boolean,
 ): readonly PhysicPaintRotoLoopClip[] | null {
   if (loopClips.length === 0) return null;
   let changed = false;
   const next = loopClips.map((clip) => {
+    if (!eligible(clip)) return clip;
     const firstKeyId = clip.sourceKeyIds[0];
     if (firstKeyId === undefined) return clip;
-    if (!clip.sourceKeyIds.every((keyId) => movedKeyIds.has(keyId))) return clip;
     const preMoveFrame = identities.framesByKeyId.get(firstKeyId);
     if (preMoveFrame === undefined || clip.placementStart !== preMoveFrame) return clip;
     const postMoveFrame = mapping.get(firstKeyId);
@@ -1640,7 +1640,12 @@ function buildMoveGroupCandidate(
       }) as PhysicPaintRotoPhysicalDragPresentation,
       // D-04: original loops follow a rigid whole-cycle drag; duplicated loops
       // keep their own placementStart (placement/source correction).
-      nextLoopClips: computeRigidLoopPlacementFollow(identities, loopClips, movedSet, mapping),
+      nextLoopClips: computeSourceAttachedLoopPlacementFollow(
+        identities,
+        loopClips,
+        mapping,
+        (clip) => clip.sourceKeyIds.every((keyId) => movedSet.has(keyId)),
+      ),
     },
   };
 }
@@ -1659,6 +1664,91 @@ function computeChanged(
   return false;
 }
 
+function buildLinkedForceSpacingCandidate(
+  identities: ValidatedIdentities,
+  emptyFrames: number,
+  selectedKeyId: string | null,
+  scopes: readonly PhysicPaintRotoLinkedSourceSpacingScope[],
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+): MoveBuilderResult {
+  const mapping = new Map(identities.ordered.map((identity) => [identity.keyId, identity.appFrame]));
+  const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+  const step = emptyFrames + 1;
+  let cumulativeGrowth = 0;
+
+  for (const scope of scopes) {
+    const selectedIdentities = scope.selectedSourceKeyIds.map((keyId) => ({
+      keyId,
+      appFrame: identities.framesByKeyId.get(keyId)!,
+    }));
+    const firstSelectedFrame = selectedIdentities[0].appFrame;
+    const lastSelectedFrame = selectedIdentities[selectedIdentities.length - 1].appFrame;
+    const anchor = firstSelectedFrame + cumulativeGrowth;
+    for (let index = 0; index < selectedIdentities.length; index += 1) {
+      const identity = selectedIdentities[index];
+      const destination = anchor + index * step;
+      mapping.set(identity.keyId, destination);
+      if (destination !== identity.appFrame) roleByKeyId.set(identity.keyId, 'reanchored');
+    }
+    const newTail = anchor + (selectedIdentities.length - 1) * step;
+    const currentOldTail = lastSelectedFrame + cumulativeGrowth;
+    const growth = newTail - currentOldTail;
+    if (growth !== 0) {
+      for (const identity of identities.ordered) {
+        if (identity.appFrame <= lastSelectedFrame) continue;
+        const currentFrame = mapping.get(identity.keyId)!;
+        const destination = currentFrame + growth;
+        mapping.set(identity.keyId, destination);
+        roleByKeyId.set(identity.keyId, growth > 0 ? 'ripple-right' : 'ripple-left');
+      }
+    }
+    cumulativeGrowth += growth;
+  }
+
+  let previousFrame = -1;
+  for (const identity of identities.ordered) {
+    const frame = mapping.get(identity.keyId)!;
+    if (frame === previousFrame) {
+      return {
+        ok: false,
+        resolution: fail('duplicate-destination-frame', 'force-spacing', `Duplicate final frame ${frame}.`, [frame]),
+      };
+    }
+    if (frame < previousFrame) {
+      return {
+        ok: false,
+        resolution: fail(
+          'linked-source-spacing-order-rejected',
+          'force-spacing',
+          'Key Spacing would cross an unselected Loop Clip source position.',
+        ),
+      };
+    }
+    previousFrame = frame;
+  }
+
+  return {
+    ok: true,
+    candidate: {
+      mapping,
+      expectedKeyIds: identities.keyIds,
+      removedKeyId: null,
+      removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+      selectedKeyId,
+      operationKind: 'force-spacing',
+      changed: computeChanged(identities, mapping),
+      roleByKeyId,
+      drag: null,
+      nextLoopClips: computeSourceAttachedLoopPlacementFollow(
+        identities,
+        loopClips,
+        mapping,
+        () => true,
+      ),
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // D-08 Force Spacing candidate builder: anchor the first ordered key, preserve
 // deterministic identity order, and map identity at index `i` to
@@ -1673,6 +1763,8 @@ function buildForceSpacingCandidate(
   emptyFrames: number,
   selectedKeyId: string | null,
   scopeKeyIds?: readonly string[] | null,
+  linkedSourceSpacingScopes?: readonly PhysicPaintRotoLinkedSourceSpacingScope[] | null,
+  loopClips: readonly PhysicPaintRotoLoopClip[] = PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
 ): MoveBuilderResult {
   if (
     typeof emptyFrames !== 'number' ||
@@ -1698,6 +1790,15 @@ function buildForceSpacingCandidate(
         resolution: fail('unknown-operation-identity', 'force-spacing', `Selection identity "${selectedKeyId}" does not exist.`),
       };
     }
+  }
+  if (linkedSourceSpacingScopes !== undefined && linkedSourceSpacingScopes !== null) {
+    return buildLinkedForceSpacingCandidate(
+      identities,
+      emptyFrames,
+      selectedKeyId,
+      linkedSourceSpacingScopes,
+      loopClips,
+    );
   }
 
   // Phase 37 D-10..D-12 scoped variant: the earliest selected key anchors at
@@ -2128,77 +2229,81 @@ function buildStatusText(
   return 'No change';
 }
 
-function validateLinkedSourceSpacingScope(
+function validateLinkedSourceSpacingScopes(
   value: unknown,
   scopeKeyIds: readonly string[] | null | undefined,
   identities: ValidatedIdentities,
   loopClips: readonly PhysicPaintRotoLoopClip[],
-): { ok: true; scope: PhysicPaintRotoLinkedSourceSpacingScope } | { ok: false; resolution: PhysicPaintRotoPhysicalEditResolution } {
+): { ok: true; scopes: readonly PhysicPaintRotoLinkedSourceSpacingScope[] } | { ok: false; resolution: PhysicPaintRotoPhysicalEditResolution } {
   const invalid = (text: string) => ({
     ok: false as const,
     resolution: fail('invalid-linked-source-spacing-scope', 'force-spacing', text),
   });
-  if (!isRecord(value)) return invalid('Linked source spacing authorization must be a record.');
-  const sourceKeyIds = value.sourceKeyIds;
-  const selectedSourceKeyIds = value.selectedSourceKeyIds;
-  if (!Array.isArray(sourceKeyIds) || sourceKeyIds.length < 2 || !sourceKeyIds.every(isBoundedKeyId)) {
-    return invalid('Linked source spacing authorization requires an ordered source cycle.');
+  if (!Array.isArray(value) || value.length === 0) {
+    return invalid('Linked source spacing authorization must contain at least one ordered source cycle.');
   }
-  if (new Set(sourceKeyIds).size !== sourceKeyIds.length) {
-    return invalid('Linked source spacing source cycle must contain unique identities.');
-  }
-  if (value.sourceCycleId !== getPhysicsPaintRotoSourceCycleId(sourceKeyIds)) {
-    return invalid('Linked source spacing cycle identity does not match its ordered source keys.');
-  }
-  const exactCycleExists = loopClips.some((loopClip) => (
-    loopClip.sourceKeyIds.length === sourceKeyIds.length
-    && loopClip.sourceKeyIds.every((keyId, index) => keyId === sourceKeyIds[index])
-  ));
-  if (!exactCycleExists) return invalid('Linked source spacing source cycle is not current.');
-  if (sourceKeyIds.some((keyId) => !identities.keyIds.has(keyId))) {
-    return invalid('Linked source spacing source cycle contains a stale identity.');
-  }
-  if (!Array.isArray(selectedSourceKeyIds) || selectedSourceKeyIds.length < 2 || !selectedSourceKeyIds.every(isBoundedKeyId)) {
-    return invalid('Linked source spacing requires at least two selected source positions.');
-  }
-  if (new Set(selectedSourceKeyIds).size !== selectedSourceKeyIds.length) {
-    return invalid('Linked source spacing selected identities must be unique.');
-  }
-  if (selectedSourceKeyIds.some((keyId) => !sourceKeyIds.includes(keyId))) {
-    return invalid('Linked source spacing selection contains a stale source identity.');
-  }
-  if (!Array.isArray(scopeKeyIds)
-    || scopeKeyIds.length !== selectedSourceKeyIds.length
-    || scopeKeyIds.some((keyId, index) => keyId !== selectedSourceKeyIds[index])) {
-    return invalid('Force Spacing scope does not match the authorized linked source selection.');
-  }
-  return {
-    ok: true,
-    scope: Object.freeze({
-      sourceCycleId: value.sourceCycleId,
+  const scopes: PhysicPaintRotoLinkedSourceSpacingScope[] = [];
+  const seenCycleIds = new Set<string>();
+  const seenSelectedKeyIds = new Set<string>();
+  let previousSelectedTail = -1;
+  for (const entry of value) {
+    if (!isRecord(entry)) return invalid('Linked source spacing authorization members must be records.');
+    const sourceKeyIds = entry.sourceKeyIds;
+    const selectedSourceKeyIds = entry.selectedSourceKeyIds;
+    if (!Array.isArray(sourceKeyIds) || sourceKeyIds.length < 2 || !sourceKeyIds.every(isBoundedKeyId)) {
+      return invalid('Linked source spacing authorization requires an ordered source cycle.');
+    }
+    if (new Set(sourceKeyIds).size !== sourceKeyIds.length) {
+      return invalid('Linked source spacing source cycle must contain unique identities.');
+    }
+    const sourceCycleId = getPhysicsPaintRotoSourceCycleId(sourceKeyIds);
+    if (entry.sourceCycleId !== sourceCycleId || seenCycleIds.has(sourceCycleId)) {
+      return invalid('Linked source spacing cycle identity is stale or duplicated.');
+    }
+    const exactCycleExists = loopClips.some((loopClip) => (
+      loopClip.sourceKeyIds.length === sourceKeyIds.length
+      && loopClip.sourceKeyIds.every((keyId, index) => keyId === sourceKeyIds[index])
+    ));
+    if (!exactCycleExists) return invalid('Linked source spacing source cycle is not current.');
+    const sourceFrames = sourceKeyIds.map((keyId) => identities.framesByKeyId.get(keyId));
+    if (sourceFrames.some((frame) => frame === undefined)
+      || sourceFrames.some((frame, index) => index > 0 && frame! <= sourceFrames[index - 1]!)) {
+      return invalid('Linked source spacing source cycle contains stale or reordered identities.');
+    }
+    if (!Array.isArray(selectedSourceKeyIds) || selectedSourceKeyIds.length < 2 || !selectedSourceKeyIds.every(isBoundedKeyId)) {
+      return invalid('Linked source spacing requires at least two selected source positions.');
+    }
+    if (new Set(selectedSourceKeyIds).size !== selectedSourceKeyIds.length
+      || selectedSourceKeyIds.some((keyId) => seenSelectedKeyIds.has(keyId))) {
+      return invalid('Linked source spacing selected identities must be unique across cycles.');
+    }
+    const selectedSet = new Set(selectedSourceKeyIds);
+    const orderedSelected = sourceKeyIds.filter((keyId) => selectedSet.has(keyId));
+    if (orderedSelected.length !== selectedSourceKeyIds.length
+      || orderedSelected.some((keyId, index) => keyId !== selectedSourceKeyIds[index])) {
+      return invalid('Linked source spacing selection contains stale or reordered source identities.');
+    }
+    const selectedFrames = selectedSourceKeyIds.map((keyId) => identities.framesByKeyId.get(keyId)!);
+    if (selectedFrames[0] <= previousSelectedTail) {
+      return invalid('Linked source spacing cycle groups must be ordered left-to-right without overlap.');
+    }
+    previousSelectedTail = selectedFrames[selectedFrames.length - 1];
+    seenCycleIds.add(sourceCycleId);
+    selectedSourceKeyIds.forEach((keyId) => seenSelectedKeyIds.add(keyId));
+    scopes.push(Object.freeze({
+      sourceCycleId,
       sourceKeyIds: Object.freeze([...sourceKeyIds]),
       selectedSourceKeyIds: Object.freeze([...selectedSourceKeyIds]),
-    }) as PhysicPaintRotoLinkedSourceSpacingScope,
-  };
-}
-
-function validateLinkedSourceSpacingOrder(
-  mapping: ReadonlyMap<string, number>,
-  sourceKeyIds: readonly string[],
-): PhysicPaintRotoPhysicalEditResolution | null {
-  let previousFrame = -1;
-  for (const keyId of sourceKeyIds) {
-    const frame = mapping.get(keyId);
-    if (frame === undefined || frame <= previousFrame) {
-      return fail(
-        'linked-source-spacing-order-rejected',
-        'force-spacing',
-        'Key Spacing would cross an unselected Loop Clip source position.',
-      );
-    }
-    previousFrame = frame;
+    }) as PhysicPaintRotoLinkedSourceSpacingScope);
   }
-  return null;
+  const flattenedSelectedKeyIds = scopes.flatMap((scope) => scope.selectedSourceKeyIds);
+  if (!Array.isArray(scopeKeyIds)
+    || !scopeKeyIds.every(isBoundedKeyId)
+    || scopeKeyIds.length !== flattenedSelectedKeyIds.length
+    || scopeKeyIds.some((keyId, index) => keyId !== flattenedSelectedKeyIds[index])) {
+    return invalid('Force Spacing scope does not match the authorized linked source selection.');
+  }
+  return { ok: true, scopes: Object.freeze(scopes) };
 }
 
 function validateSemanticInputRecords(
@@ -2547,15 +2652,11 @@ export function resolvePhysicPaintRotoPhysicalEdit(
   }
 
   if (intent.kind === 'force-spacing') {
-    const linkedAuthorization = intent.linkedSourceSpacingScope === undefined || intent.linkedSourceSpacingScope === null
+    const linkedAuthorization = intent.linkedSourceSpacingScopes === undefined || intent.linkedSourceSpacingScopes === null
       ? null
-      : validateLinkedSourceSpacingScope(intent.linkedSourceSpacingScope, intent.scopeKeyIds, identities, loopClips);
+      : validateLinkedSourceSpacingScopes(intent.linkedSourceSpacingScopes, intent.scopeKeyIds, identities, loopClips);
     if (linkedAuthorization !== null && !linkedAuthorization.ok) return linkedAuthorization.resolution;
 
-    // D-11: ordinary Force Spacing still rejects every affected linked source
-    // key. The only exception is the independently validated session-only
-    // source-position authorization above; it names the exact ordered cycle and
-    // exact selected subset that may move.
     if (linkedAuthorization === null && loopClips.length > 0) {
       const scopeKeyIds = intent.scopeKeyIds ?? null;
       if (scopeKeyIds === null) {
@@ -2577,15 +2678,15 @@ export function resolvePhysicPaintRotoPhysicalEdit(
         }
       }
     }
-    const spacingResult = buildForceSpacingCandidate(identities, intent.emptyFrames, intent.selectedKeyId, intent.scopeKeyIds);
+    const spacingResult = buildForceSpacingCandidate(
+      identities,
+      intent.emptyFrames,
+      intent.selectedKeyId,
+      intent.scopeKeyIds,
+      linkedAuthorization?.ok ? linkedAuthorization.scopes : null,
+      loopClips,
+    );
     if (!spacingResult.ok) return spacingResult.resolution;
-    if (linkedAuthorization?.ok) {
-      const orderFailure = validateLinkedSourceSpacingOrder(
-        spacingResult.candidate.mapping,
-        linkedAuthorization.scope.sourceKeyIds,
-      );
-      if (orderFailure !== null) return orderFailure;
-    }
     const finalized = finalizeProposal(spacingResult.candidate, identities, input.capacity, input.interpolationEnabled);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;

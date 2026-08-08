@@ -8,9 +8,11 @@ import { rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
 import {
   extendPhysicsPaintRotoSpacingProxyRange,
+  reconcilePhysicsPaintRotoLoopClipSelection,
   reconcilePhysicsPaintRotoSpacingSelection,
   selectPhysicsPaintRotoSpacingProxyPlain,
   togglePhysicsPaintRotoSpacingProxy,
+  updatePhysicsPaintRotoLoopClipSelection,
   type PhysicsPaintRotoSpacingProxy,
   type PhysicsPaintRotoSpacingSelection,
   type PhysicsPaintRotoSpacingSelectionGesture,
@@ -79,6 +81,8 @@ export function PhysicsPaintStudio() {
   launchContextRef.current = launchContext;
   const selectedKeyId = useSignal<string | null>(launchContext?.rotoPhysical?.selectedKeyId ?? null);
   const selectedLoopClipId = useSignal<string | null>(null);
+  const selectedLoopClipIds = useSignal<readonly string[]>([]);
+  const loopSelectionAnchorId = useSignal<string | null>(null);
   // Session-local multi-selection (Pattern 5; D-02/D-05): keyId-only, never
   // persisted, never sent across the bridge — only selectedKeyId persists.
   const selectedKeyIds = useSignal<readonly string[]>([]);
@@ -98,11 +102,18 @@ export function PhysicsPaintStudio() {
         selectedKeyIds.value = selectedKeyId.value === null ? [] : [selectedKeyId.value];
         selectionAnchorKeyId.value = selectedKeyId.value;
         rotoSpacingSelection.value = null;
+        selectedLoopClipId.value = null;
+        selectedLoopClipIds.value = [];
+        loopSelectionAnchorId.value = null;
       } else if (next && next.startFrame !== current?.startFrame) {
         selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, next.startFrame)?.keyId ?? null;
         physicPaintStore.setRotoPhysicalSelection(next.layerId, selectedKeyId.value, next.startFrame);
-        selectedKeyIds.value = selectedKeyId.value === null ? [] : [selectedKeyId.value];
-        selectionAnchorKeyId.value = selectedKeyId.value;
+        const spacingSelection = rotoSpacingSelection.peek();
+        selectedKeyIds.value = spacingSelection?.selectedSourceKeyIds
+          ?? (selectedKeyId.value === null ? [] : [selectedKeyId.value]);
+        selectionAnchorKeyId.value = spacingSelection
+          ? spacingSelection.sourceKeyIds[spacingSelection.anchorSourceIndex] ?? null
+          : selectedKeyId.value;
       }
       return next;
     });
@@ -165,6 +176,20 @@ export function PhysicsPaintStudio() {
   const rotoKeyRecords = useMemo(() => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId) : [], [launchContext?.layerId, physicPaintVersion.value]);
   const rotoInterpolationState = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalInterpolationState(launchContext.layerId) : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, [launchContext?.layerId, physicPaintVersion.value]);
   const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, physicPaintVersion.value]);
+  const orderedRotoLoopClipIds = useMemo(() => [...rotoLoopClips]
+    .sort((left, right) => left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId))
+    .map((loopClip) => loopClip.loopId), [rotoLoopClips]);
+  const effectiveRotoLoopClipSelection = reconcilePhysicsPaintRotoLoopClipSelection(
+    selectedLoopClipIds.value.length > 0 && loopSelectionAnchorId.value !== null && selectedLoopClipId.value !== null
+      ? {
+        selectedLoopClipIds: selectedLoopClipIds.value,
+        anchorLoopClipId: loopSelectionAnchorId.value,
+        primaryLoopClipId: selectedLoopClipId.value,
+      }
+      : null,
+    orderedRotoLoopClipIds,
+  );
+  const effectiveSelectedLoopClipIds = effectiveRotoLoopClipSelection?.selectedLoopClipIds ?? [];
   const effectiveRotoSpacingSelection = reconcilePhysicsPaintRotoSpacingSelection(
     rotoSpacingSelection.value,
     rotoLoopClips
@@ -184,6 +209,10 @@ export function PhysicsPaintStudio() {
     const orderedRealKeyIds = rotoKeyRecords.map((record) => record.keyId);
     if (orderedRealKeyIds.length === 0) return;
     const next = selectAllRotoKeyIds(orderedRealKeyIds, selectedKeyId.peek());
+    rotoSpacingSelection.value = null;
+    selectedLoopClipIds.value = [];
+    loopSelectionAnchorId.value = null;
+    selectedLoopClipId.value = null;
     selectedKeyIds.value = next.selectedKeyIds;
     selectionAnchorKeyId.value = next.anchorKeyId;
     // UI-SPEC status contract: one feedback line per successful invocation,
@@ -567,6 +596,7 @@ export function PhysicsPaintStudio() {
     getPhysicalCells: () => rotoTimelineModel.physicalCells.value,
     getSelectedKeyId: () => selectedKeyId.value,
     getSelectedKeyIds: () => selectedKeyIds.value,
+    getSelectedLoopClipIds: () => effectiveRotoLoopClipSelection?.selectedLoopClipIds ?? [],
     getRotoSpacingSelection: () => reconcilePhysicsPaintRotoSpacingSelection(
       rotoSpacingSelection.peek(),
       (launchContextRef.current ? physicPaintStore.getRotoPhysicalLoopClips(launchContextRef.current.layerId) : [])
@@ -753,6 +783,7 @@ export function PhysicsPaintStudio() {
     // D-08R/D-18: read-only live brush-color port — setBrushColor remains the sole writer;
     // the controller only observes and snapshots settings.color at confirm time.
     getBrushColor: () => settings.color,
+    getBackgroundMetadata: () => buildRotoBackgroundMetadata(settings),
     getOperationLocked: () => rotoScript.mutationLocked.peek() || rotoScriptNavigationLocked,
     getSize: () => ({ width: canvasWidth, height: canvasHeight }),
     // 43-06: the durable Loop Clip collection the loop-edit/source-edit modes
@@ -779,9 +810,45 @@ export function PhysicsPaintStudio() {
     stopPlayback: rotoCachedPlayback.stop,
     log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
   }, bridgeMode);
-  const handleSelectRotoLoopClip = useCallback((loopId: string | null) => {
-    selectedLoopClipId.value = loopId;
+  const clearRotoLoopSelection = useCallback(() => {
+    selectedLoopClipIds.value = [];
+    loopSelectionAnchorId.value = null;
+    selectedLoopClipId.value = null;
   }, []);
+  const handleSelectRotoLoopClip = useCallback((
+    loopId: string | null,
+    gesture: PhysicsPaintRotoSpacingSelectionGesture = 'plain',
+  ) => {
+    if (loopId === null) {
+      clearRotoLoopSelection();
+      return;
+    }
+    const currentIds = selectedLoopClipIds.peek();
+    const currentAnchor = loopSelectionAnchorId.peek();
+    const currentPrimary = selectedLoopClipId.peek();
+    const next = updatePhysicsPaintRotoLoopClipSelection(
+      currentIds.length > 0 && currentAnchor !== null && currentPrimary !== null
+        ? {
+          selectedLoopClipIds: currentIds,
+          anchorLoopClipId: currentAnchor,
+          primaryLoopClipId: currentPrimary,
+        }
+        : null,
+      orderedRotoLoopClipIds,
+      loopId,
+      gesture,
+    );
+    if (next === null) {
+      clearRotoLoopSelection();
+      return;
+    }
+    selectedKeyIds.value = [];
+    selectionAnchorKeyId.value = null;
+    rotoSpacingSelection.value = null;
+    selectedLoopClipIds.value = next.selectedLoopClipIds;
+    loopSelectionAnchorId.value = next.anchorLoopClipId;
+    selectedLoopClipId.value = next.primaryLoopClipId;
+  }, [clearRotoLoopSelection, orderedRotoLoopClipIds]);
   const handleOpenRotoLoopEdit = useCallback(
     (loopId: string) => {
       selectedLoopClipId.value = loopId;
@@ -790,8 +857,8 @@ export function PhysicsPaintStudio() {
     [rotoPlayScript],
   );
   const handleCloseRotoLoopClip = useCallback(() => {
-    selectedLoopClipId.value = null;
-  }, []);
+    clearRotoLoopSelection();
+  }, [clearRotoLoopSelection]);
   const loopResolutionContext = rotoTimelineModel.loopResolutionContext.value;
   const loopScriptRows = rotoScriptLibrary.rows.value;
   const loopPresentations = useMemo(() => {
@@ -824,8 +891,9 @@ export function PhysicsPaintStudio() {
   );
   const resetRotoSpacingSelectionSession = useCallback((options?: { clearClipboard?: boolean }) => {
     rotoSpacingSelection.value = null;
+    clearRotoLoopSelection();
     rotoKeyUtilities.resetSession(options);
-  }, [rotoKeyUtilities]);
+  }, [clearRotoLoopSelection, rotoKeyUtilities]);
   resetRotoKeySessionRef.current = resetRotoSpacingSelectionSession;
   resetRotoNavigationForLaunchRef.current = rotoNavigation.resetForLaunch;
   const rotoFrameEditing = useRotoFrameEditingController({
@@ -1125,13 +1193,16 @@ export function PhysicsPaintStudio() {
         const acceptedAddedKeyIds = accepted.after.records
           .filter((record) => !beforeKeyIds.has(record.keyId))
           .map((record) => record.keyId);
-        const nextSelection = resolvePostAcceptanceRotoSelection({
-          operationKind: accepted.operationKind,
-          acceptedSelectedKeyId: accepted.after.selectedKeyId,
-          state: { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() },
-          currentKeyId: accepted.after.selectedKeyId,
-          acceptedAddedKeyIds,
-        });
+        const railSelectionActive = selectedLoopClipIds.peek().length > 0;
+        const nextSelection = railSelectionActive
+          ? { selectedKeyIds: [], anchorKeyId: null }
+          : resolvePostAcceptanceRotoSelection({
+            operationKind: accepted.operationKind,
+            acceptedSelectedKeyId: accepted.after.selectedKeyId,
+            state: { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() },
+            currentKeyId: accepted.after.selectedKeyId,
+            acceptedAddedKeyIds,
+          });
         selectedKeyIds.value = nextSelection.selectedKeyIds;
         selectionAnchorKeyId.value = nextSelection.anchorKeyId;
       }
@@ -1230,17 +1301,29 @@ export function PhysicsPaintStudio() {
     proxy: PhysicsPaintRotoSpacingProxy,
     gesture: PhysicsPaintRotoSpacingSelectionGesture,
   ) => {
+    clearRotoLoopSelection();
     const current = rotoSpacingSelection.peek();
-    rotoSpacingSelection.value = gesture === 'toggle'
+    const next = gesture === 'toggle'
       ? togglePhysicsPaintRotoSpacingProxy(current, proxy)
       : gesture === 'range'
         ? extendPhysicsPaintRotoSpacingProxyRange(current, proxy)
         : selectPhysicsPaintRotoSpacingProxyPlain(current, proxy);
-  }, []);
+    rotoSpacingSelection.value = next;
+    selectedKeyIds.value = next?.selectedSourceKeyIds ?? [];
+    selectionAnchorKeyId.value = next
+      ? next.sourceKeyIds[next.anchorSourceIndex] ?? null
+      : null;
+  }, [clearRotoLoopSelection]);
   const handleClearRotoSpacingSelection = useCallback(() => {
     rotoSpacingSelection.value = null;
   }, []);
+  const handleClearRotoKeySelection = useCallback(() => {
+    selectedKeyIds.value = [];
+    selectionAnchorKeyId.value = null;
+    clearRotoLoopSelection();
+  }, [clearRotoLoopSelection]);
   const handleToggleRotoKeySelection = useCallback((keyId: string) => {
+    clearRotoLoopSelection();
     const result = toggleRotoKeySelection(
       { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() },
       rotoKeyRecordsRef.current.map((record) => record.keyId),
@@ -1250,13 +1333,15 @@ export function PhysicsPaintStudio() {
     selectedKeyIds.value = result.state.selectedKeyIds;
     selectionAnchorKeyId.value = result.state.anchorKeyId;
     selectedKeyId.value = result.currentKeyId;
-  }, []);
+  }, [clearRotoLoopSelection]);
   const handleCollapseRotoSelectionToKey = useCallback((keyId: string) => {
+    clearRotoLoopSelection();
     const next = collapseRotoKeySelection(keyId);
     selectedKeyIds.value = next.selectedKeyIds;
     selectionAnchorKeyId.value = next.anchorKeyId;
-  }, []);
+  }, [clearRotoLoopSelection]);
   const handleExtendRotoKeySelection = useCallback((keyId: string) => {
+    clearRotoLoopSelection();
     const result = extendRotoKeySelectionRange(
       { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() ?? selectedKeyId.peek() },
       rotoKeyRecordsRef.current.map((record) => record.keyId),
@@ -1265,7 +1350,7 @@ export function PhysicsPaintStudio() {
     selectedKeyIds.value = result.state.selectedKeyIds;
     selectionAnchorKeyId.value = result.state.anchorKeyId;
     if (result.currentKeyId !== null) selectedKeyId.value = result.currentKeyId;
-  }, []);
+  }, [clearRotoLoopSelection]);
   const handleRotoGroupDragRejected = useCallback((reason: string, detail: string) => {
     setApplyMessage(reason);
     console.error('[PhysicsPaintStudio] physical edit:', detail);
@@ -1545,7 +1630,7 @@ export function PhysicsPaintStudio() {
         // intent routes through the monitor funnel for immediate effect.
         audioPreviewEnabled: audioPreviewEnabled.value, onAudioPreviewToggle: handleAudioPreviewToggle,
         onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange, onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
-        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipId: selectedLoopClipId.value, onSelectRotoLoopClip: handleSelectRotoLoopClip, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
+        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, onSelectRotoLoopClip: handleSelectRotoLoopClip, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).
@@ -1553,6 +1638,7 @@ export function PhysicsPaintStudio() {
         rotoSpacingSelection: effectiveRotoSpacingSelection,
         onSelectRotoSpacingProxy: handleSelectRotoSpacingProxy,
         onClearRotoSpacingSelection: handleClearRotoSpacingSelection,
+        onClearRotoKeySelection: handleClearRotoKeySelection,
         onToggleRotoKeySelection: handleToggleRotoKeySelection,
         onCollapseRotoSelectionToKey: handleCollapseRotoSelectionToKey,
         // Shift-click range selection (37-04; D-01): contiguous real-key range

@@ -540,7 +540,6 @@ export class TimelineRenderer {
 
     const markerY = barY + 1;
     const markerH = 3;
-    ctx.fillStyle = '#8B5CF6';
 
     for (const marker of markers) {
       if (marker.frameCount <= 0) continue;
@@ -554,7 +553,17 @@ export class TimelineRenderer {
       const clippedRight = Math.min(markerX + markerW, barX + barW, canvasWidth);
       const clippedW = Math.max(0, clippedRight - clippedLeft);
       if (clippedW <= 0) continue;
+      ctx.fillStyle = marker.mode === 'static' ? '#06B6D4' : '#8B5CF6';
       ctx.fillRect(clippedLeft, markerY, clippedW, markerH);
+
+      const boundaryW = Math.min(2, clippedW / 2);
+      ctx.fillStyle = '#F8FAFC';
+      if (markerX === clippedLeft) {
+        ctx.fillRect(clippedLeft, markerY, boundaryW, markerH);
+      }
+      if (markerX + markerW === clippedRight) {
+        ctx.fillRect(clippedRight - boundaryW, markerY, boundaryW, markerH);
+      }
     }
 
     ctx.restore();

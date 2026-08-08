@@ -8,6 +8,7 @@ export interface PhysicsPaintLoopClipPresentation {
   readonly placementLabel: string;
   readonly cycleLabel: string;
   readonly effectiveLabel: string;
+  readonly mode: PhysicPaintRotoLoopClip['mode'];
   readonly modeLabel: string;
   readonly statusLabel: string;
 }
@@ -34,9 +35,7 @@ export function projectPhysicsPaintLoopClipPresentation(
     : range.truncated
       ? 'Loop shortened by next clip'
       : 'Linked';
-  const displayName = sourceScriptName
-    ? `${sourceScriptName} Loop`
-    : `Loop Clip at F${range.placementStart}`;
+  const displayName = `Loop Clip at F${range.placementStart}`;
 
   return {
     loopId: range.loopId,
@@ -45,6 +44,7 @@ export function projectPhysicsPaintLoopClipPresentation(
     placementLabel: `F${range.placementStart}`,
     cycleLabel,
     effectiveLabel: `Effective ${effectiveDuration}f`,
+    mode: clip?.mode ?? 'progressive',
     modeLabel: clip?.mode === 'static' ? 'Static/Hold' : 'Progressive',
     statusLabel,
   };

@@ -267,27 +267,39 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
   });
 
-  it('gives linked occurrences a darker capsule fill without changing drag semantics', () => {
+  it('keeps source interpolation blue and restores a lighter mirrored-key rhythm inside dark repeats', () => {
     const map = getRotoMapBlock(source());
-    expect(map).toContain("frameResolution?.kind === 'linked-generated'");
-    expect(map).toContain("frameResolution?.kind === 'linked-gap'");
-    expect(map).toContain("frameResolution?.kind === 'linked-unresolved'");
-    expect(map).toContain("${hasLinkedLoopBadge ? 'roto-linked-loop-badge' : ''}");
+    expect(map).toContain("const isLinkedRepeat = frameResolution?.kind === 'linked-unresolved'");
+    expect(map).toContain('frameResolution.repeatInstance > 0');
+    expect(map).toContain("const isLinkedRepeatSourceKey = frameResolution?.kind === 'linked'");
+    expect(map).toContain("isLinkedRepeatSourceKey ? 'roto-linked-repeat roto-linked-repeat-source-key'");
+    expect(map).toContain("frameResolution?.kind === 'linked-generated' ? 'roto-linked-source-generated'");
+    expect(map).toContain("${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''}");
     expect(map).toContain("const fillClass = isPhysicalRealKey");
     expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
     expect(map).toContain('getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById)');
     expect(map).toContain('const cellAriaLabel =');
 
     const styles = css();
-    const badge = getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-linked-loop-badge {');
-    const dot = getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-linked-loop-badge::after {');
-    expect(badge).toContain('background: #34383c');
-    expect(badge).toContain('box-shadow: inset 0 0 0 1px rgba(211, 215, 221, 0.82)');
-    expect(dot).toContain('background: rgba(221, 224, 229, 0.9)');
-    expect(dot).toContain('width: 4px');
-    expect(dot).toContain('height: 4px');
-    expect(dot).toContain('top: 2px');
-    expect(dot).toContain('right: 2px');
+    const sourceGenerated = getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-fill-generated {');
+    const sourceGeneratedInterior = getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-fill-generated::before {');
+    const repeat = getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-linked-repeat {');
+    const repeatSourceKey = getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-linked-repeat.roto-linked-repeat-source-key {');
+    const repeatInterior = getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-linked-repeat::before {');
+    const repeatDot = getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-linked-repeat::after {');
+    expect(sourceGenerated).toContain('background: #365ed6');
+    expect(sourceGeneratedInterior).toContain('background: rgba(255, 255, 255, 0.72)');
+    expect(styles).not.toContain('.physics-paint-roto-cell.roto-linked-source-generated::after');
+    expect(repeat).toContain('background: #34383c');
+    expect(repeat).toContain('box-shadow: inset 0 0 0 1px rgba(211, 215, 221, 0.82)');
+    expect(repeatSourceKey).toContain('background: #43494f');
+    expect(repeatSourceKey).not.toContain('#4b6382');
+    expect(repeatInterior).toContain('content: none');
+    expect(repeatDot).toContain('background: rgba(221, 224, 229, 0.9)');
+    expect(repeatDot).toContain('width: 4px');
+    expect(repeatDot).toContain('height: 4px');
+    expect(repeatDot).toContain('top: 2px');
+    expect(repeatDot).toContain('right: 2px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 24px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).toContain('repeat(120, 18px)');
   });
@@ -890,7 +902,7 @@ describe('PhysicsPaintWorkflowStrip clipping guard contract (36.15-08, UAT Gap B
     const surface = getCssRuleBlock(styles, '.physics-paint-styled-tooltip {');
     const belowNotch = getCssRuleBlock(styles, '.physics-paint-styled-tooltip--below .physics-paint-styled-tooltip-notch {');
     expect(surface).toContain('position: fixed');
-    expect(belowNotch).toContain('border-bottom: 6px solid #62666d');
+    expect(belowNotch).toContain('border-bottom: 6px solid var(--color-tooltip-bg)');
   });
 
   it('keeps the interpolation mode select native so the open dropdown renders above studio chrome', () => {
@@ -1183,8 +1195,10 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     const loopRailIndex = code.indexOf('<PhysicsPaintLoopClipRail');
     const cellsIndex = code.indexOf('class="physics-paint-roto-cells"');
 
-    expect(getWorkflowStripPropsInterface(code)).toContain('selectedRotoLoopClipId?: string | null;');
-    expect(getWorkflowStripPropsInterface(code)).toContain('onSelectRotoLoopClip?: (loopId: string | null) => void;');
+    expect(getWorkflowStripPropsInterface(code)).toContain('selectedRotoLoopClipIds?: readonly string[];');
+    expect(getWorkflowStripPropsInterface(code)).not.toContain('selectedRotoLoopSourceKeyIds');
+    expect(getWorkflowStripPropsInterface(code)).toContain('onSelectRotoLoopClip?: (');
+    expect(getWorkflowStripPropsInterface(code)).toContain('gesture?: PhysicsPaintRotoSpacingSelectionGesture,');
     expect(getWorkflowStripPropsInterface(code)).toContain('onOpenRotoLoopEdit?: (loopId: string) => Promise<');
     expect(code).toContain('loopResolutionContext.ranges.length > 0');
     expect(code).toContain('ranges={loopResolutionContext.ranges}');
@@ -1216,9 +1230,12 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     });
     const presentation = projectPhysicsPaintLoopClipPresentation(context.ranges[0], clip, 'Walk');
 
-    expect(presentation.displayName).toBe('Walk Loop');
+    expect(presentation.displayName).toBe('Loop Clip at F0');
+    expect(presentation.displayName).not.toContain('Walk');
     expect(presentation.cycleLabel).toBe('Cycle 5f × 5 = 25f');
     expect(presentation.effectiveLabel).toBe('Effective 25f');
+    expect(presentation.mode).toBe('static');
+    expect(presentation.modeLabel).toBe('Static/Hold');
     expect(presentation.statusLabel).toBe('Linked');
     expect([
       presentation.displayName,
@@ -1277,7 +1294,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
       18,
     )).toEqual({ left: 180, width: 450 });
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-segment\s*\{[^}]*height:\s*3px[^}]*background:\s*#8b5cf6/s);
-    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target:hover:not\(\.selected\)[^}]*background:\s*#ffffff/s);
+    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target:hover:not\(\.selected\)[^}]*background:\s*#c4b5fd/s);
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\.selected[^}]*background:\s*#f59e0b/s);
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\s*\{[^}]*height:\s*12px/s);
     expect(css()).not.toContain('.physics-paint-loop-clip-rail-target::after');
@@ -1289,34 +1306,65 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     const handlerStart = code.indexOf('const handleRotoTimelineCellClick = useCallback(');
     const handlerEnd = code.indexOf('const handleRotoTimelineCellPointerDown = useCallback(', handlerStart);
     const handler = code.slice(handlerStart, handlerEnd);
+    const clearLoopIndex = handler.indexOf('current.onSelectRotoLoopClip?.(null);');
     const proxyIndex = handler.indexOf('current.spacingProxyByAppFrame.get(frame)');
     const toggleProxyIndex = handler.indexOf("current.onSelectRotoSpacingProxy?.(spacingProxy, 'toggle')");
     const rangeProxyIndex = handler.indexOf("current.onSelectRotoSpacingProxy?.(spacingProxy, 'range')");
     const plainProxyIndex = handler.indexOf("current.onSelectRotoSpacingProxy?.(spacingProxy, 'plain')");
     const proxyNavigateIndex = handler.indexOf('current.onNavigateToSyncedFrame(frame);', plainProxyIndex);
     const ordinaryClearIndex = handler.indexOf('current.onClearRotoSpacingSelection?.();');
+    const emptyKeyClearIndex = handler.indexOf('current.onClearRotoKeySelection?.();');
     const ordinaryToggleIndex = handler.indexOf('current.onToggleRotoKeySelection?.(cellKeyId);');
 
     expect(props).toContain('rotoSpacingSelection?: PhysicsPaintRotoSpacingSelection | null;');
     expect(props).toContain('onSelectRotoSpacingProxy?:');
     expect(props).toContain('onClearRotoSpacingSelection?: () => void;');
+    expect(props).toContain('onClearRotoKeySelection?: () => void;');
+    expect(clearLoopIndex).toBeGreaterThanOrEqual(0);
+    expect(clearLoopIndex).toBeLessThan(proxyIndex);
     expect(proxyIndex).toBeGreaterThanOrEqual(0);
     expect(toggleProxyIndex).toBeGreaterThan(proxyIndex);
     expect(rangeProxyIndex).toBeGreaterThan(toggleProxyIndex);
     expect(plainProxyIndex).toBeGreaterThan(rangeProxyIndex);
     expect(proxyNavigateIndex).toBeGreaterThan(plainProxyIndex);
-    expect(ordinaryClearIndex).toBeGreaterThan(proxyNavigateIndex);
+    expect(emptyKeyClearIndex).toBeGreaterThan(proxyNavigateIndex);
+    expect(ordinaryClearIndex).toBeGreaterThan(emptyKeyClearIndex);
     expect(ordinaryToggleIndex).toBeGreaterThan(ordinaryClearIndex);
     expect(code).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked');
   });
 
-  it('highlights every equivalent selected source position with concise accessible copy but never ordinary-selected treatment', () => {
-    const map = getRotoMapBlock(source());
+  it('keeps rail selection line-only while explicit physical spacing proxies remain visible', () => {
+    const code = source();
+    const props = getWorkflowStripPropsInterface(code);
+    const map = getRotoMapBlock(code);
+    expect(props).not.toContain('selectedRotoLoopSourceKeyIds');
+    expect(code).toContain('selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}');
     expect(map).toContain('const spacingProxy = visibleSpacingProxies?.get(frame) ?? null;');
-    expect(map).toContain('const isSpacingProxySelected =');
-    expect(map).toContain("${isSpacingProxySelected ? 'selected roto-spacing-proxy-selected' : ''}");
+    expect(map).toContain('const isSpacingProxySelected = spacingProxy !== null');
+    expect(map).toContain('props.rotoSpacingSelection?.sourceCycleId === spacingProxy.sourceCycleId');
+    expect(map).toContain('rotoSpacingSelectedSourceKeyIdSet.has(spacingProxy.sourceKeyId)');
+    expect(map).not.toContain('selectedRotoLoopSourceKeyIdSet');
+    expect(map).toContain("${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''}");
+    expect(map).not.toContain("${isSpacingProxySelected ? 'selected roto-spacing-proxy-selected' : ''}");
     expect(map).toContain('Loop Clip source position selected for Key Spacing.');
     expect(map).toContain('ariaSelected={isSpacingProxySelected || isSecondarySelected}');
-    expect(map).toContain('const isSecondarySelected = spacingProxy === null');
+    expect(map).toContain('const isSecondarySelected = !isSpacingProxySelected');
+    const proxySelection = getCssRuleBlock(
+      css(),
+      '.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {',
+    );
+    expect(proxySelection).toContain('background: #4b6382');
+    expect(proxySelection).toContain('border-color: #f5a623');
+    expect(proxySelection).toContain('outline: 2px solid rgba(245, 166, 35, 0.9)');
+    const selectedRepeat = getCssRuleBlock(
+      css(),
+      '.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current) {',
+    );
+    expect(selectedRepeat).toContain('background: #4b6382');
+    expect(selectedRepeat).not.toContain('#f5a623');
+    expect(selectedRepeat).not.toContain('outline:');
+    const ordinarySelection = getCssRuleBlock(css(), '.physics-paint-roto-cell.selected {');
+    expect(ordinarySelection).toContain('border-color: #f5a623');
+    expect(ordinarySelection).toContain('outline: 2px solid rgba(245, 166, 35, 0.9)');
   });
 });

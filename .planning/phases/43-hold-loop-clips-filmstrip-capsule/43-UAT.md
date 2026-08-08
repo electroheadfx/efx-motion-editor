@@ -2,7 +2,7 @@
 phase: 43
 plan: 10
 kind: uat-record
-status: pending-correction-execution
+status: approved
 created: 2026-08-07
 revised: 2026-08-08
 builds_under_test:
@@ -17,25 +17,26 @@ packaged_app: /Users/lmarques/Dev/efx-motion-editor/app/src-tauri/target/release
 
 The first native attempt stopped at old Step 1 on 2026-08-07. The rejected rich Loop Clip capsule system—identity-bearing capsule visuals plus interactions—had been placed on the Motion Editor main timeline (`PPaint #1`) instead of keeping authoring inside EFX Paint/Roto. No later step was executed. That interactive filmstrip/capsule direction is not acceptance evidence.
 
-This script replaces that failed authoring contract. Loop Clip authoring remains exclusively inside EFX Paint/Roto through the integrated Loop Rail, local actions popover, contextual Scripts sidebar, and existing Studio-local edit modal. The Motion Editor main timeline is allowed only one passive Repeat-duration marker per canonical effective interval: an exact 3px `#8B5CF6` strip inside the existing PPaint FX bar, with interval-only data and zero Loop Clip-specific interaction.
+This script replaces that failed authoring contract. Loop Clip authoring remains exclusively inside EFX Paint/Roto through the integrated Loop Rail, local actions popover, contextual Scripts sidebar, and existing Studio-local edit modal. The Motion Editor main timeline is allowed only one passive Repeat-duration marker per canonical effective interval: an exact 3px Progressive-purple or Static/Hold-cyan strip with white canonical endpoint cuts inside the existing PPaint FX bar, from paint-only `{startFrame, frameCount, mode}` data and with zero Loop Clip-specific interaction.
 
 ## Automated gate evidence for the corrected build
 
-To be filled by Plan 43-15 only after the final correction state passes every command:
+Recorded on the final correction state on 2026-08-08:
 
-- Focused HOLD/UI matrix: pending.
-- Full `pnpm --dir app exec vitest run`: pending.
-- `pnpm --dir app run typecheck`: pending.
-- `pnpm build`: pending.
-- Phase 43 dependency diff for `app/package.json` and `pnpm-lock.yaml`: pending.
-- 43-11 native tracer approval: pending.
+- Focused D-57/D-58 recovery matrix: **pass** — 13 test files passed; 356 tests passed, 1 skipped.
+- Full `pnpm --dir app exec vitest run`: **pass** — 117 test files passed, 3 skipped; 1,588 tests passed, 1 skipped, 101 todo.
+- `pnpm --dir app run typecheck`: **pass** — `tsc --noEmit` exited 0.
+- `pnpm build`: **pass** — `@efxlab/efx-physic-paint` package and `efx-motion-editor` app builds exited 0.
+- Phase 43 dependency diff for `app/package.json` and `pnpm-lock.yaml`: **pass** — no dependency-file changes.
+- `git diff --check`: **pass**.
+- User-run native tracer, Issue #0/#0b/#1/#2, numbered areas 1–20, and unsigned packaged smoke: **pass** — user approved the complete phase on 2026-08-08.
 
-Do not begin the resumed Plan 43-10 Task 2 until the entries above contain actual successful outcomes and `43-11-SUMMARY.md` through `43-15-SUMMARY.md` exist.
+The final correction state is automated-green and native-approved. The user-operated development and unsigned packaged checks match every expected outcome below.
 
 ## Test conventions
 
 - The user starts and operates the native app; the executor does not start the server.
-- Run the separate Issue #1 and Issue #2 checks plus Steps 1–19 in the native development app, then Step 20 in the unsigned packaged app.
+- Run the separate Issue #0, Issue #0b, Issue #1, and Issue #2 checks plus Steps 1–19 in the native development app, then Step 20 in the unsigned packaged app.
 - Use one saved working project for normal loops and separate copies for destructive/unresolved tests.
 - Every result begins unchecked. Record `pass` or `fail`; for a failure, include the numbered check, observed behavior, and screenshot.
 - Frame ranges are half-open: F10 with duration 25 occupies F10–F34 and ends before F35.
@@ -48,6 +49,61 @@ Do not begin the resumed Plan 43-10 Task 2 until the entries above contain actua
 3. Keep a no-loop track/project available for geometry comparison.
 4. Keep an existing v0.8.1 project without `loopClips` for Step 15.
 5. Use a recognizable 5-frame source cycle for the main scenarios.
+
+---
+
+## Issue #0 — Static/Hold Repeat-1 Loop Clip creation
+
+**Actions**
+
+1. Select an empty destination with room for at least ten frames.
+2. Apply a Static/Hold Play Script with `Frames per cycle = 10`, finite `Repeat = 1`, and Infinity off.
+3. Inspect the ten committed source keys, integrated Loop Rail, Scripts sidebar, and Edit Loop Clip route.
+4. Repeat once with Progressive mode, fifteen frames, finite Repeat 1.
+5. Arrange adjacent Progressive and Static/Hold Loop Clips, then inspect their Studio rail/cell boundaries, hover each rail tooltip, and inspect the matching passive markers in the Motion Editor PPaint bar.
+6. Create another fresh Physics Paint layer with no prior keys, choose an active textured `canvas1`/paper background, then make its first operation a Progressive Play Script with `Frames per cycle = 5`, finite `Repeat = 2`, and Infinity off. Compare Physics Paint, main Studio, preview, and export.
+
+**Expected outcome**
+
+- Static/Hold commits ten real source keys and one canonical Loop Clip record in the same atomic transaction.
+- The first Progressive Apply on a fresh layer is accepted without a pre-existing parent physical document; it atomically installs five real source keys, one Repeat-2 Loop Clip, and the current active background instead of reporting a rejected or timed-out physical commit.
+- Physics Paint, main Studio, preview, and export show the same accepted textured background rather than transparent paint over the underlying photo.
+- Immediately after Generate completes, the current Studio canvas displays the committed first frame; no playhead movement is required to refresh it.
+- The Loop Clip uses those ten ordered source key IDs, stores Repeat 1, and immediately paints the integrated capsule rail across the source cycle.
+- Selecting the rail exposes the Loop Clip inspector; double-click and focused Enter open Edit Loop Clip exactly once.
+- No repeated destination keys or virtual occurrences are materialized for Repeat 1.
+- Progressive Repeat 1 commits one canonical Loop Clip and paints a purple rail across the complete generated source cycle; Repeat 1 creates no repeated occurrences.
+- Progressive rails are purple and Static/Hold rails are cyan; selected Studio rails use orange.
+- The passive Motion Editor marker uses the same purple/cyan mode distinction and white canonical endpoint cuts while remaining textless and non-interactive.
+- Every actual capsule start/end has a white rail cut and matching white boundary-cell border; adjacent clips visibly read as `|---clip 1---||---clip 2---|` with no false divider at a clipped viewport edge.
+- Each rail tooltip explicitly shows `Mode: Progressive` or `Mode: Static/Hold`.
+- One Undo removes the Static/Hold source cycle and Loop Clip together; one Redo restores both.
+
+**Result:** [x] pass  [ ] fail
+
+**Notes:**
+
+---
+
+## Issue #0b — Custom color palette remains accessible behind Play Script
+
+**Actions**
+
+1. Open Play Script and choose `Custom color`.
+2. Drag the floating dialog away from the Studio brush palette.
+3. Click several palette swatches and the custom color controls behind the dialog, then return focus to the dialog.
+4. Press Tab from a dialog control and verify focus is not trapped; verify Escape and Generate still work when focus is inside the dialog.
+
+**Expected outcome**
+
+- No dark backdrop dims the Studio.
+- Pointer interaction passes through every area outside the floating card; the card itself remains draggable and fully interactive.
+- Palette changes update the live Custom color chip/value without closing or resetting the dialog.
+- The surface is a non-modal labelled dialog, Tab may leave it, and Studio shortcuts remain contained while focus is inside it.
+
+**Result:** [x] pass  [ ] fail
+
+**Notes:**
 
 ---
 
@@ -68,37 +124,49 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - The integrated rail and passive Motion Editor marker remain presentation-only during playback; no selection, placement, repeat record, source key, or cache asset changes.
 - This result is recorded independently from Issue #2.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 **Notes:**
 
 ---
 
-## Issue #2 — Exact source-position Key Spacing proxies
+## Issue #2 — Rail-owned Key Spacing, cumulative ripple, and background recovery
 
 **Actions**
 
-1. Use a Loop Clip whose ordered source cycle has at least five recognizable source positions and at least three repeats. Create a second Loop Clip sharing the exact same ordered `sourceKeyIds`.
-2. Ctrl/Cmd-select two exact source positions through linked occurrences in different repeats. Repeat with one original real source cell plus one linked occurrence, then select the full cycle.
-3. Verify equivalent positions in every repeat and both shared Loop Clips mirror one deduplicated proxy selection.
-4. Leave at least one source position between selected positions unselected and invoke Key Spacing.
-5. Play/scrub both loops, including generated interiors and repeat boundaries; inspect finite and Infinity variants.
-6. Undo once, then Redo once.
-7. Separately attempt Key Spacing with one unique position, mixed ordered cycles, a linked generated interior, a linked gap, an unresolved frame, and stale/ordinary linked selection without validated provenance. Attempt pointer drag and single-key drag from a linked occurrence.
-8. Save/reopen after an accepted spacing edit and inspect the project record if available through the normal project workflow.
+1. Create adjacent Progressive capsule A followed by Static/Hold capsule B, both with recognizable stable real-key source cycles.
+2. Plain-click rail A. Confirm only the rail line changes selection paint; source cells and linked occurrences stay unselected while the Scripts inspector targets A.
+3. Shift-click rail B, then Cmd/Ctrl-click B to toggle it. Repeat with a non-contiguous third rail if available and with two rails sharing identical ordered `sourceKeyIds`.
+4. Select a physical real key, then select a rail again. Confirm each mode clears the other selection and anchor synchronously.
+5. Use Select All in physical mode. Confirm every real key is visibly selected, then attempt multi-capsule physical Key Spacing.
+6. Turn Interpolation Off, rail-select B, and apply Key Spacing `2`.
+7. Undo once. Turn Interpolation On and repeat the same B spacing operation.
+8. Undo to the original fixture. Rail-select A and apply Key Spacing `2`.
+9. Undo again. Plain-click A, Shift-click B, and apply Key Spacing `2` to both selected capsules.
+10. Undo once, then Redo once.
+11. Retry the multi-capsule operation near layer capacity so the proposed final mapping cannot fit.
+12. On a fresh layer with active `canvas1`/paper background, make Progressive Play Script the first operation; compare Physics Paint, main Studio, preview, and export.
+13. Change the active Paint background and apply another Play Script; compare the accepted parent composite again.
+14. Save and reopen after a successful multi-capsule rail-selected spacing operation; inspect source rhythm, generated interiors, Loop Clip placements, rails, and shared-source identity.
+15. On an ordinary non-loop fixture, repeat the previously accepted Shift/Cmd physical selection, Key Spacing ripple, Undo, and Redo workflow.
 
 **Expected outcome**
 
-- Any 2+ unique exact source positions from one ordered cycle are eligible; selecting the full cycle also works. Original and linked selections may be mixed.
-- Equivalent positions across repeats and every Loop Clip sharing the same ordered `sourceKeyIds` deduplicate to one source index and all shared loops adopt the same accepted rhythm.
-- Unselected source positions remain fixed hard walls. Only selected authoritative real source-key `appFrame` positions move.
-- Runtime source offsets and cycle duration derive from the accepted real-key positions. Finite/Infinity repeats, generated interiors, rail Effective duration, preview/playback/export resolution, and cache regeneration use that cadence.
-- The operation publishes once and creates one atomic history entry. Undo restores the prior source rhythm across all shared loops; Redo reapplies it.
-- No occurrence is materialized, unlinked, cloned, or persisted as a new key. No real-key diamond appears on a linked occurrence. Loop Clip placement, repeat, Infinity, ordered source references, and provenance records remain unchanged; no timing field/schema migration appears.
-- Generated interiors, linked gaps, and unresolved frames remain navigation-only and never show proxy eligibility. Invalid scopes reject with the exact reason while preserving selection and accepted cadence.
-- Pointer drag, single-key drag, ordinary linked-source Force Spacing without validated provenance, Delete, Cut/Copy, placement movement, and every other linked structural mutation remain rejected.
+- Plain rail click selects exactly one Loop Clip and its complete ordered source cycle while retaining the correct Scripts inspector/Edit target. Shift selects the inclusive contiguous canonical rail range; Cmd/Ctrl toggles non-contiguous rails without dropping the remaining selection. Identical selected cycles deduplicate at Apply time.
+- Repeat zones preserve three distinct states: darkest ordinary repeat frames, subtly lighter neutral mirrored source-key rhythm frames, and a separate slate selected-mirror background. Selecting a physical key leaves the orange ring only on the original key; its repeated mirror keeps the slate background and repeat dot with no orange border, outline, or glow.
+- Rail selection is visually line-only: source cells and equivalent linked occurrences receive no rail-derived orange frame treatment, `aria-selected`, or selected-source tooltip copy, while the selected complete cycles remain the exact invisible Key Spacing scope. Explicit physical same-cycle proxy selection remains visibly marked and non-draggable. Generated interiors, linked gaps, and unresolved frames remain navigation-only.
+- Rail and physical selection never coexist. Entering either mode clears the other mode and anchor; Select All clears rail/proxy state and its visible physical keys are the exact operation scope.
+- Multi-capsule physical Key Spacing rejects with explicit guidance to select Loop Rails. Partial physical spacing remains valid only inside one current ordered source cycle; stale, missing, reordered, duplicate-covered, or ambiguous authorization rejects before coordinator execution.
+- Interpolation remains exactly as chosen. Off leaves two empty slots between accepted source keys; On derives generated blue in-betweens without materialized records or automatic mode changes.
+- Spacing A keeps A's first source key anchored, expands its internal rhythm, and shifts every later real key right by A's exact growth. B's complete source cycle moves rigidly with that ripple; B's `placementStart`, cyan rail, and white endpoint boundaries follow by the same delta.
+- Spacing A and B together processes their complete cycles left-to-right: B first receives A's cumulative growth, then B is spaced internally, and later content receives total growth. Loop IDs, source IDs, mode, repeat, Infinity, script provenance, motion, and override color remain unchanged.
+- The complete records-plus-Loop-Clips result publishes once and creates one history command. One Undo restores both rhythms and placements; one Redo reapplies both. Capacity rejection changes nothing and creates no history entry.
+- No linked occurrence is materialized, unlinked, cloned, or persisted as a new key. No rail or physical selection/provenance is persisted.
+- First Play Script on a fresh layer succeeds without a pre-existing parent physical document and stores the current active background in the same transaction. Main Studio, preview, and export match Physics Paint. A later Play Script replaces stale parent background with the current accepted snapshot.
+- Save/reopen preserves source rhythm, generated interiors, Loop Clip placements, rails, and shared-source identity exactly.
+- Ordinary non-loop Key Spacing retains its accepted physical Shift/Cmd selection, ripple, Undo, and Redo behavior.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 **Notes:**
 
@@ -117,13 +185,13 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 2. The 24px cells, current/selected outlines, drag feedback, blue linked indicator, and 34px action toolbar remain fully visible and operable.
 3. A loop renders exactly a 3px rail with a 12px interaction band; zero loops render no rail DOM, label, placeholder, or reserved space.
 4. Hover shows the styled tooltip above the rail with derived display name, Cycle math, Effective duration, and status.
-5. Single click selects only the Loop Clip, opens local actions, updates the sidebar, and leaves playhead, physical selection, multi-selection, and drag state unchanged.
+5. Plain rail click selects exactly one Loop Clip and its complete source cycle, opens local actions, updates the sidebar, clears physical selection/proxy scope, and leaves the playhead and drag state unchanged. Shift/Cmd rail gestures extend or toggle the rail set without activating physical selection.
 6. Double-click and focused Enter each open the existing `Edit Loop Clip` modal exactly once.
 7. Normal script context shows Play; selected-loop context swaps that same slot to Lucide Pencil/Edit and shows name, source script, placement, Cycle, Effective, mode, and status.
 8. Linked physical cells retain the accepted blue inset border and 4px top-right dot across normal/current/selected/drag states.
-9. Motion Editor PPaint FX bar shows one exact 3px `#8B5CF6` passive strip per canonical effective interval, with no new row/height, text, badge, capsule, tooltip, hover/focus styling, own hit target, selection, keyboard route, navigation, Edit, drag, context menu, callback, command, or mutation. Generic FX-track behavior remains available beneath the paint.
+9. Motion Editor PPaint FX bar shows one exact 3px Progressive-purple or Static/Hold-cyan passive strip per canonical effective interval with white actual endpoint cuts, no false viewport-edge cuts, and no new row/height, text, badge, tooltip, hover/focus styling, own hit target, selection, keyboard route, navigation, Edit, drag, context menu, callback, command, or mutation. Generic FX-track behavior remains available beneath the paint.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 **Notes:**
 
@@ -143,7 +211,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - Only five durable source keys/assets exist; repeat occurrences create no extra durable/cache assets.
 - The rail contains no persistent Cycle badge, filmstrip thumbnails, or repetition band.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -160,7 +228,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - Effective range follows the current parent authored end and no farther.
 - Parent changes re-derive geometry without source regeneration or asset growth.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -180,7 +248,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - Moving/removing the blocker re-expands the rail immediately without regeneration.
 - The term `clip bloquant` never appears.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -198,7 +266,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - The marker remains selectable, keyboard-focusable, editable, and actionable without hiding the blocking cell.
 - Removing the blocker re-expands the loop without regeneration.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -217,7 +285,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - Busy keeps accepted geometry at reduced opacity with `aria-busy`; rejection preserves geometry/selection/focus and shows the reason.
 - No new slide, scale, shimmer, pulse, width tween, or spring animation appears.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -236,7 +304,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - Delete/Backspace do not mutate the loop from rail focus; arrow keys do not move it.
 - Popover clamps to the viewport, wraps/ellipsizes long facts, and scrolls only internally.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -257,7 +325,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - Existing tab, resizer, scrollbar, other script actions, and toolbar row count remain unchanged.
 - Long values ellipsize without horizontal scrolling and full values remain accessible.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -277,7 +345,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - Rejection preserves inputs/focus/current geometry; accepted operations close/update only after authority acknowledgement.
 - Undo and Redo restore/reapply each complete atomic result.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -298,7 +366,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - Accepted Unlink or Delete moves selection and focus to the nearest visible Loop Clip by canonical placement order; if no Loop Clip survives, focus moves to the Scripts tab and normal script context with Play is restored.
 - Undo/Redo restores/reapplies exact loop placement/source identity.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -318,7 +386,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - Repair/regenerate and Relink use existing atomic authority paths; after acceptance, selection and keyboard focus return to the surviving selected rail target. Undo restores dangling references byte-for-byte and Redo reapplies repair/relink.
 - Unrepaired save/reopen preserves the unresolved record verbatim.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 **Fixture paths / notes:**
 
@@ -338,7 +406,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - Editing the linked source updates every sharing loop; the independent cycle is unaffected.
 - Rail/sidebar facts re-derive from canonical accepted state only.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -346,18 +414,20 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 
 **Actions**
 
-1. Attempt source-key delete, single-key drag, Force Spacing without D-50 validated exact-source proxy provenance, and Delete/Backspace on a purely linked frame.
-2. Invoke Clear on the linked frame; Undo and Redo.
+1. Attempt source-key delete, single-key drag, linked-occurrence drag, Force Spacing with no current rail/one-cycle physical authorization, multi-cycle physical selection, and Delete/Backspace on a purely linked frame.
+2. Attempt Key Spacing from generated, gap, unresolved, stale, reordered, duplicate-covered, and ambiguous source authorization.
+3. Invoke Clear on the linked frame; Undo and Redo.
 
 **Expected outcome**
 
-- Existing exact source-key delete and single-key/linked-drag rejections remain. D-11 permits only the Issue #2 validated multi-position Key Spacing transaction; every ordinary linked-source Force Spacing request rejects.
-- D-23 still treats linked occurrences as non-durable: exact source positions may only proxy Key Spacing, while generated interiors, gaps, and unresolved frames remain navigation-only.
-- Linked-frame Delete rejection now refers to selecting the Loop Clip rail to delete the loop.
+- Existing source-key delete and single-key/linked-drag rejections remain. D-11 permits only Issue #2's current rail-owned complete-cycle or one-cycle physical Key Spacing transaction; every unauthorized request rejects before coordinator execution.
+- D-23 still treats linked occurrences as non-durable: exact source positions may reflect a valid session scope, while generated interiors, gaps, and unresolved frames remain navigation-only.
+- Multi-cycle physical selection explicitly directs the user to Loop Rail selection; invalid authorization never falls back to a hidden proxy scope.
+- Linked-frame Delete rejection refers to selecting the Loop Clip rail to delete the loop.
 - Clear materializes one empty local real key, shortens at that boundary, preserves source, and remains atomic through Undo/Redo.
-- Rail selection and physical-cell selection do not leak into one another.
+- Rail selection and physical-cell selection never remain active together.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -375,7 +445,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - Physical navigation, real-key selection, multi-selection, and drag behavior remain unchanged below y=12px.
 - Rail event targets never start a physical drag or move the playhead.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -394,7 +464,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - Existing v0.8.1 project opens without migration prompt, invented loops, or lost Paint data.
 - No persisted loop-name field exists.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -413,7 +483,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - No valid exported frame is blank or contains an unresolved placeholder.
 - Durable source assets remain proportional to source cycles, not repetitions.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 **Export folder / notes:**
 
@@ -428,12 +498,12 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 
 **Expected outcome**
 
-- The PPaint FX bar paints one exact 3px `#8B5CF6` strip per canonical effective interval with no new row/height and no text, badge, capsule, tooltip, hover/focus styling, or own hit target.
+- The PPaint FX bar paints one exact 3px Progressive-purple or Static/Hold-cyan strip per canonical effective interval with white actual endpoint cuts, no false clipped-edge cuts, no new row/height, and no text, badge, tooltip, hover/focus styling, or own hit target.
 - Generic timeline behavior is unchanged beneath the marker paint.
 - Loop-resolved physical output still previews/plays/saves/exports correctly.
 - No Loop Clip-specific selection, keyboard route, navigation, Edit, drag, context menu, callback, command, or mutation appears anywhere on the Motion Editor timeline.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -451,7 +521,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - One target per loop participates in tab order; no subdivision becomes a focus target.
 - Long text wraps/ellipsizes accessibly and never falls back to raw identifiers.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -469,7 +539,7 @@ Keep this confirmation separate from Issue #2 Key Spacing so a cadence-edit fail
 - Rail/sidebar remain on prior accepted geometry/facts until canonical accepted state arrives.
 - Rejection leaves prior state intact and announces the reason.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
@@ -492,18 +562,18 @@ This is a local unsigned package smoke. Do not sign, notarize, staple, inspect c
 - App launches without a dev server.
 - Integrated rail remains 3px inside the unchanged row; sidebar/popover/Edit work locally.
 - Valid preview/export parity and unresolved placeholder/export block match development behavior.
-- Motion Editor shows only the exact passive 3px `#8B5CF6` PPaint FX-bar marker and exposes zero Loop Clip-specific interaction.
+- Motion Editor shows only passive 3px mode-colored PPaint FX-bar markers with white actual endpoint cuts and exposes zero Loop Clip-specific interaction.
 - No signing/notarization/credential/certificate flow occurs; signed downloaded-artifact UAT remains Phase 44 scope.
 
-**Result:** [ ] pass  [ ] fail
+**Result:** [x] pass  [ ] fail
 
 ---
 
 ## Verdict
 
-- [ ] Approved — separate Issue #1 and Issue #2 results plus every numbered area 1–20 match their expected outcomes.
+- [x] Approved — separate Issue #0, Issue #0b, Issue #1, and Issue #2 results plus every numbered area 1–20 match their expected outcomes.
 - [ ] Issues reported — list every failing numbered step below with screenshots.
 
 **User feedback:**
 
-Pending native UAT through existing Plan 43-10 Task 2.
+2026-08-08 — “congrats I approve all for this phase”

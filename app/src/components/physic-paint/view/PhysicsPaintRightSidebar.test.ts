@@ -140,12 +140,15 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(resizeBand).toMatch(/touch-action:\s*none/);
   });
 
-  it('keeps full-row load-only activation and approved six-control Scripts behavior', () => {
-    expectInOrder(scriptsPanel, ['label="Save Script"', 'label="Load and Apply Script"', 'label="Play Script"', 'label="Rename Script"', 'label="Delete Script"', 'label="Refresh Scripts"']);
+  it('keeps full-row load-only activation and contextual Scripts behavior', () => {
+    expectInOrder(scriptsPanel, ['label="Save Script"', 'label="Load and Apply Script"', 'label="Play Script"', 'label="Delete Script"', 'label="Refresh Scripts"']);
+    expect(scriptsPanel).toContain('if (selectedLoopClip)');
     expect(scriptsPanel).toContain('<Paintbrush size={16} />');
     expect(scriptsPanel).toContain('<Play size={16} />');
+    expect(scriptsPanel).toContain('aria-label={`Edit Loop Clip — ${selectedLoopClip.displayName}`}');
     expect(scriptsPanel).toContain("label=\"Play Script\" title={`Play Script — ${playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)'}`}");
     expect(scriptsPanel).toMatch(/label="Play Script"[^>]*onClick=/);
+    expect(scriptsPanel).not.toContain('label="Rename Script"');
     expect(scriptsPanel).toContain('role="option"');
     expect(scriptsPanel).toContain('tabIndex={0}');
     expect(scriptsPanel).toContain('onClick={() => onActivateRow(row.id)}');

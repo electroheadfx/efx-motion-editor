@@ -49,7 +49,6 @@ export function PhysicsPaintPlayScriptDialog({
   returnFocusRef,
 }: PhysicsPaintPlayScriptDialogProps) {
   recordPhysicsPaintPerformanceCounter('render.playScriptDialog');
-  const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const repeatInputRef = useRef<HTMLInputElement>(null);
   const previousOpen = useRef(false);
@@ -136,7 +135,7 @@ export function PhysicsPaintPlayScriptDialog({
   };
 
   // W3C APG radio pattern (D-05): arrow keys move focus AND check with wrap-around; the checked
-  // option is the group's single Tab stop via roving tabindex (integrates with the trap query).
+  // option is the group's single Tab stop via roving tabindex.
   const onModeKeyDown = (event: KeyboardEvent) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
@@ -191,14 +190,10 @@ export function PhysicsPaintPlayScriptDialog({
 
   return (
     <div
-      ref={dialogRef}
       class={`physics-paint-play-script-dialog${dragging ? ' physics-paint-play-script-dragging' : ''}`}
       role="dialog"
-      aria-modal="true"
       aria-labelledby="physics-play-script-title"
       onKeyDown={(event) => {
-        // CR-01: the modal owns the keyboard while open — no keydown may bubble to the
-        // Studio shortcut dispatcher (frame navigation/playback/undo behind the modal).
         event.stopPropagation();
         if (event.key === 'Escape') {
           event.preventDefault();
@@ -208,23 +203,9 @@ export function PhysicsPaintPlayScriptDialog({
         if (event.key === 'Enter' && !playScript.validationError.value && !playScript.repeatError.value && !playScript.canCancel.value) {
           event.preventDefault();
           void playScript.confirm();
-          return;
-        }
-        if (event.key !== 'Tab') return;
-        const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('input:not(:disabled), button:not(:disabled), [tabindex]:not([tabindex="-1"])') ?? []);
-        if (!controls.length) return;
-        const first = controls[0];
-        const last = controls[controls.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
         }
       }}
     >
-      <div class="physics-paint-play-script-backdrop" aria-hidden="true" />
       <div
         ref={surfaceRef}
         class="physics-paint-play-script-surface"

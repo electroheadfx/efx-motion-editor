@@ -172,6 +172,7 @@ export interface PhysicPaintRotoPhysicalEditApplyPayload {
   readonly records: readonly PhysicPaintRotoPhysicalEditRecord[];
   readonly interpolationEnabled: boolean;
   readonly interpolationMode: PhysicPaintRotoInterpolationMode;
+  readonly rotoBackground?: PhysicPaintRotoBackgroundMetadata;
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
   readonly semanticDelta?: PhysicPaintRotoPhysicalEditSemanticDelta;
@@ -361,7 +362,7 @@ export function isPhysicPaintRotoPhysicalEditReplayProvenance(value: unknown): v
  */
 export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value is PhysicPaintRotoPhysicalEditApplyPayload {
   if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'interpolationMode', 'selectedKeyId', 'selectedAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips'])) return false;
+  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
   if (!isPhysicPaintRotoPhysicalEditOperationKind(value.operationKind)) return false;
@@ -374,6 +375,9 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isPhysicPaintRotoLoopClip))) return false;
   if (typeof value.interpolationEnabled !== 'boolean') return false;
   if (value.interpolationMode !== 'duplicate' && value.interpolationMode !== 'blend') return false;
+  if (value.operationKind === 'play-script') {
+    if (!isPhysicPaintRotoBackgroundMetadata(value.rotoBackground)) return false;
+  } else if (value.rotoBackground !== undefined) return false;
   if (value.selectedKeyId !== null && !isBoundedPhysicalKeyId(value.selectedKeyId)) return false;
   if (value.selectedAppFrame !== null && !isNonNegativeInteger(value.selectedAppFrame)) return false;
   if ((value.selectedKeyId === null) !== (value.selectedAppFrame === null)) return false;
@@ -701,6 +705,7 @@ export interface PhysicPaintReplaceRotoPhysicalMapPayload {
   records: readonly PhysicPaintRotoPhysicalEditRecord[];
   interpolationEnabled: boolean;
   interpolationMode: PhysicPaintRotoInterpolationMode;
+  rotoBackground?: PhysicPaintRotoBackgroundMetadata;
   selectedKeyId: string | null;
   selectedAppFrame: number | null;
   semanticDelta?: PhysicPaintRotoPhysicalEditSemanticDelta;

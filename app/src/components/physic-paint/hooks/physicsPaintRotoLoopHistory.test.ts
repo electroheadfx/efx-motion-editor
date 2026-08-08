@@ -218,6 +218,44 @@ describe('loop-only edit history (D-10)', () => {
   });
 });
 
+describe('Force Spacing records and Loop Clip placement history', () => {
+  it('records one command so one Undo and one Redo restore both source rhythm and downstream placement', async () => {
+    const beforeRecords = [record('A', 0), record('B', 1), record('C', 2), record('X', 4), record('Y', 5)];
+    const afterRecords = [record('A', 0), record('B', 2), record('C', 4), record('X', 6), record('Y', 7)];
+    const beforeLoops: readonly PhysicPaintRotoLoopClip[] = [
+      { loopId: 'loop-a', placementStart: 0, sourceKeyIds: ['A', 'B', 'C'], repeat: 2, mode: 'progressive' },
+      { loopId: 'loop-b', placementStart: 4, sourceKeyIds: ['X', 'Y'], repeat: 3, mode: 'static' },
+    ];
+    const afterLoops: readonly PhysicPaintRotoLoopClip[] = [
+      beforeLoops[0]!,
+      { ...beforeLoops[1]!, placementStart: 6 },
+    ];
+    const before = snapshot(beforeRecords, beforeLoops);
+    const after = snapshot(afterRecords, afterLoops);
+    const test = harness(after);
+
+    test.accept(before, after, 'force-spacing-capsules', 'force-spacing');
+    expect(test.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    expect(await test.history.undo()).toBe(true);
+    expect(test.getCurrent().records.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0], ['B', 1], ['C', 2], ['X', 4], ['Y', 5],
+    ]);
+    expect(test.getCurrent().loopClips.map(({ loopId, placementStart }) => [loopId, placementStart])).toEqual([
+      ['loop-a', 0], ['loop-b', 4],
+    ]);
+
+    expect(await test.history.redo()).toBe(true);
+    expect(test.getCurrent().records.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0], ['B', 2], ['C', 4], ['X', 6], ['Y', 7],
+    ]);
+    expect(test.getCurrent().loopClips.map(({ loopId, placementStart }) => [loopId, placementStart])).toEqual([
+      ['loop-a', 0], ['loop-b', 6],
+    ]);
+    expect(test.availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+});
+
 describe('generation plus derived loop shrink is one undoable outcome (D-06)', () => {
   it('one Undo removes the generated keys and restores the loop canonical state; one Redo restores both', async () => {
     const before = snapshot(SOURCE_RECORDS(), [loopClip('loop-1', 5)]);

@@ -144,6 +144,8 @@ export interface PhysicsPaintWorkflowStripProps {
   onSelectRotoSpacingProxy?: (proxy: PhysicsPaintRotoSpacingProxy, gesture: PhysicsPaintRotoSpacingSelectionGesture) => void;
   /** Ordinary real-key selection clears the disjoint spacing-proxy selection. */
   onClearRotoSpacingSelection?: () => void;
+  /** Empty-frame navigation clears active ordinary key selection. */
+  onClearRotoKeySelection?: () => void;
   /** Cmd/Ctrl-click toggle intent on a real-key cell (D-01). Never navigates. */
   onToggleRotoKeySelection?: (keyId: string) => void;
   /** Plain-click collapse intent: reduce the multi-selection to the clicked key (D-02). */
@@ -176,10 +178,13 @@ export interface PhysicsPaintWorkflowStripProps {
   rotoLoopResolutionContext?: PhysicPaintRotoLoopResolutionContext | null;
   /** Accepted product facts keyed by the same canonical Loop Clip identity. */
   rotoLoopPresentations?: ReadonlyMap<string, PhysicsPaintLoopClipPresentation>;
-  /** One Studio/session selection shared with the Scripts inspector. */
-  selectedRotoLoopClipId?: string | null;
-  /** Rail-only shared selection setter; null clears the Scripts inspector. */
-  onSelectRotoLoopClip?: (loopId: string | null) => void;
+  /** Selected Loop Rails in canonical placement order. */
+  selectedRotoLoopClipIds?: readonly string[];
+  /** Rail selection intent; null clears rail mode before physical selection. */
+  onSelectRotoLoopClip?: (
+    loopId: string | null,
+    gesture?: PhysicsPaintRotoSpacingSelectionGesture,
+  ) => void;
   /** Existing Studio-local Loop Edit controller port (D-37/D-39). */
   onOpenRotoLoopEdit?: (loopId: string) => Promise<unknown>;
   rotoDragContextKey?: string;
@@ -593,6 +598,16 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     () => new Map((loopResolutionContext?.ranges ?? []).map((range) => [range.loopId, range.sourceFrameCount] as const)),
     [loopResolutionContext],
   );
+  const loopBoundaryFrames = useMemo(() => {
+    const starts = new Set<number>();
+    const ends = new Set<number>();
+    for (const range of loopResolutionContext?.ranges ?? []) {
+      if (range.effectiveEnd <= range.placementStart) continue;
+      starts.add(range.placementStart);
+      ends.add(range.effectiveEnd - 1);
+    }
+    return { starts, ends };
+  }, [loopResolutionContext]);
   // Per-cell derivation cache update (38.1-04, Option A — 38.1-D-08 link 2,
   // RESEARCH Pattern 3). Full invalidation on ANY structural identity change
   // (the physical-cell Map or the cached-frame arrays — realCachedRotoFrames
@@ -807,6 +822,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     onNavigateToSyncedFrame: props.onNavigateToSyncedFrame,
     onSelectRotoSpacingProxy: props.onSelectRotoSpacingProxy,
     onClearRotoSpacingSelection: props.onClearRotoSpacingSelection,
+    onClearRotoKeySelection: props.onClearRotoKeySelection,
+    onSelectRotoLoopClip: props.onSelectRotoLoopClip,
     onToggleRotoKeySelection: props.onToggleRotoKeySelection,
     onExtendRotoKeySelection: props.onExtendRotoKeySelection,
     onCollapseRotoSelectionToKey: props.onCollapseRotoSelectionToKey,
@@ -818,6 +835,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     onNavigateToSyncedFrame: props.onNavigateToSyncedFrame,
     onSelectRotoSpacingProxy: props.onSelectRotoSpacingProxy,
     onClearRotoSpacingSelection: props.onClearRotoSpacingSelection,
+    onClearRotoKeySelection: props.onClearRotoKeySelection,
+    onSelectRotoLoopClip: props.onSelectRotoLoopClip,
     onToggleRotoKeySelection: props.onToggleRotoKeySelection,
     onExtendRotoKeySelection: props.onExtendRotoKeySelection,
     onCollapseRotoSelectionToKey: props.onCollapseRotoSelectionToKey,
@@ -828,6 +847,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       return;
     }
     const current = rotoCellClickStateRef.current;
+    current.onSelectRotoLoopClip?.(null);
     const spacingProxy = current.spacingProxyByAppFrame.get(frame) ?? null;
     if (spacingProxy !== null) {
       if ((event.metaKey || event.ctrlKey) && !event.shiftKey) {
@@ -853,7 +873,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     // steal navigation and never arm a drag session (the pointer-down guard
     // rejects modifier presses, so a modifier-click is selection-only).
     const cellKeyId = current.keyIdByAppFrame.get(frame) ?? null;
-    if (cellKeyId !== null) current.onClearRotoSpacingSelection?.();
+    if (cellKeyId === null) {
+      current.onClearRotoKeySelection?.();
+      current.onClearRotoSpacingSelection?.();
+      current.onNavigateToSyncedFrame(frame);
+      return;
+    }
+    current.onClearRotoSpacingSelection?.();
     if (cellKeyId !== null && (event.metaKey || event.ctrlKey) && !event.shiftKey) {
       current.onToggleRotoKeySelection?.(cellKeyId);
       return;
@@ -1392,7 +1418,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   presentations={props.rotoLoopPresentations ?? EMPTY_LOOP_PRESENTATIONS}
                   visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
                   framePitch={ROTO_CELL_WIDTH_PX}
-                  selectedLoopClipId={props.selectedRotoLoopClipId ?? null}
+                  selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}
                   onSelectLoopClip={props.onSelectRotoLoopClip}
                   onOpenLoopEdit={props.onOpenRotoLoopEdit}
                 />
@@ -1412,10 +1438,25 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   const isSpacingProxySelected = spacingProxy !== null
                     && props.rotoSpacingSelection?.sourceCycleId === spacingProxy.sourceCycleId
                     && rotoSpacingSelectedSourceKeyIdSet.has(spacingProxy.sourceKeyId);
+                  const isLoopBoundaryStart = loopBoundaryFrames.starts.has(frame);
+                  const isLoopBoundaryEnd = loopBoundaryFrames.ends.has(frame);
                   const hasLinkedLoopBadge = frameResolution?.kind === 'linked'
                     || frameResolution?.kind === 'linked-generated'
                     || frameResolution?.kind === 'linked-gap'
                     || frameResolution?.kind === 'linked-unresolved';
+                  const isLinkedRepeat = frameResolution?.kind === 'linked-unresolved'
+                    || ((frameResolution?.kind === 'linked'
+                      || frameResolution?.kind === 'linked-generated'
+                      || frameResolution?.kind === 'linked-gap')
+                      && frameResolution.repeatInstance > 0);
+                  const isLinkedRepeatSourceKey = frameResolution?.kind === 'linked'
+                    && frameResolution.repeatInstance > 0;
+                  const linkedLoopClass = isLinkedRepeat
+                    ? isLinkedRepeatSourceKey ? 'roto-linked-repeat roto-linked-repeat-source-key' : 'roto-linked-repeat'
+                    : frameResolution?.kind === 'linked-generated' ? 'roto-linked-source-generated'
+                      : frameResolution?.kind === 'linked' ? 'roto-linked-source-key'
+                        : frameResolution?.kind === 'linked-gap' ? 'roto-linked-source-gap'
+                          : '';
                   const frameInteraction = frameResolution === null ? null : getRotoFrameKeyInteraction(frameResolution);
                   // Cached per-cell derivation (38.1-04, Option A): recomputed
                   // for at most the previous+new current cells on a pure frame
@@ -1472,8 +1513,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   // strongest highlight; every other selected ordinary real key
                   // gets the `.selected` outline. Spacing proxies use their own
                   // source-identity treatment, never ordinary selection.
-                  const isSecondarySelected = spacingProxy === null && cellKeyId !== null && rotoSelectedKeyIdSet.has(cellKeyId) && rotoSelectedKeyIdSet.size >= 2 && !vm.overlays.includes('current');
-                  const cellClass = `physics-paint-roto-cell ${fillClass} ${hasLinkedLoopBadge ? 'roto-linked-loop-badge' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'selected roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
+                  const isSecondarySelected = !isSpacingProxySelected && cellKeyId !== null && rotoSelectedKeyIdSet.has(cellKeyId) && rotoSelectedKeyIdSet.size >= 2 && !vm.overlays.includes('current');
+                  const cellClass = `physics-paint-roto-cell ${fillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
                   return (
                     <RotoTimelineCellButton
                       key={frame}

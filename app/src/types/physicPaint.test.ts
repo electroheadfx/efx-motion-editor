@@ -9,6 +9,7 @@ import {
   isPhysicPaintRotoBackgroundMetadata,
   isPhysicPaintRotoCacheFrame,
   isPhysicPaintRotoInterpolationSettings,
+  isPhysicPaintRotoPhysicalEditApplyPayload,
   normalizePhysicPaintRotoSegmentSpacingOverrides,
 } from './physicPaint';
 
@@ -52,6 +53,47 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintApplyPayload({ kind: 'delete-roto-frame', operationId: 'op-3', layerId: 'layer-1', startFrame: 12 })).toBe(true);
     expect(isPhysicPaintApplyPayload({ kind: 'replace-roto-key-frames', operationId: 'op-4', layerId: 'layer-1', startFrame: 12, frames: [{ ...renderedFrame, source: 'real-key', sourceFrame: 12 }], rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } })).toBe(true);
     expect(isPhysicPaintApplyPayload({ kind: ['apply', 'play', 'canvas'].join('-'), operationId: 'obsolete', layerId: 'layer-1', startFrame: 12, frames: [renderedFrame] })).toBe(false);
+  });
+
+  it('requires current background metadata only on Play Script physical transactions', () => {
+    const records = [{
+      keyId: 'key-1',
+      appFrame: 0,
+      payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
+    }];
+    const playScript = {
+      kind: 'replace-roto-physical-map',
+      operationId: 'play-script-1',
+      operationKind: 'play-script',
+      layerId: 'layer-1',
+      startFrame: 0,
+      launchOperationId: 'launch-1',
+      expectedRevision: 'revision-1',
+      records,
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      selectedKeyId: 'key-1',
+      selectedAppFrame: 0,
+      semanticDelta: {
+        kind: 'play-script',
+        affectedStartAppFrame: 0,
+        affectedEndAppFrame: 0,
+        expectedLayerCapacity: 10,
+        expectedLayerEndExclusive: 10,
+        proposedRecords: records,
+        freshKeyIds: ['key-1'],
+      },
+    } as const;
+    const rotoBackground = { background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 } as const;
+
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(playScript)).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...playScript, rotoBackground })).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...playScript,
+      operationKind: 'force-spacing',
+      semanticDelta: undefined,
+      rotoBackground,
+    })).toBe(false);
   });
 
   it('validates namespaced frame-sync messages', () => {

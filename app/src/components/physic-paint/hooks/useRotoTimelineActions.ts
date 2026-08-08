@@ -21,6 +21,7 @@ import {
   derivePhysicPaintRotoLoopRanges,
   resolvePhysicPaintRotoLinkedFrameDeleteGuard,
   resolvePhysicPaintRotoPhysicalEdit,
+  type PhysicPaintRotoLinkedSourceSpacingScope,
   type PhysicPaintRotoPhysicalEditFailure,
   type PhysicPaintRotoPhysicalEditIntent,
   type PhysicPaintRotoPhysicalEditProposal,
@@ -28,7 +29,10 @@ import {
   type PhysicPaintRotoPhysicalEditTarget,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import type { RotoSessionCopiedGroupEntry } from '../roto/physicsPaintRotoSession';
-import type { PhysicsPaintRotoSpacingSelection } from '../roto/physicsPaintRotoSpacingSelection';
+import {
+  getPhysicsPaintRotoSourceCycleId,
+  type PhysicsPaintRotoSpacingSelection,
+} from '../roto/physicsPaintRotoSpacingSelection';
 import type {
   RotoPhysicalEditExecuteInput,
   RotoPhysicalKeyUtilityPort,
@@ -215,6 +219,8 @@ export interface RotoTimelineActionsInput {
    * never persists it or sends it across the bridge.
    */
   getSelectedKeyIds?: () => readonly string[];
+  /** Selected Loop Rail identities in canonical placement order. */
+  getSelectedLoopClipIds?: () => readonly string[];
   /** Reconciled session-only exact Loop Clip source-position selection. */
   getRotoSpacingSelection?: () => PhysicsPaintRotoSpacingSelection | null;
   /** Current direct physical navigation frame. */
@@ -257,6 +263,167 @@ const DUPLICATE_SUCCESS_MESSAGE = 'Duplicated the selected Roto key.';
 const PASTE_SUCCESS_MESSAGE = 'Pasted the copied paint into the Roto timeline.';
 const ADD_KEY_SUCCESS_MESSAGE = 'Added an empty Roto key.';
 const INVALID_FORCE_SPACING_MESSAGE = 'Enter a whole number of empty frames (0 or more).';
+
+interface ForceSpacingScopeSnapshot {
+  readonly scopeKeyIds: readonly string[] | null;
+  readonly linkedSourceSpacingScopes: readonly PhysicPaintRotoLinkedSourceSpacingScope[] | null;
+}
+
+type ForceSpacingScopeResult =
+  | { readonly ok: true; readonly value: ForceSpacingScopeSnapshot }
+  | { readonly ok: false; readonly message: string };
+
+function sameOrderedIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((keyId, index) => keyId === right[index]);
+}
+
+function isBoundedSelectionId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 256;
+}
+
+function freezeLinkedSpacingScope(
+  sourceKeyIds: readonly string[],
+  selectedSourceKeyIds: readonly string[],
+): PhysicPaintRotoLinkedSourceSpacingScope {
+  const frozenSourceKeyIds = Object.freeze([...sourceKeyIds]);
+  return Object.freeze({
+    sourceCycleId: getPhysicsPaintRotoSourceCycleId(frozenSourceKeyIds),
+    sourceKeyIds: frozenSourceKeyIds,
+    selectedSourceKeyIds: Object.freeze([...selectedSourceKeyIds]),
+  });
+}
+
+function deriveForceSpacingScope(input: {
+  readonly records: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly selectedLoopClipIds: readonly string[];
+  readonly selectedKeyIds: readonly string[];
+  readonly spacingSelection: PhysicsPaintRotoSpacingSelection | null;
+}): ForceSpacingScopeResult {
+  const currentKeyIds = new Set(input.records.map((record) => record.keyId));
+  const orderedLoopClips = [...input.loopClips]
+    .sort((left, right) => left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId));
+  const currentCycle = (sourceKeyIds: readonly string[]) => sourceKeyIds.length >= 2
+    && sourceKeyIds.every(isBoundedSelectionId)
+    && new Set(sourceKeyIds).size === sourceKeyIds.length
+    && sourceKeyIds.every((keyId) => currentKeyIds.has(keyId));
+
+  if (input.selectedLoopClipIds.length > 0) {
+    if (input.selectedKeyIds.length > 0 || input.spacingSelection !== null) {
+      return { ok: false, message: 'Rail and physical Key Spacing selections conflict. Select the Loop Rails again.' };
+    }
+    if (!input.selectedLoopClipIds.every(isBoundedSelectionId)
+      || new Set(input.selectedLoopClipIds).size !== input.selectedLoopClipIds.length) {
+      return { ok: false, message: 'Loop Rail selection is stale. Select the Loop Rails again.' };
+    }
+    const selectedIdSet = new Set(input.selectedLoopClipIds);
+    const selectedClips = orderedLoopClips.filter((loopClip) => selectedIdSet.has(loopClip.loopId));
+    if (selectedClips.length !== input.selectedLoopClipIds.length
+      || !sameOrderedIds(selectedClips.map((loopClip) => loopClip.loopId), input.selectedLoopClipIds)) {
+      return { ok: false, message: 'Loop Rail selection is stale. Select the Loop Rails again.' };
+    }
+    const seenCycles = new Set<string>();
+    const seenSourceKeyIds = new Set<string>();
+    const scopes: PhysicPaintRotoLinkedSourceSpacingScope[] = [];
+    for (const loopClip of selectedClips) {
+      if (!currentCycle(loopClip.sourceKeyIds)) {
+        return { ok: false, message: 'Loop Rail source authorization is stale. Select the Loop Rails again.' };
+      }
+      const sourceCycleId = getPhysicsPaintRotoSourceCycleId(loopClip.sourceKeyIds);
+      if (seenCycles.has(sourceCycleId)) continue;
+      if (loopClip.sourceKeyIds.some((keyId) => seenSourceKeyIds.has(keyId))) {
+        return { ok: false, message: 'Loop Rail source authorization is ambiguous. Select the Loop Rails again.' };
+      }
+      seenCycles.add(sourceCycleId);
+      loopClip.sourceKeyIds.forEach((keyId) => seenSourceKeyIds.add(keyId));
+      scopes.push(freezeLinkedSpacingScope(loopClip.sourceKeyIds, loopClip.sourceKeyIds));
+    }
+    if (scopes.length === 0) {
+      return { ok: false, message: 'Loop Rail selection is stale. Select the Loop Rails again.' };
+    }
+    return {
+      ok: true,
+      value: Object.freeze({
+        scopeKeyIds: Object.freeze(scopes.flatMap((scope) => scope.selectedSourceKeyIds)),
+        linkedSourceSpacingScopes: Object.freeze(scopes),
+      }),
+    };
+  }
+
+  if (!input.selectedKeyIds.every(isBoundedSelectionId)
+    || new Set(input.selectedKeyIds).size !== input.selectedKeyIds.length
+    || input.selectedKeyIds.some((keyId) => !currentKeyIds.has(keyId))) {
+    return { ok: false, message: 'Physical Key Spacing selection is stale. Select the keys again.' };
+  }
+
+  if (input.spacingSelection !== null) {
+    const selection = input.spacingSelection;
+    if (selection.selectedSourceKeyIds.length < 2) {
+      return { ok: false, message: 'Select at least two Loop Clip source positions to apply Key Spacing.' };
+    }
+    const selectedSet = new Set(selection.selectedSourceKeyIds);
+    const orderedSelected = selection.sourceKeyIds.filter((keyId) => selectedSet.has(keyId));
+    const exactCycleExists = orderedLoopClips.some((loopClip) => sameOrderedIds(loopClip.sourceKeyIds, selection.sourceKeyIds));
+    if (!currentCycle(selection.sourceKeyIds)
+      || selection.sourceCycleId !== getPhysicsPaintRotoSourceCycleId(selection.sourceKeyIds)
+      || !exactCycleExists
+      || selection.selectedSourceKeyIds.length < 2
+      || selectedSet.size !== selection.selectedSourceKeyIds.length
+      || !sameOrderedIds(orderedSelected, selection.selectedSourceKeyIds)
+      || !sameOrderedIds(input.selectedKeyIds, selection.selectedSourceKeyIds)) {
+      return { ok: false, message: 'Physical Key Spacing selection is stale. Select the keys again.' };
+    }
+    const scope = freezeLinkedSpacingScope(selection.sourceKeyIds, selection.selectedSourceKeyIds);
+    return {
+      ok: true,
+      value: Object.freeze({
+        scopeKeyIds: scope.selectedSourceKeyIds,
+        linkedSourceSpacingScopes: Object.freeze([scope]),
+      }),
+    };
+  }
+
+  const selectedSet = new Set(input.selectedKeyIds);
+  const matchingCycles = new Map<string, readonly string[]>();
+  for (const loopClip of orderedLoopClips) {
+    if (!currentCycle(loopClip.sourceKeyIds)) continue;
+    if (!loopClip.sourceKeyIds.some((keyId) => selectedSet.has(keyId))) continue;
+    matchingCycles.set(getPhysicsPaintRotoSourceCycleId(loopClip.sourceKeyIds), loopClip.sourceKeyIds);
+  }
+  if (matchingCycles.size > 1) {
+    return { ok: false, message: 'Select Loop Rails to apply Key Spacing across multiple Loop Clips.' };
+  }
+  if (matchingCycles.size === 1) {
+    if (input.selectedKeyIds.length < 2) {
+      return { ok: false, message: 'Select at least two Loop Clip source positions to apply Key Spacing.' };
+    }
+    const sourceKeyIds = [...matchingCycles.values()][0];
+    const orderedSelected = sourceKeyIds.filter((keyId) => selectedSet.has(keyId));
+    if (orderedSelected.length !== input.selectedKeyIds.length
+      || !sameOrderedIds(orderedSelected, input.selectedKeyIds)) {
+      return { ok: false, message: 'Select only source positions from one Loop Clip cycle, or select Loop Rails.' };
+    }
+    const scope = freezeLinkedSpacingScope(sourceKeyIds, orderedSelected);
+    return {
+      ok: true,
+      value: Object.freeze({
+        scopeKeyIds: scope.selectedSourceKeyIds,
+        linkedSourceSpacingScopes: Object.freeze([scope]),
+      }),
+    };
+  }
+
+  if (input.selectedKeyIds.length < 2 && orderedLoopClips.length > 0) {
+    return { ok: false, message: 'Select at least two physical keys, or select Loop Rails for Loop Clip Key Spacing.' };
+  }
+  return {
+    ok: true,
+    value: Object.freeze({
+      scopeKeyIds: input.selectedKeyIds.length >= 2 ? Object.freeze([...input.selectedKeyIds]) : null,
+      linkedSourceSpacingScopes: null,
+    }),
+  };
+}
 
 export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const forceSpacingInput = useMemo(() => signal('1'), []);
@@ -744,29 +911,20 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     // completeness/uniqueness, orders stable keys, anchors the first frame,
     // derives exact interiors, and rejects an over-capacity complete map.
     const records = input.getRotoKeyRecords();
+    const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
     const selectedKeyId = input.getSelectedKeyId?.() ?? null;
-    const spacingSelection = input.getRotoSpacingSelection?.() ?? null;
-    if (spacingSelection !== null && spacingSelection.selectedSourceKeyIds.length < 2) {
-      input.publishStatus?.('Select at least two Loop Clip source positions to apply Key Spacing.');
+    const scopeResult = deriveForceSpacingScope({
+      records,
+      loopClips,
+      selectedLoopClipIds: input.getSelectedLoopClipIds?.() ?? [],
+      selectedKeyIds: input.getSelectedKeyIds?.() ?? [],
+      spacingSelection: input.getRotoSpacingSelection?.() ?? null,
+    });
+    if (!scopeResult.ok) {
+      input.publishStatus?.(scopeResult.message);
       return false;
     }
-    // A reconciled Loop Clip proxy selection is authoritative and never falls
-    // back to ordinary selected-key or full-timeline spacing. Without one, the
-    // pre-43 rule remains byte-identical: two or more ordinary keys scope the
-    // edit; zero/one ordinary key applies to the full timeline.
-    const selectedKeyIds = input.getSelectedKeyIds?.() ?? [];
-    const scopeKeyIds = spacingSelection !== null
-      ? Object.freeze([...spacingSelection.selectedSourceKeyIds]) as readonly string[]
-      : selectedKeyIds.length >= 2
-        ? Object.freeze([...selectedKeyIds]) as readonly string[]
-        : null;
-    const linkedSourceSpacingScope = spacingSelection === null
-      ? null
-      : Object.freeze({
-          sourceCycleId: spacingSelection.sourceCycleId,
-          sourceKeyIds: Object.freeze([...spacingSelection.sourceKeyIds]),
-          selectedSourceKeyIds: Object.freeze([...spacingSelection.selectedSourceKeyIds]),
-        });
+    const { scopeKeyIds, linkedSourceSpacingScopes } = scopeResult.value;
     const interpolation = input.getRotoInterpolationState();
     const capacity = input.getCapacity();
     const expectedLaunch = {
@@ -784,12 +942,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         emptyFrames,
         selectedKeyId,
         scopeKeyIds,
-        linkedSourceSpacingScope,
+        linkedSourceSpacingScopes,
       },
       capacity,
       interpolationEnabled: interpolation.enabled,
-      // Phase 43: D-11 rejects Force Spacing over any linked source key.
-      loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+      loopClips,
     });
     if (!resolution.ok) {
       if (scopeKeyIds !== null) {

@@ -18,6 +18,8 @@
   --color-bg-hover-item: #2A2A2A;
   --color-bg-shell: #151515;
   --color-bg-divider: #2A2A2A;
+  --color-tooltip-bg: #17191c;
+  --color-tooltip-border: #30343a;
 
   /* Accent */
   --color-accent: #2D5BE3;

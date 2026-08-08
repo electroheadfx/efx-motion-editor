@@ -2,6 +2,7 @@ import { computed, effect, signal, type ReadonlySignal, type Signal } from '@pre
 import type {
   PhysicPaintLaunchContext,
   PhysicPaintRotoAuthorityResult,
+  PhysicPaintRotoBackgroundMetadata,
   PhysicPaintRotoCacheFrame,
   PhysicPaintRotoPhysicalEditRecord,
   PhysicPaintRotoPhysicalEditSemanticDelta,
@@ -59,6 +60,7 @@ export interface RotoPlayScriptPhysicalPublication {
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
   readonly interpolationEnabled: boolean;
   readonly interpolationMode: PhysicPaintRotoAuthorityResult['interpolationMode'];
+  readonly rotoBackground: PhysicPaintRotoBackgroundMetadata;
   readonly semanticDelta: RotoPlayScriptSemanticDelta;
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
@@ -104,6 +106,7 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
   // (settings.color; sole writer setBrushColor). Read at confirm time and at the first-open
   // summary compose; the value is never stored dialog-side (D-10/D-18).
   getBrushColor: () => string;
+  getBackgroundMetadata: () => PhysicPaintRotoBackgroundMetadata;
   getOperationLocked: () => boolean;
   getSize: () => { width: number; height: number };
   /**
@@ -161,7 +164,7 @@ export interface RotoPlayScriptController {
   loopEditSourceStart: ReadonlySignal<number | null>;
   /** Loops sharing the target's source cycle (target included) — the S3 {N}. */
   sourceEditSharedLoopCount: ReadonlySignal<number>;
-  /** True when the apply draft expresses loop intent (repeat > 1 or Infinity). */
+  /** True for every Play Script Apply; Repeat changes duration, not capsule creation. */
   loopIntentActive: ReadonlySignal<boolean>;
   /** S4 match — non-null only in apply mode with loop intent and an identical cycle. */
   identicalSourceCycle: ReadonlySignal<RotoPlayScriptIdenticalSourceCycle | null>;
@@ -341,7 +344,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     if (!target) return 0;
     return currentLoopClips().filter((clip) => sameOrderedIds(clip.sourceKeyIds, target.sourceKeyIds)).length;
   });
-  const loopIntentActive = computed(() => infinity.value || (parsedRepeat.value.count !== null && parsedRepeat.value.count > 1));
+  const loopIntentActive = computed(() => dialogMode.value === 'apply');
   const identicalSourceCycle = computed<RotoPlayScriptIdenticalSourceCycle | null>(() => {
     if (dialogMode.value !== 'apply' || !loopIntentActive.value) return null;
     const selectedId = ports.library.selectedId.value;
@@ -619,8 +622,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     anchor: number;
     loopClips: readonly PhysicPaintRotoLoopClip[];
     expectedLaunch: RotoPlayScriptPhysicalPublication['expectedLaunch'];
+    rotoBackground: PhysicPaintRotoBackgroundMetadata;
   }): RotoPlayScriptPhysicalPublication {
-    const { authority, anchor, loopClips, expectedLaunch } = input;
+    const { authority, anchor, loopClips, expectedLaunch, rotoBackground } = input;
     const records = authority.physicalRecords.map((record) => ({
       kind: 'real-key' as const,
       keyId: record.keyId,
@@ -634,6 +638,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       records,
       interpolationEnabled: authority.interpolationEnabled,
       interpolationMode: authority.interpolationMode,
+      rotoBackground,
       semanticDelta: {
         kind: 'play-script',
         // Empty affected range convention: the op changes loop state only.
@@ -673,6 +678,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         anchor: loop.placementStart,
         loopClips: prepared,
         expectedLaunch: { operationId: context.operationId, layerId: context.layerId },
+        rotoBackground: { ...ports.getBackgroundMetadata() },
       });
       phase.value = 'committing'; status.value = statusLine;
       const result = await ports.commit(publication);
@@ -812,6 +818,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // D-08R: snapshot the CURRENT brush color via the port at confirm time. Later brush-color
       // changes never retroactively alter generated frames or the success-only summary.
       const renderOverrideColor = resolveOverrideColor();
+      const rotoBackground = { ...ports.getBackgroundMetadata() };
 
       // 43-06 S4 (D-05): Link to existing cycle — one loop-only atomic commit,
       // NO regeneration; the new Loop Clip shares the matched sourceKeyIds.
@@ -843,6 +850,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           anchor: start,
           loopClips: Object.freeze([...currentLoopClips(), linkedLoop]),
           expectedLaunch: { operationId: context.operationId, layerId: context.layerId },
+          rotoBackground,
         });
         phase.value = 'committing'; status.value = 'Linking Loop Clip…'; abortController = null;
         const result = await ports.commit(publication);
@@ -909,6 +917,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         count,
         ...(sourceEditDestinationAppFrames ? { destinationAppFrames: sourceEditDestinationAppFrames } : {}),
         expectedLaunch: { operationId: context.operationId, layerId: context.layerId },
+        rotoBackground,
       });
       // 43-06: loop state rides the SAME staged publication (HOLD-03 — no
       // second commit path). Same-count Source Edit maps the rendered outputs
@@ -1075,8 +1084,9 @@ function buildPhysicalPublication(input: {
   readonly count: number;
   readonly destinationAppFrames?: readonly number[];
   readonly expectedLaunch: RotoPlayScriptPhysicalPublication['expectedLaunch'];
+  readonly rotoBackground: PhysicPaintRotoBackgroundMetadata;
 }): RotoPlayScriptPhysicalPublication {
-  const { authority, staged, start, count, destinationAppFrames, expectedLaunch } = input;
+  const { authority, staged, start, count, destinationAppFrames, expectedLaunch, rotoBackground } = input;
   const targetAppFrames = destinationAppFrames ?? Array.from({ length: count }, (_, index) => start + index);
   const affectedStartAppFrame = targetAppFrames[0] ?? start;
   const affectedEndAppFrame = targetAppFrames[targetAppFrames.length - 1] ?? start + count - 1;
@@ -1149,6 +1159,7 @@ function buildPhysicalPublication(input: {
     records,
     interpolationEnabled: authority.interpolationEnabled,
     interpolationMode: authority.interpolationMode,
+    rotoBackground,
     semanticDelta: {
       kind: 'play-script',
       affectedStartAppFrame,

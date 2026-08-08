@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   extendPhysicsPaintRotoSpacingProxyRange,
   getPhysicsPaintRotoSourceCycleId,
+  reconcilePhysicsPaintRotoLoopClipSelection,
   reconcilePhysicsPaintRotoSpacingSelection,
   selectPhysicsPaintRotoSpacingProxyPlain,
+  updatePhysicsPaintRotoLoopClipSelection,
   togglePhysicsPaintRotoSpacingProxy,
   type PhysicsPaintRotoSpacingProxy,
 } from './physicsPaintRotoSpacingSelection';
@@ -19,6 +21,67 @@ function proxy(sourceKeyId: string, sourceIndex: number, sourceKeyIds: readonly 
     sourceIndex,
   };
 }
+
+describe('Physics Paint Roto Loop Rail selection', () => {
+  const orderedLoopIds = ['loop-a', 'loop-b', 'loop-c'] as const;
+
+  it('supports plain, contiguous Shift range, and non-contiguous Cmd/Ctrl toggle selection', () => {
+    const plain = updatePhysicsPaintRotoLoopClipSelection(
+      null,
+      orderedLoopIds,
+      'loop-a',
+      'plain',
+    );
+    const ranged = updatePhysicsPaintRotoLoopClipSelection(
+      plain,
+      orderedLoopIds,
+      'loop-c',
+      'range',
+    );
+    const toggled = updatePhysicsPaintRotoLoopClipSelection(
+      plain,
+      orderedLoopIds,
+      'loop-c',
+      'toggle',
+    );
+
+    expect(plain).toEqual({
+      selectedLoopClipIds: ['loop-a'],
+      anchorLoopClipId: 'loop-a',
+      primaryLoopClipId: 'loop-a',
+    });
+    expect(ranged).toEqual({
+      selectedLoopClipIds: ['loop-a', 'loop-b', 'loop-c'],
+      anchorLoopClipId: 'loop-a',
+      primaryLoopClipId: 'loop-c',
+    });
+    expect(toggled).toEqual({
+      selectedLoopClipIds: ['loop-a', 'loop-c'],
+      anchorLoopClipId: 'loop-a',
+      primaryLoopClipId: 'loop-c',
+    });
+    expect(Object.isFrozen(ranged)).toBe(true);
+    expect(Object.isFrozen(ranged?.selectedLoopClipIds)).toBe(true);
+  });
+
+  it('reconciles stale rail identities without inventing a hidden replacement scope', () => {
+    const selected = updatePhysicsPaintRotoLoopClipSelection(
+      updatePhysicsPaintRotoLoopClipSelection(null, orderedLoopIds, 'loop-a', 'plain'),
+      orderedLoopIds,
+      'loop-c',
+      'toggle',
+    );
+
+    expect(reconcilePhysicsPaintRotoLoopClipSelection(selected, ['loop-a', 'loop-b']))
+      .toEqual({
+        selectedLoopClipIds: ['loop-a'],
+        anchorLoopClipId: 'loop-a',
+        primaryLoopClipId: 'loop-a',
+      });
+    expect(reconcilePhysicsPaintRotoLoopClipSelection(selected, ['loop-b']))
+      .toBeNull();
+  });
+});
 
 describe('Physics Paint Roto source-position spacing selection', () => {
   it('plain selection collapses to one immutable source-position proxy', () => {

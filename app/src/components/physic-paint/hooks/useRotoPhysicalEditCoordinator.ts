@@ -41,9 +41,13 @@
 import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { computed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
-import { isPhysicPaintRotoPhysicalEditApplyResult } from '../../../types/physicPaint';
+import {
+  isPhysicPaintRotoBackgroundMetadata,
+  isPhysicPaintRotoPhysicalEditApplyResult,
+} from '../../../types/physicPaint';
 import type {
   PhysicPaintApplyResult,
+  PhysicPaintRotoBackgroundMetadata,
   PhysicPaintRotoPhysicalEditApplyPayload,
   PhysicPaintRotoPhysicalEditApplyResult,
   PhysicPaintRotoPhysicalEditSemanticDelta,
@@ -129,6 +133,7 @@ export interface RotoPlayScriptExecuteInput {
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
   readonly interpolationEnabled: boolean;
   readonly interpolationMode: PhysicPaintRotoInterpolationState['mode'];
+  readonly rotoBackground: PhysicPaintRotoBackgroundMetadata;
   readonly semanticDelta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'play-script' }>;
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
@@ -324,6 +329,9 @@ function validatePlayScriptInput(
   capacity: number,
 ): string | null {
   const delta = input.semanticDelta;
+  if (!isPhysicPaintRotoBackgroundMetadata(input.rotoBackground)) {
+    return 'Play Script background metadata is invalid.';
+  }
   // 43-06: a loop-only declaration (empty affected range) changes loop state
   // only; a preserveSelection declaration keeps the current selection instead
   // of selecting the range start (source-edit/repair open from a Loop Clip).
@@ -634,7 +642,11 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_FAILED_MESSAGE);
         return;
       }
-      if (pending.operationKind === 'undo' || pending.operationKind === 'redo') {
+      if (
+        pending.operationKind === 'undo'
+        || pending.operationKind === 'redo'
+        || pending.operationKind === 'play-script'
+      ) {
         portsRef.current.reference.reconcileCurrentFrame(after.currentAppFrame);
       }
       acceptedSignal.value = {
@@ -1048,6 +1060,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           records: recordsToApplyPayloadRecords(validatedStagedRecords),
           interpolationEnabled: stagedInterpolation.enabled,
           interpolationMode: stagedInterpolation.mode,
+          ...(playScriptInput ? { rotoBackground: { ...playScriptInput.rotoBackground } } : {}),
           loopClips: cloneLoopClips(stagedLoopClips),
           selectedKeyId: input.selectedKeyId,
           selectedAppFrame: input.selectedAppFrame,
@@ -1087,6 +1100,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           if (!replaceResult.ok) {
             finalizeFailed(pending, before, 'exception', replaceResult.error);
             return false;
+          }
+          if (proposal?.nextLoopClips !== null && proposal?.nextLoopClips !== undefined) {
+            const loopResult = portsRef.current.records.replaceLoopClips(revalidatedLaunch.layerId, stagedLoopClips);
+            if (!loopResult.ok) {
+              finalizeFailed(pending, before, 'exception', loopResult.error);
+              return false;
+            }
           }
           portsRef.current.selection.setSelectedKeyId(input.selectedKeyId);
           if (input.selectedAppFrame !== null) portsRef.current.selection.setCurrentAppFrame(input.selectedAppFrame);

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import type { PhysicPaintRotoLoopRange } from '../roto/physicsPaintRotoPhysicalResolver';
+import type { PhysicsPaintRotoSpacingSelectionGesture } from '../roto/physicsPaintRotoSpacingSelection';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
   projectPhysicsPaintLoopClipGeometry,
@@ -17,13 +18,19 @@ export interface PhysicsPaintLoopClipRailProps {
     readonly endFrameExclusive: number;
   };
   readonly framePitch: number;
-  readonly selectedLoopClipId: string | null;
-  readonly onSelectLoopClip: (loopId: string | null) => void;
+  readonly selectedLoopClipIds: readonly string[];
+  readonly onSelectLoopClip: (
+    loopId: string,
+    gesture: PhysicsPaintRotoSpacingSelectionGesture,
+  ) => void;
   readonly onOpenLoopEdit: (loopId: string) => Promise<unknown>;
 }
 
 interface RailMouseEvent {
   readonly timeStamp: number;
+  readonly metaKey: boolean;
+  readonly ctrlKey: boolean;
+  readonly shiftKey: boolean;
   stopPropagation(): void;
   preventDefault(): void;
 }
@@ -40,7 +47,12 @@ interface RailTargetProps {
   readonly left: number;
   readonly width: number;
   readonly selected: boolean;
-  readonly onSelectLoopClip: (loopId: string | null) => void;
+  readonly showStartBoundary: boolean;
+  readonly showEndBoundary: boolean;
+  readonly onSelectLoopClip: (
+    loopId: string,
+    gesture: PhysicsPaintRotoSpacingSelectionGesture,
+  ) => void;
   readonly onOpenLoopEdit: (loopId: string) => Promise<unknown>;
 }
 
@@ -68,6 +80,11 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   const handleClick = (event: RailMouseEvent) => {
     event.stopPropagation();
     tooltip.hide();
+    const gesture: PhysicsPaintRotoSpacingSelectionGesture = event.shiftKey
+      ? 'range'
+      : event.metaKey || event.ctrlKey
+        ? 'toggle'
+        : 'plain';
     const previousTimestamp = lastClickTimestampRef.current;
     const elapsed = previousTimestamp === null
       ? Number.POSITIVE_INFINITY
@@ -75,7 +92,7 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     if (elapsed >= 0 && elapsed <= LOOP_CLIP_FAST_DOUBLE_CLICK_MS) {
       event.preventDefault();
       clearClickSequence();
-      props.onSelectLoopClip(range.loopId);
+      props.onSelectLoopClip(range.loopId, 'plain');
       void props.onOpenLoopEdit(range.loopId);
       return;
     }
@@ -84,7 +101,7 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     pendingSingleClickRef.current = setTimeout(() => {
       pendingSingleClickRef.current = null;
       lastClickTimestampRef.current = null;
-      props.onSelectLoopClip(props.selected ? null : range.loopId);
+      props.onSelectLoopClip(range.loopId, gesture);
     }, LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
   };
   const handleKeyDown = (event: RailKeyboardEvent) => {
@@ -93,7 +110,7 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
       event.preventDefault();
       tooltip.hide();
       clearClickSequence();
-      props.onSelectLoopClip(range.loopId);
+      props.onSelectLoopClip(range.loopId, 'plain');
       void props.onOpenLoopEdit(range.loopId);
     }
   };
@@ -108,8 +125,8 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     >
       <button
         type="button"
-        class={`physics-paint-loop-clip-rail-target${props.selected ? ' selected' : ''}${range.truncated ? ' truncated' : ''}${range.unresolved ? ' unresolved' : ''}`}
-        aria-label={`${presentation.displayName}. ${presentation.cycleLabel}. ${presentation.effectiveLabel}. ${presentation.statusLabel}.`}
+        class={`physics-paint-loop-clip-rail-target mode-${presentation.mode}${props.selected ? ' selected' : ''}${props.showStartBoundary ? ' boundary-start' : ''}${props.showEndBoundary ? ' boundary-end' : ''}${range.truncated ? ' truncated' : ''}${range.unresolved ? ' unresolved' : ''}`}
+        aria-label={`${presentation.displayName}. ${presentation.cycleLabel}. ${presentation.effectiveLabel}. ${presentation.modeLabel}. ${presentation.statusLabel}.`}
         aria-pressed={props.selected}
         onPointerDown={stopPointerEvent}
         onClick={handleClick}
@@ -124,6 +141,7 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
           <strong>{presentation.displayName}</strong>
           <span>{presentation.cycleLabel}</span>
           <span>{presentation.effectiveLabel}</span>
+          <span>Mode: {presentation.modeLabel}</span>
           <span>Status: {presentation.statusLabel}</span>
         </span>
       </PhysicsPaintStyledTooltip>
@@ -139,21 +157,29 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
       props.visibleFrameWindow,
       props.framePitch,
     );
-    return presentation && geometry ? [{ range, presentation, geometry }] : [];
+    return presentation && geometry ? [{
+      range,
+      presentation,
+      geometry,
+      showStartBoundary: range.placementStart >= props.visibleFrameWindow.startFrame,
+      showEndBoundary: range.effectiveEnd <= props.visibleFrameWindow.endFrameExclusive,
+    }] : [];
   });
 
   if (visibleTargets.length === 0) return null;
 
   return (
     <div class="physics-paint-loop-clip-rail" role="group" aria-label="Loop Clips">
-      {visibleTargets.map(({ range, presentation, geometry }) => (
+      {visibleTargets.map(({ range, presentation, geometry, showStartBoundary, showEndBoundary }) => (
         <PhysicsPaintLoopClipRailTarget
           key={range.loopId}
           range={range}
           presentation={presentation}
           left={geometry.left}
           width={geometry.width}
-          selected={props.selectedLoopClipId === range.loopId}
+          selected={props.selectedLoopClipIds.includes(range.loopId)}
+          showStartBoundary={showStartBoundary}
+          showEndBoundary={showEndBoundary}
           onSelectLoopClip={props.onSelectLoopClip}
           onOpenLoopEdit={props.onOpenLoopEdit}
         />
