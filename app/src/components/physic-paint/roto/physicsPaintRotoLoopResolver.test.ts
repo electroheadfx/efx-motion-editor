@@ -54,12 +54,14 @@ function deriveBaseline(
   loopClips: readonly PhysicPaintRotoLoopClip[],
   identities: readonly PhysicPaintRotoKeyIdentity[] = SOURCE_KEYS,
   parentEndExclusive = CAPACITY,
+  interpolationEnabled = false,
 ) {
   return derivePhysicPaintRotoLoopRanges({
     identities,
     loopClips,
     parentEndExclusive,
     capacity: CAPACITY,
+    interpolationEnabled,
   });
 }
 
@@ -81,7 +83,48 @@ describe('derivePhysicPaintRotoLoopRanges — compact interval derivation (D-32)
       unresolved: null,
     });
     expect(range.sourceKeyIds).toEqual([...SOURCE_KEY_IDS]);
+    expect(range.sourceFrameCount).toBe(5);
+    expect(range.sourceOffsets).toEqual([0, 1, 2, 3, 4]);
     expect(range.boundary).toEqual({ kind: 'parent-end', frame: CAPACITY });
+  });
+
+  it('derives physical cadence from ordered source-key timing and uses it for finite, infinity, and partial-cycle math', () => {
+    const spaced = ids([
+      ['A', 10],
+      ['B', 13],
+      ['C', 16],
+    ]);
+    const finite = deriveBaseline([loop('LS', 20, ['A', 'B', 'C'], 3)], spaced, 100, true);
+
+    expect(finite.ranges[0]).toMatchObject({
+      sourceFrameCount: 3,
+      sourceOffsets: [0, 3, 6],
+      cycleLength: 7,
+      requestedEnd: 41,
+      effectiveEnd: 41,
+      partialCycle: false,
+    });
+
+    const infinity = deriveBaseline([loop('LI', 20, ['A', 'B', 'C'], 'infinity')], spaced, 39, true);
+    expect(infinity.ranges[0]).toMatchObject({
+      cycleLength: 7,
+      requestedEnd: 'infinity',
+      effectiveEnd: 39,
+      partialCycle: true,
+    });
+
+    const truncated = deriveBaseline(
+      [loop('LT', 20, ['A', 'B', 'C'], 4)],
+      [...spaced, { keyId: 'X', appFrame: 35 }],
+      100,
+      true,
+    );
+    expect(truncated.ranges[0]).toMatchObject({
+      requestedEnd: 48,
+      effectiveEnd: 35,
+      truncated: true,
+      partialCycle: true,
+    });
   });
 
   it('never materializes duration-proportional collections for a huge finite repeat or an Infinity loop', () => {
@@ -90,6 +133,7 @@ describe('derivePhysicPaintRotoLoopRanges — compact interval derivation (D-32)
       loopClips: [loop('LH', 10, SOURCE_KEY_IDS, 100000)],
       parentEndExclusive: 500010,
       capacity: CAPACITY,
+      interpolationEnabled: false,
     });
     expect(hugeFinite.ranges).toHaveLength(1);
     expect(hugeFinite.ranges[0]).toMatchObject({
@@ -120,7 +164,9 @@ describe('derivePhysicPaintRotoLoopRanges — compact interval derivation (D-32)
       'placementStart',
       'repeat',
       'requestedEnd',
+      'sourceFrameCount',
       'sourceKeyIds',
+      'sourceOffsets',
       'truncated',
       'unresolved',
     ];
@@ -186,6 +232,50 @@ describe('resolvePhysicPaintRotoLoopFrame — lazy per-frame typed contract (D-2
     // Half-open [start, end): the requested end frame itself is outside.
     expect(resolvePhysicPaintRotoLoopFrame(context, 35)).toEqual({ kind: 'empty' });
     expect(resolvePhysicPaintRotoLoopFrame(context, 9)).toEqual({ kind: 'empty' });
+  });
+
+  it('binary-searches physical source offsets across repeats and distinguishes generated from disabled gaps', () => {
+    const spaced = ids([
+      ['A', 0],
+      ['B', 3],
+      ['C', 6],
+    ]);
+    const generated = deriveBaseline([loop('LG', 10, ['A', 'B', 'C'], 2)], spaced, 100, true);
+
+    expect(resolvePhysicPaintRotoLoopFrame(generated, 13)).toEqual({
+      kind: 'linked',
+      loopId: 'LG',
+      appFrame: 13,
+      sourceKeyId: 'B',
+      sourceIndex: 1,
+      cycleOffset: 3,
+      repeatInstance: 0,
+    });
+    expect(resolvePhysicPaintRotoLoopFrame(generated, 18)).toEqual({
+      kind: 'linked-generated',
+      loopId: 'LG',
+      appFrame: 18,
+      leftSourceKeyId: 'A',
+      rightSourceKeyId: 'B',
+      leftSourceIndex: 0,
+      rightSourceIndex: 1,
+      progress: 1 / 3,
+      cycleOffset: 1,
+      repeatInstance: 1,
+    });
+
+    const gaps = deriveBaseline([loop('LP', 10, ['A', 'B', 'C'], 2)], spaced, 100, false);
+    expect(resolvePhysicPaintRotoLoopFrame(gaps, 18)).toEqual({
+      kind: 'linked-gap',
+      loopId: 'LP',
+      appFrame: 18,
+      leftSourceKeyId: 'A',
+      rightSourceKeyId: 'B',
+      leftSourceIndex: 0,
+      rightSourceIndex: 1,
+      cycleOffset: 1,
+      repeatInstance: 1,
+    });
   });
 
   it('resolves a duplicated loop from its own placementStart while the source location stays key-derived', () => {

@@ -4,6 +4,7 @@ import {
   rotoPhysicalRevision,
   physicPaintVersion,
   _setPhysicPaintMarkDirtyCallback,
+  registerRotoAlphaCanvasFrame,
 } from './physicPaintStore';
 import {
   buildPhysicPaintRotoPhysicalRevision,
@@ -58,8 +59,12 @@ function cycleRecords(): PhysicPaintRotoRealKeyRecord[] {
   return [record('A', 0), record('B', 1), record('C', 2), record('D', 3), record('E', 4)];
 }
 
-function installRecords(records: readonly PhysicPaintRotoRealKeyRecord[], capacity = CAPACITY): void {
-  const result = physicPaintStore.replaceRotoPhysicalRecords(LAYER, records, INTERPOLATION, capacity);
+function installRecords(
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  capacity = CAPACITY,
+  interpolation: { readonly enabled: boolean; readonly mode: 'duplicate' | 'blend' } = INTERPOLATION,
+): void {
+  const result = physicPaintStore.replaceRotoPhysicalRecords(LAYER, records, interpolation, capacity);
   if (!result.ok) throw new Error(result.error);
 }
 
@@ -149,6 +154,70 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
     expect(identities.size, 'duplicate occurrences share the source cache entries').toBe(5);
     // The gap between the two placements is empty.
     expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 10)).toBeNull();
+  });
+
+  it('renders spaced linked interiors with duplicate/blend semantics and one cycle-local cache identity across repeats and shared loops', () => {
+    const spaced = [record('A', 0), record('B', 3), record('C', 6)];
+    installRecords(spaced, CAPACITY, { enabled: true, mode: 'duplicate' });
+    installLoops([
+      loopClip('loop-1', 10, ['A', 'B', 'C'], 2),
+      loopClip('loop-2', 24, ['A', 'B', 'C'], 1),
+    ]);
+
+    const duplicateSources = [11, 18, 25].map((frame) => physicPaintStore.getRotoPhysicalRenderSource(LAYER, frame));
+    for (const source of duplicateSources) {
+      expect(source).toMatchObject({
+        kind: 'generated',
+        leftKeyId: 'A',
+        rightKeyId: 'B',
+        interpolationMode: 'duplicate',
+      });
+      if (!source || source.kind !== 'generated') throw new Error('Expected linked generated duplicate source.');
+      expect(source.renderedFrame.dataUrl).toBe(spaced[0].payload.dataUrl);
+    }
+    expect(new Set(duplicateSources.map((source) => source && 'cacheRevision' in source ? source.cacheRevision : null)).size).toBe(1);
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 12)).toMatchObject({ kind: 'generated', appFrame: 12 });
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 17)).toMatchObject({ kind: 'real', keyId: 'A', appFrame: 17 });
+
+    const originalDocument = globalThis.document;
+    const outputCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({ globalAlpha: 1, clearRect: vi.fn(), drawImage: vi.fn() }),
+      toDataURL: () => 'data:image/png;base64,linked-loop-blend',
+    } as unknown as HTMLCanvasElement;
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: { createElement: () => outputCanvas },
+    });
+    registerRotoAlphaCanvasFrame(spaced[0].payload.dataUrl, { width: 4, height: 4 } as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(spaced[1].payload.dataUrl, { width: 4, height: 4 } as HTMLCanvasElement);
+    try {
+      installRecords(spaced, CAPACITY, { enabled: true, mode: 'blend' });
+      installLoops([loopClip('loop-blend', 10, ['A', 'B', 'C'], 2)]);
+      const blend = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 12);
+      expect(blend).toMatchObject({
+        kind: 'generated',
+        appFrame: 12,
+        leftKeyId: 'A',
+        rightKeyId: 'B',
+        interpolationMode: 'blend',
+        renderedFrame: { dataUrl: 'data:image/png;base64,linked-loop-blend' },
+      });
+    } finally {
+      Object.defineProperty(globalThis, 'document', { configurable: true, value: originalDocument });
+    }
+  });
+
+  it('returns null for spaced linked gaps when interpolation is disabled', () => {
+    installRecords([record('A', 0), record('B', 3), record('C', 6)]);
+    installLoops([loopClip('loop-gap', 10, ['A', 'B', 'C'], 2)]);
+
+    expect(expectRealSource(LAYER, 10).keyId).toBe('A');
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 11)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 12)).toBeNull();
+    expect(expectRealSource(LAYER, 13).keyId).toBe('B');
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 18)).toBeNull();
   });
 
   it('keeps projection real/generated authority inside keyed spans while loops resolve empty frames', () => {

@@ -246,6 +246,29 @@ describe('useRotoTimelineModel loop resolution threading (43-02)', () => {
     expect(model.selectedAppFrame.value).toBeNull();
   });
 
+  it('threads interpolation state into spaced linked generated/gap variants without selecting them', () => {
+    const records = [realKeyRecord('A', 0), realKeyRecord('B', 3), realKeyRecord('C', 6)];
+    const loop = [{ loopId: 'L1', placementStart: 10, sourceKeyIds: ['A', 'B', 'C'], repeat: 2 as const, mode: 'static' as const }];
+    const generated = createRotoTimelineModel(loopInput({
+      rotoKeyRecords: records,
+      rotoInterpolationState: { enabled: true, mode: 'duplicate' },
+      rotoLoopClips: loop,
+      currentFrame: 11,
+    }));
+    expect(generated.loopResolutionContext.value.ranges[0]).toMatchObject({ cycleLength: 7, sourceFrameCount: 3 });
+    expect(generated.getFrameResolution(11)).toMatchObject({ kind: 'linked-generated', progress: 1 / 3 });
+    expect(generated.selectedKeyId.value).toBeNull();
+
+    const gaps = createRotoTimelineModel(loopInput({
+      rotoKeyRecords: records,
+      rotoInterpolationState: { enabled: false, mode: 'duplicate' },
+      rotoLoopClips: loop,
+      currentFrame: 11,
+    }));
+    expect(gaps.getFrameResolution(11)).toMatchObject({ kind: 'linked-gap' });
+    expect(gaps.selectedKeyId.value).toBeNull();
+  });
+
   it('absent loop inputs derive an empty loop resolution context with unchanged behavior', () => {
     const model = createRotoTimelineModel(physicalInput());
 

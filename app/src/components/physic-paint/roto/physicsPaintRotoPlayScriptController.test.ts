@@ -1290,6 +1290,22 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.loopReadout.value).toBe('Requested: 10f (5f × 2) · Effective: 8f — shortened by the next clip');
     });
 
+    it('splits physical cycle duration from source frame count after source keys are spaced', async () => {
+      const sourceKeyIds = ['S1', 'S2', 'S3'] as const;
+      const spacedRecords = sourceKeyIds.map((keyId, index) => physicalRecord(keyId, index * 3, `src-${keyId}`));
+      const test = loopOpHarness([loopClip('L1', 20, 3, sourceKeyIds)], {
+        physicalRecords: spacedRecords,
+        layerEndExclusive: 100,
+      });
+
+      await test.controller.openLoopEdit('L1');
+      expect(test.controller.countText.value).toBe('3');
+      expect(test.controller.status.value).toBe('Loop Clip · F20 · Cycle 3f');
+      expect(test.controller.loopReadout.value).toBe('Requested: 21f (7f × 3) · Effective: 21f');
+      test.controller.repeatText.value = '4';
+      expect(test.controller.loopReadout.value).toBe('Requested: 28f (7f × 4) · Effective: 28f');
+    });
+
     it('derives the infinity readout from the shared derivation bounded by the parent end', async () => {
       const test = loopOpHarness([loopClip('L1', 10, 'infinity')]);
       await test.controller.openLoopEdit('L1');

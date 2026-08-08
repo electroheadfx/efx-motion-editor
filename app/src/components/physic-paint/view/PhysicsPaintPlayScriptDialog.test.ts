@@ -895,6 +895,21 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     expect(findAll(footer, (vnode) => textOf(vnode) === 'Regenerate source cycle')).toHaveLength(0);
   });
 
+  it('keeps the source edit count separate from a longer physical cycle-duration readout', () => {
+    const spacedTarget = { ...target, sourceKeyIds: ['S1', 'S2', 'S3'] };
+    const { controller } = createFakeController({
+      ...loopEditSeed,
+      loopEditTarget: spacedTarget,
+      countText: '3',
+      loopReadout: 'Requested: 21f (7f × 3) · Effective: 21f',
+    });
+    const tree = renderDialog(controller);
+
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-header-range')))).toBe('F10 · Cycle 3f');
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-summary-requested')))).toBe('Requested: 21f (7f × 3)');
+    expect(findOne(tree, byId('physics-play-script-count')).props.value).toBe('3');
+  });
+
   it('locks Frames-per-cycle and every source field at reduced opacity with values preserved; ONLY Repeat + Infinity stay editable', () => {
     const { controller } = createFakeController(loopEditSeed);
     const tree = renderDialog(controller);

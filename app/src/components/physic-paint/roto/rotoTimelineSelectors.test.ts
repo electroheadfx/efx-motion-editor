@@ -194,6 +194,40 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
     });
   });
 
+  it('keeps linked-generated and linked-gap interiors non-selectable and non-draggable', () => {
+    for (const resolution of [
+      {
+        kind: 'linked-generated' as const,
+        loopId: 'L1',
+        appFrame: 16,
+        leftSourceKeyId: 'A',
+        rightSourceKeyId: 'B',
+        leftSourceIndex: 0,
+        rightSourceIndex: 1,
+        progress: 1 / 3,
+        cycleOffset: 1,
+        repeatInstance: 1,
+      },
+      {
+        kind: 'linked-gap' as const,
+        loopId: 'L1',
+        appFrame: 16,
+        leftSourceKeyId: 'A',
+        rightSourceKeyId: 'B',
+        leftSourceIndex: 0,
+        rightSourceIndex: 1,
+        cycleOffset: 1,
+        repeatInstance: 1,
+      },
+    ]) {
+      expect(getRotoFrameKeyInteraction(resolution)).toEqual({
+        keySelectable: false,
+        dragEligible: false,
+        selectedKeyId: null,
+      });
+    }
+  });
+
   it('selectRotoPhysicalTimelineStructuralView derives the loop resolution context from loopClips', () => {
     const structural = selectRotoPhysicalTimelineStructuralView({
       realKeyRecords: LOOP_SOURCE_KEYS.map((identity) => ({

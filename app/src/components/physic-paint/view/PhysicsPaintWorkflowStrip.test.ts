@@ -1223,6 +1223,31 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     ].join(' ')).not.toContain('0f65c808-raw-loop-uuid');
   });
 
+  it('uses physical cycle duration for rail copy while source-frame copy keeps the source count', () => {
+    const clip = {
+      loopId: 'loop-spaced',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B', 'C'],
+      repeat: 2 as const,
+      mode: 'progressive' as const,
+    };
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: [
+        { keyId: 'A', appFrame: 0 },
+        { keyId: 'B', appFrame: 3 },
+        { keyId: 'C', appFrame: 6 },
+      ],
+      loopClips: [clip],
+      parentEndExclusive: 40,
+      capacity: 120,
+      interpolationEnabled: true,
+    });
+    const presentation = projectPhysicsPaintLoopClipPresentation(context.ranges[0], clip, 'Walk');
+
+    expect(presentation.cycleLabel).toBe('Cycle 7f × 2 = 14f');
+    expect(context.ranges[0].sourceFrameCount).toBe(3);
+  });
+
   it('projects one compact segment without materializing repeated frames', () => {
     const context = derivePhysicPaintRotoLoopRanges({
       identities: Array.from({ length: 5 }, (_, index) => ({ keyId: `source-${index}`, appFrame: index })),

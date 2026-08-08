@@ -80,6 +80,27 @@ describe('getRotoPhysicalSelectableKeyId — virtual occurrence exclusion (D-23/
     expect(unresolved.kind).toBe('linked-unresolved');
     expect(getRotoPhysicalSelectableKeyId(unresolved)).toBeNull();
   });
+
+  it('keeps linked-generated and linked-gap interiors non-selectable', () => {
+    const variants = [
+      {
+        kind: 'linked-generated' as const,
+        loopId: 'L1', appFrame: 16,
+        leftSourceKeyId: 'A', rightSourceKeyId: 'B',
+        leftSourceIndex: 0, rightSourceIndex: 1,
+        progress: 1 / 3, cycleOffset: 1, repeatInstance: 1,
+      },
+      {
+        kind: 'linked-gap' as const,
+        loopId: 'L1', appFrame: 16,
+        leftSourceKeyId: 'A', rightSourceKeyId: 'B',
+        leftSourceIndex: 0, rightSourceIndex: 1,
+        cycleOffset: 1, repeatInstance: 1,
+      },
+    ];
+
+    expect(variants.map(getRotoPhysicalSelectableKeyId)).toEqual([null, null]);
+  });
 });
 
 describe('createRotoPhysicalTimelinePorts — loop resolution pass-through', () => {
