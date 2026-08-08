@@ -279,8 +279,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const styles = css();
     const badge = getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-linked-loop-badge {');
     const dot = getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-linked-loop-badge::after {');
-    expect(badge).toContain('box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.92)');
-    expect(dot).toContain('background: rgba(255, 255, 255, 0.96)');
+    expect(badge).toContain('box-shadow: inset 0 0 0 1px rgba(211, 215, 221, 0.82)');
+    expect(dot).toContain('background: rgba(221, 224, 229, 0.9)');
     expect(dot).toContain('width: 4px');
     expect(dot).toContain('height: 4px');
     expect(dot).toContain('top: 2px');
@@ -1241,9 +1241,10 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
       { startFrame: 0, endFrameExclusive: 120 },
       18,
     )).toEqual({ left: 180, width: 450 });
-    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-segment\s*\{[^}]*height:\s*3px[^}]*background:\s*#2fa56a/s);
+    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-segment\s*\{[^}]*height:\s*3px[^}]*background:\s*#8b5cf6/s);
+    expect(css()).toContain('background: #a78bfa');
     expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\s*\{[^}]*height:\s*12px/s);
-    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target::after\s*\{[^}]*height:\s*24px[^}]*pointer-events:\s*none/s);
+    expect(css()).not.toContain('.physics-paint-loop-clip-rail-target::after');
   });
 
   it('does not alter physical-cell click ordering or the real-key-only drag guard', () => {

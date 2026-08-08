@@ -310,14 +310,13 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(segment).toBeTruthy();
     const railSegmentRule = cssRule('.physics-paint-loop-clip-rail-segment {');
     expect(railSegmentRule).toContain('height: 3px');
-    expect(railSegmentRule).toContain('background: #2fa56a');
+    expect(railSegmentRule).toContain('background: #8b5cf6');
+    expect(physicsPaintStudioCss).toContain('background: #a78bfa');
+    expect(physicsPaintStudioCss).toContain('linear-gradient(to right, #8b5cf6 0 calc(100% - 6px), #f59e0b calc(100% - 6px))');
+    expect(physicsPaintStudioCss).toContain('linear-gradient(to right, #a78bfa 0 calc(100% - 6px), #fbbf24 calc(100% - 6px))');
     expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 12px');
     expect(cssRule('.physics-paint-loop-clip-rail-anchor {')).toContain('min-width: 12px');
-    const rangeOutlineRule = cssRule('.physics-paint-loop-clip-rail-target::after {');
-    expect(rangeOutlineRule).toContain('top: 7px');
-    expect(rangeOutlineRule).toContain('height: 24px');
-    expect(rangeOutlineRule).toContain('pointer-events: none');
-    expect(rangeOutlineRule).toContain('border: 1px solid rgba(76, 214, 139, 0.9)');
+    expect(physicsPaintStudioCss).not.toContain('.physics-paint-loop-clip-rail-target::after');
 
     (anchor.props.onPointerEnter as () => void)();
     expect(typeof target.props.onfocusin).toBe('function');
@@ -417,11 +416,11 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(linkedCells[0].props.tooltipCopy).toBe('Linked · Repeat 1 · Source frame 1 of 5');
     expect(linkedCells[0].props.ariaLabel).toContain('Linked · Repeat 1 · Source frame 1 of 5');
     expect(String(linkedCells[0].props.ariaLabel)).not.toContain('No Roto content');
-    expect(cssRule('.physics-paint-roto-cell.roto-linked-loop-badge {')).toContain('rgba(255, 255, 255, 0.92)');
+    expect(cssRule('.physics-paint-roto-cell.roto-linked-loop-badge {')).toContain('rgba(211, 215, 221, 0.82)');
     const linkedDotRule = cssRule('.physics-paint-roto-cell.roto-linked-loop-badge::after {');
     expect(linkedDotRule).toContain('width: 4px');
     expect(linkedDotRule).toContain('height: 4px');
-    expect(linkedDotRule).toContain('rgba(255, 255, 255, 0.96)');
+    expect(linkedDotRule).toContain('rgba(221, 224, 229, 0.9)');
 
     const onCloseLoopClip = vi.fn();
     const normalPanel = renderScriptsPanel(null, onOpenLoopEdit, onCloseLoopClip);
