@@ -2639,7 +2639,7 @@ button.destructive {
 
 .physics-paint-loop-clip-rail-target::after {
   position: absolute;
-  top: 0;
+  top: 7px;
   left: 0;
   box-sizing: border-box;
   width: 100%;

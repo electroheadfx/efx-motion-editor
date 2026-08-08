@@ -314,6 +314,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 12px');
     expect(cssRule('.physics-paint-loop-clip-rail-anchor {')).toContain('min-width: 12px');
     const rangeOutlineRule = cssRule('.physics-paint-loop-clip-rail-target::after {');
+    expect(rangeOutlineRule).toContain('top: 7px');
     expect(rangeOutlineRule).toContain('height: 24px');
     expect(rangeOutlineRule).toContain('pointer-events: none');
     expect(rangeOutlineRule).toContain('border: 1px solid rgba(76, 214, 139, 0.9)');
