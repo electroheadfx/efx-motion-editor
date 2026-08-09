@@ -227,7 +227,7 @@ Plans:
   5. A compact non-interactive left-edge cut appears inside the existing real-key cell only when the break-bearing key has a predecessor, remains visible with Interpolation Off, adds zero row/track geometry, and appends `Starts a new interpolation segment` to the existing tooltip/accessibility copy.
   6. Focused and full automated gates preserve occupied Insert, physical-key, painting, deletion, Copy/Paste, drag, Key Spacing, Loop Clip, interpolation, persistence, selection, and history behavior; the phase remains automated-ready until the user approves the native visual/product UAT matrix.
 
-**Plans**: 6 plans
+**Plans**: 12 plans
 Plans:
 **Wave 1**
 
@@ -253,7 +253,28 @@ Plans:
 
 - [x] 43.1-06-PLAN.md — Full regression gate, source-coverage closure, and blocking native visual/product UAT (GAP-01..GAP-06)
 
-**Planning note:** spec-less probe fallback skipped: phase had no requirement IDs at plan-phase init; goal-backward must_haves were derived from the activated SPECS prompt, CONTEXT.md, RESEARCH.md, and canonicalized GAP-01..GAP-06 instead.
+**Wave 7** *(two independent gap-closure branches, both blocked on Plan 06)*
+
+- [ ] 43.1-07-PLAN.md — TDD: macOS-native atomic Physics Paint cache-generation publication via fixed-path `renameatx_np` exchange, typed invoke, and non-feature-gated Rust integration proof (depends on 43.1-06; GAP-03, GAP-06)
+- [ ] 43.1-08-PLAN.md — TDD: standalone transport-safe ordinary intent parser/serializer and canonical resolver reproduction without payload activation (depends on 43.1-06; GAP-03)
+
+**Wave 8** *(blocked on Plan 08)*
+
+- [ ] 43.1-09-PLAN.md — TDD: atomic required-intent payload activation across every action, coordinator, parser fixture, and typed caller (depends on 43.1-08; GAP-03, GAP-06)
+
+**Wave 9** *(blocked on Plan 09)*
+
+- [ ] 43.1-10-PLAN.md — TDD: intent-aware dedup fingerprint plus parent canonical recomputation and complete semantic comparison (depends on 43.1-09; GAP-03, GAP-06)
+
+**Wave 10** *(blocked on Plan 10)*
+
+- [ ] 43.1-11-PLAN.md — TDD: authority-scoped immutable replay ledger, selection/cursor-aware live preflight, and complete production/harness migration (depends on 43.1-10; GAP-03, GAP-06)
+
+**Wave 11** *(blocked on independent Plan 07 and the Plan 08→09→10→11 chain)*
+
+- [ ] 43.1-12-PLAN.md — Automated focused/full Nyquist revalidation with actual validation evidence and preserved native approval (depends on 43.1-07 and 43.1-11; GAP-03, GAP-06)
+
+**Planning note:** spec-less probe fallback skipped: phase had no requirement IDs at plan-phase init; goal-backward must_haves were derived from the activated SPECS prompt, CONTEXT.md, RESEARCH.md, and canonicalized GAP-01..GAP-06 instead. Plans 07-12 are additive verification-gap closure and do not reopen completed Plans 01-06 or approved native UAT.
 
 ### Phase 44: Integrated UAT + Signed Release
 
@@ -424,5 +445,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | Complete    | 2026-08-05 |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
-| 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 6/6 | In Progress|  |
+| 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 6/12 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |
