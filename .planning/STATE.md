@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.1
 current_phase_name: Intentional Gap Insert and Local Interpolation Breaks
 status: executing
-stopped_at: Completed 43.1-01-PLAN.md
-last_updated: "2026-08-09T14:19:18.476Z"
+stopped_at: Completed 43.1-02-PLAN.md
+last_updated: "2026-08-09T15:04:53.829Z"
 last_activity: 2026-08-09
 last_activity_desc: Phase 43.1 planned and independently verified; ready to execute
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 35
-  completed_plans: 30
+  completed_plans: 31
   percent: 57
 ---
 
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.1 (Intentional Gap Insert and Local Interpolation Breaks) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-08-09 — Phase 43.1 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [█████████░] 86%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -182,6 +182,7 @@ Progress: [█████████░] 86%
 | Phase 43 P06 | ~95min | 3 tasks | 18 files |
 | Phase 43 P08 | 63m | 3 tasks | 15 files |
 | Phase 43.1 P01 | 27 min | 2 tasks | 10 files |
+| Phase 43.1 P02 | 20 min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -241,6 +242,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: Plan 43-08: Delete keeps delete-loop correlation identity but dispatches unlinkLoop, preserving D-03 unlink-only semantics.
 - [Phase ?]: Plan 43-08: Retry delivery reuses one operationId; Studio deduplicates identical in-flight requests and rejects changed-content ID reuse.
 - [Phase ?]: 43.1-01: D-01 confirmed — incoming interpolation breaks are canonical facts owned by stable real-key identity; persisted absence hydrates empty, omitted apply input retains accepted ownership, and explicit empty replaces it.
+- [Phase ?]: 43.1-02: Incoming-only exclusion is derived solely from the owning right real-key identity in the shared physical projection.
+- [Phase ?]: 43.1-02: insert-empty-segment is a distinct fail-closed semantic operation carrying one supplied blank key and one complete break replacement.
+- [Phase ?]: 43.1-02: Unchanged edits emit null break replacement; delete and empty-segment insert emit complete frozen ownership collections.
+- [Phase ?]: 43.1-02: Structural projection memoization includes immutable incoming-break array identity while selection and cursor remain non-structural.
 
 ### Pending Todos
 
@@ -425,8 +430,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-09T14:19:18.463Z
-Stopped at: Completed 43.1-01-PLAN.md
+Last session: 2026-08-09T15:04:53.818Z
+Stopped at: Completed 43.1-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

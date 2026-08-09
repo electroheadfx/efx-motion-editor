@@ -1,15 +1,15 @@
 ---
 schema_version: 1
-open_count: 8
+open_count: 10
 waived_count: 1
 fixed_count: 19
-total_count: 28
-last_updated: 2026-08-07T11:01:42.037Z
+total_count: 30
+last_updated: 2026-08-09T15:05:03.053Z
 ---
 
 # Broken Windows Ledger
 
-> Cross-phase defect register. `/gsd-ship` blocks while `open_count > 0`.
+> Cross-phase defect register. With `workflow.windows_enforce` enabled, `/gsd-ship` blocks while `open_count > 0`.
 > Waive with `gsd-tools windows waive <id> "<reason>"` (reason required).
 > Mark fixed with `gsd-tools windows fixed <id>`.
 
@@ -43,6 +43,8 @@ last_updated: 2026-08-07T11:01:42.037Z
 | 26 | quick-260801-jun | unrun-verify | app/src-tauri/src/services/project_io.rs |  | Pre-existing cargo test lib-test compile failure (stale roto field names); verification battery item 5 red | open |  | 2026-08-01T13:41:39.096Z |  |
 | 27 | 41 | deviation | app/src/components/physic-paint/audio/efxPaintAudioMonitor.ts |  | 41-04 deviation: revisioned-update restart decision moved after prepare await (toggle race serialization) | open |  | 2026-08-04T22:36:07.192Z |  |
 | 28 | 43 | unmet-truth | app/src/viteBuild.test.ts | 184 | Pre-existing main desktop chunk exceeds the locked 1100 kB warning budget (1,112.66 kB at pre-GREEN baseline 02fa699d). | open |  | 2026-08-07T11:01:42.037Z |  |
+| 29 | 43.1 | deviation | app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.test.ts |  | Inherited break lifecycle behaviors were characterized green instead of forcing artificial RED failures | open |  | 2026-08-09T15:05:02.967Z |  |
+| 30 | 43.1 | deviation | app/src/stores/physicPaintStore.rotoPhysicalStructuralCache.test.ts |  | Structural cache test and projection threading landed in the same atomic commit | open |  | 2026-08-09T15:05:03.053Z |  |
 
 ````json
 [
@@ -380,6 +382,30 @@ last_updated: 2026-08-07T11:01:42.037Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-07T11:01:42.037Z",
+    "resolved_at": null
+  },
+  {
+    "id": 29,
+    "kind": "deviation",
+    "phase": "43.1",
+    "file": "app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.test.ts",
+    "line": null,
+    "description": "Inherited break lifecycle behaviors were characterized green instead of forcing artificial RED failures",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-09T15:05:02.967Z",
+    "resolved_at": null
+  },
+  {
+    "id": 30,
+    "kind": "deviation",
+    "phase": "43.1",
+    "file": "app/src/stores/physicPaintStore.rotoPhysicalStructuralCache.test.ts",
+    "line": null,
+    "description": "Structural cache test and projection threading landed in the same atomic commit",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-09T15:05:03.053Z",
     "resolved_at": null
   }
 ]
