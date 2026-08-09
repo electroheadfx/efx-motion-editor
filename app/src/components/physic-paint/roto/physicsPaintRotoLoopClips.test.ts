@@ -295,8 +295,10 @@ describe('parsePhysicPaintRotoPhysicalDocument incoming interpolation breaks', (
   });
 
   it('round-trips valid ownership and rejects malformed duplicate or orphan owners', () => {
-    const valid = baseDocument();
-    valid.incomingInterpolationBreakKeyIds = ['k3'];
+    const valid = {
+      ...baseDocument(),
+      incomingInterpolationBreakKeyIds: ['k3'],
+    };
     valid.revision = buildPhysicPaintRotoPhysicalRevision(
       valid.realKeyRecords,
       valid.interpolation,

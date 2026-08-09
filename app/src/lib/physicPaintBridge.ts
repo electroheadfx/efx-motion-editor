@@ -490,6 +490,79 @@ function sameApplyPayloadRecords(
   });
 }
 
+function isCanonicalBlankRotoPayload(
+  payload: import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyPayload,
+  destinationAppFrame: number,
+): boolean {
+  if (payload.frameIndex !== 0
+    || payload.appFrame !== destinationAppFrame
+    || !Number.isInteger(payload.width)
+    || !Number.isInteger(payload.height)
+    || (payload.width ?? 0) <= 0
+    || (payload.height ?? 0) <= 0
+    || typeof document === 'undefined') return false;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = payload.width as number;
+    canvas.height = payload.height as number;
+    return payload.dataUrl === canvas.toDataURL('image/png');
+  } catch {
+    return false;
+  }
+}
+
+function validateInsertEmptySegmentPhysicalDelta(input: {
+  readonly payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>;
+  readonly currentRecords: readonly import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord[];
+  readonly proposedRecords: readonly import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord[];
+  readonly currentLoopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly proposedLoopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly currentIncomingInterpolationBreakKeyIds: readonly string[];
+  readonly proposedIncomingInterpolationBreakKeyIds: readonly string[];
+  readonly capacity: number;
+}): string | null {
+  const {
+    payload,
+    currentRecords,
+    proposedRecords,
+    currentLoopClips,
+    proposedLoopClips,
+    currentIncomingInterpolationBreakKeyIds,
+    proposedIncomingInterpolationBreakKeyIds,
+    capacity,
+  } = input;
+  const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
+    operationKind: 'insert-empty-segment',
+    currentRecords,
+    nextRecords: proposedRecords,
+    semanticDelta: payload.semanticDelta,
+    capacity,
+    selectedKeyId: payload.selectedKeyId,
+    selectedAppFrame: payload.selectedAppFrame,
+  });
+  if (!semanticValidation.ok) return semanticValidation.error;
+  const delta = payload.semanticDelta as Extract<NonNullable<typeof payload.semanticDelta>, { kind: 'insert-empty-segment' }>;
+  const inserted = proposedRecords.find((record) => record.keyId === delta.insertedKeyId);
+  if (!inserted || !isCanonicalBlankRotoPayload(inserted.payload, delta.destinationAppFrame)) {
+    return 'Empty-segment insert must carry the canonical blank Paint payload.';
+  }
+  if (stableSerialize(proposedLoopClips, new WeakSet<object>())
+    !== stableSerialize(currentLoopClips, new WeakSet<object>())) {
+    return 'Empty-segment insert must preserve Loop Clips exactly.';
+  }
+  const expectedBreaks = [...currentIncomingInterpolationBreakKeyIds, delta.insertedKeyId];
+  if (proposedIncomingInterpolationBreakKeyIds.length !== expectedBreaks.length
+    || proposedIncomingInterpolationBreakKeyIds.some((keyId, index) => keyId !== expectedBreaks[index])) {
+    return 'Empty-segment insert must add exactly its fresh identity to incoming interpolation breaks.';
+  }
+  const projectedTarget = physicPaintStore.getRotoCacheFrames(payload.layerId)
+    .find((frame) => frame.appFrame === delta.destinationAppFrame);
+  if (projectedTarget && projectedTarget.source !== 'real-key') {
+    return 'Empty-segment destination became generated or linked before commit.';
+  }
+  return null;
+}
+
 function validatePlayScriptPhysicalDelta(input: {
   readonly payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>;
   readonly layer: Layer;
@@ -782,6 +855,19 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     proposedLoopClips,
     proposedIncomingInterpolationBreakKeyIds,
   );
+  if (payload.operationKind === 'insert-empty-segment') {
+    const validationError = validateInsertEmptySegmentPhysicalDelta({
+      payload,
+      currentRecords,
+      proposedRecords,
+      currentLoopClips,
+      proposedLoopClips,
+      currentIncomingInterpolationBreakKeyIds,
+      proposedIncomingInterpolationBreakKeyIds,
+      capacity,
+    });
+    if (validationError) return reject(validationError, stagedRevision);
+  }
   if (payload.operationKind === 'duplicate-key' || payload.operationKind === 'paste-key' || payload.operationKind === 'paste-key-group') {
     const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
       operationKind: payload.operationKind,

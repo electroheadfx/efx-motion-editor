@@ -739,7 +739,7 @@ describe('physicPaintBridge', () => {
       loopClips: [],
       incomingInterpolationBreakKeyIds: ['key-10', 'key-5'],
     });
-    expect(result.ok ? result.acceptedRevision : null).toBe(accepted?.revision);
+    expect(result.ok && 'acceptedRevision' in result ? result.acceptedRevision : null).toBe(accepted?.revision);
   });
 
   it('rejects stale false or unrelated empty-segment deltas without mutation', async () => {
