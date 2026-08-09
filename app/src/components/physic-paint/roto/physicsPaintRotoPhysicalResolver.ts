@@ -419,6 +419,7 @@ export interface PhysicPaintRotoPhysicalTimelineProjectionInput {
   readonly identities: readonly PhysicPaintRotoKeyIdentity[];
   readonly capacity: number;
   readonly interpolationEnabled: boolean;
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -433,6 +434,24 @@ function isNonNegativeInteger(value: unknown): value is number {
 
 function isBoundedKeyId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= KEY_ID_MAX_LENGTH;
+}
+
+function validateIncomingInterpolationBreakKeyIds(
+  value: unknown,
+  keyIds: ReadonlySet<string>,
+): { ok: true; value: readonly string[] } | { ok: false; error: string } {
+  if (value === undefined) return { ok: true, value: Object.freeze([]) };
+  if (!Array.isArray(value)) return { ok: false, error: 'Incoming interpolation breaks must be an array.' };
+  const seen = new Set<string>();
+  const validated: string[] = [];
+  for (const keyId of value) {
+    if (!isBoundedKeyId(keyId)) return { ok: false, error: 'Incoming interpolation break owner is malformed.' };
+    if (seen.has(keyId)) return { ok: false, error: `Duplicate incoming interpolation break owner "${keyId}".` };
+    if (!keyIds.has(keyId)) return { ok: false, error: `Incoming interpolation break owner "${keyId}" does not exist.` };
+    seen.add(keyId);
+    validated.push(keyId);
+  }
+  return { ok: true, value: Object.freeze(validated) };
 }
 
 function clonePayloadAtFrame(
@@ -1973,6 +1992,7 @@ function buildProjectionFromMapping(
   mapping: ReadonlyMap<string, number>,
   capacity: number,
   interpolationEnabled: boolean,
+  incomingInterpolationBreakKeyIds: readonly string[] = [],
 ): PhysicPaintRotoPhysicalTimelineProjection {
   // 1. Deterministic ascending physical order.
   const orderedPairs = Array.from(mapping.entries()).sort((a, b) => a[1] - b[1]);
@@ -1985,10 +2005,12 @@ function buildProjectionFromMapping(
 
   // 2. Derive generated cells per D-02: strict interiors only, no leading/trailing.
   const generatedCells: PhysicPaintRotoPhysicalCell[] = [];
+  const incomingBreakOwners = new Set(incomingInterpolationBreakKeyIds);
   if (interpolationEnabled && orderedPairs.length >= 2) {
     for (let i = 0; i < orderedPairs.length - 1; i += 1) {
       const left = orderedPairs[i];
       const right = orderedPairs[i + 1];
+      if (incomingBreakOwners.has(right[0])) continue;
       const start = left[1] + 1;
       const end = right[1] - 1;
       for (let frame = start; frame <= end; frame += 1) {
@@ -2366,13 +2388,25 @@ export function projectPhysicPaintRotoPhysicalTimeline(
     return projectionFailure(failure.code, failure.operationKind, failure.text);
   }
   const identities = identitiesResult.value;
+  const incomingBreaksResult = validateIncomingInterpolationBreakKeyIds(
+    input.incomingInterpolationBreakKeyIds,
+    identities.keyIds,
+  );
+  if (!incomingBreaksResult.ok) {
+    return projectionFailure('malformed-target', null, incomingBreaksResult.error);
+  }
 
   const mapping = new Map<string, number>();
   for (const identity of identities.ordered) {
     mapping.set(identity.keyId, identity.appFrame);
   }
 
-  const projection = buildProjectionFromMapping(mapping, input.capacity, input.interpolationEnabled);
+  const projection = buildProjectionFromMapping(
+    mapping,
+    input.capacity,
+    input.interpolationEnabled,
+    incomingBreaksResult.value,
+  );
   return Object.freeze({
     ok: true as const,
     projection,
