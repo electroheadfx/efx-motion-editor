@@ -94,6 +94,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
   const initial = fixture();
   let records: readonly PhysicPaintRotoRealKeyRecord[] = initial.records;
   let loopClips: readonly PhysicPaintRotoLoopClip[] = initial.loopClips;
+  let incomingInterpolationBreakKeyIds: readonly string[] = ['C'];
   let interpolation = INTERPOLATION;
   let currentFrame = 0;
   let selectedKeyId: string | null = null;
@@ -191,6 +192,13 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       logDiagnostic: vi.fn(),
     },
   };
+  Object.assign(ports.records, {
+    getIncomingInterpolationBreakKeyIds: () => incomingInterpolationBreakKeyIds,
+    replaceIncomingInterpolationBreakKeyIds: (_layerId: string, keyIds: readonly string[]) => {
+      incomingInterpolationBreakKeyIds = keyIds;
+      return { ok: true as const };
+    },
+  });
   const coordinator = useRotoPhysicalEditCoordinator(ports);
   const execute = () => coordinator.executePhysicalEdit({
     proposal: initial.proposal,
@@ -242,6 +250,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       appliedFrameCount: payload.records.length,
       ok: true,
       loopClips: payload.loopClips,
+      incomingInterpolationBreakKeyIds: payload.incomingInterpolationBreakKeyIds,
     };
     return coordinator.consumePhysicalEditResult(result);
   };
@@ -256,6 +265,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     sendPhysicalEditPayload,
     getRecords: () => records,
     getLoopClips: () => loopClips,
+    getIncomingInterpolationBreakKeyIds: () => incomingInterpolationBreakKeyIds,
     getPayload: () => payload,
   };
 }
@@ -298,10 +308,17 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     });
     expect(test.getLoopClips().find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(10);
     expect(test.getPayload()?.loopClips?.find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(10);
+    expect(test.getPayload()?.incomingInterpolationBreakKeyIds).toEqual(['C']);
+    expect(test.getPayload()?.incomingInterpolationBreakKeyIds).not.toBe(test.getIncomingInterpolationBreakKeyIds());
 
     expect(test.accept()).toBe('accepted');
     expect(test.coordinator.acceptedOutput.value?.after.loopClips.find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(10);
     expect(test.coordinator.acceptedOutput.value?.before.loopClips.find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(6);
+    expect(test.coordinator.acceptedOutput.value?.before.incomingInterpolationBreakKeyIds).toEqual(['C']);
+    expect(test.coordinator.acceptedOutput.value?.after.incomingInterpolationBreakKeyIds).toEqual(['C']);
+    expect(test.coordinator.acceptedOutput.value?.before.incomingInterpolationBreakKeyIds).not.toBe(
+      test.coordinator.acceptedOutput.value?.after.incomingInterpolationBreakKeyIds,
+    );
   });
 
   it('restores the complete before snapshot when Loop Clip staging fails after record replacement', async () => {
@@ -316,6 +333,7 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       Y: 7,
     });
     expect(test.getLoopClips().find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(6);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
     expect(test.replaceRecords).toHaveBeenCalledTimes(2);
     expect(test.replaceLoopClips).toHaveBeenCalledTimes(2);
     expect(test.sendPhysicalEditPayload).not.toHaveBeenCalled();
@@ -334,6 +352,7 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       Y: 7,
     });
     expect(test.getLoopClips().find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(6);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
     expect(test.coordinator.acceptedOutput.value).toBeNull();
     expect(test.coordinator.failureOutput.value?.reason).toBe('transport');
   });
