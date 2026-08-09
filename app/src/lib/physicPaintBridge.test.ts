@@ -69,6 +69,29 @@ const makePhysicalRecord = (keyId: string, appFrame: number) => ({
   },
 });
 
+const TRANSPARENT_ONE_PIXEL_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XfM0WQAAAABJRU5ErkJggg==';
+const OPAQUE_ONE_PIXEL_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nH0AAAAASUVORK5CYII=';
+
+function makeEmptySegmentRecord(
+  keyId: string,
+  appFrame: number,
+  dataUrl = TRANSPARENT_ONE_PIXEL_PNG,
+) {
+  return {
+    keyId,
+    appFrame,
+    payload: {
+      frameIndex: 0,
+      appFrame,
+      dataUrl,
+      width: 1,
+      height: 1,
+    },
+  };
+}
+
 function seedPhysicalDocument(
   layerId: string,
   records: ReturnType<typeof makePhysicalRecord>[],
@@ -87,6 +110,19 @@ function seedPhysicalDocument(
     incomingInterpolationBreakKeyIds,
   });
   if (!result.ok) throw new Error(result.error);
+}
+
+function installCanonicalBlankCanvas(): void {
+  vi.stubGlobal('document', {
+    createElement: (tagName: string) => {
+      if (tagName.toLowerCase() !== 'canvas') throw new Error(`Unexpected element request: ${tagName}`);
+      return {
+        width: 0,
+        height: 0,
+        toDataURL: () => TRANSPARENT_ONE_PIXEL_PNG,
+      } as unknown as HTMLCanvasElement;
+    },
+  });
 }
 
 
@@ -651,6 +687,178 @@ describe('physicPaintBridge', () => {
       expect(rotoPhysicalRevision.peek()).toBe(beforeRevisionSignal);
     }
     open.mockRestore();
+  });
+
+  it('validates insert-empty-segment semantics independently', async () => {
+    installCanonicalBlankCanvas();
+    const layer = physicLayer();
+    mockLayers([layer]);
+    seedPhysicalDocument(layer.id, [
+      makePhysicalRecord('key-0', 0),
+      makePhysicalRecord('key-10', 10),
+    ], { enabled: false, mode: 'duplicate' }, ['key-10']);
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 5 });
+
+    expect(launch.ok).toBe(true);
+    if (!launch.ok || !launch.data.rotoPhysical) return;
+    const inserted = makeEmptySegmentRecord('key-5', 5);
+    const records = [...launch.data.rotoPhysical.records, inserted]
+      .sort((left, right) => left.appFrame - right.appFrame);
+    const result = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'insert-empty-segment-valid',
+      operationKind: 'insert-empty-segment',
+      layerId: layer.id,
+      startFrame: 5,
+      launchOperationId: launch.data.operationId,
+      expectedRevision: launch.data.rotoPhysical.revision,
+      records,
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      incomingInterpolationBreakKeyIds: ['key-10', 'key-5'],
+      selectedKeyId: 'key-5',
+      selectedAppFrame: 5,
+      semanticDelta: {
+        kind: 'insert-empty-segment',
+        insertedKeyId: 'key-5',
+        destinationAppFrame: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      operationId: 'insert-empty-segment-valid',
+      incomingInterpolationBreakKeyIds: ['key-10', 'key-5'],
+    });
+    const accepted = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    expect(accepted).toMatchObject({
+      selectedKeyId: 'key-5',
+      cursorAppFrame: 5,
+      interpolation: { enabled: false, mode: 'duplicate' },
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: ['key-10', 'key-5'],
+    });
+    expect(result.ok ? result.acceptedRevision : null).toBe(accepted?.revision);
+  });
+
+  it('rejects stale false or unrelated empty-segment deltas without mutation', async () => {
+    installCanonicalBlankCanvas();
+    const layer = physicLayer();
+    mockLayers([layer]);
+    seedPhysicalDocument(layer.id, [
+      makePhysicalRecord('key-0', 0),
+      makePhysicalRecord('key-10', 10),
+    ], { enabled: true, mode: 'duplicate' }, ['key-10']);
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 12 });
+
+    expect(launch.ok).toBe(true);
+    if (!launch.ok || !launch.data.rotoPhysical) return;
+    const inserted = makeEmptySegmentRecord('key-12', 12);
+    const records = [...launch.data.rotoPhysical.records, inserted]
+      .sort((left, right) => left.appFrame - right.appFrame);
+    const basePayload = {
+      kind: 'replace-roto-physical-map' as const,
+      operationKind: 'insert-empty-segment' as const,
+      layerId: layer.id,
+      startFrame: 12,
+      launchOperationId: launch.data.operationId,
+      expectedRevision: launch.data.rotoPhysical.revision,
+      records,
+      interpolationEnabled: true,
+      interpolationMode: 'duplicate' as const,
+      incomingInterpolationBreakKeyIds: ['key-10', 'key-12'],
+      selectedKeyId: 'key-12',
+      selectedAppFrame: 12,
+      semanticDelta: {
+        kind: 'insert-empty-segment' as const,
+        insertedKeyId: 'key-12',
+        destinationAppFrame: 12,
+      },
+    };
+    const proposals: readonly PhysicPaintApplyPayload[] = [
+      {
+        ...basePayload,
+        operationId: 'reject-empty-segment-false-id',
+        semanticDelta: { ...basePayload.semanticDelta, insertedKeyId: 'false-id' },
+      },
+      {
+        ...basePayload,
+        operationId: 'reject-empty-segment-false-destination',
+        semanticDelta: { ...basePayload.semanticDelta, destinationAppFrame: 13 },
+      },
+      {
+        ...basePayload,
+        operationId: 'reject-empty-segment-non-blank',
+        records: records.map((record) => record.keyId === 'key-12'
+          ? makeEmptySegmentRecord('key-12', 12, OPAQUE_ONE_PIXEL_PNG)
+          : record),
+      },
+      {
+        ...basePayload,
+        operationId: 'reject-empty-segment-unrelated-record',
+        records: records.map((record) => record.keyId === 'key-0'
+          ? { ...record, payload: { ...record.payload, dataUrl: OPAQUE_ONE_PIXEL_PNG } }
+          : record),
+      },
+      {
+        ...basePayload,
+        operationId: 'reject-empty-segment-extra-break',
+        incomingInterpolationBreakKeyIds: ['key-0', 'key-10', 'key-12'],
+      },
+      {
+        ...basePayload,
+        operationId: 'reject-empty-segment-removed-break',
+        incomingInterpolationBreakKeyIds: ['key-12'],
+      },
+      {
+        ...basePayload,
+        operationId: 'reject-empty-segment-loop-change',
+        loopClips: [{
+          loopId: 'unrelated-loop',
+          placementStart: 0,
+          sourceKeyIds: ['key-0'],
+          repeat: 2,
+          mode: 'static',
+        }],
+      },
+      {
+        ...basePayload,
+        operationId: 'reject-empty-segment-interpolation-change',
+        interpolationEnabled: false,
+      },
+      {
+        ...basePayload,
+        operationId: 'reject-empty-segment-capacity-race',
+        records: [
+          ...launch.data.rotoPhysical.records,
+          makeEmptySegmentRecord('key-600', 600),
+        ],
+        incomingInterpolationBreakKeyIds: ['key-10', 'key-600'],
+        selectedKeyId: 'key-600',
+        selectedAppFrame: 600,
+        semanticDelta: {
+          kind: 'insert-empty-segment',
+          insertedKeyId: 'key-600',
+          destinationAppFrame: 600,
+        },
+      },
+      {
+        ...basePayload,
+        operationId: 'reject-empty-segment-stale',
+        expectedRevision: 'physical-stale',
+      },
+    ];
+
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    const beforeRevisionSignal = rotoPhysicalRevision.peek();
+    for (const proposal of proposals) {
+      const result = applyPhysicPaintPayload(proposal);
+      expect(result.ok, proposal.operationId).toBe(false);
+      expect(physicPaintStore.getRotoPhysicalDocument(layer.id), proposal.operationId).toEqual(beforeDocument);
+      expect(rotoPhysicalRevision.peek(), proposal.operationId).toBe(beforeRevisionSignal);
+    }
   });
 
   it('accepts the first Progressive Play Script and Loop Clip on a fresh layer', async () => {
