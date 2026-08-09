@@ -509,6 +509,46 @@ describe('physicPaintBridge', () => {
     expect(window.open).not.toHaveBeenCalled();
   });
 
+  it('accepts one stable-key-owned incoming interpolation break atomically', async () => {
+    const layer = physicLayer();
+    mockLayers([layer]);
+    seedPhysicalDocument(layer.id, [
+      makePhysicalRecord('key-0', 0),
+      makePhysicalRecord('key-10', 10),
+    ], { enabled: true, mode: 'duplicate' });
+    const open = vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 10 });
+
+    expect(launch.ok).toBe(true);
+    if (!launch.ok || !launch.data.rotoPhysical) return;
+    const records = launch.data.rotoPhysical.records;
+    const result = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'accept-incoming-break',
+      operationKind: 'move-key',
+      layerId: layer.id,
+      startFrame: 10,
+      launchOperationId: launch.data.operationId,
+      expectedRevision: launch.data.rotoPhysical.revision,
+      records,
+      interpolationEnabled: true,
+      interpolationMode: 'duplicate',
+      incomingInterpolationBreakKeyIds: ['key-10'],
+      selectedKeyId: 'key-10',
+      selectedAppFrame: 10,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      operationId: 'accept-incoming-break',
+      incomingInterpolationBreakKeyIds: ['key-10'],
+    });
+    const document = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    expect(document?.incomingInterpolationBreakKeyIds).toEqual(['key-10']);
+    expect(Object.isFrozen(document?.incomingInterpolationBreakKeyIds)).toBe(true);
+    open.mockRestore();
+  });
+
   it('accepts the first Progressive Play Script and Loop Clip on a fresh layer', async () => {
     const layer = physicLayer();
     mockLayers([layer]);
