@@ -2623,6 +2623,27 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (recordsResult.records.some((record) => record.appFrame === intent.destinationAppFrame)) {
       return fail('duplicate-destination-frame', operationKind, 'Empty-segment destination is occupied.');
     }
+    const currentProjection = buildProjectionFromMapping(
+      new Map(identities.ordered.map((identity) => [identity.keyId, identity.appFrame])),
+      input.capacity,
+      input.interpolationEnabled,
+      incomingInterpolationBreakKeyIds,
+    );
+    if (currentProjection.cells[intent.destinationAppFrame]?.kind !== 'empty') {
+      return fail('malformed-target', operationKind, 'Empty-segment destination is generated or render-only.');
+    }
+    if (loopClips.length > 0) {
+      const loopContext = derivePhysicPaintRotoLoopRanges({
+        identities: identities.ordered,
+        loopClips,
+        parentEndExclusive: input.capacity,
+        capacity: input.capacity,
+        interpolationEnabled: input.interpolationEnabled,
+      });
+      if (resolvePhysicPaintRotoLoopFrame(loopContext, intent.destinationAppFrame).kind !== 'empty') {
+        return fail('malformed-target', operationKind, 'Empty-segment destination is linked.');
+      }
+    }
     const candidate = buildInsertEmptySegmentCandidate(
       identities,
       recordsResult.records,
