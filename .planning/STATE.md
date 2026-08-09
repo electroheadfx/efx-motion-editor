@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.1
 current_phase_name: Intentional Gap Insert and Local Interpolation Breaks
 status: executing
-stopped_at: Phase 43.1 plans independently verified
-last_updated: "2026-08-09T13:26:20.208Z"
+stopped_at: Completed 43.1-01-PLAN.md
+last_updated: "2026-08-09T14:19:18.476Z"
 last_activity: 2026-08-09
 last_activity_desc: Phase 43.1 planned and independently verified; ready to execute
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 35
-  completed_plans: 29
+  completed_plans: 30
   percent: 57
 ---
 
@@ -28,14 +28,14 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 ## Current Position
 
-Phase: 43.1 — Intentional Gap Insert and Local Interpolation Breaks
-Plan: Not started
+Phase: 43.1 (Intentional Gap Insert and Local Interpolation Breaks) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-08-09 — Phase 43.1 planned and independently verified; ready to execute
+Last activity: 2026-08-09 — Phase 43.1 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -181,6 +181,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 43 P09 | ~30min | 3 tasks | 16 files |
 | Phase 43 P06 | ~95min | 3 tasks | 18 files |
 | Phase 43 P08 | 63m | 3 tasks | 15 files |
+| Phase 43.1 P01 | 27 min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -239,6 +240,7 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: Plan 43-08: Main-timeline Loop Clip mutations route through a strict correlated bridge; the standalone Studio controller remains the sole physical-edit/history authority.
 - [Phase ?]: Plan 43-08: Delete keeps delete-loop correlation identity but dispatches unlinkLoop, preserving D-03 unlink-only semantics.
 - [Phase ?]: Plan 43-08: Retry delivery reuses one operationId; Studio deduplicates identical in-flight requests and rejects changed-content ID reuse.
+- [Phase ?]: 43.1-01: D-01 confirmed — incoming interpolation breaks are canonical facts owned by stable real-key identity; persisted absence hydrates empty, omitted apply input retains accepted ownership, and explicit empty replaces it.
 
 ### Pending Todos
 
@@ -423,9 +425,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-09T12:01:13.939Z
-Stopped at: Phase 43.1 context gathered
-Resume file: .planning/phases/43.1-intentional-gap-insert-use-specs-milestone-v0-9-0-new-phases/43.1-CONTEXT.md
+Last session: 2026-08-09T14:19:18.463Z
+Stopped at: Completed 43.1-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
