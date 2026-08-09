@@ -12,6 +12,10 @@ import type {
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
+import type {
+  PhysicPaintRotoFrameResolution,
+  PhysicPaintRotoPhysicalCell,
+} from '../roto/physicsPaintRotoPhysicalResolver';
 import {
   getPhysicsPaintRotoSourceCycleId,
   togglePhysicsPaintRotoSpacingProxy,
@@ -44,12 +48,17 @@ interface HarnessOptions {
   records?: PhysicPaintRotoRealKeyRecord[];
   loopClips?: readonly PhysicPaintRotoLoopClip[];
   spacingSelection?: PhysicsPaintRotoSpacingSelection | null;
+  physicalCells?: readonly PhysicPaintRotoPhysicalCell[];
+  frameResolution?: PhysicPaintRotoFrameResolution;
   currentAppFrame?: number;
   launch?: PhysicPaintLaunchContext | null;
   pendingOperationId?: string | null;
+  selectedKeyId?: string | null;
   selectedKeyIds?: readonly string[];
   selectedLoopClipIds?: readonly string[];
+  incomingInterpolationBreakKeyIds?: readonly string[];
   capacity?: number;
+  blankDataUrl?: string;
 }
 
 function createHarness(options: HarnessOptions = {}) {
@@ -66,13 +75,23 @@ function createHarness(options: HarnessOptions = {}) {
     getRotoInterpolationState: () => ({ enabled: false, mode: 'duplicate' }),
     getRotoLoopClips: () => options.loopClips ?? [],
     getRotoSpacingSelection: () => options.spacingSelection ?? null,
-    getPhysicalCells: () => [],
-    getSelectedKeyId: () => null,
+    getPhysicalCells: () => options.physicalCells ?? [],
+    getFrameResolution: () => options.frameResolution ?? { kind: 'empty' },
+    getSelectedKeyId: () => options.selectedKeyId ?? null,
     getSelectedKeyIds: () => options.selectedKeyIds ?? options.spacingSelection?.selectedSourceKeyIds ?? [],
     getSelectedLoopClipIds: () => options.selectedLoopClipIds ?? [],
     getCurrentAppFrame: () => options.currentAppFrame ?? 3,
     getLaunchContext: () => launch,
     getCapacity: () => options.capacity ?? 10,
+    getIncomingInterpolationBreakKeyIds: () => options.incomingInterpolationBreakKeyIds ?? [],
+    buildBlankRotoFrame: (appFrame) => ({
+      frameIndex: 0,
+      appFrame,
+      dataUrl: options.blankDataUrl ?? BLANK_PNG_DATA_URL,
+      width: 100,
+      height: 80,
+      source: 'real-key',
+    }),
     executePhysicalEdit: executePhysicalEdit as never,
     pendingOperationId,
     publishStatus,
@@ -98,6 +117,69 @@ const linkedLoop: PhysicPaintRotoLoopClip = {
   repeat: 3,
   mode: 'static',
 };
+
+describe('useRotoTimelineActions contextual Insert', () => {
+  it('context-dispatches occupied and genuinely empty Insert targets', async () => {
+    const occupied = createHarness({
+      records: [realKeyRecord('key-a', 3)],
+      selectedKeyId: 'key-a',
+      currentAppFrame: 3,
+      physicalCells: [{ kind: 'real', appFrame: 3, keyId: 'key-a' }],
+    });
+
+    expect(occupied.actions.physicalActions.canInsertFrame.value).toBe(true);
+    expect(occupied.actions.physicalActions.insertTooltipDescription.value).toBe('Insert key before');
+    expect(await occupied.actions.physicalActions.insertRotoFrame()).toBe(true);
+    expect(occupied.executePhysicalEdit).toHaveBeenCalledTimes(1);
+    expect(occupied.executePhysicalEdit.mock.calls[0][0]).toMatchObject({ operationKind: 'insert-slot' });
+    expect(occupied.publishStatus).toHaveBeenCalledWith('Inserted an empty Roto frame before the selected key.');
+
+    const predecessorDataUrl = 'data:image/png;base64,PREDECESSOR';
+    const records = [
+      Object.freeze({
+        ...realKeyRecord('key-before', 1),
+        payload: Object.freeze({ ...blankPayload(1), dataUrl: predecessorDataUrl }),
+      }) as PhysicPaintRotoRealKeyRecord,
+    ];
+    const empty = createHarness({
+      records,
+      currentAppFrame: 3,
+      physicalCells: [
+        { kind: 'empty', appFrame: 0 },
+        { kind: 'real', appFrame: 1, keyId: 'key-before' },
+        { kind: 'empty', appFrame: 2 },
+        { kind: 'empty', appFrame: 3 },
+      ],
+      incomingInterpolationBreakKeyIds: ['key-before'],
+    });
+
+    expect(empty.actions.physicalActions.canInsertFrame.value).toBe(true);
+    expect(empty.actions.physicalActions.insertTooltipDescription.value).toBe(
+      'Insert an empty key and start a new interpolation segment.',
+    );
+    expect(await empty.actions.physicalActions.insertRotoFrame()).toBe(true);
+    expect(empty.executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = empty.executePhysicalEdit.mock.calls[0][0] as unknown as {
+      operationKind: string;
+      proposal: {
+        selectedKeyId: string;
+        selectedAppFrame: number;
+        nextRecords: readonly PhysicPaintRotoRealKeyRecord[];
+        nextIncomingInterpolationBreakKeyIds: readonly string[];
+      };
+    };
+    expect(dispatched.operationKind).toBe('insert-empty-segment');
+    expect(dispatched.proposal.selectedAppFrame).toBe(3);
+    expect(dispatched.proposal.nextRecords).toHaveLength(2);
+    const inserted = dispatched.proposal.nextRecords.find((record) => record.keyId === dispatched.proposal.selectedKeyId);
+    expect(inserted?.payload.dataUrl).toBe(BLANK_PNG_DATA_URL);
+    expect(inserted?.payload.dataUrl).not.toBe(predecessorDataUrl);
+    expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([
+      'key-before',
+      dispatched.proposal.selectedKeyId,
+    ]);
+  });
+});
 
 describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
   it('exposes reactive availability that is eligible on an unoccupied current frame', () => {
