@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clampOnionCount, clampOnionOpacity,
   getPhysicsPaintEngineStatusTone, getRotoCellFill,
+  getRotoCellPresentationViewModel,
   getRotoCellSelectedTooltipCopy, getRotoCellStateLabel, getRotoCellStateTooltipCopy, getRotoCellViewModel, getRotoMissingFrameStatus,
   getRotoDragPreviewViewModel,
   getRotoReplacementSuccessLabel, getMissingRotoFrameStatusLabel,
@@ -75,6 +76,21 @@ describe('physicsPaintWorkflowPresentation', () => {
     expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames }).title).toBe('Background only on frame 8');
     expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames }).ariaLabel).toBe('Background only on frame 8');
     expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames }).fillClass).toBe('roto-fill-background-only');
+  });
+
+
+  it('projects a predecessor-owned interpolation segment start into existing cell copy', () => {
+    expect(getRotoCellPresentationViewModel({
+      kind: 'real',
+      keyId: 'key-b',
+      orderedRealKeyIds: ['key-a', 'key-b'],
+      incomingInterpolationBreakKeyIds: ['key-b'],
+      baseCopy: 'Real key',
+    })).toEqual({
+      startsInterpolationSegment: true,
+      tooltipCopy: 'Real key · Starts a new interpolation segment',
+      ariaLabel: 'Real key · Starts a new interpolation segment',
+    });
   });
 
 
