@@ -29,3 +29,13 @@ Resolved debug sessions. Used by `gsd-debugger` to surface known-pattern hypothe
 - **Why not caught:** The Quick 260809-aac focused test gate omitted the downstream PhysicsPaintLoopClipRail ownership-tracer test that still encoded the superseded `current` contract.
 - **Recurrence guard:** The corrected specified-oracle assertion in `app/src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx` now covers this spacing-selected source proxy, and the full 1,626-test app suite verifies the downstream integration contract.
 ---
+
+## phase-43-1-wave4-tests — Static action extractor did not recognize contextual Insert aria-label source
+- **Date:** 2026-08-09
+- **Error patterns:** PhysicsPaintWorkflowStrip, Insert key before, aria-label, insertRotoKeyDescription, source token not found, aria-disabled, locked order, 4 failures
+- **Root cause(s):** `PhysicsPaintWorkflowStrip.test.ts` identified Insert only through the literal source token `aria-label="Insert key before"`. Wave 4 intentionally changed production to `aria-label={insertRotoKeyDescription}` for contextual accessible copy, so the shared extractor returned no Insert button and four dependent source-contract assertions failed despite intact production behavior.
+- **Fix:** Added `getActionAriaLabelToken` to map the existing semantic Insert identity to the contextual JSX source token while retaining literal matching for every other action; reused it in button extraction and action-order checks.
+- **Files changed:** app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts
+- **Why not caught:** Focused contextual Insert and settlement gates verified runtime semantics but omitted the downstream static workflow-strip source-contract suite; the full post-merge app suite was the first gate to combine the intentional production label change with the stale extractor.
+- **Recurrence guard:** `getActionAriaLabelToken` in `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts` centralizes semantic action-to-source-token mapping; the corrected 78-test strip suite and full 1,649-test app suite verify contextual Insert without reverting its dynamic accessible label.
+---
