@@ -257,6 +257,36 @@ describe('intentional incoming interpolation breaks', () => {
   });
 });
 
+describe('incoming interpolation break lifecycle', () => {
+  it('removes deleted break owners without transferring ownership', () => {
+    const records = buildBaselineRecords();
+    const single = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: { kind: 'delete-key', selectedKeyId: 'B' },
+      capacity: 16,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['B', 'D'],
+    });
+    const group = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: { kind: 'delete-key-group', keyIds: ['B', 'D'] },
+      capacity: 16,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['B', 'C', 'D'],
+    });
+
+    expect(single.ok).toBe(true);
+    if (!single.ok) throw new Error('Single delete must resolve');
+    expect(single.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['D']);
+    expect(single.proposal.generatedCells.some((cell) => cell.rightKeyId === 'C')).toBe(true);
+    expect(group.ok).toBe(true);
+    if (!group.ok) throw new Error('Group delete must resolve');
+    expect(group.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['C']);
+  });
+});
+
 describe('resolvePhysicPaintRotoPhysicalEdit — rigid move-key-group', () => {
   it('translates A@0 and B@1 to A@5 and B@6 without moving D@7', () => {
     const resolution = resolveIdentities([
