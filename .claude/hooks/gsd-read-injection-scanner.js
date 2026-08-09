@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gsd-hook-version: 1.9.1
+// gsd-hook-version: 1.10.0
 // GSD Read Injection Scanner — PostToolUse hook (#2201)
 // Pattern-based pre-filter / blocklist: scans content returned by Read, WebFetch,
 // and WebSearch for known prompt-injection patterns (regex + heuristic rules).
@@ -92,6 +92,12 @@ const INJECTION_PATTERNS = [
 
 const ALL_PATTERNS = [...INJECTION_PATTERNS, ...SUMMARISATION_PATTERNS];
 
+// #3023: the staged bundle's directory name is runtime-descriptor-driven, so a
+// literal `/<config>/hooks/` fragment cannot reliably identify GSD's own hook
+// scripts. This module lives inside the bundle, so __dirname identifies it by
+// construction. Normalized to forward slashes to match `p` below.
+const OWN_BUNDLE_PREFIX = __dirname.replace(/\\/g, '/').replace(/\/+$/, '') + '/';
+
 function isExcludedPath(filePath) {
   const p = filePath.replace(/\\/g, '/');
   return (
@@ -101,6 +107,7 @@ function isExcludedPath(filePath) {
     /CHECKPOINT/i.test(path.basename(p)) ||
     /[/\\](?:security|techsec|injection)[/\\.]/i.test(p) ||
     /security\.cjs$/.test(p) ||
+    p.startsWith(OWN_BUNDLE_PREFIX) ||
     p.includes('/.claude/hooks/')
   );
 }

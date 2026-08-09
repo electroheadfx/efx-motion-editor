@@ -50,11 +50,20 @@ const UNUSABLE_REASON = Object.freeze({
      * simply has no ROADMAP yet: absence returns the same sentinel, silently. (#1881)
      */
     ROADMAP_UNREADABLE: 'roadmap_unreadable',
+    /**
+     * A `last_activity` value in STATE.md frontmatter is present but unparseable as a date.
+     * Distinct from absent: absence means the field was never set, while an unparseable value
+     * means it was set to something Date.parse rejects. Per ADR-1411 amendment: corrupt is not
+     * absent — the fallback (stale_activity: false) stays, but a diagnostic is emitted so the
+     * silent degradation is visible. (#3099, sixth #1879 site)
+     */
+    LAST_ACTIVITY_UNPARSEABLE: 'last_activity_unparseable',
 });
 /** One human-readable clause per reason. Prose lives here, never in a test assertion. */
 const REASON_PROSE = Object.freeze({
     [UNUSABLE_REASON.FRONTMATTER_UNTERMINATED]: 'frontmatter opens with "---" but never closes; metadata was NOT applied',
     [UNUSABLE_REASON.ROADMAP_UNREADABLE]: 'ROADMAP.md exists but could not be read; phase and milestone lookups fell back to defaults',
+    [UNUSABLE_REASON.LAST_ACTIVITY_UNPARSEABLE]: 'last_activity in STATE.md is present but unparseable as a date; stale_activity fell back to false (idle-stranded suppressed)',
 });
 // ─── Dedup state ──────────────────────────────────────────────────────────────
 /**

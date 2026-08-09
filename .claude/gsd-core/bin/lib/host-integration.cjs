@@ -464,8 +464,20 @@ function negotiateHostCapabilities(host, engine = DEFAULT_ENGINE) {
 function shouldFlattenDispatch(dispatch) {
     if (!dispatch || typeof dispatch !== 'object')
         return true;
+    // Can background at all: both background flags must be explicitly true.
     const canBackground = dispatch.background === true && dispatch.backgroundDispatch === true;
-    return !canBackground;
+    if (!canBackground)
+        return true;
+    // #2939: can background a NESTING orchestrator with room to delegate. A depth budget of 1
+    // is consumed by the backgrounded orchestrator itself; it needs > 1 (or unbounded, maxDepth < 0)
+    // to host a delegated leaf at depth 2. Non-finite/missing maxDepth fails closed (no budget →
+    // flatten), mirroring degradationFor's treatment of non-finite depth as 0.
+    const canNest = dispatch.nested === true && dispatch.subagentToolkit === 'full';
+    if (!canNest)
+        return true;
+    const depth = typeof dispatch.maxDepth === 'number' && Number.isFinite(dispatch.maxDepth) ? dispatch.maxDepth : 0;
+    const depthSufficient = depth < 0 || depth > 1;
+    return !depthSufficient;
 }
 // ---------------------------------------------------------------------------
 // resolveDispatchType — ADR-1239 / epic #2505 Phase 4 (Option A)

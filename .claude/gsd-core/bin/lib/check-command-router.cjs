@@ -22,7 +22,11 @@ const { planningDir } = planningWorkspaceMod;
 const phaseLocatorMod = require("./phase-locator.cjs");
 const { findPhaseInternal } = phaseLocatorMod;
 const decisions_cjs_1 = require("./decisions.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const frontmatterMod = require("./frontmatter.cjs");
+const { extractFrontmatter } = frontmatterMod;
 const markdown_sectionizer_cjs_1 = require("./markdown-sectionizer.cjs");
+const security_cjs_1 = require("./security.cjs");
 const ui_safety_gate_cjs_1 = require("./ui-safety-gate.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const verifyModule = require("./verify.cjs");
@@ -849,9 +853,47 @@ function buildPredicateDeps() {
                 stdout: r.stdout,
                 stderr: r.stderr,
                 signal: r.signal,
-                timedOut: r.signal === 'SIGTERM',
+                timedOut: r.timedOut,
             };
         },
+        findPhaseArtifact(phaseDir, artifactSuffix) {
+            if (!node_fs_1.default.existsSync(phaseDir))
+                return null;
+            if (artifactSuffix === '.' ||
+                artifactSuffix === '..' ||
+                artifactSuffix.includes('\0') ||
+                node_path_1.default.basename(artifactSuffix) !== artifactSuffix ||
+                node_path_1.default.win32.basename(artifactSuffix) !== artifactSuffix) {
+                return null;
+            }
+            const directPath = (0, security_cjs_1.validatePath)(artifactSuffix, phaseDir);
+            if (directPath.safe && node_fs_1.default.existsSync(directPath.resolved) && node_fs_1.default.statSync(directPath.resolved).isFile()) {
+                return directPath.resolved;
+            }
+            const planningPath = (0, security_cjs_1.validatePath)(node_path_1.default.join('.planning', artifactSuffix), phaseDir);
+            if (planningPath.safe && node_fs_1.default.existsSync(planningPath.resolved) && node_fs_1.default.statSync(planningPath.resolved).isFile()) {
+                return planningPath.resolved;
+            }
+            try {
+                const files = node_fs_1.default.readdirSync(phaseDir);
+                for (const f of files) {
+                    if (f.endsWith('-' + artifactSuffix) || f === artifactSuffix) {
+                        const candidate = (0, security_cjs_1.validatePath)(f, phaseDir);
+                        if (candidate.safe && node_fs_1.default.statSync(candidate.resolved).isFile())
+                            return candidate.resolved;
+                    }
+                }
+            }
+            catch { /* ignore */ }
+            return null;
+        },
+        readFrontmatter(filePath) {
+            const content = (0, shell_command_projection_cjs_1.platformReadSync)(filePath);
+            if (content === null)
+                throw new Error(`predicate artifact disappeared before it could be read: ${filePath}`);
+            const parsed = extractFrontmatter(content, filePath);
+            return parsed;
+        }
     };
 }
 /** Parse `--flag value` pairs from an args array into a map (last write wins). */

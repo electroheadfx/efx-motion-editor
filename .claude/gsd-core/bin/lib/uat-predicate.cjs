@@ -186,6 +186,8 @@ function evaluateUatPassed(phaseFullDir, opts) {
             blockers,
             no_uat_artifacts,
             policy: { require_verification: requireVerification },
+            // readVerificationStatus was never reached on this early-return path.
+            verification_stale_check_indeterminate: false,
         };
     }
     // Filter UAT and VERIFICATION files using the same filter as cmdPhaseComplete
@@ -263,8 +265,15 @@ function evaluateUatPassed(phaseFullDir, opts) {
         // (handled by the requireVerification policy check below if needed)
     }
     // ── Policy: requireVerification ───────────────────────────────────────────
+    // #3057 B3: routing here is UNCHANGED — an indeterminate staleness check
+    // still falls through to the same `verificationStatus !== 'passed'` branch
+    // it always did (the pre-existing fail-open contract). `verificationStaleCheckIndeterminate`
+    // only records the fact for the report below; it never itself gates `blockers`.
+    let verificationStaleCheckIndeterminate = false;
     if (requireVerification) {
-        const verificationStatus = readVerificationStatus(phaseFullDir).status;
+        const verificationResult = readVerificationStatus(phaseFullDir);
+        const verificationStatus = verificationResult.status;
+        verificationStaleCheckIndeterminate = verificationResult.staleCheckIndeterminate === true;
         if (verificationStatus === 'stale') {
             blockers.push('policy: verification status=stale');
         }
@@ -288,6 +297,7 @@ function evaluateUatPassed(phaseFullDir, opts) {
         policy: {
             require_verification: requireVerification,
         },
+        verification_stale_check_indeterminate: verificationStaleCheckIndeterminate,
     };
 }
 module.exports = {

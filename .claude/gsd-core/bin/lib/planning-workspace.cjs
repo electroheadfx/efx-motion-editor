@@ -146,6 +146,10 @@ function planningPaths(cwd, ws) {
         config: node_path_1.default.join(base, 'config.json'),
         phases: node_path_1.default.join(base, 'phases'),
         requirements: node_path_1.default.join(base, 'REQUIREMENTS.md'),
+        // #3149: the debug-session directory. Single source for both `state.load`'s
+        // `debug_dir` field and `init.debug`'s — previously each composed its own
+        // `path.join(planning, 'debug')` (DEFECT.GENERATIVE-FIX).
+        debug: node_path_1.default.join(base, 'debug'),
     };
 }
 /**

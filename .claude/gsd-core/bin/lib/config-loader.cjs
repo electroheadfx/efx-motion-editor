@@ -755,6 +755,7 @@ function loadConfigResolved(cwd, options = {}) {
             response_language: get('response_language') || null,
             claude_md_path: get('claude_md_path') || null,
             claude_md_assembly: (parsed['claude_md_assembly']) || null,
+            phase_id_convention: get('phase_id_convention') ?? null,
         };
         // ADR-857 phase 3b: federated config overlay
         try {

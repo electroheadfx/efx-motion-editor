@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gsd-hook-version: 1.9.1
+// gsd-hook-version: 1.10.0
 // GSD Worktree Path Guard — PreToolUse hook
 // Blocks Edit/Write/MultiEdit tool calls that target absolute paths outside the worktree root.
 //
@@ -173,7 +173,8 @@ process.stdin.on('end', () => {
     // / error → not GSD-managed → no-op.
     const branchResult = git(['symbolic-ref', '--short', 'HEAD'], cwd);
     const branch = branchResult.status === 0 && branchResult.stdout ? branchResult.stdout.trim() : '';
-    if (!/^(worktree-)?agent-[A-Za-z0-9._/-]+$/.test(branch)) {
+    // #3021: accept worktree-wf_<runid>-<n> branches (Workflow backend's naming).
+    if (!/^((worktree-)?agent-|worktree-wf_)[A-Za-z0-9._/-]+$/.test(branch)) {
       process.exit(0); // not a GSD-managed executor worktree — no-op
     }
 

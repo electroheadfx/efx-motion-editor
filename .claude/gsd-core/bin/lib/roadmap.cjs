@@ -265,7 +265,11 @@ function cmdRoadmapAnalyze(cwd, raw) {
     // Extract all phase headings: ## Phase N: Name or ### Phase N: Name
     // #1729: `(?:\s*\([^)\n]{0,200}\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
     // phase-id-owner: uses the [.-] (dot-or-dash) separator variant, not the canonical dot-only token; a swap to PHASE_NUMBER_TOKEN_SOURCE would drop hyphenated phase-id matches.
-    const phasePattern = /#{2,4}\s*(?:\[[^\]]{1,200}\]\s*)?Phase\s+(\d+[A-Z]?(?:[.-]\d+)*)(?:\s*\([^)\n]{0,200}\))?\s*:\s*([^\n]+)/gi;
+    // #3036: widen the id capture to accept non-numeric-leading ids (e.g. B7, P0.3-2)
+    // that get-phase/execute-phase already resolve. An optional leading letter prefix
+    // ([A-Za-z]?) covers letter-prefixed ids without breaking numeric-leading ones.
+    // phase-id-owner: uses the [.-] (dot-or-dash) separator variant, not the canonical dot-only token; a swap to PHASE_NUMBER_TOKEN_SOURCE would drop hyphenated phase-id matches.
+    const phasePattern = /#{2,4}\s*(?:\[[^\]]{1,200}\]\s*)?Phase\s+([A-Za-z]?\d+[A-Z]?(?:[.-]\d+)*)(?:\s*\([^)\n]{0,200}\))?\s*:\s*([^\n]+)/gi;
     const phases = [];
     let match;
     // Phase 0 (pre-milestone) and Phase 999 (backlog) are sentinels, not real
@@ -297,8 +301,9 @@ function cmdRoadmapAnalyze(cwd, raw) {
         const sectionStart = match.index;
         const restOfContent = content.slice(sectionStart);
         // #3691: `\d` → `\d[\d.]*` so decimal phase headings (e.g. `### Phase 02.3:`) are
-        // recognised as section boundaries.
-        const nextHeader = restOfContent.match(/\n#{2,4}\s+(?:\[[^\]]{1,200}\]\s*)?Phase\s+\d[\d.-]*/i);
+        // recognised as section boundaries. #3036: `[A-Za-z]?\d` so non-numeric-leading ids
+        // (e.g. B7) are also recognised.
+        const nextHeader = restOfContent.match(/\n#{2,4}\s+(?:\[[^\]]{1,200}\]\s*)?Phase\s+[A-Za-z]?\d[\d.-]*/i);
         const sectionEnd = nextHeader ? sectionStart + nextHeader.index : content.length;
         const section = content.slice(sectionStart, sectionEnd);
         const goalMatch = section.match(/\*\*Goal(?::\*\*|\*\*:)\s*([^\n]+)/i);
@@ -389,7 +394,9 @@ function cmdRoadmapAnalyze(cwd, raw) {
     // IDs (e.g. `1-01`) match the detail-heading scanner above; otherwise they truncate
     // at the dash (`1-01` -> `1`) and every such phase reports a phantom missing detail.
     // phase-id-owner: uses the [.-] (dot-or-dash) separator variant, not the canonical dot-only token; a swap to PHASE_NUMBER_TOKEN_SOURCE would drop hyphenated phase-id matches.
-    const checklistPattern = /-\s*\[[ x]\]\s*\*\*Phase\s+(\d+[A-Z]?(?:[.-]\d+)*)/gi;
+    // #3036: widen to accept non-numeric-leading ids (same widening as the detail-heading pattern above).
+    // phase-id-owner: uses the [.-] (dot-or-dash) separator variant, not the canonical dot-only token; a swap to PHASE_NUMBER_TOKEN_SOURCE would drop hyphenated phase-id matches.
+    const checklistPattern = /-\s*\[[ x]\]\s*\*\*Phase\s+([A-Za-z]?\d+[A-Z]?(?:[.-]\d+)*)/gi;
     const checklistPhases = new Set();
     let checklistMatch;
     while ((checklistMatch = checklistPattern.exec(content)) !== null) {
@@ -468,8 +475,13 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
     // cmdPhaseComplete's gate (phase.cts:1436). Previously the checkbox fired the
     // moment the last plan summary landed — before gsd-verifier had verified.
     const phaseDir = node_path_1.default.join(cwd, phaseInfo.directory);
-    const verificationPassed = readVerificationStatus(phaseDir).status === 'passed';
+    const verificationResult = readVerificationStatus(phaseDir);
+    const verificationPassed = verificationResult.status === 'passed';
     const isComplete = summaryCount >= planCount && verificationPassed;
+    // #3057 B3: routing above is unchanged (an indeterminate staleness check
+    // still routes as if nothing were stale) — this only makes the fact visible
+    // to whatever reads this command's JSON output.
+    const verificationStaleCheckIndeterminate = verificationResult.staleCheckIndeterminate === true;
     const status = isComplete ? 'Complete' : summaryCount > 0 ? 'In Progress' : 'Planned';
     const today = clock_cjs_1.realClock.localToday();
     if (!node_fs_1.default.existsSync(roadmapPath)) {
@@ -526,11 +538,28 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
         //   `**Plans**: N plans`  — bold word + outer colon (gsd-core/templates/roadmap.md)
         //   `**Plans:** N plans`  — bold "Plans:" (colon inside bold)
         //   `Plans: N plans`      — plain text header
-        const planCountPattern = new RegExp(`(#{2,4}\\s*Phase\\s+${phasePattern}${OPTIONAL_PHASE_TAG_SOURCE}(?=[:\\s])(?:(?!\\n#{1,4}\\s)[\\s\\S])*?(?:\\*\\*Plans\\*\\*:|\\*\\*Plans:\\*\\*|(?:^|\\n)Plans:)\\s*)[^\\n]+`, 'i');
+        //
+        // #2853: the verb owns the count token ONLY — it must not destroy hand-written
+        // prose a human placed after the count (e.g. "(11-16 are gap closure ...)").
+        // Group $1 = phase header → `Plans:` label + trailing whitespace (unchanged).
+        // Group $2 = the existing count token to replace: matches `N/N plans complete`,
+        // `N/N plans executed`, or the bare template `N plans` form. Group $3 = whatever
+        // else is on the line (`[^\r\n]*`, so CRLF `\r` is preserved).
+        //
+        // Trailing text is preserved ONLY when a real count token ($2) was present —
+        // i.e. an annotation a human wrote after a real count. When $2 is absent the
+        // line is the fresh-template bracketed placeholder (`[Number of plans…]`) or
+        // other freeform guidance, not user prose: the count replaces the whole token,
+        // preserving the pre-#2853 clean-output behaviour on the template path.
+        const planCountPattern = new RegExp(`(#{2,4}\\s*Phase\\s+${phasePattern}${OPTIONAL_PHASE_TAG_SOURCE}(?=[:\\s])(?:(?!\\n#{1,4}\\s)[\\s\\S])*?(?:\\*\\*Plans\\*\\*:|\\*\\*Plans:\\*\\*|(?:^|\\n)Plans:)\\s*)(\\d+\\s*\\/\\s*\\d+\\s+plans(?:\\s+(?:complete|executed))?|\\d+\\s+plans)?([^\\r\\n]*)`, 'i');
         const planCountText = isComplete
             ? `${summaryCount}/${planCount} plans complete`
             : `${summaryCount}/${planCount} plans executed`;
-        roadmapContent = replaceInCurrentMilestone(roadmapContent, planCountPattern, `$1${planCountText}`);
+        roadmapContent = replaceInCurrentMilestone(roadmapContent, planCountPattern, (_match, label, existingCount, trailing) => {
+            // Preserve trailing text only when a real count preceded it.
+            const suffix = existingCount ? trailing : '';
+            return `${label}${planCountText}${suffix}`;
+        });
         // If complete: check checkbox
         if (isComplete) {
             const checkboxPattern = new RegExp(`(-\\s*\\[)[ ](\\]\\s*.*Phase\\s+${phasePattern}${OPTIONAL_PHASE_TAG_SOURCE}[:\\s][^\\n]*)`, 'i');
@@ -628,6 +657,7 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
         summary_count: summaryCount,
         status,
         complete: isComplete,
+        verification_stale_check_indeterminate: verificationStaleCheckIndeterminate,
     }, raw, `${summaryCount}/${planCount} ${status}`);
 }
 // ─── cmdRoadmapAnnotateDependencies ───────────────────────────────────────────
