@@ -125,6 +125,9 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     payload = nextPayload;
     if (options.transportRejects) throw new Error('transport failed');
   });
+  const reconcileCurrentFrame = vi.fn();
+  const setCachedReference = vi.fn();
+  const setConciseMessage = vi.fn();
   const emptyMap = new Map<number, unknown>();
   const emptySet = new Set<number>();
   const ports: RotoPhysicalEditCoordinatorPorts<null> = {
@@ -166,8 +169,8 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     },
     reference: {
       getCachedReference: () => ({ url: null, cachedRepaintBase: null }),
-      setCachedReference: vi.fn(),
-      reconcileCurrentFrame: vi.fn(),
+      setCachedReference,
+      reconcileCurrentFrame,
     },
     engineState: {
       saveEngineState: () => null,
@@ -192,7 +195,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     },
     status: {
       setApplyStatus: vi.fn(),
-      setConciseMessage: vi.fn(),
+      setConciseMessage,
       setLastError: vi.fn(),
       logDiagnostic: vi.fn(),
     },
@@ -305,9 +308,14 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     replaceRecords,
     replaceLoopClips,
     sendPhysicalEditPayload,
+    reconcileCurrentFrame,
+    setCachedReference,
+    setConciseMessage,
     getRecords: () => records,
     getLoopClips: () => loopClips,
     getIncomingInterpolationBreakKeyIds: () => incomingInterpolationBreakKeyIds,
+    getSelectedKeyId: () => selectedKeyId,
+    getCurrentFrame: () => currentFrame,
     getPayload: () => payload,
   };
 }
@@ -335,6 +343,28 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     });
     expect(test.getRecords().some((entry) => entry.keyId === 'Z')).toBe(false);
     test.coordinator.cancelPhysicalEdit('disposal');
+  });
+
+  it('publishes an accepted empty segment only at settlement and reconciles its retained frame', async () => {
+    const test = harness();
+    const beforeRecords = test.getRecords();
+    const beforeBreaks = test.getIncomingInterpolationBreakKeyIds();
+
+    expect(await test.executeEmptySegment()).toBe(true);
+    expect(test.getRecords()).toEqual(beforeRecords);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(beforeBreaks);
+    expect(test.getSelectedKeyId()).toBeNull();
+    expect(test.getCurrentFrame()).toBe(0);
+    expect(test.reconcileCurrentFrame).not.toHaveBeenCalled();
+    expect(test.coordinator.acceptedOutput.value).toBeNull();
+
+    expect(test.accept()).toBe('accepted');
+    expect(test.getRecords().map(({ keyId, appFrame }) => [keyId, appFrame])).toContainEqual(['blank-14', 14]);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C', 'blank-14']);
+    expect(test.getSelectedKeyId()).toBe('blank-14');
+    expect(test.getCurrentFrame()).toBe(14);
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledTimes(1);
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(14);
   });
 
   it('stages and accepts one empty key with its complete cloned incoming-break collection', async () => {
