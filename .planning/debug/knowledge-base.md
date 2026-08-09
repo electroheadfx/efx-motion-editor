@@ -19,3 +19,13 @@ Resolved debug sessions. Used by `gsd-debugger` to surface known-pattern hypothe
 - **Fix:** Added complete per-layer snapshot/restore/clear lifecycle, wired orphan-only canonical cleanup into all authoritative deletion Undo/Redo transactions, restricted serialization to source.layerId, and removed the project-local Physics Paint cache root on zero-output saves.
 - **Files changed:** app/src/stores/sequenceStore.ts, app/src/stores/sequenceStore.test.ts, app/src/stores/physicPaintStore.ts, app/src/stores/physicPaintStore.test.ts, app/src/stores/projectStore.ts, app/src/stores/projectStore.test.ts, app/src/lib/physicPaintPersistence.ts, app/src/lib/physicPaintPersistence.test.ts
 ---
+
+## wave1-loop-rail-current — Loop Rail integration test retained a superseded current-selection oracle
+- **Date:** 2026-08-09
+- **Error patterns:** PhysicsPaintLoopClipRail, current, roto-spacing-proxy-selected, boundaryStart, ownership tracer, stale assertion, Wave 1, 1 failure out of 1626
+- **Root cause(s):** `PhysicsPaintLoopClipRail.test.tsx` retained a Phase 43 assertion that cursor frame 0 must carry `current`; Quick 260809-aac later made real-key `current` depend on an active primary key identity and gave spacing-proxy selection precedence, but its focused gate omitted this rail integration test. Wave 1 did not introduce the behavior; its post-merge full-suite run exposed the stale assertion.
+- **Fix:** Replaced the obsolete `current` expectation with an explicit `roto-spacing-proxy-selected` expectation for the selected frame-0 source proxy.
+- **Files changed:** app/src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx
+- **Why not caught:** The Quick 260809-aac focused test gate omitted the downstream PhysicsPaintLoopClipRail ownership-tracer test that still encoded the superseded `current` contract.
+- **Recurrence guard:** The corrected specified-oracle assertion in `app/src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx` now covers this spacing-selected source proxy, and the full 1,626-test app suite verifies the downstream integration contract.
+---
