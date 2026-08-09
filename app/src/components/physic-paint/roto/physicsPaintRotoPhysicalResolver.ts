@@ -2687,7 +2687,12 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (referencingLoops > 0) {
       return fail('loop-source-key-delete-rejected', operationKind, loopSourceKeyDeleteRejectedText(referencingLoops));
     }
-    const candidate = buildDeleteCandidate(identities, intent.selectedKeyId);
+    const candidate = {
+      ...buildDeleteCandidate(identities, intent.selectedKeyId),
+      nextIncomingInterpolationBreakKeyIds: Object.freeze(
+        incomingInterpolationBreakKeyIds.filter((keyId) => keyId !== intent.selectedKeyId),
+      ),
+    };
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
@@ -2724,7 +2729,13 @@ export function resolvePhysicPaintRotoPhysicalEdit(
         return fail('loop-source-key-delete-rejected', operationKind, loopSourceKeyDeleteRejectedText(referencingLoops));
       }
     }
-    const candidate = buildDeleteGroupCandidate(identities, intent.keyIds);
+    const removedBreakOwners = new Set(intent.keyIds);
+    const candidate = {
+      ...buildDeleteGroupCandidate(identities, intent.keyIds),
+      nextIncomingInterpolationBreakKeyIds: Object.freeze(
+        incomingInterpolationBreakKeyIds.filter((keyId) => !removedBreakOwners.has(keyId)),
+      ),
+    };
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
