@@ -355,6 +355,7 @@ export function PhysicsPaintStudio() {
     rotoInterpolationState,
     capacity: rotoPhysicalCapacity,
     selectedKeyId: selectedKeyId.value,
+    incomingInterpolationBreakKeyIds: rotoIncomingInterpolationBreakKeyIds,
     rotoLoopClips,
     rotoParentEndExclusive: rotoPhysicalCapacity,
   });

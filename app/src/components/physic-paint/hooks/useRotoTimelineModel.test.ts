@@ -121,7 +121,7 @@ describe('useRotoTimelineModel structural/frame split (38.1 D-07)', () => {
 
     expect(model.physicalCells.value[1]).toMatchObject({ kind: 'generated', appFrame: 1 });
     expect(model.currentCell.value).toEqual({ kind: 'empty', appFrame: 31 });
-    expect(model.generatedCells.value.at(-1)).toMatchObject({ kind: 'generated', appFrame: 15 });
+    expect(model.generatedCells.value[model.generatedCells.value.length - 1]).toMatchObject({ kind: 'generated', appFrame: 15 });
   });
 
   it('re-runs the structural projection exactly once when the records input is replaced', () => {

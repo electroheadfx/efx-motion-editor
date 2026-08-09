@@ -55,6 +55,7 @@ export function prepareRotoPhysicalLaunch(
       cursorAppFrame: physical.cursorAppFrame,
       revision: physical.revision,
       loopClips: physical.loopClips,
+      incomingInterpolationBreakKeyIds: physical.incomingInterpolationBreakKeyIds,
     });
     if (context.startFrame !== document.cursorAppFrame) {
       return { ok: false, error: 'Launch cursor does not match the canonical physical document.' };
@@ -63,6 +64,7 @@ export function prepareRotoPhysicalLaunch(
       identities: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
       capacity: document.capacity,
       interpolationEnabled: document.interpolation.enabled,
+      incomingInterpolationBreakKeyIds: document.incomingInterpolationBreakKeyIds,
     });
     if (!projection.ok) return { ok: false, error: projection.failure.text };
     return { ok: true, context, document };

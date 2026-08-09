@@ -291,6 +291,8 @@ export function selectRotoPhysicalTimelineStructuralView(input: {
   readonly realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly interpolation: PhysicPaintRotoInterpolationState;
   readonly capacity: number;
+  /** Stable owners whose incoming generated span is intentionally suppressed. */
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
   /** Phase 43 additive Loop Clip collection; absent means empty (D-29). */
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
   /**
@@ -307,6 +309,7 @@ export function selectRotoPhysicalTimelineStructuralView(input: {
     identities,
     capacity,
     interpolationEnabled: interpolation.enabled,
+    incomingInterpolationBreakKeyIds: input.incomingInterpolationBreakKeyIds,
   });
 
   if (!projectionResult.ok) {

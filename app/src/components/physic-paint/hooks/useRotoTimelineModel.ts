@@ -33,6 +33,8 @@ export interface RotoTimelineModelInput {
   capacity?: number;
   /** Selected stable keyId, or null when no real key is selected. */
   selectedKeyId?: string | null;
+  /** Stable owners whose incoming generated span is intentionally suppressed. */
+  incomingInterpolationBreakKeyIds?: readonly string[];
   /** Phase 43 additive Loop Clip collection; absent means empty (D-29). */
   rotoLoopClips?: readonly PhysicPaintRotoLoopClip[];
   /** Parent sequence end (exclusive); defaults to capacity (D-25). */
@@ -87,6 +89,7 @@ export function createRotoTimelineModel(input: RotoTimelineModelInput): RotoTime
     rotoKeyRecords: input.rotoKeyRecords,
     rotoInterpolationState: input.rotoInterpolationState,
     capacity: input.capacity,
+    incomingInterpolationBreakKeyIds: input.incomingInterpolationBreakKeyIds,
     rotoLoopClips: input.rotoLoopClips,
     rotoParentEndExclusive: input.rotoParentEndExclusive,
   });
@@ -98,6 +101,7 @@ export function createRotoTimelineModel(input: RotoTimelineModelInput): RotoTime
     realKeyRecords: structuralInput.value.rotoKeyRecords ?? [],
     interpolation: structuralInput.value.rotoInterpolationState ?? PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
     capacity: structuralInput.value.capacity ?? 1,
+    incomingInterpolationBreakKeyIds: structuralInput.value.incomingInterpolationBreakKeyIds,
     loopClips: structuralInput.value.rotoLoopClips,
     parentEndExclusive: structuralInput.value.rotoParentEndExclusive,
   }));
@@ -146,6 +150,7 @@ export function useRotoTimelineModel(input: RotoTimelineModelInput): RotoTimelin
     input.rotoKeyRecords,
     input.rotoInterpolationState,
     input.capacity,
+    input.incomingInterpolationBreakKeyIds,
     input.rotoLoopClips,
     input.rotoParentEndExclusive,
   ]);
