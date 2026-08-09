@@ -39,3 +39,13 @@ Resolved debug sessions. Used by `gsd-debugger` to surface known-pattern hypothe
 - **Why not caught:** Focused contextual Insert and settlement gates verified runtime semantics but omitted the downstream static workflow-strip source-contract suite; the full post-merge app suite was the first gate to combine the intentional production label change with the stale extractor.
 - **Recurrence guard:** `getActionAriaLabelToken` in `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts` centralizes semantic action-to-source-token mapping; the corrected 78-test strip suite and full 1,649-test app suite verify contextual Insert without reverting its dynamic accessible label.
 ---
+
+## phase-43-1-close-reopen-loss — Break ownership was dropped across Physics Paint consumer boundaries
+- **Date:** 2026-08-09
+- **Error patterns:** Physics Paint, contextual Insert, incoming generated cells, close reopen, blank canvas, only frame 0, canonical revision mismatch, incomingInterpolationBreakKeyIds, Loop Clips
+- **Root cause(s):** Break-bearing canonical documents crossed incomplete consumer inputs: child hydration omitted `incomingInterpolationBreakKeyIds` and rejected the canonical revision; live timeline projection omitted the same collection and retained the incoming generated span; coordinator republishing omitted break IDs and Loop Clips.
+- **Fix:** Forwarded canonical break ownership through hydration validation and live projection, passed it from Studio, and republished complete launch physical documents including Loop Clips and breaks in source fix commit `6e6acac7`.
+- **Files changed:** app/src/components/physic-paint/PhysicsPaintStudio.tsx, app/src/components/physic-paint/hooks/useRotoFramePersistenceCoordinator.ts, app/src/components/physic-paint/hooks/useRotoTimelineModel.ts, app/src/components/physic-paint/roto/rotoLaunchHydration.ts, app/src/components/physic-paint/roto/rotoTimelineSelectors.ts, app/src/components/physic-paint/hooks/useRotoFramePersistenceCoordinator.test.ts, app/src/components/physic-paint/hooks/useRotoTimelineModel.test.ts, app/src/lib/physicPaintBridge.test.ts
+- **Why not caught:** No pre-existing gate exercised a complete break-bearing physical document across child hydration, live timeline projection, and launch republishing; no-break fixtures passed and hid the field omission.
+- **Recurrence guard:** Specified-oracle regression coverage in `app/src/lib/physicPaintBridge.test.ts`, `app/src/components/physic-paint/hooks/useRotoTimelineModel.test.ts`, and `app/src/components/physic-paint/hooks/useRotoFramePersistenceCoordinator.test.ts` fails when break ownership or Loop Clips are omitted and passed in the full 1,554-test Vitest gate.
+---
