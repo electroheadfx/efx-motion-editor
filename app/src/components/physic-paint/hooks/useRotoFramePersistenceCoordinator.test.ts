@@ -2,9 +2,13 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type {
+  PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoPhysicalRenderSource,
 } from '../roto/physicsPaintRotoPhysicalModel';
-import { rejectRotoLoopPlaceholderSource } from './useRotoFramePersistenceCoordinator';
+import {
+  encodeRotoPhysicalLaunchDocument,
+  rejectRotoLoopPlaceholderSource,
+} from './useRotoFramePersistenceCoordinator';
 
 // Phase 43 Plan 09 Task 3: the frame persistence/cache coordinator explicitly
 // rejects the 'loop-placeholder' render-source variant — no durable-cache
@@ -48,6 +52,56 @@ const placeholderSource: PhysicPaintRotoPhysicalRenderSource = {
   sourceKeyIds: ['key-4', 'missing-1'],
   missingSourceKeyIds: ['missing-1'],
 };
+
+describe('Roto frame persistence coordinator launch publication', () => {
+  it('republishes every canonical identity field without degrading the active launch', () => {
+    const record = {
+      kind: 'real-key' as const,
+      keyId: 'key-32',
+      appFrame: 32,
+      payload: {
+        frameIndex: 0,
+        appFrame: 32,
+        dataUrl: 'data:image/png;base64,',
+        width: 1,
+        height: 1,
+      },
+    };
+    const loopClips = [{
+      loopId: 'loop-1',
+      placementStart: 40,
+      sourceKeyIds: ['key-32'],
+      repeat: 2 as const,
+      mode: 'progressive' as const,
+    }];
+    const document: PhysicPaintRotoPhysicalDocument = {
+      capacity: 64,
+      realKeyRecords: [record],
+      interpolation: { enabled: true, mode: 'duplicate' },
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: 'key-32',
+      cursorAppFrame: 32,
+      revision: 'physical-complete',
+      loopClips,
+      incomingInterpolationBreakKeyIds: ['key-32'],
+    };
+
+    expect(encodeRotoPhysicalLaunchDocument(document)).toEqual({
+      capacity: 64,
+      records: [{ keyId: 'key-32', appFrame: 32, payload: record.payload }],
+      interpolationEnabled: true,
+      interpolationMode: 'duplicate',
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: 'key-32',
+      cursorAppFrame: 32,
+      revision: 'physical-complete',
+      loopClips,
+      incomingInterpolationBreakKeyIds: ['key-32'],
+    });
+  });
+});
 
 describe('Roto frame persistence coordinator loop-placeholder rejection (D-28, audit finding 6)', () => {
   it('rejects the placeholder variant from the cache pathway — zero durable-cache writes are possible for that frame', () => {
