@@ -58,12 +58,12 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Intentional Gaps
 
-- [x] **GAP-01**: Empty-frame Insert atomically creates one genuinely empty real Paint key at the exact cursor frame and one persistent incoming interpolation break owned by that key's stable identity.
-- [x] **GAP-02**: A break suppresses only the interpolation span entering its owning key; later keys may interpolate from that key, and Interpolation Off/On preserves the dormant boundary without toggling global interpolation.
-- [x] **GAP-03**: Break ownership participates in strict parsing, canonical revision, project equality, bridge validation, save/reopen, Undo/Redo, and all identity-preserving timing edits.
-- [x] **GAP-04**: The existing Insert action context-dispatches occupied-key behavior versus empty-segment insertion and exposes one target-specific mapped reason for both disabled preflight and resolver-time rejection, with no mutation on failure.
-- [x] **GAP-05**: The physical strip renders a compact integrated left-edge cut only when the break-bearing key has a predecessor and appends `Starts a new interpolation segment` to the existing cell tooltip/accessibility copy without adding an interactive target or geometry.
-- [x] **GAP-06**: Existing occupied-key Insert, physical-key, Copy/Paste, drag, spacing, Loop Clip, interpolation, selection, painting, persistence, and history workflows remain unchanged except for explicit break lifecycle participation, with automated regression and native visual UAT.
+- [ ] **GAP-01**: Empty-frame Insert atomically creates one genuinely empty real Paint key at the exact cursor frame and one persistent incoming interpolation break owned by that key's stable identity.
+- [ ] **GAP-02**: A break suppresses only the interpolation span entering its owning key; later keys may interpolate from that key, and Interpolation Off/On preserves the dormant boundary without toggling global interpolation.
+- [ ] **GAP-03**: Break ownership participates in strict parsing, canonical revision, project equality, bridge validation, save/reopen, Undo/Redo, and all identity-preserving timing edits.
+- [ ] **GAP-04**: The existing Insert action context-dispatches occupied-key behavior versus empty-segment insertion and exposes one target-specific mapped reason for both disabled preflight and resolver-time rejection, with no mutation on failure.
+- [ ] **GAP-05**: The physical strip renders a compact integrated left-edge cut only when the break-bearing key has a predecessor and appends `Starts a new interpolation segment` to the existing cell tooltip/accessibility copy without adding an interactive target or geometry.
+- [ ] **GAP-06**: Existing occupied-key Insert, physical-key, Copy/Paste, drag, spacing, Loop Clip, interpolation, selection, painting, persistence, and history workflows remain unchanged except for explicit break lifecycle participation, with automated regression and native visual UAT.
 
 ### Integrated Release Acceptance
 
@@ -137,12 +137,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HOLD-04 | Phase 43 | Complete |
 | HOLD-05 | Phase 43 | Complete |
 | HOLD-06 | Phase 43 | Complete |
-| GAP-01 | Phase 43.1 | Complete |
-| GAP-02 | Phase 43.1 | Complete |
-| GAP-03 | Phase 43.1 | Complete |
-| GAP-04 | Phase 43.1 | Complete |
-| GAP-05 | Phase 43.1 | Complete |
-| GAP-06 | Phase 43.1 | Complete |
+| GAP-01 | Phase 43.1 | Gaps Found |
+| GAP-02 | Phase 43.1 | Gaps Found |
+| GAP-03 | Phase 43.1 | Gaps Found |
+| GAP-04 | Phase 43.1 | Gaps Found |
+| GAP-05 | Phase 43.1 | Gaps Found |
+| GAP-06 | Phase 43.1 | Gaps Found |
 | REL-01 | Phase 44 | Pending |
 | REL-02 | Phase 44 | Pending |
 | REL-03 | Phase 44 | Pending |
