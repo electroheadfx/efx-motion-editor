@@ -138,6 +138,8 @@ export interface PhysicsPaintWorkflowStripProps {
   rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
   /** Controller-owned multi-selection set (37-02 signal). The strip never mutates or reorders it (D-05). */
   rotoSelectedKeyIds?: readonly string[];
+  /** Nullable primary real-key identity; absent after replacement-style Select All. */
+  rotoPrimarySelectedKeyId?: string | null;
   /** Session-only exact source-position selection shared across equivalent Loop Clip occurrences. */
   rotoSpacingSelection?: PhysicsPaintRotoSpacingSelection | null;
   /** Plain/toggle/range selection intent for one exact Loop Clip source position. */
@@ -1508,13 +1510,20 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     : hasLinkedLoopBadge
                       ? `${cellTooltipCopy} · Frame ${frame}`
                       : dragLabel;
-                  // Secondary multi-selection treatment (D-04): the current
-                  // editing key keeps only its `.current` orange ring as the
-                  // strongest highlight; every other selected ordinary real key
-                  // gets the `.selected` outline. Spacing proxies use their own
-                  // source-identity treatment, never ordinary selection.
-                  const isSecondarySelected = !isSpacingProxySelected && cellKeyId !== null && rotoSelectedKeyIdSet.has(cellKeyId) && rotoSelectedKeyIdSet.size >= 2 && !vm.overlays.includes('current');
-                  const cellClass = `physics-paint-roto-cell ${fillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
+                  // Primary-versus-complete selection treatment (D-04): an
+                  // active primary real key keeps the stronger `.current` ring;
+                  // every other member of a multi-selection gets `.selected`.
+                  // Replacement-style Select All has no primary, so every real
+                  // key receives the same complete-selection treatment.
+                  const isPrimarySelected = !isSpacingProxySelected
+                    && cellKeyId !== null
+                    && props.rotoPrimarySelectedKeyId === cellKeyId;
+                  const isSecondarySelected = !isSpacingProxySelected
+                    && cellKeyId !== null
+                    && rotoSelectedKeyIdSet.has(cellKeyId)
+                    && rotoSelectedKeyIdSet.size >= 2
+                    && !isPrimarySelected;
+                  const cellClass = `physics-paint-roto-cell ${fillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${isPrimarySelected ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
                   return (
                     <RotoTimelineCellButton
                       key={frame}

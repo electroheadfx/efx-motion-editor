@@ -202,13 +202,25 @@ export function PhysicsPaintStudio() {
   // identity here defeats the useRotoTimelineModel structural memo, forcing a
   // full signal-graph rebuild on every Studio render.
   const rotoLegacyInterpolationSettings = useMemo(() => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined, [launchContext?.layerId, physicPaintVersion.value]);
+  const currentFrame = launchContext?.startFrame ?? 0;
   // Single Select All entry point (D-03): shared by the Cmd/Ctrl+A dispatcher
   // branch and the future strip icon (plan 37-04). Store-ordered real-key
   // identities guarantee physical-frame order and real-key-only membership.
   const selectAllRotoKeys = useCallback(() => {
     const orderedRealKeyIds = rotoKeyRecords.map((record) => record.keyId);
     if (orderedRealKeyIds.length === 0) return;
-    const next = selectAllRotoKeyIds(orderedRealKeyIds, selectedKeyId.peek());
+    selectedKeyId.value = null;
+    if (launchContext) {
+      physicPaintStore.setRotoPhysicalSelection(
+        launchContext.layerId,
+        null,
+        currentFrame,
+      );
+    }
+    const next = selectAllRotoKeyIds(
+      orderedRealKeyIds,
+      null,
+    );
     rotoSpacingSelection.value = null;
     selectedLoopClipIds.value = [];
     loopSelectionAnchorId.value = null;
@@ -221,7 +233,7 @@ export function PhysicsPaintStudio() {
     // D-15 single-owner capsule arbitration). Selection-only gestures
     // (toggle/range/collapse) publish nothing.
     setApplyMessage('All keys selected');
-  }, [rotoKeyRecords]);
+  }, [currentFrame, launchContext, rotoKeyRecords]);
   const [, setLastError] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
@@ -325,7 +337,6 @@ export function PhysicsPaintStudio() {
       pendingFirstPaintTargetRef.current = null;
     },
   });
-  const currentFrame = launchContext?.startFrame ?? 0;
   const previewFps = launchContext?.fps && launchContext.fps > 0 ? launchContext.fps : 12;
   const initialRotoPlaybackSettings = launchContext?.rotoPlayback ?? {
     loop: false,
@@ -1622,6 +1633,7 @@ export function PhysicsPaintStudio() {
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).
         rotoSelectedKeyIds: selectedKeyIds.value,
+        rotoPrimarySelectedKeyId: selectedKeyId.value,
         rotoSpacingSelection: effectiveRotoSpacingSelection,
         onSelectRotoSpacingProxy: handleSelectRotoSpacingProxy,
         onClearRotoSpacingSelection: handleClearRotoSpacingSelection,
