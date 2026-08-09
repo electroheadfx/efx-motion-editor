@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-current_phase: 44
-current_phase_name: integrated-uat-signed-release
-status: ready
-stopped_at: Phase 43 complete and approved; Phase 44 ready for planning/execution
-last_updated: "2026-08-09T06:02:34.000Z"
+current_phase: 43.1
+current_phase_name: Intentional Gap Insert
+status: planning
+stopped_at: Phase 43.1 context gathered
+last_updated: "2026-08-09T12:01:13.960Z"
 last_activity: 2026-08-09
-last_activity_desc: Quick task 260809-aac Select All selection replacement passed native visual UAT and closed
+last_activity_desc: Phase 43.1 inserted after Phase 43 and ready for planning
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 4
   total_plans: 29
   completed_plans: 29
-  percent: 67
+  percent: 57
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 44 — integrated UAT and signed release
+**Current focus:** Phase 43.1 — Intentional Gap Insert
 
 ## Current Position
 
-Phase: 43 (hold-loop-clips-filmstrip-capsule) — COMPLETE AND APPROVED
-Plan: All 15 plans complete; 43-10 through 43-15 summaries recorded
-Status: Implementation `45677643`, structural cleanup `973ee5ab`, final gates, and native UAT complete
-Last activity: 2026-08-09 — Quick task 260809-aac passed native visual UAT and closed: empty frames target Add key normally, while Select All clears prior real/empty cursor highlights
+Phase: 43.1 — Intentional Gap Insert
+Plan: Not planned yet
+Status: Ready for planning
+Last activity: 2026-08-09 — Phase 43.1 inserted after Phase 43 and ready for planning
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -297,6 +297,7 @@ None yet.
 - Phase 36.14 edited: edited fields: title, goal, requirements, success_criteria, planning notes
 - Phase 38 added: Multi-Copy/Paste and Tooltip Polish
 - Phase 38.1 inserted after Phase 38: Studio render-path performance — fix many-key Studio render-path scaling ceiling (per-frame timeline-model rebuild, full strip re-render per frame) with canvas-first paint, deferred UI, playback UI suspension. Blocks 38-06 UAT re-run. (URGENT)
+- Phase 43.1 inserted after Phase 43: Intentional Gap Insert — use SPECS/milestone-v0.9.0-new-phases/phase-43.1-intentional-gap-insert-prompt.md (URGENT)
 
 ## Deferred Items
 
@@ -422,9 +423,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-07T21:05:18.297Z
-Stopped at: Phase 43 integrated Loop Rail UI-SPEC approved
-Resume file: .planning/phases/43-hold-loop-clips-filmstrip-capsule/43-UI-SPEC.md
+Last session: 2026-08-09T12:01:13.939Z
+Stopped at: Phase 43.1 context gathered
+Resume file: .planning/phases/43.1-intentional-gap-insert-use-specs-milestone-v0-9-0-new-phases/43.1-CONTEXT.md
 
 ## Operator Next Steps
 
