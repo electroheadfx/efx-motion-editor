@@ -119,6 +119,39 @@ describe('intentional incoming interpolation breaks', () => {
       rightKeyId: 'key-13',
     });
   });
+
+  it('keeps break ownership dormant while interpolation is off or the owner is first', () => {
+    const identities = [
+      { keyId: 'owner', appFrame: 0 },
+      { keyId: 'later', appFrame: 3 },
+    ];
+    const off = projectPhysicPaintRotoPhysicalTimeline({
+      identities,
+      capacity: 4,
+      interpolationEnabled: false,
+      incomingInterpolationBreakKeyIds: ['owner'],
+    });
+    const dormant = projectPhysicPaintRotoPhysicalTimeline({
+      identities,
+      capacity: 4,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['owner'],
+    });
+    const active = projectPhysicPaintRotoPhysicalTimeline({
+      identities: [
+        { keyId: 'earlier', appFrame: 0 },
+        { keyId: 'owner', appFrame: 3 },
+        { keyId: 'later', appFrame: 6 },
+      ],
+      capacity: 7,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['owner'],
+    });
+
+    expect(off.ok && off.projection.generatedCells).toEqual([]);
+    expect(dormant.ok && dormant.projection.generatedCells.map((cell) => cell.appFrame)).toEqual([1, 2]);
+    expect(active.ok && active.projection.generatedCells.map((cell) => cell.appFrame)).toEqual([4, 5]);
+  });
 });
 
 describe('resolvePhysicPaintRotoPhysicalEdit — rigid move-key-group', () => {
