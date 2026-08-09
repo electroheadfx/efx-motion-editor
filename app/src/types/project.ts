@@ -96,6 +96,8 @@ export interface McePhysicPaintRotoPhysicalDocument {
    * without the member load as an empty loop collection with no migration.
    */
   readonly loopClips?: readonly McePhysicPaintRotoLoopClip[];
+  /** Stable real-key IDs that own an intentional incoming interpolation break. */
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
 
 export interface McePhysicPaintOutput {

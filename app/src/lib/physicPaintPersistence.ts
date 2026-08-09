@@ -16,7 +16,7 @@ import { isPhysicPaintRenderedFrame, isPhysicPaintRotoPlaybackSettings, type Phy
 const PHYSIC_PAINT_CACHE_DIR = 'cache/physic-paint';
 const DATA_URL_PREFIX = 'data:image/png;base64,';
 const OUTPUT_KEYS = new Set(['layer_id', 'frames', 'roto_physical', 'roto_playback']);
-const PERSISTED_DOCUMENT_KEYS = new Set(['capacity', 'realKeyRecords', 'interpolation', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips']);
+const PERSISTED_DOCUMENT_KEYS = new Set(['capacity', 'realKeyRecords', 'interpolation', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds']);
 const PERSISTED_RECORD_KEYS = new Set(['kind', 'keyId', 'appFrame', 'payload']);
 const PERSISTED_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'cache_path', 'width', 'height']);
 
@@ -200,6 +200,7 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
             ? { scriptId: clip.scriptId, motion: { ...clip.motion! }, overrideColor: clip.overrideColor ?? null }
             : {}),
         })),
+        incomingInterpolationBreakKeyIds: [...physical.incomingInterpolationBreakKeyIds],
       };
     }
     persistedOutputs.push({
@@ -237,6 +238,11 @@ function parsePersistedPhysicalDocument(value: unknown): McePhysicPaintRotoPhysi
   // verbatim (D-31) — this check is structural only.
   if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isPhysicPaintRotoLoopClip))) {
     throw new Error('Persisted physical Roto document loopClips member is malformed.');
+  }
+  if (value.incomingInterpolationBreakKeyIds !== undefined
+    && (!Array.isArray(value.incomingInterpolationBreakKeyIds)
+      || !value.incomingInterpolationBreakKeyIds.every(isNonEmptyString))) {
+    throw new Error('Persisted physical Roto document incoming break member is malformed.');
   }
   for (const record of value.realKeyRecords) {
     if (!isPlainRecord(record) || !hasOnlyKeys(record, PERSISTED_RECORD_KEYS) || record.kind !== 'real-key') {
@@ -283,6 +289,7 @@ async function hydratePhysicalDocument(projectDir: string, value: unknown): Prom
     cursorAppFrame: persisted.cursorAppFrame,
     revision: persisted.revision,
     loopClips: persisted.loopClips,
+    incomingInterpolationBreakKeyIds: persisted.incomingInterpolationBreakKeyIds,
   });
 }
 

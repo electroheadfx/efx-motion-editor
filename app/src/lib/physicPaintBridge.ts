@@ -11,6 +11,7 @@ import {
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPhysicalRevision,
   encodePhysicPaintRotoPhysicalContent,
+  parsePhysicPaintRotoIncomingInterpolationBreakKeyIds,
   parsePhysicPaintRotoLoopClips,
   parsePhysicPaintRotoPhysicalDocument,
   parsePhysicPaintRotoRealKeyRecordCollection,
@@ -124,9 +125,11 @@ interface AcceptedPhysicalCommandEntry {
   readonly beforeRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly beforeInterpolation: PhysicPaintRotoInterpolationState;
   readonly beforeLoopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly beforeIncomingInterpolationBreakKeyIds: readonly string[];
   readonly afterRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly afterInterpolation: PhysicPaintRotoInterpolationState;
   readonly afterLoopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly afterIncomingInterpolationBreakKeyIds: readonly string[];
   readonly acceptedRevision: string;
 }
 const acceptedPhysicalCommands = new Map<string, AcceptedPhysicalCommandEntry>();
@@ -280,7 +283,12 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
   const capacity = Math.min(remainingCapacity, physicalRemaining, PHYSIC_PAINT_MAX_APPLY_FRAMES);
   const records = physicPaintStore.getRotoRealKeyRecords(request.layerId);
   const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(request.layerId);
-  const physicalRevision = buildPhysicPaintRotoPhysicalRevision(records, interpolation, physicPaintStore.getRotoPhysicalLoopClips(request.layerId));
+  const physicalRevision = buildPhysicPaintRotoPhysicalRevision(
+    records,
+    interpolation,
+    physicPaintStore.getRotoPhysicalLoopClips(request.layerId),
+    physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(request.layerId),
+  );
   const physicalRecords = records.map((record) => ({
     keyId: record.keyId,
     appFrame: record.appFrame,
@@ -373,7 +381,8 @@ function fingerprintApplyPayload(payload: PhysicPaintApplyPayload): string {
     const content = encodePhysicPaintRotoPhysicalContent(canonicalRecords, {
       enabled: payload.interpolationEnabled,
       mode: payload.interpolationMode,
-    }, payload.loopClips ?? []);
+    }, payload.loopClips ?? [], payload.incomingInterpolationBreakKeyIds ?? []);
+    const incomingBreaksPresence = payload.incomingInterpolationBreakKeyIds === undefined ? 'omitted' : 'present';
     const provenance = payload.historyProvenance
       ? `${payload.historyProvenance.historyCommandId}:${payload.historyProvenance.historyDirection}:${payload.historyProvenance.sourceRevision}:${payload.historyProvenance.targetRevision}`
       : 'ordinary';
@@ -387,6 +396,7 @@ function fingerprintApplyPayload(payload: PhysicPaintApplyPayload): string {
       payload.projectContextId ?? '',
       payload.expectedRevision,
       content,
+      incomingBreaksPresence,
       payload.selectedKeyId ?? '',
       payload.selectedAppFrame === null ? 'null' : String(payload.selectedAppFrame),
       payload.semanticDelta ? stableSerialize(payload.semanticDelta, new WeakSet<object>()) : 'mapping-only',
@@ -600,7 +610,9 @@ function physicalEditResult(
       stagedRevision = buildPhysicPaintRotoPhysicalRevision(records, {
         enabled: payload.interpolationEnabled,
         mode: payload.interpolationMode,
-      }, payload.loopClips ?? physicPaintStore.getRotoPhysicalLoopClips(payload.layerId));
+      }, payload.loopClips ?? physicPaintStore.getRotoPhysicalLoopClips(payload.layerId),
+      payload.incomingInterpolationBreakKeyIds
+        ?? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(payload.layerId));
     } catch {
       stagedRevision = 'invalid-physical-revision';
     }
@@ -628,6 +640,9 @@ function physicalEditResult(
     ...(payload.semanticDelta ? { semanticDelta: payload.semanticDelta } : {}),
     ...(payload.historyProvenance ? { historyProvenance: payload.historyProvenance } : {}),
     ...(payload.loopClips !== undefined ? { loopClips: payload.loopClips } : {}),
+    ...(payload.incomingInterpolationBreakKeyIds !== undefined
+      ? { incomingInterpolationBreakKeyIds: payload.incomingInterpolationBreakKeyIds }
+      : {}),
   };
 }
 
@@ -659,8 +674,14 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   const currentRecords = physicPaintStore.getRotoRealKeyRecords(payload.layerId);
   const currentInterpolation = physicPaintStore.getRotoPhysicalInterpolationState(payload.layerId);
   const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(payload.layerId);
+  const currentIncomingInterpolationBreakKeyIds = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(payload.layerId);
   const currentDocument = physicPaintStore.getRotoPhysicalDocument(payload.layerId);
-  const currentRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation, currentLoopClips);
+  const currentRevision = buildPhysicPaintRotoPhysicalRevision(
+    currentRecords,
+    currentInterpolation,
+    currentLoopClips,
+    currentIncomingInterpolationBreakKeyIds,
+  );
   if (currentRevision !== payload.expectedRevision) {
     return reject('Roto physical revision became stale before commit.');
   }
@@ -687,6 +708,17 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
       : parsePhysicPaintRotoLoopClips(payload.loopClips);
   } catch (error) {
     return reject(error instanceof Error ? error.message : 'Roto physical Loop Clips are malformed.');
+  }
+  let proposedIncomingInterpolationBreakKeyIds: readonly string[];
+  try {
+    proposedIncomingInterpolationBreakKeyIds = payload.incomingInterpolationBreakKeyIds === undefined
+      ? currentIncomingInterpolationBreakKeyIds
+      : parsePhysicPaintRotoIncomingInterpolationBreakKeyIds(
+          payload.incomingInterpolationBreakKeyIds,
+          proposedRecords,
+        );
+  } catch (error) {
+    return reject(error instanceof Error ? error.message : 'Roto physical incoming interpolation breaks are malformed.');
   }
   if ((payload.selectedKeyId === null) !== (payload.selectedAppFrame === null)) {
     return reject('Roto physical selection identity and frame must both be null or both be present.');
@@ -744,7 +776,12 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     enabled: payload.interpolationEnabled,
     mode: payload.interpolationMode,
   };
-  const stagedRevision = buildPhysicPaintRotoPhysicalRevision(proposedRecords, stagedInterpolation, proposedLoopClips);
+  const stagedRevision = buildPhysicPaintRotoPhysicalRevision(
+    proposedRecords,
+    stagedInterpolation,
+    proposedLoopClips,
+    proposedIncomingInterpolationBreakKeyIds,
+  );
   if (payload.operationKind === 'duplicate-key' || payload.operationKind === 'paste-key' || payload.operationKind === 'paste-key-group') {
     const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
       operationKind: payload.operationKind,
@@ -766,7 +803,12 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     if (!original) return reject('Roto physical replay targets an unknown accepted command.', stagedRevision);
     if (currentRevision !== provenance.sourceRevision) return reject('Roto physical replay source revision does not match the current state.', stagedRevision);
     if (stagedRevision !== provenance.targetRevision) return reject('Roto physical replay target revision does not match the original command.', stagedRevision);
-    const originalBeforeRevision = buildPhysicPaintRotoPhysicalRevision(original.beforeRecords, original.beforeInterpolation, original.beforeLoopClips);
+    const originalBeforeRevision = buildPhysicPaintRotoPhysicalRevision(
+      original.beforeRecords,
+      original.beforeInterpolation,
+      original.beforeLoopClips,
+      original.beforeIncomingInterpolationBreakKeyIds,
+    );
     if (provenance.historyDirection === 'undo') {
       if (provenance.sourceRevision !== original.acceptedRevision) return reject('Roto physical undo source revision does not match the original accepted state.', stagedRevision);
       if (provenance.targetRevision !== originalBeforeRevision) return reject('Roto physical undo target revision does not match the original before state.', stagedRevision);
@@ -789,6 +831,7 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     cursorAppFrame,
     revision: stagedRevision,
     loopClips: proposedLoopClips,
+    incomingInterpolationBreakKeyIds: proposedIncomingInterpolationBreakKeyIds,
   });
   const replaceResult = physicPaintStore.replaceRotoPhysicalDocument(payload.layerId, stagedDocument);
   if (!replaceResult.ok) return reject(replaceResult.error, stagedRevision);
@@ -814,12 +857,14 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
         mode: currentInterpolation.mode,
       },
       beforeLoopClips: currentLoopClips,
+      beforeIncomingInterpolationBreakKeyIds: currentIncomingInterpolationBreakKeyIds,
       afterRecords,
       afterInterpolation: {
         enabled: acceptedDocument.interpolation.enabled,
         mode: acceptedDocument.interpolation.mode,
       },
       afterLoopClips: acceptedDocument.loopClips,
+      afterIncomingInterpolationBreakKeyIds: acceptedDocument.incomingInterpolationBreakKeyIds,
       acceptedRevision: acceptedDocument.revision,
     });
   }
@@ -1332,6 +1377,7 @@ export function createPhysicPaintLaunchContext(
       cursorAppFrame: document.cursorAppFrame,
       revision: document.revision,
       loopClips: document.loopClips,
+      incomingInterpolationBreakKeyIds: document.incomingInterpolationBreakKeyIds,
     },
   };
   const validated = parseCanonicalPhysicsPaintLaunchValue(context);

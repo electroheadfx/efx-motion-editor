@@ -267,6 +267,9 @@ export interface PhysicPaintRotoLoopClip {
 /** Immutable empty Loop Clip collection shared by every absent-means-empty read. */
 export const PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY: readonly PhysicPaintRotoLoopClip[] = Object.freeze([]);
 
+/** Immutable empty stable-key-owned incoming interpolation break collection. */
+export const PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY: readonly string[] = Object.freeze([]);
+
 /**
  * Complete durable physical layer document used by project persistence and
  * standalone launch reconstruction. Generated interpolation cells and runtime
@@ -284,6 +287,8 @@ export interface PhysicPaintRotoPhysicalDocument extends PhysicPaintRotoPhysical
    * as the empty collection with no migration.
    */
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  /** Stable real-key IDs whose incoming interpolation span is intentionally broken. */
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
 }
 
 /** Immutable disabled interpolation default. */
@@ -363,6 +368,7 @@ const PHYSIC_PAINT_ROTO_PHYSICAL_DOCUMENT_KEYS = new Set([
   'cursorAppFrame',
   'revision',
   'loopClips',
+  'incomingInterpolationBreakKeyIds',
 ]);
 const PHYSIC_PAINT_ROTO_BACKGROUND_KEYS = new Set(['background', 'paperGrain', 'grainStrength', 'color']);
 
@@ -570,6 +576,36 @@ export function parsePhysicPaintRotoLoopClips(value: unknown): readonly PhysicPa
 }
 
 /**
+ * Reconstruct the complete incoming interpolation break owner collection.
+ * Owners are stable real-key IDs, unique, referentially valid, and immutable.
+ */
+export function parsePhysicPaintRotoIncomingInterpolationBreakKeyIds(
+  value: unknown,
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+): readonly string[] {
+  if (!Array.isArray(value)) {
+    throw new Error('PhysicPaintRotoIncomingInterpolationBreakKeyIds: expected an array of key IDs.');
+  }
+  const recordKeyIds = new Set(records.map((record) => record.keyId));
+  const seen = new Set<string>();
+  const owners: string[] = [];
+  for (const entry of value) {
+    if (!isBoundedKeyId(entry)) {
+      throw new Error('PhysicPaintRotoIncomingInterpolationBreakKeyIds: malformed key ID.');
+    }
+    if (seen.has(entry)) {
+      throw new Error(`PhysicPaintRotoIncomingInterpolationBreakKeyIds: duplicate keyId "${entry}".`);
+    }
+    if (!recordKeyIds.has(entry)) {
+      throw new Error(`PhysicPaintRotoIncomingInterpolationBreakKeyIds: orphan keyId "${entry}".`);
+    }
+    seen.add(entry);
+    owners.push(entry);
+  }
+  return Object.freeze(owners);
+}
+
+/**
  * Reconstruct a fresh, deterministically sorted, deeply immutable real-key
  * record collection from untrusted input.
  *
@@ -757,8 +793,9 @@ export function buildPhysicPaintRotoPhysicalRevision(
   records: unknown,
   interpolation: unknown,
   loopClips: unknown,
+  incomingInterpolationBreakKeyIds: unknown = PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
 ): string {
-  const source = encodePhysicPaintRotoPhysicalContent(records, interpolation, loopClips);
+  const source = encodePhysicPaintRotoPhysicalContent(records, interpolation, loopClips, incomingInterpolationBreakKeyIds);
   return `physical-${hashCanonicalPhysicalValue(source)}`;
 }
 
@@ -773,12 +810,14 @@ export function encodePhysicPaintRotoPhysicalContent(
   records: unknown,
   interpolation: unknown,
   loopClips: unknown,
+  incomingInterpolationBreakKeyIds: unknown = PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
 ): string {
   const validated = parsePhysicPaintRotoRealKeyRecordCollection(records);
   if (!isPhysicPaintRotoInterpolationState(interpolation)) {
     throw new Error('PhysicPaintRotoPhysicalRevision: invalid canonical interpolation state.');
   }
   const validatedLoopClips = parsePhysicPaintRotoLoopClips(loopClips);
+  const validatedIncomingBreaks = parsePhysicPaintRotoIncomingInterpolationBreakKeyIds(incomingInterpolationBreakKeyIds, validated);
   const orderedByIdentity = [...validated].sort((a, b) => a.keyId.localeCompare(b.keyId));
   const encodedRecords = orderedByIdentity.map((record) => [
     encodeCanonicalString(record.keyId),
@@ -798,6 +837,9 @@ export function encodePhysicPaintRotoPhysicalContent(
     // contributes NO term — v0.8.1 documents keep their legacy revision and
     // load with no migration. Any non-empty collection joins the fingerprint.
     ...(validatedLoopClips.length > 0 ? [`loops:${encodeCanonicalLoopClips(validatedLoopClips)}`] : []),
+    ...(validatedIncomingBreaks.length > 0
+      ? [`incoming-breaks:${encodeCanonicalIncomingInterpolationBreakKeyIds(validatedIncomingBreaks)}`]
+      : []),
   ].join('');
 }
 
@@ -807,7 +849,12 @@ export function buildPhysicPaintRotoProjectEquality(value: unknown): string {
   const source = [
     // The content encoding already covers the Loop Clip collection (Q1), so
     // two documents differing only in loops never share a save-cache key.
-    encodePhysicPaintRotoPhysicalContent(document.realKeyRecords, document.interpolation, document.loopClips),
+    encodePhysicPaintRotoPhysicalContent(
+      document.realKeyRecords,
+      document.interpolation,
+      document.loopClips,
+      document.incomingInterpolationBreakKeyIds,
+    ),
     `capacity:${encodeCanonicalNumber(document.capacity)}`,
     `motion:${encodeCanonicalNumber(document.scriptMotion.deformation)}${encodeCanonicalNumber(document.scriptMotion.position)}`,
     `background:${encodeCanonicalBackground(document.background)}`,
@@ -823,6 +870,11 @@ export function buildPhysicPaintRotoProjectEquality(value: unknown): string {
  * stable `loopId`; `sourceKeyIds` encode in persisted order (order is the
  * cycle definition, not a sort key).
  */
+function encodeCanonicalIncomingInterpolationBreakKeyIds(keyIds: readonly string[]): string {
+  const ordered = [...keyIds].sort((a, b) => a.localeCompare(b));
+  return `${ordered.length}:${ordered.map(encodeCanonicalString).join('')}`;
+}
+
 function encodeCanonicalLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): string {
   const ordered = [...loopClips].sort((a, b) => a.loopId.localeCompare(b.loopId));
   const encoded = ordered.map((clip) => [
@@ -890,7 +942,18 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
   const loopClips = value.loopClips === undefined
     ? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY
     : parsePhysicPaintRotoLoopClips(value.loopClips);
-  const revision = buildPhysicPaintRotoPhysicalRevision(state.realKeyRecords, state.interpolation, loopClips);
+  const incomingInterpolationBreakKeyIds = value.incomingInterpolationBreakKeyIds === undefined
+    ? PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY
+    : parsePhysicPaintRotoIncomingInterpolationBreakKeyIds(
+        value.incomingInterpolationBreakKeyIds,
+        state.realKeyRecords,
+      );
+  const revision = buildPhysicPaintRotoPhysicalRevision(
+    state.realKeyRecords,
+    state.interpolation,
+    loopClips,
+    incomingInterpolationBreakKeyIds,
+  );
   if (value.revision !== revision) {
     throw new Error('PhysicPaintRotoPhysicalDocument: canonical revision mismatch.');
   }
@@ -905,6 +968,7 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
     cursorAppFrame: value.cursorAppFrame,
     revision,
     loopClips,
+    incomingInterpolationBreakKeyIds,
   });
 }
 

@@ -13,7 +13,7 @@ export interface PhysicsPaintLaunchStateSetters<Settings> {
 }
 
 const LAUNCH_KEYS = new Set(['operationId', 'layerId', 'project', 'startFrame', 'layerName', 'workflowLabel', 'width', 'height', 'fps', 'rotoPhysical', 'rotoPlayback', 'audioPreview']);
-const PHYSICAL_KEYS = new Set(['capacity', 'records', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips']);
+const PHYSICAL_KEYS = new Set(['capacity', 'records', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds']);
 const AUDIO_PREVIEW_KEYS = new Set(['revision', 'fps', 'tracks']);
 const AUDIO_PREVIEW_TRACK_KEYS = new Set(['id', 'assetUrl', 'offsetFrame', 'inFrame', 'outFrame', 'slipOffset', 'fadeInFrames', 'fadeOutFrames', 'volume', 'muted', 'fadeInCurve', 'fadeOutCurve']);
 
@@ -77,6 +77,7 @@ export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPai
       cursorAppFrame: value.rotoPhysical.cursorAppFrame,
       revision: value.rotoPhysical.revision,
       loopClips: value.rotoPhysical.loopClips,
+      incomingInterpolationBreakKeyIds: value.rotoPhysical.incomingInterpolationBreakKeyIds,
     });
     if (value.startFrame !== document.cursorAppFrame) return null;
     return {
@@ -110,6 +111,7 @@ export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPai
         cursorAppFrame: document.cursorAppFrame,
         revision: document.revision,
         loopClips: document.loopClips,
+        incomingInterpolationBreakKeyIds: document.incomingInterpolationBreakKeyIds,
       },
     };
   } catch {

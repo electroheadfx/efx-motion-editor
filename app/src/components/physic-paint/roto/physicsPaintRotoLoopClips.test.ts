@@ -79,6 +79,7 @@ const baseDocument = (loopClips?: unknown) => {
     selectedKeyId: null,
     cursorAppFrame: 0,
     revision,
+    incomingInterpolationBreakKeyIds: [],
     ...(loopClips !== undefined ? { loopClips } : {}),
   };
 };

@@ -183,6 +183,8 @@ export interface PhysicPaintRotoPhysicalEditApplyPayload {
    * unchanged; when absent, the layer's current loopClips are preserved.
    */
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  /** Complete stable-key-owned incoming interpolation break collection. */
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
 
 /**
@@ -226,6 +228,8 @@ export interface PhysicPaintRotoPhysicalEditApplyResult {
   readonly historyProvenance?: PhysicPaintRotoPhysicalEditReplayProvenance;
   /** Echo of the submitted loopClips collection when the payload carried one. */
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  /** Echo of the submitted incoming break collection when the payload carried one. */
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
 
 const PHYSIC_PAINT_ROTO_PHYSICAL_KEY_ID_MAX_LENGTH = 256;
@@ -362,7 +366,7 @@ export function isPhysicPaintRotoPhysicalEditReplayProvenance(value: unknown): v
  */
 export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value is PhysicPaintRotoPhysicalEditApplyPayload {
   if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips'])) return false;
+  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
   if (!isPhysicPaintRotoPhysicalEditOperationKind(value.operationKind)) return false;
@@ -373,6 +377,7 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (!isNonEmptyString(value.expectedRevision)) return false;
   if (!Array.isArray(value.records) || !value.records.every(isPhysicPaintRotoPhysicalEditRecord)) return false;
   if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isPhysicPaintRotoLoopClip))) return false;
+  if (value.incomingInterpolationBreakKeyIds !== undefined && (!Array.isArray(value.incomingInterpolationBreakKeyIds) || !value.incomingInterpolationBreakKeyIds.every(isBoundedPhysicalKeyId))) return false;
   if (typeof value.interpolationEnabled !== 'boolean') return false;
   if (value.interpolationMode !== 'duplicate' && value.interpolationMode !== 'blend') return false;
   if (value.operationKind === 'play-script') {
@@ -403,7 +408,7 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
  */
 export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value is PhysicPaintRotoPhysicalEditApplyResult {
   if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'interpolationMode', 'selectedKeyId', 'selectedAppFrame', 'appliedFrameCount', 'ok', 'error', 'semanticDelta', 'historyProvenance', 'loopClips'])) return false;
+  if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'interpolationMode', 'selectedKeyId', 'selectedAppFrame', 'appliedFrameCount', 'ok', 'error', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
   if (!isPhysicPaintRotoPhysicalEditOperationKind(value.operationKind)) return false;
@@ -422,6 +427,7 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
   if (typeof value.ok !== 'boolean') return false;
   if (value.error !== undefined && typeof value.error !== 'string') return false;
   if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isPhysicPaintRotoLoopClip))) return false;
+  if (value.incomingInterpolationBreakKeyIds !== undefined && (!Array.isArray(value.incomingInterpolationBreakKeyIds) || !value.incomingInterpolationBreakKeyIds.every(isBoundedPhysicalKeyId))) return false;
   if (value.ok && value.acceptedRevision === null) return false;
   if (!value.ok && value.acceptedRevision !== null) return false;
   if (!operationSemanticDeltaIsValid(value.operationKind, value.semanticDelta, !value.ok)) return false;
@@ -502,6 +508,8 @@ export interface PhysicPaintRotoPhysicalDocumentPayload {
   readonly revision: string;
   /** Additive Loop Clip collection (Phase 43, D-29); absent means empty. */
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  /** Stable-key-owned incoming interpolation breaks; absent means empty. */
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
 
 export interface EfxPaintAudioPreviewTrack {
@@ -726,6 +734,8 @@ export interface PhysicPaintReplaceRotoPhysicalMapPayload {
    * unchanged; when absent, the layer's current loopClips are preserved.
    */
   loopClips?: readonly PhysicPaintRotoLoopClip[];
+  /** Complete stable-key-owned incoming interpolation break collection. */
+  incomingInterpolationBreakKeyIds?: readonly string[];
 }
 
 export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintDeleteRotoFramePayload | PhysicPaintReplaceRotoKeyFramesPayload | PhysicPaintReplaceRotoPhysicalMapPayload | PhysicPaintUpdateRotoInterpolationSettingsPayload | PhysicPaintUpdateRotoPlaybackSettingsPayload;
@@ -1210,10 +1220,11 @@ function optionalRotoCacheFrames(value: unknown): boolean {
 
 function optionalRotoPhysicalDocumentPayload(value: unknown): value is PhysicPaintRotoPhysicalDocumentPayload | undefined {
   if (value === undefined) return true;
-  if (!isRecord(value) || !hasOnlyKeys(value, ['capacity', 'records', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips'])) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ['capacity', 'records', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
   if (!isNonNegativeInteger(value.capacity) || value.capacity < 1) return false;
   if (!Array.isArray(value.records) || !value.records.every(isPhysicPaintRotoPhysicalEditRecord)) return false;
   if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isPhysicPaintRotoLoopClip))) return false;
+  if (value.incomingInterpolationBreakKeyIds !== undefined && (!Array.isArray(value.incomingInterpolationBreakKeyIds) || !value.incomingInterpolationBreakKeyIds.every(isBoundedPhysicalKeyId))) return false;
   if (typeof value.interpolationEnabled !== 'boolean') return false;
   if (value.interpolationMode !== 'duplicate' && value.interpolationMode !== 'blend') return false;
   if (!isRecord(value.scriptMotion) || !hasOnlyKeys(value.scriptMotion, ['deformation', 'position'])) return false;

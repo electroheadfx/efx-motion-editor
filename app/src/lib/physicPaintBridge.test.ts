@@ -3,12 +3,15 @@ import { defaultTransform, type Layer } from '../types/layer';
 import type { AudioTrack } from '../types/audio';
 import { audioStore } from '../stores/audioStore';
 import { layerStore } from '../stores/layerStore';
-import { physicPaintStore } from '../stores/physicPaintStore';
+import { physicPaintStore, rotoPhysicalRevision } from '../stores/physicPaintStore';
 import { projectStore } from '../stores/projectStore';
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import type { PhysicPaintApplyPayload } from '../types/physicPaint';
-import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import {
+  PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+  buildPhysicPaintRotoPhysicalRevision,
+} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {
   applyPhysicPaintPayload,
   createPhysicPaintLaunchContext,
@@ -70,6 +73,7 @@ function seedPhysicalDocument(
   layerId: string,
   records: ReturnType<typeof makePhysicalRecord>[],
   interpolation: { enabled: boolean; mode: 'duplicate' | 'blend' } = { enabled: false, mode: 'duplicate' },
+  incomingInterpolationBreakKeyIds: readonly string[] = PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
 ): void {
   const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, {
     capacity: 600,
@@ -79,7 +83,8 @@ function seedPhysicalDocument(
     background: null,
     selectedKeyId: null,
     cursorAppFrame: records[0]?.appFrame ?? 0,
-    revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, []),
+    revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, [], incomingInterpolationBreakKeyIds),
+    incomingInterpolationBreakKeyIds,
   });
   if (!result.ok) throw new Error(result.error);
 }
@@ -546,6 +551,105 @@ describe('physicPaintBridge', () => {
     const document = physicPaintStore.getRotoPhysicalDocument(layer.id);
     expect(document?.incomingInterpolationBreakKeyIds).toEqual(['key-10']);
     expect(Object.isFrozen(document?.incomingInterpolationBreakKeyIds)).toBe(true);
+
+    const omitted = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'retain-omitted-incoming-break',
+      operationKind: 'move-key',
+      layerId: layer.id,
+      startFrame: 10,
+      launchOperationId: launch.data.operationId,
+      expectedRevision: document!.revision,
+      records,
+      interpolationEnabled: true,
+      interpolationMode: 'duplicate',
+      selectedKeyId: 'key-10',
+      selectedAppFrame: 10,
+    });
+    expect(omitted.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layer.id)).toEqual(['key-10']);
+
+    const retainedDocument = physicPaintStore.getRotoPhysicalDocument(layer.id)!;
+    const cleared = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'clear-explicit-incoming-break',
+      operationKind: 'move-key',
+      layerId: layer.id,
+      startFrame: 10,
+      launchOperationId: launch.data.operationId,
+      expectedRevision: retainedDocument.revision,
+      records,
+      interpolationEnabled: true,
+      interpolationMode: 'duplicate',
+      incomingInterpolationBreakKeyIds: [],
+      selectedKeyId: 'key-10',
+      selectedAppFrame: 10,
+    });
+    expect(cleared.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layer.id)).toEqual([]);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)?.revision).toBe(
+      buildPhysicPaintRotoPhysicalRevision(
+        records.map((record) => ({ ...record, kind: 'real-key' as const })),
+        { enabled: true, mode: 'duplicate' },
+        [],
+      ),
+    );
+
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds('missing-layer')).toBe(
+      PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+    );
+    const fresh = createPhysicPaintLaunchContext(physicLayer({
+      id: 'fresh-layer',
+      source: { type: 'physic-paint', layerId: 'fresh-layer' },
+    }), 0);
+    expect(fresh.rotoPhysical?.incomingInterpolationBreakKeyIds).toEqual([]);
+    expect(Object.isFrozen(fresh.rotoPhysical?.incomingInterpolationBreakKeyIds)).toBe(true);
+    open.mockRestore();
+  });
+
+  it('rejects malformed duplicate orphan or stale incoming interpolation breaks without mutation', async () => {
+    const layer = physicLayer();
+    mockLayers([layer]);
+    seedPhysicalDocument(layer.id, [
+      makePhysicalRecord('key-0', 0),
+      makePhysicalRecord('key-10', 10),
+    ], { enabled: true, mode: 'duplicate' }, ['key-10']);
+    const open = vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 10 });
+
+    expect(launch.ok).toBe(true);
+    if (!launch.ok || !launch.data.rotoPhysical) return;
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    const beforeRevisionSignal = rotoPhysicalRevision.peek();
+    const basePayload = {
+      kind: 'replace-roto-physical-map' as const,
+      operationKind: 'move-key' as const,
+      layerId: layer.id,
+      startFrame: 10,
+      launchOperationId: launch.data.operationId,
+      expectedRevision: launch.data.rotoPhysical.revision,
+      records: launch.data.rotoPhysical.records,
+      interpolationEnabled: true,
+      interpolationMode: 'duplicate' as const,
+      selectedKeyId: 'key-10',
+      selectedAppFrame: 10,
+    };
+    const proposals: readonly { operationId: string; expectedRevision?: string; incomingInterpolationBreakKeyIds: unknown }[] = [
+      { operationId: 'reject-malformed-incoming-break', incomingInterpolationBreakKeyIds: 'key-10' },
+      { operationId: 'reject-duplicate-incoming-break', incomingInterpolationBreakKeyIds: ['key-10', 'key-10'] },
+      { operationId: 'reject-orphan-incoming-break', incomingInterpolationBreakKeyIds: ['missing-key'] },
+      { operationId: 'reject-stale-incoming-break', expectedRevision: 'physical-stale', incomingInterpolationBreakKeyIds: ['key-10'] },
+    ];
+
+    for (const proposal of proposals) {
+      const result = applyPhysicPaintPayload({
+        ...basePayload,
+        ...proposal,
+      });
+      expect(result.ok).toBe(false);
+      expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(beforeDocument);
+      expect(rotoPhysicalRevision.peek()).toBe(beforeRevisionSignal);
+    }
     open.mockRestore();
   });
 
