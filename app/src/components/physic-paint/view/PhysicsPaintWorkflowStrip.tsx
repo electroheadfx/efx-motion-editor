@@ -7,7 +7,7 @@ import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
   collectRotoDragVacatedAppFrames,
-  getRotoCellFill, getRotoCellViewModel,
+  getRotoCellFill, getRotoCellPresentationViewModel, getRotoCellViewModel,
   getRotoCellSelectedTooltipCopy,
   getRotoCellStateTooltipCopy,
   getRotoDragPreviewViewModel,
@@ -167,6 +167,8 @@ export interface PhysicsPaintWorkflowStripProps {
   onPasteRotoFrame?: () => void;
   /** Physical real-key records for identity-based Drag targeting (D-01/D-07). */
   rotoKeyRecords?: readonly PhysicPaintRotoRealKeyRecord[];
+  /** Accepted stable real-key owners of incoming interpolation breaks. */
+  rotoIncomingInterpolationBreakKeyIds?: readonly string[];
   /** Reactive physical timeline cells (D-10) for vacated-cell diffing during Drag preview. */
   rotoPhysicalCells?: readonly RotoPhysicalTimelineCell[];
   /**
@@ -474,6 +476,7 @@ interface RotoTimelineCellButtonProps {
   semanticKind: 'empty' | 'real-key' | 'generated';
   cellKeyId: string | null;
   dragEligible: boolean;
+  startsInterpolationSegment: boolean;
   ariaLabel: string;
   ariaSelected?: boolean;
   tooltipCopy: string;
@@ -540,6 +543,9 @@ function RotoTimelineCellButtonImpl(props: RotoTimelineCellButtonProps) {
           props.onCellClick(props.frame, props.vm, event as unknown as MouseEvent);
         }}
       >
+        {props.startsInterpolationSegment ? (
+          <span class="physics-paint-roto-segment-start-cut" aria-hidden="true" />
+        ) : null}
         <span>{props.frame}</span>
       </button>
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom">{props.tooltipCopy}</PhysicsPaintStyledTooltip>
@@ -564,6 +570,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const interpolationEnabled = props.rotoInterpolationEnabled === true;
   const interpolationMode = props.rotoInterpolationMode ?? 'duplicate';
   const currentPhysicalCells = props.rotoPhysicalCells ?? [];
+  const orderedRealKeyIds = useMemo(
+    () => [...(props.rotoKeyRecords ?? [])]
+      .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId))
+      .map((record) => record.keyId),
+    [props.rotoKeyRecords],
+  );
+  const incomingInterpolationBreakKeyIds = props.rotoIncomingInterpolationBreakKeyIds ?? [];
   const physicalCellByAppFrame = useMemo(
     () => new Map(currentPhysicalCells.map((cell) => [cell.appFrame, cell])),
     [currentPhysicalCells],
@@ -1503,14 +1516,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   const cellTooltipKind: RotoCellSemanticTooltipKind = frameResolution === null
                     ? existingCellTooltipKind
                     : getRotoResolutionCellTooltipKind(frameResolution, existingCellTooltipKind);
-                  const cellTooltipCopy = frameResolution === null
+                  const baseCellTooltipCopy = frameResolution === null
                     ? getRotoCellStateTooltipCopy(existingCellTooltipKind)
                     : getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById);
-                  const cellAriaLabel = isSpacingProxySelected
-                    ? `${cellTooltipCopy} · Frame ${frame}. Loop Clip source position selected for Key Spacing.`
-                    : hasLinkedLoopBadge
-                      ? `${cellTooltipCopy} · Frame ${frame}`
-                      : dragLabel;
                   // Real keys use primary-versus-complete selection treatment;
                   // non-real cells keep the cursor unless Select All owns selection.
                   const isCurrentFrame = vm.overlays.includes('current');
@@ -1524,7 +1532,29 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     && !isPrimarySelected;
                   const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;
                   const hasCurrentTreatment = cellKeyId === null ? isCurrentFrame && !hasReplacementSelection : isPrimarySelected;
-                  const cellClass = `physics-paint-roto-cell ${fillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${hasCurrentTreatment ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
+                  const cellBaseTooltipCopy = isSpacingProxySelected
+                    ? 'Loop Clip source position selected for Key Spacing.'
+                    : isSecondarySelected
+                      ? getRotoCellSelectedTooltipCopy(cellTooltipKind)
+                      : baseCellTooltipCopy;
+                  const cellBaseAriaLabel = isSpacingProxySelected
+                    ? `${baseCellTooltipCopy} · Frame ${frame}. Loop Clip source position selected for Key Spacing.`
+                    : hasLinkedLoopBadge
+                      ? `${baseCellTooltipCopy} · Frame ${frame}`
+                      : isSecondarySelected
+                        ? `${dragLabel} Selected.`
+                        : dragLabel;
+                  const cellPresentation = getRotoCellPresentationViewModel({
+                    kind: hasLinkedLoopBadge ? 'linked' : isPhysicalRealKey ? 'real' : isGenerated ? 'generated' : 'empty',
+                    keyId: cellKeyId,
+                    orderedRealKeyIds,
+                    incomingInterpolationBreakKeyIds,
+                    baseCopy: cellBaseTooltipCopy,
+                    ariaLabel: cellBaseAriaLabel,
+                  });
+                  const cellAriaLabel = cellPresentation.ariaLabel;
+                  const cellTooltipCopy = cellPresentation.tooltipCopy;
+                  const cellClass = `physics-paint-roto-cell ${fillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${cellPresentation.startsInterpolationSegment ? 'starts-interpolation-segment' : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${hasCurrentTreatment ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
                   return (
                     <RotoTimelineCellButton
                       key={frame}
@@ -1534,9 +1564,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       semanticKind={semanticKind}
                       cellKeyId={cellKeyId}
                       dragEligible={dragEligible}
-                      ariaLabel={isSecondarySelected ? `${cellAriaLabel} Selected.` : cellAriaLabel}
+                      startsInterpolationSegment={cellPresentation.startsInterpolationSegment}
+                      ariaLabel={cellAriaLabel}
                       ariaSelected={isSpacingProxySelected || isSecondarySelected}
-                      tooltipCopy={isSpacingProxySelected ? 'Loop Clip source position selected for Key Spacing.' : isSecondarySelected ? getRotoCellSelectedTooltipCopy(cellTooltipKind) : cellTooltipCopy}
+                      tooltipCopy={cellTooltipCopy}
                       onCellPointerDown={handleRotoTimelineCellPointerDown}
                       onCellClick={handleRotoTimelineCellClick}
                     />

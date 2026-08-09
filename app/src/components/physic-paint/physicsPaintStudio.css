@@ -2777,6 +2777,17 @@ button.destructive {
   background: #4d535a;
 }
 
+.physics-paint-roto-cell.starts-interpolation-segment .physics-paint-roto-segment-start-cut {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 1px;
+  width: 2px;
+  border-radius: 1px;
+  background: #6f90ff;
+  pointer-events: none;
+}
+
 .physics-paint-roto-cell.roto-fill-cached,
 .physics-paint-roto-cell.roto-fill-cached-only {
   border-color: rgba(91, 216, 143, 0.78);

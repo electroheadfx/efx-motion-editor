@@ -276,6 +276,7 @@ export interface RotoCellPresentationViewModelInput {
   readonly orderedRealKeyIds: readonly string[];
   readonly incomingInterpolationBreakKeyIds: readonly string[];
   readonly baseCopy: string;
+  readonly ariaLabel?: string;
 }
 
 export interface RotoCellPresentationViewModel {
@@ -296,19 +297,23 @@ export function getRotoCellPresentationViewModel({
   orderedRealKeyIds,
   incomingInterpolationBreakKeyIds,
   baseCopy,
+  ariaLabel = baseCopy,
 }: RotoCellPresentationViewModelInput): RotoCellPresentationViewModel {
   const startsInterpolationSegment = kind === 'real'
     && keyId !== null
     && orderedRealKeyIds.indexOf(keyId) > 0
     && incomingInterpolationBreakKeyIds.includes(keyId);
-  const descriptiveCopy = startsInterpolationSegment
+  const tooltipCopy = startsInterpolationSegment
     ? `${baseCopy} · ${ROTO_STARTS_INTERPOLATION_SEGMENT_COPY}`
     : baseCopy;
+  const descriptiveAriaLabel = startsInterpolationSegment
+    ? `${ariaLabel} · ${ROTO_STARTS_INTERPOLATION_SEGMENT_COPY}`
+    : ariaLabel;
 
   return {
     startsInterpolationSegment,
-    tooltipCopy: descriptiveCopy,
-    ariaLabel: descriptiveCopy,
+    tooltipCopy,
+    ariaLabel: descriptiveAriaLabel,
   };
 }
 

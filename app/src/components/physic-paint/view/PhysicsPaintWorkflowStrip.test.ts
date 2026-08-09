@@ -17,6 +17,8 @@ const legacyLanePath = resolve(dirname(fileURLToPath(import.meta.url)), 'Physics
 const source = () => readFileSync(sourcePath, 'utf8');
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
 const css = () => readFileSync(cssPath, 'utf8');
+const timelineActionsPath = resolve(dirname(fileURLToPath(import.meta.url)), '../hooks/useRotoTimelineActions.ts');
+const timelineActionsSource = () => readFileSync(timelineActionsPath, 'utf8');
 
 function getRotoMapBlock(code: string): string {
   const mapStart = code.indexOf('{frameCells.map(frame =>');
@@ -308,6 +310,54 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(repeatDot).toContain('right: 2px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 24px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).toContain('repeat(120, 18px)');
+  });
+
+  it('renders an accepted predecessor-aware interpolation cut inside the existing cell target', () => {
+    const code = source();
+    const map = getRotoMapBlock(code);
+    const propsInterface = getWorkflowStripPropsInterface(code);
+    const buttonStart = code.indexOf('function RotoTimelineCellButtonImpl');
+    const buttonEnd = code.indexOf('const RotoTimelineCellButton = memo', buttonStart);
+    const button = code.slice(buttonStart, buttonEnd);
+    const markerStart = button.indexOf('class="physics-paint-roto-segment-start-cut"');
+    const marker = button.slice(button.lastIndexOf('<span', markerStart), button.indexOf('/>', markerStart) + 2);
+
+    expect(propsInterface).toContain('rotoIncomingInterpolationBreakKeyIds?: readonly string[]');
+    expect(map).toContain('getRotoCellPresentationViewModel({');
+    expect(map).toContain("kind: hasLinkedLoopBadge ? 'linked' : isPhysicalRealKey ? 'real' : isGenerated ? 'generated' : 'empty'");
+    expect(map).toContain('incomingInterpolationBreakKeyIds');
+    expect(map).toContain("cellPresentation.startsInterpolationSegment ? 'starts-interpolation-segment' : ''");
+    expect(map).toContain('startsInterpolationSegment={cellPresentation.startsInterpolationSegment}');
+    expect(countOccurrences(button, '<button')).toBe(1);
+    expect(marker).toContain('aria-hidden="true"');
+    expect(marker).not.toMatch(/on[A-Z]|tabIndex|role=|aria-label/);
+  });
+
+  it('styles the segment cut as a non-white 2px accent without changing cell or Loop Rail geometry', () => {
+    const styles = css();
+    const cut = getCssRuleBlock(styles, '.physics-paint-roto-cell.starts-interpolation-segment .physics-paint-roto-segment-start-cut {');
+
+    expect(cut).toContain('width: 2px');
+    expect(cut).toContain('background: #6f90ff');
+    expect(cut).toContain('pointer-events: none');
+    expect(cut).not.toMatch(/background:\s*(?:white|#fff(?:fff)?|#f8fafc|rgba?\(255)/i);
+    expect(cut).not.toMatch(/(?:^|\n)\s*(?:height|padding|margin|min-width|max-width):/);
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 24px');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).toContain('grid-template-columns: repeat(120, 18px)');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-loop-boundary-start {')).toContain('border-left-color: #f8fafc');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-loop-boundary-end {')).toContain('border-right-color: #f8fafc');
+  });
+
+  it('keeps one visible Insert label with the contextual enabled description and guarded reason path', () => {
+    const code = source();
+    const row = getActionRowBlock(code);
+    const actions = timelineActionsSource();
+
+    expect(countOccurrences(row, '<span class="physics-paint-roto-key-icon-label">Insert</span>')).toBe(1);
+    expect(code).toContain("physicalActions?.insertTooltipDescription.value ?? 'Insert key before'");
+    expect(code).toContain('buildGuardedActionTooltipCopy(insertRotoKeyDescription, insertRotoKeyDisabledReason)');
+    expect(actions).toContain("? 'Insert an empty key and start a new interpolation segment.'");
+    expect(actions).toContain(": 'Insert key before'");
   });
 });
 
@@ -1152,7 +1202,8 @@ describe('PhysicsPaintWorkflowStrip loop resolution wiring (43-02, Pitfall 7)', 
     expect(mapBlock).toContain('getRotoResolutionCellTooltipCopy(');
     expect(mapBlock).toContain("frameResolution?.kind === 'linked-generated'");
     expect(mapBlock).toContain("frameResolution?.kind === 'linked-gap'");
-    expect(mapBlock).toContain('const cellAriaLabel = isSpacingProxySelected');
+    expect(mapBlock).toContain('const cellBaseAriaLabel = isSpacingProxySelected');
+    expect(mapBlock).toContain('const cellAriaLabel = cellPresentation.ariaLabel');
   });
 
   it('issues exactly one resolution query per visible frame for a huge-repeat loop (D-32)', () => {
