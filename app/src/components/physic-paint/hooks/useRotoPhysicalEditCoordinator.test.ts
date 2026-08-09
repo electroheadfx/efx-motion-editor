@@ -269,15 +269,22 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       selectedAppFrame: 8,
     });
   };
-  const accept = () => {
+  const makeResult = (
+    overrides: Partial<PhysicPaintRotoPhysicalEditApplyResult> = {},
+  ): PhysicPaintRotoPhysicalEditApplyResult => {
     if (!payload) throw new Error('Expected a sent payload.');
     const stagedRevision = buildPhysicPaintRotoPhysicalRevision(
-      records,
-      interpolation,
-      loopClips,
-      incomingInterpolationBreakKeyIds,
+      payload.records.map((entry) => ({
+        kind: 'real-key' as const,
+        keyId: entry.keyId,
+        appFrame: entry.appFrame,
+        payload: entry.payload,
+      })),
+      { enabled: payload.interpolationEnabled, mode: payload.interpolationMode },
+      payload.loopClips ?? [],
+      payload.incomingInterpolationBreakKeyIds ?? [],
     );
-    const result: PhysicPaintRotoPhysicalEditApplyResult = {
+    return {
       operationId: payload.operationId,
       kind: 'replace-roto-physical-map',
       operationKind: payload.operationKind,
@@ -295,15 +302,25 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       semanticDelta: payload.semanticDelta,
       loopClips: payload.loopClips,
       incomingInterpolationBreakKeyIds: payload.incomingInterpolationBreakKeyIds,
+      ...overrides,
     };
-    return coordinator.consumePhysicalEditResult(result);
   };
+  const accept = () => coordinator.consumePhysicalEditResult(makeResult());
+  const reject = () => coordinator.consumePhysicalEditResult(makeResult({
+    ok: false,
+    acceptedRevision: null,
+    appliedFrameCount: 0,
+    error: 'Parent rejected empty segment.',
+  }));
+  const mismatch = () => coordinator.consumePhysicalEditResult(makeResult({ selectedAppFrame: 15 }));
   return {
     coordinator,
     execute,
     executeEmptySegment,
     executePlayScript,
     accept,
+    reject,
+    mismatch,
     initial,
     replaceRecords,
     replaceLoopClips,
@@ -367,7 +384,7 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(14);
   });
 
-  it('stages and accepts one empty key with its complete cloned incoming-break collection', async () => {
+  it('sends and accepts one empty key with its complete cloned incoming-break collection', async () => {
     const test = harness();
 
     expect(await test.executeEmptySegment()).toBe(true);
@@ -377,20 +394,59 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       ['C', 2],
       ['X', 6],
       ['Y', 7],
-      ['blank-14', 14],
     ]);
-    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C', 'blank-14']);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
+    expect(test.getPayload()?.records.map(({ keyId, appFrame }) => [keyId, appFrame])).toContainEqual(['blank-14', 14]);
     expect(test.getPayload()?.incomingInterpolationBreakKeyIds).toEqual(['C', 'blank-14']);
     expect(test.getPayload()?.incomingInterpolationBreakKeyIds).not.toBe(
       test.getIncomingInterpolationBreakKeyIds(),
     );
 
     expect(test.accept()).toBe('accepted');
+    expect(test.getRecords().map(({ keyId, appFrame }) => [keyId, appFrame])).toContainEqual(['blank-14', 14]);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C', 'blank-14']);
     expect(test.coordinator.acceptedOutput.value?.before.incomingInterpolationBreakKeyIds).toEqual(['C']);
     expect(test.coordinator.acceptedOutput.value?.after.incomingInterpolationBreakKeyIds).toEqual(['C', 'blank-14']);
     expect(test.coordinator.acceptedOutput.value?.before.incomingInterpolationBreakKeyIds).not.toBe(
       test.coordinator.acceptedOutput.value?.after.incomingInterpolationBreakKeyIds,
     );
+  });
+
+  it('preserves every prior surface on parent rejection and leaves mismatches pending without success', async () => {
+    const rejected = harness();
+    const priorRecords = rejected.getRecords();
+    const priorBreaks = rejected.getIncomingInterpolationBreakKeyIds();
+
+    expect(await rejected.executeEmptySegment()).toBe(true);
+    expect(rejected.reject()).toBe('accepted');
+    expect(rejected.getRecords()).toEqual(priorRecords);
+    expect(rejected.getIncomingInterpolationBreakKeyIds()).toEqual(priorBreaks);
+    expect(rejected.getSelectedKeyId()).toBeNull();
+    expect(rejected.getCurrentFrame()).toBe(0);
+    expect(rejected.coordinator.acceptedOutput.value).toBeNull();
+    expect(rejected.coordinator.failureOutput.value?.reason).toBe('parent-rejection');
+
+    const mismatched = harness();
+    expect(await mismatched.executeEmptySegment()).toBe(true);
+    expect(mismatched.mismatch()).toBe('mismatch');
+    expect(mismatched.getRecords()).toEqual(mismatched.initial.records);
+    expect(mismatched.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
+    expect(mismatched.getSelectedKeyId()).toBeNull();
+    expect(mismatched.getCurrentFrame()).toBe(0);
+    expect(mismatched.reconcileCurrentFrame).not.toHaveBeenCalled();
+    expect(mismatched.coordinator.acceptedOutput.value).toBeNull();
+    expect(mismatched.coordinator.failureOutput.value).toBeNull();
+    mismatched.coordinator.cancelPhysicalEdit('disposal');
+  });
+
+  it('preserves Play Script accepted reconciliation through the shared funnel', async () => {
+    const test = harness();
+
+    expect(await test.executePlayScript()).toBe(true);
+    expect(test.reconcileCurrentFrame).not.toHaveBeenCalled();
+    expect(test.accept()).toBe('accepted');
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledTimes(1);
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(8);
   });
 
   it('rolls back the empty key and matching break together when transport rejects', async () => {

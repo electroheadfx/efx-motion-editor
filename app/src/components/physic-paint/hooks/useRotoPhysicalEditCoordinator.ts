@@ -709,6 +709,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         pending.operationKind === 'undo'
         || pending.operationKind === 'redo'
         || pending.operationKind === 'play-script'
+        || pending.operationKind === 'insert-empty-segment'
       ) {
         portsRef.current.reference.reconcileCurrentFrame(after.currentAppFrame);
       }
@@ -795,20 +796,22 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       );
       if (pending.operationKind === 'set-interpolation-enabled'
         || pending.operationKind === 'set-interpolation-mode'
-        || pending.operationKind === 'play-script') {
+        || pending.operationKind === 'play-script'
+        || pending.operationKind === 'insert-empty-segment') {
         if (currentStaged !== pending.expectedRevision
           || !pending.deferredRecords
           || !pending.deferredInterpolation) {
           finalizeFailed(pending, before, 'settlement-mismatch', 'Accepted deferred physical state no longer matches the child snapshot.');
           return 'accepted';
         }
-        const replaceResult = portsRef.current.records.replaceRecords(
+        const replaced = replaceRecordsAndBreaks(
           pending.layerId,
           pending.deferredRecords,
           pending.deferredInterpolation,
+          pending.stagedIncomingInterpolationBreakKeyIds,
         );
-        if (!replaceResult.ok) {
-          finalizeFailed(pending, before, 'exception', replaceResult.error);
+        if (!replaced) {
+          finalizeFailed(pending, before, 'exception', 'Could not publish deferred records and incoming interpolation breaks together.');
           return 'accepted';
         }
         // 43-06: a play-script commit carrying loopClips settles the staged
@@ -842,7 +845,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       finalizeAccepted(pending, transition.detail, before);
       return 'accepted';
     },
-    [finalizeAccepted, finalizeFailed],
+    [finalizeAccepted, finalizeFailed, replaceRecordsAndBreaks],
   );
 
   const consumeBridgeApplyResult = useCallback(
@@ -882,6 +885,8 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       const isInterpolationModeChange = input.operationKind === 'set-interpolation-mode';
       const isInterpolationChange = isInterpolationEnabledChange || isInterpolationModeChange;
       const isPlayScript = input.operationKind === 'play-script';
+      const isInsertEmptySegment = input.operationKind === 'insert-empty-segment';
+      const isDeferredPublication = isInterpolationChange || isPlayScript || isInsertEmptySegment;
       const interpolationInput = isInterpolationChange && 'targetInterpolation' in input
         ? input as RotoInterpolationEnabledExecuteInput | RotoInterpolationModeExecuteInput
         : null;
@@ -1157,7 +1162,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         const pending = createPendingPhysicalEdit(
           payload,
           stagedRevision,
-          isInterpolationChange || isPlayScript
+          isDeferredPublication
             ? {
                 records: validatedStagedRecords,
                 interpolation: stagedInterpolation,
@@ -1172,11 +1177,11 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         pendingOperationKindSignal.value = input.operationKind;
         portsRef.current.settlement.registerPendingSettlement(pending);
 
-        if (isInterpolationChange || isPlayScript) {
-          // The parent is authoritative for canonical interpolation and Play
-          // publication. Keep the accepted child document visible until the
-          // exact matching acknowledgement, then apply the deferred canonical
-          // target in consumePhysicalEditResult.
+        if (isDeferredPublication) {
+          // The parent is authoritative for canonical interpolation, Play, and
+          // empty-segment publication. Keep the accepted child document visible
+          // until the exact matching acknowledgement, then apply the deferred
+          // canonical target in consumePhysicalEditResult.
         } else if (isReplay && replayTarget) {
           if (!restoreSnapshot(replayTarget, true)) {
             finalizeFailed(pending, before, 'exception', 'Could not stage the immutable replay target snapshot.');
