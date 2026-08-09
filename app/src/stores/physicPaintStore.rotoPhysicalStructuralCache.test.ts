@@ -67,12 +67,19 @@ function freshStructural(): { projection: PhysicPaintRotoPhysicalTimelineProject
   const records = physicPaintStore.getRotoRealKeyRecords(LAYER);
   const capacity = physicPaintStore.getRotoPhysicalCapacity(LAYER);
   const interpolation: PhysicPaintRotoInterpolationState = physicPaintStore.getRotoPhysicalInterpolationState(LAYER);
+  const incomingInterpolationBreakKeyIds = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(LAYER);
   const result = physicalResolverModule.projectPhysicPaintRotoPhysicalTimeline({
     identities: records.map((entry) => ({ keyId: entry.keyId, appFrame: entry.appFrame })),
     capacity,
     interpolationEnabled: interpolation.enabled,
+    incomingInterpolationBreakKeyIds,
   });
-  const revision = physicalModelModule.buildPhysicPaintRotoPhysicalRevision(records, interpolation, []);
+  const revision = physicalModelModule.buildPhysicPaintRotoPhysicalRevision(
+    records,
+    interpolation,
+    [],
+    incomingInterpolationBreakKeyIds,
+  );
   return { projection: result.ok ? result.projection : null, revision };
 }
 
@@ -206,6 +213,47 @@ describe('physicPaintStore roto physical structural cache (38.1-07)', () => {
     expect(undone.ok).toBe(true);
     expectSingleByteIdenticalRecompute('undo restore');
     expect(physicPaintStore.getRotoPhysicalContentRevision(LAYER)).toBe(priorRevision);
+  });
+
+  it('immutable break replacement recomputes once while stable identity and selection reads remain free', () => {
+    installBase();
+    warmUp();
+    const beforeProjection = physicPaintStore.getRotoPhysicalProjection(LAYER);
+    const current = physicPaintStore.getRotoPhysicalDocument(LAYER);
+    expect(current).not.toBeNull();
+    if (current === null) throw new Error('Base physical document must exist');
+    const incomingInterpolationBreakKeyIds = Object.freeze(['key-b']);
+    const replacement = {
+      ...current,
+      incomingInterpolationBreakKeyIds,
+      revision: physicalModelModule.buildPhysicPaintRotoPhysicalRevision(
+        current.realKeyRecords,
+        current.interpolation,
+        current.loopClips,
+        incomingInterpolationBreakKeyIds,
+      ),
+    };
+
+    expect(physicPaintStore.replaceRotoPhysicalDocument(LAYER, replacement).ok).toBe(true);
+    clearSpyCounts();
+    const afterProjection = physicPaintStore.getRotoPhysicalProjection(LAYER);
+    expect(afterProjection).not.toBe(beforeProjection);
+    expect(afterProjection?.generatedCells.some((cell) => cell.rightKeyId === 'key-b')).toBe(false);
+    expect(projectionSpy.mock.calls.length).toBe(1);
+    expect(revisionSpy.mock.calls.length).toBe(1);
+    const installedBreaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(LAYER);
+
+    clearSpyCounts();
+    expect(physicPaintStore.getRotoPhysicalProjection(LAYER)).toBe(afterProjection);
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(LAYER)).toBe(installedBreaks);
+    expect(physicPaintStore.setRotoPhysicalSelection(LAYER, null, 3).ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalProjection(LAYER)).toBe(afterProjection);
+    expect(projectionSpy.mock.calls.length).toBe(0);
+    expect(revisionSpy.mock.calls.length).toBe(0);
+
+    expect(physicPaintStore.setRotoPhysicalInterpolationState(LAYER, { enabled: false, mode: 'duplicate' }).ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(LAYER)).toBe(installedBreaks);
+    expect(physicPaintStore.getRotoPhysicalProjection(LAYER)?.generatedCells).toEqual([]);
   });
 
   it('selection writes never invalidate the structural cache', () => {

@@ -169,6 +169,7 @@ function _resolveRotoPhysicalStructural(layerId: string): RotoPhysicalStructural
     identities,
     capacity,
     interpolationEnabled: interpolation.enabled,
+    incomingInterpolationBreakKeyIds,
   });
   const entry: RotoPhysicalStructuralCacheEntry = {
     recordMap,
@@ -858,6 +859,7 @@ export const physicPaintStore = {
           identities: physical.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
           capacity: physical.capacity,
           interpolationEnabled: physical.interpolation.enabled,
+          incomingInterpolationBreakKeyIds: physical.incomingInterpolationBreakKeyIds,
         });
         if (!projection.ok) throw new Error(projection.failure.text);
         nextPhysicalRecords.set(output.layer_id, new Map(physical.realKeyRecords.map((record) => [record.keyId, record])));
@@ -1260,10 +1262,12 @@ export const physicPaintStore = {
 
     // Validate the derived projection before any mutation.
     const identities = validatedRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
+    const currentIncomingBreaks = this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId);
     const projectionResult = projectPhysicPaintRotoPhysicalTimeline({
       identities,
       capacity,
       interpolationEnabled: interpolation.enabled,
+      incomingInterpolationBreakKeyIds: currentIncomingBreaks,
     });
     if (!projectionResult.ok) {
       return { ok: false, error: projectionResult.failure.text };
@@ -1276,7 +1280,6 @@ export const physicPaintStore = {
     // Records-only replacement: the Loop Clip collection is untouched, so both
     // sides of the revision comparison carry the current collection.
     const currentLoopClips = this.getRotoPhysicalLoopClips(layerId);
-    const currentIncomingBreaks = this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId);
     const previousRevision = buildPhysicPaintRotoPhysicalRevision(previousRecords, previousInterpolation, currentLoopClips, currentIncomingBreaks);
     const nextRevision = buildPhysicPaintRotoPhysicalRevision(validatedRecords, interpolation, currentLoopClips, currentIncomingBreaks);
     if (_rotoRealKeyRecords.has(layerId) && previousRevision === nextRevision && previousCapacity === capacity) return { ok: true };
@@ -1318,6 +1321,7 @@ export const physicPaintStore = {
       identities: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
       capacity: document.capacity,
       interpolationEnabled: document.interpolation.enabled,
+      incomingInterpolationBreakKeyIds: document.incomingInterpolationBreakKeyIds,
     });
     if (!projection.ok) return { ok: false, error: projection.failure.text };
 
