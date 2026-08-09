@@ -5,6 +5,7 @@ import type {
 } from './physicsPaintRotoPhysicalResolver';
 import {
   createPhysicPaintRotoPasteKeyGroupIntent,
+  projectPhysicPaintRotoPhysicalTimeline,
   resolvePhysicPaintRotoPhysicalEdit,
   validatePhysicPaintRotoPhysicalEditSemanticDelta,
 } from './physicsPaintRotoPhysicalResolver';
@@ -94,6 +95,31 @@ function resolveBaselineWithRecords(
     interpolationEnabled: false,
   });
 }
+
+describe('intentional incoming interpolation breaks', () => {
+  it('suppresses only the incoming interpolation span owned by the right key', () => {
+    const resolution = projectPhysicPaintRotoPhysicalTimeline({
+      identities: [
+        { keyId: 'key-0', appFrame: 0 },
+        { keyId: 'key-3', appFrame: 3 },
+        { keyId: 'key-6', appFrame: 6 },
+        { keyId: 'key-10', appFrame: 10 },
+        { keyId: 'key-13', appFrame: 13 },
+      ],
+      capacity: 14,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['key-10'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Break-aware projection must resolve');
+    expect(resolution.projection.generatedCells.map((cell) => cell.appFrame)).toEqual([1, 2, 4, 5, 11, 12]);
+    expect(resolution.projection.generatedCells.find((cell) => cell.appFrame === 11)).toMatchObject({
+      leftKeyId: 'key-10',
+      rightKeyId: 'key-13',
+    });
+  });
+});
 
 describe('resolvePhysicPaintRotoPhysicalEdit — rigid move-key-group', () => {
   it('translates A@0 and B@1 to A@5 and B@6 without moving D@7', () => {
