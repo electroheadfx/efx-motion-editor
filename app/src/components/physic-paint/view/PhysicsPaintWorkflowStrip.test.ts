@@ -32,8 +32,13 @@ function getActionRowBlock(code: string): string {
   const rowEnd = code.indexOf('physics-paint-timeline-scrollbar', rowStart);
   return code.slice(rowStart, rowEnd === -1 ? code.length : rowEnd);
 }
+function getActionAriaLabelToken(ariaLabel: string): string {
+  return ariaLabel === 'Insert key before'
+    ? 'aria-label={insertRotoKeyDescription}'
+    : `aria-label="${ariaLabel}"`;
+}
 function getButtonBlock(code: string, ariaLabel: string): string {
-  const labelIndex = code.indexOf(`aria-label="${ariaLabel}"`);
+  const labelIndex = code.indexOf(getActionAriaLabelToken(ariaLabel));
   if (labelIndex === -1) return '';
   const start = code.lastIndexOf('<button', labelIndex);
   const end = code.indexOf('</button>', labelIndex) + '</button>'.length;
@@ -149,7 +154,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('renders the seven guarded icon actions in locked order (D-10)', () => {
     const row = getActionRowBlock(source());
-    const indices = ROW_ICON_ACTIONS.map(({ label }) => row.indexOf(`aria-label="${label}"`));
+    const indices = ROW_ICON_ACTIONS.map(({ label }) => row.indexOf(getActionAriaLabelToken(label)));
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
     for (let i = 1; i < indices.length; i += 1) {
       expect(indices[i]).toBeGreaterThan(indices[i - 1]);
@@ -844,7 +849,7 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     const chipIndex = row.indexOf('physics-paint-roto-key-context');
     const addIndex = row.indexOf('aria-label="Add key"');
     const duplicateIndex = row.indexOf('aria-label="Duplicate key"');
-    const insertIndex = row.indexOf('aria-label="Insert key before"');
+    const insertIndex = row.indexOf(getActionAriaLabelToken('Insert key before'));
     const copyIndex = row.indexOf('aria-label="Copy key"');
     const pasteIndex = row.indexOf('aria-label="Paste key"');
     const deleteIndex = row.indexOf('aria-label="Delete key"');
