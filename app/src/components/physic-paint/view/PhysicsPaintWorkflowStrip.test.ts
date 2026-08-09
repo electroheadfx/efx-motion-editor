@@ -1335,6 +1335,22 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(code).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked');
   });
 
+  it('keeps a clicked empty frame current so it remains the Add key target', () => {
+    const code = source();
+    const map = getRotoMapBlock(code);
+    const handlerStart = code.indexOf('const handleRotoTimelineCellClick = useCallback(');
+    const handlerEnd = code.indexOf('const handleRotoTimelineCellPointerDown = useCallback(', handlerStart);
+    const handler = code.slice(handlerStart, handlerEnd);
+    const emptyBranchStart = handler.indexOf('if (cellKeyId === null)');
+    const emptyBranch = handler.slice(emptyBranchStart, handler.indexOf('return;', emptyBranchStart));
+
+    expect(emptyBranchStart).toBeGreaterThanOrEqual(0);
+    expect(emptyBranch).toContain('current.onNavigateToSyncedFrame(frame);');
+    expect(map).toContain("const isCurrentFrame = vm.overlays.includes('current');");
+    expect(map).toContain('const hasCurrentTreatment = cellKeyId === null ? isCurrentFrame : isPrimarySelected;');
+    expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
+  });
+
   it('keeps rail selection line-only while explicit physical spacing proxies remain visible', () => {
     const code = source();
     const props = getWorkflowStripPropsInterface(code);
@@ -1355,7 +1371,9 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(map).toContain("&& props.rotoPrimarySelectedKeyId === cellKeyId;");
     expect(map).toContain('const isSecondarySelected = !isSpacingProxySelected');
     expect(map).toContain('&& !isPrimarySelected;');
-    expect(map).toContain("${isPrimarySelected ? 'current' : ''}");
+    expect(map).toContain("const isCurrentFrame = vm.overlays.includes('current');");
+    expect(map).toContain('const hasCurrentTreatment = cellKeyId === null ? isCurrentFrame : isPrimarySelected;');
+    expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
     expect(map).not.toContain("${vm.overlays.includes('current') ? 'current' : ''}");
     const proxySelection = getCssRuleBlock(
       css(),
