@@ -118,14 +118,14 @@ export const rotoPhysicalRevision = signal(0);
 
 // --- Physical structural read memo (38.1-07) ---
 // Per-layer memo for the physical projection + content revision. Validity is
-// keyed on the identity quadruple (recordMap, frozen interpolation object,
-// capacity, frozen loopClips array): every mutation site REPLACES those values
+// keyed on the structural identities (recordMap, frozen interpolation object,
+// capacity, frozen loopClips array, frozen incoming-break array): every mutation site REPLACES those values
 // (the add/delete/move/undo/redo publish path at replaceRotoPhysicalRecords,
 // loop replacement at replaceRotoPhysicalLoopClips, payload writes at
 // updateRotoPhysicalRealKeyPayload, interpolation publishes at
 // setRotoPhysicalInterpolationState, document replacement, and hydration), so
 // the memo needs no explicit invalidation hooks and can never serve stale
-// data. Selection/cursor writes touch none of the four identities and never
+// data. Selection/cursor writes touch none of those identities and never
 // invalidate. Any future post-install in-place write to an installed inner
 // record map or loop array would silently break this contract and is grep-gated.
 type RotoPhysicalStructuralCacheEntry = {

@@ -51,8 +51,9 @@
  *   coordinate, or silent normalization of malformed input.
  * - No pairwise frame-move list as the authoritative result; identity deltas
  *   are presentation metadata beside the complete mapping only.
- * - No payload mutation, payload cloning, key creation, store access, bridge
- *   call, history mutation, acknowledgement handling, or UI state.
+ * - No payload mutation, store access, bridge call, history mutation,
+ *   acknowledgement handling, or UI state. Identity/payload creation is limited
+ *   to the explicit Duplicate, Paste, and blank `insert-empty-segment` intents.
  * - Group movement uses one rigid physical delta anchored by the grabbed key;
  *   selected offsets stay fixed, unselected identities never move, and any
  *   collision rejects atomically. Group delete and scoped Force Spacing remain
@@ -185,8 +186,9 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'paste-key-group';
 
 /**
- * Immutable resolver input: stable identities, typed intent, bounded capacity,
- * and interpolation-enabled flag only. No payload, store handle, bridge, or
+ * Immutable resolver input: stable identities, optional complete records,
+ * typed intent, bounded capacity, interpolation state, Loop Clips, and the
+ * complete incoming-break collection. No store handle, bridge, or
  * preview/commit mode is accepted.
  */
 export interface PhysicPaintRotoPhysicalEditInput {
