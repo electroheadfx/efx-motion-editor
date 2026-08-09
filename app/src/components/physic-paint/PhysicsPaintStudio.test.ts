@@ -130,16 +130,25 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
     expect(studio).toContain('clearRotoLoopSelection();\n    const result = extendRotoKeySelectionRange(');
   });
 
-  it('keeps Select All visible and exact by clearing every rail or proxy scope first', () => {
+  it('replaces the primary selection before publishing the complete Select All set', () => {
     const selectAllStart = studio.indexOf('const selectAllRotoKeys = useCallback(() => {');
     const selectAllEnd = studio.indexOf('const [, setLastError]', selectAllStart);
     const selectAll = studio.slice(selectAllStart, selectAllEnd);
     expect(selectAllStart).toBeGreaterThanOrEqual(0);
+    expect(selectAll).toContain('selectedKeyId.value = null;');
+    expect(selectAll).toContain('physicPaintStore.setRotoPhysicalSelection(\n        launchContext.layerId,\n        null,\n        currentFrame,\n      );');
+    expect(selectAll).toContain('selectAllRotoKeyIds(\n      orderedRealKeyIds,\n      null,\n    );');
     expect(selectAll).toContain('rotoSpacingSelection.value = null;');
     expect(selectAll).toContain('selectedLoopClipIds.value = [];');
     expect(selectAll).toContain('loopSelectionAnchorId.value = null;');
     expect(selectAll).toContain('selectedLoopClipId.value = null;');
-    expect(selectAll).toContain('selectedKeyIds.value = next.selectedKeyIds;');
+    expect(selectAll).toContain("setApplyMessage('All keys selected');");
+
+    const clearPrimaryIndex = selectAll.indexOf('selectedKeyId.value = null;');
+    const clearStoreIndex = selectAll.indexOf('physicPaintStore.setRotoPhysicalSelection(');
+    const publishAllIndex = selectAll.indexOf('selectedKeyIds.value = next.selectedKeyIds;');
+    expect(clearStoreIndex).toBeGreaterThan(clearPrimaryIndex);
+    expect(publishAllIndex).toBeGreaterThan(clearStoreIndex);
   });
 
   it('resets all spacing selection on launch replacement and session reset, while accepted spacing keeps identities', () => {

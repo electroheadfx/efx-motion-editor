@@ -1340,6 +1340,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     const props = getWorkflowStripPropsInterface(code);
     const map = getRotoMapBlock(code);
     expect(props).not.toContain('selectedRotoLoopSourceKeyIds');
+    expect(props).toContain('rotoPrimarySelectedKeyId?: string | null;');
     expect(code).toContain('selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}');
     expect(map).toContain('const spacingProxy = visibleSpacingProxies?.get(frame) ?? null;');
     expect(map).toContain('const isSpacingProxySelected = spacingProxy !== null');
@@ -1350,7 +1351,12 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(map).not.toContain("${isSpacingProxySelected ? 'selected roto-spacing-proxy-selected' : ''}");
     expect(map).toContain('Loop Clip source position selected for Key Spacing.');
     expect(map).toContain('ariaSelected={isSpacingProxySelected || isSecondarySelected}');
+    expect(map).toContain('const isPrimarySelected = !isSpacingProxySelected');
+    expect(map).toContain("&& props.rotoPrimarySelectedKeyId === cellKeyId;");
     expect(map).toContain('const isSecondarySelected = !isSpacingProxySelected');
+    expect(map).toContain('&& !isPrimarySelected;');
+    expect(map).toContain("${isPrimarySelected ? 'current' : ''}");
+    expect(map).not.toContain("${vm.overlays.includes('current') ? 'current' : ''}");
     const proxySelection = getCssRuleBlock(
       css(),
       '.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {',
