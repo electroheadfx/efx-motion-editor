@@ -120,6 +120,62 @@ describe('intentional incoming interpolation breaks', () => {
     });
   });
 
+  it('proposes one empty real key and one incoming break atomically', () => {
+    const records = [
+      buildBaselineRecords()[0],
+      { ...buildBaselineRecords()[1], keyId: 'B', appFrame: 6, payload: { ...buildBaselineRecords()[1].payload, appFrame: 6 } },
+    ];
+    const loopClips = Object.freeze([]);
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: {
+        kind: 'insert-empty-segment',
+        destinationAppFrame: 3,
+        insertedKeyId: 'blank-3',
+        blankPayload: {
+          frameIndex: 0,
+          appFrame: 3,
+          dataUrl: 'data:image/png;base64,AAAA',
+          width: 2,
+          height: 2,
+        },
+      },
+      capacity: 8,
+      interpolationEnabled: false,
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Empty segment insert must resolve');
+    expect(resolution.proposal.nextRecords).toEqual([
+      records[0],
+      {
+        kind: 'real-key',
+        keyId: 'blank-3',
+        appFrame: 3,
+        payload: {
+          frameIndex: 0,
+          appFrame: 3,
+          dataUrl: 'data:image/png;base64,AAAA',
+          width: 2,
+          height: 2,
+        },
+      },
+      records[1],
+    ]);
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['blank-3']);
+    expect(resolution.proposal.nextLoopClips).toBeNull();
+    expect(resolution.proposal.semanticDelta).toEqual({
+      kind: 'insert-empty-segment',
+      insertedKeyId: 'blank-3',
+      destinationAppFrame: 3,
+    });
+    expect(resolution.proposal.selectedKeyId).toBe('blank-3');
+    expect(resolution.proposal.selectedAppFrame).toBe(3);
+  });
+
   it('keeps break ownership dormant while interpolation is off or the owner is first', () => {
     const identities = [
       { keyId: 'owner', appFrame: 0 },
