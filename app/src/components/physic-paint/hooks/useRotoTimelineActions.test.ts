@@ -21,7 +21,13 @@ import {
   togglePhysicsPaintRotoSpacingProxy,
   type PhysicsPaintRotoSpacingSelection,
 } from '../roto/physicsPaintRotoSpacingSelection';
-import { useRotoTimelineActions, type RotoTimelineActionsInput } from './useRotoTimelineActions';
+import {
+  classifyRotoInsertTarget,
+  mapRotoInsertProductReason,
+  useRotoTimelineActions,
+  type RotoInsertTarget,
+  type RotoTimelineActionsInput,
+} from './useRotoTimelineActions';
 
 const BLANK_PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo=';
 
@@ -67,6 +73,7 @@ function createHarness(options: HarnessOptions = {}) {
     ? ({ operationId: 'op-1', layerId: 'layer-1' } as PhysicPaintLaunchContext)
     : options.launch;
   const publishStatus = vi.fn();
+  const publishDiagnostic = vi.fn();
   const executePhysicalEdit = vi.fn(async (_input: unknown) => true);
   const pendingOperationId = signal<string | null>(options.pendingOperationId ?? null);
   const input: RotoTimelineActionsInput = {
@@ -95,9 +102,10 @@ function createHarness(options: HarnessOptions = {}) {
     executePhysicalEdit: executePhysicalEdit as never,
     pendingOperationId,
     publishStatus,
+    publishDiagnostic,
   };
   const actions = useRotoTimelineActions(input);
-  return { actions, executePhysicalEdit, publishStatus, pendingOperationId };
+  return { actions, executePhysicalEdit, publishStatus, publishDiagnostic, pendingOperationId };
 }
 
 function spacingSelection(selectedSourceKeyIds: readonly string[]): PhysicsPaintRotoSpacingSelection {
@@ -134,12 +142,13 @@ describe('useRotoTimelineActions contextual Insert', () => {
     expect(occupied.executePhysicalEdit.mock.calls[0][0]).toMatchObject({ operationKind: 'insert-slot' });
     expect(occupied.publishStatus).toHaveBeenCalledWith('Inserted an empty Roto frame before the selected key.');
 
-    const predecessorDataUrl = 'data:image/png;base64,PREDECESSOR';
+    const predecessorDataUrl = 'data:image/png;base64,iVBORw0KGgoAAA==';
     const records = [
       Object.freeze({
         ...realKeyRecord('key-before', 1),
         payload: Object.freeze({ ...blankPayload(1), dataUrl: predecessorDataUrl }),
       }) as PhysicPaintRotoRealKeyRecord,
+      realKeyRecord('key-after', 5),
     ];
     const empty = createHarness({
       records,
@@ -150,14 +159,15 @@ describe('useRotoTimelineActions contextual Insert', () => {
         { kind: 'empty', appFrame: 2 },
         { kind: 'empty', appFrame: 3 },
       ],
-      incomingInterpolationBreakKeyIds: ['key-before'],
+      incomingInterpolationBreakKeyIds: ['key-after'],
     });
 
     expect(empty.actions.physicalActions.canInsertFrame.value).toBe(true);
     expect(empty.actions.physicalActions.insertTooltipDescription.value).toBe(
       'Insert an empty key and start a new interpolation segment.',
     );
-    expect(await empty.actions.physicalActions.insertRotoFrame()).toBe(true);
+    const emptyAccepted = await empty.actions.physicalActions.insertRotoFrame();
+    expect(emptyAccepted, JSON.stringify({ status: empty.publishStatus.mock.calls, diagnostic: empty.publishDiagnostic.mock.calls })).toBe(true);
     expect(empty.executePhysicalEdit).toHaveBeenCalledTimes(1);
     const dispatched = empty.executePhysicalEdit.mock.calls[0][0] as unknown as {
       operationKind: string;
@@ -170,14 +180,96 @@ describe('useRotoTimelineActions contextual Insert', () => {
     };
     expect(dispatched.operationKind).toBe('insert-empty-segment');
     expect(dispatched.proposal.selectedAppFrame).toBe(3);
-    expect(dispatched.proposal.nextRecords).toHaveLength(2);
+    expect(dispatched.proposal.nextRecords).toHaveLength(3);
     const inserted = dispatched.proposal.nextRecords.find((record) => record.keyId === dispatched.proposal.selectedKeyId);
     expect(inserted?.payload.dataUrl).toBe(BLANK_PNG_DATA_URL);
     expect(inserted?.payload.dataUrl).not.toBe(predecessorDataUrl);
     expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([
-      'key-before',
+      'key-after',
       dispatched.proposal.selectedKeyId,
     ]);
+  });
+
+  it('publishes the exact empty-segment acceptance message', async () => {
+    const { actions, publishStatus } = createHarness({
+      records: [realKeyRecord('key-a', 1), realKeyRecord('key-b', 5)],
+      currentAppFrame: 3,
+      physicalCells: [{ kind: 'empty', appFrame: 3 }],
+    });
+
+    expect(await actions.physicalActions.insertRotoFrame()).toBe(true);
+    expect(publishStatus).toHaveBeenCalledTimes(1);
+    expect(publishStatus).toHaveBeenCalledWith(
+      'Inserted empty key at frame 3. New interpolation segment started.',
+    );
+  });
+
+  it('uses identical target-specific copy for disabled and racing rejection', async () => {
+    const cases: readonly [RotoInsertTarget, string][] = [
+      [{ kind: 'generated', appFrame: 3 }, 'Insert is unavailable on a generated render-only frame.'],
+      [{ kind: 'resolved-linked', appFrame: 3 }, 'Insert is unavailable on a resolved linked frame.'],
+      [{ kind: 'unresolved-linked', appFrame: 3 }, 'Insert is unavailable on an unresolved linked frame.'],
+      [{ kind: 'occupied-empty-intent', appFrame: 3 }, 'This frame already contains a real key.'],
+      [{ kind: 'invalid-destination' }, 'Choose a valid timeline frame before inserting.'],
+      [{ kind: 'out-of-capacity', appFrame: 10 }, 'This frame is outside the physical timeline capacity.'],
+      [{ kind: 'edit-in-flight' }, 'A Roto physical edit is already in flight.'],
+    ];
+    for (const [target, expected] of cases) {
+      expect(mapRotoInsertProductReason(target)).toBe(expected);
+    }
+
+    expect(classifyRotoInsertTarget({
+      launchReady: true,
+      pendingOperationId: null,
+      selectedKeyId: null,
+      currentAppFrame: 3,
+      capacity: 10,
+      records: [],
+      physicalCells: [{ kind: 'empty', appFrame: 0 }, { kind: 'empty', appFrame: 1 }, { kind: 'empty', appFrame: 2 }, {
+        kind: 'generated', appFrame: 3, leftKeyId: 'left', rightKeyId: 'right',
+      }],
+      frameResolution: { kind: 'empty' },
+    })).toEqual({ kind: 'generated', appFrame: 3 });
+
+    const disabledHarnesses = [
+      createHarness({
+        currentAppFrame: 3,
+        physicalCells: [{ kind: 'empty', appFrame: 0 }, { kind: 'empty', appFrame: 1 }, { kind: 'empty', appFrame: 2 }, {
+          kind: 'generated', appFrame: 3, leftKeyId: 'left', rightKeyId: 'right',
+        }],
+      }),
+      createHarness({
+        currentAppFrame: 3,
+        frameResolution: {
+          kind: 'linked', loopId: 'loop', appFrame: 3, sourceKeyId: 'source', sourceIndex: 0, cycleOffset: 0, repeatInstance: 1,
+        },
+      }),
+      createHarness({
+        currentAppFrame: 3,
+        frameResolution: {
+          kind: 'linked-unresolved', loopId: 'loop', appFrame: 3, placementStart: 2, sourceKeyIds: ['missing'], missingSourceKeyIds: ['missing'],
+        },
+      }),
+      createHarness({ records: [realKeyRecord('occupied', 3)], currentAppFrame: 3 }),
+      createHarness({ currentAppFrame: -1 }),
+      createHarness({ currentAppFrame: 10, capacity: 10 }),
+    ];
+    for (let index = 0; index < disabledHarnesses.length; index += 1) {
+      const harness = disabledHarnesses[index];
+      const expected = cases[index][1];
+      expect(harness.actions.physicalActions.canInsertFrame.value).toBe(false);
+      expect(harness.actions.physicalActions.insertDisabledReason.value).toBe(expected);
+      expect(await harness.actions.physicalActions.insertRotoFrame()).toBe(false);
+      expect(harness.publishStatus).toHaveBeenCalledWith(expected);
+      expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
+    }
+
+    const busyRace = createHarness({ currentAppFrame: 3, physicalCells: [{ kind: 'empty', appFrame: 3 }] });
+    expect(busyRace.actions.physicalActions.canInsertFrame.value).toBe(true);
+    busyRace.pendingOperationId.value = 'op-race';
+    expect(await busyRace.actions.physicalActions.insertRotoFrame()).toBe(false);
+    expect(busyRace.publishStatus).toHaveBeenCalledWith(cases[6][1]);
+    expect(busyRace.executePhysicalEdit).not.toHaveBeenCalled();
   });
 });
 

@@ -684,6 +684,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const physicalInsertAvailable = physicalActions?.canInsertFrame.value ?? false;
   const physicalDeleteAvailable = physicalActions?.canDeleteFrame.value ?? false;
   const physicalInsertDisabledReason = physicalActions?.insertDisabledReason.value ?? null;
+  const insertRotoKeyDescription = physicalActions?.insertTooltipDescription.value ?? 'Insert key before';
   const physicalDeleteDisabledReason = physicalActions?.deleteDisabledReason.value ?? null;
   const forceSpacingInput = physicalActions?.forceSpacingInput.value ?? '1';
   const forceSpacingAvailable = physicalActions?.canApplyForceSpacing.value ?? false;
@@ -1610,7 +1611,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   <button
                     type="button"
                     class="physics-paint-roto-key-icon-button"
-                    aria-label="Insert key before"
+                    aria-label={insertRotoKeyDescription}
                     aria-disabled={!canInsertRotoKey ? 'true' : undefined}
                     aria-describedby={!canInsertRotoKey && insertRotoKeyDisabledReason ? 'roto-key-action-reason-insert' : undefined}
                     onFocus={insertKeyTooltip.onFocus}
@@ -1631,7 +1632,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     <span id="roto-key-action-reason-insert" class="physics-paint-sr-only">{insertRotoKeyDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={insertKeyTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy('Insert key before', insertRotoKeyDisabledReason)}
+                    {buildGuardedActionTooltipCopy(insertRotoKeyDescription, insertRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyKeyTooltip.onPointerEnter} onPointerLeave={copyKeyTooltip.onPointerLeave}>

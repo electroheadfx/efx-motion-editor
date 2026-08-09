@@ -624,6 +624,13 @@ export function PhysicsPaintStudio() {
     getCurrentAppFrame: () => currentFrame,
     getLaunchContext: () => launchContextRef.current,
     getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 1,
+    getIncomingInterpolationBreakKeyIds: () => launchContext
+      ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId)
+      : [],
+    buildBlankRotoFrame: (frame) => ({
+      ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame),
+      source: 'real-key',
+    }),
     executePhysicalEdit: (executeInput) => physicalEditCoordinator.executePhysicalEdit(executeInput as RotoPhysicalEditCoordinatorExecuteInput<SerializedProject>),
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     publishStatus: (message) => { setApplyMessage(message); },

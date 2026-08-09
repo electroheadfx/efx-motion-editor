@@ -333,7 +333,7 @@ function toClipboardPayload(copiedKey: RotoSessionCopiedKey): PhysicPaintRotoRea
   }) as PhysicPaintRotoRealKeyPayload;
 }
 
-function toEmptyKeyPayload(blank: PhysicPaintRotoCacheFrame, destinationAppFrame: number): PhysicPaintRotoRealKeyPayload {
+export function toEmptyKeyPayload(blank: PhysicPaintRotoCacheFrame, destinationAppFrame: number): PhysicPaintRotoRealKeyPayload {
   return Object.freeze({
     frameIndex: blank.frameIndex,
     appFrame: destinationAppFrame,

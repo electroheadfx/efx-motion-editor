@@ -12,7 +12,11 @@ import type {
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
-import { PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
+import {
+  PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+  buildPhysicPaintRotoPhysicalRevision,
+  createPhysicPaintRotoKeyId,
+} from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import {
   createPhysicPaintRotoDuplicateKeyIntent,
@@ -20,7 +24,9 @@ import {
   createPhysicPaintRotoPasteKeyIntent,
   derivePhysicPaintRotoLoopRanges,
   resolvePhysicPaintRotoLinkedFrameDeleteGuard,
+  resolvePhysicPaintRotoLoopFrame,
   resolvePhysicPaintRotoPhysicalEdit,
+  type PhysicPaintRotoFrameResolution,
   type PhysicPaintRotoLinkedSourceSpacingScope,
   type PhysicPaintRotoPhysicalEditFailure,
   type PhysicPaintRotoPhysicalEditIntent,
@@ -29,6 +35,7 @@ import {
   type PhysicPaintRotoPhysicalEditTarget,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import type { RotoSessionCopiedGroupEntry } from '../roto/physicsPaintRotoSession';
+import { toEmptyKeyPayload } from './useRotoKeyUtilities';
 import {
   getPhysicsPaintRotoSourceCycleId,
   type PhysicsPaintRotoSpacingSelection,
@@ -62,6 +69,83 @@ import type {
  * destination frame calculation, no occupied-key overwrite.
  */
 export type RotoDragTarget = PhysicPaintRotoPhysicalEditTarget;
+
+export type RotoInsertTarget =
+  | { readonly kind: 'occupied-real'; readonly keyId: string }
+  | { readonly kind: 'genuinely-empty'; readonly appFrame: number }
+  | { readonly kind: 'generated'; readonly appFrame: number }
+  | { readonly kind: 'resolved-linked'; readonly appFrame: number }
+  | { readonly kind: 'unresolved-linked'; readonly appFrame: number }
+  | { readonly kind: 'occupied-empty-intent'; readonly appFrame: number }
+  | { readonly kind: 'invalid-destination' }
+  | { readonly kind: 'out-of-capacity'; readonly appFrame: number }
+  | { readonly kind: 'edit-in-flight' };
+
+export interface RotoInsertTargetClassificationInput {
+  readonly launchReady: boolean;
+  readonly pendingOperationId: string | null;
+  readonly selectedKeyId: string | null;
+  readonly currentAppFrame: number | null;
+  readonly capacity: number | null;
+  readonly records: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly physicalCells: readonly RotoPhysicalTimelineCell[];
+  readonly frameResolution: PhysicPaintRotoFrameResolution | null;
+}
+
+export function classifyRotoInsertTarget(
+  input: RotoInsertTargetClassificationInput,
+): RotoInsertTarget {
+  if (input.pendingOperationId !== null) return { kind: 'edit-in-flight' };
+  if (!input.launchReady || input.currentAppFrame === null || !Number.isInteger(input.currentAppFrame) || input.currentAppFrame < 0) {
+    return { kind: 'invalid-destination' };
+  }
+  if (input.capacity === null || !Number.isInteger(input.capacity) || input.currentAppFrame >= input.capacity) {
+    return { kind: 'out-of-capacity', appFrame: input.currentAppFrame };
+  }
+  if (isBoundedKeyId(input.selectedKeyId)) {
+    const selectedMatches = input.records.filter((record) => record.keyId === input.selectedKeyId);
+    if (selectedMatches.length === 1) return { kind: 'occupied-real', keyId: input.selectedKeyId };
+  }
+  if (input.records.some((record) => record.appFrame === input.currentAppFrame)) {
+    return { kind: 'occupied-empty-intent', appFrame: input.currentAppFrame };
+  }
+  if (input.frameResolution?.kind === 'linked-unresolved') {
+    return { kind: 'unresolved-linked', appFrame: input.currentAppFrame };
+  }
+  if (input.frameResolution !== null && (
+    input.frameResolution.kind === 'linked'
+    || input.frameResolution.kind === 'linked-generated'
+    || input.frameResolution.kind === 'linked-gap'
+  )) {
+    return { kind: 'resolved-linked', appFrame: input.currentAppFrame };
+  }
+  if (input.physicalCells[input.currentAppFrame]?.kind === 'generated') {
+    return { kind: 'generated', appFrame: input.currentAppFrame };
+  }
+  return { kind: 'genuinely-empty', appFrame: input.currentAppFrame };
+}
+
+export function mapRotoInsertProductReason(target: RotoInsertTarget): string | null {
+  switch (target.kind) {
+    case 'occupied-real':
+    case 'genuinely-empty':
+      return null;
+    case 'generated':
+      return 'Insert is unavailable on a generated render-only frame.';
+    case 'resolved-linked':
+      return 'Insert is unavailable on a resolved linked frame.';
+    case 'unresolved-linked':
+      return 'Insert is unavailable on an unresolved linked frame.';
+    case 'occupied-empty-intent':
+      return 'This frame already contains a real key.';
+    case 'invalid-destination':
+      return 'Choose a valid timeline frame before inserting.';
+    case 'out-of-capacity':
+      return 'This frame is outside the physical timeline capacity.';
+    case 'edit-in-flight':
+      return 'A Roto physical edit is already in flight.';
+  }
+}
 
 /**
  * Deterministic signature of a Drag target, captured at preparation time and
@@ -120,6 +204,8 @@ export interface RotoPhysicalTimelineActionBundle {
   readonly canInsertFrame: ReadonlySignal<boolean>;
   /** Reactive Insert disabled reason, or null when eligible. */
   readonly insertDisabledReason: ReadonlySignal<string | null>;
+  /** Contextual enabled Insert description; occupied behavior remains unchanged. */
+  readonly insertTooltipDescription: ReadonlySignal<string>;
   /** Delete exactly the selected stable key and its slot (D-06). */
   readonly deleteRotoFrame: () => Promise<boolean>;
   /** Reactive Delete availability derived from selection + pending authority. */
@@ -211,6 +297,8 @@ export interface RotoTimelineActionsInput {
   getRotoLoopClips?: () => readonly PhysicPaintRotoLoopClip[];
   /** Current physical projection cells (D-10). */
   getPhysicalCells?: () => readonly RotoPhysicalTimelineCell[];
+  /** Current canonical linked-frame resolution, when Loop Clips are present. */
+  getFrameResolution?: (appFrame: number) => PhysicPaintRotoFrameResolution;
   /** Selected stable keyId (D-01). */
   getSelectedKeyId?: () => string | null;
   /**
@@ -229,6 +317,10 @@ export interface RotoTimelineActionsInput {
   getLaunchContext?: () => PhysicPaintLaunchContext | null;
   /** Bounded physical frame capacity (D-01/D-02). */
   getCapacity?: () => number;
+  /** Complete stable-key-owned incoming interpolation break collection. */
+  getIncomingInterpolationBreakKeyIds?: () => readonly string[];
+  /** Existing transparent blank-frame builder shared with + Key. */
+  buildBlankRotoFrame?: (appFrame: number) => PhysicPaintRotoCacheFrame;
   /** Generic acknowledged coordinator execute seam (Plan 36.14-04). */
   executePhysicalEdit?: (input: RotoPhysicalEditExecuteInput<PhysicPaintRotoPhysicalEditProposal>) => Promise<boolean>;
   /** Coordinator pending operation id Signal (Plan 36.14-04). */
@@ -245,7 +337,7 @@ export interface RotoTimelineActionsInput {
 
 interface PhysicalActionRunnerInput {
   readonly intent: PhysicPaintRotoPhysicalEditIntent;
-  readonly operationKind: 'insert-slot' | 'delete-key' | 'delete-key-group' | 'duplicate-key' | 'paste-key' | 'paste-key-group';
+  readonly operationKind: 'insert-slot' | 'insert-empty-segment' | 'delete-key' | 'delete-key-group' | 'duplicate-key' | 'paste-key' | 'paste-key-group';
   readonly requiredKeyId: string | null;
   readonly successMessage: string;
   /**
@@ -458,11 +550,14 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     });
   }, [input]);
 
-  // Reactive availability + disabled reasons for the physical action bundle.
-  // Derived directly from current selected identity/real-key status, launch
-  // readiness, and the coordinator's one pending Signal/computed output.
-  const canInsertFrame = computed(() => computeInsertAvailability(input).eligible);
-  const insertDisabledReason = computed(() => computeInsertAvailability(input).reason);
+  // One computed target authority drives Insert eligibility, product reason,
+  // contextual description, and activation reclassification without mirrored state.
+  const insertTarget = computed(() => classifyRotoInsertTarget(readRotoInsertTargetInput(input)));
+  const canInsertFrame = computed(() => mapRotoInsertProductReason(insertTarget.value) === null);
+  const insertDisabledReason = computed(() => mapRotoInsertProductReason(insertTarget.value));
+  const insertTooltipDescription = computed(() => insertTarget.value.kind === 'genuinely-empty'
+    ? 'Insert an empty key and start a new interpolation segment.'
+    : 'Insert key before');
   const canDeleteFrame = computed(() => computeDeleteAvailability(input).eligible);
   const deleteDisabledReason = computed(() => computeDeleteAvailability(input).reason);
   const canDragKey = computed(() => computeDragAvailability(input).eligible);
@@ -509,10 +604,15 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       // Phase 43: loop-aware guards (D-07 source-key deletion) consult the
       // durable Loop Clip collection; absent port = pre-43 empty collection.
       loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+      incomingInterpolationBreakKeyIds: input.getIncomingInterpolationBreakKeyIds?.() ?? [],
     });
     if (!resolution.ok) {
       input.publishStatus?.(runnerInput.rejectedCopy?.(resolution.failure) ?? (resolution.failure.text || 'The Roto timeline edit is invalid.'));
-      if (runnerInput.operationKind === 'delete-key-group' || runnerInput.operationKind === 'paste-key-group') {
+      if (
+        runnerInput.operationKind === 'delete-key-group'
+        || runnerInput.operationKind === 'paste-key-group'
+        || runnerInput.operationKind === 'insert-empty-segment'
+      ) {
         input.publishDiagnostic?.(runnerInput.operationKind + ' rejected: ' + resolution.failure.code + ' — ' + resolution.failure.text);
       }
       return false;
@@ -532,12 +632,37 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   }, [input]);
 
   const insertRotoFrame = useCallback((): Promise<boolean> => {
-    const selectedKeyId = ensureSelectedKeyId(input);
+    const target = classifyRotoInsertTarget(readRotoInsertTargetInput(input));
+    const rejection = mapRotoInsertProductReason(target);
+    if (rejection !== null) {
+      input.publishStatus?.(rejection);
+      return Promise.resolve(false);
+    }
+    if (target.kind === 'occupied-real') {
+      return runPhysicalAction({
+        intent: { kind: 'insert-slot', selectedKeyId: target.keyId },
+        operationKind: 'insert-slot',
+        requiredKeyId: target.keyId,
+        successMessage: INSERT_SUCCESS_MESSAGE,
+      });
+    }
+    if (target.kind !== 'genuinely-empty' || !input.buildBlankRotoFrame) {
+      input.publishStatus?.('Choose a valid timeline frame before inserting.');
+      return Promise.resolve(false);
+    }
+    const insertedKeyId = createPhysicPaintRotoKeyId();
     return runPhysicalAction({
-      intent: { kind: 'insert-slot', selectedKeyId },
-      operationKind: 'insert-slot',
-      requiredKeyId: selectedKeyId,
-      successMessage: INSERT_SUCCESS_MESSAGE,
+      intent: {
+        kind: 'insert-empty-segment',
+        destinationAppFrame: target.appFrame,
+        insertedKeyId,
+        blankPayload: toEmptyKeyPayload(input.buildBlankRotoFrame(target.appFrame), target.appFrame),
+      },
+      operationKind: 'insert-empty-segment',
+      requiredKeyId: null,
+      successMessage: `Inserted empty key at frame ${target.appFrame}. New interpolation segment started.`,
+      rejectedCopy: (failure) => mapRotoInsertProductReason(mapRotoInsertFailureTarget(failure, input))
+        ?? 'Choose a valid timeline frame before inserting.',
     });
   }, [runPhysicalAction, input]);
 
@@ -988,6 +1113,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     insertRotoFrame,
     canInsertFrame,
     insertDisabledReason,
+    insertTooltipDescription,
     deleteRotoFrame,
     canDeleteFrame,
     deleteDisabledReason,
@@ -1007,7 +1133,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     addEmptyKeyDisabledReason,
     canSelectAllKeys,
     selectAllKeysDisabledReason,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,
@@ -1050,36 +1176,53 @@ function buildProposalVersion(
   return `${revision}:${launch.operationId}:${launch.layerId}`;
 }
 
-function ensureSelectedKeyId(input: RotoTimelineActionsInput): string {
-  const keyId = input.getSelectedKeyId?.() ?? null;
-  if (!keyId) {
-    throw new Error('No selected Roto key.');
-  }
-  return keyId;
-}
-
 interface ActionAvailability {
   readonly eligible: boolean;
   readonly reason: string | null;
 }
 
-function computeInsertAvailability(input: RotoTimelineActionsInput): ActionAvailability {
-  if (!input.getLaunchContext || !input.getLaunchContext()) {
-    return { eligible: false, reason: 'Select a real Roto key before editing the timeline.' };
-  }
-  if (input.pendingOperationId && input.pendingOperationId.value !== null) {
-    return { eligible: false, reason: 'A Roto physical edit is already in flight.' };
-  }
-  const selectedKeyId = input.getSelectedKeyId?.() ?? null;
-  if (!selectedKeyId) {
-    return { eligible: false, reason: 'Select a real Roto key to insert.' };
-  }
+function readRotoInsertTargetInput(input: RotoTimelineActionsInput): RotoInsertTargetClassificationInput {
+  const currentAppFrame = input.getCurrentAppFrame?.() ?? null;
+  const capacity = input.getCapacity?.() ?? null;
   const records = input.getRotoKeyRecords?.() ?? [];
-  const selectedRecord = records.find((record) => record.keyId === selectedKeyId);
-  if (!selectedRecord) {
-    return { eligible: false, reason: 'The selected Roto key is no longer available.' };
+  const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
+  let frameResolution: PhysicPaintRotoFrameResolution | null = null;
+  if (currentAppFrame !== null) {
+    frameResolution = input.getFrameResolution?.(currentAppFrame) ?? null;
+    if (frameResolution === null && capacity !== null && loopClips.length > 0) {
+      frameResolution = resolvePhysicPaintRotoLoopFrame(derivePhysicPaintRotoLoopRanges({
+        identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+        loopClips,
+        parentEndExclusive: capacity,
+        capacity,
+        interpolationEnabled: input.getRotoInterpolationState?.().enabled ?? false,
+      }), currentAppFrame);
+    }
   }
-  return { eligible: true, reason: null };
+  return {
+    launchReady: (input.getLaunchContext?.() ?? null) !== null,
+    pendingOperationId: input.pendingOperationId?.value ?? null,
+    selectedKeyId: input.getSelectedKeyId?.() ?? null,
+    currentAppFrame,
+    capacity,
+    records,
+    physicalCells: input.getPhysicalCells?.() ?? [],
+    frameResolution,
+  };
+}
+
+function mapRotoInsertFailureTarget(
+  failure: PhysicPaintRotoPhysicalEditFailure,
+  input: RotoTimelineActionsInput,
+): RotoInsertTarget {
+  const currentAppFrame = input.getCurrentAppFrame?.() ?? -1;
+  if (failure.code === 'duplicate-destination-frame') {
+    return { kind: 'occupied-empty-intent', appFrame: currentAppFrame };
+  }
+  if (failure.code === 'out-of-range-frame' || failure.code === 'over-capacity') {
+    return { kind: 'out-of-capacity', appFrame: currentAppFrame };
+  }
+  return classifyRotoInsertTarget(readRotoInsertTargetInput(input));
 }
 
 function computeDeleteAvailability(input: RotoTimelineActionsInput): ActionAvailability {
