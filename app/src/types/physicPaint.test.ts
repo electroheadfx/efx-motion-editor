@@ -55,6 +55,56 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintApplyPayload({ kind: ['apply', 'play', 'canvas'].join('-'), operationId: 'obsolete', layerId: 'layer-1', startFrame: 12, frames: [renderedFrame] })).toBe(false);
   });
 
+  it('accepts only the insert-empty-segment transport contract', () => {
+    const records = [{
+      keyId: 'inserted-key',
+      appFrame: 4,
+      payload: { frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
+    }];
+    const payload = {
+      kind: 'replace-roto-physical-map',
+      operationId: 'insert-empty-segment-1',
+      operationKind: 'insert-empty-segment',
+      layerId: 'layer-1',
+      startFrame: 0,
+      launchOperationId: 'launch-1',
+      expectedRevision: 'revision-1',
+      records,
+      interpolationEnabled: true,
+      interpolationMode: 'blend',
+      selectedKeyId: 'inserted-key',
+      selectedAppFrame: 4,
+      incomingInterpolationBreakKeyIds: ['inserted-key'],
+      semanticDelta: {
+        kind: 'insert-empty-segment',
+        insertedKeyId: 'inserted-key',
+        destinationAppFrame: 4,
+      },
+    } as const;
+
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(payload)).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      semanticDelta: { ...payload.semanticDelta, unknown: true },
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      semanticDelta: { ...payload.semanticDelta, insertedKeyId: '' },
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      semanticDelta: { ...payload.semanticDelta, destinationAppFrame: -1 },
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      semanticDelta: { ...payload.semanticDelta, kind: 'duplicate-key' },
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      semanticDelta: undefined,
+    })).toBe(false);
+  });
+
   it('requires current background metadata only on Play Script physical transactions', () => {
     const records = [{
       keyId: 'key-1',
