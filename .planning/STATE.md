@@ -6,9 +6,9 @@ current_phase: 44
 current_phase_name: integrated-uat-signed-release
 status: ready
 stopped_at: Phase 43 complete and approved; Phase 44 ready for planning/execution
-last_updated: "2026-08-09T05:56:47.000Z"
+last_updated: "2026-08-09T06:02:34.000Z"
 last_activity: 2026-08-09
-last_activity_desc: Corrected quick task 260809-aac Select All empty-frame cursor ownership; native visual UAT pending
+last_activity_desc: Quick task 260809-aac Select All selection replacement passed native visual UAT and closed
 progress:
   total_phases: 6
   completed_phases: 4
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: 43 (hold-loop-clips-filmstrip-capsule) — COMPLETE AND APPROVED
 Plan: All 15 plans complete; 43-10 through 43-15 summaries recorded
 Status: Implementation `45677643`, structural cleanup `973ee5ab`, final gates, and native UAT complete
-Last activity: 2026-08-09 — Corrected quick task 260809-aac: empty frames are selectable for Add key normally, but Select All clears their cursor highlight; native visual UAT pending
+Last activity: 2026-08-09 — Quick task 260809-aac passed native visual UAT and closed: empty frames target Add key normally, while Select All clears prior real/empty cursor highlights
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -277,7 +277,7 @@ None yet.
 | 260801-o30 | Fix v0.8.1 production Tauri CSP regression (grant data: scheme in img-src for cached Roto/Physics Paint PNGs) | 2026-08-01 | 65e86af2 | Verified | [260801-o30-fix-v0-8-1-production-tauri-csp-regressi](./quick/260801-o30-fix-v0-8-1-production-tauri-csp-regressi/) |
 | 260801-sp2 | Refresh README.md for v0.8.1 Standalone Physics Paint release | 2026-08-01 | 821daff3 | Verified | [260801-sp2-refresh-readme-md-for-v0-8-1-standalone-](./quick/260801-sp2-refresh-readme-md-for-v0-8-1-standalone-/) |
 | 260805-ht3 | Phase 41 remediation: CR-01 orphaned audio guard, WR-07 efxasset range underflow, WR-08 efxasset path scoping | 2026-08-05 | b3a83841 | Verified | [260805-ht3-phase-41-remediation-cr-01-orphaned-audi](./quick/260805-ht3-phase-41-remediation-cr-01-orphaned-audi/) |
-| 260809-aac | Make Select All clear prior real/empty frame highlights without breaking normal empty-frame Add key targeting | 2026-08-09 | 39fe1895 | Automated; UAT pending | [260809-aac-when-select-all-keyframes-is-used-clear-](./quick/260809-aac-when-select-all-keyframes-is-used-clear-/) |
+| 260809-aac | Make Select All clear prior real/empty frame highlights without breaking normal empty-frame Add key targeting | 2026-08-09 | 39fe1895 | Verified | [260809-aac-when-select-all-keyframes-is-used-clear-](./quick/260809-aac-when-select-all-keyframes-is-used-clear-/) |
 
 ### Roadmap Evolution
 

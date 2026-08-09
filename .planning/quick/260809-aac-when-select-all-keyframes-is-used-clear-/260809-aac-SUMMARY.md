@@ -60,7 +60,7 @@ coverage:
         ref: "app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts#keeps rail selection line-only while explicit physical spacing proxies remain visible"
         status: pass
     human_judgment: true
-    rationale: "The source contract proves class ownership, but final native visual appearance remains a user-visible judgment."
+    rationale: "Native visual UAT passed on 2026-08-09: empty frame targeting works normally and Select All clears the prior real or empty cursor highlight."
 
 duration: 7min
 completed: 2026-08-09
@@ -120,6 +120,7 @@ status: complete
 - `pnpm --dir /Users/lmarques/Dev/efx-motion-editor/app exec vitest run src/components/physic-paint/PhysicsPaintStudio.test.ts src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts` - passed, 115 tests.
 - `pnpm --dir /Users/lmarques/Dev/efx-motion-editor/app typecheck` - passed.
 - Application server was not started.
+- Native visual UAT - passed on 2026-08-09: empty frame 31 remained available for Add key before Select All, then lost its cursor ring when Select All selected every real key uniformly.
 
 ## Known Stubs
 
@@ -131,8 +132,8 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-- Automated implementation and verification are complete.
-- Native visual UAT can confirm the final sequence: click empty frame 31 and see it become the Add key target, then invoke Select All and confirm frame 31 loses its cursor ring while every real key remains uniformly selected.
+- Automated verification and native visual UAT are complete.
+- Quick task `260809-aac` is approved and closed; the final selection truth table is locked by regression coverage.
 
 ## Self-Check: PASSED
 
