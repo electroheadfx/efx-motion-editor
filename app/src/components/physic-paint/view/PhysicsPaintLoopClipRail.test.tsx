@@ -744,7 +744,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
 
     expect(boundaryStart.props.cellClass).toContain('roto-loop-boundary-start');
     expect(boundaryStart.props.cellClass).not.toContain('roto-loop-boundary-end');
-    expect(boundaryStart.props.cellClass).toContain('current');
+    expect(boundaryStart.props.cellClass).toContain('roto-spacing-proxy-selected');
     expect(sourceGenerated.props.cellClass).toContain('roto-fill-generated');
     expect(sourceGenerated.props.cellClass).toContain('roto-linked-source-generated');
     expect(sourceGenerated.props.cellClass).not.toContain('roto-linked-repeat');
