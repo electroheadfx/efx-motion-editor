@@ -266,6 +266,52 @@ export function getRotoCellStateTooltipCopy(kind: RotoCellSemanticTooltipKind): 
   return ROTO_CELL_STATE_TOOLTIP_COPY[kind];
 }
 
+export const ROTO_STARTS_INTERPOLATION_SEGMENT_COPY = 'Starts a new interpolation segment';
+
+export type RotoCellPresentationKind = 'real' | 'generated' | 'linked' | 'empty';
+
+export interface RotoCellPresentationViewModelInput {
+  readonly kind: RotoCellPresentationKind;
+  readonly keyId: string | null;
+  readonly orderedRealKeyIds: readonly string[];
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
+  readonly baseCopy: string;
+}
+
+export interface RotoCellPresentationViewModel {
+  readonly startsInterpolationSegment: boolean;
+  readonly tooltipCopy: string;
+  readonly ariaLabel: string;
+}
+
+/**
+ * Projects accepted interpolation-break ownership into the existing physical
+ * cell description. Ownership stays dormant while its real key is first and
+ * becomes visible whenever that key has an ordered predecessor. Global
+ * interpolation state is intentionally absent from this presentation input.
+ */
+export function getRotoCellPresentationViewModel({
+  kind,
+  keyId,
+  orderedRealKeyIds,
+  incomingInterpolationBreakKeyIds,
+  baseCopy,
+}: RotoCellPresentationViewModelInput): RotoCellPresentationViewModel {
+  const startsInterpolationSegment = kind === 'real'
+    && keyId !== null
+    && orderedRealKeyIds.indexOf(keyId) > 0
+    && incomingInterpolationBreakKeyIds.includes(keyId);
+  const descriptiveCopy = startsInterpolationSegment
+    ? `${baseCopy} · ${ROTO_STARTS_INTERPOLATION_SEGMENT_COPY}`
+    : baseCopy;
+
+  return {
+    startsInterpolationSegment,
+    tooltipCopy: descriptiveCopy,
+    ariaLabel: descriptiveCopy,
+  };
+}
+
 /**
  * Map the Phase 43 typed frame-resolution union onto the EXISTING cell-state
  * vocabulary (D-18): linked repetition cells keep their current

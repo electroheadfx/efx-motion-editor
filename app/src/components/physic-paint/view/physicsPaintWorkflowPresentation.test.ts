@@ -9,6 +9,7 @@ import {
   getRotoResolutionCellTooltipCopy, getRotoResolutionCellTooltipKind,
   getRotoStatusCapsuleIdleContext, getRotoStatusCapsuleViewModel,
   isPhysicsPaintDevExportEnabled,
+  ROTO_STARTS_INTERPOLATION_SEGMENT_COPY,
   type RotoCellBaseMeaning, type RotoCellFill, type RotoCellOverlay,
 } from './physicsPaintWorkflowPresentation';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
@@ -80,17 +81,60 @@ describe('physicsPaintWorkflowPresentation', () => {
 
 
   it('projects a predecessor-owned interpolation segment start into existing cell copy', () => {
-    expect(getRotoCellPresentationViewModel({
+    const predecessorVisible = getRotoCellPresentationViewModel({
       kind: 'real',
       keyId: 'key-b',
       orderedRealKeyIds: ['key-a', 'key-b'],
       incomingInterpolationBreakKeyIds: ['key-b'],
       baseCopy: 'Real key',
-    })).toEqual({
+    });
+
+    expect(ROTO_STARTS_INTERPOLATION_SEGMENT_COPY).toBe('Starts a new interpolation segment');
+    expect(predecessorVisible).toEqual({
       startsInterpolationSegment: true,
       tooltipCopy: 'Real key · Starts a new interpolation segment',
       ariaLabel: 'Real key · Starts a new interpolation segment',
     });
+    expect(predecessorVisible.tooltipCopy.match(/Starts a new interpolation segment/g)).toHaveLength(1);
+
+    expect(getRotoCellPresentationViewModel({
+      kind: 'real',
+      keyId: 'key-b',
+      orderedRealKeyIds: ['key-b'],
+      incomingInterpolationBreakKeyIds: ['key-b'],
+      baseCopy: 'Real key',
+    })).toEqual({
+      startsInterpolationSegment: false,
+      tooltipCopy: 'Real key',
+      ariaLabel: 'Real key',
+    });
+
+    const withInterpolationToggle = (interpolationEnabled: boolean) => {
+      const externalState = {
+        kind: 'real' as const,
+        keyId: 'key-b',
+        orderedRealKeyIds: ['key-a', 'key-b'],
+        incomingInterpolationBreakKeyIds: ['key-b'],
+        baseCopy: 'Real key',
+        interpolationEnabled,
+      };
+      return getRotoCellPresentationViewModel(externalState);
+    };
+    expect(withInterpolationToggle(false)).toEqual(withInterpolationToggle(true));
+
+    for (const kind of ['generated', 'linked', 'empty'] as const) {
+      expect(getRotoCellPresentationViewModel({
+        kind,
+        keyId: 'key-b',
+        orderedRealKeyIds: ['key-a', 'key-b'],
+        incomingInterpolationBreakKeyIds: ['key-b'],
+        baseCopy: 'Generated — render-only',
+      })).toEqual({
+        startsInterpolationSegment: false,
+        tooltipCopy: 'Generated — render-only',
+        ariaLabel: 'Generated — render-only',
+      });
+    }
   });
 
 
