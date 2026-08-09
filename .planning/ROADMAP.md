@@ -25,6 +25,7 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 - [x] **Phase 41: EFX Paint Audio Preview + Monitoring Toggle** — Read-only frame-synchronized main-editor audio monitoring inside EFX Paint with session-local toggle (completed 2026-08-05)
 - [x] **Phase 42: PlayScript Application Modes + Color Override** — Explicit progressive vs static/hold modes and application-time color override with clear Scripts panel UI (completed 2026-08-06)
 - [ ] **Phase 43: Hold Loop Clips + Integrated Loop Rail** — Deterministic static/hold rendering with linked Loop Clips (cycle × repeat 1..∞), an EFX-local integrated rail/contextual inspector, and one passive Motion Editor PPaint FX-bar duration marker per effective interval with zero Loop Clip-specific interaction
+- [ ] **Phase 43.1: Intentional Gap Insert and Local Interpolation Breaks** — Existing Insert context-dispatches a genuinely empty cursor into one atomic empty-key-plus-stable-break transaction, preserving local interpolation, persistence, history, and accepted physical-strip geometry
 - [ ] **Phase 44: Integrated UAT + Signed Release** — All automated gates, packaged native UAT per spec, signed/notarized downloaded-artifact verification, publish 2026-08-31
 
 ## Phase Details
@@ -212,10 +213,52 @@ Plans:
 
 **Boundary note:** Loop Clips persist as canonical linked loop regions in the existing physical-frame document authority. v0.9.0 adds no project schema migration or clean format break; accepted open/save/reopen behavior remains intact. The EFX-local Integrated Loop Rail ships with the resolver as a visible-window view of accepted ranges and owns Loop Clip selection/interaction. The Motion Editor receives only paint-only `{startFrame, frameCount, mode}` intervals for passive 3px Progressive-purple or Static/Hold-cyan paint with white canonical endpoint cuts. Key Spacing selection/provenance remains session-only, while accepted records, source-attached placement changes, and Play Script background remain inside the complete physical document transaction.
 
+### Phase 43.1: Intentional Gap Insert and Local Interpolation Breaks
+
+**Goal**: Users can start a new isolated Roto key segment at a distant genuinely empty frame through the existing Insert action, without interpolation bridging from the preceding segment, while the empty key and its stable-identity-owned incoming break remain one accepted physical-document/history fact.
+**Depends on**: Phase 43 (preserves the accepted parent-authoritative physical document, interpolation, Loop Clip, strip geometry, and native behavior)
+**Requirements**: GAP-01, GAP-02, GAP-03, GAP-04, GAP-05, GAP-06
+**Success Criteria** (what must be TRUE):
+
+  1. On a genuinely empty cursor frame, the existing visible `Insert` action creates exactly one genuinely empty real Paint key at that frame and one persistent incoming interpolation break owned by the new key's stable identity; the prior rendered drawing is neither copied nor materialized.
+  2. The break suppresses only the interpolation span entering its owner, remains durable while Interpolation is Off, becomes effective again when Interpolation is On, stays dormant while the owner has no predecessor, and permits later interpolation from the owner into a new local segment.
+  3. Strict parsing, canonical revision/equality, bridge validation, save/reopen, complete coordinator snapshots, Undo/Redo, deletion, payload replacement, and identity-preserving timing edits preserve the exact stable-owner lifecycle atomically.
+  4. The single `Insert` surface preserves occupied-key Insert/Open-and-Insert behavior, context-dispatches the empty-segment intent, and uses one target-specific product-reason mapper for disabled preflight and stale resolver rejection; every failure leaves records, breaks, Loop Clips, selection, cursor, canvas, and history unchanged.
+  5. A compact non-interactive left-edge cut appears inside the existing real-key cell only when the break-bearing key has a predecessor, remains visible with Interpolation Off, adds zero row/track geometry, and appends `Starts a new interpolation segment` to the existing tooltip/accessibility copy.
+  6. Focused and full automated gates preserve occupied Insert, physical-key, painting, deletion, Copy/Paste, drag, Key Spacing, Loop Clip, interpolation, persistence, selection, and history behavior; the phase remains automated-ready until the user approves the native visual/product UAT matrix.
+
+**Plans**: 6 plans
+Plans:
+**Wave 1**
+
+- [ ] 43.1-01-PLAN.md — Tracer: stable-key break contract through strict parent-authoritative acceptance and canonical runtime state (GAP-01, GAP-03)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 43.1-02-PLAN.md — TDD: local interpolation projection, empty-segment resolver intent, and break lifecycle across existing key operations (GAP-01, GAP-02, GAP-03, GAP-06)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 43.1-03-PLAN.md — TDD: persistence, complete transaction/rollback, bridge semantics, structural cache, and accepted-only Undo/Redo (GAP-01, GAP-03, GAP-06)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 43.1-04-PLAN.md — TDD: Signals-derived contextual Insert dispatch, shared target-specific product reasons, exact accepted feedback, and blank-canvas reconciliation (GAP-01, GAP-04, GAP-06)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 43.1-05-PLAN.md — Integrated physical-cell cut, tooltip/accessibility projection, and zero-geometry/zero-target presentation contracts (GAP-05, GAP-06)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 43.1-06-PLAN.md — Full regression gate, source-coverage closure, and blocking native visual/product UAT (GAP-01..GAP-06)
+
+**Planning note:** spec-less probe fallback skipped: phase had no requirement IDs at plan-phase init; goal-backward must_haves were derived from the activated SPECS prompt, CONTEXT.md, RESEARCH.md, and canonicalized GAP-01..GAP-06 instead.
+
 ### Phase 44: Integrated UAT + Signed Release
 
 **Goal**: v0.9.0 ships as a signed, notarized macOS release on 2026-08-31 with every automated gate and native packaged-app UAT step green and no release stop condition active.
-**Depends on**: Phases 39-43
+**Depends on**: Phases 39-43.1 (release acceptance begins only after the intentional-gap insertion and local-break contract is automated-green and native-approved)
 **Requirements**: REL-01, REL-02, REL-03
 **Success Criteria** (what must be TRUE):
 
@@ -380,5 +423,6 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 40. macOS Icon + Build Hygiene | v0.9.0 | 3/3 | Complete    | 2026-08-04 |
 | 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | Complete    | 2026-08-05 |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
-| 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 9/15 | In Progress|  |
+| 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
+| 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 0/6 | Not started | - |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |

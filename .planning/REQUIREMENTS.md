@@ -56,6 +56,15 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [x] **HOLD-05**: Loop Clips persist as canonical linked loop regions (not duplicated durable assets) with source-key-timed modulo resolution, half-open interval boundaries, next-clip priority, re-expansion, and source edits propagating to linked occurrences. Multi-capsule Key Spacing is owned by Loop Rail selection: plain click selects one clip and its complete ordered source cycle, Shift selects the contiguous canonical rail range, and Cmd/Ctrl toggles non-contiguous clips; identical selected cycles deduplicate and are processed left-to-right in one atomic transaction. Physical-key selection remains authoritative for ordinary operations and partial Key Spacing inside at most one current source cycle; multi-cycle physical selection rejects with guidance to select Loop Rails. Rail and physical selection are mutually exclusive, Select All exposes exactly its physical operation scope, and stale, reordered, duplicate, missing, or ambiguous authorization rejects before publication. Each selected group keeps its first key anchored after prior cumulative growth, receives the requested spacing internally, and ripples every later real key by the exact signed growth; a source-attached downstream Loop Clip follows its first source key through the same records-plus-Loop-Clips proposal. Loop IDs, ordered source IDs, modes, repeats, Infinity, script provenance, motion, and override color remain byte-identical; only an eligible source-attached `placementStart` may change. Interpolation is passed through unchanged: Off leaves empty gaps and On derives generated in-betweens. No linked occurrence is materialized, unlinked, cloned, or persisted as a key, and one Undo/Redo restores or reapplies records and Loop Clip placements together. Every Play Script Apply persists one Loop Clip record in the same atomic generation transaction, including finite Repeat 1 in both Progressive and Static/Hold modes; Repeat 1 materializes no repeated occurrences.
 - [x] **HOLD-06**: Inside EFX Paint/Roto, each Loop Clip is represented by a conditional 3px integrated Loop Rail in the existing physical-frame row, with no added row or height; its tooltip and contextual Scripts sidebar expose the derived display name, `Cycle Nf × R = Tf` / `Cycle Nf × ∞`, Effective duration, mode, and normal/truncated/unresolved status, including the English label `Loop shortened by next clip` on truncation. Progressive rails are `#8B5CF6`, Static/Hold rails are cyan `#06B6D4`, selected rails use orange `#F59E0B`, and actual start/end frames receive white cuts/borders. The Motion Editor main timeline paints the same passive mode color and canonical white endpoint cuts per effective interval from `{startFrame, frameCount, mode}` only, with no new row/height, text, badge, tooltip, hover/focus styling, own pointer target, identity, source/repeat metadata, status, selection, callbacks, commands, or Loop Clip-specific selection, keyboard route, navigation, Edit, drag, context menu, or mutation. Physics Paint Studio remains the exclusive interactive authoring owner through the rail, styled tooltip, contextual Scripts sidebar, and Studio-local Edit dialog; the proposed dedicated actions popover is superseded and no replacement specialized transport is retained. The term `clip bloquant` remains prohibited in every language.
 
+### Intentional Gaps
+
+- [ ] **GAP-01**: Empty-frame Insert atomically creates one genuinely empty real Paint key at the exact cursor frame and one persistent incoming interpolation break owned by that key's stable identity.
+- [ ] **GAP-02**: A break suppresses only the interpolation span entering its owning key; later keys may interpolate from that key, and Interpolation Off/On preserves the dormant boundary without toggling global interpolation.
+- [ ] **GAP-03**: Break ownership participates in strict parsing, canonical revision, project equality, bridge validation, save/reopen, Undo/Redo, and all identity-preserving timing edits.
+- [ ] **GAP-04**: The existing Insert action context-dispatches occupied-key behavior versus empty-segment insertion and exposes one target-specific mapped reason for both disabled preflight and resolver-time rejection, with no mutation on failure.
+- [ ] **GAP-05**: The physical strip renders a compact integrated left-edge cut only when the break-bearing key has a predecessor and appends `Starts a new interpolation segment` to the existing cell tooltip/accessibility copy without adding an interactive target or geometry.
+- [ ] **GAP-06**: Existing occupied-key Insert, physical-key, Copy/Paste, drag, spacing, Loop Clip, interpolation, selection, painting, persistence, and history workflows remain unchanged except for explicit break lifecycle participation, with automated regression and native visual UAT.
+
 ### Integrated Release Acceptance
 
 - [ ] **REL-01**: All automated gates pass: `pnpm --dir app exec vitest run`, typecheck, `pnpm build`, cargo tests, release script syntax check and preflight
@@ -128,16 +137,22 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HOLD-04 | Phase 43 | Complete |
 | HOLD-05 | Phase 43 | Complete |
 | HOLD-06 | Phase 43 | Complete |
+| GAP-01 | Phase 43.1 | Pending |
+| GAP-02 | Phase 43.1 | Pending |
+| GAP-03 | Phase 43.1 | Pending |
+| GAP-04 | Phase 43.1 | Pending |
+| GAP-05 | Phase 43.1 | Pending |
+| GAP-06 | Phase 43.1 | Pending |
 | REL-01 | Phase 44 | Pending |
 | REL-02 | Phase 44 | Pending |
 | REL-03 | Phase 44 | Pending |
 
 **Coverage:**
 
-- v0.9.0 requirements: 32 total
-- Mapped to phases: 32 (Phases 39-44)
+- v0.9.0 requirements: 38 total
+- Mapped to phases: 38 (Phases 39-44, including Phase 43.1)
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-08-03*
-*Last updated: 2026-08-04 after roadmap creation (Phases 39-44 mapped, 100% coverage)*
+*Last updated: 2026-08-09 after Phase 43.1 canonicalization (GAP-01..GAP-06 mapped exclusively to Phase 43.1; 100% coverage)*
