@@ -55,6 +55,7 @@ export const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
  */
 export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-slot'
+  | 'insert-empty-segment'
   | 'delete-key'
   | 'delete-key-group'
   | 'move-key'
@@ -75,6 +76,11 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
  * records and the submitted complete next records before mutation.
  */
 export type PhysicPaintRotoPhysicalEditSemanticDelta =
+  | {
+      readonly kind: 'insert-empty-segment';
+      readonly insertedKeyId: string;
+      readonly destinationAppFrame: number;
+    }
   | {
       readonly kind: 'duplicate-key';
       readonly sourceKeyId: string;
@@ -240,6 +246,7 @@ function isBoundedPhysicalKeyId(value: unknown): value is string {
 
 function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is PhysicPaintRotoPhysicalEditOperationKind {
   return value === 'insert-slot'
+    || value === 'insert-empty-segment'
     || value === 'delete-key'
     || value === 'delete-key-group'
     || value === 'move-key'
@@ -275,6 +282,11 @@ export function isPhysicPaintRotoPhysicalEditRecord(value: unknown): value is Ph
 
 export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): value is PhysicPaintRotoPhysicalEditSemanticDelta {
   if (!isRecord(value)) return false;
+  if (value.kind === 'insert-empty-segment') {
+    return hasOnlyKeys(value, ['kind', 'insertedKeyId', 'destinationAppFrame'])
+      && isBoundedPhysicalKeyId(value.insertedKeyId)
+      && isNonNegativeInteger(value.destinationAppFrame);
+  }
   if (value.kind === 'duplicate-key') {
     return hasOnlyKeys(value, ['kind', 'sourceKeyId', 'newKeyId'])
       && isBoundedPhysicalKeyId(value.sourceKeyId)
@@ -329,7 +341,7 @@ function operationSemanticDeltaIsValid(
   semanticDelta: unknown,
   allowMissingOnFailure = false,
 ): boolean {
-  if (operationKind === 'duplicate-key' || operationKind === 'paste-key' || operationKind === 'paste-key-group' || operationKind === 'play-script') {
+  if (operationKind === 'insert-empty-segment' || operationKind === 'duplicate-key' || operationKind === 'paste-key' || operationKind === 'paste-key-group' || operationKind === 'play-script') {
     if (semanticDelta === undefined) return allowMissingOnFailure;
     return isPhysicPaintRotoPhysicalEditSemanticDelta(semanticDelta) && semanticDelta.kind === operationKind;
   }
