@@ -33,8 +33,14 @@ function snapshot(
   records: readonly PhysicPaintRotoRealKeyRecord[],
   selectedKeyId: string,
   selectedAppFrame: number,
+  incomingInterpolationBreakKeyIds: readonly string[] = [],
 ): RotoPhysicalEditSnapshot<null> {
-  const revision = buildPhysicPaintRotoPhysicalRevision(records, { enabled: false, mode: 'duplicate' }, []);
+  const revision = buildPhysicPaintRotoPhysicalRevision(
+    records,
+    { enabled: false, mode: 'duplicate' },
+    [],
+    incomingInterpolationBreakKeyIds,
+  );
   return {
     launchOperationId: 'launch-1',
     layerId: 'layer-1',
@@ -42,6 +48,7 @@ function snapshot(
     records,
     interpolation: { enabled: false, mode: 'duplicate' },
     loopClips: [],
+    incomingInterpolationBreakKeyIds: [...incomingInterpolationBreakKeyIds],
     capacity: 10,
     expectedRevision: revision,
     stagedRevision: revision,
@@ -87,7 +94,12 @@ describe('useRotoPhysicalEditHistory rigid group drag', () => {
       acceptedOutput.value = {
         before: source,
         after: target,
-        acceptedRevision: buildPhysicPaintRotoPhysicalRevision(target.records, target.interpolation, target.loopClips),
+        acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
+          target.records,
+          target.interpolation,
+          target.loopClips,
+          target.incomingInterpolationBreakKeyIds,
+        ),
         operationId: `replay-${replayNumber}`,
         operationKind: input.operationKind,
         historyProvenance: input.historyProvenance,
@@ -108,6 +120,8 @@ describe('useRotoPhysicalEditHistory rigid group drag', () => {
         getInterpolation: () => current.interpolation,
         getCapacity: () => current.capacity,
         getLoopClips: () => current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
         replaceLoopClips: () => ({ ok: true }),
         replaceRecords: () => ({ ok: true }),
       },
@@ -118,7 +132,12 @@ describe('useRotoPhysicalEditHistory rigid group drag', () => {
     acceptedOutput.value = {
       before,
       after,
-      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(after.records, after.interpolation, after.loopClips),
+      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
+        after.records,
+        after.interpolation,
+        after.loopClips,
+        after.incomingInterpolationBreakKeyIds,
+      ),
       operationId: 'move-group-1',
       operationKind: 'move-key-group',
       historyProvenance: null,
@@ -145,5 +164,117 @@ describe('useRotoPhysicalEditHistory rigid group drag', () => {
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
     expect(executePhysicalEdit).toHaveBeenCalledTimes(2);
     expect(executePhysicalEdit.mock.calls.map(([input]) => input.operationKind)).toEqual(['undo', 'redo']);
+  });
+});
+
+describe('useRotoPhysicalEditHistory empty-segment ownership', () => {
+  it('records one accepted key-plus-break command, replays both directions, and preserves redo for no-change or rejected edits', async () => {
+    const before = snapshot([
+      record('A', 0),
+      record('B', 1),
+    ], 'B', 1);
+    const after = snapshot([
+      record('A', 0),
+      record('B', 1),
+      record('empty-key-1', 2),
+    ], 'empty-key-1', 2, ['empty-key-1']);
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    let current = after;
+    let replayNumber = 0;
+
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      const source = current;
+      current = target;
+      replayNumber += 1;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
+          target.records,
+          target.interpolation,
+          target.loopClips,
+          target.incomingInterpolationBreakKeyIds,
+        ),
+        operationId: `empty-replay-${replayNumber}`,
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+
+    const history = useRotoPhysicalEditHistory({
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1' },
+      availability,
+      coordinator: {
+        executePhysicalEdit: executePhysicalEdit as never,
+        pendingOperationId,
+        acceptedOutput,
+      },
+      recordsPort: {
+        getRecords: () => current.records,
+        getInterpolation: () => current.interpolation,
+        getCapacity: () => current.capacity,
+        getLoopClips: () => current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
+        after.records,
+        after.interpolation,
+        after.loopClips,
+        after.incomingInterpolationBreakKeyIds,
+      ),
+      operationId: 'insert-empty-1',
+      operationKind: 'insert-empty-segment',
+      historyProvenance: null,
+    };
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+
+    expect(await history.undo()).toBe(true);
+    expect(current.records.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0],
+      ['B', 1],
+    ]);
+    expect(current.incomingInterpolationBreakKeyIds).toEqual([]);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    acceptedOutput.value = {
+      before: current,
+      after: current,
+      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
+        current.records,
+        current.interpolation,
+        current.loopClips,
+        current.incomingInterpolationBreakKeyIds,
+      ),
+      operationId: 'no-change-empty-2',
+      operationKind: 'insert-empty-segment',
+      historyProvenance: null,
+    };
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+    acceptedOutput.value = null;
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    expect(await history.redo()).toBe(true);
+    expect(current.records.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0],
+      ['B', 1],
+      ['empty-key-1', 2],
+    ]);
+    expect(current.incomingInterpolationBreakKeyIds).toEqual(['empty-key-1']);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
   });
 });
