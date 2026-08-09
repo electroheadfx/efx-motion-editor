@@ -26,6 +26,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 import {
   buildPhysicPaintRotoPhysicalRevision,
+  buildPhysicPaintRotoProjectEquality,
   encodePhysicPaintRotoPhysicalContent,
   isPhysicPaintRotoLoopClip,
   parsePhysicPaintRotoLoopClips,
@@ -279,6 +280,52 @@ describe('parsePhysicPaintRotoPhysicalDocument loopClips member', () => {
     const parsed = parsePhysicPaintRotoPhysicalDocument(baseDocument([infinite]));
     expect(parsed.loopClips[0].repeat).toBe('infinity');
     expect(JSON.stringify(parsed.loopClips[0])).toContain('"infinity"');
+  });
+});
+
+describe('parsePhysicPaintRotoPhysicalDocument incoming interpolation breaks', () => {
+  it('hydrates absent ownership to the shared frozen empty collection', () => {
+    const persisted = baseDocument();
+    delete (persisted as Partial<typeof persisted>).incomingInterpolationBreakKeyIds;
+
+    const parsed = parsePhysicPaintRotoPhysicalDocument(persisted);
+
+    expect(parsed.incomingInterpolationBreakKeyIds).toEqual([]);
+    expect(Object.isFrozen(parsed.incomingInterpolationBreakKeyIds)).toBe(true);
+  });
+
+  it('round-trips valid ownership and rejects malformed duplicate or orphan owners', () => {
+    const valid = baseDocument();
+    valid.incomingInterpolationBreakKeyIds = ['k3'];
+    valid.revision = buildPhysicPaintRotoPhysicalRevision(
+      valid.realKeyRecords,
+      valid.interpolation,
+      valid.loopClips ?? [],
+      valid.incomingInterpolationBreakKeyIds,
+    );
+    const parsed = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify(valid)));
+    expect(JSON.stringify(parsed.incomingInterpolationBreakKeyIds)).toBe(JSON.stringify(['k3']));
+    expect(Object.isFrozen(parsed.incomingInterpolationBreakKeyIds)).toBe(true);
+
+    for (const incomingInterpolationBreakKeyIds of ['k3', ['k3', 'k3'], ['missing-key']]) {
+      const malformed = { ...baseDocument(), incomingInterpolationBreakKeyIds };
+      expect(() => parsePhysicPaintRotoPhysicalDocument(malformed)).toThrow();
+    }
+  });
+
+  it('keeps empty revisions byte-stable while non-empty ownership changes revision and project equality', () => {
+    const empty = baseDocument();
+    const owned = { ...baseDocument(), incomingInterpolationBreakKeyIds: ['k3'] };
+    owned.revision = buildPhysicPaintRotoPhysicalRevision(
+      owned.realKeyRecords,
+      owned.interpolation,
+      owned.loopClips ?? [],
+      owned.incomingInterpolationBreakKeyIds,
+    );
+
+    expect(empty.revision).toBe(buildPhysicPaintRotoPhysicalRevision(empty.realKeyRecords, empty.interpolation, []));
+    expect(owned.revision).not.toBe(empty.revision);
+    expect(buildPhysicPaintRotoProjectEquality(owned)).not.toBe(buildPhysicPaintRotoProjectEquality(empty));
   });
 });
 
