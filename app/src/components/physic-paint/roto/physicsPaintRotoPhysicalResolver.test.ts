@@ -188,7 +188,7 @@ describe('intentional incoming interpolation breaks', () => {
       interpolationEnabled: false,
       incomingInterpolationBreakKeyIds: [],
     } as const;
-    const intent = (destinationAppFrame: number, blankPayload: unknown = {
+    const intent = (destinationAppFrame: number, blankPayload: PhysicPaintRotoRealKeyPayload = {
       frameIndex: 0,
       appFrame: destinationAppFrame,
       dataUrl: 'data:image/png;base64,AAAA',
@@ -213,7 +213,7 @@ describe('intentional incoming interpolation breaks', () => {
       }),
       resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(-1) }),
       resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(16) }),
-      resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(3, { appFrame: 3, dataUrl: '' }) }),
+      resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(3, { appFrame: 3, dataUrl: '' } as never) }),
     ];
 
     expect(resolutions).toHaveLength(7);
@@ -297,15 +297,15 @@ describe('incoming interpolation break lifecycle', () => {
     expect(replacement.ok).toBe(true);
     if (!replacement.ok) throw new Error('Replacement paste must resolve');
     expect(replacement.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
-    expect(replacement.proposal.generatedCells.some((cell) => cell.rightKeyId === 'B')).toBe(false);
+    expect(replacement.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId ==='B')).toBe(false);
     expect(freshPaste.ok).toBe(true);
     if (!freshPaste.ok) throw new Error('Fresh paste must resolve');
     expect(freshPaste.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
-    expect(freshPaste.proposal.generatedCells.some((cell) => cell.rightKeyId === 'pasted-X')).toBe(true);
+    expect(freshPaste.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId ==='pasted-X')).toBe(true);
     expect(duplicate.ok).toBe(true);
     if (!duplicate.ok) throw new Error('Duplicate must resolve');
     expect(duplicate.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
-    expect(duplicate.proposal.generatedCells.some((cell) => cell.rightKeyId === 'duplicate-X')).toBe(false);
+    expect(duplicate.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId ==='duplicate-X')).toBe(false);
   });
 
   it('carries owner identities through drag, push, and partial spacing mappings', () => {
@@ -330,7 +330,7 @@ describe('incoming interpolation break lifecycle', () => {
       expect(resolution.ok).toBe(true);
       if (!resolution.ok) throw new Error('Identity-preserving timing edit must resolve');
       expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
-      expect(resolution.proposal.generatedCells.some((cell) => cell.rightKeyId === owner)).toBe(false);
+      expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId ===owner)).toBe(false);
     }
   });
 
@@ -356,7 +356,7 @@ describe('incoming interpolation break lifecycle', () => {
     expect(single.ok).toBe(true);
     if (!single.ok) throw new Error('Single delete must resolve');
     expect(single.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['D']);
-    expect(single.proposal.generatedCells.some((cell) => cell.rightKeyId === 'C')).toBe(true);
+    expect(single.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId ==='C')).toBe(true);
     expect(group.ok).toBe(true);
     if (!group.ok) throw new Error('Group delete must resolve');
     expect(group.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['C']);

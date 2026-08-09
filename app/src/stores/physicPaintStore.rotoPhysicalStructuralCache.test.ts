@@ -238,7 +238,7 @@ describe('physicPaintStore roto physical structural cache (38.1-07)', () => {
     clearSpyCounts();
     const afterProjection = physicPaintStore.getRotoPhysicalProjection(LAYER);
     expect(afterProjection).not.toBe(beforeProjection);
-    expect(afterProjection?.generatedCells.some((cell) => cell.rightKeyId === 'key-b')).toBe(false);
+    expect(afterProjection?.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId ==='key-b')).toBe(false);
     expect(projectionSpy.mock.calls.length).toBe(1);
     expect(revisionSpy.mock.calls.length).toBe(1);
     const installedBreaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(LAYER);
