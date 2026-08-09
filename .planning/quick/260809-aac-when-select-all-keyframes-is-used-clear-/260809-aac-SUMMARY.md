@@ -18,7 +18,7 @@ affects: [physics-paint, roto-timeline, keyframe-selection]
 actuals:
   tokens: 3303
   tasks: 1
-  commits: 2
+  commits: 3
 
 tech-stack:
   added: []
@@ -36,7 +36,7 @@ key-files:
 
 key-decisions:
   - "Select All preserves the cursor frame while clearing both local and persisted primary key identity."
-  - "The visible current class is owned by stable primary key identity, not by the cursor overlay alone."
+  - "Real-key current styling is owned by stable primary key identity; non-real cells retain cursor styling so empty frames remain selectable Add key targets."
 
 patterns-established:
   - "Complete key selection remains in rotoSelectedKeyIds while the stronger primary treatment is controlled by a separate nullable identity."
@@ -82,14 +82,15 @@ status: complete
 ## Accomplishments
 
 - Corrected the shared keyboard/button Select All callback to clear `selectedKeyId` locally and in the physical store without moving the cursor.
-- Passed the nullable primary key identity separately from the complete selected-key set and removed cursor-only ownership of the `current` class.
+- Passed the nullable primary key identity separately from the complete selected-key set, using it for real-key `current` styling while retaining cursor-owned `current` styling for non-real cells.
 - Preserved spacing-proxy and Loop Clip scope clearing, the `All keys selected` status, and ordinary primary-versus-secondary multi-selection behavior.
-- Added focused source-contract regression coverage; 114 focused tests and the TypeScript typecheck pass.
+- Added focused source-contract regression coverage, including the UAT-found empty-frame click target regression; 115 focused tests and the TypeScript typecheck pass.
 
 ## Task Commits
 
 1. **Task 1 RED: Lock Select All replacement semantics** - `368ba35a` (test)
 2. **Task 1 GREEN: Replace primary key on Select All** - `15224dc8` (fix)
+3. **UAT follow-up: Preserve empty-frame cursor selection** - `0431e812` (fix)
 
 ## Files Created/Modified
 
@@ -105,15 +106,16 @@ status: complete
 
 ## Deviations from Plan
 
-None - plan executed exactly as written.
+- Native UAT required one corrective follow-up because the initial class projection also removed the cursor treatment from non-real cells. The correction stayed within the planned workflow-strip selection boundary.
 
 ## Issues Encountered
 
-None. The focused tests failed at the expected RED gate before the production correction and passed afterward.
+- Native UAT exposed that the first correction replaced cursor-owned `.current` styling globally, making clicked empty frames appear unselectable as Add key targets.
+- The follow-up keeps primary identity ownership for real keys while restoring cursor treatment for non-real cells; its dedicated regression test failed before the correction and passed afterward.
 
 ## Verification
 
-- `pnpm --dir /Users/lmarques/Dev/efx-motion-editor/app exec vitest run src/components/physic-paint/PhysicsPaintStudio.test.ts src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts` - passed, 114 tests.
+- `pnpm --dir /Users/lmarques/Dev/efx-motion-editor/app exec vitest run src/components/physic-paint/PhysicsPaintStudio.test.ts src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts` - passed, 115 tests.
 - `pnpm --dir /Users/lmarques/Dev/efx-motion-editor/app typecheck` - passed.
 - Application server was not started.
 
@@ -128,12 +130,12 @@ None - no external service configuration required.
 ## Next Phase Readiness
 
 - Automated implementation and verification are complete.
-- Native visual UAT can confirm that a previously primary frame such as frame 32 uses the same complete-selection treatment as every other real key after Select All.
+- Native visual UAT can confirm both behaviors: frame 32 loses its separate primary treatment after Select All, and clicking an empty frame visibly selects it so Add key targets that frame.
 
 ## Self-Check: PASSED
 
 - All four modified source/test files exist.
-- Commits `368ba35a` and `15224dc8` exist in repository history.
+- Commits `368ba35a`, `15224dc8`, and `0431e812` exist in repository history.
 
 ---
 *Quick Task: 260809-aac*
