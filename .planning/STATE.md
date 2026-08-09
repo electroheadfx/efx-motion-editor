@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.1
 current_phase_name: Intentional Gap Insert and Local Interpolation Breaks
 status: executing
-stopped_at: Completed 43.1-04-PLAN.md
-last_updated: "2026-08-09T16:15:21.831Z"
+stopped_at: Completed 43.1-05-PLAN.md
+last_updated: "2026-08-09T16:50:37.270Z"
 last_activity: 2026-08-09
 last_activity_desc: Completed Plan 43.1-04 contextual Insert dispatch and accepted-only blank reconciliation
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 35
-  completed_plans: 33
-  percent: 94
+  completed_plans: 34
+  percent: 57
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.1 (Intentional Gap Insert and Local Interpolation Breaks) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
-Last activity: 2026-08-09 — Completed Plan 43.1-04 contextual Insert dispatch and accepted-only blank reconciliation
+Last activity: 2026-08-09 — Completed Plan 43.1-05 predecessor-aware segment marker projection and integrated strip cut
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [█████████░] 94%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -185,6 +185,7 @@ Progress: [█████████░] 94%
 | Phase 43.1 P02 | 20 min | 2 tasks | 7 files |
 | Phase 43.1 P03 | 41 min | 3 tasks | 13 files |
 | Phase 43.1 P04 | 23 min | 2 tasks | 7 files |
+| Phase 43.1 P05 | 15min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -256,6 +257,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43.1-04: One product-reason mapper owns disabled and action-time rejection copy while raw resolver diagnostics remain internal.
 - [Phase ?]: 43.1-04: Empty-segment records, break ownership, selection, cursor, canvas, status, and history publish only after exact parent acknowledgement through deferred settlement.
 - [Phase ?]: 43.1-04: Accepted empty insertion reuses current-frame reconciliation at the retained destination rather than navigation or a second canvas path.
+- [Phase 43.1]: Visible interpolation segment starts derive only from accepted break-owner IDs plus ordered real-key position; interpolation enabled state is not an input.
+- [Phase 43.1]: The 2px segment cut uses one aria-hidden child because real cached and dirty cells already occupy both pseudo-elements.
+- [Phase 43.1]: Accepted break ownership passes from the versioned Studio store through the existing workflow bundle; the strip owns no optimistic marker state.
 
 ### Pending Todos
 
@@ -440,8 +444,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-09T16:15:21.821Z
-Stopped at: Completed 43.1-04-PLAN.md
+Last session: 2026-08-09T16:50:37.259Z
+Stopped at: Completed 43.1-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

@@ -247,7 +247,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 43.1-05-PLAN.md — Integrated physical-cell cut, tooltip/accessibility projection, and zero-geometry/zero-target presentation contracts (GAP-05, GAP-06)
+- [x] 43.1-05-PLAN.md — Integrated physical-cell cut, tooltip/accessibility projection, and zero-geometry/zero-target presentation contracts (GAP-05, GAP-06)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -424,5 +424,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | Complete    | 2026-08-05 |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
-| 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 4/6 | In Progress|  |
+| 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 5/6 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |

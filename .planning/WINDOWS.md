@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 10
+open_count: 11
 waived_count: 1
 fixed_count: 19
-total_count: 30
-last_updated: 2026-08-09T15:05:03.053Z
+total_count: 31
+last_updated: 2026-08-09T16:51:31.383Z
 ---
 
 # Broken Windows Ledger
@@ -45,6 +45,7 @@ last_updated: 2026-08-09T15:05:03.053Z
 | 28 | 43 | unmet-truth | app/src/viteBuild.test.ts | 184 | Pre-existing main desktop chunk exceeds the locked 1100 kB warning budget (1,112.66 kB at pre-GREEN baseline 02fa699d). | open |  | 2026-08-07T11:01:42.037Z |  |
 | 29 | 43.1 | deviation | app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.test.ts |  | Inherited break lifecycle behaviors were characterized green instead of forcing artificial RED failures | open |  | 2026-08-09T15:05:02.967Z |  |
 | 30 | 43.1 | deviation | app/src/stores/physicPaintStore.rotoPhysicalStructuralCache.test.ts |  | Structural cache test and projection threading landed in the same atomic commit | open |  | 2026-08-09T15:05:03.053Z |  |
+| 31 | 43.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Accepted break ownership wiring was added outside the plan's listed Task 2 files so the live strip receives canonical state. | open |  | 2026-08-09T16:51:31.383Z |  |
 
 ````json
 [
@@ -406,6 +407,18 @@ last_updated: 2026-08-09T15:05:03.053Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-09T15:05:03.053Z",
+    "resolved_at": null
+  },
+  {
+    "id": 31,
+    "kind": "deviation",
+    "phase": "43.1",
+    "file": "app/src/components/physic-paint/PhysicsPaintStudio.tsx",
+    "line": null,
+    "description": "Accepted break ownership wiring was added outside the plan's listed Task 2 files so the live strip receives canonical state.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-09T16:51:31.383Z",
     "resolved_at": null
   }
 ]
