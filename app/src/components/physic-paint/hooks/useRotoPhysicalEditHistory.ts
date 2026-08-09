@@ -251,6 +251,7 @@ function buildReplayProposal(target: RotoPhysicalEditSnapshot<unknown>): PhysicP
     drag: null,
     nextRecords: null,
     nextLoopClips: null,
+    nextIncomingInterpolationBreakKeyIds: null,
     semanticDelta: null,
     status: {
       operationKind: 'move-key',

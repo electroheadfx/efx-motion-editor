@@ -118,6 +118,12 @@ export interface PhysicPaintRotoLinkedSourceSpacingScope {
 
 export type PhysicPaintRotoPhysicalEditIntent =
   | { readonly kind: 'insert-slot'; readonly selectedKeyId: string }
+  | {
+      readonly kind: 'insert-empty-segment';
+      readonly destinationAppFrame: number;
+      readonly insertedKeyId: string;
+      readonly blankPayload: PhysicPaintRotoRealKeyPayload;
+    }
   | { readonly kind: 'delete-key'; readonly selectedKeyId: string }
   | { readonly kind: 'delete-key-group'; readonly keyIds: readonly string[] }
   | {
@@ -168,6 +174,7 @@ export type PhysicPaintRotoPhysicalEditIntent =
  */
 export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-slot'
+  | 'insert-empty-segment'
   | 'delete-key'
   | 'delete-key-group'
   | 'move-key'
@@ -196,6 +203,8 @@ export interface PhysicPaintRotoPhysicalEditInput {
    * updates on the proposal. Absent/empty preserves pre-43 behavior exactly.
    */
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  /** Complete stable-key-owned incoming interpolation break collection. */
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
 
 /**
@@ -308,6 +317,8 @@ export interface PhysicPaintRotoPhysicalEditProposal {
    * source keys by id). Null when no loop record changes.
    */
   readonly nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null;
+  /** Complete next incoming-break collection when ownership changes; null otherwise. */
+  readonly nextIncomingInterpolationBreakKeyIds: readonly string[] | null;
   /** Declared operation-specific delta validated against current and next records. */
   readonly semanticDelta: PhysicPaintRotoPhysicalEditSemanticDelta | null;
   /** Concise status derived from the validated map. */
@@ -551,7 +562,7 @@ export function createPhysicPaintRotoPasteKeyGroupIntent(
 }
 
 export interface PhysicPaintRotoPhysicalEditSemanticDeltaValidationInput {
-  readonly operationKind: 'duplicate-key' | 'paste-key' | 'paste-key-group';
+  readonly operationKind: 'insert-empty-segment' | 'duplicate-key' | 'paste-key' | 'paste-key-group';
   readonly currentRecords: unknown;
   readonly nextRecords: unknown;
   readonly semanticDelta: unknown;
@@ -589,6 +600,35 @@ export function validatePhysicPaintRotoPhysicalEditSemanticDelta(
   }
   const currentById = new Map(current.map((record) => [record.keyId, record]));
   const nextById = new Map(next.map((record) => [record.keyId, record]));
+
+  if (input.operationKind === 'insert-empty-segment') {
+    const delta = input.semanticDelta;
+    if (!hasExactKeys(delta, ['kind', 'insertedKeyId', 'destinationAppFrame'])
+      || !isBoundedKeyId(delta.insertedKeyId)
+      || !isNonNegativeInteger(delta.destinationAppFrame)
+      || delta.destinationAppFrame >= input.capacity) {
+      return { ok: false, error: 'Empty-segment semantic declaration is malformed.' };
+    }
+    if (currentById.has(delta.insertedKeyId)) return { ok: false, error: 'Empty-segment identity is not fresh.' };
+    if (current.some((record) => record.appFrame === delta.destinationAppFrame)) {
+      return { ok: false, error: 'Empty-segment destination is occupied.' };
+    }
+    if (next.length !== current.length + 1) return { ok: false, error: 'Empty-segment insert must add exactly one record.' };
+    if (input.selectedKeyId !== delta.insertedKeyId || input.selectedAppFrame !== delta.destinationAppFrame) {
+      return { ok: false, error: 'Empty-segment insert must select the fresh identity.' };
+    }
+    for (const record of current) {
+      const proposed = nextById.get(record.keyId);
+      if (!proposed || !recordsEqual(proposed, record)) {
+        return { ok: false, error: `Empty-segment insert changed existing identity "${record.keyId}".` };
+      }
+    }
+    const inserted = nextById.get(delta.insertedKeyId);
+    if (!inserted || inserted.appFrame !== delta.destinationAppFrame) {
+      return { ok: false, error: 'Empty-segment record does not match the declared destination.' };
+    }
+    return { ok: true };
+  }
 
   if (input.operationKind === 'duplicate-key') {
     const delta = input.semanticDelta;
@@ -768,6 +808,7 @@ export function validatePhysicPaintRotoPhysicalEditSemanticDelta(
 
 function isResolverOperationKind(value: unknown): value is PhysicPaintRotoPhysicalEditOperationKind {
   return value === 'insert-slot'
+    || value === 'insert-empty-segment'
     || value === 'delete-key'
     || value === 'delete-key-group'
     || value === 'move-key'
@@ -961,6 +1002,8 @@ interface Candidate {
   readonly semanticDelta?: PhysicPaintRotoPhysicalEditSemanticDelta;
   /** Phase 43: complete next Loop Clip collection for rigid whole-cycle group drags; absent/null otherwise. */
   readonly nextLoopClips?: readonly PhysicPaintRotoLoopClip[] | null;
+  /** Complete next incoming-break collection when ownership changes; absent otherwise. */
+  readonly nextIncomingInterpolationBreakKeyIds?: readonly string[];
 }
 
 /**
@@ -1012,6 +1055,44 @@ function buildInsertCandidate(
  * null. A deleted identity never appears in the complete map, ordered output,
  * cells, changes, or selection.
  */
+function buildInsertEmptySegmentCandidate(
+  identities: ValidatedIdentities,
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  intent: Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'insert-empty-segment' }>,
+  incomingInterpolationBreakKeyIds: readonly string[],
+): Candidate {
+  const inserted = Object.freeze({
+    kind: 'real-key' as const,
+    keyId: intent.insertedKeyId,
+    appFrame: intent.destinationAppFrame,
+    payload: clonePayloadAtFrame(intent.blankPayload, intent.destinationAppFrame),
+  }) as PhysicPaintRotoRealKeyRecord;
+  const nextRecords = [...records, inserted].sort((left, right) => left.appFrame - right.appFrame);
+  const expectedKeyIds = new Set(identities.keyIds);
+  expectedKeyIds.add(intent.insertedKeyId);
+  return {
+    mapping: new Map(nextRecords.map((record) => [record.keyId, record.appFrame])),
+    expectedKeyIds,
+    removedKeyId: null,
+    removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+    selectedKeyId: intent.insertedKeyId,
+    operationKind: 'insert-empty-segment',
+    changed: true,
+    roleByKeyId: new Map(),
+    drag: null,
+    nextRecords: Object.freeze(nextRecords),
+    nextIncomingInterpolationBreakKeyIds: Object.freeze([
+      ...incomingInterpolationBreakKeyIds,
+      intent.insertedKeyId,
+    ]),
+    semanticDelta: Object.freeze({
+      kind: 'insert-empty-segment',
+      insertedKeyId: intent.insertedKeyId,
+      destinationAppFrame: intent.destinationAppFrame,
+    }),
+  };
+}
+
 function buildDeleteCandidate(
   identities: ValidatedIdentities,
   selectedKeyId: string,
@@ -2065,6 +2146,7 @@ function finalizeProposal(
   identities: ValidatedIdentities,
   capacity: number,
   interpolationEnabled: boolean,
+  incomingInterpolationBreakKeyIds: readonly string[],
 ): FinalizedProposal | FinalizedFailure {
   const { mapping, expectedKeyIds, operationKind } = candidate;
 
@@ -2131,8 +2213,26 @@ function finalizeProposal(
     }
   }
 
+  const effectiveIncomingBreakKeyIds = candidate.nextIncomingInterpolationBreakKeyIds
+    ?? incomingInterpolationBreakKeyIds;
+  const breakValidation = validateIncomingInterpolationBreakKeyIds(
+    effectiveIncomingBreakKeyIds,
+    expectedKeyIds,
+  );
+  if (!breakValidation.ok) {
+    return {
+      ok: false,
+      resolution: fail('invalid-semantic-delta', operationKind, breakValidation.error),
+    };
+  }
+
   // 3. Derive the shared physical projection (ordering, interiors, cells).
-  const projection = buildProjectionFromMapping(mapping, capacity, interpolationEnabled);
+  const projection = buildProjectionFromMapping(
+    mapping,
+    capacity,
+    interpolationEnabled,
+    breakValidation.value,
+  );
   const { orderedKeyIds, assignments, cells: cellsFrozen, generatedCells: generatedCellsFrozen } = projection;
 
   // 4. Derive identity changes from the validated before/after frames.
@@ -2164,6 +2264,10 @@ function finalizeProposal(
     if (!affectedList.includes(removedKeyId)) {
       affectedList.push(removedKeyId);
     }
+  }
+  if (candidate.semanticDelta?.kind === 'insert-empty-segment'
+    && !affectedList.includes(candidate.semanticDelta.insertedKeyId)) {
+    affectedList.push(candidate.semanticDelta.insertedKeyId);
   }
   if (candidate.semanticDelta?.kind === 'duplicate-key' && !affectedList.includes(candidate.semanticDelta.newKeyId)) {
     affectedList.push(candidate.semanticDelta.newKeyId);
@@ -2201,6 +2305,8 @@ function finalizeProposal(
     drag: candidate.drag,
     nextRecords: candidate.nextRecords ?? null,
     nextLoopClips: candidate.nextLoopClips ?? null,
+    nextIncomingInterpolationBreakKeyIds:
+      candidate.nextIncomingInterpolationBreakKeyIds ?? null,
     semanticDelta: candidate.semanticDelta ?? null,
     status,
   }) as PhysicPaintRotoPhysicalEditProposal;
@@ -2219,6 +2325,11 @@ function buildStatusText(
     return selectedAppFrame === null
       ? 'Inserted slot'
       : `Inserted slot at frame ${selectedAppFrame}`;
+  }
+  if (operationKind === 'insert-empty-segment') {
+    return selectedAppFrame === null
+      ? 'Inserted empty key'
+      : `Inserted empty key at frame ${selectedAppFrame}`;
   }
   if (operationKind === 'delete-key') {
     if (removedKeyIds.length === 0) return 'No change';
@@ -2332,7 +2443,7 @@ function validateSemanticInputRecords(
   input: unknown,
   identities: ValidatedIdentities,
   capacity: number,
-  operationKind: 'duplicate-key' | 'paste-key' | 'paste-key-group',
+  operationKind: 'insert-empty-segment' | 'duplicate-key' | 'paste-key' | 'paste-key-group',
 ): { ok: true; records: readonly PhysicPaintRotoRealKeyRecord[] } | { ok: false; resolution: PhysicPaintRotoPhysicalEditResolution } {
   let records: readonly PhysicPaintRotoRealKeyRecord[];
   try {
@@ -2462,6 +2573,14 @@ export function resolvePhysicPaintRotoPhysicalEdit(
   const identitiesResult = validateIdentities(input.identities, input.capacity, operationKind);
   if (!identitiesResult.ok) return identitiesResult.resolution;
   const identities = identitiesResult.value;
+  const incomingBreaksResult = validateIncomingInterpolationBreakKeyIds(
+    input.incomingInterpolationBreakKeyIds,
+    identities.keyIds,
+  );
+  if (!incomingBreaksResult.ok) {
+    return fail('malformed-target', operationKind, incomingBreaksResult.error);
+  }
+  const incomingInterpolationBreakKeyIds = incomingBreaksResult.value;
 
   const loopClipsResult = validateEditLoopClips(input.loopClips, operationKind);
   if (!loopClipsResult.ok) return loopClipsResult.resolution;
@@ -2479,8 +2598,55 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       return fail('empty-key-set', operationKind, 'Insert requires at least one real key.');
     }
     const candidate = buildInsertCandidate(identities, intent.selectedKeyId);
-    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled);
+    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'insert-empty-segment') {
+    if (!isNonNegativeInteger(intent.destinationAppFrame) || intent.destinationAppFrame >= input.capacity) {
+      return fail('out-of-range-frame', operationKind, 'Empty-segment destination is outside capacity.');
+    }
+    if (!isBoundedKeyId(intent.insertedKeyId) || identities.keyIds.has(intent.insertedKeyId)) {
+      return fail('duplicate-id', operationKind, 'Empty-segment insert requires one fresh bounded identity.');
+    }
+    if (!isPhysicPaintRotoRealKeyPayload(intent.blankPayload)) {
+      return fail('malformed-payload', operationKind, 'Empty-segment blank payload is malformed.');
+    }
+    const recordsResult = validateSemanticInputRecords(
+      input.records,
+      identities,
+      input.capacity,
+      'insert-empty-segment',
+    );
+    if (!recordsResult.ok) return recordsResult.resolution;
+    if (recordsResult.records.some((record) => record.appFrame === intent.destinationAppFrame)) {
+      return fail('duplicate-destination-frame', operationKind, 'Empty-segment destination is occupied.');
+    }
+    const candidate = buildInsertEmptySegmentCandidate(
+      identities,
+      recordsResult.records,
+      intent,
+      incomingInterpolationBreakKeyIds,
+    );
+    const finalized = finalizeProposal(
+      candidate,
+      identities,
+      input.capacity,
+      input.interpolationEnabled,
+      incomingInterpolationBreakKeyIds,
+    );
+    if (!finalized.ok) return finalized.resolution;
+    const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
+      operationKind: 'insert-empty-segment',
+      currentRecords: recordsResult.records,
+      nextRecords: finalized.proposal.nextRecords,
+      semanticDelta: finalized.proposal.semanticDelta,
+      capacity: input.capacity,
+      selectedKeyId: finalized.proposal.selectedKeyId,
+      selectedAppFrame: finalized.proposal.selectedAppFrame,
+    });
+    if (!semanticValidation.ok) return fail('invalid-semantic-delta', operationKind, semanticValidation.error);
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
 
@@ -2501,7 +2667,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       return fail('loop-source-key-delete-rejected', operationKind, loopSourceKeyDeleteRejectedText(referencingLoops));
     }
     const candidate = buildDeleteCandidate(identities, intent.selectedKeyId);
-    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled);
+    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
@@ -2538,7 +2704,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       }
     }
     const candidate = buildDeleteGroupCandidate(identities, intent.keyIds);
-    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled);
+    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
@@ -2556,7 +2722,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     const recordsResult = validateSemanticInputRecords(input.records, identities, input.capacity, 'duplicate-key');
     if (!recordsResult.ok) return recordsResult.resolution;
     const candidate = buildDuplicateCandidate(identities, recordsResult.records, intent.sourceKeyId, intent.newKeyId);
-    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled);
+    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
       operationKind: 'duplicate-key',
@@ -2600,7 +2766,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       }
     }
     const candidate = buildPasteCandidate(identities, recordsResult.records, intent);
-    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled);
+    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
       operationKind: 'paste-key',
@@ -2645,7 +2811,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (!recordsResult.ok) return recordsResult.resolution;
     const candidateResult = buildPasteKeyGroupCandidate(identities, recordsResult.records, intent, input.capacity);
     if (!candidateResult.ok) return candidateResult.resolution;
-    const finalized = finalizeProposal(candidateResult.candidate, identities, input.capacity, input.interpolationEnabled);
+    const finalized = finalizeProposal(candidateResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
       operationKind: 'paste-key-group',
@@ -2680,7 +2846,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     const moveResult = buildMoveCandidate(identities, intent.movedKeyId, intent.target, input.capacity);
     if (!moveResult.ok) return moveResult.resolution;
-    const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled);
+    const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
@@ -2721,7 +2887,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       loopClips,
     );
     if (!spacingResult.ok) return spacingResult.resolution;
-    const finalized = finalizeProposal(spacingResult.candidate, identities, input.capacity, input.interpolationEnabled);
+    const finalized = finalizeProposal(spacingResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
@@ -2756,7 +2922,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     const moveResult = buildMoveGroupCandidate(identities, intent.movedKeyIds, intent.grabbedKeyId, intent.target, input.capacity, loopClips);
     if (!moveResult.ok) return moveResult.resolution;
-    const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled);
+    const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
