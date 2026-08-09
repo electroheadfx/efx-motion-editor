@@ -18,7 +18,7 @@ affects: [physics-paint, roto-timeline, keyframe-selection]
 actuals:
   tokens: 3303
   tasks: 1
-  commits: 3
+  commits: 4
 
 tech-stack:
   added: []
@@ -36,7 +36,7 @@ key-files:
 
 key-decisions:
   - "Select All preserves the cursor frame while clearing both local and persisted primary key identity."
-  - "Real-key current styling is owned by stable primary key identity; non-real cells retain cursor styling so empty frames remain selectable Add key targets."
+  - "Real-key current styling is owned by stable primary key identity; non-real cells retain cursor styling for normal Add key targeting, but replacement-style Select All suppresses that cursor highlight."
 
 patterns-established:
   - "Complete key selection remains in rotoSelectedKeyIds while the stronger primary treatment is controlled by a separate nullable identity."
@@ -82,7 +82,7 @@ status: complete
 ## Accomplishments
 
 - Corrected the shared keyboard/button Select All callback to clear `selectedKeyId` locally and in the physical store without moving the cursor.
-- Passed the nullable primary key identity separately from the complete selected-key set, using it for real-key `current` styling while retaining cursor-owned `current` styling for non-real cells.
+- Passed the nullable primary key identity separately from the complete selected-key set, using it for real-key `current` styling and suppressing cursor-owned non-real `current` styling only while replacement-style Select All is active.
 - Preserved spacing-proxy and Loop Clip scope clearing, the `All keys selected` status, and ordinary primary-versus-secondary multi-selection behavior.
 - Added focused source-contract regression coverage, including the UAT-found empty-frame click target regression; 115 focused tests and the TypeScript typecheck pass.
 
@@ -91,6 +91,7 @@ status: complete
 1. **Task 1 RED: Lock Select All replacement semantics** - `368ba35a` (test)
 2. **Task 1 GREEN: Replace primary key on Select All** - `15224dc8` (fix)
 3. **UAT follow-up: Preserve empty-frame cursor selection** - `0431e812` (fix)
+4. **UAT follow-up: Suppress empty-frame cursor during Select All** - `39fe1895` (fix)
 
 ## Files Created/Modified
 
@@ -106,12 +107,13 @@ status: complete
 
 ## Deviations from Plan
 
-- Native UAT required one corrective follow-up because the initial class projection also removed the cursor treatment from non-real cells. The correction stayed within the planned workflow-strip selection boundary.
+- Native UAT required two corrective follow-ups: first to restore normal empty-frame cursor targeting, then to suppress that cursor only while replacement-style Select All owns the real-key selection. Both stayed within the planned workflow-strip selection boundary.
 
 ## Issues Encountered
 
 - Native UAT exposed that the first correction replaced cursor-owned `.current` styling globally, making clicked empty frames appear unselectable as Add key targets.
-- The follow-up keeps primary identity ownership for real keys while restoring cursor treatment for non-real cells; its dedicated regression test failed before the correction and passed afterward.
+- The first follow-up restored the cursor unconditionally; the next UAT screenshot showed Select All still retained the empty current frame (frame 31).
+- The final projection preserves normal empty-frame targeting but suppresses the cursor whenever the primary identity is null and the multi-key replacement selection is active; the focused contract failed before the correction and passed afterward.
 
 ## Verification
 
@@ -130,12 +132,12 @@ None - no external service configuration required.
 ## Next Phase Readiness
 
 - Automated implementation and verification are complete.
-- Native visual UAT can confirm both behaviors: frame 32 loses its separate primary treatment after Select All, and clicking an empty frame visibly selects it so Add key targets that frame.
+- Native visual UAT can confirm the final sequence: click empty frame 31 and see it become the Add key target, then invoke Select All and confirm frame 31 loses its cursor ring while every real key remains uniformly selected.
 
 ## Self-Check: PASSED
 
 - All four modified source/test files exist.
-- Commits `368ba35a`, `15224dc8`, and `0431e812` exist in repository history.
+- Commits `368ba35a`, `15224dc8`, `0431e812`, and `39fe1895` exist in repository history.
 
 ---
 *Quick Task: 260809-aac*
