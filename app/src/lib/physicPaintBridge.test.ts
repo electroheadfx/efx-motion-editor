@@ -3,7 +3,7 @@ import { defaultTransform, type Layer } from '../types/layer';
 import type { AudioTrack } from '../types/audio';
 import { audioStore } from '../stores/audioStore';
 import { layerStore } from '../stores/layerStore';
-import { physicPaintStore, rotoPhysicalRevision } from '../stores/physicPaintStore';
+import { physicPaintStore, registerRotoAlphaCanvasFrame, rotoPhysicalRevision } from '../stores/physicPaintStore';
 import { projectStore } from '../stores/projectStore';
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
@@ -12,6 +12,7 @@ import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
   buildPhysicPaintRotoPhysicalRevision,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { hydrateRotoPhysicalLaunchContext } from '../components/physic-paint/roto/rotoLaunchHydration';
 import {
   applyPhysicPaintPayload,
   createPhysicPaintLaunchContext,
@@ -278,6 +279,68 @@ describe('physicPaintBridge', () => {
       expect.objectContaining({ keyId: 'key-10', appFrame: 10 }),
     ]);
     expect(context.editableState).toBeUndefined();
+  });
+
+  it('retains the complete physical document through close sync and child reopen hydration', async () => {
+    mockLayers([physicLayer()]);
+    const records = [
+      makeEmptySegmentRecord('key-0', 0, OPAQUE_ONE_PIXEL_PNG),
+      makeEmptySegmentRecord('key-16', 16, OPAQUE_ONE_PIXEL_PNG),
+      makeEmptySegmentRecord('key-32', 32),
+    ].map((record) => ({ ...record, kind: 'real-key' as const }));
+    const interpolation = { enabled: true, mode: 'duplicate' as const };
+    const loopClips = [{
+      loopId: 'loop-1',
+      placementStart: 40,
+      sourceKeyIds: ['key-0', 'key-16'],
+      repeat: 2,
+      mode: 'progressive' as const,
+    }];
+    const incomingInterpolationBreakKeyIds = ['key-32'];
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument('phys-layer-1', {
+      capacity: 64,
+      realKeyRecords: records,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: 'key-32',
+      cursorAppFrame: 32,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, incomingInterpolationBreakKeyIds),
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+    });
+    expect(seeded.ok).toBe(true);
+
+    const closeSync = applyPhysicPaintPayload(applyCanvasPayload({
+      operationId: 'close-sync-key-32',
+      startFrame: 32,
+      renderedFrame: { frameIndex: 0, appFrame: 32, dataUrl: TRANSPARENT_ONE_PIXEL_PNG, width: 1, height: 1 },
+      closeWindowAfterApply: true,
+    }));
+    expect(closeSync.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalRenderSource('phys-layer-1', 31)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource('phys-layer-1', 1)).toEqual(expect.objectContaining({ kind: 'generated' }));
+    const parentRasterBeforeReopen = physicPaintStore.getRotoPhysicalRenderSource('phys-layer-1', 1);
+    expect(parentRasterBeforeReopen).toEqual(expect.objectContaining({ kind: 'generated', appFrame: 1 }));
+
+    const launch = createPhysicPaintLaunchContext(physicLayer(), 32);
+    for (const record of records) {
+      registerRotoAlphaCanvasFrame(record.payload.dataUrl, { width: 1, height: 1 } as HTMLCanvasElement);
+    }
+    const reopened = await hydrateRotoPhysicalLaunchContext(launch, physicPaintStore);
+
+    if (!reopened.ok) throw new Error(reopened.error);
+    expect(reopened.ok).toBe(true);
+    expect(reopened.document).toMatchObject({
+      realKeyRecords: records,
+      interpolation,
+      selectedKeyId: 'key-32',
+      cursorAppFrame: 32,
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+    });
+    expect(physicPaintStore.getRotoPhysicalRenderSource('phys-layer-1', 1)).toEqual(parentRasterBeforeReopen);
+    expect(physicPaintStore.getRotoPhysicalRenderSource('phys-layer-1', 31)).toBeNull();
   });
 
   it('includes a defensive copy of persisted Roto paper metadata for standalone reopen', () => {
