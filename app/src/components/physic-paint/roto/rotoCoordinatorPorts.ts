@@ -143,6 +143,8 @@ export interface RotoPhysicalEditSnapshot<EngineState> {
    * its derived loop shrink stays one coherent undoable outcome.
    */
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  /** Complete immutable stable-key-owned incoming interpolation breaks. */
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
   readonly capacity: number;
   readonly expectedRevision: string;
   readonly stagedRevision: string;
@@ -217,6 +219,11 @@ export interface RotoPhysicalEditRecordsPort {
    * captured collection so replay restores keys and loops together.
    */
   getLoopClips: (layerId: string) => readonly PhysicPaintRotoLoopClip[];
+  getIncomingInterpolationBreakKeyIds: (layerId: string) => readonly string[];
+  replaceIncomingInterpolationBreakKeyIds: (
+    layerId: string,
+    keyIds: readonly string[],
+  ) => { ok: true } | { ok: false; error: string };
   replaceLoopClips: (
     layerId: string,
     loopClips: readonly PhysicPaintRotoLoopClip[],

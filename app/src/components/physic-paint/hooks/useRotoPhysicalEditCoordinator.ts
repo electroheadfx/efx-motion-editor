@@ -103,6 +103,7 @@ interface PendingPhysicalEditContext extends PendingPhysicPaintRotoPhysicalEdit 
   readonly appliedFrameCount: number;
   readonly semanticDelta: PhysicPaintRotoPhysicalEditSemanticDelta | null;
   readonly historyProvenance: import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditReplayProvenance | null;
+  readonly stagedIncomingInterpolationBreakKeyIds: readonly string[];
   readonly deferredRecords: readonly PhysicPaintRotoRealKeyRecord[] | null;
   readonly deferredInterpolation: PhysicPaintRotoInterpolationState | null;
   readonly deferredLoopClips: readonly PhysicPaintRotoLoopClip[] | null;
@@ -158,6 +159,10 @@ function semanticDeltaEquals(
   if (left.kind !== right.kind) return false;
   if (left.kind === 'duplicate-key' && right.kind === 'duplicate-key') {
     return left.sourceKeyId === right.sourceKeyId && left.newKeyId === right.newKeyId;
+  }
+  if (left.kind === 'insert-empty-segment' && right.kind === 'insert-empty-segment') {
+    return left.insertedKeyId === right.insertedKeyId
+      && left.destinationAppFrame === right.destinationAppFrame;
   }
   if (left.kind === 'play-script' && right.kind === 'play-script') {
     return left.affectedStartAppFrame === right.affectedStartAppFrame
@@ -232,6 +237,10 @@ function transitionPhysicalEditResult(
     || detail.appliedFrameCount !== (detail.ok ? pending.appliedFrameCount : 0)
     || !semanticDeltaEquals(detail.semanticDelta, pending.semanticDelta)
     || !replayProvenanceEquals(detail.historyProvenance, pending.historyProvenance)
+    || (detail.ok && !stringArraysEqual(
+      detail.incomingInterpolationBreakKeyIds ?? [],
+      pending.stagedIncomingInterpolationBreakKeyIds,
+    ))
     || (detail.ok ? detail.acceptedRevision !== pending.stagedRevision : detail.acceptedRevision !== null)
   ) {
     return { type: 'mismatch', message: PHYSICAL_EDIT_RESULT_MISMATCH_MESSAGE };
@@ -265,6 +274,10 @@ function cloneRecords(records: readonly PhysicPaintRotoRealKeyRecord[]): PhysicP
       ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
     },
   }));
+}
+
+function cloneIncomingInterpolationBreakKeyIds(keyIds: readonly string[]): string[] {
+  return [...keyIds];
 }
 
 function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPaintRotoLoopClip[] {
@@ -468,6 +481,9 @@ function createPendingPhysicalEdit(
     appliedFrameCount: payload.records.length,
     semanticDelta: payload.semanticDelta ?? null,
     historyProvenance: payload.historyProvenance ?? null,
+    stagedIncomingInterpolationBreakKeyIds: cloneIncomingInterpolationBreakKeyIds(
+      payload.incomingInterpolationBreakKeyIds ?? [],
+    ),
     deferredRecords: deferredTarget ? cloneRecords(deferredTarget.records) : null,
     deferredInterpolation: deferredTarget
       ? {
@@ -567,6 +583,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           mode: interpolation.mode,
         },
         loopClips: cloneLoopClips(portsRef.current.records.getLoopClips(launch.layerId)),
+        incomingInterpolationBreakKeyIds: cloneIncomingInterpolationBreakKeyIds(
+          portsRef.current.records.getIncomingInterpolationBreakKeyIds(launch.layerId),
+        ),
         capacity,
         expectedRevision,
         stagedRevision,
@@ -587,12 +606,56 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
     [],
   );
 
+  const replaceRecordsAndBreaks = useCallback((
+    layerId: string,
+    records: readonly PhysicPaintRotoRealKeyRecord[],
+    interpolation: PhysicPaintRotoInterpolationState,
+    incomingInterpolationBreakKeyIds: readonly string[],
+  ): boolean => {
+    const currentRecords = portsRef.current.records.getRecords(layerId);
+    const currentBreaks = portsRef.current.records.getIncomingInterpolationBreakKeyIds(layerId);
+    const currentKeyIds = new Set(currentRecords.map((record) => record.keyId));
+    const targetKeyIds = new Set(records.map((record) => record.keyId));
+    const targetBreaksCanApplyFirst = incomingInterpolationBreakKeyIds.every((keyId) => currentKeyIds.has(keyId));
+    const currentBreaksSurviveRecordReplacement = currentBreaks.every((keyId) => targetKeyIds.has(keyId));
+
+    if (targetBreaksCanApplyFirst) {
+      const breakResult = portsRef.current.records.replaceIncomingInterpolationBreakKeyIds(
+        layerId,
+        incomingInterpolationBreakKeyIds,
+      );
+      if (!breakResult.ok) return false;
+      return portsRef.current.records.replaceRecords(layerId, records, interpolation).ok;
+    }
+    if (currentBreaksSurviveRecordReplacement) {
+      const recordResult = portsRef.current.records.replaceRecords(layerId, records, interpolation);
+      if (!recordResult.ok) return false;
+      return portsRef.current.records.replaceIncomingInterpolationBreakKeyIds(
+        layerId,
+        incomingInterpolationBreakKeyIds,
+      ).ok;
+    }
+
+    const clearResult = portsRef.current.records.replaceIncomingInterpolationBreakKeyIds(layerId, []);
+    if (!clearResult.ok) return false;
+    const recordResult = portsRef.current.records.replaceRecords(layerId, records, interpolation);
+    if (!recordResult.ok) return false;
+    return portsRef.current.records.replaceIncomingInterpolationBreakKeyIds(
+      layerId,
+      incomingInterpolationBreakKeyIds,
+    ).ok;
+  }, []);
+
   const restoreSnapshot = useCallback(
     (snapshot: RotoPhysicalEditSnapshot<EngineState>, restoreCanvas: boolean): boolean => {
       const launch = portsRef.current.launch.getLaunchContext();
       if (!launch || launch.layerId !== snapshot.layerId || launch.operationId !== snapshot.launchOperationId) return false;
-      const replaceResult = portsRef.current.records.replaceRecords(snapshot.layerId, snapshot.records, snapshot.interpolation);
-      if (!replaceResult.ok) return false;
+      if (!replaceRecordsAndBreaks(
+        snapshot.layerId,
+        snapshot.records,
+        snapshot.interpolation,
+        snapshot.incomingInterpolationBreakKeyIds,
+      )) return false;
       // Loop Clips ride the same snapshot (Q1/D-06): replay and rollback
       // restore keys and loops together.
       const loopResult = portsRef.current.records.replaceLoopClips(snapshot.layerId, snapshot.loopClips);
@@ -614,7 +677,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       }
       return true;
     },
-    [],
+    [replaceRecordsAndBreaks],
   );
 
   const finalizeAccepted = useCallback(
@@ -728,6 +791,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         portsRef.current.records.getRecords(pending.layerId),
         portsRef.current.records.getInterpolation(pending.layerId),
         portsRef.current.records.getLoopClips(pending.layerId),
+        portsRef.current.records.getIncomingInterpolationBreakKeyIds(pending.layerId),
       );
       if (pending.operationKind === 'set-interpolation-enabled'
         || pending.operationKind === 'set-interpolation-mode'
@@ -768,6 +832,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           portsRef.current.records.getRecords(pending.layerId),
           portsRef.current.records.getInterpolation(pending.layerId),
           portsRef.current.records.getLoopClips(pending.layerId),
+          portsRef.current.records.getIncomingInterpolationBreakKeyIds(pending.layerId),
         );
       }
       if (currentStaged !== pending.stagedRevision) {
@@ -825,7 +890,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       const historyProvenance = 'historyProvenance' in input ? input.historyProvenance : undefined;
       const replayTarget = 'replayTargetSnapshot' in input ? input.replayTargetSnapshot : undefined;
       const isReplay = input.operationKind === 'undo' || input.operationKind === 'redo';
-      const isSemanticOrdinary = input.operationKind === 'duplicate-key' || input.operationKind === 'paste-key' || input.operationKind === 'paste-key-group';
+      const isSemanticOrdinary = input.operationKind === 'duplicate-key'
+        || input.operationKind === 'paste-key'
+        || input.operationKind === 'paste-key-group'
+        || input.operationKind === 'insert-empty-segment';
       if (isInterpolationChange) {
         if (!interpolationInput
           || 'proposal' in input
@@ -903,8 +971,16 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         const currentRecords = portsRef.current.records.getRecords(revalidatedLaunch.layerId);
         const currentInterpolation = portsRef.current.records.getInterpolation(revalidatedLaunch.layerId);
         const currentLoopClips = portsRef.current.records.getLoopClips(revalidatedLaunch.layerId);
+        const currentIncomingInterpolationBreakKeyIds = portsRef.current.records.getIncomingInterpolationBreakKeyIds(
+          revalidatedLaunch.layerId,
+        );
         const capacity = portsRef.current.records.getCapacity(revalidatedLaunch.layerId);
-        const expectedRevision = buildPhysicPaintRotoPhysicalRevision(currentRecords, currentInterpolation, currentLoopClips);
+        const expectedRevision = buildPhysicPaintRotoPhysicalRevision(
+          currentRecords,
+          currentInterpolation,
+          currentLoopClips,
+          currentIncomingInterpolationBreakKeyIds,
+        );
         if (isReplay && (
           !replayTarget
           || replayTarget.launchOperationId !== revalidatedLaunch.operationId
@@ -1030,7 +1106,15 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         const stagedLoopClips = isReplay && replayTarget
           ? replayTarget.loopClips
           : playScriptInput?.loopClips ?? proposal?.nextLoopClips ?? currentLoopClips;
-        const stagedRevision = buildPhysicPaintRotoPhysicalRevision(validatedStagedRecords, stagedInterpolation, stagedLoopClips);
+        const stagedIncomingInterpolationBreakKeyIds = isReplay && replayTarget
+          ? replayTarget.incomingInterpolationBreakKeyIds
+          : proposal?.nextIncomingInterpolationBreakKeyIds ?? currentIncomingInterpolationBreakKeyIds;
+        const stagedRevision = buildPhysicPaintRotoPhysicalRevision(
+          validatedStagedRecords,
+          stagedInterpolation,
+          stagedLoopClips,
+          stagedIncomingInterpolationBreakKeyIds,
+        );
         if (isReplay && (
           !historyProvenance
           || historyProvenance.sourceRevision !== expectedRevision
@@ -1062,6 +1146,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           interpolationMode: stagedInterpolation.mode,
           ...(playScriptInput ? { rotoBackground: { ...playScriptInput.rotoBackground } } : {}),
           loopClips: cloneLoopClips(stagedLoopClips),
+          incomingInterpolationBreakKeyIds: cloneIncomingInterpolationBreakKeyIds(
+            stagedIncomingInterpolationBreakKeyIds,
+          ),
           selectedKeyId: input.selectedKeyId,
           selectedAppFrame: input.selectedAppFrame,
           ...(playScriptInput ? { semanticDelta: playScriptInput.semanticDelta } : proposal?.semanticDelta ? { semanticDelta: proposal.semanticDelta } : {}),
@@ -1096,9 +1183,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
             return false;
           }
         } else {
-          const replaceResult = portsRef.current.records.replaceRecords(revalidatedLaunch.layerId, validatedStagedRecords, stagedInterpolation);
-          if (!replaceResult.ok) {
-            finalizeFailed(pending, before, 'exception', replaceResult.error);
+          if (!replaceRecordsAndBreaks(
+            revalidatedLaunch.layerId,
+            validatedStagedRecords,
+            stagedInterpolation,
+            stagedIncomingInterpolationBreakKeyIds,
+          )) {
+            finalizeFailed(pending, before, 'exception', 'Could not stage records and incoming interpolation breaks together.');
             return false;
           }
           if (proposal?.nextLoopClips !== null && proposal?.nextLoopClips !== undefined) {
@@ -1147,7 +1238,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         return false;
       }
     },
-    [captureSnapshot, clearTimeoutOnce, finalizeFailed, clearPendingOnce, restoreSnapshot],
+    [captureSnapshot, clearTimeoutOnce, finalizeFailed, clearPendingOnce, replaceRecordsAndBreaks, restoreSnapshot],
   );
 
   useEffect(() => () => {
@@ -1211,9 +1302,13 @@ function buildStagedRecords(
     const pasteGroupEntry = semanticDelta?.kind === 'paste-key-group'
       ? semanticDelta.entries.find((entry) => entry.newKeyId === keyId) ?? null
       : null;
+    const insertedEmptyRecord = semanticDelta?.kind === 'insert-empty-segment'
+      && keyId === semanticDelta.insertedKeyId
+      ? proposal.nextRecords?.find((record) => record.keyId === keyId) ?? null
+      : null;
     const sourcePayload = semanticDelta?.kind === 'paste-key' && keyId === pasteDestinationKeyId
       ? semanticDelta.clipboardPayload
-      : pasteGroupEntry?.payload ?? duplicateSource?.payload ?? existing?.payload;
+      : insertedEmptyRecord?.payload ?? pasteGroupEntry?.payload ?? duplicateSource?.payload ?? existing?.payload;
     if (!sourcePayload) return null;
     if (!Number.isInteger(appFrame) || appFrame < 0 || appFrame >= capacity) return null;
     staged.push({

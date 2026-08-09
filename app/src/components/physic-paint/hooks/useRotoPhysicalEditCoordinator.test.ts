@@ -134,6 +134,11 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       getInterpolation: () => interpolation,
       getCapacity: () => 30,
       getLoopClips: () => loopClips,
+      getIncomingInterpolationBreakKeyIds: () => incomingInterpolationBreakKeyIds,
+      replaceIncomingInterpolationBreakKeyIds: (_layerId: string, keyIds: readonly string[]) => {
+        incomingInterpolationBreakKeyIds = keyIds;
+        return { ok: true as const };
+      },
       replaceRecords,
       replaceLoopClips,
     },
@@ -192,13 +197,6 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       logDiagnostic: vi.fn(),
     },
   };
-  Object.assign(ports.records, {
-    getIncomingInterpolationBreakKeyIds: () => incomingInterpolationBreakKeyIds,
-    replaceIncomingInterpolationBreakKeyIds: (_layerId: string, keyIds: readonly string[]) => {
-      incomingInterpolationBreakKeyIds = keyIds;
-      return { ok: true as const };
-    },
-  });
   const coordinator = useRotoPhysicalEditCoordinator(ports);
   const execute = () => coordinator.executePhysicalEdit({
     proposal: initial.proposal,
@@ -207,13 +205,50 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     selectedKeyId: null,
     selectedAppFrame: null,
   });
+  const executeEmptySegment = () => {
+    const destinationAppFrame = 14;
+    const insertedKeyId = 'blank-14';
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: {
+        kind: 'insert-empty-segment',
+        destinationAppFrame,
+        insertedKeyId,
+        blankPayload: {
+          frameIndex: 0,
+          appFrame: destinationAppFrame,
+          dataUrl: 'data:image/png;base64,AAAA',
+          width: 2,
+          height: 2,
+        },
+      },
+      loopClips,
+      capacity: 30,
+      interpolationEnabled: interpolation.enabled,
+      incomingInterpolationBreakKeyIds,
+    });
+    if (!resolution.ok) throw new Error(resolution.failure.text);
+    return coordinator.executePhysicalEdit({
+      proposal: resolution.proposal,
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      operationKind: 'insert-empty-segment',
+      selectedKeyId: insertedKeyId,
+      selectedAppFrame: destinationAppFrame,
+    });
+  };
   const executePlayScript = () => {
     const nextRecord = record('Z', 8);
     const nextRecords = [...records, nextRecord];
     return coordinator.executePhysicalEdit({
       operationKind: 'play-script',
       expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
-      expectedRevision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips),
+      expectedRevision: buildPhysicPaintRotoPhysicalRevision(
+        records,
+        interpolation,
+        loopClips,
+        incomingInterpolationBreakKeyIds,
+      ),
       records: nextRecords,
       interpolationEnabled: interpolation.enabled,
       interpolationMode: interpolation.mode,
@@ -233,7 +268,12 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
   };
   const accept = () => {
     if (!payload) throw new Error('Expected a sent payload.');
-    const stagedRevision = buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips);
+    const stagedRevision = buildPhysicPaintRotoPhysicalRevision(
+      records,
+      interpolation,
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+    );
     const result: PhysicPaintRotoPhysicalEditApplyResult = {
       operationId: payload.operationId,
       kind: 'replace-roto-physical-map',
@@ -249,6 +289,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       selectedAppFrame: payload.selectedAppFrame,
       appliedFrameCount: payload.records.length,
       ok: true,
+      semanticDelta: payload.semanticDelta,
       loopClips: payload.loopClips,
       incomingInterpolationBreakKeyIds: payload.incomingInterpolationBreakKeyIds,
     };
@@ -257,6 +298,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
   return {
     coordinator,
     execute,
+    executeEmptySegment,
     executePlayScript,
     accept,
     initial,
@@ -293,6 +335,48 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     });
     expect(test.getRecords().some((entry) => entry.keyId === 'Z')).toBe(false);
     test.coordinator.cancelPhysicalEdit('disposal');
+  });
+
+  it('stages and accepts one empty key with its complete cloned incoming-break collection', async () => {
+    const test = harness();
+
+    expect(await test.executeEmptySegment()).toBe(true);
+    expect(test.getRecords().map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0],
+      ['B', 1],
+      ['C', 2],
+      ['X', 6],
+      ['Y', 7],
+      ['blank-14', 14],
+    ]);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C', 'blank-14']);
+    expect(test.getPayload()?.incomingInterpolationBreakKeyIds).toEqual(['C', 'blank-14']);
+    expect(test.getPayload()?.incomingInterpolationBreakKeyIds).not.toBe(
+      test.getIncomingInterpolationBreakKeyIds(),
+    );
+
+    expect(test.accept()).toBe('accepted');
+    expect(test.coordinator.acceptedOutput.value?.before.incomingInterpolationBreakKeyIds).toEqual(['C']);
+    expect(test.coordinator.acceptedOutput.value?.after.incomingInterpolationBreakKeyIds).toEqual(['C', 'blank-14']);
+    expect(test.coordinator.acceptedOutput.value?.before.incomingInterpolationBreakKeyIds).not.toBe(
+      test.coordinator.acceptedOutput.value?.after.incomingInterpolationBreakKeyIds,
+    );
+  });
+
+  it('rolls back the empty key and matching break together when transport rejects', async () => {
+    const test = harness({ transportRejects: true });
+
+    expect(await test.executeEmptySegment()).toBe(false);
+    expect(test.getRecords().map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0],
+      ['B', 1],
+      ['C', 2],
+      ['X', 6],
+      ['Y', 7],
+    ]);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
+    expect(test.coordinator.acceptedOutput.value).toBeNull();
+    expect(test.coordinator.failureOutput.value?.reason).toBe('transport');
   });
 
   it('stages changed records and the complete next Loop Clip collection before publication', async () => {

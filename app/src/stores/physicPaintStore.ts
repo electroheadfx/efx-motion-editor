@@ -12,6 +12,7 @@ import {
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPhysicalRevision,
   isPhysicPaintRotoInterpolationState,
+  parsePhysicPaintRotoIncomingInterpolationBreakKeyIds,
   parsePhysicPaintRotoLoopClips,
   parsePhysicPaintRotoPhysicalDocument,
   parsePhysicPaintRotoRealKeyRecordCollection,
@@ -1437,6 +1438,36 @@ export const physicPaintStore = {
   getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId: string): readonly string[] {
     return _rotoPhysicalIncomingInterpolationBreakKeyIds.get(layerId)
       ?? PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY;
+  },
+
+  /** Validate and replace the complete stable-key-owned incoming break collection. */
+  replaceRotoPhysicalIncomingInterpolationBreakKeyIds(
+    layerId: string,
+    value: unknown,
+  ): { ok: true } | { ok: false; error: string } {
+    if (!layerId || typeof layerId !== 'string') {
+      return { ok: false, error: 'Layer ID must be a non-empty string.' };
+    }
+    if (!_rotoRealKeyRecords.has(layerId)) {
+      return { ok: false, error: 'Physical Roto layer does not exist.' };
+    }
+    let validated: readonly string[];
+    try {
+      validated = parsePhysicPaintRotoIncomingInterpolationBreakKeyIds(
+        value,
+        this.getRotoRealKeyRecords(layerId),
+      );
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Invalid incoming interpolation break collection.' };
+    }
+    const current = this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId);
+    if (current.length === validated.length && current.every((keyId, index) => keyId === validated[index])) {
+      return { ok: true };
+    }
+    _rotoPhysicalIncomingInterpolationBreakKeyIds.set(layerId, validated);
+    rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
+    _notifyVisualChange();
+    return { ok: true };
   },
 
   /**

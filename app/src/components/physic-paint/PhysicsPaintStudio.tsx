@@ -518,6 +518,10 @@ export function PhysicsPaintStudio() {
       getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId),
       getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId),
       getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId),
+      getIncomingInterpolationBreakKeyIds: (layerId) => physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId),
+      replaceIncomingInterpolationBreakKeyIds: (layerId, keyIds) => (
+        physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, keyIds)
+      ),
       replaceLoopClips: (layerId, loopClips) => physicPaintStore.replaceRotoPhysicalLoopClips(layerId, loopClips),
       replaceRecords: replacePhysicalRecordsWithOwnership,
     },
@@ -1115,6 +1119,10 @@ export function PhysicsPaintStudio() {
       getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId),
       getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId),
       getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId),
+      getIncomingInterpolationBreakKeyIds: (layerId) => physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId),
+      replaceIncomingInterpolationBreakKeyIds: (layerId, keyIds) => (
+        physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, keyIds)
+      ),
       replaceLoopClips: (layerId, loopClips) => physicPaintStore.replaceRotoPhysicalLoopClips(layerId, loopClips),
       replaceRecords: replacePhysicalRecordsWithOwnership,
     },
