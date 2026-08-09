@@ -258,6 +258,82 @@ describe('intentional incoming interpolation breaks', () => {
 });
 
 describe('incoming interpolation break lifecycle', () => {
+  it('preserves destination ownership while fresh paste and duplicate identities omit source breaks', () => {
+    const records = buildBaselineRecords();
+    const common = {
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      capacity: 16,
+      interpolationEnabled: true,
+    } as const;
+    const replacement = resolvePhysicPaintRotoPhysicalEdit({
+      ...common,
+      incomingInterpolationBreakKeyIds: ['B'],
+      intent: {
+        kind: 'paste-key',
+        destinationAppFrame: 3,
+        destinationKeyId: 'B',
+        newKeyId: null,
+        clipboardPayload: records[0].payload,
+      },
+    });
+    const freshPaste = resolvePhysicPaintRotoPhysicalEdit({
+      ...common,
+      incomingInterpolationBreakKeyIds: ['A'],
+      intent: {
+        kind: 'paste-key',
+        destinationAppFrame: 7,
+        destinationKeyId: null,
+        newKeyId: 'pasted-X',
+        clipboardPayload: records[0].payload,
+      },
+    });
+    const duplicate = resolvePhysicPaintRotoPhysicalEdit({
+      ...common,
+      incomingInterpolationBreakKeyIds: ['A'],
+      intent: { kind: 'duplicate-key', sourceKeyId: 'A', newKeyId: 'duplicate-X' },
+    });
+
+    expect(replacement.ok).toBe(true);
+    if (!replacement.ok) throw new Error('Replacement paste must resolve');
+    expect(replacement.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+    expect(replacement.proposal.generatedCells.some((cell) => cell.rightKeyId === 'B')).toBe(false);
+    expect(freshPaste.ok).toBe(true);
+    if (!freshPaste.ok) throw new Error('Fresh paste must resolve');
+    expect(freshPaste.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+    expect(freshPaste.proposal.generatedCells.some((cell) => cell.rightKeyId === 'pasted-X')).toBe(true);
+    expect(duplicate.ok).toBe(true);
+    if (!duplicate.ok) throw new Error('Duplicate must resolve');
+    expect(duplicate.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+    expect(duplicate.proposal.generatedCells.some((cell) => cell.rightKeyId === 'duplicate-X')).toBe(false);
+  });
+
+  it('carries owner identities through drag, push, and partial spacing mappings', () => {
+    const records = buildBaselineRecords();
+    const resolve = (intent: PhysicPaintRotoPhysicalEditIntent, owner: string) => resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent,
+      capacity: 16,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: [owner],
+    });
+    const cases = [
+      { owner: 'B', resolution: resolve({ kind: 'move-key', movedKeyId: 'B', target: { kind: 'physical-cell', appFrame: 4 } }, 'B') },
+      { owner: 'C', resolution: resolve({ kind: 'move-key-group', movedKeyIds: ['B', 'C'], grabbedKeyId: 'B', target: { kind: 'physical-cell', appFrame: 6 } }, 'C') },
+      { owner: 'B', resolution: resolve({ kind: 'move-key', movedKeyId: 'B', target: { kind: 'before-key', targetKeyId: 'D' } }, 'B') },
+      { owner: 'B', resolution: resolve({ kind: 'move-key', movedKeyId: 'B', target: { kind: 'after-key', targetKeyId: 'D' } }, 'B') },
+      { owner: 'C', resolution: resolve({ kind: 'force-spacing', emptyFrames: 2, selectedKeyId: 'C', scopeKeyIds: ['B', 'C'] }, 'C') },
+    ];
+
+    for (const { owner, resolution } of cases) {
+      expect(resolution.ok).toBe(true);
+      if (!resolution.ok) throw new Error('Identity-preserving timing edit must resolve');
+      expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+      expect(resolution.proposal.generatedCells.some((cell) => cell.rightKeyId === owner)).toBe(false);
+    }
+  });
+
   it('removes deleted break owners without transferring ownership', () => {
     const records = buildBaselineRecords();
     const single = resolvePhysicPaintRotoPhysicalEdit({
