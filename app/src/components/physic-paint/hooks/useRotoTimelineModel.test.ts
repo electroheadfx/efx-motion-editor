@@ -107,6 +107,23 @@ describe('useRotoTimelineModel structural/frame split (38.1 D-07)', () => {
     expect(model.currentCell.value.kind).toBe('generated');
   });
 
+  it('suppresses only the generated span entering an accepted break owner', () => {
+    const model = createRotoTimelineModel(physicalInput({
+      rotoKeyRecords: [
+        realKeyRecord('key-0', 0),
+        realKeyRecord('key-16', 16),
+        realKeyRecord('key-32', 32),
+      ],
+      incomingInterpolationBreakKeyIds: ['key-32'],
+      capacity: 40,
+      currentFrame: 31,
+    }));
+
+    expect(model.physicalCells.value[1]).toMatchObject({ kind: 'generated', appFrame: 1 });
+    expect(model.currentCell.value).toEqual({ kind: 'empty', appFrame: 31 });
+    expect(model.generatedCells.value.at(-1)).toMatchObject({ kind: 'generated', appFrame: 15 });
+  });
+
   it('re-runs the structural projection exactly once when the records input is replaced', () => {
     const projectionSpy = vi.spyOn(physicalResolverModule, 'projectPhysicPaintRotoPhysicalTimeline');
     const modelA = useRotoTimelineModel(physicalInput());
