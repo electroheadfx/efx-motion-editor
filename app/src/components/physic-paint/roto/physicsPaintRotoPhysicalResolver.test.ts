@@ -176,6 +176,53 @@ describe('intentional incoming interpolation breaks', () => {
     expect(resolution.proposal.selectedAppFrame).toBe(3);
   });
 
+  it('rejects every non-empty-segment target without a proposal', () => {
+    const records = [
+      { ...buildBaselineRecords()[0], keyId: 'A', appFrame: 0, payload: { ...buildBaselineRecords()[0].payload, appFrame: 0 } },
+      { ...buildBaselineRecords()[1], keyId: 'B', appFrame: 6, payload: { ...buildBaselineRecords()[1].payload, appFrame: 6 } },
+    ];
+    const base = {
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      capacity: 16,
+      interpolationEnabled: false,
+      incomingInterpolationBreakKeyIds: [],
+    } as const;
+    const intent = (destinationAppFrame: number, blankPayload: unknown = {
+      frameIndex: 0,
+      appFrame: destinationAppFrame,
+      dataUrl: 'data:image/png;base64,AAAA',
+    }) => ({
+      kind: 'insert-empty-segment' as const,
+      destinationAppFrame,
+      insertedKeyId: `blank-${destinationAppFrame}`,
+      blankPayload,
+    });
+    const resolutions = [
+      resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(0) }),
+      resolvePhysicPaintRotoPhysicalEdit({ ...base, interpolationEnabled: true, intent: intent(3) }),
+      resolvePhysicPaintRotoPhysicalEdit({
+        ...base,
+        loopClips: [{ loopId: 'loop-linked', placementStart: 10, sourceKeyIds: ['A', 'B'], repeat: 2, mode: 'static' }],
+        intent: intent(10),
+      }),
+      resolvePhysicPaintRotoPhysicalEdit({
+        ...base,
+        loopClips: [{ loopId: 'loop-unresolved', placementStart: 10, sourceKeyIds: ['ghost-A', 'ghost-B'], repeat: 2, mode: 'static' }],
+        intent: intent(10),
+      }),
+      resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(-1) }),
+      resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(16) }),
+      resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(3, { appFrame: 3, dataUrl: '' }) }),
+    ];
+
+    expect(resolutions).toHaveLength(7);
+    for (const resolution of resolutions) {
+      expect(resolution.ok).toBe(false);
+      expect('proposal' in resolution).toBe(false);
+    }
+  });
+
   it('keeps break ownership dormant while interpolation is off or the owner is first', () => {
     const identities = [
       { keyId: 'owner', appFrame: 0 },
