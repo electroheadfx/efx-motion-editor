@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.1
 current_phase_name: Intentional Gap Insert and Local Interpolation Breaks
 status: executing
-stopped_at: Completed 43.1-10-PLAN.md
-last_updated: "2026-08-10T08:16:07.883Z"
+stopped_at: Completed 43.1-11-PLAN.md
+last_updated: "2026-08-10T10:47:11.818Z"
 last_activity: 2026-08-10
-last_activity_desc: Completed Plan 43.1-10 parent-authoritative ordinary physical mapping
+last_activity_desc: Completed Plan 43.1-11 scoped physical replay authority
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 41
-  completed_plans: 39
-  percent: 95
+  completed_plans: 40
+  percent: 98
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.1 (Intentional Gap Insert and Local Interpolation Breaks) — EXECUTING
-Plan: 11 of 12
+Plan: 12 of 12
 Status: Ready to execute
-Last activity: 2026-08-10 — Completed Plan 43.1-10 parent-authoritative ordinary physical mapping
+Last activity: 2026-08-10 — Completed Plan 43.1-11 scoped physical replay authority
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [██████████] 95%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
@@ -191,6 +191,7 @@ Progress: [██████████] 95%
 | Phase 43.1 P08 | 12min | 2 tasks | 4 files |
 | Phase 43.1 P09 | 20min | 2 tasks | 10 files |
 | Phase 43.1 P10 | 25min | 2 tasks | 2 files |
+| Phase 43.1 P11 | 42min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -280,6 +281,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.1]: Every validated ordinary intent passes through one centralized parent-authority helper while specialized transactions remain closed variants.
 - [Phase 43.1]: Normalized complete-state equality must pass before document replacement, delivered success caching, or accepted-command authorization.
 - [Phase 43.1]: Ordinary edits preserve or canonically transform stable-key break ownership but cannot author or clear it independently.
+- [Phase 43.1]: Replay authorization requires the complete project/layer/launch/capacity authority tuple before revision or document replacement checks.
+- [Phase 43.1]: Selection and cursor remain outside the canonical revision but participate in exact direction-specific replay snapshots through a required live source getter.
+- [Phase 43.1]: Authority replacement prunes unreachable accepted-command ledger entries while ordinary selection/cursor movement leaves the bounded local stacks intact.
 
 ### Pending Todos
 
@@ -464,10 +468,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-10T08:16:07.872Z
-Stopped at: Completed 43.1-10-PLAN.md
+Last session: 2026-08-10T10:47:11.806Z
+Stopped at: Completed 43.1-11-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Execute `43.1-11-PLAN.md` to add authority-scoped replay ledger validation and selection/cursor-aware live preflight on top of the completed parent recomputation boundary.
+- Execute `43.1-12-PLAN.md` to run the combined focused and repository-wide automated closure gates and record observed evidence in `43.1-VALIDATION.md`.

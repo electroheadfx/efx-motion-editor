@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 12
 waived_count: 1
-fixed_count: 23
-total_count: 36
-last_updated: 2026-08-10T08:17:28.221Z
+fixed_count: 24
+total_count: 37
+last_updated: 2026-08-10T10:48:54.748Z
 ---
 
 # Broken Windows Ledger
@@ -51,6 +51,7 @@ last_updated: 2026-08-10T08:17:28.221Z
 | 34 | 43.1 | deviation | .planning/STATE.md |  | Corrected inconsistent generated Plan 09 progress, activity, and decision metadata | fixed |  | 2026-08-10T07:42:52.621Z | 2026-08-10T07:43:54.828Z |
 | 35 | 43.1 | deviation | app/src/lib/physicPaintBridge.test.ts | 879 | Updated the legacy incoming-break bridge test so ordinary edits preserve, rather than author or clear, stable-key break ownership. | fixed |  | 2026-08-10T08:14:54.920Z | 2026-08-10T08:15:01.785Z |
 | 36 | 43.1 | deviation | .planning/STATE.md |  | Reconciled Plan 10 progress percentage, latest activity, decision labels, and next action after generic state handlers wrote stale metadata. | fixed |  | 2026-08-10T08:17:20.229Z | 2026-08-10T08:17:28.221Z |
+| 37 | 43.1 | deviation | .planning/STATE.md |  | Reconciled generated Plan 11 progress, activity, decision labels, and next-action metadata. | fixed |  | 2026-08-10T10:48:22.939Z | 2026-08-10T10:48:54.748Z |
 
 ````json
 [
@@ -485,6 +486,18 @@ last_updated: 2026-08-10T08:17:28.221Z
     "reason": "",
     "recorded_at": "2026-08-10T08:17:20.229Z",
     "resolved_at": "2026-08-10T08:17:28.221Z"
+  },
+  {
+    "id": 37,
+    "kind": "deviation",
+    "phase": "43.1",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Reconciled generated Plan 11 progress, activity, decision labels, and next-action metadata.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-10T10:48:22.939Z",
+    "resolved_at": "2026-08-10T10:48:54.748Z"
   }
 ]
 ````

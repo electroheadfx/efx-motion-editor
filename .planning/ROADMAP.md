@@ -268,7 +268,7 @@ Plans:
 
 **Wave 10** *(blocked on Plan 10)*
 
-- [ ] 43.1-11-PLAN.md — TDD: authority-scoped immutable replay ledger, selection/cursor-aware live preflight, and complete production/harness migration (depends on 43.1-10; GAP-03, GAP-06)
+- [x] 43.1-11-PLAN.md — TDD: authority-scoped immutable replay ledger, selection/cursor-aware live preflight, and complete production/harness migration (depends on 43.1-10; GAP-03, GAP-06)
 
 **Wave 11** *(blocked on independent Plan 07 and the Plan 08→09→10→11 chain)*
 
@@ -445,5 +445,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | Complete    | 2026-08-05 |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
-| 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 10/12 | In Progress|  |
+| 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 11/12 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |
