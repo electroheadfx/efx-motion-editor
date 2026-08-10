@@ -5,8 +5,8 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: planning
-stopped_at: Phase 43.2 context gathered
-last_updated: "2026-08-10T15:39:08.984Z"
+stopped_at: Phase 43.2 UI-SPEC approved
+last_updated: "2026-08-10T16:30:51.895Z"
 last_activity: 2026-08-10
 last_activity_desc: Phase 43.1 passed bounded final verification and completed
 progress:
@@ -475,9 +475,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-10T15:39:08.963Z
-Stopped at: Phase 43.2 context gathered
-Resume file: .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-CONTEXT.md
+Last session: 2026-08-10T16:30:51.873Z
+Stopped at: Phase 43.2 UI-SPEC approved
+Resume file: .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UI-SPEC.md
 
 ## Operator Next Steps
 
