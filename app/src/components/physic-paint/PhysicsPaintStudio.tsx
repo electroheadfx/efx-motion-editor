@@ -1119,7 +1119,12 @@ export function PhysicsPaintStudio() {
     clearCachedReferenceFrame: rotoPersistence.removeCachedFrame,
   });
   const rotoMoveHistory = useRotoPhysicalEditHistory<SerializedProject>({
-    identity: launchContext ? { launchOperationId: launchContext.operationId, layerId: launchContext.layerId } : null,
+    identity: launchContext ? {
+      launchOperationId: launchContext.operationId,
+      layerId: launchContext.layerId,
+      projectContextId: launchContext.project?.contextId ?? null,
+      capacity: rotoPhysicalCapacity,
+    } : null,
     availability: historyAvailability,
     coordinator: {
       executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
@@ -1137,6 +1142,34 @@ export function PhysicsPaintStudio() {
       ),
       replaceLoopClips: (layerId, loopClips) => physicPaintStore.replaceRotoPhysicalLoopClips(layerId, loopClips),
       replaceRecords: replacePhysicalRecordsWithOwnership,
+    },
+    getLiveSourceSnapshot: () => {
+      const liveLaunch = launchContextRef.current;
+      const layerId = liveLaunch?.layerId ?? '';
+      const records = layerId ? physicPaintStore.getRotoRealKeyRecords(layerId) : [];
+      const liveSelectedKeyId = selectedKeyId.peek();
+      const selectedRecord = liveSelectedKeyId === null
+        ? null
+        : records.find((record) => record.keyId === liveSelectedKeyId) ?? null;
+      return {
+        launchOperationId: liveLaunch?.operationId ?? '',
+        layerId,
+        projectContextId: liveLaunch?.project?.contextId ?? null,
+        records,
+        interpolation: layerId
+          ? physicPaintStore.getRotoPhysicalInterpolationState(layerId)
+          : PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+        loopClips: layerId
+          ? physicPaintStore.getRotoPhysicalLoopClips(layerId)
+          : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+        incomingInterpolationBreakKeyIds: layerId
+          ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId)
+          : [],
+        capacity: layerId ? physicPaintStore.getRotoPhysicalCapacity(layerId) : 0,
+        selectedKeyId: selectedRecord?.keyId ?? null,
+        selectedAppFrame: selectedRecord?.appFrame ?? null,
+        currentAppFrame: liveLaunch?.startFrame ?? 0,
+      };
     },
     undoPaint: rotoFrameEditing.undo,
     redoPaint: rotoFrameEditing.redo,

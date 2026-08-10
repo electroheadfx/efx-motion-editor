@@ -143,6 +143,20 @@ interface AcceptedPhysicalCommandEntry {
 }
 const acceptedPhysicalCommands = new Map<string, AcceptedPhysicalCommandEntry>();
 
+function activatePhysicalLaunchAuthority(context: PhysicPaintLaunchContext): void {
+  const projectContextId = context.project?.contextId ?? projectStore.projectContextId.peek();
+  const capacity = context.rotoPhysical?.capacity
+    ?? physicPaintStore.getRotoPhysicalCapacity(context.layerId);
+  for (const [operationId, entry] of acceptedPhysicalCommands) {
+    if (entry.projectContextId !== projectContextId
+      || (entry.layerId === context.layerId
+        && (entry.launchOperationId !== context.operationId || entry.capacity !== capacity))) {
+      acceptedPhysicalCommands.delete(operationId);
+    }
+  }
+  activeLaunchOperationByLayer.set(context.layerId, context.operationId);
+}
+
 function cloneAndDeepFreezePlainData<T>(value: T): T {
   const clone = structuredClone(value);
   const freeze = (candidate: unknown): void => {
@@ -1684,14 +1698,14 @@ export async function openPhysicPaintCanvas(request: PhysicPaintOpenRequest): Pr
     if (tauriRuntime) {
       const tauriResult = await tryOpenTauriPhysicPaintWindow(context);
       if (!tauriResult.ok) return tauriResult;
-      activeLaunchOperationByLayer.set(context.layerId, context.operationId);
+      activatePhysicalLaunchAuthority(context);
       console.info('[physicPaintBridge] native launch result', tauriResult.data);
       return { ok: true, data: context };
     }
 
     const browserResult = openBrowserFallback(context);
     if (!browserResult.ok) return browserResult;
-    activeLaunchOperationByLayer.set(context.layerId, context.operationId);
+    activatePhysicalLaunchAuthority(context);
 
     return { ok: true, data: context };
   } catch (error) {
