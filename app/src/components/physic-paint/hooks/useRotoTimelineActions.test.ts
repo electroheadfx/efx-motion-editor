@@ -139,7 +139,10 @@ describe('useRotoTimelineActions contextual Insert', () => {
     expect(occupied.actions.physicalActions.insertTooltipDescription.value).toBe('Insert key before');
     expect(await occupied.actions.physicalActions.insertRotoFrame()).toBe(true);
     expect(occupied.executePhysicalEdit).toHaveBeenCalledTimes(1);
-    expect(occupied.executePhysicalEdit.mock.calls[0][0]).toMatchObject({ operationKind: 'insert-slot' });
+    expect(occupied.executePhysicalEdit.mock.calls[0][0]).toMatchObject({
+      operationKind: 'insert-slot',
+      intent: { kind: 'insert-slot', selectedKeyId: 'key-a' },
+    });
     expect(occupied.publishStatus).toHaveBeenCalledWith('Inserted an empty Roto frame before the selected key.');
 
     const predecessorDataUrl = 'data:image/png;base64,iVBORw0KGgoAAA==';
