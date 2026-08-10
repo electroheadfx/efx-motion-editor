@@ -96,6 +96,22 @@ export async function pathExists(filePath: string): Promise<Result<boolean>> {
   return safeInvoke<boolean>('path_exists', { filePath });
 }
 
+export interface PhysicPaintCachePublicationResult {
+  accepted: true;
+  cleanupStatus: 'complete' | 'deferred';
+  cleanupDiagnostic?: string;
+}
+
+export function publishPhysicPaintCacheGeneration(
+  projectDir: string,
+  stagingBasename: string,
+): Promise<Result<PhysicPaintCachePublicationResult>> {
+  return safeInvoke<PhysicPaintCachePublicationResult>(
+    'publish_physic_paint_cache_generation',
+    { projectDir, stagingBasename },
+  );
+}
+
 // --- Image commands ---
 export async function imageGetInfo(path: string): Promise<Result<ImageInfo>> {
   return safeInvoke<ImageInfo>('image_get_info', { path });

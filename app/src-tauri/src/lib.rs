@@ -2,6 +2,7 @@ mod commands;
 mod models;
 mod services;
 
+pub use commands::physic_paint_cache as physic_paint_cache_command;
 pub use services::physic_paint_cache;
 
 #[cfg(feature = "script-library-test-support")]
@@ -10,6 +11,7 @@ pub mod script_library_test_support;
 use commands::config;
 use commands::export;
 use commands::image;
+use commands::physic_paint_cache as physic_paint_cache_commands;
 use commands::project;
 use commands::script_library;
 use percent_encoding::percent_decode_str;
@@ -721,6 +723,7 @@ pub fn run() {
             script_library::script_library_encode_thumbnail_webp,
             image::image_get_info,
             image::import_images,
+            physic_paint_cache_commands::publish_physic_paint_cache_generation,
             config::config_get_theme,
             config::config_set_theme,
             config::config_get_canvas_bg,
