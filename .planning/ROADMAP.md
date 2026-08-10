@@ -272,7 +272,7 @@ Plans:
 
 **Wave 11** *(blocked on independent Plan 07 and the Plan 08→09→10→11 chain)*
 
-- [ ] 43.1-12-PLAN.md — Automated focused/full Nyquist revalidation with actual validation evidence and preserved native approval (depends on 43.1-07 and 43.1-11; GAP-03, GAP-06)
+- [x] 43.1-12-PLAN.md — Automated focused/full Nyquist revalidation with actual validation evidence and preserved native approval (depends on 43.1-07 and 43.1-11; GAP-03, GAP-06)
 
 **Planning note:** spec-less probe fallback skipped: phase had no requirement IDs at plan-phase init; goal-backward must_haves were derived from the activated SPECS prompt, CONTEXT.md, RESEARCH.md, and canonicalized GAP-01..GAP-06 instead. Plans 07-12 are additive verification-gap closure and do not reopen completed Plans 01-06 or approved native UAT.
 
@@ -445,5 +445,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | Complete    | 2026-08-05 |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
-| 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 11/12 | In Progress|  |
+| 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 12/12 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |
