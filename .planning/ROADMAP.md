@@ -255,7 +255,7 @@ Plans:
 
 **Wave 7** *(two independent gap-closure branches, both blocked on Plan 06)*
 
-- [ ] 43.1-07-PLAN.md — TDD: macOS-native atomic Physics Paint cache-generation publication via fixed-path `renameatx_np` exchange, typed invoke, and non-feature-gated Rust integration proof (depends on 43.1-06; GAP-03, GAP-06)
+- [x] 43.1-07-PLAN.md — TDD: macOS-native atomic Physics Paint cache-generation publication via fixed-path `renameatx_np` exchange, typed invoke, and non-feature-gated Rust integration proof (depends on 43.1-06; GAP-03, GAP-06)
 - [ ] 43.1-08-PLAN.md — TDD: standalone transport-safe ordinary intent parser/serializer and canonical resolver reproduction without payload activation (depends on 43.1-06; GAP-03)
 
 **Wave 8** *(blocked on Plan 08)*
@@ -445,5 +445,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | Complete    | 2026-08-05 |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
-| 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 6/12 | In Progress|  |
+| 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 7/12 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |

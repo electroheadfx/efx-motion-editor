@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.1
 current_phase_name: Intentional Gap Insert and Local Interpolation Breaks
 status: executing
-stopped_at: Completed 43.1-06-PLAN.md
-last_updated: "2026-08-09T21:51:27.965Z"
-last_activity: 2026-08-09
-last_activity_desc: Completed Plan 43.1-04 contextual Insert dispatch and accepted-only blank reconciliation
+stopped_at: Completed 43.1-07-PLAN.md
+last_updated: "2026-08-10T06:35:08.525Z"
+last_activity: 2026-08-10
+last_activity_desc: Completed Plan 43.1-07 atomic Physics Paint cache publication
 progress:
   total_phases: 7
-  completed_phases: 5
+  completed_phases: 4
   total_plans: 41
-  completed_plans: 35
-  percent: 57
+  completed_plans: 36
+  percent: 88
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.1 (Intentional Gap Insert and Local Interpolation Breaks) — EXECUTING
-Plan: 6 of 6
+Plan: 8 of 12
 Status: Ready to execute
-Last activity: 2026-08-09 — Completed Plan 43.1-05 predecessor-aware segment marker projection and integrated strip cut
+Last activity: 2026-08-10 — Completed Plan 43.1-07 atomic Physics Paint cache publication
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [██████████] 100%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -187,6 +187,7 @@ Progress: [██████████] 100%
 | Phase 43.1 P04 | 23 min | 2 tasks | 7 files |
 | Phase 43.1 P05 | 15min | 2 tasks | 6 files |
 | Phase 43.1 P06 | 1h55m | 3 tasks | 12 files |
+| Phase 43.1 P07 | 9m | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -264,6 +265,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: Phase 43.1 closes on the existing contextual Insert contract; no separate Insert Gap action is added.
 - [Phase ?]: Group deletion/frame-from-group and packed-boundary hole insertion remain non-blocking later-phase observations; Phase 43.1 and the roadmap are not expanded now.
 - [Phase ?]: Stable native approval must come from a fully restarted frozen-code session, not an active hot-reload state.
+- [Phase ?]: 43.1-07: Canonical Physics Paint cache authority stays fixed inside Rust; callers provide only projectDir and a validated sibling staging basename.
+- [Phase ?]: 43.1-07: Successful exchange is accepted before cleanup; cleanup failure is deferred status rather than save rejection.
+- [Phase ?]: 43.1-07: Persisted and returned sidecar metadata remains canonical under cache/physic-paint; staging paths never escape the write boundary.
 
 ### Pending Todos
 
@@ -448,8 +452,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-09T18:52:30.173Z
-Stopped at: Completed 43.1-06-PLAN.md
+Last session: 2026-08-10T06:35:08.514Z
+Stopped at: Completed 43.1-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 11
+open_count: 12
 waived_count: 1
 fixed_count: 19
-total_count: 31
-last_updated: 2026-08-09T16:51:31.383Z
+total_count: 32
+last_updated: 2026-08-10T06:36:00.210Z
 ---
 
 # Broken Windows Ledger
@@ -46,6 +46,7 @@ last_updated: 2026-08-09T16:51:31.383Z
 | 29 | 43.1 | deviation | app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.test.ts |  | Inherited break lifecycle behaviors were characterized green instead of forcing artificial RED failures | open |  | 2026-08-09T15:05:02.967Z |  |
 | 30 | 43.1 | deviation | app/src/stores/physicPaintStore.rotoPhysicalStructuralCache.test.ts |  | Structural cache test and projection threading landed in the same atomic commit | open |  | 2026-08-09T15:05:03.053Z |  |
 | 31 | 43.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Accepted break ownership wiring was added outside the plan's listed Task 2 files so the live strip receives canonical state. | open |  | 2026-08-09T16:51:31.383Z |  |
+| 32 | 43.1 | deviation | app/src/lib/physicPaintPersistence.ts |  | Cleared memoized save authority when empty-output cleanup removes the canonical Physics Paint cache. | open |  | 2026-08-10T06:36:00.210Z |  |
 
 ````json
 [
@@ -419,6 +420,18 @@ last_updated: 2026-08-09T16:51:31.383Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-09T16:51:31.383Z",
+    "resolved_at": null
+  },
+  {
+    "id": 32,
+    "kind": "deviation",
+    "phase": "43.1",
+    "file": "app/src/lib/physicPaintPersistence.ts",
+    "line": null,
+    "description": "Cleared memoized save authority when empty-output cleanup removes the canonical Physics Paint cache.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-10T06:36:00.210Z",
     "resolved_at": null
   }
 ]
