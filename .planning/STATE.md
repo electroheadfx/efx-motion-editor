@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-current_phase: 44
-current_phase_name: Integrated UAT + Signed Release
+current_phase: 43.2
+current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: planning
-stopped_at: Phase 43.1 passed final verification; ready to plan Phase 44
-last_updated: "2026-08-10T12:33:50.321Z"
+stopped_at: Phase 43.2 context gathered
+last_updated: "2026-08-10T15:39:08.984Z"
 last_activity: 2026-08-10
 last_activity_desc: Phase 43.1 passed bounded final verification and completed
 progress:
-  total_phases: 7
-  completed_phases: 6
+  total_phases: 8
+  completed_phases: 5
   total_plans: 41
   completed_plans: 41
-  percent: 86
+  percent: 63
 ---
 
 # Project State
@@ -24,11 +24,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 44 — Integrated UAT + Signed Release
+**Current focus:** Phase 43.2 — Motion and Static Group Stabilization and Action Lifecycle
 
 ## Current Position
 
-Phase: 44 — Integrated UAT + Signed Release
+Phase: 43.2 — Motion and Static Group Stabilization and Action Lifecycle
 Plan: Not started
 Status: Ready to plan
 Last activity: 2026-08-10 — Phase 43.1 passed bounded final verification and completed
@@ -345,6 +345,7 @@ None yet.
 - Phase 38 added: Multi-Copy/Paste and Tooltip Polish
 - Phase 38.1 inserted after Phase 38: Studio render-path performance — fix many-key Studio render-path scaling ceiling (per-frame timeline-model rebuild, full strip re-render per frame) with canvas-first paint, deferred UI, playback UI suspension. Blocks 38-06 UAT re-run. (URGENT)
 - Phase 43.1 inserted after Phase 43: Intentional Gap Insert — use SPECS/milestone-v0.9.0-new-phases/phase-43.1-intentional-gap-insert-prompt.md (URGENT)
+- Phase 43.2 inserted after Phase 43: Motion and Static Group Stabilization and Action Lifecycle — use SPECS/milestone-v0.9.0-new-phases/phase-43.2-motion-static-group-stabilization-action-lifecycle-prompt.md (URGENT)
 
 ## Deferred Items
 
@@ -474,9 +475,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-10T12:33:50.321Z
-Stopped at: Phase 43.1 passed final verification and completed
-Resume file: None
+Last session: 2026-08-10T15:39:08.963Z
+Stopped at: Phase 43.2 context gathered
+Resume file: .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-CONTEXT.md
 
 ## Operator Next Steps
 
