@@ -17,6 +17,8 @@ import { layerStore } from './layerStore';
 import { projectStore } from './projectStore';
 import { applyPhysicPaintPayload, openPhysicPaintCanvas } from '../lib/physicPaintBridge';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
+import { resolvePhysicPaintRotoPhysicalEdit } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
+import type { PhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 
 // Phase 43 Plan 03: store-level linked Loop Clip resolution. The canonical
 // getRotoPhysicalRenderSource seam resolves linked repetition frames to the
@@ -472,53 +474,62 @@ async function launchBridge(): Promise<string> {
 }
 
 function bridgePayload(launchOperationId: string, overrides: Record<string, unknown> = {}) {
-  const operationKind = overrides.operationKind ?? 'move-key';
-  const payload = {
+  return {
     kind: 'replace-roto-physical-map' as const,
     operationId: `op-${crypto.randomUUID()}`,
-    operationKind,
+    operationKind: overrides.operationKind ?? 'move-key',
     layerId: BRIDGE_LAYER,
     startFrame: 0,
     launchOperationId,
     expectedRevision: physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!,
-    records: physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).map(({ keyId, appFrame, payload: recordPayload }) => ({
-      keyId,
-      appFrame,
-      payload: recordPayload,
-    })),
+    records: bridgeRecordEntries(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER)),
     interpolationEnabled: false,
     interpolationMode: 'duplicate' as const,
     selectedKeyId: null,
     selectedAppFrame: null,
     ...overrides,
   };
-  if (payload.operationKind === 'undo' || payload.operationKind === 'redo') return payload;
-  if ('intent' in overrides) return payload;
-  if (payload.operationKind === 'force-spacing') {
+}
+
+function canonicalBridgePayload(
+  launchOperationId: string,
+  intent: PhysicPaintRotoPhysicalEditIntent,
+  options: { readonly omitLoopClips?: boolean } = {},
+) {
+  const currentRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
+  const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER);
+  const currentBreaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(BRIDGE_LAYER);
+  const resolution = resolvePhysicPaintRotoPhysicalEdit({
+    identities: currentRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+    records: currentRecords,
+    intent,
+    capacity: physicPaintStore.getRotoPhysicalCapacity(BRIDGE_LAYER),
+    interpolationEnabled: false,
+    loopClips: currentLoopClips,
+    incomingInterpolationBreakKeyIds: currentBreaks,
+  });
+  if (!resolution.ok) throw new Error(`Expected canonical ${intent.kind} proposal: ${resolution.failure.text}`);
+  const proposal = resolution.proposal;
+  const records = proposal.nextRecords ?? proposal.orderedKeyIds.map((keyId) => {
+    const current = currentRecords.find((record) => record.keyId === keyId);
+    const appFrame = proposal.mapping.get(keyId);
+    if (!current || appFrame === undefined) throw new Error(`Missing canonical ${intent.kind} record for ${keyId}.`);
     return {
-      ...payload,
-      intent: {
-        kind: 'force-spacing' as const,
-        emptyFrames: 1,
-        selectedKeyId: null,
-        scopeKeyIds: ['A', 'B', 'C', 'D', 'E'],
-        linkedSourceSpacingScopes: [{
-          sourceCycleId: getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C', 'D', 'E']),
-          sourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
-          selectedSourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
-        }],
-      },
+      ...current,
+      appFrame,
+      payload: { ...current.payload, appFrame },
     };
-  }
-  const movedRecord = payload.records.find((entry) => entry.keyId === 'E');
-  return {
-    ...payload,
-    intent: {
-      kind: 'move-key' as const,
-      movedKeyId: 'E',
-      target: { kind: 'physical-cell' as const, appFrame: movedRecord?.appFrame ?? 4 },
-    },
-  };
+  });
+  return bridgePayload(launchOperationId, {
+    operationKind: intent.kind,
+    intent,
+    records: bridgeRecordEntries(records),
+    ...(!options.omitLoopClips ? { loopClips: proposal.nextLoopClips ?? currentLoopClips } : {}),
+    incomingInterpolationBreakKeyIds: proposal.nextIncomingInterpolationBreakKeyIds ?? currentBreaks,
+    selectedKeyId: proposal.selectedKeyId,
+    selectedAppFrame: proposal.selectedAppFrame,
+    ...(proposal.semanticDelta ? { semanticDelta: proposal.semanticDelta } : {}),
+  });
 }
 
 function bridgeRecordEntries(records: readonly PhysicPaintRotoRealKeyRecord[]) {
@@ -556,26 +567,36 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
   });
 
   it('applies records + loopClips in one state transition under the loopClips-aware revision', async () => {
-    seedBridgeDocument();
+    const loopBefore = loopClip('loop-1', 0, ['A', 'B', 'C', 'D', 'E'], 3);
+    seedBridgeDocument([loopBefore]);
     const launchOperationId = await launchBridge();
-    const loop = loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 3);
     const revisionBefore = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
     const physicalRevisionBefore = rotoPhysicalRevision.value;
     const visualVersionBefore = physicPaintVersion.value;
+    const command = canonicalBridgePayload(launchOperationId, {
+      kind: 'move-key-group',
+      movedKeyIds: ['A', 'B', 'C', 'D', 'E'],
+      grabbedKeyId: 'A',
+      target: { kind: 'physical-cell', appFrame: 1 },
+    });
 
-    const result = applyPhysicPaintPayload(bridgePayload(launchOperationId, { loopClips: [loop] }));
+    const result = applyPhysicPaintPayload(command);
 
     expect(result).toMatchObject({ ok: true, kind: 'replace-roto-physical-map' });
     // One atomic transition: exactly one physical revision bump and one visual
-    // notification — the store never observed records without loops or loops
-    // without records.
+    // notification — the store never observed moved records without the
+    // source-attached Loop Clip placement or vice versa.
     expect(rotoPhysicalRevision.value).toBe(physicalRevisionBefore + 1);
     expect(physicPaintVersion.value).toBe(visualVersionBefore + 1);
-    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loop]);
-    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).map((entry) => entry.keyId)).toEqual(['A', 'B', 'C', 'D', 'E']);
+    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loopAfter]);
+    const recordsAfter = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
+    expect(recordsAfter.map((entry) => [entry.keyId, entry.appFrame])).toEqual([
+      ['A', 1], ['B', 2], ['C', 3], ['D', 4], ['E', 5],
+    ]);
     const revisionAfter = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
     expect(revisionAfter).not.toBe(revisionBefore);
-    expect(revisionAfter).toBe(buildPhysicPaintRotoPhysicalRevision(cycleRecords(), INTERPOLATION, [loop]));
+    expect(revisionAfter).toBe(buildPhysicPaintRotoPhysicalRevision(recordsAfter, INTERPOLATION, [loopAfter]));
     expect('acceptedRevision' in result ? result.acceptedRevision : null).toBe(revisionAfter);
   });
 
@@ -594,6 +615,11 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     const result = applyPhysicPaintPayload(bridgePayload(launchOperationId, {
       expectedRevision: staleRevision,
       loopClips: [loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 9)],
+      intent: {
+        kind: 'move-key',
+        movedKeyId: 'E',
+        target: { kind: 'physical-cell', appFrame: 4 },
+      },
     }));
 
     expect(result.ok).toBe(false);
@@ -605,29 +631,35 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
   });
 
   it('undo and redo replays each restore records and loopClips together in one transition', async () => {
-    seedBridgeDocument();
+    const loopBefore = loopClip('loop-1', 0, ['A', 'B', 'C', 'D', 'E'], 3);
+    seedBridgeDocument([loopBefore]);
     const launchOperationId = await launchBridge();
-    const loop = loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 3);
+    const beforeRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
     const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
 
-    // Original command: moves key E 4 -> 5 AND installs the loop — one
-    // history-bearing commit carrying both sides of the state.
-    const afterRecords = [record('A', 0), record('B', 1), record('C', 2), record('D', 3), record('E', 5)];
-    const command = bridgePayload(launchOperationId, {
-      records: bridgeRecordEntries(afterRecords),
-      loopClips: [loop],
+    // Original command: rigidly moves the complete source cycle and its
+    // source-attached Loop Clip placement in one history-bearing commit.
+    const command = canonicalBridgePayload(launchOperationId, {
+      kind: 'move-key-group',
+      movedKeyIds: ['A', 'B', 'C', 'D', 'E'],
+      grabbedKeyId: 'A',
+      target: { kind: 'physical-cell', appFrame: 1 },
     });
     const accepted = applyPhysicPaintPayload(command);
     expect(accepted.ok).toBe(true);
+    const afterRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
+    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3);
     const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
     expect(afterRevision).not.toBe(beforeRevision);
 
-    // Undo replay: restores the pre-command records AND the empty loop
-    // collection in one acceptance.
+    // Undo replay restores the pre-command records and Loop Clip placement in
+    // one acceptance.
     const undo = applyPhysicPaintPayload(bridgePayload(launchOperationId, {
       operationKind: 'undo',
-      records: bridgeRecordEntries(cycleRecords()),
-      loopClips: [],
+      records: bridgeRecordEntries(beforeRecords),
+      loopClips: [loopBefore],
+      selectedKeyId: null,
+      selectedAppFrame: null,
       historyProvenance: {
         historyCommandId: command.operationId,
         historyDirection: 'undo',
@@ -638,14 +670,16 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     expect(undo.ok).toBe(true);
     expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).map((entry) => [entry.keyId, entry.appFrame]))
       .toEqual([['A', 0], ['B', 1], ['C', 2], ['D', 3], ['E', 4]]);
-    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([]);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loopBefore]);
     expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)).toBe(beforeRevision);
 
-    // Redo replay: re-applies the moved key AND the loop in one acceptance.
+    // Redo replay reapplies both sides of the accepted command atomically.
     const redo = applyPhysicPaintPayload(bridgePayload(launchOperationId, {
       operationKind: 'redo',
       records: bridgeRecordEntries(afterRecords),
-      loopClips: [loop],
+      loopClips: [loopAfter],
+      selectedKeyId: 'A',
+      selectedAppFrame: 1,
       historyProvenance: {
         historyCommandId: command.operationId,
         historyDirection: 'redo',
@@ -655,8 +689,8 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     }));
     expect(redo.ok).toBe(true);
     expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).map((entry) => [entry.keyId, entry.appFrame]))
-      .toEqual([['A', 0], ['B', 1], ['C', 2], ['D', 3], ['E', 5]]);
-    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loop]);
+      .toEqual([['A', 1], ['B', 2], ['C', 3], ['D', 4], ['E', 5]]);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loopAfter]);
     expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)).toBe(afterRevision);
   });
 
@@ -672,13 +706,19 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     expect(expectRealSource(BRIDGE_LAYER, 11).keyId).toBe('B');
     expect(expectRealSource(BRIDGE_LAYER, 41).keyId).toBe('B');
 
-    const spacedRecords = [record('A', 0), record('B', 2), record('C', 4), record('D', 6), record('E', 8)];
-    const command = bridgePayload(launchOperationId, {
-      operationKind: 'force-spacing',
-      records: bridgeRecordEntries(spacedRecords),
-      loopClips: loops,
+    const command = canonicalBridgePayload(launchOperationId, {
+      kind: 'force-spacing',
+      emptyFrames: 1,
+      selectedKeyId: null,
+      scopeKeyIds: ['A', 'B', 'C', 'D', 'E'],
+      linkedSourceSpacingScopes: [{
+        sourceCycleId: getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C', 'D', 'E']),
+        sourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+        selectedSourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+      }],
     });
     expect(applyPhysicPaintPayload(command).ok).toBe(true);
+    const spacedRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
     const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
     expect(expectRealSource(BRIDGE_LAYER, 12).keyId).toBe('B');
     expect(expectRealSource(BRIDGE_LAYER, 42).keyId).toBe('B');
@@ -718,20 +758,28 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
   });
 
   it('rejects a replay whose staged state does not match the provenance target revision', async () => {
-    seedBridgeDocument();
+    const loopBefore = loopClip('loop-1', 0, ['A', 'B', 'C', 'D', 'E'], 3);
+    seedBridgeDocument([loopBefore]);
     const launchOperationId = await launchBridge();
-    const loop = loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 3);
     const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
 
-    const command = bridgePayload(launchOperationId, { loopClips: [loop] });
+    const command = canonicalBridgePayload(launchOperationId, {
+      kind: 'move-key-group',
+      movedKeyIds: ['A', 'B', 'C', 'D', 'E'],
+      grabbedKeyId: 'A',
+      target: { kind: 'physical-cell', appFrame: 1 },
+    });
     expect(applyPhysicPaintPayload(command).ok).toBe(true);
+    const afterRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
+    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3);
     const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
 
-    // The staged undo state keeps a loop the target revision does not cover:
-    // the staged/target mismatch must reject before any mutation.
+    // The staged undo state carries a Loop Clip the target revision does not
+    // cover, so replay rejects before mutating records or Loop Clips.
     const forged = applyPhysicPaintPayload(bridgePayload(launchOperationId, {
       operationKind: 'undo',
-      loopClips: [loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 7)],
+      records: bridgeRecordEntries(cycleRecords()),
+      loopClips: [loopClip('loop-1', 0, ['A', 'B', 'C', 'D', 'E'], 7)],
       historyProvenance: {
         historyCommandId: command.operationId,
         historyDirection: 'undo',
@@ -740,19 +788,21 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
       },
     }));
     expect(forged.ok).toBe(false);
-    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loop]);
+    expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER)).toEqual(afterRecords);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loopAfter]);
     expect(physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)).toBe(afterRevision);
   });
 
   it('a commit without the loopClips member preserves the current collection', async () => {
-    const loop = loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 3);
+    const loop = loopClip('loop-1', 10, ['A', 'B', 'C', 'D'], 3);
     seedBridgeDocument([loop]);
     const launchOperationId = await launchBridge();
 
-    const moved = [record('A', 0), record('B', 1), record('C', 2), record('D', 3), record('E', 6)];
-    const result = applyPhysicPaintPayload(bridgePayload(launchOperationId, {
-      records: bridgeRecordEntries(moved),
-    }));
+    const result = applyPhysicPaintPayload(canonicalBridgePayload(launchOperationId, {
+      kind: 'move-key',
+      movedKeyId: 'E',
+      target: { kind: 'physical-cell', appFrame: 6 },
+    }, { omitLoopClips: true }));
 
     expect(result.ok).toBe(true);
     expect(physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER).find((entry) => entry.keyId === 'E')?.appFrame).toBe(6);
