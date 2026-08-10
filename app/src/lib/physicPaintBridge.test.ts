@@ -876,6 +876,175 @@ describe('physicPaintBridge', () => {
     }
   });
 
+  it('rejects replay of an equal-revision command from another project context without mutation or publication', async () => {
+    const layer = physicLayer();
+    mockLayers([layer]);
+    const records = [
+      makePhysicalRecord('A', 0),
+      makePhysicalRecord('B', 10),
+    ];
+    seedPhysicalDocument(layer.id, records);
+    projectStore.projectContextId.value = 'project-A';
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launchA = await openPhysicPaintCanvas({ layer, frame: 10 });
+
+    expect(launchA.ok).toBe(true);
+    if (!launchA.ok || !launchA.data.rotoPhysical) return;
+    const accepted = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'project-A-command',
+      operationKind: 'move-key',
+      intent: {
+        kind: 'move-key',
+        movedKeyId: 'B',
+        target: { kind: 'physical-cell', appFrame: 10 },
+      },
+      layerId: layer.id,
+      startFrame: 10,
+      launchOperationId: launchA.data.operationId,
+      projectContextId: 'project-A',
+      expectedRevision: launchA.data.rotoPhysical.revision,
+      records: launchA.data.rotoPhysical.records,
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      selectedKeyId: 'B',
+      selectedAppFrame: 10,
+    });
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok || !('acceptedRevision' in accepted)) return;
+
+    projectStore.projectContextId.value = 'project-B';
+    const launchB = await openPhysicPaintCanvas({ layer, frame: 10 });
+    expect(launchB.ok).toBe(true);
+    if (!launchB.ok || !launchB.data.rotoPhysical) return;
+    const beforeReplay = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    const beforeRevisionSignal = rotoPhysicalRevision.peek();
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+    const dispatch = window.dispatchEvent as ReturnType<typeof vi.fn>;
+    dispatch.mockClear();
+
+    const replay = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'project-B-replay-project-A-command',
+      operationKind: 'undo',
+      layerId: layer.id,
+      startFrame: 0,
+      launchOperationId: launchB.data.operationId,
+      projectContextId: 'project-B',
+      expectedRevision: accepted.acceptedRevision,
+      records: records.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      selectedKeyId: null,
+      selectedAppFrame: null,
+      historyProvenance: {
+        historyCommandId: 'project-A-command',
+        historyDirection: 'undo',
+        sourceRevision: accepted.acceptedRevision,
+        targetRevision: launchA.data.rotoPhysical.revision,
+      },
+    });
+
+    expect(replay.ok).toBe(false);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(beforeReplay);
+    expect(rotoPhysicalRevision.peek()).toBe(beforeRevisionSignal);
+    expect(replace).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('rejects null-selection replay when only the start-frame-derived cursor differs', async () => {
+    const layer = physicLayer();
+    mockLayers([layer]);
+    const records = [
+      makePhysicalRecord('A', 0),
+      makePhysicalRecord('B', 10),
+    ];
+    seedPhysicalDocument(layer.id, records);
+    projectStore.projectContextId.value = 'cursor-project';
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
+
+    expect(launch.ok).toBe(true);
+    if (!launch.ok || !launch.data.rotoPhysical) return;
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null },
+      capacity: launch.data.rotoPhysical.capacity,
+      interpolationEnabled: false,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) return;
+    const spacedRecords = resolution.proposal.orderedKeyIds.map((keyId) => {
+      const record = records.find((candidate) => candidate.keyId === keyId);
+      const appFrame = resolution.proposal.mapping.get(keyId);
+      if (!record || appFrame === undefined) throw new Error(`Missing spaced record ${keyId}`);
+      const { kind: _kind, ...moved } = movePhysicalRecord(record, appFrame);
+      return moved;
+    });
+    const accepted = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'null-selection-command',
+      operationKind: 'force-spacing',
+      intent: { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null },
+      layerId: layer.id,
+      startFrame: 4,
+      launchOperationId: launch.data.operationId,
+      projectContextId: 'cursor-project',
+      expectedRevision: launch.data.rotoPhysical.revision,
+      records: spacedRecords,
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      selectedKeyId: null,
+      selectedAppFrame: null,
+    });
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok || !('acceptedRevision' in accepted)) return;
+    const beforeReplay = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    const beforeRevisionSignal = rotoPhysicalRevision.peek();
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+    const dispatch = window.dispatchEvent as ReturnType<typeof vi.fn>;
+    dispatch.mockClear();
+
+    const replay = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'null-selection-wrong-cursor-undo',
+      operationKind: 'undo',
+      layerId: layer.id,
+      startFrame: 1,
+      launchOperationId: launch.data.operationId,
+      projectContextId: 'cursor-project',
+      expectedRevision: accepted.acceptedRevision,
+      records: records.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      selectedKeyId: null,
+      selectedAppFrame: null,
+      historyProvenance: {
+        historyCommandId: 'null-selection-command',
+        historyDirection: 'undo',
+        sourceRevision: accepted.acceptedRevision,
+        targetRevision: launch.data.rotoPhysical.revision,
+      },
+    });
+
+    expect(replay.ok).toBe(false);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(beforeReplay);
+    expect(rotoPhysicalRevision.peek()).toBe(beforeRevisionSignal);
+    expect(replace).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
   it('preserves one stable-key-owned incoming interpolation break across canonical ordinary edits', async () => {
     const layer = physicLayer();
     mockLayers([layer]);
