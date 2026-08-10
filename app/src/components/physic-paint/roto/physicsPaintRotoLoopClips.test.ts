@@ -1,7 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
+
+function moveGeneration(projectDir: string, stagingBasename: string): void {
+  const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
+  const canonicalRoot = `${projectDir}/cache/physic-paint`;
+  for (const key of Array.from(files.keys())) {
+    if (key === canonicalRoot || key.startsWith(`${canonicalRoot}/`)) files.delete(key);
+  }
+  for (const key of Array.from(dirs.keys())) {
+    if (key === canonicalRoot || key.startsWith(`${canonicalRoot}/`)) dirs.delete(key);
+  }
+  for (const [key, value] of Array.from(files.entries())) {
+    if (key.startsWith(`${stagingRoot}/`)) {
+      files.delete(key);
+      files.set(`${canonicalRoot}${key.slice(stagingRoot.length)}`, value);
+    }
+  }
+  for (const key of Array.from(dirs.keys())) {
+    if (key === stagingRoot || key.startsWith(`${stagingRoot}/`)) {
+      dirs.delete(key);
+      dirs.add(`${canonicalRoot}${key.slice(stagingRoot.length)}`);
+    }
+  }
+}
+
+vi.mock('../../../lib/ipc', () => ({
+  publishPhysicPaintCacheGeneration,
+}));
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
   exists: vi.fn(async (path: string) => dirs.has(path) || files.has(path)),
@@ -335,6 +363,14 @@ describe('physicPaintPersistence loopClips save/reopen', () => {
   beforeEach(() => {
     files.clear();
     dirs.clear();
+    publishPhysicPaintCacheGeneration.mockReset();
+    publishPhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, stagingBasename: string) => {
+      moveGeneration(projectDir, stagingBasename);
+      return {
+        ok: true,
+        data: { accepted: true, cleanupStatus: 'complete' },
+      };
+    });
   });
 
   it('saves and reopens a loop clip byte-identically inside the physical document', async () => {
