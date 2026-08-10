@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 12
 waived_count: 1
-fixed_count: 21
-total_count: 34
-last_updated: 2026-08-10T07:43:54.828Z
+fixed_count: 23
+total_count: 36
+last_updated: 2026-08-10T08:17:28.221Z
 ---
 
 # Broken Windows Ledger
@@ -49,6 +49,8 @@ last_updated: 2026-08-10T07:43:54.828Z
 | 32 | 43.1 | deviation | app/src/lib/physicPaintPersistence.ts |  | Cleared memoized save authority when empty-output cleanup removes the canonical Physics Paint cache. | open |  | 2026-08-10T06:36:00.210Z |  |
 | 33 | 43.1 | deviation | .planning/STATE.md |  | state.update-progress reported 90% but wrote progress.percent 57; closeout reconciled STATE metadata | fixed |  | 2026-08-10T06:55:25.047Z | 2026-08-10T06:56:05.035Z |
 | 34 | 43.1 | deviation | .planning/STATE.md |  | Corrected inconsistent generated Plan 09 progress, activity, and decision metadata | fixed |  | 2026-08-10T07:42:52.621Z | 2026-08-10T07:43:54.828Z |
+| 35 | 43.1 | deviation | app/src/lib/physicPaintBridge.test.ts | 879 | Updated the legacy incoming-break bridge test so ordinary edits preserve, rather than author or clear, stable-key break ownership. | fixed |  | 2026-08-10T08:14:54.920Z | 2026-08-10T08:15:01.785Z |
+| 36 | 43.1 | deviation | .planning/STATE.md |  | Reconciled Plan 10 progress percentage, latest activity, decision labels, and next action after generic state handlers wrote stale metadata. | fixed |  | 2026-08-10T08:17:20.229Z | 2026-08-10T08:17:28.221Z |
 
 ````json
 [
@@ -459,6 +461,30 @@ last_updated: 2026-08-10T07:43:54.828Z
     "reason": "",
     "recorded_at": "2026-08-10T07:42:52.621Z",
     "resolved_at": "2026-08-10T07:43:54.828Z"
+  },
+  {
+    "id": 35,
+    "kind": "deviation",
+    "phase": "43.1",
+    "file": "app/src/lib/physicPaintBridge.test.ts",
+    "line": 879,
+    "description": "Updated the legacy incoming-break bridge test so ordinary edits preserve, rather than author or clear, stable-key break ownership.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-10T08:14:54.920Z",
+    "resolved_at": "2026-08-10T08:15:01.785Z"
+  },
+  {
+    "id": 36,
+    "kind": "deviation",
+    "phase": "43.1",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Reconciled Plan 10 progress percentage, latest activity, decision labels, and next action after generic state handlers wrote stale metadata.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-10T08:17:20.229Z",
+    "resolved_at": "2026-08-10T08:17:28.221Z"
   }
 ]
 ````

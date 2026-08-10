@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.1
 current_phase_name: Intentional Gap Insert and Local Interpolation Breaks
 status: executing
-stopped_at: Completed 43.1-09-PLAN.md
-last_updated: "2026-08-10T07:38:54.873Z"
+stopped_at: Completed 43.1-10-PLAN.md
+last_updated: "2026-08-10T08:16:07.883Z"
 last_activity: 2026-08-10
-last_activity_desc: Completed Plan 43.1-09 required ordinary physical-edit intent transport
+last_activity_desc: Completed Plan 43.1-10 parent-authoritative ordinary physical mapping
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 41
-  completed_plans: 38
-  percent: 93
+  completed_plans: 39
+  percent: 95
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.1 (Intentional Gap Insert and Local Interpolation Breaks) — EXECUTING
-Plan: 10 of 12
+Plan: 11 of 12
 Status: Ready to execute
-Last activity: 2026-08-10 — Completed Plan 43.1-09 required ordinary physical-edit intent transport
+Last activity: 2026-08-10 — Completed Plan 43.1-10 parent-authoritative ordinary physical mapping
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [█████████░] 93%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -190,6 +190,7 @@ Progress: [█████████░] 93%
 | Phase 43.1 P07 | 9m | 3 tasks | 11 files |
 | Phase 43.1 P08 | 12min | 2 tasks | 4 files |
 | Phase 43.1 P09 | 20min | 2 tasks | 10 files |
+| Phase 43.1 P10 | 25min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -276,6 +277,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.1]: Ordinary coordinator execute inputs and apply payloads use mapped discriminated unions so operationKind and intent.kind cannot diverge.
 - [Phase 43.1]: Prepared drag and Force Spacing paths retain the exact resolver input through transport instead of reconstructing authorization from mutable UI state.
 - [Phase 43.1]: Specialized Play Script, interpolation, Undo, and Redo transactions remain intent-free closed variants.
+- [Phase 43.1]: Every validated ordinary intent passes through one centralized parent-authority helper while specialized transactions remain closed variants.
+- [Phase 43.1]: Normalized complete-state equality must pass before document replacement, delivered success caching, or accepted-command authorization.
+- [Phase 43.1]: Ordinary edits preserve or canonically transform stable-key break ownership but cannot author or clear it independently.
 
 ### Pending Todos
 
@@ -460,10 +464,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-10T07:38:54.863Z
-Stopped at: Completed 43.1-09-PLAN.md
+Last session: 2026-08-10T08:16:07.872Z
+Stopped at: Completed 43.1-10-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Plan Phase 39 (Scripts Auto-Hydration Fix) with /gsd-plan-phase 39 — or run the spec's bounded `/gsd-quick --validate` hydration fix first (SPECS/quick-prompts/fix-efx-paint-script-library-auto-hydration.md); if the quick lands first, Phase 39 closes by verification
+- Execute `43.1-11-PLAN.md` to add authority-scoped replay ledger validation and selection/cursor-aware live preflight on top of the completed parent recomputation boundary.
