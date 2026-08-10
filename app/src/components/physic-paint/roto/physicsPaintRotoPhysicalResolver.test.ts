@@ -14,7 +14,11 @@ import type {
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
+import {
+  PHYSIC_PAINT_MAX_APPLY_FRAMES,
+  isPhysicPaintRotoPhysicalEditIntent,
+  serializePhysicPaintRotoPhysicalEditIntent,
+} from '../../../types/physicPaint';
 
 /**
  * Group-operation regression anchors. Group Drag uses the current rigid
@@ -95,6 +99,25 @@ function resolveBaselineWithRecords(
     interpolationEnabled: false,
   });
 }
+
+describe('transport-safe physical edit intent tracer', () => {
+  it('reproduces the direct Insert Slot proposal after canonical serialization and strict parsing', () => {
+    const directIntent = { kind: 'insert-slot', selectedKeyId: 'B' } as const;
+    const serialized = serializePhysicPaintRotoPhysicalEditIntent(directIntent);
+    const parsed: unknown = JSON.parse(serialized);
+    if (!isPhysicPaintRotoPhysicalEditIntent(parsed)) {
+      throw new Error('Canonical Insert Slot intent must parse');
+    }
+
+    const direct = resolveBaseline(directIntent);
+    const reproduced = resolveBaseline(parsed);
+
+    expect(reproduced).toEqual(direct);
+    expect(reproduced.ok).toBe(true);
+    if (!reproduced.ok) throw new Error('Parsed Insert Slot intent must resolve');
+    expect(Object.fromEntries(reproduced.proposal.mapping)).toEqual({ A: 1, B: 4, C: 6, D: 11 });
+  });
+});
 
 describe('intentional incoming interpolation breaks', () => {
   it('suppresses only the incoming interpolation span owned by the right key', () => {

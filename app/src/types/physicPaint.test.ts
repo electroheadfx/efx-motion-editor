@@ -10,7 +10,9 @@ import {
   isPhysicPaintRotoCacheFrame,
   isPhysicPaintRotoInterpolationSettings,
   isPhysicPaintRotoPhysicalEditApplyPayload,
+  isPhysicPaintRotoPhysicalEditIntent,
   normalizePhysicPaintRotoSegmentSpacingOverrides,
+  serializePhysicPaintRotoPhysicalEditIntent,
 } from './physicPaint';
 
 const renderedFrame = { frameIndex: 0, appFrame: 12, dataUrl: 'data:image/png;base64,aGVsbG8=', width: 1000, height: 650 };
@@ -103,6 +105,19 @@ describe('physic paint payload contracts', () => {
       ...payload,
       semanticDelta: undefined,
     })).toBe(false);
+  });
+
+  it('strictly parses and canonically serializes one Insert Slot intent', () => {
+    const intent = { kind: 'insert-slot', selectedKeyId: 'key-A' } as const;
+
+    expect(isPhysicPaintRotoPhysicalEditIntent(intent)).toBe(true);
+    expect(serializePhysicPaintRotoPhysicalEditIntent(intent)).toBe('{"kind":"insert-slot","selectedKeyId":"key-A"}');
+    expect(isPhysicPaintRotoPhysicalEditIntent(JSON.parse(serializePhysicPaintRotoPhysicalEditIntent(intent)))).toBe(true);
+
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, unknown: true })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, selectedKeyId: '' })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, selectedAppFrame: -1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, kind: 'insert-gap' })).toBe(false);
   });
 
   it('requires current background metadata only on Play Script physical transactions', () => {
