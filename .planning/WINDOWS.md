@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 12
 waived_count: 1
-fixed_count: 20
-total_count: 33
-last_updated: 2026-08-10T06:56:05.035Z
+fixed_count: 21
+total_count: 34
+last_updated: 2026-08-10T07:43:54.828Z
 ---
 
 # Broken Windows Ledger
@@ -48,6 +48,7 @@ last_updated: 2026-08-10T06:56:05.035Z
 | 31 | 43.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Accepted break ownership wiring was added outside the plan's listed Task 2 files so the live strip receives canonical state. | open |  | 2026-08-09T16:51:31.383Z |  |
 | 32 | 43.1 | deviation | app/src/lib/physicPaintPersistence.ts |  | Cleared memoized save authority when empty-output cleanup removes the canonical Physics Paint cache. | open |  | 2026-08-10T06:36:00.210Z |  |
 | 33 | 43.1 | deviation | .planning/STATE.md |  | state.update-progress reported 90% but wrote progress.percent 57; closeout reconciled STATE metadata | fixed |  | 2026-08-10T06:55:25.047Z | 2026-08-10T06:56:05.035Z |
+| 34 | 43.1 | deviation | .planning/STATE.md |  | Corrected inconsistent generated Plan 09 progress, activity, and decision metadata | fixed |  | 2026-08-10T07:42:52.621Z | 2026-08-10T07:43:54.828Z |
 
 ````json
 [
@@ -446,6 +447,18 @@ last_updated: 2026-08-10T06:56:05.035Z
     "reason": "",
     "recorded_at": "2026-08-10T06:55:25.047Z",
     "resolved_at": "2026-08-10T06:56:05.035Z"
+  },
+  {
+    "id": 34,
+    "kind": "deviation",
+    "phase": "43.1",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Corrected inconsistent generated Plan 09 progress, activity, and decision metadata",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-10T07:42:52.621Z",
+    "resolved_at": "2026-08-10T07:43:54.828Z"
   }
 ]
 ````
