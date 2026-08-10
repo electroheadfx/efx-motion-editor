@@ -17,6 +17,91 @@ export const PHYSIC_PAINT_DEFAULT_APPLY_FRAMES = 4;
 
 export const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
 
+/** Transport-safe target for one ordinary physical key move. */
+export type PhysicPaintRotoPhysicalEditTarget =
+  | { readonly kind: 'physical-cell'; readonly appFrame: number }
+  | { readonly kind: 'before-key'; readonly targetKeyId: string }
+  | { readonly kind: 'after-key'; readonly targetKeyId: string };
+
+/** Ordered authorization for one linked source-cycle spacing group. */
+export interface PhysicPaintRotoLinkedSourceSpacingScope {
+  readonly sourceCycleId: string;
+  readonly sourceKeyIds: readonly string[];
+  readonly selectedSourceKeyIds: readonly string[];
+}
+
+/**
+ * Closed transport-safe authorization request for every ordinary physical edit.
+ * This standalone contract is intentionally not part of the active apply payload
+ * until the producer/consumer activation cutover.
+ */
+export type PhysicPaintRotoPhysicalEditIntent =
+  | { readonly kind: 'insert-slot'; readonly selectedKeyId: string }
+  | {
+      readonly kind: 'insert-empty-segment';
+      readonly destinationAppFrame: number;
+      readonly insertedKeyId: string;
+      readonly blankPayload: PhysicPaintRotoRealKeyPayload;
+    }
+  | { readonly kind: 'delete-key'; readonly selectedKeyId: string }
+  | { readonly kind: 'delete-key-group'; readonly keyIds: readonly string[] }
+  | {
+      readonly kind: 'move-key';
+      readonly movedKeyId: string;
+      readonly target: PhysicPaintRotoPhysicalEditTarget;
+    }
+  | {
+      readonly kind: 'move-key-group';
+      readonly movedKeyIds: readonly string[];
+      readonly grabbedKeyId: string;
+      readonly target: PhysicPaintRotoPhysicalEditTarget;
+    }
+  | {
+      readonly kind: 'force-spacing';
+      readonly emptyFrames: number;
+      readonly selectedKeyId: string | null;
+      readonly scopeKeyIds?: readonly string[] | null;
+      readonly linkedSourceSpacingScopes?: readonly PhysicPaintRotoLinkedSourceSpacingScope[] | null;
+    }
+  | {
+      readonly kind: 'duplicate-key';
+      readonly sourceKeyId: string;
+      readonly newKeyId: string;
+    }
+  | {
+      readonly kind: 'paste-key';
+      readonly destinationAppFrame: number;
+      readonly destinationKeyId: string | null;
+      readonly newKeyId: string | null;
+      readonly clipboardPayload: PhysicPaintRotoRealKeyPayload;
+    }
+  | {
+      readonly kind: 'paste-key-group';
+      readonly destinationAppFrame: number;
+      readonly entries: readonly {
+        readonly payload: PhysicPaintRotoRealKeyPayload;
+        readonly sourceAppFrame: number;
+        readonly sourceKeyId: string;
+        readonly newKeyId: string;
+      }[];
+    };
+
+/** Strict standalone tracer parser; later ordinary members extend this same seam. */
+export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is PhysicPaintRotoPhysicalEditIntent {
+  return isRecord(value)
+    && value.kind === 'insert-slot'
+    && hasOnlyKeys(value, ['kind', 'selectedKeyId'])
+    && isBoundedPhysicalKeyId(value.selectedKeyId);
+}
+
+/** Canonical stable JSON serialization for one validated ordinary edit intent. */
+export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRotoPhysicalEditIntent): string {
+  if (!isPhysicPaintRotoPhysicalEditIntent(intent)) {
+    throw new Error('PhysicPaintRotoPhysicalEditIntent: malformed intent.');
+  }
+  return JSON.stringify({ kind: intent.kind, selectedKeyId: intent.selectedKeyId });
+}
+
 // ---------------------------------------------------------------------------
 // Standalone generic physical-edit request/result envelope (Plan 36.14-04
 // Task 1). These successor interfaces are INACTIVE additions: they are NOT

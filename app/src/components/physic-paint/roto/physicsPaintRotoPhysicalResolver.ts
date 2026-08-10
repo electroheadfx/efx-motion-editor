@@ -81,8 +81,18 @@ import {
   parsePhysicPaintRotoRealKeyRecordCollection,
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
 } from './physicsPaintRotoPhysicalModel';
-import type { PhysicPaintRotoPhysicalEditSemanticDelta } from '../../../types/physicPaint';
+import type {
+  PhysicPaintRotoLinkedSourceSpacingScope,
+  PhysicPaintRotoPhysicalEditIntent,
+  PhysicPaintRotoPhysicalEditSemanticDelta,
+  PhysicPaintRotoPhysicalEditTarget,
+} from '../../../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
+export type {
+  PhysicPaintRotoLinkedSourceSpacingScope,
+  PhysicPaintRotoPhysicalEditIntent,
+  PhysicPaintRotoPhysicalEditTarget,
+} from '../../../types/physicPaint';
 import {
   getPhysicsPaintRotoSourceCycleId,
   type PhysicsPaintRotoSpacingProxy,
@@ -93,82 +103,9 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * Discriminated physical edit target for Drag. Direct cells name the grabbed
- * key's desired final `appFrame`; occupied boundaries name a stable target
- * identity whose adjacent physical frame is resolved by the operation.
+ * The ordinary edit intent and target contracts live in the dependency-safe
+ * transport module and are re-exported here for existing resolver callers.
  */
-export type PhysicPaintRotoPhysicalEditTarget =
-  | { readonly kind: 'physical-cell'; readonly appFrame: number }
-  | { readonly kind: 'before-key'; readonly targetKeyId: string }
-  | { readonly kind: 'after-key'; readonly targetKeyId: string };
-
-/**
- * Closed physical edit intent union. The union contains exactly Insert,
- * Delete, Move, Force Spacing, Duplicate, and Paste; Phase 37 adds the group
- * variants `move-key-group` and `delete-key-group` plus the optional scoped
- * `scopeKeyIds` input on `force-spacing` (null/undefined = full timeline).
- *
- * Group Drag: the grabbed key anchors the drop, every selected key shifts by
- * the same physical delta, and every unselected key keeps its frame.
- */
-export interface PhysicPaintRotoLinkedSourceSpacingScope {
-  readonly sourceCycleId: string;
-  readonly sourceKeyIds: readonly string[];
-  readonly selectedSourceKeyIds: readonly string[];
-}
-
-export type PhysicPaintRotoPhysicalEditIntent =
-  | { readonly kind: 'insert-slot'; readonly selectedKeyId: string }
-  | {
-      readonly kind: 'insert-empty-segment';
-      readonly destinationAppFrame: number;
-      readonly insertedKeyId: string;
-      readonly blankPayload: PhysicPaintRotoRealKeyPayload;
-    }
-  | { readonly kind: 'delete-key'; readonly selectedKeyId: string }
-  | { readonly kind: 'delete-key-group'; readonly keyIds: readonly string[] }
-  | {
-      readonly kind: 'move-key';
-      readonly movedKeyId: string;
-      readonly target: PhysicPaintRotoPhysicalEditTarget;
-    }
-  | {
-      readonly kind: 'move-key-group';
-      readonly movedKeyIds: readonly string[];
-      readonly grabbedKeyId: string;
-      readonly target: PhysicPaintRotoPhysicalEditTarget;
-    }
-  | {
-      readonly kind: 'force-spacing';
-      readonly emptyFrames: number;
-      readonly selectedKeyId: string | null;
-      /** Phase 37 D-10..D-12: selected-keys-only scope; null/undefined = full timeline. */
-      readonly scopeKeyIds?: readonly string[] | null;
-      /** Phase 43: ordered session-only authorizations for exact linked source-cycle groups. */
-      readonly linkedSourceSpacingScopes?: readonly PhysicPaintRotoLinkedSourceSpacingScope[] | null;
-    }
-  | {
-      readonly kind: 'duplicate-key';
-      readonly sourceKeyId: string;
-      readonly newKeyId: string;
-    }
-  | {
-      readonly kind: 'paste-key';
-      readonly destinationAppFrame: number;
-      readonly destinationKeyId: string | null;
-      readonly newKeyId: string | null;
-      readonly clipboardPayload: PhysicPaintRotoRealKeyPayload;
-    }
-  | {
-      readonly kind: 'paste-key-group';
-      readonly destinationAppFrame: number;
-      readonly entries: readonly {
-        readonly payload: PhysicPaintRotoRealKeyPayload;
-        readonly sourceAppFrame: number;
-        readonly sourceKeyId: string;
-        readonly newKeyId: string;
-      }[];
-    };
 
 /**
  * Operation kind literal union, grows alongside {@link PhysicPaintRotoPhysicalEditIntent}.
