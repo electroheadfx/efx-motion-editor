@@ -108,7 +108,12 @@ describe('useRotoPhysicalEditHistory rigid group drag', () => {
     });
 
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1' },
+      identity: {
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 10,
+      },
       availability,
       coordinator: {
         executePhysicalEdit: executePhysicalEdit as never,
@@ -125,6 +130,7 @@ describe('useRotoPhysicalEditHistory rigid group drag', () => {
         replaceLoopClips: () => ({ ok: true }),
         replaceRecords: () => ({ ok: true }),
       },
+      getLiveSourceSnapshot: () => current,
       undoPaint: () => false,
       redoPaint: () => false,
     });
@@ -207,7 +213,12 @@ describe('useRotoPhysicalEditHistory empty-segment ownership', () => {
     });
 
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch-1', layerId: 'layer-1' },
+      identity: {
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 10,
+      },
       availability,
       coordinator: {
         executePhysicalEdit: executePhysicalEdit as never,
@@ -224,6 +235,7 @@ describe('useRotoPhysicalEditHistory empty-segment ownership', () => {
         replaceLoopClips: () => ({ ok: true }),
         replaceRecords: () => ({ ok: true }),
       },
+      getLiveSourceSnapshot: () => current,
       undoPaint: () => false,
       redoPaint: () => false,
     });

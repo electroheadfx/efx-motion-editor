@@ -77,7 +77,10 @@ function snapshot(
   };
 }
 
-function harness(initial: RotoPhysicalEditSnapshot<null>) {
+function harness(
+  initial: RotoPhysicalEditSnapshot<null>,
+  includeLiveSourceSnapshot = true,
+) {
   const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
   const pendingOperationId = signal<string | null>(null);
   const availability = signal({ undo: 0, redo: 0 });
@@ -101,8 +104,13 @@ function harness(initial: RotoPhysicalEditSnapshot<null>) {
     return true;
   });
 
-  const history = useRotoPhysicalEditHistory({
-    identity: { launchOperationId: 'launch-1', layerId: 'layer-1' },
+  const historyInput = {
+    identity: {
+      launchOperationId: 'launch-1',
+      layerId: 'layer-1',
+      projectContextId: 'project-1',
+      capacity: 10,
+    },
     availability,
     coordinator: {
       executePhysicalEdit: executePhysicalEdit as never,
@@ -119,9 +127,13 @@ function harness(initial: RotoPhysicalEditSnapshot<null>) {
       replaceRecords: () => ({ ok: true as const }),
       replaceLoopClips: () => ({ ok: true as const }),
     },
+    ...(includeLiveSourceSnapshot ? { getLiveSourceSnapshot: () => current } : {}),
     undoPaint: () => false,
     redoPaint: () => false,
-  });
+  };
+  const history = useRotoPhysicalEditHistory(
+    historyInput as Parameters<typeof useRotoPhysicalEditHistory<null>>[0],
+  );
 
   const accept = (
     before: RotoPhysicalEditSnapshot<null>,
@@ -163,7 +175,7 @@ describe('loop-only edit history (D-10)', () => {
   it('fails closed before replay when a typed caller omits the complete live source snapshot port', async () => {
     const before = snapshot(SOURCE_RECORDS(), [loopClip('loop-1', 5)]);
     const after = snapshot(SOURCE_RECORDS(), [loopClip('loop-1', 9)]);
-    const test = harness(after);
+    const test = harness(after, false);
 
     test.accept(before, after, 'missing-live-source-port');
     expect(test.availability.value).toEqual({ undo: 1, redo: 0 });

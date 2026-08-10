@@ -753,7 +753,12 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
       return true;
     });
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch', layerId: 'layer-1' },
+      identity: {
+        launchOperationId: 'launch',
+        layerId: 'layer-1',
+        projectContextId: 'context-1',
+        capacity: 600,
+      },
       availability,
       coordinator: {
         executePhysicalEdit: executePhysicalEdit as never,
@@ -770,6 +775,7 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
         replaceLoopClips: () => ({ ok: true }),
         replaceRecords: () => ({ ok: true }),
       },
+      getLiveSourceSnapshot: () => current,
       undoPaint: () => false,
       redoPaint: () => false,
     });
@@ -1023,7 +1029,12 @@ describe('createRotoPlayScriptController D-06 loop-shorten preflight', () => {
       return true;
     });
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch', layerId: 'layer-1' },
+      identity: {
+        launchOperationId: 'launch',
+        layerId: 'layer-1',
+        projectContextId: 'context-1',
+        capacity: 600,
+      },
       availability,
       coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
       recordsPort: {
@@ -1036,6 +1047,7 @@ describe('createRotoPlayScriptController D-06 loop-shorten preflight', () => {
         replaceLoopClips: () => ({ ok: true }),
         replaceRecords: () => ({ ok: true }),
       },
+      getLiveSourceSnapshot: () => current,
       undoPaint: () => false,
       redoPaint: () => false,
     });
@@ -1214,7 +1226,12 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       return true;
     });
     const history = useRotoPhysicalEditHistory({
-      identity: { launchOperationId: 'launch', layerId: 'layer-1' },
+      identity: {
+        launchOperationId: 'launch',
+        layerId: 'layer-1',
+        projectContextId: 'context-1',
+        capacity: 600,
+      },
       availability,
       coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
       recordsPort: {
@@ -1227,6 +1244,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         replaceLoopClips: () => ({ ok: true }),
         replaceRecords: () => ({ ok: true }),
       },
+      getLiveSourceSnapshot: () => current,
       undoPaint: () => false,
       redoPaint: () => false,
     });

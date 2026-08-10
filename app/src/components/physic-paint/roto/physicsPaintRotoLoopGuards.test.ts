@@ -828,7 +828,12 @@ function historyHarness(initial: RotoPhysicalEditSnapshot<null>) {
   });
 
   const history = useRotoPhysicalEditHistory({
-    identity: { launchOperationId: 'launch-1', layerId: 'layer-1' },
+    identity: {
+      launchOperationId: 'launch-1',
+      layerId: 'layer-1',
+      projectContextId: 'project-1',
+      capacity: CAPACITY,
+    },
     availability,
     coordinator: {
       executePhysicalEdit: executePhysicalEdit as never,
@@ -845,6 +850,7 @@ function historyHarness(initial: RotoPhysicalEditSnapshot<null>) {
       replaceRecords: () => ({ ok: true as const }),
       replaceLoopClips: () => ({ ok: true as const }),
     },
+    getLiveSourceSnapshot: () => current,
     undoPaint: () => false,
     redoPaint: () => false,
   });

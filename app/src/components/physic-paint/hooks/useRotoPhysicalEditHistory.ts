@@ -73,8 +73,8 @@ import type {
 export interface RotoPhysicalEditHistoryIdentity {
   launchOperationId: string;
   layerId: string;
-  projectContextId?: string | null;
-  capacity?: number;
+  projectContextId: string | null;
+  capacity: number;
 }
 
 export type RotoPhysicalEditReplaySourceSnapshot = Pick<
@@ -130,7 +130,7 @@ export interface UseRotoPhysicalEditHistoryInput<EngineState> {
   availability: Signal<PaintHistoryAvailability>;
   coordinator: RotoPhysicalEditCoordinatorRoute<EngineState>;
   recordsPort: RotoPhysicalEditCoordinatorPorts<EngineState>['records'];
-  getLiveSourceSnapshot?: () => RotoPhysicalEditReplaySourceSnapshot;
+  getLiveSourceSnapshot: () => RotoPhysicalEditReplaySourceSnapshot;
   undoPaint: () => boolean;
   redoPaint: () => boolean;
 }
@@ -346,8 +346,8 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     if (!identity) return;
     if (accepted.after.launchOperationId !== identity.launchOperationId
       || accepted.after.layerId !== identity.layerId
-      || (identity.projectContextId !== undefined && accepted.after.projectContextId !== identity.projectContextId)
-      || (identity.capacity !== undefined && accepted.after.capacity !== identity.capacity)) return;
+      || accepted.after.projectContextId !== identity.projectContextId
+      || accepted.after.capacity !== identity.capacity) return;
     if (lastAcceptedOperationIdRef.current === accepted.operationId) return;
     lastAcceptedOperationIdRef.current = accepted.operationId;
 
@@ -446,25 +446,13 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     }
     const identity = inputRef.current.identity;
     if (!identity) return false;
+    // Selection and cursor are intentionally absent from the canonical
+    // revision. Read them only at replay invocation so ordinary movement
+    // retains the stack while stale live state fails closed before the
+    // coordinator or parent mutation boundary.
     const getLiveSourceSnapshot = inputRef.current.getLiveSourceSnapshot;
-    if (getLiveSourceSnapshot) {
-      // Selection and cursor are intentionally absent from the canonical
-      // revision. Read them only at replay invocation so ordinary movement
-      // retains the stack while stale live state fails closed before the
-      // coordinator or parent mutation boundary.
-      if (!snapshotReplayAuthorityEqual(getLiveSourceSnapshot(), entry.after)) return false;
-    } else {
-      // Transitional fallback for typed harnesses migrated in Task 3. The
-      // production Studio always supplies the complete live snapshot port.
-      const recordsPort = inputRef.current.recordsPort;
-      const currentRevision = buildPhysicPaintRotoPhysicalRevision(
-        recordsPort.getRecords(identity.layerId),
-        recordsPort.getInterpolation(identity.layerId),
-        recordsPort.getLoopClips(identity.layerId),
-        recordsPort.getIncomingInterpolationBreakKeyIds(identity.layerId),
-      );
-      if (currentRevision !== entry.acceptedRevision) return false;
-    }
+    if (typeof getLiveSourceSnapshot !== 'function'
+      || !snapshotReplayAuthorityEqual(getLiveSourceSnapshot(), entry.after)) return false;
     pendingReplayRef.current = { direction: 'undo', command: entry };
     const proposal = buildReplayProposal(entry.before);
     const beforeTargetRevision = snapshotRevision(entry.before);
@@ -511,18 +499,8 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     if (!identity) return false;
     const beforeRevision = snapshotRevision(entry.before);
     const getLiveSourceSnapshot = inputRef.current.getLiveSourceSnapshot;
-    if (getLiveSourceSnapshot) {
-      if (!snapshotReplayAuthorityEqual(getLiveSourceSnapshot(), entry.before)) return false;
-    } else {
-      const recordsPort = inputRef.current.recordsPort;
-      const currentRevision = buildPhysicPaintRotoPhysicalRevision(
-        recordsPort.getRecords(identity.layerId),
-        recordsPort.getInterpolation(identity.layerId),
-        recordsPort.getLoopClips(identity.layerId),
-        recordsPort.getIncomingInterpolationBreakKeyIds(identity.layerId),
-      );
-      if (currentRevision !== beforeRevision) return false;
-    }
+    if (typeof getLiveSourceSnapshot !== 'function'
+      || !snapshotReplayAuthorityEqual(getLiveSourceSnapshot(), entry.before)) return false;
     pendingReplayRef.current = { direction: 'redo', command: entry };
     const proposal = buildReplayProposal(entry.after);
     const afterTargetRevision = snapshotRevision(entry.after);
