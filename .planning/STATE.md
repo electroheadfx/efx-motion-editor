@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-current_phase: 43.1
-current_phase_name: Intentional Gap Insert and Local Interpolation Breaks
-status: verifying
-stopped_at: Completed 43.1-12-PLAN.md
-last_updated: "2026-08-10T11:01:58.688Z"
+current_phase: 44
+current_phase_name: Integrated UAT + Signed Release
+status: planning
+stopped_at: Phase 43.1 passed final verification; ready to plan Phase 44
+last_updated: "2026-08-10T12:33:50.321Z"
 last_activity: 2026-08-10
-last_activity_desc: Completed Plan 43.1-12 integrated gap-closure certification
+last_activity_desc: Phase 43.1 passed bounded final verification and completed
 progress:
   total_phases: 7
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 41
   completed_plans: 41
-  percent: 71
+  percent: 86
 ---
 
 # Project State
@@ -24,24 +24,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 43.1 — Intentional Gap Insert and Local Interpolation Breaks
+**Current focus:** Phase 44 — Integrated UAT + Signed Release
 
 ## Current Position
 
-Phase: 43.1 (Intentional Gap Insert and Local Interpolation Breaks) — VERIFYING
-Plan: 12 of 12
-Status: Phase complete — ready for verification
-Last activity: 2026-08-10 — Completed Plan 43.1-12 integrated gap-closure certification
+Phase: 44 — Integrated UAT + Signed Release
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-10 — Phase 43.1 passed bounded final verification and completed
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 110 for v0.8.0
+- Total plans completed: 122 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -72,6 +72,7 @@ Progress: [██████████] 100%
 | 41 | 5 | - | - |
 | 42 | 6 | - | - |
 | 43 | 15/15 | Complete through corrected implementation, cleanup, native UAT, and summary closure | - |
+| 43.1 | 12 | - | - |
 
 **Recent Trend:**
 
@@ -356,6 +357,10 @@ Items acknowledged and carried forward from previous milestone close:
 | Roto timeline UI | Corrected-reference final UI integration: Discard Script relocation to right-panel Scripts toolbar, app/index.html selection guard, compact header status capsule replacing permanent status stack | Follow-up UI plan authorized at Phase 36.14 closure | 2026-07-25 |
 | Testing | Deterministic physical-resolver regression coverage: insert/delete-slot, force-spacing, occupied before/after-key drag, source-closing drag against locked D-29 examples; fulfills deferred 260718-m2f drag-test obligation | Follow-up test plan authorized at Phase 36.14 closure | 2026-07-25 |
 | Bugs | 36.14-REVIEW.md findings: CR-01 dead export-resume path, CR-02 blank blend in-betweens after Play Script commit (prioritize — touches approved blend behavior), WR-01..WR-04 | Follow-up quick authorized at Phase 36.14 closure | 2026-07-25 |
+| Persistence | DF-01: `.mce` save and fixed-path Physics Paint cache publication are not one cross-resource transaction | Non-blocking `NEW_SCOPE_FROM_VERIFIER`; requires separately approved persistence design | Phase 43.1 closure, 2026-08-10 |
+| Persistence | DF-02: native cache publication does not sync the containing directory after rename/exchange | Non-blocking `NEW_SCOPE_FROM_VERIFIER`; defer to separate crash-durability hardening | Phase 43.1 closure, 2026-08-10 |
+| Loop Clips | DF-03: provenance-only Loop Clip replacement can be treated as a no-op | Non-blocking `NEW_SCOPE_FROM_VERIFIER`; defer to separate Loop Clip maintenance | Phase 43.1 closure, 2026-08-10 |
+| Security | DF-04: browser frame-sync does not authenticate `postMessage` origin, source window, or launch identity | Non-blocking for Phase 43.1; preserve for separate security remediation | Phase 43.1 closure, 2026-08-10 |
 
 ### Open artifacts acknowledged at v0.8.0 close (2026-08-01)
 
@@ -469,10 +474,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-10T11:01:58.678Z
-Stopped at: Completed 43.1-12-PLAN.md
+Last session: 2026-08-10T12:33:50.321Z
+Stopped at: Phase 43.1 passed final verification and completed
 Resume file: None
 
 ## Operator Next Steps
 
-- Execute `43.1-12-PLAN.md` to run the combined focused and repository-wide automated closure gates and record observed evidence in `43.1-VALIDATION.md`.
+- Plan Phase 44 with `/gsd-plan-phase 44`.
+- Keep Phase 43.1 DF-01 through DF-04 deferred; do not create additional Phase 43.1 plans.

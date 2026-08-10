@@ -24,8 +24,8 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 - [x] **Phase 40: macOS Icon Regeneration + Build Hygiene** — Legible icon from the 794×794 alpha source, tracked generated icons stay release authority, documented 1100 kB chunk budget (completed 2026-08-04)
 - [x] **Phase 41: EFX Paint Audio Preview + Monitoring Toggle** — Read-only frame-synchronized main-editor audio monitoring inside EFX Paint with session-local toggle (completed 2026-08-05)
 - [x] **Phase 42: PlayScript Application Modes + Color Override** — Explicit progressive vs static/hold modes and application-time color override with clear Scripts panel UI (completed 2026-08-06)
-- [ ] **Phase 43: Hold Loop Clips + Integrated Loop Rail** — Deterministic static/hold rendering with linked Loop Clips (cycle × repeat 1..∞), an EFX-local integrated rail/contextual inspector, and one passive Motion Editor PPaint FX-bar duration marker per effective interval with zero Loop Clip-specific interaction
-- [ ] **Phase 43.1: Intentional Gap Insert and Local Interpolation Breaks** — Existing Insert context-dispatches a genuinely empty cursor into one atomic empty-key-plus-stable-break transaction, preserving local interpolation, persistence, history, and accepted physical-strip geometry
+- [x] **Phase 43: Hold Loop Clips + Integrated Loop Rail** — Deterministic static/hold rendering with linked Loop Clips (cycle × repeat 1..∞), an EFX-local integrated rail/contextual inspector, and one passive Motion Editor PPaint FX-bar duration marker per effective interval with zero Loop Clip-specific interaction (completed 2026-08-08)
+- [x] **Phase 43.1: Intentional Gap Insert and Local Interpolation Breaks** — Existing Insert context-dispatches a genuinely empty cursor into one atomic empty-key-plus-stable-break transaction, preserving local interpolation, persistence, history, and accepted physical-strip geometry (completed 2026-08-10)
 - [ ] **Phase 44: Integrated UAT + Signed Release** — All automated gates, packaged native UAT per spec, signed/notarized downloaded-artifact verification, publish 2026-08-31
 
 ## Phase Details
@@ -445,5 +445,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 41. EFX Paint Audio Preview | v0.9.0 | 5/5 | Complete    | 2026-08-05 |
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
-| 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 12/12 | In Progress|  |
+| 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 12/12 | Complete    | 2026-08-10 |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |
