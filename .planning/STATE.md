@@ -4,15 +4,15 @@ milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
-status: planning
+status: executing
 stopped_at: Phase 43.2 UI-SPEC approved
-last_updated: "2026-08-10T16:30:51.895Z"
+last_updated: "2026-08-10T20:44:19.807Z"
 last_activity: 2026-08-10
 last_activity_desc: Phase 43.1 passed bounded final verification and completed
 progress:
   total_phases: 8
   completed_phases: 5
-  total_plans: 41
+  total_plans: 61
   completed_plans: 41
   percent: 63
 ---
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 Phase: 43.2 — Motion and Static Group Stabilization and Action Lifecycle
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-08-10 — Phase 43.1 passed bounded final verification and completed
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).

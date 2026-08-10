@@ -26,6 +26,7 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 - [x] **Phase 42: PlayScript Application Modes + Color Override** — Explicit progressive vs static/hold modes and application-time color override with clear Scripts panel UI (completed 2026-08-06)
 - [x] **Phase 43: Hold Loop Clips + Integrated Loop Rail** — Deterministic static/hold rendering with linked Loop Clips (cycle × repeat 1..∞), an EFX-local integrated rail/contextual inspector, and one passive Motion Editor PPaint FX-bar duration marker per effective interval with zero Loop Clip-specific interaction (completed 2026-08-08)
 - [x] **Phase 43.1: Intentional Gap Insert and Local Interpolation Breaks** — Existing Insert context-dispatches a genuinely empty cursor into one atomic empty-key-plus-stable-break transaction, preserving local interpolation, persistence, history, and accepted physical-strip geometry (completed 2026-08-10)
+- [ ] **Phase 43.2: Motion and Static Group Stabilization and Action Lifecycle** — Durable Groups, exact local lifecycle edits, leased bidirectional Action deletion history, and canonical save/playback/preview/export parity
 - [ ] **Phase 44: Integrated UAT + Signed Release** — All automated gates, packaged native UAT per spec, signed/notarized downloaded-artifact verification, publish 2026-08-31
 
 ## Phase Details
@@ -276,10 +277,51 @@ Plans:
 
 **Planning note:** spec-less probe fallback skipped: phase had no requirement IDs at plan-phase init; goal-backward must_haves were derived from the activated SPECS prompt, CONTEXT.md, RESEARCH.md, and canonicalized GAP-01..GAP-06 instead. Plans 07-12 are additive verification-gap closure and do not reopen completed Plans 01-06 or approved native UAT.
 
+### Phase 43.2: Motion and Static Group Stabilization and Action Lifecycle
+
+**Goal:** Users can preserve, locally modify, fragment, regenerate, navigate, detach, or remove durable Motion and Static Groups through a complete Action lifecycle while one canonical accepted physical document remains authoritative across save/reopen, playback, preview, and export.
+**Requirements:** GRP-01, GRP-02, GRP-03, GRP-04, GRP-05, GRP-06, GRP-07, GRP-08 (planning-local; do not add to REQUIREMENTS.md)
+**Depends on:** Phase 43.1
+**Plans:** 20 plans
+
+Plans:
+
+**Wave 0 — passing tests/fixtures/checklist only**
+- [ ] 43.2-01-PLAN.md — Lifecycle/range fixtures and complete field-participation matrix (GRP-02, GRP-04, GRP-08)
+- [ ] 43.2-02-PLAN.md — Source-sharing, exact-frame COW, cleanup, canonical lease concurrency, and rejection contracts (GRP-03, GRP-04, GRP-06)
+- [ ] 43.2-03-PLAN.md — Separate recovery/retained-history, forward/Undo/Redo/release contracts, and deterministic native-UAT checklist (GRP-06, GRP-08)
+
+**Wave 1 — blocked on all Wave 0 plans**
+- [ ] 43.2-04-PLAN.md — Leased production tracer: exact-occurrence Group Paint through pure proposal, parent authority, token-checked sole replacement, version, and history (GRP-02, GRP-03)
+
+**Waves 2–7 — canonical leased lifecycle capabilities**
+- [ ] 43.2-05-PLAN.md — Complete canonical schema, transport, persistence, store, and save/reopen participation (GRP-02, GRP-08)
+- [ ] 43.2-18-PLAN.md — Canonical project/layer physical-operation lease across every mutator, replacement, hydration, settlement, and recovery path (GRP-03, GRP-04, GRP-05, GRP-06, GRP-08)
+- [ ] 43.2-06-PLAN.md — Pure lifecycle proposals, leased bridge semantic validation, and ordinary history completeness (GRP-03, GRP-04, GRP-05, GRP-06)
+- [ ] 43.2-07-PLAN.md — Leased exact-frame Paint, gap refill/reunion, cache/canvas reconciliation, Undo/Redo (GRP-03)
+- [ ] 43.2-08-PLAN.md — Unified Delete activation/dialog plus leased atomic Delete Frame/Delete Group (GRP-04)
+- [ ] 43.2-09-PLAN.md — Guarded leased one/shared Regenerate with exact disclosure and accepted restoration (GRP-05)
+
+**Waves 8–13 — durable bidirectional Action history**
+- [ ] 43.2-10-PLAN.md — Rust active recovery journal, working tombstone, scan gating, and restart foundation (GRP-06)
+- [ ] 43.2-19-PLAN.md — Rust retained Action history artifact, direction-specific Undo/Redo recovery, protected release/GC, and orphan handling (GRP-06)
+- [ ] 43.2-11-PLAN.md — Closed TypeScript direction/history/release validators and IPC wrappers (GRP-06)
+- [ ] 43.2-12-PLAN.md — Leased committed-only initial deletion settlement, enriched history insertion, and hydration recovery (GRP-06)
+- [ ] 43.2-20-PLAN.md — Frontend referenced-deletion Undo/Redo replay, exact history-pointer settlement, eviction/truncation/clear release hooks (GRP-06)
+- [ ] 43.2-13-PLAN.md — Reference-aware Actions confirmation, consequences, focus, lease/recovery UI (GRP-06)
+
+**Waves 14–15 — approved Group/Action UI**
+- [ ] 43.2-14-PLAN.md — Canonical product copy plus exact fragment rail, lifecycle dots, linked halos, and geometry (GRP-01, GRP-07)
+- [ ] 43.2-15-PLAN.md — Actions/Edit/Create terminology, cross-selection, and non-wrapping linked navigation (GRP-01, GRP-07)
+
+**Waves 16–17 — parity, regression, and acceptance**
+- [ ] 43.2-16-PLAN.md — Shared accepted frameMap/playback/preview/export lifecycle resolution (GRP-08)
+- [ ] 43.2-17-PLAN.md — Motion Editor regressions, full lease/history/recovery gates, source audit, and blocking frozen-session native UAT (GRP-01..GRP-08)
+
 ### Phase 44: Integrated UAT + Signed Release
 
 **Goal**: v0.9.0 ships as a signed, notarized macOS release on 2026-08-31 with every automated gate and native packaged-app UAT step green and no release stop condition active.
-**Depends on**: Phases 39-43.1 (release acceptance begins only after the intentional-gap insertion and local-break contract is automated-green and native-approved)
+**Depends on**: Phases 39-43.2 (release acceptance begins only after the Group/Action lifecycle, shared physical-operation lease, retained Action history, bidirectional replay, and frozen-session acceptance are complete)
 **Requirements**: REL-01, REL-02, REL-03
 **Success Criteria** (what must be TRUE):
 
@@ -446,4 +488,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
 | 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 12/12 | Complete    | 2026-08-10 |
+| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 0/20 | Planned | - |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |
