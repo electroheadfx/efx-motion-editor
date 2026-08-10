@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 12
 waived_count: 1
-fixed_count: 19
-total_count: 32
-last_updated: 2026-08-10T06:36:00.210Z
+fixed_count: 20
+total_count: 33
+last_updated: 2026-08-10T06:56:05.035Z
 ---
 
 # Broken Windows Ledger
@@ -47,6 +47,7 @@ last_updated: 2026-08-10T06:36:00.210Z
 | 30 | 43.1 | deviation | app/src/stores/physicPaintStore.rotoPhysicalStructuralCache.test.ts |  | Structural cache test and projection threading landed in the same atomic commit | open |  | 2026-08-09T15:05:03.053Z |  |
 | 31 | 43.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Accepted break ownership wiring was added outside the plan's listed Task 2 files so the live strip receives canonical state. | open |  | 2026-08-09T16:51:31.383Z |  |
 | 32 | 43.1 | deviation | app/src/lib/physicPaintPersistence.ts |  | Cleared memoized save authority when empty-output cleanup removes the canonical Physics Paint cache. | open |  | 2026-08-10T06:36:00.210Z |  |
+| 33 | 43.1 | deviation | .planning/STATE.md |  | state.update-progress reported 90% but wrote progress.percent 57; closeout reconciled STATE metadata | fixed |  | 2026-08-10T06:55:25.047Z | 2026-08-10T06:56:05.035Z |
 
 ````json
 [
@@ -433,6 +434,18 @@ last_updated: 2026-08-10T06:36:00.210Z
     "reason": "",
     "recorded_at": "2026-08-10T06:36:00.210Z",
     "resolved_at": null
+  },
+  {
+    "id": 33,
+    "kind": "deviation",
+    "phase": "43.1",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "state.update-progress reported 90% but wrote progress.percent 57; closeout reconciled STATE metadata",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-10T06:55:25.047Z",
+    "resolved_at": "2026-08-10T06:56:05.035Z"
   }
 ]
 ````

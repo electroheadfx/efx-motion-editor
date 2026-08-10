@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.1
 current_phase_name: Intentional Gap Insert and Local Interpolation Breaks
 status: executing
-stopped_at: Completed 43.1-07-PLAN.md
-last_updated: "2026-08-10T06:35:08.525Z"
+stopped_at: Completed 43.1-08-PLAN.md
+last_updated: "2026-08-10T06:54:12.527Z"
 last_activity: 2026-08-10
-last_activity_desc: Completed Plan 43.1-07 atomic Physics Paint cache publication
+last_activity_desc: Completed Plan 43.1-08 transport-safe ordinary physical-edit intent contract
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 41
-  completed_plans: 36
-  percent: 88
+  completed_plans: 37
+  percent: 90
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.1 (Intentional Gap Insert and Local Interpolation Breaks) — EXECUTING
-Plan: 8 of 12
+Plan: 9 of 12
 Status: Ready to execute
-Last activity: 2026-08-10 — Completed Plan 43.1-07 atomic Physics Paint cache publication
+Last activity: 2026-08-10 — Completed Plan 43.1-08 transport-safe ordinary physical-edit intent contract
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
@@ -188,6 +188,7 @@ Progress: [█████████░] 88%
 | Phase 43.1 P05 | 15min | 2 tasks | 6 files |
 | Phase 43.1 P06 | 1h55m | 3 tasks | 12 files |
 | Phase 43.1 P07 | 9m | 3 tasks | 11 files |
+| Phase 43.1 P08 | 12min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -268,6 +269,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43.1-07: Canonical Physics Paint cache authority stays fixed inside Rust; callers provide only projectDir and a validated sibling staging basename.
 - [Phase ?]: 43.1-07: Successful exchange is accepted before cleanup; cleanup failure is deferred status rather than save rejection.
 - [Phase ?]: 43.1-07: Persisted and returned sidecar metadata remains canonical under cache/physic-paint; staging paths never escape the write boundary.
+- [Phase ?]: 43.1-08: The ordinary physical-edit intent union lives in the dependency-safe transport module and is re-exported by the resolver so there is one vocabulary without changing existing caller imports.
+- [Phase ?]: 43.1-08: Canonical serialization reconstructs operation-specific objects and preserves authoritative array order instead of serializing caller-owned objects directly.
+- [Phase ?]: 43.1-08: The active physical apply payload remains unchanged; Plan 09 owns the atomic producer/consumer activation.
 
 ### Pending Todos
 
@@ -452,8 +456,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-10T06:35:08.514Z
-Stopped at: Completed 43.1-07-PLAN.md
+Last session: 2026-08-10T06:54:12.515Z
+Stopped at: Completed 43.1-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
