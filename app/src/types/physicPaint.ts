@@ -673,10 +673,11 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
   if (!isPhysicPaintRotoPhysicalEditOperationKind(value.operationKind)) return false;
-  const isOrdinary = isPhysicPaintRotoPhysicalEditIntent(value.intent);
+  const intent = value.intent;
+  const isOrdinary = isPhysicPaintRotoPhysicalEditIntent(intent);
   if (isOrdinary) {
-    if (value.intent.kind !== value.operationKind) return false;
-  } else if (value.intent !== undefined || isPhysicPaintRotoOrdinaryOperationKind(value.operationKind)) return false;
+    if (intent.kind !== value.operationKind) return false;
+  } else if (intent !== undefined || isPhysicPaintRotoOrdinaryOperationKind(value.operationKind)) return false;
   if (!isNonEmptyString(value.layerId)) return false;
   if (!isNonNegativeInteger(value.startFrame)) return false;
   if (!isNonEmptyString(value.launchOperationId)) return false;

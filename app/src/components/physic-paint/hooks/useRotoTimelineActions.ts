@@ -170,6 +170,7 @@ export interface RotoDragTargetSignature {
  */
 export interface RotoDragPublication {
   readonly proposal: PhysicPaintRotoPhysicalEditProposal;
+  readonly intent: Extract<PhysicPaintRotoPhysicalEditIntent, { readonly kind: 'move-key' | 'move-key-group' }>;
   readonly proposalVersion: string;
   readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
   readonly movedKeyId: string;
@@ -335,17 +336,43 @@ export interface RotoTimelineActionsInput {
   publishDiagnostic?: (message: string) => void;
 }
 
-interface PhysicalActionRunnerInput {
-  readonly intent: PhysicPaintRotoPhysicalEditIntent;
-  readonly operationKind: 'insert-slot' | 'insert-empty-segment' | 'delete-key' | 'delete-key-group' | 'duplicate-key' | 'paste-key' | 'paste-key-group';
-  readonly requiredKeyId: string | null;
-  readonly successMessage: string;
-  /**
-   * Optional failure-code → concise capsule copy mapping (UI-SPEC locked
-   * lines). Absent: the resolver failure text publishes unchanged, preserving
-   * byte-identical behavior for existing routes.
-   */
-  readonly rejectedCopy?: (failure: PhysicPaintRotoPhysicalEditFailure) => string;
+type PhysicalActionRunnerKind = Extract<
+  PhysicPaintRotoPhysicalEditIntent['kind'],
+  'insert-slot' | 'insert-empty-segment' | 'delete-key' | 'delete-key-group' | 'duplicate-key' | 'paste-key' | 'paste-key-group'
+>;
+
+type PhysicalActionRunnerInput = {
+  [Kind in PhysicalActionRunnerKind]: {
+    readonly intent: Extract<PhysicPaintRotoPhysicalEditIntent, { readonly kind: Kind }>;
+    readonly operationKind: Kind;
+    readonly requiredKeyId: string | null;
+    readonly successMessage: string;
+    /**
+     * Optional failure-code → concise capsule copy mapping (UI-SPEC locked
+     * lines). Absent: the resolver failure text publishes unchanged, preserving
+     * byte-identical behavior for existing routes.
+     */
+    readonly rejectedCopy?: (failure: PhysicPaintRotoPhysicalEditFailure) => string;
+  };
+}[PhysicalActionRunnerKind];
+
+function physicalActionAuthorization(input: PhysicalActionRunnerInput) {
+  switch (input.operationKind) {
+    case 'insert-slot':
+      return { operationKind: input.operationKind, intent: input.intent };
+    case 'insert-empty-segment':
+      return { operationKind: input.operationKind, intent: input.intent };
+    case 'delete-key':
+      return { operationKind: input.operationKind, intent: input.intent };
+    case 'delete-key-group':
+      return { operationKind: input.operationKind, intent: input.intent };
+    case 'duplicate-key':
+      return { operationKind: input.operationKind, intent: input.intent };
+    case 'paste-key':
+      return { operationKind: input.operationKind, intent: input.intent };
+    case 'paste-key-group':
+      return { operationKind: input.operationKind, intent: input.intent };
+  }
 }
 
 const INSERT_SUCCESS_MESSAGE = 'Inserted an empty Roto frame before the selected key.';
@@ -621,8 +648,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     const accepted = await input.executePhysicalEdit({
       proposal,
       expectedLaunch: { operationId: launch.operationId, layerId: launch.layerId },
-      operationKind: runnerInput.operationKind,
-      intent: runnerInput.intent,
+      ...physicalActionAuthorization(runnerInput),
       selectedKeyId: proposal.selectedKeyId,
       selectedAppFrame: proposal.selectedAppFrame,
     });
@@ -846,9 +872,10 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       return { ok: false, reason: 'The dragged Roto key identity is ambiguous.' };
     }
     const identities = records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
+    const intent = Object.freeze({ kind: 'move-key', movedKeyId, target }) as Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'move-key' }>;
     const resolution: PhysicPaintRotoPhysicalEditResolution = resolvePhysicPaintRotoPhysicalEdit({
       identities,
-      intent: { kind: 'move-key', movedKeyId, target },
+      intent,
       capacity,
       interpolationEnabled: interpolation.enabled,
       // Phase 43: D-11 rejects single-key ripple drags on linked source keys.
@@ -868,6 +895,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       ok: true,
       publication: Object.freeze({
         proposal,
+        intent,
         proposalVersion,
         expectedLaunch: { operationId: launch.operationId, layerId: launch.layerId },
         movedKeyId,
@@ -880,14 +908,15 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     if (!input.executePhysicalEdit) return false;
     // Wrapper coherence: the proposal must be a move-key whose drag movedKeyId
     // matches the publication's movedKeyId. No resolver or mapping recomputation.
-    if (publication.proposal.status.operationKind !== 'move-key') return false;
+    if (publication.proposal.status.operationKind !== 'move-key' || publication.intent.kind !== 'move-key') return false;
     const drag = publication.proposal.drag;
-    if (!drag || drag.movedKeyId !== publication.movedKeyId) return false;
+    if (!drag || drag.movedKeyId !== publication.movedKeyId || publication.intent.movedKeyId !== publication.movedKeyId) return false;
     if (publication.expectedLaunch.operationId.length === 0 || publication.expectedLaunch.layerId.length === 0) return false;
     return input.executePhysicalEdit({
       proposal: publication.proposal,
       expectedLaunch: publication.expectedLaunch,
       operationKind: 'move-key',
+      intent: publication.intent,
       selectedKeyId: publication.proposal.selectedKeyId,
       selectedAppFrame: publication.proposal.selectedAppFrame,
     });
@@ -938,9 +967,15 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     }
     const movedKeyIds = Object.freeze([...selectedKeyIds]) as readonly string[];
     const identities = records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
+    const intent = Object.freeze({
+      kind: 'move-key-group',
+      movedKeyIds,
+      grabbedKeyId,
+      target,
+    }) as Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'move-key-group' }>;
     const resolution: PhysicPaintRotoPhysicalEditResolution = resolvePhysicPaintRotoPhysicalEdit({
       identities,
-      intent: { kind: 'move-key-group', movedKeyIds, grabbedKeyId, target },
+      intent,
       capacity,
       interpolationEnabled: interpolation.enabled,
       // Phase 43: rigid whole-cycle drags carry the original-loop
@@ -975,6 +1010,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       ok: true,
       publication: Object.freeze({
         proposal,
+        intent,
         proposalVersion,
         expectedLaunch: { operationId: launch.operationId, layerId: launch.layerId },
         movedKeyId: grabbedKeyId,
@@ -990,20 +1026,25 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     // moved-set shallow equality (length plus index-wise identity), and a
     // non-empty launch tuple. No resolver or mapping recomputation — the
     // exact retained objects pass through (D-09).
-    if (publication.proposal.status.operationKind !== 'move-key-group') return false;
+    const intent = publication.intent;
+    if (publication.proposal.status.operationKind !== 'move-key-group' || intent.kind !== 'move-key-group') return false;
     const drag = publication.proposal.drag;
     if (!drag || drag.movedKeyId !== publication.movedKeyId) return false;
     const movedKeyIds = publication.movedKeyIds;
     if (
       !movedKeyIds
       || movedKeyIds.length !== drag.movedKeyIds.length
+      || movedKeyIds.length !== intent.movedKeyIds.length
       || movedKeyIds.some((keyId, index) => keyId !== drag.movedKeyIds[index])
+      || movedKeyIds.some((keyId, index) => keyId !== intent.movedKeyIds[index])
+      || intent.grabbedKeyId !== publication.movedKeyId
     ) return false;
     if (publication.expectedLaunch.operationId.length === 0 || publication.expectedLaunch.layerId.length === 0) return false;
     return input.executePhysicalEdit({
       proposal: publication.proposal,
       expectedLaunch: publication.expectedLaunch,
       operationKind: 'move-key-group',
+      intent,
       selectedKeyId: publication.proposal.selectedKeyId,
       selectedAppFrame: publication.proposal.selectedAppFrame,
     });
@@ -1061,15 +1102,16 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       keyId: record.keyId,
       appFrame: record.appFrame,
     }));
+    const intent = Object.freeze({
+      kind: 'force-spacing',
+      emptyFrames,
+      selectedKeyId,
+      scopeKeyIds,
+      linkedSourceSpacingScopes,
+    }) as Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'force-spacing' }>;
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities,
-      intent: {
-        kind: 'force-spacing',
-        emptyFrames,
-        selectedKeyId,
-        scopeKeyIds,
-        linkedSourceSpacingScopes,
-      },
+      intent,
       capacity,
       interpolationEnabled: interpolation.enabled,
       loopClips,
@@ -1103,6 +1145,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       proposal,
       expectedLaunch,
       operationKind: 'force-spacing',
+      intent,
       selectedKeyId: proposal.selectedKeyId,
       selectedAppFrame: proposal.selectedAppFrame,
     });

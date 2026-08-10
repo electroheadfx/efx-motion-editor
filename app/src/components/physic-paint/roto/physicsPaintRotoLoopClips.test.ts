@@ -123,6 +123,11 @@ const applyPayload = (loopClips?: unknown) => ({
   kind: 'replace-roto-physical-map' as const,
   operationId: 'op-1',
   operationKind: 'move-key' as const,
+  intent: {
+    kind: 'move-key' as const,
+    movedKeyId: 'A',
+    target: { kind: 'physical-cell' as const, appFrame: 0 },
+  },
   layerId: 'layer-1',
   startFrame: 0,
   launchOperationId: 'launch-1',

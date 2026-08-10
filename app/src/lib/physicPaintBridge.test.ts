@@ -630,6 +630,11 @@ describe('physicPaintBridge', () => {
       kind: 'replace-roto-physical-map',
       operationId: 'accept-incoming-break',
       operationKind: 'move-key',
+      intent: {
+        kind: 'move-key',
+        movedKeyId: 'key-10',
+        target: { kind: 'physical-cell', appFrame: 10 },
+      },
       layerId: layer.id,
       startFrame: 10,
       launchOperationId: launch.data.operationId,
@@ -655,6 +660,11 @@ describe('physicPaintBridge', () => {
       kind: 'replace-roto-physical-map',
       operationId: 'retain-omitted-incoming-break',
       operationKind: 'move-key',
+      intent: {
+        kind: 'move-key',
+        movedKeyId: 'key-10',
+        target: { kind: 'physical-cell', appFrame: 10 },
+      },
       layerId: layer.id,
       startFrame: 10,
       launchOperationId: launch.data.operationId,
@@ -673,6 +683,11 @@ describe('physicPaintBridge', () => {
       kind: 'replace-roto-physical-map',
       operationId: 'clear-explicit-incoming-break',
       operationKind: 'move-key',
+      intent: {
+        kind: 'move-key',
+        movedKeyId: 'key-10',
+        target: { kind: 'physical-cell', appFrame: 10 },
+      },
       layerId: layer.id,
       startFrame: 10,
       launchOperationId: launch.data.operationId,
@@ -723,6 +738,11 @@ describe('physicPaintBridge', () => {
     const basePayload = {
       kind: 'replace-roto-physical-map' as const,
       operationKind: 'move-key' as const,
+      intent: {
+        kind: 'move-key' as const,
+        movedKeyId: 'key-10',
+        target: { kind: 'physical-cell' as const, appFrame: 10 },
+      },
       layerId: layer.id,
       startFrame: 10,
       launchOperationId: launch.data.operationId,
@@ -772,6 +792,12 @@ describe('physicPaintBridge', () => {
       kind: 'replace-roto-physical-map',
       operationId: 'insert-empty-segment-valid',
       operationKind: 'insert-empty-segment',
+      intent: {
+        kind: 'insert-empty-segment',
+        destinationAppFrame: 5,
+        insertedKeyId: 'key-5',
+        blankPayload: inserted.payload,
+      },
       layerId: layer.id,
       startFrame: 5,
       launchOperationId: launch.data.operationId,
@@ -824,6 +850,12 @@ describe('physicPaintBridge', () => {
     const basePayload = {
       kind: 'replace-roto-physical-map' as const,
       operationKind: 'insert-empty-segment' as const,
+      intent: {
+        kind: 'insert-empty-segment' as const,
+        destinationAppFrame: 12,
+        insertedKeyId: 'key-12',
+        blankPayload: inserted.payload,
+      },
       layerId: layer.id,
       startFrame: 12,
       launchOperationId: launch.data.operationId,
@@ -901,6 +933,12 @@ describe('physicPaintBridge', () => {
         incomingInterpolationBreakKeyIds: ['key-10', 'key-600'],
         selectedKeyId: 'key-600',
         selectedAppFrame: 600,
+        intent: {
+          kind: 'insert-empty-segment',
+          destinationAppFrame: 600,
+          insertedKeyId: 'key-600',
+          blankPayload: makeEmptySegmentRecord('key-600', 600).payload,
+        },
         semanticDelta: {
           kind: 'insert-empty-segment',
           insertedKeyId: 'key-600',

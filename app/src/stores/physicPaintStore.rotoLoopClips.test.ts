@@ -472,10 +472,11 @@ async function launchBridge(): Promise<string> {
 }
 
 function bridgePayload(launchOperationId: string, overrides: Record<string, unknown> = {}) {
-  return {
+  const operationKind = overrides.operationKind ?? 'move-key';
+  const payload = {
     kind: 'replace-roto-physical-map' as const,
     operationId: `op-${crypto.randomUUID()}`,
-    operationKind: 'move-key' as const,
+    operationKind,
     layerId: BRIDGE_LAYER,
     startFrame: 0,
     launchOperationId,
@@ -490,6 +491,33 @@ function bridgePayload(launchOperationId: string, overrides: Record<string, unkn
     selectedKeyId: null,
     selectedAppFrame: null,
     ...overrides,
+  };
+  if (payload.operationKind === 'undo' || payload.operationKind === 'redo') return payload;
+  if ('intent' in overrides) return payload;
+  if (payload.operationKind === 'force-spacing') {
+    return {
+      ...payload,
+      intent: {
+        kind: 'force-spacing' as const,
+        emptyFrames: 1,
+        selectedKeyId: null,
+        scopeKeyIds: ['A', 'B', 'C', 'D', 'E'],
+        linkedSourceSpacingScopes: [{
+          sourceCycleId: getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C', 'D', 'E']),
+          sourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+          selectedSourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+        }],
+      },
+    };
+  }
+  const movedRecord = payload.records.find((entry) => entry.keyId === 'E');
+  return {
+    ...payload,
+    intent: {
+      kind: 'move-key' as const,
+      movedKeyId: 'E',
+      target: { kind: 'physical-cell' as const, appFrame: movedRecord?.appFrame ?? 4 },
+    },
   };
 }
 

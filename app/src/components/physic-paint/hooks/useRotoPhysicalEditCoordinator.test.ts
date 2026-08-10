@@ -68,26 +68,27 @@ function fixture() {
       mode: 'static',
     },
   ];
+  const intent = {
+    kind: 'force-spacing',
+    emptyFrames: 2,
+    selectedKeyId: null,
+    scopeKeyIds: ['A', 'B', 'C'],
+    linkedSourceSpacingScopes: [{
+      sourceCycleId: getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C']),
+      sourceKeyIds: ['A', 'B', 'C'],
+      selectedSourceKeyIds: ['A', 'B', 'C'],
+    }],
+  } as const;
   const resolution = resolvePhysicPaintRotoPhysicalEdit({
     identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
     records,
-    intent: {
-      kind: 'force-spacing',
-      emptyFrames: 2,
-      selectedKeyId: null,
-      scopeKeyIds: ['A', 'B', 'C'],
-      linkedSourceSpacingScopes: [{
-        sourceCycleId: getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C']),
-        sourceKeyIds: ['A', 'B', 'C'],
-        selectedSourceKeyIds: ['A', 'B', 'C'],
-      }],
-    },
+    intent,
     loopClips,
     capacity: 30,
     interpolationEnabled: false,
   });
   if (!resolution.ok) throw new Error(resolution.failure.text);
-  return { records, loopClips, proposal: resolution.proposal };
+  return { records, loopClips, intent, proposal: resolution.proposal };
 }
 
 function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: boolean } = {}) {
@@ -205,27 +206,29 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     proposal: initial.proposal,
     expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
     operationKind: 'force-spacing',
+    intent: initial.intent,
     selectedKeyId: null,
     selectedAppFrame: null,
   });
   const executeEmptySegment = () => {
     const destinationAppFrame = 14;
     const insertedKeyId = 'blank-14';
+    const intent = {
+      kind: 'insert-empty-segment',
+      destinationAppFrame,
+      insertedKeyId,
+      blankPayload: {
+        frameIndex: 0,
+        appFrame: destinationAppFrame,
+        dataUrl: 'data:image/png;base64,AAAA',
+        width: 2,
+        height: 2,
+      },
+    } as const;
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
-      intent: {
-        kind: 'insert-empty-segment',
-        destinationAppFrame,
-        insertedKeyId,
-        blankPayload: {
-          frameIndex: 0,
-          appFrame: destinationAppFrame,
-          dataUrl: 'data:image/png;base64,AAAA',
-          width: 2,
-          height: 2,
-        },
-      },
+      intent,
       loopClips,
       capacity: 30,
       interpolationEnabled: interpolation.enabled,
@@ -236,6 +239,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       proposal: resolution.proposal,
       expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
       operationKind: 'insert-empty-segment',
+      intent,
       selectedKeyId: insertedKeyId,
       selectedAppFrame: destinationAppFrame,
     });
@@ -397,6 +401,18 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     ]);
     expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
     expect(test.getPayload()?.records.map(({ keyId, appFrame }) => [keyId, appFrame])).toContainEqual(['blank-14', 14]);
+    expect(test.getPayload()?.intent).toEqual({
+      kind: 'insert-empty-segment',
+      destinationAppFrame: 14,
+      insertedKeyId: 'blank-14',
+      blankPayload: {
+        frameIndex: 0,
+        appFrame: 14,
+        dataUrl: 'data:image/png;base64,AAAA',
+        width: 2,
+        height: 2,
+      },
+    });
     expect(test.getPayload()?.incomingInterpolationBreakKeyIds).toEqual(['C', 'blank-14']);
     expect(test.getPayload()?.incomingInterpolationBreakKeyIds).not.toBe(
       test.getIncomingInterpolationBreakKeyIds(),
@@ -439,10 +455,34 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     mismatched.coordinator.cancelPhysicalEdit('disposal');
   });
 
+  it('rejects missing or mismatched ordinary intent before staging or transport', async () => {
+    const test = harness();
+    const baseInput = {
+      proposal: test.initial.proposal,
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      operationKind: 'force-spacing',
+      selectedKeyId: null,
+      selectedAppFrame: null,
+    } as const;
+
+    expect(await test.coordinator.executePhysicalEdit(baseInput as never)).toBe(false);
+    expect(await test.coordinator.executePhysicalEdit({
+      ...baseInput,
+      intent: { kind: 'delete-key', selectedKeyId: 'A' },
+    } as never)).toBe(false);
+    expect(test.sendPhysicalEditPayload).not.toHaveBeenCalled();
+    expect(test.replaceRecords).not.toHaveBeenCalled();
+    expect(test.getRecords()).toEqual(test.initial.records);
+    expect(test.getLoopClips()).toEqual(test.initial.loopClips);
+    expect(test.coordinator.acceptedOutput.value).toBeNull();
+    expect(test.coordinator.failureOutput.value).toBeNull();
+  });
+
   it('preserves Play Script accepted reconciliation through the shared funnel', async () => {
     const test = harness();
 
     expect(await test.executePlayScript()).toBe(true);
+    expect(test.getPayload()?.intent).toBeUndefined();
     expect(test.reconcileCurrentFrame).not.toHaveBeenCalled();
     expect(test.accept()).toBe('accepted');
     expect(test.reconcileCurrentFrame).toHaveBeenCalledTimes(1);
@@ -478,6 +518,18 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     });
     expect(test.getLoopClips().find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(10);
     expect(test.getPayload()?.loopClips?.find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(10);
+    expect(test.getPayload()?.intent).toBe(test.initial.intent);
+    expect(test.getPayload()?.intent).toEqual({
+      kind: 'force-spacing',
+      emptyFrames: 2,
+      selectedKeyId: null,
+      scopeKeyIds: ['A', 'B', 'C'],
+      linkedSourceSpacingScopes: [{
+        sourceCycleId: getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C']),
+        sourceKeyIds: ['A', 'B', 'C'],
+        selectedSourceKeyIds: ['A', 'B', 'C'],
+      }],
+    });
     expect(test.getPayload()?.incomingInterpolationBreakKeyIds).toEqual(['C']);
     expect(test.getPayload()?.incomingInterpolationBreakKeyIds).not.toBe(test.getIncomingInterpolationBreakKeyIds());
 

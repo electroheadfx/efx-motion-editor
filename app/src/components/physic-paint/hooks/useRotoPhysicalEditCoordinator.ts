@@ -51,6 +51,8 @@ import type {
   PhysicPaintRotoBackgroundMetadata,
   PhysicPaintRotoPhysicalEditApplyPayload,
   PhysicPaintRotoPhysicalEditApplyResult,
+  PhysicPaintRotoPhysicalEditIntent,
+  PhysicPaintRotoPhysicalEditOperationKind,
   PhysicPaintRotoPhysicalEditSemanticDelta,
 } from '../../../types/physicPaint';
 import type {
@@ -151,6 +153,51 @@ export type RotoPhysicalEditCoordinatorExecuteInput<EngineState = unknown> =
   | RotoInterpolationEnabledExecuteInput
   | RotoInterpolationModeExecuteInput
   | RotoPlayScriptExecuteInput;
+
+type PhysicalEditPayloadBase = Omit<
+  PhysicPaintRotoPhysicalEditApplyPayload,
+  'operationKind' | 'intent'
+>;
+
+/**
+ * Close the TypeScript discriminant at the transport boundary. Ordinary kinds
+ * are paired with their already runtime-validated exact intent; specialized
+ * kinds are emitted only when no ordinary intent is present.
+ */
+function createAuthorizedPhysicalEditPayload(
+  base: PhysicalEditPayloadBase,
+  operationKind: PhysicPaintRotoPhysicalEditOperationKind,
+  intent: PhysicPaintRotoPhysicalEditIntent | undefined,
+): PhysicPaintRotoPhysicalEditApplyPayload | null {
+  switch (operationKind) {
+    case 'insert-slot':
+      return intent?.kind === 'insert-slot' ? { ...base, operationKind, intent } : null;
+    case 'insert-empty-segment':
+      return intent?.kind === 'insert-empty-segment' ? { ...base, operationKind, intent } : null;
+    case 'delete-key':
+      return intent?.kind === 'delete-key' ? { ...base, operationKind, intent } : null;
+    case 'delete-key-group':
+      return intent?.kind === 'delete-key-group' ? { ...base, operationKind, intent } : null;
+    case 'move-key':
+      return intent?.kind === 'move-key' ? { ...base, operationKind, intent } : null;
+    case 'move-key-group':
+      return intent?.kind === 'move-key-group' ? { ...base, operationKind, intent } : null;
+    case 'force-spacing':
+      return intent?.kind === 'force-spacing' ? { ...base, operationKind, intent } : null;
+    case 'duplicate-key':
+      return intent?.kind === 'duplicate-key' ? { ...base, operationKind, intent } : null;
+    case 'paste-key':
+      return intent?.kind === 'paste-key' ? { ...base, operationKind, intent } : null;
+    case 'paste-key-group':
+      return intent?.kind === 'paste-key-group' ? { ...base, operationKind, intent } : null;
+    case 'play-script':
+    case 'set-interpolation-enabled':
+    case 'set-interpolation-mode':
+    case 'undo':
+    case 'redo':
+      return intent === undefined ? { ...base, operationKind } : null;
+  }
+}
 
 function semanticDeltaEquals(
   left: PhysicPaintRotoPhysicalEditSemanticDelta | null | undefined,
@@ -1150,11 +1197,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         }
 
         const operationId = `${revalidatedLaunch.operationId}:roto-physical-edit:${crypto.randomUUID()}`;
-        const payload: PhysicPaintRotoPhysicalEditApplyPayload = {
+        const payloadBase: PhysicalEditPayloadBase = {
           kind: 'replace-roto-physical-map',
           operationId,
-          operationKind: input.operationKind,
-          ...(intent ? { intent } : {}),
           layerId: revalidatedLaunch.layerId,
           startFrame: input.selectedAppFrame ?? before.currentAppFrame,
           launchOperationId: revalidatedLaunch.operationId,
@@ -1173,6 +1218,16 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           ...(playScriptInput ? { semanticDelta: playScriptInput.semanticDelta } : proposal?.semanticDelta ? { semanticDelta: proposal.semanticDelta } : {}),
           ...(historyProvenance ? { historyProvenance } : {}),
         };
+        const payload = createAuthorizedPhysicalEditPayload(
+          payloadBase,
+          input.operationKind,
+          intent,
+        );
+        if (!payload) {
+          portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+          clearPendingOnce();
+          return false;
+        }
         const pending = createPendingPhysicalEdit(
           payload,
           stagedRevision,
