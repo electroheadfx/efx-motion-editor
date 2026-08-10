@@ -120,6 +120,83 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, kind: 'insert-gap' })).toBe(false);
   });
 
+  it('strictly parses and canonically serializes every ordinary physical-edit intent', () => {
+    const payload = { frameIndex: 0, appFrame: 3, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 };
+    const intents = [
+      { kind: 'insert-empty-segment', destinationAppFrame: 3, insertedKeyId: 'blank-3', blankPayload: payload },
+      { kind: 'delete-key', selectedKeyId: 'key-A' },
+      { kind: 'delete-key-group', keyIds: ['key-A', 'key-C'] },
+      { kind: 'move-key', movedKeyId: 'key-A', target: { kind: 'physical-cell', appFrame: 4 } },
+      { kind: 'move-key-group', movedKeyIds: ['key-A', 'key-C'], grabbedKeyId: 'key-C', target: { kind: 'before-key', targetKeyId: 'key-D' } },
+      { kind: 'force-spacing', emptyFrames: 2, selectedKeyId: null, scopeKeyIds: null, linkedSourceSpacingScopes: null },
+      { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: 'key-A', scopeKeyIds: ['key-A', 'key-B'], linkedSourceSpacingScopes: [{ sourceCycleId: '5:key-A|5:key-B|5:key-C', sourceKeyIds: ['key-A', 'key-B', 'key-C'], selectedSourceKeyIds: ['key-A', 'key-B'] }] },
+      { kind: 'duplicate-key', sourceKeyId: 'key-A', newKeyId: 'key-copy' },
+      { kind: 'paste-key', destinationAppFrame: 3, destinationKeyId: 'key-A', newKeyId: null, clipboardPayload: payload },
+      { kind: 'paste-key', destinationAppFrame: 8, destinationKeyId: null, newKeyId: 'key-paste', clipboardPayload: payload },
+      { kind: 'paste-key-group', destinationAppFrame: 12, entries: [
+        { payload, sourceAppFrame: 3, sourceKeyId: 'key-A', newKeyId: 'paste-A' },
+        { payload: { ...payload, appFrame: 7 }, sourceAppFrame: 7, sourceKeyId: 'key-C', newKeyId: 'paste-C' },
+      ] },
+    ] as const;
+
+    for (const intent of intents) {
+      expect(isPhysicPaintRotoPhysicalEditIntent(intent), intent.kind).toBe(true);
+      const serialized = serializePhysicPaintRotoPhysicalEditIntent(intent);
+      const parsed: unknown = JSON.parse(serialized);
+      expect(isPhysicPaintRotoPhysicalEditIntent(parsed), serialized).toBe(true);
+      if (!isPhysicPaintRotoPhysicalEditIntent(parsed)) throw new Error('Canonical intent must parse');
+      expect(serializePhysicPaintRotoPhysicalEditIntent(parsed)).toBe(serialized);
+    }
+
+    expect(serializePhysicPaintRotoPhysicalEditIntent(intents[0])).toBe('{"kind":"insert-empty-segment","destinationAppFrame":3,"insertedKeyId":"blank-3","blankPayload":{"frameIndex":0,"appFrame":3,"dataUrl":"data:image/png;base64,AAAA","width":2,"height":2}}');
+    expect(serializePhysicPaintRotoPhysicalEditIntent(intents[4])).toBe('{"kind":"move-key-group","movedKeyIds":["key-A","key-C"],"grabbedKeyId":"key-C","target":{"kind":"before-key","targetKeyId":"key-D"}}');
+    expect(serializePhysicPaintRotoPhysicalEditIntent(intents[6])).toBe('{"kind":"force-spacing","emptyFrames":1,"selectedKeyId":"key-A","scopeKeyIds":["key-A","key-B"],"linkedSourceSpacingScopes":[{"sourceCycleId":"5:key-A|5:key-B|5:key-C","sourceKeyIds":["key-A","key-B","key-C"],"selectedSourceKeyIds":["key-A","key-B"]}]}');
+  });
+
+  it('rejects malformed, duplicate, reordered, and ambiguous ordinary intent authorization', () => {
+    const payload = { frameIndex: 0, appFrame: 3, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 };
+    const oversizedId = 'x'.repeat(257);
+    const malformed = [
+      { kind: 'delete-key', selectedKeyId: '', unknown: true },
+      { kind: 'delete-key-group', keyIds: [] },
+      { kind: 'delete-key-group', keyIds: ['A', 'A'] },
+      { kind: 'move-key', movedKeyId: 'A', target: { kind: 'physical-cell', appFrame: -1 } },
+      { kind: 'move-key', movedKeyId: 'A', target: { kind: 'before-key', targetKeyId: '', unknown: true } },
+      { kind: 'move-key-group', movedKeyIds: ['A', 'A'], grabbedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 3 } },
+      { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'C', target: { kind: 'physical-cell', appFrame: 3 } },
+      { kind: 'force-spacing', emptyFrames: -1, selectedKeyId: null },
+      { kind: 'force-spacing', emptyFrames: 1.5, selectedKeyId: null },
+      { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: 'A', scopeKeyIds: ['A', 'A'] },
+      { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: 'A', scopeKeyIds: ['A', 'B'], linkedSourceSpacingScopes: [] },
+      { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: 'A', scopeKeyIds: ['A', 'B'], linkedSourceSpacingScopes: [{ sourceCycleId: 'wrong', sourceKeyIds: ['A', 'B'], selectedSourceKeyIds: ['A', 'B'] }] },
+      { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: 'A', scopeKeyIds: ['B', 'A'], linkedSourceSpacingScopes: [{ sourceCycleId: '1:A|1:B|1:C', sourceKeyIds: ['A', 'B', 'C'], selectedSourceKeyIds: ['B', 'A'] }] },
+      { kind: 'duplicate-key', sourceKeyId: 'A', newKeyId: 'A' },
+      { kind: 'paste-key', destinationAppFrame: 3, destinationKeyId: null, newKeyId: null, clipboardPayload: payload },
+      { kind: 'paste-key', destinationAppFrame: 3, destinationKeyId: 'A', newKeyId: 'B', clipboardPayload: payload },
+      { kind: 'paste-key-group', destinationAppFrame: 12, entries: [{ payload, sourceAppFrame: 3, sourceKeyId: 'A', newKeyId: 'paste-A' }] },
+      { kind: 'paste-key-group', destinationAppFrame: 12, entries: [
+        { payload, sourceAppFrame: 7, sourceKeyId: 'C', newKeyId: 'paste-C' },
+        { payload, sourceAppFrame: 3, sourceKeyId: 'A', newKeyId: 'paste-A' },
+      ] },
+      { kind: 'paste-key-group', destinationAppFrame: 12, entries: [
+        { payload, sourceAppFrame: 3, sourceKeyId: 'A', newKeyId: 'paste-X' },
+        { payload, sourceAppFrame: 7, sourceKeyId: 'C', newKeyId: 'paste-X' },
+      ] },
+      { kind: 'paste-key-group', destinationAppFrame: 12, entries: [
+        { payload, sourceAppFrame: 3, sourceKeyId: 'A', newKeyId: 'paste-A' },
+        { payload, sourceAppFrame: 7, sourceKeyId: 'A', newKeyId: 'paste-C' },
+      ] },
+      { kind: 'insert-empty-segment', destinationAppFrame: -1, insertedKeyId: 'blank', blankPayload: payload },
+      { kind: 'insert-empty-segment', destinationAppFrame: 3, insertedKeyId: oversizedId, blankPayload: { ...payload, dataUrl: '' } },
+      { kind: 'play-script' },
+    ];
+
+    for (const intent of malformed) {
+      expect(isPhysicPaintRotoPhysicalEditIntent(intent), JSON.stringify(intent)).toBe(false);
+    }
+    expect(() => serializePhysicPaintRotoPhysicalEditIntent(malformed[0] as never)).toThrow('malformed intent');
+  });
+
   it('requires current background metadata only on Play Script physical transactions', () => {
     const records = [{
       keyId: 'key-1',

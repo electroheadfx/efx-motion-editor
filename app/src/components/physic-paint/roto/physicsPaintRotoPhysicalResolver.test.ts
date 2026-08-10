@@ -100,6 +100,14 @@ function resolveBaselineWithRecords(
   });
 }
 
+function parsePhysicalEditIntent(intent: PhysicPaintRotoPhysicalEditIntent): PhysicPaintRotoPhysicalEditIntent {
+  const parsed: unknown = JSON.parse(serializePhysicPaintRotoPhysicalEditIntent(intent));
+  if (!isPhysicPaintRotoPhysicalEditIntent(parsed)) {
+    throw new Error(`Canonical ${intent.kind} intent must parse`);
+  }
+  return parsed;
+}
+
 describe('transport-safe physical edit intent tracer', () => {
   it('reproduces the direct Insert Slot proposal after canonical serialization and strict parsing', () => {
     const directIntent = { kind: 'insert-slot', selectedKeyId: 'B' } as const;
@@ -116,6 +124,80 @@ describe('transport-safe physical edit intent tracer', () => {
     expect(reproduced.ok).toBe(true);
     if (!reproduced.ok) throw new Error('Parsed Insert Slot intent must resolve');
     expect(Object.fromEntries(reproduced.proposal.mapping)).toEqual({ A: 1, B: 4, C: 6, D: 11 });
+  });
+
+  it('reproduces every ordinary direct resolver proposal from one parsed canonical intent', () => {
+    const payloadAt = (appFrame: number): PhysicPaintRotoRealKeyPayload => ({
+      frameIndex: 0,
+      appFrame,
+      dataUrl: 'data:image/png;base64,AAAA',
+      width: 2,
+      height: 2,
+    });
+    const groupEntries = [
+      { payload: payloadAt(1), sourceAppFrame: 1, sourceKeyId: 'A', newKeyId: 'paste-A' },
+      { payload: payloadAt(5), sourceAppFrame: 5, sourceKeyId: 'C', newKeyId: 'paste-C' },
+    ] as const;
+    const cases: readonly {
+      readonly intent: PhysicPaintRotoPhysicalEditIntent;
+      readonly resolve: (intent: PhysicPaintRotoPhysicalEditIntent) => PhysicPaintRotoPhysicalEditResolution;
+      readonly expectedMapping: Readonly<Record<string, number>>;
+    }[] = [
+      { intent: { kind: 'insert-empty-segment', destinationAppFrame: 0, insertedKeyId: 'blank-0', blankPayload: payloadAt(0) }, resolve: resolveBaselineWithRecords, expectedMapping: { 'blank-0': 0, A: 1, B: 3, C: 5, D: 10 } },
+      { intent: { kind: 'delete-key', selectedKeyId: 'B' }, resolve: resolveBaseline, expectedMapping: { A: 1, C: 4, D: 9 } },
+      { intent: { kind: 'delete-key-group', keyIds: ['B', 'C'] }, resolve: resolveBaseline, expectedMapping: { A: 1, D: 8 } },
+      { intent: { kind: 'move-key', movedKeyId: 'B', target: { kind: 'after-key', targetKeyId: 'C' } }, resolve: resolveBaseline, expectedMapping: { A: 1, C: 5, B: 6, D: 11 } },
+      { intent: { kind: 'move-key-group', movedKeyIds: ['B', 'C'], grabbedKeyId: 'B', target: { kind: 'physical-cell', appFrame: 7 } }, resolve: resolveBaseline, expectedMapping: { A: 1, B: 7, C: 9, D: 10 } },
+      { intent: { kind: 'force-spacing', emptyFrames: 2, selectedKeyId: null }, resolve: resolveBaseline, expectedMapping: { A: 1, B: 4, C: 7, D: 10 } },
+      { intent: { kind: 'duplicate-key', sourceKeyId: 'A', newKeyId: 'duplicate-A' }, resolve: resolveBaselineWithRecords, expectedMapping: { A: 1, 'duplicate-A': 2, B: 4, C: 6, D: 11 } },
+      { intent: { kind: 'paste-key', destinationAppFrame: 3, destinationKeyId: 'B', newKeyId: null, clipboardPayload: payloadAt(1) }, resolve: resolveBaselineWithRecords, expectedMapping: { A: 1, B: 3, C: 5, D: 10 } },
+      { intent: { kind: 'paste-key-group', destinationAppFrame: 12, entries: groupEntries }, resolve: resolveBaselineWithRecords, expectedMapping: { A: 1, B: 3, C: 5, D: 10, 'paste-A': 12, 'paste-C': 16 } },
+    ];
+
+    for (const { intent, resolve, expectedMapping } of cases) {
+      const parsed = parsePhysicalEditIntent(intent);
+      const direct = resolve(intent);
+      const reproduced = resolve(parsed);
+
+      expect(reproduced, intent.kind).toEqual(direct);
+      expect(reproduced.ok, intent.kind).toBe(true);
+      if (!reproduced.ok) throw new Error(`Parsed ${intent.kind} intent must resolve`);
+      expect(Object.fromEntries(reproduced.proposal.mapping), intent.kind).toEqual(expectedMapping);
+    }
+  });
+
+  it('keeps ordered authorization immutable and repeated parse-resolve cycles stable', () => {
+    const intent = {
+      kind: 'move-key-group',
+      movedKeyIds: Object.freeze(['B', 'C']),
+      grabbedKeyId: 'B',
+      target: Object.freeze({ kind: 'physical-cell', appFrame: 7 }),
+    } as const;
+    const originalMembers = [...intent.movedKeyIds];
+    const firstParsed = parsePhysicalEditIntent(intent);
+    const first = resolveBaseline(firstParsed);
+    const secondParsed = parsePhysicalEditIntent(firstParsed);
+    const second = resolveBaseline(secondParsed);
+
+    expect(first).toEqual(second);
+    expect(serializePhysicPaintRotoPhysicalEditIntent(firstParsed)).toBe(serializePhysicPaintRotoPhysicalEditIntent(secondParsed));
+    expect(intent.movedKeyIds).toEqual(originalMembers);
+    expect(firstParsed.kind === 'move-key-group' && firstParsed.movedKeyIds).toEqual(originalMembers);
+  });
+
+  it('preserves deterministic empty and single-key resolver behavior after parsing', () => {
+    const singleDelete = parsePhysicalEditIntent({ kind: 'delete-key', selectedKeyId: 'only' });
+    const deleted = resolveIdentities([{ keyId: 'only', appFrame: 0 }], singleDelete, 4);
+    const emptySpacing = parsePhysicalEditIntent({ kind: 'force-spacing', emptyFrames: 0, selectedKeyId: null });
+    const rejected = resolveIdentities([], emptySpacing, 4);
+
+    expect(deleted.ok).toBe(true);
+    if (!deleted.ok) throw new Error('Parsed single-key delete must resolve');
+    expect(Object.fromEntries(deleted.proposal.mapping)).toEqual({});
+    expect(deleted.proposal.selectedKeyId).toBeNull();
+    expect(rejected.ok).toBe(false);
+    if (rejected.ok) throw new Error('Parsed empty Force Spacing must reject');
+    expect(rejected.failure.code).toBe('empty-key-set');
   });
 });
 
