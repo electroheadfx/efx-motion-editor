@@ -70,6 +70,15 @@ const makePhysicalRecord = (keyId: string, appFrame: number) => ({
   },
 });
 
+const movePhysicalRecord = (
+  record: ReturnType<typeof makePhysicalRecord>,
+  appFrame: number,
+) => ({
+  ...record,
+  appFrame,
+  payload: { ...record.payload, appFrame },
+});
+
 const TRANSPARENT_ONE_PIXEL_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XfM0WQAAAABJRU5ErkJggg==';
 const OPAQUE_ONE_PIXEL_PNG =
@@ -632,10 +641,10 @@ describe('physicPaintBridge', () => {
     const beforeRevisionSignal = rotoPhysicalRevision.peek();
     const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
     const canonicalRecords = [
-      makePhysicalRecord('A', 1),
-      makePhysicalRecord('B', 4),
-      makePhysicalRecord('C', 6),
-      makePhysicalRecord('D', 11),
+      movePhysicalRecord(currentRecords[0], 1),
+      movePhysicalRecord(currentRecords[1], 4),
+      movePhysicalRecord(currentRecords[2], 6),
+      movePhysicalRecord(currentRecords[3], 11),
     ].map(({ kind: _kind, ...record }) => record);
 
     const result = applyPhysicPaintPayload({
@@ -665,22 +674,23 @@ describe('physicPaintBridge', () => {
   it('rejects changed ordinary intent before cached success lookup', async () => {
     const layer = physicLayer();
     mockLayers([layer]);
-    seedPhysicalDocument(layer.id, [
+    const currentRecords = [
       makePhysicalRecord('A', 1),
       makePhysicalRecord('B', 3),
       makePhysicalRecord('C', 5),
       makePhysicalRecord('D', 10),
-    ]);
+    ];
+    seedPhysicalDocument(layer.id, currentRecords);
     vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
     const launch = await openPhysicPaintCanvas({ layer, frame: 3 });
 
     expect(launch.ok).toBe(true);
     if (!launch.ok || !launch.data.rotoPhysical) return;
     const records = [
-      makePhysicalRecord('A', 1),
-      makePhysicalRecord('B', 4),
-      makePhysicalRecord('C', 6),
-      makePhysicalRecord('D', 11),
+      movePhysicalRecord(currentRecords[0], 1),
+      movePhysicalRecord(currentRecords[1], 4),
+      movePhysicalRecord(currentRecords[2], 6),
+      movePhysicalRecord(currentRecords[3], 11),
     ].map(({ kind: _kind, ...record }) => record);
     const payload = {
       kind: 'replace-roto-physical-map' as const,
