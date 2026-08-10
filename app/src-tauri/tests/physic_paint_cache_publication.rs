@@ -1,4 +1,7 @@
 use efx_motion_editor_lib::physic_paint_cache::publish_cache_generation;
+use efx_motion_editor_lib::physic_paint_cache_command::{
+    publish_physic_paint_cache_generation, PhysicPaintCacheCleanupStatus,
+};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -156,6 +159,43 @@ fn repeated_exchanges_never_make_canonical_absent_or_mix_directory_entries() {
     running.store(false, Ordering::Release);
     reader.join().expect("reader invariant");
     assert_generation(&canonical_dir(&project), "g24");
+    fs::remove_dir_all(project).expect("fixture cleanup");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn command_accepts_publication_when_old_generation_cleanup_is_deferred() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let project = fixture_dir("cleanup-deferred");
+    write_generation(&canonical_dir(&project), "old");
+    write_generation(&staging_dir(&project), "new");
+    let original_mode = fs::metadata(canonical_dir(&project))
+        .expect("canonical metadata")
+        .permissions()
+        .mode();
+    fs::set_permissions(
+        canonical_dir(&project),
+        fs::Permissions::from_mode(0o555),
+    )
+    .expect("deny old-generation cleanup");
+
+    let result = publish_physic_paint_cache_generation(
+        project.to_string_lossy().into_owned(),
+        STAGING_BASENAME.to_string(),
+    )
+    .expect("publication remains accepted");
+
+    assert!(result.accepted);
+    assert_eq!(result.cleanup_status, PhysicPaintCacheCleanupStatus::Deferred);
+    assert!(result.cleanup_diagnostic.is_some());
+    assert_generation(&canonical_dir(&project), "new");
+    assert_generation(&staging_dir(&project), "old");
+    fs::set_permissions(
+        staging_dir(&project),
+        fs::Permissions::from_mode(original_mode),
+    )
+    .expect("restore fixture permissions");
     fs::remove_dir_all(project).expect("fixture cleanup");
 }
 
