@@ -44,3 +44,7 @@ tmp/pdfs/
 # MemPalace per-project files (issue #185)
 mempalace.yaml
 entities.json
+
+# GSD
+.gsd/dispatch-isolation-sentinel.json
+.gsd/dispatch-isolation-sentinel.json.tmp-*
