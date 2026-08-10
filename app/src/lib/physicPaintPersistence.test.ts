@@ -2,8 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RuntimePhysicPaintOutput } from '../types/project';
 import { loadPhysicPaintData, savePhysicPaintData } from './physicPaintPersistence';
 
+const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
+
+vi.mock('./ipc', () => ({
+  publishPhysicPaintCacheGeneration,
+}));
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
   exists: vi.fn(async (path: string) => dirs.has(path) || files.has(path)),
@@ -43,6 +48,26 @@ describe('physicPaintPersistence', () => {
   beforeEach(() => {
     files.clear();
     dirs.clear();
+    vi.clearAllMocks();
+    publishPhysicPaintCacheGeneration.mockResolvedValue({
+      ok: true,
+      data: { accepted: true, cleanupStatus: 'complete' },
+    });
+  });
+
+  it('keeps the previous canonical cache when a staged sidecar write fails', async () => {
+    const oldPath = '/project/cache/physic-paint/existing/frame.png';
+    const oldBytes = new Uint8Array([9, 8, 7]);
+    dirs.add('/project/cache/physic-paint');
+    dirs.add('/project/cache/physic-paint/existing');
+    files.set(oldPath, oldBytes);
+    const { writeFile } = await import('@tauri-apps/plugin-fs');
+    vi.mocked(writeFile).mockRejectedValueOnce(new Error('forced staged write failure'));
+
+    await expect(savePhysicPaintData('/project', makeOutput(91))).rejects.toThrow('forced staged write failure');
+
+    expect(publishPhysicPaintCacheGeneration).not.toHaveBeenCalled();
+    expect(files.get(oldPath)).toEqual(oldBytes);
   });
 
   it('stores rendered frames in the project cache and serializes only cache paths', async () => {
