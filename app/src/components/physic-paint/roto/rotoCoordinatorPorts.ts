@@ -370,12 +370,27 @@ export interface RotoPhysicalEditCoordinatorPorts<EngineState = SerializedProjec
  * the replay against the original accepted command recorded in the
  * parent-side accepted-operation ledger.
  */
-export interface RotoPhysicalEditExecuteInput<Proposal, EngineState = unknown> {
+interface RotoPhysicalEditExecuteInputBase<Proposal, EngineState> {
   readonly proposal: Proposal;
   readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
-  readonly operationKind: PhysicPaintRotoPhysicalEditApplyPayload['operationKind'];
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
   readonly replayTargetSnapshot?: RotoPhysicalEditSnapshot<EngineState>;
   readonly historyProvenance?: import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditReplayProvenance;
 }
+
+type RotoOrdinaryPhysicalEditExecuteInput<Proposal, EngineState> = {
+  [Kind in import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditIntent['kind']]: RotoPhysicalEditExecuteInputBase<Proposal, EngineState> & {
+    readonly operationKind: Kind;
+    readonly intent: Extract<import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditIntent, { readonly kind: Kind }>;
+  };
+}[import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditIntent['kind']];
+
+type RotoReplayPhysicalEditExecuteInput<Proposal, EngineState> = RotoPhysicalEditExecuteInputBase<Proposal, EngineState> & {
+  readonly operationKind: 'undo' | 'redo';
+  readonly intent?: never;
+};
+
+export type RotoPhysicalEditExecuteInput<Proposal, EngineState = unknown> =
+  | RotoOrdinaryPhysicalEditExecuteInput<Proposal, EngineState>
+  | RotoReplayPhysicalEditExecuteInput<Proposal, EngineState>;

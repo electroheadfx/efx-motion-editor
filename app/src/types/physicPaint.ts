@@ -422,10 +422,9 @@ export interface PhysicPaintRotoPhysicalEditReplayProvenance {
  * This interface is the exact physical branch carried by
  * `PhysicPaintApplyPayload`; unrelated apply kinds retain their generic shape.
  */
-export interface PhysicPaintRotoPhysicalEditApplyPayload {
+interface PhysicPaintRotoPhysicalEditApplyPayloadBase {
   readonly kind: 'replace-roto-physical-map';
   readonly operationId: string;
-  readonly operationKind: PhysicPaintRotoPhysicalEditOperationKind;
   readonly layerId: string;
   readonly startFrame: number;
   readonly launchOperationId: string;
@@ -448,6 +447,27 @@ export interface PhysicPaintRotoPhysicalEditApplyPayload {
   /** Complete stable-key-owned incoming interpolation break collection. */
   readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
+
+type PhysicPaintRotoOrdinaryPhysicalEditApplyPayload = {
+  [Kind in PhysicPaintRotoPhysicalEditIntent['kind']]: PhysicPaintRotoPhysicalEditApplyPayloadBase & {
+    readonly operationKind: Kind;
+    readonly intent: Extract<PhysicPaintRotoPhysicalEditIntent, { readonly kind: Kind }>;
+  };
+}[PhysicPaintRotoPhysicalEditIntent['kind']];
+
+type PhysicPaintRotoSpecializedPhysicalEditApplyPayload = PhysicPaintRotoPhysicalEditApplyPayloadBase & {
+  readonly operationKind: Exclude<PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintRotoPhysicalEditIntent['kind']>;
+  readonly intent?: never;
+};
+
+/**
+ * Active physical apply payload. Ordinary mapping operations require the exact
+ * typed resolver intent; specialized Play Script, interpolation, and replay
+ * operations remain separate discriminants and cannot carry ordinary intent.
+ */
+export type PhysicPaintRotoPhysicalEditApplyPayload =
+  | PhysicPaintRotoOrdinaryPhysicalEditApplyPayload
+  | PhysicPaintRotoSpecializedPhysicalEditApplyPayload;
 
 /**
  * Immutable real-key record carried by the generic apply payload. Composed
@@ -516,6 +536,21 @@ function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is Ph
     || value === 'set-interpolation-mode'
     || value === 'undo'
     || value === 'redo';
+}
+
+function isPhysicPaintRotoOrdinaryOperationKind(
+  value: PhysicPaintRotoPhysicalEditOperationKind,
+): value is PhysicPaintRotoPhysicalEditIntent['kind'] {
+  return value === 'insert-slot'
+    || value === 'insert-empty-segment'
+    || value === 'delete-key'
+    || value === 'delete-key-group'
+    || value === 'move-key'
+    || value === 'move-key-group'
+    || value === 'force-spacing'
+    || value === 'duplicate-key'
+    || value === 'paste-key'
+    || value === 'paste-key-group';
 }
 
 function isPhysicPaintRotoPhysicalEditPayload(value: unknown): value is PhysicPaintRotoPhysicalEditRecord['payload'] {
@@ -634,10 +669,14 @@ export function isPhysicPaintRotoPhysicalEditReplayProvenance(value: unknown): v
  */
 export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value is PhysicPaintRotoPhysicalEditApplyPayload {
   if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
+  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
   if (!isPhysicPaintRotoPhysicalEditOperationKind(value.operationKind)) return false;
+  const isOrdinary = isPhysicPaintRotoPhysicalEditIntent(value.intent);
+  if (isOrdinary) {
+    if (value.intent.kind !== value.operationKind) return false;
+  } else if (value.intent !== undefined || isPhysicPaintRotoOrdinaryOperationKind(value.operationKind)) return false;
   if (!isNonEmptyString(value.layerId)) return false;
   if (!isNonNegativeInteger(value.startFrame)) return false;
   if (!isNonEmptyString(value.launchOperationId)) return false;
@@ -969,42 +1008,7 @@ export interface PhysicPaintUpdateRotoPlaybackSettingsPayload {
  * ownership, capacity, interpolation, and selected identity before one
  * store replacement.
  */
-export interface PhysicPaintReplaceRotoPhysicalMapPayload {
-  kind: 'replace-roto-physical-map';
-  operationId: string;
-  operationKind: PhysicPaintRotoPhysicalEditOperationKind;
-  layerId: string;
-  startFrame: number;
-  launchOperationId: string;
-  projectContextId?: string;
-  expectedRevision: string;
-  records: readonly PhysicPaintRotoPhysicalEditRecord[];
-  interpolationEnabled: boolean;
-  interpolationMode: PhysicPaintRotoInterpolationMode;
-  rotoBackground?: PhysicPaintRotoBackgroundMetadata;
-  selectedKeyId: string | null;
-  selectedAppFrame: number | null;
-  semanticDelta?: PhysicPaintRotoPhysicalEditSemanticDelta;
-  /**
-   * Replay provenance (Plan 36.14-05 Task 2). Required when `operationKind`
-   * is `'undo'` or `'redo'`; forbidden for ordinary kinds. Carries the
-   * original accepted operation ID, the replay direction, the source
-   * revision (the original command's accepted `after` for undo, its
-   * `before` for redo), and the target revision (the original command's
-   * `before` for undo, its `after` for redo). The parent authority looks
-   * up `historyCommandId` in its accepted-operation ledger and validates
-   * both revisions against the stored canonical states before mutation.
-   */
-  historyProvenance?: PhysicPaintRotoPhysicalEditReplayProvenance;
-  /**
-   * Complete staged Loop Clip collection (Phase 43, D-29). When present, the
-   * parent validates it fail-closed and delivers it to the store apply path
-   * unchanged; when absent, the layer's current loopClips are preserved.
-   */
-  loopClips?: readonly PhysicPaintRotoLoopClip[];
-  /** Complete stable-key-owned incoming interpolation break collection. */
-  incomingInterpolationBreakKeyIds?: readonly string[];
-}
+export type PhysicPaintReplaceRotoPhysicalMapPayload = PhysicPaintRotoPhysicalEditApplyPayload;
 
 export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintDeleteRotoFramePayload | PhysicPaintReplaceRotoKeyFramesPayload | PhysicPaintReplaceRotoPhysicalMapPayload | PhysicPaintUpdateRotoInterpolationSettingsPayload | PhysicPaintUpdateRotoPlaybackSettingsPayload;
 

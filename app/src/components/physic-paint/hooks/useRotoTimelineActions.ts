@@ -622,6 +622,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       proposal,
       expectedLaunch: { operationId: launch.operationId, layerId: launch.layerId },
       operationKind: runnerInput.operationKind,
+      intent: runnerInput.intent,
       selectedKeyId: proposal.selectedKeyId,
       selectedAppFrame: proposal.selectedAppFrame,
     });

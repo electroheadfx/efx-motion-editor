@@ -44,6 +44,7 @@ import type { SerializedProject } from '@efxlab/efx-physic-paint';
 import {
   isPhysicPaintRotoBackgroundMetadata,
   isPhysicPaintRotoPhysicalEditApplyResult,
+  isPhysicPaintRotoPhysicalEditIntent,
 } from '../../../types/physicPaint';
 import type {
   PhysicPaintApplyResult,
@@ -892,6 +893,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         : null;
       const playScriptInput = isPlayScript && 'semanticDelta' in input ? input as RotoPlayScriptExecuteInput : null;
       const proposal = 'proposal' in input ? input.proposal : null;
+      const intent = 'intent' in input ? input.intent : undefined;
       const historyProvenance = 'historyProvenance' in input ? input.historyProvenance : undefined;
       const replayTarget = 'replayTargetSnapshot' in input ? input.replayTargetSnapshot : undefined;
       const isReplay = input.operationKind === 'undo' || input.operationKind === 'redo';
@@ -899,7 +901,18 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         || input.operationKind === 'paste-key'
         || input.operationKind === 'paste-key-group'
         || input.operationKind === 'insert-empty-segment';
+      const isOrdinary = !isReplay && !isInterpolationChange && !isPlayScript;
+      if (isOrdinary) {
+        if (!isPhysicPaintRotoPhysicalEditIntent(intent) || intent.kind !== input.operationKind) {
+          portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+          return false;
+        }
+      } else if (intent !== undefined) {
+        portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+        return false;
+      }
       if (isInterpolationChange) {
+
         if (!interpolationInput
           || 'proposal' in input
           || 'historyProvenance' in input
@@ -1141,6 +1154,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           kind: 'replace-roto-physical-map',
           operationId,
           operationKind: input.operationKind,
+          ...(intent ? { intent } : {}),
           layerId: revalidatedLaunch.layerId,
           startFrame: input.selectedAppFrame ?? before.currentAppFrame,
           launchOperationId: revalidatedLaunch.operationId,
