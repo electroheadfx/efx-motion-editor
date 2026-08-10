@@ -613,6 +613,113 @@ describe('physicPaintBridge', () => {
     expect(window.open).not.toHaveBeenCalled();
   });
 
+  it('rejects an unrelated valid Insert Slot document before parent mutation', async () => {
+    const layer = physicLayer();
+    mockLayers([layer]);
+    const currentRecords = [
+      makePhysicalRecord('A', 1),
+      makePhysicalRecord('B', 3),
+      makePhysicalRecord('C', 5),
+      makePhysicalRecord('D', 10),
+    ];
+    seedPhysicalDocument(layer.id, currentRecords, { enabled: true, mode: 'duplicate' }, ['C']);
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 3 });
+
+    expect(launch.ok).toBe(true);
+    if (!launch.ok || !launch.data.rotoPhysical) return;
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    const beforeRevisionSignal = rotoPhysicalRevision.peek();
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+    const canonicalRecords = [
+      makePhysicalRecord('A', 1),
+      makePhysicalRecord('B', 4),
+      makePhysicalRecord('C', 6),
+      makePhysicalRecord('D', 11),
+    ].map(({ kind: _kind, ...record }) => record);
+
+    const result = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'reject-unrelated-insert-slot-document',
+      operationKind: 'insert-slot',
+      intent: { kind: 'insert-slot', selectedKeyId: 'B' },
+      layerId: layer.id,
+      startFrame: 3,
+      launchOperationId: launch.data.operationId,
+      expectedRevision: launch.data.rotoPhysical.revision,
+      records: canonicalRecords,
+      interpolationEnabled: true,
+      interpolationMode: 'duplicate',
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: ['C'],
+      selectedKeyId: 'A',
+      selectedAppFrame: 1,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(beforeDocument);
+    expect(rotoPhysicalRevision.peek()).toBe(beforeRevisionSignal);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('rejects changed ordinary intent before cached success lookup', async () => {
+    const layer = physicLayer();
+    mockLayers([layer]);
+    seedPhysicalDocument(layer.id, [
+      makePhysicalRecord('A', 1),
+      makePhysicalRecord('B', 3),
+      makePhysicalRecord('C', 5),
+      makePhysicalRecord('D', 10),
+    ]);
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 3 });
+
+    expect(launch.ok).toBe(true);
+    if (!launch.ok || !launch.data.rotoPhysical) return;
+    const records = [
+      makePhysicalRecord('A', 1),
+      makePhysicalRecord('B', 4),
+      makePhysicalRecord('C', 6),
+      makePhysicalRecord('D', 11),
+    ].map(({ kind: _kind, ...record }) => record);
+    const payload = {
+      kind: 'replace-roto-physical-map' as const,
+      operationId: 'intent-aware-insert-slot-dedupe',
+      operationKind: 'insert-slot' as const,
+      intent: { kind: 'insert-slot' as const, selectedKeyId: 'B' },
+      layerId: layer.id,
+      startFrame: 3,
+      launchOperationId: launch.data.operationId,
+      expectedRevision: launch.data.rotoPhysical.revision,
+      records,
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate' as const,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      selectedKeyId: 'B',
+      selectedAppFrame: 4,
+    };
+    const first = applyPhysicPaintPayload(payload);
+    expect(first.ok).toBe(true);
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    const acceptedRevisionSignal = rotoPhysicalRevision.peek();
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+
+    const changedIntent = applyPhysicPaintPayload({
+      ...payload,
+      intent: { kind: 'insert-slot', selectedKeyId: 'A' },
+    });
+
+    expect(changedIntent).toMatchObject({
+      ok: false,
+      operationId: payload.operationId,
+      error: 'Operation ID was already used for a different payload.',
+    });
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(acceptedDocument);
+    expect(rotoPhysicalRevision.peek()).toBe(acceptedRevisionSignal);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
   it('accepts one stable-key-owned incoming interpolation break atomically', async () => {
     const layer = physicLayer();
     mockLayers([layer]);
