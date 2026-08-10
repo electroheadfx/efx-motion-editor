@@ -33,31 +33,22 @@ fn staging_dir(project_dir: &Path) -> PathBuf {
 fn write_generation(path: &Path, generation: &str) {
     fs::create_dir_all(path.join("nested")).expect("generation directory");
     fs::write(path.join(format!("{generation}-manifest")), generation).expect("manifest write");
-    fs::write(path.join("nested").join(format!("{generation}-frame-a.png")), generation)
-        .expect("frame a write");
-    fs::write(path.join("nested").join(format!("{generation}-frame-b.png")), generation)
-        .expect("frame b write");
+    fs::write(path.join(format!("{generation}-frame-a.png")), generation).expect("frame a write");
+    fs::write(path.join(format!("{generation}-frame-b.png")), generation).expect("frame b write");
+    fs::write(path.join("nested/frame.png"), generation).expect("nested frame write");
 }
 
 fn generation_file_names(path: &Path) -> BTreeSet<String> {
-    let mut names = BTreeSet::new();
-    for entry in fs::read_dir(path).expect("generation must remain reachable") {
-        let entry = entry.expect("valid generation entry");
-        if entry.file_type().expect("entry type").is_dir() {
-            for nested in fs::read_dir(entry.path()).expect("nested generation directory") {
-                names.insert(
-                    nested
-                        .expect("valid nested entry")
-                        .file_name()
-                        .to_string_lossy()
-                        .into_owned(),
-                );
-            }
-        } else {
-            names.insert(entry.file_name().to_string_lossy().into_owned());
-        }
-    }
-    names
+    fs::read_dir(path)
+        .expect("generation must remain reachable")
+        .map(|entry| {
+            entry
+                .expect("valid generation entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect()
 }
 
 fn assert_generation(path: &Path, generation: &str) {
@@ -67,7 +58,12 @@ fn assert_generation(path: &Path, generation: &str) {
             format!("{generation}-frame-a.png"),
             format!("{generation}-frame-b.png"),
             format!("{generation}-manifest"),
+            "nested".to_string(),
         ])
+    );
+    assert_eq!(
+        fs::read_to_string(path.join("nested/frame.png")).expect("nested frame remains readable"),
+        generation
     );
 }
 
@@ -91,7 +87,8 @@ fn replacement_atomically_exchanges_complete_generations() {
     write_generation(&canonical_dir(&project), "old");
     write_generation(&staging_dir(&project), "new");
 
-    let result = publish_cache_generation(&project, STAGING_BASENAME).expect("replacement publication");
+    let result =
+        publish_cache_generation(&project, STAGING_BASENAME).expect("replacement publication");
 
     assert!(result.replaced_existing);
     assert_generation(&canonical_dir(&project), "new");
@@ -138,9 +135,14 @@ fn repeated_exchanges_never_make_canonical_absent_or_mix_directory_entries() {
             let names = generation_file_names(&canonical_dir(&reader_project));
             let generations = names
                 .iter()
+                .filter(|name| name.starts_with('g'))
                 .filter_map(|name| name.split('-').next())
                 .collect::<BTreeSet<_>>();
-            assert_eq!(generations.len(), 1, "reader observed mixed generation entries: {names:?}");
+            assert_eq!(
+                generations.len(),
+                1,
+                "reader observed mixed generation entries: {names:?}"
+            );
         }
     });
 
@@ -174,7 +176,10 @@ fn invalid_staging_authority_rejects_before_any_mutation() {
 
         let result = publish_cache_generation(&project, invalid);
 
-        assert!(result.is_err(), "invalid staging basename must reject: {invalid}");
+        assert!(
+            result.is_err(),
+            "invalid staging basename must reject: {invalid}"
+        );
         assert_generation(&canonical_dir(&project), "old");
         fs::remove_dir_all(project).expect("fixture cleanup");
     }

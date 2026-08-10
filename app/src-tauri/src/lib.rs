@@ -2,6 +2,8 @@ mod commands;
 mod models;
 mod services;
 
+pub use services::physic_paint_cache;
+
 #[cfg(feature = "script-library-test-support")]
 pub mod script_library_test_support;
 
