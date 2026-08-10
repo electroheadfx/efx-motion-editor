@@ -1,7 +1,7 @@
 import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
-import type { EfxPaintAudioPreviewContext, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import { resolvePhysicPaintRotoPhysicalEdit, validatePhysicPaintRotoPhysicalEditSemanticDelta } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
@@ -514,6 +514,63 @@ function buildCanonicalMappedRecords(
   return records;
 }
 
+function validateCanonicalOrdinaryPhysicalEdit(input: {
+  readonly intent: PhysicPaintRotoPhysicalEditIntent;
+  readonly currentRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly proposedRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly currentInterpolation: PhysicPaintRotoInterpolationState;
+  readonly proposedInterpolation: PhysicPaintRotoInterpolationState;
+  readonly currentLoopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly proposedLoopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly currentIncomingInterpolationBreakKeyIds: readonly string[];
+  readonly proposedIncomingInterpolationBreakKeyIds: readonly string[];
+  readonly selectedKeyId: string | null;
+  readonly selectedAppFrame: number | null;
+  readonly capacity: number;
+  readonly stagedRevision: string;
+}): string | null {
+  const canonicalResolution = resolvePhysicPaintRotoPhysicalEdit({
+    identities: input.currentRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+    records: input.currentRecords,
+    intent: input.intent,
+    capacity: input.capacity,
+    interpolationEnabled: input.currentInterpolation.enabled,
+    loopClips: input.currentLoopClips,
+    incomingInterpolationBreakKeyIds: input.currentIncomingInterpolationBreakKeyIds,
+  });
+  if (!canonicalResolution.ok) {
+    return `Canonical physical edit rejected the submitted intent: ${canonicalResolution.failure.text}`;
+  }
+
+  const proposal = canonicalResolution.proposal;
+  const canonicalRecords = proposal.nextRecords
+    ?? buildCanonicalMappedRecords(input.currentRecords, proposal.mapping, proposal.orderedKeyIds);
+  if (canonicalRecords === null) {
+    return 'Submitted physical document does not match the canonical parent-resolved edit.';
+  }
+  const canonicalLoopClips = proposal.nextLoopClips ?? input.currentLoopClips;
+  const canonicalIncomingInterpolationBreakKeyIds = proposal.nextIncomingInterpolationBreakKeyIds
+    ?? input.currentIncomingInterpolationBreakKeyIds;
+  const canonicalRevision = buildPhysicPaintRotoPhysicalRevision(
+    canonicalRecords,
+    input.currentInterpolation,
+    canonicalLoopClips,
+    canonicalIncomingInterpolationBreakKeyIds,
+  );
+  if (!sameCompletePhysicalRecords(canonicalRecords, input.proposedRecords)
+    || stableSerialize(canonicalLoopClips, new WeakSet<object>()) !== stableSerialize(input.proposedLoopClips, new WeakSet<object>())
+    || canonicalIncomingInterpolationBreakKeyIds.length !== input.proposedIncomingInterpolationBreakKeyIds.length
+    || canonicalIncomingInterpolationBreakKeyIds.some((keyId, index) => keyId !== input.proposedIncomingInterpolationBreakKeyIds[index])
+    || proposal.selectedKeyId !== input.selectedKeyId
+    || proposal.selectedAppFrame !== input.selectedAppFrame
+    || input.currentInterpolation.enabled !== input.proposedInterpolation.enabled
+    || input.currentInterpolation.mode !== input.proposedInterpolation.mode
+    || canonicalRevision !== input.stagedRevision) {
+    return 'Submitted physical document does not match the canonical parent-resolved edit.';
+  }
+  return null;
+}
+
 function isCanonicalBlankRotoPayload(
   payload: import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyPayload,
   destinationAppFrame: number,
@@ -879,45 +936,23 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     proposedLoopClips,
     proposedIncomingInterpolationBreakKeyIds,
   );
-  if (payload.operationKind === 'insert-slot') {
-    const canonicalResolution = resolvePhysicPaintRotoPhysicalEdit({
-      identities: currentRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
-      records: currentRecords,
+  if (payload.intent !== undefined) {
+    const canonicalValidationError = validateCanonicalOrdinaryPhysicalEdit({
       intent: payload.intent,
+      currentRecords,
+      proposedRecords,
+      currentInterpolation,
+      proposedInterpolation: stagedInterpolation,
+      currentLoopClips,
+      proposedLoopClips,
+      currentIncomingInterpolationBreakKeyIds,
+      proposedIncomingInterpolationBreakKeyIds,
+      selectedKeyId: payload.selectedKeyId,
+      selectedAppFrame: payload.selectedAppFrame,
       capacity,
-      interpolationEnabled: currentInterpolation.enabled,
-      loopClips: currentLoopClips,
-      incomingInterpolationBreakKeyIds: currentIncomingInterpolationBreakKeyIds,
+      stagedRevision,
     });
-    if (!canonicalResolution.ok) {
-      return reject(`Canonical physical edit rejected the submitted intent: ${canonicalResolution.failure.text}`, stagedRevision);
-    }
-    const proposal = canonicalResolution.proposal;
-    const canonicalRecords = proposal.nextRecords
-      ?? buildCanonicalMappedRecords(currentRecords, proposal.mapping, proposal.orderedKeyIds);
-    const canonicalLoopClips = proposal.nextLoopClips ?? currentLoopClips;
-    const canonicalIncomingInterpolationBreakKeyIds = proposal.nextIncomingInterpolationBreakKeyIds
-      ?? currentIncomingInterpolationBreakKeyIds;
-    const canonicalRevision = canonicalRecords === null
-      ? null
-      : buildPhysicPaintRotoPhysicalRevision(
-          canonicalRecords,
-          currentInterpolation,
-          canonicalLoopClips,
-          canonicalIncomingInterpolationBreakKeyIds,
-        );
-    if (canonicalRecords === null
-      || !sameCompletePhysicalRecords(canonicalRecords, proposedRecords)
-      || stableSerialize(canonicalLoopClips, new WeakSet<object>()) !== stableSerialize(proposedLoopClips, new WeakSet<object>())
-      || canonicalIncomingInterpolationBreakKeyIds.length !== proposedIncomingInterpolationBreakKeyIds.length
-      || canonicalIncomingInterpolationBreakKeyIds.some((keyId, index) => keyId !== proposedIncomingInterpolationBreakKeyIds[index])
-      || proposal.selectedKeyId !== payload.selectedKeyId
-      || proposal.selectedAppFrame !== payload.selectedAppFrame
-      || currentInterpolation.enabled !== payload.interpolationEnabled
-      || currentInterpolation.mode !== payload.interpolationMode
-      || canonicalRevision !== stagedRevision) {
-      return reject('Submitted physical document does not match the canonical parent-resolved edit.', stagedRevision);
-    }
+    if (canonicalValidationError) return reject(canonicalValidationError, stagedRevision);
   }
   if (payload.operationKind === 'insert-empty-segment') {
     const validationError = validateInsertEmptySegmentPhysicalDelta({

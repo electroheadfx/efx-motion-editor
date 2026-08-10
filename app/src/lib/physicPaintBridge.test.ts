@@ -876,13 +876,13 @@ describe('physicPaintBridge', () => {
     }
   });
 
-  it('accepts one stable-key-owned incoming interpolation break atomically', async () => {
+  it('preserves one stable-key-owned incoming interpolation break across canonical ordinary edits', async () => {
     const layer = physicLayer();
     mockLayers([layer]);
     seedPhysicalDocument(layer.id, [
       makePhysicalRecord('key-0', 0),
       makePhysicalRecord('key-10', 10),
-    ], { enabled: true, mode: 'duplicate' });
+    ], { enabled: true, mode: 'duplicate' }, ['key-10']);
     const open = vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
     const launch = await openPhysicPaintCanvas({ layer, frame: 10 });
 
@@ -962,15 +962,9 @@ describe('physicPaintBridge', () => {
       selectedKeyId: 'key-10',
       selectedAppFrame: 10,
     });
-    expect(cleared.ok).toBe(true);
-    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layer.id)).toEqual([]);
-    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)?.revision).toBe(
-      buildPhysicPaintRotoPhysicalRevision(
-        records.map((record) => ({ ...record, kind: 'real-key' as const })),
-        { enabled: true, mode: 'duplicate' },
-        [],
-      ),
-    );
+    expect(cleared.ok).toBe(false);
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layer.id)).toEqual(['key-10']);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)?.revision).toBe(retainedDocument.revision);
 
     expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds('missing-layer')).toBe(
       PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
