@@ -6,6 +6,29 @@ const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
 
+function moveGeneration(projectDir: string, stagingBasename: string): void {
+  const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
+  const canonicalRoot = `${projectDir}/cache/physic-paint`;
+  for (const key of Array.from(files.keys())) {
+    if (key === canonicalRoot || key.startsWith(`${canonicalRoot}/`)) files.delete(key);
+  }
+  for (const key of Array.from(dirs.keys())) {
+    if (key === canonicalRoot || key.startsWith(`${canonicalRoot}/`)) dirs.delete(key);
+  }
+  for (const [key, value] of Array.from(files.entries())) {
+    if (key.startsWith(`${stagingRoot}/`)) {
+      files.delete(key);
+      files.set(`${canonicalRoot}${key.slice(stagingRoot.length)}`, value);
+    }
+  }
+  for (const key of Array.from(dirs.keys())) {
+    if (key === stagingRoot || key.startsWith(`${stagingRoot}/`)) {
+      dirs.delete(key);
+      dirs.add(`${canonicalRoot}${key.slice(stagingRoot.length)}`);
+    }
+  }
+}
+
 vi.mock('./ipc', () => ({
   publishPhysicPaintCacheGeneration,
 }));
@@ -13,6 +36,11 @@ vi.mock('./ipc', () => ({
 vi.mock('@tauri-apps/plugin-fs', () => ({
   exists: vi.fn(async (path: string) => dirs.has(path) || files.has(path)),
   mkdir: vi.fn(async (path: string) => { dirs.add(path); }),
+  readDir: vi.fn(async (path: string) => Array.from(dirs)
+    .filter((candidate) => candidate.startsWith(`${path}/`))
+    .map((candidate) => candidate.slice(path.length + 1).split('/')[0])
+    .filter((name, index, names) => name.length > 0 && names.indexOf(name) === index)
+    .map((name) => ({ name, isDirectory: true, isFile: false, isSymlink: false }))),
   remove: vi.fn(async (path: string) => {
     for (const key of Array.from(files.keys())) {
       if (key === path || key.startsWith(`${path}/`)) files.delete(key);
@@ -49,9 +77,12 @@ describe('physicPaintPersistence', () => {
     files.clear();
     dirs.clear();
     vi.clearAllMocks();
-    publishPhysicPaintCacheGeneration.mockResolvedValue({
-      ok: true,
-      data: { accepted: true, cleanupStatus: 'complete' },
+    publishPhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, stagingBasename: string) => {
+      moveGeneration(projectDir, stagingBasename);
+      return {
+        ok: true,
+        data: { accepted: true, cleanupStatus: 'complete' },
+      };
     });
   });
 
@@ -71,6 +102,7 @@ describe('physicPaintPersistence', () => {
   });
 
   it('stores rendered frames in the project cache and serializes only cache paths', async () => {
+    const { writeFile } = await import('@tauri-apps/plugin-fs');
     const persisted = await savePhysicPaintData('/project', makeOutput());
 
     expect(persisted[0].frames).toEqual([{
@@ -81,7 +113,72 @@ describe('physicPaintPersistence', () => {
       height: 50,
     }]);
     expect(JSON.stringify(persisted)).not.toContain('data:image/png');
+    expect(JSON.stringify(persisted)).not.toContain('.physic-paint-staging-');
     expect(Array.from(files.keys()).some(path => /^\/project\/cache\/physic-paint\/physic_layer_1-[0-9a-f]{8}\/frame-000012-0000\.png$/.test(path))).toBe(true);
+    expect(publishPhysicPaintCacheGeneration).toHaveBeenCalledTimes(1);
+    const [projectDir, stagingBasename] = publishPhysicPaintCacheGeneration.mock.calls[0];
+    expect(projectDir).toBe('/project');
+    expect(stagingBasename).toMatch(/^\.physic-paint-staging-[a-zA-Z0-9_-]+$/);
+    expect(vi.mocked(writeFile).mock.calls.every(([path]) => String(path).startsWith(`/project/cache/${stagingBasename}/`))).toBe(true);
+    expect(Math.max(...vi.mocked(writeFile).mock.invocationCallOrder)).toBeLessThan(
+      publishPhysicPaintCacheGeneration.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('rejects a native publication error without replacing canonical authority or caching the failed output', async () => {
+    const oldPath = '/project/cache/physic-paint/existing/frame.png';
+    files.set(oldPath, new Uint8Array([4, 5, 6]));
+    dirs.add('/project/cache/physic-paint');
+    dirs.add('/project/cache/physic-paint/existing');
+    publishPhysicPaintCacheGeneration.mockResolvedValueOnce({
+      ok: false,
+      error: 'forced exchange failure',
+    });
+
+    await expect(savePhysicPaintData('/project', makeOutput(92))).rejects.toThrow('forced exchange failure');
+
+    expect(files.get(oldPath)).toEqual(new Uint8Array([4, 5, 6]));
+    expect(Array.from(files.keys()).some((path) => path.includes('.physic-paint-staging-'))).toBe(false);
+
+    await savePhysicPaintData('/project', makeOutput(92));
+    expect(publishPhysicPaintCacheGeneration).toHaveBeenCalledTimes(2);
+  });
+
+  it('accepts deferred cleanup after publication and retains canonical metadata', async () => {
+    publishPhysicPaintCacheGeneration.mockImplementationOnce(async (projectDir: string, stagingBasename: string) => {
+      moveGeneration(projectDir, stagingBasename);
+      return {
+        ok: true,
+        data: {
+          accepted: true,
+          cleanupStatus: 'deferred',
+          cleanupDiagnostic: 'forced cleanup deferral',
+        },
+      };
+    });
+
+    const persisted = await savePhysicPaintData('/project', makeOutput(93));
+
+    expect(persisted[0].frames[0].cache_path).toMatch(/^cache\/physic-paint\//);
+    expect(JSON.stringify(persisted)).not.toContain('.physic-paint-staging-');
+    expect(Array.from(files.keys()).some((path) => path.includes('/cache/physic-paint/'))).toBe(true);
+  });
+
+  it('best-effort removes only stale Physics Paint staging siblings before saving', async () => {
+    const stale = '/project/cache/.physic-paint-staging-stale';
+    const unrelated = '/project/cache/unrelated-directory';
+    dirs.add('/project/cache');
+    dirs.add(stale);
+    dirs.add(unrelated);
+    files.set(`${stale}/old.png`, new Uint8Array([1]));
+    files.set(`${unrelated}/keep.png`, new Uint8Array([2]));
+
+    await savePhysicPaintData('/project', makeOutput(94));
+
+    expect(dirs.has(stale)).toBe(false);
+    expect(files.has(`${stale}/old.png`)).toBe(false);
+    expect(dirs.has(unrelated)).toBe(true);
+    expect(files.has(`${unrelated}/keep.png`)).toBe(true);
   });
 
   it('removes the project Physics Paint cache when no outputs remain', async () => {

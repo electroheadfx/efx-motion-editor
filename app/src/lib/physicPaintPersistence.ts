@@ -1,4 +1,4 @@
-import { exists, mkdir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs';
+import { exists, mkdir, readDir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs';
 import {
   buildPhysicPaintRotoProjectEquality,
   isPhysicPaintRotoLoopClip,
@@ -12,8 +12,11 @@ import type {
   RuntimePhysicPaintOutput,
 } from '../types/project';
 import { isPhysicPaintRenderedFrame, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRenderedFrame } from '../types/physicPaint';
+import { publishPhysicPaintCacheGeneration } from './ipc';
 
 const PHYSIC_PAINT_CACHE_DIR = 'cache/physic-paint';
+const PHYSIC_PAINT_CACHE_PARENT_DIR = 'cache';
+const PHYSIC_PAINT_STAGING_PREFIX = '.physic-paint-staging-';
 const DATA_URL_PREFIX = 'data:image/png;base64,';
 const OUTPUT_KEYS = new Set(['layer_id', 'frames', 'roto_physical', 'roto_playback']);
 const PERSISTED_DOCUMENT_KEYS = new Set(['capacity', 'realKeyRecords', 'interpolation', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds']);
@@ -93,6 +96,33 @@ async function ensureDir(path: string): Promise<void> {
   if (!(await exists(path))) await mkdir(path, { recursive: true });
 }
 
+function createStagingBasename(): string {
+  return `${PHYSIC_PAINT_STAGING_PREFIX}${crypto.randomUUID()}`;
+}
+
+async function removeStagingGeneration(path: string): Promise<void> {
+  try {
+    if (await exists(path)) await remove(path, { recursive: true });
+  } catch {
+    // Staging cleanup is non-authoritative. Canonical publication state is
+    // determined only by the native publication result.
+  }
+}
+
+async function cleanupStaleStagingGenerations(projectDir: string): Promise<void> {
+  const cacheParent = `${projectDir}/${PHYSIC_PAINT_CACHE_PARENT_DIR}`;
+  try {
+    if (!(await exists(cacheParent))) return;
+    const entries = await readDir(cacheParent);
+    await Promise.all(entries
+      .filter((entry) => entry.isDirectory && entry.name.startsWith(PHYSIC_PAINT_STAGING_PREFIX))
+      .map((entry) => removeStagingGeneration(`${cacheParent}/${entry.name}`)));
+  } catch {
+    // A stale generation never owns canonical authority. Failure to inspect or
+    // remove one must not block assembling and publishing a fresh generation.
+  }
+}
+
 function buildSaveCacheKey(projectDir: string, outputs: readonly RuntimePhysicPaintOutput[]): string {
   const segments = outputs.map((output) => {
     const physical = output.roto_physical ? buildPhysicPaintRotoProjectEquality(output.roto_physical) : 'none';
@@ -134,9 +164,11 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
   const rootDir = `${projectDir}/${PHYSIC_PAINT_CACHE_DIR}`;
   if (!outputs || outputs.length === 0) {
     if (await exists(rootDir)) await remove(rootDir, { recursive: true });
+    savedOutputCache.clear();
     return [];
   }
 
+  await cleanupStaleStagingGenerations(projectDir);
   const validatedOutputs = validateRuntimeOutputs(outputs);
   const cacheKey = buildSaveCacheKey(projectDir, validatedOutputs);
   const cached = savedOutputCache.get(cacheKey);
@@ -211,16 +243,29 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
     });
   }
 
-  if (await exists(rootDir)) await remove(rootDir, { recursive: true });
-  await ensureDir(rootDir);
-  const ensuredDirectories = new Set<string>();
-  for (const write of pendingWrites) {
-    const directory = write.path.slice(0, write.path.lastIndexOf('/'));
-    if (!ensuredDirectories.has(directory)) {
-      await ensureDir(`${projectDir}/${directory}`);
-      ensuredDirectories.add(directory);
+  const stagingBasename = createStagingBasename();
+  const stagingRelativeRoot = `${PHYSIC_PAINT_CACHE_PARENT_DIR}/${stagingBasename}`;
+  const stagingRoot = `${projectDir}/${stagingRelativeRoot}`;
+  await ensureDir(`${projectDir}/${PHYSIC_PAINT_CACHE_PARENT_DIR}`);
+
+  try {
+    await ensureDir(stagingRoot);
+    const ensuredDirectories = new Set<string>();
+    for (const write of pendingWrites) {
+      const stagingRelativePath = `${stagingRelativeRoot}${write.path.slice(PHYSIC_PAINT_CACHE_DIR.length)}`;
+      const directory = stagingRelativePath.slice(0, stagingRelativePath.lastIndexOf('/'));
+      if (!ensuredDirectories.has(directory)) {
+        await ensureDir(`${projectDir}/${directory}`);
+        ensuredDirectories.add(directory);
+      }
+      await writeFile(`${projectDir}/${stagingRelativePath}`, write.bytes);
     }
-    await writeFile(`${projectDir}/${write.path}`, write.bytes);
+
+    const publication = await publishPhysicPaintCacheGeneration(projectDir, stagingBasename);
+    if (!publication.ok) throw new Error(publication.error);
+  } catch (error) {
+    await removeStagingGeneration(stagingRoot);
+    throw error;
   }
 
   savedOutputCache.clear();
