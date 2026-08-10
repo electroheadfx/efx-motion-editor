@@ -7,11 +7,12 @@ import { physicPaintStore, registerRotoAlphaCanvasFrame, rotoPhysicalRevision } 
 import { projectStore } from '../stores/projectStore';
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
-import type { PhysicPaintApplyPayload } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
   buildPhysicPaintRotoPhysicalRevision,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { resolvePhysicPaintRotoPhysicalEdit } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import { hydrateRotoPhysicalLaunchContext } from '../components/physic-paint/roto/rotoLaunchHydration';
 import {
   applyPhysicPaintPayload,
@@ -728,6 +729,151 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(acceptedDocument);
     expect(rotoPhysicalRevision.peek()).toBe(acceptedRevisionSignal);
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('parent-recomputes every ordinary physical mapping before publication', async () => {
+    installCanonicalBlankCanvas();
+    const layer = physicLayer();
+    mockLayers([layer]);
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    type PhysicalMapPayload = Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>;
+    const baseline = [
+      makePhysicalRecord('A', 1),
+      makePhysicalRecord('B', 3),
+      makePhysicalRecord('C', 5),
+      makePhysicalRecord('D', 10),
+    ];
+    const blank = makeEmptySegmentRecord('blank-7', 7).payload;
+    const pasteGroupEntries = [
+      { payload: baseline[0].payload, sourceAppFrame: 1, sourceKeyId: 'A', newKeyId: 'paste-A' },
+      { payload: baseline[2].payload, sourceAppFrame: 5, sourceKeyId: 'C', newKeyId: 'paste-C' },
+    ] as const;
+    const cases: readonly {
+      readonly intent: PhysicPaintRotoPhysicalEditIntent;
+      readonly diverge: (payload: PhysicalMapPayload) => PhysicalMapPayload;
+    }[] = [
+      {
+        intent: { kind: 'insert-empty-segment', destinationAppFrame: 7, insertedKeyId: 'blank-7', blankPayload: blank },
+        diverge: (payload) => ({ ...payload, selectedKeyId: 'A', selectedAppFrame: 1 }),
+      },
+      {
+        intent: { kind: 'delete-key', selectedKeyId: 'B' },
+        diverge: (payload) => ({
+          ...payload,
+          loopClips: [{ loopId: 'unrelated-delete-loop', placementStart: 20, sourceKeyIds: ['A', 'C'], repeat: 2, mode: 'static' }],
+        }),
+      },
+      {
+        intent: { kind: 'delete-key-group', keyIds: ['B', 'C'] },
+        diverge: (payload) => ({ ...payload, incomingInterpolationBreakKeyIds: [] }),
+      },
+      {
+        intent: { kind: 'move-key', movedKeyId: 'B', target: { kind: 'after-key', targetKeyId: 'C' } },
+        diverge: (payload) => ({ ...payload, selectedKeyId: 'A', selectedAppFrame: 1 }),
+      },
+      {
+        intent: { kind: 'move-key-group', movedKeyIds: ['B', 'C'], grabbedKeyId: 'B', target: { kind: 'physical-cell', appFrame: 7 } },
+        diverge: (payload) => ({
+          ...payload,
+          records: payload.records.map((record) => record.keyId === 'A'
+            ? { ...record, appFrame: 0, payload: { ...record.payload, appFrame: 0 } }
+            : record),
+        }),
+      },
+      {
+        intent: { kind: 'force-spacing', emptyFrames: 2, selectedKeyId: null },
+        diverge: (payload) => ({ ...payload, selectedKeyId: 'A', selectedAppFrame: 1 }),
+      },
+      {
+        intent: { kind: 'duplicate-key', sourceKeyId: 'A', newKeyId: 'duplicate-A' },
+        diverge: (payload) => ({
+          ...payload,
+          loopClips: [{ loopId: 'unrelated-duplicate-loop', placementStart: 20, sourceKeyIds: ['A', 'duplicate-A'], repeat: 2, mode: 'static' }],
+        }),
+      },
+      {
+        intent: { kind: 'paste-key', destinationAppFrame: 3, destinationKeyId: 'B', newKeyId: null, clipboardPayload: baseline[0].payload },
+        diverge: (payload) => ({ ...payload, incomingInterpolationBreakKeyIds: [] }),
+      },
+      {
+        intent: { kind: 'paste-key-group', destinationAppFrame: 12, entries: pasteGroupEntries },
+        diverge: (payload) => ({
+          ...payload,
+          loopClips: [{ loopId: 'unrelated-group-paste-loop', placementStart: 20, sourceKeyIds: ['paste-A', 'paste-C'], repeat: 2, mode: 'static' }],
+        }),
+      },
+    ];
+
+    for (const { intent, diverge } of cases) {
+      physicPaintStore.reset();
+      seedPhysicalDocument(layer.id, baseline, { enabled: false, mode: 'duplicate' }, ['D']);
+      const launch = await openPhysicPaintCanvas({ layer, frame: 3 });
+      expect(launch.ok, intent.kind).toBe(true);
+      if (!launch.ok || !launch.data.rotoPhysical) throw new Error(`${intent.kind} launch must resolve`);
+      const resolution = resolvePhysicPaintRotoPhysicalEdit({
+        identities: baseline.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        records: baseline,
+        intent,
+        capacity: launch.data.rotoPhysical.capacity,
+        interpolationEnabled: false,
+        loopClips: [],
+        incomingInterpolationBreakKeyIds: ['D'],
+      });
+      expect(resolution.ok, intent.kind).toBe(true);
+      if (!resolution.ok) throw new Error(`${intent.kind} must resolve canonically`);
+      const proposal = resolution.proposal;
+      const canonicalRecords = (proposal.nextRecords ?? proposal.orderedKeyIds.map((keyId) => {
+        const current = baseline.find((record) => record.keyId === keyId);
+        const appFrame = proposal.mapping.get(keyId);
+        if (!current || appFrame === undefined) throw new Error(`Missing canonical ${intent.kind} record`);
+        return movePhysicalRecord(current, appFrame);
+      })).map(({ kind: _kind, ...record }) => record);
+      const canonicalLoopClips = proposal.nextLoopClips ?? [];
+      const canonicalBreaks = proposal.nextIncomingInterpolationBreakKeyIds ?? ['D'];
+      const payload = {
+        kind: 'replace-roto-physical-map',
+        operationId: `ordinary-parent-gate-${intent.kind}`,
+        operationKind: intent.kind,
+        intent,
+        layerId: layer.id,
+        startFrame: proposal.selectedAppFrame ?? 0,
+        launchOperationId: launch.data.operationId,
+        expectedRevision: launch.data.rotoPhysical.revision,
+        records: canonicalRecords,
+        interpolationEnabled: false,
+        interpolationMode: 'duplicate',
+        loopClips: canonicalLoopClips,
+        incomingInterpolationBreakKeyIds: canonicalBreaks,
+        selectedKeyId: proposal.selectedKeyId,
+        selectedAppFrame: proposal.selectedAppFrame,
+        ...(proposal.semanticDelta ? { semanticDelta: proposal.semanticDelta } : {}),
+      } as PhysicalMapPayload;
+      const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+      const beforeRevisionSignal = rotoPhysicalRevision.peek();
+      const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+
+      const rejected = applyPhysicPaintPayload(diverge(payload));
+
+      expect(rejected.ok, `${intent.kind} divergent proposal`).toBe(false);
+      expect(physicPaintStore.getRotoPhysicalDocument(layer.id), intent.kind).toEqual(beforeDocument);
+      expect(rotoPhysicalRevision.peek(), intent.kind).toBe(beforeRevisionSignal);
+      expect(replace, intent.kind).not.toHaveBeenCalled();
+
+      const accepted = applyPhysicPaintPayload(payload);
+      const duplicateDelivery = applyPhysicPaintPayload(payload);
+
+      expect(accepted.ok, `${intent.kind} canonical proposal`).toBe(true);
+      expect(duplicateDelivery, intent.kind).toEqual(accepted);
+      expect(replace, intent.kind).toHaveBeenCalledTimes(1);
+      expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toMatchObject({
+        realKeyRecords: canonicalRecords.map((record) => ({ kind: 'real-key', ...record })),
+        loopClips: canonicalLoopClips,
+        incomingInterpolationBreakKeyIds: canonicalBreaks,
+        selectedKeyId: proposal.selectedKeyId,
+        interpolation: { enabled: false, mode: 'duplicate' },
+      });
+      replace.mockRestore();
+    }
   });
 
   it('accepts one stable-key-owned incoming interpolation break atomically', async () => {
