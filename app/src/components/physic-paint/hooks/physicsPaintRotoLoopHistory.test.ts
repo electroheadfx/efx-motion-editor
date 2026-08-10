@@ -160,6 +160,19 @@ describe('loopClips canonical revision fingerprint (Q1)', () => {
 });
 
 describe('loop-only edit history (D-10)', () => {
+  it('fails closed before replay when a typed caller omits the complete live source snapshot port', async () => {
+    const before = snapshot(SOURCE_RECORDS(), [loopClip('loop-1', 5)]);
+    const after = snapshot(SOURCE_RECORDS(), [loopClip('loop-1', 9)]);
+    const test = harness(after);
+
+    test.accept(before, after, 'missing-live-source-port');
+    expect(test.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    expect(await test.history.undo()).toBe(false);
+    expect(test.executePhysicalEdit).not.toHaveBeenCalled();
+    expect(test.availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
   it('records one command for a loop-only Repeat change; Undo restores the prior repeat exactly and Redo re-applies it exactly', async () => {
     const before = snapshot(SOURCE_RECORDS(), [loopClip('loop-1', 5)]);
     const after = snapshot(SOURCE_RECORDS(), [loopClip('loop-1', 9)]);
