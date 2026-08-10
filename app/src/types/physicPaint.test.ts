@@ -67,6 +67,12 @@ describe('physic paint payload contracts', () => {
       kind: 'replace-roto-physical-map',
       operationId: 'insert-empty-segment-1',
       operationKind: 'insert-empty-segment',
+      intent: {
+        kind: 'insert-empty-segment',
+        destinationAppFrame: 4,
+        insertedKeyId: 'inserted-key',
+        blankPayload: records[0].payload,
+      },
       layerId: 'layer-1',
       startFrame: 0,
       launchOperationId: 'launch-1',
@@ -85,6 +91,15 @@ describe('physic paint payload contracts', () => {
     } as const;
 
     expect(isPhysicPaintRotoPhysicalEditApplyPayload(payload)).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, intent: undefined })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      intent: { kind: 'delete-key', selectedKeyId: 'inserted-key' },
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      intent: { ...payload.intent, unknown: true },
+    })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({
       ...payload,
       semanticDelta: { ...payload.semanticDelta, unknown: true },
@@ -230,6 +245,11 @@ describe('physic paint payload contracts', () => {
 
     expect(isPhysicPaintRotoPhysicalEditApplyPayload(playScript)).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...playScript, rotoBackground })).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...playScript,
+      rotoBackground,
+      intent: { kind: 'insert-slot', selectedKeyId: 'key-1' },
+    })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({
       ...playScript,
       operationKind: 'force-spacing',

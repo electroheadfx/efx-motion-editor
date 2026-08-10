@@ -374,8 +374,20 @@ describe('useRotoTimelineActions linked source-position Force Spacing', () => {
     const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
       proposal: { mapping: ReadonlyMap<string, number>; nextLoopClips: unknown };
       operationKind: string;
+      intent: unknown;
     };
     expect(dispatched.operationKind).toBe('force-spacing');
+    expect(dispatched.intent).toEqual({
+      kind: 'force-spacing',
+      emptyFrames: 5,
+      selectedKeyId: null,
+      scopeKeyIds: ['B', 'D'],
+      linkedSourceSpacingScopes: [{
+        sourceCycleId: getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C', 'D', 'E']),
+        sourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+        selectedSourceKeyIds: ['B', 'D'],
+      }],
+    });
     expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ A: 10, B: 12, C: 15, D: 18, E: 22 });
     expect(dispatched.proposal.nextLoopClips).toBeNull();
   });
@@ -547,11 +559,18 @@ describe('useRotoTimelineActions rigid group-drag settlement', () => {
     const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
       proposal: unknown;
       operationKind: string;
+      intent: unknown;
       selectedKeyId: string | null;
       selectedAppFrame: number | null;
     };
     expect(dispatched.proposal).toBe(preparation.publication.proposal);
     expect(dispatched.operationKind).toBe('move-key-group');
+    expect(dispatched.intent).toEqual({
+      kind: 'move-key-group',
+      movedKeyIds: ['A', 'B'],
+      grabbedKeyId: 'B',
+      target: { kind: 'physical-cell', appFrame: 6 },
+    });
     expect(dispatched.selectedKeyId).toBe('B');
     expect(dispatched.selectedAppFrame).toBe(6);
   });
