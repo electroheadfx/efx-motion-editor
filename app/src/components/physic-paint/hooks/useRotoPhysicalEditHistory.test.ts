@@ -278,3 +278,128 @@ describe('useRotoPhysicalEditHistory empty-segment ownership', () => {
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
   });
 });
+
+describe('useRotoPhysicalEditHistory complete live replay preflight', () => {
+  it.each([
+    {
+      name: 'selection',
+      mutate: (source: RotoPhysicalEditSnapshot<null>) => ({
+        ...source,
+        selectedKeyId: 'A',
+        selectedAppFrame: 0,
+      }),
+    },
+    {
+      name: 'cursor',
+      mutate: (source: RotoPhysicalEditSnapshot<null>) => ({
+        ...source,
+        currentAppFrame: source.currentAppFrame + 1,
+      }),
+    },
+  ])('retains the stack after an ordinary $name change but rejects replay before coordinator execution', async ({ mutate }) => {
+    const before = snapshot([
+      record('A', 0),
+      record('B', 1),
+    ], 'A', 0);
+    const after = snapshot([
+      record('A', 0),
+      record('B', 2),
+    ], 'B', 2);
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    let liveSource = after;
+    const executePhysicalEdit = vi.fn(async () => true);
+
+    const history = useRotoPhysicalEditHistory({
+      identity: {
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 10,
+      },
+      availability,
+      coordinator: {
+        executePhysicalEdit: executePhysicalEdit as never,
+        pendingOperationId,
+        acceptedOutput,
+      },
+      recordsPort: {
+        getRecords: () => liveSource.records,
+        getInterpolation: () => liveSource.interpolation,
+        getCapacity: () => liveSource.capacity,
+        getLoopClips: () => liveSource.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => liveSource.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => liveSource,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: after.stagedRevision,
+      operationId: 'move-selection-cursor-command',
+      operationKind: 'move-key',
+      historyProvenance: null,
+    };
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+
+    liveSource = mutate(after);
+
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(await history.undo()).toBe(false);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('ignores an accepted command from a different project or capacity authority', () => {
+    const before = snapshot([record('A', 0)], 'A', 0);
+    const after = snapshot([record('A', 1)], 'A', 1);
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+
+    useRotoPhysicalEditHistory({
+      identity: {
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-2',
+        capacity: 20,
+      },
+      availability,
+      coordinator: {
+        executePhysicalEdit: vi.fn() as never,
+        pendingOperationId: signal<string | null>(null),
+        acceptedOutput,
+      },
+      recordsPort: {
+        getRecords: () => after.records,
+        getInterpolation: () => after.interpolation,
+        getCapacity: () => after.capacity,
+        getLoopClips: () => after.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => after.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => after,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: after.stagedRevision,
+      operationId: 'foreign-authority-command',
+      operationKind: 'move-key',
+      historyProvenance: null,
+    };
+
+    expect(availability.value).toEqual({ undo: 0, redo: 0 });
+  });
+});
