@@ -884,7 +884,7 @@ describe('physicPaintBridge', () => {
       makePhysicalRecord('B', 10),
     ];
     seedPhysicalDocument(layer.id, records);
-    projectStore.projectContextId.value = 'project-A';
+    projectStore.projectContextId.value = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
     const launchA = await openPhysicPaintCanvas({ layer, frame: 10 });
 
@@ -902,7 +902,7 @@ describe('physicPaintBridge', () => {
       layerId: layer.id,
       startFrame: 10,
       launchOperationId: launchA.data.operationId,
-      projectContextId: 'project-A',
+      projectContextId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       expectedRevision: launchA.data.rotoPhysical.revision,
       records: launchA.data.rotoPhysical.records,
       interpolationEnabled: false,
@@ -915,7 +915,7 @@ describe('physicPaintBridge', () => {
     expect(accepted.ok).toBe(true);
     if (!accepted.ok || !('acceptedRevision' in accepted)) return;
 
-    projectStore.projectContextId.value = 'project-B';
+    projectStore.projectContextId.value = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     const launchB = await openPhysicPaintCanvas({ layer, frame: 10 });
     expect(launchB.ok).toBe(true);
     if (!launchB.ok || !launchB.data.rotoPhysical) return;
@@ -932,7 +932,7 @@ describe('physicPaintBridge', () => {
       layerId: layer.id,
       startFrame: 0,
       launchOperationId: launchB.data.operationId,
-      projectContextId: 'project-B',
+      projectContextId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       expectedRevision: accepted.acceptedRevision,
       records: records.map(({ kind: _kind, ...record }) => record),
       interpolationEnabled: false,
@@ -964,12 +964,13 @@ describe('physicPaintBridge', () => {
       makePhysicalRecord('B', 10),
     ];
     seedPhysicalDocument(layer.id, records);
-    projectStore.projectContextId.value = 'cursor-project';
+    projectStore.projectContextId.value = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
     vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
     const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
 
     expect(launch.ok).toBe(true);
     if (!launch.ok || !launch.data.rotoPhysical) return;
+    expect(physicPaintStore.setRotoPhysicalSelection(layer.id, null, 0)).toEqual({ ok: true });
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
@@ -996,7 +997,7 @@ describe('physicPaintBridge', () => {
       layerId: layer.id,
       startFrame: 4,
       launchOperationId: launch.data.operationId,
-      projectContextId: 'cursor-project',
+      projectContextId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
       expectedRevision: launch.data.rotoPhysical.revision,
       records: spacedRecords,
       interpolationEnabled: false,
@@ -1021,7 +1022,7 @@ describe('physicPaintBridge', () => {
       layerId: layer.id,
       startFrame: 1,
       launchOperationId: launch.data.operationId,
-      projectContextId: 'cursor-project',
+      projectContextId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
       expectedRevision: accepted.acceptedRevision,
       records: records.map(({ kind: _kind, ...record }) => record),
       interpolationEnabled: false,

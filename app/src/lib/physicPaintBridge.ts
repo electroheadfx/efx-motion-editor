@@ -120,19 +120,72 @@ const activeLaunchOperationByLayer = new Map<string, string>();
  * `before`/`after` revisions before any mutation. Replay acceptances are NOT
  * recorded as new commands — they only consume the existing entry.
  */
+interface AcceptedPhysicalCommandSnapshot {
+  readonly records: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly interpolation: PhysicPaintRotoInterpolationState;
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
+  readonly selectedKeyId: string | null;
+  readonly selectedAppFrame: number | null;
+  readonly cursorAppFrame: number;
+  readonly capacity: number;
+  readonly revision: string;
+}
+
 interface AcceptedPhysicalCommandEntry {
   readonly operationId: string;
-  readonly beforeRecords: readonly PhysicPaintRotoRealKeyRecord[];
-  readonly beforeInterpolation: PhysicPaintRotoInterpolationState;
-  readonly beforeLoopClips: readonly PhysicPaintRotoLoopClip[];
-  readonly beforeIncomingInterpolationBreakKeyIds: readonly string[];
-  readonly afterRecords: readonly PhysicPaintRotoRealKeyRecord[];
-  readonly afterInterpolation: PhysicPaintRotoInterpolationState;
-  readonly afterLoopClips: readonly PhysicPaintRotoLoopClip[];
-  readonly afterIncomingInterpolationBreakKeyIds: readonly string[];
-  readonly acceptedRevision: string;
+  readonly projectContextId: string;
+  readonly layerId: string;
+  readonly launchOperationId: string;
+  readonly capacity: number;
+  readonly before: AcceptedPhysicalCommandSnapshot;
+  readonly after: AcceptedPhysicalCommandSnapshot;
 }
 const acceptedPhysicalCommands = new Map<string, AcceptedPhysicalCommandEntry>();
+
+function cloneAndDeepFreezePlainData<T>(value: T): T {
+  const clone = structuredClone(value);
+  const freeze = (candidate: unknown): void => {
+    if (candidate === null || typeof candidate !== 'object' || Object.isFrozen(candidate)) return;
+    for (const nested of Object.values(candidate as Record<string, unknown>)) freeze(nested);
+    Object.freeze(candidate);
+  };
+  freeze(clone);
+  return clone;
+}
+
+function createAcceptedPhysicalCommandSnapshot(input: {
+  readonly records: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly interpolation: PhysicPaintRotoInterpolationState;
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
+  readonly selectedKeyId: string | null;
+  readonly cursorAppFrame: number;
+  readonly capacity: number;
+  readonly revision: string;
+}): AcceptedPhysicalCommandSnapshot {
+  const selectedRecord = input.selectedKeyId === null
+    ? null
+    : input.records.find((record) => record.keyId === input.selectedKeyId) ?? null;
+  return cloneAndDeepFreezePlainData({
+    records: input.records,
+    interpolation: input.interpolation,
+    loopClips: input.loopClips,
+    incomingInterpolationBreakKeyIds: input.incomingInterpolationBreakKeyIds,
+    selectedKeyId: selectedRecord?.keyId ?? null,
+    selectedAppFrame: selectedRecord?.appFrame ?? null,
+    cursorAppFrame: input.cursorAppFrame,
+    capacity: input.capacity,
+    revision: input.revision,
+  });
+}
+
+function sameAcceptedPhysicalCommandSnapshot(
+  left: AcceptedPhysicalCommandSnapshot,
+  right: AcceptedPhysicalCommandSnapshot,
+): boolean {
+  return stableSerialize(left, new WeakSet<object>()) === stableSerialize(right, new WeakSet<object>());
+}
 
 export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResult {
   const base = resultBase(payload);
@@ -836,10 +889,41 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     currentLoopClips,
     currentIncomingInterpolationBreakKeyIds,
   );
+  const capacity = physicPaintStore.getRotoPhysicalCapacity(payload.layerId);
+  const isReplay = payload.operationKind === 'undo' || payload.operationKind === 'redo';
+  let replayEntry: AcceptedPhysicalCommandEntry | null = null;
+  if (isReplay) {
+    const provenance = payload.historyProvenance;
+    if (!provenance) return reject('Roto physical replay is missing history provenance.');
+    if (provenance.historyDirection !== payload.operationKind) return reject('Roto physical replay provenance direction mismatch.');
+    replayEntry = acceptedPhysicalCommands.get(provenance.historyCommandId) ?? null;
+    if (!replayEntry) return reject('Roto physical replay targets an unknown accepted command.');
+    if (replayEntry.projectContextId !== projectStore.projectContextId.peek()
+      || replayEntry.layerId !== payload.layerId
+      || replayEntry.launchOperationId !== payload.launchOperationId
+      || replayEntry.capacity !== capacity) {
+      return reject('Roto physical replay authority scope does not match the original accepted command.');
+    }
+    const liveSourceSnapshot = createAcceptedPhysicalCommandSnapshot({
+      records: currentRecords,
+      interpolation: currentInterpolation,
+      loopClips: currentLoopClips,
+      incomingInterpolationBreakKeyIds: currentIncomingInterpolationBreakKeyIds,
+      selectedKeyId: currentDocument?.selectedKeyId ?? null,
+      cursorAppFrame: currentDocument?.cursorAppFrame ?? payload.startFrame,
+      capacity,
+      revision: currentRevision,
+    });
+    const expectedSourceSnapshot = provenance.historyDirection === 'undo'
+      ? replayEntry.after
+      : replayEntry.before;
+    if (!sameAcceptedPhysicalCommandSnapshot(liveSourceSnapshot, expectedSourceSnapshot)) {
+      return reject('Roto physical replay source snapshot does not match the original accepted command.');
+    }
+  }
   if (currentRevision !== payload.expectedRevision) {
     return reject('Roto physical revision became stale before commit.');
   }
-  const capacity = physicPaintStore.getRotoPhysicalCapacity(payload.layerId);
   if (payload.records.length > capacity) {
     return reject('Roto physical edit exceeds the current layer capacity.');
   }
@@ -887,7 +971,6 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   const isInterpolationEnabledChange = payload.operationKind === 'set-interpolation-enabled';
   const isInterpolationModeChange = payload.operationKind === 'set-interpolation-mode';
   const isInterpolationChange = isInterpolationEnabledChange || isInterpolationModeChange;
-  const isReplay = payload.operationKind === 'undo' || payload.operationKind === 'redo';
   if (!isInterpolationChange
     && !isPlayScript
     && !isReplay
@@ -980,30 +1063,31 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     if (!semanticValidation.ok) return reject(semanticValidation.error, stagedRevision);
   }
 
+  const cursorAppFrame = payload.selectedAppFrame ?? Math.max(0, Math.min(capacity - 1, payload.startFrame));
   if (isReplay) {
     const provenance = payload.historyProvenance;
-    if (!provenance) return reject('Roto physical replay is missing history provenance.', stagedRevision);
-    if (provenance.historyDirection !== payload.operationKind) return reject('Roto physical replay provenance direction mismatch.', stagedRevision);
-    const original = acceptedPhysicalCommands.get(provenance.historyCommandId);
-    if (!original) return reject('Roto physical replay targets an unknown accepted command.', stagedRevision);
+    const original = replayEntry;
+    if (!provenance || !original) return reject('Roto physical replay authorization became unavailable.', stagedRevision);
+    const expectedTargetSnapshot = provenance.historyDirection === 'undo'
+      ? original.before
+      : original.after;
+    const proposedTargetSnapshot = createAcceptedPhysicalCommandSnapshot({
+      records: proposedRecords,
+      interpolation: stagedInterpolation,
+      loopClips: proposedLoopClips,
+      incomingInterpolationBreakKeyIds: proposedIncomingInterpolationBreakKeyIds,
+      selectedKeyId: payload.selectedKeyId,
+      cursorAppFrame,
+      capacity,
+      revision: stagedRevision,
+    });
+    if (!sameAcceptedPhysicalCommandSnapshot(proposedTargetSnapshot, expectedTargetSnapshot)) {
+      return reject('Roto physical replay target snapshot does not match the original accepted command.', stagedRevision);
+    }
     if (currentRevision !== provenance.sourceRevision) return reject('Roto physical replay source revision does not match the current state.', stagedRevision);
     if (stagedRevision !== provenance.targetRevision) return reject('Roto physical replay target revision does not match the original command.', stagedRevision);
-    const originalBeforeRevision = buildPhysicPaintRotoPhysicalRevision(
-      original.beforeRecords,
-      original.beforeInterpolation,
-      original.beforeLoopClips,
-      original.beforeIncomingInterpolationBreakKeyIds,
-    );
-    if (provenance.historyDirection === 'undo') {
-      if (provenance.sourceRevision !== original.acceptedRevision) return reject('Roto physical undo source revision does not match the original accepted state.', stagedRevision);
-      if (provenance.targetRevision !== originalBeforeRevision) return reject('Roto physical undo target revision does not match the original before state.', stagedRevision);
-    } else {
-      if (provenance.sourceRevision !== originalBeforeRevision) return reject('Roto physical redo source revision does not match the original before state.', stagedRevision);
-      if (provenance.targetRevision !== original.acceptedRevision) return reject('Roto physical redo target revision does not match the original accepted state.', stagedRevision);
-    }
   }
 
-  const cursorAppFrame = payload.selectedAppFrame ?? Math.max(0, Math.min(capacity - 1, payload.startFrame));
   const stagedDocument = parsePhysicPaintRotoPhysicalDocument({
     capacity,
     realKeyRecords: proposedRecords,
@@ -1027,31 +1111,35 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   if (!isReplay && !isInterpolationChange) {
     // Phase 43 (D-06/D-10): Play Script generation commits join the ledger so
     // a generation plus its derived loop shrink replays as one Undo/Redo.
-    const afterRecords = acceptedDocument.realKeyRecords.map((record) => ({
-      ...record,
-      payload: { ...record.payload },
-    }));
-    acceptedPhysicalCommands.set(payload.operationId, {
-      operationId: payload.operationId,
-      beforeRecords: currentRecords.map((record) => ({
-        ...record,
-        payload: { ...record.payload },
-      })),
-      beforeInterpolation: {
-        enabled: currentInterpolation.enabled,
-        mode: currentInterpolation.mode,
-      },
-      beforeLoopClips: currentLoopClips,
-      beforeIncomingInterpolationBreakKeyIds: currentIncomingInterpolationBreakKeyIds,
-      afterRecords,
-      afterInterpolation: {
-        enabled: acceptedDocument.interpolation.enabled,
-        mode: acceptedDocument.interpolation.mode,
-      },
-      afterLoopClips: acceptedDocument.loopClips,
-      afterIncomingInterpolationBreakKeyIds: acceptedDocument.incomingInterpolationBreakKeyIds,
-      acceptedRevision: acceptedDocument.revision,
+    const beforeSnapshot = createAcceptedPhysicalCommandSnapshot({
+      records: currentRecords,
+      interpolation: currentInterpolation,
+      loopClips: currentLoopClips,
+      incomingInterpolationBreakKeyIds: currentIncomingInterpolationBreakKeyIds,
+      selectedKeyId: currentDocument?.selectedKeyId ?? null,
+      cursorAppFrame: currentDocument?.cursorAppFrame ?? payload.startFrame,
+      capacity,
+      revision: currentRevision,
     });
+    const afterSnapshot = createAcceptedPhysicalCommandSnapshot({
+      records: acceptedDocument.realKeyRecords,
+      interpolation: acceptedDocument.interpolation,
+      loopClips: acceptedDocument.loopClips,
+      incomingInterpolationBreakKeyIds: acceptedDocument.incomingInterpolationBreakKeyIds,
+      selectedKeyId: acceptedDocument.selectedKeyId,
+      cursorAppFrame: acceptedDocument.cursorAppFrame,
+      capacity: acceptedDocument.capacity,
+      revision: acceptedDocument.revision,
+    });
+    acceptedPhysicalCommands.set(payload.operationId, Object.freeze({
+      operationId: payload.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      layerId: payload.layerId,
+      launchOperationId: payload.launchOperationId,
+      capacity,
+      before: beforeSnapshot,
+      after: afterSnapshot,
+    }));
   }
 
   return physicalEditResult(payload, {
