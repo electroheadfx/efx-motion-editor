@@ -2,6 +2,7 @@ import type { SerializedProject } from '@efxlab/efx-physic-paint';
 import type { FadeCurve } from './audio';
 import type { PersistedRotoScriptV1, RotoScriptLibraryRow } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 import { isCanonicalRotoScriptId, isPersistedRotoScriptV1, normalizeRotoScriptName } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
+import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
 import {
   isPhysicPaintRotoLoopClip,
   isPhysicPaintRotoRealKeyPayload,
@@ -86,12 +87,141 @@ export type PhysicPaintRotoPhysicalEditIntent =
       }[];
     };
 
-/** Strict standalone tracer parser; later ordinary members extend this same seam. */
+function hasUniqueBoundedPhysicalKeyIds(value: unknown, minimumLength = 1): value is readonly string[] {
+  return Array.isArray(value)
+    && value.length >= minimumLength
+    && value.length <= PHYSIC_PAINT_MAX_APPLY_FRAMES
+    && value.every(isBoundedPhysicalKeyId)
+    && new Set(value).size === value.length;
+}
+
+function isPhysicPaintRotoPhysicalEditTarget(value: unknown): value is PhysicPaintRotoPhysicalEditTarget {
+  if (!isRecord(value)) return false;
+  if (value.kind === 'physical-cell') {
+    return hasOnlyKeys(value, ['kind', 'appFrame']) && isNonNegativeInteger(value.appFrame);
+  }
+  if (value.kind === 'before-key' || value.kind === 'after-key') {
+    return hasOnlyKeys(value, ['kind', 'targetKeyId']) && isBoundedPhysicalKeyId(value.targetKeyId);
+  }
+  return false;
+}
+
+function isPhysicPaintRotoLinkedSourceSpacingScopes(
+  value: unknown,
+  scopeKeyIds: unknown,
+): value is readonly PhysicPaintRotoLinkedSourceSpacingScope[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > PHYSIC_PAINT_MAX_APPLY_FRAMES) return false;
+  const seenCycleIds = new Set<string>();
+  const seenSelectedKeyIds = new Set<string>();
+  const flattenedSelectedKeyIds: string[] = [];
+  for (const scope of value) {
+    if (!isRecord(scope) || !hasOnlyKeys(scope, ['sourceCycleId', 'sourceKeyIds', 'selectedSourceKeyIds'])) return false;
+    const sourceKeyIds = scope.sourceKeyIds;
+    const selectedSourceKeyIds = scope.selectedSourceKeyIds;
+    if (!hasUniqueBoundedPhysicalKeyIds(sourceKeyIds, 2)) return false;
+    if (!hasUniqueBoundedPhysicalKeyIds(selectedSourceKeyIds, 2)) return false;
+    const sourceCycleId = getPhysicsPaintRotoSourceCycleId(sourceKeyIds);
+    if (scope.sourceCycleId !== sourceCycleId || seenCycleIds.has(sourceCycleId)) return false;
+    const selectedSet = new Set(selectedSourceKeyIds);
+    const orderedSelectedKeyIds = sourceKeyIds.filter((keyId) => selectedSet.has(keyId));
+    if (orderedSelectedKeyIds.length !== selectedSourceKeyIds.length
+      || orderedSelectedKeyIds.some((keyId, index) => keyId !== selectedSourceKeyIds[index])) return false;
+    if (selectedSourceKeyIds.some((keyId) => seenSelectedKeyIds.has(keyId))) return false;
+    seenCycleIds.add(sourceCycleId);
+    selectedSourceKeyIds.forEach((keyId) => {
+      seenSelectedKeyIds.add(keyId);
+      flattenedSelectedKeyIds.push(keyId);
+    });
+  }
+  return hasUniqueBoundedPhysicalKeyIds(scopeKeyIds)
+    && scopeKeyIds.length === flattenedSelectedKeyIds.length
+    && scopeKeyIds.every((keyId, index) => keyId === flattenedSelectedKeyIds[index]);
+}
+
+function isPhysicPaintRotoPasteKeyGroupEntries(value: unknown): value is Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key-group' }>['entries'] {
+  if (!Array.isArray(value) || value.length < 2 || value.length > PHYSIC_PAINT_MAX_APPLY_FRAMES) return false;
+  const sourceKeyIds = new Set<string>();
+  const newKeyIds = new Set<string>();
+  let previousSourceAppFrame = -1;
+  for (const entry of value) {
+    if (!isRecord(entry) || !hasOnlyKeys(entry, ['payload', 'sourceAppFrame', 'sourceKeyId', 'newKeyId'])) return false;
+    if (!isPhysicPaintRotoRealKeyPayload(entry.payload)) return false;
+    if (!isNonNegativeInteger(entry.sourceAppFrame) || entry.sourceAppFrame <= previousSourceAppFrame) return false;
+    if (!isBoundedPhysicalKeyId(entry.sourceKeyId) || !isBoundedPhysicalKeyId(entry.newKeyId)) return false;
+    if (sourceKeyIds.has(entry.sourceKeyId) || newKeyIds.has(entry.newKeyId)) return false;
+    sourceKeyIds.add(entry.sourceKeyId);
+    newKeyIds.add(entry.newKeyId);
+    previousSourceAppFrame = entry.sourceAppFrame;
+  }
+  return true;
+}
+
+/** Strict standalone parser for every ordinary physical-edit authorization request. */
 export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is PhysicPaintRotoPhysicalEditIntent {
-  return isRecord(value)
-    && value.kind === 'insert-slot'
-    && hasOnlyKeys(value, ['kind', 'selectedKeyId'])
-    && isBoundedPhysicalKeyId(value.selectedKeyId);
+  if (!isRecord(value)) return false;
+  if (value.kind === 'insert-slot' || value.kind === 'delete-key') {
+    return hasOnlyKeys(value, ['kind', 'selectedKeyId']) && isBoundedPhysicalKeyId(value.selectedKeyId);
+  }
+  if (value.kind === 'insert-empty-segment') {
+    return hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'insertedKeyId', 'blankPayload'])
+      && isNonNegativeInteger(value.destinationAppFrame)
+      && isBoundedPhysicalKeyId(value.insertedKeyId)
+      && isPhysicPaintRotoRealKeyPayload(value.blankPayload);
+  }
+  if (value.kind === 'delete-key-group') {
+    return hasOnlyKeys(value, ['kind', 'keyIds']) && hasUniqueBoundedPhysicalKeyIds(value.keyIds);
+  }
+  if (value.kind === 'move-key') {
+    return hasOnlyKeys(value, ['kind', 'movedKeyId', 'target'])
+      && isBoundedPhysicalKeyId(value.movedKeyId)
+      && isPhysicPaintRotoPhysicalEditTarget(value.target);
+  }
+  if (value.kind === 'move-key-group') {
+    return hasOnlyKeys(value, ['kind', 'movedKeyIds', 'grabbedKeyId', 'target'])
+      && hasUniqueBoundedPhysicalKeyIds(value.movedKeyIds)
+      && isBoundedPhysicalKeyId(value.grabbedKeyId)
+      && value.movedKeyIds.includes(value.grabbedKeyId)
+      && isPhysicPaintRotoPhysicalEditTarget(value.target);
+  }
+  if (value.kind === 'force-spacing') {
+    if (!hasOnlyKeys(value, ['kind', 'emptyFrames', 'selectedKeyId', 'scopeKeyIds', 'linkedSourceSpacingScopes'])) return false;
+    if (!isNonNegativeInteger(value.emptyFrames)) return false;
+    if (value.selectedKeyId !== null && !isBoundedPhysicalKeyId(value.selectedKeyId)) return false;
+    if (value.scopeKeyIds !== undefined && value.scopeKeyIds !== null && !hasUniqueBoundedPhysicalKeyIds(value.scopeKeyIds)) return false;
+    if (value.linkedSourceSpacingScopes === undefined || value.linkedSourceSpacingScopes === null) return true;
+    return isPhysicPaintRotoLinkedSourceSpacingScopes(value.linkedSourceSpacingScopes, value.scopeKeyIds);
+  }
+  if (value.kind === 'duplicate-key') {
+    return hasOnlyKeys(value, ['kind', 'sourceKeyId', 'newKeyId'])
+      && isBoundedPhysicalKeyId(value.sourceKeyId)
+      && isBoundedPhysicalKeyId(value.newKeyId)
+      && value.sourceKeyId !== value.newKeyId;
+  }
+  if (value.kind === 'paste-key') {
+    if (!hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload'])) return false;
+    if (!isNonNegativeInteger(value.destinationAppFrame) || !isPhysicPaintRotoRealKeyPayload(value.clipboardPayload)) return false;
+    if (value.destinationKeyId !== null && !isBoundedPhysicalKeyId(value.destinationKeyId)) return false;
+    if (value.newKeyId !== null && !isBoundedPhysicalKeyId(value.newKeyId)) return false;
+    return (value.destinationKeyId === null) !== (value.newKeyId === null);
+  }
+  if (value.kind === 'paste-key-group') {
+    return hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'entries'])
+      && isNonNegativeInteger(value.destinationAppFrame)
+      && isPhysicPaintRotoPasteKeyGroupEntries(value.entries);
+  }
+  return false;
+}
+
+function canonicalPhysicalEditPayload(payload: PhysicPaintRotoRealKeyPayload): PhysicPaintRotoRealKeyPayload {
+  return payload.width === undefined
+    ? { frameIndex: payload.frameIndex, appFrame: payload.appFrame, dataUrl: payload.dataUrl }
+    : { frameIndex: payload.frameIndex, appFrame: payload.appFrame, dataUrl: payload.dataUrl, width: payload.width, height: payload.height };
+}
+
+function canonicalPhysicalEditTarget(target: PhysicPaintRotoPhysicalEditTarget): PhysicPaintRotoPhysicalEditTarget {
+  return target.kind === 'physical-cell'
+    ? { kind: 'physical-cell', appFrame: target.appFrame }
+    : { kind: target.kind, targetKeyId: target.targetKeyId };
 }
 
 /** Canonical stable JSON serialization for one validated ordinary edit intent. */
@@ -99,7 +229,48 @@ export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRo
   if (!isPhysicPaintRotoPhysicalEditIntent(intent)) {
     throw new Error('PhysicPaintRotoPhysicalEditIntent: malformed intent.');
   }
-  return JSON.stringify({ kind: intent.kind, selectedKeyId: intent.selectedKeyId });
+  switch (intent.kind) {
+    case 'insert-slot':
+    case 'delete-key':
+      return JSON.stringify({ kind: intent.kind, selectedKeyId: intent.selectedKeyId });
+    case 'insert-empty-segment':
+      return JSON.stringify({ kind: intent.kind, destinationAppFrame: intent.destinationAppFrame, insertedKeyId: intent.insertedKeyId, blankPayload: canonicalPhysicalEditPayload(intent.blankPayload) });
+    case 'delete-key-group':
+      return JSON.stringify({ kind: intent.kind, keyIds: [...intent.keyIds] });
+    case 'move-key':
+      return JSON.stringify({ kind: intent.kind, movedKeyId: intent.movedKeyId, target: canonicalPhysicalEditTarget(intent.target) });
+    case 'move-key-group':
+      return JSON.stringify({ kind: intent.kind, movedKeyIds: [...intent.movedKeyIds], grabbedKeyId: intent.grabbedKeyId, target: canonicalPhysicalEditTarget(intent.target) });
+    case 'force-spacing': {
+      const canonical: Record<string, unknown> = { kind: intent.kind, emptyFrames: intent.emptyFrames, selectedKeyId: intent.selectedKeyId };
+      if (intent.scopeKeyIds !== undefined) canonical.scopeKeyIds = intent.scopeKeyIds === null ? null : [...intent.scopeKeyIds];
+      if (intent.linkedSourceSpacingScopes !== undefined) {
+        canonical.linkedSourceSpacingScopes = intent.linkedSourceSpacingScopes === null
+          ? null
+          : intent.linkedSourceSpacingScopes.map((scope) => ({
+              sourceCycleId: scope.sourceCycleId,
+              sourceKeyIds: [...scope.sourceKeyIds],
+              selectedSourceKeyIds: [...scope.selectedSourceKeyIds],
+            }));
+      }
+      return JSON.stringify(canonical);
+    }
+    case 'duplicate-key':
+      return JSON.stringify({ kind: intent.kind, sourceKeyId: intent.sourceKeyId, newKeyId: intent.newKeyId });
+    case 'paste-key':
+      return JSON.stringify({ kind: intent.kind, destinationAppFrame: intent.destinationAppFrame, destinationKeyId: intent.destinationKeyId, newKeyId: intent.newKeyId, clipboardPayload: canonicalPhysicalEditPayload(intent.clipboardPayload) });
+    case 'paste-key-group':
+      return JSON.stringify({
+        kind: intent.kind,
+        destinationAppFrame: intent.destinationAppFrame,
+        entries: intent.entries.map((entry) => ({
+          payload: canonicalPhysicalEditPayload(entry.payload),
+          sourceAppFrame: entry.sourceAppFrame,
+          sourceKeyId: entry.sourceKeyId,
+          newKeyId: entry.newKeyId,
+        })),
+      });
+  }
 }
 
 // ---------------------------------------------------------------------------
