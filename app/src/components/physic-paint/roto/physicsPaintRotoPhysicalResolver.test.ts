@@ -1175,6 +1175,36 @@ describe('Phase 43.2 pure Group lifecycle proposals', () => {
     expect(Object.isFrozen(result.impact)).toBe(true);
   });
 
+  it('shortens first and last visible edges without changing Group identity or phase', () => {
+    const first = proposePhysicPaintRotoDeleteGroupFrame({
+      document: lifecycleDocument(),
+      groupId: 'group-a',
+      appFrame: 0,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error('First-edge Delete Frame must resolve');
+    expect(first.proposal.loopClips[0]).toMatchObject({
+      loopId: 'group-a',
+      phaseOrigin: 0,
+      syncState: 'modified',
+      visibleRanges: [{ start: 1, endExclusive: 4 }, { start: 5, endExclusive: 9 }],
+    });
+
+    const last = proposePhysicPaintRotoDeleteGroupFrame({
+      document: lifecycleDocument(),
+      groupId: 'group-a',
+      appFrame: 8,
+    });
+    expect(last.ok).toBe(true);
+    if (!last.ok) throw new Error('Last-edge Delete Frame must resolve');
+    expect(last.proposal.loopClips[0]).toMatchObject({
+      loopId: 'group-a',
+      phaseOrigin: 0,
+      syncState: 'modified',
+      visibleRanges: [{ start: 0, endExclusive: 4 }, { start: 5, endExclusive: 8 }],
+    });
+  });
+
   it('removes Groups and source records only after their final complete-document reference', () => {
     const sharedPeer = lifecycleGroup({
       loopId: 'group-b',

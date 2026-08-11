@@ -28,7 +28,7 @@ import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelec
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
 import { useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
 import { useRotoFrameEditingController } from './hooks/useRotoFrameEditingController';
-import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, type RotoPhysicalEditCoordinatorExecuteInput } from './hooks/useRotoPhysicalEditCoordinator';
+import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, type RotoGroupLifecycleDeleteExecuteInput, type RotoPhysicalEditCoordinatorExecuteInput } from './hooks/useRotoPhysicalEditCoordinator';
 import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize } from './engine/physicsPaintCanvasSizing';
 import { usePhysicsPaintEngineLifecycle } from './engine/usePhysicsPaintEngineLifecycle';
 import { usePhysicsPaintEngineActions } from './engine/usePhysicsPaintEngineActions';
@@ -684,6 +684,34 @@ export function PhysicsPaintStudio() {
   groupFramePaintExecuteRef.current = (executeInput) => (
     physicalEditCoordinator.executePhysicalEdit(executeInput as unknown as RotoPhysicalEditCoordinatorExecuteInput<SerializedProject>)
   );
+  groupDeleteExecuteRef.current = async (choice, target) => {
+    const launch = launchContextRef.current;
+    if (!launch) return false;
+    const executeInput: RotoGroupLifecycleDeleteExecuteInput = {
+      operationKind: choice === 'delete-group' ? 'delete-group' : 'delete-group-frame',
+      expectedLaunch: {
+        operationId: launch.operationId,
+        layerId: launch.layerId,
+      },
+      groupId: target.groupId,
+      appFrame: target.appFrame,
+    };
+    const accepted = await dispatchAndWaitForAcceptedRotoPhysicalEdit(
+      physicalEditCoordinator.pendingOperationId,
+      physicalEditCoordinator.acceptedOutput,
+      () => physicalEditCoordinator.executePhysicalEdit(executeInput),
+    );
+    if (accepted === null) return false;
+
+    selectedLoopClipIds.value = choice === 'delete-group' || target.onlyOccurrence
+      ? selectedLoopClipIds.peek().filter((groupId) => groupId !== target.groupId)
+      : selectedLoopClipIds.peek();
+    if (selectedLoopClipIds.value.length === 0) loopSelectionAnchorId.value = null;
+    setApplyMessage(choice === 'delete-group'
+      ? `Deleted Group at F${target.phaseOrigin}.`
+      : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`);
+    return accepted !== null;
+  };
 
   const rotoTimelineActions = useRotoTimelineActions({
     getModel: () => rotoTimelineModel.view.value.model,

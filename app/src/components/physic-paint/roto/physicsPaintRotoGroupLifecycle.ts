@@ -441,7 +441,22 @@ export function proposePhysicPaintRotoDeleteGroupFrame(
   }
   if (!includesFrame(group.visibleRanges, input.appFrame)) return rejectLifecycle('frame-not-visible');
   const visibleCount = group.visibleRanges.reduce((count, range) => count + range.endExclusive - range.start, 0);
-  if (visibleCount === 1) return rejectLifecycle('last-visible-occurrence');
+  if (visibleCount === 1) {
+    const deleted = proposePhysicPaintRotoDeleteGroup({
+      document: input.document,
+      groupId: input.groupId,
+    });
+    if (!deleted.ok) return deleted;
+    return Object.freeze({
+      ok: true,
+      proposal: deleted.proposal,
+      impact: Object.freeze({
+        ...deleted.impact,
+        kind: 'delete-group-frame',
+        appFrame: input.appFrame,
+      }),
+    });
+  }
 
   const removedOverride = group.frameOverrides.find((override) => override.appFrame === input.appFrame);
   const nextGroup = {

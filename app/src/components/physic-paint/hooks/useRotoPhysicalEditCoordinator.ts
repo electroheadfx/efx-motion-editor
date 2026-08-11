@@ -70,6 +70,8 @@ import {
   parsePhysicPaintRotoRealKeyRecordCollection,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
+  proposePhysicPaintRotoDeleteGroup,
+  proposePhysicPaintRotoDeleteGroupFrame,
   proposePhysicPaintRotoGroupFramePaint,
   type PhysicPaintRotoGroupFramePaintImpact,
 } from '../roto/physicsPaintRotoGroupLifecycle';
@@ -286,12 +288,25 @@ export interface RotoGroupFramePaintExecuteInput {
   readonly renderedPayload: PhysicPaintRotoRealKeyPayload;
 }
 
+export interface RotoGroupLifecycleDeleteExecuteInput {
+  readonly operationKind: 'delete-group-frame' | 'delete-group';
+  readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
+  readonly groupId: string;
+  readonly appFrame: number;
+}
+
+type RotoGroupLifecycleDeleteImpact = Extract<
+  PhysicPaintRotoPhysicalEditSemanticDelta,
+  { readonly kind: 'delete-group-frame' | 'delete-group' }
+>;
+
 export type RotoPhysicalEditCoordinatorExecuteInput<EngineState = unknown> =
   | RotoPhysicalEditExecuteInput<PhysicPaintRotoPhysicalEditProposal, EngineState>
   | RotoInterpolationEnabledExecuteInput
   | RotoInterpolationModeExecuteInput
   | RotoPlayScriptExecuteInput
-  | RotoGroupFramePaintExecuteInput;
+  | RotoGroupFramePaintExecuteInput
+  | RotoGroupLifecycleDeleteExecuteInput;
 
 type PhysicalEditPayloadBase = Omit<
   PhysicPaintRotoPhysicalEditApplyPayload,
@@ -371,6 +386,19 @@ function semanticDeltaEquals(
       && left.overrideKeyId === right.overrideKeyId
       && left.createdOverride === right.createdOverride
       && left.filledDeletedOccurrence === right.filledDeletedOccurrence
+      && left.previousRevision === right.previousRevision
+      && left.nextRevision === right.nextRevision;
+  }
+  if (left.kind === 'delete-group-frame' && right.kind === 'delete-group-frame') {
+    return left.groupId === right.groupId
+      && left.appFrame === right.appFrame
+      && stringArraysEqual(left.cleanupKeyIds, right.cleanupKeyIds)
+      && left.previousRevision === right.previousRevision
+      && left.nextRevision === right.nextRevision;
+  }
+  if (left.kind === 'delete-group' && right.kind === 'delete-group') {
+    return left.groupId === right.groupId
+      && stringArraysEqual(left.cleanupKeyIds, right.cleanupKeyIds)
       && left.previousRevision === right.previousRevision
       && left.nextRevision === right.nextRevision;
   }
@@ -942,6 +970,8 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         || pending.operationKind === 'play-script'
         || pending.operationKind === 'insert-empty-segment'
         || pending.operationKind === 'paint-group-frame'
+        || pending.operationKind === 'delete-group-frame'
+        || pending.operationKind === 'delete-group'
       ) {
         portsRef.current.reference.reconcileCurrentFrame(after.currentAppFrame);
       }
@@ -1055,7 +1085,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         || pending.operationKind === 'set-interpolation-mode'
         || pending.operationKind === 'play-script'
         || pending.operationKind === 'insert-empty-segment'
-        || pending.operationKind === 'paint-group-frame') {
+        || pending.operationKind === 'paint-group-frame'
+        || pending.operationKind === 'delete-group-frame'
+        || pending.operationKind === 'delete-group') {
         if (currentStaged !== pending.expectedRevision
           || !pending.deferredRecords
           || !pending.deferredInterpolation) {
@@ -1187,12 +1219,21 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       const isPlayScript = input.operationKind === 'play-script';
       const isInsertEmptySegment = input.operationKind === 'insert-empty-segment';
       const isGroupFramePaint = input.operationKind === 'paint-group-frame';
-      const isDeferredPublication = isInterpolationChange || isPlayScript || isInsertEmptySegment || isGroupFramePaint;
+      const isGroupLifecycleDelete = input.operationKind === 'delete-group-frame'
+        || input.operationKind === 'delete-group';
+      const isDeferredPublication = isInterpolationChange
+        || isPlayScript
+        || isInsertEmptySegment
+        || isGroupFramePaint
+        || isGroupLifecycleDelete;
       const interpolationInput = isInterpolationChange && 'targetInterpolation' in input
         ? input as RotoInterpolationEnabledExecuteInput | RotoInterpolationModeExecuteInput
         : null;
       const playScriptInput = isPlayScript && 'semanticDelta' in input ? input as RotoPlayScriptExecuteInput : null;
       const groupFramePaintInput = isGroupFramePaint && 'groupId' in input ? input as RotoGroupFramePaintExecuteInput : null;
+      const groupLifecycleDeleteInput = isGroupLifecycleDelete && 'groupId' in input
+        ? input as RotoGroupLifecycleDeleteExecuteInput
+        : null;
       const requestedSelectedKeyId = 'selectedKeyId' in input ? input.selectedKeyId : null;
       const requestedSelectedAppFrame = 'selectedAppFrame' in input ? input.selectedAppFrame : null;
       const proposal = 'proposal' in input ? input.proposal : null;
@@ -1204,7 +1245,11 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         || input.operationKind === 'paste-key'
         || input.operationKind === 'paste-key-group'
         || input.operationKind === 'insert-empty-segment';
-      const isOrdinary = !isReplay && !isInterpolationChange && !isPlayScript && !isGroupFramePaint;
+      const isOrdinary = !isReplay
+        && !isInterpolationChange
+        && !isPlayScript
+        && !isGroupFramePaint
+        && !isGroupLifecycleDelete;
       if (isOrdinary) {
         if (!isPhysicPaintRotoPhysicalEditIntent(intent) || intent.kind !== input.operationKind) {
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
@@ -1244,6 +1289,16 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           return false;
         }
+      } else if (isGroupLifecycleDelete) {
+        if (!groupLifecycleDeleteInput
+          || proposal
+          || intent !== undefined
+          || historyProvenance !== undefined
+          || replayTarget !== undefined
+          || !Number.isSafeInteger(groupLifecycleDeleteInput.appFrame)) {
+          portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+          return false;
+        }
       } else if (!proposal) {
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
@@ -1256,12 +1311,12 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
-      if (!isReplay && !isInterpolationChange && !isPlayScript && !isGroupFramePaint
+      if (!isReplay && !isInterpolationChange && !isPlayScript && !isGroupFramePaint && !isGroupLifecycleDelete
         && proposal?.status.operationKind !== input.operationKind) {
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
-      if (!isInterpolationChange && !isPlayScript && !isGroupFramePaint
+      if (!isInterpolationChange && !isPlayScript && !isGroupFramePaint && !isGroupLifecycleDelete
         && (proposal?.selectedKeyId !== requestedSelectedKeyId || proposal?.selectedAppFrame !== requestedSelectedAppFrame)) {
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
@@ -1325,10 +1380,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         const capacity = portsRef.current.records.getCapacity(revalidatedLaunch.layerId);
         const currentSelectedKeyIdForEdit = portsRef.current.selection.getSelectedKeyId();
         const currentAppFrameForEdit = portsRef.current.selection.getCurrentAppFrame();
-        const targetSelectedKeyId = isGroupFramePaint
+        let targetSelectedKeyId = isGroupFramePaint || isGroupLifecycleDelete
           ? currentSelectedKeyIdForEdit
           : requestedSelectedKeyId;
-        const targetSelectedAppFrame = isGroupFramePaint
+        let targetSelectedAppFrame = isGroupFramePaint || isGroupLifecycleDelete
           ? (currentSelectedKeyIdForEdit === null ? null : currentAppFrameForEdit)
           : requestedSelectedAppFrame;
         const expectedRevision = buildPhysicPaintRotoPhysicalRevision(
@@ -1339,7 +1394,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         );
         let groupFramePaintProposal: PhysicPaintRotoPhysicalDocument | null = null;
         let groupFramePaintImpact: PhysicPaintRotoGroupFramePaintImpact | null = null;
-        if (isGroupFramePaint) {
+        let groupLifecycleDeleteProposal: PhysicPaintRotoPhysicalDocument | null = null;
+        let groupLifecycleDeleteImpact: RotoGroupLifecycleDeleteImpact | null = null;
+        if (isGroupFramePaint || isGroupLifecycleDelete) {
           const getDocument = portsRef.current.records.getDocument;
           const currentDocument = getDocument?.(revalidatedLaunch.layerId) ?? null;
           const documentRevision = currentDocument
@@ -1350,8 +1407,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
                 currentDocument.incomingInterpolationBreakKeyIds,
               )
             : null;
-          if (!groupFramePaintInput
-            || !currentDocument
+          if (!currentDocument
             || currentDocument.capacity !== capacity
             || currentDocument.revision !== expectedRevision
             || documentRevision !== expectedRevision
@@ -1361,25 +1417,65 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
             || currentDocument.selectedKeyId !== currentSelectedKeyIdForEdit
             || currentDocument.cursorAppFrame !== currentAppFrameForEdit) {
             portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
-            portsRef.current.status.logDiagnostic('Group Paint physical document became stale before proposal staging.');
+            portsRef.current.status.logDiagnostic('Group lifecycle physical document became stale before proposal staging.');
             clearPendingOnce();
             return false;
           }
-          const proposed = proposePhysicPaintRotoGroupFramePaint({
-            document: currentDocument,
-            groupId: groupFramePaintInput.groupId,
-            appFrame: groupFramePaintInput.appFrame,
-            overrideKeyId: groupFramePaintInput.overrideKeyId,
-            renderedPayload: groupFramePaintInput.renderedPayload,
-          });
-          if (!proposed.ok) {
-            portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
-            portsRef.current.status.logDiagnostic(`Group Paint physical proposal rejected: ${proposed.reason}`);
-            clearPendingOnce();
-            return false;
+          if (isGroupFramePaint && groupFramePaintInput) {
+            const proposed = proposePhysicPaintRotoGroupFramePaint({
+              document: currentDocument,
+              groupId: groupFramePaintInput.groupId,
+              appFrame: groupFramePaintInput.appFrame,
+              overrideKeyId: groupFramePaintInput.overrideKeyId,
+              renderedPayload: groupFramePaintInput.renderedPayload,
+            });
+            if (!proposed.ok) {
+              portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+              portsRef.current.status.logDiagnostic(`Group Paint physical proposal rejected: ${proposed.reason}`);
+              clearPendingOnce();
+              return false;
+            }
+            groupFramePaintProposal = proposed.proposal;
+            groupFramePaintImpact = proposed.impact;
+          } else if (groupLifecycleDeleteInput) {
+            const proposed = groupLifecycleDeleteInput.operationKind === 'delete-group'
+              ? proposePhysicPaintRotoDeleteGroup({
+                  document: currentDocument,
+                  groupId: groupLifecycleDeleteInput.groupId,
+                })
+              : proposePhysicPaintRotoDeleteGroupFrame({
+                  document: currentDocument,
+                  groupId: groupLifecycleDeleteInput.groupId,
+                  appFrame: groupLifecycleDeleteInput.appFrame,
+                });
+            if (!proposed.ok) {
+              portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+              portsRef.current.status.logDiagnostic(`Group lifecycle physical proposal rejected: ${proposed.reason}`);
+              clearPendingOnce();
+              return false;
+            }
+            groupLifecycleDeleteProposal = proposed.proposal;
+            groupLifecycleDeleteImpact = groupLifecycleDeleteInput.operationKind === 'delete-group'
+              ? Object.freeze({
+                  kind: 'delete-group',
+                  groupId: proposed.impact.groupId,
+                  cleanupKeyIds: proposed.impact.cleanupKeyIds,
+                  previousRevision: proposed.impact.previousRevision,
+                  nextRevision: proposed.impact.nextRevision,
+                })
+              : Object.freeze({
+                  kind: 'delete-group-frame',
+                  groupId: proposed.impact.groupId,
+                  appFrame: groupLifecycleDeleteInput.appFrame,
+                  cleanupKeyIds: proposed.impact.cleanupKeyIds,
+                  previousRevision: proposed.impact.previousRevision,
+                  nextRevision: proposed.impact.nextRevision,
+                });
+            targetSelectedKeyId = proposed.proposal.selectedKeyId;
+            targetSelectedAppFrame = proposed.proposal.selectedKeyId === null
+              ? null
+              : currentAppFrameForEdit;
           }
-          groupFramePaintProposal = proposed.proposal;
-          groupFramePaintImpact = proposed.impact;
         }
         if (isReplay && (
           !replayTarget
@@ -1440,6 +1536,8 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
             ? cloneRecords(playScriptInput.records)
             : isGroupFramePaint && groupFramePaintProposal
               ? cloneRecords(groupFramePaintProposal.realKeyRecords)
+              : isGroupLifecycleDelete && groupLifecycleDeleteProposal
+                ? cloneRecords(groupLifecycleDeleteProposal.realKeyRecords)
               : isReplay && replayTarget
                 ? buildReplayRecords(replayTarget.records, capacity)
                 : proposal
@@ -1482,6 +1580,11 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
                   enabled: groupFramePaintProposal.interpolation.enabled,
                   mode: groupFramePaintProposal.interpolation.mode,
                 }
+              : isGroupLifecycleDelete && groupLifecycleDeleteProposal
+                ? {
+                    enabled: groupLifecycleDeleteProposal.interpolation.enabled,
+                    mode: groupLifecycleDeleteProposal.interpolation.mode,
+                  }
               : isReplay && replayTarget
                 ? {
                     enabled: replayTarget.interpolation.enabled,
@@ -1512,13 +1615,15 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         // collection unchanged.
         const stagedLoopClips = isReplay && replayTarget
           ? replayTarget.loopClips
-          : groupFramePaintProposal?.loopClips
+          : groupLifecycleDeleteProposal?.loopClips
+            ?? groupFramePaintProposal?.loopClips
             ?? playScriptInput?.loopClips
             ?? proposal?.nextLoopClips
             ?? currentLoopClips;
         const stagedIncomingInterpolationBreakKeyIds = isReplay && replayTarget
           ? replayTarget.incomingInterpolationBreakKeyIds
-          : groupFramePaintProposal?.incomingInterpolationBreakKeyIds
+          : groupLifecycleDeleteProposal?.incomingInterpolationBreakKeyIds
+            ?? groupFramePaintProposal?.incomingInterpolationBreakKeyIds
             ?? proposal?.nextIncomingInterpolationBreakKeyIds
             ?? currentIncomingInterpolationBreakKeyIds;
         const stagedRevision = buildPhysicPaintRotoPhysicalRevision(
@@ -1549,7 +1654,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           operationId,
           layerId: revalidatedLaunch.layerId,
           leaseToken,
-          startFrame: groupFramePaintInput?.appFrame ?? targetSelectedAppFrame ?? before.currentAppFrame,
+          startFrame: groupFramePaintInput?.appFrame
+            ?? groupLifecycleDeleteInput?.appFrame
+            ?? targetSelectedAppFrame
+            ?? before.currentAppFrame,
           launchOperationId: revalidatedLaunch.operationId,
           projectContextId: leaseToken.projectContextId,
           expectedRevision,
@@ -1563,8 +1671,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           ),
           selectedKeyId: targetSelectedKeyId,
           selectedAppFrame: targetSelectedAppFrame,
-          ...(groupFramePaintImpact
-            ? { semanticDelta: groupFramePaintImpact }
+          ...(groupLifecycleDeleteImpact
+            ? { semanticDelta: groupLifecycleDeleteImpact }
+            : groupFramePaintImpact
+              ? { semanticDelta: groupFramePaintImpact }
             : playScriptInput
               ? { semanticDelta: playScriptInput.semanticDelta }
               : proposal?.semanticDelta
@@ -1591,7 +1701,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
                 interpolation: stagedInterpolation,
                 // Loop state settles with deferred Play Script and exact-frame
                 // Group Paint targets so range reunion is accepted atomically.
-                ...(isPlayScript || isGroupFramePaint ? { loopClips: stagedLoopClips } : {}),
+                ...(isPlayScript || isGroupFramePaint || isGroupLifecycleDelete
+                  ? { loopClips: stagedLoopClips }
+                  : {}),
               }
             : undefined,
         );
