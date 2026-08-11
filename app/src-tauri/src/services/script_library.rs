@@ -123,6 +123,21 @@ struct ActiveActionTransaction {
     request: ActionTransactionPrepareRequest,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RetainedActionArtifactMetadata {
+    schema_version: u64,
+    state: String,
+    project_context_id: String,
+    command_id: String,
+    generation: u64,
+    action_id: String,
+    managed_path: String,
+    original_revision: String,
+    integrity_sha256: String,
+    byte_length: u64,
+}
+
 #[derive(Default)]
 pub struct ScriptLibraryState {
     active: Mutex<Option<ActiveProjectAuthority>>,
@@ -400,7 +415,9 @@ pub fn acknowledge_transaction(
     authority: &str,
     request: ActionTransactionAcknowledgeRequest,
 ) -> Result<Value, String> {
-    state.with_active(authority, |root| acknowledge_transaction_root(root, request))
+    state.with_active(authority, |root| {
+        acknowledge_transaction_root(root, request)
+    })
 }
 
 pub(crate) fn prepare_transaction_value(
@@ -457,6 +474,7 @@ fn prepare_transaction_root(
     if active_transaction_paths(&transactions)?.next().is_some() {
         return Err("Action transaction recovery is already required".to_string());
     }
+    prepare_or_validate_retained_artifact(root, &transactions, &request)?;
 
     let record = ActiveActionTransaction {
         schema_version: ACTION_TRANSACTION_SCHEMA_VERSION,
@@ -506,22 +524,40 @@ fn commit_transaction_root(root: &Path, token: &str) -> Result<Value, String> {
     if record.state != "prepared" {
         return Err("Action transaction is not prepared".to_string());
     }
-    if matches!(record.request.direction, ActionTransactionDirection::Undo) {
-        return Err("Undo Action restoration requires retained history authority".to_string());
-    }
-
+    let retained = read_retained_artifact(&transactions, &record.request)?;
     let action_path = managed_path(root, &record.request.authority.action_id)?;
-    let action = read_valid_managed(root, &record.request.authority.action_id)?;
-    require_revision(&action, &record.request.authority.expected_action_revision)?;
     let tombstone = tombstone_path(&transactions, token)?;
     if tombstone.exists() {
         return Err("Action transaction tombstone already exists".to_string());
     }
-    fs::rename(&action_path, &tombstone)
-        .map_err(|error| format!("Could not move Action to transaction tombstone: {error}"))?;
-    sync_directory(&transactions);
-    if let Some(scripts) = action_path.parent() {
-        sync_directory(scripts);
+
+    match record.request.direction {
+        ActionTransactionDirection::Undo => {
+            if action_path.exists() {
+                return Err("Action presence changed before Undo commit".to_string());
+            }
+            atomic_write_bytes(&action_path, &retained, false)?;
+            let restored = read_valid_managed(root, &record.request.authority.action_id)?;
+            require_revision(
+                &restored,
+                &record.request.authority.expected_action_revision,
+            )?;
+        }
+        ActionTransactionDirection::Forward | ActionTransactionDirection::Redo => {
+            let action = read_valid_managed(root, &record.request.authority.action_id)?;
+            require_revision(&action, &record.request.authority.expected_action_revision)?;
+            let current_bytes = read_managed_bytes(root, &record.request.authority.action_id)?;
+            if current_bytes != retained {
+                return Err("Action bytes changed from retained history authority".to_string());
+            }
+            fs::rename(&action_path, &tombstone).map_err(|error| {
+                format!("Could not move Action to transaction tombstone: {error}")
+            })?;
+            sync_directory(&transactions);
+            if let Some(scripts) = action_path.parent() {
+                sync_directory(scripts);
+            }
+        }
     }
 
     record.state = "committed".to_string();
@@ -536,11 +572,15 @@ fn recover_transaction_root(root: &Path, token: &str) -> Result<Value, String> {
     let transactions = ensure_action_transactions_dir(root)?;
     let committed_path = committed_transaction_path(&transactions, token)?;
     if committed_path.is_file() {
-        let mut value = read_transaction_record(&committed_path, token, "committed Action transaction")?;
+        let mut value =
+            read_transaction_record(&committed_path, token, "committed Action transaction")?;
         value
             .as_object_mut()
             .ok_or_else(|| "Invalid committed Action transaction record".to_string())?
-            .insert("state".to_string(), Value::String("recovery-required".to_string()));
+            .insert(
+                "state".to_string(),
+                Value::String("recovery-required".to_string()),
+            );
         return Ok(value);
     }
 
@@ -622,7 +662,9 @@ fn acknowledge_transaction_root(
     acknowledge_result(&receipt, true)
 }
 
-fn validate_acknowledge_request(request: &ActionTransactionAcknowledgeRequest) -> Result<(), String> {
+fn validate_acknowledge_request(
+    request: &ActionTransactionAcknowledgeRequest,
+) -> Result<(), String> {
     validate_transaction_token(&request.token)?;
     validate_transaction_text(&request.command_id, "history command ID")?;
     validate_transaction_text(&request.operation_id, "operation ID")?;
@@ -653,14 +695,22 @@ fn require_acknowledge_identity(
 
 fn cleanup_committed_transaction(transactions: &Path, token: &str) -> Result<(), String> {
     for (path, label) in [
-        (tombstone_path(transactions, token)?, "Action transaction tombstone"),
-        (active_transaction_path(transactions, token)?, "active Action transaction"),
-        (committed_transaction_path(transactions, token)?, "committed Action transaction"),
+        (
+            tombstone_path(transactions, token)?,
+            "Action transaction tombstone",
+        ),
+        (
+            active_transaction_path(transactions, token)?,
+            "active Action transaction",
+        ),
+        (
+            committed_transaction_path(transactions, token)?,
+            "committed Action transaction",
+        ),
     ] {
         reject_symlink(&path, label)?;
         if path.exists() {
-            fs::remove_file(&path)
-                .map_err(|error| format!("Could not remove {label}: {error}"))?;
+            fs::remove_file(&path).map_err(|error| format!("Could not remove {label}: {error}"))?;
             sync_directory(transactions);
         }
     }
@@ -711,18 +761,46 @@ fn restore_prepared_transaction(
     let tombstone = tombstone_path(transactions, &record.request.token)?;
     let action_exists = action_path.exists();
     let tombstone_exists = tombstone.exists();
-    match (record.request.authority.expected_action_present, action_exists, tombstone_exists) {
-        (true, true, false) | (false, false, false) => {}
-        (true, false, true) => {
-            reject_symlink(&tombstone, "Action transaction tombstone")?;
-            fs::rename(&tombstone, &action_path)
-                .map_err(|error| format!("Could not restore prepared Action transaction: {error}"))?;
-            sync_directory(transactions);
-            if let Some(scripts) = action_path.parent() {
-                sync_directory(scripts);
+    match record.request.direction {
+        ActionTransactionDirection::Undo => match (action_exists, tombstone_exists) {
+            (false, false) => {}
+            (true, false) => {
+                let retained = read_retained_artifact(transactions, &record.request)?;
+                let restored = read_managed_bytes(root, &record.request.authority.action_id)?;
+                if restored != retained {
+                    return Err(
+                        "Prepared Undo recovery found ambiguous Action authority".to_string()
+                    );
+                }
+                fs::remove_file(&action_path).map_err(|error| {
+                    format!("Could not roll back prepared Undo Action restoration: {error}")
+                })?;
+                if let Some(scripts) = action_path.parent() {
+                    sync_directory(scripts);
+                }
+            }
+            _ => return Err("Prepared Undo transaction has ambiguous file authority".to_string()),
+        },
+        ActionTransactionDirection::Forward | ActionTransactionDirection::Redo => {
+            match (action_exists, tombstone_exists) {
+                (true, false) => {}
+                (false, true) => {
+                    reject_symlink(&tombstone, "Action transaction tombstone")?;
+                    fs::rename(&tombstone, &action_path).map_err(|error| {
+                        format!("Could not restore prepared Action transaction: {error}")
+                    })?;
+                    sync_directory(transactions);
+                    if let Some(scripts) = action_path.parent() {
+                        sync_directory(scripts);
+                    }
+                }
+                _ => {
+                    return Err(
+                        "Prepared Action transaction has ambiguous file authority".to_string()
+                    )
+                }
             }
         }
-        _ => return Err("Prepared Action transaction has ambiguous file authority".to_string()),
     }
     fs::remove_file(active_path)
         .map_err(|error| format!("Could not clear prepared Action transaction: {error}"))?;
@@ -821,6 +899,137 @@ fn validate_prepare_request(
         validate_transaction_text(selected_group_id, "selected Group ID")?;
     }
     Ok(())
+}
+
+fn prepare_or_validate_retained_artifact(
+    root: &Path,
+    transactions: &Path,
+    request: &ActionTransactionPrepareRequest,
+) -> Result<(), String> {
+    let metadata_path =
+        retained_metadata_path(transactions, &request.command_id, request.generation)?;
+    let bytes_path = retained_bytes_path(transactions, &request.command_id, request.generation)?;
+    let metadata_exists = metadata_path.exists();
+    let bytes_exist = bytes_path.exists();
+    if metadata_exists != bytes_exist {
+        return Err("Retained Action history artifact is incomplete".to_string());
+    }
+    if metadata_exists {
+        read_retained_artifact(transactions, request)?;
+        return Ok(());
+    }
+    if !matches!(request.direction, ActionTransactionDirection::Forward) {
+        return Err("Retained Action history artifact was not found".to_string());
+    }
+
+    let bytes = read_managed_bytes(root, &request.authority.action_id)?;
+    let integrity_sha256 = format!("{:x}", Sha256::digest(&bytes));
+    if integrity_sha256 != request.retained_artifact.integrity_sha256 {
+        return Err("Retained Action integrity does not match exact managed bytes".to_string());
+    }
+    let metadata = RetainedActionArtifactMetadata {
+        schema_version: ACTION_TRANSACTION_SCHEMA_VERSION,
+        state: "retained".to_string(),
+        project_context_id: request.authority.project_context_id.clone(),
+        command_id: request.command_id.clone(),
+        generation: request.generation,
+        action_id: request.authority.action_id.clone(),
+        managed_path: request.retained_artifact.managed_path.clone(),
+        original_revision: request.retained_artifact.original_revision.clone(),
+        integrity_sha256,
+        byte_length: u64::try_from(bytes.len())
+            .map_err(|_| "Retained Action bytes exceed the size limit".to_string())?,
+    };
+    atomic_write_bytes(&bytes_path, &bytes, false)?;
+    let metadata_value = serde_json::to_value(&metadata)
+        .map_err(|error| format!("Could not serialize retained Action metadata: {error}"))?;
+    if let Err(error) = atomic_write_json(&metadata_path, &metadata_value, false) {
+        let _ = fs::remove_file(&bytes_path);
+        sync_directory(transactions);
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn read_retained_artifact(
+    transactions: &Path,
+    request: &ActionTransactionPrepareRequest,
+) -> Result<Vec<u8>, String> {
+    let metadata_path =
+        retained_metadata_path(transactions, &request.command_id, request.generation)?;
+    let bytes_path = retained_bytes_path(transactions, &request.command_id, request.generation)?;
+    reject_symlink(&metadata_path, "retained Action metadata")?;
+    reject_symlink(&bytes_path, "retained Action bytes")?;
+    if !metadata_path.is_file() || !bytes_path.is_file() {
+        return Err("Retained Action history artifact was not found".to_string());
+    }
+    let metadata = serde_json::from_value::<RetainedActionArtifactMetadata>(read_json_bounded(
+        &metadata_path,
+    )?)
+    .map_err(|error| format!("Invalid retained Action metadata: {error}"))?;
+    if metadata.schema_version != ACTION_TRANSACTION_SCHEMA_VERSION
+        || metadata.state != "retained"
+        || metadata.project_context_id != request.authority.project_context_id
+        || metadata.command_id != request.command_id
+        || metadata.generation != request.generation
+        || metadata.action_id != request.authority.action_id
+        || metadata.managed_path != request.retained_artifact.managed_path
+        || metadata.original_revision != request.retained_artifact.original_revision
+        || metadata.integrity_sha256 != request.retained_artifact.integrity_sha256
+    {
+        return Err("Retained Action history identity does not match transaction".to_string());
+    }
+    let file_metadata = fs::metadata(&bytes_path)
+        .map_err(|error| format!("Could not inspect retained Action bytes: {error}"))?;
+    if file_metadata.len() > MAX_FILE_BYTES || file_metadata.len() != metadata.byte_length {
+        return Err("Retained Action byte length does not match metadata".to_string());
+    }
+    let bytes = fs::read(&bytes_path)
+        .map_err(|error| format!("Could not read retained Action bytes: {error}"))?;
+    let integrity_sha256 = format!("{:x}", Sha256::digest(&bytes));
+    if integrity_sha256 != metadata.integrity_sha256 {
+        return Err("Retained Action integrity verification failed".to_string());
+    }
+    let value: Value = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("Could not parse retained Action bytes: {error}"))?;
+    let validated = validate_document(value, Some(&metadata.action_id))?;
+    if document_revision(&validated)? != metadata.original_revision {
+        return Err("Retained Action revision verification failed".to_string());
+    }
+    Ok(bytes)
+}
+
+fn retained_artifact_stem(command_id: &str, generation: u64) -> Result<String, String> {
+    validate_transaction_text(command_id, "history command ID")?;
+    if generation == 0 {
+        return Err("Action transaction generation must be positive".to_string());
+    }
+    Ok(format!(
+        "retained-{:x}-{generation}",
+        Sha256::digest(command_id.as_bytes())
+    ))
+}
+
+fn retained_metadata_path(
+    transactions: &Path,
+    command_id: &str,
+    generation: u64,
+) -> Result<PathBuf, String> {
+    Ok(transactions.join(format!(
+        "{}.json",
+        retained_artifact_stem(command_id, generation)?
+    )))
+}
+
+fn retained_bytes_path(
+    transactions: &Path,
+    command_id: &str,
+    generation: u64,
+) -> Result<PathBuf, String> {
+    Ok(transactions.join(format!(
+        "{}.action",
+        retained_artifact_stem(command_id, generation)?
+    )))
 }
 
 fn ensure_action_transactions_dir(root: &Path) -> Result<PathBuf, String> {
@@ -1073,7 +1282,7 @@ fn managed_path(root: &Path, id: &str) -> Result<PathBuf, String> {
     Ok(scripts.join(managed_filename(id)?))
 }
 
-fn read_valid_managed(root: &Path, id: &str) -> Result<Value, String> {
+fn read_managed_bytes(root: &Path, id: &str) -> Result<Vec<u8>, String> {
     let path = managed_path(root, id)?;
     reject_symlink(&path, "managed script")?;
     if !path.is_file() {
@@ -1084,7 +1293,19 @@ fn read_valid_managed(root: &Path, id: &str) -> Result<Value, String> {
     if !canonical.starts_with(root.join("scripts")) {
         return Err("Managed script escapes active project".to_string());
     }
-    validate_document(read_json_bounded(&canonical)?, Some(id))
+    let metadata = fs::metadata(&canonical)
+        .map_err(|error| format!("Could not inspect managed script: {error}"))?;
+    if metadata.len() > MAX_FILE_BYTES {
+        return Err("Managed script exceeds the size limit".to_string());
+    }
+    fs::read(&canonical).map_err(|error| format!("Could not read managed script: {error}"))
+}
+
+fn read_valid_managed(root: &Path, id: &str) -> Result<Value, String> {
+    let bytes = read_managed_bytes(root, id)?;
+    let value = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("Could not parse managed script: {error}"))?;
+    validate_document(value, Some(id))
 }
 
 fn read_json_bounded(path: &Path) -> Result<Value, String> {
@@ -1348,24 +1569,22 @@ fn row_from_document(value: &Value) -> Result<ScriptLibraryRow, String> {
     })
 }
 
-fn atomic_write_json(path: &Path, value: &Value, replace: bool) -> Result<(), String> {
+fn atomic_write_bytes(path: &Path, bytes: &[u8], replace: bool) -> Result<(), String> {
     if !replace && path.exists() {
-        return Err("Managed script already exists".to_string());
+        return Err("Managed artifact already exists".to_string());
+    }
+    if bytes.len() as u64 > MAX_FILE_BYTES {
+        return Err("Managed artifact exceeds the size limit".to_string());
     }
     let parent = path
         .parent()
-        .ok_or_else(|| "Managed script has no parent".to_string())?;
-    reject_symlink(parent, "scripts directory")?;
-    let bytes = serde_json::to_vec_pretty(value)
-        .map_err(|error| format!("Could not serialize script: {error}"))?;
-    if bytes.len() as u64 > MAX_FILE_BYTES {
-        return Err("Managed script exceeds the size limit".to_string());
-    }
+        .ok_or_else(|| "Managed artifact has no parent".to_string())?;
+    reject_symlink(parent, "managed artifact directory")?;
     let temp = parent.join(format!(
         ".{}.{}.tmp",
         path.file_name()
             .and_then(|value| value.to_str())
-            .unwrap_or("script"),
+            .unwrap_or("artifact"),
         Uuid::new_v4()
     ));
     let result = (|| {
@@ -1373,14 +1592,14 @@ fn atomic_write_json(path: &Path, value: &Value, replace: bool) -> Result<(), St
             .write(true)
             .create_new(true)
             .open(&temp)
-            .map_err(|error| format!("Could not create script temp file: {error}"))?;
-        file.write_all(&bytes)
-            .map_err(|error| format!("Could not write script temp file: {error}"))?;
+            .map_err(|error| format!("Could not create managed artifact temp file: {error}"))?;
+        file.write_all(bytes)
+            .map_err(|error| format!("Could not write managed artifact temp file: {error}"))?;
         file.sync_all()
-            .map_err(|error| format!("Could not sync script temp file: {error}"))?;
+            .map_err(|error| format!("Could not sync managed artifact temp file: {error}"))?;
         drop(file);
         fs::rename(&temp, path)
-            .map_err(|error| format!("Could not atomically replace script: {error}"))?;
+            .map_err(|error| format!("Could not atomically replace managed artifact: {error}"))?;
         sync_directory(parent);
         Ok(())
     })();
@@ -1388,6 +1607,12 @@ fn atomic_write_json(path: &Path, value: &Value, replace: bool) -> Result<(), St
         let _ = fs::remove_file(&temp);
     }
     result
+}
+
+fn atomic_write_json(path: &Path, value: &Value, replace: bool) -> Result<(), String> {
+    let bytes = serde_json::to_vec_pretty(value)
+        .map_err(|error| format!("Could not serialize script: {error}"))?;
+    atomic_write_bytes(path, &bytes, replace)
 }
 
 fn sync_directory(path: &Path) {

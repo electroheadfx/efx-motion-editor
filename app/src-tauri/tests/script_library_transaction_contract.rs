@@ -60,7 +60,11 @@ fn prepare_request_with_direction(
     direction: &str,
 ) -> Value {
     let expected_action_present = direction != "undo";
-    let target_suffix = if direction == "undo" { "before" } else { "after" };
+    let target_suffix = if direction == "undo" {
+        "before"
+    } else {
+        "after"
+    };
     json!({
         "token": token,
         "commandId": "history-command-10",
@@ -232,7 +236,10 @@ fn commit_moves_action_to_hidden_tombstone_and_gates_ordinary_scan() {
 
     let recovery = fixture.recover_transaction(&token).unwrap();
     assert_eq!(recovery["state"], "recovery-required");
-    assert_eq!(recovery["target"]["physicalDocument"]["revision"], "physical-after");
+    assert_eq!(
+        recovery["target"]["physicalDocument"]["revision"],
+        "physical-after"
+    );
     assert_eq!(recovery["token"], token);
 }
 
@@ -286,7 +293,9 @@ fn acknowledge_cleans_only_active_state_and_is_exactly_idempotent() {
     fixture.commit_transaction(&token).unwrap();
 
     let acknowledge = acknowledge_request(&prepare);
-    let first = fixture.acknowledge_transaction(acknowledge.clone()).unwrap();
+    let first = fixture
+        .acknowledge_transaction(acknowledge.clone())
+        .unwrap();
     assert_eq!(first["state"], "acknowledged");
     assert_eq!(first["cleaned"], true);
     assert!(!fixture
@@ -313,8 +322,12 @@ fn acknowledge_cleans_only_active_state_and_is_exactly_idempotent() {
 #[test]
 fn commit_and_recovery_reject_unknown_stale_and_replayed_tokens() {
     let fixture = FixtureLibrary::new().unwrap();
-    assert!(fixture.commit_transaction(&Uuid::new_v4().to_string()).is_err());
-    assert!(fixture.recover_transaction(&Uuid::new_v4().to_string()).is_err());
+    assert!(fixture
+        .commit_transaction(&Uuid::new_v4().to_string())
+        .is_err());
+    assert!(fixture
+        .recover_transaction(&Uuid::new_v4().to_string())
+        .is_err());
 
     let action_id = Uuid::new_v4().to_string();
     let saved = fixture.save(action_document(&action_id)).unwrap();
@@ -399,34 +412,30 @@ fn history_undo_and_redo_restore_and_remove_exact_action_authority() {
         .unwrap();
 
     let undo_token = Uuid::new_v4().to_string();
-    let undo = prepare_request_with_direction(
-        &action_id,
-        &revision,
-        &integrity,
-        &undo_token,
-        "undo",
-    );
+    let undo =
+        prepare_request_with_direction(&action_id, &revision, &integrity, &undo_token, "undo");
     fixture.prepare_transaction(undo.clone()).unwrap();
     let undo_committed = fixture.commit_transaction(&undo_token).unwrap();
     assert_eq!(undo_committed["direction"], "undo");
-    assert_eq!(undo_committed["target"]["physicalRevision"], "physical-before");
+    assert_eq!(
+        undo_committed["target"]["physicalRevision"],
+        "physical-before"
+    );
     assert_eq!(std::fs::read(&action_path).unwrap(), original_bytes);
     fixture
         .acknowledge_transaction(acknowledge_request(&undo))
         .unwrap();
 
     let redo_token = Uuid::new_v4().to_string();
-    let redo = prepare_request_with_direction(
-        &action_id,
-        &revision,
-        &integrity,
-        &redo_token,
-        "redo",
-    );
+    let redo =
+        prepare_request_with_direction(&action_id, &revision, &integrity, &redo_token, "redo");
     fixture.prepare_transaction(redo.clone()).unwrap();
     let redo_committed = fixture.commit_transaction(&redo_token).unwrap();
     assert_eq!(redo_committed["direction"], "redo");
-    assert_eq!(redo_committed["target"]["physicalRevision"], "physical-after");
+    assert_eq!(
+        redo_committed["target"]["physicalRevision"],
+        "physical-after"
+    );
     assert!(!action_path.exists());
     fixture
         .acknowledge_transaction(acknowledge_request(&redo))
@@ -475,13 +484,8 @@ fn history_prepare_rejects_integrity_mismatch_and_recovers_interrupted_undo() {
         .unwrap();
 
     let undo_token = Uuid::new_v4().to_string();
-    let undo = prepare_request_with_direction(
-        &action_id,
-        &revision,
-        &integrity,
-        &undo_token,
-        "undo",
-    );
+    let undo =
+        prepare_request_with_direction(&action_id, &revision, &integrity, &undo_token, "undo");
     fixture.prepare_transaction(undo).unwrap();
     std::fs::write(&action_path, &original_bytes).unwrap();
 
