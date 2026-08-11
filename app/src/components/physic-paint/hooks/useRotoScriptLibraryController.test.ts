@@ -3,7 +3,12 @@ import type { PhysicPaintLaunchContext, PhysicPaintScriptLibraryRequest, PhysicP
 import { createRotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply } from '../roto/physicsPaintRotoScriptClipboard';
 import { createPersistedRotoScript } from '../roto/physicsPaintRotoScriptSchema';
-import { createRotoScriptLibraryControllerAdapter, createRotoScriptLibraryRequestLifecycle } from './useRotoScriptLibraryController';
+import {
+  createReferencedActionHistoryReplayOrchestrator,
+  createRotoScriptLibraryControllerAdapter,
+  createRotoScriptLibraryRequestLifecycle,
+} from './useRotoScriptLibraryController';
+import type { ReferencedActionHistoryCommand } from './useRotoPhysicalEditHistory';
 
 const launchContext = (): PhysicPaintLaunchContext => ({ operationId: 'launch', layerId: 'layer-1', layerName: 'Ink', startFrame: 4, width: 1600, height: 900, project: { name: 'Project', saved: true, contextId: 'context-1' } });
 const row = { id: '123e4567-e89b-42d3-a456-426614174000', revision: 'rev-1', integritySha256: 'a'.repeat(64), name: 'Script', createdAt: '2026-07-16T12:00:00Z', updatedAt: '2026-07-16T12:00:00Z', source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 4, width: 1600, height: 900, background: { background: 'white' as const, paperGrain: 'canvas1', grainStrength: 0 } }, thumbnail: { mimeType: 'image/webp' as const, width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' }, brushCount: 1 };
@@ -155,6 +160,116 @@ class DeleteOperationCorrelationHarness {
     return `${operation.commandId}:${operation.generation}:${operation.token}:${operation.direction}`;
   }
 }
+
+describe('production referenced Action history direction orchestration', () => {
+  it.each([
+    { direction: 'undo' as const, expectedActionPresent: false, sourceRevision: 'physical-after', targetRevision: 'physical-before' },
+    { direction: 'redo' as const, expectedActionPresent: true, sourceRevision: 'physical-before', targetRevision: 'physical-after' },
+  ])('waits for matching Rust committed $direction before settlement and acknowledgement', async ({ direction, expectedActionPresent, sourceRevision, targetRevision }) => {
+    const document = (revision: string) => ({
+      realKeyRecords: [],
+      interpolation: { enabled: false as const, mode: 'duplicate' as const },
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      capacity: 10,
+      selectedKeyId: null,
+      cursorAppFrame: 4,
+      revision,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    const command: ReferencedActionHistoryCommand = {
+      kind: 'referenced-action',
+      commandId: 'history-command-1',
+      generation: 7,
+      mode: 'delete-action-and-groups',
+      retainedArtifact: {
+        commandId: 'history-command-1', generation: 7, actionId: row.id,
+        managedPath: `scripts/${row.id}.efx-roto-script.json`, originalRevision: row.revision,
+        integritySha256: row.integritySha256,
+      },
+      authority: {
+        projectContextId: 'context-1', layerId: 'layer-1', launchOperationId: 'launch',
+        actionId: row.id, actionRevision: row.revision,
+      },
+      before: { physicalRevision: 'physical-before', physicalHash: 'hash-before', document: document('physical-before'), selectedGroupId: 'group-1', cursorAppFrame: 4 },
+      after: { physicalRevision: 'physical-after', physicalHash: 'hash-after', document: document('physical-after'), selectedGroupId: null, cursorAppFrame: 4 },
+    };
+    const events: string[] = [];
+    const prepare = vi.fn(async (_authority, request) => {
+      events.push('prepare');
+      return { ...request, schemaVersion: 1 as const, state: 'prepared' as const };
+    });
+    const commit = vi.fn(async (_authority, request) => {
+      events.push('commit');
+      return { ...request, schemaVersion: 1 as const, state: 'committed' as const };
+    });
+    const settle = vi.fn(() => { events.push('settle'); return { ok: true as const }; });
+    const acknowledge = vi.fn(async (_authority, request) => {
+      events.push('acknowledge');
+      return { ...request, state: 'acknowledged' as const, cleaned: true };
+    });
+    const releaseLease = vi.fn(() => { events.push('release-lease'); return true; });
+    const replay = createReferencedActionHistoryReplayOrchestrator({
+      getPhysicalDocument: () => document(sourceRevision),
+      getActionRevision: () => expectedActionPresent ? row.revision : null,
+      getAuthority: () => 'native-authority',
+      acquireLease: () => 'context-1:layer-1:8:history-replay',
+      releaseLease,
+      nextUuid: () => `${direction}-token`,
+      digest: async () => 'impact-digest',
+      prepare,
+      commit,
+      settle,
+      acknowledge,
+    });
+
+    await expect(replay(command, direction)).resolves.toBe(true);
+    expect(events).toEqual(['prepare', 'commit', 'settle', 'acknowledge', 'release-lease']);
+    const request = prepare.mock.calls[0][1];
+    expect(request).toMatchObject({
+      token: `${direction}-token`,
+      commandId: command.commandId,
+      generation: command.generation,
+      direction,
+      mode: command.mode,
+      authority: {
+        projectContextId: command.authority.projectContextId,
+        layerId: command.authority.layerId,
+        launchOperationId: command.authority.launchOperationId,
+        actionId: command.authority.actionId,
+        expectedActionPresent,
+        expectedActionRevision: command.authority.actionRevision,
+        expectedPhysicalRevision: sourceRevision,
+      },
+      target: { physicalRevision: targetRevision },
+    });
+    expect(commit.mock.calls[0][1]).toBe(request);
+    expect(settle).toHaveBeenCalledWith({ command, committed: expect.objectContaining({ state: 'committed', direction }), direction, leaseToken: request.leaseToken });
+  });
+
+  it('rejects changed source authority before Rust prepare or lease acquisition', async () => {
+    const acquireLease = vi.fn(() => 'lease');
+    const prepare = vi.fn();
+    const replay = createReferencedActionHistoryReplayOrchestrator({
+      getPhysicalDocument: () => null,
+      getActionRevision: () => null,
+      getAuthority: () => 'native-authority',
+      acquireLease,
+      releaseLease: vi.fn(() => true),
+      nextUuid: () => 'token',
+      digest: async () => 'digest',
+      prepare,
+      commit: vi.fn(),
+      settle: vi.fn(),
+      acknowledge: vi.fn(),
+    });
+    const command = { commandId: 'history-command', generation: 1 } as ReferencedActionHistoryCommand;
+    await expect(replay(command, 'undo')).resolves.toBe(false);
+    expect(acquireLease).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+  });
+});
 
 describe('Wave 0 durable referenced-delete request correlation', () => {
   it('rejects stale or replayed direction, token, generation, and newer-document settlement', () => {

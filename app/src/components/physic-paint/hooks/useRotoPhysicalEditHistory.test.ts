@@ -14,7 +14,10 @@ import type {
   RotoPhysicalEditExecuteInput,
   RotoPhysicalEditSnapshot,
 } from '../roto/rotoCoordinatorPorts';
-import { useRotoPhysicalEditHistory } from './useRotoPhysicalEditHistory';
+import {
+  useRotoPhysicalEditHistory,
+  type ReferencedActionHistoryCommand,
+} from './useRotoPhysicalEditHistory';
 
 function record(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
   return {
@@ -541,6 +544,113 @@ describe('useRotoPhysicalEditHistory empty-segment ownership', () => {
     ]);
     expect(current.incomingInterpolationBreakKeyIds).toEqual(['empty-key-1']);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+});
+
+describe('useRotoPhysicalEditHistory referenced Action replay', () => {
+  it('routes Undo and Redo through durable direction settlement and moves the pointer only after acceptance', async () => {
+    const before = snapshot([record('A', 0)], 'A', 0);
+    const after = snapshot([record('A', 0)], 'A', 0);
+    const toDocument = (source: RotoPhysicalEditSnapshot<null>) => ({
+      realKeyRecords: source.records,
+      interpolation: source.interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      capacity: source.capacity,
+      selectedKeyId: source.selectedKeyId,
+      cursorAppFrame: source.currentAppFrame,
+      loopClips: source.loopClips,
+      incomingInterpolationBreakKeyIds: source.incomingInterpolationBreakKeyIds,
+      revision: source.stagedRevision,
+    });
+    const command: ReferencedActionHistoryCommand = {
+      kind: 'referenced-action',
+      commandId: 'history-command-1',
+      generation: 4,
+      mode: 'keep-groups',
+      retainedArtifact: {
+        commandId: 'history-command-1',
+        generation: 4,
+        actionId: 'action-1',
+        managedPath: 'scripts/action-1.efx-roto-script.json',
+        originalRevision: 'action-revision-1',
+        integritySha256: 'a'.repeat(64),
+      },
+      authority: {
+        projectContextId: 'project-1',
+        layerId: 'layer-1',
+        launchOperationId: 'launch-1',
+        actionId: 'action-1',
+        actionRevision: 'action-revision-1',
+      },
+      before: {
+        physicalRevision: before.stagedRevision,
+        physicalHash: 'physical-before-hash',
+        document: toDocument(before),
+        selectedGroupId: 'group-1',
+        cursorAppFrame: 0,
+      },
+      after: {
+        physicalRevision: after.stagedRevision,
+        physicalHash: 'physical-after-hash',
+        document: toDocument(after),
+        selectedGroupId: null,
+        cursorAppFrame: 0,
+      },
+    };
+    const acceptedReferencedAction = signal<ReferencedActionHistoryCommand | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    let current = after;
+    let settleReplay: ((accepted: boolean) => void) | null = null;
+    const replay = vi.fn(async (_command: ReferencedActionHistoryCommand, direction: 'undo' | 'redo') => {
+      const accepted = await new Promise<boolean>((resolve) => { settleReplay = resolve; });
+      if (accepted) current = direction === 'undo' ? before : after;
+      return accepted;
+    });
+    const executePhysicalEdit = vi.fn(async () => true);
+    const history = useRotoPhysicalEditHistory({
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10 },
+      availability,
+      coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId: signal(null), acceptedOutput: signal(null) },
+      recordsPort: {
+        getRecords: () => current.records,
+        getInterpolation: () => current.interpolation,
+        getCapacity: () => current.capacity,
+        getLoopClips: () => current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => current,
+      referencedActionHistory: { accepted: acceptedReferencedAction, replay },
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedReferencedAction.value = command;
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+
+    const undoing = history.undo();
+    await vi.waitFor(() => expect(replay).toHaveBeenCalledWith(command, 'undo'));
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    settleReplay?.(false);
+    await expect(undoing).resolves.toBe(false);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+
+    const acceptedUndo = history.undo();
+    await vi.waitFor(() => expect(replay).toHaveBeenCalledTimes(2));
+    settleReplay?.(true);
+    await expect(acceptedUndo).resolves.toBe(true);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    const redoing = history.redo();
+    await vi.waitFor(() => expect(replay).toHaveBeenLastCalledWith(command, 'redo'));
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+    settleReplay?.(true);
+    await expect(redoing).resolves.toBe(true);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
   });
 });
 
