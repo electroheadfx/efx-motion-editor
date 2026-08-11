@@ -229,7 +229,6 @@ fn prepared_restart_recovery_restores_action_before_normal_scan() {
     assert!(fixture.transaction_status(&token).is_err());
 }
 
-#[test]
 fn acknowledge_request(prepare: &Value) -> Value {
     json!({
         "token": prepare["token"],

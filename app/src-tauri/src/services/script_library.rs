@@ -92,6 +92,30 @@ pub struct ActionTransactionPrepareRequest {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActionTransactionAcknowledgeRequest {
+    pub token: String,
+    pub command_id: String,
+    pub generation: u64,
+    pub operation_id: String,
+    pub lease_token: String,
+    pub direction: ActionTransactionDirection,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ActionTransactionAcknowledgeReceipt {
+    schema_version: u64,
+    state: String,
+    token: String,
+    command_id: String,
+    generation: u64,
+    operation_id: String,
+    lease_token: String,
+    direction: ActionTransactionDirection,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ActiveActionTransaction {
     schema_version: u64,
     state: String,
@@ -371,6 +395,14 @@ pub fn recover_transaction(
     state.with_active(authority, |root| recover_transaction_root(root, token))
 }
 
+pub fn acknowledge_transaction(
+    state: &ScriptLibraryState,
+    authority: &str,
+    request: ActionTransactionAcknowledgeRequest,
+) -> Result<Value, String> {
+    state.with_active(authority, |root| acknowledge_transaction_root(root, request))
+}
+
 pub(crate) fn prepare_transaction_value(
     state: &ScriptLibraryState,
     authority: &str,
@@ -403,6 +435,16 @@ pub(crate) fn recover_transaction_value(
     token: &str,
 ) -> Result<Value, String> {
     recover_transaction(state, authority, token)
+}
+
+pub(crate) fn acknowledge_transaction_value(
+    state: &ScriptLibraryState,
+    authority: &str,
+    request: Value,
+) -> Result<Value, String> {
+    let request = serde_json::from_value::<ActionTransactionAcknowledgeRequest>(request)
+        .map_err(|error| format!("Invalid Action transaction acknowledge request: {error}"))?;
+    acknowledge_transaction(state, authority, request)
 }
 
 fn prepare_transaction_root(
@@ -442,6 +484,10 @@ fn transaction_status_root(root: &Path, token: &str) -> Result<Value, String> {
     let active = active_transaction_path(&transactions, token)?;
     if active.is_file() {
         return read_transaction_record(&active, token, "active Action transaction");
+    }
+    let receipt = acknowledged_transaction_path(&transactions, token)?;
+    if receipt.is_file() {
+        return read_json_bounded(&receipt);
     }
     Err("Unknown Action transaction token".to_string())
 }
@@ -508,6 +554,134 @@ fn recover_transaction_root(root: &Path, token: &str) -> Result<Value, String> {
         "token": token,
         "actionPresent": record.request.authority.expected_action_present
     }))
+}
+
+fn acknowledge_transaction_root(
+    root: &Path,
+    request: ActionTransactionAcknowledgeRequest,
+) -> Result<Value, String> {
+    validate_acknowledge_request(&request)?;
+    let transactions = ensure_action_transactions_dir(root)?;
+    let receipt_path = acknowledged_transaction_path(&transactions, &request.token)?;
+    if receipt_path.is_file() {
+        let mut receipt = serde_json::from_value::<ActionTransactionAcknowledgeReceipt>(
+            read_json_bounded(&receipt_path)?,
+        )
+        .map_err(|error| format!("Invalid Action transaction acknowledge receipt: {error}"))?;
+        require_acknowledge_identity(&receipt, &request)?;
+        if receipt.state == "acknowledged" {
+            return acknowledge_result(&receipt, false);
+        }
+        if receipt.state != "cleanup-pending" {
+            return Err("Invalid Action transaction acknowledge state".to_string());
+        }
+        cleanup_committed_transaction(&transactions, &request.token)?;
+        receipt.state = "acknowledged".to_string();
+        let value = serde_json::to_value(&receipt)
+            .map_err(|error| format!("Could not serialize Action acknowledge receipt: {error}"))?;
+        atomic_write_json(&receipt_path, &value, true)?;
+        return acknowledge_result(&receipt, true);
+    }
+
+    let committed_path = committed_transaction_path(&transactions, &request.token)?;
+    let committed_value = read_transaction_record(
+        &committed_path,
+        &request.token,
+        "committed Action transaction",
+    )?;
+    let committed = serde_json::from_value::<ActiveActionTransaction>(committed_value)
+        .map_err(|error| format!("Invalid committed Action transaction record: {error}"))?;
+    if committed.state != "committed"
+        || committed.request.command_id != request.command_id
+        || committed.request.generation != request.generation
+        || committed.request.operation_id != request.operation_id
+        || committed.request.lease_token != request.lease_token
+        || committed.request.direction != request.direction
+    {
+        return Err("Stale Action transaction acknowledge identity".to_string());
+    }
+
+    let mut receipt = ActionTransactionAcknowledgeReceipt {
+        schema_version: ACTION_TRANSACTION_SCHEMA_VERSION,
+        state: "cleanup-pending".to_string(),
+        token: request.token.clone(),
+        command_id: request.command_id,
+        generation: request.generation,
+        operation_id: request.operation_id,
+        lease_token: request.lease_token,
+        direction: request.direction,
+    };
+    let pending = serde_json::to_value(&receipt)
+        .map_err(|error| format!("Could not serialize cleanup-pending receipt: {error}"))?;
+    atomic_write_json(&receipt_path, &pending, false)?;
+    cleanup_committed_transaction(&transactions, &request.token)?;
+    receipt.state = "acknowledged".to_string();
+    let acknowledged = serde_json::to_value(&receipt)
+        .map_err(|error| format!("Could not serialize acknowledged receipt: {error}"))?;
+    atomic_write_json(&receipt_path, &acknowledged, true)?;
+    acknowledge_result(&receipt, true)
+}
+
+fn validate_acknowledge_request(request: &ActionTransactionAcknowledgeRequest) -> Result<(), String> {
+    validate_transaction_token(&request.token)?;
+    validate_transaction_text(&request.command_id, "history command ID")?;
+    validate_transaction_text(&request.operation_id, "operation ID")?;
+    validate_transaction_text(&request.lease_token, "lease token")?;
+    if request.generation == 0 {
+        return Err("Action transaction generation must be positive".to_string());
+    }
+    Ok(())
+}
+
+fn require_acknowledge_identity(
+    receipt: &ActionTransactionAcknowledgeReceipt,
+    request: &ActionTransactionAcknowledgeRequest,
+) -> Result<(), String> {
+    if receipt.schema_version != ACTION_TRANSACTION_SCHEMA_VERSION
+        || receipt.token != request.token
+        || receipt.command_id != request.command_id
+        || receipt.generation != request.generation
+        || receipt.operation_id != request.operation_id
+        || receipt.lease_token != request.lease_token
+        || receipt.direction != request.direction
+    {
+        Err("Stale Action transaction acknowledge identity".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn cleanup_committed_transaction(transactions: &Path, token: &str) -> Result<(), String> {
+    for (path, label) in [
+        (tombstone_path(transactions, token)?, "Action transaction tombstone"),
+        (active_transaction_path(transactions, token)?, "active Action transaction"),
+        (committed_transaction_path(transactions, token)?, "committed Action transaction"),
+    ] {
+        reject_symlink(&path, label)?;
+        if path.exists() {
+            fs::remove_file(&path)
+                .map_err(|error| format!("Could not remove {label}: {error}"))?;
+            sync_directory(transactions);
+        }
+    }
+    Ok(())
+}
+
+fn acknowledge_result(
+    receipt: &ActionTransactionAcknowledgeReceipt,
+    cleaned: bool,
+) -> Result<Value, String> {
+    serde_json::to_value(serde_json::json!({
+        "state": "acknowledged",
+        "token": receipt.token,
+        "commandId": receipt.command_id,
+        "generation": receipt.generation,
+        "operationId": receipt.operation_id,
+        "leaseToken": receipt.lease_token,
+        "direction": receipt.direction,
+        "cleaned": cleaned
+    }))
+    .map_err(|error| format!("Could not serialize acknowledge result: {error}"))
 }
 
 fn read_transaction_record(path: &Path, token: &str, label: &str) -> Result<Value, String> {
@@ -687,6 +861,11 @@ fn committed_transaction_path(transactions: &Path, token: &str) -> Result<PathBu
 fn tombstone_path(transactions: &Path, token: &str) -> Result<PathBuf, String> {
     validate_transaction_token(token)?;
     Ok(transactions.join(format!("tombstone-{token}{SCRIPT_EXTENSION}")))
+}
+
+fn acknowledged_transaction_path(transactions: &Path, token: &str) -> Result<PathBuf, String> {
+    validate_transaction_token(token)?;
+    Ok(transactions.join(format!("acknowledged-{token}.json")))
 }
 
 fn active_transaction_paths(transactions: &Path) -> Result<impl Iterator<Item = PathBuf>, String> {

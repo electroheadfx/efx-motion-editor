@@ -1,4 +1,7 @@
-use crate::services::script_library::{self, ScriptLibraryMigration, ScriptLibraryOperation, ScriptLibraryScan, ScriptLibraryState};
+use crate::services::script_library::{
+    self, ActionTransactionAcknowledgeRequest, ActionTransactionPrepareRequest,
+    ScriptLibraryMigration, ScriptLibraryOperation, ScriptLibraryScan, ScriptLibraryState,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::Path;
@@ -117,6 +120,85 @@ pub fn script_library_rename(state: State<'_, ScriptLibraryState>, authority: St
 #[command]
 pub fn script_library_delete(state: State<'_, ScriptLibraryState>, authority: String, script_id: String, expected_revision: String) -> Result<ScriptLibraryOperation, String> {
     script_library::delete(&state, &authority, &script_id, &expected_revision)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActionTransactionTokenRequest {
+    token: String,
+}
+
+#[command]
+pub fn script_library_prepare_action_transaction(
+    state: State<'_, ScriptLibraryState>,
+    authority: String,
+    request: ActionTransactionPrepareRequest,
+) -> Result<Value, String> {
+    script_library::prepare_transaction(&state, &authority, request)
+}
+
+#[command]
+pub fn script_library_commit_action_transaction(
+    state: State<'_, ScriptLibraryState>,
+    authority: String,
+    request: ActionTransactionTokenRequest,
+) -> Result<Value, String> {
+    script_library::commit_transaction(&state, &authority, &request.token)
+}
+
+#[command]
+pub fn script_library_action_transaction_status(
+    state: State<'_, ScriptLibraryState>,
+    authority: String,
+    request: ActionTransactionTokenRequest,
+) -> Result<Value, String> {
+    script_library::transaction_status(&state, &authority, &request.token)
+}
+
+#[command]
+pub fn script_library_recover_action_transaction(
+    state: State<'_, ScriptLibraryState>,
+    authority: String,
+    request: ActionTransactionTokenRequest,
+) -> Result<Value, String> {
+    script_library::recover_transaction(&state, &authority, &request.token)
+}
+
+#[command]
+pub fn script_library_acknowledge_action_transaction(
+    state: State<'_, ScriptLibraryState>,
+    authority: String,
+    request: ActionTransactionAcknowledgeRequest,
+) -> Result<Value, String> {
+    script_library::acknowledge_transaction(&state, &authority, request)
+}
+
+pub(crate) fn validate_action_transaction_prepare_for_test(value: Value) -> Result<Value, String> {
+    let request = serde_json::from_value::<ActionTransactionPrepareRequest>(value)
+        .map_err(|error| format!("Invalid Action transaction prepare request: {error}"))?;
+    if request.command_id.is_empty()
+        || request.generation == 0
+        || request.operation_id.is_empty()
+        || request.lease_token.is_empty()
+    {
+        return Err("Missing Action transaction identity".to_string());
+    }
+    serde_json::to_value(request)
+        .map_err(|error| format!("Could not serialize Action transaction prepare request: {error}"))
+}
+
+pub(crate) fn validate_action_transaction_acknowledge_for_test(value: Value) -> Result<Value, String> {
+    let request = serde_json::from_value::<ActionTransactionAcknowledgeRequest>(value)
+        .map_err(|error| format!("Invalid Action transaction acknowledge request: {error}"))?;
+    if request.command_id.is_empty()
+        || request.generation == 0
+        || request.operation_id.is_empty()
+        || request.lease_token.is_empty()
+    {
+        return Err("Missing Action transaction acknowledge identity".to_string());
+    }
+    serde_json::to_value(request)
+        .map_err(|error| format!("Could not serialize Action transaction acknowledge request: {error}"))
 }
 
 #[command]
