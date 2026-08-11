@@ -399,6 +399,8 @@ interface FakeLibrarySeed {
   transactionPhase?: 'idle' | 'preparing' | 'committed' | 'recovery-required';
   recoveryReady?: boolean;
   status?: string | null;
+  deleteError?: string | null;
+  actionMutationDisabledReason?: string | null;
 }
 
 function createFakeLibrary(seed: FakeLibrarySeed = {}): RotoScriptLibraryController {
@@ -414,6 +416,8 @@ function createFakeLibrary(seed: FakeLibrarySeed = {}): RotoScriptLibraryControl
     referencedDeleteImpact: sig(null),
     transactionPhase: sig(seed.transactionPhase ?? 'idle'),
     recoveryReady: sig(seed.recoveryReady ?? true),
+    deleteError: sig(seed.deleteError ?? null),
+    actionMutationDisabledReason: sig(seed.actionMutationDisabledReason ?? null),
     selectedId: sig(selectedId),
     status: sig(seed.status ?? null),
     skippedInvalidCount: sig(0),
@@ -602,6 +606,66 @@ describe('Physics Paint Actions deletion disclosure contract (43.2-13)', () => {
     expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-action-delete-groups'))).toHaveLength(1);
     expect(css).toMatch(/\.physics-paint-script-confirmation[\s\S]*?max-height:\s*calc\(100% - 52px\)[\s\S]*?overflow(?:-y)?:\s*auto/);
     expect(css).toMatch(/\.physics-paint-action-delete-choice[\s\S]*?white-space:\s*normal/);
+  });
+});
+
+describe('Physics Paint Actions deletion lifecycle contract (43.2-13)', () => {
+  const actionRow = {
+    id: 'action-1', name: 'Walk Cycle', revision: 'revision-1', createdAt: '2026-08-11T00:00:00.000Z', updatedAt: '2026-08-11T00:00:00.000Z',
+    source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Paint', sourceFrame: 0, displayFrame: 1, width: 1000, height: 650, background: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 } },
+    thumbnail: { dataUrl: 'data:image/webp;base64,AA==', width: 48, height: 48 }, brushCount: 2, integrity: '0'.repeat(64),
+  };
+  const referenceImpact = {
+    physicalRevision: 'physical-revision-1', groupCount: 1, visibleRangeCount: 1,
+    affectedGroups: [{ groupId: 'group-a', name: 'Walk Cycle Group', placementStart: 2, endExclusive: 8, visibleRanges: [{ start: 2, endExclusive: 8 }] }],
+  };
+
+  it.each([
+    ['preparing', 'Finish the current Action operation.'],
+    ['committed', 'Finish the current Action operation.'],
+    ['recovery-required', 'Recover the pending Action change before starting another operation.'],
+  ] as const)('retains accepted rows and one dialog while %s disables the complete mutation surface', (transactionPhase, disabledReason) => {
+    const library = createFakeLibrary({
+      rows: [actionRow], selectedId: actionRow.id, deleteConfirmation: { ...actionRow, referenceImpact },
+      busy: transactionPhase !== 'recovery-required', transactionPhase, recoveryReady: transactionPhase !== 'recovery-required',
+      actionMutationDisabledReason: disabledReason,
+    });
+    const tree = renderPanel(createFakePlayScript(), library);
+
+    expect(findAll(tree, (vnode) => vnode.props.role === 'option')).toHaveLength(1);
+    expect(findAll(tree, (vnode) => vnode.props.role === 'dialog')).toHaveLength(1);
+    for (const label of ['Save Script', 'Load and Apply Script', 'Play Script', 'Delete Script', 'Refresh Scripts']) {
+      expect(findOne(tree, (vnode) => vnode.props.label === label).props.disabled).toBe(true);
+    }
+    for (const label of ['Copy Script', 'Apply Script', 'Clear Script Buffer', 'Keep Groups', 'Delete Action and Groups']) {
+      expect(findOne(tree, (vnode) => vnode.props['aria-label'] === label).props['aria-disabled']).toBe('true');
+    }
+  });
+
+  it('shows only controller-mapped recovery or stale copy and never raw diagnostics', () => {
+    const mapped = 'Action or Group references changed. Nothing changed. Review the affected Groups and try again.';
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary({
+      rows: [actionRow], selectedId: actionRow.id, deleteConfirmation: { ...actionRow, referenceImpact },
+      deleteError: mapped,
+      status: 'token=123e4567 path=/Users/private/cache revision=secret-diagnostic',
+    }));
+    const copy = textOf(tree);
+
+    expect(copy).toContain(mapped);
+    expect(copy).not.toContain('123e4567');
+    expect(copy).not.toContain('/Users/private/cache');
+    expect(findAll(tree, (vnode) => vnode.props.role === 'alert')).toHaveLength(1);
+  });
+
+  it('keeps Escape cancellation and focus containment idle-only while restoring surviving or nearest Action focus', () => {
+    expect(panel).toContain('requestAnimationFrame');
+    expect(panel).toContain('cancelAnimationFrame');
+    expect(panel).toContain('data-action-id={row.id}');
+    expect(panel).toContain('[data-action-id]');
+    expect(panel).toContain('physics-paint-scripts-toolbar');
+    expect(panel).toContain('if (confirmationBusy) return;');
+    expect(panel).toContain('previousConfirmation.current = confirmation');
+    expect(panel).not.toContain('deleteButtonRef.current?.focus();\n    previousConfirmation.current = Boolean(confirmation)');
   });
 });
 
