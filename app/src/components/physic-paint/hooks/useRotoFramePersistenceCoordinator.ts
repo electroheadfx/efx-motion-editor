@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import type { PhysicPaintRotoPhysicalDocument, PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource, PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
+import { classifyPhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
 import { buildBlankRotoFrame, encodeRotoFrameFromCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { mergeCachedRotoAlphaFrame } from '../roto/physicsPaintRotoAlphaMerge';
 import { createRotoLivePixelCacheTransactions, type RotoLivePixelIdentity } from '../roto/rotoLivePixelCacheTransactions';
@@ -19,6 +20,117 @@ interface RotoPersistenceStorePort {
   updateRotoPhysicalRealKeyPayload: (layerId: string, keyId: string, expectedContentRevision: string, payload: PhysicPaintRotoRealKeyPayload, diagnostics?: { mutationId?: number; record: typeof recordPhysicsPaintPerformance }) => { ok: true; changed: boolean; contentRevision: string } | { ok: false; error: string };
 }
 
+export interface RotoGroupFramePaintExecuteInput {
+  readonly operationKind: 'paint-group-frame';
+  readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
+  readonly groupId: string;
+  readonly appFrame: number;
+  readonly overrideKeyId: string;
+  readonly renderedPayload: PhysicPaintRotoRealKeyPayload;
+}
+
+export interface RotoPhysicalPaintRouteInput {
+  readonly document: PhysicPaintRotoPhysicalDocument;
+  readonly projectContextId: string;
+  readonly layerId: string;
+  readonly launchOperationId: string;
+  readonly appFrame: number;
+  readonly expectedKeyId?: string;
+  readonly renderedPayload: PhysicPaintRotoRealKeyPayload;
+  readonly createOverrideKeyId: () => string;
+  readonly diagnostics?: { mutationId?: number; record: typeof recordPhysicsPaintPerformance };
+}
+
+export interface RotoPhysicalPaintRoutePorts {
+  readonly updateOrdinaryKey: (
+    layerId: string,
+    keyId: string,
+    expectedContentRevision: string,
+    payload: PhysicPaintRotoRealKeyPayload,
+    diagnostics?: { mutationId?: number; record: typeof recordPhysicsPaintPerformance },
+  ) => { ok: true; changed: boolean; contentRevision: string } | { ok: false; error: string };
+  readonly executePhysicalEdit: (input: RotoGroupFramePaintExecuteInput) => Promise<boolean>;
+}
+
+export type RotoPhysicalPaintRouteResult =
+  | Readonly<{ ok: true; kind: 'ordinary-key'; keyId: string; contentRevision: string }>
+  | Readonly<{ ok: true; kind: 'group-frame'; groupId: string; appFrame: number }>
+  | Readonly<{ ok: false; reason: 'stale-target' | 'unresolved-target' | 'ambiguous-target' | 'empty-target' | 'lease-or-settlement-rejected' }>;
+
+/**
+ * Classify one accepted Paint destination before any store/cache publication.
+ * Ordinary real keys retain the direct payload seam; every lifecycle Group
+ * occurrence dispatches the exact-frame COW operation through the acknowledged
+ * physical coordinator. Unresolved and mismatched targets fail closed.
+ */
+export async function routeRotoPhysicalPaintFrame(
+  input: RotoPhysicalPaintRouteInput,
+  ports: RotoPhysicalPaintRoutePorts,
+): Promise<RotoPhysicalPaintRouteResult> {
+  if (input.renderedPayload.appFrame !== input.appFrame) {
+    return Object.freeze({ ok: false, reason: 'stale-target' });
+  }
+  const target = classifyPhysicPaintRotoGroupFrameTarget({
+    document: input.document,
+    appFrame: input.appFrame,
+  });
+  if (target.kind === 'ordinary-key') {
+    if (input.expectedKeyId !== undefined && input.expectedKeyId !== target.keyId) {
+      return Object.freeze({ ok: false, reason: 'stale-target' });
+    }
+    const update = ports.updateOrdinaryKey(
+      input.layerId,
+      target.keyId,
+      input.document.revision,
+      input.renderedPayload,
+      input.diagnostics,
+    );
+    if (!update.ok || !update.changed) {
+      return Object.freeze({ ok: false, reason: 'lease-or-settlement-rejected' });
+    }
+    return Object.freeze({
+      ok: true,
+      kind: 'ordinary-key',
+      keyId: target.keyId,
+      contentRevision: update.contentRevision,
+    });
+  }
+  if (target.kind === 'unresolved-group') {
+    return Object.freeze({ ok: false, reason: 'unresolved-target' });
+  }
+  if (target.kind === 'ambiguous-group') {
+    return Object.freeze({ ok: false, reason: 'ambiguous-target' });
+  }
+  if (target.kind === 'empty') {
+    return Object.freeze({ ok: false, reason: 'empty-target' });
+  }
+
+  const expectedTargetKeyId = target.kind === 'override'
+    ? target.keyId
+    : target.kind === 'source-occurrence'
+      ? target.sourceKeyId
+      : undefined;
+  if (input.expectedKeyId !== undefined
+    && expectedTargetKeyId !== undefined
+    && input.expectedKeyId !== expectedTargetKeyId) {
+    return Object.freeze({ ok: false, reason: 'stale-target' });
+  }
+  const overrideKeyId = target.kind === 'override'
+    ? target.keyId
+    : input.createOverrideKeyId();
+  const accepted = await ports.executePhysicalEdit(Object.freeze({
+    operationKind: 'paint-group-frame',
+    expectedLaunch: { operationId: input.launchOperationId, layerId: input.layerId },
+    groupId: target.groupId,
+    appFrame: input.appFrame,
+    overrideKeyId,
+    renderedPayload: input.renderedPayload,
+  }));
+  return accepted
+    ? Object.freeze({ ok: true, kind: 'group-frame', groupId: target.groupId, appFrame: input.appFrame })
+    : Object.freeze({ ok: false, reason: 'lease-or-settlement-rejected' });
+}
+
 export interface UseRotoFramePersistenceCoordinatorInput {
   workflowMode: PhysicsPaintWorkflowMode;
   backgroundMode: BgMode;
@@ -29,6 +141,8 @@ export interface UseRotoFramePersistenceCoordinatorInput {
   syncPending: () => void;
   getBackgroundMetadata: () => PhysicPaintRotoBackgroundMetadata;
   sendCachePayload: (payload: PhysicPaintApplyPayload) => Promise<void>;
+  executePhysicalEdit: (input: RotoGroupFramePaintExecuteInput) => Promise<boolean>;
+  createOverrideKeyId?: () => string;
   setApplyMessage: (message: string) => void;
 }
 
@@ -170,40 +284,56 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     setApplyMessage: (message) => inputRef.current.setApplyMessage(message),
   });
 
-  const upsertCachedFrame = useCallback((renderedFrame: RenderedFramePayload, backgroundOnly: boolean, _onionFrame?: RenderedFramePayload | null, _interpolationSettings?: PhysicPaintRotoInterpolationSettings, expectedLayerId?: string, mutationId?: number, expectedOperationId?: string, background?: PhysicPaintRotoBackgroundMetadata, expectedKeyId?: string, expectedContentRevision?: string) => {
+  const upsertCachedFrame = useCallback(async (renderedFrame: RenderedFramePayload, backgroundOnly: boolean, _onionFrame?: RenderedFramePayload | null, _interpolationSettings?: PhysicPaintRotoInterpolationSettings, expectedLayerId?: string, mutationId?: number, expectedOperationId?: string, background?: PhysicPaintRotoBackgroundMetadata, expectedKeyId?: string, expectedContentRevision?: string) => {
     const launch = inputRef.current.launchContext;
     const layerId = expectedLayerId ?? launch?.layerId;
     const launchId = expectedOperationId ?? launch?.operationId;
-    if (!layerId || !launchId) return false;
-    const record = expectedKeyId
-      ? inputRef.current.store.getRotoRealKeyRecord(layerId, expectedKeyId)
-      : inputRef.current.store.getRotoRealKeyRecordByAppFrame(layerId, renderedFrame.appFrame);
+    const projectContextId = launch?.project?.contextId;
+    if (!layerId || !launchId || !projectContextId) return false;
+    const document = inputRef.current.store.getRotoPhysicalDocument(layerId);
     const contentRevision = expectedContentRevision ?? inputRef.current.store.getRotoPhysicalContentRevision(layerId);
-    if (!record || !contentRevision || record.appFrame !== renderedFrame.appFrame) return false;
-    const update = inputRef.current.store.updateRotoPhysicalRealKeyPayload(layerId, record.keyId, contentRevision, {
-      frameIndex: renderedFrame.frameIndex,
-      appFrame: record.appFrame,
-      dataUrl: renderedFrame.dataUrl,
-      ...(renderedFrame.width !== undefined ? { width: renderedFrame.width } : {}),
-      ...(renderedFrame.height !== undefined ? { height: renderedFrame.height } : {}),
-    }, isPhysicsPaintProfilingEnabled() ? { mutationId, record: recordPhysicsPaintPerformance } : undefined);
-    if (!update.ok || !update.changed) return false;
+    if (!document || !contentRevision || document.revision !== contentRevision) return false;
+    const route = await routeRotoPhysicalPaintFrame({
+      document,
+      projectContextId,
+      layerId,
+      launchOperationId: launchId,
+      appFrame: renderedFrame.appFrame,
+      expectedKeyId,
+      renderedPayload: {
+        frameIndex: renderedFrame.frameIndex,
+        appFrame: renderedFrame.appFrame,
+        dataUrl: renderedFrame.dataUrl,
+        ...(renderedFrame.width !== undefined ? { width: renderedFrame.width } : {}),
+        ...(renderedFrame.height !== undefined ? { height: renderedFrame.height } : {}),
+      },
+      createOverrideKeyId: inputRef.current.createOverrideKeyId ?? (() => crypto.randomUUID()),
+      diagnostics: isPhysicsPaintProfilingEnabled() ? { mutationId, record: recordPhysicsPaintPerformance } : undefined,
+    }, {
+      updateOrdinaryKey: inputRef.current.store.updateRotoPhysicalRealKeyPayload,
+      executePhysicalEdit: inputRef.current.executePhysicalEdit,
+    });
+    if (!route.ok) return false;
+    if (route.kind === 'group-frame') {
+      // Group COW publication, cache settlement, canvas reconciliation, and
+      // history are all deferred to the matching physical acknowledgement.
+      return true;
+    }
     const accepted = {
       ...renderedFrame,
-      appFrame: record.appFrame,
-      keyId: record.keyId,
-      contentRevision: update.contentRevision,
-      cacheRevision: `${update.contentRevision}:real:${record.keyId}`,
+      keyId: route.keyId,
+      contentRevision: route.contentRevision,
+      cacheRevision: `${route.contentRevision}:real:${route.keyId}`,
     };
-    confirmedFramesRef.current.set(record.appFrame, accepted);
-    editBuffer.acceptPixelCache(record.appFrame);
+    confirmedFramesRef.current.set(renderedFrame.appFrame, accepted);
+    editBuffer.acceptPixelCache(renderedFrame.appFrame);
     publishCurrentDocument(layerId, launchId);
-    const identity: RotoLivePixelIdentity = { launchId, layerId, keyId: record.keyId, contentRevision: update.contentRevision, appFrame: record.appFrame };
+    const identity: RotoLivePixelIdentity = { launchId, layerId, keyId: route.keyId, contentRevision: route.contentRevision, appFrame: renderedFrame.appFrame };
     queueParentPayload(identity, {
-      operationId: `${launchId}:live-pixels:${record.keyId}:${++parentOperationRevisionRef.current}`,
+      operationId: `${launchId}:live-pixels:${route.keyId}:${++parentOperationRevisionRef.current}`,
       kind: 'apply-canvas',
       layerId,
-      startFrame: record.appFrame,
+      startFrame: renderedFrame.appFrame,
       renderedFrame: accepted,
       ...(backgroundOnly ? { backgroundOnly: true } : {}),
       rotoBackground: background ?? inputRef.current.getBackgroundMetadata(),
@@ -213,7 +343,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
 
   const captureLivePixels = useCallback((capture: {
     layerId: string;
-    keyId: string;
+    keyId?: string;
     appFrame: number;
     liveAlphaCanvas: HTMLCanvasElement;
     cachedBase: RenderedFramePayload | null;
@@ -227,20 +357,48 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     const launch = inputRef.current.launchContext;
     const launchId = capture.operationId ?? launch?.operationId;
     if (!launchId) return Promise.resolve(false);
-    const record = inputRef.current.store.getRotoRealKeyRecord(capture.layerId, capture.keyId);
+    const document = inputRef.current.store.getRotoPhysicalDocument(capture.layerId);
     const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(capture.layerId);
-    if (!record || !contentRevision || record.appFrame !== capture.appFrame) return Promise.resolve(false);
-    const identity: RotoLivePixelIdentity = { launchId, layerId: capture.layerId, keyId: record.keyId, contentRevision, appFrame: record.appFrame };
+    if (!document || !contentRevision || document.revision !== contentRevision) return Promise.resolve(false);
+    const target = classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: capture.appFrame });
+    if (target.kind === 'empty' || target.kind === 'unresolved-group' || target.kind === 'ambiguous-group') {
+      return Promise.resolve(false);
+    }
+    const identityKey = target.kind === 'ordinary-key'
+      ? target.keyId
+      : `group:${target.groupId}:${capture.appFrame}`;
+    const identity: RotoLivePixelIdentity = {
+      launchId,
+      layerId: capture.layerId,
+      keyId: identityKey,
+      contentRevision,
+      appFrame: capture.appFrame,
+    };
     return livePixelTransactionsRef.current.capture({
       identity,
       mutationId: capture.mutationId,
-      resolveCurrent: () => getCurrentIdentity(capture.layerId, launchId, record.keyId),
+      resolveCurrent: () => {
+        const currentDocument = inputRef.current.store.getRotoPhysicalDocument(capture.layerId);
+        const currentRevision = inputRef.current.store.getRotoPhysicalContentRevision(capture.layerId);
+        if (!currentDocument || currentRevision !== contentRevision) return null;
+        const currentTarget = classifyPhysicPaintRotoGroupFrameTarget({
+          document: currentDocument,
+          appFrame: capture.appFrame,
+        });
+        if (currentTarget.kind === 'empty'
+          || currentTarget.kind === 'unresolved-group'
+          || currentTarget.kind === 'ambiguous-group') return null;
+        const currentIdentityKey = currentTarget.kind === 'ordinary-key'
+          ? currentTarget.keyId
+          : `group:${currentTarget.groupId}:${capture.appFrame}`;
+        return currentIdentityKey === identityKey ? identity : null;
+      },
       recordPerformance: isPhysicsPaintProfilingEnabled() ? recordPhysicsPaintPerformance : undefined,
       produce: () => capture.cachedBase
-        ? mergeCachedRotoAlphaFrame(capture.cachedBase, capture.liveAlphaCanvas, record.appFrame, capture.size, capture.mutationId)
-        : encodeRotoFrameFromCanvas(capture.liveAlphaCanvas, record.appFrame, capture.size, capture.mutationId),
-      commit: (rendered, current) => {
-        upsertCachedFrame({ ...rendered, appFrame: current.appFrame }, capture.backgroundOnly === true, undefined, undefined, capture.layerId, capture.mutationId, launchId, capture.background, record.keyId, contentRevision);
+        ? mergeCachedRotoAlphaFrame(capture.cachedBase, capture.liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId)
+        : encodeRotoFrameFromCanvas(capture.liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId),
+      commit: async (rendered, current) => {
+        await upsertCachedFrame({ ...rendered, appFrame: current.appFrame }, capture.backgroundOnly === true, undefined, undefined, capture.layerId, capture.mutationId, launchId, capture.background, capture.keyId, contentRevision);
       },
     });
   }, [getCurrentIdentity, upsertCachedFrame]);
@@ -269,7 +427,8 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     if (!record || record.appFrame !== appFrame || !contentRevision) return false;
     livePixelTransactionsRef.current.invalidate({ launchId: launch.operationId, layerId: launch.layerId, keyId });
     const blank = buildBlankRotoFrame(size.width, size.height, appFrame);
-    return upsertCachedFrame(blank, true, undefined, undefined, launch.layerId, undefined, launch.operationId, inputRef.current.getBackgroundMetadata(), keyId, contentRevision);
+    void upsertCachedFrame(blank, true, undefined, undefined, launch.layerId, undefined, launch.operationId, inputRef.current.getBackgroundMetadata(), keyId, contentRevision);
+    return true;
   }, [upsertCachedFrame]);
 
   const flushLivePixels = useCallback(async (appFrame?: number): Promise<void> => {

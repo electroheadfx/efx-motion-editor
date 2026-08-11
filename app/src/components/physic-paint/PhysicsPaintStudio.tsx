@@ -26,7 +26,7 @@ import { useRotoTimelineActions } from './hooks/useRotoTimelineActions';
 import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
 import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
-import { useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
+import { useRotoFramePersistenceCoordinator, type RotoGroupFramePaintExecuteInput } from './hooks/useRotoFramePersistenceCoordinator';
 import { useRotoFrameEditingController } from './hooks/useRotoFrameEditingController';
 import { useRotoPhysicalEditCoordinator, type RotoPhysicalEditCoordinatorExecuteInput } from './hooks/useRotoPhysicalEditCoordinator';
 import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize } from './engine/physicsPaintCanvasSizing';
@@ -261,6 +261,7 @@ export function PhysicsPaintStudio() {
     });
   }, []);
   const resetRotoKeySessionRef = useRef<(options?: { clearClipboard?: boolean }) => void>(() => {});
+  const groupFramePaintExecuteRef = useRef<(input: RotoGroupFramePaintExecuteInput) => Promise<boolean>>(async () => false);
   const rotoPersistence = useRotoFramePersistenceCoordinator({
     workflowMode,
     backgroundMode: settings.background,
@@ -281,6 +282,7 @@ export function PhysicsPaintStudio() {
       payload,
       bridgeMode === 'Unavailable' ? await detectPhysicsPaintBridgeMode() : bridgeMode,
     ),
+    executePhysicalEdit: (executeInput) => groupFramePaintExecuteRef.current(executeInput),
     setApplyMessage,
   });
   const rotoEditBuffer = rotoPersistence.editBuffer;
@@ -622,6 +624,9 @@ export function PhysicsPaintStudio() {
       logDiagnostic: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
     },
   });
+  groupFramePaintExecuteRef.current = (executeInput) => (
+    physicalEditCoordinator.executePhysicalEdit(executeInput as unknown as RotoPhysicalEditCoordinatorExecuteInput<SerializedProject>)
+  );
 
   const rotoTimelineActions = useRotoTimelineActions({
     getModel: () => rotoTimelineModel.view.value.model,
@@ -1607,8 +1612,6 @@ export function PhysicsPaintStudio() {
         || currentLaunch.operationId !== launchContext.operationId
         || currentLaunch.layerId !== launchContext.layerId
       ) return;
-      const physicalRecord = physicPaintStore.getRotoRealKeyRecord(currentLaunch.layerId, keyId);
-      if (!physicalRecord || physicalRecord.appFrame !== appFrame) return;
       const cachedBaseAppFrame = cachedRotoRepaintBaseFrame?.appFrame ?? null;
       if (isEmpty) {
         if (cachedRotoRepaintBaseFrame && cachedBaseAppFrame === appFrame) {
@@ -1629,7 +1632,7 @@ export function PhysicsPaintStudio() {
       const capture = rotoPersistence.captureLivePixels({
         layerId: publicationIdentity?.layerId ?? currentLaunch.layerId,
         operationId: publicationIdentity?.operationId,
-        keyId: physicalRecord.keyId,
+        keyId,
         appFrame,
         liveAlphaCanvas,
         cachedBase,
