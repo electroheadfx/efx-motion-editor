@@ -85,6 +85,7 @@ function ports(version: number): HookPorts {
       interpolationEnabled: false,
       remainingCapacity: 100 + version - placementStart,
     }),
+    getPhysicalDocument: () => ({ revision: `document-${version}` } as never),
     stopPlayback: vi.fn(),
     log: vi.fn(),
     executePhysicalEdit: vi.fn(async () => true),
@@ -173,6 +174,7 @@ describe('useRotoPlayScriptController', () => {
       remainingCapacity: 93,
       interpolationEnabled: false,
     });
+    expect(stablePorts.getPhysicalDocument?.()).toEqual({ revision: 'document-2' });
 
     stablePorts.stopPlayback();
     stablePorts.log('current');

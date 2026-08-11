@@ -48,6 +48,7 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       getSize: () => portsRef.current.getSize(),
       getRotoLoopClips: () => portsRef.current.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
       getLoopEditSnapshot: (placementStart) => portsRef.current.getLoopEditSnapshot?.(placementStart) ?? null,
+      getPhysicalDocument: () => portsRef.current.getPhysicalDocument?.() ?? null,
       availabilityRevision: availabilityRevision.current,
       stopPlayback: () => portsRef.current.stopPlayback(),
       log: (...args) => portsRef.current.log(...args),

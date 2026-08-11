@@ -2,7 +2,7 @@ import { signal } from '@preact/signals';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult } from '../../../types/physicPaint';
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
-import { createRotoPlayScriptController, type RotoPlayScriptCommitResult, type RotoPlayScriptControllerPorts, type RotoPlayScriptSourceCycleMatchInput } from './physicsPaintRotoPlayScriptController';
+import { createRotoPlayScriptController, type RotoPlayScriptCommitResult, type RotoPlayScriptController, type RotoPlayScriptControllerPorts, type RotoPlayScriptSourceCycleMatchInput } from './physicsPaintRotoPlayScriptController';
 
 // Preact hook shims for the REAL useRotoPhysicalEditHistory hook driven by the
 // HOLD-03 one-history-command case below (same idiom as the hook's own spec).

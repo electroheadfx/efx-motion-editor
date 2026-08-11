@@ -9,12 +9,15 @@ import type {
 } from '../../../types/physicPaint';
 import type { RotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
 import {
+  buildPhysicPaintRotoPhysicalRevision,
   createPhysicPaintRotoKeyId,
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
   type PhysicPaintRotoKeyIdentity,
   type PhysicPaintRotoLoopClip,
+  type PhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
+import { proposePhysicPaintRotoRegenerateGroup } from './physicsPaintRotoGroupLifecycle';
 import { derivePhysicPaintRotoLoopRanges, derivePhysicPaintRotoLoopShortenPreflight } from './physicsPaintRotoPhysicalResolver';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 import { renderRotoPlayScriptFrames } from './physicsPaintRotoPlayScriptRenderer';
@@ -47,6 +50,37 @@ export interface RotoPlayScriptIdenticalSourceCycle {
   readonly sourceKeyIds: readonly string[];
   readonly loopCount: number;
   readonly sourceStart: number;
+}
+
+export interface RotoPlayScriptRegenerateAffectedGroup {
+  readonly groupId: string;
+  readonly name: string;
+  readonly range: string;
+}
+
+/** Frozen G3a disclosure prepared from one accepted Action/document authority pair. */
+export interface RotoPlayScriptRegenerateImpact {
+  readonly actionId: string;
+  readonly actionRevision: string;
+  readonly actionHash: string;
+  readonly documentRevision: string;
+  readonly initiatingGroupId: string;
+  readonly groupName: string;
+  readonly groupType: 'Motion' | 'Static';
+  readonly restoredRange: string;
+  readonly locallyPaintedFrameCount: number;
+  readonly deletedFrameCount: number;
+  readonly deletedFrameRanges: string;
+  readonly fragmentCount: number;
+  readonly gapRanges: string;
+  readonly affectedGroups: readonly RotoPlayScriptRegenerateAffectedGroup[];
+  readonly sourceCacheEffects: string;
+  readonly storedSettings: Readonly<{
+    mode: RotoPlayScriptMode;
+    motion: { readonly deformation: number; readonly position: number };
+    overrideColor: string | null;
+    sourceKeyIds: readonly string[];
+  }>;
 }
 
 export type RotoPlayScriptSemanticDelta = Extract<
@@ -116,6 +150,8 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
   getRotoLoopClips?: () => readonly PhysicPaintRotoLoopClip[];
   /** Accepted local document snapshot used only to open Loop Edit immediately. */
   getLoopEditSnapshot?: (placementStart: number) => RotoPlayScriptLoopEditSnapshot | null;
+  /** Complete accepted physical document used for Group lifecycle preparation and stale checks. */
+  getPhysicalDocument?: () => PhysicPaintRotoPhysicalDocument | null;
   availabilityRevision?: ReadonlySignal<number>;
   requestAuthority: (operationId: string, start: number) => Promise<PhysicPaintRotoAuthorityResult>;
   commit: (publication: RotoPlayScriptPhysicalPublication) => Promise<RotoPlayScriptCommitResult>;
@@ -164,6 +200,10 @@ export interface RotoPlayScriptController {
   loopEditSourceStart: ReadonlySignal<number | null>;
   /** Loops sharing the target's source cycle (target included) — the S3 {N}. */
   sourceEditSharedLoopCount: ReadonlySignal<number>;
+  /** Exact guarded reason for the current Group Regenerate target. */
+  regenerateDisabledReason: ReadonlySignal<string | null>;
+  /** Frozen G3a facts; null until exact preparation succeeds. */
+  regenerateImpact: ReadonlySignal<RotoPlayScriptRegenerateImpact | null>;
   /** True for every Play Script Apply; Repeat changes duration, not capsule creation. */
   loopIntentActive: ReadonlySignal<boolean>;
   /** S4 match — non-null only in apply mode with loop intent and an identical cycle. */
@@ -210,6 +250,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const dialogMode = signal<RotoPlayScriptDialogMode>('apply');
   const loopEditTargetId = signal<string | null>(null);
   const sourceEditRepairId = signal<string | null>(null);
+  const regenerateDisabledReason = signal<string | null>(null);
+  const regenerateImpact = signal<RotoPlayScriptRegenerateImpact | null>(null);
   const linkChoice = signal<'link' | 'create'>('link');
   let generation = 0;
   let abortController: AbortController | null = null;
@@ -544,11 +586,165 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return { ok: true, reason: null };
   }
 
+  function isRegenerableLifecycleShape(group: PhysicPaintRotoLoopClip): group is PhysicPaintRotoLoopClip & Required<Pick<
+    PhysicPaintRotoLoopClip,
+    'syncState' | 'provenanceState' | 'phaseOrigin' | 'originalEndExclusive' | 'visibleRanges' | 'frameOverrides'
+  >> {
+    return group.syncState !== undefined
+      && group.provenanceState !== undefined
+      && group.phaseOrigin !== undefined
+      && group.originalEndExclusive !== undefined
+      && group.visibleRanges !== undefined
+      && group.frameOverrides !== undefined;
+  }
+
+  function compactFrameRanges(ranges: readonly { readonly start: number; readonly endExclusive: number }[]): string {
+    if (ranges.length === 0) return 'None';
+    return ranges.map((range) => range.endExclusive === range.start + 1
+      ? `F${range.start}`
+      : `F${range.start}–F${range.endExclusive - 1}`).join(', ');
+  }
+
+  function deletedRangesFor(group: PhysicPaintRotoLoopClip & Required<Pick<
+    PhysicPaintRotoLoopClip,
+    'phaseOrigin' | 'originalEndExclusive' | 'visibleRanges'
+  >>): readonly { readonly start: number; readonly endExclusive: number }[] {
+    const deleted: Array<{ start: number; endExclusive: number }> = [];
+    let cursor = group.phaseOrigin;
+    for (const range of group.visibleRanges) {
+      if (cursor < range.start) deleted.push({ start: cursor, endExclusive: range.start });
+      cursor = Math.max(cursor, range.endExclusive);
+    }
+    if (cursor < group.originalEndExclusive) deleted.push({ start: cursor, endExclusive: group.originalEndExclusive });
+    return Object.freeze(deleted.map((range) => Object.freeze(range)));
+  }
+
+  function actionSnapshotHash(snapshot: unknown): string {
+    const value = JSON.stringify(snapshot);
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    return `action-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+  }
+
+  function groupRegenerateReason(group: PhysicPaintRotoLoopClip, document: PhysicPaintRotoPhysicalDocument | null): string | null {
+    if (ports.library.busy.peek() || ports.getOperationLocked() || isBusyPhase(phase.peek())) return 'Finish the current Group operation.';
+    if (!isRegenerableLifecycleShape(group)) return 'Regenerate unavailable — Group source is unresolved.';
+    if (group.syncState === 'synchronized') return 'Already synchronized with Action.';
+    if (group.provenanceState !== 'attached' || !group.scriptId) return 'Regenerate unavailable — Action detached.';
+    const action = ports.library.rows.peek().find((row) => row.id === group.scriptId);
+    if (!action) return 'Regenerate unavailable — Source Action unavailable.';
+    if (!document || document.revision.length === 0) return 'Regenerate unavailable — Group source is unresolved.';
+    const records = new Set(document.realKeyRecords.map((record) => record.keyId));
+    if (group.sourceKeyIds.length === 0 || group.sourceKeyIds.some((keyId) => !records.has(keyId))) {
+      return 'Regenerate unavailable — Group source is unresolved.';
+    }
+    const owned = new Set(group.sourceKeyIds);
+    for (const candidate of document.loopClips) {
+      if (candidate.loopId === group.loopId) continue;
+      const overlaps = candidate.sourceKeyIds.some((keyId) => owned.has(keyId));
+      if (!overlaps) continue;
+      if (!sameOrderedIds(candidate.sourceKeyIds, group.sourceKeyIds)
+        || !isRegenerableLifecycleShape(candidate)
+        || candidate.scriptId !== group.scriptId
+        || candidate.provenanceState !== 'attached') {
+        return 'Regenerate unavailable — Group source sharing is ambiguous.';
+      }
+    }
+    return null;
+  }
+
+  async function openGroupRegenerate(group: PhysicPaintRotoLoopClip & Required<Pick<
+    PhysicPaintRotoLoopClip,
+    'syncState' | 'provenanceState' | 'phaseOrigin' | 'originalEndExclusive' | 'visibleRanges' | 'frameOverrides'
+  >>): Promise<RotoPlayScriptLoopOpResult> {
+    const document = ports.getPhysicalDocument?.() ?? null;
+    const reason = groupRegenerateReason(group, document);
+    regenerateDisabledReason.value = reason;
+    regenerateImpact.value = null;
+    if (reason || !document || !group.scriptId || !group.motion) return rejectLoopOp(reason ?? 'Regenerate unavailable — Group source is unresolved.');
+    const action = ports.library.rows.peek().find((row) => row.id === group.scriptId);
+    if (!action) return rejectLoopOp('Regenerate unavailable — Source Action unavailable.');
+    ports.stopPlayback();
+    phase.value = 'preparing';
+    status.value = 'Preparing Group Regenerate…';
+    error.value = null;
+    try {
+      const snapshot = await ports.library.loadSnapshot(group.scriptId);
+      if (!snapshot) return rejectLoopOp('Regenerate unavailable — Source Action unavailable.');
+      const currentDocument = ports.getPhysicalDocument?.() ?? null;
+      if (!currentDocument || currentDocument.revision !== document.revision) {
+        return rejectLoopOp('Regenerate rejected — physical Group document changed.');
+      }
+      const currentAction = ports.library.rows.peek().find((row) => row.id === group.scriptId);
+      if (!currentAction || currentAction.revision !== action.revision) {
+        return rejectLoopOp('Regenerate rejected — saved Action changed.');
+      }
+      const sourceStart = document.realKeyRecords.find((record) => record.keyId === group.sourceKeyIds[0])?.appFrame;
+      if (sourceStart === undefined) return rejectLoopOp('Regenerate unavailable — Group source is unresolved.');
+      const affected = document.loopClips
+        .filter((candidate) => sameOrderedIds(candidate.sourceKeyIds, group.sourceKeyIds)
+          && candidate.scriptId === group.scriptId
+          && isRegenerableLifecycleShape(candidate)
+          && candidate.provenanceState === 'attached')
+        .sort((left, right) => left.phaseOrigin! - right.phaseOrigin! || left.loopId.localeCompare(right.loopId));
+      const deletedRanges = deletedRangesFor(group);
+      const actionHash = actionSnapshotHash(snapshot);
+      const affectedGroups = Object.freeze(affected.map((candidate) => Object.freeze({
+        groupId: candidate.loopId,
+        name: `Group at F${candidate.phaseOrigin!}`,
+        range: `F${candidate.phaseOrigin!}–F${candidate.originalEndExclusive! - 1}`,
+      })));
+      regenerateImpact.value = Object.freeze({
+        actionId: group.scriptId,
+        actionRevision: action.revision,
+        actionHash,
+        documentRevision: document.revision,
+        initiatingGroupId: group.loopId,
+        groupName: `Group at F${group.phaseOrigin}`,
+        groupType: group.mode === 'progressive' ? 'Motion' : 'Static',
+        restoredRange: `F${group.phaseOrigin}–F${group.originalEndExclusive - 1}`,
+        locallyPaintedFrameCount: group.frameOverrides.length,
+        deletedFrameCount: deletedRanges.reduce((count, range) => count + range.endExclusive - range.start, 0),
+        deletedFrameRanges: compactFrameRanges(deletedRanges),
+        fragmentCount: group.visibleRanges.length,
+        gapRanges: compactFrameRanges(deletedRanges),
+        affectedGroups,
+        sourceCacheEffects: affectedGroups.length > 1
+          ? 'Rebuilds the saved Action source cycle and refreshes every affected Group cache.'
+          : 'Rebuilds the saved Action source cycle and refreshes the Group cache.',
+        storedSettings: Object.freeze({
+          mode: group.mode,
+          motion: Object.freeze({ ...group.motion }),
+          overrideColor: group.overrideColor ?? null,
+          sourceKeyIds: Object.freeze([...group.sourceKeyIds]),
+        }),
+      });
+      prefillEditMode(group, {
+        identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        physicalCapacity: document.capacity,
+        layerEndExclusive: document.capacity,
+        remainingCapacity: Math.max(0, document.capacity - sourceStart),
+        interpolationEnabled: document.interpolation.enabled,
+      }, sourceStart, 'source-edit', false);
+      confirmationOpen.value = true;
+      phase.value = 'idle';
+      status.value = `Group Regenerate · ${regenerateImpact.value.restoredRange}`;
+      return { ok: true, reason: null };
+    } catch (cause) {
+      fail(cause);
+      return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
+    }
+  }
+
   async function openSourceEdit(loopId: string): Promise<RotoPlayScriptLoopOpResult> {
-    const guard = loopOpGuard();
-    if (guard) return { ok: false, reason: guard };
     const loop = currentLoopClips().find((clip) => clip.loopId === loopId);
     if (!loop) return rejectLoopOp(`Loop Clip "${loopId}" no longer exists.`);
+    if (isRegenerableLifecycleShape(loop)) return openGroupRegenerate(loop);
+    const guard = loopOpGuard();
+    if (guard) return { ok: false, reason: guard };
     if (loop.scriptId === undefined || !loop.motion) {
       return rejectLoopOp('This Loop Clip has no source-cycle provenance and cannot be source-edited.');
     }
@@ -794,6 +990,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const isSourceEdit = dialogMode.peek() === 'source-edit';
     const editTarget = isSourceEdit ? loopEditTarget.peek() : null;
     const repairId = isSourceEdit ? sourceEditRepairId.peek() : null;
+    const preparedRegenerate = isSourceEdit && repairId === null ? regenerateImpact.peek() : null;
     // Source-edit/repair render the PROVENANCE script (D-02/D-31); apply renders the library selection.
     const selectedId = isSourceEdit ? (editTarget?.scriptId ?? null) : ports.library.selectedId.peek();
     const context = ports.getLaunchContext();
@@ -803,6 +1000,28 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     if (disposed || !selectedId || !context?.project || start === null || count === null || repeatError.peek() !== null) return false;
     if (isSourceEdit) {
       if (!editTarget || loopOpGuard() !== null) return false;
+      if (preparedRegenerate) {
+        const currentAction = ports.library.rows.peek().find((row) => row.id === preparedRegenerate.actionId);
+        if (!currentAction || currentAction.revision !== preparedRegenerate.actionRevision) {
+          fail(new Error('Regenerate rejected — saved Action changed.'));
+          return false;
+        }
+        const currentDocument = ports.getPhysicalDocument?.() ?? null;
+        if (!currentDocument || currentDocument.revision !== preparedRegenerate.documentRevision) {
+          fail(new Error('Regenerate rejected — physical Group document changed.'));
+          return false;
+        }
+        if (count !== preparedRegenerate.storedSettings.sourceKeyIds.length) {
+          fail(new Error('Regenerate rejected — stored Group settings changed.'));
+          return false;
+        }
+        const currentTarget = currentDocument.loopClips.find((group) => group.loopId === preparedRegenerate.initiatingGroupId);
+        const reason = currentTarget ? groupRegenerateReason(currentTarget, currentDocument) : 'Regenerate unavailable — Group source is unresolved.';
+        if (reason) {
+          fail(new Error(reason));
+          return false;
+        }
+      }
     } else if (disabledReason.peek() || startingSelection.appFrame !== start) return false;
 
     const acceptedGeneration = ++generation;
@@ -813,11 +1032,15 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const authority = await ports.requestAuthority(nextOperationId('confirm'), start);
       assertCurrent(acceptedGeneration);
       if (!authority.ok || count > authority.capacity) throw new Error(authority.error ?? 'Requested frame count exceeds current capacity.');
-      const motion = { ...dialogMotion.peek() };
-      const renderMode = mode.peek();
-      // D-08R: snapshot the CURRENT brush color via the port at confirm time. Later brush-color
-      // changes never retroactively alter generated frames or the success-only summary.
-      const renderOverrideColor = resolveOverrideColor();
+      const motion = preparedRegenerate
+        ? { ...preparedRegenerate.storedSettings.motion }
+        : { ...dialogMotion.peek() };
+      const renderMode = preparedRegenerate ? preparedRegenerate.storedSettings.mode : mode.peek();
+      // Regenerate restores the frozen accepted Group settings. Apply and legacy
+      // Source Edit retain their existing confirm-time color behavior.
+      const renderOverrideColor = preparedRegenerate
+        ? preparedRegenerate.storedSettings.overrideColor
+        : resolveOverrideColor();
       const rotoBackground = { ...ports.getBackgroundMetadata() };
 
       // 43-06 S4 (D-05): Link to existing cycle — one loop-only atomic commit,
@@ -868,6 +1091,13 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const snapshot = await ports.library.loadSnapshot(selectedId);
       assertCurrent(acceptedGeneration);
       if (!snapshot || (!isSourceEdit && ports.library.selectedId.peek() !== selectedId)) throw new Error('Selected script changed or could not be reloaded.');
+      if (preparedRegenerate) {
+        const currentAction = ports.library.rows.peek().find((row) => row.id === preparedRegenerate.actionId);
+        if (!currentAction || currentAction.revision !== preparedRegenerate.actionRevision
+          || actionSnapshotHash(snapshot) !== preparedRegenerate.actionHash) {
+          throw new Error('Regenerate rejected — saved Action changed.');
+        }
+      }
       const existingFrames = new Map(authority.frames.map((frame) => [frame.appFrame, frame]));
       phase.value = 'rendering'; progress.value = { completed: 0, total: count }; status.value = `Rendering 0 / ${count}`;
       const staged = await renderRotoPlayScriptFrames({
@@ -882,6 +1112,16 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         || commitAuthority.physicalRevision !== authority.physicalRevision
         || commitAuthority.physicalCapacity !== authority.physicalCapacity
         || commitAuthority.layerEndExclusive !== authority.layerEndExclusive) throw new Error('Roto authority changed before commit.');
+      if (preparedRegenerate) {
+        const currentDocument = ports.getPhysicalDocument?.() ?? null;
+        const currentAction = ports.library.rows.peek().find((row) => row.id === preparedRegenerate.actionId);
+        if (!currentDocument || currentDocument.revision !== preparedRegenerate.documentRevision) {
+          throw new Error('Regenerate rejected — physical Group document changed.');
+        }
+        if (!currentAction || currentAction.revision !== preparedRegenerate.actionRevision) {
+          throw new Error('Regenerate rejected — saved Action changed.');
+        }
+      }
       // D-06: refresh the preflight substrate from the revalidated authority so
       // the warning surfaced on the confirm path is computed against the exact
       // pre-commit physical state (revision equality above makes this a
@@ -931,15 +1171,53 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         return record.keyId;
       });
       let loopClips: readonly PhysicPaintRotoLoopClip[] | undefined;
+      let regeneratedRecords: readonly PhysicPaintRotoRealKeyRecord[] | null = null;
       if (repairId) {
         // D-31 repair: regenerate + retarget the loop's sourceKeyIds atomically.
         loopClips = currentLoopClips().map((clip) => (clip.loopId === repairId
           ? { ...clip, sourceKeyIds: Object.freeze([...cycleKeyIds]), mode: renderMode, scriptId: selectedId, motion: { ...motion }, overrideColor: renderOverrideColor }
           : clip));
+      } else if (isSourceEdit && editTarget && preparedRegenerate) {
+        const acceptedDocument = ports.getPhysicalDocument?.() ?? null;
+        if (!acceptedDocument || acceptedDocument.revision !== preparedRegenerate.documentRevision) {
+          throw new Error('Regenerate rejected — physical Group document changed.');
+        }
+        const affectedIds = new Set(preparedRegenerate.affectedGroups.map((group) => group.groupId));
+        const retargetedGroups = acceptedDocument.loopClips.map((clip) => affectedIds.has(clip.loopId)
+          ? {
+              ...clip,
+              sourceKeyIds: Object.freeze([...cycleKeyIds]),
+              mode: preparedRegenerate.storedSettings.mode,
+              scriptId: preparedRegenerate.actionId,
+              motion: { ...preparedRegenerate.storedSettings.motion },
+              overrideColor: preparedRegenerate.storedSettings.overrideColor,
+            }
+          : clip);
+        let proposalDocument: PhysicPaintRotoPhysicalDocument = {
+          ...acceptedDocument,
+          realKeyRecords: basePublication.records,
+          loopClips: retargetedGroups,
+          revision: buildPhysicPaintRotoPhysicalRevision(
+            basePublication.records,
+            acceptedDocument.interpolation,
+            retargetedGroups,
+            acceptedDocument.incomingInterpolationBreakKeyIds,
+          ),
+        };
+        for (const affected of preparedRegenerate.affectedGroups) {
+          const proposal = proposePhysicPaintRotoRegenerateGroup({
+            document: proposalDocument,
+            groupId: affected.groupId,
+            expectedActionRevision: preparedRegenerate.actionRevision,
+            currentActionRevision: preparedRegenerate.actionRevision,
+          });
+          if (!proposal.ok) throw new Error(`Regenerate rejected — ${proposal.reason}.`);
+          proposalDocument = proposal.proposal;
+        }
+        loopClips = proposalDocument.loopClips;
+        regeneratedRecords = proposalDocument.realKeyRecords;
       } else if (isSourceEdit && editTarget) {
-        // D-02: regeneration updates EVERY linked Loop Clip referencing the
-        // source cycle — retarget to the committed cycle keyIds; the target's
-        // own repeat draft rides the same commit.
+        // Legacy Source Edit updates every pre-lifecycle loop sharing the cycle.
         loopClips = currentLoopClips().map((clip) => {
           if (!sameOrderedIds(clip.sourceKeyIds, editTarget.sourceKeyIds)) return clip;
           const draftRepeat: number | 'infinity' | null = infinity.peek() ? 'infinity' : parsedRepeat.peek().count;
@@ -968,11 +1246,18 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         };
         loopClips = Object.freeze([...currentLoopClips(), newLoop]);
       }
+      const publicationRecords = regeneratedRecords ?? basePublication.records;
       const publication: RotoPlayScriptPhysicalPublication = isSourceEdit
         ? {
             ...basePublication,
-            // Opened from a Loop Clip, not a timeline selection — preserve it.
-            semanticDelta: { ...basePublication.semanticDelta, preserveSelection: true },
+            records: publicationRecords,
+            // Opened from a Group, not a timeline-key selection — preserve the
+            // accepted cursor/selection while publishing the complete lifecycle.
+            semanticDelta: {
+              ...basePublication.semanticDelta,
+              proposedRecords: publicationRecords.map(toPhysicalEditRecord),
+              preserveSelection: true,
+            },
             ...resolvePublicationSelection(commitAuthority),
             ...(loopClips ? { loopClips } : {}),
           }
@@ -1022,7 +1307,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 
   return {
     confirmationOpen, countText, capacity, mode, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, loopShortenPreflight, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel,
-    dialogMode, loopEditTargetId, loopEditTarget, loopEditSourceStart, sourceEditSharedLoopCount, loopIntentActive, identicalSourceCycle, linkChoice,
+    dialogMode, loopEditTargetId, loopEditTarget, loopEditSourceStart, sourceEditSharedLoopCount, regenerateDisabledReason, regenerateImpact, loopIntentActive, identicalSourceCycle, linkChoice,
     openLoopEdit, openSourceEdit, repairLoop, updateLoop, unlinkLoop, duplicateLinkedLoop, relinkLoop, findIdenticalSourceCycle,
     openConfirmation, closeConfirmation, confirm, cancel, setInfinity, resetDialogMotion, dispose: () => { disposed = true; generation += 1; stopStaticDefaults(); abortController?.abort(); abortController = null; },
   };
