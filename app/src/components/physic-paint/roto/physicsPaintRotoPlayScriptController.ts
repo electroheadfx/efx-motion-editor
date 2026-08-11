@@ -913,19 +913,41 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           interpolationEnabled: snapshot.interpolationEnabled,
         }).ranges.find((range) => range.loopId === target.loopId)?.cycleLength ?? target.sourceKeyIds.length
       : target.sourceKeyIds.length;
-    const stagedLoops = currentLoops.map((clip) => {
-      if (clip.loopId !== target.loopId) return clip;
-      if (draftRepeat === 'infinity' || clip.phaseOrigin === undefined || clip.visibleRanges === undefined) {
-        return { ...clip, repeat: draftRepeat };
+    let rebuiltLifecycle: Pick<PhysicPaintRotoLoopClip, 'originalEndExclusive' | 'visibleRanges'> | null = null;
+    if (draftRepeat !== 'infinity'
+      && target.phaseOrigin !== undefined
+      && target.originalEndExclusive !== undefined
+      && target.visibleRanges !== undefined) {
+      const originalEndExclusive = target.phaseOrigin + cycleDuration * draftRepeat;
+      if (target.frameOverrides?.some((override) => override.appFrame >= originalEndExclusive)) {
+        fail(new Error('Repeat cannot remove locally painted Group frames. Regenerate the Group first.'));
+        return false;
       }
-      const originalEndExclusive = clip.phaseOrigin + cycleDuration * draftRepeat;
-      return {
-        ...clip,
-        repeat: draftRepeat,
-        originalEndExclusive,
-        visibleRanges: [{ start: clip.phaseOrigin, endExclusive: originalEndExclusive }],
-      };
-    });
+      const visibleRanges = target.visibleRanges.flatMap((range) => {
+        const start = Math.max(target.phaseOrigin!, range.start);
+        const endExclusive = Math.min(originalEndExclusive, range.endExclusive);
+        return endExclusive > start ? [{ start, endExclusive }] : [];
+      });
+      if (originalEndExclusive > target.originalEndExclusive) {
+        const last = visibleRanges[visibleRanges.length - 1];
+        if (last?.endExclusive === target.originalEndExclusive) {
+          visibleRanges[visibleRanges.length - 1] = { ...last, endExclusive: originalEndExclusive };
+        } else {
+          visibleRanges.push({
+            start: target.originalEndExclusive,
+            endExclusive: originalEndExclusive,
+          });
+        }
+      }
+      if (visibleRanges.length === 0) {
+        fail(new Error('Repeat cannot remove every surviving Group frame.'));
+        return false;
+      }
+      rebuiltLifecycle = { originalEndExclusive, visibleRanges };
+    }
+    const stagedLoops = currentLoops.map((clip) => (clip.loopId === target.loopId
+      ? { ...clip, repeat: draftRepeat, ...(rebuiltLifecycle ?? {}) }
+      : clip));
     const result = await runLoopOp(
       target.loopId,
       () => stagedLoops,

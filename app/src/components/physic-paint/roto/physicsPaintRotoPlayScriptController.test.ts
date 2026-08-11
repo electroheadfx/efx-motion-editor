@@ -1445,6 +1445,56 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(driver.getCurrent().loopClips).toEqual([expectedGroup]);
     });
 
+    it.each([
+      {
+        nextRepeat: 4,
+        expectedEnd: 30,
+        expectedRanges: [{ start: 10, endExclusive: 12 }, { start: 13, endExclusive: 30 }],
+      },
+      {
+        nextRepeat: 2,
+        expectedEnd: 20,
+        expectedRanges: [{ start: 10, endExclusive: 12 }, { start: 13, endExclusive: 20 }],
+      },
+    ])('preserves accepted Delete Frame gaps when a Modified Group changes to Repeat $nextRepeat', async ({
+      nextRepeat,
+      expectedEnd,
+      expectedRanges,
+    }) => {
+      const beforeGroup: PhysicPaintRotoLoopClip = {
+        ...lifecycleLoopClip(10, 3),
+        syncState: 'modified',
+        visibleRanges: [{ start: 10, endExclusive: 12 }, { start: 13, endExclusive: 25 }],
+      };
+      const test = loopOpHarness([beforeGroup]);
+
+      expect(await test.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+      test.controller.repeatText.value = String(nextRepeat);
+      expect(await test.controller.confirm()).toBe(true);
+
+      expect(test.commit.mock.calls[0][0].loopClips).toEqual([{
+        ...beforeGroup,
+        repeat: nextRepeat,
+        originalEndExclusive: expectedEnd,
+        visibleRanges: expectedRanges,
+      }]);
+    });
+
+    it('rejects Repeat contraction before commit when it would discard a locally painted override', async () => {
+      const beforeGroup: PhysicPaintRotoLoopClip = {
+        ...lifecycleLoopClip(10, 3),
+        syncState: 'modified',
+        frameOverrides: [{ appFrame: 22, keyId: 'override-22' }],
+      };
+      const test = loopOpHarness([beforeGroup]);
+
+      expect(await test.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+      test.controller.repeatText.value = '1';
+      expect(await test.controller.confirm()).toBe(false);
+      expect(test.commit).not.toHaveBeenCalled();
+      expect(test.controller.error.value).toBe('Repeat cannot remove locally painted Group frames. Regenerate the Group first.');
+    });
+
     it('supports repeated decrease through 1 and increase again when no real key is selected', async () => {
       let loops: readonly PhysicPaintRotoLoopClip[] = [loopClip('L1', 10, 3)];
       const localAuthority = loopAuthority();
