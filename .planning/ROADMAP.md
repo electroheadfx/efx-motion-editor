@@ -321,7 +321,7 @@ Plans:
 
 **Waves 16–17 — parity, regression, and acceptance**
 
-- [ ] 43.2-16-PLAN.md — Shared accepted frameMap/playback/preview/export lifecycle resolution (GRP-08)
+- [x] 43.2-16-PLAN.md — Shared accepted frameMap/playback/preview/export lifecycle resolution (GRP-08)
 - [ ] 43.2-17-PLAN.md — Motion Editor regressions, full lease/history/recovery gates, source audit, and blocking frozen-session native UAT (GRP-01..GRP-08)
 
 ### Phase 44: Integrated UAT + Signed Release
@@ -494,5 +494,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
 | 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 12/12 | Complete    | 2026-08-10 |
-| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 18/20 | In Progress|  |
+| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 19/20 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |

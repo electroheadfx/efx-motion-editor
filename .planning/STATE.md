@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Completed 43.2-15-PLAN.md
-last_updated: "2026-08-11T12:47:08.565Z"
+stopped_at: Completed 43.2-16-PLAN.md
+last_updated: "2026-08-11T13:16:16.588Z"
 last_activity: 2026-08-11
-last_activity_desc: Completed Plan 43.2-13 reference-aware Action deletion disclosure and lifecycle UI
+last_activity_desc: Completed Plan 43.2-16 canonical Group render-consumer parity
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 61
-  completed_plans: 59
+  completed_plans: 60
   percent: 63
 ---
 
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
-Plan: 16 of 20
+Plan: 17 of 20
 Status: Ready to execute
-Last activity: 2026-08-11 — Completed Plan 43.2-13 reference-aware Action deletion disclosure and lifecycle UI
+Last activity: 2026-08-11 — Completed Plan 43.2-16 canonical Group render-consumer parity
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [██████████] 97%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
@@ -212,6 +212,7 @@ Progress: [██████████] 97%
 | Phase 43.2 P13 | 26min | 2 tasks | 5 files |
 | Phase 43.2 P14 | 10min | 3 tasks | 7 files |
 | Phase 43.2 P15 | 2h18m | 3 tasks | 10 files |
+| Phase 43.2 P16 | 27min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -369,6 +370,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: Action activation uses a separate passive linked-current Signal and never creates orange Group operation selection or moves the cursor.
 - [Phase 43.2]: Group selection reveals a source Action only when the accepted scriptId resolves to an available Action row.
 - [Phase 43.2]: Linked Group navigation is placement ordered, cursor relative, non-wrapping, and seeks only from explicit navigation handlers.
+- [Phase 43.2]: Plan 43.2-16: Resolve accepted Group overrides, gaps, and generated occurrences once at physicPaintStore.getRotoPhysicalRenderSource so preview, playback, and export share one authority.
+- [Phase 43.2]: Plan 43.2-16: Preserve the Phase 43 interval resolver for ordinary source keys and unresolved placeholders; complete lifecycle classification intercepts only missing lifecycle facts.
+- [Phase 43.2]: Plan 43.2-16: Complete physical revision equality is the no-op boundary for Group replacement, ensuring lifecycle-only changes publish through physicPaintVersion.
+- [Phase 43.2]: Plan 43.2-16: frameMap and PreviewRenderer production code remain unchanged because they already consume the corrected canonical store and Signal seams.
 
 ### Pending Todos
 
@@ -558,8 +563,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T12:47:08.552Z
-Stopped at: Completed 43.2-15-PLAN.md
+Last session: 2026-08-11T13:16:16.575Z
+Stopped at: Completed 43.2-16-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
