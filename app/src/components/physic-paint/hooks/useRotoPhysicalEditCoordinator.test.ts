@@ -48,7 +48,12 @@ function record(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
   };
 }
 
-function groupLifecycleDocument(options: { gapAt?: number; existingOverride?: boolean } = {}) {
+function groupLifecycleDocument(options: {
+  gapAt?: number;
+  existingOverride?: boolean;
+  selectedKeyId?: string | null;
+  cursorAppFrame?: number;
+} = {}) {
   const records = [record('A', 0), record('B', 1)];
   if (options.existingOverride) records.push(record('override-4', 4));
   const visibleRanges = options.gapAt === undefined
@@ -76,8 +81,8 @@ function groupLifecycleDocument(options: { gapAt?: number; existingOverride?: bo
     interpolation: INTERPOLATION,
     scriptMotion: { deformation: 0, position: 0 },
     background: null,
-    selectedKeyId: null,
-    cursorAppFrame: 4,
+    selectedKeyId: options.selectedKeyId ?? null,
+    cursorAppFrame: options.cursorAppFrame ?? 4,
     revision: buildPhysicPaintRotoPhysicalRevision(records, INTERPOLATION, loopClips, ['B']),
     loopClips,
     incomingInterpolationBreakKeyIds: ['B'],
@@ -139,6 +144,8 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
   let interpolation = INTERPOLATION;
   let currentFrame = 0;
   let selectedKeyId: string | null = null;
+  let canonicalCursorAppFrame = 0;
+  let canonicalSelectedKeyId: string | null = null;
   let failNextLoopReplace = options.failFirstLoopReplace ?? false;
   let payload: PhysicPaintRotoPhysicalEditApplyPayload | null = null;
   const leaseOrder: string[] = [];
@@ -204,8 +211,8 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
         interpolation,
         scriptMotion: { deformation: 0, position: 0 },
         background: null,
-        selectedKeyId,
-        cursorAppFrame: currentFrame,
+        selectedKeyId: canonicalSelectedKeyId,
+        cursorAppFrame: canonicalCursorAppFrame,
         revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, incomingInterpolationBreakKeyIds),
         loopClips,
         incomingInterpolationBreakKeyIds,
@@ -335,6 +342,18 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     interpolation = document.interpolation;
     currentFrame = document.cursorAppFrame;
     selectedKeyId = document.selectedKeyId;
+    canonicalCursorAppFrame = document.cursorAppFrame;
+    canonicalSelectedKeyId = document.selectedKeyId;
+  };
+  const setStudioSelection = (keyId: string | null, appFrame: number) => {
+    selectedKeyId = keyId;
+    currentFrame = appFrame;
+  };
+  const publishCanonicalGroupSelection = (appFrame: number) => {
+    selectedKeyId = null;
+    currentFrame = appFrame;
+    canonicalSelectedKeyId = null;
+    canonicalCursorAppFrame = appFrame;
   };
   const executeGroupPaint = (appFrame: number, overrideKeyId: string, dataUrl = 'data:image/png;base64,UEFJTlQ=') => coordinator.executePhysicalEdit({
     operationKind: 'paint-group-frame',
@@ -440,6 +459,8 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     executeDeleteGroup,
     executePlayScript,
     seedGroupDocument,
+    setStudioSelection,
+    publishCanonicalGroupSelection,
     accept,
     reject,
     mismatch,
@@ -1043,6 +1064,63 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
 });
 
 describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
+  it('accepts Delete Frame after Group selection republishes canonical null-key authority', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument({
+      selectedKeyId: 'A',
+      cursorAppFrame: 0,
+    });
+    test.seedGroupDocument(before);
+    test.setStudioSelection(null, 3);
+
+    expect(await test.executeDeleteGroupFrame(3)).toBe(false);
+    expect(test.sendPhysicalEditPayload).not.toHaveBeenCalled();
+    expect(test.getRecords()).toEqual(before.realKeyRecords);
+    expect(test.getLoopClips()).toEqual(before.loopClips);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(test.releaseLease).toHaveBeenCalledTimes(1);
+
+    const acceptedEvents: unknown[] = [];
+    const unsubscribe = test.coordinator.acceptedOutput.subscribe((value) => {
+      if (value) acceptedEvents.push(value);
+    });
+    test.publishCanonicalGroupSelection(3);
+
+    expect(await test.executeDeleteGroupFrame(3)).toBe(true);
+    expect(test.getPayload()).toMatchObject({
+      operationKind: 'delete-group-frame',
+      startFrame: 3,
+      selectedKeyId: null,
+      selectedAppFrame: null,
+      semanticDelta: {
+        kind: 'delete-group-frame',
+        groupId: 'group-1',
+        appFrame: 3,
+        cleanupKeyIds: [],
+      },
+    });
+    expect(test.accept()).toBe('accepted');
+    expect(test.getRecords()).toEqual(before.realKeyRecords);
+    expect(test.getLoopClips()).toEqual([
+      expect.objectContaining({
+        loopId: 'group-1',
+        provenanceState: 'attached',
+        phaseOrigin: 0,
+        syncState: 'modified',
+        visibleRanges: [
+          { start: 0, endExclusive: 3 },
+          { start: 4, endExclusive: 6 },
+        ],
+      }),
+    ]);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(3);
+    expect(acceptedEvents).toHaveLength(1);
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(test.getPayload()!.operationId, 'release')).toBe(true);
+    expect(test.releaseLease).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
   it('deletes one middle occurrence only after acknowledgement and holds the lease through settlement', async () => {
     const test = harness();
     const before = groupLifecycleDocument({ existingOverride: true });

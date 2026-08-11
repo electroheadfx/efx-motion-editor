@@ -235,6 +235,26 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
     expect(studio).toContain('clearRotoLoopSelection();\n    const result = extendRotoKeySelectionRange(');
   });
 
+  it('publishes canonical null-key authority before activating Group selection', () => {
+    const selectionStart = studio.indexOf('const handleSelectRotoLoopClip = useCallback((');
+    const selectionEnd = studio.indexOf('const handleOpenRotoLoopEdit', selectionStart);
+    const selection = studio.slice(selectionStart, selectionEnd);
+    expect(selectionStart).toBeGreaterThanOrEqual(0);
+    expect(selection).toContain('selectedKeyId.value = null;');
+    expect(selection).toContain('physicPaintStore.setRotoPhysicalSelection(\n      launchContext.layerId,\n      null,\n      currentFrame,\n    );');
+    expect(selection).toContain('selectedKeyIds.value = [];\n    selectionAnchorKeyId.value = null;\n    rotoSpacingSelection.value = null;');
+
+    const clearPrimaryIndex = selection.indexOf('selectedKeyId.value = null;');
+    const clearMultiIndex = selection.indexOf('selectedKeyIds.value = [];');
+    const publishCanonicalIndex = selection.indexOf('physicPaintStore.setRotoPhysicalSelection(');
+    const publishGroupIndex = selection.indexOf('selectedLoopClipIds.value = next.selectedLoopClipIds;');
+    const revealActionIndex = selection.indexOf('rotoScriptLibrary.select(selectedGroup.scriptId);');
+    expect(clearMultiIndex).toBeGreaterThan(clearPrimaryIndex);
+    expect(publishCanonicalIndex).toBeGreaterThan(clearMultiIndex);
+    expect(publishGroupIndex).toBeGreaterThan(publishCanonicalIndex);
+    expect(revealActionIndex).toBeGreaterThan(publishGroupIndex);
+  });
+
   it('replaces the primary selection before publishing the complete Select All set', () => {
     const selectAllStart = studio.indexOf('const selectAllRotoKeys = useCallback(() => {');
     const selectAllEnd = studio.indexOf('const [, setLastError]', selectAllStart);
