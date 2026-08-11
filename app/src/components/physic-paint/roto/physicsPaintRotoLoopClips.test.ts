@@ -139,7 +139,7 @@ const proposedGroup = (overrides: Partial<ProposedGroupRecord> = {}): ProposedGr
   ...overrides,
 });
 
-function classifyProposedGroupFixture(record: ProposedGroupRecord): 'unimplemented' | 'malformed' {
+function classifyProposedGroupFixture(record: ProposedGroupRecord): 'accepted' | 'malformed' {
   const ranges = record.visibleRanges;
   if (!Number.isSafeInteger(record.phaseOrigin)
     || !Number.isSafeInteger(record.originalEndExclusive)
@@ -164,13 +164,14 @@ function classifyProposedGroupFixture(record: ProposedGroupRecord): 'unimplement
       || override.appFrame < record.phaseOrigin
       || override.appFrame >= record.originalEndExclusive
       || override.keyId.length === 0
+      || !ranges.some((range) => override.appFrame >= range.start && override.appFrame < range.endExclusive)
       || overrideFrames.has(override.appFrame)
       || overrideKeyIds.has(override.keyId)) return 'malformed';
     overrideFrames.add(override.appFrame);
     overrideKeyIds.add(override.keyId);
   }
 
-  return 'unimplemented';
+  return 'accepted';
 }
 
 const baseDocument = (loopClips?: unknown) => {
@@ -366,20 +367,22 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
     ] as const;
 
     it.each(lifecycleFixtures)('accepts and deeply freezes $name', ({ record }) => {
-      expect(classifyProposedGroupFixture(record)).toBe('unimplemented');
+      expect(classifyProposedGroupFixture(record)).toBe('accepted');
       expect(isPhysicPaintRotoLoopClip(record)).toBe(true);
       const [parsed] = parsePhysicPaintRotoLoopClips([record]);
       expect(parsed).toEqual(record);
       expect(Object.isFrozen(parsed)).toBe(true);
+      expect(Object.isFrozen(parsed.sourceKeyIds)).toBe(true);
       expect(Object.isFrozen(parsed.visibleRanges)).toBe(true);
       expect(Object.isFrozen(parsed.visibleRanges?.[0])).toBe(true);
       expect(Object.isFrozen(parsed.frameOverrides)).toBe(true);
+      expect(Object.isFrozen(parsed.frameOverrides?.[0])).toBe(true);
     });
 
-    it('accepts absent additive lifecycle fields as the existing stable default contract', () => {
+    it('hydrates absent additive lifecycle fields to one synchronized attached contiguous Group', () => {
       const legacyRecord = baseLoop();
       expect(isPhysicPaintRotoLoopClip(legacyRecord)).toBe(true);
-      expect(parsePhysicPaintRotoLoopClips([legacyRecord])).toEqual([legacyRecord]);
+      expect(parsePhysicPaintRotoLoopClips([legacyRecord])).toEqual([proposedGroup()]);
       for (const field of GROUP_LIFECYCLE_FIELDS) expect(field in legacyRecord).toBe(false);
     });
 
@@ -413,6 +416,13 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
       {
         name: 'duplicate override key identity',
         record: proposedGroup({ frameOverrides: [{ appFrame: 7, keyId: 'override-7' }, { appFrame: 8, keyId: 'override-7' }] }),
+      },
+      {
+        name: 'override outside every visible range',
+        record: proposedGroup({
+          visibleRanges: [{ start: 0, endExclusive: 7 }, { start: 8, endExclusive: 25 }],
+          frameOverrides: [{ appFrame: 7, keyId: 'override-7' }],
+        }),
       },
     ])('rejects malformed $name', ({ record }) => {
       expect(classifyProposedGroupFixture(record)).toBe('malformed');
