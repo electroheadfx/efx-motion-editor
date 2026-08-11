@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext, PhysicPaintScriptLibraryRequest, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
-import { createRotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
+import { createRotoScriptLibraryController, prepareReferencedActionDeletion } from './physicsPaintRotoScriptLibrary';
+import { buildPhysicPaintRotoPhysicalRevision, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import { createPersistedRotoScript, type PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
 
@@ -328,6 +329,106 @@ function durableLease(direction: ReferencedDeleteDirection, mode: ReferencedDele
     },
   };
 }
+
+function referencedActionDocument(): PhysicPaintRotoPhysicalDocument {
+  const realKeyRecords = [
+    { kind: 'real-key' as const, keyId: 'source-a', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AA==', width: 10, height: 10 } },
+    { kind: 'real-key' as const, keyId: 'source-b', appFrame: 4, payload: { frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,BB==', width: 10, height: 10 } },
+    { kind: 'real-key' as const, keyId: 'override-only', appFrame: 7, payload: { frameIndex: 0, appFrame: 7, dataUrl: 'data:image/png;base64,CC==', width: 10, height: 10 } },
+  ];
+  const interpolation = { enabled: false, mode: 'duplicate' as const };
+  const loopClips = [
+    {
+      loopId: 'group-late', placementStart: 12, sourceKeyIds: ['source-a', 'source-b'], repeat: 2 as const, mode: 'progressive' as const,
+      scriptId: scriptIds.a, motion: { deformation: 15, position: 20 }, overrideColor: '#123456', syncState: 'modified' as const,
+      provenanceState: 'attached' as const, phaseOrigin: 12, originalEndExclusive: 20,
+      visibleRanges: [{ start: 12, endExclusive: 16 }, { start: 18, endExclusive: 20 }], frameOverrides: [{ appFrame: 15, keyId: 'override-only' }],
+    },
+    {
+      loopId: 'group-early', placementStart: 2, sourceKeyIds: ['source-a', 'source-b'], repeat: 2 as const, mode: 'static' as const,
+      scriptId: scriptIds.a, motion: { deformation: 0, position: 0 }, overrideColor: null, syncState: 'synchronized' as const,
+      provenanceState: 'attached' as const, phaseOrigin: 2, originalEndExclusive: 10,
+      visibleRanges: [{ start: 2, endExclusive: 10 }], frameOverrides: [],
+    },
+    {
+      loopId: 'shared-survivor', placementStart: 30, sourceKeyIds: ['source-a'], repeat: 1 as const, mode: 'static' as const,
+      scriptId: scriptIds.b, motion: { deformation: 0, position: 0 }, overrideColor: null, syncState: 'synchronized' as const,
+      provenanceState: 'attached' as const, phaseOrigin: 30, originalEndExclusive: 31,
+      visibleRanges: [{ start: 30, endExclusive: 31 }], frameOverrides: [],
+    },
+  ];
+  return {
+    capacity: 60, realKeyRecords, interpolation, scriptMotion: { deformation: 9, position: 11 }, background: null,
+    selectedKeyId: 'override-only', cursorAppFrame: 15, loopClips, incomingInterpolationBreakKeyIds: ['source-b'],
+    revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, loopClips, ['source-b']),
+  };
+}
+
+describe('production referenced Action deletion preflight', () => {
+  it.each([
+    ['keep-groups', ['group-early', 'group-late'], []],
+    ['delete-action-and-groups', ['group-early', 'group-late'], ['override-only', 'source-b']],
+  ] as const)('freezes the exact %s candidate after lease acquisition with zero publication', async (mode, affectedGroupIds, cleanupKeyIds) => {
+    const document = referencedActionDocument();
+    const events: string[] = [];
+    const prepare = vi.fn(async (_authority, request) => ({ schemaVersion: 1 as const, state: 'prepared' as const, ...request }));
+    const commit = vi.fn(async (_authority, request) => ({ schemaVersion: 1 as const, state: 'committed' as const, ...request }));
+
+    const prepared = await prepareReferencedActionDeletion({
+      context: context(), row: { ...row('a', 'A'), integritySha256: 'a'.repeat(64) }, mode,
+    }, {
+      getPhysicalDocument: () => document,
+      acquireLease: () => { events.push('lease'); return 'lease-1'; },
+      releaseLease: vi.fn(() => true),
+      nextUuid: vi.fn()
+        .mockReturnValueOnce('123e4567-e89b-42d3-a456-426614174111')
+        .mockReturnValueOnce('123e4567-e89b-42d3-a456-426614174222'),
+      nextGeneration: () => 7,
+      digest: vi.fn(async () => 'b'.repeat(64)),
+      prepare: async (authority, request) => { events.push('prepare'); return prepare(authority, request); },
+      commit: async (authority, request) => { events.push('commit'); return commit(authority, request); },
+    });
+
+    expect(events).toEqual(['lease', 'prepare', 'commit']);
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) throw new Error(prepared.error);
+    expect(prepared.impact.affectedGroupIds).toEqual(affectedGroupIds);
+    expect(prepared.impact.cleanupKeyIds).toEqual(cleanupKeyIds);
+    expect(prepared.request).toMatchObject({
+      commandId: '123e4567-e89b-42d3-a456-426614174111', generation: 7,
+      token: '123e4567-e89b-42d3-a456-426614174222', leaseToken: 'lease-1', direction: 'forward', mode,
+      authority: { projectContextId: 'context-1', layerId: 'layer-1', launchOperationId: 'launch', actionId: scriptIds.a, expectedActionRevision: 'rev-a', expectedPhysicalRevision: document.revision },
+      retainedArtifact: { actionId: scriptIds.a, originalRevision: 'rev-a', integritySha256: 'a'.repeat(64) },
+    });
+    expect(document).toEqual(referencedActionDocument());
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(commit).toHaveBeenCalledOnce();
+  });
+
+  it('rejects stale final Action or physical authority and preserves ordinary unreferenced deletion', async () => {
+    const document = referencedActionDocument();
+    const releaseLease = vi.fn(() => true);
+    const prepare = vi.fn();
+    const stale = await prepareReferencedActionDeletion({
+      context: context(), row: { ...row('a', 'A'), integritySha256: 'a'.repeat(64) }, mode: 'keep-groups',
+    }, {
+      getPhysicalDocument: vi.fn().mockReturnValueOnce(document).mockReturnValueOnce({ ...document, revision: 'newer-revision' }),
+      getActionRevision: () => 'newer-action-revision',
+      acquireLease: () => 'lease-1', releaseLease,
+      nextUuid: () => '123e4567-e89b-42d3-a456-426614174111', nextGeneration: () => 1,
+      digest: async () => 'b'.repeat(64), prepare, commit: vi.fn(),
+    });
+    expect(stale).toMatchObject({ ok: false, code: 'stale-authority' });
+    expect(prepare).not.toHaveBeenCalled();
+    expect(releaseLease).toHaveBeenCalledWith('lease-1');
+
+    const test = harness();
+    await test.controller.refresh();
+    test.controller.select('a'); test.controller.requestDelete();
+    await expect(test.controller.confirmDelete()).resolves.toBe(true);
+    expect(test.requests.at(-1)).toMatchObject({ kind: 'delete', scriptId: 'a', expectedRevision: 'rev-a' });
+  });
+});
 
 describe('Wave 0 committed-only referenced Action deletion ledger', () => {
   it.each([

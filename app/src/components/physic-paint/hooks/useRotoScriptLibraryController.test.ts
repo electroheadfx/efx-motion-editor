@@ -35,6 +35,19 @@ describe('persistent Roto script library hook adapters', () => {
     expect(clearRequestTimeout).toHaveBeenCalledOnce();
   });
 
+  it('forwards live referenced-Action transaction ports through the production adapter', () => {
+    const referencedActionDeletion = { getPhysicalDocument: vi.fn() };
+    const ports = {
+      request: vi.fn(), capturePersistence: vi.fn(), captureThumbnail: vi.fn(), replaceClipboard: vi.fn(),
+      getLaunchContext: launchContext, log: vi.fn(), referencedActionDeletion,
+    };
+    const adapter = createRotoScriptLibraryControllerAdapter(() => ports, ports.request);
+    expect(adapter.referencedActionDeletion).toBe(referencedActionDeletion);
+    const replacement = { getPhysicalDocument: vi.fn() };
+    ports.referencedActionDeletion = replacement;
+    expect(adapter.referencedActionDeletion).toBe(replacement);
+  });
+
   it('forwards the exact preparation token through the production adapter and composes one Apply', async () => {
     let settleLoad!: (value: PhysicPaintScriptLibraryResult) => void;
     const request = vi.fn(async (input: PhysicPaintScriptLibraryRequest) => input.kind === 'scan'
