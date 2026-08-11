@@ -2198,6 +2198,15 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect((await test.controller.openSourceEdit('G1')).ok).toBe(true);
       expect(await test.controller.confirm()).toBe(true);
       expect(test.commit).toHaveBeenCalledOnce();
+      const commitCall = test.commit.mock.calls[0] as unknown as [
+        unknown,
+        (() => Promise<string | null>) | undefined,
+      ];
+      const revalidateUnderLease = commitCall[1];
+      expect(typeof revalidateUnderLease).toBe('function');
+      expect(await revalidateUnderLease?.()).toBeNull();
+      test.rows.value = [actionRow('action-revision-2')] as never;
+      expect(await revalidateUnderLease?.()).toBe('Regenerate rejected — saved Action changed.');
       const publication = test.commit.mock.calls[0][0];
       expect(publication.selectedKeyId).toBeNull();
       expect(publication.selectedAppFrame).toBeNull();
