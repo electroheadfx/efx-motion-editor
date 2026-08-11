@@ -105,6 +105,21 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
   let selectedKeyId: string | null = null;
   let failNextLoopReplace = options.failFirstLoopReplace ?? false;
   let payload: PhysicPaintRotoPhysicalEditApplyPayload | null = null;
+  const leaseOrder: string[] = [];
+  const leaseToken = Object.freeze({
+    projectContextId: 'project-1',
+    layerId: 'layer-1',
+    generation: 17,
+    owner: 'exclusive' as const,
+  });
+  const acquireLease = vi.fn(() => {
+    leaseOrder.push('acquire');
+    return leaseToken;
+  });
+  const releaseLease = vi.fn(() => {
+    leaseOrder.push('release');
+    return true;
+  });
 
   const replaceRecords = vi.fn((
     _layerId: string,
@@ -138,7 +153,10 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
   const ports: RotoPhysicalEditCoordinatorPorts<null> = {
     engine: null,
     records: {
-      getRecords: () => records,
+      getRecords: () => {
+        leaseOrder.push('records');
+        return records;
+      },
       getInterpolation: () => interpolation,
       getCapacity: () => 30,
       getLoopClips: () => loopClips,
@@ -182,13 +200,21 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       loadEngineState: vi.fn(),
     },
     launch: {
-      getLaunchContext: () => ({ operationId: 'launch-1', layerId: 'layer-1' }) as never,
+      getLaunchContext: () => ({
+        operationId: 'launch-1',
+        layerId: 'layer-1',
+        project: { contextId: 'project-1' },
+      }) as never,
       setLaunchContextStartFrame: (frame) => { currentFrame = frame; },
       setLaunchContextCachedFrames: vi.fn(),
     },
     paint: {
-      flushPendingStrokeFinalizations: vi.fn(),
-      flushLivePixels: vi.fn(async () => {}),
+      flushPendingStrokeFinalizations: vi.fn(() => { leaseOrder.push('flush-finalizations'); }),
+      flushLivePixels: vi.fn(async () => { leaseOrder.push('flush-live'); }),
+    },
+    lease: {
+      acquire: acquireLease,
+      release: releaseLease,
     },
     bridge: {
       getBridgeMode: () => 'Browser fallback',
@@ -336,6 +362,10 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     reconcileCurrentFrame,
     setCachedReference,
     setConciseMessage,
+    acquireLease,
+    releaseLease,
+    leaseOrder,
+    leaseToken,
     getRecords: () => records,
     getLoopClips: () => loopClips,
     getIncomingInterpolationBreakKeyIds: () => incomingInterpolationBreakKeyIds,
@@ -543,6 +573,21 @@ describe('Phase 43.2 canonical physical-operation lease contract', () => {
 });
 
 describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
+  it('acquires the project/layer lease before final preflight and propagates the exact token', async () => {
+    const test = harness();
+
+    expect(await test.execute()).toBe(true);
+    expect(test.acquireLease).toHaveBeenCalledTimes(1);
+    expect(test.acquireLease).toHaveBeenCalledWith('project-1', 'layer-1');
+    expect(test.getPayload()?.leaseToken).toBe(test.leaseToken);
+    expect(test.leaseOrder.indexOf('acquire')).toBeGreaterThan(test.leaseOrder.indexOf('flush-live'));
+    expect(test.leaseOrder.indexOf('acquire')).toBeLessThan(test.leaseOrder.indexOf('records'));
+    expect(test.releaseLease).not.toHaveBeenCalled();
+
+    expect(test.accept()).toBe('accepted');
+    expect(test.releaseLease).toHaveBeenCalledWith(test.leaseToken);
+  });
+
   it('carries the current background only on the deferred Play Script payload', async () => {
     const test = harness();
 

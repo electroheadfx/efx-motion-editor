@@ -696,6 +696,8 @@ describe('physicPaintBridge', () => {
 
     expect(launch.ok).toBe(true);
     if (!launch.ok || !launch.data.rotoPhysical) return;
+    const leaseToken = physicPaintStore.acquireRotoPhysicalOperationLease(projectStore.projectContextId.peek(), layer.id);
+    if (!leaseToken) throw new Error('Expected ordinary physical-edit lease.');
     const records = [
       movePhysicalRecord(currentRecords[0], 1),
       movePhysicalRecord(currentRecords[1], 4),
@@ -706,6 +708,7 @@ describe('physicPaintBridge', () => {
       kind: 'replace-roto-physical-map' as const,
       operationId: 'intent-aware-insert-slot-dedupe',
       operationKind: 'insert-slot' as const,
+      leaseToken,
       intent: { kind: 'insert-slot' as const, selectedKeyId: 'B' },
       layerId: layer.id,
       startFrame: 3,
