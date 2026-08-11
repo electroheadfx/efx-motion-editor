@@ -8,6 +8,7 @@ import {
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import { resolveRotoVisibleFrameResolutions } from '../roto/rotoTimelineSelectors';
 import {
+  projectPhysicsPaintGroupProductReason,
   projectPhysicsPaintLoopClipGeometry,
   projectPhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
@@ -1296,13 +1297,13 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     });
     const presentation = projectPhysicsPaintLoopClipPresentation(context.ranges[0], clip, 'Walk');
 
-    expect(presentation.displayName).toBe('Loop Clip at F0');
-    expect(presentation.displayName).not.toContain('Walk');
+    expect(presentation.displayName).toBe('Walk Group');
     expect(presentation.cycleLabel).toBe('Cycle 5f × 5 = 25f');
     expect(presentation.effectiveLabel).toBe('Effective 25f');
     expect(presentation.mode).toBe('static');
-    expect(presentation.modeLabel).toBe('Static/Hold');
-    expect(presentation.statusLabel).toBe('Linked');
+    expect(presentation.modeLabel).toBe('Static');
+    expect(presentation.groupTypeLabel).toBe('Static Group');
+    expect(presentation.statusLabel).toBe('Synchronized with Action.');
     expect([
       presentation.displayName,
       presentation.sourceLabel,
@@ -1430,7 +1431,9 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(map).not.toContain('selectedRotoLoopSourceKeyIdSet');
     expect(map).toContain("${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''}");
     expect(map).not.toContain("${isSpacingProxySelected ? 'selected roto-spacing-proxy-selected' : ''}");
-    expect(map).toContain('Loop Clip source position selected for Key Spacing.');
+    expect(projectPhysicsPaintGroupProductReason('spacing-source-selected')).toBe('Group source position selected for Key Spacing.');
+    expect(code).toContain("projectPhysicsPaintGroupProductReason('spacing-source-selected')");
+    expect(map).not.toContain('Loop Clip source position selected for Key Spacing.');
     expect(map).toContain('ariaSelected={isSpacingProxySelected || isSecondarySelected}');
     expect(map).toContain('const isPrimarySelected = !isSpacingProxySelected');
     expect(map).toContain("&& props.rotoPrimarySelectedKeyId === cellKeyId;");

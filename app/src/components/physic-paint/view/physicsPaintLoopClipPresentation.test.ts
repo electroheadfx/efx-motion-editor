@@ -3,6 +3,7 @@ import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalMo
 import type { PhysicPaintRotoLoopRange } from '../roto/physicsPaintRotoPhysicalResolver';
 import {
   projectPhysicsPaintGroupAcceptedFeedback,
+  projectPhysicsPaintGroupProductReason,
   projectPhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
 
@@ -192,6 +193,15 @@ describe('canonical Group presentation copy', () => {
       'Walk Cycle Group. Fragment 2 of 3, frames 18 through 21. Motion Group. Synchronized with Action. Linked to selected Action Walk Cycle.',
     );
     expect(presentation.loopId).toBe('internal-loop-id');
+  });
+});
+
+describe('canonical Group workflow reasons', () => {
+  it('maps exact accepted and rejected workflow-strip copy', () => {
+    expect(projectPhysicsPaintGroupProductReason('spacing-source-selected'))
+      .toBe('Group source position selected for Key Spacing.');
+    expect(projectPhysicsPaintGroupProductReason('operation-failed'))
+      .toBe('Couldn’t update this Group. Nothing changed. Review the reason and try again.');
   });
 });
 
