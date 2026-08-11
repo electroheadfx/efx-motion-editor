@@ -86,7 +86,7 @@ function findUnresolvedExportLoop(
   hits.sort((a, b) => a.loop.placementStart - b.loop.placementStart || a.loop.loopId.localeCompare(b.loop.loopId));
   const first = hits[0];
   if (first.loop.invalidSourceTiming) {
-    return `Export blocked — Loop Clip at frame ${first.loop.placementStart} has invalid source timing. Repair or unlink the loop, then export again.`;
+    return `Export blocked — Group at frame ${first.loop.placementStart} has invalid source timing. Repair or unlink the Group, then export again.`;
   }
   const clip = physicPaintStore.getRotoPhysicalLoopClips(first.layerId)
     .find((candidate) => candidate.loopId === first.loop.loopId);
@@ -95,7 +95,7 @@ function findUnresolvedExportLoop(
     ? clip.sourceKeyIds.indexOf(firstMissingKeyId)
     : -1;
   const missingSourceFrame = first.loop.placementStart + (sourceIndex >= 0 ? sourceIndex : 0);
-  return `Export blocked — Loop Clip at frame ${first.loop.placementStart} references a missing source frame (${missingSourceFrame}). Repair or unlink the loop, then export again.`;
+  return `Export blocked — Group at frame ${first.loop.placementStart} references a missing source frame (${missingSourceFrame}). Repair or unlink the Group, then export again.`;
 }
 
 /**
