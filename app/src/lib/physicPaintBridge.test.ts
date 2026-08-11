@@ -742,6 +742,7 @@ describe('physicPaintBridge', () => {
       incomingInterpolationBreakKeyIds: [],
       selectedKeyId: 'B',
       selectedAppFrame: 4,
+      cursorAppFrame: 4,
     };
     const first = applyPhysicPaintPayload(payload);
     expect(first.ok).toBe(true);
@@ -1014,6 +1015,7 @@ describe('physicPaintBridge', () => {
       incomingInterpolationBreakKeyIds: [],
       selectedKeyId: 'B',
       selectedAppFrame: 10,
+      cursorAppFrame: 10,
     });
     expect(accepted.ok).toBe(true);
     if (!accepted.ok || !('acceptedRevision' in accepted)) return;
@@ -1047,6 +1049,7 @@ describe('physicPaintBridge', () => {
       incomingInterpolationBreakKeyIds: [],
       selectedKeyId: null,
       selectedAppFrame: null,
+      cursorAppFrame: 0,
       historyProvenance: {
         historyCommandId: 'project-A-command',
         historyDirection: 'undo',
@@ -1198,6 +1201,7 @@ describe('physicPaintBridge', () => {
       incomingInterpolationBreakKeyIds: [],
       selectedKeyId: 'B',
       selectedAppFrame: 10,
+      cursorAppFrame: 10,
     });
     expect(command.ok).toBe(true);
     if (!command.ok || !('acceptedRevision' in command)) return;
@@ -1228,6 +1232,7 @@ describe('physicPaintBridge', () => {
       incomingInterpolationBreakKeyIds: [],
       selectedKeyId: null,
       selectedAppFrame: null,
+      cursorAppFrame: 0,
       historyProvenance: {
         historyCommandId: 'replaced-launch-command',
         historyDirection: 'undo',
@@ -1280,6 +1285,7 @@ describe('physicPaintBridge', () => {
       incomingInterpolationBreakKeyIds: ['key-10'],
       selectedKeyId: 'key-10',
       selectedAppFrame: 10,
+      cursorAppFrame: 10,
     });
 
     expect(result).toMatchObject({
@@ -1312,6 +1318,7 @@ describe('physicPaintBridge', () => {
       interpolationMode: 'duplicate',
       selectedKeyId: 'key-10',
       selectedAppFrame: 10,
+      cursorAppFrame: 10,
     });
     expect(omitted.ok).toBe(true);
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(omittedLease)).toBe(true);
@@ -1339,6 +1346,7 @@ describe('physicPaintBridge', () => {
       incomingInterpolationBreakKeyIds: [],
       selectedKeyId: 'key-10',
       selectedAppFrame: 10,
+      cursorAppFrame: 10,
     });
     expect(cleared.ok).toBe(false);
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(clearedLease)).toBe(true);
@@ -1388,6 +1396,7 @@ describe('physicPaintBridge', () => {
       interpolationMode: 'duplicate' as const,
       selectedKeyId: 'key-10',
       selectedAppFrame: 10,
+      cursorAppFrame: 10,
     };
     const proposals: readonly { operationId: string; expectedRevision?: string; incomingInterpolationBreakKeyIds: unknown }[] = [
       { operationId: 'reject-malformed-incoming-break', incomingInterpolationBreakKeyIds: 'key-10' },
@@ -1446,6 +1455,7 @@ describe('physicPaintBridge', () => {
       incomingInterpolationBreakKeyIds: ['key-10', 'key-5'],
       selectedKeyId: 'key-5',
       selectedAppFrame: 5,
+      cursorAppFrame: 5,
       semanticDelta: {
         kind: 'insert-empty-segment',
         insertedKeyId: 'key-5',
@@ -1676,6 +1686,7 @@ describe('physicPaintBridge', () => {
       }],
       selectedKeyId: records[0].keyId,
       selectedAppFrame: 0,
+      cursorAppFrame: 0,
       semanticDelta: {
         kind: 'play-script',
         affectedStartAppFrame: 0,
