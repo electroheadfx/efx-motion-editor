@@ -8,6 +8,7 @@ import {
   buildPhysicPaintRotoProjectEquality,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
+  createReferencedActionHistoryReleaseManager,
   createReferencedActionHistoryReplayOrchestrator,
   createRotoScriptLibraryControllerAdapter,
   createRotoScriptLibraryRequestLifecycle,
@@ -292,6 +293,42 @@ describe('production referenced Action history direction orchestration', () => {
     await expect(replay(command, 'undo')).resolves.toBe(false);
     expect(acquireLease).not.toHaveBeenCalled();
     expect(prepare).not.toHaveBeenCalled();
+  });
+});
+
+describe('retained Action history release correlation', () => {
+  it('defers active-recovery release and retries the exact owner without visible state', async () => {
+    let attempt = 0;
+    const release = vi.fn(async (_authority, request) => {
+      attempt += 1;
+      return attempt === 1
+        ? { state: 'failed' as const, code: 'active-recovery-blocked' as const, error: 'Recovery is active.' }
+        : { ...request, state: 'released' as const, released: true };
+    });
+    const manager = createReferencedActionHistoryReleaseManager({
+      getAuthority: () => 'native-authority',
+      release,
+    });
+    const command = {
+      kind: 'referenced-action',
+      commandId: 'history-command-release',
+      generation: 12,
+      authority: { projectContextId: 'context-1', launchOperationId: 'launch' },
+    } as ReferencedActionHistoryCommand;
+
+    await expect(manager.release(command, 'eviction')).resolves.toBe(false);
+    expect(manager.pendingCount()).toBe(1);
+    await expect(manager.retryDeferred()).resolves.toBe(true);
+    expect(manager.pendingCount()).toBe(0);
+    expect(release).toHaveBeenCalledTimes(2);
+    expect(release.mock.calls[0]).toEqual(release.mock.calls[1]);
+    expect(release).toHaveBeenCalledWith('native-authority', {
+      projectContextId: 'context-1',
+      launchOperationId: 'launch',
+      commandId: 'history-command-release',
+      generation: 12,
+      reason: 'eviction',
+    });
   });
 });
 

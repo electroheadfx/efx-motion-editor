@@ -654,6 +654,90 @@ describe('useRotoPhysicalEditHistory referenced Action replay', () => {
   });
 });
 
+describe('useRotoPhysicalEditHistory retained Action ownership', () => {
+  it('releases only referenced commands on eviction, redo truncation, and session clear', async () => {
+    const base = snapshot([record('A', 0)], 'A', 0);
+    const changed = snapshot([record('A', 1)], 'A', 1);
+    const toDocument = (source: RotoPhysicalEditSnapshot<null>) => ({
+      realKeyRecords: source.records,
+      interpolation: source.interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      capacity: source.capacity,
+      selectedKeyId: source.selectedKeyId,
+      cursorAppFrame: source.currentAppFrame,
+      loopClips: source.loopClips,
+      incomingInterpolationBreakKeyIds: source.incomingInterpolationBreakKeyIds,
+      revision: source.stagedRevision,
+    });
+    const command = (index: number): ReferencedActionHistoryCommand => ({
+      kind: 'referenced-action',
+      commandId: `history-command-${index}`,
+      generation: index + 1,
+      mode: 'keep-groups',
+      retainedArtifact: {
+        commandId: `history-command-${index}`, generation: index + 1, actionId: 'action-1',
+        managedPath: 'scripts/action-1.efx-roto-script.json', originalRevision: 'action-revision-1', integritySha256: 'a'.repeat(64),
+      },
+      authority: {
+        projectContextId: 'project-1', layerId: 'layer-1', launchOperationId: 'launch-1',
+        actionId: 'action-1', actionRevision: 'action-revision-1',
+      },
+      before: { physicalRevision: base.stagedRevision, physicalHash: 'before-hash', document: toDocument(base), selectedGroupId: 'group-1', cursorAppFrame: 0 },
+      after: { physicalRevision: base.stagedRevision, physicalHash: 'after-hash', document: toDocument(base), selectedGroupId: null, cursorAppFrame: 0 },
+    });
+    const acceptedReferencedAction = signal<ReferencedActionHistoryCommand | null>(null);
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const release = vi.fn(async () => true);
+    const history = useRotoPhysicalEditHistory({
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10 },
+      availability,
+      coordinator: { executePhysicalEdit: vi.fn() as never, pendingOperationId: signal(null), acceptedOutput },
+      recordsPort: {
+        getRecords: () => base.records,
+        getInterpolation: () => base.interpolation,
+        getCapacity: () => base.capacity,
+        getLoopClips: () => base.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => base.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => base,
+      referencedActionHistory: { accepted: acceptedReferencedAction, replay: vi.fn(async () => true), release },
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    for (let index = 0; index < 11; index += 1) acceptedReferencedAction.value = command(index);
+    expect(availability.value).toEqual({ undo: 10, redo: 0 });
+    await vi.waitFor(() => expect(release).toHaveBeenCalledWith(command(0), 'eviction'));
+
+    expect(await history.undo()).toBe(true);
+    expect(availability.value).toEqual({ undo: 9, redo: 1 });
+    acceptedOutput.value = {
+      before: base,
+      after: changed,
+      acceptedRevision: changed.stagedRevision,
+      operationId: 'ordinary-after-undo',
+      operationKind: 'move-key',
+      historyProvenance: null,
+    };
+    expect(availability.value).toEqual({ undo: 10, redo: 0 });
+    await vi.waitFor(() => expect(release).toHaveBeenCalledWith(command(10), 'redo-branch-truncation'));
+
+    history.clear();
+    expect(availability.value).toEqual({ undo: 0, redo: 0 });
+    await vi.waitFor(() => {
+      for (let index = 1; index < 10; index += 1) {
+        expect(release).toHaveBeenCalledWith(command(index), 'session-history-clear');
+      }
+    });
+    expect(release).toHaveBeenCalledTimes(11);
+  });
+});
+
 describe('useRotoPhysicalEditHistory complete live replay preflight', () => {
   it.each([
     {
