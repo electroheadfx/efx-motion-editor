@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 20
 waived_count: 1
-fixed_count: 28
-total_count: 49
-last_updated: 2026-08-11T06:49:38.494Z
+fixed_count: 30
+total_count: 51
+last_updated: 2026-08-11T08:31:21.136Z
 ---
 
 # Broken Windows Ledger
@@ -64,6 +64,8 @@ last_updated: 2026-08-11T06:49:38.494Z
 | 47 | 43.2 | deviation | app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.test.ts |  | Updated accepted settlement fixtures to echo exact project authority after lease propagation. | fixed |  | 2026-08-11T06:49:05.439Z | 2026-08-11T06:49:38.327Z |
 | 48 | 43.2 | deviation | app/src/lib/physicPaintBridge.test.ts |  | Updated accepted bridge fixtures to acquire and release exact canonical lease tokens. | fixed |  | 2026-08-11T06:49:05.521Z | 2026-08-11T06:49:38.410Z |
 | 49 | 43.2 | deviation | app/src/lib/physicPaintBridge.ts |  | Extended the closed bridge token parser to validate exclusive and recovery ownership. | fixed |  | 2026-08-11T06:49:05.605Z | 2026-08-11T06:49:38.494Z |
+| 50 | 43.2 | deviation | app/src/components/physic-paint/physicsPaintStudio.css |  | Added omitted UI-SPEC geometry required for the Group Delete dialog. | fixed |  | 2026-08-11T08:30:14.260Z | 2026-08-11T08:31:21.055Z |
+| 51 | 43.2 | deviation | app/src/components/physic-paint/roto/physicsPaintRotoGroupLifecycle.ts |  | Corrected only-occurrence Delete Frame to remove the complete Group. | fixed |  | 2026-08-11T08:30:14.337Z | 2026-08-11T08:31:21.136Z |
 
 ````json
 [
@@ -654,6 +656,30 @@ last_updated: 2026-08-11T06:49:38.494Z
     "reason": "",
     "recorded_at": "2026-08-11T06:49:05.605Z",
     "resolved_at": "2026-08-11T06:49:38.494Z"
+  },
+  {
+    "id": 50,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": "app/src/components/physic-paint/physicsPaintStudio.css",
+    "line": null,
+    "description": "Added omitted UI-SPEC geometry required for the Group Delete dialog.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T08:30:14.260Z",
+    "resolved_at": "2026-08-11T08:31:21.055Z"
+  },
+  {
+    "id": 51,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": "app/src/components/physic-paint/roto/physicsPaintRotoGroupLifecycle.ts",
+    "line": null,
+    "description": "Corrected only-occurrence Delete Frame to remove the complete Group.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T08:30:14.337Z",
+    "resolved_at": "2026-08-11T08:31:21.136Z"
   }
 ]
 ````
