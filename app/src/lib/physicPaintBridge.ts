@@ -946,6 +946,18 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   if (activeLaunchOperationByLayer.get(payload.layerId) !== payload.launchOperationId) {
     return reject('Physics Paint launch context changed before the physical edit could be applied.');
   }
+  const leaseToken = payload.leaseToken!;
+  if (leaseToken.projectContextId !== projectStore.projectContextId.peek()) {
+    return reject('Project context changed after the physical-operation lease was acquired.');
+  }
+  const leaseValidation = physicPaintStore.validateRotoPhysicalOperationLease(
+    leaseToken.projectContextId,
+    payload.layerId,
+    leaseToken,
+  );
+  if (!leaseValidation.ok) {
+    return reject(`Roto physical operation lease rejected: ${leaseValidation.reason}.`);
+  }
   const currentRecords = physicPaintStore.getRotoRealKeyRecords(payload.layerId);
   const currentInterpolation = physicPaintStore.getRotoPhysicalInterpolationState(payload.layerId);
   const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(payload.layerId);
@@ -1170,7 +1182,11 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     loopClips: proposedLoopClips,
     incomingInterpolationBreakKeyIds: proposedIncomingInterpolationBreakKeyIds,
   });
-  const replaceResult = physicPaintStore.replaceRotoPhysicalDocument(payload.layerId, stagedDocument);
+  const replaceResult = physicPaintStore.replaceRotoPhysicalDocument(
+    payload.layerId,
+    stagedDocument,
+    leaseToken,
+  );
   if (!replaceResult.ok) return reject(replaceResult.error, stagedRevision);
   const acceptedDocument = replaceResult.document;
   const acceptedSelectedKeyId = acceptedDocument.selectedKeyId;
@@ -1240,6 +1256,7 @@ const PHYSIC_PAINT_ROTO_OPERATION_LEASE_TOKEN_KEYS = new Set([
   'projectContextId',
   'layerId',
   'generation',
+  'owner',
 ]);
 
 function parsePhysicPaintRotoGroupFramePaintApplyRequest(
@@ -1260,7 +1277,8 @@ function parsePhysicPaintRotoGroupFramePaintApplyRequest(
       || typeof tokenRecord.projectContextId !== 'string'
       || typeof tokenRecord.layerId !== 'string'
       || !Number.isSafeInteger(tokenRecord.generation)
-      || (tokenRecord.generation as number) < 1) return null;
+      || (tokenRecord.generation as number) < 1
+      || (tokenRecord.owner !== 'exclusive' && tokenRecord.owner !== 'recovery')) return null;
   }
   if (typeof request.operationId !== 'string' || request.operationId.length === 0
     || typeof request.projectContextId !== 'string' || request.projectContextId.length === 0

@@ -11,6 +11,7 @@ import type {
 } from './physicsPaintRotoPhysicalModel';
 import type { RenderedFramePayload } from './rotoCanvasFrames';
 import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
+import type { PhysicPaintRotoPhysicalOperationLeaseToken } from '../../../stores/physicPaintStore';
 
 /**
  * Immutable pending physical-edit settlement record (Plan 36.14-04 Task 1;
@@ -306,6 +307,15 @@ export interface RotoPhysicalEditPaintBarrierPort {
   flushLivePixels: (sourceFrame: number) => Promise<void>;
 }
 
+/** Canonical project/layer operation lease owned by the store authority. */
+export interface RotoPhysicalEditLeasePort {
+  acquire: (
+    projectContextId: string,
+    layerId: string,
+  ) => PhysicPaintRotoPhysicalOperationLeaseToken | null;
+  release: (token: PhysicPaintRotoPhysicalOperationLeaseToken) => boolean;
+}
+
 /**
  * Bridge availability + payload send.
  */
@@ -346,6 +356,7 @@ export interface RotoPhysicalEditCoordinatorPorts<EngineState = SerializedProjec
   readonly engineState: RotoPhysicalEditEnginePort<EngineState>;
   readonly launch: RotoPhysicalEditLaunchPort;
   readonly paint: RotoPhysicalEditPaintBarrierPort;
+  readonly lease: RotoPhysicalEditLeasePort;
   readonly bridge: RotoPhysicalEditBridgePort;
   readonly settlement: RotoPhysicalEditSettlementPort;
   readonly status: RotoPhysicalEditStatusPort;

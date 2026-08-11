@@ -723,6 +723,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
   const beforeRef = useRef<RotoPhysicalEditSnapshot<EngineState> | null>(null);
   const afterRef = useRef<RotoPhysicalEditSnapshot<EngineState> | null>(null);
   const timeoutRef = useRef<number | null>(null);
+  const leaseRef = useRef<PhysicPaintRotoPhysicalOperationLeaseToken | null>(null);
   const inFlightRef = useRef<boolean>(false);
   const cancelledRef = useRef<boolean>(false);
 
@@ -743,6 +744,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
   }, []);
 
   const clearPendingOnce = useCallback(() => {
+    const leaseToken = leaseRef.current;
+    leaseRef.current = null;
+    if (leaseToken) portsRef.current.lease.release(leaseToken);
     pendingRef.current = null;
     beforeRef.current = null;
     afterRef.current = null;
@@ -1169,10 +1173,25 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           clearPendingOnce();
           return false;
         }
+        const projectContextId = launch.project?.contextId;
+        if (!projectContextId) {
+          portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+          clearPendingOnce();
+          return false;
+        }
+        const leaseToken = portsRef.current.lease.acquire(projectContextId, launch.layerId);
+        if (!leaseToken) {
+          portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_SERIALIZE_MESSAGE);
+          clearPendingOnce();
+          return false;
+        }
+        leaseRef.current = leaseToken;
         const revalidatedLaunch = portsRef.current.launch.getLaunchContext();
         if (!revalidatedLaunch
           || revalidatedLaunch.layerId !== input.expectedLaunch.layerId
-          || revalidatedLaunch.operationId !== input.expectedLaunch.operationId) {
+          || revalidatedLaunch.operationId !== input.expectedLaunch.operationId
+          || revalidatedLaunch.project?.contextId !== leaseToken.projectContextId
+          || revalidatedLaunch.layerId !== leaseToken.layerId) {
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
@@ -1345,9 +1364,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           kind: 'replace-roto-physical-map',
           operationId,
           layerId: revalidatedLaunch.layerId,
+          leaseToken,
           startFrame: input.selectedAppFrame ?? before.currentAppFrame,
           launchOperationId: revalidatedLaunch.operationId,
-          ...(revalidatedLaunch.project ? { projectContextId: revalidatedLaunch.project.contextId } : {}),
+          projectContextId: leaseToken.projectContextId,
           expectedRevision,
           records: recordsToApplyPayloadRecords(validatedStagedRecords),
           interpolationEnabled: stagedInterpolation.enabled,

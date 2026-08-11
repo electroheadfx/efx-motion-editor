@@ -325,6 +325,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       layerId: payload.layerId,
       startFrame: payload.startFrame,
       launchOperationId: payload.launchOperationId,
+      projectContextId: payload.projectContextId,
       expectedRevision: payload.expectedRevision,
       stagedRevision,
       acceptedRevision: stagedRevision,

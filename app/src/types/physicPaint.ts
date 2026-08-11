@@ -470,10 +470,21 @@ export interface PhysicPaintRotoPhysicalEditReplayProvenance {
  * This interface is the exact physical branch carried by
  * `PhysicPaintApplyPayload`; unrelated apply kinds retain their generic shape.
  */
+export type PhysicPaintRotoPhysicalOperationLeaseOwner = 'exclusive' | 'recovery';
+
+export interface PhysicPaintRotoPhysicalOperationLeaseToken {
+  readonly projectContextId: string;
+  readonly layerId: string;
+  readonly generation: number;
+  readonly owner: PhysicPaintRotoPhysicalOperationLeaseOwner;
+}
+
 interface PhysicPaintRotoPhysicalEditApplyPayloadBase {
   readonly kind: 'replace-roto-physical-map';
   readonly operationId: string;
   readonly layerId: string;
+  /** Required by runtime validation; optional in construction-only test fixtures. */
+  readonly leaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken;
   readonly startFrame: number;
   readonly launchOperationId: string;
   readonly projectContextId?: string;
@@ -609,6 +620,18 @@ function isPhysicPaintRotoOrdinaryOperationKind(
 
 function isPhysicPaintRotoPhysicalEditPayload(value: unknown): value is PhysicPaintRotoPhysicalEditRecord['payload'] {
   return isPhysicPaintRotoRealKeyPayload(value);
+}
+
+export function isPhysicPaintRotoPhysicalOperationLeaseToken(
+  value: unknown,
+): value is PhysicPaintRotoPhysicalOperationLeaseToken {
+  return isRecord(value)
+    && hasOnlyKeys(value, ['projectContextId', 'layerId', 'generation', 'owner'])
+    && isNonEmptyString(value.projectContextId)
+    && isNonEmptyString(value.layerId)
+    && Number.isSafeInteger(value.generation)
+    && (value.generation as number) >= 1
+    && (value.owner === 'exclusive' || value.owner === 'recovery');
 }
 
 function isLifecycleCompletePhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintRotoLoopClip {
@@ -793,7 +816,7 @@ export function isPhysicPaintRotoPhysicalEditReplayProvenance(value: unknown): v
  */
 export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value is PhysicPaintRotoPhysicalEditApplyPayload {
   if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
+  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
   if (!isPhysicPaintRotoPhysicalEditOperationKind(value.operationKind)) return false;
@@ -803,9 +826,13 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
     if (intent.kind !== value.operationKind) return false;
   } else if (intent !== undefined || isPhysicPaintRotoOrdinaryOperationKind(value.operationKind)) return false;
   if (!isNonEmptyString(value.layerId)) return false;
+  if (!isPhysicPaintRotoPhysicalOperationLeaseToken(value.leaseToken)) return false;
+  if (value.leaseToken.layerId !== value.layerId) return false;
   if (!isNonNegativeInteger(value.startFrame)) return false;
   if (!isNonEmptyString(value.launchOperationId)) return false;
   if (value.projectContextId !== undefined && !isNonEmptyString(value.projectContextId)) return false;
+  if (value.projectContextId !== undefined
+    && value.leaseToken.projectContextId !== value.projectContextId) return false;
   if (!isNonEmptyString(value.expectedRevision)) return false;
   if (!Array.isArray(value.records) || !value.records.every(isPhysicPaintRotoPhysicalEditRecord)) return false;
   if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isLifecycleCompletePhysicPaintRotoLoopClip))) return false;

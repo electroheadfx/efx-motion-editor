@@ -583,6 +583,12 @@ export function PhysicsPaintStudio() {
       flushPendingStrokeFinalizations: () => { engineRef.current?.flushPendingStrokeFinalizations(); },
       flushLivePixels: (appFrame) => rotoPersistence.flushLivePixels(appFrame),
     },
+    lease: {
+      acquire: (projectContextId, layerId) => (
+        physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layerId)
+      ),
+      release: (token) => physicPaintStore.releaseRotoPhysicalOperationLease(token),
+    },
     bridge: {
       getBridgeMode: () => bridgeModeRef.current,
       sendPhysicalEditPayload: async (payload) => { await sendPhysicPaintApplyPayload(payload, bridgeModeRef.current); },

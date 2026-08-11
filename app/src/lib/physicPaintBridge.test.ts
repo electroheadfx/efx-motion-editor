@@ -132,6 +132,15 @@ function seedPhysicalDocument(
   if (!result.ok) throw new Error(result.error);
 }
 
+function acquirePhysicalLease(
+  layerId: string,
+  projectContextId: string = projectStore.projectContextId.peek(),
+) {
+  const token = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layerId);
+  if (!token) throw new Error(`Expected physical-operation lease for ${layerId}.`);
+  return token;
+}
+
 function installCanonicalBlankCanvas(): void {
   vi.stubGlobal('document', {
     createElement: (tagName: string) => {
@@ -743,6 +752,70 @@ describe('physicPaintBridge', () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
+  it('rejects missing, stale, cross-layer, and replayed generic lease tokens without publication', async () => {
+    const layer = physicLayer();
+    mockLayers([layer]);
+    const records = [makePhysicalRecord('A', 1), makePhysicalRecord('B', 3)];
+    seedPhysicalDocument(layer.id, records);
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 3 });
+    expect(launch.ok).toBe(true);
+    if (!launch.ok || !launch.data.rotoPhysical) return;
+
+    const validToken = acquirePhysicalLease(layer.id);
+    const crossLayerToken = acquirePhysicalLease('other-layer');
+    const basePayload = {
+      kind: 'replace-roto-physical-map' as const,
+      operationKind: 'move-key' as const,
+      intent: {
+        kind: 'move-key' as const,
+        movedKeyId: 'B',
+        target: { kind: 'physical-cell' as const, appFrame: 3 },
+      },
+      layerId: layer.id,
+      startFrame: 3,
+      launchOperationId: launch.data.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: launch.data.rotoPhysical.revision,
+      records: launch.data.rotoPhysical.records,
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate' as const,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      selectedKeyId: 'B',
+      selectedAppFrame: 3,
+    };
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    const beforeRevisionSignal = rotoPhysicalRevision.peek();
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+
+    const rejected = [
+      applyPhysicPaintPayload({ ...basePayload, operationId: 'missing-generic-lease' }),
+      applyPhysicPaintPayload({
+        ...basePayload,
+        operationId: 'stale-generic-lease',
+        leaseToken: { ...validToken, generation: validToken.generation + 100 },
+      }),
+      applyPhysicPaintPayload({
+        ...basePayload,
+        operationId: 'cross-layer-generic-lease',
+        leaseToken: crossLayerToken,
+      }),
+    ];
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(validToken)).toBe(true);
+    rejected.push(applyPhysicPaintPayload({
+      ...basePayload,
+      operationId: 'replayed-generic-lease',
+      leaseToken: validToken,
+    }));
+
+    expect(rejected.every((result) => !result.ok)).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(beforeDocument);
+    expect(rotoPhysicalRevision.peek()).toBe(beforeRevisionSignal);
+    expect(replace).not.toHaveBeenCalled();
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(crossLayerToken)).toBe(true);
+  });
+
   it('parent-recomputes every ordinary physical mapping before publication', async () => {
     installCanonicalBlankCanvas();
     const layer = physicLayer();
@@ -822,6 +895,7 @@ describe('physicPaintBridge', () => {
       const launch = await openPhysicPaintCanvas({ layer, frame: 3 });
       expect(launch.ok, intent.kind).toBe(true);
       if (!launch.ok || !launch.data.rotoPhysical) throw new Error(`${intent.kind} launch must resolve`);
+      const leaseToken = acquirePhysicalLease(layer.id);
       const resolution = resolvePhysicPaintRotoPhysicalEdit({
         identities: baseline.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
         records: baseline,
@@ -848,6 +922,7 @@ describe('physicPaintBridge', () => {
         operationKind: intent.kind,
         intent,
         layerId: layer.id,
+        leaseToken,
         startFrame: proposal.selectedAppFrame ?? 0,
         launchOperationId: launch.data.operationId,
         expectedRevision: launch.data.rotoPhysical.revision,
@@ -884,6 +959,7 @@ describe('physicPaintBridge', () => {
         selectedKeyId: proposal.selectedKeyId,
         interpolation: { enabled: false, mode: 'duplicate' },
       });
+      expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
       replace.mockRestore();
     }
   });
@@ -902,6 +978,7 @@ describe('physicPaintBridge', () => {
 
     expect(launchA.ok).toBe(true);
     if (!launchA.ok || !launchA.data.rotoPhysical) return;
+    const projectALease = acquirePhysicalLease(layer.id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
     const accepted = applyPhysicPaintPayload({
       kind: 'replace-roto-physical-map',
       operationId: 'project-A-command',
@@ -912,6 +989,7 @@ describe('physicPaintBridge', () => {
         target: { kind: 'physical-cell', appFrame: 10 },
       },
       layerId: layer.id,
+      leaseToken: projectALease,
       startFrame: 10,
       launchOperationId: launchA.data.operationId,
       projectContextId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -926,11 +1004,13 @@ describe('physicPaintBridge', () => {
     });
     expect(accepted.ok).toBe(true);
     if (!accepted.ok || !('acceptedRevision' in accepted)) return;
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(projectALease)).toBe(true);
 
     projectStore.projectContextId.value = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     const launchB = await openPhysicPaintCanvas({ layer, frame: 10 });
     expect(launchB.ok).toBe(true);
     if (!launchB.ok || !launchB.data.rotoPhysical) return;
+    const projectBLease = acquirePhysicalLease(layer.id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
     const beforeReplay = physicPaintStore.getRotoPhysicalDocument(layer.id);
     const beforeRevisionSignal = rotoPhysicalRevision.peek();
     const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
@@ -942,6 +1022,7 @@ describe('physicPaintBridge', () => {
       operationId: 'project-B-replay-project-A-command',
       operationKind: 'undo',
       layerId: layer.id,
+      leaseToken: projectBLease,
       startFrame: 0,
       launchOperationId: launchB.data.operationId,
       projectContextId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -966,6 +1047,7 @@ describe('physicPaintBridge', () => {
     expect(rotoPhysicalRevision.peek()).toBe(beforeRevisionSignal);
     expect(replace).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalled();
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(projectBLease)).toBe(true);
   });
 
   it('rejects null-selection replay when only the start-frame-derived cursor differs', async () => {
@@ -982,6 +1064,7 @@ describe('physicPaintBridge', () => {
 
     expect(launch.ok).toBe(true);
     if (!launch.ok || !launch.data.rotoPhysical) return;
+    const commandLease = acquirePhysicalLease(layer.id, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
     expect(physicPaintStore.setRotoPhysicalSelection(layer.id, null, 0)).toEqual({ ok: true });
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
@@ -1007,6 +1090,7 @@ describe('physicPaintBridge', () => {
       operationKind: 'force-spacing',
       intent: { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null },
       layerId: layer.id,
+      leaseToken: commandLease,
       startFrame: 4,
       launchOperationId: launch.data.operationId,
       projectContextId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
@@ -1021,6 +1105,8 @@ describe('physicPaintBridge', () => {
     });
     expect(accepted.ok).toBe(true);
     if (!accepted.ok || !('acceptedRevision' in accepted)) return;
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(commandLease)).toBe(true);
+    const replayLease = acquirePhysicalLease(layer.id, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
     const beforeReplay = physicPaintStore.getRotoPhysicalDocument(layer.id);
     const beforeRevisionSignal = rotoPhysicalRevision.peek();
     const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
@@ -1032,6 +1118,7 @@ describe('physicPaintBridge', () => {
       operationId: 'null-selection-wrong-cursor-undo',
       operationKind: 'undo',
       layerId: layer.id,
+      leaseToken: replayLease,
       startFrame: 1,
       launchOperationId: launch.data.operationId,
       projectContextId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
@@ -1056,6 +1143,7 @@ describe('physicPaintBridge', () => {
     expect(rotoPhysicalRevision.peek()).toBe(beforeRevisionSignal);
     expect(replace).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalled();
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(replayLease)).toBe(true);
   });
 
   it('removes accepted command authorization when the layer launch authority is replaced', async () => {
@@ -1071,11 +1159,13 @@ describe('physicPaintBridge', () => {
     const firstLaunch = await openPhysicPaintCanvas({ layer, frame: 10 });
     expect(firstLaunch.ok).toBe(true);
     if (!firstLaunch.ok || !firstLaunch.data.rotoPhysical) return;
+    const commandLease = acquirePhysicalLease(layer.id, 'dddddddd-dddd-4ddd-8ddd-dddddddddddd');
 
     const command = applyPhysicPaintPayload({
       kind: 'replace-roto-physical-map',
       operationId: 'replaced-launch-command',
       operationKind: 'move-key',
+      leaseToken: commandLease,
       intent: {
         kind: 'move-key',
         movedKeyId: 'B',
@@ -1096,10 +1186,12 @@ describe('physicPaintBridge', () => {
     });
     expect(command.ok).toBe(true);
     if (!command.ok || !('acceptedRevision' in command)) return;
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(commandLease)).toBe(true);
 
     const replacementLaunch = await openPhysicPaintCanvas({ layer, frame: 10 });
     expect(replacementLaunch.ok).toBe(true);
     if (!replacementLaunch.ok || !replacementLaunch.data.rotoPhysical) return;
+    const replayLease = acquirePhysicalLease(layer.id, 'dddddddd-dddd-4ddd-8ddd-dddddddddddd');
     const beforeReplay = physicPaintStore.getRotoPhysicalDocument(layer.id);
     const beforeRevisionSignal = rotoPhysicalRevision.peek();
     const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
@@ -1109,6 +1201,7 @@ describe('physicPaintBridge', () => {
       operationId: 'replaced-launch-replay',
       operationKind: 'undo',
       layerId: layer.id,
+      leaseToken: replayLease,
       startFrame: 0,
       launchOperationId: replacementLaunch.data.operationId,
       projectContextId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
@@ -1135,6 +1228,7 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(beforeReplay);
     expect(rotoPhysicalRevision.peek()).toBe(beforeRevisionSignal);
     expect(replace).not.toHaveBeenCalled();
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(replayLease)).toBe(true);
   });
 
   it('preserves one stable-key-owned incoming interpolation break across canonical ordinary edits', async () => {
@@ -1150,10 +1244,12 @@ describe('physicPaintBridge', () => {
     expect(launch.ok).toBe(true);
     if (!launch.ok || !launch.data.rotoPhysical) return;
     const records = launch.data.rotoPhysical.records;
+    const firstLease = acquirePhysicalLease(layer.id);
     const result = applyPhysicPaintPayload({
       kind: 'replace-roto-physical-map',
       operationId: 'accept-incoming-break',
       operationKind: 'move-key',
+      leaseToken: firstLease,
       intent: {
         kind: 'move-key',
         movedKeyId: 'key-10',
@@ -1176,14 +1272,17 @@ describe('physicPaintBridge', () => {
       operationId: 'accept-incoming-break',
       incomingInterpolationBreakKeyIds: ['key-10'],
     });
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(firstLease)).toBe(true);
     const document = physicPaintStore.getRotoPhysicalDocument(layer.id);
     expect(document?.incomingInterpolationBreakKeyIds).toEqual(['key-10']);
     expect(Object.isFrozen(document?.incomingInterpolationBreakKeyIds)).toBe(true);
 
+    const omittedLease = acquirePhysicalLease(layer.id);
     const omitted = applyPhysicPaintPayload({
       kind: 'replace-roto-physical-map',
       operationId: 'retain-omitted-incoming-break',
       operationKind: 'move-key',
+      leaseToken: omittedLease,
       intent: {
         kind: 'move-key',
         movedKeyId: 'key-10',
@@ -1200,13 +1299,16 @@ describe('physicPaintBridge', () => {
       selectedAppFrame: 10,
     });
     expect(omitted.ok).toBe(true);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(omittedLease)).toBe(true);
     expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layer.id)).toEqual(['key-10']);
 
     const retainedDocument = physicPaintStore.getRotoPhysicalDocument(layer.id)!;
+    const clearedLease = acquirePhysicalLease(layer.id);
     const cleared = applyPhysicPaintPayload({
       kind: 'replace-roto-physical-map',
       operationId: 'clear-explicit-incoming-break',
       operationKind: 'move-key',
+      leaseToken: clearedLease,
       intent: {
         kind: 'move-key',
         movedKeyId: 'key-10',
@@ -1224,6 +1326,7 @@ describe('physicPaintBridge', () => {
       selectedAppFrame: 10,
     });
     expect(cleared.ok).toBe(false);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(clearedLease)).toBe(true);
     expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layer.id)).toEqual(['key-10']);
     expect(physicPaintStore.getRotoPhysicalDocument(layer.id)?.revision).toBe(retainedDocument.revision);
 
@@ -1303,6 +1406,7 @@ describe('physicPaintBridge', () => {
 
     expect(launch.ok).toBe(true);
     if (!launch.ok || !launch.data.rotoPhysical) return;
+    const leaseToken = acquirePhysicalLease(layer.id);
     const inserted = makeEmptySegmentRecord('key-5', 5);
     const records = [...launch.data.rotoPhysical.records, inserted]
       .sort((left, right) => left.appFrame - right.appFrame);
@@ -1310,6 +1414,7 @@ describe('physicPaintBridge', () => {
       kind: 'replace-roto-physical-map',
       operationId: 'insert-empty-segment-valid',
       operationKind: 'insert-empty-segment',
+      leaseToken,
       intent: {
         kind: 'insert-empty-segment',
         destinationAppFrame: 5,
@@ -1347,6 +1452,7 @@ describe('physicPaintBridge', () => {
       incomingInterpolationBreakKeyIds: ['key-10', 'key-5'],
     });
     expect(result.ok && 'acceptedRevision' in result ? result.acceptedRevision : null).toBe(accepted?.revision);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
   });
 
   it('rejects stale false or unrelated empty-segment deltas without mutation', async () => {
@@ -1362,6 +1468,7 @@ describe('physicPaintBridge', () => {
 
     expect(launch.ok).toBe(true);
     if (!launch.ok || !launch.data.rotoPhysical) return;
+    const leaseToken = acquirePhysicalLease(layer.id);
     const inserted = makeEmptySegmentRecord('key-12', 12);
     const records = [...launch.data.rotoPhysical.records, inserted]
       .sort((left, right) => left.appFrame - right.appFrame);
@@ -1375,6 +1482,7 @@ describe('physicPaintBridge', () => {
         blankPayload: inserted.payload,
       },
       layerId: layer.id,
+      leaseToken,
       startFrame: 12,
       launchOperationId: launch.data.operationId,
       expectedRevision: launch.data.rotoPhysical.revision,
@@ -1478,6 +1586,7 @@ describe('physicPaintBridge', () => {
       expect(physicPaintStore.getRotoPhysicalDocument(layer.id), proposal.operationId).toEqual(beforeDocument);
       expect(rotoPhysicalRevision.peek(), proposal.operationId).toBe(beforeRevisionSignal);
     }
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
   });
 
   it('accepts the first Progressive Play Script and Loop Clip on a fresh layer', async () => {
@@ -1503,6 +1612,7 @@ describe('physicPaintBridge', () => {
     expect(launch.ok).toBe(true);
     if (!launch.ok || !launch.data.rotoPhysical || !launch.data.project) return;
     expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toBeNull();
+    const leaseToken = acquirePhysicalLease(layer.id, launch.data.project.contextId);
 
     const records = Array.from({ length: 5 }, (_, appFrame) => {
       const record = makePhysicalRecord(`generated-${appFrame}`, appFrame);
@@ -1521,6 +1631,7 @@ describe('physicPaintBridge', () => {
       operationId: 'fresh-progressive-play-script',
       operationKind: 'play-script',
       layerId: layer.id,
+      leaseToken,
       startFrame: 0,
       launchOperationId: launch.data.operationId,
       projectContextId: launch.data.project.contextId,
@@ -1573,6 +1684,7 @@ describe('physicPaintBridge', () => {
         mode: 'progressive',
       })],
     });
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
     open.mockRestore();
   });
 
