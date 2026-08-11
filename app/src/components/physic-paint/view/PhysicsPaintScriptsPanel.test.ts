@@ -74,7 +74,7 @@ function getScriptsToolbarBlock(code: string): string {
 
 describe('Physics Paint SCRIPTS panel contract', () => {
   it('keeps the lower Scripts/Onion/Motion tab group with no Brush color / Tool tab chrome and explicitly scans on Scripts entry', () => {
-    for (const tab of ['Scripts', 'Onion', 'Motion']) expect(rightPanel).toMatch(new RegExp(`>\\s*${tab}\\s*<`));
+    for (const tab of ['Actions', 'Onion', 'Motion']) expect(rightPanel).toMatch(new RegExp(`>\\s*${tab}\\s*<`));
     // 36.15-12, UAT Gap H-1/H-2: the Brush color and Tool single-tab header
     // strips are removed — those sections render their content directly. Only
     // the lower group keeps tabs; the LOG tab stays gone.
@@ -86,7 +86,7 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(rightPanel).toContain("optionsTab === 'scripts'");
   });
 
-  it('renders Scripts as the FIRST tab of its group and the default-open tab (36.15-11, UAT Gap G-4)', () => {
+  it('renders Actions as the FIRST tab of its group while preserving the default-open scripts state key', () => {
     const scriptsIndex = rightPanel.indexOf('physics-paint-tab-scripts');
     const onionIndex = rightPanel.indexOf('physics-paint-tab-onion');
     const motionIndex = rightPanel.indexOf('physics-paint-tab-motion');
@@ -106,15 +106,18 @@ describe('Physics Paint SCRIPTS panel contract', () => {
   });
 
   it('keeps ordered accessible controls while swapping Play to contextual Loop Edit', () => {
-    const labels = ['Save Script', 'Load and Apply Script', 'Delete Script', 'Refresh Scripts'];
+    const labels = ['Save Action', 'Load + Apply to Frame', 'Delete Action', 'Refresh Actions'];
     for (const label of labels) expect(panel).toContain(`label="${label}"`);
-    expect(panel.indexOf('label="Save Script"')).toBeLessThan(panel.indexOf('label="Load and Apply Script"'));
+    expect(panel.indexOf('label="Save Action"')).toBeLessThan(panel.indexOf('label="Load + Apply to Frame"'));
     expect(panel).toContain('if (selectedLoopClip)');
-    expect(panel.indexOf('label="Load and Apply Script"')).toBeLessThan(panel.indexOf('label="Play Script"'));
-    expect(panel.indexOf('label="Play Script"')).toBeLessThan(panel.indexOf('label="Delete Script"'));
-    expect(panel.indexOf('label="Delete Script"')).toBeLessThan(panel.indexOf('label="Refresh Scripts"'));
-    expect(panel).toContain('aria-label={`Edit Loop Clip — ${selectedLoopClip.displayName}`}');
-    expect(panel).toContain('label="Play Script"');
+    expect(panel).toContain('aria-label={`Selected Group — ${selectedLoopClip.displayName}`}');
+    expect(panel).toContain('<dt>Source Action</dt>');
+    expect(panel).toContain('<dt>Group Type</dt>');
+    expect(panel.indexOf('label="Load + Apply to Frame"')).toBeLessThan(panel.indexOf('label="Create Group…"'));
+    expect(panel.indexOf('label="Create Group…"')).toBeLessThan(panel.indexOf('label="Delete Action"'));
+    expect(panel.indexOf('label="Delete Action"')).toBeLessThan(panel.indexOf('label="Refresh Actions"'));
+    expect(panel).toContain('aria-label={`Edit Group — ${selectedLoopClip.displayName}`}');
+    expect(panel).toContain('label="Create Group…"');
     expect(panel).not.toContain('label="Rename Script"');
     expect(panel).toContain('aria-label={props.label}');
     expect(panel).toContain('title={props.title}');
@@ -122,9 +125,13 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(panel).toContain('availability.saveDisabledReason');
     expect(panel).toContain("playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)'");
     expect(panel).not.toContain('Import Script');
+    expect(panel).toContain('aria-label="Project Actions"');
+    expect(panel).toContain('aria-label="Saved Roto Actions"');
+    expect(panel).toContain('No project Actions yet.');
+    expect(panel).toContain('Save the current real Roto frame as an Action to create a Group.');
   });
 
-  it('provides an accessible Play Script dialog distinct from cached Roto playback', () => {
+  it('provides an accessible Create Group… dialog distinct from cached Roto playback', () => {
     expect(studioView).toContain('<MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />');
     expect(playScriptDialog).toContain('role="dialog"');
     expect(playScriptDialog).not.toContain('aria-modal="true"');
@@ -171,19 +178,19 @@ describe('Physics Paint SCRIPTS panel contract', () => {
   });
 });
 
-describe('Physics Paint Scripts panel Clear Script Buffer contract (36.15-07, renamed 36.15-08 Gap C)', () => {
-  it('renders a guarded Clear Script Buffer clipboard-x control without native disabled or title', () => {
+describe('Physics Paint Scripts panel Clear Action Buffer contract (36.15-07, renamed 36.15-08 Gap C)', () => {
+  it('renders a guarded Clear Action Buffer clipboard-x control without native disabled or title', () => {
     expect(panel).toContain('ClipboardX');
-    expect(panel).toContain('aria-label="Clear Script Buffer"');
+    expect(panel).toContain('aria-label="Clear Action Buffer"');
     expect(panel).not.toContain('Discard Script');
-    const block = getGuardedToolbarBlock(panel, 'Clear Script Buffer');
+    const block = getGuardedToolbarBlock(panel, 'Clear Action Buffer');
     expect(block).toContain('aria-disabled');
     expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
     expect(block).not.toContain('title=');
   });
 
   it('uses the user wording clear script from buffer with de-prefixed tooltip grammar and guards activation before the handler', () => {
-    const block = getGuardedToolbarBlock(panel, 'Clear Script Buffer');
+    const block = getGuardedToolbarBlock(panel, 'Clear Action Buffer');
     expect(block).toContain('Clear script from buffer');
     expect(block).toContain('unavailable: ${clearScriptBufferDisabledReason}');
     expect(block).not.toContain(' — unavailable: ');
@@ -196,13 +203,13 @@ describe('Physics Paint Scripts panel Clear Script Buffer contract (36.15-07, re
     expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canClearScriptBuffer");
   });
 
-  it('declares rotoScript and onDiscardScript props and renders Clear Script Buffer inside the toolbar', () => {
+  it('declares rotoScript and onDiscardScript props and renders Clear Action Buffer inside the toolbar', () => {
     const propsInterface = getScriptsPanelPropsInterface(panel);
     expect(propsInterface).toContain('rotoScript: RotoScriptClipboardController');
     expect(propsInterface).toContain('onDiscardScript: () => void');
     const toolbar = getScriptsToolbarBlock(panel);
-    expect(toolbar).toContain('aria-label="Clear Script Buffer"');
-    expect(toolbar.indexOf('aria-label="Clear Script Buffer"')).toBeGreaterThan(toolbar.indexOf('label="Refresh Scripts"'));
+    expect(toolbar).toContain('aria-label="Clear Action Buffer"');
+    expect(toolbar.indexOf('aria-label="Clear Action Buffer"')).toBeGreaterThan(toolbar.indexOf('label="Refresh Actions"'));
   });
 
   it('removes onDiscardRotoScript from the strip and Studio workflow props while scripts props invoke discardScript', () => {
@@ -212,22 +219,22 @@ describe('Physics Paint Scripts panel Clear Script Buffer contract (36.15-07, re
   });
 });
 
-describe('Physics Paint Scripts panel Copy/Apply Script toolbar contract (36.15-08, UAT Gap C)', () => {
-  it('renders guarded Copy Script and Apply Script controls before Clear Script Buffer without native disabled or title', () => {
+describe('Physics Paint Scripts panel Copy/Apply to Frame toolbar contract (36.15-08, UAT Gap C)', () => {
+  it('renders guarded Copy Action and Apply to Frame controls before Clear Action Buffer without native disabled or title', () => {
     expect(panel).toContain('Clipboard,');
     expect(panel).toContain('ClipboardPen');
     const toolbar = getScriptsToolbarBlock(panel);
-    const refreshIndex = toolbar.indexOf('label="Refresh Scripts"');
-    const copyIndex = toolbar.indexOf('aria-label="Copy Script"');
-    const applyIndex = toolbar.indexOf('aria-label="Apply Script"');
-    const clearIndex = toolbar.indexOf('aria-label="Clear Script Buffer"');
+    const refreshIndex = toolbar.indexOf('label="Refresh Actions"');
+    const copyIndex = toolbar.indexOf('aria-label="Copy Action"');
+    const applyIndex = toolbar.indexOf('aria-label="Apply to Frame"');
+    const clearIndex = toolbar.indexOf('aria-label="Clear Action Buffer"');
     for (const index of [refreshIndex, copyIndex, applyIndex, clearIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
     expect(copyIndex).toBeGreaterThan(refreshIndex);
     expect(applyIndex).toBeGreaterThan(copyIndex);
     expect(clearIndex).toBeGreaterThan(applyIndex);
-    for (const label of ['Copy Script', 'Apply Script']) {
+    for (const label of ['Copy Action', 'Apply to Frame']) {
       const block = getGuardedToolbarBlock(panel, label);
       expect(block).toContain('aria-disabled');
       expect(block).toContain('aria-describedby');
@@ -242,8 +249,8 @@ describe('Physics Paint Scripts panel Copy/Apply Script toolbar contract (36.15-
     expect(panel).toContain('rotoScript.availability.value.canApply');
     expect(panel).toContain('copyDisabledReason');
     expect(panel).toContain('applyDisabledReason');
-    const copyBlock = getGuardedToolbarBlock(panel, 'Copy Script');
-    const applyBlock = getGuardedToolbarBlock(panel, 'Apply Script');
+    const copyBlock = getGuardedToolbarBlock(panel, 'Copy Action');
+    const applyBlock = getGuardedToolbarBlock(panel, 'Apply to Frame');
     const copyGuard = copyBlock.indexOf('if (!canCopyRotoScript) return;');
     expect(copyGuard).toBeGreaterThanOrEqual(0);
     expect(copyBlock.indexOf('onCopyScript()')).toBeGreaterThan(copyGuard);
@@ -269,8 +276,8 @@ describe('Physics Paint Scripts panel Copy/Apply Script toolbar contract (36.15-
     expect(studio).not.toContain('onApplyRotoScript');
     expect(strip).not.toContain('onCopyRotoScript');
     expect(strip).not.toContain('onApplyRotoScript');
-    expect(strip).not.toContain('aria-label="Copy Script"');
-    expect(strip).not.toContain('aria-label="Apply Script"');
+    expect(strip).not.toContain('aria-label="Copy Action"');
+    expect(strip).not.toContain('aria-label="Apply to Frame"');
   });
 
   it('lays the nine toolbar icons out as a proper second row styled like the first (no orphan icon)', () => {
@@ -286,9 +293,9 @@ describe('Physics Paint Scripts panel Copy/Apply Script toolbar contract (36.15-
 describe('Physics Paint Scripts panel second-row label contract (36.15-09, UAT Gap E-1)', () => {
   it('renders a short visible label after each guarded second-row icon like the bottom action row', () => {
     const labeledActions: ReadonlyArray<{ action: string; icon: string; label: string }> = [
-      { action: 'Copy Script', icon: '<Clipboard size={16}', label: 'Copy' },
-      { action: 'Apply Script', icon: '<ClipboardPen size={16}', label: 'Apply' },
-      { action: 'Clear Script Buffer', icon: '<ClipboardX size={16}', label: 'Clear' },
+      { action: 'Copy Action', icon: '<Clipboard size={16}', label: 'Copy' },
+      { action: 'Apply to Frame', icon: '<ClipboardPen size={16}', label: 'Apply' },
+      { action: 'Clear Action Buffer', icon: '<ClipboardX size={16}', label: 'Clear' },
     ];
     for (const { action, icon, label } of labeledActions) {
       const block = getGuardedToolbarBlock(panel, action);
@@ -635,10 +642,10 @@ describe('Physics Paint Actions deletion lifecycle contract (43.2-13)', () => {
 
     expect(findAll(tree, (vnode) => vnode.props.role === 'option')).toHaveLength(1);
     expect(findAll(tree, (vnode) => vnode.props.role === 'dialog')).toHaveLength(1);
-    for (const label of ['Save Script', 'Load and Apply Script', 'Play Script', 'Delete Script', 'Refresh Scripts']) {
+    for (const label of ['Save Action', 'Load + Apply to Frame', 'Create Group…', 'Delete Action', 'Refresh Actions']) {
       expect(findOne(tree, (vnode) => vnode.props.label === label).props.disabled).toBe(true);
     }
-    for (const label of ['Copy Script', 'Apply Script', 'Clear Script Buffer', 'Keep Groups', 'Delete Action and Groups']) {
+    for (const label of ['Copy Action', 'Apply to Frame', 'Clear Action Buffer', 'Keep Groups', 'Delete Action and Groups']) {
       expect(findOne(tree, (vnode) => vnode.props['aria-label'] === label).props['aria-disabled']).toBe('true');
     }
   });
@@ -689,10 +696,10 @@ describe('Physics Paint Scripts panel compact sidebar contract', () => {
     expect(listIndex).toBe(toolbarIndex + 1);
   });
 
-  it('keeps the Play Script tooltip fallback covering both modes', () => {
+  it('keeps the Create Group… tooltip fallback covering both modes', () => {
     const tree = renderPanel(createFakePlayScript());
-    const playButton = findOne(tree, (vnode) => vnode.props?.label === 'Play Script');
-    expect(playButton.props.title).toBe('Play Script — Generate real Roto keys (progressive or static/hold)');
+    const playButton = findOne(tree, (vnode) => vnode.props?.label === 'Create Group…');
+    expect(playButton.props.title).toBe('Create Group… — Generate real Roto keys (progressive or static/hold)');
     expect(String(playButton.props.title)).not.toContain('Generate progressive real Roto keys');
   });
 });

@@ -322,7 +322,7 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     // Footer stays outside the body grid, inside the modal surface.
     const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
     expect(parentOf(tree, footer)).not.toBe(content);
-    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Generate'))).toBe('Generate');
+    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Create Group'))).toBe('Create Group');
   });
 
   it('keeps the body on the 1fr 1fr two-column grid with the right column as a vertical flex stack and NO scroll region (CSS contract)', () => {
@@ -368,7 +368,7 @@ describe('PhysicsPaintPlayScriptDialog floating shell', () => {
     // Title is the first header child; the range readout is the second (right-aligned via CSS).
     const headerChildren = childrenOf(header).filter((child): child is TestVNode =>
       typeof child === 'object' && child !== null && !Array.isArray(child));
-    expect(textOf(headerChildren[0])).toBe('Play Script');
+    expect(textOf(headerChildren[0])).toBe('Create Group');
     expect(textOf(headerChildren[1])).toBe('Max 4 · F4–F7');
     // Footer (progress + Cancel/Generate) renders inside the modal surface, after the body.
     const footer = findOne(surface, byClass('physics-paint-play-script-footer'));
@@ -417,12 +417,13 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
   it('renders a radiogroup with two radio options, roving tabindex, and the helper line', () => {
     const { controller } = createFakeController();
     const tree = renderDialog(controller);
-    const group = findOne(tree, byRadioGroup('Mode'));
+    const group = findOne(tree, byRadioGroup('Group Type'));
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-card-title')))).toBe('Group Type');
     expect(group.props['aria-describedby']).toBe('physics-play-script-mode-helper');
     const radios = findAll(group, (vnode) => vnode.props?.role === 'radio');
     expect(radios).toHaveLength(2);
-    expect(textOf(radios[0])).toBe('Progressive');
-    expect(textOf(radios[1])).toBe('Static / Hold');
+    expect(textOf(radios[0])).toBe('Motion');
+    expect(textOf(radios[1])).toBe('Static');
     expect(radios[0].props['aria-checked']).toBe(true);
     expect(radios[0].props.tabIndex).toBe(0);
     expect(radios[1].props['aria-checked']).toBe(false);
@@ -434,7 +435,7 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
     const { controller, signals } = createFakeController({ countText: '3' });
     let tree = renderDialog(controller);
     const radioElements = [{ focus: vi.fn() }, { focus: vi.fn() }];
-    const keydown = (key: string) => handler(findOne(tree, byRadioGroup('Mode')), 'onKeyDown')({
+    const keydown = (key: string) => handler(findOne(tree, byRadioGroup('Group Type')), 'onKeyDown')({
       key,
       preventDefault: vi.fn(),
       currentTarget: { querySelectorAll: () => radioElements },
@@ -445,7 +446,7 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
     expect(radioElements[1].focus).toHaveBeenCalledTimes(1);
 
     tree = renderDialog(controller);
-    const updated = findAll(findOne(tree, byRadioGroup('Mode')), (vnode) => vnode.props?.role === 'radio');
+    const updated = findAll(findOne(tree, byRadioGroup('Group Type')), (vnode) => vnode.props?.role === 'radio');
     expect(updated[1].props['aria-checked']).toBe(true);
     expect(updated[1].props.tabIndex).toBe(0);
     expect(updated[0].props['aria-checked']).toBe(false);
@@ -464,7 +465,7 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
   it('checks the clicked option', () => {
     const { controller, signals } = createFakeController({ countText: '3' });
     const tree = renderDialog(controller);
-    const radios = findAll(findOne(tree, byRadioGroup('Mode')), (vnode) => vnode.props?.role === 'radio');
+    const radios = findAll(findOne(tree, byRadioGroup('Group Type')), (vnode) => vnode.props?.role === 'radio');
     handler(radios[1], 'onClick')({ currentTarget: { focus: vi.fn() } });
     expect(signals.mode.value).toBe('static');
   });
@@ -486,7 +487,7 @@ describe('PhysicsPaintPlayScriptDialog frame field (D-03 revised)', () => {
   it("normalizes 'Max' to '1' when switching to Static / Hold, on click and on arrow keys", () => {
     const { controller, signals } = createFakeController({ countText: 'Max' });
     let tree = renderDialog(controller);
-    const radios = findAll(findOne(tree, byRadioGroup('Mode')), (vnode) => vnode.props?.role === 'radio');
+    const radios = findAll(findOne(tree, byRadioGroup('Group Type')), (vnode) => vnode.props?.role === 'radio');
     handler(radios[1], 'onClick')({ currentTarget: { focus: vi.fn() } });
     expect(signals.mode.value).toBe('static');
     expect(signals.countText.value).toBe('1');
@@ -495,7 +496,7 @@ describe('PhysicsPaintPlayScriptDialog frame field (D-03 revised)', () => {
     signals.mode.value = 'progressive';
     signals.countText.value = 'Max';
     tree = renderDialog(controller);
-    handler(findOne(tree, byRadioGroup('Mode')), 'onKeyDown')({
+    handler(findOne(tree, byRadioGroup('Group Type')), 'onKeyDown')({
       key: 'ArrowRight',
       preventDefault: vi.fn(),
       currentTarget: { querySelectorAll: () => [{ focus: vi.fn() }, { focus: vi.fn() }] },
@@ -507,7 +508,7 @@ describe('PhysicsPaintPlayScriptDialog frame field (D-03 revised)', () => {
     signals.mode.value = 'progressive';
     signals.countText.value = '6';
     tree = renderDialog(controller);
-    handler(findOne(tree, byRadioGroup('Mode')), 'onKeyDown')({
+    handler(findOne(tree, byRadioGroup('Group Type')), 'onKeyDown')({
       key: 'ArrowRight',
       preventDefault: vi.fn(),
       currentTarget: { querySelectorAll: () => [{ focus: vi.fn() }, { focus: vi.fn() }] },
@@ -668,7 +669,7 @@ describe('PhysicsPaintPlayScriptDialog generation states (E5)', () => {
     const error = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-script-inline-error') && hasClass(vnode, 'physics-paint-play-script-dialog-error'));
     expect(textOf(error)).toBe('Parent rejected the Play Script batch.');
     expect(findAll(tree, (vnode) => vnode.type === 'progress')).toHaveLength(0);
-    expect(findOne(tree, (vnode) => textOf(vnode) === 'Generate').props.disabled).toBe(false);
+    expect(findOne(tree, (vnode) => textOf(vnode) === 'Create Group').props.disabled).toBe(false);
     expect(findOne(tree, byId('physics-play-script-count')).props.disabled).toBe(false);
     expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(false);
   });
@@ -942,7 +943,7 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     const footer = findOne(tree, byClass('physics-paint-play-script-actions'));
     expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Update Group'))).toBe('Update Group');
     expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Regenerate…'))).toBe('Regenerate…');
-    expect(findAll(footer, (vnode) => textOf(vnode) === 'Generate')).toHaveLength(0);
+    expect(findAll(footer, (vnode) => textOf(vnode) === 'Create Group')).toHaveLength(0);
     expect(findAll(footer, (vnode) => textOf(vnode) === 'Regenerate source cycle')).toHaveLength(0);
   });
 
