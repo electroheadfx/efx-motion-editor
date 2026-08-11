@@ -303,7 +303,7 @@ Plans:
 - [x] 43.2-06-PLAN.md — Pure lifecycle proposals, leased bridge semantic validation, and ordinary history completeness (GRP-03, GRP-04, GRP-05, GRP-06)
 - [x] 43.2-07-PLAN.md — Leased exact-frame Paint, gap refill/reunion, cache/canvas reconciliation, Undo/Redo (GRP-03)
 - [x] 43.2-08-PLAN.md — Unified Delete activation/dialog plus leased atomic Delete Frame/Delete Group (GRP-04)
-- [ ] 43.2-09-PLAN.md — Guarded leased one/shared Regenerate with exact disclosure and accepted restoration (GRP-05)
+- [x] 43.2-09-PLAN.md — Guarded leased one/shared Regenerate with exact disclosure and accepted restoration (GRP-05)
 
 **Waves 8–13 — durable bidirectional Action history**
 
@@ -494,5 +494,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
 | 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 12/12 | Complete    | 2026-08-10 |
-| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 9/20 | In Progress|  |
+| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 10/20 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |
