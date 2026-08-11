@@ -1064,6 +1064,78 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
 });
 
 describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
+  it('rejects stale split authority atomically and immediately reuses the same layer for Delete Group', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument({
+      existingOverride: true,
+      selectedKeyId: 'A',
+      cursorAppFrame: 0,
+      sharedSourceOwner: true,
+    });
+    test.seedGroupDocument(before);
+    test.setStudioSelection(null, 4);
+    const beforeCacheFacts = test.getCacheFacts();
+    const beforeRevision = test.getCanonicalDocument().revision;
+
+    expect(await test.executeDeleteGroup()).toBe(false);
+    expect(test.sendPhysicalEditPayload).not.toHaveBeenCalled();
+    expect(test.getCanonicalDocument()).toEqual(before);
+    expect(test.getCanonicalDocument().revision).toBe(beforeRevision);
+    expect(test.getRecords()).toEqual(before.realKeyRecords);
+    expect(test.getLoopClips()).toEqual(before.loopClips);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(test.getCanonicalSelection()).toEqual({ selectedKeyId: 'A', cursorAppFrame: 0 });
+    expect(test.getStudioSelection()).toEqual({ selectedKeyId: null, cursorAppFrame: 4 });
+    expect(test.getCacheFacts()).toEqual(beforeCacheFacts);
+    expect(test.acceptedEvents).toEqual([]);
+    expect(test.versionEvents).toEqual([]);
+    expect(test.historyCommands).toEqual([]);
+    expect(test.registerPendingSettlement).not.toHaveBeenCalled();
+    expect(test.clearPendingSettlement).toHaveBeenCalledTimes(1);
+    expect(test.acquireLease).toHaveBeenCalledTimes(1);
+    expect(test.releaseLease).toHaveBeenCalledTimes(1);
+    expect(test.coordinator.pendingOperationId.value).toBeNull();
+    expect(test.coordinator.failureOutput.value).toBeNull();
+
+    test.publishCanonicalGroupSelection(4);
+
+    expect(await test.executeDeleteGroup()).toBe(true);
+    expect(test.acquireLease).toHaveBeenCalledTimes(2);
+    expect(test.releaseLease).toHaveBeenCalledTimes(1);
+    expect(test.getPayload()).toMatchObject({
+      operationKind: 'delete-group',
+      startFrame: 4,
+      expectedRevision: beforeRevision,
+      selectedKeyId: null,
+      selectedAppFrame: null,
+      semanticDelta: {
+        kind: 'delete-group',
+        groupId: 'group-1',
+        cleanupKeyIds: ['override-4'],
+      },
+    });
+    expect(test.accept()).toBe('accepted');
+    expect(test.getRecords().map((entry) => entry.keyId)).toEqual(['A', 'B']);
+    expect(test.getLoopClips()).toEqual([
+      expect.objectContaining({
+        loopId: 'group-shared',
+        scriptId: 'action-1',
+        provenanceState: 'attached',
+        sourceKeyIds: ['A', 'B'],
+      }),
+    ]);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(test.getCacheFacts()).toEqual(beforeCacheFacts);
+    expect(test.acceptedEvents).toHaveLength(1);
+    expect(test.versionEvents).toEqual([1]);
+    expect(test.historyCommands).toEqual([test.getPayload()!.operationId]);
+    expect(test.registerPendingSettlement).toHaveBeenCalledTimes(1);
+    expect(test.clearPendingSettlement).toHaveBeenCalledTimes(2);
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(4);
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(test.getPayload()!.operationId, 'release')).toBe(true);
+    expect(test.releaseLease).toHaveBeenCalledTimes(2);
+  });
+
   it('accepts Delete Frame after Group selection republishes canonical null-key authority', async () => {
     const test = harness();
     const before = groupLifecycleDocument({
