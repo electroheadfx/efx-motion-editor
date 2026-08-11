@@ -86,6 +86,90 @@ const baseLoop = () => ({
   mode: 'progressive' as const,
 });
 
+const GROUP_LIFECYCLE_FIELDS = [
+  'syncState',
+  'provenanceState',
+  'phaseOrigin',
+  'originalEndExclusive',
+  'visibleRanges',
+  'frameOverrides',
+] as const;
+
+const GROUP_RECORD_AUTHORITY_FIELDS = [
+  'loopId',
+  'placementStart',
+  'sourceKeyIds',
+  'repeat',
+  'mode',
+  'scriptId',
+  'motion',
+  'overrideColor',
+  ...GROUP_LIFECYCLE_FIELDS,
+] as const;
+
+const FORBIDDEN_SECOND_AUTHORITY_FIELDS = [
+  'deletedFrameMask',
+  'deletedAppFrames',
+  'fragmentIds',
+  'fragments',
+  'groupBreakKeyIds',
+  'blankKeySentinel',
+] as const;
+
+type ProposedGroupRecord = ReturnType<typeof baseLoop> & {
+  syncState: 'synchronized' | 'modified';
+  provenanceState: 'attached' | 'detached';
+  phaseOrigin: number;
+  originalEndExclusive: number;
+  visibleRanges: readonly { start: number; endExclusive: number }[];
+  frameOverrides: readonly { appFrame: number; keyId: string }[];
+};
+
+const proposedGroup = (overrides: Partial<ProposedGroupRecord> = {}): ProposedGroupRecord => ({
+  ...baseLoop(),
+  syncState: 'synchronized',
+  provenanceState: 'attached',
+  phaseOrigin: 0,
+  originalEndExclusive: 25,
+  visibleRanges: [{ start: 0, endExclusive: 25 }],
+  frameOverrides: [],
+  ...overrides,
+});
+
+function classifyProposedGroupFixture(record: ProposedGroupRecord): 'unimplemented' | 'malformed' {
+  const ranges = record.visibleRanges;
+  if (!Number.isSafeInteger(record.phaseOrigin)
+    || !Number.isSafeInteger(record.originalEndExclusive)
+    || record.originalEndExclusive <= record.phaseOrigin
+    || ranges.length === 0) return 'malformed';
+
+  let previousEnd = -1;
+  for (const range of ranges) {
+    if (!Number.isSafeInteger(range.start)
+      || !Number.isSafeInteger(range.endExclusive)
+      || range.start < record.phaseOrigin
+      || range.endExclusive > record.originalEndExclusive
+      || range.endExclusive <= range.start
+      || range.start <= previousEnd) return 'malformed';
+    previousEnd = range.endExclusive;
+  }
+
+  const overrideFrames = new Set<number>();
+  const overrideKeyIds = new Set<string>();
+  for (const override of record.frameOverrides) {
+    if (!Number.isSafeInteger(override.appFrame)
+      || override.appFrame < record.phaseOrigin
+      || override.appFrame >= record.originalEndExclusive
+      || override.keyId.length === 0
+      || overrideFrames.has(override.appFrame)
+      || overrideKeyIds.has(override.keyId)) return 'malformed';
+    overrideFrames.add(override.appFrame);
+    overrideKeyIds.add(override.keyId);
+  }
+
+  return 'unimplemented';
+}
+
 const baseDocument = (loopClips?: unknown) => {
   const realKeyRecords = sourceRecords();
   const interpolation = { enabled: false, mode: 'duplicate' as const };
@@ -258,6 +342,99 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
       const document = baseDocument([{ ...baseLoop(), ...provenance }]);
       const parsed = parsePhysicPaintRotoPhysicalDocument(document);
       expect(parsed.loopClips[0]).toMatchObject(provenance);
+    });
+  });
+
+  describe('Phase 43.2 Group lifecycle and explicit-range Wave 0 contract', () => {
+    const lifecycleFixtures = [
+      { name: 'synchronized Group', record: proposedGroup() },
+      { name: 'modified Group', record: proposedGroup({ syncState: 'modified' }) },
+      { name: 'detached Group', record: proposedGroup({ provenanceState: 'detached' }) },
+      {
+        name: 'attached Group whose source Action is unavailable in the current library projection',
+        record: proposedGroup(),
+        sourceActionAvailable: false,
+      },
+      {
+        name: 'same-identity Group with multiple visible ranges',
+        record: proposedGroup({
+          syncState: 'modified',
+          visibleRanges: [
+            { start: 0, endExclusive: 7 },
+            { start: 8, endExclusive: 25 },
+          ],
+        }),
+      },
+      {
+        name: 'Group with one exact-frame override',
+        record: proposedGroup({
+          syncState: 'modified',
+          frameOverrides: [{ appFrame: 7, keyId: 'override-7' }],
+        }),
+      },
+    ] as const;
+
+    it.each(lifecycleFixtures)('keeps $name as a controlled unimplemented parser result', ({ record }) => {
+      expect(classifyProposedGroupFixture(record)).toBe('unimplemented');
+      expect(isPhysicPaintRotoLoopClip(record)).toBe(false);
+      expect(() => parsePhysicPaintRotoLoopClips([record])).toThrow();
+    });
+
+    it('accepts absent additive lifecycle fields as the existing stable default contract', () => {
+      const legacyRecord = baseLoop();
+      expect(isPhysicPaintRotoLoopClip(legacyRecord)).toBe(true);
+      expect(parsePhysicPaintRotoLoopClips([legacyRecord])).toEqual([legacyRecord]);
+      for (const field of GROUP_LIFECYCLE_FIELDS) expect(field in legacyRecord).toBe(false);
+    });
+
+    it.each([
+      {
+        name: 'overlapping ranges',
+        record: proposedGroup({ visibleRanges: [{ start: 0, endExclusive: 8 }, { start: 7, endExclusive: 25 }] }),
+      },
+      {
+        name: 'adjacent unnormalized ranges',
+        record: proposedGroup({ visibleRanges: [{ start: 0, endExclusive: 7 }, { start: 7, endExclusive: 25 }] }),
+      },
+      {
+        name: 'out-of-order ranges',
+        record: proposedGroup({ visibleRanges: [{ start: 8, endExclusive: 25 }, { start: 0, endExclusive: 7 }] }),
+      },
+      {
+        name: 'range outside the original extent',
+        record: proposedGroup({ visibleRanges: [{ start: 0, endExclusive: 26 }] }),
+      },
+      {
+        name: 'duplicate override frame',
+        record: proposedGroup({ frameOverrides: [{ appFrame: 7, keyId: 'override-7' }, { appFrame: 7, keyId: 'override-8' }] }),
+      },
+      {
+        name: 'duplicate override key identity',
+        record: proposedGroup({ frameOverrides: [{ appFrame: 7, keyId: 'override-7' }, { appFrame: 8, keyId: 'override-7' }] }),
+      },
+    ])('rejects malformed $name in the independent Group fixture harness', ({ record }) => {
+      expect(classifyProposedGroupFixture(record)).toBe('malformed');
+      expect(() => parsePhysicPaintRotoLoopClips([record])).toThrow();
+    });
+
+    it('enumerates one Group record authority with visible-range gaps and no hidden deletion or fragment field', () => {
+      const fragmented = lifecycleFixtures[4].record;
+      expect(Object.keys(fragmented).sort()).toEqual([...GROUP_RECORD_AUTHORITY_FIELDS]
+        .filter((field) => field in fragmented)
+        .sort());
+      expect(fragmented.visibleRanges).toEqual([
+        { start: 0, endExclusive: 7 },
+        { start: 8, endExclusive: 25 },
+      ]);
+      expect(fragmented.visibleRanges[0].endExclusive).toBe(7);
+      expect(fragmented.visibleRanges[1].start).toBe(8);
+      for (const forbidden of FORBIDDEN_SECOND_AUTHORITY_FIELDS) expect(forbidden in fragmented).toBe(false);
+    });
+
+    it('keeps incomingInterpolationBreakKeyIds outside Group deleted-occurrence fixtures', () => {
+      for (const fixture of lifecycleFixtures) {
+        expect('incomingInterpolationBreakKeyIds' in fixture.record).toBe(false);
+      }
     });
   });
 });
