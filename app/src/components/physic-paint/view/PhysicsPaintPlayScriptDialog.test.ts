@@ -99,6 +99,25 @@ interface FakeControllerSeed {
   loopEditTarget?: { loopId: string; placementStart: number; sourceKeyIds: string[]; repeat: number | 'infinity'; mode: 'progressive' | 'static' } | null;
   loopEditSourceStart?: number | null;
   sourceEditSharedLoopCount?: number;
+  regenerateDisabledReason?: string | null;
+  regenerateImpact?: {
+    actionId: string;
+    actionRevision: string;
+    actionHash: string;
+    documentRevision: string;
+    initiatingGroupId: string;
+    groupName: string;
+    groupType: 'Motion' | 'Static';
+    restoredRange: string;
+    locallyPaintedFrameCount: number;
+    deletedFrameCount: number;
+    deletedFrameRanges: string;
+    fragmentCount: number;
+    gapRanges: string;
+    affectedGroups: readonly { groupId: string; name: string; range: string }[];
+    sourceCacheEffects: string;
+    storedSettings: { mode: RotoPlayScriptMode; motion: { deformation: number; position: number }; overrideColor: string | null; sourceKeyIds: readonly string[] };
+  } | null;
   loopIntentActive?: boolean;
   identicalSourceCycle?: { sourceKeyIds: readonly string[]; loopCount: number; sourceStart: number } | null;
   linkChoice?: 'link' | 'create';
@@ -137,6 +156,8 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     loopEditTarget: sig(seed.loopEditTarget ?? null),
     loopEditSourceStart: sig<number | null>(seed.loopEditSourceStart ?? null),
     sourceEditSharedLoopCount: sig(seed.sourceEditSharedLoopCount ?? 0),
+    regenerateDisabledReason: sig<string | null>(seed.regenerateDisabledReason ?? null),
+    regenerateImpact: sig(seed.regenerateImpact ?? null),
     loopIntentActive: sig(seed.loopIntentActive ?? false),
     identicalSourceCycle: sig(seed.identicalSourceCycle ?? null),
     linkChoice: sig<'link' | 'create'>(seed.linkChoice ?? 'link'),
@@ -964,43 +985,107 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
   });
 });
 
-describe('PhysicsPaintPlayScriptDialog source-edit mode (S3, D-02)', () => {
+describe('PhysicsPaintPlayScriptDialog Group Regenerate confirmation (43.2-09 G3a)', () => {
+  const impact = {
+    actionId: 'action-1',
+    actionRevision: 'action-revision-1',
+    actionHash: 'action-deadbeef',
+    documentRevision: 'document-1',
+    initiatingGroupId: 'G1',
+    groupName: 'A very long Group name that must wrap without horizontal scrolling',
+    groupType: 'Static' as const,
+    restoredRange: 'F10–F19',
+    locallyPaintedFrameCount: 2,
+    deletedFrameCount: 3,
+    deletedFrameRanges: 'F13, F16–F17',
+    fragmentCount: 3,
+    gapRanges: 'F13, F16–F17',
+    affectedGroups: [{ groupId: 'G1', name: 'Group at F10', range: 'F10–F19' }],
+    sourceCacheEffects: 'Rebuilds the saved Action source cycle and refreshes the Group cache.',
+    storedSettings: { mode: 'static' as const, motion: { deformation: 0, position: 0 }, overrideColor: null, sourceKeyIds: ['S1', 'S2', 'S3'] },
+  };
   const sourceEditSeed = {
     dialogMode: 'source-edit' as const,
-    loopEditTargetId: 'L1',
-    loopEditTarget: { loopId: 'L1', placementStart: 10, sourceKeyIds: ['S1', 'S2', 'S3', 'S4', 'S5'], repeat: 3 as const, mode: 'static' as const },
+    loopEditTargetId: 'G1',
+    loopEditTarget: { loopId: 'G1', placementStart: 10, sourceKeyIds: ['S1', 'S2', 'S3'], repeat: 3 as const, mode: 'static' as const },
     mode: 'static' as const,
-    countText: '5',
+    countText: '3',
     repeatText: '3',
     sourceEditSharedLoopCount: 1,
+    regenerateImpact: impact,
   };
 
-  it('renders the locked title, the base notice, and the Regenerate source cycle confirmation', () => {
+  it('replaces the editable body with the exact ordered nine-fact disclosure and no thumbnails', () => {
     const { controller } = createFakeController(sourceEditSeed);
     const tree = renderDialog(controller);
-    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe('Edit Source Cycle');
-    const notice = findOne(tree, byClass('physics-paint-play-script-notice'));
-    expect(textOf(notice)).toContain('Confirming regenerates the source cycle and updates every linked Loop Clip referencing it.');
-    expect(textOf(notice)).not.toContain('shared by');
-    expect(textOf(findOne(tree, (vnode) => textOf(vnode) === 'Regenerate source cycle'))).toBe('Regenerate source cycle');
-    // The full form stays editable (prefill values preserved).
-    expect(findOne(tree, byId('physics-play-script-count')).props.disabled).toBe(false);
-    expect(findOne(tree, byId('physics-play-script-count')).props.value).toBe('5');
-    expect(findOne(tree, byId('physics-play-script-motion-deformation')).props.disabled).toBe(false);
+    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe(`Regenerate “${impact.groupName}”?`);
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-regenerate-lead')))).toBe('Regenerate discards accepted local Group changes and restores the result from the saved Action and stored Group settings.');
+    const facts = findAll(tree, byClass('physics-paint-play-script-regenerate-fact'));
+    expect(facts.map((fact) => textOf(findOne(fact, (vnode) => vnode.type === 'dt')))).toEqual([
+      'Group', 'Group Type', 'Restored range', 'Locally painted frames', 'Deleted frames', 'Fragments', 'Gaps cleared', 'Result', 'Source/cache effects',
+    ]);
+    expect(facts.map((fact) => textOf(findOne(fact, (vnode) => vnode.type === 'dd')))).toEqual([
+      impact.groupName,
+      'Static',
+      'F10–F19',
+      '2',
+      '3 · F13, F16–F17',
+      '3 → 1',
+      'F13, F16–F17',
+      'Synchronized with Action.',
+      impact.sourceCacheEffects,
+    ]);
+    expect(findAll(tree, (vnode) => vnode.type === 'img' || hasClass(vnode, 'thumbnail'))).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(0);
+    expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Keep local changes'))).toBe('Keep local changes');
+    expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Group'))).toBe('Regenerate Group');
   });
 
-  it('shows the shared-source count only when more than one loop references the cycle', () => {
-    const { controller } = createFakeController({ ...sourceEditSeed, sourceEditSharedLoopCount: 3 });
+  it('lists shared Groups once in placement order and uses the exact plural lead and CTA', () => {
+    const shared = {
+      ...impact,
+      affectedGroups: [
+        { groupId: 'G1', name: 'Group at F10', range: 'F10–F19' },
+        { groupId: 'G2', name: 'Group at F30', range: 'F30–F39' },
+        { groupId: 'G3', name: 'Group at F80', range: 'F80–F89' },
+      ],
+    };
+    const { controller } = createFakeController({ ...sourceEditSeed, regenerateImpact: shared, sourceEditSharedLoopCount: 3 });
     const tree = renderDialog(controller);
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-notice')))).toContain('This source cycle is shared by 3 loops.');
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-regenerate-shared-lead')))).toBe('Regenerate will update 3 Groups that share the same accepted source cycle.');
+    expect(findAll(tree, byClass('physics-paint-play-script-regenerate-group-item')).map(textOf)).toEqual([
+      'Group at F10 · F10–F19',
+      'Group at F30 · F30–F39',
+      'Group at F80 · F80–F89',
+    ]);
+    expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate 3 Groups'))).toBe('Regenerate 3 Groups');
   });
 
-  it('keeps the Phase 42 generation lifecycle: inputs disabled and Cancel generation while busy', () => {
-    const { controller } = createFakeController({ ...sourceEditSeed, canCancel: true, progress: { completed: 1, total: 5 } });
-    const tree = renderDialog(controller);
-    expect(findOne(tree, byId('physics-play-script-count')).props.disabled).toBe(true);
-    expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Cancel generation'))).toBe('Cancel generation');
-    expect(findAll(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate source cycle')).toHaveLength(0);
+  it('returns to Edit Group without mutation, disables acceptance while busy, and keeps stale rejection in an alert', () => {
+    const idle = createFakeController(sourceEditSeed);
+    let tree = renderDialog(idle.controller);
+    handler(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Keep local changes'), 'onClick')();
+    expect(idle.controller.openLoopEdit).toHaveBeenCalledWith('G1');
+    expect(idle.controller.confirm).not.toHaveBeenCalled();
+
+    const busy = createFakeController({ ...sourceEditSeed, canCancel: true, progress: { completed: 1, total: 3 } });
+    tree = renderDialog(busy.controller);
+    expect(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Group').props.disabled).toBe(true);
+
+    const stale = createFakeController({ ...sourceEditSeed, error: 'Regenerate rejected — saved Action changed.' });
+    tree = renderDialog(stale.controller);
+    const alert = findOne(tree, (vnode) => vnode.props?.role === 'alert');
+    expect(textOf(alert)).toBe('Regenerate rejected — saved Action changed.');
+    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe(`Regenerate “${impact.groupName}”?`);
+  });
+
+  it('locks the G3a definition geometry and vertical-only shared-list overflow', () => {
+    const definitionRule = playScriptCssRule('.physics-paint-play-script-regenerate-fact');
+    expect(definitionRule).toContain('grid-template-columns: 104px minmax(0, 1fr)');
+    const listRule = playScriptCssRule('.physics-paint-play-script-regenerate-group-list');
+    expect(listRule).toContain('max-height: 160px');
+    expect(listRule).toContain('overflow-y: auto');
+    expect(listRule).toContain('overflow-x: hidden');
   });
 });
 
