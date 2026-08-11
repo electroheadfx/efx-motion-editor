@@ -154,7 +154,10 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
   getPhysicalDocument?: () => PhysicPaintRotoPhysicalDocument | null;
   availabilityRevision?: ReadonlySignal<number>;
   requestAuthority: (operationId: string, start: number) => Promise<PhysicPaintRotoAuthorityResult>;
-  commit: (publication: RotoPlayScriptPhysicalPublication) => Promise<RotoPlayScriptCommitResult>;
+  commit: (
+    publication: RotoPlayScriptPhysicalPublication,
+    revalidateUnderLease?: () => Promise<string | null>,
+  ) => Promise<RotoPlayScriptCommitResult>;
   stopPlayback: () => void;
   log: (message: string, error?: boolean) => void;
 }
@@ -1263,7 +1266,22 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           }
         : { ...basePublication, ...(loopClips ? { loopClips } : {}) };
       phase.value = 'committing'; status.value = 'Committing Play Script…'; abortController = null;
-      const result = await ports.commit(publication);
+      const revalidateUnderLease = preparedRegenerate ? async (): Promise<string | null> => {
+        const currentDocument = ports.getPhysicalDocument?.() ?? null;
+        if (!currentDocument || currentDocument.revision !== preparedRegenerate.documentRevision) {
+          return 'Regenerate rejected — physical Group document changed.';
+        }
+        const currentAction = ports.library.rows.peek().find((row) => row.id === preparedRegenerate.actionId);
+        if (!currentAction || currentAction.revision !== preparedRegenerate.actionRevision) {
+          return 'Regenerate rejected — saved Action changed.';
+        }
+        const currentSnapshot = await ports.library.loadSnapshot(preparedRegenerate.actionId);
+        if (!currentSnapshot || actionSnapshotHash(currentSnapshot) !== preparedRegenerate.actionHash) {
+          return 'Regenerate rejected — saved Action changed.';
+        }
+        return null;
+      } : undefined;
+      const result = await ports.commit(publication, revalidateUnderLease);
       assertCurrent(acceptedGeneration);
       if (!result.ok) throw new Error(result.error || 'Parent rejected the Play Script batch.');
       assertPublicationAck(publication, result);

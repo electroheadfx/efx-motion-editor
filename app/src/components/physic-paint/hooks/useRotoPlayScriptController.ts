@@ -58,7 +58,8 @@ export function useRotoPlayScriptController<EngineState = unknown>(
         const mode = modeRef.current === 'Unavailable' ? await detectPhysicsPaintBridgeMode() : modeRef.current;
         await sendPhysicPaintRotoAuthorityRequest({ operationId, projectContextId: context.project.contextId, layerId: context.layerId, canonicalStart: start }, mode);
       }, authorityFailure(operationId, portsRef.current)),
-      commit: async (publication) => {
+      commit: async (publication, revalidateUnderLease) => {
+        let leaseRejection: string | null = null;
         const accepted = await dispatchAndWaitForAcceptedPlayScript(
           portsRef.current.pendingOperationId,
           portsRef.current.acceptedOutput,
@@ -75,10 +76,16 @@ export function useRotoPlayScriptController<EngineState = unknown>(
             selectedAppFrame: publication.selectedAppFrame,
             // 43-06: loop state rides the same staged commit (HOLD-03).
             ...(publication.loopClips ? { loopClips: publication.loopClips } : {}),
+            ...(revalidateUnderLease ? {
+              revalidateAfterLease: async () => {
+                leaseRejection = await revalidateUnderLease();
+                return leaseRejection === null;
+              },
+            } : {}),
           }),
         );
         if (!accepted || accepted.operationKind !== 'play-script') {
-          return { ok: false, error: 'Play Script physical commit was rejected or timed out.' };
+          return { ok: false, error: leaseRejection ?? 'Play Script physical commit was rejected or timed out.' };
         }
         return {
           ok: true,

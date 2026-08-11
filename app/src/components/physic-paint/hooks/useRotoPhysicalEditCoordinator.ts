@@ -272,6 +272,8 @@ export interface RotoPlayScriptExecuteInput {
   readonly semanticDelta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'play-script' }>;
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
+  /** Final non-physical authority check executed while the project/layer lease is held. */
+  readonly revalidateAfterLease?: () => Promise<boolean>;
   /**
    * Complete staged Loop Clip collection (43-06). Present when the op changes
    * loop state; absent stages the layer's current collection unchanged.
@@ -1367,6 +1369,11 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           || revalidatedLaunch.operationId !== input.expectedLaunch.operationId
           || revalidatedLaunch.project?.contextId !== leaseToken.projectContextId
           || revalidatedLaunch.layerId !== leaseToken.layerId) {
+          portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+          clearPendingOnce();
+          return false;
+        }
+        if (isPlayScript && input.revalidateAfterLease && !await input.revalidateAfterLease()) {
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
