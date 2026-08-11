@@ -262,6 +262,13 @@ function sameAcceptedPhysicalCommandSnapshot(
 }
 
 export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResult {
+  return applyPhysicPaintPayloadWithPublicationLease(payload);
+}
+
+function applyPhysicPaintPayloadWithPublicationLease(
+  payload: unknown,
+  publicationLeaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
+): PhysicPaintApplyResult {
   const base = resultBase(payload);
   if (!isStructuredClonePlainData(payload) || !isPhysicPaintApplyPayload(payload)) {
     return failureResult(base, 'Invalid physics paint apply payload');
@@ -352,7 +359,7 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
       }
       result = physicPaintStore.replaceRotoKeyFrames(payload);
     } else if (payload.kind === 'replace-roto-physical-map') {
-      result = applyPhysicPaintRotoPhysicalMap(payload);
+      result = applyPhysicPaintRotoPhysicalMap(payload, publicationLeaseToken);
     } else {
       result = applyFailureResult(payload, 'Unsupported physics paint payload');
     }
@@ -363,7 +370,10 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
   }
 }
 
-async function applyPreparedPhysicPaintPayload(payload: unknown): Promise<PhysicPaintApplyResult> {
+async function applyPreparedPhysicPaintPayload(
+  payload: unknown,
+  publicationLeaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
+): Promise<PhysicPaintApplyResult> {
   if (!isPhysicPaintRotoPhysicalEditApplyPayload(payload)) return applyPhysicPaintPayload(payload);
   const preparedDataUrls = new Set(payload.records.map((record) => record.payload.dataUrl));
   try {
@@ -375,9 +385,47 @@ async function applyPreparedPhysicPaintPayload(payload: unknown): Promise<Physic
       error instanceof Error ? error.message : 'Canonical Roto PNG preparation failed.',
     );
   }
-  const result = applyPhysicPaintPayload(payload);
+  const result = applyPhysicPaintPayloadWithPublicationLease(
+    payload,
+    publicationLeaseToken,
+  );
   if (!result.ok) physicPaintStore.pruneUnreferencedRotoAlphaCanvases(preparedDataUrls);
   return result;
+}
+
+async function applyTransportedPhysicPaintPayload(
+  payload: unknown,
+): Promise<PhysicPaintApplyResult> {
+  if (!isPhysicPaintRotoPhysicalEditApplyPayload(payload)) {
+    return applyPreparedPhysicPaintPayload(payload);
+  }
+
+  const submittedLeaseToken = payload.leaseToken!;
+  if (
+    payload.projectContextId !== projectStore.projectContextId.peek()
+    || submittedLeaseToken.projectContextId !== payload.projectContextId
+    || submittedLeaseToken.layerId !== payload.layerId
+  ) {
+    return applyPreparedPhysicPaintPayload(payload);
+  }
+
+  const publicationLeaseToken =
+    physicPaintStore.acquireRotoPhysicalOperationLease(
+      payload.projectContextId,
+      payload.layerId,
+    )
+    ?? submittedLeaseToken;
+
+  try {
+    return await applyPreparedPhysicPaintPayload(
+      payload,
+      publicationLeaseToken,
+    );
+  } finally {
+    physicPaintStore.releaseRotoPhysicalOperationLease(
+      publicationLeaseToken,
+    );
+  }
 }
 
 export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityRequest): PhysicPaintRotoAuthorityResult {
@@ -1040,7 +1088,10 @@ function validateCanonicalGroupLifecycleEdit(input: {
   return null;
 }
 
-function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>): PhysicPaintRotoPhysicalEditApplyResult {
+function applyPhysicPaintRotoPhysicalMap(
+  payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>,
+  publicationLeaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
+): PhysicPaintRotoPhysicalEditApplyResult {
   const reject = (error: string, stagedRevision?: string) => physicalEditResult(payload, { ok: false, error, stagedRevision });
   const isPlayScript = payload.operationKind === 'play-script';
   if (isPlayScript && (!projectStore.filePath.peek() || !projectStore.scriptLibraryAuthority.peek())) {
@@ -1059,10 +1110,14 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   if (activeLaunchOperationByLayer.get(payload.layerId) !== payload.launchOperationId) {
     return reject('Physics Paint launch context changed before the physical edit could be applied.');
   }
-  const leaseToken = payload.leaseToken!;
-  if (leaseToken.projectContextId !== projectStore.projectContextId.peek()) {
+  const submittedLeaseToken = payload.leaseToken!;
+  if (submittedLeaseToken.projectContextId !== projectStore.projectContextId.peek()) {
     return reject('Project context changed after the physical-operation lease was acquired.');
   }
+  if (publicationLeaseToken && submittedLeaseToken.layerId !== payload.layerId) {
+    return reject('Roto physical operation lease rejected: mismatched-token.');
+  }
+  const leaseToken = publicationLeaseToken ?? submittedLeaseToken;
   const leaseValidation = physicPaintStore.validateRotoPhysicalOperationLease(
     leaseToken.projectContextId,
     payload.layerId,
@@ -2102,7 +2157,7 @@ async function closeNativePhysicPaintWindow(): Promise<void> {
 
 export async function installPhysicPaintApplyListener(onResult?: (result: PhysicPaintApplyResult) => void): Promise<() => void> {
   const handlePayload = async (payload: unknown, source?: Pick<Window, 'postMessage'> | null) => {
-    const result = await applyPreparedPhysicPaintPayload(payload);
+    const result = await applyTransportedPhysicPaintPayload(payload);
     onResult?.(result);
     sendBrowserApplyResult(result, source);
     return result;
@@ -2113,7 +2168,7 @@ export async function installPhysicPaintApplyListener(onResult?: (result: Physic
       const eventApi = await import('@tauri-apps/api/event') as TauriEventApi;
       const unlisten = await eventApi.listen?.(PHYSIC_PAINT_APPLY_EVENT, async (event) => {
         const payload = event.payload;
-        const result = await applyPreparedPhysicPaintPayload(payload);
+        const result = await applyTransportedPhysicPaintPayload(payload);
         onResult?.(result);
         await eventApi.emit?.(PHYSIC_PAINT_APPLY_RESULT_EVENT, result);
         await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_APPLY_RESULT_EVENT, result);

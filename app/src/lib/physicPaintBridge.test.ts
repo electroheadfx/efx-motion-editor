@@ -2877,3 +2877,208 @@ describe('Phase 43.2 leased exact-occurrence Paint parent tracer', () => {
     expect(physicPaintVersion.peek()).toBe(acceptedVersion);
   });
 });
+
+describe('Phase 43.2 UAT-13 cross-window first-paint settlement', () => {
+  const projectContextId = '13131313-1313-4313-8313-131313131313';
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        open: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        location: { origin: 'http://localhost:1420' },
+      },
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    projectStore.closeProject();
+    Object.defineProperty(globalThis, 'window', {
+      value: originalWindow,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  it('preserves the accepted first stroke and publishes the combined raster on the second same-frame paint', async () => {
+    const layer = physicLayer();
+    mockLayers([layer]);
+    projectStore.projectContextId.value = projectContextId;
+    const emptyRevision = buildPhysicPaintRotoPhysicalRevision(
+      [],
+      { enabled: false, mode: 'duplicate' },
+      [],
+      [],
+    );
+    const emptyDocument = {
+      capacity: 30,
+      realKeyRecords: [],
+      interpolation: { enabled: false, mode: 'duplicate' as const },
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: emptyRevision,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    };
+    const parentSeed = physicPaintStore.replaceRotoPhysicalDocument(layer.id, emptyDocument);
+    if (!parentSeed.ok) throw new Error(parentSeed.error);
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
+    if (!launch.ok || !launch.data.rotoPhysical) throw new Error(launch.ok ? 'Missing physical launch document.' : launch.error);
+
+    // A native parent and Physics Paint child own separate module registries.
+    // resetModules gives this test a second real physicPaintStore instance
+    // without replacing the already imported parent bridge/store above.
+    vi.resetModules();
+    const { physicPaintStore: childStore } = await import('../stores/physicPaintStore');
+    childStore.reset();
+    const childSeed = childStore.replaceRotoPhysicalDocument(layer.id, emptyDocument);
+    if (!childSeed.ok) throw new Error(childSeed.error);
+
+    const parentLease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layer.id);
+    if (!parentLease) throw new Error('Expected parent physical-operation lease.');
+    let childLease = null as ReturnType<typeof childStore.acquireRotoPhysicalOperationLease>;
+    for (let generation = 1; generation <= parentLease.generation; generation += 1) {
+      const candidateLayerId = generation === parentLease.generation ? layer.id : `generation-sync-${generation}`;
+      const candidate = childStore.acquireRotoPhysicalOperationLease(projectContextId, candidateLayerId);
+      if (!candidate) throw new Error(`Expected child lease generation ${generation}.`);
+      if (candidateLayerId === layer.id) childLease = candidate;
+      else if (!childStore.releaseRotoPhysicalOperationLease(candidate)) throw new Error('Could not advance the child lease generation.');
+    }
+    if (!childLease) throw new Error('Expected child physical-operation lease.');
+    expect(childLease).toEqual(parentLease);
+
+    let messageListener: ((event: MessageEvent) => void) | undefined;
+    const childWindow = { postMessage: vi.fn() };
+    vi.spyOn(window, 'addEventListener').mockImplementation((event, callback) => {
+      if (event === 'message') messageListener = callback as (event: MessageEvent) => void;
+    });
+    let settleResult: ((result: ReturnType<typeof applyPhysicPaintPayload>) => void) | null = null;
+    const cleanup = await installPhysicPaintApplyListener((result) => {
+      settleResult?.(result);
+      settleResult = null;
+    });
+    const sendFromChild = (
+      payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>,
+    ) => new Promise<ReturnType<typeof applyPhysicPaintPayload>>((resolve) => {
+      settleResult = resolve;
+      messageListener?.({
+        origin: 'http://localhost:1420',
+        data: { type: PHYSIC_PAINT_APPLY_EVENT, payload },
+        source: childWindow as unknown as MessageEventSource,
+      } as MessageEvent);
+    });
+
+    const buildPastePayload = (
+      operationId: string,
+      document: NonNullable<ReturnType<typeof physicPaintStore.getRotoPhysicalDocument>>,
+      leaseToken: NonNullable<typeof childLease>,
+      dataUrl: string,
+    ): Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }> => {
+      const destination = document.realKeyRecords.find((record) => record.appFrame === 0) ?? null;
+      const intent: PhysicPaintRotoPhysicalEditIntent = {
+        kind: 'paste-key',
+        destinationAppFrame: 0,
+        destinationKeyId: destination?.keyId ?? null,
+        newKeyId: destination ? null : 'frame-0',
+        clipboardPayload: {
+          frameIndex: 0,
+          appFrame: 0,
+          dataUrl,
+          width: 1,
+          height: 1,
+        },
+      };
+      const resolution = resolvePhysicPaintRotoPhysicalEdit({
+        identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        records: document.realKeyRecords,
+        intent,
+        capacity: document.capacity,
+        interpolationEnabled: document.interpolation.enabled,
+        loopClips: document.loopClips,
+        incomingInterpolationBreakKeyIds: document.incomingInterpolationBreakKeyIds,
+      });
+      if (!resolution.ok || !resolution.proposal.nextRecords) throw new Error('Expected canonical same-frame paste proposal.');
+      return {
+        kind: 'replace-roto-physical-map',
+        operationId,
+        operationKind: 'paste-key',
+        intent,
+        layerId: layer.id,
+        leaseToken,
+        startFrame: 0,
+        launchOperationId: launch.data.operationId,
+        projectContextId,
+        expectedRevision: document.revision,
+        records: resolution.proposal.nextRecords.map(({ kind: _kind, ...record }) => record),
+        interpolationEnabled: document.interpolation.enabled,
+        interpolationMode: document.interpolation.mode,
+        loopClips: document.loopClips,
+        incomingInterpolationBreakKeyIds: resolution.proposal.nextIncomingInterpolationBreakKeyIds
+          ?? document.incomingInterpolationBreakKeyIds,
+        selectedKeyId: resolution.proposal.selectedKeyId,
+        selectedAppFrame: resolution.proposal.selectedAppFrame,
+        ...(resolution.proposal.semanticDelta ? { semanticDelta: resolution.proposal.semanticDelta } : {}),
+      };
+    };
+
+    const firstStrokeRaster = TRANSPARENT_ONE_PIXEL_PNG;
+    const combinedTwoStrokeRaster = OPAQUE_ONE_PIXEL_PNG;
+    const preparedCanvas = { width: 1, height: 1 } as HTMLCanvasElement;
+    registerRotoAlphaCanvasFrame(firstStrokeRaster, preparedCanvas);
+    registerRotoAlphaCanvasFrame(combinedTwoStrokeRaster, preparedCanvas);
+    const firstResult = await sendFromChild(buildPastePayload(
+      'uat-13-first-paint-materialization',
+      parentSeed.document,
+      childLease,
+      firstStrokeRaster,
+    ));
+    expect(firstResult.ok).toBe(true);
+
+    // PhysicsPaintStudio acknowledges the accepted settlement in the child
+    // registry. The native parent transport must independently complete its
+    // canonical publication lease before the next child operation arrives.
+    expect(childStore.releaseRotoPhysicalOperationLease(childLease)).toBe(true);
+    const secondChildLease = childStore.acquireRotoPhysicalOperationLease(projectContextId, layer.id);
+    if (!secondChildLease) throw new Error('Expected the second child physical-operation lease.');
+    const acceptedAfterFirst = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!acceptedAfterFirst) throw new Error('Expected the accepted first-stroke document.');
+
+    const secondResult = await sendFromChild(buildPastePayload(
+      'uat-13-second-same-frame-paint',
+      acceptedAfterFirst,
+      secondChildLease,
+      combinedTwoStrokeRaster,
+    ));
+    const acceptedAfterSecond = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    const acceptedRenderSource = physicPaintStore.getRotoPhysicalRenderSource(layer.id, 0);
+
+    expect({
+      secondPublicationError: secondResult.ok ? null : secondResult.error,
+      rejectedPublicationPreservedPriorAcceptedState: secondResult.ok
+        || acceptedAfterSecond?.realKeyRecords[0]?.payload.dataUrl === firstStrokeRaster,
+      acceptedRaster: acceptedAfterSecond?.realKeyRecords[0]?.payload.dataUrl ?? null,
+      cachedRaster: acceptedRenderSource?.kind === 'real'
+        ? acceptedRenderSource.renderedFrame.dataUrl
+        : null,
+      acceptedRealKeyState: acceptedRenderSource?.kind ?? null,
+      acceptedSelectedKeyId: acceptedAfterSecond?.selectedKeyId ?? null,
+    }).toEqual({
+      secondPublicationError: null,
+      rejectedPublicationPreservedPriorAcceptedState: true,
+      acceptedRaster: combinedTwoStrokeRaster,
+      cachedRaster: combinedTwoStrokeRaster,
+      acceptedRealKeyState: 'real',
+      acceptedSelectedKeyId: 'frame-0',
+    });
+    cleanup();
+  });
+});
