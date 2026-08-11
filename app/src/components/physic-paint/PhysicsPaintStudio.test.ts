@@ -241,7 +241,7 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
     const selection = studio.slice(selectionStart, selectionEnd);
     expect(selectionStart).toBeGreaterThanOrEqual(0);
     expect(selection).toContain('selectedKeyId.value = null;');
-    expect(selection).toContain('physicPaintStore.setRotoPhysicalSelection(\n      launchContext.layerId,\n      null,\n      currentFrame,\n    );');
+    expect(selection).toContain('physicPaintStore.setRotoPhysicalSelection(\n        launchContext.layerId,\n        null,\n        currentFrame,\n      );');
     expect(selection).toContain('selectedKeyIds.value = [];\n    selectionAnchorKeyId.value = null;\n    rotoSpacingSelection.value = null;');
 
     const clearPrimaryIndex = selection.indexOf('selectedKeyId.value = null;');

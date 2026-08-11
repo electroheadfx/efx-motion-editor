@@ -1023,9 +1023,17 @@ export function PhysicsPaintStudio() {
       clearRotoLoopSelection();
       return;
     }
+    selectedKeyId.value = null;
     selectedKeyIds.value = [];
     selectionAnchorKeyId.value = null;
     rotoSpacingSelection.value = null;
+    if (launchContext) {
+      physicPaintStore.setRotoPhysicalSelection(
+        launchContext.layerId,
+        null,
+        currentFrame,
+      );
+    }
     selectedLoopClipIds.value = next.selectedLoopClipIds;
     loopSelectionAnchorId.value = next.anchorLoopClipId;
     selectedLoopClipId.value = next.primaryLoopClipId;
@@ -1034,7 +1042,7 @@ export function PhysicsPaintStudio() {
       rotoScriptLibrary.select(selectedGroup.scriptId);
       activeLinkedLoopClipId.value = selectedGroup.loopId;
     }
-  }, [clearRotoLoopSelection, loopScriptRows, orderedRotoLoopClipIds, rotoLoopClips, rotoScriptLibrary]);
+  }, [clearRotoLoopSelection, currentFrame, launchContext, loopScriptRows, orderedRotoLoopClipIds, rotoLoopClips, rotoScriptLibrary]);
   const handleOpenRotoLoopEdit = useCallback(
     (loopId: string) => {
       selectedLoopClipId.value = loopId;
