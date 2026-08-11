@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Completed 43.2-09-PLAN.md
-last_updated: "2026-08-11T09:08:19.535Z"
+stopped_at: Completed 43.2-10-PLAN.md
+last_updated: "2026-08-11T09:33:24.573Z"
 last_activity: 2026-08-11
-last_activity_desc: Completed Plan 43.2-09 guarded leased Group Regenerate and exact confirmation
+last_activity_desc: Completed Plan 43.2-10 durable Action transaction journal and recovery commands
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 61
-  completed_plans: 51
-  percent: 84
+  completed_plans: 52
+  percent: 85
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
-Plan: 10 of 20
+Plan: 11 of 20
 Status: Ready to execute
-Last activity: 2026-08-11 — Completed Plan 43.2-09 guarded leased Group Regenerate and exact confirmation
+Last activity: 2026-08-11 — Completed Plan 43.2-10 durable Action transaction journal and recovery commands
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [████████░░] 84%
+Progress: [█████████░] 85%
 
 ## Performance Metrics
 
@@ -204,6 +204,7 @@ Progress: [████████░░] 84%
 | Phase 43.2 P07 | 18min | 2 tasks | 7 files |
 | Phase 43.2 P08 | 20min | 3 tasks | 10 files |
 | Phase 43.2 P09 | 21min | 2 tasks | 10 files |
+| Phase 43.2 P10 | 15min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -330,6 +331,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: Shared restoration requires the same saved Action and byte-equivalent ordered sourceKeyIds; partial overlap or conflicting ownership rejects as ambiguous.
 - [Phase 43.2]: Final Action revision/hash and frozen physical-document revision revalidate after project/layer lease acquisition and before canonical physical preflight.
 - [Phase 43.2]: The G3a confirmation projects controller-frozen facts inside the existing draggable backdrop-free dialog and restores focus across in-place mode transitions.
+- [Phase 43.2]: Active journals, committed markers, working tombstones, and acknowledgement receipts use separate token-derived files under scripts/.action-transactions.
+- [Phase 43.2]: Ordinary scans deterministically restore and clear prepared transactions, but fail closed while a committed transaction still requires frontend settlement.
+- [Phase 43.2]: Acknowledge persists cleanup-pending ownership before removing the tombstone, active record, and marker; the durable receipt then makes exact retries idempotent and token replay impossible.
+- [Phase 43.2]: Undo prepare remains structurally accepted, while Undo file restoration fails closed until Plan 19 supplies retained Action bytes and integrity authority.
 
 ### Pending Todos
 
@@ -519,11 +524,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T09:08:19.524Z
-Stopped at: Completed 43.2-09-PLAN.md
+Last session: 2026-08-11T09:33:24.561Z
+Stopped at: Completed 43.2-10-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Plan Phase 44 with `/gsd-plan-phase 44`.
+- Execute Plan 43.2-11 for closed TypeScript transaction validators and IPC wrappers.
 - Keep Phase 43.1 DF-01 through DF-04 deferred; do not create additional Phase 43.1 plans.

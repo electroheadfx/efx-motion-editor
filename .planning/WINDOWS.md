@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 20
+open_count: 21
 waived_count: 1
 fixed_count: 30
-total_count: 51
-last_updated: 2026-08-11T08:31:21.136Z
+total_count: 52
+last_updated: 2026-08-11T09:33:23.787Z
 ---
 
 # Broken Windows Ledger
@@ -66,6 +66,7 @@ last_updated: 2026-08-11T08:31:21.136Z
 | 49 | 43.2 | deviation | app/src/lib/physicPaintBridge.ts |  | Extended the closed bridge token parser to validate exclusive and recovery ownership. | fixed |  | 2026-08-11T06:49:05.605Z | 2026-08-11T06:49:38.494Z |
 | 50 | 43.2 | deviation | app/src/components/physic-paint/physicsPaintStudio.css |  | Added omitted UI-SPEC geometry required for the Group Delete dialog. | fixed |  | 2026-08-11T08:30:14.260Z | 2026-08-11T08:31:21.055Z |
 | 51 | 43.2 | deviation | app/src/components/physic-paint/roto/physicsPaintRotoGroupLifecycle.ts |  | Corrected only-occurrence Delete Frame to remove the complete Group. | fixed |  | 2026-08-11T08:30:14.337Z | 2026-08-11T08:31:21.136Z |
+| 52 | 43.2 | stub | app/src-tauri/src/services/script_library.rs | 510 | Undo transaction commit intentionally fails closed until Plan 19 supplies retained Action bytes and integrity authority | open |  | 2026-08-11T09:33:23.787Z |  |
 
 ````json
 [
@@ -680,6 +681,18 @@ last_updated: 2026-08-11T08:31:21.136Z
     "reason": "",
     "recorded_at": "2026-08-11T08:30:14.337Z",
     "resolved_at": "2026-08-11T08:31:21.136Z"
+  },
+  {
+    "id": 52,
+    "kind": "stub",
+    "phase": "43.2",
+    "file": "app/src-tauri/src/services/script_library.rs",
+    "line": 510,
+    "description": "Undo transaction commit intentionally fails closed until Plan 19 supplies retained Action bytes and integrity authority",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-11T09:33:23.787Z",
+    "resolved_at": null
   }
 ]
 ````
