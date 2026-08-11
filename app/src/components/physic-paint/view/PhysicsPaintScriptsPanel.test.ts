@@ -391,23 +391,38 @@ function sig<Value>(value: Value): { value: Value } {
   return { value };
 }
 
-function createFakeLibrary(): RotoScriptLibraryController {
+interface FakeLibrarySeed {
+  rows?: readonly Record<string, unknown>[];
+  selectedId?: string | null;
+  deleteConfirmation?: Record<string, unknown> | null;
+  busy?: boolean;
+  transactionPhase?: 'idle' | 'preparing' | 'committed' | 'recovery-required';
+  recoveryReady?: boolean;
+  status?: string | null;
+}
+
+function createFakeLibrary(seed: FakeLibrarySeed = {}): RotoScriptLibraryController {
+  const rows = seed.rows ?? [];
+  const selectedId = seed.selectedId ?? null;
   return {
-    rows: sig([]),
+    rows: sig(rows),
     availability: sig({ saveDisabledReason: null, canSave: true, canRename: true, canDelete: true }),
-    selected: sig(null),
-    busy: sig(false),
+    selected: sig(rows.find((row) => row.id === selectedId) ?? null),
+    busy: sig(seed.busy ?? false),
     rename: sig(null),
-    deleteConfirmation: sig(null),
-    selectedId: sig(null),
-    status: sig(null),
+    deleteConfirmation: sig(seed.deleteConfirmation ?? null),
+    referencedDeleteImpact: sig(null),
+    transactionPhase: sig(seed.transactionPhase ?? 'idle'),
+    recoveryReady: sig(seed.recoveryReady ?? true),
+    selectedId: sig(selectedId),
+    status: sig(seed.status ?? null),
     skippedInvalidCount: sig(0),
     beginRename: vi.fn(),
     requestDelete: vi.fn(),
     cancelDelete: vi.fn(),
-    confirmDelete: vi.fn(async () => {}),
+    confirmDelete: vi.fn(async () => true),
     updateRenameDraft: vi.fn(),
-    commitRename: vi.fn(async () => {}),
+    commitRename: vi.fn(async () => true),
     cancelRename: vi.fn(),
   } as unknown as RotoScriptLibraryController;
 }
@@ -437,11 +452,14 @@ function createFakePlayScript(seed: FakePlayScriptSeed = {}) {
   } as unknown as RotoPlayScriptController;
 }
 
-function renderPanel(playScript: RotoPlayScriptController): TestVNode {
+function renderPanel(
+  playScript: RotoPlayScriptController,
+  library: RotoScriptLibraryController = createFakeLibrary(),
+): TestVNode {
   hooks.cursor = 0;
   hooks.idCursor = 0;
   return PhysicsPaintScriptsPanel({
-    library: createFakeLibrary(),
+    library,
     playScript,
     rotoScript: createFakeRotoScript(),
     playButtonRef: { current: null },
@@ -489,8 +507,102 @@ function hasClass(vnode: TestVNode, name: string): boolean {
   return String(vnode.props?.class ?? '').split(/\s+/).includes(name);
 }
 
+function textOf(node: unknown): string {
+  if (node === null || node === undefined || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join('');
+  if (typeof node !== 'object') return '';
+  return textOf((node as TestVNode).props?.children);
+}
+
+function buttonWithText(root: unknown, label: string): TestVNode {
+  return findOne(root, (vnode) => vnode.type === 'button' && textOf(vnode) === label);
+}
+
 beforeEach(() => {
   hooks.reset();
+});
+
+describe('Physics Paint Actions deletion disclosure contract (43.2-13)', () => {
+  const actionRow = {
+    id: 'action-1',
+    name: 'Walk Cycle',
+    revision: 'revision-1',
+    createdAt: '2026-08-11T00:00:00.000Z',
+    updatedAt: '2026-08-11T00:00:00.000Z',
+    source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Paint', sourceFrame: 0, displayFrame: 1, width: 1000, height: 650, background: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 } },
+    thumbnail: { dataUrl: 'data:image/webp;base64,AA==', width: 48, height: 48 },
+    brushCount: 2,
+    integrity: '0'.repeat(64),
+  };
+
+  it('keeps unreferenced deletion compact with exact Action copy', () => {
+    const library = createFakeLibrary({ deleteConfirmation: { ...actionRow, referenceImpact: null } });
+    const tree = renderPanel(createFakePlayScript(), library);
+    const copy = textOf(tree);
+
+    expect(copy).toContain('Delete “Walk Cycle”?');
+    expect(copy).toContain('This removes the project Action file and cannot be undone.');
+    expect(buttonWithText(tree, 'Cancel')).toBeTruthy();
+    expect(buttonWithText(tree, 'Delete Action')).toBeTruthy();
+    expect(copy).not.toContain('Keep Groups');
+    expect(copy).not.toContain('Delete Action and Groups');
+  });
+
+  it('discloses exact one/many reference counts, visible ranges, ordered Groups, and consequences', () => {
+    const library = createFakeLibrary({
+      deleteConfirmation: {
+        ...actionRow,
+        referenceImpact: {
+          groupCount: 2,
+          visibleRangeCount: 3,
+          affectedGroups: [
+            { groupId: 'group-a', name: 'Walk Cycle Group', placementStart: 4, endExclusive: 12, visibleRanges: [{ start: 4, endExclusive: 8 }, { start: 10, endExclusive: 12 }] },
+            { groupId: 'group-b', name: 'Walk Cycle Group', placementStart: 20, endExclusive: 24, visibleRanges: [{ start: 20, endExclusive: 24 }] },
+          ],
+        },
+      },
+    });
+    const tree = renderPanel(createFakePlayScript(), library);
+    const copy = textOf(tree);
+
+    expect(copy).toContain('This Action is referenced by 2 Groups across 3 visible ranges.');
+    expect(copy.indexOf('F4–F11')).toBeLessThan(copy.indexOf('F20–F23'));
+    expect(copy).toContain('F4–F7, F10–F11');
+    expect(copy).toContain('2 ranges');
+    expect(copy).toContain('Recommended. Delete the Action but keep every Group, fragment, key, timing value, cache, and rendered result. Groups become detached and timeline space stays occupied.');
+    expect(copy).toContain('Delete the Action and all 2 referencing Groups, including uniquely owned source, cache, and Group-gap data. Their occupied timeline ranges are freed.');
+    expect(findAll(tree, (vnode) => vnode.type === 'button' && ['Keep Groups', 'Delete Action and Groups', 'Cancel'].includes(String(vnode.props['aria-label']))).map((vnode) => vnode.props['aria-label'])).toEqual([
+      'Keep Groups',
+      'Delete Action and Groups',
+      'Cancel',
+    ]);
+  });
+
+  it('routes only closed controller choices and keeps long content in the approved scrollable family', async () => {
+    const library = createFakeLibrary({
+      deleteConfirmation: {
+        ...actionRow,
+        name: 'An exceptionally long Action name that must remain fully readable in the confirmation',
+        referenceImpact: {
+          groupCount: 1,
+          visibleRangeCount: 1,
+          affectedGroups: [{ groupId: 'group-a', name: 'An exceptionally long Action name that must remain fully readable in the confirmation Group', placementStart: 2, endExclusive: 30, visibleRanges: [{ start: 2, endExclusive: 30 }] }],
+        },
+      },
+    });
+    const tree = renderPanel(createFakePlayScript(), library);
+    const keep = findOne(tree, (vnode) => vnode.props['aria-label'] === 'Keep Groups');
+    const cascade = findOne(tree, (vnode) => vnode.props['aria-label'] === 'Delete Action and Groups');
+
+    await (keep.props.onClick as () => Promise<void>)();
+    await (cascade.props.onClick as () => Promise<void>)();
+    expect(library.confirmDelete).toHaveBeenNthCalledWith(1, 'keep-groups');
+    expect(library.confirmDelete).toHaveBeenNthCalledWith(2, 'delete-action-and-groups');
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-action-delete-groups'))).toHaveLength(1);
+    expect(css).toMatch(/\.physics-paint-script-confirmation[\s\S]*?max-height:\s*calc\(100% - 52px\)[\s\S]*?overflow(?:-y)?:\s*auto/);
+    expect(css).toMatch(/\.physics-paint-action-delete-choice[\s\S]*?white-space:\s*normal/);
+  });
 });
 
 describe('Physics Paint Scripts panel compact sidebar contract', () => {
