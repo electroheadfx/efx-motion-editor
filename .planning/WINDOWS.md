@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 21
+open_count: 22
 waived_count: 1
-fixed_count: 41
-total_count: 63
-last_updated: 2026-08-11T17:32:28.720Z
+fixed_count: 42
+total_count: 65
+last_updated: 2026-08-11T17:54:00.857Z
 ---
 
 # Broken Windows Ledger
@@ -78,6 +78,8 @@ last_updated: 2026-08-11T17:32:28.720Z
 | 61 | 43.2 | deviation | app/src/components/physic-paint/physicsPaintStudio.css |  | Added scoped linked Group navigation presentation and endpoint disabled styles. | fixed |  | 2026-08-11T12:47:34.814Z | 2026-08-11T12:51:09.670Z |
 | 62 | 43.2 | deviation | app/src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx |  | Updated stale rail ownership tracer expectations after the canonical terminology cutover. | fixed |  | 2026-08-11T12:47:34.900Z | 2026-08-11T12:51:10.023Z |
 | 63 | 43.2 | deviation | .planning/STATE.md |  | Skipped state.advance-plan to preserve blocked Plan 43.2-17 while completing out-of-order gap Plan 43.2-21. | fixed |  | 2026-08-11T17:30:56.351Z | 2026-08-11T17:32:28.720Z |
+| 64 | 43.2 | unrun-verify | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-23-PLAN.md |  | Targeted copied-project frozen parent/child save-reopen verification remains pending; retained fixture was not accessed and Plan 43.2-17 remains blocked | open |  | 2026-08-11T17:52:56.791Z |  |
+| 65 | 43.2 | deviation | .planning/STATE.md |  | Corrected state.update-progress metadata from percent 63 to 97 while preserving Plan 43.2-17 as blocked | fixed |  | 2026-08-11T17:53:43.789Z | 2026-08-11T17:54:00.857Z |
 
 ````json
 [
@@ -836,6 +838,30 @@ last_updated: 2026-08-11T17:32:28.720Z
     "reason": "",
     "recorded_at": "2026-08-11T17:30:56.351Z",
     "resolved_at": "2026-08-11T17:32:28.720Z"
+  },
+  {
+    "id": 64,
+    "kind": "unrun-verify",
+    "phase": "43.2",
+    "file": ".planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-23-PLAN.md",
+    "line": null,
+    "description": "Targeted copied-project frozen parent/child save-reopen verification remains pending; retained fixture was not accessed and Plan 43.2-17 remains blocked",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-11T17:52:56.791Z",
+    "resolved_at": null
+  },
+  {
+    "id": 65,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Corrected state.update-progress metadata from percent 63 to 97 while preserving Plan 43.2-17 as blocked",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T17:53:43.789Z",
+    "resolved_at": "2026-08-11T17:54:00.857Z"
   }
 ]
 ````

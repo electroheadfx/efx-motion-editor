@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Completed 43.2-22-PLAN.md; 43.2-17 remains blocked pending Repeat 3 spacing native retest
-last_updated: "2026-08-11T17:43:43.894Z"
+stopped_at: Completed 43.2-23-PLAN.md; 43.2-17 remains blocked pending Delete Frame/Delete Group and Repeat 3 spacing native retests
+last_updated: "2026-08-11T17:52:57.580Z"
 last_activity: 2026-08-11
-last_activity_desc: Completed Plan 43.2-22 Group spacing lifecycle retiming automation; Plan 43.2-17 remains blocked
+last_activity_desc: Completed Plan 43.2-23 exact legacy Group persistence automation; Plan 43.2-17 remains blocked
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 65
-  completed_plans: 62
-  percent: 95
+  completed_plans: 63
+  percent: 97
 ---
 
 # Project State
@@ -31,11 +31,11 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
 Plan: 17 of 24
 Status: Blocked pending targeted native Delete Frame/Delete Group and Repeat 3 spacing UAT
-Last activity: 2026-08-11 — Completed Plan 43.2-22 Group spacing lifecycle retiming automation
+Last activity: 2026-08-11 — Completed Plan 43.2-23 exact legacy Group persistence automation; Plan 43.2-17 remains blocked
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [██████████] 95%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -215,6 +215,7 @@ Progress: [██████████] 95%
 | Phase 43.2 P16 | 27min | 2 tasks | 6 files |
 | Phase 43.2 P21 | 7min | 2 tasks | 3 files |
 | Phase 43.2 P22 | 9min | 2 tasks | 5 files |
+| Phase 43.2 P23 | 5min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -382,6 +383,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: Plan 43.2-22: Authorized source-cycle spacing rebuilds finite Group lifecycle extent from mapped ordered source timing while preserving each Group's own placement.
 - [Phase 43.2]: Plan 43.2-22: Coordinator and history production remain unchanged; records and lifecycle continue through one canonical accepted snapshot and replay command.
 - [Phase 43.2]: Plan 43.2-22: Plan 43.2-17 remains blocked until the fully restarted native Repeat 3 spacing 2/3 retest passes.
+- [Phase 43.2]: Plan 43.2-23: Validate only exact finite five-field pre-43.2 Group content against its historical fingerprint before lifecycle hydration.
+- [Phase 43.2]: Plan 43.2-23: Return current lifecycle-complete canonical authority only after the historical revision matches; changed content retaining the old revision rejects.
+- [Phase 43.2]: Plan 43.2-23: Native copied-project save/reopen approval remains pending and does not unblock Plan 43.2-17.
 
 ### Pending Todos
 
@@ -572,8 +576,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T17:43:43.878Z
-Stopped at: Completed 43.2-22-PLAN.md; 43.2-17 remains blocked pending Repeat 3 spacing native retest
+Last session: 2026-08-11T17:52:57.562Z
+Stopped at: Completed 43.2-23-PLAN.md; 43.2-17 remains blocked pending Delete Frame/Delete Group and Repeat 3 spacing native retests
 Resume file: None
 
 ## Operator Next Steps
