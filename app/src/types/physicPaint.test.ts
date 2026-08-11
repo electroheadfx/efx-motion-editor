@@ -12,9 +12,16 @@ import {
   isPhysicPaintRotoPhysicalEditApplyPayload,
   isPhysicPaintRotoPhysicalEditApplyResult,
   isPhysicPaintRotoPhysicalEditIntent,
+  isPhysicPaintActionHistoryReleaseRequest,
+  isPhysicPaintActionRetainedArtifactStatus,
+  isPhysicPaintActionTransactionAcknowledgeRequest,
+  isPhysicPaintActionTransactionPrepareRequest,
+  isPhysicPaintActionTransactionResult,
+  isPhysicPaintActionTransactionTokenRequest,
   normalizePhysicPaintRotoSegmentSpacingOverrides,
   serializePhysicPaintRotoPhysicalEditIntent,
 } from './physicPaint';
+import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
 const renderedFrame = { frameIndex: 0, appFrame: 12, dataUrl: 'data:image/png;base64,aGVsbG8=', width: 1000, height: 650 };
 
@@ -412,5 +419,180 @@ describe('physic paint payload contracts', () => {
   it('validates namespaced frame-sync messages', () => {
     expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: 12 })).toBe(true);
     expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: -1 })).toBe(false);
+  });
+});
+
+const actionPhysicalDocument = () => {
+  const interpolation = { enabled: false, mode: 'duplicate' as const };
+  const realKeyRecords: never[] = [];
+  const loopClips: never[] = [];
+  return {
+    capacity: 24,
+    realKeyRecords,
+    interpolation,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame: 18,
+    revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, loopClips),
+    loopClips,
+    incomingInterpolationBreakKeyIds: [],
+  };
+};
+
+const actionTransactionPrepare = (direction: 'forward' | 'undo' | 'redo' = 'forward') => {
+  const actionId = '11111111-1111-4111-8111-111111111111';
+  const physicalDocument = actionPhysicalDocument();
+  return {
+    token: `${direction}-token-1`,
+    commandId: 'history-command-10',
+    generation: 10,
+    operationId: `${direction}-operation-1`,
+    leaseToken: `${direction}-lease-1`,
+    direction,
+    mode: 'keep-groups' as const,
+    authority: {
+      projectContextId: 'project-context-1',
+      layerId: 'layer-1',
+      launchOperationId: 'launch-1',
+      actionId,
+      expectedActionPresent: direction !== 'undo',
+      expectedActionRevision: 'action-revision-1',
+      expectedPhysicalRevision: direction === 'undo' ? 'physical-after' : 'physical-before',
+      expectedPhysicalHash: direction === 'undo' ? 'hash-after' : 'hash-before',
+    },
+    impactDigest: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    retainedArtifact: {
+      commandId: 'history-command-10',
+      generation: 10,
+      actionId,
+      managedPath: `scripts/${actionId}.efx-roto-script.json`,
+      originalRevision: 'action-revision-1',
+      integritySha256: 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
+    },
+    target: {
+      physicalRevision: physicalDocument.revision,
+      physicalHash: 'target-hash-1',
+      physicalDocument,
+      selectedGroupId: null,
+      cursorAppFrame: 18,
+    },
+  };
+};
+
+describe('referenced Action transaction contracts', () => {
+  it.each(['forward', 'undo', 'redo'] as const)('accepts one exact %s prepare request and its token/acknowledge requests', (direction) => {
+    const request = actionTransactionPrepare(direction);
+    expect(isPhysicPaintActionTransactionPrepareRequest(request)).toBe(true);
+    expect(isPhysicPaintActionTransactionTokenRequest({ token: request.token })).toBe(true);
+    expect(isPhysicPaintActionTransactionAcknowledgeRequest({
+      token: request.token,
+      commandId: request.commandId,
+      generation: request.generation,
+      operationId: request.operationId,
+      leaseToken: request.leaseToken,
+      direction,
+    })).toBe(true);
+  });
+
+  it('accepts only closed transaction modes and history release reasons', () => {
+    expect(isPhysicPaintActionTransactionPrepareRequest({
+      ...actionTransactionPrepare(), mode: 'delete-action-and-groups',
+    })).toBe(true);
+    for (const reason of ['eviction', 'redo-branch-truncation', 'session-history-clear'] as const) {
+      expect(isPhysicPaintActionHistoryReleaseRequest({
+        projectContextId: 'project-context-1', launchOperationId: 'launch-1',
+        commandId: 'history-command-10', generation: 10, reason,
+      })).toBe(true);
+    }
+    expect(isPhysicPaintActionTransactionPrepareRequest({ ...actionTransactionPrepare(), direction: 'sideways' })).toBe(false);
+    expect(isPhysicPaintActionTransactionPrepareRequest({ ...actionTransactionPrepare(), mode: 'silent-cascade' })).toBe(false);
+    expect(isPhysicPaintActionHistoryReleaseRequest({
+      projectContextId: 'project-context-1', launchOperationId: 'launch-1',
+      commandId: 'history-command-10', generation: 10, reason: 'session-clear',
+    })).toBe(false);
+  });
+
+  it('rejects unknown, missing, mismatched, and malformed prepare authority', () => {
+    const request = actionTransactionPrepare();
+    expect(isPhysicPaintActionTransactionPrepareRequest({ ...request, unknown: true })).toBe(false);
+    expect(isPhysicPaintActionTransactionPrepareRequest({ ...request, generation: 0 })).toBe(false);
+    expect(isPhysicPaintActionTransactionPrepareRequest({
+      ...request, authority: { ...request.authority, expectedActionPresent: false },
+    })).toBe(false);
+    expect(isPhysicPaintActionTransactionPrepareRequest({
+      ...request, retainedArtifact: { ...request.retainedArtifact, commandId: 'other-command' },
+    })).toBe(false);
+    expect(isPhysicPaintActionTransactionPrepareRequest({
+      ...request, retainedArtifact: { ...request.retainedArtifact, integritySha256: 'bad' },
+    })).toBe(false);
+    expect(isPhysicPaintActionTransactionPrepareRequest({
+      ...request, target: { ...request.target, physicalRevision: 'stale-revision' },
+    })).toBe(false);
+    expect(isPhysicPaintActionTransactionPrepareRequest({
+      ...request, target: { ...request.target, selectedGroupId: '' },
+    })).toBe(false);
+    expect(isPhysicPaintActionTransactionPrepareRequest({
+      ...request, target: { ...request.target, cursorAppFrame: 24 },
+    })).toBe(false);
+    expect(isPhysicPaintActionTransactionPrepareRequest({
+      ...request,
+      target: { ...request.target, physicalDocument: { ...request.target.physicalDocument, unknown: true } },
+    })).toBe(false);
+  });
+
+  it('distinguishes every durable journal and retained-history result state', () => {
+    const request = actionTransactionPrepare();
+    const record = { schemaVersion: 1, state: 'prepared', ...request };
+    expect(isPhysicPaintActionTransactionResult(record)).toBe(true);
+    expect(isPhysicPaintActionTransactionResult({ ...record, state: 'committed' })).toBe(true);
+    expect(isPhysicPaintActionTransactionResult({ ...record, state: 'recovery-required' })).toBe(true);
+    expect(isPhysicPaintActionTransactionResult({
+      state: 'recovered-prepared', token: request.token, actionPresent: true,
+    })).toBe(true);
+    expect(isPhysicPaintActionTransactionResult({
+      state: 'cleanup-pending', schemaVersion: 1, token: request.token,
+      commandId: request.commandId, generation: request.generation,
+      operationId: request.operationId, leaseToken: request.leaseToken, direction: request.direction,
+    })).toBe(true);
+    expect(isPhysicPaintActionTransactionResult({
+      state: 'acknowledged', token: request.token, commandId: request.commandId,
+      generation: request.generation, operationId: request.operationId,
+      leaseToken: request.leaseToken, direction: request.direction, cleaned: true,
+    })).toBe(true);
+    expect(isPhysicPaintActionTransactionResult({
+      state: 'released', projectContextId: request.authority.projectContextId,
+      launchOperationId: request.authority.launchOperationId, commandId: request.commandId,
+      generation: request.generation, reason: 'eviction', released: true,
+    })).toBe(true);
+    expect(isPhysicPaintActionTransactionResult({
+      state: 'failed', code: 'active-recovery-blocked', error: 'Recovery is active',
+    })).toBe(true);
+  });
+
+  it('validates retained metadata and rejects stale-shaped result variants', () => {
+    const request = actionTransactionPrepare();
+    expect(isPhysicPaintActionRetainedArtifactStatus({
+      schemaVersion: 1, state: 'retained',
+      projectContextId: request.authority.projectContextId,
+      launchOperationId: request.authority.launchOperationId,
+      ...request.retainedArtifact,
+      byteLength: 128,
+    })).toBe(true);
+    expect(isPhysicPaintActionRetainedArtifactStatus({
+      schemaVersion: 1, state: 'retained', projectContextId: 'project-context-1',
+      launchOperationId: 'launch-1', ...request.retainedArtifact, byteLength: -1,
+    })).toBe(false);
+    expect(isPhysicPaintActionTransactionResult({
+      schemaVersion: 1, state: 'prepared', ...request, token: 'stale-token',
+    })).toBe(true);
+    expect(isPhysicPaintActionTransactionResult({
+      schemaVersion: 1, state: 'prepared', ...request, unexpected: true,
+    })).toBe(false);
+    expect(isPhysicPaintActionTransactionResult({
+      state: 'acknowledged', token: request.token, commandId: request.commandId,
+      generation: request.generation, operationId: request.operationId,
+      leaseToken: request.leaseToken, direction: 'sideways', cleaned: true,
+    })).toBe(false);
   });
 });
