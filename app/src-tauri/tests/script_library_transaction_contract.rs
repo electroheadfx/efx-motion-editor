@@ -42,24 +42,42 @@ fn action_document(id: &str) -> Value {
     })
 }
 
-fn prepare_request(action_id: &str, action_revision: &str, token: &str) -> Value {
+fn action_integrity(fixture: &FixtureLibrary, action_id: &str) -> String {
+    let bytes = std::fs::read(
+        fixture
+            .scripts_root()
+            .join(format!("{action_id}.efx-roto-script.json")),
+    )
+    .unwrap();
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+fn prepare_request_with_direction(
+    action_id: &str,
+    action_revision: &str,
+    integrity_sha256: &str,
+    token: &str,
+    direction: &str,
+) -> Value {
+    let expected_action_present = direction != "undo";
+    let target_suffix = if direction == "undo" { "before" } else { "after" };
     json!({
         "token": token,
         "commandId": "history-command-10",
         "generation": 1,
-        "operationId": "delete-operation-1",
-        "leaseToken": "lease-token-1",
-        "direction": "forward",
+        "operationId": format!("{direction}-operation-1"),
+        "leaseToken": format!("{direction}-lease-token-1"),
+        "direction": direction,
         "mode": "keep-groups",
         "authority": {
             "projectContextId": "project-context-1",
             "layerId": "layer-1",
             "launchOperationId": "launch-1",
             "actionId": action_id,
-            "expectedActionPresent": true,
+            "expectedActionPresent": expected_action_present,
             "expectedActionRevision": action_revision,
-            "expectedPhysicalRevision": "physical-before",
-            "expectedPhysicalHash": "hash-before"
+            "expectedPhysicalRevision": if direction == "undo" { "physical-after" } else { "physical-before" },
+            "expectedPhysicalHash": if direction == "undo" { "hash-after" } else { "hash-before" }
         },
         "impactDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         "retainedArtifact": {
@@ -68,16 +86,31 @@ fn prepare_request(action_id: &str, action_revision: &str, token: &str) -> Value
             "actionId": action_id,
             "managedPath": format!("scripts/{action_id}.efx-roto-script.json"),
             "originalRevision": action_revision,
-            "integritySha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+            "integritySha256": integrity_sha256
         },
         "target": {
-            "physicalRevision": "physical-after",
-            "physicalHash": "hash-after",
-            "physicalDocument": {"revision":"physical-after","realKeyRecords":[],"loopClips":[]},
+            "physicalRevision": format!("physical-{target_suffix}"),
+            "physicalHash": format!("hash-{target_suffix}"),
+            "physicalDocument": {"revision":format!("physical-{target_suffix}"),"realKeyRecords":[],"loopClips":[]},
             "selectedGroupId": "group-1",
             "cursorAppFrame": 18
         }
     })
+}
+
+fn prepare_request(
+    fixture: &FixtureLibrary,
+    action_id: &str,
+    action_revision: &str,
+    token: &str,
+) -> Value {
+    prepare_request_with_direction(
+        action_id,
+        action_revision,
+        &action_integrity(fixture, action_id),
+        token,
+        "forward",
+    )
 }
 
 #[test]
@@ -87,7 +120,7 @@ fn prepare_persists_exact_closed_recovery_payload_without_mutating_action() {
     let saved = fixture.save(action_document(&action_id)).unwrap();
     let revision = saved.scan.rows[0].revision.clone();
     let token = Uuid::new_v4().to_string();
-    let request = prepare_request(&action_id, &revision, &token);
+    let request = prepare_request(&fixture, &action_id, &revision, &token);
 
     let prepared = fixture.prepare_transaction(request.clone()).unwrap();
     assert_eq!(prepared["state"], "prepared");
@@ -110,7 +143,7 @@ fn prepare_rejects_stale_closed_replayed_and_conflicting_requests() {
     let revision = saved.scan.rows[0].revision.clone();
 
     let stale_token = Uuid::new_v4().to_string();
-    let mut stale = prepare_request(&action_id, &revision, &stale_token);
+    let mut stale = prepare_request(&fixture, &action_id, &revision, &stale_token);
     stale["authority"]["expectedActionRevision"] = json!("stale-revision");
     assert!(fixture
         .prepare_transaction(stale)
@@ -118,11 +151,11 @@ fn prepare_rejects_stale_closed_replayed_and_conflicting_requests() {
         .contains("changed externally"));
 
     let token = Uuid::new_v4().to_string();
-    let accepted = prepare_request(&action_id, &revision, &token);
+    let accepted = prepare_request(&fixture, &action_id, &revision, &token);
     fixture.prepare_transaction(accepted.clone()).unwrap();
     assert!(fixture.prepare_transaction(accepted).is_err());
 
-    let conflicting = prepare_request(&action_id, &revision, &Uuid::new_v4().to_string());
+    let conflicting = prepare_request(&fixture, &action_id, &revision, &Uuid::new_v4().to_string());
     assert!(fixture
         .prepare_transaction(conflicting)
         .unwrap_err()
@@ -132,6 +165,7 @@ fn prepare_rejects_stale_closed_replayed_and_conflicting_requests() {
     let second_id = Uuid::new_v4().to_string();
     let second_saved = second.save(action_document(&second_id)).unwrap();
     let mut unknown = prepare_request(
+        &second,
         &second_id,
         &second_saved.scan.rows[0].revision,
         &Uuid::new_v4().to_string(),
@@ -151,7 +185,7 @@ fn prepare_record_is_synced_json_with_exact_target_digest() {
     let revision = saved.scan.rows[0].revision.clone();
     let token = Uuid::new_v4().to_string();
     fixture
-        .prepare_transaction(prepare_request(&action_id, &revision, &token))
+        .prepare_transaction(prepare_request(&fixture, &action_id, &revision, &token))
         .unwrap();
 
     let bytes = std::fs::read(
@@ -175,7 +209,7 @@ fn commit_moves_action_to_hidden_tombstone_and_gates_ordinary_scan() {
     let revision = saved.scan.rows[0].revision.clone();
     let token = Uuid::new_v4().to_string();
     fixture
-        .prepare_transaction(prepare_request(&action_id, &revision, &token))
+        .prepare_transaction(prepare_request(&fixture, &action_id, &revision, &token))
         .unwrap();
 
     let committed = fixture.commit_transaction(&token).unwrap();
@@ -210,7 +244,7 @@ fn prepared_restart_recovery_restores_action_before_normal_scan() {
     let revision = saved.scan.rows[0].revision.clone();
     let token = Uuid::new_v4().to_string();
     fixture
-        .prepare_transaction(prepare_request(&action_id, &revision, &token))
+        .prepare_transaction(prepare_request(&fixture, &action_id, &revision, &token))
         .unwrap();
 
     let action_path = fixture
@@ -247,7 +281,7 @@ fn acknowledge_cleans_only_active_state_and_is_exactly_idempotent() {
     let saved = fixture.save(action_document(&action_id)).unwrap();
     let revision = saved.scan.rows[0].revision.clone();
     let token = Uuid::new_v4().to_string();
-    let prepare = prepare_request(&action_id, &revision, &token);
+    let prepare = prepare_request(&fixture, &action_id, &revision, &token);
     fixture.prepare_transaction(prepare.clone()).unwrap();
     fixture.commit_transaction(&token).unwrap();
 
@@ -287,10 +321,174 @@ fn commit_and_recovery_reject_unknown_stale_and_replayed_tokens() {
     let revision = saved.scan.rows[0].revision.clone();
     let token = Uuid::new_v4().to_string();
     fixture
-        .prepare_transaction(prepare_request(&action_id, &revision, &token))
+        .prepare_transaction(prepare_request(&fixture, &action_id, &revision, &token))
         .unwrap();
     fixture.commit_transaction(&token).unwrap();
     assert!(fixture.commit_transaction(&token).is_err());
+}
+
+fn retained_history_files(fixture: &FixtureLibrary) -> Vec<std::path::PathBuf> {
+    let mut files = std::fs::read_dir(fixture.scripts_root().join(".action-transactions"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("retained-"))
+        })
+        .collect::<Vec<_>>();
+    files.sort();
+    files
+}
+
+#[test]
+fn history_forward_retains_exact_action_bytes_after_acknowledge() {
+    let fixture = FixtureLibrary::new().unwrap();
+    let action_id = Uuid::new_v4().to_string();
+    let saved = fixture.save(action_document(&action_id)).unwrap();
+    let revision = saved.scan.rows[0].revision.clone();
+    let action_path = fixture
+        .scripts_root()
+        .join(format!("{action_id}.efx-roto-script.json"));
+    let original_bytes = std::fs::read(&action_path).unwrap();
+    let token = Uuid::new_v4().to_string();
+    let prepare = prepare_request(&fixture, &action_id, &revision, &token);
+
+    fixture.prepare_transaction(prepare.clone()).unwrap();
+    let retained = retained_history_files(&fixture);
+    assert_eq!(retained.len(), 2, "expected retained bytes plus metadata");
+    let bytes_path = retained
+        .iter()
+        .find(|path| path.extension().and_then(|ext| ext.to_str()) == Some("action"))
+        .unwrap();
+    assert_eq!(std::fs::read(bytes_path).unwrap(), original_bytes);
+
+    fixture.commit_transaction(&token).unwrap();
+    fixture
+        .acknowledge_transaction(acknowledge_request(&prepare))
+        .unwrap();
+    assert_eq!(retained_history_files(&fixture).len(), 2);
+    assert!(!action_path.exists());
+}
+
+#[test]
+fn history_undo_and_redo_restore_and_remove_exact_action_authority() {
+    let fixture = FixtureLibrary::new().unwrap();
+    let action_id = Uuid::new_v4().to_string();
+    let saved = fixture.save(action_document(&action_id)).unwrap();
+    let revision = saved.scan.rows[0].revision.clone();
+    let action_path = fixture
+        .scripts_root()
+        .join(format!("{action_id}.efx-roto-script.json"));
+    let original_bytes = std::fs::read(&action_path).unwrap();
+    let integrity = format!("{:x}", Sha256::digest(&original_bytes));
+
+    let forward_token = Uuid::new_v4().to_string();
+    let forward = prepare_request_with_direction(
+        &action_id,
+        &revision,
+        &integrity,
+        &forward_token,
+        "forward",
+    );
+    fixture.prepare_transaction(forward.clone()).unwrap();
+    fixture.commit_transaction(&forward_token).unwrap();
+    fixture
+        .acknowledge_transaction(acknowledge_request(&forward))
+        .unwrap();
+
+    let undo_token = Uuid::new_v4().to_string();
+    let undo = prepare_request_with_direction(
+        &action_id,
+        &revision,
+        &integrity,
+        &undo_token,
+        "undo",
+    );
+    fixture.prepare_transaction(undo.clone()).unwrap();
+    let undo_committed = fixture.commit_transaction(&undo_token).unwrap();
+    assert_eq!(undo_committed["direction"], "undo");
+    assert_eq!(undo_committed["target"]["physicalRevision"], "physical-before");
+    assert_eq!(std::fs::read(&action_path).unwrap(), original_bytes);
+    fixture
+        .acknowledge_transaction(acknowledge_request(&undo))
+        .unwrap();
+
+    let redo_token = Uuid::new_v4().to_string();
+    let redo = prepare_request_with_direction(
+        &action_id,
+        &revision,
+        &integrity,
+        &redo_token,
+        "redo",
+    );
+    fixture.prepare_transaction(redo.clone()).unwrap();
+    let redo_committed = fixture.commit_transaction(&redo_token).unwrap();
+    assert_eq!(redo_committed["direction"], "redo");
+    assert_eq!(redo_committed["target"]["physicalRevision"], "physical-after");
+    assert!(!action_path.exists());
+    fixture
+        .acknowledge_transaction(acknowledge_request(&redo))
+        .unwrap();
+    assert_eq!(retained_history_files(&fixture).len(), 2);
+}
+
+#[test]
+fn history_prepare_rejects_integrity_mismatch_and_recovers_interrupted_undo() {
+    let fixture = FixtureLibrary::new().unwrap();
+    let action_id = Uuid::new_v4().to_string();
+    let saved = fixture.save(action_document(&action_id)).unwrap();
+    let revision = saved.scan.rows[0].revision.clone();
+    let action_path = fixture
+        .scripts_root()
+        .join(format!("{action_id}.efx-roto-script.json"));
+    let original_bytes = std::fs::read(&action_path).unwrap();
+    let integrity = format!("{:x}", Sha256::digest(&original_bytes));
+
+    let mut invalid = prepare_request_with_direction(
+        &action_id,
+        &revision,
+        &integrity,
+        &Uuid::new_v4().to_string(),
+        "forward",
+    );
+    invalid["retainedArtifact"]["integritySha256"] =
+        json!("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+    assert!(fixture
+        .prepare_transaction(invalid)
+        .unwrap_err()
+        .contains("integrity"));
+
+    let forward_token = Uuid::new_v4().to_string();
+    let forward = prepare_request_with_direction(
+        &action_id,
+        &revision,
+        &integrity,
+        &forward_token,
+        "forward",
+    );
+    fixture.prepare_transaction(forward.clone()).unwrap();
+    fixture.commit_transaction(&forward_token).unwrap();
+    fixture
+        .acknowledge_transaction(acknowledge_request(&forward))
+        .unwrap();
+
+    let undo_token = Uuid::new_v4().to_string();
+    let undo = prepare_request_with_direction(
+        &action_id,
+        &revision,
+        &integrity,
+        &undo_token,
+        "undo",
+    );
+    fixture.prepare_transaction(undo).unwrap();
+    std::fs::write(&action_path, &original_bytes).unwrap();
+
+    assert_eq!(fixture.scan().unwrap().rows.len(), 0);
+    assert!(!action_path.exists());
+    assert!(fixture.transaction_status(&undo_token).is_err());
+    assert_eq!(retained_history_files(&fixture).len(), 2);
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
