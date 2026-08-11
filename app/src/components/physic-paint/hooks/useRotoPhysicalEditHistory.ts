@@ -61,6 +61,7 @@ import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { effect, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { CompletedPaintMutation, PaintHistoryAvailability } from '@efxlab/efx-physic-paint';
 import type {
+  PhysicPaintActionHistoryReleaseReason,
   PhysicPaintActionRetainedArtifactReference,
   PhysicPaintActionTransactionMode,
   PhysicPaintRotoPhysicalEditOperationKind,
@@ -125,6 +126,7 @@ export interface ReferencedActionHistoryCommand {
     projectContextId: string;
     layerId: string;
     launchOperationId: string;
+    scriptLibraryAuthority: string;
     actionId: string;
     actionRevision: string;
   }>;
@@ -167,6 +169,10 @@ export interface ReferencedActionHistoryRoute {
   replay: (
     command: ReferencedActionHistoryCommand,
     direction: 'undo' | 'redo',
+  ) => Promise<boolean>;
+  release?: (
+    command: ReferencedActionHistoryCommand,
+    reason: PhysicPaintActionHistoryReleaseReason,
   ) => Promise<boolean>;
 }
 
@@ -385,6 +391,42 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     };
   }, []);
 
+  const releaseReferencedEntries = useCallback((
+    entries: readonly RotoPhysicalEditHistoryEntry<EngineState>[],
+    reason: PhysicPaintActionHistoryReleaseReason,
+  ) => {
+    const release = inputRef.current.referencedActionHistory?.release;
+    if (!release) return;
+    for (const entry of entries) {
+      if (entry.kind === 'referenced-action') void release(entry, reason);
+    }
+  }, []);
+
+  const trimAppliedHistory = useCallback(() => {
+    if (appliedRef.current.length <= 10) return;
+    const evicted = appliedRef.current.splice(0, appliedRef.current.length - 10);
+    releaseReferencedEntries(evicted, 'eviction');
+  }, [releaseReferencedEntries]);
+
+  const discardRedoHistory = useCallback(() => {
+    if (redoRef.current.length === 0) return;
+    const discarded = redoRef.current;
+    redoRef.current = [];
+    releaseReferencedEntries(discarded, 'redo-branch-truncation');
+  }, [releaseReferencedEntries]);
+
+  const clear = useCallback(() => {
+    const owned = [...appliedRef.current, ...redoRef.current];
+    appliedRef.current = [];
+    redoRef.current = [];
+    paintAvailabilityRef.current = { undo: 0, redo: 0 };
+    pendingReplayRef.current = null;
+    lastAcceptedOperationIdRef.current = null;
+    lastAcceptedReferencedActionRef.current = null;
+    publishAvailability();
+    releaseReferencedEntries(owned, 'session-history-clear');
+  }, [publishAvailability, releaseReferencedEntries]);
+
   const reconcilePaintBarriers = useCallback((availability: PaintHistoryAvailability) => {
     paintAvailabilityRef.current = availability;
     const trimOldestPaint = (entries: RotoPhysicalEditHistoryEntry<EngineState>[], maximum: number) => {
@@ -414,9 +456,10 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
         return false;
       });
     }
-    redoRef.current = [];
+    trimAppliedHistory();
+    discardRedoHistory();
     publishAvailability();
-  }, [publishAvailability]);
+  }, [discardRedoHistory, publishAvailability, trimAppliedHistory]);
 
   const recordAcceptedEdit = useCallback((accepted: RotoPhysicalEditAcceptedOutput<EngineState>) => {
     const identity = inputRef.current.identity;
@@ -467,9 +510,10 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       selectedAppFrame: accepted.after.selectedAppFrame,
     };
     appliedRef.current.push(command);
-    redoRef.current = [];
+    trimAppliedHistory();
+    discardRedoHistory();
     publishAvailability();
-  }, [publishAvailability]);
+  }, [discardRedoHistory, publishAvailability, trimAppliedHistory]);
 
   // Signal effects subscribe only to external acceptance streams. Ordinary
   // coordinator acceptance and committed referenced-Action acceptance remain
@@ -493,34 +537,30 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
         || accepted.after.document.capacity !== historyIdentity.capacity) return;
       lastAcceptedReferencedActionRef.current = identity;
       appliedRef.current.push(accepted);
-      redoRef.current = [];
+      trimAppliedHistory();
+      discardRedoHistory();
       publishAvailability();
     });
     return () => {
       disposePhysical();
       disposeReferencedAction();
     };
-  }, [publishAvailability, recordAcceptedEdit]);
+  }, [discardRedoHistory, publishAvailability, recordAcceptedEdit, trimAppliedHistory]);
 
   // Launch-identity reset: clear both stacks, the pending replay, the
   // dedupe cache, and publish availability once. Late accepted callbacks
   // for the previous launch are rejected by the identity check in
   // recordAcceptedEdit.
   useEffect(() => {
-    appliedRef.current = [];
-    redoRef.current = [];
-    paintAvailabilityRef.current = { undo: 0, redo: 0 };
-    pendingReplayRef.current = null;
-    lastAcceptedOperationIdRef.current = null;
-    lastAcceptedReferencedActionRef.current = null;
-    publishAvailability();
+    clear();
   }, [
     input.identity?.launchOperationId,
     input.identity?.layerId,
     input.identity?.projectContextId,
     input.identity?.capacity,
-    publishAvailability,
+    clear,
   ]);
+  useEffect(() => () => clear(), [clear]);
 
   const undo = useCallback(async (): Promise<boolean> => {
     const coordinator = inputRef.current.coordinator;
@@ -646,6 +686,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
   }, [publishAvailability]);
 
   return {
+    clear,
     observePaintMutation,
     recordAcceptedEdit,
     reconcilePaintBarriers,

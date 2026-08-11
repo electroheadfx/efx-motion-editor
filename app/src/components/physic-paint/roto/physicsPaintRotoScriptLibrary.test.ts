@@ -450,6 +450,11 @@ describe('startup Action transaction recovery gate', () => {
     expect(request).not.toHaveBeenCalled();
     expect(controller.recoveryReady.value).toBe(false);
     expect(controller.availability.value).toMatchObject({ canSave: false, canLoad: false, canRename: false, canDelete: false });
+    const rowsWhileRecoveryOwnsHistory = controller.rows.value;
+    const statusWhileRecoveryOwnsHistory = controller.status.value;
+    await Promise.resolve();
+    expect(controller.rows.value).toBe(rowsWhileRecoveryOwnsHistory);
+    expect(controller.status.value).toBe(statusWhileRecoveryOwnsHistory);
     finishRecovery({ ok: true });
     await hydration;
     expect(order).toEqual(['scan']);

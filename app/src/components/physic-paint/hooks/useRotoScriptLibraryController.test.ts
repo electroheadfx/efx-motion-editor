@@ -201,7 +201,7 @@ describe('production referenced Action history direction orchestration', () => {
       },
       authority: {
         projectContextId: 'context-1', layerId: 'layer-1', launchOperationId: 'launch',
-        actionId: row.id, actionRevision: row.revision,
+        scriptLibraryAuthority: 'native-authority', actionId: row.id, actionRevision: row.revision,
       },
       before: {
         physicalRevision: beforeDocument.revision,
@@ -305,15 +305,14 @@ describe('retained Action history release correlation', () => {
         ? { state: 'failed' as const, code: 'active-recovery-blocked' as const, error: 'Recovery is active.' }
         : { ...request, state: 'released' as const, released: true };
     });
-    const manager = createReferencedActionHistoryReleaseManager({
-      getAuthority: () => 'native-authority',
-      release,
-    });
+    const manager = createReferencedActionHistoryReleaseManager({ release });
     const command = {
       kind: 'referenced-action',
       commandId: 'history-command-release',
       generation: 12,
-      authority: { projectContextId: 'context-1', launchOperationId: 'launch' },
+      authority: {
+        projectContextId: 'context-1', launchOperationId: 'launch', scriptLibraryAuthority: 'native-authority',
+      },
     } as ReferencedActionHistoryCommand;
 
     await expect(manager.release(command, 'eviction')).resolves.toBe(false);

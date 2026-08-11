@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { signal, type Signal } from '@preact/signals';
 import type {
+  PhysicPaintActionHistoryReleaseReason,
+  PhysicPaintActionHistoryReleaseRequest,
   PhysicPaintActionTransactionPrepareRequest,
   PhysicPaintActionTransactionRecord,
   PhysicPaintActionTransactionResult,
@@ -14,6 +16,7 @@ import {
   scriptLibraryDiscoverActionTransaction,
   scriptLibraryPrepareActionTransaction,
   scriptLibraryRecoverActionTransaction,
+  scriptLibraryReleaseActionHistory,
 } from '../../../lib/ipc';
 import {
   applyCommittedReferencedActionDeletion,
@@ -115,7 +118,7 @@ export function createReferencedActionHistoryReplayOrchestrator(
     if ((expectedActionPresent && currentActionRevision !== command.authority.actionRevision)
       || (!expectedActionPresent && currentActionRevision !== null)) return false;
     const authority = ports.getAuthority();
-    if (!authority) return false;
+    if (!authority || authority !== command.authority.scriptLibraryAuthority) return false;
     const leaseToken = ports.acquireLease(
       command.authority.projectContextId,
       command.authority.layerId,
@@ -200,6 +203,77 @@ export function createReferencedActionHistoryReplayOrchestrator(
   };
 }
 
+interface ReferencedActionHistoryReleaseManagerPorts {
+  release: (
+    authority: string,
+    request: PhysicPaintActionHistoryReleaseRequest,
+  ) => Promise<PhysicPaintActionTransactionResult>;
+}
+
+export interface ReferencedActionHistoryReleaseManager {
+  release: (
+    command: ReferencedActionHistoryCommand,
+    reason: PhysicPaintActionHistoryReleaseReason,
+  ) => Promise<boolean>;
+  retryDeferred: () => Promise<boolean>;
+  pendingCount: () => number;
+}
+
+export function createReferencedActionHistoryReleaseManager(
+  ports: ReferencedActionHistoryReleaseManagerPorts,
+): ReferencedActionHistoryReleaseManager {
+  const pending = new Map<string, Readonly<{
+    command: ReferencedActionHistoryCommand;
+    reason: PhysicPaintActionHistoryReleaseReason;
+  }>>();
+  const keyFor = (command: ReferencedActionHistoryCommand, reason: PhysicPaintActionHistoryReleaseReason) =>
+    `${command.authority.projectContextId}:${command.authority.launchOperationId}:${command.commandId}:${command.generation}:${reason}`;
+
+  const release = async (
+    command: ReferencedActionHistoryCommand,
+    reason: PhysicPaintActionHistoryReleaseReason,
+  ): Promise<boolean> => {
+    const key = keyFor(command, reason);
+    const authority = command.authority.scriptLibraryAuthority;
+    if (!authority) return false;
+    const request: PhysicPaintActionHistoryReleaseRequest = Object.freeze({
+      projectContextId: command.authority.projectContextId,
+      launchOperationId: command.authority.launchOperationId,
+      commandId: command.commandId,
+      generation: command.generation,
+      reason,
+    });
+    try {
+      const result = await ports.release(authority, request);
+      if (result.state === 'released'
+        && result.projectContextId === request.projectContextId
+        && result.launchOperationId === request.launchOperationId
+        && result.commandId === request.commandId
+        && result.generation === request.generation
+        && result.reason === request.reason) {
+        pending.delete(key);
+        return true;
+      }
+    } catch {
+      // Durable ownership remains queued for the next recovery-safe retry.
+    }
+    pending.set(key, Object.freeze({ command, reason }));
+    return false;
+  };
+
+  return {
+    release,
+    retryDeferred: async () => {
+      let releasedAll = true;
+      for (const owned of [...pending.values()]) {
+        if (!await release(owned.command, owned.reason)) releasedAll = false;
+      }
+      return releasedAll;
+    },
+    pendingCount: () => pending.size,
+  };
+}
+
 function failedResult(request: PhysicPaintScriptLibraryRequest, error: string): PhysicPaintScriptLibraryResult {
   return { operationId: request.operationId, kind: request.kind, ok: false, rows: [], skippedInvalidCount: 0, diagnostics: [], error };
 }
@@ -250,6 +324,7 @@ export function createRotoScriptLibraryRequestLifecycle(ports: RotoScriptLibrary
 interface NativeReferencedActionDeletionPorts extends ReferencedActionDeletionPorts {
   readonly acceptedHistory: Signal<ReferencedActionHistoryCommand | null>;
   readonly replayHistory: ReferencedActionHistoryRoute['replay'];
+  readonly releaseHistory: NonNullable<ReferencedActionHistoryRoute['release']>;
 }
 
 function createNativeReferencedActionDeletionPorts(
@@ -257,6 +332,9 @@ function createNativeReferencedActionDeletionPorts(
 ): NativeReferencedActionDeletionPorts {
   const leases = new Map<string, PhysicPaintRotoPhysicalOperationLeaseToken>();
   const acceptedHistory = signal<ReferencedActionHistoryCommand | null>(null);
+  const releaseManager = createReferencedActionHistoryReleaseManager({
+    release: scriptLibraryReleaseActionHistory,
+  });
   let transactionGeneration = 0;
   const encodeLease = (lease: PhysicPaintRotoPhysicalOperationLeaseToken) =>
     `${lease.projectContextId}:${lease.layerId}:${lease.generation}:${lease.owner}`;
@@ -305,6 +383,8 @@ function createNativeReferencedActionDeletionPorts(
       });
       if (!result.ok) return { ok: false, error: `Committed Action settlement failed: ${result.reason}` };
       const authority = prepared.request.authority;
+      const scriptLibraryAuthority = deletionPorts.getAuthority?.() ?? null;
+      if (!scriptLibraryAuthority) return { ok: false, error: 'Script library history authority is unavailable.' };
       acceptedHistory.value = Object.freeze({
         kind: 'referenced-action' as const,
         commandId: result.history.commandId,
@@ -315,6 +395,7 @@ function createNativeReferencedActionDeletionPorts(
           projectContextId: authority.projectContextId,
           layerId: authority.layerId,
           launchOperationId: authority.launchOperationId,
+          scriptLibraryAuthority,
           actionId: authority.actionId,
           actionRevision: authority.expectedActionRevision,
         }),
@@ -336,7 +417,10 @@ function createNativeReferencedActionDeletionPorts(
       const authority = context.project?.scriptLibraryAuthority;
       if (!authority) return { ok: false, error: 'Script library recovery authority is unavailable.' };
       const discovered = await scriptLibraryDiscoverActionTransaction(authority);
-      if (discovered === null) return { ok: true };
+      if (discovered === null) {
+        await releaseManager.retryDeferred();
+        return { ok: true };
+      }
       if (discovered.state === 'failed') return { ok: false, error: discovered.error };
       if (discovered.state !== 'prepared' && discovered.state !== 'committed') {
         return { ok: false, error: 'Recovery discovery returned an invalid durable state.' };
@@ -355,7 +439,10 @@ function createNativeReferencedActionDeletionPorts(
       const recovered = await scriptLibraryRecoverActionTransaction(authority, discovered);
       if (discovered.state === 'prepared') {
         const restored = recovered.state === 'recovered-prepared';
-        if (restored) physicPaintStore.releaseRotoPhysicalOperationLease(recoveryLease);
+        if (restored) {
+          physicPaintStore.releaseRotoPhysicalOperationLease(recoveryLease);
+          await releaseManager.retryDeferred();
+        }
         return restored ? { ok: true } : { ok: false, error: recovered.state === 'failed' ? recovered.error : 'Prepared Action recovery failed.' };
       }
       if (recovered.state !== 'recovery-required') {
@@ -400,6 +487,7 @@ function createNativeReferencedActionDeletionPorts(
         return { ok: false, error: acknowledged.state === 'failed' ? acknowledged.error : 'Recovery acknowledgement remains pending.' };
       }
       physicPaintStore.releaseRotoPhysicalOperationLease(recoveryLease);
+      await releaseManager.retryDeferred();
       return { ok: true };
     },
   };
@@ -455,7 +543,11 @@ function createNativeReferencedActionDeletionPorts(
     },
     acknowledge: scriptLibraryAcknowledgeActionTransaction,
   });
-  return Object.assign(deletionPorts, { acceptedHistory, replayHistory });
+  return Object.assign(deletionPorts, {
+    acceptedHistory,
+    replayHistory,
+    releaseHistory: releaseManager.release,
+  });
 }
 
 export function createRotoScriptLibraryControllerAdapter(
@@ -514,6 +606,7 @@ export function useRotoScriptLibraryController(
       referencedActionHistory: Object.freeze({
         accepted: nativePorts.acceptedHistory,
         replay: nativePorts.replayHistory,
+        release: nativePorts.releaseHistory,
       }),
     });
   }

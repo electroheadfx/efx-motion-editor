@@ -580,6 +580,7 @@ describe('useRotoPhysicalEditHistory referenced Action replay', () => {
         projectContextId: 'project-1',
         layerId: 'layer-1',
         launchOperationId: 'launch-1',
+        scriptLibraryAuthority: 'native-authority',
         actionId: 'action-1',
         actionRevision: 'action-revision-1',
       },
@@ -681,6 +682,7 @@ describe('useRotoPhysicalEditHistory retained Action ownership', () => {
       },
       authority: {
         projectContextId: 'project-1', layerId: 'layer-1', launchOperationId: 'launch-1',
+        scriptLibraryAuthority: 'native-authority',
         actionId: 'action-1', actionRevision: 'action-revision-1',
       },
       before: { physicalRevision: base.stagedRevision, physicalHash: 'before-hash', document: toDocument(base), selectedGroupId: 'group-1', cursorAppFrame: 0 },
