@@ -5,10 +5,10 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Plan 43.2-25 automated-ready at frozen implementation a59d031d; blocking native Task 3 pending
-last_updated: "2026-08-11T20:40:00.000Z"
+stopped_at: Plan 43.2-25 automated-ready at frozen implementation 2418ed6c; blocking native Task 3 pending
+last_updated: "2026-08-11T20:55:00.000Z"
 last_activity: 2026-08-11
-last_activity_desc: Froze Plan 43.2-25 complete-document cursor transport, lifecycle-complete Repeat, and selection-scoped Delete automation at a59d031d; Plan 43.2-17 remains blocked pending frozen native UAT
+last_activity_desc: Froze Plan 43.2-25 complete-document cursor transport, Modified-Group-safe finite Repeat, and selection-scoped Delete automation at 2418ed6c; Plan 43.2-17 remains blocked pending frozen native UAT
 progress:
   total_phases: 8
   completed_phases: 5
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
 Plan: 17 of 25
-Status: Plan 43.2-25 automated-ready at frozen implementation `a59d031d`; blocked pending its fully restarted parent/child Task 3 and the remaining Plan 43.2-17 native checklist
+Status: Plan 43.2-25 automated-ready at frozen implementation `2418ed6c`; blocked pending its fully restarted parent/child Task 3 and the remaining Plan 43.2-17 native checklist
 Last activity: 2026-08-11 — Complete-document cursor transport, lifecycle-complete Repeat, and direct selection-scoped Delete passed all automated gates; Plan 43.2-17 remains blocked
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
@@ -391,7 +391,7 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: Plan 43.2-24 preserves independent Group selection and Action linkage Signals; production remains CSS-only.
 - [Phase 43.2]: Plan 43.2-25 makes `cursorAppFrame` mandatory, bounded, and independent from both operation `startFrame` and ordinary-key selection across apply, acknowledgement, settlement, and history.
 - [Phase 43.2]: Plan 43.2-25 rebuilds finite Repeat lifecycle extents before publication and routes Delete directly from frame versus Group Rail selection, with only the sole-occurrence warning retained.
-- [Phase 43.2]: Frozen implementation `a59d031d` is automated-ready, but Plan 43.2-17 and phase completion remain blocked until one fully restarted parent/child session passes the targeted and remaining native checklist.
+- [Phase 43.2]: Frozen implementation `2418ed6c` is automated-ready, but Plan 43.2-17 and phase completion remain blocked until one fully restarted parent/child session passes the targeted and remaining native checklist.
 
 ### Pending Todos
 
@@ -401,7 +401,7 @@ None yet.
 
 - Quick 260730-mn0 completed Apple signing preparation: one valid Developer ID identity, App Store Connect Team Key setup, fail-loud release script, and two operational guides. The real credentialed build/notarization/stapling/Gatekeeper/external-launch proof was explicitly deferred until after milestone close and remains unverified — run `docs/macos-signed-release.md`.
 - v0.8.0 audit-accepted tech debt and follow-ups are tracked in `## Deferred Items` below and in the MILESTONES.md v0.8.0 entry (resolver regression tests, CR-01/CR-02 + WR-01..04, legacy dual-model seam, dead playScriptMarkers, cache footprint).
-- Plan 43.2-25 implementation is frozen at `a59d031d`; Task 3 must test that exact code in one newly built, fully quit/restarted parent and Physics Paint child session. Hot reload, mixed bundles, reload, layer recreation, or restart-based retry are invalid evidence.
+- Plan 43.2-25 implementation is frozen at `2418ed6c`; Task 3 must test that exact code in one newly built, fully quit/restarted parent and Physics Paint child session. Hot reload, mixed bundles, reload, layer recreation, or restart-based retry are invalid evidence.
 - Plan 43.2-17 and phase completion remain blocked until UAT-11/UAT-02 plus the Plan 25 Delete Frame, Delete Group, finite Repeat, rejection/retry, Undo/Redo, save/reopen, playback, preview, and export rows pass with explicit frozen-session evidence.
 
 ### Quick Tasks Completed
@@ -584,12 +584,12 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-08-11T20:40:00.000Z
-Stopped at: Plan 43.2-25 Task 3 blocking native verification; frozen implementation `a59d031d`
+Stopped at: Plan 43.2-25 Task 3 blocking native verification; frozen implementation `2418ed6c`
 Resume file: .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-25-PLAN.md
 
 ## Operator Next Steps
 
-- Build `a59d031d`, fully quit and restart both parent and Physics Paint child, and execute Plan 43.2-25 Task 3 without hot reload or restart-based repair.
+- Build `2418ed6c`, fully quit and restart both parent and Physics Paint child, and execute Plan 43.2-25 Task 3 without hot reload or restart-based repair.
 - Record exact evidence for UAT-05, UAT-06, UAT-13, DELETE-FRAME, DELETE-GROUP, EDIT-GROUP-REPEAT, then complete every remaining Plan 43.2-17 native row.
 - Keep Plan 43.2-17 and phase completion blocked until the full frozen-session checklist passes.
 - Keep Phase 43.1 DF-01 through DF-04 deferred; do not create additional Phase 43.1 plans.

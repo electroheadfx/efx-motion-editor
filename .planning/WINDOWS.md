@@ -80,7 +80,7 @@ last_updated: 2026-08-11T20:44:55.517Z
 | 63 | 43.2 | deviation | .planning/STATE.md |  | Skipped state.advance-plan to preserve blocked Plan 43.2-17 while completing out-of-order gap Plan 43.2-21. | fixed |  | 2026-08-11T17:30:56.351Z | 2026-08-11T17:32:28.720Z |
 | 64 | 43.2 | unrun-verify | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-23-PLAN.md |  | Targeted copied-project frozen parent/child save-reopen verification remains pending; retained fixture was not accessed and Plan 43.2-17 remains blocked | open |  | 2026-08-11T17:52:56.791Z |  |
 | 65 | 43.2 | deviation | .planning/STATE.md |  | Corrected state.update-progress metadata from percent 63 to 97 while preserving Plan 43.2-17 as blocked | fixed |  | 2026-08-11T17:53:43.789Z | 2026-08-11T17:54:00.857Z |
-| 66 | 43.2 | unrun-verify | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md |  | Plan 43.2-25 frozen parent/child native Task 3 remains pending on implementation a59d031d | open |  | 2026-08-11T20:44:55.517Z |  |
+| 66 | 43.2 | unrun-verify | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md |  | Plan 43.2-25 frozen parent/child native Task 3 remains pending on implementation 2418ed6c | open |  | 2026-08-11T20:44:55.517Z |  |
 
 ````json
 [
@@ -870,7 +870,7 @@ last_updated: 2026-08-11T20:44:55.517Z
     "phase": "43.2",
     "file": ".planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md",
     "line": null,
-    "description": "Plan 43.2-25 frozen parent/child native Task 3 remains pending on implementation a59d031d",
+    "description": "Plan 43.2-25 frozen parent/child native Task 3 remains pending on implementation 2418ed6c",
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-11T20:44:55.517Z",
