@@ -10,6 +10,7 @@ import {
   isPhysicPaintRotoCacheFrame,
   isPhysicPaintRotoInterpolationSettings,
   isPhysicPaintRotoPhysicalEditApplyPayload,
+  isPhysicPaintRotoPhysicalEditApplyResult,
   isPhysicPaintRotoPhysicalEditIntent,
   normalizePhysicPaintRotoSegmentSpacingOverrides,
   serializePhysicPaintRotoPhysicalEditIntent,
@@ -26,38 +27,56 @@ const GROUP_FIELD_PARTICIPATION = [
   { field: 'frameOverrides', value: [{ appFrame: 7, keyId: 'override-7' }] },
 ] as const;
 
-function physicalApplyPayloadWithGroupField(field: string, value: unknown) {
-  const records = [{
-    keyId: 'key-0',
-    appFrame: 0,
-    payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
-  }];
+const groupTransportRecords = () => [{
+  keyId: 'key-0',
+  appFrame: 0,
+  payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
+}, {
+  keyId: 'override-1',
+  appFrame: 1,
+  payload: { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
+}];
+
+const completeTransportGroup = () => ({
+  loopId: 'loop-1',
+  placementStart: 0,
+  sourceKeyIds: ['key-0'],
+  repeat: 2,
+  mode: 'progressive' as const,
+  syncState: 'modified' as const,
+  provenanceState: 'attached' as const,
+  phaseOrigin: 0,
+  originalEndExclusive: 2,
+  visibleRanges: [{ start: 0, endExclusive: 2 }],
+  frameOverrides: [{ appFrame: 1, keyId: 'override-1' }],
+});
+
+function groupLifecycleApplyPayload(overrides: Record<string, unknown> = {}) {
   return {
     kind: 'replace-roto-physical-map',
-    operationId: `group-field-${field}`,
-    operationKind: 'move-key',
-    intent: {
-      kind: 'move-key',
-      movedKeyId: 'key-0',
-      target: { kind: 'physical-cell', appFrame: 0 },
-    },
+    operationId: 'group-paint-1',
+    operationKind: 'paint-group-frame',
     layerId: 'layer-1',
     startFrame: 0,
     launchOperationId: 'launch-1',
     expectedRevision: 'revision-1',
-    records,
+    records: groupTransportRecords(),
     interpolationEnabled: false,
     interpolationMode: 'duplicate',
-    selectedKeyId: 'key-0',
-    selectedAppFrame: 0,
-    loopClips: [{
-      loopId: 'loop-1',
-      placementStart: 0,
-      sourceKeyIds: ['key-0'],
-      repeat: 2,
-      mode: 'progressive',
-      [field]: value,
-    }],
+    selectedKeyId: 'override-1',
+    selectedAppFrame: 1,
+    loopClips: [completeTransportGroup()],
+    semanticDelta: {
+      kind: 'paint-group-frame',
+      groupId: 'loop-1',
+      appFrame: 1,
+      overrideKeyId: 'override-1',
+      createdOverride: true,
+      filledDeletedOccurrence: false,
+      previousRevision: 'revision-1',
+      nextRevision: 'revision-2',
+    },
+    ...overrides,
   };
 }
 
@@ -302,10 +321,79 @@ describe('physic paint payload contracts', () => {
     })).toBe(false);
   });
 
-  it.each(GROUP_FIELD_PARTICIPATION)('marks $field as unimplemented at the physical transport boundary', ({ field, value }) => {
-    expect(isPhysicPaintRotoPhysicalEditApplyPayload(
-      physicalApplyPayloadWithGroupField(field, value),
-    )).toBe(false);
+  it('accepts a lifecycle-complete Group Paint payload and exact settlement result', () => {
+    const payload = groupLifecycleApplyPayload();
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(payload)).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyResult({
+      operationId: payload.operationId,
+      kind: payload.kind,
+      operationKind: payload.operationKind,
+      layerId: payload.layerId,
+      startFrame: payload.startFrame,
+      launchOperationId: payload.launchOperationId,
+      expectedRevision: payload.expectedRevision,
+      stagedRevision: 'revision-2',
+      acceptedRevision: 'revision-2',
+      interpolationMode: payload.interpolationMode,
+      selectedKeyId: payload.selectedKeyId,
+      selectedAppFrame: payload.selectedAppFrame,
+      appliedFrameCount: 1,
+      ok: true,
+      semanticDelta: payload.semanticDelta,
+      loopClips: payload.loopClips,
+    })).toBe(true);
+  });
+
+  it.each([
+    ['delete-group-frame', {
+      kind: 'delete-group-frame', groupId: 'loop-1', appFrame: 1,
+      cleanupKeyIds: ['override-1'], previousRevision: 'revision-1', nextRevision: 'revision-2',
+    }],
+    ['delete-group', {
+      kind: 'delete-group', groupId: 'loop-1', cleanupKeyIds: ['override-1'],
+      previousRevision: 'revision-1', nextRevision: 'revision-2',
+    }],
+    ['regenerate-group', {
+      kind: 'regenerate-group', groupId: 'loop-1', expectedActionRevision: 'action-revision-1',
+      cleanupKeyIds: ['override-1'], previousRevision: 'revision-1', nextRevision: 'revision-2',
+    }],
+    ['detach-action-groups', {
+      kind: 'detach-action-groups', actionId: 'action-1', expectedActionRevision: 'action-revision-1',
+      affectedGroupIds: ['loop-1'], cleanupKeyIds: [], previousRevision: 'revision-1', nextRevision: 'revision-2',
+    }],
+    ['delete-action-groups', {
+      kind: 'delete-action-groups', actionId: 'action-1', expectedActionRevision: 'action-revision-1',
+      affectedGroupIds: ['loop-1'], cleanupKeyIds: ['override-1'], previousRevision: 'revision-1', nextRevision: 'revision-2',
+    }],
+  ] as const)('accepts the closed %s lifecycle operation impact', (operationKind, semanticDelta) => {
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(groupLifecycleApplyPayload({
+      operationId: `${operationKind}-1`, operationKind, semanticDelta,
+    }))).toBe(true);
+  });
+
+  it('rejects omitted, unknown, malformed, duplicate, and operation-mismatched Group lifecycle facts', () => {
+    const payload = groupLifecycleApplyPayload();
+    const incompleteGroup = { ...completeTransportGroup() } as Record<string, unknown>;
+    delete incompleteGroup.syncState;
+    const malformedRanges = { ...completeTransportGroup(), visibleRanges: [{ start: 0, endExclusive: 1 }, { start: 1, endExclusive: 2 }] };
+    const duplicateOverrides = { ...completeTransportGroup(), frameOverrides: [{ appFrame: 1, keyId: 'override-1' }, { appFrame: 1, keyId: 'override-2' }] };
+    const incompleteImpact = { ...payload.semanticDelta } as Record<string, unknown>;
+    delete incompleteImpact.createdOverride;
+
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, loopClips: [incompleteGroup] })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, loopClips: [{ ...completeTransportGroup(), unknown: true }] })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, loopClips: [malformedRanges] })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, loopClips: [duplicateOverrides] })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, semanticDelta: incompleteImpact })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, semanticDelta: { ...payload.semanticDelta, unknown: true } })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, operationKind: 'delete-group-frame' })).toBe(false);
+  });
+
+  it.each(GROUP_FIELD_PARTICIPATION)('rejects a Group carrying only the $field lifecycle field', ({ field, value }) => {
+    const partialGroup = {
+      loopId: 'loop-1', placementStart: 0, sourceKeyIds: ['key-0'], repeat: 2, mode: 'progressive', [field]: value,
+    };
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(groupLifecycleApplyPayload({ loopClips: [partialGroup] }))).toBe(false);
   });
 
   it('validates namespaced frame-sync messages', () => {
