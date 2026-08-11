@@ -1,7 +1,7 @@
 import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
-import type { EfxPaintAudioPreviewContext, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import { resolvePhysicPaintRotoPhysicalEdit, validatePhysicPaintRotoPhysicalEditSemanticDelta } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
@@ -23,7 +23,12 @@ import {
   type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {
+  classifyPhysicPaintRotoGroupFrameTarget,
+  proposePhysicPaintRotoActionGroupLifecycle,
+  proposePhysicPaintRotoDeleteGroup,
+  proposePhysicPaintRotoDeleteGroupFrame,
   proposePhysicPaintRotoGroupFramePaint,
+  proposePhysicPaintRotoRegenerateGroup,
   type PhysicPaintRotoGroupFramePaintImpact,
 } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
 import { parseCanonicalPhysicsPaintLaunchValue } from '../components/physic-paint/bridge/physicsPaintLaunchContext';
@@ -927,6 +932,113 @@ function applyFailureResult(payload: PhysicPaintApplyPayload, error: string): Ph
     : failureResult(payload, error);
 }
 
+const GROUP_LIFECYCLE_OPERATION_KINDS = new Set<PhysicPaintRotoPhysicalEditOperationKind>([
+  'paint-group-frame',
+  'delete-group-frame',
+  'delete-group',
+  'regenerate-group',
+  'detach-action-groups',
+  'delete-action-groups',
+]);
+
+function validateCanonicalGroupLifecycleEdit(input: {
+  readonly payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>;
+  readonly currentDocument: PhysicPaintRotoPhysicalDocument | null;
+  readonly proposedRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly proposedLoopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly proposedIncomingInterpolationBreakKeyIds: readonly string[];
+  readonly stagedInterpolation: PhysicPaintRotoInterpolationState;
+  readonly stagedRevision: string;
+  readonly cursorAppFrame: number;
+}): string | null {
+  const { payload, currentDocument } = input;
+  if (!GROUP_LIFECYCLE_OPERATION_KINDS.has(payload.operationKind)) return null;
+  if (!currentDocument) return 'Group lifecycle edit requires one current physical document.';
+  const delta = payload.semanticDelta;
+  if (!delta || delta.kind !== payload.operationKind) {
+    return 'Group lifecycle semantic delta does not match the operation kind.';
+  }
+  if (payload.intent !== undefined || payload.historyProvenance !== undefined) {
+    return 'Group lifecycle edits cannot carry ordinary intent or replay provenance.';
+  }
+
+  let recomputed:
+    | ReturnType<typeof proposePhysicPaintRotoGroupFramePaint>
+    | ReturnType<typeof proposePhysicPaintRotoDeleteGroupFrame>
+    | ReturnType<typeof proposePhysicPaintRotoDeleteGroup>
+    | ReturnType<typeof proposePhysicPaintRotoRegenerateGroup>
+    | ReturnType<typeof proposePhysicPaintRotoActionGroupLifecycle>;
+  if (delta.kind === 'paint-group-frame') {
+    const target = classifyPhysicPaintRotoGroupFrameTarget({
+      document: currentDocument,
+      appFrame: delta.appFrame,
+    });
+    if (target.kind === 'unresolved-group' || target.kind === 'ambiguous-group') {
+      return 'Group Paint target precedence is unresolved.';
+    }
+    const overrideRecord = input.proposedRecords.find((record) => record.keyId === delta.overrideKeyId);
+    if (!overrideRecord || overrideRecord.appFrame !== delta.appFrame) {
+      return 'Group Paint override record does not match the declared exact occurrence.';
+    }
+    recomputed = proposePhysicPaintRotoGroupFramePaint({
+      document: currentDocument,
+      groupId: delta.groupId,
+      appFrame: delta.appFrame,
+      overrideKeyId: delta.overrideKeyId,
+      renderedPayload: overrideRecord.payload,
+    });
+  } else if (delta.kind === 'delete-group-frame') {
+    recomputed = proposePhysicPaintRotoDeleteGroupFrame({
+      document: currentDocument,
+      groupId: delta.groupId,
+      appFrame: delta.appFrame,
+    });
+  } else if (delta.kind === 'delete-group') {
+    recomputed = proposePhysicPaintRotoDeleteGroup({
+      document: currentDocument,
+      groupId: delta.groupId,
+    });
+  } else if (delta.kind === 'regenerate-group') {
+    // The prepared Action transaction owns the live revision lookup. This seam
+    // independently binds the exact revision string into the recomputed impact.
+    recomputed = proposePhysicPaintRotoRegenerateGroup({
+      document: currentDocument,
+      groupId: delta.groupId,
+      expectedActionRevision: delta.expectedActionRevision,
+      currentActionRevision: delta.expectedActionRevision,
+    });
+  } else if (delta.kind === 'detach-action-groups' || delta.kind === 'delete-action-groups') {
+    recomputed = proposePhysicPaintRotoActionGroupLifecycle({
+      document: currentDocument,
+      actionId: delta.actionId,
+      expectedActionRevision: delta.expectedActionRevision,
+      currentActionRevision: delta.expectedActionRevision,
+      mode: delta.kind === 'detach-action-groups' ? 'detach' : 'delete',
+    });
+  } else {
+    return 'Group lifecycle semantic delta is not supported.';
+  }
+  if (!recomputed.ok) return `Group lifecycle proposal rejected: ${recomputed.reason}.`;
+  if (stableSerialize(recomputed.impact, new WeakSet<object>())
+      !== stableSerialize(delta as PhysicPaintRotoPhysicalEditSemanticDelta, new WeakSet<object>())) {
+    return 'Group lifecycle semantic impact does not match parent recomputation.';
+  }
+  const proposal = recomputed.proposal;
+  if (!sameCompletePhysicalRecords(proposal.realKeyRecords, input.proposedRecords)
+    || stableSerialize(proposal.loopClips, new WeakSet<object>())
+      !== stableSerialize(input.proposedLoopClips, new WeakSet<object>())
+    || stableSerialize(proposal.incomingInterpolationBreakKeyIds, new WeakSet<object>())
+      !== stableSerialize(input.proposedIncomingInterpolationBreakKeyIds, new WeakSet<object>())
+    || proposal.interpolation.enabled !== input.stagedInterpolation.enabled
+    || proposal.interpolation.mode !== input.stagedInterpolation.mode
+    || proposal.selectedKeyId !== payload.selectedKeyId
+    || proposal.cursorAppFrame !== input.cursorAppFrame
+    || proposal.revision !== input.stagedRevision) {
+    return 'Group lifecycle target document does not match parent recomputation.';
+  }
+  return null;
+}
+
 function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>): PhysicPaintRotoPhysicalEditApplyResult {
   const reject = (error: string, stagedRevision?: string) => physicalEditResult(payload, { ok: false, error, stagedRevision });
   const isPlayScript = payload.operationKind === 'play-script';
@@ -1144,6 +1256,17 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
   }
 
   const cursorAppFrame = payload.selectedAppFrame ?? Math.max(0, Math.min(capacity - 1, payload.startFrame));
+  const lifecycleValidationError = validateCanonicalGroupLifecycleEdit({
+    payload,
+    currentDocument,
+    proposedRecords,
+    proposedLoopClips,
+    proposedIncomingInterpolationBreakKeyIds,
+    stagedInterpolation,
+    stagedRevision,
+    cursorAppFrame,
+  });
+  if (lifecycleValidationError) return reject(lifecycleValidationError, stagedRevision);
   if (isReplay) {
     const provenance = payload.historyProvenance;
     const original = replayEntry;

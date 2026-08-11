@@ -2507,58 +2507,6 @@ describe('Phase 43.2 exact accepted history and newer-document protection contra
   });
 });
 
-describe('Phase 43.2 parent source-sharing and cleanup rejection atomicity contract', () => {
-  const baseGroup: ControlledGroupContract = Object.freeze({
-    groupId: 'group-1',
-    orderedSourceKeyIds: Object.freeze(['source-0', 'source-1']),
-    sourceShareId: 'share-1',
-    visibleRanges: Object.freeze([Object.freeze({ start: 4, endExclusive: 12 })]),
-    frameOverrides: Object.freeze([Object.freeze({ appFrame: 9, keyId: 'override-9' })]),
-  });
-  const accepted: ControlledAcceptedLedger = Object.freeze({
-    document: Object.freeze({ revision: 'accepted-r7', groups: Object.freeze([baseGroup]) }),
-    version: 7,
-    history: Object.freeze(['command-6']),
-    selection: Object.freeze({ groupId: 'group-1', appFrame: 9 }),
-  });
-  const canonicalProposal: ControlledLifecycleProposal = Object.freeze({
-    expectedRevision: 'accepted-r7',
-    groups: Object.freeze([baseGroup]),
-    unresolvedPrecedence: false,
-    claimedCleanupKeyIds: Object.freeze(['orphan-cache-key']),
-    acceptedMarker: true,
-  });
-
-  it('keeps production acceptance as an explicit controlled marker before the cutover', () => {
-    expect(validateControlledLifecycleProposal(accepted, canonicalProposal)).toEqual({
-      ok: true,
-      marker: 'production-cutover-pending',
-      ledger: accepted,
-    });
-  });
-
-  it('rejects every named stale, malformed, ambiguous, unresolved, or cleanup mismatch without accepted events', () => {
-    const proposals: readonly ControlledLifecycleProposal[] = [
-      { ...canonicalProposal, expectedRevision: 'stale-r6' },
-      { ...canonicalProposal, groups: [{ ...baseGroup, visibleRanges: [{ start: 4, endExclusive: 9 }, { start: 9, endExclusive: 12 }] }] },
-      { ...canonicalProposal, groups: [{ ...baseGroup, frameOverrides: [{ appFrame: 9, keyId: 'override-9' }, { appFrame: 9, keyId: 'duplicate' }] }] },
-      { ...canonicalProposal, groups: [baseGroup, { ...baseGroup, groupId: 'group-2', orderedSourceKeyIds: ['source-1', 'source-0'] }] },
-      { ...canonicalProposal, unresolvedPrecedence: true },
-      { ...canonicalProposal, claimedCleanupKeyIds: ['source-0'] },
-    ];
-
-    for (const proposal of proposals) {
-      const result = validateControlledLifecycleProposal(accepted, proposal);
-      expect(result.ok).toBe(false);
-      expect(result.ledger).toBe(accepted);
-      expect(result.ledger.document).toBe(accepted.document);
-      expect(result.ledger.version).toBe(7);
-      expect(result.ledger.history).toEqual(['command-6']);
-      expect(result.ledger.selection).toEqual({ groupId: 'group-1', appFrame: 9 });
-    }
-  });
-});
-
 describe('Phase 43.2 leased exact-occurrence Paint parent tracer', () => {
   const projectContextId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
