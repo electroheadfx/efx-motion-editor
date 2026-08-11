@@ -521,7 +521,11 @@ fn prepare_and_acknowledge_forward_history(
 
 #[test]
 fn history_release_requires_exact_owner_and_is_idempotent_for_owned_reasons() {
-    for reason in ["eviction", "redo-branch-truncation", "session-history-clear"] {
+    for reason in [
+        "eviction",
+        "redo-branch-truncation",
+        "session-history-clear",
+    ] {
         let fixture = FixtureLibrary::new().unwrap();
         let action_id = Uuid::new_v4().to_string();
         let saved = fixture.save(action_document(&action_id)).unwrap();
@@ -545,6 +549,66 @@ fn history_release_requires_exact_owner_and_is_idempotent_for_owned_reasons() {
             .unwrap();
         assert_eq!(repeated["released"], false);
     }
+}
+
+#[test]
+fn history_release_reconciles_interrupted_cleanup_and_rejects_reused_identity() {
+    let fixture = FixtureLibrary::new().unwrap();
+    let action_id = Uuid::new_v4().to_string();
+    let saved = fixture.save(action_document(&action_id)).unwrap();
+    let revision = saved.scan.rows[0].revision.clone();
+    let action_path = fixture
+        .scripts_root()
+        .join(format!("{action_id}.efx-roto-script.json"));
+    let original_bytes = std::fs::read(&action_path).unwrap();
+    let integrity = format!("{:x}", Sha256::digest(&original_bytes));
+    prepare_and_acknowledge_forward_history(&fixture, &action_id, &revision);
+
+    let retained = retained_history_files(&fixture)
+        .into_iter()
+        .map(|path| {
+            let bytes = std::fs::read(&path).unwrap();
+            (path, bytes)
+        })
+        .collect::<Vec<_>>();
+    fixture
+        .release_history(history_release_request("eviction"))
+        .unwrap();
+    for (path, bytes) in &retained {
+        std::fs::write(path, bytes).unwrap();
+    }
+    let transactions = fixture.scripts_root().join(".action-transactions");
+    let receipt_path = std::fs::read_dir(&transactions)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("released-"))
+        })
+        .unwrap();
+    let mut receipt: Value =
+        serde_json::from_slice(&std::fs::read(&receipt_path).unwrap()).unwrap();
+    receipt["state"] = json!("cleanup-pending");
+    std::fs::write(&receipt_path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+
+    assert_eq!(fixture.scan().unwrap().rows.len(), 0);
+    assert_eq!(retained_history_files(&fixture).len(), 0);
+    let reconciled: Value = serde_json::from_slice(&std::fs::read(&receipt_path).unwrap()).unwrap();
+    assert_eq!(reconciled["state"], "released");
+
+    let undo = prepare_request_with_direction(
+        &action_id,
+        &revision,
+        &integrity,
+        &Uuid::new_v4().to_string(),
+        "undo",
+    );
+    assert!(fixture
+        .prepare_transaction(undo)
+        .unwrap_err()
+        .contains("Released Action history"));
 }
 
 #[test]

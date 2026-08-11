@@ -101,6 +101,24 @@ pub struct ActionTransactionAcknowledgeRequest {
     pub direction: ActionTransactionDirection,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ActionHistoryReleaseReason {
+    Eviction,
+    RedoBranchTruncation,
+    SessionHistoryClear,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActionHistoryReleaseRequest {
+    pub project_context_id: String,
+    pub launch_operation_id: String,
+    pub command_id: String,
+    pub generation: u64,
+    pub reason: ActionHistoryReleaseReason,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ActionTransactionAcknowledgeReceipt {
@@ -129,6 +147,7 @@ struct RetainedActionArtifactMetadata {
     schema_version: u64,
     state: String,
     project_context_id: String,
+    launch_operation_id: String,
     command_id: String,
     generation: u64,
     action_id: String,
@@ -136,6 +155,18 @@ struct RetainedActionArtifactMetadata {
     original_revision: String,
     integrity_sha256: String,
     byte_length: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ActionHistoryReleaseReceipt {
+    schema_version: u64,
+    state: String,
+    project_context_id: String,
+    launch_operation_id: String,
+    command_id: String,
+    generation: u64,
+    reason: ActionHistoryReleaseReason,
 }
 
 #[derive(Default)]
@@ -420,6 +451,14 @@ pub fn acknowledge_transaction(
     })
 }
 
+pub fn release_action_history(
+    state: &ScriptLibraryState,
+    authority: &str,
+    request: ActionHistoryReleaseRequest,
+) -> Result<Value, String> {
+    state.with_active(authority, |root| release_action_history_root(root, request))
+}
+
 pub(crate) fn prepare_transaction_value(
     state: &ScriptLibraryState,
     authority: &str,
@@ -462,6 +501,16 @@ pub(crate) fn acknowledge_transaction_value(
     let request = serde_json::from_value::<ActionTransactionAcknowledgeRequest>(request)
         .map_err(|error| format!("Invalid Action transaction acknowledge request: {error}"))?;
     acknowledge_transaction(state, authority, request)
+}
+
+pub(crate) fn release_action_history_value(
+    state: &ScriptLibraryState,
+    authority: &str,
+    request: Value,
+) -> Result<Value, String> {
+    let request = serde_json::from_value::<ActionHistoryReleaseRequest>(request)
+        .map_err(|error| format!("Invalid Action history release request: {error}"))?;
+    release_action_history(state, authority, request)
 }
 
 fn prepare_transaction_root(
@@ -662,6 +711,151 @@ fn acknowledge_transaction_root(
     acknowledge_result(&receipt, true)
 }
 
+fn release_action_history_root(
+    root: &Path,
+    request: ActionHistoryReleaseRequest,
+) -> Result<Value, String> {
+    validate_history_release_request(&request)?;
+    let transactions = ensure_action_transactions_dir(root)?;
+    reject_active_retained_reference(&transactions, &request.command_id, request.generation)?;
+    let receipt_path =
+        released_history_path(&transactions, &request.command_id, request.generation)?;
+
+    if receipt_path.is_file() {
+        let mut receipt = serde_json::from_value::<ActionHistoryReleaseReceipt>(read_json_bounded(
+            &receipt_path,
+        )?)
+        .map_err(|error| format!("Invalid Action history release receipt: {error}"))?;
+        require_history_release_identity(&receipt, &request)?;
+        if receipt.state == "released" {
+            cleanup_retained_artifact(&transactions, &request.command_id, request.generation)?;
+            return history_release_result(&receipt, false);
+        }
+        if receipt.state != "cleanup-pending" {
+            return Err("Invalid Action history release state".to_string());
+        }
+        cleanup_retained_artifact(&transactions, &request.command_id, request.generation)?;
+        receipt.state = "released".to_string();
+        let value = serde_json::to_value(&receipt).map_err(|error| {
+            format!("Could not serialize Action history release receipt: {error}")
+        })?;
+        atomic_write_json(&receipt_path, &value, true)?;
+        return history_release_result(&receipt, true);
+    }
+
+    let metadata = read_retained_metadata(&transactions, &request.command_id, request.generation)?;
+    if metadata.project_context_id != request.project_context_id
+        || metadata.launch_operation_id != request.launch_operation_id
+    {
+        return Err("Action history release owner does not match retained authority".to_string());
+    }
+    verify_retained_metadata_bytes(&transactions, &metadata)?;
+
+    let mut receipt = ActionHistoryReleaseReceipt {
+        schema_version: ACTION_TRANSACTION_SCHEMA_VERSION,
+        state: "cleanup-pending".to_string(),
+        project_context_id: request.project_context_id,
+        launch_operation_id: request.launch_operation_id,
+        command_id: request.command_id,
+        generation: request.generation,
+        reason: request.reason,
+    };
+    let pending = serde_json::to_value(&receipt)
+        .map_err(|error| format!("Could not serialize Action history release receipt: {error}"))?;
+    atomic_write_json(&receipt_path, &pending, false)?;
+    cleanup_retained_artifact(&transactions, &receipt.command_id, receipt.generation)?;
+    receipt.state = "released".to_string();
+    let released = serde_json::to_value(&receipt)
+        .map_err(|error| format!("Could not serialize Action history release receipt: {error}"))?;
+    atomic_write_json(&receipt_path, &released, true)?;
+    history_release_result(&receipt, true)
+}
+
+fn validate_history_release_request(request: &ActionHistoryReleaseRequest) -> Result<(), String> {
+    validate_transaction_text(&request.project_context_id, "project context ID")?;
+    validate_transaction_text(&request.launch_operation_id, "launch operation ID")?;
+    validate_transaction_text(&request.command_id, "history command ID")?;
+    if request.generation == 0 {
+        return Err("Action history generation must be positive".to_string());
+    }
+    Ok(())
+}
+
+fn require_history_release_identity(
+    receipt: &ActionHistoryReleaseReceipt,
+    request: &ActionHistoryReleaseRequest,
+) -> Result<(), String> {
+    if receipt.schema_version != ACTION_TRANSACTION_SCHEMA_VERSION
+        || receipt.project_context_id != request.project_context_id
+        || receipt.launch_operation_id != request.launch_operation_id
+        || receipt.command_id != request.command_id
+        || receipt.generation != request.generation
+        || receipt.reason != request.reason
+    {
+        Err("Stale Action history release identity".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn reject_active_retained_reference(
+    transactions: &Path,
+    command_id: &str,
+    generation: u64,
+) -> Result<(), String> {
+    for path in active_transaction_paths(transactions)? {
+        reject_symlink(&path, "active Action transaction")?;
+        let value = read_json_bounded(&path)?;
+        let active = serde_json::from_value::<ActiveActionTransaction>(value)
+            .map_err(|error| format!("Invalid active Action transaction record: {error}"))?;
+        if active.request.command_id == command_id && active.request.generation == generation {
+            return Err(
+                "Retained Action history artifact is referenced by active recovery".to_string(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn cleanup_retained_artifact(
+    transactions: &Path,
+    command_id: &str,
+    generation: u64,
+) -> Result<(), String> {
+    for (path, label) in [
+        (
+            retained_bytes_path(transactions, command_id, generation)?,
+            "retained Action bytes",
+        ),
+        (
+            retained_metadata_path(transactions, command_id, generation)?,
+            "retained Action metadata",
+        ),
+    ] {
+        reject_symlink(&path, label)?;
+        if path.exists() {
+            fs::remove_file(&path).map_err(|error| format!("Could not remove {label}: {error}"))?;
+            sync_directory(transactions);
+        }
+    }
+    Ok(())
+}
+
+fn history_release_result(
+    receipt: &ActionHistoryReleaseReceipt,
+    released: bool,
+) -> Result<Value, String> {
+    Ok(serde_json::json!({
+        "state": "released",
+        "projectContextId": receipt.project_context_id,
+        "launchOperationId": receipt.launch_operation_id,
+        "commandId": receipt.command_id,
+        "generation": receipt.generation,
+        "reason": receipt.reason,
+        "released": released
+    }))
+}
+
 fn validate_acknowledge_request(
     request: &ActionTransactionAcknowledgeRequest,
 ) -> Result<(), String> {
@@ -825,6 +1019,100 @@ fn recover_prepared_transactions_before_scan(root: &Path) -> Result<(), String> 
     Ok(())
 }
 
+fn reconcile_retained_history_before_scan(root: &Path) -> Result<(), String> {
+    let transactions = ensure_action_transactions_dir(root)?;
+    let mut entries = fs::read_dir(&transactions)
+        .map_err(|error| format!("Could not scan retained Action history: {error}"))?
+        .filter_map(Result::ok)
+        .collect::<Vec<_>>();
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries
+        .iter()
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with("released-"))
+    {
+        let path = entry.path();
+        reject_symlink(&path, "Action history release receipt")?;
+        if !entry
+            .file_type()
+            .map_err(|error| format!("Could not inspect Action history release receipt: {error}"))?
+            .is_file()
+        {
+            return Err("Action history release receipt is not a regular file".to_string());
+        }
+        let mut receipt =
+            serde_json::from_value::<ActionHistoryReleaseReceipt>(read_json_bounded(&path)?)
+                .map_err(|error| format!("Invalid Action history release receipt: {error}"))?;
+        validate_history_release_request(&ActionHistoryReleaseRequest {
+            project_context_id: receipt.project_context_id.clone(),
+            launch_operation_id: receipt.launch_operation_id.clone(),
+            command_id: receipt.command_id.clone(),
+            generation: receipt.generation,
+            reason: receipt.reason,
+        })?;
+        if receipt.schema_version != ACTION_TRANSACTION_SCHEMA_VERSION
+            || released_history_path(&transactions, &receipt.command_id, receipt.generation)?
+                != path
+            || (receipt.state != "cleanup-pending" && receipt.state != "released")
+        {
+            return Err("Invalid Action history release receipt identity".to_string());
+        }
+        reject_active_retained_reference(&transactions, &receipt.command_id, receipt.generation)?;
+        cleanup_retained_artifact(&transactions, &receipt.command_id, receipt.generation)?;
+        if receipt.state == "cleanup-pending" {
+            receipt.state = "released".to_string();
+            let value = serde_json::to_value(&receipt).map_err(|error| {
+                format!("Could not serialize Action history release receipt: {error}")
+            })?;
+            atomic_write_json(&path, &value, true)?;
+        }
+    }
+
+    let mut retained_entries = fs::read_dir(&transactions)
+        .map_err(|error| format!("Could not scan retained Action history: {error}"))?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with("retained-"))
+        .collect::<Vec<_>>();
+    retained_entries.sort_by_key(|entry| entry.file_name());
+    for entry in retained_entries {
+        let path = entry.path();
+        reject_symlink(&path, "retained Action history artifact")?;
+        if !entry
+            .file_type()
+            .map_err(|error| format!("Could not inspect retained Action history: {error}"))?
+            .is_file()
+        {
+            return Err("Retained Action history artifact is not a regular file".to_string());
+        }
+        match path.extension().and_then(|extension| extension.to_str()) {
+            Some("json") => {
+                let metadata = serde_json::from_value::<RetainedActionArtifactMetadata>(
+                    read_json_bounded(&path)?,
+                )
+                .map_err(|error| format!("Invalid retained Action metadata: {error}"))?;
+                if retained_metadata_path(&transactions, &metadata.command_id, metadata.generation)?
+                    != path
+                {
+                    return Err("Invalid retained Action history metadata path".to_string());
+                }
+                let metadata = read_retained_metadata(
+                    &transactions,
+                    &metadata.command_id,
+                    metadata.generation,
+                )?;
+                verify_retained_metadata_bytes(&transactions, &metadata)?;
+            }
+            Some("action") => {
+                if !path.with_extension("json").is_file() {
+                    return Err("Retained Action history artifact is incomplete".to_string());
+                }
+            }
+            _ => return Err("Ambiguous retained Action history artifact".to_string()),
+        }
+    }
+    Ok(())
+}
+
 fn validate_prepare_request(
     root: &Path,
     request: &ActionTransactionPrepareRequest,
@@ -906,6 +1194,9 @@ fn prepare_or_validate_retained_artifact(
     transactions: &Path,
     request: &ActionTransactionPrepareRequest,
 ) -> Result<(), String> {
+    if released_history_path(transactions, &request.command_id, request.generation)?.exists() {
+        return Err("Released Action history identity cannot be reused".to_string());
+    }
     let metadata_path =
         retained_metadata_path(transactions, &request.command_id, request.generation)?;
     let bytes_path = retained_bytes_path(transactions, &request.command_id, request.generation)?;
@@ -931,6 +1222,7 @@ fn prepare_or_validate_retained_artifact(
         schema_version: ACTION_TRANSACTION_SCHEMA_VERSION,
         state: "retained".to_string(),
         project_context_id: request.authority.project_context_id.clone(),
+        launch_operation_id: request.authority.launch_operation_id.clone(),
         command_id: request.command_id.clone(),
         generation: request.generation,
         action_id: request.authority.action_id.clone(),
@@ -955,29 +1247,62 @@ fn read_retained_artifact(
     transactions: &Path,
     request: &ActionTransactionPrepareRequest,
 ) -> Result<Vec<u8>, String> {
-    let metadata_path =
-        retained_metadata_path(transactions, &request.command_id, request.generation)?;
-    let bytes_path = retained_bytes_path(transactions, &request.command_id, request.generation)?;
-    reject_symlink(&metadata_path, "retained Action metadata")?;
-    reject_symlink(&bytes_path, "retained Action bytes")?;
-    if !metadata_path.is_file() || !bytes_path.is_file() {
-        return Err("Retained Action history artifact was not found".to_string());
-    }
-    let metadata = serde_json::from_value::<RetainedActionArtifactMetadata>(read_json_bounded(
-        &metadata_path,
-    )?)
-    .map_err(|error| format!("Invalid retained Action metadata: {error}"))?;
-    if metadata.schema_version != ACTION_TRANSACTION_SCHEMA_VERSION
-        || metadata.state != "retained"
-        || metadata.project_context_id != request.authority.project_context_id
-        || metadata.command_id != request.command_id
-        || metadata.generation != request.generation
+    let metadata = read_retained_metadata(transactions, &request.command_id, request.generation)?;
+    if metadata.project_context_id != request.authority.project_context_id
+        || metadata.launch_operation_id != request.authority.launch_operation_id
         || metadata.action_id != request.authority.action_id
         || metadata.managed_path != request.retained_artifact.managed_path
         || metadata.original_revision != request.retained_artifact.original_revision
         || metadata.integrity_sha256 != request.retained_artifact.integrity_sha256
     {
         return Err("Retained Action history identity does not match transaction".to_string());
+    }
+    verify_retained_metadata_bytes(transactions, &metadata)
+}
+
+fn read_retained_metadata(
+    transactions: &Path,
+    command_id: &str,
+    generation: u64,
+) -> Result<RetainedActionArtifactMetadata, String> {
+    let metadata_path = retained_metadata_path(transactions, command_id, generation)?;
+    reject_symlink(&metadata_path, "retained Action metadata")?;
+    if !metadata_path.is_file() {
+        return Err("Retained Action history artifact was not found".to_string());
+    }
+    let metadata = serde_json::from_value::<RetainedActionArtifactMetadata>(read_json_bounded(
+        &metadata_path,
+    )?)
+    .map_err(|error| format!("Invalid retained Action metadata: {error}"))?;
+    validate_transaction_text(&metadata.project_context_id, "retained project context ID")?;
+    validate_transaction_text(
+        &metadata.launch_operation_id,
+        "retained launch operation ID",
+    )?;
+    validate_transaction_text(&metadata.command_id, "retained history command ID")?;
+    validate_transaction_text(&metadata.original_revision, "retained Action revision")?;
+    validate_sha256(&metadata.integrity_sha256, "retained Action integrity")?;
+    let expected_path = format!("scripts/{}", managed_filename(&metadata.action_id)?);
+    if metadata.schema_version != ACTION_TRANSACTION_SCHEMA_VERSION
+        || metadata.state != "retained"
+        || metadata.command_id != command_id
+        || metadata.generation != generation
+        || metadata.managed_path != expected_path
+        || metadata.byte_length > MAX_FILE_BYTES
+    {
+        return Err("Invalid retained Action history metadata identity".to_string());
+    }
+    Ok(metadata)
+}
+
+fn verify_retained_metadata_bytes(
+    transactions: &Path,
+    metadata: &RetainedActionArtifactMetadata,
+) -> Result<Vec<u8>, String> {
+    let bytes_path = retained_bytes_path(transactions, &metadata.command_id, metadata.generation)?;
+    reject_symlink(&bytes_path, "retained Action bytes")?;
+    if !bytes_path.is_file() {
+        return Err("Retained Action history artifact is incomplete".to_string());
     }
     let file_metadata = fs::metadata(&bytes_path)
         .map_err(|error| format!("Could not inspect retained Action bytes: {error}"))?;
@@ -1030,6 +1355,18 @@ fn retained_bytes_path(
         "{}.action",
         retained_artifact_stem(command_id, generation)?
     )))
+}
+
+fn released_history_path(
+    transactions: &Path,
+    command_id: &str,
+    generation: u64,
+) -> Result<PathBuf, String> {
+    let retained_stem = retained_artifact_stem(command_id, generation)?;
+    let identity = retained_stem
+        .strip_prefix("retained-")
+        .ok_or_else(|| "Invalid retained Action history identity".to_string())?;
+    Ok(transactions.join(format!("released-{identity}.json")))
 }
 
 fn ensure_action_transactions_dir(root: &Path) -> Result<PathBuf, String> {
@@ -1183,6 +1520,8 @@ fn scan_root(root: &Path) -> Result<ScriptLibraryScan, String> {
         });
     }
     recover_prepared_transactions_before_scan(root)?;
+    reconcile_retained_history_before_scan(root)
+        .map_err(|error| format!("retained Action history recovery required: {error}"))?;
     reject_symlink(&scripts, "scripts directory")?;
     let canonical_scripts = fs::canonicalize(&scripts)
         .map_err(|error| format!("Could not resolve scripts directory: {error}"))?;

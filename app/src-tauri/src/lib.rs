@@ -724,6 +724,7 @@ pub fn run() {
             script_library::script_library_action_transaction_status,
             script_library::script_library_recover_action_transaction,
             script_library::script_library_acknowledge_action_transaction,
+            script_library::script_library_release_action_history,
             script_library::script_library_migrate_saved_projects,
             script_library::script_library_encode_thumbnail_webp,
             image::image_get_info,

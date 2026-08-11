@@ -1,5 +1,6 @@
 use crate::services::script_library::{
-    self, ActionTransactionAcknowledgeRequest, ActionTransactionPrepareRequest,
+    self, ActionHistoryReleaseReason, ActionHistoryReleaseRequest,
+    ActionTransactionAcknowledgeRequest, ActionTransactionPrepareRequest,
     ScriptLibraryMigration, ScriptLibraryOperation, ScriptLibraryScan, ScriptLibraryState,
 };
 use serde::{Deserialize, Serialize};
@@ -171,6 +172,20 @@ pub fn script_library_acknowledge_action_transaction(
     request: ActionTransactionAcknowledgeRequest,
 ) -> Result<Value, String> {
     script_library::acknowledge_transaction(&state, &authority, request)
+}
+
+#[command]
+pub fn script_library_release_action_history(
+    state: State<'_, ScriptLibraryState>,
+    authority: String,
+    request: ActionHistoryReleaseRequest,
+) -> Result<Value, String> {
+    match request.reason {
+        ActionHistoryReleaseReason::Eviction
+        | ActionHistoryReleaseReason::RedoBranchTruncation
+        | ActionHistoryReleaseReason::SessionHistoryClear => {}
+    }
+    script_library::release_action_history(&state, &authority, request)
 }
 
 pub(crate) fn validate_action_transaction_prepare_for_test(value: Value) -> Result<Value, String> {
