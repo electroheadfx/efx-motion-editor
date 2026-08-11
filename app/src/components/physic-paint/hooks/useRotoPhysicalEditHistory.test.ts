@@ -7,8 +7,13 @@ vi.mock('preact/hooks', () => ({
   useRef: <Value>(value: Value) => ({ current: value }),
 }));
 
-import type { PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
+import type {
+  PhysicPaintRotoLoopClip,
+  PhysicPaintRotoRealKeyRecord,
+} from '../roto/physicsPaintRotoPhysicalModel';
 import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
+import { resolvePhysicPaintRotoPhysicalEdit } from '../roto/physicsPaintRotoPhysicalResolver';
+import { getPhysicsPaintRotoSourceCycleId } from '../roto/physicsPaintRotoSpacingSelection';
 import type {
   RotoPhysicalEditAcceptedOutput,
   RotoPhysicalEditExecuteInput,
@@ -106,6 +111,28 @@ function snapshot(
     confirmedFrames: new Map(),
     cachedReference: { url: null, cachedRepaintBase: null },
     engineState: null,
+  };
+}
+
+function spacingSnapshot(
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  selectedKeyId: string | null,
+  selectedAppFrame: number | null,
+): RotoPhysicalEditSnapshot<null> {
+  const interpolation = { enabled: false, mode: 'duplicate' as const };
+  const revision = buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips);
+  return {
+    ...snapshot(records, selectedKeyId ?? 'A', selectedAppFrame ?? 10),
+    records,
+    interpolation,
+    loopClips,
+    capacity: 100,
+    expectedRevision: revision,
+    stagedRevision: revision,
+    selectedKeyId,
+    selectedAppFrame,
+    currentAppFrame: selectedAppFrame ?? 10,
   };
 }
 
@@ -426,6 +453,128 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
     expect(await history.redo()).toBe(true);
     expect(current.loopClips).toEqual(after.loopClips);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('records resolver-complete force spacing once and restores exact Repeat 3 lifecycle through Undo and Redo', async () => {
+    const beforeRecords = [record('A', 10), record('B', 11), record('C', 12)];
+    const beforeLoop: PhysicPaintRotoLoopClip = {
+      loopId: 'spacing-group',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B', 'C'],
+      repeat: 3,
+      mode: 'progressive',
+      scriptId: 'action-spacing',
+      motion: { deformation: 4, position: 2 },
+      overrideColor: '#123456',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 19,
+      visibleRanges: [{ start: 10, endExclusive: 19 }],
+      frameOverrides: [],
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: beforeRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records: beforeRecords,
+      loopClips: [beforeLoop],
+      capacity: 100,
+      interpolationEnabled: false,
+      intent: {
+        kind: 'force-spacing',
+        emptyFrames: 3,
+        selectedKeyId: 'B',
+        scopeKeyIds: ['A', 'B', 'C'],
+        linkedSourceSpacingScopes: [{
+          sourceCycleId: getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C']),
+          sourceKeyIds: ['A', 'B', 'C'],
+          selectedSourceKeyIds: ['A', 'B', 'C'],
+        }],
+      },
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error(resolution.failure.text);
+    const afterRecords = beforeRecords.map((entry) => {
+      const appFrame = resolution.proposal.mapping.get(entry.keyId) ?? entry.appFrame;
+      return { ...entry, appFrame, payload: { ...entry.payload, appFrame } };
+    });
+    const before = spacingSnapshot(beforeRecords, [beforeLoop], 'B', 11);
+    const after = spacingSnapshot(afterRecords, resolution.proposal.nextLoopClips ?? [beforeLoop], 'B', 14);
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    let current = after;
+    let replayNumber = 0;
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      const source = current;
+      current = target;
+      replayNumber += 1;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
+          target.records,
+          target.interpolation,
+          target.loopClips,
+          target.incomingInterpolationBreakKeyIds,
+        ),
+        operationId: `spacing-replay-${replayNumber}`,
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+    const history = useRotoPhysicalEditHistory({
+      identity: {
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 100,
+      },
+      availability,
+      coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => current.records,
+        getInterpolation: () => current.interpolation,
+        getCapacity: () => current.capacity,
+        getLoopClips: () => current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => current,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(after.records, after.interpolation, after.loopClips),
+      operationId: 'force-spacing-accepted',
+      operationKind: 'force-spacing',
+      historyProvenance: null,
+    };
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    acceptedOutput.value = { ...acceptedOutput.value };
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(current.loopClips).toEqual([{
+      ...beforeLoop,
+      phaseOrigin: 10,
+      originalEndExclusive: 37,
+      visibleRanges: [{ start: 10, endExclusive: 37 }],
+    }]);
+
+    expect(await history.undo()).toBe(true);
+    expect(current).toEqual(before);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    expect(await history.redo()).toBe(true);
+    expect(current).toEqual(after);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(executePhysicalEdit.mock.calls.map(([input]) => input.operationKind)).toEqual(['undo', 'redo']);
   });
 });
 

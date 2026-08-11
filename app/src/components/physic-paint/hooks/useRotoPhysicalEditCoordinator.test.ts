@@ -127,8 +127,17 @@ function fixture() {
       loopId: 'loop-a',
       placementStart: 0,
       sourceKeyIds: ['A', 'B', 'C'],
-      repeat: 2,
+      repeat: 3,
       mode: 'progressive',
+      scriptId: 'action-spacing',
+      motion: { deformation: 4, position: 2 },
+      overrideColor: '#123456',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 9,
+      visibleRanges: [{ start: 0, endExclusive: 9 }],
+      frameOverrides: [],
     },
     {
       loopId: 'loop-b',
@@ -968,7 +977,16 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       X: 10,
       Y: 11,
     });
+    expect(test.getLoopClips().find((clip) => clip.loopId === 'loop-a')).toEqual({
+      ...test.initial.loopClips[0],
+      phaseOrigin: 0,
+      originalEndExclusive: 21,
+      visibleRanges: [{ start: 0, endExclusive: 21 }],
+    });
     expect(test.getLoopClips().find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(10);
+    expect(test.getPayload()?.loopClips?.find((clip) => clip.loopId === 'loop-a')).toEqual(
+      test.getLoopClips().find((clip) => clip.loopId === 'loop-a'),
+    );
     expect(test.getPayload()?.loopClips?.find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(10);
     expect(test.getPayload()?.intent).toBe(test.initial.intent);
     expect(test.getPayload()?.intent).toEqual({
@@ -986,7 +1004,22 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.getPayload()?.incomingInterpolationBreakKeyIds).not.toBe(test.getIncomingInterpolationBreakKeyIds());
 
     expect(test.accept()).toBe('accepted');
+    expect(test.acceptedEvents).toHaveLength(1);
+    expect(test.historyCommands).toEqual([test.getPayload()!.operationId]);
+    expect(test.coordinator.acceptedOutput.value?.after.loopClips).toEqual(test.getPayload()?.loopClips);
     expect(test.coordinator.acceptedOutput.value?.after.loopClips.find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(10);
+    expect(test.coordinator.acceptedOutput.value?.before.loopClips).toEqual([
+      test.initial.loopClips[0],
+      {
+        ...test.initial.loopClips[1],
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 6,
+        originalEndExclusive: 14,
+        visibleRanges: [{ start: 6, endExclusive: 14 }],
+        frameOverrides: [],
+      },
+    ]);
     expect(test.coordinator.acceptedOutput.value?.before.loopClips.find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(6);
     expect(test.coordinator.acceptedOutput.value?.before.incomingInterpolationBreakKeyIds).toEqual(['C']);
     expect(test.coordinator.acceptedOutput.value?.after.incomingInterpolationBreakKeyIds).toEqual(['C']);
@@ -1025,9 +1058,23 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       X: 6,
       Y: 7,
     });
+    expect(test.getLoopClips()).toEqual([
+      test.initial.loopClips[0],
+      {
+        ...test.initial.loopClips[1],
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 6,
+        originalEndExclusive: 14,
+        visibleRanges: [{ start: 6, endExclusive: 14 }],
+        frameOverrides: [],
+      },
+    ]);
     expect(test.getLoopClips().find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(6);
     expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
     expect(test.coordinator.acceptedOutput.value).toBeNull();
+    expect(test.acceptedEvents).toEqual([]);
+    expect(test.historyCommands).toEqual([]);
     expect(test.coordinator.failureOutput.value?.reason).toBe('transport');
   });
 });
