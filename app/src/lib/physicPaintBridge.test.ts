@@ -20,7 +20,13 @@ import {
   buildPhysicPaintRotoProjectEquality,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { resolvePhysicPaintRotoPhysicalEdit } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
-import { proposePhysicPaintRotoGroupFramePaint } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
+import {
+  proposePhysicPaintRotoActionGroupLifecycle,
+  proposePhysicPaintRotoDeleteGroup,
+  proposePhysicPaintRotoDeleteGroupFrame,
+  proposePhysicPaintRotoGroupFramePaint,
+  proposePhysicPaintRotoRegenerateGroup,
+} from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
 import { hydrateRotoPhysicalLaunchContext } from '../components/physic-paint/roto/rotoLaunchHydration';
 import {
   applyPhysicPaintPayload,
@@ -2209,66 +2215,178 @@ describe('public Physics Paint transport cleanup', () => {
   });
 });
 
-type ControlledGroupContract = Readonly<{
-  groupId: string;
-  orderedSourceKeyIds: readonly string[];
-  sourceShareId: string | null;
-  visibleRanges: readonly Readonly<{ start: number; endExclusive: number }>[];
-  frameOverrides: readonly Readonly<{ appFrame: number; keyId: string }>[];
-}>;
+describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
+  const projectContextId = 'abababab-abab-4bab-8bab-abababababab';
 
-type ControlledAcceptedLedger = Readonly<{
-  document: Readonly<{ revision: string; groups: readonly ControlledGroupContract[] }>;
-  version: number;
-  history: readonly string[];
-  selection: Readonly<{ groupId: string | null; appFrame: number }>;
-}>;
+  beforeEach(() => {
+    physicPaintStore.reset();
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        open: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        location: { origin: 'http://localhost:1420' },
+      },
+      writable: true,
+      configurable: true,
+    });
+  });
 
-type ControlledLifecycleProposal = Readonly<{
-  expectedRevision: string;
-  groups: readonly ControlledGroupContract[];
-  unresolvedPrecedence: boolean;
-  claimedCleanupKeyIds: readonly string[];
-  acceptedMarker?: boolean;
-}>;
+  afterEach(() => {
+    vi.restoreAllMocks();
+    projectStore.closeProject();
+    Object.defineProperty(globalThis, 'window', {
+      value: originalWindow,
+      writable: true,
+      configurable: true,
+    });
+  });
 
-function validateControlledLifecycleProposal(
-  accepted: ControlledAcceptedLedger,
-  proposal: ControlledLifecycleProposal,
-): Readonly<{ ok: boolean; marker?: 'production-cutover-pending'; ledger: ControlledAcceptedLedger }> {
-  const reject = () => Object.freeze({ ok: false, ledger: accepted });
-  if (proposal.expectedRevision !== accepted.document.revision) return reject();
-  if (proposal.unresolvedPrecedence) return reject();
-
-  for (const group of proposal.groups) {
-    const sortedRanges = [...group.visibleRanges].sort((left, right) => left.start - right.start);
-    if (sortedRanges.some((range) => !Number.isInteger(range.start)
-      || !Number.isInteger(range.endExclusive)
-      || range.start < 0
-      || range.endExclusive <= range.start)) return reject();
-    if (sortedRanges.some((range, index) => index > 0
-      && sortedRanges[index - 1].endExclusive >= range.start)) return reject();
-    if (new Set(group.frameOverrides.map((override) => override.appFrame)).size
-      !== group.frameOverrides.length) return reject();
+  async function lifecycleHarness(
+    operationKind: 'delete-group-frame' | 'delete-group' | 'regenerate-group' | 'detach-action-groups' | 'delete-action-groups',
+    operationId: string,
+  ) {
+    const layer = physicLayer();
+    mockLayers([layer]);
+    projectStore.projectContextId.value = projectContextId;
+    const records = [
+      makePhysicalRecord('source-A', 0),
+      makePhysicalRecord('source-B', 2),
+      makePhysicalRecord('override-5', 5),
+      makePhysicalRecord('ordinary', 20),
+    ];
+    const interpolation = { enabled: true, mode: 'blend' as const };
+    const loopClips = [{
+      loopId: 'group-1',
+      placementStart: 0,
+      sourceKeyIds: ['source-A', 'source-B'],
+      repeat: 3 as const,
+      mode: 'progressive' as const,
+      scriptId: 'action-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      syncState: 'modified' as const,
+      provenanceState: 'attached' as const,
+      phaseOrigin: 0,
+      originalEndExclusive: 9,
+      visibleRanges: [{ start: 0, endExclusive: 9 }],
+      frameOverrides: [{ appFrame: 5, keyId: 'override-5' }],
+    }];
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, {
+      capacity: 30,
+      realKeyRecords: records,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 5,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, ['source-B']),
+      loopClips,
+      incomingInterpolationBreakKeyIds: ['source-B'],
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 5 });
+    if (!launch.ok) throw new Error(launch.error);
+    const current = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!current) throw new Error('Expected lifecycle document.');
+    const proposed = operationKind === 'delete-group-frame'
+      ? proposePhysicPaintRotoDeleteGroupFrame({ document: current, groupId: 'group-1', appFrame: 5 })
+      : operationKind === 'delete-group'
+        ? proposePhysicPaintRotoDeleteGroup({ document: current, groupId: 'group-1' })
+        : operationKind === 'regenerate-group'
+          ? proposePhysicPaintRotoRegenerateGroup({
+              document: current,
+              groupId: 'group-1',
+              expectedActionRevision: 'action-revision-1',
+              currentActionRevision: 'action-revision-1',
+            })
+          : proposePhysicPaintRotoActionGroupLifecycle({
+              document: current,
+              actionId: 'action-1',
+              expectedActionRevision: 'action-revision-1',
+              currentActionRevision: 'action-revision-1',
+              mode: operationKind === 'detach-action-groups' ? 'detach' : 'delete',
+            });
+    if (!proposed.ok) throw new Error(proposed.reason);
+    const leaseToken = acquirePhysicalLease(layer.id, projectContextId);
+    const payload = {
+      kind: 'replace-roto-physical-map' as const,
+      operationId,
+      operationKind,
+      leaseToken,
+      layerId: layer.id,
+      startFrame: current.cursorAppFrame,
+      launchOperationId: launch.data.operationId,
+      projectContextId,
+      expectedRevision: current.revision,
+      records: proposed.proposal.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: proposed.proposal.interpolation.enabled,
+      interpolationMode: proposed.proposal.interpolation.mode,
+      loopClips: proposed.proposal.loopClips,
+      incomingInterpolationBreakKeyIds: proposed.proposal.incomingInterpolationBreakKeyIds,
+      selectedKeyId: proposed.proposal.selectedKeyId,
+      selectedAppFrame: proposed.proposal.selectedKeyId === null ? null : proposed.proposal.cursorAppFrame,
+      semanticDelta: proposed.impact,
+    };
+    return { layer, current, proposed, payload, leaseToken };
   }
 
-  const sharing = new Map<string, string>();
-  for (const group of proposal.groups) {
-    if (group.sourceShareId === null) continue;
-    const orderedCycle = JSON.stringify(group.orderedSourceKeyIds);
-    const prior = sharing.get(group.sourceShareId);
-    if (prior !== undefined && prior !== orderedCycle) return reject();
-    sharing.set(group.sourceShareId, orderedCycle);
-  }
+  it.each([
+    'delete-group-frame',
+    'delete-group',
+    'regenerate-group',
+    'detach-action-groups',
+    'delete-action-groups',
+  ] as const)('recomputes and publishes one exact %s candidate', async (operationKind) => {
+    const test = await lifecycleHarness(operationKind, `lifecycle-accepted-${operationKind}`);
+    const beforeVersion = physicPaintVersion.peek();
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
 
-  const referenced = new Set(proposal.groups.flatMap((group) => [
-    ...group.orderedSourceKeyIds,
-    ...group.frameOverrides.map((override) => override.keyId),
-  ]));
-  if (proposal.claimedCleanupKeyIds.some((keyId) => referenced.has(keyId))) return reject();
-  if (!proposal.acceptedMarker) return reject();
-  return Object.freeze({ ok: true, marker: 'production-cutover-pending', ledger: accepted });
-}
+    const result = applyPhysicPaintPayload(test.payload as PhysicPaintApplyPayload);
+
+    expect(result.ok).toBe(true);
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledWith(test.layer.id, test.proposed.proposal, test.leaseToken);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.proposed.proposal);
+    expect(physicPaintVersion.peek()).toBe(beforeVersion + 1);
+  });
+
+  it('rejects stale, malformed, and semantically mismatched lifecycle candidates without publication', async () => {
+    const variants = [
+      (payload: Awaited<ReturnType<typeof lifecycleHarness>>['payload']) => ({
+        ...payload,
+        expectedRevision: 'stale-revision',
+      }),
+      (payload: Awaited<ReturnType<typeof lifecycleHarness>>['payload']) => ({
+        ...payload,
+        semanticDelta: { ...payload.semanticDelta, cleanupKeyIds: ['source-A'] },
+      }),
+      (payload: Awaited<ReturnType<typeof lifecycleHarness>>['payload']) => ({
+        ...payload,
+        loopClips: payload.loopClips.map((group) => ({ ...group, syncState: 'synchronized' as const })),
+      }),
+    ];
+
+    for (const [index, mutate] of variants.entries()) {
+      const test = await lifecycleHarness('delete-group-frame', `lifecycle-rejected-${index}`);
+      const before = physicPaintStore.getRotoPhysicalDocument(test.layer.id);
+      const beforeVersion = physicPaintVersion.peek();
+      const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+
+      const result = applyPhysicPaintPayload(mutate(test.payload) as PhysicPaintApplyPayload);
+
+      expect(result.ok).toBe(false);
+      expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(before);
+      expect(physicPaintVersion.peek()).toBe(beforeVersion);
+      expect(replace).not.toHaveBeenCalled();
+      expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
+      vi.restoreAllMocks();
+    }
+  });
+});
 
 type ControlledHistoryLedger = Readonly<{
   revision: string;
