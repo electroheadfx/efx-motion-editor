@@ -11,9 +11,26 @@ import {
 } from './physicsPaintRotoPhysicalResolver';
 import type {
   PhysicPaintRotoKeyIdentity,
+  PhysicPaintRotoLoopClip,
+  PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
+import {
+  buildPhysicPaintRotoPhysicalRevision,
+  parsePhysicPaintRotoPhysicalDocument,
+} from './physicsPaintRotoPhysicalModel';
+import {
+  classifyPhysicPaintRotoGroupFrameTarget,
+  proposePhysicPaintRotoActionGroupLifecycle,
+  proposePhysicPaintRotoDeleteGroup,
+  proposePhysicPaintRotoDeleteGroupFrame,
+  proposePhysicPaintRotoRegenerateGroup,
+} from './physicsPaintRotoGroupLifecycle';
+import {
+  derivePhysicPaintRotoLoopRanges,
+  resolvePhysicPaintRotoLoopFrame,
+} from './physicsPaintRotoPhysicalResolver';
 import {
   PHYSIC_PAINT_MAX_APPLY_FRAMES,
   isPhysicPaintRotoPhysicalEditIntent,
@@ -998,101 +1015,254 @@ describe('createPhysicPaintRotoPasteKeyGroupIntent — fail-closed factory (GP-7
   });
 });
 
-type SourceOwnershipFixture = Readonly<{
-  groupId: string;
-  actionId: string;
-  orderedSourceKeyIds: readonly string[];
-  sourceShareId: string | null;
-  frameOverrides: readonly Readonly<{ appFrame: number; keyId: string }>[];
-}>;
-
-function sourceOwnershipRelationship(
-  left: SourceOwnershipFixture,
-  right: SourceOwnershipFixture,
-): 'independent' | 'explicitly-shared' | 'invalid-sharing' {
-  if (left.sourceShareId === null || right.sourceShareId === null) return 'independent';
-  if (left.sourceShareId !== right.sourceShareId) return 'independent';
-  return JSON.stringify(left.orderedSourceKeyIds) === JSON.stringify(right.orderedSourceKeyIds)
-    ? 'explicitly-shared'
-    : 'invalid-sharing';
+function lifecycleRecord(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
+  return {
+    kind: 'real-key',
+    keyId,
+    appFrame,
+    payload: {
+      frameIndex: 0,
+      appFrame,
+      dataUrl: 'data:image/png;base64,AAAA',
+      width: 2,
+      height: 2,
+    },
+  };
 }
 
-function recomputeFinalReferenceCleanup(
-  groups: readonly SourceOwnershipFixture[],
-  removedGroupId: string,
-): readonly string[] {
-  const removed = groups.find((group) => group.groupId === removedGroupId);
-  if (!removed) throw new Error(`Unknown Group ${removedGroupId}`);
-  const remainingReferences = new Set(groups
-    .filter((group) => group.groupId !== removedGroupId)
-    .flatMap((group) => [
-      ...group.orderedSourceKeyIds,
-      ...group.frameOverrides.map((override) => override.keyId),
-    ]));
-  return [...new Set([
-    ...removed.orderedSourceKeyIds,
-    ...removed.frameOverrides.map((override) => override.keyId),
-  ])].filter((keyId) => !remainingReferences.has(keyId)).sort();
+function lifecycleGroup(overrides: Partial<PhysicPaintRotoLoopClip> = {}): PhysicPaintRotoLoopClip {
+  return {
+    loopId: 'group-a',
+    placementStart: 0,
+    sourceKeyIds: ['A0', 'A1'],
+    repeat: 3,
+    mode: 'progressive',
+    scriptId: 'action-1',
+    motion: { deformation: 0, position: 0 },
+    overrideColor: null,
+    syncState: 'modified',
+    provenanceState: 'attached',
+    phaseOrigin: 0,
+    originalEndExclusive: 9,
+    visibleRanges: [
+      { start: 0, endExclusive: 4 },
+      { start: 5, endExclusive: 9 },
+    ],
+    frameOverrides: [{ appFrame: 5, keyId: 'override-5' }],
+    ...overrides,
+  };
 }
 
-describe('Phase 43.2 source ownership and final-reference cleanup contract', () => {
-  const independentA: SourceOwnershipFixture = Object.freeze({
-    groupId: 'group-a',
-    actionId: 'action-shared-provenance',
-    orderedSourceKeyIds: Object.freeze(['A0', 'A1']),
-    sourceShareId: null,
-    frameOverrides: Object.freeze([]),
+function lifecycleDocument(
+  loopClips: readonly PhysicPaintRotoLoopClip[] = [lifecycleGroup()],
+  records: readonly PhysicPaintRotoRealKeyRecord[] = [
+    lifecycleRecord('A0', 0),
+    lifecycleRecord('A1', 2),
+    lifecycleRecord('override-5', 5),
+    lifecycleRecord('ordinary', 20),
+  ],
+  incomingInterpolationBreakKeyIds: readonly string[] = ['A1'],
+): PhysicPaintRotoPhysicalDocument {
+  const interpolation = { enabled: true, mode: 'blend' as const };
+  return parsePhysicPaintRotoPhysicalDocument({
+    capacity: 30,
+    realKeyRecords: records,
+    interpolation,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame: 0,
+    loopClips,
+    incomingInterpolationBreakKeyIds,
+    revision: buildPhysicPaintRotoPhysicalRevision(
+      records,
+      interpolation,
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+    ),
   });
-  const independentB: SourceOwnershipFixture = Object.freeze({
-    groupId: 'group-b',
-    actionId: 'action-shared-provenance',
-    orderedSourceKeyIds: Object.freeze(['B0', 'B1']),
-    sourceShareId: null,
-    frameOverrides: Object.freeze([]),
-  });
-  const sharedA: SourceOwnershipFixture = Object.freeze({
-    ...independentA,
-    sourceShareId: 'share-cycle-1',
-  });
-  const sharedB: SourceOwnershipFixture = Object.freeze({
-    ...independentB,
-    orderedSourceKeyIds: Object.freeze(['A0', 'A1']),
-    sourceShareId: 'share-cycle-1',
-  });
+}
 
-  it('distinguishes same-Action independent sources from one explicitly shared ordered cycle', () => {
-    expect(independentA.actionId).toBe(independentB.actionId);
-    expect(sourceOwnershipRelationship(independentA, independentB)).toBe('independent');
-    expect(sourceOwnershipRelationship(sharedA, sharedB)).toBe('explicitly-shared');
-    expect(sourceOwnershipRelationship(sharedA, {
-      ...sharedB,
-      orderedSourceKeyIds: ['A1', 'A0'],
-    })).toBe('invalid-sharing');
-  });
-
-  it('keeps override-owned keys and deletes source/cache identities only after their final reference', () => {
-    const withOverrides: SourceOwnershipFixture = Object.freeze({
-      ...sharedA,
-      frameOverrides: Object.freeze([
-        Object.freeze({ appFrame: 5, keyId: 'override-shared' }),
-        Object.freeze({ appFrame: 6, keyId: 'override-a-only' }),
-      ]),
+describe('Phase 43.2 pure Group lifecycle proposals', () => {
+  it('classifies every exact frame target and preserves immutable phase across fragments', () => {
+    const document = lifecycleDocument();
+    expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 0 })).toMatchObject({
+      kind: 'source-occurrence',
+      groupId: 'group-a',
+      sourceKeyId: 'A0',
     });
-    const sharingPeer: SourceOwnershipFixture = Object.freeze({
-      ...sharedB,
-      frameOverrides: Object.freeze([
-        Object.freeze({ appFrame: 20, keyId: 'override-shared' }),
-      ]),
+    expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 1 })).toMatchObject({
+      kind: 'generated-occurrence',
+      groupId: 'group-a',
+      leftSourceKeyId: 'A0',
+      rightSourceKeyId: 'A1',
+    });
+    expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 5 })).toEqual({
+      kind: 'override',
+      groupId: 'group-a',
+      appFrame: 5,
+      keyId: 'override-5',
+    });
+    expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 4 })).toEqual({
+      kind: 'group-gap',
+      groupId: 'group-a',
+      appFrame: 4,
+    });
+    expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 20 })).toEqual({
+      kind: 'ordinary-key',
+      appFrame: 20,
+      keyId: 'ordinary',
+    });
+    expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 21 })).toEqual({
+      kind: 'empty',
+      appFrame: 21,
     });
 
-    expect(recomputeFinalReferenceCleanup([withOverrides, sharingPeer], 'group-a')).toEqual([
-      'override-a-only',
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: document.realKeyRecords,
+      loopClips: document.loopClips,
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: true,
+    });
+    expect(resolvePhysicPaintRotoLoopFrame(context, 4)).toEqual({ kind: 'empty' });
+    expect(resolvePhysicPaintRotoLoopFrame(context, 5)).toMatchObject({
+      kind: 'real',
+      keyId: 'override-5',
+    });
+    expect(resolvePhysicPaintRotoLoopFrame(context, 8)).toMatchObject({
+      kind: 'linked-generated',
+      cycleOffset: 2,
+      repeatInstance: 2,
+    });
+    expect(Object.isFrozen(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 1 }))).toBe(true);
+  });
+
+  it('returns a typed unresolved Group target without fabricating source content', () => {
+    const unresolved = lifecycleDocument([
+      lifecycleGroup({
+        sourceKeyIds: ['missing-0', 'missing-1'],
+        frameOverrides: [],
+      }),
+    ], [lifecycleRecord('ordinary', 20)], []);
+    expect(classifyPhysicPaintRotoGroupFrameTarget({ document: unresolved, appFrame: 1 })).toEqual({
+      kind: 'unresolved-group',
+      groupId: 'group-a',
+      appFrame: 1,
+      missingSourceKeyIds: ['missing-0', 'missing-1'],
+    });
+  });
+
+  it('deletes one occurrence by normalized range authority and cleans only its final override reference', () => {
+    const result = proposePhysicPaintRotoDeleteGroupFrame({
+      document: lifecycleDocument(),
+      groupId: 'group-a',
+      appFrame: 5,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Delete Group Frame must resolve');
+    expect(result.proposal.loopClips[0].visibleRanges).toEqual([
+      { start: 0, endExclusive: 4 },
+      { start: 6, endExclusive: 9 },
     ]);
-    expect(recomputeFinalReferenceCleanup([withOverrides], 'group-a')).toEqual([
-      'A0',
-      'A1',
-      'override-a-only',
-      'override-shared',
-    ]);
+    expect(result.proposal.loopClips[0].phaseOrigin).toBe(0);
+    expect(result.proposal.loopClips[0].frameOverrides).toEqual([]);
+    expect(result.proposal.realKeyRecords.map((record) => record.keyId)).toEqual(['A0', 'A1', 'ordinary']);
+    expect(result.proposal.incomingInterpolationBreakKeyIds).toEqual(['A1']);
+    expect(result.impact.cleanupKeyIds).toEqual(['override-5']);
+    expect(Object.isFrozen(result.proposal)).toBe(true);
+    expect(Object.isFrozen(result.impact)).toBe(true);
+  });
+
+  it('removes Groups and source records only after their final complete-document reference', () => {
+    const sharedPeer = lifecycleGroup({
+      loopId: 'group-b',
+      placementStart: 10,
+      phaseOrigin: 10,
+      originalEndExclusive: 19,
+      visibleRanges: [{ start: 10, endExclusive: 19 }],
+      frameOverrides: [],
+    });
+    const shared = lifecycleDocument([lifecycleGroup(), sharedPeer]);
+    const first = proposePhysicPaintRotoDeleteGroup({ document: shared, groupId: 'group-a' });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error('Shared Group delete must resolve');
+    expect(first.impact.cleanupKeyIds).toEqual(['override-5']);
+    expect(first.proposal.realKeyRecords.map((record) => record.keyId)).toContain('A0');
+    expect(first.proposal.incomingInterpolationBreakKeyIds).toEqual(['A1']);
+
+    const final = proposePhysicPaintRotoDeleteGroup({ document: first.proposal, groupId: 'group-b' });
+    expect(final.ok).toBe(true);
+    if (!final.ok) throw new Error('Final Group delete must resolve');
+    expect(final.impact.cleanupKeyIds).toEqual(['A0', 'A1']);
+    expect(final.proposal.realKeyRecords.map((record) => record.keyId)).toEqual(['ordinary']);
+    expect(final.proposal.incomingInterpolationBreakKeyIds).toEqual([]);
+  });
+
+  it('regenerates the immutable original extent and detaches or cascades Action Groups exactly', () => {
+    const regenerated = proposePhysicPaintRotoRegenerateGroup({
+      document: lifecycleDocument(),
+      groupId: 'group-a',
+      expectedActionRevision: 'action-revision-1',
+      currentActionRevision: 'action-revision-1',
+    });
+    expect(regenerated.ok).toBe(true);
+    if (!regenerated.ok) throw new Error('Regenerate must resolve');
+    expect(regenerated.proposal.loopClips[0]).toMatchObject({
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 9,
+      visibleRanges: [{ start: 0, endExclusive: 9 }],
+      frameOverrides: [],
+    });
+    expect(regenerated.impact.cleanupKeyIds).toEqual(['override-5']);
+
+    const detached = proposePhysicPaintRotoActionGroupLifecycle({
+      document: lifecycleDocument(),
+      actionId: 'action-1',
+      expectedActionRevision: 'action-revision-1',
+      currentActionRevision: 'action-revision-1',
+      mode: 'detach',
+    });
+    expect(detached.ok).toBe(true);
+    if (!detached.ok) throw new Error('Detach must resolve');
+    expect(detached.proposal.loopClips[0].provenanceState).toBe('detached');
+    expect(detached.impact.affectedGroupIds).toEqual(['group-a']);
+    expect(detached.impact.cleanupKeyIds).toEqual([]);
+
+    const deleted = proposePhysicPaintRotoActionGroupLifecycle({
+      document: lifecycleDocument(),
+      actionId: 'action-1',
+      expectedActionRevision: 'action-revision-1',
+      currentActionRevision: 'action-revision-1',
+      mode: 'delete',
+    });
+    expect(deleted.ok).toBe(true);
+    if (!deleted.ok) throw new Error('Action cascade must resolve');
+    expect(deleted.proposal.loopClips).toEqual([]);
+    expect(deleted.impact.affectedGroupIds).toEqual(['group-a']);
+    expect(deleted.impact.cleanupKeyIds).toEqual(['A0', 'A1', 'override-5']);
+  });
+
+  it('fails closed for stale Action authority and unknown or exhausted targets', () => {
+    expect(proposePhysicPaintRotoRegenerateGroup({
+      document: lifecycleDocument(),
+      groupId: 'group-a',
+      expectedActionRevision: 'stale',
+      currentActionRevision: 'current',
+    })).toEqual({ ok: false, reason: 'action-revision-mismatch' });
+    expect(proposePhysicPaintRotoDeleteGroupFrame({
+      document: lifecycleDocument(),
+      groupId: 'missing',
+      appFrame: 1,
+    })).toEqual({ ok: false, reason: 'group-not-found' });
+    expect(proposePhysicPaintRotoDeleteGroupFrame({
+      document: lifecycleDocument([
+        lifecycleGroup({ visibleRanges: [{ start: 0, endExclusive: 1 }], frameOverrides: [] }),
+      ], [lifecycleRecord('A0', 0), lifecycleRecord('A1', 2), lifecycleRecord('ordinary', 20)]),
+      groupId: 'group-a',
+      appFrame: 0,
+    })).toEqual({ ok: false, reason: 'last-visible-occurrence' });
   });
 });
