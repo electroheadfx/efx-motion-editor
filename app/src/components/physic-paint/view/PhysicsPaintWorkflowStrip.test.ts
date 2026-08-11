@@ -1417,6 +1417,48 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
   });
 
+  it('keeps physical-cell activation scoped to Group selection while rail linkage inputs stay independent', () => {
+    const code = source();
+    const props = getWorkflowStripPropsInterface(code);
+    const handlerStart = code.indexOf('const handleRotoTimelineCellClick = useCallback(');
+    const handlerEnd = code.indexOf('const handleRotoTimelineCellPointerDown = useCallback(', handlerStart);
+    const handler = code.slice(handlerStart, handlerEnd);
+    const railStart = code.indexOf('<PhysicsPaintLoopClipRail');
+    const railEnd = code.indexOf('/>', railStart);
+    const rail = code.slice(railStart, railEnd);
+
+    expect(props).toContain('selectedRotoLoopClipIds?: readonly string[];');
+    expect(props).toContain('linkedRotoLoopClipIds?: readonly string[];');
+    expect(rail).toContain('selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}');
+    expect(rail).toContain('linkedLoopClipIds={props.linkedRotoLoopClipIds ?? []}');
+    expect(rail).toContain('linkedActionName={props.linkedRotoActionName ?? null}');
+
+    const clearGroupIndex = handler.indexOf('current.onSelectRotoLoopClip?.(null);');
+    const spacingProxyIndex = handler.indexOf('current.spacingProxyByAppFrame.get(frame)');
+    const navigationIndex = handler.indexOf('current.onNavigateToSyncedFrame(frame);');
+    expect(clearGroupIndex).toBeGreaterThanOrEqual(0);
+    expect(clearGroupIndex).toBeLessThan(spacingProxyIndex);
+    expect(navigationIndex).toBeGreaterThan(clearGroupIndex);
+    expect(handler).not.toMatch(/selectedAction|linkedRotoLoopClipIds|linkedRotoActionName/);
+  });
+
+  it('rejects target-level linked paint while preserving selected, endpoint, dot, focus, and strip geometry', () => {
+    const styles = css();
+    expect(styles).not.toMatch(/\.physics-paint-loop-clip-rail-target\.mode-(?:progressive|static)\.action-linked:not\(\.selected\)\s*\{/);
+    expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-target.mode-progressive.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment {'))
+      .toContain('background: #c4b5fd');
+    expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-target.mode-static.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment {'))
+      .toContain('background: #67e8f9');
+    expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {'))
+      .toContain('background: #f59e0b');
+    expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-target.boundary-start .physics-paint-loop-clip-rail-segment::before,')).toContain('height: 3px');
+    expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-lifecycle-dot {')).toContain('width: 6px');
+    expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-target:focus-visible {')).toContain('outline: 2px solid #f2f5f7');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).toContain('repeat(120, 18px)');
+    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 38px');
+    expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 161px');
+  });
+
   it('keeps rail selection line-only while explicit physical spacing proxies remain visible', () => {
     const code = source();
     const props = getWorkflowStripPropsInterface(code);
