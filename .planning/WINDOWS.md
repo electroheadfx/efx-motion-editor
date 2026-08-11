@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 19
+open_count: 20
 waived_count: 1
 fixed_count: 25
-total_count: 45
-last_updated: 2026-08-11T02:59:29.105Z
+total_count: 46
+last_updated: 2026-08-11T03:07:49.461Z
 ---
 
 # Broken Windows Ledger
@@ -60,6 +60,7 @@ last_updated: 2026-08-11T02:59:29.105Z
 | 43 | 43.2 | stub | app/src/lib/physicPaintBridge.test.ts | 2108 | The production-cutover-pending result deliberately keeps lifecycle proposal acceptance test-only until the later canonical production cutover. | open |  | 2026-08-11T02:58:41.370Z |  |
 | 44 | 43.2 | skipped-test | app/src/lib/physicPaintBridge.test.ts | 1860 | Pre-existing skipped native close-window test remains outside Plan 43.2-02. | open |  | 2026-08-11T02:58:41.449Z |  |
 | 45 | 43.2 | deviation | .planning/STATE.md |  | Reconciled stale generated progress percentage and last-activity metadata after Plan 43.2-02. | open |  | 2026-08-11T02:59:29.105Z |  |
+| 46 | 43.2 | stub | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md | 5 | Wave 0 UAT rows intentionally retain Plan 17 observation and evidence sentinels until frozen-session native acceptance | open |  | 2026-08-11T03:07:49.461Z |  |
 
 ````json
 [
@@ -601,6 +602,18 @@ last_updated: 2026-08-11T02:59:29.105Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-11T02:59:29.105Z",
+    "resolved_at": null
+  },
+  {
+    "id": 46,
+    "kind": "stub",
+    "phase": "43.2",
+    "file": ".planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md",
+    "line": 5,
+    "description": "Wave 0 UAT rows intentionally retain Plan 17 observation and evidence sentinels until frozen-session native acceptance",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-11T03:07:49.461Z",
     "resolved_at": null
   }
 ]
