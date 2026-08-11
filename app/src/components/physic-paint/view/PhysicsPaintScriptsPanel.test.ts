@@ -467,6 +467,7 @@ function createFakePlayScript(seed: FakePlayScriptSeed = {}) {
 function renderPanel(
   playScript: RotoPlayScriptController,
   library: RotoScriptLibraryController = createFakeLibrary(),
+  overrides: Record<string, unknown> = {},
 ): TestVNode {
   hooks.cursor = 0;
   hooks.idCursor = 0;
@@ -484,6 +485,7 @@ function renderPanel(
     onCopyScript: () => {},
     onApplyScript: () => {},
     onRefresh: () => {},
+    ...overrides,
   }) as unknown as TestVNode;
 }
 
@@ -674,6 +676,65 @@ describe('Physics Paint Actions deletion lifecycle contract (43.2-13)', () => {
     expect(panel).toContain('if (confirmationBusy) return;');
     expect(panel).toContain('previousConfirmation.current = confirmation');
     expect(panel).not.toContain('deleteButtonRef.current?.focus();\n    previousConfirmation.current = Boolean(confirmation)');
+  });
+});
+
+describe('Physics Paint Actions inspector linked Group navigation (43.2-15)', () => {
+  const selectedGroup = {
+    loopId: 'group-b',
+    displayName: 'Walk Group',
+    sourceLabel: 'Walk Action',
+    placementLabel: 'F12–F19',
+    cycleLabel: 'Cycle 4f × 2 = 8f',
+    effectiveLabel: '8 frames',
+    mode: 'progressive',
+    modeLabel: 'Motion',
+    groupTypeLabel: 'Motion Group',
+    lifecycle: 'synchronized',
+    statusLabel: 'Synchronized with Action.',
+    synchronizationDot: 'synchronized',
+    regenerateDisabledReason: 'Already synchronized with Action.',
+    fragmentLabel: null,
+    linkedDescription: null,
+    tooltipLines: [],
+    accessibleName: 'Walk Group. Motion Group. Synchronized with Action.',
+  } as const;
+
+  it('hides linked navigation when the selected Action has no linked Groups', () => {
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedLoopClip: selectedGroup,
+      linkedGroupNavigation: null,
+    });
+    expect(textOf(tree)).not.toContain('Linked Groups');
+    expect(findAll(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Go to Group')).toHaveLength(0);
+  });
+
+  it('shows one current link with a single Go to Group action', () => {
+    const onGoToGroup = vi.fn();
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedLoopClip: selectedGroup,
+      linkedGroupNavigation: { currentIndex: 0, total: 1, onPrevious: vi.fn(), onNext: vi.fn(), onGoToGroup },
+    });
+    expect(textOf(tree)).toContain('Linked Groups — 1 of 1');
+    const go = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Go to Group');
+    handler(go, 'onClick')();
+    expect(onGoToGroup).toHaveBeenCalledTimes(1);
+    expect(findAll(tree, (vnode) => textOf(vnode) === 'Previous' || textOf(vnode) === 'Next')).toHaveLength(0);
+  });
+
+  it('shows non-wrapping Previous and Next controls disabled at their ends', () => {
+    const onNext = vi.fn();
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedLoopClip: selectedGroup,
+      linkedGroupNavigation: { currentIndex: 0, total: 3, onPrevious: vi.fn(), onNext, onGoToGroup: vi.fn() },
+    });
+    expect(textOf(tree)).toContain('Linked Groups — 1 of 3');
+    const previous = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Previous');
+    const next = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Next');
+    expect(previous.props.disabled).toBe(true);
+    expect(next.props.disabled).toBe(false);
+    handler(next, 'onClick')();
+    expect(onNext).toHaveBeenCalledTimes(1);
   });
 });
 

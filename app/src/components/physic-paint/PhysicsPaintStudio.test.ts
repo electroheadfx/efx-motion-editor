@@ -146,6 +146,33 @@ describe('Physics Paint Group and Action cross-selection (43.2-15)', () => {
     expect(workflowStrip).toContain('linkedActionName={props.linkedRotoActionName ?? null}');
     expect(workflowStrip).toContain('selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}');
   });
+
+  it('projects one cursor-relative current Group without mutating the cursor', () => {
+    expect(studio).toContain('const effectiveLinkedGroup = linkedRotoGroups.find((group) => group.loopId === activeLinkedLoopClipId.value)');
+    expect(studio).toContain('?? chooseCursorRelativeLinkedGroup(linkedRotoGroups, currentFrame);');
+    expect(studio).toContain('currentIndex: effectiveLinkedGroupIndex,');
+    expect(studio).toContain('total: linkedRotoGroups.length,');
+  });
+
+  it('navigates explicitly by placement without wrapping and seeks only after selecting the target Group', () => {
+    const navigationStart = studio.indexOf('const navigateLinkedGroup = useCallback((targetIndex: number) => {');
+    const navigationEnd = studio.indexOf('const rotoNavigationActions', navigationStart);
+    const navigation = studio.slice(navigationStart, navigationEnd);
+    expect(navigationStart).toBeGreaterThanOrEqual(0);
+    expect(navigation).toContain('if (targetIndex < 0 || targetIndex >= linkedRotoGroups.length) return;');
+    expect(navigation).toContain('handleSelectRotoLoopClip(target.loopId);');
+    expect(navigation).toContain('activeLinkedLoopClipId.value = target.loopId;');
+    expect(navigation).toContain('handleNavigateToSyncedFrame(target.placementStart);');
+    expect(navigation.indexOf('handleNavigateToSyncedFrame(target.placementStart);')).toBeGreaterThan(navigation.indexOf('handleSelectRotoLoopClip(target.loopId);'));
+    expect(navigation).not.toContain('% linkedRotoGroups.length');
+  });
+
+  it('wires zero, one, and many navigation through stable Actions inspector props', () => {
+    expect(studio).toContain('linkedGroupNavigation: linkedRotoGroups.length === 0 || effectiveLinkedGroupIndex < 0');
+    expect(studio).toContain('onPrevious: handlePreviousLinkedGroup');
+    expect(studio).toContain('onNext: handleNextLinkedGroup');
+    expect(studio).toContain('onGoToGroup: handleGoToLinkedGroup');
+  });
 });
 
 describe('Physics Paint Roto rail and physical spacing selection wiring', () => {
