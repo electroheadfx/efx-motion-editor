@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 21
+open_count: 20
 waived_count: 1
-fixed_count: 30
-total_count: 52
-last_updated: 2026-08-11T09:33:23.787Z
+fixed_count: 32
+total_count: 53
+last_updated: 2026-08-11T09:59:04.142Z
 ---
 
 # Broken Windows Ledger
@@ -66,7 +66,8 @@ last_updated: 2026-08-11T09:33:23.787Z
 | 49 | 43.2 | deviation | app/src/lib/physicPaintBridge.ts |  | Extended the closed bridge token parser to validate exclusive and recovery ownership. | fixed |  | 2026-08-11T06:49:05.605Z | 2026-08-11T06:49:38.494Z |
 | 50 | 43.2 | deviation | app/src/components/physic-paint/physicsPaintStudio.css |  | Added omitted UI-SPEC geometry required for the Group Delete dialog. | fixed |  | 2026-08-11T08:30:14.260Z | 2026-08-11T08:31:21.055Z |
 | 51 | 43.2 | deviation | app/src/components/physic-paint/roto/physicsPaintRotoGroupLifecycle.ts |  | Corrected only-occurrence Delete Frame to remove the complete Group. | fixed |  | 2026-08-11T08:30:14.337Z | 2026-08-11T08:31:21.136Z |
-| 52 | 43.2 | stub | app/src-tauri/src/services/script_library.rs | 510 | Undo transaction commit intentionally fails closed until Plan 19 supplies retained Action bytes and integrity authority | open |  | 2026-08-11T09:33:23.787Z |  |
+| 52 | 43.2 | stub | app/src-tauri/src/services/script_library.rs | 510 | Undo transaction commit intentionally fails closed until Plan 19 supplies retained Action bytes and integrity authority | fixed |  | 2026-08-11T09:33:23.787Z | 2026-08-11T09:59:04.142Z |
+| 53 | 43.2 | deviation | app/src-tauri/src/services/script_library.rs |  | Released Action history command ID/generation identities are closed against reuse | fixed |  | 2026-08-11T09:58:35.353Z | 2026-08-11T09:58:59.526Z |
 
 ````json
 [
@@ -689,10 +690,22 @@ last_updated: 2026-08-11T09:33:23.787Z
     "file": "app/src-tauri/src/services/script_library.rs",
     "line": 510,
     "description": "Undo transaction commit intentionally fails closed until Plan 19 supplies retained Action bytes and integrity authority",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-11T09:33:23.787Z",
-    "resolved_at": null
+    "resolved_at": "2026-08-11T09:59:04.142Z"
+  },
+  {
+    "id": 53,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": "app/src-tauri/src/services/script_library.rs",
+    "line": null,
+    "description": "Released Action history command ID/generation identities are closed against reuse",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T09:58:35.353Z",
+    "resolved_at": "2026-08-11T09:58:59.526Z"
   }
 ]
 ````

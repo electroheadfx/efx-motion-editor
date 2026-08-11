@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Completed 43.2-10-PLAN.md
-last_updated: "2026-08-11T09:33:24.573Z"
+stopped_at: Completed 43.2-19-PLAN.md
+last_updated: "2026-08-11T09:57:52.782Z"
 last_activity: 2026-08-11
-last_activity_desc: Completed Plan 43.2-10 durable Action transaction journal and recovery commands
+last_activity_desc: Completed Plan 43.2-19 retained Action history and protected release lifecycle
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 61
-  completed_plans: 52
-  percent: 85
+  completed_plans: 53
+  percent: 87
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
-Plan: 11 of 20
+Plan: 12 of 20
 Status: Ready to execute
-Last activity: 2026-08-11 — Completed Plan 43.2-10 durable Action transaction journal and recovery commands
+Last activity: 2026-08-11 — Completed Plan 43.2-19 retained Action history and protected release lifecycle
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [█████████░] 85%
+Progress: [█████████░] 87%
 
 ## Performance Metrics
 
@@ -205,6 +205,7 @@ Progress: [█████████░] 85%
 | Phase 43.2 P08 | 20min | 3 tasks | 10 files |
 | Phase 43.2 P09 | 21min | 2 tasks | 10 files |
 | Phase 43.2 P10 | 15min | 3 tasks | 6 files |
+| Phase 43.2 P19 | 22min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -335,6 +336,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: Ordinary scans deterministically restore and clear prepared transactions, but fail closed while a committed transaction still requires frontend settlement.
 - [Phase 43.2]: Acknowledge persists cleanup-pending ownership before removing the tombstone, active record, and marker; the durable receipt then makes exact retries idempotent and token replay impossible.
 - [Phase 43.2]: Undo prepare remains structurally accepted, while Undo file restoration fails closed until Plan 19 supplies retained Action bytes and integrity authority.
+- [Phase 43.2]: Plan 43.2-19: Retained Action authority is stored as exact bytes plus closed integrity metadata, separate from temporary recovery state.
+- [Phase 43.2]: Plan 43.2-19: History release is owner-bound and restart-safe through cleanup-pending receipts for eviction, redo truncation, and session clear.
+- [Phase 43.2]: Plan 43.2-19: Ordinary scans fail closed on corrupt or ambiguous retained Action history.
 
 ### Pending Todos
 
@@ -524,8 +528,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T09:33:24.561Z
-Stopped at: Completed 43.2-10-PLAN.md
+Last session: 2026-08-11T09:57:52.764Z
+Stopped at: Completed 43.2-19-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
