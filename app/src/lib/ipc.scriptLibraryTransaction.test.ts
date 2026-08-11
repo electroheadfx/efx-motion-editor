@@ -31,8 +31,8 @@ function prepareRequest(
     redo: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
   }[direction];
   const interpolation = { enabled: false, mode: 'duplicate' as const };
-  const realKeyRecords = [];
-  const loopClips = [];
+  const realKeyRecords: never[] = [];
+  const loopClips: never[] = [];
   const physicalDocument = {
     capacity: 24,
     realKeyRecords,
@@ -194,22 +194,30 @@ describe('script-library Action transaction IPC', () => {
     });
   });
 
-  it.each([
-    ['token', { token: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' }],
-    ['operation', { operationId: 'stale-operation' }],
-    ['lease', { leaseToken: 'stale-lease' }],
-    ['direction', { direction: 'undo' }],
-    ['command', { commandId: 'stale-command' }],
-    ['generation', { generation: 11 }],
-  ])('rejects a stale %s response as a typed correlation failure', async (_field, changed) => {
-    const request = prepareRequest();
-    invoke.mockResolvedValueOnce({ ...transactionRecord(request, 'committed'), ...changed });
+  it.each(['token', 'operation', 'lease', 'direction', 'command', 'generation'] as const)(
+    'rejects a stale %s response as a typed correlation failure',
+    async (field) => {
+      const request = prepareRequest();
+      const stale = transactionRecord(request, 'committed');
+      const response = field === 'token'
+        ? { ...stale, token: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' }
+        : field === 'operation'
+          ? { ...stale, operationId: 'stale-operation' }
+          : field === 'lease'
+            ? { ...stale, leaseToken: 'stale-lease' }
+            : field === 'direction'
+              ? { ...stale, direction: 'undo', authority: { ...stale.authority, expectedActionPresent: false } }
+              : field === 'command'
+                ? { ...stale, commandId: 'stale-command', retainedArtifact: { ...stale.retainedArtifact, commandId: 'stale-command' } }
+                : { ...stale, generation: 11, retainedArtifact: { ...stale.retainedArtifact, generation: 11 } };
+      invoke.mockResolvedValueOnce(response);
 
-    await expect(scriptLibraryCommitActionTransaction(authority, request)).resolves.toMatchObject({
-      state: 'failed',
-      code: 'correlation-mismatch',
-    });
-  });
+      await expect(scriptLibraryCommitActionTransaction(authority, request)).resolves.toMatchObject({
+        state: 'failed',
+        code: 'correlation-mismatch',
+      });
+    },
+  );
 
   it('maps malformed replies and invocation failures to closed typed failures', async () => {
     const request = prepareRequest();

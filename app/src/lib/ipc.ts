@@ -2,7 +2,16 @@ import { invoke } from '@tauri-apps/api/core';
 import type { ProjectData, MceProject } from '../types/project';
 import type { ImageInfo, ImportResult } from '../types/image';
 import type { PersistedRotoScriptV1 } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
-import type { PhysicPaintScriptLibraryResult, PhysicPaintThumbnailEncodeRequest } from '../types/physicPaint';
+import {
+  isPhysicPaintActionTransactionResult,
+  type PhysicPaintActionHistoryReleaseRequest,
+  type PhysicPaintActionTransactionAcknowledgeRequest,
+  type PhysicPaintActionTransactionFailure,
+  type PhysicPaintActionTransactionPrepareRequest,
+  type PhysicPaintActionTransactionResult,
+  type PhysicPaintScriptLibraryResult,
+  type PhysicPaintThumbnailEncodeRequest,
+} from '../types/physicPaint';
 
 // Result type mirroring Rust's Result pattern (locked decision)
 export type Result<T, E = string> =
@@ -89,6 +98,186 @@ export function scriptLibraryMigrateSavedProjects(sourceFilePath: string, destin
 
 export function scriptLibraryEncodeThumbnailWebp(request: PhysicPaintThumbnailEncodeRequest): Promise<Result<{ width: number; height: number; mimeType: 'image/webp'; webpBase64: string }>> {
   return safeInvoke('script_library_encode_thumbnail_webp', { request });
+}
+
+function actionTransactionFailure(
+  code: PhysicPaintActionTransactionFailure['code'],
+  error: string,
+): PhysicPaintActionTransactionFailure {
+  return { state: 'failed', code, error };
+}
+
+function isActiveRecoveryError(error: string): boolean {
+  const normalized = error.toLowerCase();
+  return normalized.includes('recovery')
+    && (normalized.includes('already required') || normalized.includes('while recovery is active'));
+}
+
+async function invokeClosedActionTransaction(
+  command: string,
+  args: Record<string, unknown>,
+): Promise<PhysicPaintActionTransactionResult> {
+  const invoked = await safeInvoke<unknown>(command, args);
+  if (!invoked.ok) {
+    return actionTransactionFailure(
+      isActiveRecoveryError(invoked.error) ? 'active-recovery-blocked' : 'invoke-failed',
+      invoked.error,
+    );
+  }
+  if (!isPhysicPaintActionTransactionResult(invoked.data)) {
+    return actionTransactionFailure('malformed-response', `Malformed ${command} response`);
+  }
+  return invoked.data;
+}
+
+function matchesTransactionIdentity(
+  result: PhysicPaintActionTransactionResult,
+  expected: PhysicPaintActionTransactionPrepareRequest,
+): boolean {
+  if (result.state === 'failed') return true;
+  if (result.state === 'recovered-prepared') return result.token === expected.token;
+  if (result.state === 'released' || result.state === 'retained') return false;
+  if (result.state === 'cleanup-pending' && !('token' in result)) return false;
+  if ('token' in result) {
+    if (result.token !== expected.token) return false;
+    if ('commandId' in result && result.commandId !== expected.commandId) return false;
+    if ('generation' in result && result.generation !== expected.generation) return false;
+    if ('operationId' in result && result.operationId !== expected.operationId) return false;
+    if ('leaseToken' in result && result.leaseToken !== expected.leaseToken) return false;
+    if ('direction' in result && result.direction !== expected.direction) return false;
+  }
+  if (result.state === 'prepared' || result.state === 'committed' || result.state === 'recovery-required') {
+    return result.mode === expected.mode
+      && result.authority.projectContextId === expected.authority.projectContextId
+      && result.authority.layerId === expected.authority.layerId
+      && result.authority.launchOperationId === expected.authority.launchOperationId
+      && result.authority.actionId === expected.authority.actionId
+      && result.retainedArtifact.commandId === expected.retainedArtifact.commandId
+      && result.retainedArtifact.generation === expected.retainedArtifact.generation
+      && result.target.physicalRevision === expected.target.physicalRevision
+      && result.target.physicalHash === expected.target.physicalHash;
+  }
+  return true;
+}
+
+function matchesAcknowledgeIdentity(
+  result: PhysicPaintActionTransactionResult,
+  expected: PhysicPaintActionTransactionAcknowledgeRequest,
+): boolean {
+  return result.state === 'failed'
+    || ((result.state === 'acknowledged' || result.state === 'cleanup-pending')
+      && 'token' in result
+      && result.token === expected.token
+      && result.commandId === expected.commandId
+      && result.generation === expected.generation
+      && result.operationId === expected.operationId
+      && result.leaseToken === expected.leaseToken
+      && result.direction === expected.direction);
+}
+
+function matchesReleaseIdentity(
+  result: PhysicPaintActionTransactionResult,
+  expected: PhysicPaintActionHistoryReleaseRequest,
+): boolean {
+  return result.state === 'failed'
+    || ((result.state === 'released' || result.state === 'cleanup-pending')
+      && 'projectContextId' in result
+      && result.projectContextId === expected.projectContextId
+      && result.launchOperationId === expected.launchOperationId
+      && result.commandId === expected.commandId
+      && result.generation === expected.generation
+      && result.reason === expected.reason);
+}
+
+function correlatedResult(
+  result: PhysicPaintActionTransactionResult,
+  matches: boolean,
+): PhysicPaintActionTransactionResult {
+  return matches
+    ? result
+    : actionTransactionFailure('correlation-mismatch', 'Action transaction response identity does not match the request');
+}
+
+export async function scriptLibraryPrepareActionTransaction(
+  authority: string,
+  request: PhysicPaintActionTransactionPrepareRequest,
+): Promise<PhysicPaintActionTransactionResult> {
+  const result = await invokeClosedActionTransaction('script_library_prepare_action_transaction', { authority, request });
+  if (result.state !== 'prepared' && result.state !== 'failed') {
+    return actionTransactionFailure('malformed-response', 'Prepare command returned an invalid transaction state');
+  }
+  return correlatedResult(result, matchesTransactionIdentity(result, request));
+}
+
+async function invokeActionTransactionTokenCommand(
+  command: string,
+  authority: string,
+  expected: PhysicPaintActionTransactionPrepareRequest,
+): Promise<PhysicPaintActionTransactionResult> {
+  const result = await invokeClosedActionTransaction(command, {
+    authority,
+    request: { token: expected.token },
+  });
+  return correlatedResult(result, matchesTransactionIdentity(result, expected));
+}
+
+export async function scriptLibraryCommitActionTransaction(
+  authority: string,
+  expected: PhysicPaintActionTransactionPrepareRequest,
+): Promise<PhysicPaintActionTransactionResult> {
+  const result = await invokeActionTransactionTokenCommand(
+    'script_library_commit_action_transaction', authority, expected,
+  );
+  return result.state === 'committed' || result.state === 'failed'
+    ? result
+    : actionTransactionFailure('malformed-response', 'Commit command returned an invalid transaction state');
+}
+
+export function scriptLibraryActionTransactionStatus(
+  authority: string,
+  expected: PhysicPaintActionTransactionPrepareRequest,
+): Promise<PhysicPaintActionTransactionResult> {
+  return invokeActionTransactionTokenCommand(
+    'script_library_action_transaction_status', authority, expected,
+  );
+}
+
+export async function scriptLibraryRecoverActionTransaction(
+  authority: string,
+  expected: PhysicPaintActionTransactionPrepareRequest,
+): Promise<PhysicPaintActionTransactionResult> {
+  const result = await invokeActionTransactionTokenCommand(
+    'script_library_recover_action_transaction', authority, expected,
+  );
+  return result.state === 'recovery-required' || result.state === 'recovered-prepared' || result.state === 'failed'
+    ? result
+    : actionTransactionFailure('malformed-response', 'Recover command returned an invalid transaction state');
+}
+
+export async function scriptLibraryAcknowledgeActionTransaction(
+  authority: string,
+  request: PhysicPaintActionTransactionAcknowledgeRequest,
+): Promise<PhysicPaintActionTransactionResult> {
+  const result = await invokeClosedActionTransaction(
+    'script_library_acknowledge_action_transaction', { authority, request },
+  );
+  if (result.state !== 'acknowledged' && result.state !== 'failed') {
+    return actionTransactionFailure('malformed-response', 'Acknowledge command returned an invalid transaction state');
+  }
+  return correlatedResult(result, matchesAcknowledgeIdentity(result, request));
+}
+
+export async function scriptLibraryReleaseActionHistory(
+  authority: string,
+  request: PhysicPaintActionHistoryReleaseRequest,
+): Promise<PhysicPaintActionTransactionResult> {
+  const result = await invokeClosedActionTransaction(
+    'script_library_release_action_history', { authority, request },
+  );
+  if (result.state !== 'released' && result.state !== 'failed') {
+    return actionTransactionFailure('malformed-response', 'Release command returned an invalid transaction state');
+  }
+  return correlatedResult(result, matchesReleaseIdentity(result, request));
 }
 
 // --- Path utilities ---

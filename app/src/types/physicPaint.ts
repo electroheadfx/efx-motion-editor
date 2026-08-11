@@ -111,6 +111,11 @@ export interface PhysicPaintActionTransactionCleanupPendingResult extends Physic
   readonly state: 'cleanup-pending';
 }
 
+export interface PhysicPaintActionTransactionAcknowledgedReceipt extends PhysicPaintActionTransactionAcknowledgeRequest {
+  readonly schemaVersion: 1;
+  readonly state: 'acknowledged';
+}
+
 export interface PhysicPaintActionTransactionAcknowledgedResult extends PhysicPaintActionTransactionAcknowledgeRequest {
   readonly state: 'acknowledged';
   readonly cleaned: boolean;
@@ -138,6 +143,7 @@ export type PhysicPaintActionTransactionResult =
   | PhysicPaintActionTransactionRecord
   | PhysicPaintActionRecoveredPreparedResult
   | PhysicPaintActionTransactionCleanupPendingResult
+  | PhysicPaintActionTransactionAcknowledgedReceipt
   | PhysicPaintActionTransactionAcknowledgedResult
   | PhysicPaintActionHistoryCleanupPendingResult
   | PhysicPaintActionHistoryReleasedResult
@@ -329,6 +335,10 @@ export function isPhysicPaintActionTransactionResult(value: unknown): value is P
     return false;
   }
   if (value.state === 'acknowledged') {
+    if (hasOnlyKeys(value, ['schemaVersion', 'state', 'token', 'commandId', 'generation', 'operationId', 'leaseToken', 'direction'])) {
+      const { schemaVersion, state: _state, ...request } = value;
+      return schemaVersion === 1 && isPhysicPaintActionTransactionAcknowledgeRequest(request);
+    }
     const { state: _state, cleaned, ...request } = value;
     return typeof cleaned === 'boolean' && isPhysicPaintActionTransactionAcknowledgeRequest(request);
   }
