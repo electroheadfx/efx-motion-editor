@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 20
 waived_count: 1
-fixed_count: 32
-total_count: 53
-last_updated: 2026-08-11T09:59:04.142Z
+fixed_count: 35
+total_count: 56
+last_updated: 2026-08-11T10:18:57.147Z
 ---
 
 # Broken Windows Ledger
@@ -68,6 +68,9 @@ last_updated: 2026-08-11T09:59:04.142Z
 | 51 | 43.2 | deviation | app/src/components/physic-paint/roto/physicsPaintRotoGroupLifecycle.ts |  | Corrected only-occurrence Delete Frame to remove the complete Group. | fixed |  | 2026-08-11T08:30:14.337Z | 2026-08-11T08:31:21.136Z |
 | 52 | 43.2 | stub | app/src-tauri/src/services/script_library.rs | 510 | Undo transaction commit intentionally fails closed until Plan 19 supplies retained Action bytes and integrity authority | fixed |  | 2026-08-11T09:33:23.787Z | 2026-08-11T09:59:04.142Z |
 | 53 | 43.2 | deviation | app/src-tauri/src/services/script_library.rs |  | Released Action history command ID/generation identities are closed against reuse | fixed |  | 2026-08-11T09:58:35.353Z | 2026-08-11T09:58:59.526Z |
+| 54 | 43.2 | deviation | app/src/types/physicPaint.test.ts |  | Corrected Action transaction fixtures to canonical UUID v4 tokens | fixed |  | 2026-08-11T10:18:29.203Z | 2026-08-11T10:18:56.986Z |
+| 55 | 43.2 | deviation | app/src/types/physicPaint.ts |  | Added persisted acknowledged receipt validation for transaction status | fixed |  | 2026-08-11T10:18:29.282Z | 2026-08-11T10:18:57.062Z |
+| 56 | 43.2 | deviation | .planning/STATE.md |  | Corrected out-of-order plan position and progress after state handler advancement | fixed |  | 2026-08-11T10:18:29.355Z | 2026-08-11T10:18:57.147Z |
 
 ````json
 [
@@ -706,6 +709,42 @@ last_updated: 2026-08-11T09:59:04.142Z
     "reason": "",
     "recorded_at": "2026-08-11T09:58:35.353Z",
     "resolved_at": "2026-08-11T09:58:59.526Z"
+  },
+  {
+    "id": 54,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": "app/src/types/physicPaint.test.ts",
+    "line": null,
+    "description": "Corrected Action transaction fixtures to canonical UUID v4 tokens",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T10:18:29.203Z",
+    "resolved_at": "2026-08-11T10:18:56.986Z"
+  },
+  {
+    "id": 55,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": "app/src/types/physicPaint.ts",
+    "line": null,
+    "description": "Added persisted acknowledged receipt validation for transaction status",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T10:18:29.282Z",
+    "resolved_at": "2026-08-11T10:18:57.062Z"
+  },
+  {
+    "id": 56,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Corrected out-of-order plan position and progress after state handler advancement",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T10:18:29.355Z",
+    "resolved_at": "2026-08-11T10:18:57.147Z"
   }
 ]
 ````

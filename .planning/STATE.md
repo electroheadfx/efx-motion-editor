@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Completed 43.2-19-PLAN.md
-last_updated: "2026-08-11T09:57:52.782Z"
+stopped_at: Completed 43.2-11-PLAN.md
+last_updated: "2026-08-11T10:17:25.389Z"
 last_activity: 2026-08-11
-last_activity_desc: Completed Plan 43.2-19 retained Action history and protected release lifecycle
+last_activity_desc: Completed Plan 43.2-11 closed Action transaction validators and IPC wrappers
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 61
-  completed_plans: 53
-  percent: 87
+  completed_plans: 54
+  percent: 89
 ---
 
 # Project State
@@ -31,11 +31,11 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
 Plan: 12 of 20
 Status: Ready to execute
-Last activity: 2026-08-11 — Completed Plan 43.2-19 retained Action history and protected release lifecycle
+Last activity: 2026-08-11 — Completed Plan 43.2-11 closed Action transaction validators and IPC wrappers
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [█████████░] 87%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -206,6 +206,7 @@ Progress: [█████████░] 87%
 | Phase 43.2 P09 | 21min | 2 tasks | 10 files |
 | Phase 43.2 P10 | 15min | 3 tasks | 6 files |
 | Phase 43.2 P19 | 22min | 2 tasks | 6 files |
+| Phase 43.2 P11 | 9min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -218,77 +219,77 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 
 - Physics paint is an additional tool; it does not replace perfect-freehand basic paint or p5.brush FX paint.
 - Failed headless adapter/batch replay remains excluded; the future editor integration seam is typed/contract-only.
-- [Phase ?]: 41-01: D-04 boundary locked — a4-protocol-url carrier, a6-matched-fps sync scope, rev-counter revision discipline, d04-proof-packaged-build proof mode for the 41-05 CSP grant
-- [Phase ?]: 41-02: audioPreview embedded in launch context only when audio tracks exist (absent = no audio; audio-less launches byte-stable)
-- [Phase ?]: 41-02: launch-integration hydration applies audioPreview through the strict newer-than revision funnel — one application point for hydration and 41-03 push events
-- [Phase ?]: 41-02: monitor start wired inside useRotoCachedPlayback.start() with playbackRangeEnd = last cached appFrame + 1 (D-11 loop window cap)
-- [Phase ?]: 41-03: drift anchor stores only { appFrame, ctxTime } — the audioTime term cancels in |expected-actual|; checkDrift self-throttles to one compare per 10 ticks with a 40ms named threshold
-- [Phase ?]: 41-03: audio push publisher is a gated installer called from main.tsx only — never module scope, because the child bundle shares the module and its audioStore singleton would be empty (AUDIO-01)
-- [Phase ?]: 41-03: push publishes even with zero tracks (last-track deletion must reach the child); fps-mismatch note routes through the publishStatus gate, queued during playback and flushed on stop
-- [Phase ?]: 41-04: suppression implies visually-playing by construction (set by blocked Play, cleared by the monitor stop funnel); noteVisualStop clears without publishing so the stop funnel owns the status line
-- [Phase ?]: 41-04: revisioned-update restart decision taken after the prepare await — a racing toggle always ends silent (Off) or positioned at the cursor (On); stale claims reset on every fresh child launch
-- [Phase ?]: 41-05: release() idempotent via context-state check; close funnel + unmount double-fire absorbed; closed AudioContext discarded, never reused (D-08); audioEngine diff limited to read-only engineHasContext probe
-- [Phase ?]: 41-05: D-04 proof satisfied by literal packaged-build reading — verbatim connect-src refusal observed in pre-grant packaged build 2026-08-05; single-token efxasset grant pinned by contract test; native packaged UAT (8 steps) approved
-- [Phase ?]: 42-01: static/hold schedule shipped as additive sibling module; progressive module byte-untouched (regression lock)
-- [Phase ?]: 42-02: static/hold mode + post-Motion paint-only color override wired through one renderer entry point; controller exposes the full session-only option surface (safe-product Repeat bound, Infinity preserve/restore, loopReadout, resetDialogMotion, generation-error lifecycle, atomic appliedSummary) for 42-03/42-04
-- [Phase ?]: 42-03: pick guard = capture-phase arming on the picker well (InlineColorPicker root stops propagation; capture handlers are the only reliable interception)
-- [Phase ?]: 42-03: dialog title moved into a header outside the scroll region per the locked E1 overflow structure; CSS additions strictly additive under .physics-paint-play-script-*
-- [Phase ?]: 42-03: Original colors reset flips overrideEnabled only, retaining overrideColor as session memory (D-10)
-- [Phase ?]: Override color resolves ONLY via the getBrushColor port at confirm time; the dialog-side overrideColor signal was deleted (D-08R/D-10)
-- [Phase ?]: Malformed brush-color port values fall back to no override via a strict #rrggbb normalize guard (T-42-05-01)
-- [Phase ?]: Max→1 normalization on Static / Hold switch lives in the dialog selectMode path; controller D-15 first-time defaults unaffected
-- [Phase ?]: 42-06: Play Script dialog re-mounted as fixed-position dark modal overlay (D-19); StudioView byte-identical — out-of-flow positioning removes the grid child from layout
-- [Phase ?]: 42-06: summary bar splits controller loopReadout into Requested-left/Effective-right spans; controller D-13 composition untouched
-- [Phase ?]: 42-04: native visual UAT approved 2026-08-06 — steps 1-9 + 8b (drag + 48px stable Custom-row height) pass on dev run, step 9 packaged-build CSP check pass; closes the PLAY-01..04 user oracle across the 42-05/42-06/42-07 remediation surface
-- [Phase ?]: 42-04: panel summary is a pure read-only projection — zero string assembly in the panel; composition stays controller-owned (42-02)
-- [Phase ?]: 43-01: Q1 resolved — loopClips join the single canonical revision fingerprint (records, interpolation, loopClips); empty collection adds no term so v0.8.1 revisions stay byte-stable (D-29)
-- [Phase ?]: 43-01: play-script and paste-key-group commits are ordinary history-bearing kinds — generation plus derived loop shrink is one undoable/redoable outcome (D-06/D-10)
-- [Phase ?]: 43-04: determinism spec exercises the real animation modules unmocked — the hash-seeded held-pose transform is proven pure at stroke level (HOLD-02 substrate)
-- [Phase ?]: 43-04: HOLD-03 one-Undo/one-Redo proven by composing the real controller confirm output with the real useRotoPhysicalEditHistory hook — one generation = one history command
-- [Phase ?]: 43-02: loop derivation returns a prepared context (placementStart-sorted ranges + keyIdByAppFrame) — O(log loops) binary-search lookup, O(1) modulo, O(keys + loops) re-derivation
-- [Phase ?]: 43-02: finite loops are not capacity-clamped; the 600 cap folds into the parent-end bound for infinity loops only (Q4)
-- [Phase ?]: 43-02: boundary tie attribution loop-start > real-key > parent-end; strip loop wiring is opt-in via rotoLoopResolutionContext pending 43-03 store threading
-- [Phase ?]: 43-03: linked occurrences reuse the 'real' render-source variant with source-scoped cacheRevision — zero consumer changes (D-27); 'linked-unresolved' joins the union, renderable-subset guards until 43-09 placeholder
-- [Phase ?]: 43-03: store-side loop derivation bounds parent end at physical capacity; dynamic main-editor parent-end tracking flagged for capsule/frameMap plans
-- [Phase ?]: 43-03: bridge loopClips acceptance was already wired by 43-01 — Task 2 landed as real-bridge characterization specs (atomic apply, stale rejection, undo/redo both directions)
-- [Phase ?]: 43-05: loop-aware guard idiom — optional loopClips on the resolver edit input (absent = pre-43 behavior); D-07 N counts every loop referencing the key; D-11 full-timeline Force Spacing rejects on any linked source key, scoped only on linked members
-- [Phase ?]: 43-05: rigid whole-cycle drag carries nextLoopClips on the proposal (nextRecords precedent) — original loops follow, duplicated loops keep placementStart; coordinator stages proposal.nextLoopClips atomically
-- [Phase ?]: 43-05: D-06 preflight lives in the resolver as derivePhysicPaintRotoLoopShortenPreflight (Pitfall 4); controller exposes advisory loopShortenPreflight signal fed by the open-time authority snapshot, refreshed inside confirm()
-- [Phase ?]: 43-07: main-editor parent end = FX sequence authored span (never the roto-extended outFrame — avoids circular infinity-loop ends); shared by the capsule feed and the loop-aware display end frame (D-25, closes 43-03 flag)
-- [Phase ?]: 43-07: capsule realKeyBacked = source-key identity at the presentation frame; state paint precedence implemented by paint order (hover → diagonal → selected → focus → error), paint only never geometry (D-15/D-23)
-- [Phase ?]: 43-09: export preflight fails fast before any frame render with the locked D-28 error; F = placementStart + first dangling cycle index (interval math only, no frame materialization)
-- [Phase ?]: 43-09: render-source variant renamed 'linked-unresolved' → 'loop-placeholder' carrying the full 43-02 typed contract — one contract, every consumer never-fallback exhaustive (audit finding 6)
-- [Phase ?]: 43-09: valid-loop preview/export parity pinned by six-scenario spec driving the real renderGlobalFrame loop vs the preview collect seam — same sourceKeyId/cacheRevision/raster per frame (D-27, audit finding 8)
-- [Phase ?]: [Phase 43]: 43-06: apply-time loop creation threshold — a Loop Clip record is persisted only on loop intent (repeat > 1 or Infinity); S4 Link skips generation (one loop-only commit); loopOnly/preserveSelection declarations extend the play-script delta barriers
-- [Phase ?]: [Phase 43]: 43-06: Loop Clip provenance (scriptId/motion/overrideColor, optional all-or-nothing) powers the S3 prefill and S4 matching; loops without provenance never match and cannot be source-edited/repaired
-- [Phase ?]: Plan 43-08: Main-timeline Loop Clip mutations route through a strict correlated bridge; the standalone Studio controller remains the sole physical-edit/history authority.
-- [Phase ?]: Plan 43-08: Delete keeps delete-loop correlation identity but dispatches unlinkLoop, preserving D-03 unlink-only semantics.
-- [Phase ?]: Plan 43-08: Retry delivery reuses one operationId; Studio deduplicates identical in-flight requests and rejects changed-content ID reuse.
-- [Phase ?]: 43.1-01: D-01 confirmed — incoming interpolation breaks are canonical facts owned by stable real-key identity; persisted absence hydrates empty, omitted apply input retains accepted ownership, and explicit empty replaces it.
-- [Phase ?]: 43.1-02: Incoming-only exclusion is derived solely from the owning right real-key identity in the shared physical projection.
-- [Phase ?]: 43.1-02: insert-empty-segment is a distinct fail-closed semantic operation carrying one supplied blank key and one complete break replacement.
-- [Phase ?]: 43.1-02: Unchanged edits emit null break replacement; delete and empty-segment insert emit complete frozen ownership collections.
-- [Phase ?]: 43.1-02: Structural projection memoization includes immutable incoming-break array identity while selection and cursor remain non-structural.
-- [Phase ?]: Incoming interpolation breaks are a complete stable-key-owned document collection at every persistence, bridge, coordinator, and history boundary.
-- [Phase ?]: Coordinator record and break replacement is ordered by referential validity so adding or removing an owning key never installs orphan ownership.
-- [Phase ?]: Accepted bridge results must echo the exact complete owner collection and semantic delta before coordinator history publication.
-- [Phase ?]: History equality and replay revisions include break ownership, preserving redo for rejected or equal edits.
-- [Phase ?]: 43.1-04: One typed Insert target classifier drives both Signals-derived view state and activation-time reclassification; occupied keys retain insert-slot while genuinely empty cursors dispatch insert-empty-segment.
-- [Phase ?]: 43.1-04: One product-reason mapper owns disabled and action-time rejection copy while raw resolver diagnostics remain internal.
-- [Phase ?]: 43.1-04: Empty-segment records, break ownership, selection, cursor, canvas, status, and history publish only after exact parent acknowledgement through deferred settlement.
-- [Phase ?]: 43.1-04: Accepted empty insertion reuses current-frame reconciliation at the retained destination rather than navigation or a second canvas path.
+- [Phase 43.2]: 41-01: D-04 boundary locked — a4-protocol-url carrier, a6-matched-fps sync scope, rev-counter revision discipline, d04-proof-packaged-build proof mode for the 41-05 CSP grant
+- [Phase 43.2]: 41-02: audioPreview embedded in launch context only when audio tracks exist (absent = no audio; audio-less launches byte-stable)
+- [Phase 43.2]: 41-02: launch-integration hydration applies audioPreview through the strict newer-than revision funnel — one application point for hydration and 41-03 push events
+- [Phase 43.2]: 41-02: monitor start wired inside useRotoCachedPlayback.start() with playbackRangeEnd = last cached appFrame + 1 (D-11 loop window cap)
+- [Phase 43.2]: 41-03: drift anchor stores only { appFrame, ctxTime } — the audioTime term cancels in |expected-actual|; checkDrift self-throttles to one compare per 10 ticks with a 40ms named threshold
+- [Phase 43.2]: 41-03: audio push publisher is a gated installer called from main.tsx only — never module scope, because the child bundle shares the module and its audioStore singleton would be empty (AUDIO-01)
+- [Phase 43.2]: 41-03: push publishes even with zero tracks (last-track deletion must reach the child); fps-mismatch note routes through the publishStatus gate, queued during playback and flushed on stop
+- [Phase 43.2]: 41-04: suppression implies visually-playing by construction (set by blocked Play, cleared by the monitor stop funnel); noteVisualStop clears without publishing so the stop funnel owns the status line
+- [Phase 43.2]: 41-04: revisioned-update restart decision taken after the prepare await — a racing toggle always ends silent (Off) or positioned at the cursor (On); stale claims reset on every fresh child launch
+- [Phase 43.2]: 41-05: release() idempotent via context-state check; close funnel + unmount double-fire absorbed; closed AudioContext discarded, never reused (D-08); audioEngine diff limited to read-only engineHasContext probe
+- [Phase 43.2]: 41-05: D-04 proof satisfied by literal packaged-build reading — verbatim connect-src refusal observed in pre-grant packaged build 2026-08-05; single-token efxasset grant pinned by contract test; native packaged UAT (8 steps) approved
+- [Phase 43.2]: 42-01: static/hold schedule shipped as additive sibling module; progressive module byte-untouched (regression lock)
+- [Phase 43.2]: 42-02: static/hold mode + post-Motion paint-only color override wired through one renderer entry point; controller exposes the full session-only option surface (safe-product Repeat bound, Infinity preserve/restore, loopReadout, resetDialogMotion, generation-error lifecycle, atomic appliedSummary) for 42-03/42-04
+- [Phase 43.2]: 42-03: pick guard = capture-phase arming on the picker well (InlineColorPicker root stops propagation; capture handlers are the only reliable interception)
+- [Phase 43.2]: 42-03: dialog title moved into a header outside the scroll region per the locked E1 overflow structure; CSS additions strictly additive under .physics-paint-play-script-*
+- [Phase 43.2]: 42-03: Original colors reset flips overrideEnabled only, retaining overrideColor as session memory (D-10)
+- [Phase 43.2]: Override color resolves ONLY via the getBrushColor port at confirm time; the dialog-side overrideColor signal was deleted (D-08R/D-10)
+- [Phase 43.2]: Malformed brush-color port values fall back to no override via a strict #rrggbb normalize guard (T-42-05-01)
+- [Phase 43.2]: Max→1 normalization on Static / Hold switch lives in the dialog selectMode path; controller D-15 first-time defaults unaffected
+- [Phase 43.2]: 42-06: Play Script dialog re-mounted as fixed-position dark modal overlay (D-19); StudioView byte-identical — out-of-flow positioning removes the grid child from layout
+- [Phase 43.2]: 42-06: summary bar splits controller loopReadout into Requested-left/Effective-right spans; controller D-13 composition untouched
+- [Phase 43.2]: 42-04: native visual UAT approved 2026-08-06 — steps 1-9 + 8b (drag + 48px stable Custom-row height) pass on dev run, step 9 packaged-build CSP check pass; closes the PLAY-01..04 user oracle across the 42-05/42-06/42-07 remediation surface
+- [Phase 43.2]: 42-04: panel summary is a pure read-only projection — zero string assembly in the panel; composition stays controller-owned (42-02)
+- [Phase 43.2]: 43-01: Q1 resolved — loopClips join the single canonical revision fingerprint (records, interpolation, loopClips); empty collection adds no term so v0.8.1 revisions stay byte-stable (D-29)
+- [Phase 43.2]: 43-01: play-script and paste-key-group commits are ordinary history-bearing kinds — generation plus derived loop shrink is one undoable/redoable outcome (D-06/D-10)
+- [Phase 43.2]: 43-04: determinism spec exercises the real animation modules unmocked — the hash-seeded held-pose transform is proven pure at stroke level (HOLD-02 substrate)
+- [Phase 43.2]: 43-04: HOLD-03 one-Undo/one-Redo proven by composing the real controller confirm output with the real useRotoPhysicalEditHistory hook — one generation = one history command
+- [Phase 43.2]: 43-02: loop derivation returns a prepared context (placementStart-sorted ranges + keyIdByAppFrame) — O(log loops) binary-search lookup, O(1) modulo, O(keys + loops) re-derivation
+- [Phase 43.2]: 43-02: finite loops are not capacity-clamped; the 600 cap folds into the parent-end bound for infinity loops only (Q4)
+- [Phase 43.2]: 43-02: boundary tie attribution loop-start > real-key > parent-end; strip loop wiring is opt-in via rotoLoopResolutionContext pending 43-03 store threading
+- [Phase 43.2]: 43-03: linked occurrences reuse the 'real' render-source variant with source-scoped cacheRevision — zero consumer changes (D-27); 'linked-unresolved' joins the union, renderable-subset guards until 43-09 placeholder
+- [Phase 43.2]: 43-03: store-side loop derivation bounds parent end at physical capacity; dynamic main-editor parent-end tracking flagged for capsule/frameMap plans
+- [Phase 43.2]: 43-03: bridge loopClips acceptance was already wired by 43-01 — Task 2 landed as real-bridge characterization specs (atomic apply, stale rejection, undo/redo both directions)
+- [Phase 43.2]: 43-05: loop-aware guard idiom — optional loopClips on the resolver edit input (absent = pre-43 behavior); D-07 N counts every loop referencing the key; D-11 full-timeline Force Spacing rejects on any linked source key, scoped only on linked members
+- [Phase 43.2]: 43-05: rigid whole-cycle drag carries nextLoopClips on the proposal (nextRecords precedent) — original loops follow, duplicated loops keep placementStart; coordinator stages proposal.nextLoopClips atomically
+- [Phase 43.2]: 43-05: D-06 preflight lives in the resolver as derivePhysicPaintRotoLoopShortenPreflight (Pitfall 4); controller exposes advisory loopShortenPreflight signal fed by the open-time authority snapshot, refreshed inside confirm()
+- [Phase 43.2]: 43-07: main-editor parent end = FX sequence authored span (never the roto-extended outFrame — avoids circular infinity-loop ends); shared by the capsule feed and the loop-aware display end frame (D-25, closes 43-03 flag)
+- [Phase 43.2]: 43-07: capsule realKeyBacked = source-key identity at the presentation frame; state paint precedence implemented by paint order (hover → diagonal → selected → focus → error), paint only never geometry (D-15/D-23)
+- [Phase 43.2]: 43-09: export preflight fails fast before any frame render with the locked D-28 error; F = placementStart + first dangling cycle index (interval math only, no frame materialization)
+- [Phase 43.2]: 43-09: render-source variant renamed 'linked-unresolved' → 'loop-placeholder' carrying the full 43-02 typed contract — one contract, every consumer never-fallback exhaustive (audit finding 6)
+- [Phase 43.2]: 43-09: valid-loop preview/export parity pinned by six-scenario spec driving the real renderGlobalFrame loop vs the preview collect seam — same sourceKeyId/cacheRevision/raster per frame (D-27, audit finding 8)
+- [Phase 43.2]: [Phase 43]: 43-06: apply-time loop creation threshold — a Loop Clip record is persisted only on loop intent (repeat > 1 or Infinity); S4 Link skips generation (one loop-only commit); loopOnly/preserveSelection declarations extend the play-script delta barriers
+- [Phase 43.2]: [Phase 43]: 43-06: Loop Clip provenance (scriptId/motion/overrideColor, optional all-or-nothing) powers the S3 prefill and S4 matching; loops without provenance never match and cannot be source-edited/repaired
+- [Phase 43.2]: Plan 43-08: Main-timeline Loop Clip mutations route through a strict correlated bridge; the standalone Studio controller remains the sole physical-edit/history authority.
+- [Phase 43.2]: Plan 43-08: Delete keeps delete-loop correlation identity but dispatches unlinkLoop, preserving D-03 unlink-only semantics.
+- [Phase 43.2]: Plan 43-08: Retry delivery reuses one operationId; Studio deduplicates identical in-flight requests and rejects changed-content ID reuse.
+- [Phase 43.2]: 43.1-01: D-01 confirmed — incoming interpolation breaks are canonical facts owned by stable real-key identity; persisted absence hydrates empty, omitted apply input retains accepted ownership, and explicit empty replaces it.
+- [Phase 43.2]: 43.1-02: Incoming-only exclusion is derived solely from the owning right real-key identity in the shared physical projection.
+- [Phase 43.2]: 43.1-02: insert-empty-segment is a distinct fail-closed semantic operation carrying one supplied blank key and one complete break replacement.
+- [Phase 43.2]: 43.1-02: Unchanged edits emit null break replacement; delete and empty-segment insert emit complete frozen ownership collections.
+- [Phase 43.2]: 43.1-02: Structural projection memoization includes immutable incoming-break array identity while selection and cursor remain non-structural.
+- [Phase 43.2]: Incoming interpolation breaks are a complete stable-key-owned document collection at every persistence, bridge, coordinator, and history boundary.
+- [Phase 43.2]: Coordinator record and break replacement is ordered by referential validity so adding or removing an owning key never installs orphan ownership.
+- [Phase 43.2]: Accepted bridge results must echo the exact complete owner collection and semantic delta before coordinator history publication.
+- [Phase 43.2]: History equality and replay revisions include break ownership, preserving redo for rejected or equal edits.
+- [Phase 43.2]: 43.1-04: One typed Insert target classifier drives both Signals-derived view state and activation-time reclassification; occupied keys retain insert-slot while genuinely empty cursors dispatch insert-empty-segment.
+- [Phase 43.2]: 43.1-04: One product-reason mapper owns disabled and action-time rejection copy while raw resolver diagnostics remain internal.
+- [Phase 43.2]: 43.1-04: Empty-segment records, break ownership, selection, cursor, canvas, status, and history publish only after exact parent acknowledgement through deferred settlement.
+- [Phase 43.2]: 43.1-04: Accepted empty insertion reuses current-frame reconciliation at the retained destination rather than navigation or a second canvas path.
 - [Phase 43.1]: Visible interpolation segment starts derive only from accepted break-owner IDs plus ordered real-key position; interpolation enabled state is not an input.
 - [Phase 43.1]: The 2px segment cut uses one aria-hidden child because real cached and dirty cells already occupy both pseudo-elements.
 - [Phase 43.1]: Accepted break ownership passes from the versioned Studio store through the existing workflow bundle; the strip owns no optimistic marker state.
-- [Phase ?]: Phase 43.1 closes on the existing contextual Insert contract; no separate Insert Gap action is added.
-- [Phase ?]: Group deletion/frame-from-group and packed-boundary hole insertion remain non-blocking later-phase observations; Phase 43.1 and the roadmap are not expanded now.
-- [Phase ?]: Stable native approval must come from a fully restarted frozen-code session, not an active hot-reload state.
-- [Phase ?]: 43.1-07: Canonical Physics Paint cache authority stays fixed inside Rust; callers provide only projectDir and a validated sibling staging basename.
-- [Phase ?]: 43.1-07: Successful exchange is accepted before cleanup; cleanup failure is deferred status rather than save rejection.
-- [Phase ?]: 43.1-07: Persisted and returned sidecar metadata remains canonical under cache/physic-paint; staging paths never escape the write boundary.
-- [Phase ?]: 43.1-08: The ordinary physical-edit intent union lives in the dependency-safe transport module and is re-exported by the resolver so there is one vocabulary without changing existing caller imports.
-- [Phase ?]: 43.1-08: Canonical serialization reconstructs operation-specific objects and preserves authoritative array order instead of serializing caller-owned objects directly.
-- [Phase ?]: 43.1-08: The active physical apply payload remains unchanged; Plan 09 owns the atomic producer/consumer activation.
+- [Phase 43.2]: Phase 43.1 closes on the existing contextual Insert contract; no separate Insert Gap action is added.
+- [Phase 43.2]: Group deletion/frame-from-group and packed-boundary hole insertion remain non-blocking later-phase observations; Phase 43.1 and the roadmap are not expanded now.
+- [Phase 43.2]: Stable native approval must come from a fully restarted frozen-code session, not an active hot-reload state.
+- [Phase 43.2]: 43.1-07: Canonical Physics Paint cache authority stays fixed inside Rust; callers provide only projectDir and a validated sibling staging basename.
+- [Phase 43.2]: 43.1-07: Successful exchange is accepted before cleanup; cleanup failure is deferred status rather than save rejection.
+- [Phase 43.2]: 43.1-07: Persisted and returned sidecar metadata remains canonical under cache/physic-paint; staging paths never escape the write boundary.
+- [Phase 43.2]: 43.1-08: The ordinary physical-edit intent union lives in the dependency-safe transport module and is re-exported by the resolver so there is one vocabulary without changing existing caller imports.
+- [Phase 43.2]: 43.1-08: Canonical serialization reconstructs operation-specific objects and preserves authoritative array order instead of serializing caller-owned objects directly.
+- [Phase 43.2]: 43.1-08: The active physical apply payload remains unchanged; Plan 09 owns the atomic producer/consumer activation.
 - [Phase 43.1]: Ordinary coordinator execute inputs and apply payloads use mapped discriminated unions so operationKind and intent.kind cannot diverge.
 - [Phase 43.1]: Prepared drag and Force Spacing paths retain the exact resolver input through transport instead of reconstructing authorization from mutable UI state.
 - [Phase 43.1]: Specialized Play Script, interpolation, Undo, and Redo transactions remain intent-free closed variants.
@@ -298,26 +299,26 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.1]: Replay authorization requires the complete project/layer/launch/capacity authority tuple before revision or document replacement checks.
 - [Phase 43.1]: Selection and cursor remain outside the canonical revision but participate in exact direction-specific replay snapshots through a required live source getter.
 - [Phase 43.1]: Authority replacement prunes unreachable accepted-command ledger entries while ordinary selection/cursor movement leaves the bounded local stacks intact.
-- [Phase ?]: 43.2-01: The Wave 0 contract uses syncState, provenanceState, phaseOrigin, originalEndExclusive, visibleRanges, and frameOverrides as the additive field-participation matrix.
-- [Phase ?]: 43.2-01: Normalized visibleRanges are the sole Group deleted-occurrence authority; no mask, Group break set, blank-key sentinel, or second fragment identity participates.
-- [Phase ?]: 43.2-01: Unsupported additive fields remain controlled rejection or ignored-history markers until production cutover; absent fields preserve the accepted default contract.
-- [Phase ?]: Matching Action provenance never implies source sharing; sharing requires an explicit identity and a byte-equivalent ordered source cycle.
-- [Phase ?]: Exact-frame Paint uses override-first copy-on-write and preserves shared source bytes.
-- [Phase ?]: Canonical physical mutations require the exact project/layer lease token, with cleanup-pending authority transferred to recovery.
-- [Phase ?]: Rejected lifecycle, history, and recovery proposals preserve the accepted ledger and emit zero publication events.
-- [Phase ?]: 43.2-03: Active recovery journals and retained Action history artifacts are separate fixtures keyed by stable command ID and generation.
-- [Phase ?]: 43.2-03: Forward, Undo, and Redo publish one frontend settlement only after durable commit; acknowledge is cleanup-only.
-- [Phase ?]: 43.2-03: Final native evidence must use the sole 41-row checklist from one fully restarted frozen-code parent/child session.
-- [Phase ?]: 43.2-04: Exact-occurrence Group Paint uses override-first copy-on-write, preserving shared source-cycle bytes and unaffected Groups.
-- [Phase ?]: 43.2-04: The coordinator owns lease acquisition through exact settlement; the parent bridge recomputes untrusted proposal semantics before token-checked store replacement.
-- [Phase ?]: 43.2-04: Missing, mismatched, stale, changed-content, and replayed publication evidence fails closed with zero accepted-state settlement.
-- [Phase ?]: 43.2-05: Finite pre-lifecycle Groups hydrate to synchronized, attached, contiguous lifecycle semantics; infinity Groups receive no fabricated finite extent.
-- [Phase ?]: 43.2-05: visibleRanges exclusively owns deleted Group occurrences; incomingInterpolationBreakKeyIds remains real-key interpolation authority.
-- [Phase ?]: 43.2-05: Exact-frame overrides persist as keyId references to sidecar-backed canonical real keys, never embedded Group raster data.
-- [Phase ?]: 43.2-05: Existing replaceRotoPhysicalDocument remains the sole complete-map replacement and exact-once notification seam.
-- [Phase ?]: Keep the physical-operation lease registry inside physicPaintStore so concurrency control cannot become a second document authority.
-- [Phase ?]: Retain accepted lease ownership until explicit child settlement acknowledgement, then release or atomically transfer to recovery ownership.
-- [Phase ?]: Gate the complete Studio physical mutation surface from a Preact computed value backed by the canonical lease-version Signal.
+- [Phase 43.2]: 43.2-01: The Wave 0 contract uses syncState, provenanceState, phaseOrigin, originalEndExclusive, visibleRanges, and frameOverrides as the additive field-participation matrix.
+- [Phase 43.2]: 43.2-01: Normalized visibleRanges are the sole Group deleted-occurrence authority; no mask, Group break set, blank-key sentinel, or second fragment identity participates.
+- [Phase 43.2]: 43.2-01: Unsupported additive fields remain controlled rejection or ignored-history markers until production cutover; absent fields preserve the accepted default contract.
+- [Phase 43.2]: Matching Action provenance never implies source sharing; sharing requires an explicit identity and a byte-equivalent ordered source cycle.
+- [Phase 43.2]: Exact-frame Paint uses override-first copy-on-write and preserves shared source bytes.
+- [Phase 43.2]: Canonical physical mutations require the exact project/layer lease token, with cleanup-pending authority transferred to recovery.
+- [Phase 43.2]: Rejected lifecycle, history, and recovery proposals preserve the accepted ledger and emit zero publication events.
+- [Phase 43.2]: 43.2-03: Active recovery journals and retained Action history artifacts are separate fixtures keyed by stable command ID and generation.
+- [Phase 43.2]: 43.2-03: Forward, Undo, and Redo publish one frontend settlement only after durable commit; acknowledge is cleanup-only.
+- [Phase 43.2]: 43.2-03: Final native evidence must use the sole 41-row checklist from one fully restarted frozen-code parent/child session.
+- [Phase 43.2]: 43.2-04: Exact-occurrence Group Paint uses override-first copy-on-write, preserving shared source-cycle bytes and unaffected Groups.
+- [Phase 43.2]: 43.2-04: The coordinator owns lease acquisition through exact settlement; the parent bridge recomputes untrusted proposal semantics before token-checked store replacement.
+- [Phase 43.2]: 43.2-04: Missing, mismatched, stale, changed-content, and replayed publication evidence fails closed with zero accepted-state settlement.
+- [Phase 43.2]: 43.2-05: Finite pre-lifecycle Groups hydrate to synchronized, attached, contiguous lifecycle semantics; infinity Groups receive no fabricated finite extent.
+- [Phase 43.2]: 43.2-05: visibleRanges exclusively owns deleted Group occurrences; incomingInterpolationBreakKeyIds remains real-key interpolation authority.
+- [Phase 43.2]: 43.2-05: Exact-frame overrides persist as keyId references to sidecar-backed canonical real keys, never embedded Group raster data.
+- [Phase 43.2]: 43.2-05: Existing replaceRotoPhysicalDocument remains the sole complete-map replacement and exact-once notification seam.
+- [Phase 43.2]: Keep the physical-operation lease registry inside physicPaintStore so concurrency control cannot become a second document authority.
+- [Phase 43.2]: Retain accepted lease ownership until explicit child settlement acknowledgement, then release or atomically transfer to recovery ownership.
+- [Phase 43.2]: Gate the complete Studio physical mutation surface from a Preact computed value backed by the canonical lease-version Signal.
 - [Phase 43.2]: Group occurrence phase is derived from immutable phaseOrigin, never a visible fragment start.
 - [Phase 43.2]: Group gaps live exclusively in visibleRanges; interpolation breaks remain real-key ownership.
 - [Phase 43.2]: Parent lifecycle acceptance requires exact pure-proposal recomputation before canonical replacement.
@@ -339,6 +340,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: Plan 43.2-19: Retained Action authority is stored as exact bytes plus closed integrity metadata, separate from temporary recovery state.
 - [Phase 43.2]: Plan 43.2-19: History release is owner-bound and restart-safe through cleanup-pending receipts for eviction, redo truncation, and session clear.
 - [Phase 43.2]: Plan 43.2-19: Ordinary scans fail closed on corrupt or ambiguous retained Action history.
+- [Phase 43.2]: Transaction tokens mirror Rust canonical UUID v4 validation rather than accepting generic bounded text.
+- [Phase 43.2]: Canonical Action physical targets reuse the existing physical document parser and correlate revision and cursor.
+- [Phase 43.2]: Token-only Action IPC commands retain complete expected context locally for stale-response correlation without sending extra fields to Rust.
+- [Phase 43.2]: Malformed, stale, active-recovery, and invoke failures remain closed transport results and never publish accepted state.
 
 ### Pending Todos
 
@@ -528,11 +533,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T09:57:52.764Z
-Stopped at: Completed 43.2-19-PLAN.md
+Last session: 2026-08-11T10:17:25.377Z
+Stopped at: Completed 43.2-11-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Execute Plan 43.2-11 for closed TypeScript transaction validators and IPC wrappers.
+- Execute Plan 43.2-12 for leased committed-only referenced Action deletion settlement and hydration recovery.
 - Keep Phase 43.1 DF-01 through DF-04 deferred; do not create additional Phase 43.1 plans.
