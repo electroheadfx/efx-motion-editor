@@ -704,6 +704,15 @@ export interface RotoPhysicalEditCoordinatorHandle<EngineState = SerializedProje
   ) => 'ignore' | 'mismatch' | 'accepted';
   /** Cancel the pending edit for launch replacement or disposal. Idempotent. */
   cancelPhysicalEdit: (reason: 'launch-replacement' | 'disposal') => void;
+  /** Release or transfer one accepted lease after all child settlement completes. */
+  acknowledgePhysicalEditSettlement: (
+    operationId: string,
+    disposition: 'release' | 'cleanup-pending',
+  ) => boolean;
+  /** Release recovery ownership after durable cleanup/recovery completes. */
+  releasePhysicalEditRecoveryLease: () => boolean;
+  /** Recovery ownership retained after cleanup could not finish. */
+  readonly recoveryLease: ReadonlySignal<PhysicPaintRotoPhysicalOperationLeaseToken | null>;
   /** Pending presentation state (Signal). */
   readonly presentation: ReadonlySignal<RotoPhysicalEditPresentation>;
   /** Immutable accepted output for Plan 36.14-05 history. Cleared on next execute. */
@@ -724,6 +733,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
   const afterRef = useRef<RotoPhysicalEditSnapshot<EngineState> | null>(null);
   const timeoutRef = useRef<number | null>(null);
   const leaseRef = useRef<PhysicPaintRotoPhysicalOperationLeaseToken | null>(null);
+  const settledLeaseRef = useRef<{
+    operationId: string;
+    token: PhysicPaintRotoPhysicalOperationLeaseToken;
+  } | null>(null);
   const inFlightRef = useRef<boolean>(false);
   const cancelledRef = useRef<boolean>(false);
 
@@ -732,6 +745,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
   const failureSignal = useSignal<RotoPhysicalEditFailureOutput<EngineState> | null>(null);
   const pendingOperationIdSignal = useSignal<string | null>(null);
   const pendingOperationKindSignal = useSignal<PhysicPaintRotoPhysicalEditApplyPayload['operationKind'] | null>(null);
+  const recoveryLeaseSignal = useSignal<PhysicPaintRotoPhysicalOperationLeaseToken | null>(null);
 
   const portsRef = useRef(ports);
   portsRef.current = ports;
@@ -922,6 +936,14 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       portsRef.current.status.setApplyStatus('success');
       portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_ACCEPTED_MESSAGE);
       portsRef.current.status.setLastError(null);
+      const acceptedLease = leaseRef.current;
+      if (acceptedLease) {
+        settledLeaseRef.current = {
+          operationId: pending.operationId,
+          token: acceptedLease,
+        };
+        leaseRef.current = null;
+      }
       clearPendingOnce();
     },
     [captureSnapshot, clearPendingOnce],
@@ -1062,9 +1084,39 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
     finalizeFailed(pending, before, reason === 'launch-replacement' ? 'settlement-mismatch' : 'settlement-mismatch', `Cancelled due to ${reason}.`);
   }, [finalizeFailed]);
 
+  const acknowledgePhysicalEditSettlement = useCallback((
+    operationId: string,
+    disposition: 'release' | 'cleanup-pending',
+  ): boolean => {
+    const settled = settledLeaseRef.current;
+    if (!settled || settled.operationId !== operationId) return false;
+    if (disposition === 'release') {
+      if (!portsRef.current.lease.release(settled.token)) return false;
+      settledLeaseRef.current = null;
+      return true;
+    }
+    const recoveryToken = portsRef.current.lease.transferToRecovery(settled.token);
+    if (!recoveryToken) return false;
+    settledLeaseRef.current = null;
+    recoveryLeaseSignal.value = recoveryToken;
+    return true;
+  }, []);
+
+  const releasePhysicalEditRecoveryLease = useCallback((): boolean => {
+    const recoveryToken = recoveryLeaseSignal.peek();
+    if (!recoveryToken || !portsRef.current.lease.release(recoveryToken)) return false;
+    recoveryLeaseSignal.value = null;
+    return true;
+  }, []);
+
   const executePhysicalEdit = useCallback(
     async (input: RotoPhysicalEditCoordinatorExecuteInput<EngineState>): Promise<boolean> => {
-      if (inFlightRef.current || pendingRef.current) {
+      if (
+        inFlightRef.current
+        || pendingRef.current
+        || settledLeaseRef.current
+        || recoveryLeaseSignal.peek()
+      ) {
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_SERIALIZE_MESSAGE);
         return false;
       }
@@ -1485,6 +1537,11 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       restoreSnapshot(beforeRef.current, true);
     }
     clearPendingOnce();
+    const settled = settledLeaseRef.current;
+    if (settled) {
+      portsRef.current.lease.transferToRecovery(settled.token);
+      settledLeaseRef.current = null;
+    }
   }, [clearPendingOnce, restoreSnapshot]);
 
   const pendingOperationId = computed(() => pendingOperationIdSignal.value);
@@ -1492,12 +1549,16 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
   const presentation = computed(() => presentationSignal.value);
   const acceptedOutput = computed(() => acceptedSignal.value);
   const failureOutput = computed(() => failureSignal.value);
+  const recoveryLease = computed(() => recoveryLeaseSignal.value);
 
   return {
     executePhysicalEdit,
     consumePhysicalEditResult,
     consumeBridgeApplyResult,
     cancelPhysicalEdit,
+    acknowledgePhysicalEditSettlement,
+    releasePhysicalEditRecoveryLease,
+    recoveryLease,
     presentation,
     acceptedOutput,
     failureOutput,

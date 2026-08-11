@@ -314,6 +314,9 @@ export interface RotoPhysicalEditLeasePort {
     layerId: string,
   ) => PhysicPaintRotoPhysicalOperationLeaseToken | null;
   release: (token: PhysicPaintRotoPhysicalOperationLeaseToken) => boolean;
+  transferToRecovery: (
+    token: PhysicPaintRotoPhysicalOperationLeaseToken,
+  ) => PhysicPaintRotoPhysicalOperationLeaseToken | null;
 }
 
 /**

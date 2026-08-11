@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { useSignal } from '@preact/signals';
+import { useComputed, useSignal } from '@preact/signals';
 import type { CompletedPaintMutation, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample, SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings } from '../../types/physicPaint';
-import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
@@ -423,7 +423,22 @@ export function PhysicsPaintStudio() {
     getLaunchContext: () => launchContext,
     log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
   }, bridgeMode);
-  const mutationLocked = rotoScript.mutationLocked.value;
+  const physicalMutationAvailable = useComputed(() => {
+    physicPaintRotoPhysicalOperationLeaseVersion.value;
+    const projectContextId = launchContext?.project?.contextId;
+    return !launchContext || (
+      !!projectContextId
+      && physicPaintStore.isRotoPhysicalOperationAvailable(
+        projectContextId,
+        launchContext.layerId,
+      )
+    );
+  });
+  const mutationLocked = rotoScript.mutationLocked.value || !physicalMutationAvailable.value;
+  const isPhysicalMutationLocked = useCallback(
+    () => rotoScript.mutationLocked.peek() || !physicalMutationAvailable.peek(),
+    [physicalMutationAvailable, rotoScript.mutationLocked],
+  );
   // Navigation already locks the engine input and navigation coordinator. Keep
   // the static Studio controls keyed only to real script mutations so the
   // navigation lock's true/false pulse cannot invalidate their memo props.
@@ -465,7 +480,7 @@ export function PhysicsPaintStudio() {
     setEraseStrength,
     startPhysics,
     stopPhysics,
-  } = usePhysicsPaintEngineActions({ engine, settings, setSettings, isMutationLocked: rotoScript.mutationLocked.peek });
+  } = usePhysicsPaintEngineActions({ engine, settings, setSettings, isMutationLocked: isPhysicalMutationLocked });
   const replacePhysicalRecordsWithOwnership = (
     layerId: string,
     records: readonly PhysicPaintRotoRealKeyRecord[],
@@ -588,6 +603,9 @@ export function PhysicsPaintStudio() {
         physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layerId)
       ),
       release: (token) => physicPaintStore.releaseRotoPhysicalOperationLease(token),
+      transferToRecovery: (token) => (
+        physicPaintStore.transferRotoPhysicalOperationLeaseToRecovery(token)
+      ),
     },
     bridge: {
       getBridgeMode: () => bridgeModeRef.current,
@@ -817,7 +835,7 @@ export function PhysicsPaintStudio() {
     // the controller only observes and snapshots settings.color at confirm time.
     getBrushColor: () => settings.color,
     getBackgroundMetadata: () => buildRotoBackgroundMetadata(settings),
-    getOperationLocked: () => rotoScript.mutationLocked.peek() || rotoScriptNavigationLocked,
+    getOperationLocked: () => isPhysicalMutationLocked() || rotoScriptNavigationLocked,
     getSize: () => ({ width: canvasWidth, height: canvasHeight }),
     // 43-06: the durable Loop Clip collection the loop-edit/source-edit modes
     // and the atomic loop ops operate on (43-05 port, wired here).
@@ -936,7 +954,7 @@ export function PhysicsPaintStudio() {
     clearCachedFrame: rotoPersistence.clearCurrentFrame,
     playback: { stop: rotoCachedPlayback.stop }, syncPendingFrames: syncPendingRotoFrames,
     status: { setApplyStatus, setApplyMessage },
-    isMutationLocked: () => rotoScript.mutationLocked.peek(),
+    isMutationLocked: isPhysicalMutationLocked,
   });
   const beginRotoFrameEditImplRef = useRef<() => void>(() => {});
   beginRotoFrameEditImplRef.current = () => {
@@ -1031,11 +1049,11 @@ export function PhysicsPaintStudio() {
   // through refs so this callback keeps a stable identity across
   // startFrame-only renders. The guards read the exact same live values.
   const clearActiveSource = useCallback(() => {
-    if (rotoScript.mutationLocked.peek() || !engine || !launchContextRef.current) return;
+    if (isPhysicalMutationLocked() || !engine || !launchContextRef.current) return;
     if (rotoFrameEditingRef.current.clearCurrentFrame()) rotoScript.notifySourceRevision();
   }, [engine, rotoScript]);
   const dryPaint = useCallback(() => {
-    if (rotoScript.mutationLocked.peek()) return;
+    if (isPhysicalMutationLocked()) return;
     engine?.forceDry();
   }, [engine, rotoScript]);
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
@@ -1229,7 +1247,7 @@ export function PhysicsPaintStudio() {
     session: {
       engine, canvasSize: { width: canvasWidth, height: canvasHeight }, launchContext, currentFrame,
       setLaunchContext, setApplyStatus, setApplyMessage, setLastError,
-      isMutationLocked: () => rotoScript.mutationLocked.peek(),
+      isMutationLocked: isPhysicalMutationLocked,
     },
   });
   physicalEditCoordinatorRouteRef.current = {
@@ -1282,6 +1300,9 @@ export function PhysicsPaintStudio() {
         && currentEngine
       ) {
         loadCachedRotoReferenceFrame(selectedAppFrame, currentEngine as PreviewBackgroundEngine);
+      }
+      if (transition === 'accepted' && accepted && accepted.operationId === detail?.operationId) {
+        physicalEditCoordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release');
       }
       return transition;
     },
@@ -1340,7 +1361,7 @@ export function PhysicsPaintStudio() {
     selectedAppFrame: selectedKeyId.value === null ? null : currentFrame,
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
-    isMutationLocked: () => rotoScript.mutationLocked.peek(),
+    isMutationLocked: isPhysicalMutationLocked,
   });
   const updateRotoInterpolationSettingsRef = useRef(updateRotoInterpolationSettings);
   updateRotoInterpolationSettingsRef.current = updateRotoInterpolationSettings;

@@ -138,7 +138,12 @@ const _rotoPlaybackSettings = new Map<string, PhysicPaintRotoPlaybackSettings>()
 const _rotoPhysicalOperationLeases = new Map<string, PhysicPaintRotoPhysicalOperationLeaseToken>();
 const _settledRotoPhysicalOperationLeases = new Set<string>();
 let _rotoPhysicalOperationLeaseGeneration = 0;
+export const physicPaintRotoPhysicalOperationLeaseVersion = signal(0);
 export const rotoPhysicalRevision = signal(0);
+
+function _notifyRotoPhysicalOperationLeaseChange(): void {
+  physicPaintRotoPhysicalOperationLeaseVersion.value += 1;
+}
 
 function _rotoPhysicalOperationLeaseScope(projectContextId: string, layerId: string): string {
   return `${projectContextId.length}:${projectContextId}${layerId.length}:${layerId}`;
@@ -340,10 +345,16 @@ function _clearLayerState(layerId: string): boolean {
   changed = _rotoPhysicalCursorAppFrame.delete(layerId) || changed;
   changed = _rotoPhysicalCapacity.delete(layerId) || changed;
   changed = _rotoPlaybackSettings.delete(layerId) || changed;
+  let releasedLease = false;
   for (const [scope, lease] of _rotoPhysicalOperationLeases) {
     if (lease.layerId !== layerId) continue;
     _rotoPhysicalOperationLeases.delete(scope);
     _settledRotoPhysicalOperationLeases.add(_rotoPhysicalOperationLeaseIdentity(lease));
+    releasedLease = true;
+  }
+  if (releasedLease) {
+    changed = true;
+    _notifyRotoPhysicalOperationLeaseChange();
   }
   for (const dataUrl of dataUrls) {
     if (!_isDataUrlReferenced(dataUrl)) changed = _rotoAlphaCanvasRegistry.delete(dataUrl) || changed;
@@ -1296,8 +1307,10 @@ export const physicPaintStore = {
     _rotoPhysicalCursorAppFrame.clear();
     _rotoPhysicalCapacity.clear();
     _rotoPlaybackSettings.clear();
+    const hadActivePhysicalOperationLease = _rotoPhysicalOperationLeases.size > 0;
     _rotoPhysicalOperationLeases.clear();
     _settledRotoPhysicalOperationLeases.clear();
+    if (hadActivePhysicalOperationLease) _notifyRotoPhysicalOperationLeaseChange();
     _rotoPhysicalStructuralCache.clear();
     _notifyVisualChange();
   },
@@ -1417,7 +1430,30 @@ export const physicPaintStore = {
       owner: 'exclusive' as const,
     });
     _rotoPhysicalOperationLeases.set(scope, token);
+    _notifyRotoPhysicalOperationLeaseChange();
     return token;
+  },
+
+  /** Whether the project/layer scope currently accepts a new physical mutator. */
+  isRotoPhysicalOperationAvailable(projectContextId: string, layerId: string): boolean {
+    if (!projectContextId || !layerId) return false;
+    return !_rotoPhysicalOperationLeases.has(
+      _rotoPhysicalOperationLeaseScope(projectContextId, layerId),
+    );
+  },
+
+  /** Atomically transfer an exact exclusive token to cleanup/recovery ownership. */
+  transferRotoPhysicalOperationLeaseToRecovery(
+    token: PhysicPaintRotoPhysicalOperationLeaseToken,
+  ): PhysicPaintRotoPhysicalOperationLeaseToken | null {
+    if (token.owner !== 'exclusive') return null;
+    const scope = _rotoPhysicalOperationLeaseScope(token.projectContextId, token.layerId);
+    const active = _rotoPhysicalOperationLeases.get(scope);
+    if (!active || !_sameRotoPhysicalOperationLease(active, token)) return null;
+    const recoveryToken = Object.freeze({ ...token, owner: 'recovery' as const });
+    _rotoPhysicalOperationLeases.set(scope, recoveryToken);
+    _notifyRotoPhysicalOperationLeaseChange();
+    return recoveryToken;
   },
 
   /** Reconstruct durable recovery ownership before any recovery publication. */
@@ -1434,6 +1470,7 @@ export const physicPaintStore = {
     });
     _rotoPhysicalOperationLeaseGeneration = Math.max(_rotoPhysicalOperationLeaseGeneration, descriptor.generation);
     _rotoPhysicalOperationLeases.set(scope, token);
+    _notifyRotoPhysicalOperationLeaseChange();
     return token;
   },
 
@@ -1461,6 +1498,7 @@ export const physicPaintStore = {
     if (!active || !_sameRotoPhysicalOperationLease(active, token)) return false;
     _rotoPhysicalOperationLeases.delete(scope);
     _settledRotoPhysicalOperationLeases.add(_rotoPhysicalOperationLeaseIdentity(token));
+    _notifyRotoPhysicalOperationLeaseChange();
     return true;
   },
 
