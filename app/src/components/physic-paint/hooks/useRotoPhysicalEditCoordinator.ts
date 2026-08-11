@@ -318,6 +318,12 @@ function createAuthorizedPhysicalEditPayload(
     case 'paste-key-group':
       return intent?.kind === 'paste-key-group' ? { ...base, operationKind, intent } : null;
     case 'play-script':
+    case 'paint-group-frame':
+    case 'delete-group-frame':
+    case 'delete-group':
+    case 'regenerate-group':
+    case 'detach-action-groups':
+    case 'delete-action-groups':
     case 'set-interpolation-enabled':
     case 'set-interpolation-mode':
     case 'undo':

@@ -321,6 +321,12 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'paste-key'
   | 'paste-key-group'
   | 'play-script'
+  | 'paint-group-frame'
+  | 'delete-group-frame'
+  | 'delete-group'
+  | 'regenerate-group'
+  | 'detach-action-groups'
+  | 'delete-action-groups'
   | 'set-interpolation-enabled'
   | 'set-interpolation-mode'
   | 'undo'
@@ -382,6 +388,48 @@ export type PhysicPaintRotoPhysicalEditSemanticDelta =
        * selection is preserved instead of selecting the range start.
        */
       readonly preserveSelection?: true;
+    }
+  | {
+      readonly kind: 'paint-group-frame';
+      readonly groupId: string;
+      readonly appFrame: number;
+      readonly overrideKeyId: string;
+      readonly createdOverride: boolean;
+      readonly filledDeletedOccurrence: boolean;
+      readonly previousRevision: string;
+      readonly nextRevision: string;
+    }
+  | {
+      readonly kind: 'delete-group-frame';
+      readonly groupId: string;
+      readonly appFrame: number;
+      readonly cleanupKeyIds: readonly string[];
+      readonly previousRevision: string;
+      readonly nextRevision: string;
+    }
+  | {
+      readonly kind: 'delete-group';
+      readonly groupId: string;
+      readonly cleanupKeyIds: readonly string[];
+      readonly previousRevision: string;
+      readonly nextRevision: string;
+    }
+  | {
+      readonly kind: 'regenerate-group';
+      readonly groupId: string;
+      readonly expectedActionRevision: string;
+      readonly cleanupKeyIds: readonly string[];
+      readonly previousRevision: string;
+      readonly nextRevision: string;
+    }
+  | {
+      readonly kind: 'detach-action-groups' | 'delete-action-groups';
+      readonly actionId: string;
+      readonly expectedActionRevision: string;
+      readonly affectedGroupIds: readonly string[];
+      readonly cleanupKeyIds: readonly string[];
+      readonly previousRevision: string;
+      readonly nextRevision: string;
     };
 
 /**
@@ -532,6 +580,12 @@ function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is Ph
     || value === 'paste-key'
     || value === 'paste-key-group'
     || value === 'play-script'
+    || value === 'paint-group-frame'
+    || value === 'delete-group-frame'
+    || value === 'delete-group'
+    || value === 'regenerate-group'
+    || value === 'detach-action-groups'
+    || value === 'delete-action-groups'
     || value === 'set-interpolation-enabled'
     || value === 'set-interpolation-mode'
     || value === 'undo'
@@ -557,6 +611,16 @@ function isPhysicPaintRotoPhysicalEditPayload(value: unknown): value is PhysicPa
   return isPhysicPaintRotoRealKeyPayload(value);
 }
 
+function isLifecycleCompletePhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintRotoLoopClip {
+  return isPhysicPaintRotoLoopClip(value)
+    && value.syncState !== undefined
+    && value.provenanceState !== undefined
+    && value.phaseOrigin !== undefined
+    && value.originalEndExclusive !== undefined
+    && value.visibleRanges !== undefined
+    && value.frameOverrides !== undefined;
+}
+
 /**
  * Strict guard for {@link PhysicPaintRotoPhysicalEditRecord}. Rejects
  * non-records, unknown members, overlong identity, malformed payload, and a
@@ -569,6 +633,19 @@ export function isPhysicPaintRotoPhysicalEditRecord(value: unknown): value is Ph
   if (!isNonNegativeInteger(value.appFrame)) return false;
   if (!isPhysicPaintRotoPhysicalEditPayload(value.payload)) return false;
   return value.payload.appFrame === value.appFrame;
+}
+
+function isUniqueBoundedPhysicalKeyIdCollection(value: unknown, allowEmpty = true): value is readonly string[] {
+  return Array.isArray(value)
+    && (allowEmpty || value.length > 0)
+    && value.every(isBoundedPhysicalKeyId)
+    && new Set(value).size === value.length;
+}
+
+function hasValidPhysicalRevisionTransition(value: Record<string, unknown>): boolean {
+  return isNonEmptyString(value.previousRevision)
+    && isNonEmptyString(value.nextRevision)
+    && value.previousRevision !== value.nextRevision;
 }
 
 export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): value is PhysicPaintRotoPhysicalEditSemanticDelta {
@@ -624,6 +701,43 @@ export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): valu
     if (!Array.isArray(value.freshKeyIds) || !value.freshKeyIds.every(isBoundedPhysicalKeyId)) return false;
     return new Set(value.freshKeyIds).size === value.freshKeyIds.length;
   }
+  if (value.kind === 'paint-group-frame') {
+    return hasOnlyKeys(value, ['kind', 'groupId', 'appFrame', 'overrideKeyId', 'createdOverride', 'filledDeletedOccurrence', 'previousRevision', 'nextRevision'])
+      && isBoundedPhysicalKeyId(value.groupId)
+      && isNonNegativeInteger(value.appFrame)
+      && isBoundedPhysicalKeyId(value.overrideKeyId)
+      && typeof value.createdOverride === 'boolean'
+      && typeof value.filledDeletedOccurrence === 'boolean'
+      && hasValidPhysicalRevisionTransition(value);
+  }
+  if (value.kind === 'delete-group-frame') {
+    return hasOnlyKeys(value, ['kind', 'groupId', 'appFrame', 'cleanupKeyIds', 'previousRevision', 'nextRevision'])
+      && isBoundedPhysicalKeyId(value.groupId)
+      && isNonNegativeInteger(value.appFrame)
+      && isUniqueBoundedPhysicalKeyIdCollection(value.cleanupKeyIds)
+      && hasValidPhysicalRevisionTransition(value);
+  }
+  if (value.kind === 'delete-group') {
+    return hasOnlyKeys(value, ['kind', 'groupId', 'cleanupKeyIds', 'previousRevision', 'nextRevision'])
+      && isBoundedPhysicalKeyId(value.groupId)
+      && isUniqueBoundedPhysicalKeyIdCollection(value.cleanupKeyIds)
+      && hasValidPhysicalRevisionTransition(value);
+  }
+  if (value.kind === 'regenerate-group') {
+    return hasOnlyKeys(value, ['kind', 'groupId', 'expectedActionRevision', 'cleanupKeyIds', 'previousRevision', 'nextRevision'])
+      && isBoundedPhysicalKeyId(value.groupId)
+      && isNonEmptyString(value.expectedActionRevision)
+      && isUniqueBoundedPhysicalKeyIdCollection(value.cleanupKeyIds)
+      && hasValidPhysicalRevisionTransition(value);
+  }
+  if (value.kind === 'detach-action-groups' || value.kind === 'delete-action-groups') {
+    return hasOnlyKeys(value, ['kind', 'actionId', 'expectedActionRevision', 'affectedGroupIds', 'cleanupKeyIds', 'previousRevision', 'nextRevision'])
+      && isBoundedPhysicalKeyId(value.actionId)
+      && isNonEmptyString(value.expectedActionRevision)
+      && isUniqueBoundedPhysicalKeyIdCollection(value.affectedGroupIds, false)
+      && isUniqueBoundedPhysicalKeyIdCollection(value.cleanupKeyIds)
+      && hasValidPhysicalRevisionTransition(value);
+  }
   return false;
 }
 
@@ -632,7 +746,17 @@ function operationSemanticDeltaIsValid(
   semanticDelta: unknown,
   allowMissingOnFailure = false,
 ): boolean {
-  if (operationKind === 'insert-empty-segment' || operationKind === 'duplicate-key' || operationKind === 'paste-key' || operationKind === 'paste-key-group' || operationKind === 'play-script') {
+  if (operationKind === 'insert-empty-segment'
+    || operationKind === 'duplicate-key'
+    || operationKind === 'paste-key'
+    || operationKind === 'paste-key-group'
+    || operationKind === 'play-script'
+    || operationKind === 'paint-group-frame'
+    || operationKind === 'delete-group-frame'
+    || operationKind === 'delete-group'
+    || operationKind === 'regenerate-group'
+    || operationKind === 'detach-action-groups'
+    || operationKind === 'delete-action-groups') {
     if (semanticDelta === undefined) return allowMissingOnFailure;
     return isPhysicPaintRotoPhysicalEditSemanticDelta(semanticDelta) && semanticDelta.kind === operationKind;
   }
@@ -684,7 +808,7 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (value.projectContextId !== undefined && !isNonEmptyString(value.projectContextId)) return false;
   if (!isNonEmptyString(value.expectedRevision)) return false;
   if (!Array.isArray(value.records) || !value.records.every(isPhysicPaintRotoPhysicalEditRecord)) return false;
-  if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isPhysicPaintRotoLoopClip))) return false;
+  if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isLifecycleCompletePhysicPaintRotoLoopClip))) return false;
   if (value.incomingInterpolationBreakKeyIds !== undefined && (!Array.isArray(value.incomingInterpolationBreakKeyIds) || !value.incomingInterpolationBreakKeyIds.every(isBoundedPhysicalKeyId))) return false;
   if (typeof value.interpolationEnabled !== 'boolean') return false;
   if (value.interpolationMode !== 'duplicate' && value.interpolationMode !== 'blend') return false;
@@ -734,7 +858,7 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
   if (!isNonNegativeInteger(value.appliedFrameCount)) return false;
   if (typeof value.ok !== 'boolean') return false;
   if (value.error !== undefined && typeof value.error !== 'string') return false;
-  if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isPhysicPaintRotoLoopClip))) return false;
+  if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isLifecycleCompletePhysicPaintRotoLoopClip))) return false;
   if (value.incomingInterpolationBreakKeyIds !== undefined && (!Array.isArray(value.incomingInterpolationBreakKeyIds) || !value.incomingInterpolationBreakKeyIds.every(isBoundedPhysicalKeyId))) return false;
   if (value.ok && value.acceptedRevision === null) return false;
   if (!value.ok && value.acceptedRevision !== null) return false;
@@ -1496,7 +1620,7 @@ function optionalRotoPhysicalDocumentPayload(value: unknown): value is PhysicPai
   if (!isRecord(value) || !hasOnlyKeys(value, ['capacity', 'records', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
   if (!isNonNegativeInteger(value.capacity) || value.capacity < 1) return false;
   if (!Array.isArray(value.records) || !value.records.every(isPhysicPaintRotoPhysicalEditRecord)) return false;
-  if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isPhysicPaintRotoLoopClip))) return false;
+  if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isLifecycleCompletePhysicPaintRotoLoopClip))) return false;
   if (value.incomingInterpolationBreakKeyIds !== undefined && (!Array.isArray(value.incomingInterpolationBreakKeyIds) || !value.incomingInterpolationBreakKeyIds.every(isBoundedPhysicalKeyId))) return false;
   if (typeof value.interpolationEnabled !== 'boolean') return false;
   if (value.interpolationMode !== 'duplicate' && value.interpolationMode !== 'blend') return false;

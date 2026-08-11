@@ -573,20 +573,21 @@ function hasValidPhysicPaintRotoGroupLifecycle(value: Record<string, unknown>): 
   const overrideKeyIds = new Set<string>();
   for (const override of value.frameOverrides) {
     if (!isRecord(override) || !hasOnlyAllowedKeys(override, PHYSIC_PAINT_ROTO_GROUP_FRAME_OVERRIDE_KEYS)) return false;
-    if (!isNonNegativeInteger(override.appFrame)
-      || override.appFrame < phaseOrigin
-      || override.appFrame >= originalEndExclusive
+    if (!isNonNegativeInteger(override.appFrame)) return false;
+    const overrideAppFrame = override.appFrame;
+    if (overrideAppFrame < phaseOrigin
+      || overrideAppFrame >= originalEndExclusive
       || !value.visibleRanges.some((range) => (
         isRecord(range)
         && typeof range.start === 'number'
         && typeof range.endExclusive === 'number'
-        && override.appFrame >= range.start
-        && override.appFrame < range.endExclusive
+        && overrideAppFrame >= range.start
+        && overrideAppFrame < range.endExclusive
       ))
       || !isBoundedKeyId(override.keyId)
-      || overrideFrames.has(override.appFrame)
+      || overrideFrames.has(overrideAppFrame)
       || overrideKeyIds.has(override.keyId)) return false;
-    overrideFrames.add(override.appFrame);
+    overrideFrames.add(overrideAppFrame);
     overrideKeyIds.add(override.keyId);
   }
   return true;

@@ -1,6 +1,8 @@
 import type {MceAudioTrack} from './audio';
 import type {PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPlaybackSettings} from './physicPaint';
 import type {
+  PhysicPaintRotoGroupFrameOverride,
+  PhysicPaintRotoGroupVisibleRange,
   PhysicPaintRotoInterpolationState,
   PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoScriptMotionSettings,
@@ -80,6 +82,13 @@ export interface McePhysicPaintRotoLoopClip {
   readonly scriptId?: string;
   readonly motion?: PhysicPaintRotoScriptMotionSettings;
   readonly overrideColor?: string | null;
+  /** Complete canonical Group lifecycle facts (Phase 43.2). */
+  readonly syncState: 'synchronized' | 'modified';
+  readonly provenanceState: 'attached' | 'detached';
+  readonly phaseOrigin: number;
+  readonly originalEndExclusive: number;
+  readonly visibleRanges: readonly PhysicPaintRotoGroupVisibleRange[];
+  readonly frameOverrides: readonly PhysicPaintRotoGroupFrameOverride[];
 }
 
 export interface McePhysicPaintRotoPhysicalDocument {
