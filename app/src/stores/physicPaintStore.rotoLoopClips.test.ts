@@ -517,6 +517,8 @@ function bridgePayload(launchOperationId: string, overrides: Record<string, unkn
     interpolationMode: 'duplicate' as const,
     selectedKeyId: null,
     selectedAppFrame: null,
+    cursorAppFrame:
+      physicPaintStore.getRotoPhysicalDocument(BRIDGE_LAYER)?.cursorAppFrame ?? 0,
     ...overrides,
   };
 }
@@ -566,6 +568,10 @@ function canonicalBridgePayload(
     incomingInterpolationBreakKeyIds: proposal.nextIncomingInterpolationBreakKeyIds ?? currentBreaks,
     selectedKeyId: proposal.selectedKeyId,
     selectedAppFrame: proposal.selectedAppFrame,
+    cursorAppFrame:
+      proposal.selectedAppFrame
+      ?? physicPaintStore.getRotoPhysicalDocument(BRIDGE_LAYER)?.cursorAppFrame
+      ?? 0,
     ...(proposal.semanticDelta ? { semanticDelta: proposal.semanticDelta } : {}),
   });
 }
@@ -708,6 +714,7 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
       incomingInterpolationBreakKeyIds: stableBreaks,
       selectedKeyId: 'C',
       selectedAppFrame: 2,
+      cursorAppFrame: 2,
       historyProvenance: {
         historyCommandId: command.operationId,
         historyDirection: 'undo',
@@ -733,6 +740,7 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
       incomingInterpolationBreakKeyIds: stableBreaks,
       selectedKeyId: 'A',
       selectedAppFrame: 1,
+      cursorAppFrame: 1,
       historyProvenance: {
         historyCommandId: command.operationId,
         historyDirection: 'redo',

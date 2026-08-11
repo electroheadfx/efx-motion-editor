@@ -232,6 +232,7 @@ const applyPayload = (loopClips?: unknown) => ({
   interpolationMode: 'duplicate' as const,
   selectedKeyId: null,
   selectedAppFrame: null,
+  cursorAppFrame: 0,
   ...(loopClips !== undefined ? { loopClips } : {}),
 });
 
