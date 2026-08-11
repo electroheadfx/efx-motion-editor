@@ -300,6 +300,15 @@ describe('Physics Paint navigation render localization', () => {
     expect(playScriptDialog).not.toContain("event.key !== 'Tab'");
   });
 
+  it('gates the complete physical mutation surface from the reactive lease registry', () => {
+    expect(studio).toContain("import { useComputed, useSignal } from '@preact/signals';");
+    expect(studio).toContain('physicPaintRotoPhysicalOperationLeaseVersion.value;');
+    expect(studio).toContain('physicPaintStore.isRotoPhysicalOperationAvailable(');
+    expect(studio).toContain('const mutationLocked = rotoScript.mutationLocked.value || !physicalMutationAvailable.value;');
+    expect(studio).toContain("physicalEditCoordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release');");
+    expect(studio).not.toContain('useEffect(() => {\n    physicalMutationAvailable');
+  });
+
   it('keeps navigation-only mutation locking out of static Studio region identities', () => {
     expect(studio).toContain('const staticControlsLocked = mutationLocked && !rotoScriptNavigationLocked;');
     const toolRailStart = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(');

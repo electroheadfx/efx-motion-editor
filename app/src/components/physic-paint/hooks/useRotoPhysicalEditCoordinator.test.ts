@@ -120,6 +120,11 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     leaseOrder.push('release');
     return true;
   });
+  const recoveryLeaseToken = Object.freeze({ ...leaseToken, owner: 'recovery' as const });
+  const transferLeaseToRecovery = vi.fn(() => {
+    leaseOrder.push('transfer-recovery');
+    return recoveryLeaseToken;
+  });
 
   const replaceRecords = vi.fn((
     _layerId: string,
@@ -215,6 +220,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     lease: {
       acquire: acquireLease,
       release: releaseLease,
+      transferToRecovery: transferLeaseToRecovery,
     },
     bridge: {
       getBridgeMode: () => 'Browser fallback',
@@ -365,8 +371,10 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     setConciseMessage,
     acquireLease,
     releaseLease,
+    transferLeaseToRecovery,
     leaseOrder,
     leaseToken,
+    recoveryLeaseToken,
     getRecords: () => records,
     getLoopClips: () => loopClips,
     getIncomingInterpolationBreakKeyIds: () => incomingInterpolationBreakKeyIds,
@@ -586,7 +594,30 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.releaseLease).not.toHaveBeenCalled();
 
     expect(test.accept()).toBe('accepted');
+    expect(test.releaseLease).not.toHaveBeenCalled();
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(
+      test.getPayload()!.operationId,
+      'release',
+    )).toBe(true);
     expect(test.releaseLease).toHaveBeenCalledWith(test.leaseToken);
+  });
+
+  it('transfers accepted cleanup failure to recovery ownership before releasing ordinary control', async () => {
+    const test = harness();
+
+    expect(await test.execute()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(
+      test.getPayload()!.operationId,
+      'cleanup-pending',
+    )).toBe(true);
+    expect(test.transferLeaseToRecovery).toHaveBeenCalledWith(test.leaseToken);
+    expect(test.releaseLease).not.toHaveBeenCalled();
+    expect(test.coordinator.recoveryLease.value).toBe(test.recoveryLeaseToken);
+
+    expect(test.coordinator.releasePhysicalEditRecoveryLease()).toBe(true);
+    expect(test.releaseLease).toHaveBeenCalledWith(test.recoveryLeaseToken);
+    expect(test.coordinator.recoveryLease.value).toBeNull();
   });
 
   it('carries the current background only on the deferred Play Script payload', async () => {
