@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Completed 43.2-13-PLAN.md
-last_updated: "2026-08-11T12:00:19.979Z"
+stopped_at: Completed 43.2-14-PLAN.md
+last_updated: "2026-08-11T12:24:47.966Z"
 last_activity: 2026-08-11
 last_activity_desc: Completed Plan 43.2-13 reference-aware Action deletion disclosure and lifecycle UI
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 61
-  completed_plans: 57
-  percent: 93
+  completed_plans: 58
+  percent: 63
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
-Plan: 14 of 20
+Plan: 15 of 20
 Status: Ready to execute
 Last activity: 2026-08-11 — Completed Plan 43.2-13 reference-aware Action deletion disclosure and lifecycle UI
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [█████████░] 93%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -210,6 +210,7 @@ Progress: [█████████░] 93%
 | Phase 43.2 P12 | 21min | 3 tasks | 15 files |
 | Phase 43.2 P20 | 28min | 3 tasks | 8 files |
 | Phase 43.2 P13 | 26min | 2 tasks | 5 files |
+| Phase 43.2 P14 | 10min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -359,6 +360,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: visibleRanges remains the sole Group occurrence authority, with inclusive product frame labels derived from canonical half-open ranges only at presentation time.
 - [Phase 43.2]: One computed controller reason gates the complete Action mutation surface through preparation, commit-pending, and recovery ownership.
 - [Phase 43.2]: Deletion failures use a dedicated mapped deleteError Signal; raw controller status and transaction diagnostics never enter confirmation copy.
+- [Phase 43.2]: Persisted loopId, progressive/static values, and Loop Clip TypeScript names remain unchanged; only product presentation uses Group, Motion, Static, and Action vocabulary.
+- [Phase 43.2]: The base presentation remains keyed by stable loopId, while the rail derives one range-specific fragment presentation and unique render key for every accepted canonical range.
+- [Phase 43.2]: Unresolved source state outranks synchronization lifecycle and suppresses the passive dot so accepted output is never misrepresented.
+- [Phase 43.2]: Action-linked halos are optional passive rail inputs; cross-selection and navigation wiring remain owned by Plan 43.2-15.
 
 ### Pending Todos
 
@@ -548,11 +553,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T12:00:19.968Z
-Stopped at: Completed 43.2-13-PLAN.md
+Last session: 2026-08-11T12:24:47.953Z
+Stopped at: Completed 43.2-14-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Execute Plan 43.2-14 for canonical product copy, fragment rail geometry, lifecycle dots, and linked halos.
+- Execute Plan 43.2-15 for Actions-panel terminology, Group/Action cross-selection, and linked Group navigation.
 - Keep Phase 43.1 DF-01 through DF-04 deferred; do not create additional Phase 43.1 plans.

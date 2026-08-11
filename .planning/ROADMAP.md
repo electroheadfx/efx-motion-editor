@@ -316,7 +316,7 @@ Plans:
 
 **Waves 14–15 — approved Group/Action UI**
 
-- [ ] 43.2-14-PLAN.md — Canonical product copy plus exact fragment rail, lifecycle dots, linked halos, and geometry (GRP-01, GRP-07)
+- [x] 43.2-14-PLAN.md — Canonical product copy plus exact fragment rail, lifecycle dots, linked halos, and geometry (GRP-01, GRP-07)
 - [ ] 43.2-15-PLAN.md — Actions/Edit/Create terminology, cross-selection, and non-wrapping linked navigation (GRP-01, GRP-07)
 
 **Waves 16–17 — parity, regression, and acceptance**
@@ -494,5 +494,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
 | 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 12/12 | Complete    | 2026-08-10 |
-| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 16/20 | In Progress|  |
+| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 17/20 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |
