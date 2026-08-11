@@ -86,14 +86,16 @@ const baseLoop = () => ({
   mode: 'progressive' as const,
 });
 
-const GROUP_LIFECYCLE_FIELDS = [
-  'syncState',
-  'provenanceState',
-  'phaseOrigin',
-  'originalEndExclusive',
-  'visibleRanges',
-  'frameOverrides',
+const GROUP_FIELD_PARTICIPATION = [
+  { field: 'syncState', value: 'modified' },
+  { field: 'provenanceState', value: 'detached' },
+  { field: 'phaseOrigin', value: 3 },
+  { field: 'originalEndExclusive', value: 30 },
+  { field: 'visibleRanges', value: [{ start: 0, endExclusive: 7 }, { start: 8, endExclusive: 25 }] },
+  { field: 'frameOverrides', value: [{ appFrame: 7, keyId: 'override-7' }] },
 ] as const;
+
+const GROUP_LIFECYCLE_FIELDS = GROUP_FIELD_PARTICIPATION.map(({ field }) => field);
 
 const GROUP_RECORD_AUTHORITY_FIELDS = [
   'loopId',
@@ -385,6 +387,18 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
       expect(isPhysicPaintRotoLoopClip(legacyRecord)).toBe(true);
       expect(parsePhysicPaintRotoLoopClips([legacyRecord])).toEqual([legacyRecord]);
       for (const field of GROUP_LIFECYCLE_FIELDS) expect(field in legacyRecord).toBe(false);
+    });
+
+    it.each(GROUP_FIELD_PARTICIPATION)('marks $field as unimplemented at canonical revision and project-equality boundaries', ({ field, value }) => {
+      const candidate = { ...baseLoop(), [field]: value };
+      const records = sourceRecords();
+      const interpolation = { enabled: false, mode: 'duplicate' as const };
+
+      expect(() => buildPhysicPaintRotoPhysicalRevision(records, interpolation, [candidate] as never)).toThrow();
+      expect(() => buildPhysicPaintRotoProjectEquality({
+        ...baseDocument([candidate]),
+        revision: 'controlled-unimplemented',
+      } as never)).toThrow();
     });
 
     it.each([

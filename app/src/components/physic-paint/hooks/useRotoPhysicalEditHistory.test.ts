@@ -29,6 +29,23 @@ function record(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
   };
 }
 
+const GROUP_FIELD_PARTICIPATION = [
+  { field: 'syncState', value: 'modified' },
+  { field: 'provenanceState', value: 'detached' },
+  { field: 'phaseOrigin', value: 3 },
+  { field: 'originalEndExclusive', value: 30 },
+  { field: 'visibleRanges', value: [{ start: 0, endExclusive: 7 }, { start: 8, endExclusive: 25 }] },
+  { field: 'frameOverrides', value: [{ appFrame: 7, keyId: 'override-7' }] },
+] as const;
+
+const baseLoopClip = () => ({
+  loopId: 'loop-1',
+  placementStart: 0,
+  sourceKeyIds: ['A'],
+  repeat: 2 as const,
+  mode: 'progressive' as const,
+});
+
 function snapshot(
   records: readonly PhysicPaintRotoRealKeyRecord[],
   selectedKeyId: string,
@@ -170,6 +187,58 @@ describe('useRotoPhysicalEditHistory rigid group drag', () => {
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
     expect(executePhysicalEdit).toHaveBeenCalledTimes(2);
     expect(executePhysicalEdit.mock.calls.map(([input]) => input.operationKind)).toEqual(['undo', 'redo']);
+  });
+});
+
+describe('useRotoPhysicalEditHistory Group field participation Wave 0 contract', () => {
+  it.each(GROUP_FIELD_PARTICIPATION)('marks $field as unimplemented in snapshot equality', ({ field, value }) => {
+    const base = snapshot([record('A', 0)], 'A', 0);
+    const before = { ...base, loopClips: [baseLoopClip()] } as RotoPhysicalEditSnapshot<null>;
+    const after = {
+      ...base,
+      loopClips: [{ ...baseLoopClip(), [field]: value }],
+    } as RotoPhysicalEditSnapshot<null>;
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+
+    useRotoPhysicalEditHistory({
+      identity: {
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 10,
+      },
+      availability,
+      coordinator: {
+        executePhysicalEdit: vi.fn() as never,
+        pendingOperationId: signal<string | null>(null),
+        acceptedOutput,
+      },
+      recordsPort: {
+        getRecords: () => after.records,
+        getInterpolation: () => after.interpolation,
+        getCapacity: () => after.capacity,
+        getLoopClips: () => after.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => after.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => after,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: base.stagedRevision,
+      operationId: `group-field-${field}`,
+      operationKind: 'move-key',
+      historyProvenance: null,
+    };
+
+    expect(availability.value).toEqual({ undo: 0, redo: 0 });
   });
 });
 

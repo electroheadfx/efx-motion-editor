@@ -17,6 +17,50 @@ import {
 
 const renderedFrame = { frameIndex: 0, appFrame: 12, dataUrl: 'data:image/png;base64,aGVsbG8=', width: 1000, height: 650 };
 
+const GROUP_FIELD_PARTICIPATION = [
+  { field: 'syncState', value: 'modified' },
+  { field: 'provenanceState', value: 'detached' },
+  { field: 'phaseOrigin', value: 3 },
+  { field: 'originalEndExclusive', value: 30 },
+  { field: 'visibleRanges', value: [{ start: 0, endExclusive: 7 }, { start: 8, endExclusive: 25 }] },
+  { field: 'frameOverrides', value: [{ appFrame: 7, keyId: 'override-7' }] },
+] as const;
+
+function physicalApplyPayloadWithGroupField(field: string, value: unknown) {
+  const records = [{
+    keyId: 'key-0',
+    appFrame: 0,
+    payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
+  }];
+  return {
+    kind: 'replace-roto-physical-map',
+    operationId: `group-field-${field}`,
+    operationKind: 'move-key',
+    intent: {
+      kind: 'move-key',
+      movedKeyId: 'key-0',
+      target: { kind: 'physical-cell', appFrame: 0 },
+    },
+    layerId: 'layer-1',
+    startFrame: 0,
+    launchOperationId: 'launch-1',
+    expectedRevision: 'revision-1',
+    records,
+    interpolationEnabled: false,
+    interpolationMode: 'duplicate',
+    selectedKeyId: 'key-0',
+    selectedAppFrame: 0,
+    loopClips: [{
+      loopId: 'loop-1',
+      placementStart: 0,
+      sourceKeyIds: ['key-0'],
+      repeat: 2,
+      mode: 'progressive',
+      [field]: value,
+    }],
+  };
+}
+
 describe('physic paint payload contracts', () => {
   it('clamps generic apply frame counts to the established UI range', () => {
     expect(clampPhysicPaintFrameCount(3.8)).toBe(3);
@@ -256,6 +300,12 @@ describe('physic paint payload contracts', () => {
       semanticDelta: undefined,
       rotoBackground,
     })).toBe(false);
+  });
+
+  it.each(GROUP_FIELD_PARTICIPATION)('marks $field as unimplemented at the physical transport boundary', ({ field, value }) => {
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(
+      physicalApplyPayloadWithGroupField(field, value),
+    )).toBe(false);
   });
 
   it('validates namespaced frame-sync messages', () => {

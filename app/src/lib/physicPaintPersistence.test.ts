@@ -72,6 +72,55 @@ function makeOutput(appFrame = 12): RuntimePhysicPaintOutput[] {
   }];
 }
 
+const GROUP_FIELD_PARTICIPATION = [
+  { field: 'syncState', value: 'modified' },
+  { field: 'provenanceState', value: 'detached' },
+  { field: 'phaseOrigin', value: 3 },
+  { field: 'originalEndExclusive', value: 30 },
+  { field: 'visibleRanges', value: [{ start: 0, endExclusive: 7 }, { start: 8, endExclusive: 25 }] },
+  { field: 'frameOverrides', value: [{ appFrame: 7, keyId: 'override-7' }] },
+] as const;
+
+function makePhysicalOutputWithGroupField(field: string, value: unknown): RuntimePhysicPaintOutput[] {
+  const records = [0, 3].map((appFrame) => ({
+    keyId: `key-${appFrame}`,
+    appFrame,
+    kind: 'real-key' as const,
+    payload: {
+      frameIndex: 0,
+      appFrame,
+      dataUrl: `data:image/png;base64,${btoa(`real-${appFrame}`)}`,
+      width: 100,
+      height: 50,
+    },
+  }));
+  const interpolation = { enabled: false, mode: 'duplicate' as const };
+  const loopClip = {
+    loopId: 'loop-1',
+    placementStart: 0,
+    sourceKeyIds: ['key-0', 'key-3'],
+    repeat: 2,
+    mode: 'progressive' as const,
+    [field]: value,
+  };
+  return [{
+    layer_id: 'physic layer/1',
+    frames: [],
+    roto_physical: {
+      capacity: 600,
+      realKeyRecords: records,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: 'controlled-unimplemented',
+      loopClips: [loopClip],
+      incomingInterpolationBreakKeyIds: [],
+    } as never,
+  }];
+}
+
 describe('physicPaintPersistence', () => {
   beforeEach(() => {
     files.clear();
@@ -246,6 +295,13 @@ describe('physicPaintPersistence', () => {
       { keyId: 'key-4', appFrame: 4, dataUrl: `data:image/png;base64,${btoa('real-4')}` },
       { keyId: 'key-8', appFrame: 8, dataUrl: `data:image/png;base64,${btoa('real-8')}` },
     ]);
+  });
+
+  it.each(GROUP_FIELD_PARTICIPATION)('marks $field as unimplemented at the save/reopen boundary', async ({ field, value }) => {
+    await expect(savePhysicPaintData(
+      '/project',
+      makePhysicalOutputWithGroupField(field, value),
+    )).rejects.toThrow();
   });
 
   it('rejects unsafe persisted cache paths instead of reading them', async () => {
