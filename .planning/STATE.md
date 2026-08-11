@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Completed 43.2-01-PLAN.md
-last_updated: "2026-08-11T02:47:28.421Z"
+stopped_at: Completed 43.2-02-PLAN.md
+last_updated: "2026-08-11T02:58:42.187Z"
 last_activity: 2026-08-11
-last_activity_desc: Completed Plan 43.2-01 lifecycle and field-participation contracts
+last_activity_desc: Completed Plan 43.2-02 source ownership, exact-frame COW, and lease contracts
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 61
-  completed_plans: 42
-  percent: 69
+  completed_plans: 43
+  percent: 70
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
-Plan: 2 of 20
-Status: Executing Phase 43.2
-Last activity: 2026-08-11 — Completed Plan 43.2-01 lifecycle and field-participation contracts
+Plan: 3 of 20
+Status: Ready to execute
+Last activity: 2026-08-11 — Completed Plan 43.2-02 source ownership, exact-frame COW, and lease contracts
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [███████░░░] 69%
+Progress: [███████░░░] 70%
 
 ## Performance Metrics
 
@@ -195,6 +195,7 @@ Progress: [███████░░░] 69%
 | Phase 43.1 P11 | 42min | 3 tasks | 9 files |
 | Phase 43.1 P12 | 3min | 2 tasks | 4 files |
 | Phase 43.2 P01 | 5min | 2 tasks | 4 files |
+| Phase 43.2 P02 | 5min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -290,6 +291,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43.2-01: The Wave 0 contract uses syncState, provenanceState, phaseOrigin, originalEndExclusive, visibleRanges, and frameOverrides as the additive field-participation matrix.
 - [Phase ?]: 43.2-01: Normalized visibleRanges are the sole Group deleted-occurrence authority; no mask, Group break set, blank-key sentinel, or second fragment identity participates.
 - [Phase ?]: 43.2-01: Unsupported additive fields remain controlled rejection or ignored-history markers until production cutover; absent fields preserve the accepted default contract.
+- [Phase ?]: Matching Action provenance never implies source sharing; sharing requires an explicit identity and a byte-equivalent ordered source cycle.
+- [Phase ?]: Exact-frame Paint uses override-first copy-on-write and preserves shared source bytes.
+- [Phase ?]: Canonical physical mutations require the exact project/layer lease token, with cleanup-pending authority transferred to recovery.
+- [Phase ?]: Rejected lifecycle, history, and recovery proposals preserve the accepted ledger and emit zero publication events.
 
 ### Pending Todos
 
@@ -479,8 +484,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T02:47:28.410Z
-Stopped at: Completed 43.2-01-PLAN.md
+Last session: 2026-08-11T02:58:42.176Z
+Stopped at: Completed 43.2-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

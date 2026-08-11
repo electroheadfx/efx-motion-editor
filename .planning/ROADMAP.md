@@ -289,7 +289,7 @@ Plans:
 **Wave 0 — passing tests/fixtures/checklist only**
 
 - [x] 43.2-01-PLAN.md — Lifecycle/range fixtures and complete field-participation matrix (GRP-02, GRP-04, GRP-08)
-- [ ] 43.2-02-PLAN.md — Source-sharing, exact-frame COW, cleanup, canonical lease concurrency, and rejection contracts (GRP-03, GRP-04, GRP-06)
+- [x] 43.2-02-PLAN.md — Source-sharing, exact-frame COW, cleanup, canonical lease concurrency, and rejection contracts (GRP-03, GRP-04, GRP-06)
 - [ ] 43.2-03-PLAN.md — Separate recovery/retained-history, forward/Undo/Redo/release contracts, and deterministic native-UAT checklist (GRP-06, GRP-08)
 
 **Wave 1 — blocked on all Wave 0 plans**
@@ -494,5 +494,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
 | 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 12/12 | Complete    | 2026-08-10 |
-| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 1/20 | In Progress|  |
+| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 2/20 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |

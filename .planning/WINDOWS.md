@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 16
+open_count: 19
 waived_count: 1
 fixed_count: 25
-total_count: 42
-last_updated: 2026-08-11T02:48:42.796Z
+total_count: 45
+last_updated: 2026-08-11T02:59:29.105Z
 ---
 
 # Broken Windows Ledger
@@ -57,6 +57,9 @@ last_updated: 2026-08-11T02:48:42.796Z
 | 40 | 43.2 | stub | app/src/types/physicPaint.test.ts | 305 | Wave 0 controlled markers keep Group lifecycle fields unsupported in physical transport until the production schema cutover | open |  | 2026-08-11T02:45:01.385Z |  |
 | 41 | 43.2 | stub | app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts | 191 | Wave 0 controlled markers keep Group lifecycle fields ignored by history equality until the production schema cutover | open |  | 2026-08-11T02:45:01.469Z |  |
 | 42 | 43.2 | deviation | .planning/STATE.md |  | Reconciled stale Plan 43.2-01 progress percentage, activity, and Current Position metadata after generic state handlers wrote contradictory values | fixed |  | 2026-08-11T02:48:16.498Z | 2026-08-11T02:48:42.796Z |
+| 43 | 43.2 | stub | app/src/lib/physicPaintBridge.test.ts | 2108 | The production-cutover-pending result deliberately keeps lifecycle proposal acceptance test-only until the later canonical production cutover. | open |  | 2026-08-11T02:58:41.370Z |  |
+| 44 | 43.2 | skipped-test | app/src/lib/physicPaintBridge.test.ts | 1860 | Pre-existing skipped native close-window test remains outside Plan 43.2-02. | open |  | 2026-08-11T02:58:41.449Z |  |
+| 45 | 43.2 | deviation | .planning/STATE.md |  | Reconciled stale generated progress percentage and last-activity metadata after Plan 43.2-02. | open |  | 2026-08-11T02:59:29.105Z |  |
 
 ````json
 [
@@ -563,6 +566,42 @@ last_updated: 2026-08-11T02:48:42.796Z
     "reason": "",
     "recorded_at": "2026-08-11T02:48:16.498Z",
     "resolved_at": "2026-08-11T02:48:42.796Z"
+  },
+  {
+    "id": 43,
+    "kind": "stub",
+    "phase": "43.2",
+    "file": "app/src/lib/physicPaintBridge.test.ts",
+    "line": 2108,
+    "description": "The production-cutover-pending result deliberately keeps lifecycle proposal acceptance test-only until the later canonical production cutover.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-11T02:58:41.370Z",
+    "resolved_at": null
+  },
+  {
+    "id": 44,
+    "kind": "skipped-test",
+    "phase": "43.2",
+    "file": "app/src/lib/physicPaintBridge.test.ts",
+    "line": 1860,
+    "description": "Pre-existing skipped native close-window test remains outside Plan 43.2-02.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-11T02:58:41.449Z",
+    "resolved_at": null
+  },
+  {
+    "id": 45,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Reconciled stale generated progress percentage and last-activity metadata after Plan 43.2-02.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-11T02:59:29.105Z",
+    "resolved_at": null
   }
 ]
 ````
