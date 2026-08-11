@@ -54,7 +54,7 @@ describe('durable Roto script schema', () => {
   it('creates fresh runtime and row objects without aliasing persisted input', () => {
     const value = document();
     const runtime = persistedRotoScriptToRuntime(value);
-    const row = rotoScriptLibraryRow(value, 'revision');
+    const row = rotoScriptLibraryRow(value, 'revision', 'a'.repeat(64));
     expect(runtime.brushes[0].primary).not.toBe(value.brushes[0].primary);
     expect(runtime.brushes[0].primary.points[0]).not.toBe(value.brushes[0].primary.points[0]);
     expect(row.source).not.toBe(value.source);

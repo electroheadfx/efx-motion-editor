@@ -6,7 +6,7 @@ import { createPersistedRotoScript } from '../roto/physicsPaintRotoScriptSchema'
 import { createRotoScriptLibraryControllerAdapter, createRotoScriptLibraryRequestLifecycle } from './useRotoScriptLibraryController';
 
 const launchContext = (): PhysicPaintLaunchContext => ({ operationId: 'launch', layerId: 'layer-1', layerName: 'Ink', startFrame: 4, width: 1600, height: 900, project: { name: 'Project', saved: true, contextId: 'context-1' } });
-const row = { id: '123e4567-e89b-42d3-a456-426614174000', revision: 'rev-1', name: 'Script', createdAt: '2026-07-16T12:00:00Z', updatedAt: '2026-07-16T12:00:00Z', source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 4, width: 1600, height: 900, background: { background: 'white' as const, paperGrain: 'canvas1', grainStrength: 0 } }, thumbnail: { mimeType: 'image/webp' as const, width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' }, brushCount: 1 };
+const row = { id: '123e4567-e89b-42d3-a456-426614174000', revision: 'rev-1', integritySha256: 'a'.repeat(64), name: 'Script', createdAt: '2026-07-16T12:00:00Z', updatedAt: '2026-07-16T12:00:00Z', source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 4, width: 1600, height: 900, background: { background: 'white' as const, paperGrain: 'canvas1', grainStrength: 0 } }, thumbnail: { mimeType: 'image/webp' as const, width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' }, brushCount: 1 };
 const script = createPersistedRotoScript({ id: row.id, name: row.name, createdAt: row.createdAt, updatedAt: row.updatedAt, source: row.source, thumbnail: { ...row.thumbnail, dataUrl: 'data:image/webp;base64,UklGRhIAAABXRUJQVlA4TAUAAAAvAAAAAAA=' }, brushes: [{ primary: { tool: 'paint', points: [{ x: 10, y: 2, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 }], color: '#000000', params: { size: 1, opacity: 100, pressure: 100, waterAmount: 0, dryAmount: 0, edgeDetail: 0, pickup: 0, eraseStrength: 0, antiAlias: 0 }, timestamp: 1 }, continuations: [] }] });
 
 function result(request: PhysicPaintScriptLibraryRequest, extra: Partial<PhysicPaintScriptLibraryResult> = {}): PhysicPaintScriptLibraryResult {
@@ -36,14 +36,17 @@ describe('persistent Roto script library hook adapters', () => {
   });
 
   it('forwards live referenced-Action transaction ports through the production adapter', () => {
-    const referencedActionDeletion = { getPhysicalDocument: vi.fn() };
+    const referencedActionDeletion = {
+      getPhysicalDocument: vi.fn(), acquireLease: vi.fn(), releaseLease: vi.fn(), nextUuid: vi.fn(), nextGeneration: vi.fn(),
+      digest: vi.fn(), prepare: vi.fn(), commit: vi.fn(),
+    };
     const ports = {
       request: vi.fn(), capturePersistence: vi.fn(), captureThumbnail: vi.fn(), replaceClipboard: vi.fn(),
       getLaunchContext: launchContext, log: vi.fn(), referencedActionDeletion,
     };
     const adapter = createRotoScriptLibraryControllerAdapter(() => ports, ports.request);
     expect(adapter.referencedActionDeletion).toBe(referencedActionDeletion);
-    const replacement = { getPhysicalDocument: vi.fn() };
+    const replacement = { ...referencedActionDeletion, getPhysicalDocument: vi.fn() };
     ports.referencedActionDeletion = replacement;
     expect(adapter.referencedActionDeletion).toBe(replacement);
   });

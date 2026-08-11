@@ -1841,7 +1841,7 @@ export function isPhysicPaintRotoAuthorityRequest(value: unknown): value is Phys
 }
 
 function isScriptLibraryRow(value: unknown): value is RotoScriptLibraryRow {
-  if (!isRecord(value) || !isCanonicalRotoScriptId(value.id) || !isNonEmptyString(value.revision) || normalizeRotoScriptName(value.name) === null) return false;
+  if (!isRecord(value) || !isCanonicalRotoScriptId(value.id) || !isNonEmptyString(value.revision) || !isActionTransactionSha256(value.integritySha256) || normalizeRotoScriptName(value.name) === null) return false;
   if (!isNonEmptyString(value.createdAt) || !isNonEmptyString(value.updatedAt) || !isNonNegativeInteger(value.brushCount)) return false;
   return isRecord(value.source) && isRecord(value.thumbnail);
 }

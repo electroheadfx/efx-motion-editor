@@ -6,7 +6,7 @@ import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndAp
 import { createPersistedRotoScript, type PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
 
 const context = (): PhysicPaintLaunchContext => ({ operationId: 'launch', layerId: 'layer-1', layerName: 'Ink', startFrame: 4, width: 1600, height: 900, project: { name: 'Project', saved: true, contextId: 'context-1' } });
-const row = (id: string, name: string, createdAt = '2026-07-16T12:00:00Z') => ({ id, revision: `rev-${id}`, name, createdAt, updatedAt: createdAt, source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 4, width: 1600, height: 900, background: { background: 'white' as const, paperGrain: 'canvas1', grainStrength: 0 } }, thumbnail: { mimeType: 'image/webp' as const, width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' }, brushCount: 1 });
+const row = (id: string, name: string, createdAt = '2026-07-16T12:00:00Z') => ({ id, revision: `rev-${id}`, integritySha256: 'a'.repeat(64), name, createdAt, updatedAt: createdAt, source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 4, width: 1600, height: 900, background: { background: 'white' as const, paperGrain: 'canvas1', grainStrength: 0 } }, thumbnail: { mimeType: 'image/webp' as const, width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' }, brushCount: 1 });
 const result = (request: PhysicPaintScriptLibraryRequest, rows = [row('b', 'B'), row('a', 'A')], extra: Partial<PhysicPaintScriptLibraryResult> = {}): PhysicPaintScriptLibraryResult => ({ operationId: request.operationId, kind: request.kind, ok: true, rows, skippedInvalidCount: 0, diagnostics: [], ...extra });
 
 function harness(saved = true) {
@@ -334,7 +334,7 @@ function referencedActionDocument(): PhysicPaintRotoPhysicalDocument {
   const realKeyRecords = [
     { kind: 'real-key' as const, keyId: 'source-a', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AA==', width: 10, height: 10 } },
     { kind: 'real-key' as const, keyId: 'source-b', appFrame: 4, payload: { frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,BB==', width: 10, height: 10 } },
-    { kind: 'real-key' as const, keyId: 'override-only', appFrame: 7, payload: { frameIndex: 0, appFrame: 7, dataUrl: 'data:image/png;base64,CC==', width: 10, height: 10 } },
+    { kind: 'real-key' as const, keyId: 'override-only', appFrame: 15, payload: { frameIndex: 0, appFrame: 15, dataUrl: 'data:image/png;base64,CC==', width: 10, height: 10 } },
   ];
   const interpolation = { enabled: false, mode: 'duplicate' as const };
   const loopClips = [
@@ -351,7 +351,7 @@ function referencedActionDocument(): PhysicPaintRotoPhysicalDocument {
       visibleRanges: [{ start: 2, endExclusive: 10 }], frameOverrides: [],
     },
     {
-      loopId: 'shared-survivor', placementStart: 30, sourceKeyIds: ['source-a'], repeat: 1 as const, mode: 'static' as const,
+      loopId: 'shared-survivor', placementStart: 30, sourceKeyIds: ['source-a', 'source-b'], repeat: 1 as const, mode: 'static' as const,
       scriptId: scriptIds.b, motion: { deformation: 0, position: 0 }, overrideColor: null, syncState: 'synchronized' as const,
       provenanceState: 'attached' as const, phaseOrigin: 30, originalEndExclusive: 31,
       visibleRanges: [{ start: 30, endExclusive: 31 }], frameOverrides: [],
@@ -359,7 +359,7 @@ function referencedActionDocument(): PhysicPaintRotoPhysicalDocument {
   ];
   return {
     capacity: 60, realKeyRecords, interpolation, scriptMotion: { deformation: 9, position: 11 }, background: null,
-    selectedKeyId: 'override-only', cursorAppFrame: 15, loopClips, incomingInterpolationBreakKeyIds: ['source-b'],
+    selectedKeyId: null, cursorAppFrame: 15, loopClips, incomingInterpolationBreakKeyIds: ['source-b'],
     revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, loopClips, ['source-b']),
   };
 }
@@ -367,7 +367,7 @@ function referencedActionDocument(): PhysicPaintRotoPhysicalDocument {
 describe('production referenced Action deletion preflight', () => {
   it.each([
     ['keep-groups', ['group-early', 'group-late'], []],
-    ['delete-action-and-groups', ['group-early', 'group-late'], ['override-only', 'source-b']],
+    ['delete-action-and-groups', ['group-early', 'group-late'], ['override-only']],
   ] as const)('freezes the exact %s candidate after lease acquisition with zero publication', async (mode, affectedGroupIds, cleanupKeyIds) => {
     const document = referencedActionDocument();
     const events: string[] = [];
@@ -375,7 +375,7 @@ describe('production referenced Action deletion preflight', () => {
     const commit = vi.fn(async (_authority, request) => ({ schemaVersion: 1 as const, state: 'committed' as const, ...request }));
 
     const prepared = await prepareReferencedActionDeletion({
-      context: context(), row: { ...row('a', 'A'), integritySha256: 'a'.repeat(64) }, mode,
+      context: context(), row: { ...row('a', 'A'), id: scriptIds.a, revision: 'rev-a', integritySha256: 'a'.repeat(64) }, mode,
     }, {
       getPhysicalDocument: () => document,
       acquireLease: () => { events.push('lease'); return 'lease-1'; },
@@ -389,9 +389,9 @@ describe('production referenced Action deletion preflight', () => {
       commit: async (authority, request) => { events.push('commit'); return commit(authority, request); },
     });
 
-    expect(events).toEqual(['lease', 'prepare', 'commit']);
     expect(prepared.ok).toBe(true);
     if (!prepared.ok) throw new Error(prepared.error);
+    expect(events).toEqual(['lease', 'prepare', 'commit']);
     expect(prepared.impact.affectedGroupIds).toEqual(affectedGroupIds);
     expect(prepared.impact.cleanupKeyIds).toEqual(cleanupKeyIds);
     expect(prepared.request).toMatchObject({
@@ -410,7 +410,7 @@ describe('production referenced Action deletion preflight', () => {
     const releaseLease = vi.fn(() => true);
     const prepare = vi.fn();
     const stale = await prepareReferencedActionDeletion({
-      context: context(), row: { ...row('a', 'A'), integritySha256: 'a'.repeat(64) }, mode: 'keep-groups',
+      context: context(), row: { ...row('a', 'A'), id: scriptIds.a, revision: 'rev-a', integritySha256: 'a'.repeat(64) }, mode: 'keep-groups',
     }, {
       getPhysicalDocument: vi.fn().mockReturnValueOnce(document).mockReturnValueOnce({ ...document, revision: 'newer-revision' }),
       getActionRevision: () => 'newer-action-revision',
@@ -426,7 +426,7 @@ describe('production referenced Action deletion preflight', () => {
     await test.controller.refresh();
     test.controller.select('a'); test.controller.requestDelete();
     await expect(test.controller.confirmDelete()).resolves.toBe(true);
-    expect(test.requests.at(-1)).toMatchObject({ kind: 'delete', scriptId: 'a', expectedRevision: 'rev-a' });
+    expect(test.requests[test.requests.length - 1]).toMatchObject({ kind: 'delete', scriptId: 'a', expectedRevision: 'rev-a' });
   });
 });
 

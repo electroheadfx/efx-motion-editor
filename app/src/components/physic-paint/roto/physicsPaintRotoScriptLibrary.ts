@@ -1,8 +1,49 @@
 import { computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
-import type { PhysicPaintLaunchContext, PhysicPaintScriptLibraryRequest, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
+import type {
+  PhysicPaintActionTransactionPrepareRequest,
+  PhysicPaintActionTransactionRecord,
+  PhysicPaintActionTransactionResult,
+  PhysicPaintLaunchContext,
+  PhysicPaintScriptLibraryRequest,
+  PhysicPaintScriptLibraryResult,
+} from '../../../types/physicPaint';
+import { buildPhysicPaintRotoProjectEquality, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
+import { proposePhysicPaintRotoActionGroupLifecycle, type PhysicPaintRotoActionGroupLifecycleImpact } from './physicsPaintRotoGroupLifecycle';
 import { createPersistedRotoScript, normalizeRotoScriptName, persistedRotoScriptToRuntime, type RotoScriptLibraryRow } from './physicsPaintRotoScriptSchema';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoPaintScript, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import type { PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
+
+export type ReferencedActionDeletionMode = 'keep-groups' | 'delete-action-and-groups';
+
+export interface ReferencedActionDeletionPorts {
+  getPhysicalDocument: (layerId: string) => PhysicPaintRotoPhysicalDocument | null;
+  getActionRevision?: (actionId: string) => string | null;
+  acquireLease: (projectContextId: string, layerId: string) => string | null;
+  releaseLease: (leaseToken: string) => boolean;
+  nextUuid: () => string;
+  nextGeneration: () => number;
+  digest: (value: unknown) => Promise<string>;
+  prepare: (authority: string, request: PhysicPaintActionTransactionPrepareRequest) => Promise<PhysicPaintActionTransactionResult>;
+  commit: (authority: string, request: PhysicPaintActionTransactionPrepareRequest) => Promise<PhysicPaintActionTransactionResult>;
+}
+
+export type ReferencedActionDeletionPreparation = Readonly<{
+  ok: true;
+  request: PhysicPaintActionTransactionPrepareRequest;
+  impact: PhysicPaintRotoActionGroupLifecycleImpact;
+  before: PhysicPaintRotoPhysicalDocument;
+  committed: PhysicPaintActionTransactionRecord;
+}> | Readonly<{
+  ok: false;
+  code: 'unavailable' | 'lease-unavailable' | 'stale-authority' | 'invalid-candidate' | 'prepare-failed' | 'commit-failed';
+  error: string;
+}>;
+
+export interface PrepareReferencedActionDeletionInput {
+  readonly context: PhysicPaintLaunchContext;
+  readonly row: RotoScriptLibraryRow;
+  readonly mode: ReferencedActionDeletionMode;
+}
 
 export interface RotoScriptLibraryControllerPorts {
   request: (request: PhysicPaintScriptLibraryRequest) => Promise<PhysicPaintScriptLibraryResult>;
@@ -11,6 +52,7 @@ export interface RotoScriptLibraryControllerPorts {
   replaceClipboard: (script: RotoPaintScript, preparation?: PreparedRotoScriptLoadAndApply) => RotoScriptClipboardReplacementOutcome;
   getLaunchContext: () => PhysicPaintLaunchContext | null;
   log: (message: string, error?: boolean) => void;
+  readonly referencedActionDeletion?: ReferencedActionDeletionPorts;
 }
 
 export interface RotoScriptLibraryAvailability {
@@ -32,6 +74,9 @@ export interface RotoScriptLibraryController {
   skippedInvalidCount: Signal<number>;
   rename: Signal<{ id: string; draft: string; error: string | null } | null>;
   deleteConfirmation: Signal<RotoScriptLibraryRow | null>;
+  referencedDeleteImpact: Signal<PhysicPaintRotoActionGroupLifecycleImpact | null>;
+  transactionPhase: Signal<'idle' | 'preparing' | 'committed' | 'recovery-required'>;
+  recoveryReady: Signal<boolean>;
   availability: ReadonlySignal<RotoScriptLibraryAvailability>;
   updateProjectContext: (context: PhysicPaintLaunchContext) => Promise<void>;
   enterScripts: () => Promise<void>;
@@ -44,10 +89,99 @@ export interface RotoScriptLibraryController {
   commitRename: () => Promise<boolean>;
   cancelRename: () => void;
   requestDelete: () => void;
-  confirmDelete: () => Promise<boolean>;
+  confirmDelete: (mode?: ReferencedActionDeletionMode) => Promise<boolean>;
   cancelDelete: () => void;
   select: (id: string) => void;
   dispose: () => void;
+}
+
+export async function prepareReferencedActionDeletion(
+  input: PrepareReferencedActionDeletionInput,
+  ports: ReferencedActionDeletionPorts,
+): Promise<ReferencedActionDeletionPreparation> {
+  const project = input.context.project;
+  const initialDocument = ports.getPhysicalDocument(input.context.layerId);
+  if (!project?.saved || !initialDocument) {
+    return { ok: false, code: 'unavailable', error: 'Saved project physical authority is unavailable.' };
+  }
+  const hasReference = initialDocument.loopClips.some((group) =>
+    group.scriptId === input.row.id && group.provenanceState === 'attached');
+  if (!hasReference) {
+    return { ok: false, code: 'unavailable', error: 'Action has no attached Groups.' };
+  }
+  const leaseToken = ports.acquireLease(project.contextId, input.context.layerId);
+  if (!leaseToken) return { ok: false, code: 'lease-unavailable', error: 'Physical operation lease is unavailable.' };
+  const fail = (code: Exclude<ReferencedActionDeletionPreparation, { ok: true }>['code'], error: string) => {
+    ports.releaseLease(leaseToken);
+    return { ok: false as const, code, error };
+  };
+  const currentDocument = ports.getPhysicalDocument(input.context.layerId);
+  const currentActionRevision = ports.getActionRevision?.(input.row.id) ?? input.row.revision;
+  if (!currentDocument
+    || currentDocument.revision !== initialDocument.revision
+    || currentActionRevision !== input.row.revision) {
+    return fail('stale-authority', 'Action or physical authority changed during preflight.');
+  }
+  const proposed = proposePhysicPaintRotoActionGroupLifecycle({
+    document: currentDocument,
+    actionId: input.row.id,
+    expectedActionRevision: input.row.revision,
+    currentActionRevision,
+    mode: input.mode === 'keep-groups' ? 'detach' : 'delete',
+  });
+  if (!proposed.ok) return fail('invalid-candidate', `Referenced Action candidate was rejected: ${proposed.reason}`);
+
+  const commandId = ports.nextUuid();
+  const token = ports.nextUuid();
+  const generation = ports.nextGeneration();
+  const impactDigest = await ports.digest(proposed.impact);
+  const request: PhysicPaintActionTransactionPrepareRequest = Object.freeze({
+    token,
+    commandId,
+    generation,
+    operationId: `referenced-action-delete-${commandId}`,
+    leaseToken,
+    direction: 'forward',
+    mode: input.mode,
+    authority: Object.freeze({
+      projectContextId: project.contextId,
+      layerId: input.context.layerId,
+      launchOperationId: input.context.operationId,
+      actionId: input.row.id,
+      expectedActionPresent: true,
+      expectedActionRevision: input.row.revision,
+      expectedPhysicalRevision: currentDocument.revision,
+      expectedPhysicalHash: buildPhysicPaintRotoProjectEquality(currentDocument),
+    }),
+    impactDigest,
+    retainedArtifact: Object.freeze({
+      commandId,
+      generation,
+      actionId: input.row.id,
+      managedPath: `scripts/${input.row.id}.efx-roto-script.json`,
+      originalRevision: input.row.revision,
+      integritySha256: input.row.integritySha256,
+    }),
+    target: Object.freeze({
+      physicalRevision: proposed.proposal.revision,
+      physicalHash: buildPhysicPaintRotoProjectEquality(proposed.proposal),
+      physicalDocument: proposed.proposal,
+      selectedGroupId: proposed.proposal.loopClips.some((group) => group.loopId === currentDocument.selectedKeyId)
+        ? currentDocument.selectedKeyId
+        : null,
+      cursorAppFrame: proposed.proposal.cursorAppFrame,
+    }),
+  });
+  const authority = project.contextId;
+  const prepared = await ports.prepare(authority, request);
+  if (prepared.state !== 'prepared') {
+    return fail('prepare-failed', prepared.state === 'failed' ? prepared.error : 'Rust prepare returned an invalid state.');
+  }
+  const committed = await ports.commit(authority, request);
+  if (committed.state !== 'committed') {
+    return fail('commit-failed', committed.state === 'failed' ? committed.error : 'Rust commit returned an invalid state.');
+  }
+  return Object.freeze({ ok: true, request, impact: proposed.impact, before: currentDocument, committed });
 }
 
 export function createRotoScriptLibraryController(ports: RotoScriptLibraryControllerPorts): RotoScriptLibraryController {
@@ -58,6 +192,9 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   const skippedInvalidCount = signal(0);
   const rename = signal<{ id: string; draft: string; error: string | null } | null>(null);
   const deleteConfirmation = signal<RotoScriptLibraryRow | null>(null);
+  const referencedDeleteImpact = signal<PhysicPaintRotoActionGroupLifecycleImpact | null>(null);
+  const transactionPhase = signal<'idle' | 'preparing' | 'committed' | 'recovery-required'>('idle');
+  const recoveryReady = signal(true);
   const projectSaved = signal(Boolean(ports.getLaunchContext()?.project?.saved));
   let disposed = false;
   let contextGeneration = 0;
@@ -66,11 +203,11 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   let lastAutoHydratedKey: string | null = null;
   const selected = computed(() => rows.value.find((row) => row.id === selectedId.value) ?? null);
   const availability = computed<RotoScriptLibraryAvailability>(() => ({
-    canSave: projectSaved.value && !busy.value,
-    saveDisabledReason: !projectSaved.value ? 'Save the project first.' : busy.value ? 'Finish the current script library operation.' : null,
-    canLoad: Boolean(selected.value) && !busy.value,
-    canRename: Boolean(selected.value) && !busy.value,
-    canDelete: Boolean(selected.value) && !busy.value,
+    canSave: projectSaved.value && recoveryReady.value && !busy.value,
+    saveDisabledReason: !projectSaved.value ? 'Save the project first.' : !recoveryReady.value ? 'Recover the pending Action transaction first.' : busy.value ? 'Finish the current script library operation.' : null,
+    canLoad: Boolean(selected.value) && recoveryReady.value && !busy.value,
+    canRename: Boolean(selected.value) && recoveryReady.value && !busy.value,
+    canDelete: Boolean(selected.value) && recoveryReady.value && !busy.value,
   }));
 
   function contextIdentity(context: PhysicPaintLaunchContext | null): string { return context?.project ? `${context.project.contextId}:${context.layerId}` : 'closed'; }
@@ -250,13 +387,39 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     if (!result.ok) { rename.value = { ...edit, error: result.error ?? 'Rename failed.' }; return false; }
     rename.value = null; status.value = `Renamed ${name}`; return true;
   }
-  async function confirmDelete(): Promise<boolean> {
+  async function confirmDelete(mode: ReferencedActionDeletionMode = 'keep-groups'): Promise<boolean> {
     const row = deleteConfirmation.peek(); if (!row) return false;
-    const result = await execute({ kind: 'delete', operationId: operationId('delete'), scriptId: row.id, expectedRevision: row.revision });
-    deleteConfirmation.value = null; status.value = result.ok ? `Deleted ${row.name}` : result.error ?? 'Delete failed'; return result.ok;
+    const transactionPorts = ports.referencedActionDeletion;
+    const context = ports.getLaunchContext();
+    const document = context ? transactionPorts?.getPhysicalDocument(context.layerId) : null;
+    const referenced = Boolean(document?.loopClips.some((group) =>
+      group.scriptId === row.id && group.provenanceState === 'attached'));
+    if (!referenced || !transactionPorts || !context) {
+      const result = await execute({ kind: 'delete', operationId: operationId('delete'), scriptId: row.id, expectedRevision: row.revision });
+      deleteConfirmation.value = null; status.value = result.ok ? `Deleted ${row.name}` : result.error ?? 'Delete failed'; return result.ok;
+    }
+    if (busy.peek()) return false;
+    busy.value = true;
+    transactionPhase.value = 'preparing';
+    try {
+      const prepared = await prepareReferencedActionDeletion({ context, row, mode }, transactionPorts);
+      if (!prepared.ok) {
+        transactionPhase.value = prepared.code === 'commit-failed' ? 'recovery-required' : 'idle';
+        status.value = prepared.error;
+        ports.log(prepared.error, true);
+        return false;
+      }
+      referencedDeleteImpact.value = prepared.impact;
+      transactionPhase.value = 'committed';
+      status.value = `Committed deletion of ${row.name}; local settlement is pending.`;
+      return true;
+    } finally {
+      busy.value = false;
+    }
   }
   return {
-    rows, selectedId, selected, busy, status, skippedInvalidCount, rename, deleteConfirmation, availability,
+    rows, selectedId, selected, busy, status, skippedInvalidCount, rename, deleteConfirmation,
+    referencedDeleteImpact, transactionPhase, recoveryReady, availability,
     updateProjectContext, enterScripts: refresh, refresh, saveActiveFrame, activateAndLoad, loadSnapshot, beginRename, updateRenameDraft, commitRename,
     cancelRename: () => { rename.value = null; }, requestDelete: () => { deleteConfirmation.value = selected.peek(); }, confirmDelete,
     cancelDelete: () => { deleteConfirmation.value = null; }, select: (id) => { if (rows.peek().some((row) => row.id === id)) selectedId.value = id; },

@@ -591,7 +591,9 @@ export function proposePhysicPaintRotoActionGroupLifecycle(
     && group.provenanceState === 'attached'
   ));
   if (affected.length === 0) return rejectLifecycle('action-not-found');
-  const affectedGroupIds = Object.freeze(affected.map((group) => group.loopId).sort());
+  const affectedGroupIds = Object.freeze([...affected]
+    .sort((left, right) => left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId))
+    .map((group) => group.loopId));
   const loopClips = input.mode === 'detach'
     ? input.document.loopClips.map((group) => affectedGroupIds.includes(group.loopId)
       ? { ...group, provenanceState: 'detached' as const }

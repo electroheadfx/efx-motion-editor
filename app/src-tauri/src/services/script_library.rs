@@ -186,6 +186,7 @@ struct ActiveProjectAuthority {
 pub struct ScriptLibraryRow {
     pub id: String,
     pub revision: String,
+    pub integrity_sha256: String,
     pub name: String,
     pub created_at: String,
     pub updated_at: String,
@@ -1556,8 +1557,15 @@ fn scan_root(root: &Path) -> Result<ScriptLibraryScan, String> {
             let expected_id = filename
                 .strip_suffix(SCRIPT_EXTENSION)
                 .ok_or_else(|| "Wrong managed extension".to_string())?;
-            let value = validate_document(read_json_bounded(&path)?, Some(expected_id))?;
-            row_from_document(&value)
+            let bytes = fs::read(&path)
+                .map_err(|error| format!("Could not read managed script: {error}"))?;
+            if bytes.len() as u64 > MAX_FILE_BYTES {
+                return Err("Managed script exceeds the size limit".to_string());
+            }
+            let value = serde_json::from_slice(&bytes)
+                .map_err(|error| format!("Could not parse managed script: {error}"))?;
+            let value = validate_document(value, Some(expected_id))?;
+            row_from_document(&value, &bytes)
         })();
         match result {
             Ok(row) => rows.push(row),
@@ -1892,13 +1900,14 @@ fn validate_point(value: &Value) -> Result<(), String> {
     Ok(())
 }
 
-fn row_from_document(value: &Value) -> Result<ScriptLibraryRow, String> {
+fn row_from_document(value: &Value, exact_bytes: &[u8]) -> Result<ScriptLibraryRow, String> {
     let object = value
         .as_object()
         .ok_or_else(|| "Invalid script".to_string())?;
     Ok(ScriptLibraryRow {
         id: object["id"].as_str().unwrap().into(),
         revision: document_revision(value)?,
+        integrity_sha256: format!("{:x}", Sha256::digest(exact_bytes)),
         name: object["name"].as_str().unwrap().into(),
         created_at: object["createdAt"].as_str().unwrap().into(),
         updated_at: object["updatedAt"].as_str().unwrap().into(),

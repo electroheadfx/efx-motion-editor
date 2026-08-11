@@ -83,6 +83,7 @@ export function createRotoScriptLibraryControllerAdapter(
     replaceClipboard: (script, preparation) => getPorts().replaceClipboard(script, preparation),
     getLaunchContext: () => getPorts().getLaunchContext(),
     log: (message, error) => getPorts().log(message, error),
+    get referencedActionDeletion() { return getPorts().referencedActionDeletion; },
   };
 }
 
