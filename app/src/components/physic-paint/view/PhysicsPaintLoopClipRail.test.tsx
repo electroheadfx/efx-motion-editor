@@ -424,7 +424,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(focusRule).toContain('outline-offset: 2px');
     expect(cssRule('.physics-paint-workflow-strip {')).toContain('height: 161px');
     expect(cssRule('.physics-paint-lane {')).toContain('height: 38px');
-    expect(cssRule('.physics-paint-roto-cell-actions {')).toContain('height: 34px');
+    expect(cssRule('.physics-paint-roto-action-row {')).toContain('height: 34px');
     expect(physicsPaintStudioCss).not.toContain('physics-paint-group-lifecycle-lane');
   });
   it('dispatches plain, Shift range, and Cmd/Ctrl toggle rail selection gestures', () => {
@@ -594,7 +594,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(typeof target.props.onfocusin).toBe('function');
     (target.props.onfocusin as () => void)();
     const railCopy = `${String(target.props['aria-label'])} ${textOf(railTree)}`;
-    for (const fact of ['Loop Clip at F10', 'Cycle 5f × 5 = 25f', 'Effective 25f', 'Mode: Progressive', 'Status: Linked']) {
+    for (const fact of ['Walk Group', 'Type: Motion', 'Cycle 5f × 5 = 25f', 'Effective 25f', 'Status: Synchronized with Action.']) {
       expect(railCopy).toContain(fact);
     }
     expect(railCopy).not.toContain(rawLoopId);
@@ -729,14 +729,14 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const selectedPresentation = presentations.get(selectedLoopClipId) ?? null;
     expect(selectedPresentation?.loopId).toBe(selectedLoopClipId);
     const selectedPanel = renderScriptsPanel(selectedPresentation, onOpenLoopEdit, onCloseLoopClip);
-    const editButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Edit Loop Clip — Loop Clip at F10');
-    const closeButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Close Loop Clip inspector — Loop Clip at F10');
+    const editButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Edit Loop Clip — Walk Group');
+    const closeButton = findOne(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Close Loop Clip inspector — Walk Group');
     expect(findAll(selectedPanel, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Play Script')).toHaveLength(0);
     expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-toolbar'))).toHaveLength(0);
     expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary'))).toHaveLength(0);
     expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-list'))).toHaveLength(0);
     const inspector = findOne(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-inspector'));
-    expect(textOf(inspector)).toBe('NameLoop Clip at F10Source scriptWalkPlacementF10CycleCycle 5f × 5 = 25fEffectiveEffective 25fModeProgressiveStatusLinked');
+    expect(textOf(inspector)).toBe('NameWalk GroupSource scriptWalkPlacementF10CycleCycle 5f × 5 = 25fEffectiveEffective 25fModeMotionStatusSynchronized with Action.');
     expect(textOf(inspector)).not.toContain(rawLoopId);
     (editButton.props.onClick as () => void)();
     expect(onOpenLoopEdit).toHaveBeenCalledTimes(3);
@@ -817,7 +817,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     vi.useRealTimers();
   });
 
-  it('uses a cyan Static/Hold rail theme with visible cuts at both capsule endpoints', () => {
+  it('uses a cyan Static Group Rail theme with visible cuts at both Group endpoints', () => {
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'hold-loop',
       placementStart: 0,
@@ -852,7 +852,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(hasClass(target, 'mode-static')).toBe(true);
     expect(hasClass(target, 'boundary-start')).toBe(true);
     expect(hasClass(target, 'boundary-end')).toBe(true);
-    expect(`${String(target.props['aria-label'])} ${textOf(tree)}`).toContain('Mode: Static/Hold');
+    expect(`${String(target.props['aria-label'])} ${textOf(tree)}`).toContain('Type: Static');
     expect(cssRule('.physics-paint-loop-clip-rail-target.mode-static .physics-paint-loop-clip-rail-segment {'))
       .toContain('background: #06b6d4');
     expect(cssRule('.physics-paint-loop-clip-rail-target.mode-static:hover:not(.selected) .physics-paint-loop-clip-rail-segment,'))

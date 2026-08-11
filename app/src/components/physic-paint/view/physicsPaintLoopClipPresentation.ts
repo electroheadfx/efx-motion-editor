@@ -121,6 +121,35 @@ export function projectPhysicsPaintLoopClipPresentation(
   };
 }
 
+export function projectPhysicsPaintLoopClipFragmentPresentation(
+  presentation: PhysicsPaintLoopClipPresentation,
+  fragment: PhysicsPaintGroupFragmentContext,
+  linkedActionName: string | null = null,
+): PhysicsPaintLoopClipPresentation {
+  const fragmentLabel = fragment.count > 1
+    ? `Range F${fragment.start}–F${fragment.endExclusive - 1} · Fragment ${fragment.index} of ${fragment.count}`
+    : null;
+  const normalizedLinkedActionName = linkedActionName?.trim();
+  const linkedDescription = normalizedLinkedActionName
+    ? `Linked to selected Action ${normalizedLinkedActionName}.`
+    : null;
+  const tooltipLines = [
+    ...presentation.tooltipLines.slice(0, 5),
+    ...(fragmentLabel ? [fragmentLabel] : []),
+  ];
+  const accessibleName = fragmentLabel
+    ? `${presentation.displayName}. Fragment ${fragment.index} of ${fragment.count}, frames ${fragment.start} through ${fragment.endExclusive - 1}. ${presentation.groupTypeLabel}. ${presentation.statusLabel}${linkedDescription ? ` ${linkedDescription}` : ''}`
+    : `${presentation.displayName}. ${presentation.groupTypeLabel}. ${presentation.cycleLabel}. Effective ${Math.max(0, fragment.endExclusive - fragment.start)} frames. ${presentation.statusLabel}${linkedDescription ? ` ${linkedDescription}` : ''}`;
+
+  return {
+    ...presentation,
+    fragmentLabel,
+    linkedDescription,
+    tooltipLines,
+    accessibleName,
+  };
+}
+
 export function projectPhysicsPaintGroupAcceptedFeedback(
   request: PhysicsPaintGroupAcceptedFeedbackRequest,
 ): string {

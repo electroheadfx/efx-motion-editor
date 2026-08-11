@@ -2856,6 +2856,48 @@ button.destructive {
   background: #f59e0b;
 }
 
+.physics-paint-loop-clip-rail-target.unresolved .physics-paint-loop-clip-rail-segment {
+  background: #ff6b6b;
+}
+
+.physics-paint-loop-clip-rail-target.mode-progressive.action-linked:not(.selected) {
+  box-shadow: 0 0 0 1px #c4b5fd, 0 0 5px rgba(196, 181, 253, 0.55);
+}
+
+.physics-paint-loop-clip-rail-target.mode-static.action-linked:not(.selected) {
+  box-shadow: 0 0 0 1px #67e8f9, 0 0 5px rgba(103, 232, 249, 0.5);
+}
+
+.physics-paint-loop-clip-lifecycle-dot {
+  position: absolute;
+  top: 1.5px;
+  left: 50%;
+  z-index: 1;
+  width: 6px;
+  height: 6px;
+  border: 1px solid #20262d;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.physics-paint-loop-clip-lifecycle-dot.synchronized {
+  background: #34d399;
+}
+
+.physics-paint-loop-clip-lifecycle-dot.modified {
+  background: #fb923c;
+}
+
+.physics-paint-loop-clip-lifecycle-dot.detached {
+  background: #9ca3af;
+}
+
+.physics-paint-loop-clip-lifecycle-dot.unavailable {
+  border-color: #d1d5db;
+  background: #6b7280;
+}
+
 .physics-paint-loop-clip-rail-target.boundary-start .physics-paint-loop-clip-rail-segment::before,
 .physics-paint-loop-clip-rail-target.boundary-end .physics-paint-loop-clip-rail-segment::after {
   position: absolute;
@@ -2875,7 +2917,8 @@ button.destructive {
 }
 
 .physics-paint-loop-clip-rail-target:focus-visible {
-  outline: none;
+  outline: 2px solid #f2f5f7;
+  outline-offset: 2px;
 }
 
 .physics-paint-loop-clip-tooltip-copy {

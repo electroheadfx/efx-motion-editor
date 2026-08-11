@@ -3,6 +3,7 @@ import type { PhysicPaintRotoLoopRange } from '../roto/physicsPaintRotoPhysicalR
 import type { PhysicsPaintRotoSpacingSelectionGesture } from '../roto/physicsPaintRotoSpacingSelection';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
+  projectPhysicsPaintLoopClipFragmentPresentation,
   projectPhysicsPaintLoopClipGeometry,
   type PhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
@@ -19,6 +20,8 @@ export interface PhysicsPaintLoopClipRailProps {
   };
   readonly framePitch: number;
   readonly selectedLoopClipIds: readonly string[];
+  readonly linkedLoopClipIds?: readonly string[];
+  readonly linkedActionName?: string | null;
   readonly onSelectLoopClip: (
     loopId: string,
     gesture: PhysicsPaintRotoSpacingSelectionGesture,
@@ -47,6 +50,7 @@ interface RailTargetProps {
   readonly left: number;
   readonly width: number;
   readonly selected: boolean;
+  readonly actionLinked: boolean;
   readonly showStartBoundary: boolean;
   readonly showEndBoundary: boolean;
   readonly onSelectLoopClip: (
@@ -105,14 +109,18 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     }, LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
   };
   const handleKeyDown = (event: RailKeyboardEvent) => {
-    event.stopPropagation();
-    if (event.key === 'Enter') {
-      event.preventDefault();
+    if (event.key === 'Escape') {
+      event.stopPropagation();
       tooltip.hide();
-      clearClickSequence();
-      props.onSelectLoopClip(range.loopId, 'plain');
-      void props.onOpenLoopEdit(range.loopId);
+      return;
     }
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.stopPropagation();
+    event.preventDefault();
+    tooltip.hide();
+    clearClickSequence();
+    props.onSelectLoopClip(range.loopId, 'plain');
+    if (event.key === 'Enter') void props.onOpenLoopEdit(range.loopId);
   };
 
   return (
@@ -125,8 +133,8 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     >
       <button
         type="button"
-        class={`physics-paint-loop-clip-rail-target mode-${presentation.mode}${props.selected ? ' selected' : ''}${props.showStartBoundary ? ' boundary-start' : ''}${props.showEndBoundary ? ' boundary-end' : ''}${range.truncated ? ' truncated' : ''}${range.unresolved ? ' unresolved' : ''}`}
-        aria-label={`${presentation.displayName}. ${presentation.cycleLabel}. ${presentation.effectiveLabel}. ${presentation.modeLabel}. ${presentation.statusLabel}.`}
+        class={`physics-paint-loop-clip-rail-target mode-${presentation.mode}${props.selected ? ' selected' : ''}${props.actionLinked ? ' action-linked' : ''}${props.showStartBoundary ? ' boundary-start' : ''}${props.showEndBoundary ? ' boundary-end' : ''}${range.truncated ? ' truncated' : ''}${range.unresolved ? ' unresolved' : ''}`}
+        aria-label={presentation.accessibleName}
         aria-pressed={props.selected}
         onPointerDown={stopPointerEvent}
         onClick={handleClick}
@@ -135,14 +143,15 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
         onBlur={tooltip.onBlur}
       >
         <span class="physics-paint-loop-clip-rail-segment" aria-hidden="true" />
+        {presentation.synchronizationDot ? (
+          <span class={`physics-paint-loop-clip-lifecycle-dot ${presentation.synchronizationDot}`} aria-hidden="true" />
+        ) : null}
       </button>
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom" anchorRef={anchorRef} topmost>
         <span class="physics-paint-loop-clip-tooltip-copy">
-          <strong>{presentation.displayName}</strong>
-          <span>{presentation.cycleLabel}</span>
-          <span>{presentation.effectiveLabel}</span>
-          <span>Mode: {presentation.modeLabel}</span>
-          <span>Status: {presentation.statusLabel}</span>
+          {presentation.tooltipLines.map((line, index) => index === 0
+            ? <strong key={line}>{line}</strong>
+            : <span key={`${index}:${line}`}>{line}</span>)}
         </span>
       </PhysicsPaintStyledTooltip>
     </span>
@@ -150,17 +159,40 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
 }
 
 export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
+  const rangesByGroup = new Map<string, PhysicPaintRotoLoopRange[]>();
+  for (const range of props.ranges) {
+    const groupRanges = rangesByGroup.get(range.loopId);
+    if (groupRanges) groupRanges.push(range);
+    else rangesByGroup.set(range.loopId, [range]);
+  }
   const visibleTargets = props.ranges.flatMap((range) => {
-    const presentation = props.presentations.get(range.loopId);
+    const basePresentation = props.presentations.get(range.loopId);
     const geometry = projectPhysicsPaintLoopClipGeometry(
       range,
       props.visibleFrameWindow,
       props.framePitch,
     );
+    const groupRanges = rangesByGroup.get(range.loopId) ?? [range];
+    const fragmentIndex = groupRanges.indexOf(range) + 1;
+    const actionLinked = props.linkedLoopClipIds?.includes(range.loopId) ?? false;
+    const presentation = basePresentation
+      ? projectPhysicsPaintLoopClipFragmentPresentation(
+          basePresentation,
+          {
+            index: fragmentIndex,
+            count: groupRanges.length,
+            start: range.placementStart,
+            endExclusive: range.effectiveEnd,
+          },
+          actionLinked ? props.linkedActionName ?? null : null,
+        )
+      : null;
     return presentation && geometry ? [{
+      key: `${range.loopId}:${fragmentIndex}:${range.placementStart}:${range.effectiveEnd}`,
       range,
       presentation,
       geometry,
+      actionLinked,
       showStartBoundary: range.placementStart >= props.visibleFrameWindow.startFrame,
       showEndBoundary: range.effectiveEnd <= props.visibleFrameWindow.endFrameExclusive,
     }] : [];
@@ -169,15 +201,16 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
   if (visibleTargets.length === 0) return null;
 
   return (
-    <div class="physics-paint-loop-clip-rail" role="group" aria-label="Loop Clips">
-      {visibleTargets.map(({ range, presentation, geometry, showStartBoundary, showEndBoundary }) => (
+    <div class="physics-paint-loop-clip-rail" role="group" aria-label="Groups">
+      {visibleTargets.map(({ key, range, presentation, geometry, actionLinked, showStartBoundary, showEndBoundary }) => (
         <PhysicsPaintLoopClipRailTarget
-          key={range.loopId}
+          key={key}
           range={range}
           presentation={presentation}
           left={geometry.left}
           width={geometry.width}
           selected={props.selectedLoopClipIds.includes(range.loopId)}
+          actionLinked={actionLinked}
           showStartBoundary={showStartBoundary}
           showEndBoundary={showEndBoundary}
           onSelectLoopClip={props.onSelectLoopClip}
