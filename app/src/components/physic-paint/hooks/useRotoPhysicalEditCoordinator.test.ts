@@ -53,6 +53,7 @@ function groupLifecycleDocument(options: {
   existingOverride?: boolean;
   selectedKeyId?: string | null;
   cursorAppFrame?: number;
+  sharedSourceOwner?: boolean;
 } = {}) {
   const records = [record('A', 0), record('B', 1)];
   if (options.existingOverride) records.push(record('override-4', 4));
@@ -62,19 +63,43 @@ function groupLifecycleDocument(options: {
         { start: 0, endExclusive: options.gapAt },
         { start: options.gapAt + 1, endExclusive: 6 },
       ];
-  const loopClips = [{
+  const primaryGroup: PhysicPaintRotoLoopClip = {
     loopId: 'group-1',
     placementStart: 0,
     sourceKeyIds: ['A', 'B'],
-    repeat: 3 as const,
-    mode: 'progressive' as const,
-    syncState: options.gapAt === undefined && !options.existingOverride ? 'synchronized' as const : 'modified' as const,
-    provenanceState: 'attached' as const,
+    repeat: 3,
+    mode: 'progressive',
+    scriptId: 'action-1',
+    motion: { deformation: 0, position: 0 },
+    overrideColor: null,
+    syncState: options.gapAt === undefined && !options.existingOverride ? 'synchronized' : 'modified',
+    provenanceState: 'attached',
     phaseOrigin: 0,
     originalEndExclusive: 6,
     visibleRanges,
     frameOverrides: options.existingOverride ? [{ appFrame: 4, keyId: 'override-4' }] : [],
-  }];
+  };
+  const loopClips: readonly PhysicPaintRotoLoopClip[] = options.sharedSourceOwner
+    ? [
+        primaryGroup,
+        {
+          loopId: 'group-shared',
+          placementStart: 8,
+          sourceKeyIds: ['A', 'B'],
+          repeat: 1,
+          mode: 'progressive',
+          scriptId: 'action-1',
+          motion: { deformation: 0, position: 0 },
+          overrideColor: null,
+          syncState: 'synchronized',
+          provenanceState: 'attached',
+          phaseOrigin: 8,
+          originalEndExclusive: 10,
+          visibleRanges: [{ start: 8, endExclusive: 10 }],
+          frameOverrides: [],
+        },
+      ]
+    : [primaryGroup];
   return parsePhysicPaintRotoPhysicalDocument({
     capacity: 30,
     realKeyRecords: records,
@@ -196,8 +221,36 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
   const reconcileCurrentFrame = vi.fn();
   const setCachedReference = vi.fn();
   const setConciseMessage = vi.fn();
-  const emptyMap = new Map<number, unknown>();
+  const sharedCacheFact = Object.freeze({ owner: 'shared-source', sourceKeyIds: ['A', 'B'] as const });
+  const frameStates = new Map<number, unknown>([[0, sharedCacheFact]]);
+  const previewFrames = new Map<number, unknown>([[1, sharedCacheFact]]);
+  const capturedFrames = new Map<number, unknown>([[8, sharedCacheFact]]);
+  const confirmedFrames = new Map<number, unknown>([[9, sharedCacheFact]]);
   const emptySet = new Set<number>();
+  const cachedReference = Object.freeze({
+    url: 'blob:shared-source-reference',
+    cachedRepaintBase: Object.freeze({
+      frameIndex: 0,
+      appFrame: 0,
+      dataUrl: 'data:image/png;base64,U0hBUkVE',
+      width: 2,
+      height: 2,
+    }),
+  });
+  const registerPendingSettlement = vi.fn();
+  const clearPendingSettlement = vi.fn();
+  const getCanonicalDocument = () => parsePhysicPaintRotoPhysicalDocument({
+    capacity: 30,
+    realKeyRecords: records,
+    interpolation,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: canonicalSelectedKeyId,
+    cursorAppFrame: canonicalCursorAppFrame,
+    revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, incomingInterpolationBreakKeyIds),
+    loopClips,
+    incomingInterpolationBreakKeyIds,
+  });
   const ports: RotoPhysicalEditCoordinatorPorts<null> = {
     engine: null,
     records: {
@@ -205,18 +258,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
         leaseOrder.push('records');
         return records;
       },
-      getDocument: () => parsePhysicPaintRotoPhysicalDocument({
-        capacity: 30,
-        realKeyRecords: records,
-        interpolation,
-        scriptMotion: { deformation: 0, position: 0 },
-        background: null,
-        selectedKeyId: canonicalSelectedKeyId,
-        cursorAppFrame: canonicalCursorAppFrame,
-        revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, incomingInterpolationBreakKeyIds),
-        loopClips,
-        incomingInterpolationBreakKeyIds,
-      }),
+      getDocument: getCanonicalDocument,
       getInterpolation: () => interpolation,
       getCapacity: () => 30,
       getLoopClips: () => loopClips,
@@ -229,10 +271,10 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       replaceLoopClips,
     },
     buffer: {
-      frameStates: emptyMap,
-      previewFrames: emptyMap,
-      capturedFrames: emptyMap,
-      confirmedFrames: emptyMap,
+      frameStates,
+      previewFrames,
+      capturedFrames,
+      confirmedFrames,
       dirtyFrames: emptySet,
       liveOverlayActionCounts: new Map(),
       editableFrames: records.map((entry) => entry.appFrame),
@@ -251,7 +293,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       setCurrentAppFrame: (frame) => { currentFrame = frame; },
     },
     reference: {
-      getCachedReference: () => ({ url: null, cachedRepaintBase: null }),
+      getCachedReference: () => cachedReference,
       setCachedReference,
       reconcileCurrentFrame,
     },
@@ -282,8 +324,8 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       sendPhysicalEditPayload,
     },
     settlement: {
-      registerPendingSettlement: vi.fn(),
-      clearPendingSettlement: vi.fn(),
+      registerPendingSettlement,
+      clearPendingSettlement,
     },
     status: {
       setApplyStatus: vi.fn(),
@@ -293,6 +335,15 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     },
   };
   const coordinator = useRotoPhysicalEditCoordinator(ports);
+  const acceptedEvents: Array<NonNullable<typeof coordinator.acceptedOutput.value>> = [];
+  const versionEvents: number[] = [];
+  const historyCommands: string[] = [];
+  coordinator.acceptedOutput.subscribe((value) => {
+    if (!value) return;
+    acceptedEvents.push(value);
+    versionEvents.push(versionEvents.length + 1);
+    historyCommands.push(value.operationId);
+  });
   const execute = () => coordinator.executePhysicalEdit({
     proposal: initial.proposal,
     expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
@@ -477,6 +528,24 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     leaseOrder,
     leaseToken,
     recoveryLeaseToken,
+    registerPendingSettlement,
+    clearPendingSettlement,
+    acceptedEvents,
+    versionEvents,
+    historyCommands,
+    getCanonicalDocument,
+    getCanonicalSelection: () => ({
+      selectedKeyId: canonicalSelectedKeyId,
+      cursorAppFrame: canonicalCursorAppFrame,
+    }),
+    getStudioSelection: () => ({ selectedKeyId, cursorAppFrame: currentFrame }),
+    getCacheFacts: () => ({
+      frameStates: [...frameStates],
+      previewFrames: [...previewFrames],
+      capturedFrames: [...capturedFrames],
+      confirmedFrames: [...confirmedFrames],
+      cachedReference,
+    }),
     getRecords: () => records,
     getLoopClips: () => loopClips,
     getIncomingInterpolationBreakKeyIds: () => incomingInterpolationBreakKeyIds,
