@@ -3,7 +3,13 @@ import { defaultTransform, type Layer } from '../types/layer';
 import type { AudioTrack } from '../types/audio';
 import { audioStore } from '../stores/audioStore';
 import { layerStore } from '../stores/layerStore';
-import { physicPaintStore, registerRotoAlphaCanvasFrame, rotoPhysicalRevision } from '../stores/physicPaintStore';
+import {
+  hasRotoAlphaCanvasFrame,
+  physicPaintStore,
+  physicPaintVersion,
+  registerRotoAlphaCanvasFrame,
+  rotoPhysicalRevision,
+} from '../stores/physicPaintStore';
 import { projectStore } from '../stores/projectStore';
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
@@ -11,11 +17,14 @@ import type { PhysicPaintApplyPayload, PhysicPaintRotoPhysicalEditIntent } from 
 import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
   buildPhysicPaintRotoPhysicalRevision,
+  buildPhysicPaintRotoProjectEquality,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { resolvePhysicPaintRotoPhysicalEdit } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
+import { proposePhysicPaintRotoGroupFramePaint } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
 import { hydrateRotoPhysicalLaunchContext } from '../components/physic-paint/roto/rotoLaunchHydration';
 import {
   applyPhysicPaintPayload,
+  applyPhysicPaintRotoGroupFramePaint,
   createPhysicPaintLaunchContext,
   handlePhysicPaintFrameSyncMessage,
   installPhysicPaintApplyListener,
@@ -2308,5 +2317,180 @@ describe('Phase 43.2 parent source-sharing and cleanup rejection atomicity contr
       expect(result.ledger.history).toEqual(['command-6']);
       expect(result.ledger.selection).toEqual({ groupId: 'group-1', appFrame: 9 });
     }
+  });
+});
+
+describe('Phase 43.2 leased exact-occurrence Paint parent tracer', () => {
+  const projectContextId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        open: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        location: { origin: 'http://localhost:1420' },
+      },
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    projectStore.closeProject();
+    Object.defineProperty(globalThis, 'window', {
+      value: originalWindow,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  async function harness(operationId: string) {
+    const layer = physicLayer();
+    mockLayers([layer]);
+    projectStore.projectContextId.value = projectContextId;
+    const records = [makePhysicalRecord('source-A', 0), makePhysicalRecord('source-B', 1)];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const loopClips = [{
+      loopId: 'group-1',
+      placementStart: 0,
+      sourceKeyIds: ['source-A', 'source-B'],
+      repeat: 3 as const,
+      mode: 'progressive' as const,
+      syncState: 'synchronized' as const,
+      provenanceState: 'attached' as const,
+      phaseOrigin: 0,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      frameOverrides: [],
+    }];
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, {
+      capacity: 30,
+      realKeyRecords: records,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 4,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips),
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 4 });
+    if (!launch.ok) throw new Error(launch.error);
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!acceptedDocument) throw new Error('Expected seeded physical document.');
+    const proposalResult = proposePhysicPaintRotoGroupFramePaint({
+      document: acceptedDocument,
+      groupId: 'group-1',
+      appFrame: 4,
+      overrideKeyId: 'override-4',
+      renderedPayload: makePhysicalRecord('override-4', 4).payload,
+    });
+    if (!proposalResult.ok) throw new Error(proposalResult.reason);
+    const leaseToken = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layer.id);
+    if (!leaseToken) throw new Error('Expected physical-operation lease.');
+    return {
+      layer,
+      acceptedDocument,
+      proposalResult,
+      leaseToken,
+      request: {
+        operationId,
+        projectContextId,
+        layerId: layer.id,
+        launchOperationId: launch.data.operationId,
+        expectedRevision: acceptedDocument.revision,
+        expectedProjectEquality: buildPhysicPaintRotoProjectEquality(acceptedDocument),
+        groupId: 'group-1',
+        appFrame: 4,
+        overrideKeyId: 'override-4',
+        renderedPayload: makePhysicalRecord('override-4', 4).payload,
+        claimedCleanupKeyIds: [] as readonly string[],
+        proposal: proposalResult.proposal,
+        impact: proposalResult.impact,
+        leaseToken,
+      },
+    };
+  }
+
+  it('recomputes and publishes once with one version notification and one accepted history command', async () => {
+    const test = await harness('group-paint-accepted');
+    const beforeVersion = physicPaintVersion.peek();
+    const beforePhysicalRevision = rotoPhysicalRevision.peek();
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+
+    const result = applyPhysicPaintRotoGroupFramePaint(test.request);
+
+    expect(result).toEqual({ ok: true, acceptedDocument: test.proposalResult.proposal, historyCommandId: 'group-paint-accepted' });
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledWith(test.layer.id, test.proposalResult.proposal, test.leaseToken);
+    expect(physicPaintVersion.peek()).toBe(beforeVersion + 1);
+    expect(rotoPhysicalRevision.peek()).toBe(beforePhysicalRevision + 1);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.proposalResult.proposal);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
+  });
+
+  it.each([
+    ['stale', (request: Awaited<ReturnType<typeof harness>>['request']) => ({ ...request, expectedRevision: 'stale-revision' })],
+    ['stale', (request: Awaited<ReturnType<typeof harness>>['request']) => ({ ...request, expectedProjectEquality: 'stale-project-equality' })],
+    ['malformed', (request: Awaited<ReturnType<typeof harness>>['request']) => ({ ...request, proposal: { ...request.proposal, loopClips: [{ ...request.proposal.loopClips[0], visibleRanges: [{ start: 0, endExclusive: 4 }, { start: 4, endExclusive: 6 }] }] } })],
+    ['malformed', (request: Awaited<ReturnType<typeof harness>>['request']) => ({ ...request, proposal: { ...request.proposal, loopClips: [{ ...request.proposal.loopClips[0], frameOverrides: [{ appFrame: 4, keyId: 'override-4' }, { appFrame: 4, keyId: 'duplicate' }] }] } })],
+    ['malformed', (request: Awaited<ReturnType<typeof harness>>['request']) => ({ ...request, proposal: { ...request.proposal, loopClips: [...request.proposal.loopClips, { ...request.proposal.loopClips[0], loopId: 'group-2', sourceKeyIds: ['source-B', 'source-A'] }] } })],
+    ['unresolved-precedence', (request: Awaited<ReturnType<typeof harness>>['request']) => ({ ...request, unresolvedPrecedence: true })],
+    ['cleanup-reference-mismatch', (request: Awaited<ReturnType<typeof harness>>['request']) => ({ ...request, claimedCleanupKeyIds: ['source-A'] })],
+    ['missing-token', (request: Awaited<ReturnType<typeof harness>>['request']) => ({ ...request, leaseToken: undefined })],
+    ['mismatched-token', (request: Awaited<ReturnType<typeof harness>>['request']) => ({ ...request, leaseToken: { ...request.leaseToken, generation: request.leaseToken.generation + 1 } })],
+  ] as const)(
+    'rejects %s authority or proposal mismatch without document, version, selection, cursor, or canvas change',
+    async (reason, mutate) => {
+      const test = await harness(`group-paint-reject-${reason}-${crypto.randomUUID()}`);
+      const beforeDocument = physicPaintStore.getRotoPhysicalDocument(test.layer.id);
+      const beforeVersion = physicPaintVersion.peek();
+      const beforePhysicalRevision = rotoPhysicalRevision.peek();
+      const beforeRenderSource = physicPaintStore.getRotoPhysicalRenderSource(test.layer.id, 0);
+      const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+
+      const result = applyPhysicPaintRotoGroupFramePaint(mutate(test.request) as never);
+
+      expect(result).toEqual({ ok: false, reason });
+      expect(replace).not.toHaveBeenCalled();
+      expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(beforeDocument);
+      expect(physicPaintVersion.peek()).toBe(beforeVersion);
+      expect(rotoPhysicalRevision.peek()).toBe(beforePhysicalRevision);
+      expect(physicPaintStore.getRotoPhysicalRenderSource(test.layer.id, 0)).toEqual(beforeRenderSource);
+      expect(hasRotoAlphaCanvasFrame(test.acceptedDocument.realKeyRecords[0].payload.dataUrl, { width: 1000, height: 650 })).toBe(true);
+      expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
+    },
+  );
+
+  it('rejects changed operation content and a released token replay without a second publication', async () => {
+    const test = await harness('group-paint-ledger-once');
+    const accepted = applyPhysicPaintRotoGroupFramePaint(test.request);
+    expect(accepted.ok).toBe(true);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(test.layer.id);
+    const acceptedVersion = physicPaintVersion.peek();
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+
+    expect(applyPhysicPaintRotoGroupFramePaint({
+      ...test.request,
+      renderedPayload: { ...test.request.renderedPayload, dataUrl: OPAQUE_ONE_PIXEL_PNG },
+    })).toEqual({ ok: false, reason: 'changed-payload' });
+    expect(applyPhysicPaintRotoGroupFramePaint({
+      ...test.request,
+      operationId: 'group-paint-replayed-token',
+      expectedRevision: test.proposalResult.proposal.revision,
+      expectedProjectEquality: buildPhysicPaintRotoProjectEquality(test.proposalResult.proposal),
+    })).toEqual({ ok: false, reason: 'replayed-token' });
+    expect(replace).not.toHaveBeenCalled();
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(acceptedDocument);
+    expect(physicPaintVersion.peek()).toBe(acceptedVersion);
   });
 });

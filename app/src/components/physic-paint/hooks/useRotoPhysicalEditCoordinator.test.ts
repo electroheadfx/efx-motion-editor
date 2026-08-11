@@ -18,6 +18,7 @@ import type {
 } from '../../../types/physicPaint';
 import {
   buildPhysicPaintRotoPhysicalRevision,
+  parsePhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoInterpolationState,
   type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoRealKeyRecord,
@@ -27,7 +28,10 @@ import {
 } from '../roto/physicsPaintRotoSpacingSelection';
 import { resolvePhysicPaintRotoPhysicalEdit } from '../roto/physicsPaintRotoPhysicalResolver';
 import type { RotoPhysicalEditCoordinatorPorts } from '../roto/rotoCoordinatorPorts';
-import { useRotoPhysicalEditCoordinator } from './useRotoPhysicalEditCoordinator';
+import {
+  executePhysicPaintRotoGroupFramePaintTransaction,
+  useRotoPhysicalEditCoordinator,
+} from './useRotoPhysicalEditCoordinator';
 
 const INTERPOLATION: PhysicPaintRotoInterpolationState = { enabled: false, mode: 'duplicate' };
 
@@ -764,4 +768,97 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.coordinator.acceptedOutput.value).toBeNull();
     expect(test.coordinator.failureOutput.value?.reason).toBe('transport');
   });
+});
+
+describe('Phase 43.2 leased exact-occurrence Paint coordinator tracer', () => {
+  function groupDocument() {
+    const records = [record('A', 0), record('B', 1)];
+    const loopClips = [{
+      loopId: 'group-1',
+      placementStart: 0,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 3 as const,
+      mode: 'progressive' as const,
+      syncState: 'synchronized' as const,
+      provenanceState: 'attached' as const,
+      phaseOrigin: 0,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      frameOverrides: [],
+    }];
+    return parsePhysicPaintRotoPhysicalDocument({
+      capacity: 30,
+      realKeyRecords: records,
+      interpolation: INTERPOLATION,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 4,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, INTERPOLATION, loopClips),
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+    });
+  }
+
+  it('acquires before the final snapshot, propagates one token, records one history command, and releases after settlement', async () => {
+    const document = groupDocument();
+    const order: string[] = [];
+    const token = Object.freeze({ projectContextId: 'project-1', layerId: 'layer-1', generation: 1 });
+    const recordHistory = vi.fn();
+    const releaseLease = vi.fn(() => { order.push('release'); return true; });
+    const result = await executePhysicPaintRotoGroupFramePaintTransaction({
+      projectContextId: 'project-1',
+      layerId: 'layer-1',
+      launchOperationId: 'launch-1',
+      groupId: 'group-1',
+      appFrame: 4,
+      overrideKeyId: 'override-4',
+      renderedPayload: { frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
+    }, {
+      acquireLease: () => { order.push('acquire'); return token; },
+      getAcceptedDocument: () => { order.push('snapshot'); return document; },
+      publish: async (request) => {
+        order.push('publish');
+        expect(request.leaseToken).toBe(token);
+        return { ok: true, acceptedDocument: request.proposal, historyCommandId: request.operationId };
+      },
+      recordHistory: (command) => { order.push('history'); recordHistory(command); },
+      releaseLease,
+      createOperationId: () => 'paint-op-1',
+    });
+
+    expect(result).toMatchObject({ ok: true, historyCommandId: 'paint-op-1' });
+    expect(order).toEqual(['acquire', 'snapshot', 'publish', 'history', 'release']);
+    expect(recordHistory).toHaveBeenCalledTimes(1);
+    expect(releaseLease).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['stale', 'malformed', 'changed-payload', 'missing-token', 'mismatched-token', 'replayed-token'] as const)(
+    'releases without history when the parent rejects %s publication',
+    async (reason) => {
+      const document = groupDocument();
+      const recordHistory = vi.fn();
+      const releaseLease = vi.fn(() => true);
+      const result = await executePhysicPaintRotoGroupFramePaintTransaction({
+        projectContextId: 'project-1',
+        layerId: 'layer-1',
+        launchOperationId: 'launch-1',
+        groupId: 'group-1',
+        appFrame: 4,
+        overrideKeyId: 'override-4',
+        renderedPayload: { frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' },
+      }, {
+        acquireLease: () => Object.freeze({ projectContextId: 'project-1', layerId: 'layer-1', generation: 1 }),
+        getAcceptedDocument: () => document,
+        publish: async () => ({ ok: false, reason }),
+        recordHistory,
+        releaseLease,
+        createOperationId: () => 'paint-op-rejected',
+      });
+
+      expect(result).toEqual({ ok: false, reason });
+      expect(recordHistory).not.toHaveBeenCalled();
+      expect(releaseLease).toHaveBeenCalledTimes(1);
+    },
+  );
 });
