@@ -14,6 +14,7 @@ import {
   scriptLibraryAcknowledgeActionTransaction,
   scriptLibraryActionTransactionStatus,
   scriptLibraryCommitActionTransaction,
+  scriptLibraryDiscoverActionTransaction,
   scriptLibraryPrepareActionTransaction,
   scriptLibraryRecoverActionTransaction,
   scriptLibraryReleaseActionHistory,
@@ -127,6 +128,15 @@ describe('script-library Action transaction IPC', () => {
       authority,
       request,
     });
+  });
+
+  it('discovers no journal or one exact recoverable durable record without a token guess', async () => {
+    const request = prepareRequest();
+    invoke.mockResolvedValueOnce(null).mockResolvedValueOnce(transactionRecord(request, 'committed'));
+    await expect(scriptLibraryDiscoverActionTransaction(authority)).resolves.toBeNull();
+    await expect(scriptLibraryDiscoverActionTransaction(authority)).resolves.toEqual(transactionRecord(request, 'committed'));
+    expect(invoke).toHaveBeenNthCalledWith(1, 'script_library_discover_action_transaction', { authority });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'script_library_discover_action_transaction', { authority });
   });
 
   it.each([

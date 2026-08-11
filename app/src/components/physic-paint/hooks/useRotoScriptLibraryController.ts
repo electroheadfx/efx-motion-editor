@@ -4,9 +4,13 @@ import { physicPaintStore, type PhysicPaintRotoPhysicalOperationLeaseToken } fro
 import {
   scriptLibraryAcknowledgeActionTransaction,
   scriptLibraryCommitActionTransaction,
+  scriptLibraryDiscoverActionTransaction,
   scriptLibraryPrepareActionTransaction,
+  scriptLibraryRecoverActionTransaction,
 } from '../../../lib/ipc';
 import { applyCommittedReferencedActionDeletion } from '../../../lib/physicPaintBridge';
+import { buildPhysicPaintRotoProjectEquality } from '../roto/physicsPaintRotoPhysicalModel';
+import { proposePhysicPaintRotoActionGroupLifecycle } from '../roto/physicsPaintRotoGroupLifecycle';
 import { sendPhysicPaintScriptLibraryRequest } from '../bridge/physicsPaintBridgeTransport';
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintScriptLibraryResultBridge, type PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 import {
@@ -137,6 +141,76 @@ function createNativeReferencedActionDeletionPorts(
       return result.ok ? { ok: true } : { ok: false, error: `Committed Action settlement failed: ${result.reason}` };
     },
     acknowledge: scriptLibraryAcknowledgeActionTransaction,
+    recoverBeforeAvailability: async (context) => {
+      const authority = context.project?.scriptLibraryAuthority;
+      if (!authority) return { ok: false, error: 'Script library recovery authority is unavailable.' };
+      const discovered = await scriptLibraryDiscoverActionTransaction(authority);
+      if (discovered === null) return { ok: true };
+      if (discovered.state === 'failed') return { ok: false, error: discovered.error };
+      if (discovered.state !== 'prepared' && discovered.state !== 'committed') {
+        return { ok: false, error: 'Recovery discovery returned an invalid durable state.' };
+      }
+      const leaseParts = discovered.leaseToken.split(':');
+      const generation = Number(leaseParts[leaseParts.length - 2]);
+      if (!Number.isSafeInteger(generation) || generation < 1) {
+        return { ok: false, error: 'Recovery lease identity is malformed.' };
+      }
+      const recoveryLease = physicPaintStore.acquireRotoPhysicalRecoveryLease({
+        projectContextId: discovered.authority.projectContextId,
+        layerId: discovered.authority.layerId,
+        generation,
+      });
+      if (!recoveryLease) return { ok: false, error: 'Recovery lease is unavailable.' };
+      const recovered = await scriptLibraryRecoverActionTransaction(authority, discovered);
+      if (discovered.state === 'prepared') {
+        const restored = recovered.state === 'recovered-prepared';
+        if (restored) physicPaintStore.releaseRotoPhysicalOperationLease(recoveryLease);
+        return restored ? { ok: true } : { ok: false, error: recovered.state === 'failed' ? recovered.error : 'Prepared Action recovery failed.' };
+      }
+      if (recovered.state !== 'recovery-required') {
+        return { ok: false, error: recovered.state === 'failed' ? recovered.error : 'Committed Action recovery failed.' };
+      }
+      const current = physicPaintStore.getRotoPhysicalDocument(discovered.authority.layerId);
+      if (!current) {
+        return { ok: false, error: 'Recovery physical authority is unavailable.' };
+      }
+      const alreadySettled = current.revision === discovered.target.physicalRevision
+        && buildPhysicPaintRotoProjectEquality(current) === discovered.target.physicalHash;
+      if (!alreadySettled) {
+        const proposed = proposePhysicPaintRotoActionGroupLifecycle({
+          document: current,
+          actionId: discovered.authority.actionId,
+          expectedActionRevision: discovered.authority.expectedActionRevision,
+          currentActionRevision: discovered.authority.expectedActionRevision,
+          mode: discovered.mode === 'keep-groups' ? 'detach' : 'delete',
+        });
+        if (!proposed.ok) {
+          return { ok: false, error: `Recovery candidate was rejected: ${proposed.reason}` };
+        }
+        const settled = applyCommittedReferencedActionDeletion({
+          committed: { ...discovered, state: 'committed' },
+          impact: proposed.impact,
+          before: current,
+          leaseToken: recoveryLease,
+        });
+        if (!settled.ok) {
+          return { ok: false, error: `Committed recovery settlement failed: ${settled.reason}` };
+        }
+      }
+      const acknowledged = await scriptLibraryAcknowledgeActionTransaction(authority, {
+        token: discovered.token,
+        commandId: discovered.commandId,
+        generation: discovered.generation,
+        operationId: discovered.operationId,
+        leaseToken: discovered.leaseToken,
+        direction: discovered.direction,
+      });
+      if (acknowledged.state !== 'acknowledged') {
+        return { ok: false, error: acknowledged.state === 'failed' ? acknowledged.error : 'Recovery acknowledgement remains pending.' };
+      }
+      physicPaintStore.releaseRotoPhysicalOperationLease(recoveryLease);
+      return { ok: true };
+    },
   };
 }
 
@@ -152,7 +226,10 @@ export function createRotoScriptLibraryControllerAdapter(
     replaceClipboard: (script, preparation) => getPorts().replaceClipboard(script, preparation),
     getLaunchContext: () => getPorts().getLaunchContext(),
     log: (message, error) => getPorts().log(message, error),
-    get referencedActionDeletion() { return getPorts().referencedActionDeletion ?? nativeReferencedActionDeletion; },
+    get referencedActionDeletion() {
+      return getPorts().referencedActionDeletion
+        ?? (getPorts().getLaunchContext()?.project?.scriptLibraryAuthority ? nativeReferencedActionDeletion : undefined);
+    },
   };
 }
 

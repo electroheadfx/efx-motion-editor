@@ -418,6 +418,34 @@ pub fn prepare_transaction(
     state.with_active(authority, |root| prepare_transaction_root(root, request))
 }
 
+pub fn discover_action_transaction(
+    state: &ScriptLibraryState,
+    authority: &str,
+) -> Result<Option<Value>, String> {
+    state.with_active(authority, |root| {
+        let transactions = ensure_action_transactions_dir(root)?;
+        let mut candidates = fs::read_dir(&transactions)
+            .map_err(|error| format!("Could not scan Action transactions directory: {error}"))?
+            .filter_map(Result::ok)
+            .filter_map(|entry| {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let token = name.strip_prefix("committed-")
+                    .and_then(|value| value.strip_suffix(".json"))
+                    .or_else(|| name.strip_prefix("active-").and_then(|value| value.strip_suffix(".json")))?;
+                Some((name.starts_with("committed-"), token.to_string(), entry.path()))
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by(|left, right| left.1.cmp(&right.1).then(right.0.cmp(&left.0)));
+        candidates.dedup_by(|left, right| left.1 == right.1);
+        candidates.retain(|(_, token, _)| !acknowledged_transaction_path(&transactions, token).map(|path| path.exists()).unwrap_or(false));
+        if candidates.len() > 1 {
+            return Err("Multiple unresolved Action transactions require manual recovery".to_string());
+        }
+        let Some((_, token, path)) = candidates.pop() else { return Ok(None); };
+        Ok(Some(read_transaction_record(&path, &token, "recoverable Action transaction")?))
+    })
+}
+
 pub fn transaction_status(
     state: &ScriptLibraryState,
     authority: &str,

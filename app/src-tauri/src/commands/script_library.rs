@@ -148,6 +148,14 @@ pub fn script_library_commit_action_transaction(
 }
 
 #[command]
+pub fn script_library_discover_action_transaction(
+    state: State<'_, ScriptLibraryState>,
+    authority: String,
+) -> Result<Option<Value>, String> {
+    script_library::discover_action_transaction(&state, &authority)
+}
+
+#[command]
 pub fn script_library_action_transaction_status(
     state: State<'_, ScriptLibraryState>,
     authority: String,

@@ -721,6 +721,7 @@ pub fn run() {
             script_library::script_library_delete,
             script_library::script_library_prepare_action_transaction,
             script_library::script_library_commit_action_transaction,
+            script_library::script_library_discover_action_transaction,
             script_library::script_library_action_transaction_status,
             script_library::script_library_recover_action_transaction,
             script_library::script_library_acknowledge_action_transaction,

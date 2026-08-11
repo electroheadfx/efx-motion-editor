@@ -221,6 +221,19 @@ async function invokeActionTransactionTokenCommand(
   return correlatedResult(result, matchesTransactionIdentity(result, expected));
 }
 
+export async function scriptLibraryDiscoverActionTransaction(
+  authority: string,
+): Promise<PhysicPaintActionTransactionResult | null> {
+  const invoked = await safeInvoke<unknown>('script_library_discover_action_transaction', { authority });
+  if (!invoked.ok) return actionTransactionFailure('invoke-failed', invoked.error);
+  if (invoked.data === null) return null;
+  if (!isPhysicPaintActionTransactionResult(invoked.data)
+    || (invoked.data.state !== 'prepared' && invoked.data.state !== 'committed')) {
+    return actionTransactionFailure('malformed-response', 'Discover command returned an invalid transaction state');
+  }
+  return invoked.data;
+}
+
 export async function scriptLibraryCommitActionTransaction(
   authority: string,
   expected: PhysicPaintActionTransactionPrepareRequest,

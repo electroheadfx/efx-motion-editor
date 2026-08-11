@@ -29,6 +29,7 @@ export interface ReferencedActionDeletionPorts {
   settle?: (prepared: Extract<ReferencedActionDeletionPreparation, { ok: true }>) => Readonly<{ ok: boolean; error?: string }>;
   acknowledge?: (authority: string, request: Readonly<{ token: string; commandId: string; generation: number; operationId: string; leaseToken: string; direction: 'forward' }>) => Promise<PhysicPaintActionTransactionResult>;
   transferLeaseToRecovery?: (leaseToken: string) => boolean;
+  recoverBeforeAvailability?: (context: PhysicPaintLaunchContext) => Promise<Readonly<{ ok: boolean; error?: string }>>;
 }
 
 export type ReferencedActionDeletionPreparation = Readonly<{
@@ -205,13 +206,14 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   const deleteConfirmation = signal<RotoScriptLibraryRow | null>(null);
   const referencedDeleteImpact = signal<PhysicPaintRotoActionGroupLifecycleImpact | null>(null);
   const transactionPhase = signal<'idle' | 'preparing' | 'committed' | 'recovery-required'>('idle');
-  const recoveryReady = signal(true);
+  const recoveryReady = signal(!ports.referencedActionDeletion?.recoverBeforeAvailability);
   const projectSaved = signal(Boolean(ports.getLaunchContext()?.project?.saved));
   let disposed = false;
   let contextGeneration = 0;
   let operationGeneration = 0;
   let contextKey = contextIdentity(ports.getLaunchContext());
   let lastAutoHydratedKey: string | null = null;
+  let lastRecoveredContextKey: string | null = null;
   const selected = computed(() => rows.value.find((row) => row.id === selectedId.value) ?? null);
   const availability = computed<RotoScriptLibraryAvailability>(() => ({
     canSave: projectSaved.value && recoveryReady.value && !busy.value,
@@ -267,6 +269,27 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     rename.value = null;
     deleteConfirmation.value = null;
     lastAutoHydratedKey = null;
+    lastRecoveredContextKey = null;
+    recoveryReady.value = !ports.referencedActionDeletion?.recoverBeforeAvailability;
+  }
+  async function ensureRecovery(context: PhysicPaintLaunchContext): Promise<boolean> {
+    const recover = ports.referencedActionDeletion?.recoverBeforeAvailability;
+    if (!recover) { recoveryReady.value = true; return true; }
+    const key = contextIdentity(context);
+    if (lastRecoveredContextKey === key && recoveryReady.peek()) return true;
+    recoveryReady.value = false;
+    transactionPhase.value = 'recovery-required';
+    const recovered = await recover(context);
+    if (disposed || key !== contextKey) return false;
+    if (!recovered.ok) {
+      status.value = recovered.error ?? 'Action transaction recovery failed.';
+      ports.log(status.value, true);
+      return false;
+    }
+    lastRecoveredContextKey = key;
+    recoveryReady.value = true;
+    transactionPhase.value = 'idle';
+    return true;
   }
   async function refreshWithContext(context: PhysicPaintLaunchContext | null): Promise<void> {
     if (disposed) return;
@@ -277,6 +300,8 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     const saved = Boolean(context?.project?.saved);
     projectSaved.value = saved;
     if (!projectSaved.value) { operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; skippedInvalidCount.value = 0; rename.value = null; deleteConfirmation.value = null; status.value = null; return; }
+    if (!context) return;
+    if (ports.referencedActionDeletion?.recoverBeforeAvailability && !await ensureRecovery(context)) return;
     const result = await execute({ kind: 'scan', operationId: operationId('scan') });
     status.value = result.ok ? `Found ${result.rows.length} scripts${result.skippedInvalidCount ? ` · Skipped ${result.skippedInvalidCount} invalid files` : ''}` : result.error ?? 'Refresh failed';
   }
@@ -292,6 +317,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     projectSaved.value = Boolean(context?.project?.saved);
     if (!projectSaved.value) { operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; skippedInvalidCount.value = 0; rename.value = null; deleteConfirmation.value = null; status.value = null; return; }
     if (lastAutoHydratedKey === contextKey) return;
+    if (ports.referencedActionDeletion?.recoverBeforeAvailability && !await ensureRecovery(context)) return;
     lastAutoHydratedKey = contextKey;
     const result = await execute({ kind: 'scan', operationId: operationId('scan') });
     status.value = result.ok ? `Found ${result.rows.length} scripts${result.skippedInvalidCount ? ` · Skipped ${result.skippedInvalidCount} invalid files` : ''}` : result.error ?? 'Refresh failed';
