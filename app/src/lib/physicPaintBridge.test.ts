@@ -2480,6 +2480,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     expect(acceptedUndo).toMatchObject({ ok: true, settled: true });
     expect(duplicateUndo).toMatchObject({ ok: true, settled: false });
     expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.current);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(undoLease)).toBe(true);
 
     const redoLease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, test.layer.id);
     if (!redoLease) throw new Error('Expected Redo lease.');

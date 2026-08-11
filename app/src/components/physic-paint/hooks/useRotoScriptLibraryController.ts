@@ -15,7 +15,10 @@ import {
   scriptLibraryPrepareActionTransaction,
   scriptLibraryRecoverActionTransaction,
 } from '../../../lib/ipc';
-import { applyCommittedReferencedActionDeletion } from '../../../lib/physicPaintBridge';
+import {
+  applyCommittedReferencedActionDeletion,
+  type ReferencedActionDeletionHistoryEntry,
+} from '../../../lib/physicPaintBridge';
 import {
   buildPhysicPaintRotoProjectEquality,
   type PhysicPaintRotoPhysicalDocument,
@@ -418,9 +421,38 @@ function createNativeReferencedActionDeletionPorts(
     digest: deletionPorts.digest,
     prepare: deletionPorts.prepare,
     commit: deletionPorts.commit,
-    // Task 2 installs the direction-specific bridge settlement at this exact
-    // seam. Keeping the port closed here prevents snapshot fallback.
-    settle: () => ({ ok: false, error: 'Direction-specific bridge settlement is unavailable.' }),
+    settle: ({ command, committed, leaseToken }) => {
+      const lease = leases.get(leaseToken);
+      if (!lease) return { ok: false, error: 'Physical operation lease identity is unavailable.' };
+      const history: ReferencedActionDeletionHistoryEntry = Object.freeze({
+        commandId: command.commandId,
+        generation: command.generation,
+        direction: 'forward',
+        mode: command.mode,
+        retainedArtifact: command.retainedArtifact,
+        authority: command.authority,
+        before: Object.freeze({
+          physicalRevision: command.before.physicalRevision,
+          physicalHash: command.before.physicalHash,
+          document: command.before.document,
+        }),
+        after: Object.freeze({
+          physicalRevision: command.after.physicalRevision,
+          physicalHash: command.after.physicalHash,
+          document: command.after.document,
+        }),
+        selection: Object.freeze({
+          beforeGroupId: command.before.selectedGroupId,
+          afterGroupId: command.after.selectedGroupId,
+          beforeCursorAppFrame: command.before.cursorAppFrame,
+          afterCursorAppFrame: command.after.cursorAppFrame,
+        }),
+      });
+      const result = applyCommittedReferencedActionDeletion({ committed, history, leaseToken: lease });
+      return result.ok
+        ? { ok: true }
+        : { ok: false, error: `Committed Action history settlement failed: ${result.reason}` };
+    },
     acknowledge: scriptLibraryAcknowledgeActionTransaction,
   });
   return Object.assign(deletionPorts, { acceptedHistory, replayHistory });

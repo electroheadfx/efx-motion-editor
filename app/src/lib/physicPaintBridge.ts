@@ -1564,9 +1564,21 @@ export interface ReferencedActionDeletionHistoryEntry {
   readonly direction: 'forward' | 'undo' | 'redo';
   readonly mode: 'keep-groups' | 'delete-action-and-groups';
   readonly retainedArtifact: PhysicPaintActionRetainedArtifactReference;
+  readonly authority: Readonly<{
+    projectContextId: string;
+    layerId: string;
+    launchOperationId: string;
+    actionId: string;
+    actionRevision: string;
+  }>;
   readonly before: Readonly<{ physicalRevision: string; physicalHash: string; document: PhysicPaintRotoPhysicalDocument }>;
   readonly after: Readonly<{ physicalRevision: string; physicalHash: string; document: PhysicPaintRotoPhysicalDocument }>;
-  readonly selection: Readonly<{ beforeGroupId: string | null; afterGroupId: string | null; cursorAppFrame: number }>;
+  readonly selection: Readonly<{
+    beforeGroupId: string | null;
+    afterGroupId: string | null;
+    beforeCursorAppFrame: number;
+    afterCursorAppFrame: number;
+  }>;
 }
 
 export type CommittedReferencedActionDeletionResult = Readonly<{
@@ -1581,8 +1593,9 @@ export type CommittedReferencedActionDeletionResult = Readonly<{
 
 export interface CommittedReferencedActionDeletionInput {
   readonly committed: PhysicPaintActionTransactionRecord;
-  readonly impact: PhysicPaintRotoActionGroupLifecycleImpact;
-  readonly before: PhysicPaintRotoPhysicalDocument;
+  readonly impact?: PhysicPaintRotoActionGroupLifecycleImpact;
+  readonly before?: PhysicPaintRotoPhysicalDocument;
+  readonly history?: ReferencedActionDeletionHistoryEntry;
   readonly leaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken;
 }
 
@@ -1595,7 +1608,9 @@ export function applyCommittedReferencedActionDeletion(
   input: CommittedReferencedActionDeletionInput,
 ): CommittedReferencedActionDeletionResult {
   const { committed } = input;
-  if (committed.state !== 'committed' || committed.direction !== 'forward') return { ok: false, reason: 'malformed' };
+  if (committed.state !== 'committed') return { ok: false, reason: 'malformed' };
+  const expectedActionPresent = committed.direction !== 'undo';
+  if (committed.authority.expectedActionPresent !== expectedActionPresent) return { ok: false, reason: 'malformed' };
   const identity = `${committed.commandId}:${committed.generation}:${committed.token}:${committed.direction}`;
   let fingerprint: string;
   try {
@@ -1607,55 +1622,141 @@ export function applyCommittedReferencedActionDeletion(
   if (delivered) return delivered.fingerprint === fingerprint
     ? { ...delivered.result, settled: false }
     : { ok: false, reason: 'changed-payload' };
+
   const authority = committed.authority;
   if (projectStore.projectContextId.peek() !== authority.projectContextId
     || activeLaunchOperationByLayer.get(authority.layerId) !== authority.launchOperationId) {
     return { ok: false, reason: 'stale' };
   }
-  const lease = physicPaintStore.validateRotoPhysicalOperationLease(authority.projectContextId, authority.layerId, input.leaseToken);
+  const retained = committed.retainedArtifact;
+  if (retained.commandId !== committed.commandId
+    || retained.generation !== committed.generation
+    || retained.actionId !== authority.actionId
+    || retained.originalRevision !== authority.expectedActionRevision) {
+    return { ok: false, reason: 'malformed' };
+  }
+  const lease = physicPaintStore.validateRotoPhysicalOperationLease(
+    authority.projectContextId,
+    authority.layerId,
+    input.leaseToken,
+  );
   if (!lease.ok) return { ok: false, reason: lease.reason };
+
+  let history: ReferencedActionDeletionHistoryEntry;
+  let semanticImpact: PhysicPaintRotoActionGroupLifecycleImpact;
+  if (committed.direction === 'forward') {
+    if (!input.before || !input.impact || input.history) return { ok: false, reason: 'malformed' };
+    const proposed = proposePhysicPaintRotoActionGroupLifecycle({
+      document: input.before,
+      actionId: authority.actionId,
+      expectedActionRevision: authority.expectedActionRevision,
+      currentActionRevision: authority.expectedActionRevision,
+      mode: committed.mode === 'keep-groups' ? 'detach' : 'delete',
+    });
+    if (!proposed.ok) return { ok: false, reason: proposed.reason === 'malformed-proposal' ? 'malformed' : 'stale' };
+    if (stableSerialize(proposed.impact, new WeakSet<object>()) !== stableSerialize(input.impact, new WeakSet<object>())) {
+      return { ok: false, reason: 'cleanup-reference-mismatch' };
+    }
+    semanticImpact = proposed.impact;
+    history = cloneAndDeepFreezePlainData<ReferencedActionDeletionHistoryEntry>({
+      commandId: committed.commandId,
+      generation: committed.generation,
+      direction: committed.direction,
+      mode: committed.mode,
+      retainedArtifact: retained,
+      authority: {
+        projectContextId: authority.projectContextId,
+        layerId: authority.layerId,
+        launchOperationId: authority.launchOperationId,
+        actionId: authority.actionId,
+        actionRevision: authority.expectedActionRevision,
+      },
+      before: {
+        physicalRevision: input.before.revision,
+        physicalHash: buildPhysicPaintRotoProjectEquality(input.before),
+        document: input.before,
+      },
+      after: {
+        physicalRevision: proposed.proposal.revision,
+        physicalHash: buildPhysicPaintRotoProjectEquality(proposed.proposal),
+        document: proposed.proposal,
+      },
+      selection: {
+        beforeGroupId: null,
+        afterGroupId: committed.target.selectedGroupId,
+        beforeCursorAppFrame: input.before.cursorAppFrame,
+        afterCursorAppFrame: proposed.proposal.cursorAppFrame,
+      },
+    });
+  } else {
+    const original = input.history;
+    if (!original || input.before || input.impact
+      || original.commandId !== committed.commandId
+      || original.generation !== committed.generation
+      || original.mode !== committed.mode
+      || stableSerialize(original.retainedArtifact, new WeakSet<object>()) !== stableSerialize(retained, new WeakSet<object>())
+      || original.authority.projectContextId !== authority.projectContextId
+      || original.authority.layerId !== authority.layerId
+      || original.authority.launchOperationId !== authority.launchOperationId
+      || original.authority.actionId !== authority.actionId
+      || original.authority.actionRevision !== authority.expectedActionRevision) {
+      return { ok: false, reason: 'malformed' };
+    }
+    const proposed = proposePhysicPaintRotoActionGroupLifecycle({
+      document: original.before.document,
+      actionId: authority.actionId,
+      expectedActionRevision: authority.expectedActionRevision,
+      currentActionRevision: authority.expectedActionRevision,
+      mode: committed.mode === 'keep-groups' ? 'detach' : 'delete',
+    });
+    if (!proposed.ok
+      || stableSerialize(proposed.proposal, new WeakSet<object>()) !== stableSerialize(original.after.document, new WeakSet<object>())) {
+      return { ok: false, reason: 'unresolved-precedence' };
+    }
+    semanticImpact = proposed.impact;
+    history = cloneAndDeepFreezePlainData({ ...original, direction: committed.direction });
+  }
+
+  const source = committed.direction === 'undo' ? history.after : history.before;
+  const directionTarget = committed.direction === 'undo' ? history.before : history.after;
   const current = physicPaintStore.getRotoPhysicalDocument(authority.layerId);
   if (!current
     || current.revision !== authority.expectedPhysicalRevision
     || buildPhysicPaintRotoProjectEquality(current) !== authority.expectedPhysicalHash
-    || current.revision !== input.before.revision
-    || buildPhysicPaintRotoProjectEquality(current) !== buildPhysicPaintRotoProjectEquality(input.before)) {
+    || current.revision !== source.physicalRevision
+    || buildPhysicPaintRotoProjectEquality(current) !== source.physicalHash
+    || stableSerialize(current, new WeakSet<object>()) !== stableSerialize(source.document, new WeakSet<object>())) {
     return { ok: false, reason: 'stale' };
   }
-  const proposed = proposePhysicPaintRotoActionGroupLifecycle({
-    document: current,
-    actionId: authority.actionId,
-    expectedActionRevision: authority.expectedActionRevision,
-    currentActionRevision: authority.expectedActionRevision,
-    mode: committed.mode === 'keep-groups' ? 'detach' : 'delete',
-  });
-  if (!proposed.ok) return { ok: false, reason: proposed.reason === 'malformed-proposal' ? 'malformed' : 'stale' };
-  if (stableSerialize(proposed.impact, new WeakSet<object>()) !== stableSerialize(input.impact, new WeakSet<object>())) {
-    return { ok: false, reason: 'cleanup-reference-mismatch' };
-  }
+
   let target: PhysicPaintRotoPhysicalDocument;
   try {
     target = parsePhysicPaintRotoPhysicalDocument(committed.target.physicalDocument);
   } catch {
     return { ok: false, reason: 'malformed' };
   }
+  const expectedGroupId = committed.direction === 'undo'
+    ? history.selection.beforeGroupId
+    : history.selection.afterGroupId;
+  const expectedCursorAppFrame = committed.direction === 'undo'
+    ? history.selection.beforeCursorAppFrame
+    : history.selection.afterCursorAppFrame;
   if (target.revision !== committed.target.physicalRevision
     || buildPhysicPaintRotoProjectEquality(target) !== committed.target.physicalHash
-    || stableSerialize(target, new WeakSet<object>()) !== stableSerialize(proposed.proposal, new WeakSet<object>())) {
+    || committed.target.physicalRevision !== directionTarget.physicalRevision
+    || committed.target.physicalHash !== directionTarget.physicalHash
+    || committed.target.selectedGroupId !== expectedGroupId
+    || committed.target.cursorAppFrame !== expectedCursorAppFrame
+    || stableSerialize(target, new WeakSet<object>()) !== stableSerialize(directionTarget.document, new WeakSet<object>())) {
     return { ok: false, reason: 'unresolved-precedence' };
   }
+  if (committed.direction === 'forward'
+    && stableSerialize(semanticImpact, new WeakSet<object>()) !== stableSerialize(input.impact, new WeakSet<object>())) {
+    return { ok: false, reason: 'cleanup-reference-mismatch' };
+  }
+
   const replacement = physicPaintStore.replaceRotoPhysicalDocument(authority.layerId, target, input.leaseToken);
   if (!replacement.ok) return { ok: false, reason: replacement.error as 'mismatched-token' | 'missing-token' | 'replayed-token' };
-  const history = cloneAndDeepFreezePlainData<ReferencedActionDeletionHistoryEntry>({
-    commandId: committed.commandId,
-    generation: committed.generation,
-    direction: committed.direction,
-    mode: committed.mode,
-    retainedArtifact: committed.retainedArtifact,
-    before: { physicalRevision: current.revision, physicalHash: authority.expectedPhysicalHash, document: current },
-    after: { physicalRevision: replacement.document.revision, physicalHash: committed.target.physicalHash, document: replacement.document },
-    selection: { beforeGroupId: null, afterGroupId: committed.target.selectedGroupId, cursorAppFrame: committed.target.cursorAppFrame },
-  });
   acceptedPhysicalCommands.set(committed.commandId, Object.freeze({
     operationId: committed.commandId,
     projectContextId: authority.projectContextId,
