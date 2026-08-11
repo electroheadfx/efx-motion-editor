@@ -48,6 +48,42 @@ function record(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
   };
 }
 
+function groupLifecycleDocument(options: { gapAt?: number; existingOverride?: boolean } = {}) {
+  const records = [record('A', 0), record('B', 1)];
+  if (options.existingOverride) records.push(record('override-4', 4));
+  const visibleRanges = options.gapAt === undefined
+    ? [{ start: 0, endExclusive: 6 }]
+    : [
+        { start: 0, endExclusive: options.gapAt },
+        { start: options.gapAt + 1, endExclusive: 6 },
+      ];
+  const loopClips = [{
+    loopId: 'group-1',
+    placementStart: 0,
+    sourceKeyIds: ['A', 'B'],
+    repeat: 3 as const,
+    mode: 'progressive' as const,
+    syncState: options.gapAt === undefined && !options.existingOverride ? 'synchronized' as const : 'modified' as const,
+    provenanceState: 'attached' as const,
+    phaseOrigin: 0,
+    originalEndExclusive: 6,
+    visibleRanges,
+    frameOverrides: options.existingOverride ? [{ appFrame: 4, keyId: 'override-4' }] : [],
+  }];
+  return parsePhysicPaintRotoPhysicalDocument({
+    capacity: 30,
+    realKeyRecords: records,
+    interpolation: INTERPOLATION,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame: 4,
+    revision: buildPhysicPaintRotoPhysicalRevision(records, INTERPOLATION, loopClips, ['B']),
+    loopClips,
+    incomingInterpolationBreakKeyIds: ['B'],
+  });
+}
+
 function fixture() {
   const records = [
     record('A', 0),
@@ -162,6 +198,18 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
         leaseOrder.push('records');
         return records;
       },
+      getDocument: () => parsePhysicPaintRotoPhysicalDocument({
+        capacity: 30,
+        realKeyRecords: records,
+        interpolation,
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        selectedKeyId,
+        cursorAppFrame: currentFrame,
+        revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, incomingInterpolationBreakKeyIds),
+        loopClips,
+        incomingInterpolationBreakKeyIds,
+      }),
       getInterpolation: () => interpolation,
       getCapacity: () => 30,
       getLoopClips: () => loopClips,
@@ -280,6 +328,22 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       selectedAppFrame: destinationAppFrame,
     });
   };
+  const seedGroupDocument = (document: ReturnType<typeof parsePhysicPaintRotoPhysicalDocument>) => {
+    records = document.realKeyRecords;
+    loopClips = document.loopClips;
+    incomingInterpolationBreakKeyIds = document.incomingInterpolationBreakKeyIds;
+    interpolation = document.interpolation;
+    currentFrame = document.cursorAppFrame;
+    selectedKeyId = document.selectedKeyId;
+  };
+  const executeGroupPaint = (appFrame: number, overrideKeyId: string, dataUrl = 'data:image/png;base64,UEFJTlQ=') => coordinator.executePhysicalEdit({
+    operationKind: 'paint-group-frame',
+    expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+    groupId: 'group-1',
+    appFrame,
+    overrideKeyId,
+    renderedPayload: { frameIndex: 0, appFrame, dataUrl },
+  } as never);
   const executePlayScript = () => {
     const nextRecord = record('Z', 8);
     const nextRecords = [...records, nextRecord];
@@ -358,7 +422,9 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     coordinator,
     execute,
     executeEmptySegment,
+    executeGroupPaint,
     executePlayScript,
+    seedGroupDocument,
     accept,
     reject,
     mismatch,
@@ -844,6 +910,89 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
     expect(test.coordinator.acceptedOutput.value).toBeNull();
     expect(test.coordinator.failureOutput.value?.reason).toBe('transport');
+  });
+});
+
+describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
+  it('refills and reunites a deleted occurrence only after exact acknowledgement', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument({ gapAt: 4 });
+    test.seedGroupDocument(before);
+    const acceptedEvents: unknown[] = [];
+    const unsubscribe = test.coordinator.acceptedOutput.subscribe((value) => {
+      if (value) acceptedEvents.push(value);
+    });
+
+    expect(await test.executeGroupPaint(4, 'override-gap-4')).toBe(true);
+    expect(test.getRecords()).toEqual(before.realKeyRecords);
+    expect(test.getLoopClips()).toEqual(before.loopClips);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(test.reconcileCurrentFrame).not.toHaveBeenCalled();
+    expect(test.getPayload()).toMatchObject({
+      operationKind: 'paint-group-frame',
+      startFrame: 4,
+      selectedKeyId: null,
+      selectedAppFrame: null,
+      semanticDelta: {
+        kind: 'paint-group-frame',
+        groupId: 'group-1',
+        appFrame: 4,
+        overrideKeyId: 'override-gap-4',
+        createdOverride: true,
+        filledDeletedOccurrence: true,
+      },
+    });
+
+    expect(test.accept()).toBe('accepted');
+    expect(test.getRecords().find((entry) => entry.keyId === 'override-gap-4')).toMatchObject({
+      appFrame: 4,
+      payload: { dataUrl: 'data:image/png;base64,UEFJTlQ=' },
+    });
+    expect(test.getLoopClips()[0]).toMatchObject({
+      syncState: 'modified',
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      frameOverrides: [{ appFrame: 4, keyId: 'override-gap-4' }],
+    });
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledOnce();
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(4);
+    expect(acceptedEvents).toHaveLength(1);
+    expect(test.releaseLease).not.toHaveBeenCalled();
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(test.getPayload()!.operationId, 'release')).toBe(true);
+    expect(test.releaseLease).toHaveBeenCalledWith(test.leaseToken);
+    unsubscribe();
+  });
+
+  it('reuses one exact override and remains Modified on repaint', async () => {
+    const test = harness();
+    test.seedGroupDocument(groupLifecycleDocument({ existingOverride: true }));
+
+    expect(await test.executeGroupPaint(4, 'override-4', 'data:image/png;base64,UkVQQUlOVA==')).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    expect(test.getRecords().filter((entry) => entry.keyId === 'override-4')).toHaveLength(1);
+    expect(test.getRecords().find((entry) => entry.keyId === 'override-4')?.payload.dataUrl).toBe('data:image/png;base64,UkVQQUlOVA==');
+    expect(test.getLoopClips()[0]).toMatchObject({
+      syncState: 'modified',
+      frameOverrides: [{ appFrame: 4, keyId: 'override-4' }],
+    });
+  });
+
+  it('publishes zero child/cache/history surfaces on parent rejection', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument({ gapAt: 4 });
+    test.seedGroupDocument(before);
+
+    expect(await test.executeGroupPaint(4, 'override-gap-4')).toBe(true);
+    expect(test.reject()).toBe('accepted');
+    expect(test.getRecords()).toEqual(before.realKeyRecords);
+    expect(test.getLoopClips()).toEqual(before.loopClips);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(test.replaceRecords).not.toHaveBeenCalled();
+    expect(test.replaceLoopClips).not.toHaveBeenCalled();
+    expect(test.reconcileCurrentFrame).not.toHaveBeenCalled();
+    expect(test.coordinator.acceptedOutput.value).toBeNull();
+    expect(test.coordinator.failureOutput.value?.reason).toBe('parent-rejection');
+    expect(test.releaseLease).toHaveBeenCalledWith(test.leaseToken);
   });
 });
 
