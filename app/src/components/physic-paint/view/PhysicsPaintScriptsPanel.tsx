@@ -13,6 +13,13 @@ export interface PhysicsPaintScriptsPanelProps {
   rotoScript: RotoScriptClipboardController;
   playButtonRef: RefObject<HTMLButtonElement>;
   selectedLoopClip?: PhysicsPaintLoopClipPresentation | null;
+  linkedGroupNavigation?: {
+    currentIndex: number;
+    total: number;
+    onPrevious: () => void;
+    onNext: () => void;
+    onGoToGroup: () => void;
+  } | null;
   onOpenLoopEdit: (loopId: string) => Promise<unknown>;
   onCloseLoopClip: () => void;
   onSave: () => void;
@@ -30,6 +37,7 @@ export function PhysicsPaintScriptsPanel({
   rotoScript,
   playButtonRef,
   selectedLoopClip = null,
+  linkedGroupNavigation = null,
   onOpenLoopEdit,
   onCloseLoopClip,
   onSave,
@@ -117,6 +125,41 @@ export function PhysicsPaintScriptsPanel({
           <div><dt>Group Type</dt><dd>{selectedLoopClip.modeLabel}</dd></div>
           <div><dt>Status</dt><dd>{selectedLoopClip.statusLabel}</dd></div>
         </dl>
+        {linkedGroupNavigation ? (
+          <section class="physics-paint-loop-clip-linked-navigation" aria-label="Linked Group navigation">
+            <strong>Linked Groups — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
+            <div class={`physics-paint-loop-clip-inspector-actions${linkedGroupNavigation.total === 1 ? ' single' : ''}`}>
+              {linkedGroupNavigation.total === 1 ? (
+                <button
+                  type="button"
+                  class="physics-paint-loop-clip-inspector-action"
+                  onClick={linkedGroupNavigation.onGoToGroup}
+                >
+                  Go to Group
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    class="physics-paint-loop-clip-inspector-action"
+                    disabled={linkedGroupNavigation.currentIndex === 0}
+                    onClick={linkedGroupNavigation.onPrevious}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    class="physics-paint-loop-clip-inspector-action"
+                    disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1}
+                    onClick={linkedGroupNavigation.onNext}
+                  >
+                    Next
+                  </button>
+                </>
+              )}
+            </div>
+          </section>
+        ) : null}
         <div class="physics-paint-loop-clip-inspector-actions">
           <button
             ref={playButtonRef}
@@ -235,6 +278,21 @@ export function PhysicsPaintScriptsPanel({
           </PhysicsPaintStyledTooltip>
         </span>
       </div>
+      {linkedGroupNavigation ? (
+        <section class="physics-paint-loop-clip-linked-navigation" aria-label="Linked Group navigation">
+          <strong>Linked Groups — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
+          <div class={`physics-paint-loop-clip-inspector-actions${linkedGroupNavigation.total === 1 ? ' single' : ''}`}>
+            {linkedGroupNavigation.total === 1 ? (
+              <button type="button" class="physics-paint-loop-clip-inspector-action" onClick={linkedGroupNavigation.onGoToGroup}>Go to Group</button>
+            ) : (
+              <>
+                <button type="button" class="physics-paint-loop-clip-inspector-action" disabled={linkedGroupNavigation.currentIndex === 0} onClick={linkedGroupNavigation.onPrevious}>Previous</button>
+                <button type="button" class="physics-paint-loop-clip-inspector-action" disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} onClick={linkedGroupNavigation.onNext}>Next</button>
+              </>
+            )}
+          </div>
+        </section>
+      ) : null}
       <div ref={listRef} class="physics-paint-scripts-list" role="listbox" aria-label="Saved Roto Actions">
         {rows.map((row) => (
           <div

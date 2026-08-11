@@ -717,7 +717,7 @@ describe('Physics Paint Actions inspector linked Group navigation (43.2-15)', ()
     });
     expect(textOf(tree)).toContain('Linked Groups — 1 of 1');
     const go = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Go to Group');
-    handler(go, 'onClick')();
+    (go.props.onClick as () => void)();
     expect(onGoToGroup).toHaveBeenCalledTimes(1);
     expect(findAll(tree, (vnode) => textOf(vnode) === 'Previous' || textOf(vnode) === 'Next')).toHaveLength(0);
   });
@@ -733,7 +733,7 @@ describe('Physics Paint Actions inspector linked Group navigation (43.2-15)', ()
     const next = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Next');
     expect(previous.props.disabled).toBe(true);
     expect(next.props.disabled).toBe(false);
-    handler(next, 'onClick')();
+    (next.props.onClick as () => void)();
     expect(onNext).toHaveBeenCalledTimes(1);
   });
 });

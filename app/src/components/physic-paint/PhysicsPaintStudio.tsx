@@ -1066,6 +1066,11 @@ export function PhysicsPaintStudio() {
     () => getLinkedRotoGroupsForAction(rotoLoopClips, selectedActionId),
     [rotoLoopClips, selectedActionId],
   );
+  const effectiveLinkedGroup = linkedRotoGroups.find((group) => group.loopId === activeLinkedLoopClipId.value)
+    ?? chooseCursorRelativeLinkedGroup(linkedRotoGroups, currentFrame);
+  const effectiveLinkedGroupIndex = effectiveLinkedGroup
+    ? linkedRotoGroups.findIndex((group) => group.loopId === effectiveLinkedGroup.loopId)
+    : -1;
   const selectedLoopClip = selectedLoopClipId.value === null
     ? null
     : loopPresentations.get(selectedLoopClipId.value) ?? null;
@@ -1579,6 +1584,23 @@ export function PhysicsPaintStudio() {
   const handleNavigateToSyncedFrame = useCallback((frame: number) => {
     void requestRotoFrameNavigationRef.current(frame);
   }, []);
+  const navigateLinkedGroup = useCallback((targetIndex: number) => {
+    if (targetIndex < 0 || targetIndex >= linkedRotoGroups.length) return;
+    const target = linkedRotoGroups[targetIndex];
+    if (!target) return;
+    handleSelectRotoLoopClip(target.loopId);
+    activeLinkedLoopClipId.value = target.loopId;
+    handleNavigateToSyncedFrame(target.placementStart);
+  }, [handleNavigateToSyncedFrame, handleSelectRotoLoopClip, linkedRotoGroups]);
+  const handlePreviousLinkedGroup = useCallback(() => {
+    navigateLinkedGroup(effectiveLinkedGroupIndex - 1);
+  }, [effectiveLinkedGroupIndex, navigateLinkedGroup]);
+  const handleNextLinkedGroup = useCallback(() => {
+    navigateLinkedGroup(effectiveLinkedGroupIndex + 1);
+  }, [effectiveLinkedGroupIndex, navigateLinkedGroup]);
+  const handleGoToLinkedGroup = useCallback(() => {
+    navigateLinkedGroup(effectiveLinkedGroupIndex);
+  }, [effectiveLinkedGroupIndex, navigateLinkedGroup]);
   const rotoNavigationActions = rotoNavigation.createNavigationActions({
     currentFrame,
     framesToApply: 1,
@@ -1649,7 +1671,7 @@ export function PhysicsPaintStudio() {
   // fresh per-render getRotoInterpolationSettings clone. Signal-backed
   // controllers pass through by identity so their signal subscriptions
   // (ScriptsPanel rows/busy/selection) keep flowing independent of the memo.
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError], () => ({
     activeTool: settings.tool,
     color: settings.color,
     opacity: settings.opacity,
@@ -1679,6 +1701,15 @@ export function PhysicsPaintStudio() {
       rotoScript,
       playButtonRef,
       selectedLoopClip,
+      linkedGroupNavigation: linkedRotoGroups.length === 0 || effectiveLinkedGroupIndex < 0
+        ? null
+        : {
+          currentIndex: effectiveLinkedGroupIndex,
+          total: linkedRotoGroups.length,
+          onPrevious: handlePreviousLinkedGroup,
+          onNext: handleNextLinkedGroup,
+          onGoToGroup: handleGoToLinkedGroup,
+        },
       onOpenLoopEdit: handleOpenRotoLoopEdit,
       onCloseLoopClip: handleCloseRotoLoopClip,
       onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },

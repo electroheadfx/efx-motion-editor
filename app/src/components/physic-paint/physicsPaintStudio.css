@@ -1217,9 +1217,13 @@ button.destructive {
 .physics-paint-loop-clip-inspector > div { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; min-width: 0; }
 .physics-paint-loop-clip-inspector dt { color: #aeb5be; font-size: 10px; }
 .physics-paint-loop-clip-inspector dd { min-width: 0; margin: 0; overflow: hidden; color: #eef1f4; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.physics-paint-loop-clip-linked-navigation { display: flex; flex-direction: column; gap: 4px; min-width: 0; margin-top: 4px; }
+.physics-paint-loop-clip-linked-navigation > strong { overflow: hidden; color: #eef1f4; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .physics-paint-loop-clip-inspector-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 4px; }
+.physics-paint-loop-clip-inspector-actions.single { grid-template-columns: minmax(0, 1fr); }
 .physics-paint-loop-clip-inspector-action { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 30px; padding: 0 8px; border: 1px solid #62676d; border-radius: 5px; background: #4b4e51; color: #f3f5f7; text-transform: none; }
 .physics-paint-loop-clip-inspector-action.primary { border-color: rgba(45, 91, 227, 0.8); background: rgba(45, 91, 227, 0.85); }
+.physics-paint-loop-clip-inspector-action:disabled { border-color: #4d5156; background: #34373a; color: #777e86; cursor: not-allowed; }
 .physics-paint-loop-clip-inspector-action:focus-visible { outline: 2px solid #8fa8ff; outline-offset: 2px; }
 .physics-paint-script-confirmation { position: absolute; inset: 44px 4px auto; z-index: 8; display: flex; flex-direction: column; gap: 8px; min-width: min(420px, calc(100% - 8px)); max-height: calc(100% - 52px); padding: 12px; border: 1px solid #737980; border-radius: 7px; overflow: auto; background: #292b2d; box-shadow: 0 12px 28px rgba(0,0,0,.45); font-size: 11px; }
 .physics-paint-action-delete-groups { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
