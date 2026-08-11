@@ -179,8 +179,8 @@ describe('Physics Paint Group Delete choice dialog (43.2-08)', () => {
     expect(studio).toContain('Remove the complete Group, every fragment, and uniquely owned source, cache, and Group-gap data. The Action is kept.');
     expect(studio).toContain('Remove only F{groupDeleteDialog.appFrame}. The Group stays attached to its Action, becomes Modified, and keeps an intentional empty gap at this frame.');
     expect(studio).toContain('This is the Group’s only frame. Delete Frame will remove the whole Group and its uniquely owned data.');
-    expect(studio).toContain('>Delete Group</button>');
-    expect(studio).toContain('>Delete Frame</button>');
+    expect(studio).toContain('>Delete Group</span>');
+    expect(studio).toContain('>Delete Frame</span>');
     expect(studio).toContain('>Cancel</button>');
   });
 
@@ -203,7 +203,7 @@ describe('Physics Paint Group Delete choice dialog (43.2-08)', () => {
     expect(studio).toContain('groupDeleteCancelRef.current?.focus();');
     expect(studio).toContain("if (event.key === 'Escape')");
     expect(studio).toContain("if (event.key !== 'Tab') return;");
-    expect(studio).toContain('event.shiftKey ? focusables.length - 1 : 0');
+    expect(studio).toContain('? (currentIndex <= 0 ? focusables.length - 1 : currentIndex - 1)');
     expect(studio).toContain('groupDeleteReturnFocusRef.current?.focus();');
     expect(studio).not.toContain("event.key === 'Enter' && handleGroupDeleteChoice");
   });
@@ -212,7 +212,7 @@ describe('Physics Paint Group Delete choice dialog (43.2-08)', () => {
     expect(studio).toContain('setGroupDeleteError(');
     expect(studio).toContain('role="alert"');
     expect(studio).toContain('{groupDeleteError}');
-    expect(studio).toContain('if (!accepted) return;');
+    expect(studio).toContain('if (!accepted) {');
   });
 
   it('uses the approved Studio-local modal geometry and stacking', () => {

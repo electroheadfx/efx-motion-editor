@@ -22,7 +22,7 @@ import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPain
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyboard';
 import { createIdentityMemo, usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
-import { useRotoTimelineActions } from './hooks/useRotoTimelineActions';
+import { useRotoTimelineActions, type RotoDeleteTarget } from './hooks/useRotoTimelineActions';
 import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
 import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
@@ -60,6 +60,8 @@ import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnai
 import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
+type GroupDeleteTarget = Extract<RotoDeleteTarget, { kind: 'group-choice' }>;
+type GroupDeleteChoice = 'delete-group' | 'delete-group-frame';
 type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
 
 export function PhysicsPaintStudio() {
@@ -88,6 +90,12 @@ export function PhysicsPaintStudio() {
   const selectedKeyIds = useSignal<readonly string[]>([]);
   const selectionAnchorKeyId = useSignal<string | null>(null);
   const rotoSpacingSelection = useSignal<PhysicsPaintRotoSpacingSelection | null>(null);
+  const [groupDeleteTarget, setGroupDeleteTarget] = useState<GroupDeleteTarget | null>(null);
+  const [groupDeleteError, setGroupDeleteError] = useState<string | null>(null);
+  const groupDeleteCancelRef = useRef<HTMLButtonElement>(null);
+  const groupDeleteDialogRef = useRef<HTMLDivElement>(null);
+  const groupDeleteReturnFocusRef = useRef<HTMLElement | null>(null);
+  const groupDeleteExecuteRef = useRef<(choice: GroupDeleteChoice, target: GroupDeleteTarget) => Promise<boolean>>(async () => false);
   const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(launchContext?.cachedRotoFrames ?? []);
   const setLaunchContext = useCallback((update: PhysicPaintLaunchContext | null | ((current: PhysicPaintLaunchContext | null) => PhysicPaintLaunchContext | null)) => {
     setLaunchContextState((current) => {
@@ -147,6 +155,54 @@ export function PhysicsPaintStudio() {
       setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
     });
   }, [rotoUiFlushScheduler, setLaunchContext]);
+  const handleRequestGroupDeleteChoice = useCallback((target: GroupDeleteTarget) => {
+    groupDeleteReturnFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    setGroupDeleteError(null);
+    setGroupDeleteTarget(target);
+  }, []);
+  const closeGroupDeleteDialog = useCallback(() => {
+    setGroupDeleteError(null);
+    setGroupDeleteTarget(null);
+    queueMicrotask(() => {
+      groupDeleteReturnFocusRef.current?.focus();
+      groupDeleteReturnFocusRef.current = null;
+    });
+  }, []);
+  useEffect(() => {
+    if (groupDeleteTarget === null) return;
+    groupDeleteCancelRef.current?.focus();
+  }, [groupDeleteTarget]);
+  const handleGroupDeleteDialogKeyDown = useCallback((event: KeyboardEvent) => {
+    event.stopPropagation();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeGroupDeleteDialog();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusables = Array.from(
+      groupDeleteDialogRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? [],
+    );
+    if (focusables.length === 0) return;
+    const currentIndex = focusables.indexOf(document.activeElement as HTMLButtonElement);
+    const nextIndex = event.shiftKey
+      ? (currentIndex <= 0 ? focusables.length - 1 : currentIndex - 1)
+      : (currentIndex >= focusables.length - 1 ? 0 : currentIndex + 1);
+    event.preventDefault();
+    focusables[nextIndex]?.focus();
+  }, [closeGroupDeleteDialog]);
+  const handleGroupDeleteChoice = useCallback(async (choice: GroupDeleteChoice) => {
+    if (groupDeleteTarget === null) return;
+    setGroupDeleteError(null);
+    const accepted = await groupDeleteExecuteRef.current(choice, groupDeleteTarget);
+    if (!accepted) {
+      setGroupDeleteError('Delete rejected because the Group changed. Review the current frame and try again.');
+      return;
+    }
+    closeGroupDeleteDialog();
+  }, [closeGroupDeleteDialog, groupDeleteTarget]);
   const bridgeMode = usePhysicsPaintBridgeMode();
   const bridgeModeRef = useRef(bridgeMode);
   bridgeModeRef.current = bridgeMode;
@@ -668,6 +724,7 @@ export function PhysicsPaintStudio() {
     }),
     executePhysicalEdit: (executeInput) => physicalEditCoordinator.executePhysicalEdit(executeInput as RotoPhysicalEditCoordinatorExecuteInput<SerializedProject>),
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
+    requestGroupDeleteChoice: handleRequestGroupDeleteChoice,
     publishStatus: (message) => { setApplyMessage(message); },
     publishDiagnostic: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
   });
@@ -1741,7 +1798,52 @@ export function PhysicsPaintStudio() {
       },
     status: { shortcutsVisible },
   });
-  return <PhysicsPaintStudioView {...viewModel} />;
+  const groupDeleteDialog = groupDeleteTarget === null
+    ? null
+    : {
+        ...groupDeleteTarget,
+        groupName: `Group at F${groupDeleteTarget.phaseOrigin}`,
+        groupType: groupDeleteTarget.mode === 'progressive' ? 'Motion' : 'Static',
+      };
+  return (
+    <>
+      <PhysicsPaintStudioView {...viewModel} />
+      {groupDeleteDialog ? (
+        <div class="physics-paint-group-delete-overlay">
+          <div
+            ref={groupDeleteDialogRef}
+            class="physics-paint-group-delete-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="physics-paint-group-delete-title"
+            onKeyDown={handleGroupDeleteDialogKeyDown}
+          >
+            <header class="physics-paint-group-delete-header">
+              <h2 id="physics-paint-group-delete-title">Delete from “{groupDeleteDialog.groupName}” at F{groupDeleteDialog.appFrame}?</h2>
+              <p>This frame belongs to a {groupDeleteDialog.groupType} Group. Choose what to remove.</p>
+            </header>
+            <div class="physics-paint-group-delete-options">
+              <button type="button" class="physics-paint-group-delete-option destructive" onClick={() => { void handleGroupDeleteChoice('delete-group'); }}>
+                <span class="physics-paint-group-delete-option-title">Delete Group</span>
+                <span>Remove the complete Group, every fragment, and uniquely owned source, cache, and Group-gap data. The Action is kept.</span>
+              </button>
+              <button type="button" class="physics-paint-group-delete-option" onClick={() => { void handleGroupDeleteChoice('delete-group-frame'); }}>
+                <span class="physics-paint-group-delete-option-title">Delete Frame</span>
+                <span>Remove only F{groupDeleteDialog.appFrame}. The Group stays attached to its Action, becomes Modified, and keeps an intentional empty gap at this frame.</span>
+                {groupDeleteDialog.onlyOccurrence ? (
+                  <span class="physics-paint-group-delete-warning">This is the Group’s only frame. Delete Frame will remove the whole Group and its uniquely owned data.</span>
+                ) : null}
+              </button>
+            </div>
+            {groupDeleteError ? <p class="physics-paint-group-delete-error" role="alert">{groupDeleteError}</p> : null}
+            <footer class="physics-paint-group-delete-footer">
+              <button ref={groupDeleteCancelRef} type="button" onClick={closeGroupDeleteDialog}>Cancel</button>
+            </footer>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 async function dispatchAndWaitForAcceptedRotoPhysicalEdit<T extends { operationId: string }>(

@@ -1222,6 +1222,122 @@ button.destructive {
 .physics-paint-loop-clip-inspector-action.primary { border-color: rgba(45, 91, 227, 0.8); background: rgba(45, 91, 227, 0.85); }
 .physics-paint-loop-clip-inspector-action:focus-visible { outline: 2px solid #8fa8ff; outline-offset: 2px; }
 .physics-paint-script-confirmation { position: absolute; inset: 44px 4px auto; z-index: 8; display: flex; flex-direction: column; gap: 8px; max-height: calc(100% - 52px); padding: 12px; border: 1px solid #737980; border-radius: 7px; overflow: auto; background: #292b2d; box-shadow: 0 12px 28px rgba(0,0,0,.45); font-size: 11px; }
+
+/* Phase 43.2 G4: Studio-local modal choice for Group-owned Delete. */
+.physics-paint-group-delete-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 72;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, .24);
+}
+
+.physics-paint-group-delete-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(440px, calc(100% - 48px));
+  max-height: min(520px, calc(100vh - 48px));
+  padding: 16px;
+  border: 1px solid #626a73;
+  border-radius: 10px;
+  overflow-y: auto;
+  background: #292d31;
+  color: #f3f5f7;
+  box-shadow: 0 20px 52px rgba(0, 0, 0, .52);
+}
+
+.physics-paint-group-delete-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.physics-paint-group-delete-header h2,
+.physics-paint-group-delete-header p,
+.physics-paint-group-delete-error {
+  margin: 0;
+}
+
+.physics-paint-group-delete-header h2 {
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.physics-paint-group-delete-header p,
+.physics-paint-group-delete-option span {
+  color: #c5cbd2;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.physics-paint-group-delete-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.physics-paint-group-delete-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #59616a;
+  border-radius: 8px;
+  background: #353a3f;
+  color: #f5f7f9;
+  text-align: left;
+  text-transform: none;
+}
+
+.physics-paint-group-delete-option:hover {
+  border-color: #7a848e;
+  background: #3d4349;
+}
+
+.physics-paint-group-delete-option.destructive {
+  border-color: #8b5555;
+}
+
+.physics-paint-group-delete-option:focus-visible,
+.physics-paint-group-delete-footer button:focus-visible {
+  outline: 2px solid #8fa8ff;
+  outline-offset: 2px;
+}
+
+.physics-paint-group-delete-option .physics-paint-group-delete-option-title {
+  color: #f7f8fa;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.physics-paint-group-delete-option .physics-paint-group-delete-warning {
+  color: #f3c879;
+}
+
+.physics-paint-group-delete-error {
+  color: #ff9a9a;
+  font-size: 12px;
+}
+
+.physics-paint-group-delete-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.physics-paint-group-delete-footer button {
+  min-width: 82px;
+  height: 30px;
+  border: 1px solid #626a73;
+  border-radius: 6px;
+  background: #41474d;
+  color: #f3f5f7;
+  text-transform: none;
+}
+
 /* ================= Play Script floating dialog =================
    Compact independent dark surface above the Paint interface: out-of-flow fixed
    positioning never resizes the Paint layout. The viewport root passes pointer input
