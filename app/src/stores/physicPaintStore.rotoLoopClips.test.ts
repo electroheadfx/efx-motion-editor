@@ -53,8 +53,20 @@ function loopClip(
   placementStart: number,
   sourceKeyIds: readonly string[],
   repeat: number | 'infinity',
+  phaseOrigin = placementStart,
 ): PhysicPaintRotoLoopClip {
-  return { loopId, placementStart, sourceKeyIds, repeat, mode: 'progressive' };
+  const base = { loopId, placementStart, sourceKeyIds, repeat, mode: 'progressive' as const };
+  if (repeat === 'infinity') return base;
+  const originalEndExclusive = phaseOrigin + sourceKeyIds.length * repeat;
+  return {
+    ...base,
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin,
+    originalEndExclusive,
+    visibleRanges: [{ start: phaseOrigin, endExclusive: originalEndExclusive }],
+    frameOverrides: [],
+  };
 }
 
 /** The five consecutive source-cycle keys A..E at frames 0..4. */
@@ -600,7 +612,7 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     // source-attached Loop Clip placement or vice versa.
     expect(rotoPhysicalRevision.value).toBe(physicalRevisionBefore + 1);
     expect(physicPaintVersion.value).toBe(visualVersionBefore + 1);
-    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3);
+    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3, 0);
     expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER)).toEqual([loopAfter]);
     const recordsAfter = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
     expect(recordsAfter.map((entry) => [entry.keyId, entry.appFrame])).toEqual([
@@ -665,7 +677,7 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     const accepted = applyPhysicPaintPayload(command);
     expect(accepted.ok).toBe(true);
     const afterRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
-    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3);
+    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3, 0);
     const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
     const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(BRIDGE_LAYER)!;
     expect(afterRevision).not.toBe(beforeRevision);
@@ -806,7 +818,7 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
     });
     expect(applyPhysicPaintPayload(command).ok).toBe(true);
     const afterRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER);
-    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3);
+    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3, 0);
     const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER)!;
 
     // The staged undo state carries a Loop Clip the target revision does not
