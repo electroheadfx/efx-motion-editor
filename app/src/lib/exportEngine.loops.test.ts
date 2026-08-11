@@ -200,6 +200,28 @@ function loopClip(
   return { loopId, placementStart, sourceKeyIds, repeat, mode };
 }
 
+function lifecycleGroup(
+  overrides: Partial<PhysicPaintRotoLoopClip> = {},
+): PhysicPaintRotoLoopClip {
+  return {
+    loopId: 'group-a',
+    placementStart: 0,
+    sourceKeyIds: ['A0', 'A1'],
+    repeat: 3,
+    mode: 'progressive',
+    syncState: 'modified',
+    provenanceState: 'detached',
+    phaseOrigin: 0,
+    originalEndExclusive: 6,
+    visibleRanges: [
+      { start: 0, endExclusive: 2 },
+      { start: 3, endExclusive: 6 },
+    ],
+    frameOverrides: [{ appFrame: 3, keyId: 'override-3' }],
+    ...overrides,
+  };
+}
+
 function install(records: readonly PhysicPaintRotoRealKeyRecord[], loops: readonly PhysicPaintRotoLoopClip[], capacity = CAPACITY): void {
   const recordsResult = physicPaintStore.replaceRotoPhysicalRecords(LAYER, records, INTERPOLATION, capacity);
   if (!recordsResult.ok) throw new Error(recordsResult.error);
@@ -287,13 +309,39 @@ describe('export loop preflight (failure path, D-28)', () => {
 
     expect(exportStore.progress.peek().status).toBe('error');
     expect(exportStore.progress.peek().errorMessage).toBe(
-      'Export blocked — Loop Clip at frame 10 references a missing source frame (11). Repair or unlink the loop, then export again.',
+      'Export blocked — Group at frame 10 references a missing source frame (11). Repair or unlink the Group, then export again.',
     );
     // Fail fast: zero renderer invocations and no export directory creation.
     expect(renderGlobalFrameMock).not.toHaveBeenCalled();
     expect(renderFrameWithMotionBlurMock).not.toHaveBeenCalled();
     expect(preloadExportImagesMock).not.toHaveBeenCalled();
     expect(exportCreateDirMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks an unavailable lifecycle Group before creating directories, preloading, rendering, or writing', async () => {
+    install(
+      [record('A0', 0)],
+      [lifecycleGroup({
+        placementStart: 10,
+        phaseOrigin: 10,
+        originalEndExclusive: 16,
+        sourceKeyIds: ['A0', 'missing-source'],
+        visibleRanges: [{ start: 10, endExclusive: 16 }],
+        frameOverrides: [],
+      })],
+    );
+    hoisted.fm = makeFm(16);
+
+    await startExport();
+
+    expect(exportStore.progress.peek()).toEqual(expect.objectContaining({
+      status: 'error',
+      errorMessage: 'Export blocked — Group at frame 10 references a missing source frame (11). Repair or unlink the Group, then export again.',
+    }));
+    expect(exportCreateDirMock).not.toHaveBeenCalled();
+    expect(preloadExportImagesMock).not.toHaveBeenCalled();
+    expect(renderGlobalFrameMock).not.toHaveBeenCalled();
+    expect(renderFrameWithMotionBlurMock).not.toHaveBeenCalled();
   });
 
   it('reports invalid source timing truthfully when every referenced source key still exists', async () => {
@@ -307,7 +355,7 @@ describe('export loop preflight (failure path, D-28)', () => {
 
     expect(exportStore.progress.peek().status).toBe('error');
     expect(exportStore.progress.peek().errorMessage).toBe(
-      'Export blocked — Loop Clip at frame 10 has invalid source timing. Repair or unlink the loop, then export again.',
+      'Export blocked — Group at frame 10 has invalid source timing. Repair or unlink the Group, then export again.',
     );
     expect(renderGlobalFrameMock).not.toHaveBeenCalled();
     expect(exportCreateDirMock).not.toHaveBeenCalled();
@@ -326,7 +374,7 @@ describe('export loop preflight (failure path, D-28)', () => {
     await startExport();
     expect(exportStore.progress.peek().status).toBe('error');
     expect(exportStore.progress.peek().errorMessage).toBe(
-      'Export blocked — Loop Clip at frame 6 references a missing source frame (7). Repair or unlink the loop, then export again.',
+      'Export blocked — Group at frame 6 references a missing source frame (7). Repair or unlink the Group, then export again.',
     );
 
     // Repair the earliest loop with a distinct later source key. Repeating the
@@ -348,7 +396,7 @@ describe('export loop preflight (failure path, D-28)', () => {
     await startExport();
     expect(exportStore.progress.peek().status).toBe('error');
     expect(exportStore.progress.peek().errorMessage).toBe(
-      'Export blocked — Loop Clip at frame 20 references a missing source frame (21). Repair or unlink the loop, then export again.',
+      'Export blocked — Group at frame 20 references a missing source frame (21). Repair or unlink the Group, then export again.',
     );
     expect(renderGlobalFrameMock).not.toHaveBeenCalled();
   });
@@ -374,7 +422,7 @@ describe('export loop preflight (failure path, D-28)', () => {
 
     expect(exportStore.progress.peek().status).toBe('error');
     expect(exportStore.progress.peek().errorMessage).toBe(
-      'Export blocked — Loop Clip at frame 2 references a missing source frame (3). Repair or unlink the loop, then export again.',
+      'Export blocked — Group at frame 2 references a missing source frame (3). Repair or unlink the Group, then export again.',
     );
     expect(renderGlobalFrameMock).not.toHaveBeenCalled();
   });
@@ -555,5 +603,39 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     expectParity(result, 8, (frame) => frame < 7 ? keys[frame % 5] : 'M');
     expect(result.exportNullFrames.has(8), 'export path resolves frame 8 as empty').toBe(true);
     expect(result.previewByFrame.get(8), 'preview path resolves frame 8 as empty').toBeNull();
+  });
+
+  it('exports detached overrides and fragmented gaps exactly like a cache-cold preview, then reflects regeneration', async () => {
+    install(
+      [record('A0', 0), record('A1', 1), record('override-3', 3, 'override')],
+      [lifecycleGroup()],
+    );
+    hoisted.fm = makeFm(6);
+
+    const detached = await resolveBothSurfaces(6);
+    const expectedKeys = new Map([[0, 'A0'], [1, 'A1'], [3, 'override-3'], [4, 'A0'], [5, 'A1']]);
+    for (const [frame, keyId] of expectedKeys) {
+      const exportSource = detached.exportByFrame.get(frame);
+      const previewSource = detached.previewByFrame.get(frame);
+      expect(exportSource?.keyId, `export frame ${frame}`).toBe(keyId);
+      expect(previewSource?.dataUrl, `preview frame ${frame}`).toBe(exportSource?.renderedFrame.dataUrl);
+      expect(previewSource?.cacheKey, `cache-cold preview frame ${frame}`).toBe(
+        `physic-paint:${LAYER}:physical:${exportSource?.cacheRevision}`,
+      );
+    }
+    expect(detached.exportNullFrames.has(2)).toBe(true);
+    expect(detached.previewByFrame.get(2)).toBeNull();
+
+    const regenerated = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, [lifecycleGroup({
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      frameOverrides: [],
+    })]);
+    if (!regenerated.ok) throw new Error(regenerated.error);
+
+    const synchronized = await resolveBothSurfaces(6);
+    expect(synchronized.exportByFrame.get(2)?.keyId).toBe('A0');
+    expect(synchronized.previewByFrame.get(2)?.dataUrl).toBe(payload(0).dataUrl);
   });
 });
