@@ -382,11 +382,14 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(target.props['aria-label']).not.toContain('private-key-id');
   });
 
-  it('adds passive mode-colored linked halos to every unselected fragment without changing semantics', () => {
+  it.each([
+    ['progressive', '#c4b5fd'],
+    ['static', '#67e8f9'],
+  ] as const)('keeps linked-only %s Groups to one passive 3px segment', (mode, linkedColor) => {
     const ranges = [explicitGroupRange(10, 12), explicitGroupRange(13, 16)];
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'group-a', placementStart: 10, sourceKeyIds: ['A'], repeat: 1,
-      mode: 'static', scriptId: 'action-a', syncState: 'synchronized', provenanceState: 'attached',
+      mode, scriptId: 'action-a', syncState: 'synchronized', provenanceState: 'attached',
     };
     const presentations = new Map([['group-a', projectPhysicsPaintLoopClipPresentation(ranges[0], clip, 'Pose')]]);
 
@@ -406,13 +409,48 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const targets = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     expect(targets).toHaveLength(2);
     expect(targets.every((target) => hasClass(target, 'action-linked'))).toBe(true);
+    expect(targets.every((target) => !hasClass(target, 'selected'))).toBe(true);
     expect(targets.map((target) => target.props['aria-pressed'])).toEqual([false, false]);
     expect(targets.every((target) => target.props['aria-selected'] === undefined)).toBe(true);
     expect(targets.every((target) => String(target.props['aria-label']).endsWith('Linked to selected Action Pose.'))).toBe(true);
-    const staticHalo = cssRule('.physics-paint-loop-clip-rail-target.mode-static.action-linked:not(.selected) {');
-    expect(staticHalo).toContain('box-shadow: 0 0 0 1px #67e8f9, 0 0 5px rgba(103, 232, 249, 0.5)');
-    const motionHalo = cssRule('.physics-paint-loop-clip-rail-target.mode-progressive.action-linked:not(.selected) {');
-    expect(motionHalo).toContain('box-shadow: 0 0 0 1px #c4b5fd, 0 0 5px rgba(196, 181, 253, 0.55)');
+    for (const target of targets) {
+      expect(findAll(target, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-segment'))).toHaveLength(1);
+    }
+
+    const linkedSegmentRule = cssRule(`.physics-paint-loop-clip-rail-target.mode-${mode}.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment {`);
+    expect(linkedSegmentRule).toContain(`background: ${linkedColor}`);
+    expect(linkedSegmentRule).not.toMatch(/box-shadow|border|outline|::before|::after/);
+    expect(physicsPaintStudioCss).not.toContain(`.physics-paint-loop-clip-rail-target.mode-${mode}.action-linked:not(.selected) {`);
+  });
+
+  it('keeps selected orange authoritative when the same Group remains Action-linked', () => {
+    const range = explicitGroupRange(10, 16);
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'group-a', placementStart: 10, sourceKeyIds: ['A'], repeat: 1,
+      mode: 'progressive', scriptId: 'action-a', syncState: 'modified', provenanceState: 'attached',
+    };
+    const presentations = new Map([['group-a', projectPhysicsPaintLoopClipPresentation(range, clip, 'Walk')]]);
+
+    hooks.reset();
+    const tree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: [range],
+      presentations,
+      visibleFrameWindow: { startFrame: 8, endFrameExclusive: 18 },
+      framePitch: 18,
+      selectedLoopClipIds: ['group-a'],
+      linkedLoopClipIds: ['group-a'],
+      linkedActionName: 'Walk',
+      onSelectLoopClip: vi.fn(),
+      onOpenLoopEdit: vi.fn(async () => {}),
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+
+    const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+    expect(hasClass(target, 'action-linked')).toBe(true);
+    expect(hasClass(target, 'selected')).toBe(true);
+    expect(target.props['aria-pressed']).toBe(true);
+    expect(findAll(target, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-segment'))).toHaveLength(1);
+    expect(cssRule('.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {'))
+      .toContain('background: #f59e0b');
   });
 
   it('pins exact rail, target, endpoint, focus, and zero-added-height geometry', () => {
