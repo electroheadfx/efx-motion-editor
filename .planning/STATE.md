@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Completed 43.2-20-PLAN.md
-last_updated: "2026-08-11T11:32:03.218Z"
+stopped_at: Completed 43.2-13-PLAN.md
+last_updated: "2026-08-11T12:00:19.979Z"
 last_activity: 2026-08-11
-last_activity_desc: Completed Plan 43.2-20 bidirectional referenced Action replay and retained history release
+last_activity_desc: Completed Plan 43.2-13 reference-aware Action deletion disclosure and lifecycle UI
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 61
-  completed_plans: 56
-  percent: 92
+  completed_plans: 57
+  percent: 93
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
-Plan: 13 of 20
+Plan: 14 of 20
 Status: Ready to execute
-Last activity: 2026-08-11 — Completed Plan 43.2-20 bidirectional referenced Action replay and retained history release
+Last activity: 2026-08-11 — Completed Plan 43.2-13 reference-aware Action deletion disclosure and lifecycle UI
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [█████████░] 92%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -209,6 +209,7 @@ Progress: [█████████░] 92%
 | Phase 43.2 P11 | 9min | 2 tasks | 4 files |
 | Phase 43.2 P12 | 21min | 3 tasks | 15 files |
 | Phase 43.2 P20 | 28min | 3 tasks | 8 files |
+| Phase 43.2 P13 | 26min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -354,6 +355,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: History pointers move only after durable direction commit and accepted exact local settlement.
 - [Phase 43.2]: Each referenced history command retains its original opaque script-library authority for replay and release after launch changes.
 - [Phase 43.2]: Retained artifacts remain owned until protected Rust release succeeds; active recovery defers exact idempotent cleanup without visible state.
+- [Phase 43.2]: Referenced Action impact is frozen by the controller from the accepted physical document before confirmation; JSX only presents those facts.
+- [Phase 43.2]: visibleRanges remains the sole Group occurrence authority, with inclusive product frame labels derived from canonical half-open ranges only at presentation time.
+- [Phase 43.2]: One computed controller reason gates the complete Action mutation surface through preparation, commit-pending, and recovery ownership.
+- [Phase 43.2]: Deletion failures use a dedicated mapped deleteError Signal; raw controller status and transaction diagnostics never enter confirmation copy.
 
 ### Pending Todos
 
@@ -543,11 +548,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T11:32:03.206Z
-Stopped at: Completed 43.2-20-PLAN.md
+Last session: 2026-08-11T12:00:19.968Z
+Stopped at: Completed 43.2-13-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Execute Plan 43.2-13 for reference-aware Actions confirmation, consequences, focus, and lease/recovery UI.
+- Execute Plan 43.2-14 for canonical product copy, fragment rail geometry, lifecycle dots, and linked halos.
 - Keep Phase 43.1 DF-01 through DF-04 deferred; do not create additional Phase 43.1 plans.

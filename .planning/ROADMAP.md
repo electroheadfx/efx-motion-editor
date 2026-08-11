@@ -312,7 +312,7 @@ Plans:
 - [x] 43.2-11-PLAN.md — Closed TypeScript direction/history/release validators and IPC wrappers (GRP-06)
 - [x] 43.2-12-PLAN.md — Leased committed-only initial deletion settlement, enriched history insertion, and hydration recovery (GRP-06)
 - [x] 43.2-20-PLAN.md — Frontend referenced-deletion Undo/Redo replay, exact history-pointer settlement, eviction/truncation/clear release hooks (GRP-06)
-- [ ] 43.2-13-PLAN.md — Reference-aware Actions confirmation, consequences, focus, lease/recovery UI (GRP-06)
+- [x] 43.2-13-PLAN.md — Reference-aware Actions confirmation, consequences, focus, lease/recovery UI (GRP-06)
 
 **Waves 14–15 — approved Group/Action UI**
 
@@ -494,5 +494,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
 | 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 12/12 | Complete    | 2026-08-10 |
-| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 15/20 | In Progress|  |
+| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 16/20 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |
