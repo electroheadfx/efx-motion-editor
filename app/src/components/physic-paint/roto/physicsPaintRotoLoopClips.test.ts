@@ -233,7 +233,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
     expect(isPhysicPaintRotoLoopClip(baseLoop())).toBe(true);
     const parsed = parsePhysicPaintRotoLoopClips([baseLoop()]);
     expect(parsed).toHaveLength(1);
-    expect(parsed[0]).toEqual(baseLoop());
+    expect(parsed[0]).toEqual(proposedGroup());
     expect(Object.isFrozen(parsed)).toBe(true);
     expect(Object.isFrozen(parsed[0])).toBe(true);
     expect(Object.isFrozen(parsed[0].sourceKeyIds)).toBe(true);
@@ -307,7 +307,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
       const record = { ...baseLoop(), ...provenance };
       expect(isPhysicPaintRotoLoopClip(record)).toBe(true);
       const parsed = parsePhysicPaintRotoLoopClips([record]);
-      expect(parsed[0]).toEqual(record);
+      expect(parsed[0]).toEqual({ ...proposedGroup(), ...provenance });
       expect(Object.isFrozen(parsed[0].motion)).toBe(true);
     });
 
@@ -517,16 +517,17 @@ describe('parsePhysicPaintRotoPhysicalDocument loopClips member', () => {
     expect(encodePhysicPaintRotoPhysicalContent(document.realKeyRecords, document.interpolation, [baseLoop()])).toContain('loops:');
   });
 
-  it('round-trips one loop clip byte-identically through parse and serialization', () => {
+  it('hydrates one legacy loop clip to the same complete canonical Group on reopen', () => {
     const loop = baseLoop();
+    const canonical = proposedGroup();
     const first = parsePhysicPaintRotoPhysicalDocument(baseDocument([loop]));
-    expect(first.loopClips).toEqual([loop]);
+    expect(first.loopClips).toEqual([canonical]);
 
     const reopened = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify({
       ...baseDocument([loop]),
       revision: first.revision,
     })));
-    expect(JSON.stringify(reopened.loopClips)).toBe(JSON.stringify([loop]));
+    expect(JSON.stringify(reopened.loopClips)).toBe(JSON.stringify([canonical]));
   });
 
   it('round-trips a duplicated linked loop whose placement is independent from its source location', () => {
@@ -538,7 +539,13 @@ describe('parsePhysicPaintRotoPhysicalDocument loopClips member', () => {
     expect(parsed.loopClips).toHaveLength(2);
     expect(parsed.loopClips[1].placementStart).toBe(40);
     expect(parsed.loopClips[1].sourceKeyIds).toEqual(SOURCE_KEY_IDS);
-    expect(JSON.stringify(parsed.loopClips[1])).toBe(JSON.stringify(duplicate));
+    expect(parsed.loopClips[1]).toEqual(proposedGroup({
+      loopId: 'loop-dup',
+      placementStart: 40,
+      phaseOrigin: 40,
+      originalEndExclusive: 65,
+      visibleRanges: [{ start: 40, endExclusive: 65 }],
+    }));
   });
 
   it('throws when the loopClips member is structurally malformed', () => {
@@ -550,7 +557,15 @@ describe('parsePhysicPaintRotoPhysicalDocument loopClips member', () => {
     const dangling = { ...baseLoop(), loopId: 'loop-dangling', sourceKeyIds: ['ghost-1', 'ghost-2'] };
     const parsed = parsePhysicPaintRotoPhysicalDocument(baseDocument([dangling]));
     expect(parsed.loopClips[0].sourceKeyIds).toEqual(['ghost-1', 'ghost-2']);
-    expect(JSON.stringify(parsed.loopClips[0])).toBe(JSON.stringify(dangling));
+    expect(parsed.loopClips[0]).toEqual({
+      ...dangling,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 10,
+      visibleRanges: [{ start: 0, endExclusive: 10 }],
+      frameOverrides: [],
+    });
   });
 
   it('persists the infinity repeat state as the explicit string, never as a number', () => {
@@ -635,14 +650,20 @@ describe('physicPaintPersistence loopClips save/reopen', () => {
     ]);
 
     const hydrated = await loadPhysicPaintData('/project', persisted);
-    expect(JSON.stringify(hydrated?.[0].roto_physical?.loopClips)).toBe(JSON.stringify([loop]));
+    expect(hydrated?.[0].roto_physical?.loopClips).toEqual([proposedGroup()]);
   });
 
   it('saves and reopens a duplicated linked loop with placement independent from source location', async () => {
     const duplicate = { ...baseLoop(), loopId: 'loop-dup', placementStart: 40 };
     const persisted = await savePhysicPaintData('/project', runtimeOutput(baseDocument([duplicate])));
     const hydrated = await loadPhysicPaintData('/project', persisted);
-    expect(JSON.stringify(hydrated?.[0].roto_physical?.loopClips)).toBe(JSON.stringify([duplicate]));
+    expect(hydrated?.[0].roto_physical?.loopClips).toEqual([proposedGroup({
+      loopId: 'loop-dup',
+      placementStart: 40,
+      phaseOrigin: 40,
+      originalEndExclusive: 65,
+      visibleRanges: [{ start: 40, endExclusive: 65 }],
+    })]);
   });
 
   it('loads a v0.8.1-shaped persisted document (loopClips member absent) as an empty collection', async () => {
@@ -662,7 +683,15 @@ describe('physicPaintPersistence loopClips save/reopen', () => {
     const dangling = { ...baseLoop(), sourceKeyIds: ['ghost-1', 'ghost-2'] };
     const persisted = await savePhysicPaintData('/project', runtimeOutput(baseDocument([dangling])));
     const hydrated = await loadPhysicPaintData('/project', persisted);
-    expect(JSON.stringify(hydrated?.[0].roto_physical?.loopClips)).toBe(JSON.stringify([dangling]));
+    expect(hydrated?.[0].roto_physical?.loopClips).toEqual([{
+      ...dangling,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 10,
+      visibleRanges: [{ start: 0, endExclusive: 10 }],
+      frameOverrides: [],
+    }]);
   });
 
   it('round-trips the infinity repeat state as the explicit string', async () => {

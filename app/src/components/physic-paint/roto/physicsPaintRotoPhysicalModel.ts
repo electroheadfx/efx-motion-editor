@@ -272,7 +272,7 @@ export interface PhysicPaintRotoLoopClip {
   readonly scriptId?: string;
   readonly motion?: PhysicPaintRotoScriptMotionSettings;
   readonly overrideColor?: string | null;
-  /** Durable Group lifecycle facts. All six members are absent or present together. */
+  /** Durable Group lifecycle facts. Canonical finite Groups always carry all six members. */
   readonly syncState?: 'synchronized' | 'modified';
   readonly provenanceState?: 'attached' | 'detached';
   readonly phaseOrigin?: number;
@@ -576,6 +576,13 @@ function hasValidPhysicPaintRotoGroupLifecycle(value: Record<string, unknown>): 
     if (!isNonNegativeInteger(override.appFrame)
       || override.appFrame < phaseOrigin
       || override.appFrame >= originalEndExclusive
+      || !value.visibleRanges.some((range) => (
+        isRecord(range)
+        && typeof range.start === 'number'
+        && typeof range.endExclusive === 'number'
+        && override.appFrame >= range.start
+        && override.appFrame < range.endExclusive
+      ))
       || !isBoundedKeyId(override.keyId)
       || overrideFrames.has(override.appFrame)
       || overrideKeyIds.has(override.keyId)) return false;
@@ -620,10 +627,33 @@ export function isPhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintR
   return hasValidPhysicPaintRotoGroupLifecycle(value);
 }
 
+function buildDefaultPhysicPaintRotoGroupLifecycle(
+  entry: PhysicPaintRotoLoopClip,
+): Pick<PhysicPaintRotoLoopClip, 'syncState' | 'provenanceState' | 'phaseOrigin' | 'originalEndExclusive' | 'visibleRanges' | 'frameOverrides'> | null {
+  if (entry.repeat === 'infinity') return null;
+  const originalEndExclusive = entry.placementStart + entry.sourceKeyIds.length * entry.repeat;
+  if (!Number.isSafeInteger(originalEndExclusive) || originalEndExclusive <= entry.placementStart) {
+    throw new Error(`PhysicPaintRotoLoopClips: Group "${entry.loopId}" default extent is invalid.`);
+  }
+  return {
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: entry.placementStart,
+    originalEndExclusive,
+    visibleRanges: Object.freeze([Object.freeze({
+      start: entry.placementStart,
+      endExclusive: originalEndExclusive,
+    })]),
+    frameOverrides: Object.freeze([]),
+  };
+}
+
 /**
  * Reconstruct a fresh, deeply immutable Loop Clip collection from untrusted
  * input. Preserves the persisted order and every source keyId reference
- * verbatim (D-31); rejects duplicate `loopId` identities. Throws a closed
+ * verbatim (D-31); rejects duplicate `loopId` identities. Finite pre-lifecycle
+ * records hydrate to one synchronized, attached, contiguous Group so every
+ * canonical consumer observes the complete lifecycle shape. Throws a closed
  * validation failure on any structurally malformed input.
  */
 export function parsePhysicPaintRotoLoopClips(value: unknown): readonly PhysicPaintRotoLoopClip[] {
@@ -640,6 +670,9 @@ export function parsePhysicPaintRotoLoopClips(value: unknown): readonly PhysicPa
       throw new Error(`PhysicPaintRotoLoopClips: duplicate loopId "${entry.loopId}".`);
     }
     seenLoopIds.add(entry.loopId);
+    const defaultLifecycle = entry.syncState === undefined
+      ? buildDefaultPhysicPaintRotoGroupLifecycle(entry)
+      : null;
     clips.push(Object.freeze({
       loopId: entry.loopId,
       placementStart: entry.placementStart,
@@ -668,7 +701,7 @@ export function parsePhysicPaintRotoLoopClips(value: unknown): readonly PhysicPa
               keyId: override.keyId,
             }))),
           }
-        : {}),
+        : defaultLifecycle ?? {}),
     }) as PhysicPaintRotoLoopClip);
   }
   return Object.freeze(clips);
