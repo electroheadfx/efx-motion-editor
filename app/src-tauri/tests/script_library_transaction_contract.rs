@@ -265,8 +265,76 @@ fn release_and_orphan_collection_protect_active_recovery_references() {
     assert!(harness.retained.contains_key(&("active", 3)));
 }
 
+#[derive(Default)]
+struct HistoryOwner {
+    undo: Vec<(&'static str, u64)>,
+    redo: Vec<(&'static str, u64)>,
+}
+
+impl HistoryOwner {
+    fn push(&mut self, command: (&'static str, u64)) -> Vec<(&'static str, u64)> {
+        let mut released = self.redo.drain(..).collect::<Vec<_>>();
+        self.undo.push(command);
+        if self.undo.len() > 10 {
+            released.push(self.undo.remove(0));
+        }
+        released
+    }
+
+    fn undo(&mut self) {
+        if let Some(command) = self.undo.pop() {
+            self.redo.push(command);
+        }
+    }
+
+    fn clear(&mut self) -> Vec<(&'static str, u64)> {
+        self.undo.drain(..).chain(self.redo.drain(..)).collect()
+    }
+}
+
 #[test]
-fn contract_red_gate_rejects_half_state_scan() {
-    let harness = TransactionHarness { recovery_required: true, ..TransactionHarness::default() };
-    assert!(harness.ordinary_scan().is_ok(), "RED: ordinary scans must stay gated while recovery is required");
+fn ten_level_eviction_redo_truncation_and_clear_release_only_unreferenced_artifacts() {
+    let mut history = HistoryOwner::default();
+    let mut harness = TransactionHarness::default();
+    for generation in 1..=11 {
+        let command_id = Box::leak(format!("command-{generation}").into_boxed_str());
+        harness.retained.insert((command_id, generation), artifact(command_id, generation));
+        for released in history.push((command_id, generation)) {
+            assert!(harness.release(released.0, released.1).unwrap());
+        }
+    }
+    assert_eq!(history.undo.len(), 10);
+    assert!(!harness.retained.contains_key(&("command-1", 1)));
+
+    history.undo();
+    let redo_command = *history.redo.last().unwrap();
+    let replacement_id = "replacement-command";
+    harness.retained.insert((replacement_id, 12), artifact(replacement_id, 12));
+    for released in history.push((replacement_id, 12)) {
+        assert_eq!(released, redo_command);
+        assert!(harness.release(released.0, released.1).unwrap());
+    }
+    assert!(history.redo.is_empty());
+
+    let protected = *history.undo.last().unwrap();
+    harness.prepare(
+        journal("cleanup-pending-token", Direction::Forward, DeleteMode::KeepGroups, protected.0, protected.1),
+        artifact(protected.0, protected.1),
+    ).unwrap();
+    for released in history.clear() {
+        if released == protected {
+            assert!(harness.release(released.0, released.1).is_err());
+        } else {
+            assert!(harness.release(released.0, released.1).unwrap());
+        }
+    }
+    assert!(harness.retained.contains_key(&protected));
+}
+
+#[test]
+fn ordinary_scan_is_gated_until_recovery_finishes() {
+    let mut harness = TransactionHarness { recovery_required: true, ..TransactionHarness::default() };
+    assert_eq!(harness.ordinary_scan(), Err("recovery required before ordinary scan"));
+    harness.recovery_required = false;
+    assert_eq!(harness.ordinary_scan(), Ok(()));
 }
