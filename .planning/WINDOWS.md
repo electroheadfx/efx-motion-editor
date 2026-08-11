@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 12
+open_count: 16
 waived_count: 1
-fixed_count: 24
-total_count: 37
-last_updated: 2026-08-10T10:48:54.748Z
+fixed_count: 25
+total_count: 42
+last_updated: 2026-08-11T02:48:42.796Z
 ---
 
 # Broken Windows Ledger
@@ -52,6 +52,11 @@ last_updated: 2026-08-10T10:48:54.748Z
 | 35 | 43.1 | deviation | app/src/lib/physicPaintBridge.test.ts | 879 | Updated the legacy incoming-break bridge test so ordinary edits preserve, rather than author or clear, stable-key break ownership. | fixed |  | 2026-08-10T08:14:54.920Z | 2026-08-10T08:15:01.785Z |
 | 36 | 43.1 | deviation | .planning/STATE.md |  | Reconciled Plan 10 progress percentage, latest activity, decision labels, and next action after generic state handlers wrote stale metadata. | fixed |  | 2026-08-10T08:17:20.229Z | 2026-08-10T08:17:28.221Z |
 | 37 | 43.1 | deviation | .planning/STATE.md |  | Reconciled generated Plan 11 progress, activity, decision labels, and next-action metadata. | fixed |  | 2026-08-10T10:48:22.939Z | 2026-08-10T10:48:54.748Z |
+| 38 | 43.2 | stub | app/src/components/physic-paint/roto/physicsPaintRotoLoopClips.test.ts | 389 | Wave 0 controlled markers keep canonical revision and project equality unsupported until the production schema cutover | open |  | 2026-08-11T02:45:01.220Z |  |
+| 39 | 43.2 | stub | app/src/lib/physicPaintPersistence.test.ts | 300 | Wave 0 controlled markers keep Group lifecycle fields unsupported at save/reopen until the production schema cutover | open |  | 2026-08-11T02:45:01.302Z |  |
+| 40 | 43.2 | stub | app/src/types/physicPaint.test.ts | 305 | Wave 0 controlled markers keep Group lifecycle fields unsupported in physical transport until the production schema cutover | open |  | 2026-08-11T02:45:01.385Z |  |
+| 41 | 43.2 | stub | app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts | 191 | Wave 0 controlled markers keep Group lifecycle fields ignored by history equality until the production schema cutover | open |  | 2026-08-11T02:45:01.469Z |  |
+| 42 | 43.2 | deviation | .planning/STATE.md |  | Reconciled stale Plan 43.2-01 progress percentage, activity, and Current Position metadata after generic state handlers wrote contradictory values | fixed |  | 2026-08-11T02:48:16.498Z | 2026-08-11T02:48:42.796Z |
 
 ````json
 [
@@ -498,6 +503,66 @@ last_updated: 2026-08-10T10:48:54.748Z
     "reason": "",
     "recorded_at": "2026-08-10T10:48:22.939Z",
     "resolved_at": "2026-08-10T10:48:54.748Z"
+  },
+  {
+    "id": 38,
+    "kind": "stub",
+    "phase": "43.2",
+    "file": "app/src/components/physic-paint/roto/physicsPaintRotoLoopClips.test.ts",
+    "line": 389,
+    "description": "Wave 0 controlled markers keep canonical revision and project equality unsupported until the production schema cutover",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-11T02:45:01.220Z",
+    "resolved_at": null
+  },
+  {
+    "id": 39,
+    "kind": "stub",
+    "phase": "43.2",
+    "file": "app/src/lib/physicPaintPersistence.test.ts",
+    "line": 300,
+    "description": "Wave 0 controlled markers keep Group lifecycle fields unsupported at save/reopen until the production schema cutover",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-11T02:45:01.302Z",
+    "resolved_at": null
+  },
+  {
+    "id": 40,
+    "kind": "stub",
+    "phase": "43.2",
+    "file": "app/src/types/physicPaint.test.ts",
+    "line": 305,
+    "description": "Wave 0 controlled markers keep Group lifecycle fields unsupported in physical transport until the production schema cutover",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-11T02:45:01.385Z",
+    "resolved_at": null
+  },
+  {
+    "id": 41,
+    "kind": "stub",
+    "phase": "43.2",
+    "file": "app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts",
+    "line": 191,
+    "description": "Wave 0 controlled markers keep Group lifecycle fields ignored by history equality until the production schema cutover",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-11T02:45:01.469Z",
+    "resolved_at": null
+  },
+  {
+    "id": 42,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Reconciled stale Plan 43.2-01 progress percentage, activity, and Current Position metadata after generic state handlers wrote contradictory values",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T02:48:16.498Z",
+    "resolved_at": "2026-08-11T02:48:42.796Z"
   }
 ]
 ````

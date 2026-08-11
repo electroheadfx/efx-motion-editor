@@ -287,14 +287,17 @@ Plans:
 Plans:
 
 **Wave 0 — passing tests/fixtures/checklist only**
-- [ ] 43.2-01-PLAN.md — Lifecycle/range fixtures and complete field-participation matrix (GRP-02, GRP-04, GRP-08)
+
+- [x] 43.2-01-PLAN.md — Lifecycle/range fixtures and complete field-participation matrix (GRP-02, GRP-04, GRP-08)
 - [ ] 43.2-02-PLAN.md — Source-sharing, exact-frame COW, cleanup, canonical lease concurrency, and rejection contracts (GRP-03, GRP-04, GRP-06)
 - [ ] 43.2-03-PLAN.md — Separate recovery/retained-history, forward/Undo/Redo/release contracts, and deterministic native-UAT checklist (GRP-06, GRP-08)
 
 **Wave 1 — blocked on all Wave 0 plans**
+
 - [ ] 43.2-04-PLAN.md — Leased production tracer: exact-occurrence Group Paint through pure proposal, parent authority, token-checked sole replacement, version, and history (GRP-02, GRP-03)
 
 **Waves 2–7 — canonical leased lifecycle capabilities**
+
 - [ ] 43.2-05-PLAN.md — Complete canonical schema, transport, persistence, store, and save/reopen participation (GRP-02, GRP-08)
 - [ ] 43.2-18-PLAN.md — Canonical project/layer physical-operation lease across every mutator, replacement, hydration, settlement, and recovery path (GRP-03, GRP-04, GRP-05, GRP-06, GRP-08)
 - [ ] 43.2-06-PLAN.md — Pure lifecycle proposals, leased bridge semantic validation, and ordinary history completeness (GRP-03, GRP-04, GRP-05, GRP-06)
@@ -303,6 +306,7 @@ Plans:
 - [ ] 43.2-09-PLAN.md — Guarded leased one/shared Regenerate with exact disclosure and accepted restoration (GRP-05)
 
 **Waves 8–13 — durable bidirectional Action history**
+
 - [ ] 43.2-10-PLAN.md — Rust active recovery journal, working tombstone, scan gating, and restart foundation (GRP-06)
 - [ ] 43.2-19-PLAN.md — Rust retained Action history artifact, direction-specific Undo/Redo recovery, protected release/GC, and orphan handling (GRP-06)
 - [ ] 43.2-11-PLAN.md — Closed TypeScript direction/history/release validators and IPC wrappers (GRP-06)
@@ -311,10 +315,12 @@ Plans:
 - [ ] 43.2-13-PLAN.md — Reference-aware Actions confirmation, consequences, focus, lease/recovery UI (GRP-06)
 
 **Waves 14–15 — approved Group/Action UI**
+
 - [ ] 43.2-14-PLAN.md — Canonical product copy plus exact fragment rail, lifecycle dots, linked halos, and geometry (GRP-01, GRP-07)
 - [ ] 43.2-15-PLAN.md — Actions/Edit/Create terminology, cross-selection, and non-wrapping linked navigation (GRP-01, GRP-07)
 
 **Waves 16–17 — parity, regression, and acceptance**
+
 - [ ] 43.2-16-PLAN.md — Shared accepted frameMap/playback/preview/export lifecycle resolution (GRP-08)
 - [ ] 43.2-17-PLAN.md — Motion Editor regressions, full lease/history/recovery gates, source audit, and blocking frozen-session native UAT (GRP-01..GRP-08)
 
@@ -488,5 +494,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
 | 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 12/12 | Complete    | 2026-08-10 |
-| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 0/20 | Planned | - |
+| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 1/20 | In Progress|  |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |
