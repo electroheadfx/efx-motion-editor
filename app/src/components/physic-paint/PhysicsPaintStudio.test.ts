@@ -6,6 +6,7 @@ const studio = readFileSync(fileURLToPath(new URL('./PhysicsPaintStudio.tsx', im
 const studioView = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintStudioView.tsx', import.meta.url)), 'utf8');
 const main = readFileSync(fileURLToPath(new URL('../../main.tsx', import.meta.url)), 'utf8');
 const scriptsPanel = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintScriptsPanel.tsx', import.meta.url)), 'utf8');
+const workflowStrip = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintWorkflowStrip.tsx', import.meta.url)), 'utf8');
 const rightPanel = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintRightPanel.tsx', import.meta.url)), 'utf8');
 const toolRail = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintToolRail.tsx', import.meta.url)), 'utf8');
 const topBar = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintTopBar.tsx', import.meta.url)), 'utf8');
@@ -45,10 +46,10 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(bridge).toContain('PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT');
   });
 
-  it('keeps Save, Load/Paintbrush, Play Script, and cached Roto playback distinct', () => {
-    const save = scriptsPanel.indexOf('label="Save Script"');
-    const paintbrush = scriptsPanel.indexOf('label="Load and Apply Script"');
-    const playScript = scriptsPanel.indexOf('label="Play Script"');
+  it('keeps Save, Load/Paintbrush, Create Group, and cached Roto playback distinct', () => {
+    const save = scriptsPanel.indexOf('label="Save Action"');
+    const paintbrush = scriptsPanel.indexOf('label="Load + Apply to Frame"');
+    const playScript = scriptsPanel.indexOf('label="Create Group…"');
     expect(save).toBeGreaterThan(-1);
     expect(paintbrush).toBeGreaterThan(save);
     expect(playScript).toBeGreaterThan(paintbrush);
@@ -101,6 +102,49 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('selectedLoopClipId.value = null;');
     expect(scriptsPanel).toContain('void onOpenLoopEdit(selectedLoopClip.loopId);');
     expect(scriptsPanel).not.toContain('onOpenLoopEdit?.');
+  });
+});
+
+describe('Physics Paint Group and Action cross-selection (43.2-15)', () => {
+  it('derives deduplicated placement-ordered linked Groups from accepted Action identity', () => {
+    expect(studio).toContain('const activeLinkedLoopClipId = useSignal<string | null>(null);');
+    expect(studio).toContain('function getLinkedRotoGroupsForAction(');
+    expect(studio).toContain('.filter((loopClip) => loopClip.scriptId === actionId)');
+    expect(studio).toContain('if (!groupsById.has(loopClip.loopId)) groupsById.set(loopClip.loopId, loopClip);');
+    expect(studio).toContain('left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId)');
+    expect(studio).toContain('[launchContext?.layerId, physicPaintVersion.value]');
+  });
+
+  it('reveals only an available source Action when a stable Group is selected', () => {
+    const selectionStart = studio.indexOf('const handleSelectRotoLoopClip = useCallback((');
+    const selectionEnd = studio.indexOf('const handleOpenRotoLoopEdit', selectionStart);
+    const selection = studio.slice(selectionStart, selectionEnd);
+    expect(selectionStart).toBeGreaterThanOrEqual(0);
+    expect(selection).toContain('const selectedGroup = rotoLoopClips.find((loopClip) => loopClip.loopId === next.primaryLoopClipId);');
+    expect(selection).toContain('loopScriptRows.some((row) => row.id === selectedGroup.scriptId)');
+    expect(selection).toContain('rotoScriptLibrary.select(selectedGroup.scriptId);');
+    expect(selection).not.toContain('rotoScriptLibrary.select(loopId);');
+  });
+
+  it('activates an Action without seeking or creating orange operation selection', () => {
+    const activationStart = studio.indexOf('const handleScriptRowActivate = useCallback(async (id: string) => {');
+    const activationEnd = studio.indexOf('const handleSelectedScriptLoadAndApply', activationStart);
+    const activation = studio.slice(activationStart, activationEnd);
+    expect(activationStart).toBeGreaterThanOrEqual(0);
+    expect(activation).toContain('const loaded = await rotoScriptLibrary.activateAndLoad(id);');
+    expect(activation).toContain('chooseCursorRelativeLinkedGroup(linkedGroups, currentFrame)');
+    expect(activation).toContain('activeLinkedLoopClipId.value =');
+    for (const forbidden of ['selectedLoopClipId.value =', 'selectedLoopClipIds.value =', 'handleNavigateToSyncedFrame', 'navigateToSyncedPhysicalFrame']) {
+      expect(activation).not.toContain(forbidden);
+    }
+  });
+
+  it('passes passive Action linkage to the Group Rail without changing selected Group scope', () => {
+    expect(studio).toContain('linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId)');
+    expect(studio).toContain('linkedRotoActionName: selectedAction?.name ?? null');
+    expect(workflowStrip).toContain('linkedLoopClipIds={props.linkedRotoLoopClipIds ?? []}');
+    expect(workflowStrip).toContain('linkedActionName={props.linkedRotoActionName ?? null}');
+    expect(workflowStrip).toContain('selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}');
   });
 });
 
