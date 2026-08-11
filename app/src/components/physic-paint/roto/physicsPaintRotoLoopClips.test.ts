@@ -638,19 +638,21 @@ describe('physicPaintPersistence loopClips save/reopen', () => {
     });
   });
 
-  it('saves and reopens a loop clip byte-identically inside the physical document', async () => {
+  it('saves and reopens a lifecycle-complete Group byte-identically inside the physical document', async () => {
     const loop = baseLoop();
+    const canonical = proposedGroup();
     const persisted = await savePhysicPaintData('/project', runtimeOutput(baseDocument([loop])));
 
     const persistedDocument = persisted[0].roto_physical as { loopClips?: unknown };
-    expect(JSON.stringify(persistedDocument.loopClips)).toBe(JSON.stringify([loop]));
-    // D-30: only the five canonical fields persist — no derived loop state.
+    expect(persistedDocument.loopClips).toEqual([canonical]);
+    // D-30: canonical Group authority persists without any derived loop state.
     expect(Object.keys((persistedDocument.loopClips as readonly object[])[0]).sort()).toEqual([
-      'loopId', 'mode', 'placementStart', 'repeat', 'sourceKeyIds',
+      'frameOverrides', 'loopId', 'mode', 'originalEndExclusive', 'phaseOrigin',
+      'placementStart', 'provenanceState', 'repeat', 'sourceKeyIds', 'syncState', 'visibleRanges',
     ]);
 
     const hydrated = await loadPhysicPaintData('/project', persisted);
-    expect(hydrated?.[0].roto_physical?.loopClips).toEqual([proposedGroup()]);
+    expect(hydrated?.[0].roto_physical?.loopClips).toEqual([canonical]);
   });
 
   it('saves and reopens a duplicated linked loop with placement independent from source location', async () => {

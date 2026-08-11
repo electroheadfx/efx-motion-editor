@@ -324,8 +324,8 @@ describe('physicPaintPersistence', () => {
     expect(persistedDocument.loopClips).toEqual([completeLifecycleGroup()]);
     expect(JSON.stringify(persistedDocument)).not.toContain('data:image/png');
     const overrideRecord = persistedDocument.realKeyRecords.find((record) => record.keyId === 'override-8');
-    expect(overrideRecord?.payload.cache_path).toMatch(/key-000008-override-8\.png$/);
-    expect(Array.from(files.keys()).some((path) => /key-000008-override-8\.png$/.test(path))).toBe(true);
+    expect(overrideRecord?.payload.cache_path).toMatch(/key-000008-override-8-[0-9a-f]{8}\.png$/);
+    expect(Array.from(files.keys()).some((path) => /key-000008-override-8-[0-9a-f]{8}\.png$/.test(path))).toBe(true);
 
     const hydrated = await loadPhysicPaintData('/project', persisted);
     expect(hydrated?.[0].roto_physical?.loopClips).toEqual([completeLifecycleGroup()]);

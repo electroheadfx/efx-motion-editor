@@ -82,13 +82,13 @@ export interface McePhysicPaintRotoLoopClip {
   readonly scriptId?: string;
   readonly motion?: PhysicPaintRotoScriptMotionSettings;
   readonly overrideColor?: string | null;
-  /** Complete canonical Group lifecycle facts (Phase 43.2). */
-  readonly syncState: 'synchronized' | 'modified';
-  readonly provenanceState: 'attached' | 'detached';
-  readonly phaseOrigin: number;
-  readonly originalEndExclusive: number;
-  readonly visibleRanges: readonly PhysicPaintRotoGroupVisibleRange[];
-  readonly frameOverrides: readonly PhysicPaintRotoGroupFrameOverride[];
+  /** Complete canonical Group lifecycle facts (Phase 43.2), absent only on pre-lifecycle records. */
+  readonly syncState?: 'synchronized' | 'modified';
+  readonly provenanceState?: 'attached' | 'detached';
+  readonly phaseOrigin?: number;
+  readonly originalEndExclusive?: number;
+  readonly visibleRanges?: readonly PhysicPaintRotoGroupVisibleRange[];
+  readonly frameOverrides?: readonly PhysicPaintRotoGroupFrameOverride[];
 }
 
 export interface McePhysicPaintRotoPhysicalDocument {

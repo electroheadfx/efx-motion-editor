@@ -231,6 +231,16 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
           ...(clip.scriptId !== undefined
             ? { scriptId: clip.scriptId, motion: { ...clip.motion! }, overrideColor: clip.overrideColor ?? null }
             : {}),
+          ...(clip.syncState !== undefined
+            ? {
+                syncState: clip.syncState,
+                provenanceState: clip.provenanceState!,
+                phaseOrigin: clip.phaseOrigin!,
+                originalEndExclusive: clip.originalEndExclusive!,
+                visibleRanges: clip.visibleRanges!.map((range) => ({ ...range })),
+                frameOverrides: clip.frameOverrides!.map((override) => ({ ...override })),
+              }
+            : {}),
         })),
         incomingInterpolationBreakKeyIds: [...physical.incomingInterpolationBreakKeyIds],
       };
