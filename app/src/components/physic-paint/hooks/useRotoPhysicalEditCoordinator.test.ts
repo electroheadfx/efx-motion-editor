@@ -356,7 +356,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     groupId: 'group-1',
     appFrame: currentFrame,
   });
-  const executePlayScript = () => {
+  const executePlayScript = (revalidateAfterLease?: () => Promise<boolean>) => {
     const nextRecord = record('Z', 8);
     const nextRecords = [...records, nextRecord];
     return coordinator.executePhysicalEdit({
@@ -383,6 +383,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       },
       selectedKeyId: 'Z',
       selectedAppFrame: 8,
+      ...(revalidateAfterLease ? { revalidateAfterLease } : {}),
     });
   };
   const makeResult = (
@@ -710,6 +711,20 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       grainStrength: 0.45,
     });
     expect(test.getRecords().some((entry) => entry.keyId === 'Z')).toBe(false);
+    test.coordinator.cancelPhysicalEdit('disposal');
+  });
+
+  it('runs Play Script external authority revalidation after lease acquisition and before physical preflight', async () => {
+    const test = harness();
+    const revalidateAfterLease = vi.fn(async () => {
+      test.leaseOrder.push('external-authority');
+      return true;
+    });
+
+    expect(await test.executePlayScript(revalidateAfterLease)).toBe(true);
+    expect(revalidateAfterLease).toHaveBeenCalledOnce();
+    expect(test.leaseOrder.indexOf('external-authority')).toBeGreaterThan(test.leaseOrder.indexOf('acquire'));
+    expect(test.leaseOrder.indexOf('external-authority')).toBeLessThan(test.leaseOrder.indexOf('records'));
     test.coordinator.cancelPhysicalEdit('disposal');
   });
 
