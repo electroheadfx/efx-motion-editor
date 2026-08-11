@@ -172,6 +172,57 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
   });
 });
 
+describe('Physics Paint Group Delete choice dialog (43.2-08)', () => {
+  it('renders the exact three-choice copy and only-occurrence warning without extra actions', () => {
+    expect(studio).toContain('Delete from “{groupDeleteDialog.groupName}” at F{groupDeleteDialog.appFrame}?');
+    expect(studio).toContain('This frame belongs to a {groupDeleteDialog.groupType} Group. Choose what to remove.');
+    expect(studio).toContain('Remove the complete Group, every fragment, and uniquely owned source, cache, and Group-gap data. The Action is kept.');
+    expect(studio).toContain('Remove only F{groupDeleteDialog.appFrame}. The Group stays attached to its Action, becomes Modified, and keeps an intentional empty gap at this frame.');
+    expect(studio).toContain('This is the Group’s only frame. Delete Frame will remove the whole Group and its uniquely owned data.');
+    expect(studio).toContain('>Delete Group</button>');
+    expect(studio).toContain('>Delete Frame</button>');
+    expect(studio).toContain('>Cancel</button>');
+  });
+
+  it('opens from the shared classifier without changing canonical selection, cursor, cache, version, or history', () => {
+    expect(studio).toContain('requestGroupDeleteChoice: handleRequestGroupDeleteChoice,');
+    const handlerStart = studio.indexOf('const handleRequestGroupDeleteChoice = useCallback(');
+    const handlerEnd = studio.indexOf('const closeGroupDeleteDialog = useCallback(', handlerStart);
+    const handler = studio.slice(handlerStart, handlerEnd);
+    expect(handlerStart).toBeGreaterThanOrEqual(0);
+    expect(handler).toContain('setGroupDeleteTarget(target);');
+    expect(handler).toContain('groupDeleteReturnFocusRef.current = document.activeElement instanceof HTMLElement');
+    for (const forbidden of ['selectedKeyId.value =', 'selectedKeyIds.value =', 'physicPaintStore.', 'physicPaintVersion', 'executePhysicalEdit', 'history']) {
+      expect(handler).not.toContain(forbidden);
+    }
+  });
+
+  it('implements modal semantics, Cancel initial focus, trapped Tab, Escape, focused Enter, and focus restoration', () => {
+    expect(studio).toContain('role="dialog"');
+    expect(studio).toContain('aria-modal="true"');
+    expect(studio).toContain('groupDeleteCancelRef.current?.focus();');
+    expect(studio).toContain("if (event.key === 'Escape')");
+    expect(studio).toContain("if (event.key !== 'Tab') return;");
+    expect(studio).toContain('event.shiftKey ? focusables.length - 1 : 0');
+    expect(studio).toContain('groupDeleteReturnFocusRef.current?.focus();');
+    expect(studio).not.toContain("event.key === 'Enter' && handleGroupDeleteChoice");
+  });
+
+  it('keeps stale rejection in the dialog and announces one alert', () => {
+    expect(studio).toContain('setGroupDeleteError(');
+    expect(studio).toContain('role="alert"');
+    expect(studio).toContain('{groupDeleteError}');
+    expect(studio).toContain('if (!accepted) return;');
+  });
+
+  it('uses the approved Studio-local modal geometry and stacking', () => {
+    expect(css).toMatch(/\.physics-paint-group-delete-overlay\s*\{[^}]*z-index:\s*72[^}]*background:\s*rgba\(0,\s*0,\s*0,\s*\.24\)/s);
+    expect(css).toMatch(/\.physics-paint-group-delete-dialog\s*\{[^}]*width:\s*min\(440px,\s*calc\(100% - 48px\)\)[^}]*max-height:\s*min\(520px,\s*calc\(100vh - 48px\)\)[^}]*padding:\s*16px[^}]*border-radius:\s*10px/s);
+    expect(css).toMatch(/\.physics-paint-group-delete-options\s*\{[^}]*gap:\s*8px/s);
+    expect(css).toMatch(/\.physics-paint-group-delete-footer\s*\{[^}]*justify-content:\s*flex-end/s);
+  });
+});
+
 describe('Physics Paint Roto keyboard shortcut wiring', () => {
   it('shares the exact key utility references with keyboard and visible-button paths', () => {
     expect(studio).toContain('copyRotoKey: copyRotoFrame,');
