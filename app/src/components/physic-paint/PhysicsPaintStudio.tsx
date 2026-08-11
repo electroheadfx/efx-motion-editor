@@ -946,6 +946,11 @@ export function PhysicsPaintStudio() {
         interpolationEnabled: document.interpolation.enabled,
       };
     },
+    getPhysicalDocument: () => (
+      launchContext
+        ? physicPaintStore.getRotoPhysicalDocument(launchContext.layerId)
+        : null
+    ),
     executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     acceptedOutput: physicalEditCoordinator.acceptedOutput,

@@ -62,6 +62,15 @@ function playScriptCssScope(): string {
     .join('\n');
 }
 
+function playScriptCssScopeWithoutRegenerateList(): string {
+  return cssRules
+    .split('}')
+    .filter((chunk) => chunk.includes('physics-paint-play-script'))
+    .filter((chunk) => !chunk.includes('.physics-paint-play-script-regenerate-group-list'))
+    .map((chunk) => `${chunk}}`)
+    .join('\n');
+}
+
 // Extract the single rule block for one exact selector inside the play-script scope.
 function playScriptCssRule(selector: string): string {
   const chunk = cssRules
@@ -246,6 +255,12 @@ function parentOf(root: unknown, target: TestVNode): TestVNode | null {
   return null;
 }
 
+function renderedParentOf(root: unknown, target: TestVNode): TestVNode | null {
+  let parent = parentOf(root, target);
+  while (parent && typeof parent.type === 'function') parent = parentOf(root, parent);
+  return parent;
+}
+
 const byId = (id: string) => (vnode: TestVNode) => vnode.props?.id === id;
 const byClass = (name: string) => (vnode: TestVNode) => hasClass(vnode, name);
 const byRadioGroup = (label: string) => (vnode: TestVNode) => vnode.props?.role === 'radiogroup' && vnode.props?.['aria-label'] === label;
@@ -260,28 +275,33 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     const { controller } = createFakeController({ loopReadout: readout });
     const tree = renderDialog(controller);
     const content = findOne(tree, byClass('physics-paint-play-script-content'));
-    const contentChildren = childrenOf(content).filter((child): child is TestVNode =>
-      typeof child === 'object' && child !== null && !Array.isArray(child));
+    const contentChildren = [...walk(content)]
+      .filter((child) => child !== content && typeof child.type !== 'function')
+      .filter((child) => {
+        const parent = parentOf(content, child);
+        return parent === content
+          || (typeof parent?.type === 'function' && parentOf(content, parent) === content);
+      });
 
     // Mode card is the first-read element, full width.
     const modeCard = findOne(content, byClass('physics-paint-play-script-card-mode'));
     expect(hasClass(modeCard, 'physics-paint-play-script-card-wide')).toBe(true);
-    expect(parentOf(tree, modeCard)).toBe(content);
+    expect(renderedParentOf(tree, modeCard)).toBe(content);
     expect(contentChildren[0]).toBe(modeCard);
 
     // (a) Timing card is the LEFT sibling of the right-column stack — same body grid row.
     const timingCard = findOne(tree, byClass('physics-paint-play-script-card-timing'));
     const sideStack = findOne(tree, byClass('physics-paint-play-script-side-stack'));
-    expect(parentOf(tree, timingCard)).toBe(content);
-    expect(parentOf(tree, sideStack)).toBe(content);
+    expect(renderedParentOf(tree, timingCard)).toBe(content);
+    expect(renderedParentOf(tree, sideStack)).toBe(content);
     expect(contentChildren.indexOf(timingCard)).toBeLessThan(contentChildren.indexOf(sideStack));
 
     // (b) Color card precedes Motion wiggle inside the right column; Motion wiggle is
     // NEVER a separate full-width row and NEVER above Color (D-16).
     const colorCard = findOne(tree, byClass('physics-paint-play-script-card-color'));
     const motionCard = findOne(tree, byClass('physics-paint-play-script-card-motion'));
-    expect(parentOf(tree, colorCard)).toBe(sideStack);
-    expect(parentOf(tree, motionCard)).toBe(sideStack);
+    expect(renderedParentOf(tree, colorCard)).toBe(sideStack);
+    expect(renderedParentOf(tree, motionCard)).toBe(sideStack);
     const stackChildren = childrenOf(sideStack).filter((child): child is TestVNode =>
       typeof child === 'object' && child !== null && !Array.isArray(child));
     expect(stackChildren.indexOf(colorCard)).toBeLessThan(stackChildren.indexOf(motionCard));
@@ -294,7 +314,7 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
 
     // (d) Summary bar: Requested left / Effective right, after the main grid row.
     const summaryBar = findOne(tree, byClass('physics-paint-play-script-summary-bar'));
-    expect(parentOf(tree, summaryBar)).toBe(content);
+    expect(renderedParentOf(tree, summaryBar)).toBe(content);
     expect(contentChildren.indexOf(summaryBar)).toBeGreaterThan(contentChildren.indexOf(sideStack));
     expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-requested')))).toBe('Requested: 25f (5f × 5)');
     expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-effective')))).toBe('Effective: 18f — shortened by the next clip');
@@ -309,8 +329,9 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     const contentRule = playScriptCssRule('.physics-paint-play-script-content');
     expect(contentRule).toContain('grid-template-columns: 1fr 1fr');
     expect(contentRule).not.toMatch(/overflow/);
-    // (c) No scroll-region anywhere in the modal scope (full-scope sweep).
-    expect(playScriptCssScope()).not.toMatch(/overflow(-y)?:\s*(auto|scroll)/);
+    // (c) The editable form has no scroll region. G3a's approved shared-Group
+    // list is the sole scoped exception and is verified separately below.
+    expect(playScriptCssScopeWithoutRegenerateList()).not.toMatch(/overflow(-y)?:\s*(auto|scroll)/);
     const stackRule = playScriptCssRule('.physics-paint-play-script-side-stack');
     expect(stackRule).toContain('display: flex');
     expect(stackRule).toContain('flex-direction: column');
@@ -384,8 +405,8 @@ describe('PhysicsPaintPlayScriptDialog floating shell', () => {
     }
   });
 
-  it('has NO scrolling region anywhere in the modal scope (CSS contract, D-19)', () => {
-    const scope = playScriptCssScope();
+  it('keeps the floating shell free of scrolling outside the approved G3a shared-Group list', () => {
+    const scope = playScriptCssScopeWithoutRegenerateList();
     expect(scope).not.toMatch(/overflow-y:\s*auto/);
     expect(scope).not.toMatch(/overflow:\s*auto/);
     expect(scope).not.toMatch(/overflow-y:\s*scroll/);
@@ -760,7 +781,7 @@ describe('PhysicsPaintPlayScriptDialog header drag + stable color-pane height (U
 });
 
 describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', () => {
-  it('renders Edit Loop Clip immediately from the accepted local loop while authority is pending', () => {
+  it('renders Edit Group immediately from the accepted local loop while authority is pending', () => {
     const loop: PhysicPaintRotoLoopClip = {
       loopId: 'loop-1',
       placementStart: 10,
@@ -824,11 +845,11 @@ describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', 
     }).toEqual({
       confirmationOpen: true,
       dialogRendered: true,
-      title: 'Edit Loop Clip',
+      title: 'Edit Group',
     });
   });
 
-  it('renders Edit Loop Clip from a valid local snapshot while the project has unsaved changes', async () => {
+  it('renders Edit Group from a valid local snapshot while the project has unsaved changes', async () => {
     const loop: PhysicPaintRotoLoopClip = {
       loopId: 'loop-dirty',
       placementStart: 10,
@@ -893,7 +914,7 @@ describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', 
       result: { ok: true, reason: null },
       confirmationOpen: true,
       dialogRendered: true,
-      title: 'Edit Loop Clip',
+      title: 'Edit Group',
     });
   });
 });
@@ -913,14 +934,14 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     loopReadout: 'Requested: 15f (5f × 3) · Effective: 8f — shortened by the next clip',
   };
 
-  it('renders the locked title, range readout, and the Update loop / Edit source cycle… actions', () => {
+  it('renders the locked title, range readout, and the Update Group / Regenerate… actions', () => {
     const { controller } = createFakeController(loopEditSeed);
     const tree = renderDialog(controller);
-    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe('Edit Loop Clip');
+    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe('Edit Group');
     expect(textOf(findOne(tree, byClass('physics-paint-play-script-header-range')))).toBe('F10 · Cycle 5f');
     const footer = findOne(tree, byClass('physics-paint-play-script-actions'));
-    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Update loop'))).toBe('Update loop');
-    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Edit source cycle…'))).toBe('Edit source cycle…');
+    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Update Group'))).toBe('Update Group');
+    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Regenerate…'))).toBe('Regenerate…');
     expect(findAll(footer, (vnode) => textOf(vnode) === 'Generate')).toHaveLength(0);
     expect(findAll(footer, (vnode) => textOf(vnode) === 'Regenerate source cycle')).toHaveLength(0);
   });
@@ -969,19 +990,19 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     expect(textOf(findOne(bar, byClass('physics-paint-play-script-summary-effective')))).toBe('Effective: 8f — shortened by the next clip');
   });
 
-  it('Update loop confirms; Edit source cycle… opens the source-edit mode for the target loop', () => {
+  it('Update Group confirms; Regenerate… opens the source-edit mode for the target loop', () => {
     const { controller } = createFakeController(loopEditSeed);
     const tree = renderDialog(controller);
-    handler(findOne(tree, (vnode) => textOf(vnode) === 'Update loop'), 'onClick')();
+    handler(findOne(tree, (vnode) => textOf(vnode) === 'Update Group'), 'onClick')();
     expect(controller.confirm).toHaveBeenCalledTimes(1);
-    handler(findOne(tree, (vnode) => textOf(vnode) === 'Edit source cycle…'), 'onClick')();
+    handler(findOne(tree, (vnode) => textOf(vnode) === 'Regenerate…'), 'onClick')();
     expect(controller.openSourceEdit).toHaveBeenCalledWith('L1');
   });
 
-  it('keeps Update loop disabled while Repeat is invalid', () => {
+  it('keeps Update Group disabled while Repeat is invalid', () => {
     const { controller } = createFakeController({ ...loopEditSeed, repeatError: 'Enter a positive integer.' });
     const tree = renderDialog(controller);
-    expect(findOne(tree, (vnode) => textOf(vnode) === 'Update loop').props.disabled).toBe(true);
+    expect(findOne(tree, (vnode) => textOf(vnode) === 'Update Group').props.disabled).toBe(true);
   });
 });
 
@@ -1124,7 +1145,7 @@ describe('PhysicsPaintPlayScriptDialog apply-time Link/Create choice (S4, D-05)'
 
 describe('PhysicsPaintPlayScriptDialog 43-06 copy + token contract', () => {
   it('ships every locked 43-06 dialog string verbatim and never the prohibited terms (D-20)', () => {
-    for (const locked of ['Edit Loop Clip', 'Edit Source Cycle', 'Update loop', 'Edit source cycle…', 'Regenerate source cycle', 'Link to existing cycle', 'Create new cycle']) {
+    for (const locked of ['Edit Group', 'Edit Source Cycle', 'Update Group', 'Regenerate…', 'Regenerate source cycle', 'Link to existing cycle', 'Create new cycle']) {
       expect(source).toContain(locked);
     }
     expect(source).not.toContain('clip bloquant');

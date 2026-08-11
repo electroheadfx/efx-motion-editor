@@ -58,16 +58,25 @@ export function PhysicsPaintPlayScriptDialog({
   const loopEdit = dialogMode === 'loop-edit';
   const sourceEdit = dialogMode === 'source-edit';
   const editTarget = playScript.loopEditTarget.value;
+  const regenerateImpact = sourceEdit ? playScript.regenerateImpact.value : null;
+  const regenerateSecondaryRef = useRef<HTMLButtonElement>(null);
+  const regenerateTriggerRef = useRef<HTMLButtonElement>(null);
+  const restoreRegenerateTriggerFocus = useRef(false);
 
   useEffect(() => {
-    // Focus discipline (Phase 42): the editable primary field takes focus on
-    // open — the Repeat input in loop-edit (Frames-per-cycle is locked).
+    // Focus follows the visible dialog state: G3a starts on its non-destructive
+    // action, while returning to Edit Group restores the Regenerate trigger.
     if (confirmationOpen) {
-      if (playScript.dialogMode.value === 'loop-edit') repeatInputRef.current?.focus();
-      else inputRef.current?.focus();
+      if (regenerateImpact) regenerateSecondaryRef.current?.focus();
+      else if (dialogMode === 'loop-edit') {
+        if (restoreRegenerateTriggerFocus.current) {
+          restoreRegenerateTriggerFocus.current = false;
+          regenerateTriggerRef.current?.focus();
+        } else repeatInputRef.current?.focus();
+      } else inputRef.current?.focus();
     } else if (previousOpen.current) returnFocusRef.current?.focus();
     previousOpen.current = confirmationOpen;
-  }, [confirmationOpen, returnFocusRef, playScript]);
+  }, [confirmationOpen, returnFocusRef, dialogMode, regenerateImpact]);
 
   // Header drag (UAT remediation): the modal repositions by pointer drag on its compact
   // header. The offset is a translate() on top of the grid-centered surface, so the Paint
@@ -188,6 +197,13 @@ export function PhysicsPaintPlayScriptDialog({
     (radios?.[nextIndex] as HTMLElement | undefined)?.focus?.();
   };
 
+  const keepLocalChanges = () => {
+    const targetId = playScript.loopEditTargetId.value;
+    if (!targetId) return;
+    restoreRegenerateTriggerFocus.current = true;
+    void playScript.openLoopEdit(targetId);
+  };
+
   return (
     <div
       class={`physics-paint-play-script-dialog${dragging ? ' physics-paint-play-script-dragging' : ''}`}
@@ -197,10 +213,11 @@ export function PhysicsPaintPlayScriptDialog({
         event.stopPropagation();
         if (event.key === 'Escape') {
           event.preventDefault();
-          playScript.cancel();
+          if (regenerateImpact) keepLocalChanges();
+          else playScript.cancel();
           return;
         }
-        if (event.key === 'Enter' && !playScript.validationError.value && !playScript.repeatError.value && !playScript.canCancel.value) {
+        if (!regenerateImpact && event.key === 'Enter' && !playScript.validationError.value && !playScript.repeatError.value && !playScript.canCancel.value) {
           event.preventDefault();
           void playScript.confirm();
         }
@@ -218,12 +235,46 @@ export function PhysicsPaintPlayScriptDialog({
           onPointerUp={endHeaderDrag}
           onPointerCancel={endHeaderDrag}
         >
-          <strong id="physics-play-script-title">{loopEdit ? 'Edit Loop Clip' : sourceEdit ? 'Edit Source Cycle' : 'Play Script'}</strong>
-          {loopEdit && editTarget
-            ? <span class="physics-paint-play-script-header-range">{`F${editTarget.placementStart} · Cycle ${editTarget.sourceKeyIds.length}f`}</span>
-            : <span class="physics-paint-play-script-header-range">Max {playScript.capacity.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>}
+          <strong id="physics-play-script-title">{regenerateImpact
+            ? `Regenerate “${regenerateImpact.groupName}”?`
+            : loopEdit
+              ? 'Edit Group'
+              : sourceEdit
+                ? 'Edit Source Cycle'
+                : 'Play Script'}</strong>
+          {regenerateImpact
+            ? <span class="physics-paint-play-script-header-range">{regenerateImpact.restoredRange}</span>
+            : loopEdit && editTarget
+              ? <span class="physics-paint-play-script-header-range">{`F${editTarget.placementStart} · Cycle ${editTarget.sourceKeyIds.length}f`}</span>
+              : <span class="physics-paint-play-script-header-range">Max {playScript.capacity.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>}
         </div>
         <div class="physics-paint-play-script-content">
+          {regenerateImpact ? (
+            <div class="physics-paint-play-script-regenerate">
+              <p class="physics-paint-play-script-regenerate-lead">Regenerate discards accepted local Group changes and restores the result from the saved Action and stored Group settings.</p>
+              <dl class="physics-paint-play-script-regenerate-facts">
+                <div class="physics-paint-play-script-regenerate-fact"><dt>Group</dt><dd>{regenerateImpact.groupName}</dd></div>
+                <div class="physics-paint-play-script-regenerate-fact"><dt>Group Type</dt><dd>{regenerateImpact.groupType}</dd></div>
+                <div class="physics-paint-play-script-regenerate-fact"><dt>Restored range</dt><dd>{regenerateImpact.restoredRange}</dd></div>
+                <div class="physics-paint-play-script-regenerate-fact"><dt>Locally painted frames</dt><dd>{regenerateImpact.locallyPaintedFrameCount}</dd></div>
+                <div class="physics-paint-play-script-regenerate-fact"><dt>Deleted frames</dt><dd>{regenerateImpact.deletedFrameCount > 0 ? `${regenerateImpact.deletedFrameCount} · ${regenerateImpact.deletedFrameRanges}` : 'None'}</dd></div>
+                <div class="physics-paint-play-script-regenerate-fact"><dt>Fragments</dt><dd>{regenerateImpact.fragmentCount} → 1</dd></div>
+                <div class="physics-paint-play-script-regenerate-fact"><dt>Gaps cleared</dt><dd>{regenerateImpact.gapRanges}</dd></div>
+                <div class="physics-paint-play-script-regenerate-fact"><dt>Result</dt><dd>Synchronized with Action.</dd></div>
+                <div class="physics-paint-play-script-regenerate-fact"><dt>Source/cache effects</dt><dd>{regenerateImpact.sourceCacheEffects}</dd></div>
+              </dl>
+              {regenerateImpact.affectedGroups.length > 1 ? (
+                <div class="physics-paint-play-script-regenerate-shared">
+                  <p class="physics-paint-play-script-regenerate-shared-lead">Regenerate will update {regenerateImpact.affectedGroups.length} Groups that share the same accepted source cycle.</p>
+                  <ul class="physics-paint-play-script-regenerate-group-list">
+                    {regenerateImpact.affectedGroups.map((group) => (
+                      <li key={group.groupId} class="physics-paint-play-script-regenerate-group-item">{group.name} · {group.range}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : (<>
           {sourceEdit ? (
             <p class="physics-paint-play-script-notice">
               Confirming regenerates the source cycle and updates every linked Loop Clip referencing it.
@@ -450,37 +501,61 @@ export function PhysicsPaintPlayScriptDialog({
               {summaryEffective ? <span class="physics-paint-play-script-summary-effective">{summaryEffective}</span> : null}
             </p>
           ) : null}
+          </>)}
         </div>
-        {playScript.error.value ? <span class="physics-paint-script-inline-error physics-paint-play-script-dialog-error">{playScript.error.value}</span> : null}
+        {playScript.error.value ? <span role="alert" class="physics-paint-script-inline-error physics-paint-play-script-dialog-error">{playScript.error.value}</span> : null}
         <div class="physics-paint-play-script-footer">
           <div class="physics-paint-play-script-progress-line">
             {playScript.progress.value ? <progress max={playScript.progress.value.total} value={playScript.progress.value.completed}>{playScript.progress.value.completed}/{playScript.progress.value.total}</progress> : null}
             <span class="physics-paint-play-script-progress-status">{playScript.progress.value ? `${playScript.progress.value.completed}/${playScript.progress.value.total}` : ''}</span>
           </div>
           <div class="physics-paint-play-script-actions">
-            <button type="button" class="physics-paint-play-script-button physics-paint-play-script-button-ghost" onClick={playScript.cancel}>{playScript.canCancel.value ? 'Cancel generation' : 'Cancel'}</button>
-            {loopEdit && !playScript.canCancel.value ? (
+            {regenerateImpact ? (<>
               <button
+                ref={regenerateSecondaryRef}
                 type="button"
                 class="physics-paint-play-script-button physics-paint-play-script-button-ghost"
-                onClick={() => {
-                  const targetId = playScript.loopEditTargetId.value;
-                  if (targetId) void playScript.openSourceEdit(targetId);
-                }}
+                disabled={busy}
+                onClick={keepLocalChanges}
               >
-                Edit source cycle…
+                Keep local changes
               </button>
-            ) : null}
-            {!playScript.canCancel.value ? (
               <button
                 type="button"
                 class="physics-paint-play-script-button physics-paint-play-script-button-primary"
-                disabled={Boolean(playScript.validationError.value) || Boolean(playScript.repeatError.value)}
+                disabled={busy || Boolean(playScript.regenerateDisabledReason.value)}
                 onClick={() => { void playScript.confirm(); }}
               >
-                {loopEdit ? 'Update loop' : sourceEdit ? 'Regenerate source cycle' : 'Generate'}
+                {regenerateImpact.affectedGroups.length > 1
+                  ? `Regenerate ${regenerateImpact.affectedGroups.length} Groups`
+                  : 'Regenerate Group'}
               </button>
-            ) : null}
+            </>) : (<>
+              <button type="button" class="physics-paint-play-script-button physics-paint-play-script-button-ghost" onClick={playScript.cancel}>{playScript.canCancel.value ? 'Cancel generation' : 'Cancel'}</button>
+              {loopEdit && !playScript.canCancel.value ? (
+                <button
+                  ref={regenerateTriggerRef}
+                  type="button"
+                  class="physics-paint-play-script-button physics-paint-play-script-button-ghost"
+                  onClick={() => {
+                    const targetId = playScript.loopEditTargetId.value;
+                    if (targetId) void playScript.openSourceEdit(targetId);
+                  }}
+                >
+                  Regenerate…
+                </button>
+              ) : null}
+              {!playScript.canCancel.value ? (
+                <button
+                  type="button"
+                  class="physics-paint-play-script-button physics-paint-play-script-button-primary"
+                  disabled={Boolean(playScript.validationError.value) || Boolean(playScript.repeatError.value)}
+                  onClick={() => { void playScript.confirm(); }}
+                >
+                  {loopEdit ? 'Update Group' : sourceEdit ? 'Regenerate source cycle' : 'Generate'}
+                </button>
+              ) : null}
+            </>)}
           </div>
         </div>
       </div>
