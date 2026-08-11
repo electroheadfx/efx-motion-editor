@@ -715,7 +715,7 @@ describe('physicPaintPersistence loopClips save/reopen', () => {
 
 describe('apply payload loopClips allowlist', () => {
   it('accepts a commit payload carrying a valid loopClips collection', () => {
-    expect(isPhysicPaintRotoPhysicalEditApplyPayload(applyPayload([baseLoop()]))).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(applyPayload([proposedGroup()]))).toBe(true);
   });
 
   it('rejects a commit payload whose loopClips member is malformed', () => {
@@ -725,7 +725,7 @@ describe('apply payload loopClips allowlist', () => {
   });
 
   it('still rejects unknown sibling keys when loopClips is present', () => {
-    const payload = { ...applyPayload([baseLoop()]), unexpected: true };
+    const payload = { ...applyPayload([proposedGroup()]), unexpected: true };
     expect(isPhysicPaintRotoPhysicalEditApplyPayload(payload)).toBe(false);
   });
 });

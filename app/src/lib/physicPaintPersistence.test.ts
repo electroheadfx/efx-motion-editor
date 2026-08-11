@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RuntimePhysicPaintOutput } from '../types/project';
+import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { loadPhysicPaintData, savePhysicPaintData } from './physicPaintPersistence';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
@@ -78,31 +79,44 @@ const GROUP_FIELD_PARTICIPATION = [
   { field: 'phaseOrigin', value: 3 },
   { field: 'originalEndExclusive', value: 30 },
   { field: 'visibleRanges', value: [{ start: 0, endExclusive: 7 }, { start: 8, endExclusive: 25 }] },
-  { field: 'frameOverrides', value: [{ appFrame: 7, keyId: 'override-7' }] },
+  { field: 'frameOverrides', value: [{ appFrame: 7, keyId: 'override-8' }] },
 ] as const;
 
-function makePhysicalOutputWithGroupField(field: string, value: unknown): RuntimePhysicPaintOutput[] {
-  const records = [0, 3].map((appFrame) => ({
-    keyId: `key-${appFrame}`,
+const lifecycleRecords = () => [
+  { keyId: 'key-0', appFrame: 0 },
+  { keyId: 'key-3', appFrame: 3 },
+  { keyId: 'override-8', appFrame: 8 },
+].map(({ keyId, appFrame }) => ({
+  keyId,
+  appFrame,
+  kind: 'real-key' as const,
+  payload: {
+    frameIndex: 0,
     appFrame,
-    kind: 'real-key' as const,
-    payload: {
-      frameIndex: 0,
-      appFrame,
-      dataUrl: `data:image/png;base64,${btoa(`real-${appFrame}`)}`,
-      width: 100,
-      height: 50,
-    },
-  }));
+    dataUrl: `data:image/png;base64,${btoa(`real-${keyId}`)}`,
+    width: 100,
+    height: 50,
+  },
+}));
+
+const completeLifecycleGroup = () => ({
+  loopId: 'loop-1',
+  placementStart: 0,
+  sourceKeyIds: ['key-0', 'key-3'],
+  repeat: 2,
+  mode: 'progressive' as const,
+  syncState: 'modified' as const,
+  provenanceState: 'detached' as const,
+  phaseOrigin: 0,
+  originalEndExclusive: 25,
+  visibleRanges: [{ start: 0, endExclusive: 7 }, { start: 8, endExclusive: 25 }],
+  frameOverrides: [{ appFrame: 8, keyId: 'override-8' }],
+});
+
+function makeLifecyclePhysicalOutput(loopClip: unknown = completeLifecycleGroup()): RuntimePhysicPaintOutput[] {
+  const records = lifecycleRecords();
   const interpolation = { enabled: false, mode: 'duplicate' as const };
-  const loopClip = {
-    loopId: 'loop-1',
-    placementStart: 0,
-    sourceKeyIds: ['key-0', 'key-3'],
-    repeat: 2,
-    mode: 'progressive' as const,
-    [field]: value,
-  };
+  const loopClips = [loopClip];
   return [{
     layer_id: 'physic layer/1',
     frames: [],
@@ -114,8 +128,14 @@ function makePhysicalOutputWithGroupField(field: string, value: unknown): Runtim
       background: null,
       selectedKeyId: null,
       cursorAppFrame: 0,
-      revision: 'controlled-unimplemented',
-      loopClips: [loopClip],
+      revision: (() => {
+        try {
+          return buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips);
+        } catch {
+          return 'invalid-group-revision';
+        }
+      })(),
+      loopClips,
       incomingInterpolationBreakKeyIds: [],
     } as never,
   }];
@@ -297,11 +317,27 @@ describe('physicPaintPersistence', () => {
     ]);
   });
 
-  it.each(GROUP_FIELD_PARTICIPATION)('marks $field as unimplemented at the save/reopen boundary', async ({ field, value }) => {
-    await expect(savePhysicPaintData(
-      '/project',
-      makePhysicalOutputWithGroupField(field, value),
-    )).rejects.toThrow();
+  it('preserves every Group lifecycle field and the override real-key sidecar through save/reopen', async () => {
+    const persisted = await savePhysicPaintData('/project', makeLifecyclePhysicalOutput());
+    const persistedDocument = persisted[0].roto_physical!;
+
+    expect(persistedDocument.loopClips).toEqual([completeLifecycleGroup()]);
+    expect(JSON.stringify(persistedDocument)).not.toContain('data:image/png');
+    const overrideRecord = persistedDocument.realKeyRecords.find((record) => record.keyId === 'override-8');
+    expect(overrideRecord?.payload.cache_path).toMatch(/key-000008-override-8\.png$/);
+    expect(Array.from(files.keys()).some((path) => /key-000008-override-8\.png$/.test(path))).toBe(true);
+
+    const hydrated = await loadPhysicPaintData('/project', persisted);
+    expect(hydrated?.[0].roto_physical?.loopClips).toEqual([completeLifecycleGroup()]);
+    expect(hydrated?.[0].roto_physical?.realKeyRecords.find((record) => record.keyId === 'override-8')?.payload.dataUrl)
+      .toBe(`data:image/png;base64,${btoa('real-override-8')}`);
+  });
+
+  it.each(GROUP_FIELD_PARTICIPATION)('rejects a persisted Group carrying only the $field lifecycle field', async ({ field, value }) => {
+    const partialGroup = {
+      loopId: 'loop-1', placementStart: 0, sourceKeyIds: ['key-0', 'key-3'], repeat: 2, mode: 'progressive', [field]: value,
+    };
+    await expect(savePhysicPaintData('/project', makeLifecyclePhysicalOutput(partialGroup))).rejects.toThrow();
   });
 
   it('rejects unsafe persisted cache paths instead of reading them', async () => {
