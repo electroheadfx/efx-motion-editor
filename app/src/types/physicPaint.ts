@@ -1287,6 +1287,8 @@ export interface PhysicPaintProjectContext {
   name: string;
   saved: boolean;
   contextId: string;
+  /** Opaque Rust capability forwarded only to the trusted Physics Paint webview. */
+  scriptLibraryAuthority?: string;
 }
 
 /** Closed plain-data physical document carried by launch and bridge envelopes. */
@@ -1965,7 +1967,12 @@ function optionalPositiveNumber(value: unknown): boolean {
 }
 
 function optionalProjectContext(value: unknown): boolean {
-  return value === undefined || (isRecord(value) && isNonEmptyString(value.name) && typeof value.saved === 'boolean' && isNonEmptyString(value.contextId) && Object.keys(value).every((key) => key === 'name' || key === 'saved' || key === 'contextId'));
+  return value === undefined || (isRecord(value)
+    && isNonEmptyString(value.name)
+    && typeof value.saved === 'boolean'
+    && isNonEmptyString(value.contextId)
+    && optionalNonEmptyString(value.scriptLibraryAuthority)
+    && Object.keys(value).every((key) => key === 'name' || key === 'saved' || key === 'contextId' || key === 'scriptLibraryAuthority'));
 }
 
 function optionalNonEmptyString(value: unknown): boolean {

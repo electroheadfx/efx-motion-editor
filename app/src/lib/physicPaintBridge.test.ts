@@ -2379,6 +2379,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
         physicalDocument: test.proposed.proposal, selectedGroupId: null, cursorAppFrame: test.proposed.proposal.cursorAppFrame,
       },
     };
+    if (!('actionId' in test.proposed.impact)) throw new Error('Expected Action lifecycle impact.');
     const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
     const beforeVersion = physicPaintVersion.peek();
 

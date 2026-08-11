@@ -1,7 +1,7 @@
 import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
-import type { EfxPaintAudioPreviewContext, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import { resolvePhysicPaintRotoPhysicalEdit, validatePhysicPaintRotoPhysicalEditSemanticDelta } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
@@ -29,6 +29,7 @@ import {
   proposePhysicPaintRotoDeleteGroupFrame,
   proposePhysicPaintRotoGroupFramePaint,
   proposePhysicPaintRotoRegenerateGroup,
+  type PhysicPaintRotoActionGroupLifecycleImpact,
   type PhysicPaintRotoGroupFramePaintImpact,
 } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
 import { parseCanonicalPhysicsPaintLaunchValue } from '../components/physic-paint/bridge/physicsPaintLaunchContext';
@@ -1557,6 +1558,126 @@ export function applyPhysicPaintRotoGroupFramePaint(
   return result;
 }
 
+export interface ReferencedActionDeletionHistoryEntry {
+  readonly commandId: string;
+  readonly generation: number;
+  readonly direction: 'forward' | 'undo' | 'redo';
+  readonly mode: 'keep-groups' | 'delete-action-and-groups';
+  readonly retainedArtifact: PhysicPaintActionRetainedArtifactReference;
+  readonly before: Readonly<{ physicalRevision: string; physicalHash: string; document: PhysicPaintRotoPhysicalDocument }>;
+  readonly after: Readonly<{ physicalRevision: string; physicalHash: string; document: PhysicPaintRotoPhysicalDocument }>;
+  readonly selection: Readonly<{ beforeGroupId: string | null; afterGroupId: string | null; cursorAppFrame: number }>;
+}
+
+export type CommittedReferencedActionDeletionResult = Readonly<{
+  ok: true;
+  settled: boolean;
+  acceptedDocument: PhysicPaintRotoPhysicalDocument;
+  history: ReferencedActionDeletionHistoryEntry;
+}> | Readonly<{
+  ok: false;
+  reason: 'malformed' | 'stale' | 'mismatched-token' | 'missing-token' | 'replayed-token' | 'changed-payload' | 'unresolved-precedence' | 'cleanup-reference-mismatch';
+}>;
+
+export interface CommittedReferencedActionDeletionInput {
+  readonly committed: PhysicPaintActionTransactionRecord;
+  readonly impact: PhysicPaintRotoActionGroupLifecycleImpact;
+  readonly before: PhysicPaintRotoPhysicalDocument;
+  readonly leaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken;
+}
+
+const settledReferencedActionDeletions = new Map<string, Readonly<{
+  fingerprint: string;
+  result: Extract<CommittedReferencedActionDeletionResult, { ok: true }>;
+}>>();
+
+export function applyCommittedReferencedActionDeletion(
+  input: CommittedReferencedActionDeletionInput,
+): CommittedReferencedActionDeletionResult {
+  const { committed } = input;
+  if (committed.state !== 'committed' || committed.direction !== 'forward') return { ok: false, reason: 'malformed' };
+  const identity = `${committed.commandId}:${committed.generation}:${committed.token}:${committed.direction}`;
+  let fingerprint: string;
+  try {
+    fingerprint = stableSerialize(input, new WeakSet<object>());
+  } catch {
+    return { ok: false, reason: 'malformed' };
+  }
+  const delivered = settledReferencedActionDeletions.get(identity);
+  if (delivered) return delivered.fingerprint === fingerprint
+    ? { ...delivered.result, settled: false }
+    : { ok: false, reason: 'changed-payload' };
+  const authority = committed.authority;
+  if (projectStore.projectContextId.peek() !== authority.projectContextId
+    || activeLaunchOperationByLayer.get(authority.layerId) !== authority.launchOperationId) {
+    return { ok: false, reason: 'stale' };
+  }
+  const lease = physicPaintStore.validateRotoPhysicalOperationLease(authority.projectContextId, authority.layerId, input.leaseToken);
+  if (!lease.ok) return { ok: false, reason: lease.reason };
+  const current = physicPaintStore.getRotoPhysicalDocument(authority.layerId);
+  if (!current
+    || current.revision !== authority.expectedPhysicalRevision
+    || buildPhysicPaintRotoProjectEquality(current) !== authority.expectedPhysicalHash
+    || current.revision !== input.before.revision
+    || buildPhysicPaintRotoProjectEquality(current) !== buildPhysicPaintRotoProjectEquality(input.before)) {
+    return { ok: false, reason: 'stale' };
+  }
+  const proposed = proposePhysicPaintRotoActionGroupLifecycle({
+    document: current,
+    actionId: authority.actionId,
+    expectedActionRevision: authority.expectedActionRevision,
+    currentActionRevision: authority.expectedActionRevision,
+    mode: committed.mode === 'keep-groups' ? 'detach' : 'delete',
+  });
+  if (!proposed.ok) return { ok: false, reason: proposed.reason === 'malformed-proposal' ? 'malformed' : 'stale' };
+  if (stableSerialize(proposed.impact, new WeakSet<object>()) !== stableSerialize(input.impact, new WeakSet<object>())) {
+    return { ok: false, reason: 'cleanup-reference-mismatch' };
+  }
+  let target: PhysicPaintRotoPhysicalDocument;
+  try {
+    target = parsePhysicPaintRotoPhysicalDocument(committed.target.physicalDocument);
+  } catch {
+    return { ok: false, reason: 'malformed' };
+  }
+  if (target.revision !== committed.target.physicalRevision
+    || buildPhysicPaintRotoProjectEquality(target) !== committed.target.physicalHash
+    || stableSerialize(target, new WeakSet<object>()) !== stableSerialize(proposed.proposal, new WeakSet<object>())) {
+    return { ok: false, reason: 'unresolved-precedence' };
+  }
+  const replacement = physicPaintStore.replaceRotoPhysicalDocument(authority.layerId, target, input.leaseToken);
+  if (!replacement.ok) return { ok: false, reason: replacement.error as 'mismatched-token' | 'missing-token' | 'replayed-token' };
+  const history = cloneAndDeepFreezePlainData<ReferencedActionDeletionHistoryEntry>({
+    commandId: committed.commandId,
+    generation: committed.generation,
+    direction: committed.direction,
+    mode: committed.mode,
+    retainedArtifact: committed.retainedArtifact,
+    before: { physicalRevision: current.revision, physicalHash: authority.expectedPhysicalHash, document: current },
+    after: { physicalRevision: replacement.document.revision, physicalHash: committed.target.physicalHash, document: replacement.document },
+    selection: { beforeGroupId: null, afterGroupId: committed.target.selectedGroupId, cursorAppFrame: committed.target.cursorAppFrame },
+  });
+  acceptedPhysicalCommands.set(committed.commandId, Object.freeze({
+    operationId: committed.commandId,
+    projectContextId: authority.projectContextId,
+    layerId: authority.layerId,
+    launchOperationId: authority.launchOperationId,
+    capacity: current.capacity,
+    before: createAcceptedPhysicalCommandSnapshot({
+      records: current.realKeyRecords, interpolation: current.interpolation, loopClips: current.loopClips,
+      incomingInterpolationBreakKeyIds: current.incomingInterpolationBreakKeyIds, selectedKeyId: current.selectedKeyId,
+      cursorAppFrame: current.cursorAppFrame, capacity: current.capacity, revision: current.revision,
+    }),
+    after: createAcceptedPhysicalCommandSnapshot({
+      records: replacement.document.realKeyRecords, interpolation: replacement.document.interpolation, loopClips: replacement.document.loopClips,
+      incomingInterpolationBreakKeyIds: replacement.document.incomingInterpolationBreakKeyIds, selectedKeyId: replacement.document.selectedKeyId,
+      cursorAppFrame: replacement.document.cursorAppFrame, capacity: replacement.document.capacity, revision: replacement.document.revision,
+    }),
+  }));
+  const result = Object.freeze({ ok: true as const, settled: true, acceptedDocument: replacement.document, history });
+  settledReferencedActionDeletions.set(identity, Object.freeze({ fingerprint, result }));
+  return result;
+}
+
 export async function applyPhysicPaintScriptLibraryRequest(value: unknown): Promise<PhysicPaintScriptLibraryResult> {
   const request = isPhysicPaintScriptLibraryRequest(value) ? value : null;
   const operationId = request?.operationId ?? 'invalid-operation';
@@ -1592,7 +1713,12 @@ export async function applyPhysicPaintScriptLibraryRequest(value: unknown): Prom
 }
 
 export async function publishPhysicPaintProjectContext(): Promise<void> {
-  const project = { name: projectStore.name.peek(), saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()), contextId: projectStore.projectContextId.peek() };
+  const project = {
+    name: projectStore.name.peek(),
+    saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()),
+    contextId: projectStore.projectContextId.peek(),
+    ...(projectStore.scriptLibraryAuthority.peek() ? { scriptLibraryAuthority: projectStore.scriptLibraryAuthority.peek()! } : {}),
+  };
   if (isTauriRuntime()) {
     const eventApi = await import('@tauri-apps/api/event');
     await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, project);
@@ -2035,7 +2161,12 @@ export function createPhysicPaintLaunchContext(
   const context: PhysicPaintLaunchContext = {
     operationId: `physic-paint-${Date.now()}-${crypto.randomUUID()}`,
     layerId,
-    project: { name: projectStore.name.peek(), saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()), contextId: projectStore.projectContextId.peek() },
+    project: {
+      name: projectStore.name.peek(),
+      saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()),
+      contextId: projectStore.projectContextId.peek(),
+      ...(projectStore.scriptLibraryAuthority.peek() ? { scriptLibraryAuthority: projectStore.scriptLibraryAuthority.peek()! } : {}),
+    },
     layerName: layer.name,
     ...(workflowLabel ? { workflowLabel } : {}),
     startFrame: document.cursorAppFrame,

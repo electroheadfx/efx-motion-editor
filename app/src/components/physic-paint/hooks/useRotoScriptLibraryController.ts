@@ -1,8 +1,20 @@
 import { useEffect, useRef } from 'preact/hooks';
 import type { PhysicPaintScriptLibraryRequest, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
+import { physicPaintStore, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../../stores/physicPaintStore';
+import {
+  scriptLibraryAcknowledgeActionTransaction,
+  scriptLibraryCommitActionTransaction,
+  scriptLibraryPrepareActionTransaction,
+} from '../../../lib/ipc';
+import { applyCommittedReferencedActionDeletion } from '../../../lib/physicPaintBridge';
 import { sendPhysicPaintScriptLibraryRequest } from '../bridge/physicsPaintBridgeTransport';
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintScriptLibraryResultBridge, type PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
-import { createRotoScriptLibraryController, type RotoScriptLibraryController, type RotoScriptLibraryControllerPorts } from '../roto/physicsPaintRotoScriptLibrary';
+import {
+  createRotoScriptLibraryController,
+  type ReferencedActionDeletionPorts,
+  type RotoScriptLibraryController,
+  type RotoScriptLibraryControllerPorts,
+} from '../roto/physicsPaintRotoScriptLibrary';
 
 type PendingScriptLibraryRequest = {
   request: PhysicPaintScriptLibraryRequest;
@@ -72,10 +84,67 @@ export function createRotoScriptLibraryRequestLifecycle(ports: RotoScriptLibrary
   };
 }
 
+function createNativeReferencedActionDeletionPorts(
+  getPorts: () => RotoScriptLibraryControllerPorts,
+): ReferencedActionDeletionPorts {
+  const leases = new Map<string, PhysicPaintRotoPhysicalOperationLeaseToken>();
+  let transactionGeneration = 0;
+  const encodeLease = (lease: PhysicPaintRotoPhysicalOperationLeaseToken) =>
+    `${lease.projectContextId}:${lease.layerId}:${lease.generation}:${lease.owner}`;
+  return {
+    getPhysicalDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId),
+    getAuthority: () => getPorts().getLaunchContext()?.project?.scriptLibraryAuthority ?? null,
+    acquireLease: (projectContextId, layerId) => {
+      const lease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, layerId);
+      if (!lease) return null;
+      const encoded = encodeLease(lease);
+      leases.set(encoded, lease);
+      return encoded;
+    },
+    releaseLease: (encoded) => {
+      const lease = leases.get(encoded);
+      if (!lease) return false;
+      const released = physicPaintStore.releaseRotoPhysicalOperationLease(lease);
+      if (released) leases.delete(encoded);
+      return released;
+    },
+    transferLeaseToRecovery: (encoded) => {
+      const lease = leases.get(encoded);
+      if (!lease) return false;
+      const recovery = physicPaintStore.transferRotoPhysicalOperationLeaseToRecovery(lease);
+      if (!recovery) return false;
+      leases.set(encoded, recovery);
+      return true;
+    },
+    nextUuid: () => crypto.randomUUID(),
+    nextGeneration: () => ++transactionGeneration,
+    digest: async (value) => {
+      const bytes = new TextEncoder().encode(JSON.stringify(value));
+      const digest = await crypto.subtle.digest('SHA-256', bytes);
+      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    },
+    prepare: scriptLibraryPrepareActionTransaction,
+    commit: scriptLibraryCommitActionTransaction,
+    settle: (prepared) => {
+      const lease = leases.get(prepared.request.leaseToken);
+      if (!lease) return { ok: false, error: 'Physical operation lease identity is unavailable.' };
+      const result = applyCommittedReferencedActionDeletion({
+        committed: prepared.committed,
+        impact: prepared.impact,
+        before: prepared.before,
+        leaseToken: lease,
+      });
+      return result.ok ? { ok: true } : { ok: false, error: `Committed Action settlement failed: ${result.reason}` };
+    },
+    acknowledge: scriptLibraryAcknowledgeActionTransaction,
+  };
+}
+
 export function createRotoScriptLibraryControllerAdapter(
   getPorts: () => RotoScriptLibraryControllerPorts,
   request: RotoScriptLibraryControllerPorts['request'],
 ): RotoScriptLibraryControllerPorts {
+  const nativeReferencedActionDeletion = createNativeReferencedActionDeletionPorts(getPorts);
   return {
     request,
     capturePersistence: () => getPorts().capturePersistence(),
@@ -83,7 +152,7 @@ export function createRotoScriptLibraryControllerAdapter(
     replaceClipboard: (script, preparation) => getPorts().replaceClipboard(script, preparation),
     getLaunchContext: () => getPorts().getLaunchContext(),
     log: (message, error) => getPorts().log(message, error),
-    get referencedActionDeletion() { return getPorts().referencedActionDeletion; },
+    get referencedActionDeletion() { return getPorts().referencedActionDeletion ?? nativeReferencedActionDeletion; },
   };
 }
 

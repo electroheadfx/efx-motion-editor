@@ -18,6 +18,7 @@ export type ReferencedActionDeletionMode = 'keep-groups' | 'delete-action-and-gr
 export interface ReferencedActionDeletionPorts {
   getPhysicalDocument: (layerId: string) => PhysicPaintRotoPhysicalDocument | null;
   getActionRevision?: (actionId: string) => string | null;
+  getAuthority?: () => string | null;
   acquireLease: (projectContextId: string, layerId: string) => string | null;
   releaseLease: (leaseToken: string) => boolean;
   nextUuid: () => string;
@@ -25,6 +26,9 @@ export interface ReferencedActionDeletionPorts {
   digest: (value: unknown) => Promise<string>;
   prepare: (authority: string, request: PhysicPaintActionTransactionPrepareRequest) => Promise<PhysicPaintActionTransactionResult>;
   commit: (authority: string, request: PhysicPaintActionTransactionPrepareRequest) => Promise<PhysicPaintActionTransactionResult>;
+  settle?: (prepared: Extract<ReferencedActionDeletionPreparation, { ok: true }>) => Readonly<{ ok: boolean; error?: string }>;
+  acknowledge?: (authority: string, request: Readonly<{ token: string; commandId: string; generation: number; operationId: string; leaseToken: string; direction: 'forward' }>) => Promise<PhysicPaintActionTransactionResult>;
+  transferLeaseToRecovery?: (leaseToken: string) => boolean;
 }
 
 export type ReferencedActionDeletionPreparation = Readonly<{
@@ -37,6 +41,7 @@ export type ReferencedActionDeletionPreparation = Readonly<{
   ok: false;
   code: 'unavailable' | 'lease-unavailable' | 'stale-authority' | 'invalid-candidate' | 'prepare-failed' | 'commit-failed';
   error: string;
+  request?: PhysicPaintActionTransactionPrepareRequest;
 }>;
 
 export interface PrepareReferencedActionDeletionInput {
@@ -172,14 +177,20 @@ export async function prepareReferencedActionDeletion(
       cursorAppFrame: proposed.proposal.cursorAppFrame,
     }),
   });
-  const authority = project.contextId;
+  const authority = ports.getAuthority?.() ?? project.contextId;
+  if (!authority) return fail('unavailable', 'Script library authority is unavailable.');
   const prepared = await ports.prepare(authority, request);
   if (prepared.state !== 'prepared') {
     return fail('prepare-failed', prepared.state === 'failed' ? prepared.error : 'Rust prepare returned an invalid state.');
   }
   const committed = await ports.commit(authority, request);
   if (committed.state !== 'committed') {
-    return fail('commit-failed', committed.state === 'failed' ? committed.error : 'Rust commit returned an invalid state.');
+    return {
+      ok: false,
+      code: 'commit-failed',
+      error: committed.state === 'failed' ? committed.error : 'Rust commit returned an invalid state.',
+      request,
+    };
   }
   return Object.freeze({ ok: true, request, impact: proposed.impact, before: currentDocument, committed });
 }
@@ -404,14 +415,49 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     try {
       const prepared = await prepareReferencedActionDeletion({ context, row, mode }, transactionPorts);
       if (!prepared.ok) {
-        transactionPhase.value = prepared.code === 'commit-failed' ? 'recovery-required' : 'idle';
+        if (prepared.code === 'commit-failed' && prepared.request) {
+          transactionPorts.transferLeaseToRecovery?.(prepared.request.leaseToken);
+          transactionPhase.value = 'recovery-required';
+        } else {
+          transactionPhase.value = 'idle';
+        }
         status.value = prepared.error;
         ports.log(prepared.error, true);
         return false;
       }
       referencedDeleteImpact.value = prepared.impact;
       transactionPhase.value = 'committed';
-      status.value = `Committed deletion of ${row.name}; local settlement is pending.`;
+      const settled = transactionPorts.settle?.(prepared) ?? { ok: false, error: 'Committed Action settlement port is unavailable.' };
+      if (!settled.ok) {
+        transactionPorts.transferLeaseToRecovery?.(prepared.request.leaseToken);
+        transactionPhase.value = 'recovery-required';
+        status.value = settled.error ?? 'Committed Action settlement requires recovery.';
+        ports.log(status.value, true);
+        return false;
+      }
+      const authority = transactionPorts.getAuthority?.() ?? context.project?.contextId ?? '';
+      const acknowledged = await transactionPorts.acknowledge?.(authority, {
+        token: prepared.request.token,
+        commandId: prepared.request.commandId,
+        generation: prepared.request.generation,
+        operationId: prepared.request.operationId,
+        leaseToken: prepared.request.leaseToken,
+        direction: 'forward',
+      });
+      if (acknowledged && acknowledged.state !== 'acknowledged') {
+        transactionPorts.transferLeaseToRecovery?.(prepared.request.leaseToken);
+        transactionPhase.value = 'recovery-required';
+      } else {
+        transactionPorts.releaseLease(prepared.request.leaseToken);
+        transactionPhase.value = 'idle';
+      }
+      const scanRequest = { kind: 'scan' as const, operationId: operationId('settled-scan') };
+      const scan = await ports.request(scanRequest);
+      if (!disposed && scan.ok && scan.operationId === scanRequest.operationId && scan.kind === 'scan') {
+        publishResult(scan, undefined, true);
+      }
+      deleteConfirmation.value = null;
+      status.value = `Deleted ${row.name}`;
       return true;
     } finally {
       busy.value = false;
