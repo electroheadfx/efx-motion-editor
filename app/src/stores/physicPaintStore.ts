@@ -37,7 +37,16 @@ export function _setPhysicPaintMarkDirtyCallback(cb: () => void) { _markProjectD
 
 export const physicPaintVersion = signal(0);
 
+export type PhysicPaintRotoPhysicalOperationLeaseOwner = 'exclusive' | 'recovery';
+
 export interface PhysicPaintRotoPhysicalOperationLeaseToken {
+  readonly projectContextId: string;
+  readonly layerId: string;
+  readonly generation: number;
+  readonly owner: PhysicPaintRotoPhysicalOperationLeaseOwner;
+}
+
+export interface PhysicPaintRotoPhysicalRecoveryLeaseDescriptor {
   readonly projectContextId: string;
   readonly layerId: string;
   readonly generation: number;
@@ -145,7 +154,52 @@ function _sameRotoPhysicalOperationLease(
 ): boolean {
   return left.projectContextId === right.projectContextId
     && left.layerId === right.layerId
-    && left.generation === right.generation;
+    && left.generation === right.generation
+    && left.owner === right.owner;
+}
+
+function _validateRotoPhysicalLayerPublication(
+  layerId: string,
+  token: PhysicPaintRotoPhysicalOperationLeaseToken | null | undefined,
+): { ok: true } | { ok: false; reason: PhysicPaintRotoPhysicalOperationLeaseFailureReason } {
+  const activeForLayer = [..._rotoPhysicalOperationLeases.values()].filter((lease) => lease.layerId === layerId);
+  if (activeForLayer.length === 0) {
+    return token
+      ? { ok: false, reason: _settledRotoPhysicalOperationLeases.has(_rotoPhysicalOperationLeaseIdentity(token))
+        ? 'replayed-token'
+        : 'mismatched-token' }
+      : { ok: true };
+  }
+  if (!token) return { ok: false, reason: 'missing-token' };
+  if (activeForLayer.length !== 1) return { ok: false, reason: 'mismatched-token' };
+  const active = activeForLayer[0];
+  if (_settledRotoPhysicalOperationLeases.has(_rotoPhysicalOperationLeaseIdentity(token))) {
+    return { ok: false, reason: 'replayed-token' };
+  }
+  return _sameRotoPhysicalOperationLease(active, token)
+    ? { ok: true }
+    : { ok: false, reason: 'mismatched-token' };
+}
+
+function _validateRotoPhysicalProjectPublication(
+  token: PhysicPaintRotoPhysicalOperationLeaseToken | null | undefined,
+): { ok: true } | { ok: false; reason: PhysicPaintRotoPhysicalOperationLeaseFailureReason } {
+  if (_rotoPhysicalOperationLeases.size === 0) {
+    return token
+      ? { ok: false, reason: _settledRotoPhysicalOperationLeases.has(_rotoPhysicalOperationLeaseIdentity(token))
+        ? 'replayed-token'
+        : 'mismatched-token' }
+      : { ok: true };
+  }
+  if (!token) return { ok: false, reason: 'missing-token' };
+  if (_rotoPhysicalOperationLeases.size !== 1) return { ok: false, reason: 'mismatched-token' };
+  const active = _rotoPhysicalOperationLeases.values().next().value as PhysicPaintRotoPhysicalOperationLeaseToken;
+  if (_settledRotoPhysicalOperationLeases.has(_rotoPhysicalOperationLeaseIdentity(token))) {
+    return { ok: false, reason: 'replayed-token' };
+  }
+  return _sameRotoPhysicalOperationLease(active, token)
+    ? { ok: true }
+    : { ok: false, reason: 'mismatched-token' };
 }
 
 // --- Physical structural read memo (38.1-07) ---
@@ -864,7 +918,12 @@ export const physicPaintStore = {
     return outputs;
   },
 
-  loadFromMceOutputs(outputs: PhysicPaintMceOutputInput[] | null | undefined): void {
+  loadFromMceOutputs(
+    outputs: PhysicPaintMceOutputInput[] | null | undefined,
+    leaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
+  ): void {
+    const leaseValidation = _validateRotoPhysicalProjectPublication(leaseToken);
+    if (!leaseValidation.ok) throw new Error(leaseValidation.reason);
     const previousDataUrls = new Set(_rotoAlphaCanvasRegistry.keys());
     const nextFrames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
     const nextBackground = new Map<string, PhysicPaintRotoBackgroundMetadata>();
@@ -1355,7 +1414,25 @@ export const physicPaintStore = {
       projectContextId,
       layerId,
       generation: ++_rotoPhysicalOperationLeaseGeneration,
+      owner: 'exclusive' as const,
     });
+    _rotoPhysicalOperationLeases.set(scope, token);
+    return token;
+  },
+
+  /** Reconstruct durable recovery ownership before any recovery publication. */
+  acquireRotoPhysicalRecoveryLease(
+    descriptor: PhysicPaintRotoPhysicalRecoveryLeaseDescriptor,
+  ): PhysicPaintRotoPhysicalOperationLeaseToken | null {
+    if (!descriptor.projectContextId || !descriptor.layerId
+      || !Number.isSafeInteger(descriptor.generation) || descriptor.generation < 1) return null;
+    const scope = _rotoPhysicalOperationLeaseScope(descriptor.projectContextId, descriptor.layerId);
+    if (_rotoPhysicalOperationLeases.has(scope)) return null;
+    const token = Object.freeze({
+      ...descriptor,
+      owner: 'recovery' as const,
+    });
+    _rotoPhysicalOperationLeaseGeneration = Math.max(_rotoPhysicalOperationLeaseGeneration, descriptor.generation);
     _rotoPhysicalOperationLeases.set(scope, token);
     return token;
   },
@@ -1394,15 +1471,8 @@ export const physicPaintStore = {
     leaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
   ): { ok: true; document: PhysicPaintRotoPhysicalDocument } | { ok: false; error: string } {
     if (!layerId || typeof layerId !== 'string') return { ok: false, error: 'Layer ID must be a non-empty string.' };
-    const activeLease = [..._rotoPhysicalOperationLeases.values()].find((lease) => lease.layerId === layerId);
-    if (activeLease || leaseToken) {
-      const leaseValidation = this.validateRotoPhysicalOperationLease(
-        leaseToken?.projectContextId ?? activeLease?.projectContextId ?? '',
-        layerId,
-        leaseToken,
-      );
-      if (!leaseValidation.ok) return { ok: false, error: leaseValidation.reason };
-    }
+    const leaseValidation = _validateRotoPhysicalLayerPublication(layerId, leaseToken);
+    if (!leaseValidation.ok) return { ok: false, error: leaseValidation.reason };
     let document: PhysicPaintRotoPhysicalDocument;
     try {
       document = parsePhysicPaintRotoPhysicalDocument(value);
@@ -1867,7 +1937,10 @@ export const physicPaintStore = {
     expectedContentRevision: string,
     payload: PhysicPaintRotoRealKeyPayload,
     diagnostics?: { mutationId?: number; record: (sample: PhysicsPaintPerformanceSample) => void },
+    leaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
   ): { ok: true; changed: boolean; contentRevision: string } | { ok: false; error: string } {
+    const leaseValidation = _validateRotoPhysicalLayerPublication(layerId, leaseToken);
+    if (!leaseValidation.ok) return { ok: false, error: leaseValidation.reason };
     const currentRevision = this.getRotoPhysicalContentRevision(layerId);
     const current = this.getRotoRealKeyRecord(layerId, keyId);
     const reject = (error: string): { ok: false; error: string } => {
