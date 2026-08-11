@@ -1119,7 +1119,7 @@ describe('Phase 43.2 pure Group lifecycle proposals', () => {
     });
 
     const context = derivePhysicPaintRotoLoopRanges({
-      identities: document.realKeyRecords,
+      identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       loopClips: document.loopClips,
       parentEndExclusive: 30,
       capacity: 30,
@@ -1131,7 +1131,8 @@ describe('Phase 43.2 pure Group lifecycle proposals', () => {
       keyId: 'override-5',
     });
     expect(resolvePhysicPaintRotoLoopFrame(context, 8)).toMatchObject({
-      kind: 'linked-generated',
+      kind: 'linked',
+      sourceKeyId: 'A1',
       cycleOffset: 2,
       repeatInstance: 2,
     });

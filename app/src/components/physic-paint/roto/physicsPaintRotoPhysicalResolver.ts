@@ -2969,7 +2969,10 @@ export interface PhysicPaintRotoLoopBoundary {
  */
 export interface PhysicPaintRotoLoopRange {
   readonly loopId: string;
+  /** Start of this derived visible fragment. Persisted Group identity remains loopId. */
   readonly placementStart: number;
+  /** Immutable modulo origin shared by every visible fragment of the Group. */
+  readonly phaseOrigin: number;
   /** Physical duration of one source cycle: last normalized source offset + 1. */
   readonly cycleLength: number;
   /** Number of durable source keys in the ordered cycle. */
@@ -3127,7 +3130,7 @@ export function derivePhysicPaintRotoLoopRanges(
   // is bounded by the physical capacity; the clamp folds into 'parent-end'.
   const infinityNaturalEnd = Math.min(input.parentEndExclusive, input.capacity);
 
-  const ranges = input.loopClips.map((clip) => {
+  const ranges = input.loopClips.flatMap((clip) => {
     const sourceFrameCount = clip.sourceKeyIds.length;
     const sourcePositions = clip.sourceKeyIds.map((keyId) => appFrameByKeyId.get(keyId));
     const missingSourceKeyIds = clip.sourceKeyIds.filter((keyId) => !existingKeyIds.has(keyId));
@@ -3142,61 +3145,76 @@ export function derivePhysicPaintRotoLoopRanges(
     const cycleLength = sourceTimingIsValid
       ? sourceOffsets[sourceOffsets.length - 1]! + 1
       : sourceFrameCount;
-    const ownedSourceKeyIds = new Set(clip.sourceKeyIds);
+    const ownedSourceKeyIds = new Set([
+      ...clip.sourceKeyIds,
+      ...(clip.frameOverrides?.map((override) => override.keyId) ?? []),
+    ]);
+    const lifecycleAvailable = clip.phaseOrigin !== undefined
+      && clip.originalEndExclusive !== undefined
+      && clip.visibleRanges !== undefined;
+    const phaseOrigin = lifecycleAvailable ? clip.phaseOrigin! : clip.placementStart;
     const finite = typeof clip.repeat === 'number';
-    const requestedEnd: number | 'infinity' = finite
-      ? clip.placementStart + cycleLength * (clip.repeat as number)
-      : 'infinity';
-    const naturalEnd = finite ? (requestedEnd as number) : infinityNaturalEnd;
+    const requestedEnd: number | 'infinity' = lifecycleAvailable
+      ? clip.originalEndExclusive!
+      : finite
+        ? clip.placementStart + cycleLength * (clip.repeat as number)
+        : 'infinity';
+    const naturalEnd = lifecycleAvailable
+      ? clip.originalEndExclusive!
+      : finite ? (requestedEnd as number) : infinityNaturalEnd;
+    const visibleFragments = lifecycleAvailable
+      ? clip.visibleRanges!
+      : [{ start: clip.placementStart, endExclusive: naturalEnd }];
 
-    // D-24 candidate scan. A loop never truncates itself: its own start, its
-    // virtual occurrences, and its referenced source keyIds are excluded.
-    let boundaryKind: PhysicPaintRotoLoopBoundaryKind = 'parent-end';
-    let boundaryFrame = finite ? input.parentEndExclusive : infinityNaturalEnd;
-    const consider = (kind: PhysicPaintRotoLoopBoundaryKind, frame: number): void => {
-      if (
-        frame < boundaryFrame
-        || (frame === boundaryFrame && LOOP_BOUNDARY_KIND_RANK[kind] < LOOP_BOUNDARY_KIND_RANK[boundaryKind])
-      ) {
-        boundaryKind = kind;
-        boundaryFrame = frame;
+    return visibleFragments.map((fragment) => {
+      // D-24 candidate scan. A loop never truncates itself: its own start, its
+      // virtual occurrences, and its referenced source keyIds are excluded.
+      let boundaryKind: PhysicPaintRotoLoopBoundaryKind = 'parent-end';
+      let boundaryFrame = finite ? input.parentEndExclusive : infinityNaturalEnd;
+      const consider = (kind: PhysicPaintRotoLoopBoundaryKind, frame: number): void => {
+        if (
+          frame < boundaryFrame
+          || (frame === boundaryFrame && LOOP_BOUNDARY_KIND_RANK[kind] < LOOP_BOUNDARY_KIND_RANK[boundaryKind])
+        ) {
+          boundaryKind = kind;
+          boundaryFrame = frame;
+        }
+      };
+      for (const identity of input.identities) {
+        if (identity.appFrame < fragment.start) continue;
+        if (ownedSourceKeyIds.has(identity.keyId)) continue;
+        consider('real-key', identity.appFrame);
       }
-    };
-    for (const identity of input.identities) {
-      if (identity.appFrame < clip.placementStart) continue;
-      if (ownedSourceKeyIds.has(identity.keyId)) continue;
-      consider('real-key', identity.appFrame);
-    }
-    for (const other of input.loopClips) {
-      if (other.loopId === clip.loopId) continue;
-      // D-14: only strictly later starts bound this loop; same-start
-      // collisions are rejected at creation, never resolved by hidden order.
-      if (other.placementStart <= clip.placementStart) continue;
-      consider('loop-start', other.placementStart);
-    }
+      for (const other of input.loopClips) {
+        if (other.loopId === clip.loopId) continue;
+        if (other.placementStart <= fragment.start) continue;
+        consider('loop-start', other.placementStart);
+      }
 
-    const effectiveEnd = Math.max(clip.placementStart, Math.min(naturalEnd, boundaryFrame));
-    return Object.freeze({
-      loopId: clip.loopId,
-      placementStart: clip.placementStart,
-      cycleLength,
-      sourceFrameCount,
-      sourceKeyIds: Object.freeze([...clip.sourceKeyIds]),
-      sourceCycleId: getPhysicsPaintRotoSourceCycleId(clip.sourceKeyIds),
-      sourceOffsets: Object.freeze(sourceOffsets),
-      repeat: clip.repeat,
-      requestedEnd,
-      effectiveEnd,
-      boundary: Object.freeze({ kind: boundaryKind, frame: boundaryFrame }) as PhysicPaintRotoLoopBoundary,
-      truncated: effectiveEnd < naturalEnd,
-      partialCycle: (effectiveEnd - clip.placementStart) % cycleLength !== 0,
-      unresolved: !sourceTimingIsValid
-        ? Object.freeze({
-            missingSourceKeyIds: Object.freeze(missingSourceKeyIds),
-            ...(missingSourceKeyIds.length === 0 ? { invalidSourceTiming: true as const } : {}),
-          })
-        : null,
-    }) as PhysicPaintRotoLoopRange;
+      const effectiveEnd = Math.max(fragment.start, Math.min(naturalEnd, fragment.endExclusive, boundaryFrame));
+      return Object.freeze({
+        loopId: clip.loopId,
+        placementStart: fragment.start,
+        phaseOrigin,
+        cycleLength,
+        sourceFrameCount,
+        sourceKeyIds: Object.freeze([...clip.sourceKeyIds]),
+        sourceCycleId: getPhysicsPaintRotoSourceCycleId(clip.sourceKeyIds),
+        sourceOffsets: Object.freeze(sourceOffsets),
+        repeat: clip.repeat,
+        requestedEnd,
+        effectiveEnd,
+        boundary: Object.freeze({ kind: boundaryKind, frame: boundaryFrame }) as PhysicPaintRotoLoopBoundary,
+        truncated: effectiveEnd < naturalEnd,
+        partialCycle: (effectiveEnd - phaseOrigin) % cycleLength !== 0,
+        unresolved: !sourceTimingIsValid
+          ? Object.freeze({
+              missingSourceKeyIds: Object.freeze(missingSourceKeyIds),
+              ...(missingSourceKeyIds.length === 0 ? { invalidSourceTiming: true as const } : {}),
+            })
+          : null,
+      }) as PhysicPaintRotoLoopRange;
+    });
   });
 
   ranges.sort((left, right) => left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId));
@@ -3273,7 +3291,7 @@ export function resolvePhysicPaintRotoLoopFrame(
           ...(range.unresolved.invalidSourceTiming ? { invalidSourceTiming: true as const } : {}),
         }) as PhysicPaintRotoFrameResolution;
       }
-      const offset = appFrame - range.placementStart;
+      const offset = appFrame - range.phaseOrigin;
       const cycleOffset = offset % range.cycleLength;
       const repeatInstance = Math.floor(offset / range.cycleLength);
 
@@ -3352,7 +3370,7 @@ export function resolvePhysicPaintRotoSpacingProxy(
     const range = context.ranges[index];
     if (appFrame < range.placementStart || appFrame >= range.effectiveEnd) continue;
     if (range.unresolved !== null || range.sourceKeyIds.length < 2) return null;
-    const cycleOffset = (appFrame - range.placementStart) % range.cycleLength;
+    const cycleOffset = (appFrame - range.phaseOrigin) % range.cycleLength;
     const sourceIndex = range.sourceOffsets.indexOf(cycleOffset);
     if (sourceIndex < 0) return null;
     const sourceKeyId = range.sourceKeyIds[sourceIndex];
