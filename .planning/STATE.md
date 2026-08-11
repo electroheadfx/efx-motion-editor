@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Completed 43.2-11-PLAN.md
-last_updated: "2026-08-11T10:17:25.389Z"
+stopped_at: Completed 43.2-12-PLAN.md
+last_updated: "2026-08-11T10:55:58.685Z"
 last_activity: 2026-08-11
-last_activity_desc: Completed Plan 43.2-11 closed Action transaction validators and IPC wrappers
+last_activity_desc: Completed Plan 43.2-12 committed-only referenced Action deletion settlement and startup recovery
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 61
-  completed_plans: 54
-  percent: 89
+  completed_plans: 55
+  percent: 90
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
-Plan: 12 of 20
+Plan: 13 of 20
 Status: Ready to execute
-Last activity: 2026-08-11 — Completed Plan 43.2-11 closed Action transaction validators and IPC wrappers
+Last activity: 2026-08-11 — Completed Plan 43.2-12 committed-only referenced Action deletion settlement and startup recovery
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [█████████░] 89%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
@@ -207,6 +207,7 @@ Progress: [█████████░] 89%
 | Phase 43.2 P10 | 15min | 3 tasks | 6 files |
 | Phase 43.2 P19 | 22min | 2 tasks | 6 files |
 | Phase 43.2 P11 | 9min | 2 tasks | 4 files |
+| Phase 43.2 P12 | 21min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -344,6 +345,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: Canonical Action physical targets reuse the existing physical document parser and correlate revision and cursor.
 - [Phase 43.2]: Token-only Action IPC commands retain complete expected context locally for stale-response correlation without sending extra fields to Rust.
 - [Phase 43.2]: Malformed, stale, active-recovery, and invoke failures remain closed transport results and never publish accepted state.
+- [Phase 43.2]: Exact managed Action byte integrity is separate from canonical parsed-document revision.
+- [Phase 43.2]: The trusted Physics Paint launch context carries the opaque script-library authority.
+- [Phase 43.2]: Startup recovery discovers one unresolved durable transaction through a narrow Rust command instead of guessing a frontend token.
+- [Phase 43.2]: Committed restart recovery reuses the same bridge settlement path as initial committed deletion.
 
 ### Pending Todos
 
@@ -533,8 +538,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T10:17:25.377Z
-Stopped at: Completed 43.2-11-PLAN.md
+Last session: 2026-08-11T10:55:58.673Z
+Stopped at: Completed 43.2-12-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
