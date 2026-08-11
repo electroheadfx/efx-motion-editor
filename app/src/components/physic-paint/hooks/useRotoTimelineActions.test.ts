@@ -22,9 +22,12 @@ import {
   type PhysicsPaintRotoSpacingSelection,
 } from '../roto/physicsPaintRotoSpacingSelection';
 import {
+  classifyRotoDeleteTarget,
   classifyRotoInsertTarget,
+  mapRotoDeleteProductReason,
   mapRotoInsertProductReason,
   useRotoTimelineActions,
+  type RotoDeleteTarget,
   type RotoInsertTarget,
   type RotoTimelineActionsInput,
 } from './useRotoTimelineActions';
@@ -57,6 +60,7 @@ interface HarnessOptions {
   physicalCells?: readonly PhysicPaintRotoPhysicalCell[];
   frameResolution?: PhysicPaintRotoFrameResolution;
   currentAppFrame?: number;
+  getCurrentAppFrame?: () => number;
   launch?: PhysicPaintLaunchContext | null;
   pendingOperationId?: string | null;
   selectedKeyId?: string | null;
@@ -65,6 +69,7 @@ interface HarnessOptions {
   incomingInterpolationBreakKeyIds?: readonly string[];
   capacity?: number;
   blankDataUrl?: string;
+  requestGroupDeleteChoice?: (target: Extract<RotoDeleteTarget, { kind: 'group-choice' }>) => void;
 }
 
 function createHarness(options: HarnessOptions = {}) {
@@ -87,7 +92,7 @@ function createHarness(options: HarnessOptions = {}) {
     getSelectedKeyId: () => options.selectedKeyId ?? null,
     getSelectedKeyIds: () => options.selectedKeyIds ?? options.spacingSelection?.selectedSourceKeyIds ?? [],
     getSelectedLoopClipIds: () => options.selectedLoopClipIds ?? [],
-    getCurrentAppFrame: () => options.currentAppFrame ?? 3,
+    getCurrentAppFrame: options.getCurrentAppFrame ?? (() => options.currentAppFrame ?? 3),
     getLaunchContext: () => launch,
     getCapacity: () => options.capacity ?? 10,
     getIncomingInterpolationBreakKeyIds: () => options.incomingInterpolationBreakKeyIds ?? [],
@@ -103,6 +108,7 @@ function createHarness(options: HarnessOptions = {}) {
     pendingOperationId,
     publishStatus,
     publishDiagnostic,
+    requestGroupDeleteChoice: options.requestGroupDeleteChoice,
   };
   const actions = useRotoTimelineActions(input);
   return { actions, executePhysicalEdit, publishStatus, publishDiagnostic, pendingOperationId };
@@ -125,6 +131,132 @@ const linkedLoop: PhysicPaintRotoLoopClip = {
   repeat: 3,
   mode: 'static',
 };
+
+function lifecycleGroup(overrides: Partial<PhysicPaintRotoLoopClip> = {}): PhysicPaintRotoLoopClip {
+  return Object.freeze({
+    loopId: 'group-1',
+    placementStart: 10,
+    sourceKeyIds: Object.freeze(['A', 'B']),
+    repeat: 2,
+    mode: 'progressive',
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: 10,
+    originalEndExclusive: 16,
+    visibleRanges: Object.freeze([Object.freeze({ start: 10, endExclusive: 16 })]),
+    frameOverrides: Object.freeze([]),
+    ...overrides,
+  });
+}
+
+describe('useRotoTimelineActions unified Delete activation', () => {
+  const records = [realKeyRecord('A', 0), realKeyRecord('B', 3), realKeyRecord('ordinary', 20)];
+
+  it('classifies source, generated, and override Group occurrences into the same exact choice outcome', () => {
+    const group = lifecycleGroup({
+      frameOverrides: Object.freeze([Object.freeze({ appFrame: 15, keyId: 'override-15' })]),
+    });
+    const groupRecords = [...records, realKeyRecord('override-15', 15)];
+    const base = {
+      launchReady: true,
+      pendingOperationId: null,
+      selectedKeyId: null,
+      selectedKeyIds: [] as readonly string[],
+      capacity: 30,
+      records: groupRecords,
+      loopClips: [group],
+      interpolation: { enabled: true, mode: 'duplicate' as const },
+      physicalCells: [] as readonly PhysicPaintRotoPhysicalCell[],
+    };
+
+    for (const appFrame of [10, 11, 15]) {
+      expect(classifyRotoDeleteTarget({ ...base, currentAppFrame: appFrame })).toEqual({
+        kind: 'group-choice',
+        groupId: 'group-1',
+        appFrame,
+        mode: 'progressive',
+        phaseOrigin: 10,
+        onlyOccurrence: false,
+      });
+    }
+  });
+
+  it('preserves ordinary single-key and multi-key Delete while mapping every non-deletable target once', () => {
+    const base = {
+      launchReady: true,
+      pendingOperationId: null,
+      selectedKeyId: null,
+      selectedKeyIds: [] as readonly string[],
+      currentAppFrame: 20,
+      capacity: 30,
+      records,
+      loopClips: [] as readonly PhysicPaintRotoLoopClip[],
+      interpolation: { enabled: false, mode: 'duplicate' as const },
+      physicalCells: [] as readonly PhysicPaintRotoPhysicalCell[],
+    };
+    expect(classifyRotoDeleteTarget({ ...base, selectedKeyId: 'ordinary' })).toEqual({
+      kind: 'ordinary-key',
+      keyId: 'ordinary',
+    });
+    expect(classifyRotoDeleteTarget({ ...base, selectedKeyIds: ['A', 'B'] })).toEqual({
+      kind: 'ordinary-key-group',
+      keyIds: ['A', 'B'],
+    });
+
+    const cases: readonly [RotoDeleteTarget, string][] = [
+      [{ kind: 'group-gap', groupId: 'group-1', appFrame: 12 }, 'Delete is unavailable on an intentional Group gap.'],
+      [{ kind: 'unresolved-group', groupId: 'group-1', appFrame: 12 }, 'Delete is unavailable because this Group frame cannot be resolved.'],
+      [{ kind: 'ambiguous-group', appFrame: 12 }, 'Delete is unavailable because more than one Group owns this frame.'],
+      [{ kind: 'generated', appFrame: 12 }, 'Delete is unavailable on a generated render-only frame.'],
+      [{ kind: 'no-target' }, 'Select a real Roto key or Group frame to delete.'],
+      [{ kind: 'edit-in-flight' }, 'A Roto physical edit is already in flight.'],
+      [{ kind: 'unavailable' }, 'Select a Physics Paint Roto timeline before deleting.'],
+    ];
+    for (const [target, reason] of cases) expect(mapRotoDeleteProductReason(target)).toBe(reason);
+  });
+
+  it('reclassifies exactly once at activation and opens Group choice without mutation or dispatch', async () => {
+    let currentAppFrame = 10;
+    const getCurrentAppFrame = vi.fn(() => currentAppFrame);
+    const requestGroupDeleteChoice = vi.fn();
+    const harness = createHarness({
+      records,
+      loopClips: [lifecycleGroup()],
+      getCurrentAppFrame,
+      requestGroupDeleteChoice,
+    });
+
+    // Availability remains lazy. The activation must read the current frame once
+    // and classify the state that exists at invocation time.
+    currentAppFrame = 11;
+    expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(false);
+    expect(getCurrentAppFrame).toHaveBeenCalledTimes(1);
+    expect(requestGroupDeleteChoice).toHaveBeenCalledTimes(1);
+    expect(requestGroupDeleteChoice).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'group-choice',
+      groupId: 'group-1',
+      appFrame: 11,
+    }));
+    expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
+    expect(harness.publishStatus).not.toHaveBeenCalled();
+  });
+
+  it('reclassifies stale Group ownership and publishes one canonical reason without opening the dialog', async () => {
+    const requestGroupDeleteChoice = vi.fn();
+    const harness = createHarness({
+      records,
+      loopClips: [lifecycleGroup({ visibleRanges: Object.freeze([Object.freeze({ start: 10, endExclusive: 11 })]) })],
+      currentAppFrame: 12,
+      requestGroupDeleteChoice,
+    });
+
+    expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(false);
+    expect(requestGroupDeleteChoice).not.toHaveBeenCalled();
+    expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
+    expect(harness.publishStatus).toHaveBeenCalledTimes(1);
+    expect(harness.publishStatus).toHaveBeenCalledWith('Delete is unavailable on an intentional Group gap.');
+  });
+});
 
 describe('useRotoTimelineActions contextual Insert', () => {
   it('context-dispatches occupied and genuinely empty Insert targets', async () => {

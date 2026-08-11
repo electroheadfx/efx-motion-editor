@@ -92,6 +92,14 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     for (const obsolete of ['Save current', 'Save pending', 'onSaveRotoFrame', 'onSavePendingRotoFrames', 'pendingRotoFrames', 'rotoSavingFrame', 'rotoSaveInFlight', 'Unsaved', 'Saving frame']) expect(code).not.toContain(obsolete);
   });
 
+  it('routes visible Delete through the shared activation callback without inferring Group ownership', () => {
+    const block = getButtonBlock(getActionRowBlock(source()), 'Delete key');
+    expect(countOccurrences(block, 'props.onDeleteRotoFrame?.()')).toBe(1);
+    for (const forbidden of ['loopId', 'visibleRanges', 'group-choice', 'classifyRotoDeleteTarget']) {
+      expect(block).not.toContain(forbidden);
+    }
+  });
+
   it('keeps interpolation, onion, and key utility controls', () => {
     const code = source();
     expect(code).toContain('physics-paint-roto-interpolation-controls');
