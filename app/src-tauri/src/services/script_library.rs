@@ -355,6 +355,22 @@ pub fn transaction_status(
     state.with_active(authority, |root| transaction_status_root(root, token))
 }
 
+pub fn commit_transaction(
+    state: &ScriptLibraryState,
+    authority: &str,
+    token: &str,
+) -> Result<Value, String> {
+    state.with_active(authority, |root| commit_transaction_root(root, token))
+}
+
+pub fn recover_transaction(
+    state: &ScriptLibraryState,
+    authority: &str,
+    token: &str,
+) -> Result<Value, String> {
+    state.with_active(authority, |root| recover_transaction_root(root, token))
+}
+
 pub(crate) fn prepare_transaction_value(
     state: &ScriptLibraryState,
     authority: &str,
@@ -371,6 +387,22 @@ pub(crate) fn transaction_status_value(
     token: &str,
 ) -> Result<Value, String> {
     transaction_status(state, authority, token)
+}
+
+pub(crate) fn commit_transaction_value(
+    state: &ScriptLibraryState,
+    authority: &str,
+    token: &str,
+) -> Result<Value, String> {
+    commit_transaction(state, authority, token)
+}
+
+pub(crate) fn recover_transaction_value(
+    state: &ScriptLibraryState,
+    authority: &str,
+    token: &str,
+) -> Result<Value, String> {
+    recover_transaction(state, authority, token)
 }
 
 fn prepare_transaction_root(
@@ -403,18 +435,142 @@ fn prepare_transaction_root(
 fn transaction_status_root(root: &Path, token: &str) -> Result<Value, String> {
     validate_transaction_token(token)?;
     let transactions = ensure_action_transactions_dir(root)?;
-    let path = active_transaction_path(&transactions, token)?;
-    reject_symlink(&path, "active Action transaction")?;
+    let committed = committed_transaction_path(&transactions, token)?;
+    if committed.is_file() {
+        return read_transaction_record(&committed, token, "committed Action transaction");
+    }
+    let active = active_transaction_path(&transactions, token)?;
+    if active.is_file() {
+        return read_transaction_record(&active, token, "active Action transaction");
+    }
+    Err("Unknown Action transaction token".to_string())
+}
+
+fn commit_transaction_root(root: &Path, token: &str) -> Result<Value, String> {
+    validate_transaction_token(token)?;
+    let transactions = ensure_action_transactions_dir(root)?;
+    let active_path = active_transaction_path(&transactions, token)?;
+    let committed_path = committed_transaction_path(&transactions, token)?;
+    if committed_path.exists() {
+        return Err("Action transaction direction is already committed".to_string());
+    }
+    let active_value = read_transaction_record(&active_path, token, "active Action transaction")?;
+    let mut record = serde_json::from_value::<ActiveActionTransaction>(active_value)
+        .map_err(|error| format!("Invalid active Action transaction record: {error}"))?;
+    if record.state != "prepared" {
+        return Err("Action transaction is not prepared".to_string());
+    }
+    if matches!(record.request.direction, ActionTransactionDirection::Undo) {
+        return Err("Undo Action restoration requires retained history authority".to_string());
+    }
+
+    let action_path = managed_path(root, &record.request.authority.action_id)?;
+    let action = read_valid_managed(root, &record.request.authority.action_id)?;
+    require_revision(&action, &record.request.authority.expected_action_revision)?;
+    let tombstone = tombstone_path(&transactions, token)?;
+    if tombstone.exists() {
+        return Err("Action transaction tombstone already exists".to_string());
+    }
+    fs::rename(&action_path, &tombstone)
+        .map_err(|error| format!("Could not move Action to transaction tombstone: {error}"))?;
+    sync_directory(&transactions);
+    if let Some(scripts) = action_path.parent() {
+        sync_directory(scripts);
+    }
+
+    record.state = "committed".to_string();
+    let committed_value = serde_json::to_value(&record)
+        .map_err(|error| format!("Could not serialize committed Action transaction: {error}"))?;
+    atomic_write_json(&committed_path, &committed_value, false)?;
+    Ok(committed_value)
+}
+
+fn recover_transaction_root(root: &Path, token: &str) -> Result<Value, String> {
+    validate_transaction_token(token)?;
+    let transactions = ensure_action_transactions_dir(root)?;
+    let committed_path = committed_transaction_path(&transactions, token)?;
+    if committed_path.is_file() {
+        let mut value = read_transaction_record(&committed_path, token, "committed Action transaction")?;
+        value
+            .as_object_mut()
+            .ok_or_else(|| "Invalid committed Action transaction record".to_string())?
+            .insert("state".to_string(), Value::String("recovery-required".to_string()));
+        return Ok(value);
+    }
+
+    let active_path = active_transaction_path(&transactions, token)?;
+    let record_value = read_transaction_record(&active_path, token, "active Action transaction")?;
+    let record = serde_json::from_value::<ActiveActionTransaction>(record_value)
+        .map_err(|error| format!("Invalid active Action transaction record: {error}"))?;
+    restore_prepared_transaction(root, &transactions, &active_path, &record)?;
+    Ok(serde_json::json!({
+        "state": "recovered-prepared",
+        "token": token,
+        "actionPresent": record.request.authority.expected_action_present
+    }))
+}
+
+fn read_transaction_record(path: &Path, token: &str, label: &str) -> Result<Value, String> {
+    reject_symlink(path, label)?;
     if !path.is_file() {
         return Err("Unknown Action transaction token".to_string());
     }
-    let value = read_json_bounded(&path)?;
+    let value = read_json_bounded(path)?;
     let record = serde_json::from_value::<ActiveActionTransaction>(value.clone())
-        .map_err(|error| format!("Invalid active Action transaction record: {error}"))?;
+        .map_err(|error| format!("Invalid {label} record: {error}"))?;
     if record.schema_version != ACTION_TRANSACTION_SCHEMA_VERSION || record.request.token != token {
         return Err("Invalid active Action transaction identity".to_string());
     }
     Ok(value)
+}
+
+fn restore_prepared_transaction(
+    root: &Path,
+    transactions: &Path,
+    active_path: &Path,
+    record: &ActiveActionTransaction,
+) -> Result<(), String> {
+    if record.state != "prepared" {
+        return Err("Prepared recovery found an invalid transaction state".to_string());
+    }
+    let action_path = managed_path(root, &record.request.authority.action_id)?;
+    let tombstone = tombstone_path(transactions, &record.request.token)?;
+    let action_exists = action_path.exists();
+    let tombstone_exists = tombstone.exists();
+    match (record.request.authority.expected_action_present, action_exists, tombstone_exists) {
+        (true, true, false) | (false, false, false) => {}
+        (true, false, true) => {
+            reject_symlink(&tombstone, "Action transaction tombstone")?;
+            fs::rename(&tombstone, &action_path)
+                .map_err(|error| format!("Could not restore prepared Action transaction: {error}"))?;
+            sync_directory(transactions);
+            if let Some(scripts) = action_path.parent() {
+                sync_directory(scripts);
+            }
+        }
+        _ => return Err("Prepared Action transaction has ambiguous file authority".to_string()),
+    }
+    fs::remove_file(active_path)
+        .map_err(|error| format!("Could not clear prepared Action transaction: {error}"))?;
+    sync_directory(transactions);
+    Ok(())
+}
+
+fn recover_prepared_transactions_before_scan(root: &Path) -> Result<(), String> {
+    let transactions = ensure_action_transactions_dir(root)?;
+    let paths = active_transaction_paths(&transactions)?.collect::<Vec<_>>();
+    for active_path in paths {
+        reject_symlink(&active_path, "active Action transaction")?;
+        let value = read_json_bounded(&active_path)?;
+        let record = serde_json::from_value::<ActiveActionTransaction>(value)
+            .map_err(|error| format!("Invalid active Action transaction record: {error}"))?;
+        validate_transaction_token(&record.request.token)?;
+        if committed_transaction_path(&transactions, &record.request.token)?.is_file() {
+            return Err("Action transaction recovery required before ordinary scan".to_string());
+        }
+        restore_prepared_transaction(root, &transactions, &active_path, &record)?;
+    }
+    Ok(())
 }
 
 fn validate_prepare_request(
@@ -523,6 +679,16 @@ fn active_transaction_path(transactions: &Path, token: &str) -> Result<PathBuf, 
     Ok(transactions.join(format!("active-{token}.json")))
 }
 
+fn committed_transaction_path(transactions: &Path, token: &str) -> Result<PathBuf, String> {
+    validate_transaction_token(token)?;
+    Ok(transactions.join(format!("committed-{token}.json")))
+}
+
+fn tombstone_path(transactions: &Path, token: &str) -> Result<PathBuf, String> {
+    validate_transaction_token(token)?;
+    Ok(transactions.join(format!("tombstone-{token}{SCRIPT_EXTENSION}")))
+}
+
 fn active_transaction_paths(transactions: &Path) -> Result<impl Iterator<Item = PathBuf>, String> {
     let paths = fs::read_dir(transactions)
         .map_err(|error| format!("Could not scan Action transactions directory: {error}"))?
@@ -628,6 +794,7 @@ fn scan_root(root: &Path) -> Result<ScriptLibraryScan, String> {
             diagnostics: vec![],
         });
     }
+    recover_prepared_transactions_before_scan(root)?;
     reject_symlink(&scripts, "scripts directory")?;
     let canonical_scripts = fs::canonicalize(&scripts)
         .map_err(|error| format!("Could not resolve scripts directory: {error}"))?;
