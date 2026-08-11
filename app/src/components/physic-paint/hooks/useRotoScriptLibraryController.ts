@@ -1,5 +1,12 @@
 import { useEffect, useRef } from 'preact/hooks';
-import type { PhysicPaintScriptLibraryRequest, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
+import { signal, type Signal } from '@preact/signals';
+import type {
+  PhysicPaintActionTransactionPrepareRequest,
+  PhysicPaintActionTransactionRecord,
+  PhysicPaintActionTransactionResult,
+  PhysicPaintScriptLibraryRequest,
+  PhysicPaintScriptLibraryResult,
+} from '../../../types/physicPaint';
 import { physicPaintStore, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../../stores/physicPaintStore';
 import {
   scriptLibraryAcknowledgeActionTransaction,
@@ -9,7 +16,14 @@ import {
   scriptLibraryRecoverActionTransaction,
 } from '../../../lib/ipc';
 import { applyCommittedReferencedActionDeletion } from '../../../lib/physicPaintBridge';
-import { buildPhysicPaintRotoProjectEquality } from '../roto/physicsPaintRotoPhysicalModel';
+import {
+  buildPhysicPaintRotoProjectEquality,
+  type PhysicPaintRotoPhysicalDocument,
+} from '../roto/physicsPaintRotoPhysicalModel';
+import type {
+  ReferencedActionHistoryCommand,
+  ReferencedActionHistoryRoute,
+} from './useRotoPhysicalEditHistory';
 import { proposePhysicPaintRotoActionGroupLifecycle } from '../roto/physicsPaintRotoGroupLifecycle';
 import { sendPhysicPaintScriptLibraryRequest } from '../bridge/physicsPaintBridgeTransport';
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintScriptLibraryResultBridge, type PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
@@ -39,6 +53,148 @@ export interface RotoScriptLibraryRequestLifecycle {
   handleResult: (result: PhysicPaintScriptLibraryResult) => void;
   dispose: () => void;
   pendingCount: () => number;
+}
+
+interface ReferencedActionHistoryReplayPorts {
+  getPhysicalDocument: (layerId: string) => PhysicPaintRotoPhysicalDocument | null;
+  getActionRevision: (actionId: string) => string | null | Promise<string | null>;
+  getAuthority: () => string | null;
+  acquireLease: (projectContextId: string, layerId: string) => string | null;
+  releaseLease: (leaseToken: string) => boolean;
+  transferLeaseToRecovery?: (leaseToken: string) => boolean;
+  nextUuid: () => string;
+  digest: (value: unknown) => Promise<string>;
+  prepare: (
+    authority: string,
+    request: PhysicPaintActionTransactionPrepareRequest,
+  ) => Promise<PhysicPaintActionTransactionResult>;
+  commit: (
+    authority: string,
+    request: PhysicPaintActionTransactionPrepareRequest,
+  ) => Promise<PhysicPaintActionTransactionResult>;
+  settle: (input: Readonly<{
+    command: ReferencedActionHistoryCommand;
+    committed: PhysicPaintActionTransactionRecord;
+    direction: 'undo' | 'redo';
+    leaseToken: string;
+  }>) => Readonly<{ ok: boolean; error?: string }>;
+  acknowledge: (
+    authority: string,
+    request: Readonly<{
+      token: string;
+      commandId: string;
+      generation: number;
+      operationId: string;
+      leaseToken: string;
+      direction: 'undo' | 'redo';
+    }>,
+  ) => Promise<PhysicPaintActionTransactionResult>;
+}
+
+export function createReferencedActionHistoryReplayOrchestrator(
+  ports: ReferencedActionHistoryReplayPorts,
+): ReferencedActionHistoryRoute['replay'] {
+  return async (command, direction) => {
+    if (command.kind !== 'referenced-action'
+      || !Number.isSafeInteger(command.generation)
+      || command.generation < 1
+      || command.retainedArtifact.commandId !== command.commandId
+      || command.retainedArtifact.generation !== command.generation
+      || command.retainedArtifact.actionId !== command.authority.actionId) return false;
+    const source = direction === 'undo' ? command.after : command.before;
+    const target = direction === 'undo' ? command.before : command.after;
+    const current = ports.getPhysicalDocument(command.authority.layerId);
+    if (!current
+      || current.revision !== source.physicalRevision
+      || buildPhysicPaintRotoProjectEquality(current) !== source.physicalHash) return false;
+    const currentActionRevision = await ports.getActionRevision(command.authority.actionId);
+    const expectedActionPresent = direction === 'redo';
+    if ((expectedActionPresent && currentActionRevision !== command.authority.actionRevision)
+      || (!expectedActionPresent && currentActionRevision !== null)) return false;
+    const authority = ports.getAuthority();
+    if (!authority) return false;
+    const leaseToken = ports.acquireLease(
+      command.authority.projectContextId,
+      command.authority.layerId,
+    );
+    if (!leaseToken) return false;
+
+    let committed = false;
+    let settled = false;
+    try {
+      const token = ports.nextUuid();
+      const impactDigest = await ports.digest({
+        commandId: command.commandId,
+        generation: command.generation,
+        direction,
+        mode: command.mode,
+        source,
+        target,
+      });
+      const request: PhysicPaintActionTransactionPrepareRequest = Object.freeze({
+        token,
+        commandId: command.commandId,
+        generation: command.generation,
+        operationId: `${direction}-referenced-action-${command.commandId}-${token}`,
+        leaseToken,
+        direction,
+        mode: command.mode,
+        authority: Object.freeze({
+          projectContextId: command.authority.projectContextId,
+          layerId: command.authority.layerId,
+          launchOperationId: command.authority.launchOperationId,
+          actionId: command.authority.actionId,
+          expectedActionPresent,
+          expectedActionRevision: command.authority.actionRevision,
+          expectedPhysicalRevision: source.physicalRevision,
+          expectedPhysicalHash: source.physicalHash,
+        }),
+        impactDigest,
+        retainedArtifact: command.retainedArtifact,
+        target: Object.freeze({
+          physicalRevision: target.physicalRevision,
+          physicalHash: target.physicalHash,
+          physicalDocument: target.document,
+          selectedGroupId: target.selectedGroupId,
+          cursorAppFrame: target.cursorAppFrame,
+        }),
+      });
+      const prepared = await ports.prepare(authority, request);
+      if (prepared.state !== 'prepared'
+        || prepared.token !== token
+        || prepared.commandId !== command.commandId
+        || prepared.generation !== command.generation
+        || prepared.direction !== direction) return false;
+      const committedResult = await ports.commit(authority, request);
+      if (committedResult.state !== 'committed'
+        || committedResult.token !== token
+        || committedResult.commandId !== command.commandId
+        || committedResult.generation !== command.generation
+        || committedResult.direction !== direction) return false;
+      committed = true;
+      const settlement = ports.settle({ command, committed: committedResult, direction, leaseToken });
+      if (!settlement.ok) return false;
+      settled = true;
+      const acknowledged = await ports.acknowledge(authority, {
+        token,
+        commandId: command.commandId,
+        generation: command.generation,
+        operationId: request.operationId,
+        leaseToken,
+        direction,
+      });
+      return acknowledged.state === 'acknowledged'
+        && acknowledged.token === token
+        && acknowledged.commandId === command.commandId
+        && acknowledged.generation === command.generation
+        && acknowledged.direction === direction;
+    } catch {
+      return false;
+    } finally {
+      if (!committed || settled) ports.releaseLease(leaseToken);
+      else ports.transferLeaseToRecovery?.(leaseToken);
+    }
+  };
 }
 
 function failedResult(request: PhysicPaintScriptLibraryRequest, error: string): PhysicPaintScriptLibraryResult {
@@ -88,14 +244,20 @@ export function createRotoScriptLibraryRequestLifecycle(ports: RotoScriptLibrary
   };
 }
 
+interface NativeReferencedActionDeletionPorts extends ReferencedActionDeletionPorts {
+  readonly acceptedHistory: Signal<ReferencedActionHistoryCommand | null>;
+  readonly replayHistory: ReferencedActionHistoryRoute['replay'];
+}
+
 function createNativeReferencedActionDeletionPorts(
   getPorts: () => RotoScriptLibraryControllerPorts,
-): ReferencedActionDeletionPorts {
+): NativeReferencedActionDeletionPorts {
   const leases = new Map<string, PhysicPaintRotoPhysicalOperationLeaseToken>();
+  const acceptedHistory = signal<ReferencedActionHistoryCommand | null>(null);
   let transactionGeneration = 0;
   const encodeLease = (lease: PhysicPaintRotoPhysicalOperationLeaseToken) =>
     `${lease.projectContextId}:${lease.layerId}:${lease.generation}:${lease.owner}`;
-  return {
+  const deletionPorts: ReferencedActionDeletionPorts = {
     getPhysicalDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId),
     getAuthority: () => getPorts().getLaunchContext()?.project?.scriptLibraryAuthority ?? null,
     acquireLease: (projectContextId, layerId) => {
@@ -138,7 +300,33 @@ function createNativeReferencedActionDeletionPorts(
         before: prepared.before,
         leaseToken: lease,
       });
-      return result.ok ? { ok: true } : { ok: false, error: `Committed Action settlement failed: ${result.reason}` };
+      if (!result.ok) return { ok: false, error: `Committed Action settlement failed: ${result.reason}` };
+      const authority = prepared.request.authority;
+      acceptedHistory.value = Object.freeze({
+        kind: 'referenced-action' as const,
+        commandId: result.history.commandId,
+        generation: result.history.generation,
+        mode: result.history.mode,
+        retainedArtifact: result.history.retainedArtifact,
+        authority: Object.freeze({
+          projectContextId: authority.projectContextId,
+          layerId: authority.layerId,
+          launchOperationId: authority.launchOperationId,
+          actionId: authority.actionId,
+          actionRevision: authority.expectedActionRevision,
+        }),
+        before: Object.freeze({
+          ...result.history.before,
+          selectedGroupId: result.history.selection.beforeGroupId,
+          cursorAppFrame: result.history.before.document.cursorAppFrame,
+        }),
+        after: Object.freeze({
+          ...result.history.after,
+          selectedGroupId: result.history.selection.afterGroupId,
+          cursorAppFrame: result.history.after.document.cursorAppFrame,
+        }),
+      });
+      return { ok: true };
     },
     acknowledge: scriptLibraryAcknowledgeActionTransaction,
     recoverBeforeAvailability: async (context) => {
@@ -212,13 +400,37 @@ function createNativeReferencedActionDeletionPorts(
       return { ok: true };
     },
   };
+  const replayHistory = createReferencedActionHistoryReplayOrchestrator({
+    getPhysicalDocument: deletionPorts.getPhysicalDocument,
+    getActionRevision: async (actionId) => {
+      const result = await getPorts().request({
+        kind: 'scan',
+        operationId: `history-preflight-${crypto.randomUUID()}`,
+      });
+      if (!result.ok) return null;
+      return result.rows.find((row) => row.id === actionId)?.revision ?? null;
+    },
+    getAuthority: () => deletionPorts.getAuthority?.() ?? null,
+    acquireLease: deletionPorts.acquireLease,
+    releaseLease: deletionPorts.releaseLease,
+    transferLeaseToRecovery: deletionPorts.transferLeaseToRecovery,
+    nextUuid: deletionPorts.nextUuid,
+    digest: deletionPorts.digest,
+    prepare: deletionPorts.prepare,
+    commit: deletionPorts.commit,
+    // Task 2 installs the direction-specific bridge settlement at this exact
+    // seam. Keeping the port closed here prevents snapshot fallback.
+    settle: () => ({ ok: false, error: 'Direction-specific bridge settlement is unavailable.' }),
+    acknowledge: scriptLibraryAcknowledgeActionTransaction,
+  });
+  return Object.assign(deletionPorts, { acceptedHistory, replayHistory });
 }
 
 export function createRotoScriptLibraryControllerAdapter(
   getPorts: () => RotoScriptLibraryControllerPorts,
   request: RotoScriptLibraryControllerPorts['request'],
+  nativeReferencedActionDeletion = createNativeReferencedActionDeletionPorts(getPorts),
 ): RotoScriptLibraryControllerPorts {
-  const nativeReferencedActionDeletion = createNativeReferencedActionDeletionPorts(getPorts);
   return {
     request,
     capturePersistence: () => getPorts().capturePersistence(),
@@ -233,7 +445,14 @@ export function createRotoScriptLibraryControllerAdapter(
   };
 }
 
-export function useRotoScriptLibraryController(ports: RotoScriptLibraryControllerPorts, bridgeMode: PhysicsPaintBridgeMode): RotoScriptLibraryController {
+export interface RotoScriptLibraryControllerWithHistory extends RotoScriptLibraryController {
+  readonly referencedActionHistory: ReferencedActionHistoryRoute;
+}
+
+export function useRotoScriptLibraryController(
+  ports: RotoScriptLibraryControllerPorts,
+  bridgeMode: PhysicsPaintBridgeMode,
+): RotoScriptLibraryControllerWithHistory {
   const portsRef = useRef(ports); portsRef.current = ports;
   const bridgeModeRef = useRef(bridgeMode); bridgeModeRef.current = bridgeMode;
   const lifecycleRef = useRef<RotoScriptLibraryRequestLifecycle | null>(null);
@@ -245,11 +464,26 @@ export function useRotoScriptLibraryController(ports: RotoScriptLibraryControlle
     });
   }
   usePhysicsPaintScriptLibraryResultBridge((result) => lifecycleRef.current?.handleResult(result));
-  const controllerRef = useRef<RotoScriptLibraryController | null>(null);
+  const nativePortsRef = useRef<NativeReferencedActionDeletionPorts | null>(null);
+  if (!nativePortsRef.current) {
+    nativePortsRef.current = createNativeReferencedActionDeletionPorts(() => portsRef.current);
+  }
+  const controllerRef = useRef<RotoScriptLibraryControllerWithHistory | null>(null);
   if (!controllerRef.current) {
-    controllerRef.current = createRotoScriptLibraryController(
-      createRotoScriptLibraryControllerAdapter(() => portsRef.current, lifecycleRef.current.request),
+    const nativePorts = nativePortsRef.current;
+    const controller = createRotoScriptLibraryController(
+      createRotoScriptLibraryControllerAdapter(
+        () => portsRef.current,
+        lifecycleRef.current.request,
+        nativePorts,
+      ),
     );
+    controllerRef.current = Object.assign(controller, {
+      referencedActionHistory: Object.freeze({
+        accepted: nativePorts.acceptedHistory,
+        replay: nativePorts.replayHistory,
+      }),
+    });
   }
   useEffect(() => () => {
     lifecycleRef.current?.dispose();

@@ -60,8 +60,15 @@
 import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { effect, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { CompletedPaintMutation, PaintHistoryAvailability } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintRotoPhysicalEditOperationKind } from '../../../types/physicPaint';
-import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
+import type {
+  PhysicPaintActionRetainedArtifactReference,
+  PhysicPaintActionTransactionMode,
+  PhysicPaintRotoPhysicalEditOperationKind,
+} from '../../../types/physicPaint';
+import {
+  buildPhysicPaintRotoPhysicalRevision,
+  type PhysicPaintRotoPhysicalDocument,
+} from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoPhysicalEditProposal } from '../roto/physicsPaintRotoPhysicalResolver';
 import type {
   RotoPhysicalEditAcceptedOutput,
@@ -108,6 +115,35 @@ interface RotoPhysicalEditCommand<EngineState> {
   readonly selectedAppFrame: number | null;
 }
 
+export interface ReferencedActionHistoryCommand {
+  readonly kind: 'referenced-action';
+  readonly commandId: string;
+  readonly generation: number;
+  readonly mode: PhysicPaintActionTransactionMode;
+  readonly retainedArtifact: PhysicPaintActionRetainedArtifactReference;
+  readonly authority: Readonly<{
+    projectContextId: string;
+    layerId: string;
+    launchOperationId: string;
+    actionId: string;
+    actionRevision: string;
+  }>;
+  readonly before: Readonly<{
+    physicalRevision: string;
+    physicalHash: string;
+    document: PhysicPaintRotoPhysicalDocument;
+    selectedGroupId: string | null;
+    cursorAppFrame: number;
+  }>;
+  readonly after: Readonly<{
+    physicalRevision: string;
+    physicalHash: string;
+    document: PhysicPaintRotoPhysicalDocument;
+    selectedGroupId: string | null;
+    cursorAppFrame: number;
+  }>;
+}
+
 interface PaintBarrier {
   readonly kind: 'paint';
   readonly mutationId: number;
@@ -115,6 +151,7 @@ interface PaintBarrier {
 
 type RotoPhysicalEditHistoryEntry<EngineState> =
   | RotoPhysicalEditCommand<EngineState>
+  | ReferencedActionHistoryCommand
   | PaintBarrier;
 
 interface RotoPhysicalEditCoordinatorRoute<EngineState> {
@@ -125,12 +162,21 @@ interface RotoPhysicalEditCoordinatorRoute<EngineState> {
   acceptedOutput: ReadonlySignal<RotoPhysicalEditAcceptedOutput<EngineState> | null>;
 }
 
+export interface ReferencedActionHistoryRoute {
+  readonly accepted: ReadonlySignal<ReferencedActionHistoryCommand | null>;
+  replay: (
+    command: ReferencedActionHistoryCommand,
+    direction: 'undo' | 'redo',
+  ) => Promise<boolean>;
+}
+
 export interface UseRotoPhysicalEditHistoryInput<EngineState> {
   identity: RotoPhysicalEditHistoryIdentity | null;
   availability: Signal<PaintHistoryAvailability>;
   coordinator: RotoPhysicalEditCoordinatorRoute<EngineState>;
   recordsPort: RotoPhysicalEditCoordinatorPorts<EngineState>['records'];
   getLiveSourceSnapshot: () => RotoPhysicalEditReplaySourceSnapshot;
+  referencedActionHistory?: ReferencedActionHistoryRoute;
   undoPaint: () => boolean;
   redoPaint: () => boolean;
 }
@@ -328,6 +374,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
   const paintAvailabilityRef = useRef<PaintHistoryAvailability>({ undo: 0, redo: 0 });
   const pendingReplayRef = useRef<PendingReplay<EngineState> | null>(null);
   const lastAcceptedOperationIdRef = useRef<string | null>(null);
+  const lastAcceptedReferencedActionRef = useRef<string | null>(null);
   const inputRef = useRef(input);
   inputRef.current = input;
 
@@ -424,18 +471,36 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     publishAvailability();
   }, [publishAvailability]);
 
-  // One Signal effect subscribes to the coordinator's acceptedOutput and
-  // dispatches to recordAcceptedEdit. This is subscription setup/teardown
-  // only; it does not mirror pending state or coordinate stack transitions
-  // through useState.
+  // Signal effects subscribe only to external acceptance streams. Ordinary
+  // coordinator acceptance and committed referenced-Action acceptance remain
+  // distinct so referenced commands can never fall through snapshot replay.
   useEffect(() => {
-    const dispose = effect(() => {
+    const disposePhysical = effect(() => {
       const accepted = inputRef.current.coordinator.acceptedOutput.value;
       if (!accepted) return;
       recordAcceptedEdit(accepted);
     });
-    return () => dispose();
-  }, [recordAcceptedEdit]);
+    const disposeReferencedAction = effect(() => {
+      const accepted = inputRef.current.referencedActionHistory?.accepted.value ?? null;
+      if (!accepted) return;
+      const identity = `${accepted.commandId}:${accepted.generation}`;
+      if (lastAcceptedReferencedActionRef.current === identity) return;
+      const historyIdentity = inputRef.current.identity;
+      if (!historyIdentity
+        || accepted.authority.projectContextId !== historyIdentity.projectContextId
+        || accepted.authority.layerId !== historyIdentity.layerId
+        || accepted.authority.launchOperationId !== historyIdentity.launchOperationId
+        || accepted.after.document.capacity !== historyIdentity.capacity) return;
+      lastAcceptedReferencedActionRef.current = identity;
+      appliedRef.current.push(accepted);
+      redoRef.current = [];
+      publishAvailability();
+    });
+    return () => {
+      disposePhysical();
+      disposeReferencedAction();
+    };
+  }, [publishAvailability, recordAcceptedEdit]);
 
   // Launch-identity reset: clear both stacks, the pending replay, the
   // dedupe cache, and publish availability once. Late accepted callbacks
@@ -447,6 +512,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     paintAvailabilityRef.current = { undo: 0, redo: 0 };
     pendingReplayRef.current = null;
     lastAcceptedOperationIdRef.current = null;
+    lastAcceptedReferencedActionRef.current = null;
     publishAvailability();
   }, [
     input.identity?.launchOperationId,
@@ -471,6 +537,18 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
         publishAvailability();
         return false;
       }
+      publishAvailability();
+      return true;
+    }
+    if (entry.kind === 'referenced-action') {
+      const route = inputRef.current.referencedActionHistory;
+      if (!route) return false;
+      const accepted = await route.replay(entry, 'undo');
+      if (!accepted) return false;
+      const top = appliedRef.current[appliedRef.current.length - 1];
+      if (top !== entry || top.kind !== 'referenced-action') return false;
+      appliedRef.current.pop();
+      redoRef.current.push(top);
       publishAvailability();
       return true;
     }
@@ -522,6 +600,18 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
         publishAvailability();
         return false;
       }
+      publishAvailability();
+      return true;
+    }
+    if (entry.kind === 'referenced-action') {
+      const route = inputRef.current.referencedActionHistory;
+      if (!route) return false;
+      const accepted = await route.replay(entry, 'redo');
+      if (!accepted) return false;
+      const top = redoRef.current[redoRef.current.length - 1];
+      if (top !== entry || top.kind !== 'referenced-action') return false;
+      redoRef.current.pop();
+      appliedRef.current.push(top);
       publishAvailability();
       return true;
     }

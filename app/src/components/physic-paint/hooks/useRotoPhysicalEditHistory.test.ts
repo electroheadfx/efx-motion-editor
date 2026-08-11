@@ -601,9 +601,9 @@ describe('useRotoPhysicalEditHistory referenced Action replay', () => {
     const acceptedReferencedAction = signal<ReferencedActionHistoryCommand | null>(null);
     const availability = signal({ undo: 0, redo: 0 });
     let current = after;
-    let settleReplay: ((accepted: boolean) => void) | null = null;
+    const replaySettlement: { current?: (accepted: boolean) => void } = {};
     const replay = vi.fn(async (_command: ReferencedActionHistoryCommand, direction: 'undo' | 'redo') => {
-      const accepted = await new Promise<boolean>((resolve) => { settleReplay = resolve; });
+      const accepted = await new Promise<boolean>((resolve) => { replaySettlement.current = resolve; });
       if (accepted) current = direction === 'undo' ? before : after;
       return accepted;
     });
@@ -634,20 +634,20 @@ describe('useRotoPhysicalEditHistory referenced Action replay', () => {
     const undoing = history.undo();
     await vi.waitFor(() => expect(replay).toHaveBeenCalledWith(command, 'undo'));
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
-    settleReplay?.(false);
+    replaySettlement.current?.(false);
     await expect(undoing).resolves.toBe(false);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
 
     const acceptedUndo = history.undo();
     await vi.waitFor(() => expect(replay).toHaveBeenCalledTimes(2));
-    settleReplay?.(true);
+    replaySettlement.current?.(true);
     await expect(acceptedUndo).resolves.toBe(true);
     expect(availability.value).toEqual({ undo: 0, redo: 1 });
 
     const redoing = history.redo();
     await vi.waitFor(() => expect(replay).toHaveBeenLastCalledWith(command, 'redo'));
     expect(availability.value).toEqual({ undo: 0, redo: 1 });
-    settleReplay?.(true);
+    replaySettlement.current?.(true);
     await expect(redoing).resolves.toBe(true);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
     expect(executePhysicalEdit).not.toHaveBeenCalled();

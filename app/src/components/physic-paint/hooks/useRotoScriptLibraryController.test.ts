@@ -4,6 +4,10 @@ import { createRotoScriptLibraryController } from '../roto/physicsPaintRotoScrip
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply } from '../roto/physicsPaintRotoScriptClipboard';
 import { createPersistedRotoScript } from '../roto/physicsPaintRotoScriptSchema';
 import {
+  buildPhysicPaintRotoPhysicalRevision,
+  buildPhysicPaintRotoProjectEquality,
+} from '../roto/physicsPaintRotoPhysicalModel';
+import {
   createReferencedActionHistoryReplayOrchestrator,
   createRotoScriptLibraryControllerAdapter,
   createRotoScriptLibraryRequestLifecycle,
@@ -163,21 +167,27 @@ class DeleteOperationCorrelationHarness {
 
 describe('production referenced Action history direction orchestration', () => {
   it.each([
-    { direction: 'undo' as const, expectedActionPresent: false, sourceRevision: 'physical-after', targetRevision: 'physical-before' },
-    { direction: 'redo' as const, expectedActionPresent: true, sourceRevision: 'physical-before', targetRevision: 'physical-after' },
-  ])('waits for matching Rust committed $direction before settlement and acknowledgement', async ({ direction, expectedActionPresent, sourceRevision, targetRevision }) => {
-    const document = (revision: string) => ({
-      realKeyRecords: [],
-      interpolation: { enabled: false as const, mode: 'duplicate' as const },
-      scriptMotion: { deformation: 0, position: 0 },
-      background: null,
-      capacity: 10,
-      selectedKeyId: null,
-      cursorAppFrame: 4,
-      revision,
-      loopClips: [],
-      incomingInterpolationBreakKeyIds: [],
-    });
+    { direction: 'undo' as const, expectedActionPresent: false },
+    { direction: 'redo' as const, expectedActionPresent: true },
+  ])('waits for matching Rust committed $direction before settlement and acknowledgement', async ({ direction, expectedActionPresent }) => {
+    const document = (cursorAppFrame: number) => {
+      const interpolation = { enabled: false as const, mode: 'duplicate' as const };
+      const revision = buildPhysicPaintRotoPhysicalRevision([], interpolation, [], []);
+      return {
+        realKeyRecords: [],
+        interpolation,
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        capacity: 10,
+        selectedKeyId: null,
+        cursorAppFrame,
+        revision,
+        loopClips: [],
+        incomingInterpolationBreakKeyIds: [],
+      };
+    };
+    const beforeDocument = document(4);
+    const afterDocument = document(5);
     const command: ReferencedActionHistoryCommand = {
       kind: 'referenced-action',
       commandId: 'history-command-1',
@@ -192,9 +202,23 @@ describe('production referenced Action history direction orchestration', () => {
         projectContextId: 'context-1', layerId: 'layer-1', launchOperationId: 'launch',
         actionId: row.id, actionRevision: row.revision,
       },
-      before: { physicalRevision: 'physical-before', physicalHash: 'hash-before', document: document('physical-before'), selectedGroupId: 'group-1', cursorAppFrame: 4 },
-      after: { physicalRevision: 'physical-after', physicalHash: 'hash-after', document: document('physical-after'), selectedGroupId: null, cursorAppFrame: 4 },
+      before: {
+        physicalRevision: beforeDocument.revision,
+        physicalHash: buildPhysicPaintRotoProjectEquality(beforeDocument),
+        document: beforeDocument,
+        selectedGroupId: 'group-1',
+        cursorAppFrame: beforeDocument.cursorAppFrame,
+      },
+      after: {
+        physicalRevision: afterDocument.revision,
+        physicalHash: buildPhysicPaintRotoProjectEquality(afterDocument),
+        document: afterDocument,
+        selectedGroupId: null,
+        cursorAppFrame: afterDocument.cursorAppFrame,
+      },
     };
+    const source = direction === 'undo' ? command.after : command.before;
+    const target = direction === 'undo' ? command.before : command.after;
     const events: string[] = [];
     const prepare = vi.fn(async (_authority, request) => {
       events.push('prepare');
@@ -211,7 +235,7 @@ describe('production referenced Action history direction orchestration', () => {
     });
     const releaseLease = vi.fn(() => { events.push('release-lease'); return true; });
     const replay = createReferencedActionHistoryReplayOrchestrator({
-      getPhysicalDocument: () => document(sourceRevision),
+      getPhysicalDocument: () => source.document,
       getActionRevision: () => expectedActionPresent ? row.revision : null,
       getAuthority: () => 'native-authority',
       acquireLease: () => 'context-1:layer-1:8:history-replay',
@@ -240,9 +264,9 @@ describe('production referenced Action history direction orchestration', () => {
         actionId: command.authority.actionId,
         expectedActionPresent,
         expectedActionRevision: command.authority.actionRevision,
-        expectedPhysicalRevision: sourceRevision,
+        expectedPhysicalRevision: source.physicalRevision,
       },
-      target: { physicalRevision: targetRevision },
+      target: { physicalRevision: target.physicalRevision },
     });
     expect(commit.mock.calls[0][1]).toBe(request);
     expect(settle).toHaveBeenCalledWith({ command, committed: expect.objectContaining({ state: 'committed', direction }), direction, leaseToken: request.leaseToken });

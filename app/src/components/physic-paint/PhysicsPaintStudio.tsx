@@ -1291,6 +1291,7 @@ export function PhysicsPaintStudio() {
         currentAppFrame: liveLaunch?.startFrame ?? 0,
       };
     },
+    referencedActionHistory: rotoScriptLibrary.referencedActionHistory,
     undoPaint: rotoFrameEditing.undo,
     redoPaint: rotoFrameEditing.redo,
   });
