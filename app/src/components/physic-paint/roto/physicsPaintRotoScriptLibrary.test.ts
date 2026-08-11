@@ -430,6 +430,52 @@ describe('production referenced Action deletion preflight', () => {
   });
 });
 
+describe('startup Action transaction recovery gate', () => {
+  it('blocks ordinary availability and scan until recovery succeeds exactly once per context', async () => {
+    let finishRecovery!: (value: { ok: boolean; error?: string }) => void;
+    const order: string[] = [];
+    const request = vi.fn(async (input: PhysicPaintScriptLibraryRequest) => { order.push(input.kind); return result(input); });
+    const recoverBeforeAvailability = vi.fn(async () => new Promise<{ ok: boolean; error?: string }>((resolve) => { finishRecovery = resolve; }));
+    const controller = createRotoScriptLibraryController({
+      request, capturePersistence: vi.fn(async () => null), captureThumbnail: vi.fn(), replaceClipboard: vi.fn(),
+      getLaunchContext: context, log: vi.fn(),
+      referencedActionDeletion: {
+        getPhysicalDocument: vi.fn(), acquireLease: vi.fn(), releaseLease: vi.fn(), nextUuid: vi.fn(), nextGeneration: vi.fn(),
+        digest: vi.fn(), prepare: vi.fn(), commit: vi.fn(), recoverBeforeAvailability,
+      },
+    });
+
+    const hydration = controller.updateProjectContext(context());
+    await vi.waitFor(() => expect(recoverBeforeAvailability).toHaveBeenCalledOnce());
+    expect(request).not.toHaveBeenCalled();
+    expect(controller.recoveryReady.value).toBe(false);
+    expect(controller.availability.value).toMatchObject({ canSave: false, canLoad: false, canRename: false, canDelete: false });
+    finishRecovery({ ok: true });
+    await hydration;
+    expect(order).toEqual(['scan']);
+    expect(controller.recoveryReady.value).toBe(true);
+    await controller.updateProjectContext(context());
+    expect(recoverBeforeAvailability).toHaveBeenCalledOnce();
+  });
+
+  it('fails closed without scanning when startup recovery cannot settle', async () => {
+    const request = vi.fn();
+    const controller = createRotoScriptLibraryController({
+      request, capturePersistence: vi.fn(async () => null), captureThumbnail: vi.fn(), replaceClipboard: vi.fn(),
+      getLaunchContext: context, log: vi.fn(),
+      referencedActionDeletion: {
+        getPhysicalDocument: vi.fn(), acquireLease: vi.fn(), releaseLease: vi.fn(), nextUuid: vi.fn(), nextGeneration: vi.fn(),
+        digest: vi.fn(), prepare: vi.fn(), commit: vi.fn(), recoverBeforeAvailability: vi.fn(async () => ({ ok: false, error: 'newer physical authority' })),
+      },
+    });
+    await controller.updateProjectContext(context());
+    expect(request).not.toHaveBeenCalled();
+    expect(controller.recoveryReady.value).toBe(false);
+    expect(controller.transactionPhase.value).toBe('recovery-required');
+    expect(controller.status.value).toBe('newer physical authority');
+  });
+});
+
 describe('Wave 0 committed-only referenced Action deletion ledger', () => {
   it.each([
     ['keep-groups', 'forward'],
