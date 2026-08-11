@@ -54,10 +54,11 @@ function loopClip(
   sourceKeyIds: readonly string[],
   repeat: number | 'infinity',
   phaseOrigin = placementStart,
+  cycleLength = sourceKeyIds.length,
 ): PhysicPaintRotoLoopClip {
   const base = { loopId, placementStart, sourceKeyIds, repeat, mode: 'progressive' as const };
   if (repeat === 'infinity') return base;
-  const originalEndExclusive = phaseOrigin + sourceKeyIds.length * repeat;
+  const originalEndExclusive = phaseOrigin + cycleLength * repeat;
   return {
     ...base,
     syncState: 'synchronized',
@@ -175,8 +176,8 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
     const spaced = [record('A', 0), record('B', 3), record('C', 6)];
     installRecords(spaced, CAPACITY, { enabled: true, mode: 'duplicate' });
     installLoops([
-      loopClip('loop-1', 10, ['A', 'B', 'C'], 2),
-      loopClip('loop-2', 24, ['A', 'B', 'C'], 1),
+      loopClip('loop-1', 10, ['A', 'B', 'C'], 2, 10, 7),
+      loopClip('loop-2', 24, ['A', 'B', 'C'], 1, 24, 7),
     ]);
 
     const duplicateSources = [11, 18, 25].map((frame) => physicPaintStore.getRotoPhysicalRenderSource(LAYER, frame));
@@ -214,7 +215,7 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
     registerRotoAlphaCanvasFrame(spaced[1].payload.dataUrl, { width: 4, height: 4 } as HTMLCanvasElement);
     try {
       installRecords(spaced, CAPACITY, { enabled: true, mode: 'blend' });
-      installLoops([loopClip('loop-blend', 10, ['A', 'B', 'C'], 2)]);
+      installLoops([loopClip('loop-blend', 10, ['A', 'B', 'C'], 2, 10, 7)]);
       const blend = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 12);
       expect(blend).toMatchObject({
         kind: 'generated',
@@ -233,8 +234,8 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
     const spaced = [record('A', 0), record('B', 3), record('C', 6), record('D', 9)];
     installRecords(spaced, 50, { enabled: true, mode: 'duplicate' });
     installLoops([
-      loopClip('loop-abc', 12, ['A', 'B', 'C'], 1),
-      loopClip('loop-abd', 30, ['A', 'B', 'D'], 1),
+      loopClip('loop-abc', 12, ['A', 'B', 'C'], 1, 12, 7),
+      loopClip('loop-abd', 30, ['A', 'B', 'D'], 1, 30, 10),
     ]);
 
     const abc = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 13);
@@ -276,7 +277,7 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
       CAPACITY,
     );
     if (!result.ok) throw new Error(result.error);
-    installLoops([loopClip('loop-1', 10, ['A', 'B'], 1)]);
+    installLoops([loopClip('loop-1', 10, ['A', 'B'], 1, 10, 5)]);
 
     for (const frame of [1, 2, 3]) {
       const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, frame);

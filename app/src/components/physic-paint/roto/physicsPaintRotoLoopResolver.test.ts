@@ -162,6 +162,7 @@ describe('derivePhysicPaintRotoLoopRanges — compact interval derivation (D-32)
       'effectiveEnd',
       'loopId',
       'partialCycle',
+      'phaseOrigin',
       'placementStart',
       'repeat',
       'requestedEnd',

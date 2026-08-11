@@ -134,8 +134,20 @@ function loopClip(
   placementStart: number,
   sourceKeyIds: readonly string[],
   repeat: number | 'infinity',
+  cycleLength = sourceKeyIds.length,
 ): PhysicPaintRotoLoopClip {
-  return { loopId, placementStart, sourceKeyIds, repeat, mode: 'progressive' };
+  const base = { loopId, placementStart, sourceKeyIds, repeat, mode: 'progressive' as const };
+  if (repeat === 'infinity') return base;
+  const originalEndExclusive = placementStart + cycleLength * repeat;
+  return {
+    ...base,
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: placementStart,
+    originalEndExclusive,
+    visibleRanges: [{ start: placementStart, endExclusive: originalEndExclusive }],
+    frameOverrides: [],
+  };
 }
 
 function install(
@@ -198,8 +210,8 @@ describe('preview linked-generated cache identity', () => {
     install(
       [record('A', 0), record('B', 3), record('C', 6), record('D', 9)],
       [
-        loopClip('loop-abc', 12, ['A', 'B', 'C'], 2),
-        loopClip('loop-abd', 30, ['A', 'B', 'D'], 1),
+        loopClip('loop-abc', 12, ['A', 'B', 'C'], 2, 7),
+        loopClip('loop-abd', 30, ['A', 'B', 'D'], 1, 10),
       ],
       { enabled: true, mode: 'duplicate' },
       50,
