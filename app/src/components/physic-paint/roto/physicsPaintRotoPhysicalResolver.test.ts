@@ -997,3 +997,102 @@ describe('createPhysicPaintRotoPasteKeyGroupIntent — fail-closed factory (GP-7
     }
   });
 });
+
+type SourceOwnershipFixture = Readonly<{
+  groupId: string;
+  actionId: string;
+  orderedSourceKeyIds: readonly string[];
+  sourceShareId: string | null;
+  frameOverrides: readonly Readonly<{ appFrame: number; keyId: string }>[];
+}>;
+
+function sourceOwnershipRelationship(
+  left: SourceOwnershipFixture,
+  right: SourceOwnershipFixture,
+): 'independent' | 'explicitly-shared' | 'invalid-sharing' {
+  if (left.sourceShareId === null || right.sourceShareId === null) return 'independent';
+  if (left.sourceShareId !== right.sourceShareId) return 'independent';
+  return JSON.stringify(left.orderedSourceKeyIds) === JSON.stringify(right.orderedSourceKeyIds)
+    ? 'explicitly-shared'
+    : 'invalid-sharing';
+}
+
+function recomputeFinalReferenceCleanup(
+  groups: readonly SourceOwnershipFixture[],
+  removedGroupId: string,
+): readonly string[] {
+  const removed = groups.find((group) => group.groupId === removedGroupId);
+  if (!removed) throw new Error(`Unknown Group ${removedGroupId}`);
+  const remainingReferences = new Set(groups
+    .filter((group) => group.groupId !== removedGroupId)
+    .flatMap((group) => [
+      ...group.orderedSourceKeyIds,
+      ...group.frameOverrides.map((override) => override.keyId),
+    ]));
+  return [...new Set([
+    ...removed.orderedSourceKeyIds,
+    ...removed.frameOverrides.map((override) => override.keyId),
+  ])].filter((keyId) => !remainingReferences.has(keyId)).sort();
+}
+
+describe('Phase 43.2 source ownership and final-reference cleanup contract', () => {
+  const independentA: SourceOwnershipFixture = Object.freeze({
+    groupId: 'group-a',
+    actionId: 'action-shared-provenance',
+    orderedSourceKeyIds: Object.freeze(['A0', 'A1']),
+    sourceShareId: null,
+    frameOverrides: Object.freeze([]),
+  });
+  const independentB: SourceOwnershipFixture = Object.freeze({
+    groupId: 'group-b',
+    actionId: 'action-shared-provenance',
+    orderedSourceKeyIds: Object.freeze(['B0', 'B1']),
+    sourceShareId: null,
+    frameOverrides: Object.freeze([]),
+  });
+  const sharedA: SourceOwnershipFixture = Object.freeze({
+    ...independentA,
+    sourceShareId: 'share-cycle-1',
+  });
+  const sharedB: SourceOwnershipFixture = Object.freeze({
+    ...independentB,
+    orderedSourceKeyIds: Object.freeze(['A0', 'A1']),
+    sourceShareId: 'share-cycle-1',
+  });
+
+  it('distinguishes same-Action independent sources from one explicitly shared ordered cycle', () => {
+    expect(independentA.actionId).toBe(independentB.actionId);
+    expect(sourceOwnershipRelationship(independentA, independentB)).toBe('independent');
+    expect(sourceOwnershipRelationship(sharedA, sharedB)).toBe('explicitly-shared');
+    expect(sourceOwnershipRelationship(sharedA, {
+      ...sharedB,
+      orderedSourceKeyIds: ['A1', 'A0'],
+    })).toBe('invalid-sharing');
+  });
+
+  it('keeps override-owned keys and deletes source/cache identities only after their final reference', () => {
+    const withOverrides: SourceOwnershipFixture = Object.freeze({
+      ...sharedA,
+      frameOverrides: Object.freeze([
+        Object.freeze({ appFrame: 5, keyId: 'override-shared' }),
+        Object.freeze({ appFrame: 6, keyId: 'override-a-only' }),
+      ]),
+    });
+    const sharingPeer: SourceOwnershipFixture = Object.freeze({
+      ...sharedB,
+      frameOverrides: Object.freeze([
+        Object.freeze({ appFrame: 20, keyId: 'override-shared' }),
+      ]),
+    });
+
+    expect(recomputeFinalReferenceCleanup([withOverrides, sharingPeer], 'group-a')).toEqual([
+      'override-a-only',
+    ]);
+    expect(recomputeFinalReferenceCleanup([withOverrides], 'group-a')).toEqual([
+      'A0',
+      'A1',
+      'override-a-only',
+      'override-shared',
+    ]);
+  });
+});
