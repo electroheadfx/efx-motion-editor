@@ -66,6 +66,7 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   buildPhysicPaintRotoProjectEquality,
   isPhysicPaintRotoInterpolationState,
+  parsePhysicPaintRotoLoopClips,
   parsePhysicPaintRotoRealKeyRecordCollection,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
@@ -462,7 +463,7 @@ function cloneIncomingInterpolationBreakKeyIds(keyIds: readonly string[]): strin
 }
 
 function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPaintRotoLoopClip[] {
-  return loopClips.map((clip) => ({
+  return parsePhysicPaintRotoLoopClips(loopClips).map((clip) => ({
     loopId: clip.loopId,
     placementStart: clip.placementStart,
     sourceKeyIds: [...clip.sourceKeyIds],
@@ -471,6 +472,16 @@ function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPa
     // 43-06 provenance rides every clone.
     ...(clip.scriptId !== undefined
       ? { scriptId: clip.scriptId, motion: { ...clip.motion! }, overrideColor: clip.overrideColor ?? null }
+      : {}),
+    ...(clip.syncState !== undefined
+      ? {
+          syncState: clip.syncState,
+          provenanceState: clip.provenanceState!,
+          phaseOrigin: clip.phaseOrigin!,
+          originalEndExclusive: clip.originalEndExclusive!,
+          visibleRanges: clip.visibleRanges!.map((range) => ({ ...range })),
+          frameOverrides: clip.frameOverrides!.map((override) => ({ ...override })),
+        }
       : {}),
   }));
 }
