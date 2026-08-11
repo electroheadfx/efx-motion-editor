@@ -230,6 +230,54 @@ fn prepared_restart_recovery_restores_action_before_normal_scan() {
 }
 
 #[test]
+fn acknowledge_request(prepare: &Value) -> Value {
+    json!({
+        "token": prepare["token"],
+        "commandId": prepare["commandId"],
+        "generation": prepare["generation"],
+        "operationId": prepare["operationId"],
+        "leaseToken": prepare["leaseToken"],
+        "direction": prepare["direction"]
+    })
+}
+
+#[test]
+fn acknowledge_cleans_only_active_state_and_is_exactly_idempotent() {
+    let fixture = FixtureLibrary::new().unwrap();
+    let action_id = Uuid::new_v4().to_string();
+    let saved = fixture.save(action_document(&action_id)).unwrap();
+    let revision = saved.scan.rows[0].revision.clone();
+    let token = Uuid::new_v4().to_string();
+    let prepare = prepare_request(&action_id, &revision, &token);
+    fixture.prepare_transaction(prepare.clone()).unwrap();
+    fixture.commit_transaction(&token).unwrap();
+
+    let acknowledge = acknowledge_request(&prepare);
+    let first = fixture.acknowledge_transaction(acknowledge.clone()).unwrap();
+    assert_eq!(first["state"], "acknowledged");
+    assert_eq!(first["cleaned"], true);
+    assert!(!fixture
+        .scripts_root()
+        .join(".action-transactions")
+        .join(format!("tombstone-{token}.efx-roto-script.json"))
+        .exists());
+    assert!(!fixture
+        .scripts_root()
+        .join(format!("{action_id}.efx-roto-script.json"))
+        .exists());
+    assert_eq!(fixture.scan().unwrap().rows.len(), 0);
+
+    let repeated = fixture.acknowledge_transaction(acknowledge).unwrap();
+    assert_eq!(repeated["state"], "acknowledged");
+    assert_eq!(repeated["cleaned"], false);
+
+    let mut stale = acknowledge_request(&prepare);
+    stale["generation"] = json!(2);
+    assert!(fixture.acknowledge_transaction(stale).is_err());
+    assert!(fixture.prepare_transaction(prepare).is_err());
+}
+
+#[test]
 fn commit_and_recovery_reject_unknown_stale_and_replayed_tokens() {
     let fixture = FixtureLibrary::new().unwrap();
     assert!(fixture.commit_transaction(&Uuid::new_v4().to_string()).is_err());

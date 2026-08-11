@@ -76,6 +76,9 @@ impl FixtureLibrary {
     pub fn recover_transaction(&self, token: &str) -> Result<Value, String> {
         script_library::recover_transaction_value(&self.state, &self.authority, token)
     }
+    pub fn acknowledge_transaction(&self, request: Value) -> Result<Value, String> {
+        script_library::acknowledge_transaction_value(&self.state, &self.authority, request)
+    }
     pub fn migrate_to(
         &self,
         destination_name: &str,
@@ -100,6 +103,14 @@ impl Drop for FixtureLibrary {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.fixture_root);
     }
+}
+
+pub fn validate_action_transaction_prepare_command(value: Value) -> Result<Value, String> {
+    crate::commands::script_library::validate_action_transaction_prepare_for_test(value)
+}
+
+pub fn validate_action_transaction_acknowledge_command(value: Value) -> Result<Value, String> {
+    crate::commands::script_library::validate_action_transaction_acknowledge_for_test(value)
 }
 
 pub fn validate_document(value: Value, expected_id: Option<&str>) -> Result<Value, String> {
