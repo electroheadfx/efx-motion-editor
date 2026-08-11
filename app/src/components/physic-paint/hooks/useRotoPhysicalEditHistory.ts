@@ -14,8 +14,8 @@
  * - `operationKind`: the original ordinary kind (`insert-slot`,
  *   `delete-key`, `delete-key-group`, `move-key`, `move-key-group`,
  *   `force-spacing`, `duplicate-key`, `paste-key`, `paste-key-group`,
- *   `insert-empty-segment`, or `play-script`); replay kinds (`undo`, `redo`) are never recorded as new
- *   commands;
+ *   `insert-empty-segment`, `play-script`, or one of the six Group lifecycle
+ *   operations); replay kinds (`undo`, `redo`) are never recorded as new commands;
  * - `before`/`after`: immutable complete `RotoPhysicalEditSnapshot`
  *   captured by the coordinator at acceptance, including records,
  *   interpolation, capacity, revisions, selection, buffers, reference,
@@ -156,7 +156,13 @@ function isOrdinaryOperationKind(
     || kind === 'paste-key'
     || kind === 'paste-key-group'
     || kind === 'insert-empty-segment'
-    || kind === 'play-script';
+    || kind === 'play-script'
+    || kind === 'paint-group-frame'
+    || kind === 'delete-group-frame'
+    || kind === 'delete-group'
+    || kind === 'regenerate-group'
+    || kind === 'detach-action-groups'
+    || kind === 'delete-action-groups';
 }
 
 function snapshotRecordsEqual(
@@ -198,6 +204,30 @@ function snapshotRecordsEqual(
     if (left.motion && right.motion
       && (left.motion.deformation !== right.motion.deformation || left.motion.position !== right.motion.position)) return false;
     if ((left.overrideColor ?? null) !== (right.overrideColor ?? null)) return false;
+    if (left.syncState !== right.syncState) return false;
+    if (left.provenanceState !== right.provenanceState) return false;
+    if (left.phaseOrigin !== right.phaseOrigin) return false;
+    if (left.originalEndExclusive !== right.originalEndExclusive) return false;
+    if ((left.visibleRanges === undefined) !== (right.visibleRanges === undefined)) return false;
+    if (left.visibleRanges && right.visibleRanges) {
+      if (left.visibleRanges.length !== right.visibleRanges.length) return false;
+      for (let rangeIndex = 0; rangeIndex < left.visibleRanges.length; rangeIndex += 1) {
+        const leftRange = left.visibleRanges[rangeIndex];
+        const rightRange = right.visibleRanges[rangeIndex];
+        if (leftRange.start !== rightRange.start
+          || leftRange.endExclusive !== rightRange.endExclusive) return false;
+      }
+    }
+    if ((left.frameOverrides === undefined) !== (right.frameOverrides === undefined)) return false;
+    if (left.frameOverrides && right.frameOverrides) {
+      if (left.frameOverrides.length !== right.frameOverrides.length) return false;
+      for (let overrideIndex = 0; overrideIndex < left.frameOverrides.length; overrideIndex += 1) {
+        const leftOverride = left.frameOverrides[overrideIndex];
+        const rightOverride = right.frameOverrides[overrideIndex];
+        if (leftOverride.appFrame !== rightOverride.appFrame
+          || leftOverride.keyId !== rightOverride.keyId) return false;
+      }
+    }
   }
   if (before.incomingInterpolationBreakKeyIds.length !== after.incomingInterpolationBreakKeyIds.length) return false;
   for (let index = 0; index < before.incomingInterpolationBreakKeyIds.length; index += 1) {
