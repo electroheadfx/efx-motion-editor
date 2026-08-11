@@ -10,6 +10,7 @@ import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPhysicalRevision,
+  buildPhysicPaintRotoProjectEquality,
   encodePhysicPaintRotoPhysicalContent,
   parsePhysicPaintRotoIncomingInterpolationBreakKeyIds,
   parsePhysicPaintRotoLoopClips,
@@ -17,12 +18,21 @@ import {
   parsePhysicPaintRotoRealKeyRecordCollection,
   type PhysicPaintRotoInterpolationState,
   type PhysicPaintRotoLoopClip,
+  type PhysicPaintRotoPhysicalDocument,
+  type PhysicPaintRotoRealKeyPayload,
   type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import {
+  proposePhysicPaintRotoGroupFramePaint,
+  type PhysicPaintRotoGroupFramePaintImpact,
+} from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
 import { parseCanonicalPhysicsPaintLaunchValue } from '../components/physic-paint/bridge/physicsPaintLaunchContext';
 import { layerStore } from '../stores/layerStore';
 import { audioStore } from '../stores/audioStore';
-import { physicPaintStore } from '../stores/physicPaintStore';
+import {
+  physicPaintStore,
+  type PhysicPaintRotoPhysicalOperationLeaseToken,
+} from '../stores/physicPaintStore';
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import { projectStore } from '../stores/projectStore';
@@ -142,6 +152,50 @@ interface AcceptedPhysicalCommandEntry {
   readonly after: AcceptedPhysicalCommandSnapshot;
 }
 const acceptedPhysicalCommands = new Map<string, AcceptedPhysicalCommandEntry>();
+
+export type PhysicPaintRotoGroupFramePaintApplyFailureReason =
+  | 'stale'
+  | 'malformed'
+  | 'changed-payload'
+  | 'missing-token'
+  | 'mismatched-token'
+  | 'replayed-token'
+  | 'unresolved-precedence'
+  | 'cleanup-reference-mismatch';
+
+export interface PhysicPaintRotoGroupFramePaintApplyRequest {
+  readonly operationId: string;
+  readonly projectContextId: string;
+  readonly layerId: string;
+  readonly launchOperationId: string;
+  readonly expectedRevision: string;
+  readonly expectedProjectEquality: string;
+  readonly groupId: string;
+  readonly appFrame: number;
+  readonly overrideKeyId: string;
+  readonly renderedPayload: PhysicPaintRotoRealKeyPayload;
+  readonly unresolvedPrecedence?: boolean;
+  readonly claimedCleanupKeyIds?: readonly string[];
+  readonly proposal: PhysicPaintRotoPhysicalDocument;
+  readonly impact: PhysicPaintRotoGroupFramePaintImpact;
+  readonly leaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken;
+}
+
+export type PhysicPaintRotoGroupFramePaintApplyResult =
+  | Readonly<{
+      ok: true;
+      acceptedDocument: PhysicPaintRotoPhysicalDocument;
+      historyCommandId: string;
+    }>
+  | Readonly<{
+      ok: false;
+      reason: PhysicPaintRotoGroupFramePaintApplyFailureReason;
+    }>;
+
+const deliveredGroupFramePaintOperations = new Map<string, Readonly<{
+  fingerprint: string;
+  result: Extract<PhysicPaintRotoGroupFramePaintApplyResult, { ok: true }>;
+}>>();
 
 function activatePhysicalLaunchAuthority(context: PhysicPaintLaunchContext): void {
   const projectContextId = context.project?.contextId ?? projectStore.projectContextId.peek();
@@ -1163,6 +1217,203 @@ function applyPhysicPaintRotoPhysicalMap(payload: Extract<PhysicPaintApplyPayloa
     selectedKeyId: acceptedSelectedKeyId,
     selectedAppFrame: acceptedSelectedAppFrame,
   });
+}
+
+const PHYSIC_PAINT_ROTO_GROUP_FRAME_PAINT_REQUEST_KEYS = new Set([
+  'operationId',
+  'projectContextId',
+  'layerId',
+  'launchOperationId',
+  'expectedRevision',
+  'expectedProjectEquality',
+  'groupId',
+  'appFrame',
+  'overrideKeyId',
+  'renderedPayload',
+  'unresolvedPrecedence',
+  'claimedCleanupKeyIds',
+  'proposal',
+  'impact',
+  'leaseToken',
+]);
+const PHYSIC_PAINT_ROTO_OPERATION_LEASE_TOKEN_KEYS = new Set([
+  'projectContextId',
+  'layerId',
+  'generation',
+]);
+
+function parsePhysicPaintRotoGroupFramePaintApplyRequest(
+  value: unknown,
+): PhysicPaintRotoGroupFramePaintApplyRequest | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const request = value as Record<string, unknown>;
+  const definedRequest = Object.fromEntries(
+    Object.entries(request).filter(([, member]) => member !== undefined),
+  );
+  if (!isStructuredClonePlainData(definedRequest)
+    || Object.keys(definedRequest).some((key) => !PHYSIC_PAINT_ROTO_GROUP_FRAME_PAINT_REQUEST_KEYS.has(key))) return null;
+  const leaseToken = request.leaseToken;
+  if (leaseToken !== undefined) {
+    if (leaseToken === null || typeof leaseToken !== 'object' || Array.isArray(leaseToken)) return null;
+    const tokenRecord = leaseToken as Record<string, unknown>;
+    if (Object.keys(tokenRecord).some((key) => !PHYSIC_PAINT_ROTO_OPERATION_LEASE_TOKEN_KEYS.has(key))
+      || typeof tokenRecord.projectContextId !== 'string'
+      || typeof tokenRecord.layerId !== 'string'
+      || !Number.isSafeInteger(tokenRecord.generation)
+      || (tokenRecord.generation as number) < 1) return null;
+  }
+  if (typeof request.operationId !== 'string' || request.operationId.length === 0
+    || typeof request.projectContextId !== 'string' || request.projectContextId.length === 0
+    || typeof request.layerId !== 'string' || request.layerId.length === 0
+    || typeof request.launchOperationId !== 'string' || request.launchOperationId.length === 0
+    || typeof request.expectedRevision !== 'string' || request.expectedRevision.length === 0
+    || typeof request.expectedProjectEquality !== 'string' || request.expectedProjectEquality.length === 0
+    || typeof request.groupId !== 'string' || request.groupId.length === 0
+    || !Number.isSafeInteger(request.appFrame)
+    || typeof request.overrideKeyId !== 'string' || request.overrideKeyId.length === 0
+    || request.renderedPayload === null || typeof request.renderedPayload !== 'object'
+    || request.proposal === null || typeof request.proposal !== 'object'
+    || request.impact === null || typeof request.impact !== 'object'
+    || (request.unresolvedPrecedence !== undefined && typeof request.unresolvedPrecedence !== 'boolean')
+    || (request.claimedCleanupKeyIds !== undefined
+      && (!Array.isArray(request.claimedCleanupKeyIds)
+        || request.claimedCleanupKeyIds.some((keyId) => typeof keyId !== 'string')))
+    || (request.leaseToken !== undefined
+      && (request.leaseToken === null || typeof request.leaseToken !== 'object'))) return null;
+  return request as unknown as PhysicPaintRotoGroupFramePaintApplyRequest;
+}
+
+/**
+ * Parent-authoritative exact-occurrence Paint commit. The child proposal and
+ * impact are untrusted: this path rechecks every authority, independently
+ * rebuilds the candidate, and publishes only that recomputed document through
+ * the token-checked sole store replacement.
+ */
+export function applyPhysicPaintRotoGroupFramePaint(
+  value: unknown,
+): PhysicPaintRotoGroupFramePaintApplyResult {
+  const request = parsePhysicPaintRotoGroupFramePaintApplyRequest(value);
+  if (!request) return Object.freeze({ ok: false, reason: 'malformed' });
+
+  let fingerprint: string;
+  try {
+    fingerprint = stableSerialize(request, new WeakSet<object>());
+  } catch {
+    return Object.freeze({ ok: false, reason: 'malformed' });
+  }
+  const prior = deliveredGroupFramePaintOperations.get(request.operationId);
+  if (prior) {
+    return prior.fingerprint === fingerprint
+      ? Object.freeze({ ok: false, reason: 'replayed-token' })
+      : Object.freeze({ ok: false, reason: 'changed-payload' });
+  }
+
+  if (request.projectContextId !== projectStore.projectContextId.peek()) {
+    return Object.freeze({ ok: false, reason: 'stale' });
+  }
+  const layer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find((candidate) => (
+    candidate.id === request.layerId
+      || (candidate.type === 'physic-paint'
+        && candidate.source.type === 'physic-paint'
+        && candidate.source.layerId === request.layerId)
+  ));
+  if (!layer || layer.type !== 'physic-paint'
+    || activeLaunchOperationByLayer.get(request.layerId) !== request.launchOperationId) {
+    return Object.freeze({ ok: false, reason: 'stale' });
+  }
+
+  const currentDocument = physicPaintStore.getRotoPhysicalDocument(request.layerId);
+  if (!currentDocument
+    || currentDocument.revision !== request.expectedRevision
+    || buildPhysicPaintRotoProjectEquality(currentDocument) !== request.expectedProjectEquality) {
+    return Object.freeze({ ok: false, reason: 'stale' });
+  }
+  const leaseValidation = physicPaintStore.validateRotoPhysicalOperationLease(
+    request.projectContextId,
+    request.layerId,
+    request.leaseToken,
+  );
+  if (!leaseValidation.ok) return Object.freeze({ ok: false, reason: leaseValidation.reason });
+
+  const recomputed = proposePhysicPaintRotoGroupFramePaint({
+    document: currentDocument,
+    groupId: request.groupId,
+    appFrame: request.appFrame,
+    overrideKeyId: request.overrideKeyId,
+    renderedPayload: request.renderedPayload,
+    unresolvedPrecedence: request.unresolvedPrecedence,
+    claimedCleanupKeyIds: request.claimedCleanupKeyIds,
+  });
+  if (!recomputed.ok) {
+    const reason = recomputed.reason === 'unresolved-precedence'
+      ? 'unresolved-precedence'
+      : recomputed.reason === 'cleanup-reference-mismatch'
+        ? 'cleanup-reference-mismatch'
+        : 'malformed';
+    return Object.freeze({ ok: false, reason });
+  }
+
+  let claimedProposal: PhysicPaintRotoPhysicalDocument;
+  try {
+    claimedProposal = parsePhysicPaintRotoPhysicalDocument(request.proposal);
+  } catch {
+    return Object.freeze({ ok: false, reason: 'malformed' });
+  }
+  if (stableSerialize(claimedProposal, new WeakSet<object>())
+      !== stableSerialize(recomputed.proposal, new WeakSet<object>())
+    || stableSerialize(request.impact, new WeakSet<object>())
+      !== stableSerialize(recomputed.impact, new WeakSet<object>())) {
+    return Object.freeze({ ok: false, reason: 'malformed' });
+  }
+
+  const replaceResult = physicPaintStore.replaceRotoPhysicalDocument(
+    request.layerId,
+    recomputed.proposal,
+    request.leaseToken,
+  );
+  if (!replaceResult.ok) {
+    const reason = replaceResult.error === 'missing-token'
+      || replaceResult.error === 'mismatched-token'
+      || replaceResult.error === 'replayed-token'
+      ? replaceResult.error
+      : 'malformed';
+    return Object.freeze({ ok: false, reason });
+  }
+
+  acceptedPhysicalCommands.set(request.operationId, Object.freeze({
+    operationId: request.operationId,
+    projectContextId: request.projectContextId,
+    layerId: request.layerId,
+    launchOperationId: request.launchOperationId,
+    capacity: currentDocument.capacity,
+    before: createAcceptedPhysicalCommandSnapshot({
+      records: currentDocument.realKeyRecords,
+      interpolation: currentDocument.interpolation,
+      loopClips: currentDocument.loopClips,
+      incomingInterpolationBreakKeyIds: currentDocument.incomingInterpolationBreakKeyIds,
+      selectedKeyId: currentDocument.selectedKeyId,
+      cursorAppFrame: currentDocument.cursorAppFrame,
+      capacity: currentDocument.capacity,
+      revision: currentDocument.revision,
+    }),
+    after: createAcceptedPhysicalCommandSnapshot({
+      records: replaceResult.document.realKeyRecords,
+      interpolation: replaceResult.document.interpolation,
+      loopClips: replaceResult.document.loopClips,
+      incomingInterpolationBreakKeyIds: replaceResult.document.incomingInterpolationBreakKeyIds,
+      selectedKeyId: replaceResult.document.selectedKeyId,
+      cursorAppFrame: replaceResult.document.cursorAppFrame,
+      capacity: replaceResult.document.capacity,
+      revision: replaceResult.document.revision,
+    }),
+  }));
+  const result = Object.freeze({
+    ok: true as const,
+    acceptedDocument: replaceResult.document,
+    historyCommandId: request.operationId,
+  });
+  deliveredGroupFramePaintOperations.set(request.operationId, Object.freeze({ fingerprint, result }));
+  return result;
 }
 
 export async function applyPhysicPaintScriptLibraryRequest(value: unknown): Promise<PhysicPaintScriptLibraryResult> {

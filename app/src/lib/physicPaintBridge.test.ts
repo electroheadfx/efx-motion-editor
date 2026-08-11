@@ -2420,6 +2420,30 @@ describe('Phase 43.2 leased exact-occurrence Paint parent tracer', () => {
     };
   }
 
+  it('keeps the sole store replacement closed to missing, mismatched, and replayed lease tokens', async () => {
+    const test = await harness('group-paint-store-token-gate');
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(test.layer.id);
+    const beforeVersion = physicPaintVersion.peek();
+
+    expect(physicPaintStore.replaceRotoPhysicalDocument(test.layer.id, test.proposalResult.proposal)).toEqual({
+      ok: false,
+      error: 'missing-token',
+    });
+    expect(physicPaintStore.replaceRotoPhysicalDocument(
+      test.layer.id,
+      test.proposalResult.proposal,
+      { ...test.leaseToken, generation: test.leaseToken.generation + 1 },
+    )).toEqual({ ok: false, error: 'mismatched-token' });
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
+    expect(physicPaintStore.replaceRotoPhysicalDocument(
+      test.layer.id,
+      test.proposalResult.proposal,
+      test.leaseToken,
+    )).toEqual({ ok: false, error: 'replayed-token' });
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(beforeDocument);
+    expect(physicPaintVersion.peek()).toBe(beforeVersion);
+  });
+
   it('recomputes and publishes once with one version notification and one accepted history command', async () => {
     const test = await harness('group-paint-accepted');
     const beforeVersion = physicPaintVersion.peek();
@@ -2483,6 +2507,10 @@ describe('Phase 43.2 leased exact-occurrence Paint parent tracer', () => {
       ...test.request,
       renderedPayload: { ...test.request.renderedPayload, dataUrl: OPAQUE_ONE_PIXEL_PNG },
     })).toEqual({ ok: false, reason: 'changed-payload' });
+    expect(applyPhysicPaintRotoGroupFramePaint(test.request)).toEqual({
+      ok: false,
+      reason: 'replayed-token',
+    });
     expect(applyPhysicPaintRotoGroupFramePaint({
       ...test.request,
       operationId: 'group-paint-replayed-token',

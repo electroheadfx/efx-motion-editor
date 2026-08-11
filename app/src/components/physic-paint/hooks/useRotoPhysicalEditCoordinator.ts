@@ -58,13 +58,21 @@ import type {
 import type {
   PhysicPaintRotoInterpolationState,
   PhysicPaintRotoLoopClip,
+  PhysicPaintRotoPhysicalDocument,
+  PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
   buildPhysicPaintRotoPhysicalRevision,
+  buildPhysicPaintRotoProjectEquality,
   isPhysicPaintRotoInterpolationState,
   parsePhysicPaintRotoRealKeyRecordCollection,
 } from '../roto/physicsPaintRotoPhysicalModel';
+import {
+  proposePhysicPaintRotoGroupFramePaint,
+  type PhysicPaintRotoGroupFramePaintImpact,
+} from '../roto/physicsPaintRotoGroupLifecycle';
+import type { PhysicPaintRotoPhysicalOperationLeaseToken } from '../../../stores/physicPaintStore';
 import type { PhysicPaintRotoPhysicalEditProposal } from '../roto/physicsPaintRotoPhysicalResolver';
 import { validatePhysicPaintRotoPhysicalEditSemanticDelta } from '../roto/physicsPaintRotoPhysicalResolver';
 import { isRotoPngDataUrl } from '../roto/rotoCanvasFrames';
@@ -88,6 +96,125 @@ const PHYSICAL_EDIT_MISMATCH_MESSAGE = 'Roto physical edit settlement mismatch. 
 const PHYSICAL_EDIT_BARRIER_MESSAGE = 'Roto physical edit barriers failed. No state was changed.';
 const PHYSICAL_EDIT_SERIALIZE_MESSAGE = 'A Roto physical edit is already in flight.';
 const PHYSICAL_EDIT_RESULT_MISMATCH_MESSAGE = 'Ignored mismatched physics paint physical edit result. Try the action again.';
+
+export type PhysicPaintRotoGroupFramePaintPublicationFailureReason =
+  | 'lease-unavailable'
+  | 'stale'
+  | 'malformed'
+  | 'changed-payload'
+  | 'missing-token'
+  | 'mismatched-token'
+  | 'replayed-token'
+  | 'unresolved-precedence'
+  | 'cleanup-reference-mismatch';
+
+export interface PhysicPaintRotoGroupFramePaintTransactionInput {
+  readonly projectContextId: string;
+  readonly layerId: string;
+  readonly launchOperationId: string;
+  readonly groupId: string;
+  readonly appFrame: number;
+  readonly overrideKeyId: string;
+  readonly renderedPayload: PhysicPaintRotoRealKeyPayload;
+  readonly unresolvedPrecedence?: boolean;
+  readonly claimedCleanupKeyIds?: readonly string[];
+}
+
+export interface PhysicPaintRotoGroupFramePaintPublicationRequest
+  extends PhysicPaintRotoGroupFramePaintTransactionInput {
+  readonly operationId: string;
+  readonly expectedRevision: string;
+  readonly expectedProjectEquality: string;
+  readonly proposal: PhysicPaintRotoPhysicalDocument;
+  readonly impact: PhysicPaintRotoGroupFramePaintImpact;
+  readonly leaseToken: PhysicPaintRotoPhysicalOperationLeaseToken;
+}
+
+export type PhysicPaintRotoGroupFramePaintPublicationResult =
+  | Readonly<{
+      ok: true;
+      acceptedDocument: PhysicPaintRotoPhysicalDocument;
+      historyCommandId: string;
+    }>
+  | Readonly<{
+      ok: false;
+      reason: PhysicPaintRotoGroupFramePaintPublicationFailureReason;
+    }>;
+
+export interface PhysicPaintRotoGroupFramePaintHistoryCommand {
+  readonly commandId: string;
+  readonly before: PhysicPaintRotoPhysicalDocument;
+  readonly after: PhysicPaintRotoPhysicalDocument;
+  readonly impact: PhysicPaintRotoGroupFramePaintImpact;
+}
+
+export interface PhysicPaintRotoGroupFramePaintTransactionPorts {
+  readonly acquireLease: (
+    projectContextId: string,
+    layerId: string,
+  ) => PhysicPaintRotoPhysicalOperationLeaseToken | null;
+  readonly getAcceptedDocument: (layerId: string) => PhysicPaintRotoPhysicalDocument | null;
+  readonly publish: (
+    request: PhysicPaintRotoGroupFramePaintPublicationRequest,
+  ) => Promise<PhysicPaintRotoGroupFramePaintPublicationResult>;
+  readonly recordHistory: (command: PhysicPaintRotoGroupFramePaintHistoryCommand) => void;
+  readonly releaseLease: (token: PhysicPaintRotoPhysicalOperationLeaseToken) => boolean;
+  readonly createOperationId: () => string;
+}
+
+/**
+ * Execute the first exact-occurrence Group Paint authority transaction.
+ * Acquisition precedes the final snapshot; history is inserted only after an
+ * accepted parent settlement; release is terminal and unconditional.
+ */
+export async function executePhysicPaintRotoGroupFramePaintTransaction(
+  input: PhysicPaintRotoGroupFramePaintTransactionInput,
+  ports: PhysicPaintRotoGroupFramePaintTransactionPorts,
+): Promise<PhysicPaintRotoGroupFramePaintPublicationResult> {
+  const leaseToken = ports.acquireLease(input.projectContextId, input.layerId);
+  if (!leaseToken) return Object.freeze({ ok: false, reason: 'lease-unavailable' });
+  try {
+    const before = ports.getAcceptedDocument(input.layerId);
+    if (!before) return Object.freeze({ ok: false, reason: 'stale' });
+    const proposed = proposePhysicPaintRotoGroupFramePaint({
+      document: before,
+      groupId: input.groupId,
+      appFrame: input.appFrame,
+      overrideKeyId: input.overrideKeyId,
+      renderedPayload: input.renderedPayload,
+      unresolvedPrecedence: input.unresolvedPrecedence,
+      claimedCleanupKeyIds: input.claimedCleanupKeyIds,
+    });
+    if (!proposed.ok) {
+      const reason = proposed.reason === 'unresolved-precedence'
+        ? 'unresolved-precedence'
+        : proposed.reason === 'cleanup-reference-mismatch'
+          ? 'cleanup-reference-mismatch'
+          : 'malformed';
+      return Object.freeze({ ok: false, reason });
+    }
+    const operationId = ports.createOperationId();
+    const settlement = await ports.publish(Object.freeze({
+      ...input,
+      operationId,
+      expectedRevision: before.revision,
+      expectedProjectEquality: buildPhysicPaintRotoProjectEquality(before),
+      proposal: proposed.proposal,
+      impact: proposed.impact,
+      leaseToken,
+    }));
+    if (!settlement.ok) return settlement;
+    ports.recordHistory(Object.freeze({
+      commandId: settlement.historyCommandId,
+      before,
+      after: settlement.acceptedDocument,
+      impact: proposed.impact,
+    }));
+    return settlement;
+  } finally {
+    ports.releaseLease(leaseToken);
+  }
+}
 
 /**
  * Inline result transition (Plan 36.14-05 Task 3 moved from the deleted

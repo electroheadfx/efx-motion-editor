@@ -37,6 +37,17 @@ export function _setPhysicPaintMarkDirtyCallback(cb: () => void) { _markProjectD
 
 export const physicPaintVersion = signal(0);
 
+export interface PhysicPaintRotoPhysicalOperationLeaseToken {
+  readonly projectContextId: string;
+  readonly layerId: string;
+  readonly generation: number;
+}
+
+export type PhysicPaintRotoPhysicalOperationLeaseFailureReason =
+  | 'missing-token'
+  | 'mismatched-token'
+  | 'replayed-token';
+
 type PhysicPaintMceOutput = RuntimePhysicPaintOutput;
 type PhysicPaintMceOutputInput = RuntimePhysicPaintOutput;
 
@@ -115,7 +126,27 @@ const _rotoPhysicalCapacity = new Map<string, number>();
 const _rotoPhysicalLoopClips = new Map<string, readonly PhysicPaintRotoLoopClip[]>();
 const _rotoPhysicalIncomingInterpolationBreakKeyIds = new Map<string, readonly string[]>();
 const _rotoPlaybackSettings = new Map<string, PhysicPaintRotoPlaybackSettings>();
+const _rotoPhysicalOperationLeases = new Map<string, PhysicPaintRotoPhysicalOperationLeaseToken>();
+const _settledRotoPhysicalOperationLeases = new Set<string>();
+let _rotoPhysicalOperationLeaseGeneration = 0;
 export const rotoPhysicalRevision = signal(0);
+
+function _rotoPhysicalOperationLeaseScope(projectContextId: string, layerId: string): string {
+  return `${projectContextId.length}:${projectContextId}${layerId.length}:${layerId}`;
+}
+
+function _rotoPhysicalOperationLeaseIdentity(token: PhysicPaintRotoPhysicalOperationLeaseToken): string {
+  return `${_rotoPhysicalOperationLeaseScope(token.projectContextId, token.layerId)}:${token.generation}`;
+}
+
+function _sameRotoPhysicalOperationLease(
+  left: PhysicPaintRotoPhysicalOperationLeaseToken,
+  right: PhysicPaintRotoPhysicalOperationLeaseToken,
+): boolean {
+  return left.projectContextId === right.projectContextId
+    && left.layerId === right.layerId
+    && left.generation === right.generation;
+}
 
 // --- Physical structural read memo (38.1-07) ---
 // Per-layer memo for the physical projection + content revision. Validity is
@@ -255,6 +286,11 @@ function _clearLayerState(layerId: string): boolean {
   changed = _rotoPhysicalCursorAppFrame.delete(layerId) || changed;
   changed = _rotoPhysicalCapacity.delete(layerId) || changed;
   changed = _rotoPlaybackSettings.delete(layerId) || changed;
+  for (const [scope, lease] of _rotoPhysicalOperationLeases) {
+    if (lease.layerId !== layerId) continue;
+    _rotoPhysicalOperationLeases.delete(scope);
+    _settledRotoPhysicalOperationLeases.add(_rotoPhysicalOperationLeaseIdentity(lease));
+  }
   for (const dataUrl of dataUrls) {
     if (!_isDataUrlReferenced(dataUrl)) changed = _rotoAlphaCanvasRegistry.delete(dataUrl) || changed;
   }
@@ -1184,7 +1220,7 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
@@ -1201,6 +1237,8 @@ export const physicPaintStore = {
     _rotoPhysicalCursorAppFrame.clear();
     _rotoPhysicalCapacity.clear();
     _rotoPlaybackSettings.clear();
+    _rotoPhysicalOperationLeases.clear();
+    _settledRotoPhysicalOperationLeases.clear();
     _rotoPhysicalStructuralCache.clear();
     _notifyVisualChange();
   },
@@ -1305,12 +1343,66 @@ export const physicPaintStore = {
     return { ok: true };
   },
 
+  /** Acquire the sole project/layer authority token for one physical operation. */
+  acquireRotoPhysicalOperationLease(
+    projectContextId: string,
+    layerId: string,
+  ): PhysicPaintRotoPhysicalOperationLeaseToken | null {
+    if (!projectContextId || !layerId) return null;
+    const scope = _rotoPhysicalOperationLeaseScope(projectContextId, layerId);
+    if (_rotoPhysicalOperationLeases.has(scope)) return null;
+    const token = Object.freeze({
+      projectContextId,
+      layerId,
+      generation: ++_rotoPhysicalOperationLeaseGeneration,
+    });
+    _rotoPhysicalOperationLeases.set(scope, token);
+    return token;
+  },
+
+  /** Validate exact active-token identity without mutating lease state. */
+  validateRotoPhysicalOperationLease(
+    projectContextId: string,
+    layerId: string,
+    token: PhysicPaintRotoPhysicalOperationLeaseToken | null | undefined,
+  ): { ok: true } | { ok: false; reason: PhysicPaintRotoPhysicalOperationLeaseFailureReason } {
+    if (!token) return { ok: false, reason: 'missing-token' };
+    if (_settledRotoPhysicalOperationLeases.has(_rotoPhysicalOperationLeaseIdentity(token))) {
+      return { ok: false, reason: 'replayed-token' };
+    }
+    const active = _rotoPhysicalOperationLeases.get(_rotoPhysicalOperationLeaseScope(projectContextId, layerId));
+    if (!active || !_sameRotoPhysicalOperationLease(active, token)) {
+      return { ok: false, reason: 'mismatched-token' };
+    }
+    return { ok: true };
+  },
+
+  /** Release one exact active token after terminal settlement. */
+  releaseRotoPhysicalOperationLease(token: PhysicPaintRotoPhysicalOperationLeaseToken): boolean {
+    const scope = _rotoPhysicalOperationLeaseScope(token.projectContextId, token.layerId);
+    const active = _rotoPhysicalOperationLeases.get(scope);
+    if (!active || !_sameRotoPhysicalOperationLease(active, token)) return false;
+    _rotoPhysicalOperationLeases.delete(scope);
+    _settledRotoPhysicalOperationLeases.add(_rotoPhysicalOperationLeaseIdentity(token));
+    return true;
+  },
+
   /** Install one complete validated physical document atomically. */
   replaceRotoPhysicalDocument(
     layerId: string,
     value: unknown,
+    leaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
   ): { ok: true; document: PhysicPaintRotoPhysicalDocument } | { ok: false; error: string } {
     if (!layerId || typeof layerId !== 'string') return { ok: false, error: 'Layer ID must be a non-empty string.' };
+    const activeLease = [..._rotoPhysicalOperationLeases.values()].find((lease) => lease.layerId === layerId);
+    if (activeLease || leaseToken) {
+      const leaseValidation = this.validateRotoPhysicalOperationLease(
+        leaseToken?.projectContextId ?? activeLease?.projectContextId ?? '',
+        layerId,
+        leaseToken,
+      );
+      if (!leaseValidation.ok) return { ok: false, error: leaseValidation.reason };
+    }
     let document: PhysicPaintRotoPhysicalDocument;
     try {
       document = parsePhysicPaintRotoPhysicalDocument(value);
