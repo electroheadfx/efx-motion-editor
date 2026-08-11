@@ -55,6 +55,14 @@ function realKeyRecord(keyId: string, appFrame: number): PhysicPaintRotoRealKeyR
   }) as PhysicPaintRotoRealKeyRecord;
 }
 
+interface GroupDeleteActivation {
+  readonly operationKind: 'delete-group-frame' | 'delete-group';
+  readonly groupId: string;
+  readonly appFrame: number;
+  readonly phaseOrigin: number;
+  readonly onlyOccurrence: boolean;
+}
+
 interface HarnessOptions {
   records?: PhysicPaintRotoRealKeyRecord[];
   loopClips?: readonly PhysicPaintRotoLoopClip[];
@@ -71,6 +79,8 @@ interface HarnessOptions {
   incomingInterpolationBreakKeyIds?: readonly string[];
   capacity?: number;
   blankDataUrl?: string;
+  executeGroupLifecycleDelete?: (activation: GroupDeleteActivation) => Promise<boolean>;
+  requestSoleOccurrenceDeleteWarning?: (activation: GroupDeleteActivation) => void;
   requestGroupDeleteChoice?: (target: Extract<RotoDeleteTarget, { kind: 'group-choice' }>) => void;
 }
 
@@ -110,7 +120,12 @@ function createHarness(options: HarnessOptions = {}) {
     pendingOperationId,
     publishStatus,
     publishDiagnostic,
+    executeGroupLifecycleDelete: options.executeGroupLifecycleDelete,
+    requestSoleOccurrenceDeleteWarning: options.requestSoleOccurrenceDeleteWarning,
     requestGroupDeleteChoice: options.requestGroupDeleteChoice,
+  } as RotoTimelineActionsInput & {
+    executeGroupLifecycleDelete?: (activation: GroupDeleteActivation) => Promise<boolean>;
+    requestSoleOccurrenceDeleteWarning?: (activation: GroupDeleteActivation) => void;
   };
   const actions = useRotoTimelineActions(input);
   return { actions, executePhysicalEdit, publishStatus, publishDiagnostic, pendingOperationId };
@@ -170,10 +185,10 @@ function lifecycleGroup(overrides: Partial<PhysicPaintRotoLoopClip> = {}): Physi
   });
 }
 
-describe('useRotoTimelineActions unified Delete activation', () => {
+describe('useRotoTimelineActions selection-scoped Delete activation', () => {
   const records = [realKeyRecord('A', 0), realKeyRecord('B', 3), realKeyRecord('ordinary', 20)];
 
-  it('classifies source, generated, and override Group occurrences into the same exact choice outcome', () => {
+  it('classifies Group-owned occurrences as Delete Frame unless the complete Group Rail is selected', () => {
     const group = lifecycleGroup({
       frameOverrides: Object.freeze([Object.freeze({ appFrame: 15, keyId: 'override-15' })]),
     });
@@ -183,6 +198,7 @@ describe('useRotoTimelineActions unified Delete activation', () => {
       pendingOperationId: null,
       selectedKeyId: null,
       selectedKeyIds: [] as readonly string[],
+      selectedLoopClipIds: [] as readonly string[],
       capacity: 30,
       records: groupRecords,
       loopClips: [group],
@@ -192,7 +208,7 @@ describe('useRotoTimelineActions unified Delete activation', () => {
 
     for (const appFrame of [10, 11, 15]) {
       expect(classifyRotoDeleteTarget({ ...base, currentAppFrame: appFrame })).toEqual({
-        kind: 'group-choice',
+        kind: 'group-frame',
         groupId: 'group-1',
         appFrame,
         mode: 'progressive',
@@ -200,6 +216,19 @@ describe('useRotoTimelineActions unified Delete activation', () => {
         onlyOccurrence: false,
       });
     }
+
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      currentAppFrame: 20,
+      selectedLoopClipIds: ['group-1'],
+    })).toEqual({
+      kind: 'group',
+      groupId: 'group-1',
+      appFrame: 10,
+      mode: 'progressive',
+      phaseOrigin: 10,
+      onlyOccurrence: false,
+    });
   });
 
   it('preserves ordinary single-key and multi-key Delete while mapping every non-deletable target once', () => {
@@ -208,6 +237,7 @@ describe('useRotoTimelineActions unified Delete activation', () => {
       pendingOperationId: null,
       selectedKeyId: null,
       selectedKeyIds: [] as readonly string[],
+      selectedLoopClipIds: [] as readonly string[],
       currentAppFrame: 20,
       capacity: 30,
       records,
@@ -236,44 +266,145 @@ describe('useRotoTimelineActions unified Delete activation', () => {
     for (const [target, reason] of cases) expect(mapRotoDeleteProductReason(target)).toBe(reason);
   });
 
-  it('reclassifies exactly once at activation and opens Group choice without mutation or dispatch', async () => {
+  it('dispatches Delete Frame directly for an individual Group-owned physical frame without opening a choice modal', async () => {
     let currentAppFrame = 10;
     const getCurrentAppFrame = vi.fn(() => currentAppFrame);
+    const executeGroupLifecycleDelete = vi.fn(async () => true);
     const requestGroupDeleteChoice = vi.fn();
     const harness = createHarness({
       records,
       loopClips: [lifecycleGroup()],
       capacity: 30,
       getCurrentAppFrame,
+      executeGroupLifecycleDelete,
       requestGroupDeleteChoice,
     });
 
-    // Availability remains lazy. The activation must read the current frame once
-    // and classify the state that exists at invocation time.
     currentAppFrame = 11;
-    expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(false);
+    expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(true);
     expect(getCurrentAppFrame).toHaveBeenCalledTimes(1);
-    expect(requestGroupDeleteChoice).toHaveBeenCalledTimes(1);
-    expect(requestGroupDeleteChoice).toHaveBeenCalledWith(expect.objectContaining({
-      kind: 'group-choice',
+    expect(executeGroupLifecycleDelete).toHaveBeenCalledWith({
+      operationKind: 'delete-group-frame',
       groupId: 'group-1',
       appFrame: 11,
-    }));
+      phaseOrigin: 10,
+      onlyOccurrence: false,
+    });
+    expect(requestGroupDeleteChoice).not.toHaveBeenCalled();
     expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
     expect(harness.publishStatus).not.toHaveBeenCalled();
   });
 
-  it('reclassifies stale Group ownership and publishes one canonical reason without opening the dialog', async () => {
+  it('dispatches Delete Group directly from Group Rail selection without moving or reclassifying the cursor frame', async () => {
+    const executeGroupLifecycleDelete = vi.fn(async () => true);
+    const requestGroupDeleteChoice = vi.fn();
+    const harness = createHarness({
+      records,
+      loopClips: [lifecycleGroup()],
+      selectedLoopClipIds: ['group-1'],
+      currentAppFrame: 20,
+      capacity: 30,
+      executeGroupLifecycleDelete,
+      requestGroupDeleteChoice,
+    });
+
+    expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(true);
+    expect(executeGroupLifecycleDelete).toHaveBeenCalledWith({
+      operationKind: 'delete-group',
+      groupId: 'group-1',
+      appFrame: 10,
+      phaseOrigin: 10,
+      onlyOccurrence: false,
+    });
+    expect(requestGroupDeleteChoice).not.toHaveBeenCalled();
+    expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
+  });
+
+  it('opens only the focused sole-occurrence Delete Frame warning', async () => {
+    const executeGroupLifecycleDelete = vi.fn(async () => true);
+    const requestSoleOccurrenceDeleteWarning = vi.fn();
+    const requestGroupDeleteChoice = vi.fn();
+    const harness = createHarness({
+      records: [realKeyRecord('A', 0)],
+      loopClips: [lifecycleGroup({
+        sourceKeyIds: Object.freeze(['A']),
+        repeat: 1,
+        originalEndExclusive: 11,
+        visibleRanges: Object.freeze([Object.freeze({ start: 10, endExclusive: 11 })]),
+      })],
+      currentAppFrame: 10,
+      capacity: 30,
+      executeGroupLifecycleDelete,
+      requestSoleOccurrenceDeleteWarning,
+      requestGroupDeleteChoice,
+    });
+
+    expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(false);
+    expect(requestSoleOccurrenceDeleteWarning).toHaveBeenCalledWith({
+      operationKind: 'delete-group-frame',
+      groupId: 'group-1',
+      appFrame: 10,
+      phaseOrigin: 10,
+      onlyOccurrence: true,
+    });
+    expect(executeGroupLifecycleDelete).not.toHaveBeenCalled();
+    expect(requestGroupDeleteChoice).not.toHaveBeenCalled();
+  });
+
+  it('leaves a rejected direct Group command immediately reusable without resetting selection or opening a modal', async () => {
+    const executeGroupLifecycleDelete = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    const requestGroupDeleteChoice = vi.fn();
+    const harness = createHarness({
+      records,
+      loopClips: [lifecycleGroup()],
+      selectedLoopClipIds: ['group-1'],
+      currentAppFrame: 20,
+      capacity: 30,
+      executeGroupLifecycleDelete,
+      requestGroupDeleteChoice,
+    });
+
+    expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(false);
+    expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(true);
+    expect(executeGroupLifecycleDelete).toHaveBeenCalledTimes(2);
+    expect(requestGroupDeleteChoice).not.toHaveBeenCalled();
+    expect(harness.pendingOperationId.value).toBeNull();
+  });
+
+  it('keeps ordinary-key deletion on the existing physical edit path', async () => {
+    const executeGroupLifecycleDelete = vi.fn(async () => true);
+    const harness = createHarness({
+      records,
+      selectedKeyId: 'ordinary',
+      currentAppFrame: 20,
+      capacity: 30,
+      executeGroupLifecycleDelete,
+    });
+
+    expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(true);
+    expect(harness.executePhysicalEdit).toHaveBeenCalledWith(expect.objectContaining({
+      operationKind: 'delete-key',
+      intent: { kind: 'delete-key', selectedKeyId: 'ordinary' },
+    }));
+    expect(executeGroupLifecycleDelete).not.toHaveBeenCalled();
+  });
+
+  it('reclassifies stale Group ownership and publishes one canonical reason without opening a warning or dialog', async () => {
+    const requestSoleOccurrenceDeleteWarning = vi.fn();
     const requestGroupDeleteChoice = vi.fn();
     const harness = createHarness({
       records,
       loopClips: [lifecycleGroup({ visibleRanges: Object.freeze([Object.freeze({ start: 10, endExclusive: 11 })]) })],
       currentAppFrame: 12,
       capacity: 30,
+      requestSoleOccurrenceDeleteWarning,
       requestGroupDeleteChoice,
     });
 
     expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(false);
+    expect(requestSoleOccurrenceDeleteWarning).not.toHaveBeenCalled();
     expect(requestGroupDeleteChoice).not.toHaveBeenCalled();
     expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
     expect(harness.publishStatus).toHaveBeenCalledTimes(1);

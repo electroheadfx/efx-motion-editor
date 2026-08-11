@@ -903,16 +903,29 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     if (draftRepeat === null) return false;
     if (draftRepeat === target.repeat) { closeConfirmation(); return true; } // no phantom history entry
     const snapshot = loopPreflightSnapshot.peek();
-    const stagedLoops = currentLoopClips().map((clip) => (clip.loopId === target.loopId ? { ...clip, repeat: draftRepeat } : clip));
+    const currentLoops = currentLoopClips();
     const cycleDuration = snapshot
       ? derivePhysicPaintRotoLoopRanges({
           identities: snapshot.identities,
-          loopClips: stagedLoops,
+          loopClips: currentLoops,
           parentEndExclusive: snapshot.parentEndExclusive,
           capacity: snapshot.capacity,
           interpolationEnabled: snapshot.interpolationEnabled,
         }).ranges.find((range) => range.loopId === target.loopId)?.cycleLength ?? target.sourceKeyIds.length
       : target.sourceKeyIds.length;
+    const stagedLoops = currentLoops.map((clip) => {
+      if (clip.loopId !== target.loopId) return clip;
+      if (draftRepeat === 'infinity' || clip.phaseOrigin === undefined || clip.visibleRanges === undefined) {
+        return { ...clip, repeat: draftRepeat };
+      }
+      const originalEndExclusive = clip.phaseOrigin + cycleDuration * draftRepeat;
+      return {
+        ...clip,
+        repeat: draftRepeat,
+        originalEndExclusive,
+        visibleRanges: [{ start: clip.phaseOrigin, endExclusive: originalEndExclusive }],
+      };
+    });
     const result = await runLoopOp(
       target.loopId,
       () => stagedLoops,

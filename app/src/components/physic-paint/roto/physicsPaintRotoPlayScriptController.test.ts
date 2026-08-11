@@ -1370,6 +1370,22 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
   });
 
   describe('updateLoop (D-10)', () => {
+    const lifecycleLoopClip = (
+      placementStart: number,
+      repeat: number,
+    ): PhysicPaintRotoLoopClip => ({
+      ...loopClip('L1', placementStart, repeat),
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: placementStart,
+      originalEndExclusive: placementStart + CYCLE_IDS.length * repeat,
+      visibleRanges: [{
+        start: placementStart,
+        endExclusive: placementStart + CYCLE_IDS.length * repeat,
+      }],
+      frameOverrides: [],
+    });
+
     it('commits ONE atomic loop-only operation — records byte-identical, loop repeat replaced', async () => {
       const test = loopOpHarness([loopClip('L1', 10, 3)]);
       await test.controller.openLoopEdit('L1');
@@ -1391,6 +1407,42 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       });
       expect(test.controller.phase.value).toBe('complete');
       expect(test.controller.confirmationOpen.value).toBe(false);
+    });
+
+    it.each([
+      { placementStart: 0, initialRepeat: 1, nextRepeat: 3 },
+      { placementStart: 0, initialRepeat: 3, nextRepeat: 1 },
+      { placementStart: 10, initialRepeat: 1, nextRepeat: 3 },
+      { placementStart: 10, initialRepeat: 3, nextRepeat: 1 },
+    ])('rebuilds complete lifecycle authority at F$placementStart for Repeat $initialRepeat → $nextRepeat and restores it through Undo/Redo', async ({
+      placementStart,
+      initialRepeat,
+      nextRepeat,
+    }) => {
+      const beforeGroup = lifecycleLoopClip(placementStart, initialRepeat);
+      const expectedGroup = lifecycleLoopClip(placementStart, nextRepeat);
+      const test = loopOpHarness([beforeGroup]);
+
+      expect(await test.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+      test.controller.repeatText.value = String(nextRepeat);
+      expect(await test.controller.confirm()).toBe(true);
+
+      const publication = test.commit.mock.calls[0][0];
+      expect(publication.records).toEqual(asRealKeyRecords(loopAuthority().physicalRecords));
+      expect(publication.loopClips).toEqual([expectedGroup]);
+      expect(publication.selectedKeyId).toBeNull();
+      expect(publication.selectedAppFrame).toBeNull();
+
+      const driver = driveLoopHistory({
+        beforeRecords: asRealKeyRecords(loopAuthority().physicalRecords),
+        beforeLoopClips: [beforeGroup],
+        publication,
+      });
+      expect(driver.getCurrent().loopClips).toEqual([expectedGroup]);
+      expect(await driver.history.undo()).toBe(true);
+      expect(driver.getCurrent().loopClips).toEqual([beforeGroup]);
+      expect(await driver.history.redo()).toBe(true);
+      expect(driver.getCurrent().loopClips).toEqual([expectedGroup]);
     });
 
     it('supports repeated decrease through 1 and increase again when no real key is selected', async () => {

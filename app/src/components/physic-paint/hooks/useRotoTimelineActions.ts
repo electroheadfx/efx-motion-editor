@@ -148,17 +148,19 @@ export function mapRotoInsertProductReason(target: RotoInsertTarget): string | n
   }
 }
 
+export interface RotoGroupLifecycleDeleteTarget {
+  readonly groupId: string;
+  readonly appFrame: number;
+  readonly mode: PhysicPaintRotoLoopClip['mode'];
+  readonly phaseOrigin: number;
+  readonly onlyOccurrence: boolean;
+}
+
 export type RotoDeleteTarget =
   | Readonly<{ kind: 'ordinary-key'; keyId: string }>
   | Readonly<{ kind: 'ordinary-key-group'; keyIds: readonly string[] }>
-  | Readonly<{
-      kind: 'group-choice';
-      groupId: string;
-      appFrame: number;
-      mode: PhysicPaintRotoLoopClip['mode'];
-      phaseOrigin: number;
-      onlyOccurrence: boolean;
-    }>
+  | Readonly<RotoGroupLifecycleDeleteTarget & { kind: 'group-frame' }>
+  | Readonly<RotoGroupLifecycleDeleteTarget & { kind: 'group' }>
   | Readonly<{ kind: 'group-gap'; groupId: string; appFrame: number }>
   | Readonly<{ kind: 'unresolved-group'; groupId: string; appFrame: number }>
   | Readonly<{ kind: 'ambiguous-group'; appFrame: number }>
@@ -172,6 +174,7 @@ export interface RotoDeleteTargetClassificationInput {
   readonly pendingOperationId: string | null;
   readonly selectedKeyId: string | null;
   readonly selectedKeyIds: readonly string[];
+  readonly selectedLoopClipIds: readonly string[];
   readonly currentAppFrame: number | null;
   readonly capacity: number | null;
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
@@ -197,6 +200,29 @@ export function classifyRotoDeleteTarget(
     || !Number.isSafeInteger(input.capacity)
     || input.currentAppFrame >= input.capacity) {
     return Object.freeze({ kind: 'unavailable' });
+  }
+
+  if (input.selectedLoopClipIds.length > 0) {
+    if (input.selectedLoopClipIds.length !== 1 || !isBoundedKeyId(input.selectedLoopClipIds[0])) {
+      return Object.freeze({ kind: 'no-target' });
+    }
+    const groupId = input.selectedLoopClipIds[0];
+    const group = input.loopClips.find((candidate) => candidate.loopId === groupId);
+    if (group?.phaseOrigin === undefined || group.visibleRanges === undefined) {
+      return Object.freeze({ kind: 'no-target' });
+    }
+    const visibleCount = group.visibleRanges.reduce(
+      (count, range) => count + range.endExclusive - range.start,
+      0,
+    );
+    return Object.freeze({
+      kind: 'group',
+      groupId,
+      appFrame: group.phaseOrigin,
+      mode: group.mode,
+      phaseOrigin: group.phaseOrigin,
+      onlyOccurrence: visibleCount === 1,
+    });
   }
 
   if (input.selectedKeyIds.length >= 2) {
@@ -240,7 +266,7 @@ export function classifyRotoDeleteTarget(
         0,
       );
       return Object.freeze({
-        kind: 'group-choice',
+        kind: 'group-frame',
         groupId: frameTarget.groupId,
         appFrame: input.currentAppFrame,
         mode: group.mode,
@@ -273,7 +299,8 @@ export function mapRotoDeleteProductReason(target: RotoDeleteTarget): string | n
   switch (target.kind) {
     case 'ordinary-key':
     case 'ordinary-key-group':
-    case 'group-choice':
+    case 'group-frame':
+    case 'group':
       return null;
     case 'group-gap':
       return 'Delete is unavailable on an intentional Group gap.';
@@ -471,8 +498,14 @@ export interface RotoTimelineActionsInput {
   executePhysicalEdit?: (input: RotoPhysicalEditExecuteInput<PhysicPaintRotoPhysicalEditProposal>) => Promise<boolean>;
   /** Coordinator pending operation id Signal (Plan 36.14-04). */
   pendingOperationId?: ReadonlySignal<string | null>;
-  /** Studio-local request to render the exact Group Delete choice dialog. */
-  requestGroupDeleteChoice?: (target: Extract<RotoDeleteTarget, { kind: 'group-choice' }>) => void;
+  /** Direct acknowledged Group lifecycle Delete seam. */
+  executeGroupLifecycleDelete?: (target: Readonly<Omit<RotoGroupLifecycleDeleteTarget, 'mode'> & {
+    operationKind: 'delete-group-frame' | 'delete-group';
+  }>) => Promise<boolean>;
+  /** Focused warning request for deleting a Group's sole visible occurrence. */
+  requestSoleOccurrenceDeleteWarning?: (target: Readonly<Omit<RotoGroupLifecycleDeleteTarget, 'mode'> & {
+    operationKind: 'delete-group-frame';
+  }>) => void;
   /** Concise status/LOG publisher for resolver failures. */
   publishStatus?: (message: string | null) => void;
   /**
@@ -851,14 +884,32 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       input.publishStatus?.(rejection);
       return Promise.resolve(false);
     }
-    if (target.kind === 'group-choice') {
-      if (!input.requestGroupDeleteChoice) {
-        input.publishStatus?.('Group deletion choices are unavailable.');
+    if (target.kind === 'group-frame' || target.kind === 'group') {
+      if (target.kind === 'group-frame' && target.onlyOccurrence) {
+        if (!input.requestSoleOccurrenceDeleteWarning) {
+          input.publishStatus?.('Delete Frame confirmation is unavailable.');
+          return Promise.resolve(false);
+        }
+        input.requestSoleOccurrenceDeleteWarning(Object.freeze({
+          operationKind: 'delete-group-frame',
+          groupId: target.groupId,
+          appFrame: target.appFrame,
+          phaseOrigin: target.phaseOrigin,
+          onlyOccurrence: true,
+        }));
         return Promise.resolve(false);
       }
-      input.requestGroupDeleteChoice(target);
-      // Opening the dialog is not an accepted physical edit.
-      return Promise.resolve(false);
+      if (!input.executeGroupLifecycleDelete) {
+        input.publishStatus?.('Group deletion is unavailable.');
+        return Promise.resolve(false);
+      }
+      return input.executeGroupLifecycleDelete(Object.freeze({
+        operationKind: target.kind === 'group' ? 'delete-group' : 'delete-group-frame',
+        groupId: target.groupId,
+        appFrame: target.appFrame,
+        phaseOrigin: target.phaseOrigin,
+        onlyOccurrence: target.onlyOccurrence,
+      }));
     }
     if (target.kind === 'ordinary-key-group') {
       return runPhysicalAction({
@@ -1409,6 +1460,7 @@ function readRotoDeleteTargetInput(input: RotoTimelineActionsInput): RotoDeleteT
     pendingOperationId: input.pendingOperationId?.value ?? null,
     selectedKeyId: input.getSelectedKeyId?.() ?? null,
     selectedKeyIds: input.getSelectedKeyIds?.() ?? [],
+    selectedLoopClipIds: input.getSelectedLoopClipIds?.() ?? [],
     currentAppFrame: input.getCurrentAppFrame?.() ?? null,
     capacity: input.getCapacity?.() ?? null,
     records: input.getRotoKeyRecords?.() ?? [],
