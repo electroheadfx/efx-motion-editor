@@ -18,6 +18,13 @@ import {
 
 const renderedFrame = { frameIndex: 0, appFrame: 12, dataUrl: 'data:image/png;base64,aGVsbG8=', width: 1000, height: 650 };
 
+const physicalLeaseToken = (layerId = 'layer-1') => ({
+  projectContextId: 'project-1',
+  layerId,
+  generation: 1,
+  owner: 'exclusive' as const,
+});
+
 const GROUP_FIELD_PARTICIPATION = [
   { field: 'syncState', value: 'modified' },
   { field: 'provenanceState', value: 'detached' },
@@ -57,8 +64,10 @@ function groupLifecycleApplyPayload(overrides: Record<string, unknown> = {}) {
     operationId: 'group-paint-1',
     operationKind: 'paint-group-frame',
     layerId: 'layer-1',
+    leaseToken: physicalLeaseToken(),
     startFrame: 0,
     launchOperationId: 'launch-1',
+    projectContextId: 'project-1',
     expectedRevision: 'revision-1',
     records: groupTransportRecords(),
     interpolationEnabled: false,
@@ -137,8 +146,10 @@ describe('physic paint payload contracts', () => {
         blankPayload: records[0].payload,
       },
       layerId: 'layer-1',
+      leaseToken: physicalLeaseToken(),
       startFrame: 0,
       launchOperationId: 'launch-1',
+      projectContextId: 'project-1',
       expectedRevision: 'revision-1',
       records,
       interpolationEnabled: true,
@@ -286,8 +297,10 @@ describe('physic paint payload contracts', () => {
       operationId: 'play-script-1',
       operationKind: 'play-script',
       layerId: 'layer-1',
+      leaseToken: physicalLeaseToken(),
       startFrame: 0,
       launchOperationId: 'launch-1',
+      projectContextId: 'project-1',
       expectedRevision: 'revision-1',
       records,
       interpolationEnabled: false,

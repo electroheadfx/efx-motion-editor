@@ -211,6 +211,12 @@ const applyPayload = (loopClips?: unknown) => ({
   kind: 'replace-roto-physical-map' as const,
   operationId: 'op-1',
   operationKind: 'move-key' as const,
+  leaseToken: {
+    projectContextId: 'project-1',
+    layerId: 'layer-1',
+    generation: 1,
+    owner: 'exclusive' as const,
+  },
   intent: {
     kind: 'move-key' as const,
     movedKeyId: 'A',
@@ -219,6 +225,7 @@ const applyPayload = (loopClips?: unknown) => ({
   layerId: 'layer-1',
   startFrame: 0,
   launchOperationId: 'launch-1',
+  projectContextId: 'project-1',
   expectedRevision: 'revision-1',
   records: sourceRecords().map(({ keyId, appFrame, payload }) => ({ keyId, appFrame, payload })),
   interpolationEnabled: false,
