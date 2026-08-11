@@ -344,6 +344,18 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     overrideKeyId,
     renderedPayload: { frameIndex: 0, appFrame, dataUrl },
   });
+  const executeDeleteGroupFrame = (appFrame: number) => coordinator.executePhysicalEdit({
+    operationKind: 'delete-group-frame',
+    expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+    groupId: 'group-1',
+    appFrame,
+  });
+  const executeDeleteGroup = () => coordinator.executePhysicalEdit({
+    operationKind: 'delete-group',
+    expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+    groupId: 'group-1',
+    appFrame: currentFrame,
+  });
   const executePlayScript = () => {
     const nextRecord = record('Z', 8);
     const nextRecords = [...records, nextRecord];
@@ -423,6 +435,8 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     execute,
     executeEmptySegment,
     executeGroupPaint,
+    executeDeleteGroupFrame,
+    executeDeleteGroup,
     executePlayScript,
     seedGroupDocument,
     accept,
@@ -1010,6 +1024,111 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
     expect(test.transferLeaseToRecovery).toHaveBeenCalledWith(test.leaseToken);
     expect(test.releaseLease).not.toHaveBeenCalled();
     expect(test.coordinator.recoveryLease.value).toBe(test.recoveryLeaseToken);
+  });
+});
+
+describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
+  it('deletes one middle occurrence only after acknowledgement and holds the lease through settlement', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument({ existingOverride: true });
+    test.seedGroupDocument(before);
+    const acceptedEvents: unknown[] = [];
+    const unsubscribe = test.coordinator.acceptedOutput.subscribe((value) => {
+      if (value) acceptedEvents.push(value);
+    });
+
+    expect(await test.executeDeleteGroupFrame(4)).toBe(true);
+    expect(test.getRecords()).toEqual(before.realKeyRecords);
+    expect(test.getLoopClips()).toEqual(before.loopClips);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(test.getPayload()).toMatchObject({
+      operationKind: 'delete-group-frame',
+      startFrame: 4,
+      semanticDelta: {
+        kind: 'delete-group-frame',
+        groupId: 'group-1',
+        appFrame: 4,
+        cleanupKeyIds: ['override-4'],
+      },
+    });
+
+    expect(test.accept()).toBe('accepted');
+    expect(test.getRecords().map((entry) => entry.keyId)).toEqual(['A', 'B']);
+    expect(test.getLoopClips()).toEqual([
+      expect.objectContaining({
+        loopId: 'group-1',
+        phaseOrigin: 0,
+        syncState: 'modified',
+        visibleRanges: [
+          { start: 0, endExclusive: 4 },
+          { start: 5, endExclusive: 6 },
+        ],
+        frameOverrides: [],
+      }),
+    ]);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(4);
+    expect(acceptedEvents).toHaveLength(1);
+    expect(test.releaseLease).not.toHaveBeenCalled();
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(test.getPayload()!.operationId, 'release')).toBe(true);
+    expect(test.releaseLease).toHaveBeenCalledWith(test.leaseToken);
+    unsubscribe();
+  });
+
+  it('deletes the complete Group and uniquely owned physical facts while preserving the Action provenance contract', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument({ existingOverride: true });
+    test.seedGroupDocument(before);
+
+    expect(await test.executeDeleteGroup()).toBe(true);
+    expect(test.getLoopClips()).toEqual(before.loopClips);
+    expect(test.getPayload()).toMatchObject({
+      operationKind: 'delete-group',
+      startFrame: 4,
+      semanticDelta: {
+        kind: 'delete-group',
+        groupId: 'group-1',
+        cleanupKeyIds: ['A', 'B', 'override-4'],
+      },
+    });
+
+    expect(test.accept()).toBe('accepted');
+    expect(test.getRecords()).toEqual([]);
+    expect(test.getLoopClips()).toEqual([]);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual([]);
+    expect(test.coordinator.acceptedOutput.value).toMatchObject({
+      operationKind: 'delete-group',
+      before: {
+        loopClips: [expect.objectContaining({ provenanceState: 'attached' })],
+      },
+      after: { loopClips: [] },
+    });
+  });
+
+  it('publishes no child state on rejection and transfers recovery ownership after partial accepted cleanup', async () => {
+    const rejected = harness();
+    const before = groupLifecycleDocument({ existingOverride: true });
+    rejected.seedGroupDocument(before);
+
+    expect(await rejected.executeDeleteGroupFrame(4)).toBe(true);
+    expect(rejected.reject()).toBe('accepted');
+    expect(rejected.getRecords()).toEqual(before.realKeyRecords);
+    expect(rejected.getLoopClips()).toEqual(before.loopClips);
+    expect(rejected.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(rejected.reconcileCurrentFrame).not.toHaveBeenCalled();
+    expect(rejected.coordinator.acceptedOutput.value).toBeNull();
+
+    const cleanupFailure = harness({ failFirstLoopReplace: true });
+    cleanupFailure.seedGroupDocument(before);
+    expect(await cleanupFailure.executeDeleteGroup()).toBe(true);
+    expect(cleanupFailure.accept()).toBe('accepted');
+    expect(cleanupFailure.getRecords()).toEqual(before.realKeyRecords);
+    expect(cleanupFailure.getLoopClips()).toEqual(before.loopClips);
+    expect(cleanupFailure.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(cleanupFailure.coordinator.acceptedOutput.value).toBeNull();
+    expect(cleanupFailure.coordinator.failureOutput.value?.reason).toBe('exception');
+    expect(cleanupFailure.transferLeaseToRecovery).toHaveBeenCalledWith(cleanupFailure.leaseToken);
+    expect(cleanupFailure.releaseLease).not.toHaveBeenCalled();
   });
 });
 

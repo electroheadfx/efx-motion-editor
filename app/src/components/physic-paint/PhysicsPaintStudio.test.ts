@@ -215,6 +215,16 @@ describe('Physics Paint Group Delete choice dialog (43.2-08)', () => {
     expect(studio).toContain('if (!accepted) {');
   });
 
+  it('waits for exact parent acceptance before closing and publishes the approved lifecycle aftermath', () => {
+    expect(studio).toContain("operationKind: choice === 'delete-group' ? 'delete-group' : 'delete-group-frame'");
+    expect(studio).toContain('dispatchAndWaitForAcceptedRotoPhysicalEdit(');
+    expect(studio).toContain('physicalEditCoordinator.acceptedOutput,');
+    expect(studio).toContain("selectedLoopClipIds.value = choice === 'delete-group' || target.onlyOccurrence");
+    expect(studio).toContain('`Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`');
+    expect(studio).toContain('`Deleted Group at F${target.phaseOrigin}.`');
+    expect(studio).toContain('return accepted !== null;');
+  });
+
   it('uses the approved Studio-local modal geometry and stacking', () => {
     expect(css).toMatch(/\.physics-paint-group-delete-overlay\s*\{[^}]*z-index:\s*72[^}]*background:\s*rgba\(0,\s*0,\s*0,\s*\.24\)/s);
     expect(css).toMatch(/\.physics-paint-group-delete-dialog\s*\{[^}]*width:\s*min\(440px,\s*calc\(100% - 48px\)\)[^}]*max-height:\s*min\(520px,\s*calc\(100vh - 48px\)\)[^}]*padding:\s*16px[^}]*border-radius:\s*10px/s);

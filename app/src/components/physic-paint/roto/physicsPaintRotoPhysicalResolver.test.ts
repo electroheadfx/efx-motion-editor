@@ -1258,12 +1258,22 @@ describe('Phase 43.2 pure Group lifecycle proposals', () => {
       groupId: 'missing',
       appFrame: 1,
     })).toEqual({ ok: false, reason: 'group-not-found' });
-    expect(proposePhysicPaintRotoDeleteGroupFrame({
+    const onlyOccurrence = proposePhysicPaintRotoDeleteGroupFrame({
       document: lifecycleDocument([
         lifecycleGroup({ visibleRanges: [{ start: 0, endExclusive: 1 }], frameOverrides: [] }),
       ], [lifecycleRecord('A0', 0), lifecycleRecord('A1', 2), lifecycleRecord('ordinary', 20)]),
       groupId: 'group-a',
       appFrame: 0,
-    })).toEqual({ ok: false, reason: 'last-visible-occurrence' });
+    });
+    expect(onlyOccurrence.ok).toBe(true);
+    if (!onlyOccurrence.ok) throw new Error('Only-occurrence Delete Frame must remove the Group');
+    expect(onlyOccurrence.proposal.loopClips).toEqual([]);
+    expect(onlyOccurrence.proposal.realKeyRecords.map((record) => record.keyId)).toEqual(['ordinary']);
+    expect(onlyOccurrence.impact).toMatchObject({
+      kind: 'delete-group-frame',
+      groupId: 'group-a',
+      appFrame: 0,
+      cleanupKeyIds: ['A0', 'A1'],
+    });
   });
 });
