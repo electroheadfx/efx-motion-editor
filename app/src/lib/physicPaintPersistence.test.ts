@@ -317,6 +317,64 @@ describe('physicPaintPersistence', () => {
     ]);
   });
 
+  it('loads a literal pre-43.2 finite Group through the persistence seam', async () => {
+    files.set(
+      '/project/cache/physic-paint/legacy/key-000000-key-0.png',
+      new Uint8Array([1, 2, 3]),
+    );
+
+    const hydrated = await loadPhysicPaintData('/project', [{
+      layer_id: 'legacy-layer',
+      frames: [],
+      roto_physical: {
+        capacity: 16,
+        realKeyRecords: [{
+          kind: 'real-key',
+          keyId: 'key-0',
+          appFrame: 0,
+          payload: {
+            frameIndex: 0,
+            appFrame: 0,
+            cache_path: 'cache/physic-paint/legacy/key-000000-key-0.png',
+            width: 100,
+            height: 50,
+          },
+        }],
+        interpolation: { enabled: false, mode: 'duplicate' },
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        selectedKeyId: null,
+        cursorAppFrame: 0,
+        revision: 'physical-163-beed993b',
+        loopClips: [{
+          loopId: 'loop-legacy',
+          placementStart: 0,
+          sourceKeyIds: ['key-0'],
+          repeat: 2,
+          mode: 'progressive',
+        }],
+        incomingInterpolationBreakKeyIds: [],
+      },
+    }]);
+
+    expect(hydrated?.[0].roto_physical).toMatchObject({
+      revision: 'physical-225-6e46481e',
+      loopClips: [{
+        loopId: 'loop-legacy',
+        placementStart: 0,
+        sourceKeyIds: ['key-0'],
+        repeat: 2,
+        mode: 'progressive',
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 0,
+        originalEndExclusive: 2,
+        visibleRanges: [{ start: 0, endExclusive: 2 }],
+        frameOverrides: [],
+      }],
+    });
+  });
+
   it('preserves every Group lifecycle field and the override real-key sidecar through save/reopen', async () => {
     const persisted = await savePhysicPaintData('/project', makeLifecyclePhysicalOutput());
     const persistedDocument = persisted[0].roto_physical!;
