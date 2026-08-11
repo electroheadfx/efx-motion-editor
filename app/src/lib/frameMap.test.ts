@@ -78,6 +78,20 @@ function makeLoopClip(
   };
 }
 
+function makeLifecycleGroup(
+  visibleRanges: PhysicPaintRotoLoopClip['visibleRanges'],
+): PhysicPaintRotoLoopClip {
+  return {
+    ...makeLoopClip('group-lifecycle', 10, 4),
+    syncState: 'modified',
+    provenanceState: 'detached',
+    phaseOrigin: 10,
+    originalEndExclusive: 30,
+    visibleRanges,
+    frameOverrides: [],
+  };
+}
+
 function installRotoDocument(
   layerId: string,
   recordFrames: readonly number[],
@@ -306,6 +320,37 @@ describe('Motion Editor passive Loop Clip markers (D-33R)', () => {
     expect(layout.repeatDurationMarkers).toEqual([{ startFrame: 10, frameCount: 25, mode: 'progressive' }]);
     expect(Object.keys(layout.repeatDurationMarkers![0])).toEqual(['startFrame', 'frameCount', 'mode']);
     expect(JSON.stringify(layout.repeatDurationMarkers)).not.toContain('loop-private');
+  });
+
+  it('reacts to accepted fragmented Group ranges without deriving a second marker authority', () => {
+    const layerId = 'lifecycle-group-layer';
+    const sequence = {
+      ...makeFxSequence('lifecycle-group-sequence', 'Lifecycle Group', makePhysicPaintLayer(layerId)),
+      outFrame: 40,
+    };
+    sequenceStore.sequences.value = [sequence];
+    installRotoDocument(
+      layerId,
+      [0, 1, 2, 3, 4],
+      [makeLifecycleGroup([
+        { start: 10, endExclusive: 14 },
+        { start: 16, endExclusive: 30 },
+      ])],
+    );
+
+    expect(fxTrackLayouts.value[0].repeatDurationMarkers).toEqual([
+      { startFrame: 10, frameCount: 4, mode: 'progressive' },
+      { startFrame: 16, frameCount: 14, mode: 'progressive' },
+    ]);
+
+    const regenerated = physicPaintStore.replaceRotoPhysicalLoopClips(layerId, [makeLifecycleGroup([
+      { start: 10, endExclusive: 30 },
+    ])]);
+    if (!regenerated.ok) throw new Error(regenerated.error);
+
+    expect(fxTrackLayouts.value[0].repeatDurationMarkers).toEqual([
+      { startFrame: 10, frameCount: 20, mode: 'progressive' },
+    ]);
   });
 
   it('uses resolver effective ends for real-key truncation and later-loop priority', () => {

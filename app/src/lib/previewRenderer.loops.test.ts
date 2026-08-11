@@ -150,6 +150,28 @@ function loopClip(
   };
 }
 
+function lifecycleGroup(
+  overrides: Partial<PhysicPaintRotoLoopClip> = {},
+): PhysicPaintRotoLoopClip {
+  return {
+    loopId: 'group-a',
+    placementStart: 0,
+    sourceKeyIds: ['A0', 'A1'],
+    repeat: 3,
+    mode: 'progressive',
+    syncState: 'modified',
+    provenanceState: 'attached',
+    phaseOrigin: 0,
+    originalEndExclusive: 12,
+    visibleRanges: [
+      { start: 0, endExclusive: 1 },
+      { start: 2, endExclusive: 12 },
+    ],
+    frameOverrides: [],
+    ...overrides,
+  };
+}
+
 function install(
   records: readonly PhysicPaintRotoRealKeyRecord[],
   loops: readonly PhysicPaintRotoLoopClip[],
@@ -204,6 +226,26 @@ function installUnresolvedLoop(): void {
     [loopClip('loop-x', 0, ['A', 'missing-1'], 3)],
   );
 }
+
+describe('preview accepted Group lifecycle parity', () => {
+  it('keeps an omitted Group occurrence empty even when the ordinary projection has a generated cell there', () => {
+    install(
+      [record('A0', 0), record('A1', 3)],
+      [lifecycleGroup()],
+      { enabled: true, mode: 'duplicate' },
+    );
+    const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 1);
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
+    renderer.renderFrame([makeRotoLayer()], 1, [], 24, true, 1, 1);
+
+    expect(source).toBeNull();
+    expect(ctx.operations.some((operation) => operation.type === 'drawImage')).toBe(false);
+    expect(ctx.operations.some((operation) => operation.type === 'fillText')).toBe(false);
+  });
+});
 
 describe('preview linked-generated cache identity', () => {
   it('shares one key for the same ordered cycle and separates distinct cycles with matching adjacent IDs and cycle offset', () => {
