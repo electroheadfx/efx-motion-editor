@@ -132,7 +132,7 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(playScriptDialog).toContain('Max {playScript.capacity.value}');
     expect(playScriptDialog).toContain('Enter a positive integer or Max.');
     expect(playScriptDialog).toContain("if (event.key === 'Escape')");
-    expect(playScriptDialog).toContain("if (event.key === 'Enter' && !playScript.validationError.value");
+    expect(playScriptDialog).toContain("if (!regenerateImpact && event.key === 'Enter' && !playScript.validationError.value && !playScript.repeatError.value && !playScript.canCancel.value)");
     expect(playScriptDialog).not.toContain("event.key !== 'Tab'");
     expect(playScriptDialog).toContain('inputRef.current?.focus()');
     expect(playScriptDialog).toContain('returnFocusRef.current?.focus()');
