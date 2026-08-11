@@ -5,7 +5,7 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
-import { physicPaintStore, physicPaintVersion, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame } from './physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame } from './physicPaintStore';
 
 
 
@@ -1436,6 +1436,26 @@ describe('physicPaintStore', () => {
       });
       expect(recovery).toMatchObject({ projectContextId: 'project-1', layerId: 'layer-1', owner: 'recovery' });
       expect(physicPaintStore.releaseRotoPhysicalOperationLease(recovery!)).toBe(true);
+    });
+
+    it('atomically transfers exclusive ownership to recovery and publishes reactive availability transitions', () => {
+      const beforeVersion = physicPaintRotoPhysicalOperationLeaseVersion.value;
+      expect(physicPaintStore.isRotoPhysicalOperationAvailable('project-1', 'layer-1')).toBe(true);
+
+      const exclusive = physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1')!;
+      expect(physicPaintRotoPhysicalOperationLeaseVersion.value).toBe(beforeVersion + 1);
+      expect(physicPaintStore.isRotoPhysicalOperationAvailable('project-1', 'layer-1')).toBe(false);
+
+      const recovery = physicPaintStore.transferRotoPhysicalOperationLeaseToRecovery(exclusive);
+      expect(recovery).toEqual({ ...exclusive, owner: 'recovery' });
+      expect(physicPaintRotoPhysicalOperationLeaseVersion.value).toBe(beforeVersion + 2);
+      expect(physicPaintStore.validateRotoPhysicalOperationLease('project-1', 'layer-1', exclusive)).toEqual({ ok: false, reason: 'mismatched-token' });
+      expect(physicPaintStore.validateRotoPhysicalOperationLease('project-1', 'layer-1', recovery)).toEqual({ ok: true });
+      expect(physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1')).toBeNull();
+
+      expect(physicPaintStore.releaseRotoPhysicalOperationLease(recovery!)).toBe(true);
+      expect(physicPaintRotoPhysicalOperationLeaseVersion.value).toBe(beforeVersion + 3);
+      expect(physicPaintStore.isRotoPhysicalOperationAvailable('project-1', 'layer-1')).toBe(true);
     });
 
     it('requires the exact active token for complete replacement and direct real-key publication without changing accepted state on rejection', () => {
