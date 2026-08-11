@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type {
   PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoPhysicalRenderSource,
@@ -8,6 +8,7 @@ import type {
 import {
   encodeRotoPhysicalLaunchDocument,
   rejectRotoLoopPlaceholderSource,
+  routeRotoPhysicalPaintFrame,
 } from './useRotoFramePersistenceCoordinator';
 
 // Phase 43 Plan 09 Task 3: the frame persistence/cache coordinator explicitly
@@ -199,6 +200,155 @@ function resolveControlledGroupBytes(state: CowState, groupId: string, appFrame:
   const keyId = override?.keyId ?? group.orderedSourceKeyIds[sourceIndex];
   return state.rasterBytes[keyId];
 }
+
+function routedPaintDocument(options: { gapFrame?: number; ambiguous?: boolean } = {}): PhysicPaintRotoPhysicalDocument {
+  const records = [
+    {
+      kind: 'real-key' as const,
+      keyId: 'source-A',
+      appFrame: 0,
+      payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,QQ==' },
+    },
+    {
+      kind: 'real-key' as const,
+      keyId: 'source-B',
+      appFrame: 2,
+      payload: { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,Qg==' },
+    },
+    {
+      kind: 'real-key' as const,
+      keyId: 'ordinary-8',
+      appFrame: 8,
+      payload: { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,Tw==' },
+    },
+    {
+      kind: 'real-key' as const,
+      keyId: 'override-5',
+      appFrame: 5,
+      payload: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,Vg==' },
+    },
+  ];
+  const visibleRanges = options.gapFrame === undefined
+    ? [{ start: 0, endExclusive: 6 }]
+    : [
+        { start: 0, endExclusive: options.gapFrame },
+        { start: options.gapFrame + 1, endExclusive: 6 },
+      ];
+  const group = {
+    loopId: 'group-1',
+    placementStart: 0,
+    sourceKeyIds: ['source-A', 'source-B'],
+    repeat: 2 as const,
+    mode: 'progressive' as const,
+    syncState: 'modified' as const,
+    provenanceState: 'attached' as const,
+    phaseOrigin: 0,
+    originalEndExclusive: 6,
+    visibleRanges,
+    frameOverrides: [{ appFrame: 5, keyId: 'override-5' }],
+  };
+  const loopClips = options.ambiguous
+    ? [group, { ...group, loopId: 'group-2', frameOverrides: [] }]
+    : [group];
+  return {
+    capacity: 12,
+    realKeyRecords: records,
+    interpolation: { enabled: false, mode: 'duplicate' },
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame: 0,
+    revision: 'accepted-revision',
+    loopClips,
+    incomingInterpolationBreakKeyIds: ['source-B'],
+  };
+}
+
+describe('Phase 43.2 production Paint target routing', () => {
+  const renderedPayload = {
+    frameIndex: 0,
+    appFrame: 8,
+    dataUrl: 'data:image/png;base64,UEFJTlQ=',
+  };
+
+  it('keeps an ordinary unique real key on the direct payload path', async () => {
+    const updateOrdinaryKey = vi.fn(() => ({ ok: true as const, changed: true, contentRevision: 'next-revision' }));
+    const executePhysicalEdit = vi.fn(async () => true);
+
+    const result = await routeRotoPhysicalPaintFrame({
+      document: routedPaintDocument(),
+      projectContextId: 'project-1',
+      layerId: 'layer-1',
+      launchOperationId: 'launch-1',
+      appFrame: 8,
+      expectedKeyId: 'ordinary-8',
+      renderedPayload,
+      createOverrideKeyId: () => 'unused-override',
+    }, { updateOrdinaryKey, executePhysicalEdit });
+
+    expect(result).toEqual({ ok: true, kind: 'ordinary-key', keyId: 'ordinary-8', contentRevision: 'next-revision' });
+    expect(updateOrdinaryKey).toHaveBeenCalledOnce();
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['source occurrence', 3, undefined],
+    ['generated occurrence', 4, undefined],
+    ['existing override', 5, 'override-5'],
+    ['deleted Group occurrence', 4, undefined],
+  ] as const)('routes a %s through one exact-frame COW physical edit', async (_label, appFrame, expectedOverrideKeyId) => {
+    const document = routedPaintDocument(_label === 'deleted Group occurrence' ? { gapFrame: appFrame } : {});
+    const updateOrdinaryKey = vi.fn();
+    const executePhysicalEdit = vi.fn(async () => true);
+
+    const result = await routeRotoPhysicalPaintFrame({
+      document,
+      projectContextId: 'project-1',
+      layerId: 'layer-1',
+      launchOperationId: 'launch-1',
+      appFrame,
+      expectedKeyId: expectedOverrideKeyId,
+      renderedPayload: { ...renderedPayload, appFrame },
+      createOverrideKeyId: () => `override-${appFrame}-new`,
+    }, { updateOrdinaryKey, executePhysicalEdit });
+
+    expect(result).toEqual({ ok: true, kind: 'group-frame', groupId: 'group-1', appFrame });
+    expect(updateOrdinaryKey).not.toHaveBeenCalled();
+    expect(executePhysicalEdit).toHaveBeenCalledWith(expect.objectContaining({
+      operationKind: 'paint-group-frame',
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      groupId: 'group-1',
+      appFrame,
+      overrideKeyId: expectedOverrideKeyId ?? `override-${appFrame}-new`,
+      renderedPayload: expect.objectContaining({ appFrame }),
+    }));
+  });
+
+  it.each([
+    ['stale ordinary identity', routedPaintDocument(), 8, 'wrong-key'],
+    ['unresolved Group', { ...routedPaintDocument(), realKeyRecords: routedPaintDocument().realKeyRecords.filter((record) => record.keyId !== 'source-B') }, 3, undefined],
+    ['ambiguous Group', routedPaintDocument({ ambiguous: true }), 3, undefined],
+    ['placeholder/empty frame', routedPaintDocument(), 10, undefined],
+  ] as const)('rejects %s before any raster/cache mutation', async (_label, document, appFrame, expectedKeyId) => {
+    const updateOrdinaryKey = vi.fn();
+    const executePhysicalEdit = vi.fn(async () => true);
+
+    const result = await routeRotoPhysicalPaintFrame({
+      document,
+      projectContextId: 'project-1',
+      layerId: 'layer-1',
+      launchOperationId: 'launch-1',
+      appFrame,
+      expectedKeyId,
+      renderedPayload: { ...renderedPayload, appFrame },
+      createOverrideKeyId: () => 'must-not-allocate',
+    }, { updateOrdinaryKey, executePhysicalEdit });
+
+    expect(result.ok).toBe(false);
+    expect(updateOrdinaryKey).not.toHaveBeenCalled();
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+});
 
 describe('Phase 43.2 exact-frame copy-on-write persistence contract', () => {
   const sourceBytes = Object.freeze({
