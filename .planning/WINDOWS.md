@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 20
 waived_count: 1
-fixed_count: 25
-total_count: 46
-last_updated: 2026-08-11T03:07:49.461Z
+fixed_count: 28
+total_count: 49
+last_updated: 2026-08-11T06:49:38.494Z
 ---
 
 # Broken Windows Ledger
@@ -61,6 +61,9 @@ last_updated: 2026-08-11T03:07:49.461Z
 | 44 | 43.2 | skipped-test | app/src/lib/physicPaintBridge.test.ts | 1860 | Pre-existing skipped native close-window test remains outside Plan 43.2-02. | open |  | 2026-08-11T02:58:41.449Z |  |
 | 45 | 43.2 | deviation | .planning/STATE.md |  | Reconciled stale generated progress percentage and last-activity metadata after Plan 43.2-02. | open |  | 2026-08-11T02:59:29.105Z |  |
 | 46 | 43.2 | stub | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md | 5 | Wave 0 UAT rows intentionally retain Plan 17 observation and evidence sentinels until frozen-session native acceptance | open |  | 2026-08-11T03:07:49.461Z |  |
+| 47 | 43.2 | deviation | app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.test.ts |  | Updated accepted settlement fixtures to echo exact project authority after lease propagation. | fixed |  | 2026-08-11T06:49:05.439Z | 2026-08-11T06:49:38.327Z |
+| 48 | 43.2 | deviation | app/src/lib/physicPaintBridge.test.ts |  | Updated accepted bridge fixtures to acquire and release exact canonical lease tokens. | fixed |  | 2026-08-11T06:49:05.521Z | 2026-08-11T06:49:38.410Z |
+| 49 | 43.2 | deviation | app/src/lib/physicPaintBridge.ts |  | Extended the closed bridge token parser to validate exclusive and recovery ownership. | fixed |  | 2026-08-11T06:49:05.605Z | 2026-08-11T06:49:38.494Z |
 
 ````json
 [
@@ -615,6 +618,42 @@ last_updated: 2026-08-11T03:07:49.461Z
     "reason": "",
     "recorded_at": "2026-08-11T03:07:49.461Z",
     "resolved_at": null
+  },
+  {
+    "id": 47,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": "app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.test.ts",
+    "line": null,
+    "description": "Updated accepted settlement fixtures to echo exact project authority after lease propagation.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T06:49:05.439Z",
+    "resolved_at": "2026-08-11T06:49:38.327Z"
+  },
+  {
+    "id": 48,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": "app/src/lib/physicPaintBridge.test.ts",
+    "line": null,
+    "description": "Updated accepted bridge fixtures to acquire and release exact canonical lease tokens.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T06:49:05.521Z",
+    "resolved_at": "2026-08-11T06:49:38.410Z"
+  },
+  {
+    "id": 49,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": "app/src/lib/physicPaintBridge.ts",
+    "line": null,
+    "description": "Extended the closed bridge token parser to validate exclusive and recovery ownership.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T06:49:05.605Z",
+    "resolved_at": "2026-08-11T06:49:38.494Z"
   }
 ]
 ````

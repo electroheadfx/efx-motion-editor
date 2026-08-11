@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Completed 43.2-05-PLAN.md
-last_updated: "2026-08-11T05:54:51.729Z"
+stopped_at: Completed 43.2-18-PLAN.md
+last_updated: "2026-08-11T06:48:30.042Z"
 last_activity: 2026-08-11
-last_activity_desc: Completed Plan 43.2-05 canonical Group lifecycle schema, transport, persistence, and store boundary completion
+last_activity_desc: Completed Plan 43.2-18 canonical physical-operation lease, settlement, and recovery gating
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 61
-  completed_plans: 46
-  percent: 75
+  completed_plans: 47
+  percent: 63
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
-Plan: 6 of 20
+Plan: 7 of 20
 Status: Ready to execute
-Last activity: 2026-08-11 — Completed Plan 43.2-05 canonical Group lifecycle schema, transport, persistence, and store boundary completion
+Last activity: 2026-08-11 — Completed Plan 43.2-18 canonical physical-operation lease, settlement, and recovery gating
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [████████░░] 75%
+Progress: [████████░░] 77%
 
 ## Performance Metrics
 
@@ -199,6 +199,7 @@ Progress: [████████░░] 75%
 | Phase 43.2 P03 | 7min | 3 tasks | 5 files |
 | Phase 43.2 P04 | 2h10m across approved tracer checkpoint | 2 tasks | 8 files |
 | Phase 43.2 P05 | 16min | 3 tasks | 9 files |
+| Phase 43.2 P18 | 34min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -308,6 +309,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43.2-05: visibleRanges exclusively owns deleted Group occurrences; incomingInterpolationBreakKeyIds remains real-key interpolation authority.
 - [Phase ?]: 43.2-05: Exact-frame overrides persist as keyId references to sidecar-backed canonical real keys, never embedded Group raster data.
 - [Phase ?]: 43.2-05: Existing replaceRotoPhysicalDocument remains the sole complete-map replacement and exact-once notification seam.
+- [Phase ?]: Keep the physical-operation lease registry inside physicPaintStore so concurrency control cannot become a second document authority.
+- [Phase ?]: Retain accepted lease ownership until explicit child settlement acknowledgement, then release or atomically transfer to recovery ownership.
+- [Phase ?]: Gate the complete Studio physical mutation surface from a Preact computed value backed by the canonical lease-version Signal.
 
 ### Pending Todos
 
@@ -497,8 +501,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T05:54:51.717Z
-Stopped at: Completed 43.2-05-PLAN.md
+Last session: 2026-08-11T06:48:30.030Z
+Stopped at: Completed 43.2-18-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
