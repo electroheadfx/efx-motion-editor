@@ -187,7 +187,7 @@ describe('canonical Group presentation copy', () => {
 
     expect(presentation.fragmentLabel).toBe('Range F18–F21 · Fragment 2 of 3');
     expect(presentation.linkedDescription).toBe('Linked to selected Action Walk Cycle.');
-    expect(presentation.tooltipLines.at(-1)).toBe('Range F18–F21 · Fragment 2 of 3');
+    expect(presentation.tooltipLines[presentation.tooltipLines.length - 1]).toBe('Range F18–F21 · Fragment 2 of 3');
     expect(presentation.accessibleName).toBe(
       'Walk Cycle Group. Fragment 2 of 3, frames 18 through 21. Motion Group. Synchronized with Action. Linked to selected Action Walk Cycle.',
     );
