@@ -2033,4 +2033,187 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(driver.getCurrent().loopClips[0].sourceKeyIds).toEqual(['S1', 'S2', 'S3']);
     });
   });
+
+  describe('Group Regenerate preparation and settlement (43.2-09)', () => {
+    type RegenerateController = RotoPlayScriptController & {
+      readonly regenerateDisabledReason: { readonly value: string | null };
+      readonly regenerateImpact: { readonly value: {
+        readonly actionId: string;
+        readonly actionRevision: string;
+        readonly actionHash: string;
+        readonly documentRevision: string;
+        readonly initiatingGroupId: string;
+        readonly groupName: string;
+        readonly groupType: 'Motion' | 'Static';
+        readonly restoredRange: string;
+        readonly locallyPaintedFrameCount: number;
+        readonly deletedFrameCount: number;
+        readonly deletedFrameRanges: string;
+        readonly fragmentCount: number;
+        readonly gapRanges: string;
+        readonly affectedGroups: readonly { readonly groupId: string; readonly name: string; readonly range: string }[];
+        readonly sourceCacheEffects: string;
+      } | null };
+    };
+
+    const lifecycleGroup = (
+      loopId: string,
+      placementStart: number,
+      overrides: Partial<PhysicPaintRotoLoopClip> = {},
+    ): PhysicPaintRotoLoopClip => ({
+      ...loopClip(loopId, placementStart, 2, ['S1', 'S2', 'S3']),
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: placementStart,
+      originalEndExclusive: placementStart + 10,
+      visibleRanges: [
+        { start: placementStart, endExclusive: placementStart + 3 },
+        { start: placementStart + 4, endExclusive: placementStart + 10 },
+      ],
+      frameOverrides: [{ appFrame: placementStart + 2, keyId: `override-${loopId}` }],
+      ...overrides,
+    });
+
+    const regenerateDocument = (groups: readonly PhysicPaintRotoLoopClip[]) => {
+      const records: PhysicPaintRotoRealKeyRecord[] = [
+        ...CYCLE_IDS.slice(0, 3).map((keyId, index) => ({
+          kind: 'real-key' as const,
+          ...physicalRecord(keyId, 4 + index * 2, `source-${keyId}`),
+        })),
+        ...groups.flatMap((group) => (group.frameOverrides ?? []).map((override) => ({
+          kind: 'real-key' as const,
+          ...physicalRecord(override.keyId, override.appFrame, `local-${override.keyId}`),
+        }))),
+      ];
+      const interpolation = { enabled: true, mode: 'duplicate' as const };
+      return Object.freeze({
+        capacity: 100,
+        realKeyRecords: Object.freeze(records),
+        interpolation,
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        selectedKeyId: null,
+        cursorAppFrame: 13,
+        revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, groups, []),
+        loopClips: Object.freeze([...groups]),
+        incomingInterpolationBreakKeyIds: Object.freeze([] as string[]),
+      });
+    };
+
+    const actionRow = (revision = 'action-revision-1') => ({
+      id: 'script-1',
+      revision,
+      name: 'Walk Cycle',
+      createdAt: '2026-08-11T00:00:00Z',
+      updatedAt: '2026-08-11T00:00:00Z',
+      source: {},
+      thumbnail: {},
+      brushCount: 1,
+    });
+
+    function regenerateHarness(groups: readonly PhysicPaintRotoLoopClip[]) {
+      const document = regenerateDocument(groups);
+      const rows = signal([actionRow()] as never);
+      const library = {
+        selectedId: signal<string | null>('script-1'),
+        selected: signal(actionRow()),
+        rows,
+        busy: signal(false),
+        loadSnapshot: vi.fn(async () => script(77)),
+      } as unknown as RotoPlayScriptControllerPorts['library'];
+      const localAuthority = loopAuthority({
+        canonicalStart: groups[0]?.phaseOrigin ?? 10,
+        layerEndExclusive: 100,
+        capacity: 90,
+        physicalCapacity: 100,
+        physicalRevision: document.revision,
+        rotoRevision: document.revision,
+        physicalRecords: document.realKeyRecords,
+      });
+      const test = loopOpHarness(groups, localAuthority, {
+        library,
+        getPhysicalDocument: () => document,
+      } as unknown as Partial<RotoPlayScriptControllerPorts>);
+      return { ...test, controller: test.controller as RegenerateController, document, rows, library };
+    }
+
+    it('gates Regenerate with exact lifecycle reasons and prepares one immutable disclosed impact', async () => {
+      const synchronized = regenerateHarness([lifecycleGroup('G1', 10, { syncState: 'synchronized' })]);
+      expect((await synchronized.controller.openSourceEdit('G1')).reason).toBe('Already synchronized with Action.');
+
+      const detached = regenerateHarness([lifecycleGroup('G1', 10, { provenanceState: 'detached' })]);
+      expect((await detached.controller.openSourceEdit('G1')).reason).toBe('Regenerate unavailable — Action detached.');
+
+      const unavailable = regenerateHarness([lifecycleGroup('G1', 10)]);
+      unavailable.rows.value = [] as never;
+      expect((await unavailable.controller.openSourceEdit('G1')).reason).toBe('Regenerate unavailable — Source Action unavailable.');
+
+      const groups = [lifecycleGroup('G1', 10), lifecycleGroup('G2', 30, { frameOverrides: [] })];
+      const prepared = regenerateHarness(groups);
+      expect(await prepared.controller.openSourceEdit('G1')).toEqual({ ok: true, reason: null });
+      expect(prepared.controller.regenerateDisabledReason.value).toBeNull();
+      expect(prepared.controller.regenerateImpact.value).toMatchObject({
+        actionId: 'script-1',
+        actionRevision: 'action-revision-1',
+        documentRevision: prepared.document.revision,
+        initiatingGroupId: 'G1',
+        groupName: 'Group at F10',
+        groupType: 'Static',
+        restoredRange: 'F10–F19',
+        locallyPaintedFrameCount: 1,
+        deletedFrameCount: 1,
+        deletedFrameRanges: 'F13',
+        fragmentCount: 2,
+        gapRanges: 'F13',
+        affectedGroups: [
+          { groupId: 'G1', name: 'Group at F10', range: 'F10–F19' },
+          { groupId: 'G2', name: 'Group at F30', range: 'F30–F39' },
+        ],
+      });
+      expect(prepared.controller.regenerateImpact.value?.actionHash).toMatch(/^action-/);
+      expect(Object.isFrozen(prepared.controller.regenerateImpact.value)).toBe(true);
+      expect(prepared.library.loadSnapshot).toHaveBeenCalledWith('script-1');
+    });
+
+    it('rejects ambiguous sharing and stale Action authority without publishing', async () => {
+      const ambiguous = regenerateHarness([
+        lifecycleGroup('G1', 10),
+        lifecycleGroup('G2', 30, { sourceKeyIds: ['S1', 'S3'] }),
+      ]);
+      expect((await ambiguous.controller.openSourceEdit('G1')).reason).toBe('Regenerate unavailable — Group source sharing is ambiguous.');
+
+      const stale = regenerateHarness([lifecycleGroup('G1', 10)]);
+      expect((await stale.controller.openSourceEdit('G1')).ok).toBe(true);
+      stale.rows.value = [actionRow('action-revision-2')] as never;
+      expect(await stale.controller.confirm()).toBe(false);
+      expect(stale.commit).not.toHaveBeenCalled();
+      expect(stale.controller.error.value).toBe('Regenerate rejected — saved Action changed.');
+      expect(stale.controller.confirmationOpen.value).toBe(true);
+    });
+
+    it('restores every truly shared Group, removes local overrides, and preserves cursor selection in one commit', async () => {
+      const groups = [lifecycleGroup('G1', 10), lifecycleGroup('G2', 30)];
+      const test = regenerateHarness(groups);
+      test.setSelection({ kind: 'empty', keyId: null, appFrame: 13 });
+      expect((await test.controller.openSourceEdit('G1')).ok).toBe(true);
+      expect(await test.controller.confirm()).toBe(true);
+      expect(test.commit).toHaveBeenCalledOnce();
+      const publication = test.commit.mock.calls[0][0];
+      expect(publication.selectedKeyId).toBeNull();
+      expect(publication.selectedAppFrame).toBeNull();
+      expect(publication.records.some((record) => record.keyId.startsWith('override-'))).toBe(false);
+      expect(publication.loopClips?.map((group) => ({
+        loopId: group.loopId,
+        placementStart: group.placementStart,
+        syncState: group.syncState,
+        visibleRanges: group.visibleRanges,
+        frameOverrides: group.frameOverrides,
+      }))).toEqual([
+        { loopId: 'G1', placementStart: 10, syncState: 'synchronized', visibleRanges: [{ start: 10, endExclusive: 20 }], frameOverrides: [] },
+        { loopId: 'G2', placementStart: 30, syncState: 'synchronized', visibleRanges: [{ start: 30, endExclusive: 40 }], frameOverrides: [] },
+      ]);
+      expect(test.controller.phase.value).toBe('complete');
+      expect(test.controller.confirmationOpen.value).toBe(false);
+    });
+  });
 });
