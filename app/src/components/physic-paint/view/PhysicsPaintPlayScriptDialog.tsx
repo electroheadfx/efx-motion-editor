@@ -15,8 +15,8 @@ export interface PhysicsPaintPlayScriptDialogProps {
 
 // D-05: locked mode options, labels, and helper copy (42-UI-SPEC Copywriting Contract).
 const PLAY_SCRIPT_MODES: ReadonlyArray<{ value: RotoPlayScriptMode; label: string; helper: string }> = [
-  { value: 'progressive', label: 'Progressive', helper: 'The drawing builds stroke by stroke across frames.' },
-  { value: 'static', label: 'Static / Hold', helper: 'The complete drawing is applied to every cycle frame.' },
+  { value: 'progressive', label: 'Motion', helper: 'The drawing builds stroke by stroke across frames.' },
+  { value: 'static', label: 'Static', helper: 'The complete drawing is applied to every cycle frame.' },
 ];
 
 // 43-06 S4 (D-05): locked apply-time source-cycle choice options and helper copy
@@ -241,7 +241,7 @@ export function PhysicsPaintPlayScriptDialog({
               ? 'Edit Group'
               : sourceEdit
                 ? 'Edit Source Cycle'
-                : 'Play Script'}</strong>
+                : 'Create Group'}</strong>
           {regenerateImpact
             ? <span class="physics-paint-play-script-header-range">{regenerateImpact.restoredRange}</span>
             : loopEdit && editTarget
@@ -277,16 +277,16 @@ export function PhysicsPaintPlayScriptDialog({
           ) : (<>
           {sourceEdit ? (
             <p class="physics-paint-play-script-notice">
-              Confirming regenerates the source cycle and updates every linked Loop Clip referencing it.
-              {playScript.sourceEditSharedLoopCount.value > 1 ? ` This source cycle is shared by ${playScript.sourceEditSharedLoopCount.value} loops.` : ''}
+              Confirming regenerates the source cycle and updates every linked Group referencing it.
+              {playScript.sourceEditSharedLoopCount.value > 1 ? ` This source cycle is shared by ${playScript.sourceEditSharedLoopCount.value} Groups.` : ''}
             </p>
           ) : null}
           <div class={`physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-mode${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
-            <span class="physics-paint-play-script-card-title">Mode</span>
+            <span class="physics-paint-play-script-card-title">Group Type</span>
             <div
               class="physics-paint-play-script-mode-group"
               role="radiogroup"
-              aria-label="Mode"
+              aria-label="Group Type"
               aria-describedby="physics-play-script-mode-helper"
               onKeyDown={onModeKeyDown}
             >
@@ -552,7 +552,7 @@ export function PhysicsPaintPlayScriptDialog({
                   disabled={Boolean(playScript.validationError.value) || Boolean(playScript.repeatError.value)}
                   onClick={() => { void playScript.confirm(); }}
                 >
-                  {loopEdit ? 'Update Group' : sourceEdit ? 'Regenerate source cycle' : 'Generate'}
+                  {loopEdit ? 'Update Group' : sourceEdit ? 'Regenerate source cycle' : 'Create Group'}
                 </button>
               ) : null}
             </>)}

@@ -417,8 +417,9 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
   it('renders a radiogroup with two radio options, roving tabindex, and the helper line', () => {
     const { controller } = createFakeController();
     const tree = renderDialog(controller);
-    const group = findOne(tree, byRadioGroup('Group Type'));
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-card-title')))).toBe('Group Type');
+    const modeCard = findOne(tree, byClass('physics-paint-play-script-card-mode'));
+    const group = findOne(modeCard, byRadioGroup('Group Type'));
+    expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-card-title')))).toBe('Group Type');
     expect(group.props['aria-describedby']).toBe('physics-play-script-mode-helper');
     const radios = findAll(group, (vnode) => vnode.props?.role === 'radio');
     expect(radios).toHaveLength(2);
@@ -669,7 +670,7 @@ describe('PhysicsPaintPlayScriptDialog generation states (E5)', () => {
     const error = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-script-inline-error') && hasClass(vnode, 'physics-paint-play-script-dialog-error'));
     expect(textOf(error)).toBe('Parent rejected the Play Script batch.');
     expect(findAll(tree, (vnode) => vnode.type === 'progress')).toHaveLength(0);
-    expect(findOne(tree, (vnode) => textOf(vnode) === 'Create Group').props.disabled).toBe(false);
+    expect(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Create Group').props.disabled).toBe(false);
     expect(findOne(tree, byId('physics-play-script-count')).props.disabled).toBe(false);
     expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(false);
   });

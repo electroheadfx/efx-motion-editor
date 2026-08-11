@@ -123,7 +123,7 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(panel).toContain('title={props.title}');
     expect(controller).toContain("saveDisabledReason: !projectSaved.value ? 'Save the project first.'");
     expect(panel).toContain('availability.saveDisabledReason');
-    expect(panel).toContain("playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)'");
+    expect(panel).toContain("playScript.disabledReason.value ?? 'Create a Motion or Static Group from the selected Action'");
     expect(panel).not.toContain('Import Script');
     expect(panel).toContain('aria-label="Project Actions"');
     expect(panel).toContain('aria-label="Saved Roto Actions"');
@@ -191,7 +191,7 @@ describe('Physics Paint Scripts panel Clear Action Buffer contract (36.15-07, re
 
   it('uses the user wording clear script from buffer with de-prefixed tooltip grammar and guards activation before the handler', () => {
     const block = getGuardedToolbarBlock(panel, 'Clear Action Buffer');
-    expect(block).toContain('Clear script from buffer');
+    expect(block).toContain('Clear Action from buffer');
     expect(block).toContain('unavailable: ${clearScriptBufferDisabledReason}');
     expect(block).not.toContain(' — unavailable: ');
     expect(block).toContain('aria-describedby');
@@ -699,7 +699,7 @@ describe('Physics Paint Scripts panel compact sidebar contract', () => {
   it('keeps the Create Group… tooltip fallback covering both modes', () => {
     const tree = renderPanel(createFakePlayScript());
     const playButton = findOne(tree, (vnode) => vnode.props?.label === 'Create Group…');
-    expect(playButton.props.title).toBe('Create Group… — Generate real Roto keys (progressive or static/hold)');
-    expect(String(playButton.props.title)).not.toContain('Generate progressive real Roto keys');
+    expect(playButton.props.title).toBe('Create Group… — Create a Motion or Static Group from the selected Action');
+    expect(String(playButton.props.title)).not.toContain('Progressive');
   });
 });

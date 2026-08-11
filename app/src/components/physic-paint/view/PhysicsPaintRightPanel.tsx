@@ -572,7 +572,7 @@ export function PhysicsPaintRightPanel({
             aria-selected={optionsTab === 'scripts'}
             onClick={() => { setOptionsTab('scripts'); void scripts.library.enterScripts(); }}
           >
-            Scripts
+            Actions
           </button>
           <button
             type="button"

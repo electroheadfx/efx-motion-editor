@@ -47,7 +47,7 @@ export function PhysicsPaintScriptsPanel({
   const confirmationBusy = actionMutationDisabledReason !== null;
   const loadAndApplyDisabledReason = actionMutationDisabledReason
     ?? (!library.selected.value
-      ? 'Select a project script first.'
+      ? 'Select a project Action first.'
       : rotoScript.availability.value.replacementApplyDisabledReason);
   const saveDisabledReason = actionMutationDisabledReason ?? availability.saveDisabledReason;
   const playScriptDisabledReason = actionMutationDisabledReason ?? playScript.disabledReason.value;
@@ -107,14 +107,14 @@ export function PhysicsPaintScriptsPanel({
 
   if (selectedLoopClip) {
     return (
-      <div class="physics-paint-scripts-panel physics-paint-loop-clip-panel" role="tabpanel" aria-label={`Selected Loop Clip — ${selectedLoopClip.displayName}`}>
+      <div class="physics-paint-scripts-panel physics-paint-loop-clip-panel" role="tabpanel" aria-label={`Selected Group — ${selectedLoopClip.displayName}`}>
         <dl class="physics-paint-loop-clip-inspector">
           <div><dt>Name</dt><dd title={selectedLoopClip.displayName}>{selectedLoopClip.displayName}</dd></div>
-          <div><dt>Source script</dt><dd title={selectedLoopClip.sourceLabel}>{selectedLoopClip.sourceLabel}</dd></div>
+          <div><dt>Source Action</dt><dd title={selectedLoopClip.sourceLabel}>{selectedLoopClip.sourceLabel}</dd></div>
           <div><dt>Placement</dt><dd>{selectedLoopClip.placementLabel}</dd></div>
           <div><dt>Cycle</dt><dd>{selectedLoopClip.cycleLabel}</dd></div>
           <div><dt>Effective</dt><dd>{selectedLoopClip.effectiveLabel}</dd></div>
-          <div><dt>Mode</dt><dd>{selectedLoopClip.modeLabel}</dd></div>
+          <div><dt>Group Type</dt><dd>{selectedLoopClip.modeLabel}</dd></div>
           <div><dt>Status</dt><dd>{selectedLoopClip.statusLabel}</dd></div>
         </dl>
         <div class="physics-paint-loop-clip-inspector-actions">
@@ -122,16 +122,16 @@ export function PhysicsPaintScriptsPanel({
             ref={playButtonRef}
             type="button"
             class="physics-paint-loop-clip-inspector-action primary"
-            aria-label={`Edit Loop Clip — ${selectedLoopClip.displayName}`}
+            aria-label={`Edit Group — ${selectedLoopClip.displayName}`}
             onClick={() => { void onOpenLoopEdit(selectedLoopClip.loopId); }}
           >
             <Pencil size={16} aria-hidden="true" />
-            <span>Edit</span>
+            <span>Edit Group</span>
           </button>
           <button
             type="button"
             class="physics-paint-loop-clip-inspector-action"
-            aria-label={`Close Loop Clip inspector — ${selectedLoopClip.displayName}`}
+            aria-label={`Close Group inspector — ${selectedLoopClip.displayName}`}
             onClick={onCloseLoopClip}
           >
             <X size={16} aria-hidden="true" />
@@ -143,18 +143,18 @@ export function PhysicsPaintScriptsPanel({
   }
 
   return (
-    <div class="physics-paint-scripts-panel" role="tabpanel" aria-label="Project Roto scripts">
-      <div ref={toolbarRef} class="physics-paint-scripts-toolbar" role="toolbar" aria-label="Roto script library actions">
-        <IconButton label="Save Script" title={`Save Script — ${saveDisabledReason ?? 'Save the active real Roto frame'}`} disabled={saveDisabledReason !== null || !availability.canSave} disabledReason={saveDisabledReason ?? undefined} descriptionId={saveReasonId} onClick={onSave}><Save size={16} /></IconButton>
-        <IconButton label="Load and Apply Script" title={`Load and Apply Script — ${loadAndApplyDisabledReason ?? 'Reload the selected preset and apply it to this Roto frame'}`} disabled={loadAndApplyDisabledReason !== null} disabledReason={loadAndApplyDisabledReason ?? undefined} descriptionId={loadAndApplyReasonId} onClick={onLoadAndApply}><Paintbrush size={16} /></IconButton>
-        <IconButton buttonRef={playButtonRef} label="Play Script" title={`Play Script — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)')}`} disabled={playScriptDisabledReason !== null} disabledReason={playScriptDisabledReason ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
-        <IconButton buttonRef={deleteButtonRef} label="Delete Script" title={`Delete Script — ${actionMutationDisabledReason ?? 'Remove the selected project preset'}`} disabled={actionMutationDisabledReason !== null || !availability.canDelete} disabledReason={actionMutationDisabledReason ?? undefined} onClick={library.requestDelete}><Trash2 size={16} /></IconButton>
-        <IconButton label="Refresh Scripts" title={`Refresh Scripts — ${actionMutationDisabledReason ?? 'Scan the project scripts folder'}`} disabled={actionMutationDisabledReason !== null} disabledReason={actionMutationDisabledReason ?? undefined} onClick={onRefresh}><RefreshCw size={16} /></IconButton>
+    <div class="physics-paint-scripts-panel" role="tabpanel" aria-label="Project Actions">
+      <div ref={toolbarRef} class="physics-paint-scripts-toolbar" role="toolbar" aria-label="Actions">
+        <IconButton label="Save Action" title={`Save Action — ${saveDisabledReason ?? 'Save the active real Roto frame'}`} disabled={saveDisabledReason !== null || !availability.canSave} disabledReason={saveDisabledReason ?? undefined} descriptionId={saveReasonId} onClick={onSave}><Save size={16} /></IconButton>
+        <IconButton label="Load + Apply to Frame" title={`Load + Apply to Frame — ${loadAndApplyDisabledReason ?? 'Reload the selected preset and apply it to this Roto frame'}`} disabled={loadAndApplyDisabledReason !== null} disabledReason={loadAndApplyDisabledReason ?? undefined} descriptionId={loadAndApplyReasonId} onClick={onLoadAndApply}><Paintbrush size={16} /></IconButton>
+        <IconButton buttonRef={playButtonRef} label="Create Group…" title={`Create Group… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Group from the selected Action')}`} disabled={playScriptDisabledReason !== null} disabledReason={playScriptDisabledReason ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
+        <IconButton buttonRef={deleteButtonRef} label="Delete Action" title={`Delete Action — ${actionMutationDisabledReason ?? 'Remove the selected project Action'}`} disabled={actionMutationDisabledReason !== null || !availability.canDelete} disabledReason={actionMutationDisabledReason ?? undefined} onClick={library.requestDelete}><Trash2 size={16} /></IconButton>
+        <IconButton label="Refresh Actions" title={`Refresh Actions — ${actionMutationDisabledReason ?? 'Scan the project Actions folder'}`} disabled={actionMutationDisabledReason !== null} disabledReason={actionMutationDisabledReason ?? undefined} onClick={onRefresh}><RefreshCw size={16} /></IconButton>
         <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyScriptTooltip.onPointerEnter} onPointerLeave={copyScriptTooltip.onPointerLeave}>
           <button
             type="button"
             class="physics-paint-script-icon-button"
-            aria-label="Copy Script"
+            aria-label="Copy Action"
             aria-disabled={!canCopyRotoScript ? 'true' : undefined}
             aria-describedby={!canCopyRotoScript && copyRotoScriptDisabledReason ? copyScriptReasonId : undefined}
             onFocus={copyScriptTooltip.onFocus}
@@ -175,14 +175,14 @@ export function PhysicsPaintScriptsPanel({
             <span id={copyScriptReasonId} class="physics-paint-sr-only">{copyRotoScriptDisabledReason}</span>
           ) : null}
           <PhysicsPaintStyledTooltip visible={copyScriptTooltip.visible} region="right-edge" avoidRowOverlap>
-            {!canCopyRotoScript && copyRotoScriptDisabledReason ? `unavailable: ${copyRotoScriptDisabledReason}` : 'Copy Script'}
+            {!canCopyRotoScript && copyRotoScriptDisabledReason ? `unavailable: ${copyRotoScriptDisabledReason}` : 'Copy Action'}
           </PhysicsPaintStyledTooltip>
         </span>
         <span class="physics-paint-roto-key-icon-action" onPointerEnter={applyScriptTooltip.onPointerEnter} onPointerLeave={applyScriptTooltip.onPointerLeave}>
           <button
             type="button"
             class="physics-paint-script-icon-button"
-            aria-label="Apply Script"
+            aria-label="Apply to Frame"
             aria-disabled={!canApplyRotoScript ? 'true' : undefined}
             aria-describedby={!canApplyRotoScript && applyRotoScriptDisabledReason ? applyScriptReasonId : undefined}
             onFocus={applyScriptTooltip.onFocus}
@@ -203,14 +203,14 @@ export function PhysicsPaintScriptsPanel({
             <span id={applyScriptReasonId} class="physics-paint-sr-only">{applyRotoScriptDisabledReason}</span>
           ) : null}
           <PhysicsPaintStyledTooltip visible={applyScriptTooltip.visible} region="right-edge" avoidRowOverlap>
-            {!canApplyRotoScript && applyRotoScriptDisabledReason ? `unavailable: ${applyRotoScriptDisabledReason}` : 'Apply Script'}
+            {!canApplyRotoScript && applyRotoScriptDisabledReason ? `unavailable: ${applyRotoScriptDisabledReason}` : 'Apply to Frame'}
           </PhysicsPaintStyledTooltip>
         </span>
         <span class="physics-paint-roto-key-icon-action" onPointerEnter={clearScriptBufferTooltip.onPointerEnter} onPointerLeave={clearScriptBufferTooltip.onPointerLeave}>
           <button
             type="button"
             class="physics-paint-script-icon-button"
-            aria-label="Clear Script Buffer"
+            aria-label="Clear Action Buffer"
             aria-disabled={!canClearScriptBuffer ? 'true' : undefined}
             aria-describedby={!canClearScriptBuffer && clearScriptBufferDisabledReason ? clearScriptBufferReasonId : undefined}
             onFocus={clearScriptBufferTooltip.onFocus}
@@ -231,11 +231,11 @@ export function PhysicsPaintScriptsPanel({
             <span id={clearScriptBufferReasonId} class="physics-paint-sr-only">{clearScriptBufferDisabledReason}</span>
           ) : null}
           <PhysicsPaintStyledTooltip visible={clearScriptBufferTooltip.visible} region="right-edge" avoidRowOverlap>
-            {!canClearScriptBuffer && clearScriptBufferDisabledReason ? `unavailable: ${clearScriptBufferDisabledReason}` : 'Clear script from buffer'}
+            {!canClearScriptBuffer && clearScriptBufferDisabledReason ? `unavailable: ${clearScriptBufferDisabledReason}` : 'Clear Action from buffer'}
           </PhysicsPaintStyledTooltip>
         </span>
       </div>
-      <div ref={listRef} class="physics-paint-scripts-list" role="listbox" aria-label="Saved Roto scripts">
+      <div ref={listRef} class="physics-paint-scripts-list" role="listbox" aria-label="Saved Roto Actions">
         {rows.map((row) => (
           <div
             key={row.id}
@@ -295,7 +295,12 @@ export function PhysicsPaintScriptsPanel({
             </span>
           </div>
         ))}
-        {!rows.length ? <p class="physics-paint-scripts-empty">No project scripts yet.</p> : null}
+        {!rows.length ? (
+          <div class="physics-paint-scripts-empty">
+            <p>No project Actions yet.</p>
+            <p>Save the current real Roto frame as an Action to create a Group.</p>
+          </div>
+        ) : null}
       </div>
       {confirmation ? (
         <div ref={confirmationRef} class="physics-paint-script-confirmation" role="dialog" aria-modal="true" aria-label={`Delete ${confirmation.name}`}
