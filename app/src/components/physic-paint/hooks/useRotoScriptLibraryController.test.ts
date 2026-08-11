@@ -101,3 +101,76 @@ describe('persistent Roto script library hook adapters', () => {
     expect(clearRequestTimeout).toHaveBeenCalledOnce();
   });
 });
+
+interface RecoveredDeleteOperation {
+  commandId: string;
+  generation: number;
+  token: string;
+  direction: 'forward' | 'undo' | 'redo';
+  expectedRevision: string;
+}
+
+class DeleteOperationCorrelationHarness {
+  private active: RecoveredDeleteOperation | null = null;
+  private completed = new Set<string>();
+
+  begin(operation: RecoveredDeleteOperation) {
+    const key = this.key(operation);
+    if (this.active || this.completed.has(key)) return false;
+    this.active = { ...operation };
+    return true;
+  }
+
+  acceptCommitted(operation: RecoveredDeleteOperation, currentRevision: string) {
+    if (!this.active || this.key(this.active) !== this.key(operation) || currentRevision !== operation.expectedRevision) return false;
+    this.completed.add(this.key(operation));
+    this.active = null;
+    return true;
+  }
+
+  reconstruct(operation: RecoveredDeleteOperation) {
+    if (this.active && this.key(this.active) !== this.key(operation)) return false;
+    if (this.completed.has(this.key(operation))) return false;
+    this.active = { ...operation };
+    return true;
+  }
+
+  private key(operation: RecoveredDeleteOperation) {
+    return `${operation.commandId}:${operation.generation}:${operation.token}:${operation.direction}`;
+  }
+}
+
+describe('Wave 0 durable referenced-delete request correlation', () => {
+  it('rejects stale or replayed direction, token, generation, and newer-document settlement', () => {
+    const harness = new DeleteOperationCorrelationHarness();
+    const operation: RecoveredDeleteOperation = {
+      commandId: 'history-command-1',
+      generation: 3,
+      token: 'forward-token',
+      direction: 'forward',
+      expectedRevision: 'physical-before',
+    };
+    expect(harness.begin(operation)).toBe(true);
+    expect(harness.acceptCommitted({ ...operation, token: 'stale-token' }, operation.expectedRevision)).toBe(false);
+    expect(harness.acceptCommitted({ ...operation, generation: 4 }, operation.expectedRevision)).toBe(false);
+    expect(harness.acceptCommitted({ ...operation, direction: 'redo' }, operation.expectedRevision)).toBe(false);
+    expect(harness.acceptCommitted(operation, 'newer-document')).toBe(false);
+    expect(harness.acceptCommitted(operation, operation.expectedRevision)).toBe(true);
+    expect(harness.begin(operation)).toBe(false);
+    expect(harness.reconstruct(operation)).toBe(false);
+  });
+
+  it('reconstructs an exact startup recovery lease and refuses changed-content identity reuse', () => {
+    const harness = new DeleteOperationCorrelationHarness();
+    const recovered: RecoveredDeleteOperation = {
+      commandId: 'history-command-2',
+      generation: 8,
+      token: 'undo-token',
+      direction: 'undo',
+      expectedRevision: 'physical-after-forward',
+    };
+    expect(harness.reconstruct(recovered)).toBe(true);
+    expect(harness.reconstruct({ ...recovered, direction: 'redo' })).toBe(false);
+    expect(harness.acceptCommitted(recovered, recovered.expectedRevision)).toBe(true);
+  });
+});

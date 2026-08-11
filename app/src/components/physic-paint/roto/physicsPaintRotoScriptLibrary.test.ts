@@ -225,3 +225,159 @@ describe('Roto script library controller', () => {
     expect(test.log).toHaveBeenCalledWith('Loaded script could not replace the clipboard.', true);
   });
 });
+
+type ReferencedDeleteDirection = 'forward' | 'undo' | 'redo';
+type ReferencedDeleteMode = 'keep-groups' | 'delete-action-and-groups';
+type SettlementEvent =
+  | 'physical-replacement'
+  | 'version-bump'
+  | 'history-pointer'
+  | 'selection'
+  | 'library-settlement';
+
+interface DurableDeleteTarget {
+  physicalRevision: string;
+  physicalHash: string;
+  selectedGroupId: string | null;
+  cursorAppFrame: number;
+}
+
+interface DurableDeleteLease {
+  commandId: string;
+  generation: number;
+  token: string;
+  direction: ReferencedDeleteDirection;
+  mode: ReferencedDeleteMode;
+  expectedCurrentRevision: string;
+  target: DurableDeleteTarget;
+}
+
+class CommittedOnlyDeleteLedger {
+  readonly events: SettlementEvent[] = [];
+  readonly releases: Array<{ commandId: string; generation: number; reason: 'eviction' | 'redo-branch-truncation' | 'session-clear' }> = [];
+  private phase: 'idle' | 'prepared' | 'committed' | 'acknowledged' = 'idle';
+  private settled = false;
+  private lease: DurableDeleteLease | null = null;
+
+  prepare(lease: DurableDeleteLease) {
+    if (this.phase !== 'idle' || lease.commandId.length === 0 || lease.generation < 1 || lease.token.length === 0) return false;
+    this.lease = structuredClone(lease);
+    this.phase = 'prepared';
+    return true;
+  }
+
+  markCommitted(commandId: string, generation: number, token: string, direction: ReferencedDeleteDirection) {
+    if (!this.matches(commandId, generation, token, direction) || this.phase !== 'prepared') return false;
+    this.phase = 'committed';
+    return true;
+  }
+
+  settle(currentRevision: string) {
+    if (this.phase !== 'committed' || this.settled || this.lease?.expectedCurrentRevision !== currentRevision) return false;
+    this.events.push('physical-replacement', 'version-bump', 'history-pointer', 'selection', 'library-settlement');
+    this.settled = true;
+    return true;
+  }
+
+  acknowledge(commandId: string, generation: number, token: string, direction: ReferencedDeleteDirection) {
+    if (!this.matches(commandId, generation, token, direction) || this.phase !== 'committed' || !this.settled) return false;
+    this.phase = 'acknowledged';
+    return true;
+  }
+
+  recoverPrepared() {
+    if (this.phase !== 'prepared') return false;
+    this.phase = 'idle';
+    this.lease = null;
+    return true;
+  }
+
+  reconstructCommittedLease(commandId: string, generation: number, token: string, direction: ReferencedDeleteDirection) {
+    return this.phase === 'committed' && this.matches(commandId, generation, token, direction);
+  }
+
+  release(commandId: string, generation: number, reason: 'eviction' | 'redo-branch-truncation' | 'session-clear', activeRecoveryReferences: ReadonlySet<string>) {
+    const key = `${commandId}:${generation}`;
+    if (activeRecoveryReferences.has(key)) return false;
+    if (this.releases.some((release) => `${release.commandId}:${release.generation}` === key)) return false;
+    this.releases.push({ commandId, generation, reason });
+    return true;
+  }
+
+  private matches(commandId: string, generation: number, token: string, direction: ReferencedDeleteDirection) {
+    return this.lease?.commandId === commandId
+      && this.lease.generation === generation
+      && this.lease.token === token
+      && this.lease.direction === direction;
+  }
+}
+
+function durableLease(direction: ReferencedDeleteDirection, mode: ReferencedDeleteMode): DurableDeleteLease {
+  return {
+    commandId: `command-${mode}`,
+    generation: 7,
+    token: `${direction}-token`,
+    direction,
+    mode,
+    expectedCurrentRevision: direction === 'undo' ? 'physical-after-forward' : 'physical-before',
+    target: {
+      physicalRevision: direction === 'undo' ? 'physical-before' : `physical-after-${direction}`,
+      physicalHash: direction === 'undo' ? 'hash-before' : `hash-after-${direction}`,
+      selectedGroupId: mode === 'delete-action-and-groups' && direction !== 'undo' ? null : 'group-1',
+      cursorAppFrame: 18,
+    },
+  };
+}
+
+describe('Wave 0 committed-only referenced Action deletion ledger', () => {
+  it.each([
+    ['keep-groups', 'forward'],
+    ['keep-groups', 'undo'],
+    ['keep-groups', 'redo'],
+    ['delete-action-and-groups', 'forward'],
+    ['delete-action-and-groups', 'undo'],
+    ['delete-action-and-groups', 'redo'],
+  ] as const)('publishes zero events before commit and exactly one settlement for %s %s', (mode, direction) => {
+    const ledger = new CommittedOnlyDeleteLedger();
+    const lease = durableLease(direction, mode);
+    expect(ledger.prepare(lease)).toBe(true);
+    expect(ledger.events).toEqual([]);
+    expect(ledger.markCommitted(lease.commandId, lease.generation, lease.token, direction)).toBe(true);
+    expect(ledger.events).toEqual([]);
+    expect(ledger.settle(lease.expectedCurrentRevision)).toBe(true);
+    expect(ledger.events).toEqual(['physical-replacement', 'version-bump', 'history-pointer', 'selection', 'library-settlement']);
+    expect(ledger.settle(lease.expectedCurrentRevision)).toBe(false);
+    expect(ledger.acknowledge(lease.commandId, lease.generation, lease.token, direction)).toBe(true);
+    expect(ledger.events).toHaveLength(5);
+  });
+
+  it('restores prepared authority without settlement and rejects newer-document recovery', () => {
+    const prepared = new CommittedOnlyDeleteLedger();
+    const lease = durableLease('forward', 'keep-groups');
+    expect(prepared.prepare(lease)).toBe(true);
+    expect(prepared.recoverPrepared()).toBe(true);
+    expect(prepared.events).toEqual([]);
+
+    const committed = new CommittedOnlyDeleteLedger();
+    expect(committed.prepare(lease)).toBe(true);
+    expect(committed.markCommitted(lease.commandId, lease.generation, lease.token, lease.direction)).toBe(true);
+    expect(committed.reconstructCommittedLease(lease.commandId, lease.generation, lease.token, lease.direction)).toBe(true);
+    expect(committed.settle('newer-physical-document')).toBe(false);
+    expect(committed.events).toEqual([]);
+  });
+
+  it('releases retained artifacts only for unreferenced eviction, redo truncation, or clear', () => {
+    const ledger = new CommittedOnlyDeleteLedger();
+    expect(ledger.release('evicted', 1, 'eviction', new Set())).toBe(true);
+    expect(ledger.release('redo', 2, 'redo-branch-truncation', new Set())).toBe(true);
+    expect(ledger.release('clear', 3, 'session-clear', new Set())).toBe(true);
+    expect(ledger.release('active', 4, 'eviction', new Set(['active:4']))).toBe(false);
+    expect(ledger.release('evicted', 1, 'session-clear', new Set())).toBe(false);
+    expect(ledger.releases.map((release) => release.reason)).toEqual(['eviction', 'redo-branch-truncation', 'session-clear']);
+  });
+
+  it('starts RED until the committed-only marker is enabled', () => {
+    const committedOnlyProtocolImplemented = false;
+    expect(committedOnlyProtocolImplemented).toBe(true);
+  });
+});
