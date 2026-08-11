@@ -29,6 +29,7 @@ import {
 } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
 import { hydrateRotoPhysicalLaunchContext } from '../components/physic-paint/roto/rotoLaunchHydration';
 import {
+  applyCommittedReferencedActionDeletion,
   applyPhysicPaintPayload,
   applyPhysicPaintRotoGroupFramePaint,
   createPhysicPaintLaunchContext,
@@ -2352,6 +2353,51 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     expect(replace).toHaveBeenCalledWith(test.layer.id, test.proposed.proposal, test.leaseToken);
     expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.proposed.proposal);
     expect(physicPaintVersion.peek()).toBe(beforeVersion + 1);
+  });
+
+  it('settles a Rust-committed referenced Action deletion exactly once with enriched history facts', async () => {
+    const test = await lifecycleHarness('detach-action-groups', 'referenced-action-committed');
+    const committed = {
+      schemaVersion: 1 as const, state: 'committed' as const,
+      token: '123e4567-e89b-42d3-a456-426614174111', commandId: 'history-command-1', generation: 3,
+      operationId: 'referenced-action-history-command-1', leaseToken: 'lease-authority-1', direction: 'forward' as const,
+      mode: 'keep-groups' as const,
+      authority: {
+        projectContextId, layerId: test.layer.id, launchOperationId: test.payload.launchOperationId,
+        actionId: 'action-1', expectedActionPresent: true, expectedActionRevision: 'action-revision-1',
+        expectedPhysicalRevision: test.current.revision,
+        expectedPhysicalHash: buildPhysicPaintRotoProjectEquality(test.current),
+      },
+      impactDigest: 'a'.repeat(64),
+      retainedArtifact: {
+        commandId: 'history-command-1', generation: 3, actionId: 'action-1',
+        managedPath: 'scripts/action-1.efx-roto-script.json', originalRevision: 'action-revision-1', integritySha256: 'b'.repeat(64),
+      },
+      target: {
+        physicalRevision: test.proposed.proposal.revision,
+        physicalHash: buildPhysicPaintRotoProjectEquality(test.proposed.proposal),
+        physicalDocument: test.proposed.proposal, selectedGroupId: null, cursorAppFrame: test.proposed.proposal.cursorAppFrame,
+      },
+    };
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+    const beforeVersion = physicPaintVersion.peek();
+
+    const accepted = applyCommittedReferencedActionDeletion({ committed, impact: test.proposed.impact, before: test.current, leaseToken: test.leaseToken });
+    const duplicate = applyCommittedReferencedActionDeletion({ committed, impact: test.proposed.impact, before: test.current, leaseToken: test.leaseToken });
+
+    expect(accepted).toMatchObject({
+      ok: true, settled: true,
+      history: {
+        commandId: 'history-command-1', generation: 3, direction: 'forward', mode: 'keep-groups',
+        retainedArtifact: committed.retainedArtifact,
+        before: { physicalRevision: test.current.revision },
+        after: { physicalRevision: test.proposed.proposal.revision },
+      },
+    });
+    expect(duplicate).toMatchObject({ ok: true, settled: false, history: accepted.ok ? accepted.history : undefined });
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(physicPaintVersion.peek()).toBe(beforeVersion + 1);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.proposed.proposal);
   });
 
   it('rejects stale, malformed, and semantically mismatched lifecycle candidates without publication', async () => {
