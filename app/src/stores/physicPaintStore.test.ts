@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, clampPhysicPaintFrameCount } from '../types/physicPaint';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
+import {
+  buildPhysicPaintRotoPhysicalRevision,
+  parsePhysicPaintRotoPhysicalDocument,
+} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { physicPaintStore, physicPaintVersion, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame } from './physicPaintStore';
 
 
@@ -1391,5 +1395,106 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 10, source: 'real-key' }),
     ]);
     expect(physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', [8]).map(frame => frame.appFrame)).toEqual([8]);
+  });
+
+  describe('canonical physical-operation lease registry', () => {
+    const physicalDocument = (dataUrl = 'data:image/png;base64,AAAA') => {
+      const realKeyRecords = [{
+        kind: 'real-key' as const,
+        keyId: 'key-1',
+        appFrame: 1,
+        payload: { frameIndex: 0, appFrame: 1, dataUrl, width: 2, height: 2 },
+      }];
+      const interpolation = { enabled: false, mode: 'duplicate' as const };
+      return parsePhysicPaintRotoPhysicalDocument({
+        capacity: 12,
+        realKeyRecords,
+        interpolation,
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        selectedKeyId: 'key-1',
+        cursorAppFrame: 1,
+        revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, [], []),
+        loopClips: [],
+        incomingInterpolationBreakKeyIds: [],
+      });
+    };
+
+    it('acquires one unique project/layer exclusive or recovery token and rejects cross-scope or replayed tokens', () => {
+      const exclusive = physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1');
+      expect(exclusive).toMatchObject({ projectContextId: 'project-1', layerId: 'layer-1', owner: 'exclusive' });
+      expect(physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1')).toBeNull();
+      expect(physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-2')).not.toBeNull();
+      expect(physicPaintStore.validateRotoPhysicalOperationLease('project-1', 'layer-2', exclusive)).toEqual({ ok: false, reason: 'mismatched-token' });
+      expect(physicPaintStore.releaseRotoPhysicalOperationLease(exclusive!)).toBe(true);
+      expect(physicPaintStore.validateRotoPhysicalOperationLease('project-1', 'layer-1', exclusive)).toEqual({ ok: false, reason: 'replayed-token' });
+
+      const recovery = physicPaintStore.acquireRotoPhysicalRecoveryLease({
+        projectContextId: 'project-1',
+        layerId: 'layer-1',
+        generation: exclusive!.generation + 20,
+      });
+      expect(recovery).toMatchObject({ projectContextId: 'project-1', layerId: 'layer-1', owner: 'recovery' });
+      expect(physicPaintStore.releaseRotoPhysicalOperationLease(recovery!)).toBe(true);
+    });
+
+    it('requires the exact active token for complete replacement and direct real-key publication without changing accepted state on rejection', () => {
+      const beforeDocument = physicalDocument();
+      expect(physicPaintStore.replaceRotoPhysicalDocument('layer-1', beforeDocument).ok).toBe(true);
+      const lease = physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1')!;
+      const beforeVersion = physicPaintVersion.value;
+      const beforeRevisionSignal = physicPaintStore.getRotoPhysicalDocument('layer-1')!.revision;
+      const nextDocument = physicalDocument('data:image/png;base64,BBBB');
+
+      for (const token of [
+        undefined,
+        { ...lease, generation: lease.generation + 1 },
+        { ...lease, layerId: 'layer-2' },
+      ]) {
+        expect(physicPaintStore.replaceRotoPhysicalDocument('layer-1', nextDocument, token)).toEqual(expect.objectContaining({ ok: false }));
+        expect(physicPaintStore.getRotoPhysicalDocument('layer-1')).toEqual(beforeDocument);
+        expect(physicPaintVersion.value).toBe(beforeVersion);
+      }
+
+      expect(physicPaintStore.updateRotoPhysicalRealKeyPayload(
+        'layer-1',
+        'key-1',
+        beforeRevisionSignal,
+        nextDocument.realKeyRecords[0].payload,
+      )).toEqual(expect.objectContaining({ ok: false }));
+      expect(physicPaintStore.getRotoPhysicalDocument('layer-1')).toEqual(beforeDocument);
+      expect(physicPaintVersion.value).toBe(beforeVersion);
+
+      expect(physicPaintStore.updateRotoPhysicalRealKeyPayload(
+        'layer-1',
+        'key-1',
+        beforeRevisionSignal,
+        nextDocument.realKeyRecords[0].payload,
+        undefined,
+        lease,
+      )).toEqual(expect.objectContaining({ ok: true, changed: true }));
+      expect(physicPaintVersion.value).toBe(beforeVersion + 1);
+    });
+
+    it('rejects full hydration while a layer lease is active and preserves document, version, selection, and cursor', () => {
+      const beforeDocument = physicalDocument();
+      expect(physicPaintStore.replaceRotoPhysicalDocument('layer-1', beforeDocument).ok).toBe(true);
+      const lease = physicPaintStore.acquireRotoPhysicalOperationLease('project-1', 'layer-1')!;
+      const beforeVersion = physicPaintVersion.value;
+      const outputs = physicPaintStore.toMceOutputs().map((output) => output.layer_id === 'layer-1'
+        ? { ...output, roto_physical: physicalDocument('data:image/png;base64,CCCC') }
+        : output);
+
+      expect(() => physicPaintStore.loadFromMceOutputs(outputs)).toThrow('missing-token');
+      expect(physicPaintStore.getRotoPhysicalDocument('layer-1')).toEqual(beforeDocument);
+      expect(physicPaintVersion.value).toBe(beforeVersion);
+
+      expect(() => physicPaintStore.loadFromMceOutputs(outputs, { ...lease, generation: lease.generation + 1 })).toThrow('mismatched-token');
+      expect(physicPaintStore.getRotoPhysicalDocument('layer-1')).toEqual(beforeDocument);
+      expect(physicPaintVersion.value).toBe(beforeVersion);
+
+      expect(() => physicPaintStore.loadFromMceOutputs(outputs, lease)).not.toThrow();
+      expect(physicPaintStore.getRotoPhysicalDocument('layer-1')?.realKeyRecords[0].payload.dataUrl).toBe('data:image/png;base64,CCCC');
+    });
   });
 });
