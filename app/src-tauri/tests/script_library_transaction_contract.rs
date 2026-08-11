@@ -13,8 +13,16 @@ fn encode_base64(bytes: &[u8]) -> String {
             | u32::from(*chunk.get(2).unwrap_or(&0));
         output.push(ALPHABET[((value >> 18) & 63) as usize] as char);
         output.push(ALPHABET[((value >> 12) & 63) as usize] as char);
-        output.push(if chunk.len() > 1 { ALPHABET[((value >> 6) & 63) as usize] as char } else { '=' });
-        output.push(if chunk.len() > 2 { ALPHABET[(value & 63) as usize] as char } else { '=' });
+        output.push(if chunk.len() > 1 {
+            ALPHABET[((value >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        output.push(if chunk.len() > 2 {
+            ALPHABET[(value & 63) as usize] as char
+        } else {
+            '='
+        });
     }
     output
 }
@@ -104,7 +112,10 @@ fn prepare_rejects_stale_closed_replayed_and_conflicting_requests() {
     let stale_token = Uuid::new_v4().to_string();
     let mut stale = prepare_request(&action_id, &revision, &stale_token);
     stale["authority"]["expectedActionRevision"] = json!("stale-revision");
-    assert!(fixture.prepare_transaction(stale).unwrap_err().contains("changed externally"));
+    assert!(fixture
+        .prepare_transaction(stale)
+        .unwrap_err()
+        .contains("changed externally"));
 
     let token = Uuid::new_v4().to_string();
     let accepted = prepare_request(&action_id, &revision, &token);
@@ -112,13 +123,23 @@ fn prepare_rejects_stale_closed_replayed_and_conflicting_requests() {
     assert!(fixture.prepare_transaction(accepted).is_err());
 
     let conflicting = prepare_request(&action_id, &revision, &Uuid::new_v4().to_string());
-    assert!(fixture.prepare_transaction(conflicting).unwrap_err().contains("recovery"));
+    assert!(fixture
+        .prepare_transaction(conflicting)
+        .unwrap_err()
+        .contains("recovery"));
 
     let second = FixtureLibrary::new().unwrap();
     let second_id = Uuid::new_v4().to_string();
     let second_saved = second.save(action_document(&second_id)).unwrap();
-    let mut unknown = prepare_request(&second_id, &second_saved.scan.rows[0].revision, &Uuid::new_v4().to_string());
-    unknown.as_object_mut().unwrap().insert("unexpected".into(), json!(true));
+    let mut unknown = prepare_request(
+        &second_id,
+        &second_saved.scan.rows[0].revision,
+        &Uuid::new_v4().to_string(),
+    );
+    unknown
+        .as_object_mut()
+        .unwrap()
+        .insert("unexpected".into(), json!(true));
     assert!(second.prepare_transaction(unknown).is_err());
 }
 
@@ -129,15 +150,22 @@ fn prepare_record_is_synced_json_with_exact_target_digest() {
     let saved = fixture.save(action_document(&action_id)).unwrap();
     let revision = saved.scan.rows[0].revision.clone();
     let token = Uuid::new_v4().to_string();
-    fixture.prepare_transaction(prepare_request(&action_id, &revision, &token)).unwrap();
+    fixture
+        .prepare_transaction(prepare_request(&action_id, &revision, &token))
+        .unwrap();
 
-    let bytes = std::fs::read(fixture.scripts_root().join(".action-transactions").join(format!("active-{token}.json"))).unwrap();
+    let bytes = std::fs::read(
+        fixture
+            .scripts_root()
+            .join(".action-transactions")
+            .join(format!("active-{token}.json")),
+    )
+    .unwrap();
     let stored: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(stored["state"], "prepared");
     assert_eq!(stored["target"]["cursorAppFrame"], 18);
     assert_eq!(format!("{:x}", Sha256::digest(&bytes)).len(), 64);
 }
-
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Direction {
@@ -203,7 +231,11 @@ struct TransactionHarness {
 }
 
 impl TransactionHarness {
-    fn prepare(&mut self, journal: ActiveJournal, artifact: RetainedArtifact) -> Result<(), &'static str> {
+    fn prepare(
+        &mut self,
+        journal: ActiveJournal,
+        artifact: RetainedArtifact,
+    ) -> Result<(), &'static str> {
         if journal.command_id.is_empty() || journal.generation == 0 || journal.token.is_empty() {
             return Err("invalid command identity");
         }
@@ -229,7 +261,9 @@ impl TransactionHarness {
             return Err("invalid retained artifact");
         }
         self.action_present = journal.prior_action_present;
-        self.retained.entry(journal.retained_key).or_insert(artifact);
+        self.retained
+            .entry(journal.retained_key)
+            .or_insert(artifact);
         self.active.insert(journal.token, journal);
         self.recovery_required = true;
         Ok(())
@@ -289,21 +323,34 @@ impl TransactionHarness {
     }
 
     fn release(&mut self, command_id: &'static str, generation: u64) -> Result<bool, &'static str> {
-        if self.active.values().any(|journal| journal.retained_key == (command_id, generation)) {
+        if self
+            .active
+            .values()
+            .any(|journal| journal.retained_key == (command_id, generation))
+        {
             return Err("retained artifact referenced by active recovery");
         }
         Ok(self.retained.remove(&(command_id, generation)).is_some())
     }
 
     fn collect_orphans(&mut self, live_commands: &BTreeSet<(&'static str, u64)>) -> usize {
-        let protected = self.active.values().map(|journal| journal.retained_key).collect::<BTreeSet<_>>();
+        let protected = self
+            .active
+            .values()
+            .map(|journal| journal.retained_key)
+            .collect::<BTreeSet<_>>();
         let before = self.retained.len();
-        self.retained.retain(|key, _| live_commands.contains(key) || protected.contains(key));
+        self.retained
+            .retain(|key, _| live_commands.contains(key) || protected.contains(key));
         before - self.retained.len()
     }
 
     fn ordinary_scan(&self) -> Result<(), &'static str> {
-        if self.recovery_required { Err("recovery required before ordinary scan") } else { Ok(()) }
+        if self.recovery_required {
+            Err("recovery required before ordinary scan")
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -335,9 +382,40 @@ fn journal(
     generation: u64,
 ) -> ActiveJournal {
     let (prior_action_present, target_action_present, target) = match direction {
-        Direction::Forward => (true, false, SettlementTarget { physical_revision: "physical-after-forward", physical_hash: "hash-after-forward", selected_group_id: Some("group-keep"), cursor_app_frame: 18 }),
-        Direction::Undo => (false, true, SettlementTarget { physical_revision: "physical-before", physical_hash: "hash-before", selected_group_id: Some("group-attached"), cursor_app_frame: 18 }),
-        Direction::Redo => (true, false, SettlementTarget { physical_revision: "physical-after-redo", physical_hash: "hash-after-redo", selected_group_id: if mode == DeleteMode::Cascade { None } else { Some("group-keep") }, cursor_app_frame: 18 }),
+        Direction::Forward => (
+            true,
+            false,
+            SettlementTarget {
+                physical_revision: "physical-after-forward",
+                physical_hash: "hash-after-forward",
+                selected_group_id: Some("group-keep"),
+                cursor_app_frame: 18,
+            },
+        ),
+        Direction::Undo => (
+            false,
+            true,
+            SettlementTarget {
+                physical_revision: "physical-before",
+                physical_hash: "hash-before",
+                selected_group_id: Some("group-attached"),
+                cursor_app_frame: 18,
+            },
+        ),
+        Direction::Redo => (
+            true,
+            false,
+            SettlementTarget {
+                physical_revision: "physical-after-redo",
+                physical_hash: "hash-after-redo",
+                selected_group_id: if mode == DeleteMode::Cascade {
+                    None
+                } else {
+                    Some("group-keep")
+                },
+                cursor_app_frame: 18,
+            },
+        ),
     };
     ActiveJournal {
         command_id,
@@ -359,7 +437,18 @@ fn journal(
 fn prepared_and_committed_recovery_remain_separate_from_retained_history() {
     let mut harness = TransactionHarness::default();
     let command_id = "history-command-1";
-    harness.prepare(journal("forward-token", Direction::Forward, DeleteMode::KeepGroups, command_id, 1), artifact(command_id, 1)).unwrap();
+    harness
+        .prepare(
+            journal(
+                "forward-token",
+                Direction::Forward,
+                DeleteMode::KeepGroups,
+                command_id,
+                1,
+            ),
+            artifact(command_id, 1),
+        )
+        .unwrap();
 
     assert!(harness.ordinary_scan().is_err());
     assert!(harness.recover("forward-token").unwrap().is_none());
@@ -367,7 +456,18 @@ fn prepared_and_committed_recovery_remain_separate_from_retained_history() {
     assert!(harness.retained.contains_key(&(command_id, 1)));
     assert!(harness.ordinary_scan().is_ok());
 
-    harness.prepare(journal("redo-token", Direction::Redo, DeleteMode::Cascade, command_id, 1), artifact(command_id, 1)).unwrap();
+    harness
+        .prepare(
+            journal(
+                "redo-token",
+                Direction::Redo,
+                DeleteMode::Cascade,
+                command_id,
+                1,
+            ),
+            artifact(command_id, 1),
+        )
+        .unwrap();
     harness.commit("redo-token").unwrap();
     let target = harness.recover("redo-token").unwrap().unwrap();
     assert_eq!(target.physical_revision, "physical-after-redo");
@@ -379,23 +479,57 @@ fn prepared_and_committed_recovery_remain_separate_from_retained_history() {
 fn forward_undo_and_redo_have_direction_specific_targets_and_exact_acknowledge() {
     let mut harness = TransactionHarness::default();
     let command_id = "history-command-2";
-    for (index, direction) in [Direction::Forward, Direction::Undo, Direction::Redo].into_iter().enumerate() {
+    for (index, direction) in [Direction::Forward, Direction::Undo, Direction::Redo]
+        .into_iter()
+        .enumerate()
+    {
         let token = ["forward-token", "undo-token", "redo-token"][index];
-        harness.prepare(journal(token, direction, DeleteMode::KeepGroups, command_id, 2), artifact(command_id, 2)).unwrap();
+        harness
+            .prepare(
+                journal(token, direction, DeleteMode::KeepGroups, command_id, 2),
+                artifact(command_id, 2),
+            )
+            .unwrap();
         harness.commit(token).unwrap();
         let target = harness.recover(token).unwrap().unwrap();
-        assert_eq!(target.physical_revision, ["physical-after-forward", "physical-before", "physical-after-redo"][index]);
-        assert!(harness.acknowledge(token, direction, command_id, 2).unwrap());
-        assert!(!harness.acknowledge(token, direction, command_id, 2).unwrap());
+        assert_eq!(
+            target.physical_revision,
+            [
+                "physical-after-forward",
+                "physical-before",
+                "physical-after-redo"
+            ][index]
+        );
+        assert!(harness
+            .acknowledge(token, direction, command_id, 2)
+            .unwrap());
+        assert!(!harness
+            .acknowledge(token, direction, command_id, 2)
+            .unwrap());
     }
 }
 
 #[test]
 fn release_and_orphan_collection_protect_active_recovery_references() {
     let mut harness = TransactionHarness::default();
-    harness.retained.insert(("evicted", 1), artifact("evicted", 1));
-    harness.retained.insert(("redo-truncated", 2), artifact("redo-truncated", 2));
-    harness.prepare(journal("active-token", Direction::Forward, DeleteMode::Cascade, "active", 3), artifact("active", 3)).unwrap();
+    harness
+        .retained
+        .insert(("evicted", 1), artifact("evicted", 1));
+    harness
+        .retained
+        .insert(("redo-truncated", 2), artifact("redo-truncated", 2));
+    harness
+        .prepare(
+            journal(
+                "active-token",
+                Direction::Forward,
+                DeleteMode::Cascade,
+                "active",
+                3,
+            ),
+            artifact("active", 3),
+        )
+        .unwrap();
 
     assert!(harness.release("active", 3).is_err());
     assert!(harness.release("evicted", 1).unwrap());
@@ -437,7 +571,9 @@ fn ten_level_eviction_redo_truncation_and_clear_release_only_unreferenced_artifa
     let mut harness = TransactionHarness::default();
     for generation in 1..=11 {
         let command_id = Box::leak(format!("command-{generation}").into_boxed_str());
-        harness.retained.insert((command_id, generation), artifact(command_id, generation));
+        harness
+            .retained
+            .insert((command_id, generation), artifact(command_id, generation));
         for released in history.push((command_id, generation)) {
             assert!(harness.release(released.0, released.1).unwrap());
         }
@@ -448,7 +584,9 @@ fn ten_level_eviction_redo_truncation_and_clear_release_only_unreferenced_artifa
     history.undo();
     let redo_command = *history.redo.last().unwrap();
     let replacement_id = "replacement-command";
-    harness.retained.insert((replacement_id, 12), artifact(replacement_id, 12));
+    harness
+        .retained
+        .insert((replacement_id, 12), artifact(replacement_id, 12));
     for released in history.push((replacement_id, 12)) {
         assert_eq!(released, redo_command);
         assert!(harness.release(released.0, released.1).unwrap());
@@ -456,10 +594,18 @@ fn ten_level_eviction_redo_truncation_and_clear_release_only_unreferenced_artifa
     assert!(history.redo.is_empty());
 
     let protected = *history.undo.last().unwrap();
-    harness.prepare(
-        journal("cleanup-pending-token", Direction::Forward, DeleteMode::KeepGroups, protected.0, protected.1),
-        artifact(protected.0, protected.1),
-    ).unwrap();
+    harness
+        .prepare(
+            journal(
+                "cleanup-pending-token",
+                Direction::Forward,
+                DeleteMode::KeepGroups,
+                protected.0,
+                protected.1,
+            ),
+            artifact(protected.0, protected.1),
+        )
+        .unwrap();
     for released in history.clear() {
         if released == protected {
             assert!(harness.release(released.0, released.1).is_err());
@@ -472,8 +618,14 @@ fn ten_level_eviction_redo_truncation_and_clear_release_only_unreferenced_artifa
 
 #[test]
 fn ordinary_scan_is_gated_until_recovery_finishes() {
-    let mut harness = TransactionHarness { recovery_required: true, ..TransactionHarness::default() };
-    assert_eq!(harness.ordinary_scan(), Err("recovery required before ordinary scan"));
+    let mut harness = TransactionHarness {
+        recovery_required: true,
+        ..TransactionHarness::default()
+    };
+    assert_eq!(
+        harness.ordinary_scan(),
+        Err("recovery required before ordinary scan")
+    );
     harness.recovery_required = false;
     assert_eq!(harness.ordinary_scan(), Ok(()));
 }
