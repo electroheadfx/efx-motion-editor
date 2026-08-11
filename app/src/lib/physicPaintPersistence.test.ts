@@ -375,6 +375,47 @@ describe('physicPaintPersistence', () => {
     });
   });
 
+  it('rejects changed legacy Group content that retains the historical revision', async () => {
+    files.set(
+      '/project/cache/physic-paint/legacy/key-000000-key-0.png',
+      new Uint8Array([1, 2, 3]),
+    );
+
+    await expect(loadPhysicPaintData('/project', [{
+      layer_id: 'legacy-layer',
+      frames: [],
+      roto_physical: {
+        capacity: 16,
+        realKeyRecords: [{
+          kind: 'real-key',
+          keyId: 'key-0',
+          appFrame: 0,
+          payload: {
+            frameIndex: 0,
+            appFrame: 0,
+            cache_path: 'cache/physic-paint/legacy/key-000000-key-0.png',
+            width: 100,
+            height: 50,
+          },
+        }],
+        interpolation: { enabled: false, mode: 'duplicate' },
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        selectedKeyId: null,
+        cursorAppFrame: 0,
+        revision: 'physical-163-beed993b',
+        loopClips: [{
+          loopId: 'loop-legacy',
+          placementStart: 0,
+          sourceKeyIds: ['key-0'],
+          repeat: 3,
+          mode: 'progressive',
+        }],
+        incomingInterpolationBreakKeyIds: [],
+      },
+    }])).rejects.toThrow('PhysicPaintRotoPhysicalDocument: canonical revision mismatch.');
+  });
+
   it('preserves every Group lifecycle field and the override real-key sidecar through save/reopen', async () => {
     const persisted = await savePhysicPaintData('/project', makeLifecyclePhysicalOutput());
     const persistedDocument = persisted[0].roto_physical!;
