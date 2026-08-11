@@ -124,3 +124,143 @@ describe('Roto frame persistence coordinator loop-placeholder rejection (D-28, a
     expect(coordinatorSource).toContain("case 'loop-placeholder':");
   });
 });
+
+type CowRange = Readonly<{ start: number; endExclusive: number }>;
+type CowGroup = Readonly<{
+  groupId: string;
+  placementStart: number;
+  orderedSourceKeyIds: readonly string[];
+  visibleRanges: readonly CowRange[];
+  frameOverrides: readonly Readonly<{ appFrame: number; keyId: string }>[];
+  syncState: 'synchronized' | 'modified';
+}>;
+
+type CowState = Readonly<{
+  groups: readonly CowGroup[];
+  rasterBytes: Readonly<Record<string, string>>;
+}>;
+
+function mergeCowFrame(ranges: readonly CowRange[], appFrame: number): readonly CowRange[] {
+  const normalized = [...ranges, { start: appFrame, endExclusive: appFrame + 1 }]
+    .sort((left, right) => left.start - right.start);
+  const merged: CowRange[] = [];
+  for (const range of normalized) {
+    const prior = merged.at(-1);
+    if (prior && prior.endExclusive >= range.start) {
+      merged[merged.length - 1] = Object.freeze({
+        start: prior.start,
+        endExclusive: Math.max(prior.endExclusive, range.endExclusive),
+      });
+    } else {
+      merged.push(Object.freeze({ ...range }));
+    }
+  }
+  return Object.freeze(merged);
+}
+
+function paintControlledGroupFrame(
+  state: CowState,
+  groupId: string,
+  appFrame: number,
+  nextBytes: string,
+  allocateKeyId: () => string,
+): CowState {
+  const group = state.groups.find((candidate) => candidate.groupId === groupId);
+  if (!group) throw new Error(`Unknown Group ${groupId}`);
+  const existingOverride = group.frameOverrides.find((override) => override.appFrame === appFrame);
+  const sourceIndex = (appFrame - group.placementStart) % group.orderedSourceKeyIds.length;
+  if (sourceIndex < 0) throw new Error('Frame precedes Group placement');
+  const sourceKeyId = group.orderedSourceKeyIds[sourceIndex];
+  const overrideKeyId = existingOverride?.keyId ?? allocateKeyId();
+  if (!(sourceKeyId in state.rasterBytes)) throw new Error(`Missing source ${sourceKeyId}`);
+
+  const nextGroup: CowGroup = Object.freeze({
+    ...group,
+    visibleRanges: mergeCowFrame(group.visibleRanges, appFrame),
+    frameOverrides: existingOverride
+      ? group.frameOverrides
+      : Object.freeze([...group.frameOverrides, Object.freeze({ appFrame, keyId: overrideKeyId })]),
+    syncState: 'modified',
+  });
+  return Object.freeze({
+    groups: Object.freeze(state.groups.map((candidate) => candidate.groupId === groupId ? nextGroup : candidate)),
+    rasterBytes: Object.freeze({
+      ...state.rasterBytes,
+      [overrideKeyId]: nextBytes,
+    }),
+  });
+}
+
+function resolveControlledGroupBytes(state: CowState, groupId: string, appFrame: number): string {
+  const group = state.groups.find((candidate) => candidate.groupId === groupId);
+  if (!group) throw new Error(`Unknown Group ${groupId}`);
+  const override = group.frameOverrides.find((candidate) => candidate.appFrame === appFrame);
+  const sourceIndex = (appFrame - group.placementStart) % group.orderedSourceKeyIds.length;
+  const keyId = override?.keyId ?? group.orderedSourceKeyIds[sourceIndex];
+  return state.rasterBytes[keyId];
+}
+
+describe('Phase 43.2 exact-frame copy-on-write persistence contract', () => {
+  const sourceBytes = Object.freeze({
+    'source-A': 'bytes-A',
+    'source-B': 'bytes-B',
+  });
+  const motionGroup: CowGroup = Object.freeze({
+    groupId: 'motion-1',
+    placementStart: 0,
+    orderedSourceKeyIds: Object.freeze(['source-A', 'source-B']),
+    visibleRanges: Object.freeze([Object.freeze({ start: 0, endExclusive: 6 })]),
+    frameOverrides: Object.freeze([]),
+    syncState: 'synchronized',
+  });
+  const sharingGroup: CowGroup = Object.freeze({
+    ...motionGroup,
+    groupId: 'motion-2',
+    placementStart: 6,
+  });
+
+  it('isolates one repeated occurrence and one Group before mutating raster bytes', () => {
+    const before: CowState = Object.freeze({
+      groups: Object.freeze([motionGroup, sharingGroup]),
+      rasterBytes: sourceBytes,
+    });
+    const after = paintControlledGroupFrame(before, 'motion-1', 4, 'painted-frame-4', () => 'override-4');
+
+    expect(resolveControlledGroupBytes(after, 'motion-1', 4)).toBe('painted-frame-4');
+    expect(resolveControlledGroupBytes(after, 'motion-1', 0)).toBe('bytes-A');
+    expect(resolveControlledGroupBytes(after, 'motion-2', 6)).toBe('bytes-A');
+    expect(after.rasterBytes['source-A']).toBe('bytes-A');
+    expect(after.groups.find((group) => group.groupId === 'motion-1')).toMatchObject({
+      syncState: 'modified',
+      frameOverrides: [{ appFrame: 4, keyId: 'override-4' }],
+    });
+    expect(after.groups.find((group) => group.groupId === 'motion-2')).toBe(sharingGroup);
+  });
+
+  it('fills a deleted-range gap, rejoins adjacent ranges, and reuses the exact override identity', () => {
+    const gapGroup: CowGroup = Object.freeze({
+      ...motionGroup,
+      visibleRanges: Object.freeze([
+        Object.freeze({ start: 0, endExclusive: 2 }),
+        Object.freeze({ start: 3, endExclusive: 6 }),
+      ]),
+      syncState: 'modified',
+    });
+    const before: CowState = Object.freeze({ groups: Object.freeze([gapGroup]), rasterBytes: sourceBytes });
+    let allocations = 0;
+    const filled = paintControlledGroupFrame(before, 'motion-1', 2, 'filled-gap', () => {
+      allocations += 1;
+      return 'override-gap-2';
+    });
+    const repainted = paintControlledGroupFrame(filled, 'motion-1', 2, 'repainted-gap', () => {
+      allocations += 1;
+      return 'must-not-allocate';
+    });
+
+    expect(filled.groups[0].visibleRanges).toEqual([{ start: 0, endExclusive: 6 }]);
+    expect(repainted.groups[0].frameOverrides).toEqual([{ appFrame: 2, keyId: 'override-gap-2' }]);
+    expect(resolveControlledGroupBytes(repainted, 'motion-1', 2)).toBe('repainted-gap');
+    expect(repainted.groups[0].syncState).toBe('modified');
+    expect(allocations).toBe(1);
+  });
+});

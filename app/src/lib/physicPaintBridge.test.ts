@@ -2140,6 +2140,125 @@ function validateControlledLifecycleProposal(
   return Object.freeze({ ok: true, marker: 'production-cutover-pending', ledger: accepted });
 }
 
+type ControlledHistoryLedger = Readonly<{
+  revision: string;
+  hash: string;
+  document: string;
+  version: number;
+  historyIndex: number;
+  selection: Readonly<{ groupId: string | null; appFrame: number }>;
+  events: Readonly<{ replacements: number; versions: number; histories: number; selections: number }>;
+}>;
+
+function applyControlledHistoryTransition(
+  accepted: ControlledHistoryLedger,
+  proposal: Readonly<{
+    direction: 'forward' | 'undo' | 'redo' | 'recovery';
+    expectedRevision: string;
+    expectedHash: string;
+    nextRevision: string;
+    nextHash: string;
+    nextDocument: string;
+    sharingResolved: boolean;
+    precedenceResolved: boolean;
+    nextHistoryIndex: number;
+    nextSelection: Readonly<{ groupId: string | null; appFrame: number }>;
+  }>,
+): ControlledHistoryLedger {
+  if (proposal.expectedRevision !== accepted.revision
+    || proposal.expectedHash !== accepted.hash
+    || !proposal.sharingResolved
+    || !proposal.precedenceResolved) return accepted;
+  return Object.freeze({
+    revision: proposal.nextRevision,
+    hash: proposal.nextHash,
+    document: proposal.nextDocument,
+    version: accepted.version + 1,
+    historyIndex: proposal.nextHistoryIndex,
+    selection: Object.freeze({ ...proposal.nextSelection }),
+    events: Object.freeze({ replacements: 1, versions: 1, histories: 1, selections: 1 }),
+  });
+}
+
+describe('Phase 43.2 exact accepted history and newer-document protection contract', () => {
+  const synchronized: ControlledHistoryLedger = Object.freeze({
+    revision: 'revision-sync',
+    hash: 'hash-sync',
+    document: 'bytes:synchronized',
+    version: 4,
+    historyIndex: 0,
+    selection: Object.freeze({ groupId: 'group-1', appFrame: 4 }),
+    events: Object.freeze({ replacements: 0, versions: 0, histories: 0, selections: 0 }),
+  });
+  const forward = Object.freeze({
+    direction: 'forward' as const,
+    expectedRevision: 'revision-sync',
+    expectedHash: 'hash-sync',
+    nextRevision: 'revision-modified',
+    nextHash: 'hash-modified',
+    nextDocument: 'bytes:modified-frame-4-only',
+    sharingResolved: true,
+    precedenceResolved: true,
+    nextHistoryIndex: 1,
+    nextSelection: Object.freeze({ groupId: 'group-1', appFrame: 4 }),
+  });
+
+  it('records one replacement, version, history, and selection event for forward, Undo, and Redo', () => {
+    const modified = applyControlledHistoryTransition(synchronized, forward);
+    const undone = applyControlledHistoryTransition(modified, {
+      ...forward,
+      direction: 'undo',
+      expectedRevision: 'revision-modified',
+      expectedHash: 'hash-modified',
+      nextRevision: 'revision-sync',
+      nextHash: 'hash-sync',
+      nextDocument: 'bytes:synchronized',
+      nextHistoryIndex: 0,
+    });
+    const redone = applyControlledHistoryTransition(undone, {
+      ...forward,
+      direction: 'redo',
+    });
+
+    expect(modified).toMatchObject({
+      document: 'bytes:modified-frame-4-only',
+      version: 5,
+      historyIndex: 1,
+      events: { replacements: 1, versions: 1, histories: 1, selections: 1 },
+    });
+    expect(undone).toMatchObject({ document: 'bytes:synchronized', historyIndex: 0 });
+    expect(redone).toMatchObject({ document: 'bytes:modified-frame-4-only', historyIndex: 1 });
+  });
+
+  it('preserves exact accepted semantics for stale, ambiguous, unresolved, and newer-document recovery rejection', () => {
+    const proposals = [
+      { ...forward, expectedRevision: 'revision-stale' },
+      { ...forward, sharingResolved: false },
+      { ...forward, precedenceResolved: false },
+      {
+        ...forward,
+        direction: 'recovery' as const,
+        expectedRevision: 'revision-sync',
+        expectedHash: 'hash-sync',
+      },
+    ];
+    const newerAccepted = Object.freeze({
+      ...synchronized,
+      revision: 'revision-newer',
+      hash: 'hash-newer',
+      document: 'bytes:newer-accepted',
+      version: 9,
+    });
+
+    expect(applyControlledHistoryTransition(synchronized, proposals[0])).toBe(synchronized);
+    expect(applyControlledHistoryTransition(synchronized, proposals[1])).toBe(synchronized);
+    expect(applyControlledHistoryTransition(synchronized, proposals[2])).toBe(synchronized);
+    expect(applyControlledHistoryTransition(newerAccepted, proposals[3])).toBe(newerAccepted);
+    expect(newerAccepted.events).toEqual({ replacements: 0, versions: 0, histories: 0, selections: 0 });
+    expect(newerAccepted.selection).toEqual({ groupId: 'group-1', appFrame: 4 });
+  });
+});
+
 describe('Phase 43.2 parent source-sharing and cleanup rejection atomicity contract', () => {
   const baseGroup: ControlledGroupContract = Object.freeze({
     groupId: 'group-1',

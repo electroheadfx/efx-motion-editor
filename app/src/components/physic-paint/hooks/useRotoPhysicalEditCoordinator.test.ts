@@ -352,6 +352,192 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+type ControlledPhysicalMutator =
+  | 'paint'
+  | 'delete-frame'
+  | 'delete-group'
+  | 'regenerate'
+  | 'delete-action'
+  | 'undo'
+  | 'redo'
+  | 'project-replacement';
+
+type ControlledLeaseToken = Readonly<{
+  projectId: string;
+  layerId: string;
+  generation: number;
+  owner: 'exclusive' | 'recovery';
+}>;
+
+function controlledLeaseKey(projectId: string, layerId: string): string {
+  return `${projectId}:${layerId}`;
+}
+
+function createControlledLeaseRegistry() {
+  const active = new Map<string, ControlledLeaseToken>();
+  let generation = 0;
+  const acquire = (projectId: string, layerId: string): ControlledLeaseToken | null => {
+    const key = controlledLeaseKey(projectId, layerId);
+    if (active.has(key)) return null;
+    const token = Object.freeze({ projectId, layerId, generation: ++generation, owner: 'exclusive' as const });
+    active.set(key, token);
+    return token;
+  };
+  const reconstructRecovery = (durable: ControlledLeaseToken): ControlledLeaseToken | null => {
+    const key = controlledLeaseKey(durable.projectId, durable.layerId);
+    if (active.has(key)) return null;
+    const token = Object.freeze({ ...durable, owner: 'recovery' as const });
+    active.set(key, token);
+    return token;
+  };
+  const matches = (token: ControlledLeaseToken | null): boolean => {
+    if (!token) return false;
+    return active.get(controlledLeaseKey(token.projectId, token.layerId)) === token;
+  };
+  const release = (token: ControlledLeaseToken, cleanupPending = false): boolean => {
+    if (!matches(token)) return false;
+    if (cleanupPending) {
+      active.set(controlledLeaseKey(token.projectId, token.layerId), Object.freeze({
+        ...token,
+        owner: 'recovery',
+      }));
+      return true;
+    }
+    active.delete(controlledLeaseKey(token.projectId, token.layerId));
+    return true;
+  };
+  return { acquire, reconstructRecovery, matches, release };
+}
+
+function createControlledLeaseLedger() {
+  const events = {
+    replacements: [] as string[],
+    versions: [] as number[],
+    history: [] as string[],
+    selections: [] as string[],
+  };
+  const attempt = (input: Readonly<{
+    registry: ReturnType<typeof createControlledLeaseRegistry>;
+    token: ControlledLeaseToken | null;
+    mutator: ControlledPhysicalMutator;
+    expectedRevision: string;
+    currentRevision: string;
+    expectedHash: string;
+    currentHash: string;
+  }>): boolean => {
+    if (!input.registry.matches(input.token)) return false;
+    if (input.expectedRevision !== input.currentRevision || input.expectedHash !== input.currentHash) return false;
+    events.replacements.push(input.mutator);
+    events.versions.push(events.versions.length + 1);
+    events.history.push(`history:${input.mutator}`);
+    events.selections.push(`selection:${input.mutator}`);
+    return true;
+  };
+  return { events, attempt };
+}
+
+describe('Phase 43.2 canonical physical-operation lease contract', () => {
+  it('acquires before final preflight, propagates one token, and settles exactly one accepted event set', () => {
+    const registry = createControlledLeaseRegistry();
+    const ledger = createControlledLeaseLedger();
+    const token = registry.acquire('project-1', 'layer-1');
+
+    expect(token).toMatchObject({ projectId: 'project-1', layerId: 'layer-1', owner: 'exclusive' });
+    expect(ledger.attempt({
+      registry,
+      token,
+      mutator: 'paint',
+      expectedRevision: 'revision-7',
+      currentRevision: 'revision-7',
+      expectedHash: 'hash-7',
+      currentHash: 'hash-7',
+    })).toBe(true);
+    expect(ledger.events).toEqual({
+      replacements: ['paint'],
+      versions: [1],
+      history: ['history:paint'],
+      selections: ['selection:paint'],
+    });
+    expect(registry.release(token!)).toBe(true);
+    expect(registry.release(token!)).toBe(false);
+  });
+
+  it('rejects every concurrent mutator and project replacement while an exclusive or recovery lease is active', () => {
+    const mutators: readonly ControlledPhysicalMutator[] = [
+      'paint',
+      'delete-frame',
+      'delete-group',
+      'regenerate',
+      'delete-action',
+      'undo',
+      'redo',
+      'project-replacement',
+    ];
+
+    for (const owner of ['exclusive', 'recovery'] as const) {
+      const registry = createControlledLeaseRegistry();
+      const ledger = createControlledLeaseLedger();
+      const ownerToken = owner === 'exclusive'
+        ? registry.acquire('project-1', 'layer-1')
+        : registry.reconstructRecovery(Object.freeze({
+          projectId: 'project-1',
+          layerId: 'layer-1',
+          generation: 91,
+          owner: 'recovery',
+        }));
+      expect(ownerToken).not.toBeNull();
+
+      for (const mutator of mutators) {
+        const foreignToken = Object.freeze({
+          projectId: 'project-1',
+          layerId: 'layer-1',
+          generation: 999,
+          owner: 'exclusive' as const,
+        });
+        expect(ledger.attempt({
+          registry,
+          token: foreignToken,
+          mutator,
+          expectedRevision: 'revision-7',
+          currentRevision: 'revision-7',
+          expectedHash: 'hash-7',
+          currentHash: 'hash-7',
+        }), `${owner}:${mutator}`).toBe(false);
+      }
+      expect(ledger.events).toEqual({ replacements: [], versions: [], history: [], selections: [] });
+    }
+  });
+
+  it('transfers cleanup-pending ownership, reconstructs recovery after restart, and protects newer revisions', () => {
+    const firstRegistry = createControlledLeaseRegistry();
+    const ledger = createControlledLeaseLedger();
+    const token = firstRegistry.acquire('project-1', 'layer-1')!;
+
+    expect(firstRegistry.release(token, true)).toBe(true);
+    expect(firstRegistry.matches(token)).toBe(false);
+    expect(firstRegistry.acquire('project-1', 'layer-1')).toBeNull();
+
+    const restartedRegistry = createControlledLeaseRegistry();
+    const recoveryToken = restartedRegistry.reconstructRecovery(Object.freeze({
+      ...token,
+      owner: 'recovery',
+    }));
+    expect(recoveryToken?.owner).toBe('recovery');
+    expect(ledger.attempt({
+      registry: restartedRegistry,
+      token: recoveryToken,
+      mutator: 'delete-action',
+      expectedRevision: 'revision-7',
+      currentRevision: 'revision-8',
+      expectedHash: 'hash-7',
+      currentHash: 'hash-8',
+    })).toBe(false);
+    expect(ledger.events).toEqual({ replacements: [], versions: [], history: [], selections: [] });
+    expect(restartedRegistry.release({ ...recoveryToken!, generation: 404 })).toBe(false);
+    expect(restartedRegistry.release(recoveryToken!)).toBe(true);
+  });
+});
+
 describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
   it('carries the current background only on the deferred Play Script payload', async () => {
     const test = harness();
