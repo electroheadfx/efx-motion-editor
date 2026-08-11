@@ -43,6 +43,8 @@ export interface PhysicsPaintLoopClipPresentation {
   readonly accessibleName: string;
 }
 
+export type PhysicsPaintGroupProductReason = 'spacing-source-selected' | 'operation-failed';
+
 export type PhysicsPaintGroupAcceptedFeedbackRequest =
   | { readonly operation: 'paint-frame'; readonly frame: number; readonly groupName: string }
   | { readonly operation: 'delete-frame'; readonly frame: number; readonly groupName: string }
@@ -148,6 +150,17 @@ export function projectPhysicsPaintLoopClipFragmentPresentation(
     tooltipLines,
     accessibleName,
   };
+}
+
+export function projectPhysicsPaintGroupProductReason(
+  reason: PhysicsPaintGroupProductReason,
+): string {
+  switch (reason) {
+    case 'spacing-source-selected':
+      return 'Group source position selected for Key Spacing.';
+    case 'operation-failed':
+      return 'Couldn’t update this Group. Nothing changed. Review the reason and try again.';
+  }
 }
 
 export function projectPhysicsPaintGroupAcceptedFeedback(

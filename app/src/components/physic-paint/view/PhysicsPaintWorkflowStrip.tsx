@@ -40,7 +40,10 @@ import type {
 } from '../roto/physicsPaintRotoSpacingSelection';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import { PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
-import type { PhysicsPaintLoopClipPresentation } from './physicsPaintLoopClipPresentation';
+import {
+  projectPhysicsPaintGroupProductReason,
+  type PhysicsPaintLoopClipPresentation,
+} from './physicsPaintLoopClipPresentation';
 import type {
   RotoDragPublication,
   RotoDragPreparationResult,
@@ -1533,12 +1536,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;
                   const hasCurrentTreatment = cellKeyId === null ? isCurrentFrame && !hasReplacementSelection : isPrimarySelected;
                   const cellBaseTooltipCopy = isSpacingProxySelected
-                    ? 'Loop Clip source position selected for Key Spacing.'
+                    ? projectPhysicsPaintGroupProductReason('spacing-source-selected')
                     : isSecondarySelected
                       ? getRotoCellSelectedTooltipCopy(cellTooltipKind)
                       : baseCellTooltipCopy;
                   const cellBaseAriaLabel = isSpacingProxySelected
-                    ? `${baseCellTooltipCopy} · Frame ${frame}. Loop Clip source position selected for Key Spacing.`
+                    ? `${baseCellTooltipCopy} · Frame ${frame}. ${projectPhysicsPaintGroupProductReason('spacing-source-selected')}`
                     : hasLinkedLoopBadge
                       ? `${baseCellTooltipCopy} · Frame ${frame}`
                       : isSecondarySelected
