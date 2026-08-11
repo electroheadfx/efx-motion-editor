@@ -374,12 +374,15 @@ const PHYSIC_PAINT_ROTO_GENERATED_CELL_KEYS = new Set(['kind', 'appFrame', 'left
 const PHYSIC_PAINT_ROTO_INTERPOLATION_STATE_KEYS = new Set(['enabled', 'mode']);
 const PHYSIC_PAINT_ROTO_SCRIPT_MOTION_KEYS = new Set(['deformation', 'position']);
 const PHYSIC_PAINT_ROTO_PHYSICAL_STATE_KEYS = new Set(['realKeyRecords', 'interpolation', 'scriptMotion']);
-const PHYSIC_PAINT_ROTO_LOOP_CLIP_KEYS = new Set([
+const PHYSIC_PAINT_ROTO_LEGACY_LOOP_CLIP_KEYS = new Set([
   'loopId',
   'placementStart',
   'sourceKeyIds',
   'repeat',
   'mode',
+]);
+const PHYSIC_PAINT_ROTO_LOOP_CLIP_KEYS = new Set([
+  ...PHYSIC_PAINT_ROTO_LEGACY_LOOP_CLIP_KEYS,
   'scriptId',
   'motion',
   'overrideColor',
@@ -626,6 +629,23 @@ export function isPhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintR
       && !(typeof value.overrideColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.overrideColor))) return false;
   }
   return hasValidPhysicPaintRotoGroupLifecycle(value);
+}
+
+function parseExactLegacyFiniteLoopClips(value: unknown): readonly PhysicPaintRotoLoopClip[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const clips: PhysicPaintRotoLoopClip[] = [];
+  const seenLoopIds = new Set<string>();
+  for (const entry of value) {
+    if (!isRecord(entry)
+      || Object.keys(entry).length !== PHYSIC_PAINT_ROTO_LEGACY_LOOP_CLIP_KEYS.size
+      || !hasOnlyAllowedKeys(entry, PHYSIC_PAINT_ROTO_LEGACY_LOOP_CLIP_KEYS)
+      || !isPhysicPaintRotoLoopClip(entry)
+      || entry.repeat === 'infinity'
+      || seenLoopIds.has(entry.loopId)) return null;
+    seenLoopIds.add(entry.loopId);
+    clips.push(entry);
+  }
+  return clips;
 }
 
 function buildDefaultPhysicPaintRotoGroupLifecycle(
@@ -951,7 +971,21 @@ export function encodePhysicPaintRotoPhysicalContent(
   }
   const validatedLoopClips = parsePhysicPaintRotoLoopClips(loopClips);
   const validatedIncomingBreaks = parsePhysicPaintRotoIncomingInterpolationBreakKeyIds(incomingInterpolationBreakKeyIds, validated);
-  const orderedByIdentity = [...validated].sort((a, b) => a.keyId.localeCompare(b.keyId));
+  return encodeValidatedPhysicPaintRotoPhysicalContent(
+    validated,
+    interpolation,
+    validatedLoopClips,
+    validatedIncomingBreaks,
+  );
+}
+
+function encodeValidatedPhysicPaintRotoPhysicalContent(
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  interpolation: PhysicPaintRotoInterpolationState,
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  incomingInterpolationBreakKeyIds: readonly string[],
+): string {
+  const orderedByIdentity = [...records].sort((a, b) => a.keyId.localeCompare(b.keyId));
   const encodedRecords = orderedByIdentity.map((record) => [
     encodeCanonicalString(record.keyId),
     encodeCanonicalNumber(record.appFrame),
@@ -969,9 +1003,9 @@ export function encodePhysicPaintRotoPhysicalContent(
     // identical to a pre-Phase-43 document with no loopClips member, so it
     // contributes NO term — v0.8.1 documents keep their legacy revision and
     // load with no migration. Any non-empty collection joins the fingerprint.
-    ...(validatedLoopClips.length > 0 ? [`loops:${encodeCanonicalLoopClips(validatedLoopClips)}`] : []),
-    ...(validatedIncomingBreaks.length > 0
-      ? [`incoming-breaks:${encodeCanonicalIncomingInterpolationBreakKeyIds(validatedIncomingBreaks)}`]
+    ...(loopClips.length > 0 ? [`loops:${encodeCanonicalLoopClips(loopClips)}`] : []),
+    ...(incomingInterpolationBreakKeyIds.length > 0
+      ? [`incoming-breaks:${encodeCanonicalIncomingInterpolationBreakKeyIds(incomingInterpolationBreakKeyIds)}`]
       : []),
   ].join('');
 }
@@ -1128,6 +1162,9 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
   // loopClips is the first genuinely optional document member (D-29): absent
   // means the empty collection (v0.8.1-shaped documents load with no
   // migration); present means parsed fail-closed.
+  const exactLegacyFiniteLoopClips = value.loopClips === undefined
+    ? null
+    : parseExactLegacyFiniteLoopClips(value.loopClips);
   const loopClips = value.loopClips === undefined
     ? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY
     : parsePhysicPaintRotoLoopClips(value.loopClips);
@@ -1145,7 +1182,17 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
     incomingInterpolationBreakKeyIds,
   );
   if (value.revision !== revision) {
-    throw new Error('PhysicPaintRotoPhysicalDocument: canonical revision mismatch.');
+    const exactLegacyRevision = exactLegacyFiniteLoopClips === null
+      ? null
+      : `physical-${hashCanonicalPhysicalValue(encodeValidatedPhysicPaintRotoPhysicalContent(
+          state.realKeyRecords,
+          state.interpolation,
+          exactLegacyFiniteLoopClips,
+          incomingInterpolationBreakKeyIds,
+        ))}`;
+    if (value.revision !== exactLegacyRevision) {
+      throw new Error('PhysicPaintRotoPhysicalDocument: canonical revision mismatch.');
+    }
   }
   const background = value.background === null ? null : Object.freeze({ ...value.background }) as PhysicPaintRotoBackgroundMetadata;
   return Object.freeze({
