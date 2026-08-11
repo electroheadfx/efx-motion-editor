@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Completed 43.2-06-PLAN.md
-last_updated: "2026-08-11T07:25:21.375Z"
+stopped_at: Completed 43.2-07-PLAN.md
+last_updated: "2026-08-11T07:58:12.514Z"
 last_activity: 2026-08-11
-last_activity_desc: Completed Plan 43.2-06 Group lifecycle proposals, parent validation, and exact history
+last_activity_desc: Completed Plan 43.2-07 exact-frame Group Paint COW and accepted settlement
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 61
-  completed_plans: 48
-  percent: 79
+  completed_plans: 49
+  percent: 80
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
-Plan: 8 of 20
+Plan: 9 of 20
 Status: Ready to execute
-Last activity: 2026-08-11 — Completed Plan 43.2-06 Group lifecycle proposals, parent validation, and exact history
+Last activity: 2026-08-11 — Completed Plan 43.2-07 exact-frame Group Paint COW and accepted settlement
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [████████░░] 79%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -201,6 +201,7 @@ Progress: [████████░░] 79%
 | Phase 43.2 P05 | 16min | 3 tasks | 9 files |
 | Phase 43.2 P18 | 34min | 3 tasks | 10 files |
 | Phase 43.2 P06 | 23min | 3 tasks | 7 files |
+| Phase 43.2 P07 | 18min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -317,6 +318,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: Group gaps live exclusively in visibleRanges; interpolation breaks remain real-key ownership.
 - [Phase 43.2]: Parent lifecycle acceptance requires exact pure-proposal recomputation before canonical replacement.
 - [Phase 43.2]: All Group lifecycle fields and operations use the single immutable physical history ledger.
+- [Phase 43.2]: 43.2-07: Group Paint re-reads the complete accepted physical document after acquiring the project/layer lease and recomputes the pure exact-frame proposal before transport.
+- [Phase 43.2]: 43.2-07: Ordinary unique real keys retain direct payload updates; every recognized Group-owned target uses acknowledged paint-group-frame COW.
+- [Phase 43.2]: 43.2-07: Deferred operations avoid false rollback publication, while partial accepted cleanup restores the before snapshot and transfers lease ownership to recovery.
 
 ### Pending Todos
 
@@ -506,8 +510,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T07:25:21.363Z
-Stopped at: Completed 43.2-06-PLAN.md
+Last session: 2026-08-11T07:58:12.502Z
+Stopped at: Completed 43.2-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
