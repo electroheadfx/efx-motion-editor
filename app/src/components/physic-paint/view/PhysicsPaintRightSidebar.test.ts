@@ -27,10 +27,10 @@ function rule(selector: string): string {
 }
 
 describe('native-approved Physics Paint right sidebar', () => {
-  it('renders the Brush color and Tool sections with no tab chrome and keeps the lower Scripts/Onion/Motion tab group', () => {
+  it('renders the Brush color and Tool sections with no tab chrome and keeps the lower Actions/Onion/Motion tab group', () => {
     // Chrome-less sections (36.15-12, UAT Gap H-1/H-2): the single-tab header
     // strips from 36.15-11 are gone — each section starts directly with its
-    // content. Only the lower [Scripts, Onion, Motion] group keeps tabs.
+    // content. Only the lower [Actions, Onion, Motion] group keeps tabs.
     expect(rightPanel).not.toContain('aria-label="Brush color panel"');
     expect(rightPanel).not.toContain('aria-label="Tool panel"');
     expect(rightPanel).not.toContain('physics-paint-tab-brush');
@@ -42,8 +42,8 @@ describe('native-approved Physics Paint right sidebar', () => {
     const lowerStart = rightPanel.indexOf('aria-label="Physics Paint option panels"');
     const lowerEnd = rightPanel.indexOf('</div>', lowerStart);
     const lower = rightPanel.slice(lowerStart, lowerEnd);
-    // Scripts is FIRST in its group and default-open (36.15-11, UAT Gap G-4).
-    expectInOrder(lower, ['Scripts', 'Onion', 'Motion']);
+    // Actions is FIRST in its group and default-open (36.15-11, UAT Gap G-4).
+    expectInOrder(lower, ['Actions', 'Onion', 'Motion']);
     expect(lower).not.toContain('Tool');
 
     // The LOG tab is gone (36.15-11, UAT Gap G-6).
@@ -54,7 +54,7 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rightPanel.match(/role="tablist"/g)).toHaveLength(1);
     expect(rightPanel.match(/role="tab"/g)).toHaveLength(3);
 
-    for (const label of ['Scripts', 'Onion', 'Motion']) {
+    for (const label of ['Actions', 'Onion', 'Motion']) {
       expect(rightPanel).toMatch(new RegExp(`>\\s*${label}\\s*<`));
       expect(rightPanel).not.toMatch(new RegExp(`>\\s*${label.toUpperCase()}\\s*<`));
     }
@@ -140,15 +140,15 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(resizeBand).toMatch(/touch-action:\s*none/);
   });
 
-  it('keeps full-row load-only activation and contextual Scripts behavior', () => {
-    expectInOrder(scriptsPanel, ['label="Save Script"', 'label="Load and Apply Script"', 'label="Play Script"', 'label="Delete Script"', 'label="Refresh Scripts"']);
+  it('keeps full-row load-only activation and contextual Actions behavior', () => {
+    expectInOrder(scriptsPanel, ['label="Save Action"', 'label="Load + Apply to Frame"', 'label="Create Group…"', 'label="Delete Action"', 'label="Refresh Actions"']);
     expect(scriptsPanel).toContain('if (selectedLoopClip)');
     expect(scriptsPanel).toContain('<Paintbrush size={16} />');
     expect(scriptsPanel).toContain('<Play size={16} />');
-    expect(scriptsPanel).toContain('aria-label={`Edit Loop Clip — ${selectedLoopClip.displayName}`}');
-    expect(scriptsPanel).toContain("label=\"Play Script\" title={`Play Script — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)')}`}");
-    expect(scriptsPanel).toMatch(/label="Play Script"[^>]*onClick=/);
-    expect(scriptsPanel).not.toContain('label="Rename Script"');
+    expect(scriptsPanel).toContain('aria-label={`Edit Group — ${selectedLoopClip.displayName}`}');
+    expect(scriptsPanel).toContain("label=\"Create Group…\" title={`Create Group… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Group from the selected Action')}`}");
+    expect(scriptsPanel).toMatch(/label="Create Group…"[^>]*onClick=/);
+    expect(scriptsPanel).not.toContain('label="Rename Action"');
     expect(scriptsPanel).toContain('role="option"');
     expect(scriptsPanel).toContain('tabIndex={0}');
     expect(scriptsPanel).toContain("aria-disabled={confirmationBusy ? 'true' : undefined}");
@@ -160,10 +160,10 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(scriptsPanel).toContain('event.stopPropagation()');
   });
 
-  it('keeps approved durable-load destination guards in the narrow Scripts subscriber', () => {
+  it('keeps approved durable-load destination guards in the narrow Actions subscriber', () => {
     expect(scriptsPanel).toContain('const actionMutationDisabledReason = library.actionMutationDisabledReason.value;');
     expect(scriptsPanel).toContain('const loadAndApplyDisabledReason = actionMutationDisabledReason');
-    expect(scriptsPanel).toContain("? 'Select a project script first.'");
+    expect(scriptsPanel).toContain("? 'Select a project Action first.'");
     expect(scriptsPanel).toContain('rotoScript.availability.value.replacementApplyDisabledReason');
     expect(studio).not.toContain('const scriptLoadAndApplyDisabledReason =');
   });
