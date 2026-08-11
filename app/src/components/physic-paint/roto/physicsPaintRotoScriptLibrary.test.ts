@@ -347,6 +347,8 @@ describe('Wave 0 committed-only referenced Action deletion ledger', () => {
     expect(ledger.settle(lease.expectedCurrentRevision)).toBe(true);
     expect(ledger.events).toEqual(['physical-replacement', 'version-bump', 'history-pointer', 'selection', 'library-settlement']);
     expect(ledger.settle(lease.expectedCurrentRevision)).toBe(false);
+    expect(ledger.acknowledge(lease.commandId, lease.generation, 'stale-token', direction)).toBe(false);
+    expect(ledger.events).toHaveLength(5);
     expect(ledger.acknowledge(lease.commandId, lease.generation, lease.token, direction)).toBe(true);
     expect(ledger.events).toHaveLength(5);
   });
@@ -376,8 +378,8 @@ describe('Wave 0 committed-only referenced Action deletion ledger', () => {
     expect(ledger.releases.map((release) => release.reason)).toEqual(['eviction', 'redo-branch-truncation', 'session-clear']);
   });
 
-  it('starts RED until the committed-only marker is enabled', () => {
-    const committedOnlyProtocolImplemented = false;
+  it('marks the committed-only Wave 0 protocol as executable', () => {
+    const committedOnlyProtocolImplemented = true;
     expect(committedOnlyProtocolImplemented).toBe(true);
   });
 });
