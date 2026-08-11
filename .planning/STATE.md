@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Completed 43.2-12-PLAN.md
-last_updated: "2026-08-11T10:55:58.685Z"
+stopped_at: Completed 43.2-20-PLAN.md
+last_updated: "2026-08-11T11:32:03.218Z"
 last_activity: 2026-08-11
-last_activity_desc: Completed Plan 43.2-12 committed-only referenced Action deletion settlement and startup recovery
+last_activity_desc: Completed Plan 43.2-20 bidirectional referenced Action replay and retained history release
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 61
-  completed_plans: 55
-  percent: 90
+  completed_plans: 56
+  percent: 92
 ---
 
 # Project State
@@ -31,11 +31,11 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
 Plan: 13 of 20
 Status: Ready to execute
-Last activity: 2026-08-11 — Completed Plan 43.2-12 committed-only referenced Action deletion settlement and startup recovery
+Last activity: 2026-08-11 — Completed Plan 43.2-20 bidirectional referenced Action replay and retained history release
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [█████████░] 90%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -208,6 +208,7 @@ Progress: [█████████░] 90%
 | Phase 43.2 P19 | 22min | 2 tasks | 6 files |
 | Phase 43.2 P11 | 9min | 2 tasks | 4 files |
 | Phase 43.2 P12 | 21min | 3 tasks | 15 files |
+| Phase 43.2 P20 | 28min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -349,6 +350,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: The trusted Physics Paint launch context carries the opaque script-library authority.
 - [Phase 43.2]: Startup recovery discovers one unresolved durable transaction through a narrow Rust command instead of guessing a frontend token.
 - [Phase 43.2]: Committed restart recovery reuses the same bridge settlement path as initial committed deletion.
+- [Phase 43.2]: Referenced Action commands use a dedicated history route and never fall through to ordinary physical snapshot restoration.
+- [Phase 43.2]: History pointers move only after durable direction commit and accepted exact local settlement.
+- [Phase 43.2]: Each referenced history command retains its original opaque script-library authority for replay and release after launch changes.
+- [Phase 43.2]: Retained artifacts remain owned until protected Rust release succeeds; active recovery defers exact idempotent cleanup without visible state.
 
 ### Pending Todos
 
@@ -538,11 +543,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T10:55:58.673Z
-Stopped at: Completed 43.2-12-PLAN.md
+Last session: 2026-08-11T11:32:03.206Z
+Stopped at: Completed 43.2-20-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Execute Plan 43.2-12 for leased committed-only referenced Action deletion settlement and hydration recovery.
+- Execute Plan 43.2-13 for reference-aware Actions confirmation, consequences, focus, and lease/recovery UI.
 - Keep Phase 43.1 DF-01 through DF-04 deferred; do not create additional Phase 43.1 plans.

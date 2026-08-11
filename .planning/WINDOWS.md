@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 20
+open_count: 21
 waived_count: 1
-fixed_count: 35
-total_count: 56
-last_updated: 2026-08-11T10:18:57.147Z
+fixed_count: 36
+total_count: 58
+last_updated: 2026-08-11T11:33:31.793Z
 ---
 
 # Broken Windows Ledger
@@ -71,6 +71,8 @@ last_updated: 2026-08-11T10:18:57.147Z
 | 54 | 43.2 | deviation | app/src/types/physicPaint.test.ts |  | Corrected Action transaction fixtures to canonical UUID v4 tokens | fixed |  | 2026-08-11T10:18:29.203Z | 2026-08-11T10:18:56.986Z |
 | 55 | 43.2 | deviation | app/src/types/physicPaint.ts |  | Added persisted acknowledged receipt validation for transaction status | fixed |  | 2026-08-11T10:18:29.282Z | 2026-08-11T10:18:57.062Z |
 | 56 | 43.2 | deviation | .planning/STATE.md |  | Corrected out-of-order plan position and progress after state handler advancement | fixed |  | 2026-08-11T10:18:29.355Z | 2026-08-11T10:18:57.147Z |
+| 57 | 43.2 | skipped-test | app/src/lib/physicPaintBridge.test.ts | 1997 | Pre-existing native window close-save listener test remains skipped and is unrelated to referenced Action replay. | open |  | 2026-08-11T11:27:09.939Z |  |
+| 58 | 43.2 | deviation | .planning/STATE.md |  | Corrected out-of-order Plan 20 state advancement so the next executable position remains Plan 13 and progress stays 92 percent | fixed |  | 2026-08-11T11:33:31.640Z | 2026-08-11T11:33:31.793Z |
 
 ````json
 [
@@ -745,6 +747,30 @@ last_updated: 2026-08-11T10:18:57.147Z
     "reason": "",
     "recorded_at": "2026-08-11T10:18:29.355Z",
     "resolved_at": "2026-08-11T10:18:57.147Z"
+  },
+  {
+    "id": 57,
+    "kind": "skipped-test",
+    "phase": "43.2",
+    "file": "app/src/lib/physicPaintBridge.test.ts",
+    "line": 1997,
+    "description": "Pre-existing native window close-save listener test remains skipped and is unrelated to referenced Action replay.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-11T11:27:09.939Z",
+    "resolved_at": null
+  },
+  {
+    "id": 58,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Corrected out-of-order Plan 20 state advancement so the next executable position remains Plan 13 and progress stays 92 percent",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T11:33:31.640Z",
+    "resolved_at": "2026-08-11T11:33:31.793Z"
   }
 ]
 ````
