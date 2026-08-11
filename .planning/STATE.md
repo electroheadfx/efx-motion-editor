@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Completed 43.2-21-PLAN.md; 43.2-17 remains blocked
-last_updated: "2026-08-11T17:31:20.452Z"
+stopped_at: Completed 43.2-22-PLAN.md; 43.2-17 remains blocked pending Repeat 3 spacing native retest
+last_updated: "2026-08-11T17:43:43.894Z"
 last_activity: 2026-08-11
-last_activity_desc: Completed Plan 43.2-21 canonical Group selection and same-layer Delete recovery automation
+last_activity_desc: Completed Plan 43.2-22 Group spacing lifecycle retiming automation; Plan 43.2-17 remains blocked
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 65
-  completed_plans: 61
-  percent: 63
+  completed_plans: 62
+  percent: 95
 ---
 
 # Project State
@@ -30,12 +30,12 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
 Plan: 17 of 24
-Status: Blocked pending targeted native Delete Frame/Delete Group UAT
-Last activity: 2026-08-11 — Completed Plan 43.2-21 canonical Group selection and same-layer Delete recovery automation
+Status: Blocked pending targeted native Delete Frame/Delete Group and Repeat 3 spacing UAT
+Last activity: 2026-08-11 — Completed Plan 43.2-22 Group spacing lifecycle retiming automation
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [█████████░] 94%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -214,6 +214,7 @@ Progress: [█████████░] 94%
 | Phase 43.2 P15 | 2h18m | 3 tasks | 10 files |
 | Phase 43.2 P16 | 27min | 2 tasks | 6 files |
 | Phase 43.2 P21 | 7min | 2 tasks | 3 files |
+| Phase 43.2 P22 | 9min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -378,6 +379,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: Plan 43.2-21 keeps the coordinator strict equality guard unchanged and repairs authority at the Studio Group-selection boundary.
 - [Phase 43.2]: Plan 43.2-21 proved same-layer rejection cleanup is already reusable, so no speculative coordinator lifecycle change was made.
 - [Phase 43.2]: Plan 43.2-17 remains blocked pending one fully restarted frozen-session native Delete Frame/Delete Group retest.
+- [Phase 43.2]: Plan 43.2-22: Authorized source-cycle spacing rebuilds finite Group lifecycle extent from mapped ordered source timing while preserving each Group's own placement.
+- [Phase 43.2]: Plan 43.2-22: Coordinator and history production remain unchanged; records and lifecycle continue through one canonical accepted snapshot and replay command.
+- [Phase 43.2]: Plan 43.2-22: Plan 43.2-17 remains blocked until the fully restarted native Repeat 3 spacing 2/3 retest passes.
 
 ### Pending Todos
 
@@ -387,7 +391,7 @@ None yet.
 
 - Quick 260730-mn0 completed Apple signing preparation: one valid Developer ID identity, App Store Connect Team Key setup, fail-loud release script, and two operational guides. The real credentialed build/notarization/stapling/Gatekeeper/external-launch proof was explicitly deferred until after milestone close and remains unverified — run `docs/macos-signed-release.md`.
 - v0.8.0 audit-accepted tech debt and follow-ups are tracked in `## Deferred Items` below and in the MILESTONES.md v0.8.0 entry (resolver regression tests, CR-01/CR-02 + WR-01..04, legacy dual-model seam, dead playScriptMarkers, cache footprint).
-- Plan 43.2-17 remains blocked until Delete Frame at F3 and Delete Group at F4/F6 pass in one fully restarted frozen-code parent/child session per D-39; Plan 43.2-21 automation is not native UAT approval.
+- Plan 43.2-17 remains blocked until Delete Frame at F3, Delete Group at F4/F6, and Repeat 3 Group-scoped Key Spacing 2/3 pass in one fully restarted frozen-code parent/child session per D-39; Plans 43.2-21 and 43.2-22 automation are not native UAT approval.
 
 ### Quick Tasks Completed
 
@@ -568,11 +572,12 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T17:30:38.364Z
-Stopped at: Completed 43.2-21-PLAN.md; 43.2-17 remains blocked
+Last session: 2026-08-11T17:43:43.878Z
+Stopped at: Completed 43.2-22-PLAN.md; 43.2-17 remains blocked pending Repeat 3 spacing native retest
 Resume file: None
 
 ## Operator Next Steps
 
-- Execute Plan 43.2-15 for Actions-panel terminology, Group/Action cross-selection, and linked Group navigation.
+- Run the fully restarted frozen-code native retests for Delete Frame/Delete Group and Repeat 3 Group-scoped Key Spacing 2/3.
+- Keep Plan 43.2-17 and phase completion blocked until those targeted native checks pass.
 - Keep Phase 43.1 DF-01 through DF-04 deferred; do not create additional Phase 43.1 plans.
