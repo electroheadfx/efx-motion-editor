@@ -577,6 +577,7 @@ function fingerprintApplyPayload(payload: PhysicPaintApplyPayload): string {
       incomingBreaksPresence,
       payload.selectedKeyId ?? '',
       payload.selectedAppFrame === null ? 'null' : String(payload.selectedAppFrame),
+      String(payload.cursorAppFrame),
       payload.semanticDelta ? stableSerialize(payload.semanticDelta, new WeakSet<object>()) : 'mapping-only',
       intent,
       provenance,
@@ -929,6 +930,7 @@ function physicalEditResult(
     readonly acceptedRevision?: string | null;
     readonly selectedKeyId?: string | null;
     readonly selectedAppFrame?: number | null;
+    readonly cursorAppFrame?: number;
     readonly error?: string;
   },
 ): PhysicPaintRotoPhysicalEditApplyResult {
@@ -963,6 +965,7 @@ function physicalEditResult(
     interpolationMode: payload.interpolationMode,
     selectedKeyId: options.selectedKeyId === undefined ? payload.selectedKeyId : options.selectedKeyId,
     selectedAppFrame: options.selectedAppFrame === undefined ? payload.selectedAppFrame : options.selectedAppFrame,
+    cursorAppFrame: options.cursorAppFrame ?? payload.cursorAppFrame,
     appliedFrameCount: options.ok ? payload.records.length : 0,
     ok: options.ok,
     ...(options.error !== undefined ? { error: options.error } : {}),
@@ -1010,6 +1013,11 @@ function validateCanonicalGroupLifecycleEdit(input: {
   if (payload.intent !== undefined || payload.historyProvenance !== undefined) {
     return 'Group lifecycle edits cannot carry ordinary intent or replay provenance.';
   }
+  const targetDocument: PhysicPaintRotoPhysicalDocument = Object.freeze({
+    ...currentDocument,
+    selectedKeyId: payload.selectedKeyId,
+    cursorAppFrame: payload.cursorAppFrame,
+  });
 
   let recomputed:
     | ReturnType<typeof proposePhysicPaintRotoGroupFramePaint>
@@ -1019,7 +1027,7 @@ function validateCanonicalGroupLifecycleEdit(input: {
     | ReturnType<typeof proposePhysicPaintRotoActionGroupLifecycle>;
   if (delta.kind === 'paint-group-frame') {
     const target = classifyPhysicPaintRotoGroupFrameTarget({
-      document: currentDocument,
+      document: targetDocument,
       appFrame: delta.appFrame,
     });
     if (target.kind === 'unresolved-group' || target.kind === 'ambiguous-group') {
@@ -1030,7 +1038,7 @@ function validateCanonicalGroupLifecycleEdit(input: {
       return 'Group Paint override record does not match the declared exact occurrence.';
     }
     recomputed = proposePhysicPaintRotoGroupFramePaint({
-      document: currentDocument,
+      document: targetDocument,
       groupId: delta.groupId,
       appFrame: delta.appFrame,
       overrideKeyId: delta.overrideKeyId,
@@ -1038,27 +1046,27 @@ function validateCanonicalGroupLifecycleEdit(input: {
     });
   } else if (delta.kind === 'delete-group-frame') {
     recomputed = proposePhysicPaintRotoDeleteGroupFrame({
-      document: currentDocument,
+      document: targetDocument,
       groupId: delta.groupId,
       appFrame: delta.appFrame,
     });
   } else if (delta.kind === 'delete-group') {
     recomputed = proposePhysicPaintRotoDeleteGroup({
-      document: currentDocument,
+      document: targetDocument,
       groupId: delta.groupId,
     });
   } else if (delta.kind === 'regenerate-group') {
     // The prepared Action transaction owns the live revision lookup. This seam
     // independently binds the exact revision string into the recomputed impact.
     recomputed = proposePhysicPaintRotoRegenerateGroup({
-      document: currentDocument,
+      document: targetDocument,
       groupId: delta.groupId,
       expectedActionRevision: delta.expectedActionRevision,
       currentActionRevision: delta.expectedActionRevision,
     });
   } else if (delta.kind === 'detach-action-groups' || delta.kind === 'delete-action-groups') {
     recomputed = proposePhysicPaintRotoActionGroupLifecycle({
-      document: currentDocument,
+      document: targetDocument,
       actionId: delta.actionId,
       expectedActionRevision: delta.expectedActionRevision,
       currentActionRevision: delta.expectedActionRevision,
@@ -1158,7 +1166,7 @@ function applyPhysicPaintRotoPhysicalMap(
       loopClips: currentLoopClips,
       incomingInterpolationBreakKeyIds: currentIncomingInterpolationBreakKeyIds,
       selectedKeyId: currentDocument?.selectedKeyId ?? null,
-      cursorAppFrame: currentDocument?.cursorAppFrame ?? payload.startFrame,
+      cursorAppFrame: currentDocument?.cursorAppFrame ?? payload.cursorAppFrame,
       capacity,
       revision: currentRevision,
     });
@@ -1174,6 +1182,9 @@ function applyPhysicPaintRotoPhysicalMap(
   }
   if (payload.records.length > capacity) {
     return reject('Roto physical edit exceeds the current layer capacity.');
+  }
+  if (payload.cursorAppFrame >= capacity) {
+    return reject('Roto physical cursor exceeds the current layer capacity.');
   }
   let proposedRecords: readonly import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord[];
   try {
@@ -1311,7 +1322,7 @@ function applyPhysicPaintRotoPhysicalMap(
     if (!semanticValidation.ok) return reject(semanticValidation.error, stagedRevision);
   }
 
-  const cursorAppFrame = payload.selectedAppFrame ?? Math.max(0, Math.min(capacity - 1, payload.startFrame));
+  const cursorAppFrame = payload.cursorAppFrame;
   const lifecycleValidationError = validateCanonicalGroupLifecycleEdit({
     payload,
     currentDocument,
@@ -1380,7 +1391,7 @@ function applyPhysicPaintRotoPhysicalMap(
       loopClips: currentLoopClips,
       incomingInterpolationBreakKeyIds: currentIncomingInterpolationBreakKeyIds,
       selectedKeyId: currentDocument?.selectedKeyId ?? null,
-      cursorAppFrame: currentDocument?.cursorAppFrame ?? payload.startFrame,
+      cursorAppFrame: currentDocument?.cursorAppFrame ?? payload.cursorAppFrame,
       capacity,
       revision: currentRevision,
     });
@@ -1411,6 +1422,7 @@ function applyPhysicPaintRotoPhysicalMap(
     acceptedRevision: acceptedDocument.revision,
     selectedKeyId: acceptedSelectedKeyId,
     selectedAppFrame: acceptedSelectedAppFrame,
+    cursorAppFrame: acceptedDocument.cursorAppFrame,
   });
 }
 

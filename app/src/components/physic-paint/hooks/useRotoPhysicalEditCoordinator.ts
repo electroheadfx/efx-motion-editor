@@ -233,6 +233,7 @@ type PhysicalEditResultTransition =
 interface PendingPhysicalEditContext extends PendingPhysicPaintRotoPhysicalEdit {
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
+  readonly cursorAppFrame: number;
   readonly appliedFrameCount: number;
   readonly semanticDelta: PhysicPaintRotoPhysicalEditSemanticDelta | null;
   readonly historyProvenance: import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditReplayProvenance | null;
@@ -466,6 +467,7 @@ function transitionPhysicalEditResult(
     || detail.interpolationMode !== pending.interpolationMode
     || detail.selectedKeyId !== pending.selectedKeyId
     || detail.selectedAppFrame !== pending.selectedAppFrame
+    || detail.cursorAppFrame !== pending.cursorAppFrame
     || detail.appliedFrameCount !== (detail.ok ? pending.appliedFrameCount : 0)
     || !semanticDeltaEquals(detail.semanticDelta, pending.semanticDelta)
     || !replayProvenanceEquals(detail.historyProvenance, pending.historyProvenance)
@@ -720,6 +722,7 @@ function createPendingPhysicalEdit(
     interpolationMode: payload.interpolationMode,
     selectedKeyId: payload.selectedKeyId,
     selectedAppFrame: payload.selectedAppFrame,
+    cursorAppFrame: payload.cursorAppFrame,
     appliedFrameCount: payload.records.length,
     semanticDelta: payload.semanticDelta ?? null,
     historyProvenance: payload.historyProvenance ?? null,
@@ -1128,9 +1131,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           }
         }
         portsRef.current.selection.setSelectedKeyId(pending.selectedKeyId);
-        if (pending.selectedAppFrame !== null) {
-          portsRef.current.selection.setCurrentAppFrame(pending.selectedAppFrame);
-        }
+        portsRef.current.selection.setCurrentAppFrame(pending.cursorAppFrame);
         portsRef.current.launch.setLaunchContextCachedFrames(
           pending.deferredRecords,
           { preserveRuntimeCaches: true },
@@ -1393,6 +1394,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         let targetSelectedAppFrame = isGroupFramePaint || isGroupLifecycleDelete
           ? (currentSelectedKeyIdForEdit === null ? null : currentAppFrameForEdit)
           : requestedSelectedAppFrame;
+        let targetCursorAppFrame = requestedSelectedAppFrame ?? currentAppFrameForEdit;
         const expectedRevision = buildPhysicPaintRotoPhysicalRevision(
           currentRecords,
           currentInterpolation,
@@ -1444,6 +1446,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
             }
             groupFramePaintProposal = proposed.proposal;
             groupFramePaintImpact = proposed.impact;
+            targetCursorAppFrame = proposed.proposal.cursorAppFrame;
           } else if (groupLifecycleDeleteInput) {
             const proposed = groupLifecycleDeleteInput.operationKind === 'delete-group'
               ? proposePhysicPaintRotoDeleteGroup({
@@ -1481,7 +1484,8 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
             targetSelectedKeyId = proposed.proposal.selectedKeyId;
             targetSelectedAppFrame = proposed.proposal.selectedKeyId === null
               ? null
-              : currentAppFrameForEdit;
+              : proposed.proposal.cursorAppFrame;
+            targetCursorAppFrame = proposed.proposal.cursorAppFrame;
           }
         }
         if (isReplay && (
@@ -1500,6 +1504,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           clearPendingOnce();
           return false;
         }
+        if (isReplay && replayTarget) targetCursorAppFrame = replayTarget.currentAppFrame;
         if (isInterpolationChange) {
           const currentSelectedKeyId = portsRef.current.selection.getSelectedKeyId();
           const currentSelectedAppFrame = currentSelectedKeyId === null
@@ -1678,6 +1683,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           ),
           selectedKeyId: targetSelectedKeyId,
           selectedAppFrame: targetSelectedAppFrame,
+          cursorAppFrame: targetCursorAppFrame,
           ...(groupLifecycleDeleteImpact
             ? { semanticDelta: groupLifecycleDeleteImpact }
             : groupFramePaintImpact

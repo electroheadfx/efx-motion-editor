@@ -81,6 +81,7 @@ function groupLifecycleApplyPayload(overrides: Record<string, unknown> = {}) {
     interpolationMode: 'duplicate',
     selectedKeyId: 'override-1',
     selectedAppFrame: 1,
+    cursorAppFrame: 1,
     loopClips: [completeTransportGroup()],
     semanticDelta: {
       kind: 'paint-group-frame',
@@ -163,6 +164,7 @@ describe('physic paint payload contracts', () => {
       interpolationMode: 'blend',
       selectedKeyId: 'inserted-key',
       selectedAppFrame: 4,
+      cursorAppFrame: 4,
       incomingInterpolationBreakKeyIds: ['inserted-key'],
       semanticDelta: {
         kind: 'insert-empty-segment',
@@ -314,6 +316,7 @@ describe('physic paint payload contracts', () => {
       interpolationMode: 'duplicate',
       selectedKeyId: 'key-1',
       selectedAppFrame: 0,
+      cursorAppFrame: 0,
       semanticDelta: {
         kind: 'play-script',
         affectedStartAppFrame: 0,
@@ -357,6 +360,7 @@ describe('physic paint payload contracts', () => {
       interpolationMode: payload.interpolationMode,
       selectedKeyId: payload.selectedKeyId,
       selectedAppFrame: payload.selectedAppFrame,
+      cursorAppFrame: payload.cursorAppFrame,
       appliedFrameCount: 1,
       ok: true,
       semanticDelta: payload.semanticDelta,
@@ -407,6 +411,12 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, semanticDelta: incompleteImpact })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, semanticDelta: { ...payload.semanticDelta, unknown: true } })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, operationKind: 'delete-group-frame' })).toBe(false);
+    const omittedCursor = { ...payload } as Record<string, unknown>;
+    delete omittedCursor.cursorAppFrame;
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(omittedCursor)).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, cursorAppFrame: -1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, cursorAppFrame: 1.5 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, unknownCursorAuthority: 1 })).toBe(false);
   });
 
   it.each(GROUP_FIELD_PARTICIPATION)('rejects a Group carrying only the $field lifecycle field', ({ field, value }) => {

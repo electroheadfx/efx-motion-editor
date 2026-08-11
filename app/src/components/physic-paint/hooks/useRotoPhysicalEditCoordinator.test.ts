@@ -494,6 +494,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
       interpolationMode: payload.interpolationMode,
       selectedKeyId: payload.selectedKeyId,
       selectedAppFrame: payload.selectedAppFrame,
+      cursorAppFrame: payload.cursorAppFrame,
       appliedFrameCount: payload.records.length,
       ok: true,
       semanticDelta: payload.semanticDelta,

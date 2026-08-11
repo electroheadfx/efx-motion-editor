@@ -833,6 +833,8 @@ interface PhysicPaintRotoPhysicalEditApplyPayloadBase {
   readonly rotoBackground?: PhysicPaintRotoBackgroundMetadata;
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
+  /** Complete physical cursor authority, independent from selection and operation target. */
+  readonly cursorAppFrame: number;
   readonly semanticDelta?: PhysicPaintRotoPhysicalEditSemanticDelta;
   readonly historyProvenance?: PhysicPaintRotoPhysicalEditReplayProvenance;
   /**
@@ -900,6 +902,8 @@ export interface PhysicPaintRotoPhysicalEditApplyResult {
   readonly interpolationMode: PhysicPaintRotoInterpolationMode;
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
+  /** Echo of the accepted complete physical cursor authority. */
+  readonly cursorAppFrame: number;
   readonly appliedFrameCount: number;
   readonly ok: boolean;
   readonly error?: string;
@@ -1154,7 +1158,7 @@ export function isPhysicPaintRotoPhysicalEditReplayProvenance(value: unknown): v
  */
 export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value is PhysicPaintRotoPhysicalEditApplyPayload {
   if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
+  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
   if (!isPhysicPaintRotoPhysicalEditOperationKind(value.operationKind)) return false;
@@ -1183,6 +1187,7 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (value.selectedKeyId !== null && !isBoundedPhysicalKeyId(value.selectedKeyId)) return false;
   if (value.selectedAppFrame !== null && !isNonNegativeInteger(value.selectedAppFrame)) return false;
   if ((value.selectedKeyId === null) !== (value.selectedAppFrame === null)) return false;
+  if (!isNonNegativeInteger(value.cursorAppFrame)) return false;
   if (!operationSemanticDeltaIsValid(value.operationKind, value.semanticDelta)) return false;
   const isReplay = value.operationKind === 'undo' || value.operationKind === 'redo';
   if (isReplay) {
@@ -1205,7 +1210,7 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
  */
 export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value is PhysicPaintRotoPhysicalEditApplyResult {
   if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'interpolationMode', 'selectedKeyId', 'selectedAppFrame', 'appliedFrameCount', 'ok', 'error', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
+  if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'interpolationMode', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'appliedFrameCount', 'ok', 'error', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
   if (!isPhysicPaintRotoPhysicalEditOperationKind(value.operationKind)) return false;
@@ -1220,6 +1225,7 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
   if (value.selectedKeyId !== null && !isBoundedPhysicalKeyId(value.selectedKeyId)) return false;
   if (value.selectedAppFrame !== null && !isNonNegativeInteger(value.selectedAppFrame)) return false;
   if ((value.selectedKeyId === null) !== (value.selectedAppFrame === null)) return false;
+  if (!isNonNegativeInteger(value.cursorAppFrame)) return false;
   if (!isNonNegativeInteger(value.appliedFrameCount)) return false;
   if (typeof value.ok !== 'boolean') return false;
   if (value.error !== undefined && typeof value.error !== 'string') return false;

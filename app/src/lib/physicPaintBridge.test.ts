@@ -15,6 +15,10 @@ import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import type { PhysicPaintApplyPayload, PhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import {
+  isPhysicPaintRotoPhysicalEditApplyPayload,
+  isPhysicPaintRotoPhysicalEditIntent,
+} from '../types/physicPaint';
+import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
   buildPhysicPaintRotoPhysicalRevision,
   buildPhysicPaintRotoProjectEquality,
@@ -28,6 +32,7 @@ import {
   proposePhysicPaintRotoRegenerateGroup,
 } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
 import { hydrateRotoPhysicalLaunchContext } from '../components/physic-paint/roto/rotoLaunchHydration';
+import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
 import {
   applyCommittedReferencedActionDeletion,
   applyPhysicPaintPayload,
@@ -940,6 +945,7 @@ describe('physicPaintBridge', () => {
         incomingInterpolationBreakKeyIds: canonicalBreaks,
         selectedKeyId: proposal.selectedKeyId,
         selectedAppFrame: proposal.selectedAppFrame,
+        cursorAppFrame: proposal.selectedAppFrame ?? launch.data.rotoPhysical.cursorAppFrame,
         ...(proposal.semanticDelta ? { semanticDelta: proposal.semanticDelta } : {}),
       } as PhysicalMapPayload;
       const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
@@ -1057,7 +1063,7 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(projectBLease)).toBe(true);
   });
 
-  it('rejects null-selection replay when only the start-frame-derived cursor differs', async () => {
+  it('rejects null-selection replay when only the explicit cursor authority differs', async () => {
     const layer = physicLayer();
     mockLayers([layer]);
     const records = [
@@ -1109,6 +1115,7 @@ describe('physicPaintBridge', () => {
       incomingInterpolationBreakKeyIds: [],
       selectedKeyId: null,
       selectedAppFrame: null,
+      cursorAppFrame: 4,
     });
     expect(accepted.ok).toBe(true);
     if (!accepted.ok || !('acceptedRevision' in accepted)) return;
@@ -1137,6 +1144,7 @@ describe('physicPaintBridge', () => {
       incomingInterpolationBreakKeyIds: [],
       selectedKeyId: null,
       selectedAppFrame: null,
+      cursorAppFrame: 1,
       historyProvenance: {
         historyCommandId: 'null-selection-command',
         historyDirection: 'undo',
@@ -1499,6 +1507,7 @@ describe('physicPaintBridge', () => {
       incomingInterpolationBreakKeyIds: ['key-10', 'key-12'],
       selectedKeyId: 'key-12',
       selectedAppFrame: 12,
+      cursorAppFrame: 12,
       semanticDelta: {
         kind: 'insert-empty-segment' as const,
         insertedKeyId: 'key-12',
@@ -1555,6 +1564,11 @@ describe('physicPaintBridge', () => {
         ...basePayload,
         operationId: 'reject-empty-segment-interpolation-change',
         interpolationEnabled: false,
+      },
+      {
+        ...basePayload,
+        operationId: 'reject-empty-segment-cursor-capacity-race',
+        cursorAppFrame: 600,
       },
       {
         ...basePayload,
@@ -2330,10 +2344,352 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       incomingInterpolationBreakKeyIds: proposed.proposal.incomingInterpolationBreakKeyIds,
       selectedKeyId: proposed.proposal.selectedKeyId,
       selectedAppFrame: proposed.proposal.selectedKeyId === null ? null : proposed.proposal.cursorAppFrame,
+      cursorAppFrame: proposed.proposal.cursorAppFrame,
       semanticDelta: proposed.impact,
     };
     return { layer, current, proposed, payload, leaseToken };
   }
+
+  async function selectionAuthorityHarness(input: {
+    placementStart: number;
+    repeat: 1 | 3;
+    selectionKind: 'frame' | 'group-rail';
+    operationId: string;
+  }) {
+    const layer = physicLayer();
+    mockLayers([layer]);
+    projectStore.projectContextId.value = projectContextId;
+    const records = [
+      makePhysicalRecord('source-A', 0),
+      makePhysicalRecord('source-B', 2),
+      makePhysicalRecord('ordinary', 20),
+    ];
+    const interpolation = { enabled: true, mode: 'blend' as const };
+    const extentEnd = input.placementStart + 3 * input.repeat;
+    const group = {
+      loopId: 'group-1',
+      placementStart: input.placementStart,
+      sourceKeyIds: ['source-A', 'source-B'],
+      repeat: input.repeat,
+      mode: 'progressive' as const,
+      scriptId: 'action-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      syncState: 'synchronized' as const,
+      provenanceState: 'attached' as const,
+      phaseOrigin: input.placementStart,
+      originalEndExclusive: extentEnd,
+      visibleRanges: [{ start: input.placementStart, endExclusive: extentEnd }],
+      frameOverrides: [],
+    };
+    const loopClips = [group];
+    const parentSeed = physicPaintStore.replaceRotoPhysicalDocument(layer.id, {
+      capacity: 30,
+      realKeyRecords: records,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, ['source-B']),
+      loopClips,
+      incomingInterpolationBreakKeyIds: ['source-B'],
+    });
+    if (!parentSeed.ok) throw new Error(parentSeed.error);
+    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
+    if (!launch.ok) throw new Error(launch.error);
+    const parentDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!parentDocument) throw new Error('Expected parent Group authority document.');
+
+    const targetFrame = input.selectionKind === 'frame'
+      ? input.placementStart + (input.repeat === 1 ? 0 : 1)
+      : input.placementStart;
+    const childCursorAppFrame = input.selectionKind === 'group-rail' ? 20 : targetFrame;
+    const childDocument = Object.freeze({
+      ...parentDocument,
+      selectedKeyId: null,
+      cursorAppFrame: childCursorAppFrame,
+    });
+    const operationKind = input.selectionKind === 'group-rail'
+      ? 'delete-group' as const
+      : 'delete-group-frame' as const;
+    const proposed = operationKind === 'delete-group'
+      ? proposePhysicPaintRotoDeleteGroup({ document: childDocument, groupId: group.loopId })
+      : proposePhysicPaintRotoDeleteGroupFrame({
+          document: childDocument,
+          groupId: group.loopId,
+          appFrame: targetFrame,
+        });
+    if (!proposed.ok) throw new Error(proposed.reason);
+    const leaseToken = acquirePhysicalLease(layer.id, projectContextId);
+    const payload = {
+      kind: 'replace-roto-physical-map' as const,
+      operationId: input.operationId,
+      operationKind,
+      leaseToken,
+      layerId: layer.id,
+      startFrame: targetFrame,
+      cursorAppFrame: childCursorAppFrame,
+      launchOperationId: launch.data.operationId,
+      projectContextId,
+      expectedRevision: childDocument.revision,
+      records: proposed.proposal.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: proposed.proposal.interpolation.enabled,
+      interpolationMode: proposed.proposal.interpolation.mode,
+      loopClips: proposed.proposal.loopClips,
+      incomingInterpolationBreakKeyIds: proposed.proposal.incomingInterpolationBreakKeyIds,
+      selectedKeyId: proposed.proposal.selectedKeyId,
+      selectedAppFrame: null,
+      semanticDelta: proposed.impact,
+    };
+    return {
+      layer,
+      group,
+      targetFrame,
+      childCursorAppFrame,
+      parentDocument,
+      childDocument,
+      proposed,
+      leaseToken,
+      payload,
+    };
+  }
+
+  it.each([
+    { placementStart: 0, repeat: 1 as const, selectionKind: 'frame' as const },
+    { placementStart: 0, repeat: 3 as const, selectionKind: 'frame' as const },
+    { placementStart: 8, repeat: 1 as const, selectionKind: 'frame' as const },
+    { placementStart: 8, repeat: 3 as const, selectionKind: 'frame' as const },
+    { placementStart: 0, repeat: 1 as const, selectionKind: 'group-rail' as const },
+    { placementStart: 0, repeat: 3 as const, selectionKind: 'group-rail' as const },
+    { placementStart: 8, repeat: 1 as const, selectionKind: 'group-rail' as const },
+    { placementStart: 8, repeat: 3 as const, selectionKind: 'group-rail' as const },
+  ])('accepts $selectionKind deletion with independent cursor authority at F$placementStart Repeat $repeat', async ({
+    placementStart,
+    repeat,
+    selectionKind,
+  }) => {
+    const test = await selectionAuthorityHarness({
+      placementStart,
+      repeat,
+      selectionKind,
+      operationId: `selection-authority-${selectionKind}-${placementStart}-${repeat}`,
+    });
+
+    expect(test.parentDocument.revision).toBe(test.childDocument.revision);
+    expect(buildPhysicPaintRotoProjectEquality(test.parentDocument)).not.toBe(
+      buildPhysicPaintRotoProjectEquality(test.childDocument),
+    );
+    expect(test.parentDocument.loopClips[0]).toMatchObject({
+      loopId: test.group.loopId,
+      placementStart,
+      repeat,
+      phaseOrigin: placementStart,
+      originalEndExclusive: placementStart + 3 * repeat,
+    });
+    expect(test.childDocument.selectedKeyId).toBeNull();
+    expect(test.childDocument.cursorAppFrame).toBe(test.childCursorAppFrame);
+    expect(test.payload.expectedRevision).toBe(test.parentDocument.revision);
+    expect(physicPaintStore.isRotoPhysicalOperationAvailable(projectContextId, test.layer.id)).toBe(false);
+
+    const result = applyPhysicPaintPayload(test.payload as PhysicPaintApplyPayload);
+
+    expect(result.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.proposed.proposal);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)?.cursorAppFrame).toBe(test.childCursorAppFrame);
+    if (selectionKind === 'frame' && repeat === 3) {
+      expect(physicPaintStore.getRotoPhysicalLoopClips(test.layer.id)[0]).toMatchObject({
+        loopId: test.group.loopId,
+        placementStart,
+        phaseOrigin: placementStart,
+        originalEndExclusive: placementStart + 9,
+      });
+    }
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
+    expect(physicPaintStore.isRotoPhysicalOperationAvailable(projectContextId, test.layer.id)).toBe(true);
+  });
+
+  it.each([
+    { placementStart: 0, repeat: 1 as const, selectionKind: 'frame' as const },
+    { placementStart: 0, repeat: 3 as const, selectionKind: 'frame' as const },
+    { placementStart: 8, repeat: 1 as const, selectionKind: 'frame' as const },
+    { placementStart: 8, repeat: 3 as const, selectionKind: 'frame' as const },
+    { placementStart: 0, repeat: 1 as const, selectionKind: 'group-rail' as const },
+    { placementStart: 0, repeat: 3 as const, selectionKind: 'group-rail' as const },
+    { placementStart: 8, repeat: 1 as const, selectionKind: 'group-rail' as const },
+    { placementStart: 8, repeat: 3 as const, selectionKind: 'group-rail' as const },
+  ])('preserves rebuilt Key Spacing lifecycle and accepts $selectionKind deletion at F$placementStart Repeat $repeat', async ({
+    placementStart,
+    repeat,
+    selectionKind,
+  }) => {
+    const initial = await selectionAuthorityHarness({
+      placementStart,
+      repeat,
+      selectionKind,
+      operationId: `spacing-matrix-unused-${selectionKind}-${placementStart}-${repeat}`,
+    });
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(initial.leaseToken)).toBe(true);
+
+    const spacingIntent = {
+      kind: 'force-spacing' as const,
+      emptyFrames: 2,
+      selectedKeyId: null,
+      scopeKeyIds: ['source-A', 'source-B'],
+      linkedSourceSpacingScopes: [{
+        sourceCycleId: getPhysicsPaintRotoSourceCycleId(['source-A', 'source-B']),
+        sourceKeyIds: ['source-A', 'source-B'],
+        selectedSourceKeyIds: ['source-A', 'source-B'],
+      }],
+    };
+    const spacingResolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: initial.childDocument.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records: initial.childDocument.realKeyRecords,
+      intent: spacingIntent,
+      capacity: initial.childDocument.capacity,
+      interpolationEnabled: initial.childDocument.interpolation.enabled,
+      loopClips: initial.childDocument.loopClips,
+      incomingInterpolationBreakKeyIds: initial.childDocument.incomingInterpolationBreakKeyIds,
+    });
+    expect(
+      spacingResolution.ok,
+      spacingResolution.ok ? undefined : JSON.stringify(spacingResolution.failure),
+    ).toBe(true);
+    if (!spacingResolution.ok) throw new Error(spacingResolution.failure.text);
+    const spacedRecords = initial.childDocument.realKeyRecords.map((record) => {
+      const appFrame = spacingResolution.proposal.mapping.get(record.keyId) ?? record.appFrame;
+      return {
+        ...record,
+        appFrame,
+        payload: { ...record.payload, appFrame },
+      };
+    });
+    const spacedLoopClips = spacingResolution.proposal.nextLoopClips ?? initial.childDocument.loopClips;
+    const spacingLease = acquirePhysicalLease(initial.layer.id, projectContextId);
+    const spacingPayload = {
+      kind: 'replace-roto-physical-map' as const,
+      operationId: `spacing-matrix-${selectionKind}-${placementStart}-${repeat}`,
+      operationKind: 'force-spacing' as const,
+      intent: spacingIntent,
+      leaseToken: spacingLease,
+      layerId: initial.layer.id,
+      startFrame: 20,
+      launchOperationId: initial.payload.launchOperationId,
+      projectContextId,
+      expectedRevision: initial.parentDocument.revision,
+      records: spacedRecords.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: initial.childDocument.interpolation.enabled,
+      interpolationMode: initial.childDocument.interpolation.mode,
+      loopClips: spacedLoopClips,
+      incomingInterpolationBreakKeyIds: spacingResolution.proposal.nextIncomingInterpolationBreakKeyIds
+        ?? initial.childDocument.incomingInterpolationBreakKeyIds,
+      selectedKeyId: spacingResolution.proposal.selectedKeyId,
+      selectedAppFrame: spacingResolution.proposal.selectedAppFrame,
+      cursorAppFrame: 20,
+      ...(spacingResolution.proposal.semanticDelta
+        ? { semanticDelta: spacingResolution.proposal.semanticDelta }
+        : {}),
+    };
+
+    expect(isPhysicPaintRotoPhysicalEditIntent(spacingIntent), JSON.stringify(spacingIntent)).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(spacingPayload), JSON.stringify(spacingPayload)).toBe(true);
+    const spacingResult = applyPhysicPaintPayload(spacingPayload as PhysicPaintApplyPayload);
+    expect(spacingResult.ok, JSON.stringify(spacingResult)).toBe(true);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(spacingLease)).toBe(true);
+    const spacedParent = physicPaintStore.getRotoPhysicalDocument(initial.layer.id);
+    if (!spacedParent) throw new Error('Expected accepted Key Spacing document.');
+    expect(spacedParent.loopClips[0]).toMatchObject({
+      loopId: initial.group.loopId,
+      placementStart,
+      repeat,
+      phaseOrigin: placementStart,
+      originalEndExclusive: placementStart + 4 * repeat,
+      visibleRanges: [{ start: placementStart, endExclusive: placementStart + 4 * repeat }],
+    });
+    expect(spacedParent.selectedKeyId).toBeNull();
+    expect(spacedParent.cursorAppFrame).toBe(20);
+
+    const targetFrame = selectionKind === 'frame' ? placementStart + 1 : placementStart;
+    const childAfterSpacing = Object.freeze({
+      ...spacedParent,
+      selectedKeyId: null,
+      cursorAppFrame: selectionKind === 'frame' ? targetFrame : 20,
+    });
+    expect(childAfterSpacing.revision).toBe(spacedParent.revision);
+    const deleteProposal = selectionKind === 'group-rail'
+      ? proposePhysicPaintRotoDeleteGroup({ document: childAfterSpacing, groupId: initial.group.loopId })
+      : proposePhysicPaintRotoDeleteGroupFrame({
+          document: childAfterSpacing,
+          groupId: initial.group.loopId,
+          appFrame: targetFrame,
+        });
+    if (!deleteProposal.ok) throw new Error(deleteProposal.reason);
+    const deleteLease = acquirePhysicalLease(initial.layer.id, projectContextId);
+    const deletePayload = {
+      kind: 'replace-roto-physical-map' as const,
+      operationId: `spacing-delete-${selectionKind}-${placementStart}-${repeat}`,
+      operationKind: selectionKind === 'group-rail' ? 'delete-group' as const : 'delete-group-frame' as const,
+      leaseToken: deleteLease,
+      layerId: initial.layer.id,
+      startFrame: targetFrame,
+      cursorAppFrame: childAfterSpacing.cursorAppFrame,
+      launchOperationId: initial.payload.launchOperationId,
+      projectContextId,
+      expectedRevision: spacedParent.revision,
+      records: deleteProposal.proposal.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: deleteProposal.proposal.interpolation.enabled,
+      interpolationMode: deleteProposal.proposal.interpolation.mode,
+      loopClips: deleteProposal.proposal.loopClips,
+      incomingInterpolationBreakKeyIds: deleteProposal.proposal.incomingInterpolationBreakKeyIds,
+      selectedKeyId: deleteProposal.proposal.selectedKeyId,
+      selectedAppFrame: deleteProposal.proposal.selectedKeyId === null
+        ? null
+        : deleteProposal.proposal.cursorAppFrame,
+      semanticDelta: deleteProposal.impact,
+    };
+
+    const deleteResult = applyPhysicPaintPayload(deletePayload as PhysicPaintApplyPayload);
+    expect(deleteResult.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(initial.layer.id)).toEqual(deleteProposal.proposal);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(deleteLease)).toBe(true);
+  });
+
+  it('leaves a rejected nonzero Group lifecycle command immediately reusable with unchanged documents, revision, history authority, and lease scope', async () => {
+    const test = await selectionAuthorityHarness({
+      placementStart: 8,
+      repeat: 3,
+      selectionKind: 'group-rail',
+      operationId: 'selection-authority-rejected',
+    });
+    const before = physicPaintStore.getRotoPhysicalDocument(test.layer.id);
+    const beforeVersion = physicPaintVersion.peek();
+
+    const rejected = applyPhysicPaintPayload({
+      ...test.payload,
+      expectedRevision: 'stale-selection-authority-revision',
+    } as PhysicPaintApplyPayload);
+
+    expect(rejected.ok).toBe(false);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(before);
+    expect(physicPaintVersion.peek()).toBe(beforeVersion);
+    expect(physicPaintStore.isRotoPhysicalOperationAvailable(projectContextId, test.layer.id)).toBe(false);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
+    expect(physicPaintStore.isRotoPhysicalOperationAvailable(projectContextId, test.layer.id)).toBe(true);
+
+    const retryLease = acquirePhysicalLease(test.layer.id, projectContextId);
+    const accepted = applyPhysicPaintPayload({
+      ...test.payload,
+      operationId: 'selection-authority-retry',
+      leaseToken: retryLease,
+    } as PhysicPaintApplyPayload);
+
+    expect(accepted.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.proposed.proposal);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)?.cursorAppFrame).toBe(test.childCursorAppFrame);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(retryLease)).toBe(true);
+  });
 
   it.each([
     'delete-group-frame',
@@ -2353,6 +2709,77 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     expect(replace).toHaveBeenCalledWith(test.layer.id, test.proposed.proposal, test.leaseToken);
     expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.proposed.proposal);
     expect(physicPaintVersion.peek()).toBe(beforeVersion + 1);
+  });
+
+  it('restores and reapplies the complete Group deletion document through leased Undo and Redo', async () => {
+    const test = await lifecycleHarness('delete-group', 'group-delete-history-matrix');
+    const forward = applyPhysicPaintPayload(test.payload as PhysicPaintApplyPayload);
+    expect(forward.ok).toBe(true);
+    if (!forward.ok || !('acceptedRevision' in forward)) throw new Error('Expected accepted Group deletion.');
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.proposed.proposal);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
+
+    const undoLease = acquirePhysicalLease(test.layer.id, projectContextId);
+    const undo = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'group-delete-history-undo',
+      operationKind: 'undo',
+      layerId: test.layer.id,
+      leaseToken: undoLease,
+      startFrame: test.current.cursorAppFrame,
+      launchOperationId: test.payload.launchOperationId,
+      projectContextId,
+      expectedRevision: test.proposed.proposal.revision,
+      records: test.current.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: test.current.interpolation.enabled,
+      interpolationMode: test.current.interpolation.mode,
+      loopClips: test.current.loopClips,
+      incomingInterpolationBreakKeyIds: test.current.incomingInterpolationBreakKeyIds,
+      selectedKeyId: test.current.selectedKeyId,
+      selectedAppFrame: test.current.selectedKeyId === null ? null : test.current.cursorAppFrame,
+      cursorAppFrame: test.current.cursorAppFrame,
+      historyProvenance: {
+        historyCommandId: test.payload.operationId,
+        historyDirection: 'undo',
+        sourceRevision: test.proposed.proposal.revision,
+        targetRevision: test.current.revision,
+      },
+    });
+    expect(undo.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.current);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(undoLease)).toBe(true);
+
+    const redoLease = acquirePhysicalLease(test.layer.id, projectContextId);
+    const redo = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'group-delete-history-redo',
+      operationKind: 'redo',
+      layerId: test.layer.id,
+      leaseToken: redoLease,
+      startFrame: test.proposed.proposal.cursorAppFrame,
+      launchOperationId: test.payload.launchOperationId,
+      projectContextId,
+      expectedRevision: test.current.revision,
+      records: test.proposed.proposal.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: test.proposed.proposal.interpolation.enabled,
+      interpolationMode: test.proposed.proposal.interpolation.mode,
+      loopClips: test.proposed.proposal.loopClips,
+      incomingInterpolationBreakKeyIds: test.proposed.proposal.incomingInterpolationBreakKeyIds,
+      selectedKeyId: test.proposed.proposal.selectedKeyId,
+      selectedAppFrame: test.proposed.proposal.selectedKeyId === null
+        ? null
+        : test.proposed.proposal.cursorAppFrame,
+      cursorAppFrame: test.proposed.proposal.cursorAppFrame,
+      historyProvenance: {
+        historyCommandId: test.payload.operationId,
+        historyDirection: 'redo',
+        sourceRevision: test.current.revision,
+        targetRevision: test.proposed.proposal.revision,
+      },
+    });
+    expect(redo.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.proposed.proposal);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(redoLease)).toBe(true);
   });
 
   it('settles a Rust-committed referenced Action deletion exactly once with enriched history facts', async () => {
@@ -3026,6 +3453,7 @@ describe('Phase 43.2 UAT-13 cross-window first-paint settlement', () => {
           ?? document.incomingInterpolationBreakKeyIds,
         selectedKeyId: resolution.proposal.selectedKeyId,
         selectedAppFrame: resolution.proposal.selectedAppFrame,
+        cursorAppFrame: resolution.proposal.selectedAppFrame ?? document.cursorAppFrame,
         ...(resolution.proposal.semanticDelta ? { semanticDelta: resolution.proposal.semanticDelta } : {}),
       };
     };
