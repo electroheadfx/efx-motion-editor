@@ -1,3 +1,4 @@
+#[cfg(feature = "script-library-test-support")]
 use crate::commands::script_library::encode_thumbnail_webp_for_test;
 use crate::services::script_library::{self, ScriptLibraryMigration, ScriptLibraryOperation, ScriptLibraryScan, ScriptLibraryState};
 use serde_json::Value;
@@ -31,6 +32,12 @@ impl FixtureLibrary {
     pub fn rename(&self, id: &str, revision: &str, name: &str) -> Result<ScriptLibraryOperation, String> { script_library::rename(&self.state, &self.authority, id, revision, name) }
     pub fn delete(&self, id: &str, revision: &str) -> Result<ScriptLibraryOperation, String> { script_library::delete(&self.state, &self.authority, id, revision) }
     pub fn stale_scan(&self) -> Result<ScriptLibraryScan, String> { script_library::scan(&self.state, "stale-authority") }
+    pub fn prepare_transaction(&self, request: Value) -> Result<Value, String> {
+        script_library::prepare_transaction_value(&self.state, &self.authority, request)
+    }
+    pub fn transaction_status(&self, token: &str) -> Result<Value, String> {
+        script_library::transaction_status_value(&self.state, &self.authority, token)
+    }
     pub fn migrate_to(&self, destination_name: &str) -> Result<(PathBuf, ScriptLibraryMigration), String> {
         let destination = self.fixture_root.join(destination_name);
         fs::create_dir_all(&destination).map_err(|error| format!("Could not create migration destination: {error}"))?;
@@ -56,10 +63,12 @@ pub fn validate_webp(bytes: &[u8]) -> Result<(u64, u64), String> {
     script_library::validate_webp_payload(bytes)
 }
 
+#[cfg(feature = "script-library-test-support")]
 pub fn encode_webp(operation_id: &str, width: u32, height: u32, quality: f32, rgba: &[u8]) -> Result<Value, String> {
     encode_thumbnail_webp_for_test(operation_id.to_string(), width, height, quality, encode_base64(rgba))
 }
 
+#[cfg(feature = "script-library-test-support")]
 fn encode_base64(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);

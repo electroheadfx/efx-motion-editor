@@ -5,7 +5,7 @@ mod services;
 pub use commands::physic_paint_cache as physic_paint_cache_command;
 pub use services::physic_paint_cache;
 
-#[cfg(feature = "script-library-test-support")]
+#[doc(hidden)]
 pub mod script_library_test_support;
 
 use commands::config;

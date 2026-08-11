@@ -1,4 +1,143 @@
+use efx_motion_editor_lib::script_library_test_support::FixtureLibrary;
+use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
+use uuid::Uuid;
+
+fn encode_base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let value = (u32::from(chunk[0]) << 16)
+            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*chunk.get(2).unwrap_or(&0));
+        output.push(ALPHABET[((value >> 18) & 63) as usize] as char);
+        output.push(ALPHABET[((value >> 12) & 63) as usize] as char);
+        output.push(if chunk.len() > 1 { ALPHABET[((value >> 6) & 63) as usize] as char } else { '=' });
+        output.push(if chunk.len() > 2 { ALPHABET[(value & 63) as usize] as char } else { '=' });
+    }
+    output
+}
+
+fn action_document(id: &str) -> Value {
+    let webp = webp::Encoder::from_rgba(&[255, 255, 255, 255], 1, 1).encode(80.0);
+    json!({
+        "kind": "efx-physics-paint-roto-script",
+        "schemaVersion": 1,
+        "id": id,
+        "name": "Action",
+        "createdAt": "2026-08-11T00:00:00Z",
+        "updatedAt": "2026-08-11T00:00:00Z",
+        "source": {"projectName":"Project","layerId":"layer-1","layerName":"Paint","sourceFrame":0,"displayFrame":0,"width":1,"height":1,"background":{"background":"white","paperGrain":"canvas1","grainStrength":0.0}},
+        "thumbnail": {"mimeType":"image/webp","width":1,"height":1,"quality":0.8,"dataUrl":format!("data:image/webp;base64,{}", encode_base64(webp.as_ref()))},
+        "brushes": [{"primary":{"tool":"paint","points":[{"x":0,"y":0,"p":1,"tx":0,"ty":0,"tw":0,"spd":0}],"color":"#000000","params":{"size":1,"opacity":100,"pressure":100,"waterAmount":0,"dryAmount":0,"edgeDetail":0,"pickup":0,"eraseStrength":0,"antiAlias":0},"timestamp":0},"continuations":[]}]
+    })
+}
+
+fn prepare_request(action_id: &str, action_revision: &str, token: &str) -> Value {
+    json!({
+        "token": token,
+        "commandId": "history-command-10",
+        "generation": 1,
+        "operationId": "delete-operation-1",
+        "leaseToken": "lease-token-1",
+        "direction": "forward",
+        "mode": "keep-groups",
+        "authority": {
+            "projectContextId": "project-context-1",
+            "layerId": "layer-1",
+            "launchOperationId": "launch-1",
+            "actionId": action_id,
+            "expectedActionPresent": true,
+            "expectedActionRevision": action_revision,
+            "expectedPhysicalRevision": "physical-before",
+            "expectedPhysicalHash": "hash-before"
+        },
+        "impactDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "retainedArtifact": {
+            "commandId": "history-command-10",
+            "generation": 1,
+            "actionId": action_id,
+            "managedPath": format!("scripts/{action_id}.efx-roto-script.json"),
+            "originalRevision": action_revision,
+            "integritySha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+        },
+        "target": {
+            "physicalRevision": "physical-after",
+            "physicalHash": "hash-after",
+            "physicalDocument": {"revision":"physical-after","realKeyRecords":[],"loopClips":[]},
+            "selectedGroupId": "group-1",
+            "cursorAppFrame": 18
+        }
+    })
+}
+
+#[test]
+fn prepare_persists_exact_closed_recovery_payload_without_mutating_action() {
+    let fixture = FixtureLibrary::new().unwrap();
+    let action_id = Uuid::new_v4().to_string();
+    let saved = fixture.save(action_document(&action_id)).unwrap();
+    let revision = saved.scan.rows[0].revision.clone();
+    let token = Uuid::new_v4().to_string();
+    let request = prepare_request(&action_id, &revision, &token);
+
+    let prepared = fixture.prepare_transaction(request.clone()).unwrap();
+    assert_eq!(prepared["state"], "prepared");
+    assert_eq!(prepared["token"], token);
+    assert_eq!(fixture.scan().unwrap().rows.len(), 1);
+
+    let status = fixture.transaction_status(&token).unwrap();
+    assert_eq!(status["state"], "prepared");
+    assert_eq!(status["direction"], "forward");
+    assert_eq!(status["target"], request["target"]);
+    assert_eq!(status["retainedArtifact"], request["retainedArtifact"]);
+    assert_eq!(status["impactDigest"], request["impactDigest"]);
+}
+
+#[test]
+fn prepare_rejects_stale_closed_replayed_and_conflicting_requests() {
+    let fixture = FixtureLibrary::new().unwrap();
+    let action_id = Uuid::new_v4().to_string();
+    let saved = fixture.save(action_document(&action_id)).unwrap();
+    let revision = saved.scan.rows[0].revision.clone();
+
+    let stale_token = Uuid::new_v4().to_string();
+    let mut stale = prepare_request(&action_id, &revision, &stale_token);
+    stale["authority"]["expectedActionRevision"] = json!("stale-revision");
+    assert!(fixture.prepare_transaction(stale).unwrap_err().contains("changed externally"));
+
+    let token = Uuid::new_v4().to_string();
+    let accepted = prepare_request(&action_id, &revision, &token);
+    fixture.prepare_transaction(accepted.clone()).unwrap();
+    assert!(fixture.prepare_transaction(accepted).is_err());
+
+    let conflicting = prepare_request(&action_id, &revision, &Uuid::new_v4().to_string());
+    assert!(fixture.prepare_transaction(conflicting).unwrap_err().contains("recovery"));
+
+    let second = FixtureLibrary::new().unwrap();
+    let second_id = Uuid::new_v4().to_string();
+    let second_saved = second.save(action_document(&second_id)).unwrap();
+    let mut unknown = prepare_request(&second_id, &second_saved.scan.rows[0].revision, &Uuid::new_v4().to_string());
+    unknown.as_object_mut().unwrap().insert("unexpected".into(), json!(true));
+    assert!(second.prepare_transaction(unknown).is_err());
+}
+
+#[test]
+fn prepare_record_is_synced_json_with_exact_target_digest() {
+    let fixture = FixtureLibrary::new().unwrap();
+    let action_id = Uuid::new_v4().to_string();
+    let saved = fixture.save(action_document(&action_id)).unwrap();
+    let revision = saved.scan.rows[0].revision.clone();
+    let token = Uuid::new_v4().to_string();
+    fixture.prepare_transaction(prepare_request(&action_id, &revision, &token)).unwrap();
+
+    let bytes = std::fs::read(fixture.scripts_root().join(".action-transactions").join(format!("active-{token}.json"))).unwrap();
+    let stored: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(stored["state"], "prepared");
+    assert_eq!(stored["target"]["cursorAppFrame"], 18);
+    assert_eq!(format!("{:x}", Sha256::digest(&bytes)).len(), 64);
+}
+
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Direction {
