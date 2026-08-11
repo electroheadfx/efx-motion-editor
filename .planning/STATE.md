@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Completed 43.2-14-PLAN.md
-last_updated: "2026-08-11T12:24:47.966Z"
+stopped_at: Completed 43.2-15-PLAN.md
+last_updated: "2026-08-11T12:47:08.565Z"
 last_activity: 2026-08-11
 last_activity_desc: Completed Plan 43.2-13 reference-aware Action deletion disclosure and lifecycle UI
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 61
-  completed_plans: 58
+  completed_plans: 59
   percent: 63
 ---
 
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
-Plan: 15 of 20
+Plan: 16 of 20
 Status: Ready to execute
 Last activity: 2026-08-11 — Completed Plan 43.2-13 reference-aware Action deletion disclosure and lifecycle UI
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [██████████] 95%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -211,6 +211,7 @@ Progress: [██████████] 95%
 | Phase 43.2 P20 | 28min | 3 tasks | 8 files |
 | Phase 43.2 P13 | 26min | 2 tasks | 5 files |
 | Phase 43.2 P14 | 10min | 3 tasks | 7 files |
+| Phase 43.2 P15 | 2h18m | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -364,6 +365,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: The base presentation remains keyed by stable loopId, while the rail derives one range-specific fragment presentation and unique render key for every accepted canonical range.
 - [Phase 43.2]: Unresolved source state outranks synchronization lifecycle and suppresses the passive dot so accepted output is never misrepresented.
 - [Phase 43.2]: Action-linked halos are optional passive rail inputs; cross-selection and navigation wiring remain owned by Plan 43.2-15.
+- [Phase 43.2]: Persisted scriptId, loopId, progressive/static values, and internal Script/Loop Clip names remain unchanged; only affected product presentation migrated.
+- [Phase 43.2]: Action activation uses a separate passive linked-current Signal and never creates orange Group operation selection or moves the cursor.
+- [Phase 43.2]: Group selection reveals a source Action only when the accepted scriptId resolves to an available Action row.
+- [Phase 43.2]: Linked Group navigation is placement ordered, cursor relative, non-wrapping, and seeks only from explicit navigation handlers.
 
 ### Pending Todos
 
@@ -553,8 +558,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T12:24:47.953Z
-Stopped at: Completed 43.2-14-PLAN.md
+Last session: 2026-08-11T12:47:08.552Z
+Stopped at: Completed 43.2-15-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

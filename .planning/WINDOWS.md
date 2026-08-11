@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 21
 waived_count: 1
-fixed_count: 36
-total_count: 58
-last_updated: 2026-08-11T11:33:31.793Z
+fixed_count: 40
+total_count: 62
+last_updated: 2026-08-11T12:51:10.023Z
 ---
 
 # Broken Windows Ledger
@@ -73,6 +73,10 @@ last_updated: 2026-08-11T11:33:31.793Z
 | 56 | 43.2 | deviation | .planning/STATE.md |  | Corrected out-of-order plan position and progress after state handler advancement | fixed |  | 2026-08-11T10:18:29.355Z | 2026-08-11T10:18:57.147Z |
 | 57 | 43.2 | skipped-test | app/src/lib/physicPaintBridge.test.ts | 1997 | Pre-existing native window close-save listener test remains skipped and is unrelated to referenced Action replay. | open |  | 2026-08-11T11:27:09.939Z |  |
 | 58 | 43.2 | deviation | .planning/STATE.md |  | Corrected out-of-order Plan 20 state advancement so the next executable position remains Plan 13 and progress stays 92 percent | fixed |  | 2026-08-11T11:33:31.640Z | 2026-08-11T11:33:31.793Z |
+| 59 | 43.2 | deviation | app/src/components/physic-paint/view/PhysicsPaintRightPanel.tsx |  | Added the visible Actions tab rename required to complete the canonical product vocabulary. | fixed |  | 2026-08-11T12:47:34.636Z | 2026-08-11T12:48:39.440Z |
+| 60 | 43.2 | deviation | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx |  | Forwarded accepted passive Action linkage to the existing Group Rail halo inputs. | fixed |  | 2026-08-11T12:47:34.722Z | 2026-08-11T12:51:09.300Z |
+| 61 | 43.2 | deviation | app/src/components/physic-paint/physicsPaintStudio.css |  | Added scoped linked Group navigation presentation and endpoint disabled styles. | fixed |  | 2026-08-11T12:47:34.814Z | 2026-08-11T12:51:09.670Z |
+| 62 | 43.2 | deviation | app/src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx |  | Updated stale rail ownership tracer expectations after the canonical terminology cutover. | fixed |  | 2026-08-11T12:47:34.900Z | 2026-08-11T12:51:10.023Z |
 
 ````json
 [
@@ -771,6 +775,54 @@ last_updated: 2026-08-11T11:33:31.793Z
     "reason": "",
     "recorded_at": "2026-08-11T11:33:31.640Z",
     "resolved_at": "2026-08-11T11:33:31.793Z"
+  },
+  {
+    "id": 59,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": "app/src/components/physic-paint/view/PhysicsPaintRightPanel.tsx",
+    "line": null,
+    "description": "Added the visible Actions tab rename required to complete the canonical product vocabulary.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T12:47:34.636Z",
+    "resolved_at": "2026-08-11T12:48:39.440Z"
+  },
+  {
+    "id": 60,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": "app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx",
+    "line": null,
+    "description": "Forwarded accepted passive Action linkage to the existing Group Rail halo inputs.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T12:47:34.722Z",
+    "resolved_at": "2026-08-11T12:51:09.300Z"
+  },
+  {
+    "id": 61,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": "app/src/components/physic-paint/physicsPaintStudio.css",
+    "line": null,
+    "description": "Added scoped linked Group navigation presentation and endpoint disabled styles.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T12:47:34.814Z",
+    "resolved_at": "2026-08-11T12:51:09.670Z"
+  },
+  {
+    "id": 62,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": "app/src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx",
+    "line": null,
+    "description": "Updated stale rail ownership tracer expectations after the canonical terminology cutover.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T12:47:34.900Z",
+    "resolved_at": "2026-08-11T12:51:10.023Z"
   }
 ]
 ````
