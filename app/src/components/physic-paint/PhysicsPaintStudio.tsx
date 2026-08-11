@@ -3,7 +3,7 @@ import { useComputed, useSignal } from '@preact/signals';
 import type { CompletedPaintMutation, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample, SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings } from '../../types/physicPaint';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
-import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
+import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
 import {
@@ -64,6 +64,29 @@ type GroupDeleteTarget = Extract<RotoDeleteTarget, { kind: 'group-choice' }>;
 type GroupDeleteChoice = 'delete-group' | 'delete-group-frame';
 type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
 
+function getLinkedRotoGroupsForAction(
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  actionId: string | null,
+): readonly PhysicPaintRotoLoopClip[] {
+  if (!actionId) return [];
+  const groupsById = new Map<string, PhysicPaintRotoLoopClip>();
+  for (const loopClip of loopClips
+    .filter((loopClip) => loopClip.scriptId === actionId)
+    .sort((left, right) => left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId))) {
+    if (!groupsById.has(loopClip.loopId)) groupsById.set(loopClip.loopId, loopClip);
+  }
+  return [...groupsById.values()];
+}
+
+function chooseCursorRelativeLinkedGroup(
+  linkedGroups: readonly PhysicPaintRotoLoopClip[],
+  cursorFrame: number,
+): PhysicPaintRotoLoopClip | null {
+  return linkedGroups.find((group) => group.placementStart >= cursorFrame)
+    ?? linkedGroups[linkedGroups.length - 1]
+    ?? null;
+}
+
 export function PhysicsPaintStudio() {
   recordPhysicsPaintPerformanceCounter('render.studio');
   const profilePerformance = isPhysicsPaintProfilingEnabled();
@@ -85,6 +108,7 @@ export function PhysicsPaintStudio() {
   const selectedLoopClipId = useSignal<string | null>(null);
   const selectedLoopClipIds = useSignal<readonly string[]>([]);
   const loopSelectionAnchorId = useSignal<string | null>(null);
+  const activeLinkedLoopClipId = useSignal<string | null>(null);
   // Session-local multi-selection (Pattern 5; D-02/D-05): keyId-only, never
   // persisted, never sent across the bridge — only selectedKeyId persists.
   const selectedKeyIds = useSignal<readonly string[]>([]);
@@ -113,6 +137,7 @@ export function PhysicsPaintStudio() {
         selectedLoopClipId.value = null;
         selectedLoopClipIds.value = [];
         loopSelectionAnchorId.value = null;
+        activeLinkedLoopClipId.value = null;
       } else if (next && next.startFrame !== current?.startFrame) {
         selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, next.startFrame)?.keyId ?? null;
         physicPaintStore.setRotoPhysicalSelection(next.layerId, selectedKeyId.value, next.startFrame);
@@ -501,9 +526,18 @@ export function PhysicsPaintStudio() {
   // the static Studio controls keyed only to real script mutations so the
   // navigation lock's true/false pulse cannot invalidate their memo props.
   const staticControlsLocked = mutationLocked && !rotoScriptNavigationLocked;
+  const loopScriptRows = rotoScriptLibrary.rows.value;
   const handleScriptRowActivate = useCallback(async (id: string) => {
-    await rotoScriptLibrary.activateAndLoad(id);
-  }, [rotoScriptLibrary]);
+    const loaded = await rotoScriptLibrary.activateAndLoad(id);
+    if (!loaded) return;
+    const linkedGroups = getLinkedRotoGroupsForAction(rotoLoopClips, id);
+    const selectedGroupId = selectedLoopClipId.peek();
+    const preservedGroup = linkedGroups.find((group) => group.loopId === selectedGroupId) ?? null;
+    const cursorFrame = launchContextRef.current?.startFrame ?? 0;
+    activeLinkedLoopClipId.value = (
+      preservedGroup ?? chooseCursorRelativeLinkedGroup(linkedGroups, cursorFrame)
+    )?.loopId ?? null;
+  }, [rotoLoopClips, rotoScriptLibrary]);
   const handleSelectedScriptLoadAndApply = useCallback(async () => {
     const selectedId = rotoScriptLibrary.selectedId.peek();
     if (!selectedId) return;
@@ -995,7 +1029,12 @@ export function PhysicsPaintStudio() {
     selectedLoopClipIds.value = next.selectedLoopClipIds;
     loopSelectionAnchorId.value = next.anchorLoopClipId;
     selectedLoopClipId.value = next.primaryLoopClipId;
-  }, [clearRotoLoopSelection, orderedRotoLoopClipIds]);
+    const selectedGroup = rotoLoopClips.find((loopClip) => loopClip.loopId === next.primaryLoopClipId);
+    if (selectedGroup?.scriptId && loopScriptRows.some((row) => row.id === selectedGroup.scriptId)) {
+      rotoScriptLibrary.select(selectedGroup.scriptId);
+      activeLinkedLoopClipId.value = selectedGroup.loopId;
+    }
+  }, [clearRotoLoopSelection, loopScriptRows, orderedRotoLoopClipIds, rotoLoopClips, rotoScriptLibrary]);
   const handleOpenRotoLoopEdit = useCallback(
     (loopId: string) => {
       selectedLoopClipId.value = loopId;
@@ -1007,7 +1046,6 @@ export function PhysicsPaintStudio() {
     clearRotoLoopSelection();
   }, [clearRotoLoopSelection]);
   const loopResolutionContext = rotoTimelineModel.loopResolutionContext.value;
-  const loopScriptRows = rotoScriptLibrary.rows.value;
   const loopPresentations = useMemo(() => {
     const clipsById = new Map(rotoLoopClips.map((clip) => [clip.loopId, clip]));
     const scriptsById = new Map(loopScriptRows.map((row) => [row.id, row]));
@@ -1020,6 +1058,14 @@ export function PhysicsPaintStudio() {
       ] as const;
     }));
   }, [loopResolutionContext, loopScriptRows, rotoLoopClips]);
+  const selectedActionId = rotoScriptLibrary.selectedId.value;
+  const selectedAction = selectedActionId === null
+    ? null
+    : loopScriptRows.find((row) => row.id === selectedActionId) ?? null;
+  const linkedRotoGroups = useMemo(
+    () => getLinkedRotoGroupsForAction(rotoLoopClips, selectedActionId),
+    [rotoLoopClips, selectedActionId],
+  );
   const selectedLoopClip = selectedLoopClipId.value === null
     ? null
     : loopPresentations.get(selectedLoopClipId.value) ?? null;
@@ -1803,7 +1849,7 @@ export function PhysicsPaintStudio() {
         // intent routes through the monitor funnel for immediate effect.
         audioPreviewEnabled: audioPreviewEnabled.value, onAudioPreviewToggle: handleAudioPreviewToggle,
         onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange, onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
-        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, onSelectRotoLoopClip: handleSelectRotoLoopClip, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
+        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).

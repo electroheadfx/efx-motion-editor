@@ -132,7 +132,7 @@ describe('Physics Paint Group and Action cross-selection (43.2-15)', () => {
     const activation = studio.slice(activationStart, activationEnd);
     expect(activationStart).toBeGreaterThanOrEqual(0);
     expect(activation).toContain('const loaded = await rotoScriptLibrary.activateAndLoad(id);');
-    expect(activation).toContain('chooseCursorRelativeLinkedGroup(linkedGroups, currentFrame)');
+    expect(activation).toContain('chooseCursorRelativeLinkedGroup(linkedGroups, cursorFrame)');
     expect(activation).toContain('activeLinkedLoopClipId.value =');
     for (const forbidden of ['selectedLoopClipId.value =', 'selectedLoopClipIds.value =', 'handleNavigateToSyncedFrame', 'navigateToSyncedPhysicalFrame']) {
       expect(activation).not.toContain(forbidden);

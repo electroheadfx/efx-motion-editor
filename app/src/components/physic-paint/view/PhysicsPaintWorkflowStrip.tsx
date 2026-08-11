@@ -185,8 +185,12 @@ export interface PhysicsPaintWorkflowStripProps {
   rotoLoopResolutionContext?: PhysicPaintRotoLoopResolutionContext | null;
   /** Accepted product facts keyed by the same canonical Loop Clip identity. */
   rotoLoopPresentations?: ReadonlyMap<string, PhysicsPaintLoopClipPresentation>;
-  /** Selected Loop Rails in canonical placement order. */
+  /** Selected Group Rails in canonical placement order. */
   selectedRotoLoopClipIds?: readonly string[];
+  /** Passive Groups linked to the active Action; never operation scope. */
+  linkedRotoLoopClipIds?: readonly string[];
+  /** Product name used only by passive linked-rail accessibility copy. */
+  linkedRotoActionName?: string | null;
   /** Rail selection intent; null clears rail mode before physical selection. */
   onSelectRotoLoopClip?: (
     loopId: string | null,
@@ -1438,6 +1442,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
                   framePitch={ROTO_CELL_WIDTH_PX}
                   selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}
+                  linkedLoopClipIds={props.linkedRotoLoopClipIds ?? []}
+                  linkedActionName={props.linkedRotoActionName ?? null}
                   onSelectLoopClip={props.onSelectRotoLoopClip}
                   onOpenLoopEdit={props.onOpenRotoLoopEdit}
                 />
