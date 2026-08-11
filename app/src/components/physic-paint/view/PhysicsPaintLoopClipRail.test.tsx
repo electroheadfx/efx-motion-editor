@@ -64,6 +64,7 @@ import {
 import {
   derivePhysicPaintRotoLoopRanges,
   resolvePhysicPaintRotoSpacingProxy,
+  type PhysicPaintRotoLoopRange,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
@@ -253,7 +254,179 @@ function renderWorkflowStrip(
   });
 }
 
+function explicitGroupRange(start: number, endExclusive: number, overrides: Partial<PhysicPaintRotoLoopRange> = {}): PhysicPaintRotoLoopRange {
+  return {
+    loopId: 'group-a',
+    placementStart: start,
+    phaseOrigin: 10,
+    cycleLength: 6,
+    sourceFrameCount: 6,
+    sourceKeyIds: ['A', 'B'],
+    sourceCycleId: 'cycle-a',
+    sourceOffsets: [0, 1],
+    repeat: 1,
+    requestedEnd: endExclusive,
+    effectiveEnd: endExclusive,
+    boundary: 'project-end',
+    truncated: false,
+    partialCycle: false,
+    unresolved: null,
+    ...overrides,
+  } as PhysicPaintRotoLoopRange;
+}
+
 describe('PhysicsPaintLoopClipRail ownership tracer', () => {
+  it('renders explicit fragments as separate targets for one stable selected Group', () => {
+    const ranges = [explicitGroupRange(10, 12), explicitGroupRange(13, 16)];
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'group-a',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 1,
+      mode: 'progressive',
+      scriptId: 'action-a',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 16,
+      visibleRanges: [{ start: 10, endExclusive: 12 }, { start: 13, endExclusive: 16 }],
+      frameOverrides: [],
+    };
+    const presentations = new Map([[
+      clip.loopId,
+      projectPhysicsPaintLoopClipPresentation(ranges[0], clip, 'Walk'),
+    ]]);
+    const onSelectLoopClip = vi.fn();
+    const onOpenLoopEdit = vi.fn(async () => {});
+
+    hooks.reset();
+    const tree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 8, endFrameExclusive: 18 },
+      framePitch: 18,
+      selectedLoopClipIds: ['group-a'],
+      onSelectLoopClip,
+      onOpenLoopEdit,
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+
+    const rail = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail'));
+    expect(rail.props['aria-label']).toBe('Groups');
+    const anchors = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-anchor'));
+    expect(anchors.map((anchor) => anchor.props.style)).toEqual([
+      { left: '36px', width: '36px' },
+      { left: '90px', width: '54px' },
+    ]);
+    const targets = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+    expect(targets).toHaveLength(2);
+    expect(targets.map((target) => target.props['aria-pressed'])).toEqual([true, true]);
+    expect(targets.map((target) => target.props['aria-label'])).toEqual([
+      'Walk Group. Fragment 1 of 2, frames 10 through 11. Motion Group. Modified locally — Regenerate to restore from Action.',
+      'Walk Group. Fragment 2 of 2, frames 13 through 15. Motion Group. Modified locally — Regenerate to restore from Action.',
+    ]);
+    expect(textOf(tree)).toContain('Range F10–F11 · Fragment 1 of 2');
+    expect(textOf(tree)).toContain('Range F13–F15 · Fragment 2 of 2');
+
+    const dots = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lifecycle-dot'));
+    expect(dots).toHaveLength(2);
+    expect(dots.every((dot) => hasClass(dot, 'modified'))).toBe(true);
+    expect(dots.map((dot) => dot.props['aria-hidden'])).toEqual(['true', 'true']);
+
+    const space = { key: ' ', stopPropagation: vi.fn(), preventDefault: vi.fn() };
+    (targets[1].props.onKeyDown as (event: typeof space) => void)(space);
+    expect(onSelectLoopClip).toHaveBeenCalledOnce();
+    expect(onSelectLoopClip).toHaveBeenLastCalledWith('group-a', 'plain');
+    expect(onOpenLoopEdit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['synchronized', '#34d399'],
+    ['modified', '#fb923c'],
+    ['detached', '#9ca3af'],
+    ['unavailable', '#6b7280'],
+  ] as const)('pins the passive %s lifecycle dot geometry and color', (lifecycle, color) => {
+    const dotRule = cssRule(`.physics-paint-loop-clip-lifecycle-dot.${lifecycle} {`);
+    expect(dotRule).toContain(`background: ${color}`);
+    const baseRule = cssRule('.physics-paint-loop-clip-lifecycle-dot {');
+    expect(baseRule).toContain('width: 6px');
+    expect(baseRule).toContain('height: 6px');
+    expect(baseRule).toContain('pointer-events: none');
+  });
+
+  it('omits the dot for unresolved fragments and gives unresolved copy precedence', () => {
+    const unresolvedRange = explicitGroupRange(10, 12, {
+      unresolved: { missingSourceKeyIds: ['private-key-id'] },
+    });
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'group-a', placementStart: 10, sourceKeyIds: ['A'], repeat: 1,
+      mode: 'static', scriptId: 'action-a', syncState: 'modified', provenanceState: 'detached',
+    };
+    const presentations = new Map([['group-a', projectPhysicsPaintLoopClipPresentation(unresolvedRange, clip, 'Pose')]]);
+
+    hooks.reset();
+    const tree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: [unresolvedRange],
+      presentations,
+      visibleFrameWindow: { startFrame: 8, endFrameExclusive: 18 },
+      framePitch: 18,
+      selectedLoopClipIds: [],
+      onSelectLoopClip: vi.fn(),
+      onOpenLoopEdit: vi.fn(async () => {}),
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lifecycle-dot'))).toHaveLength(0);
+    const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+    expect(hasClass(target, 'unresolved')).toBe(true);
+    expect(target.props['aria-label']).toContain('Source missing');
+    expect(target.props['aria-label']).not.toContain('Modified locally');
+    expect(target.props['aria-label']).not.toContain('private-key-id');
+  });
+
+  it('adds passive mode-colored linked halos to every unselected fragment without changing semantics', () => {
+    const ranges = [explicitGroupRange(10, 12), explicitGroupRange(13, 16)];
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'group-a', placementStart: 10, sourceKeyIds: ['A'], repeat: 1,
+      mode: 'static', scriptId: 'action-a', syncState: 'synchronized', provenanceState: 'attached',
+    };
+    const presentations = new Map([['group-a', projectPhysicsPaintLoopClipPresentation(ranges[0], clip, 'Pose')]]);
+
+    hooks.reset();
+    const tree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 8, endFrameExclusive: 18 },
+      framePitch: 18,
+      selectedLoopClipIds: [],
+      linkedLoopClipIds: ['group-a'],
+      linkedActionName: 'Pose',
+      onSelectLoopClip: vi.fn(),
+      onOpenLoopEdit: vi.fn(async () => {}),
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+
+    const targets = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+    expect(targets).toHaveLength(2);
+    expect(targets.every((target) => hasClass(target, 'action-linked'))).toBe(true);
+    expect(targets.map((target) => target.props['aria-pressed'])).toEqual([false, false]);
+    expect(targets.every((target) => target.props['aria-selected'] === undefined)).toBe(true);
+    expect(targets.every((target) => String(target.props['aria-label']).endsWith('Linked to selected Action Pose.'))).toBe(true);
+    const staticHalo = cssRule('.physics-paint-loop-clip-rail-target.mode-static.action-linked:not(.selected) {');
+    expect(staticHalo).toContain('box-shadow: 0 0 0 1px #67e8f9, 0 0 5px rgba(103, 232, 249, 0.5)');
+    const motionHalo = cssRule('.physics-paint-loop-clip-rail-target.mode-progressive.action-linked:not(.selected) {');
+    expect(motionHalo).toContain('box-shadow: 0 0 0 1px #c4b5fd, 0 0 5px rgba(196, 181, 253, 0.55)');
+  });
+
+  it('pins exact rail, target, endpoint, focus, and zero-added-height geometry', () => {
+    expect(cssRule('.physics-paint-loop-clip-rail-segment {')).toContain('height: 3px');
+    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 12px');
+    expect(cssRule('.physics-paint-loop-clip-rail-anchor {')).toContain('min-width: 12px');
+    const focusRule = cssRule('.physics-paint-loop-clip-rail-target:focus-visible {');
+    expect(focusRule).toContain('outline: 2px solid #f2f5f7');
+    expect(focusRule).toContain('outline-offset: 2px');
+    expect(cssRule('.physics-paint-workflow-strip {')).toContain('height: 161px');
+    expect(cssRule('.physics-paint-lane {')).toContain('height: 38px');
+    expect(cssRule('.physics-paint-roto-cell-actions {')).toContain('height: 34px');
+    expect(physicsPaintStudioCss).not.toContain('physics-paint-group-lifecycle-lane');
+  });
   it('dispatches plain, Shift range, and Cmd/Ctrl toggle rail selection gestures', () => {
     vi.useFakeTimers();
     const clips: PhysicPaintRotoLoopClip[] = [
