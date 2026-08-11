@@ -88,6 +88,17 @@ fn command_facade_rejects_unknown_fields_modes_directions_and_missing_identity()
 }
 
 #[test]
+fn history_release_command_is_closed_to_owned_lifecycle_reasons() {
+    let source = include_str!("../src/commands/script_library.rs");
+    assert!(source.contains("ActionHistoryReleaseRequest"));
+    assert!(source.contains("ActionHistoryReleaseReason"));
+    for reason in ["Eviction", "RedoBranchTruncation", "SessionHistoryClear"] {
+        assert!(source.contains(reason), "missing closed release reason {reason}");
+    }
+    assert!(source.contains("script_library_release_action_history"));
+}
+
+#[test]
 fn invoke_handler_registers_every_action_transaction_command() {
     let source = include_str!("../src/lib.rs");
     for command in [
@@ -96,6 +107,7 @@ fn invoke_handler_registers_every_action_transaction_command() {
         "script_library_action_transaction_status",
         "script_library_recover_action_transaction",
         "script_library_acknowledge_action_transaction",
+        "script_library_release_action_history",
     ] {
         assert!(source.contains(command), "missing invoke registration for {command}");
     }

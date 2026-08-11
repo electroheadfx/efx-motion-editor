@@ -79,6 +79,9 @@ impl FixtureLibrary {
     pub fn acknowledge_transaction(&self, request: Value) -> Result<Value, String> {
         script_library::acknowledge_transaction_value(&self.state, &self.authority, request)
     }
+    pub fn release_history(&self, _request: Value) -> Result<Value, String> {
+        Err("Action history release is not implemented".to_string())
+    }
     pub fn migrate_to(
         &self,
         destination_name: &str,

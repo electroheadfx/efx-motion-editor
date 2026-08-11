@@ -495,6 +495,94 @@ fn history_prepare_rejects_integrity_mismatch_and_recovers_interrupted_undo() {
     assert_eq!(retained_history_files(&fixture).len(), 2);
 }
 
+fn history_release_request(reason: &str) -> Value {
+    json!({
+        "projectContextId": "project-context-1",
+        "launchOperationId": "launch-1",
+        "commandId": "history-command-10",
+        "generation": 1,
+        "reason": reason
+    })
+}
+
+fn prepare_and_acknowledge_forward_history(
+    fixture: &FixtureLibrary,
+    action_id: &str,
+    revision: &str,
+) {
+    let token = Uuid::new_v4().to_string();
+    let prepare = prepare_request(fixture, action_id, revision, &token);
+    fixture.prepare_transaction(prepare.clone()).unwrap();
+    fixture.commit_transaction(&token).unwrap();
+    fixture
+        .acknowledge_transaction(acknowledge_request(&prepare))
+        .unwrap();
+}
+
+#[test]
+fn history_release_requires_exact_owner_and_is_idempotent_for_owned_reasons() {
+    for reason in ["eviction", "redo-branch-truncation", "session-history-clear"] {
+        let fixture = FixtureLibrary::new().unwrap();
+        let action_id = Uuid::new_v4().to_string();
+        let saved = fixture.save(action_document(&action_id)).unwrap();
+        let revision = saved.scan.rows[0].revision.clone();
+        prepare_and_acknowledge_forward_history(&fixture, &action_id, &revision);
+
+        let mut wrong_owner = history_release_request(reason);
+        wrong_owner["launchOperationId"] = json!("other-launch");
+        assert!(fixture.release_history(wrong_owner).is_err());
+        assert_eq!(retained_history_files(&fixture).len(), 2);
+
+        let released = fixture
+            .release_history(history_release_request(reason))
+            .unwrap();
+        assert_eq!(released["state"], "released");
+        assert_eq!(released["released"], true);
+        assert_eq!(retained_history_files(&fixture).len(), 0);
+
+        let repeated = fixture
+            .release_history(history_release_request(reason))
+            .unwrap();
+        assert_eq!(repeated["released"], false);
+    }
+}
+
+#[test]
+fn history_release_blocks_active_recovery_and_scan_gates_corrupt_retained_state() {
+    let active = FixtureLibrary::new().unwrap();
+    let active_id = Uuid::new_v4().to_string();
+    let active_saved = active.save(action_document(&active_id)).unwrap();
+    let active_revision = active_saved.scan.rows[0].revision.clone();
+    let active_token = Uuid::new_v4().to_string();
+    active
+        .prepare_transaction(prepare_request(
+            &active,
+            &active_id,
+            &active_revision,
+            &active_token,
+        ))
+        .unwrap();
+    assert!(active
+        .release_history(history_release_request("eviction"))
+        .unwrap_err()
+        .contains("active recovery"));
+
+    let corrupt = FixtureLibrary::new().unwrap();
+    let corrupt_id = Uuid::new_v4().to_string();
+    let corrupt_saved = corrupt.save(action_document(&corrupt_id)).unwrap();
+    let corrupt_revision = corrupt_saved.scan.rows[0].revision.clone();
+    prepare_and_acknowledge_forward_history(&corrupt, &corrupt_id, &corrupt_revision);
+    let bytes_path = retained_history_files(&corrupt)
+        .into_iter()
+        .find(|path| path.extension().and_then(|ext| ext.to_str()) == Some("action"))
+        .unwrap();
+    std::fs::write(bytes_path, b"tampered").unwrap();
+    assert!(corrupt
+        .scan()
+        .unwrap_err()
+        .contains("retained Action history"));
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Direction {
     Forward,
