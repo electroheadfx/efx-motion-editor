@@ -442,9 +442,14 @@ const actionPhysicalDocument = () => {
 
 const actionTransactionPrepare = (direction: 'forward' | 'undo' | 'redo' = 'forward') => {
   const actionId = '11111111-1111-4111-8111-111111111111';
+  const token = {
+    forward: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    undo: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    redo: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  }[direction];
   const physicalDocument = actionPhysicalDocument();
   return {
-    token: `${direction}-token-1`,
+    token,
     commandId: 'history-command-10',
     generation: 10,
     operationId: `${direction}-operation-1`,
@@ -584,7 +589,8 @@ describe('referenced Action transaction contracts', () => {
       launchOperationId: 'launch-1', ...request.retainedArtifact, byteLength: -1,
     })).toBe(false);
     expect(isPhysicPaintActionTransactionResult({
-      schemaVersion: 1, state: 'prepared', ...request, token: 'stale-token',
+      schemaVersion: 1, state: 'prepared', ...request,
+      token: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
     })).toBe(true);
     expect(isPhysicPaintActionTransactionResult({
       schemaVersion: 1, state: 'prepared', ...request, unexpected: true,

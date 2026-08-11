@@ -6,12 +6,340 @@ import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/rot
 import {
   isPhysicPaintRotoLoopClip,
   isPhysicPaintRotoRealKeyPayload,
+  parsePhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoInterpolationMode,
   type PhysicPaintRotoLoopClip,
+  type PhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoRealKeyPayload,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
 export type { PhysicPaintRotoInterpolationMode } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+
+export type PhysicPaintActionTransactionDirection = 'forward' | 'undo' | 'redo';
+export type PhysicPaintActionTransactionMode = 'keep-groups' | 'delete-action-and-groups';
+export type PhysicPaintActionHistoryReleaseReason = 'eviction' | 'redo-branch-truncation' | 'session-history-clear';
+
+export interface PhysicPaintActionTransactionAuthority {
+  readonly projectContextId: string;
+  readonly layerId: string;
+  readonly launchOperationId: string;
+  readonly actionId: string;
+  readonly expectedActionPresent: boolean;
+  readonly expectedActionRevision: string;
+  readonly expectedPhysicalRevision: string;
+  readonly expectedPhysicalHash: string;
+}
+
+export interface PhysicPaintActionRetainedArtifactReference {
+  readonly commandId: string;
+  readonly generation: number;
+  readonly actionId: string;
+  readonly managedPath: string;
+  readonly originalRevision: string;
+  readonly integritySha256: string;
+}
+
+export interface PhysicPaintActionTransactionTarget {
+  readonly physicalRevision: string;
+  readonly physicalHash: string;
+  readonly physicalDocument: PhysicPaintRotoPhysicalDocument;
+  readonly selectedGroupId: string | null;
+  readonly cursorAppFrame: number;
+}
+
+export interface PhysicPaintActionTransactionPrepareRequest {
+  readonly token: string;
+  readonly commandId: string;
+  readonly generation: number;
+  readonly operationId: string;
+  readonly leaseToken: string;
+  readonly direction: PhysicPaintActionTransactionDirection;
+  readonly mode: PhysicPaintActionTransactionMode;
+  readonly authority: PhysicPaintActionTransactionAuthority;
+  readonly impactDigest: string;
+  readonly retainedArtifact: PhysicPaintActionRetainedArtifactReference;
+  readonly target: PhysicPaintActionTransactionTarget;
+}
+
+export interface PhysicPaintActionTransactionTokenRequest {
+  readonly token: string;
+}
+
+export interface PhysicPaintActionTransactionAcknowledgeRequest {
+  readonly token: string;
+  readonly commandId: string;
+  readonly generation: number;
+  readonly operationId: string;
+  readonly leaseToken: string;
+  readonly direction: PhysicPaintActionTransactionDirection;
+}
+
+export interface PhysicPaintActionHistoryReleaseRequest {
+  readonly projectContextId: string;
+  readonly launchOperationId: string;
+  readonly commandId: string;
+  readonly generation: number;
+  readonly reason: PhysicPaintActionHistoryReleaseReason;
+}
+
+export type PhysicPaintActionTransactionFailureCode =
+  | 'active-recovery-blocked'
+  | 'invoke-failed'
+  | 'malformed-response'
+  | 'correlation-mismatch'
+  | 'transaction-failed';
+
+export interface PhysicPaintActionTransactionFailure {
+  readonly state: 'failed';
+  readonly code: PhysicPaintActionTransactionFailureCode;
+  readonly error: string;
+}
+
+export type PhysicPaintActionTransactionRecord = PhysicPaintActionTransactionPrepareRequest & {
+  readonly schemaVersion: 1;
+  readonly state: 'prepared' | 'committed' | 'recovery-required';
+};
+
+export interface PhysicPaintActionRecoveredPreparedResult {
+  readonly state: 'recovered-prepared';
+  readonly token: string;
+  readonly actionPresent: boolean;
+}
+
+export interface PhysicPaintActionTransactionCleanupPendingResult extends PhysicPaintActionTransactionAcknowledgeRequest {
+  readonly schemaVersion: 1;
+  readonly state: 'cleanup-pending';
+}
+
+export interface PhysicPaintActionTransactionAcknowledgedResult extends PhysicPaintActionTransactionAcknowledgeRequest {
+  readonly state: 'acknowledged';
+  readonly cleaned: boolean;
+}
+
+export interface PhysicPaintActionHistoryCleanupPendingResult extends PhysicPaintActionHistoryReleaseRequest {
+  readonly schemaVersion: 1;
+  readonly state: 'cleanup-pending';
+}
+
+export interface PhysicPaintActionHistoryReleasedResult extends PhysicPaintActionHistoryReleaseRequest {
+  readonly state: 'released';
+  readonly released: boolean;
+}
+
+export interface PhysicPaintActionRetainedArtifactStatus extends PhysicPaintActionRetainedArtifactReference {
+  readonly schemaVersion: 1;
+  readonly state: 'retained';
+  readonly projectContextId: string;
+  readonly launchOperationId: string;
+  readonly byteLength: number;
+}
+
+export type PhysicPaintActionTransactionResult =
+  | PhysicPaintActionTransactionRecord
+  | PhysicPaintActionRecoveredPreparedResult
+  | PhysicPaintActionTransactionCleanupPendingResult
+  | PhysicPaintActionTransactionAcknowledgedResult
+  | PhysicPaintActionHistoryCleanupPendingResult
+  | PhysicPaintActionHistoryReleasedResult
+  | PhysicPaintActionRetainedArtifactStatus
+  | PhysicPaintActionTransactionFailure;
+
+const ACTION_TRANSACTION_PREPARE_KEYS = [
+  'token', 'commandId', 'generation', 'operationId', 'leaseToken', 'direction',
+  'mode', 'authority', 'impactDigest', 'retainedArtifact', 'target',
+] as const;
+
+function isPhysicPaintActionTransactionDirection(value: unknown): value is PhysicPaintActionTransactionDirection {
+  return value === 'forward' || value === 'undo' || value === 'redo';
+}
+
+function isPhysicPaintActionTransactionMode(value: unknown): value is PhysicPaintActionTransactionMode {
+  return value === 'keep-groups' || value === 'delete-action-and-groups';
+}
+
+function isPhysicPaintActionHistoryReleaseReason(value: unknown): value is PhysicPaintActionHistoryReleaseReason {
+  return value === 'eviction' || value === 'redo-branch-truncation' || value === 'session-history-clear';
+}
+
+function isActionTransactionText(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= 256
+    && !Array.from(value).some((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint <= 31 || codePoint === 127;
+    });
+}
+
+function isActionTransactionToken(value: unknown): value is string {
+  return typeof value === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
+}
+
+function isActionTransactionGeneration(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
+function isActionTransactionSha256(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-fA-F]{64}$/.test(value);
+}
+
+function isPhysicPaintActionTransactionAuthority(value: unknown): value is PhysicPaintActionTransactionAuthority {
+  return isRecord(value)
+    && hasOnlyKeys(value, [
+      'projectContextId', 'layerId', 'launchOperationId', 'actionId',
+      'expectedActionPresent', 'expectedActionRevision', 'expectedPhysicalRevision',
+      'expectedPhysicalHash',
+    ])
+    && isActionTransactionText(value.projectContextId)
+    && isActionTransactionText(value.layerId)
+    && isActionTransactionText(value.launchOperationId)
+    && isActionTransactionText(value.actionId)
+    && typeof value.expectedActionPresent === 'boolean'
+    && isActionTransactionText(value.expectedActionRevision)
+    && isActionTransactionText(value.expectedPhysicalRevision)
+    && isActionTransactionText(value.expectedPhysicalHash);
+}
+
+function isPhysicPaintActionRetainedArtifactReference(value: unknown): value is PhysicPaintActionRetainedArtifactReference {
+  return isRecord(value)
+    && hasOnlyKeys(value, ['commandId', 'generation', 'actionId', 'managedPath', 'originalRevision', 'integritySha256'])
+    && isActionTransactionText(value.commandId)
+    && isActionTransactionGeneration(value.generation)
+    && isActionTransactionText(value.actionId)
+    && value.managedPath === `scripts/${value.actionId}.efx-roto-script.json`
+    && isActionTransactionText(value.originalRevision)
+    && isActionTransactionSha256(value.integritySha256);
+}
+
+function isPhysicPaintActionTransactionTarget(value: unknown): value is PhysicPaintActionTransactionTarget {
+  if (!isRecord(value)
+    || !hasOnlyKeys(value, ['physicalRevision', 'physicalHash', 'physicalDocument', 'selectedGroupId', 'cursorAppFrame'])
+    || !isActionTransactionText(value.physicalRevision)
+    || !isActionTransactionText(value.physicalHash)
+    || (value.selectedGroupId !== null && !isActionTransactionText(value.selectedGroupId))
+    || !isNonNegativeInteger(value.cursorAppFrame)) return false;
+  try {
+    const physicalDocument = parsePhysicPaintRotoPhysicalDocument(value.physicalDocument);
+    return value.physicalRevision === physicalDocument.revision
+      && value.cursorAppFrame === physicalDocument.cursorAppFrame;
+  } catch {
+    return false;
+  }
+}
+
+export function isPhysicPaintActionTransactionPrepareRequest(value: unknown): value is PhysicPaintActionTransactionPrepareRequest {
+  if (!isRecord(value)
+    || !hasOnlyKeys(value, ACTION_TRANSACTION_PREPARE_KEYS)
+    || !isActionTransactionToken(value.token)
+    || !isActionTransactionText(value.commandId)
+    || !isActionTransactionGeneration(value.generation)
+    || !isActionTransactionText(value.operationId)
+    || !isActionTransactionText(value.leaseToken)
+    || !isPhysicPaintActionTransactionDirection(value.direction)
+    || !isPhysicPaintActionTransactionMode(value.mode)
+    || !isPhysicPaintActionTransactionAuthority(value.authority)
+    || !isActionTransactionSha256(value.impactDigest)
+    || !isPhysicPaintActionRetainedArtifactReference(value.retainedArtifact)
+    || !isPhysicPaintActionTransactionTarget(value.target)) return false;
+  const expectedActionPresent = value.direction !== 'undo';
+  return value.authority.expectedActionPresent === expectedActionPresent
+    && value.retainedArtifact.commandId === value.commandId
+    && value.retainedArtifact.generation === value.generation
+    && value.retainedArtifact.actionId === value.authority.actionId
+    && value.retainedArtifact.originalRevision === value.authority.expectedActionRevision;
+}
+
+export function isPhysicPaintActionTransactionTokenRequest(value: unknown): value is PhysicPaintActionTransactionTokenRequest {
+  return isRecord(value) && hasOnlyKeys(value, ['token']) && isActionTransactionToken(value.token);
+}
+
+export function isPhysicPaintActionTransactionAcknowledgeRequest(value: unknown): value is PhysicPaintActionTransactionAcknowledgeRequest {
+  return isRecord(value)
+    && hasOnlyKeys(value, ['token', 'commandId', 'generation', 'operationId', 'leaseToken', 'direction'])
+    && isActionTransactionToken(value.token)
+    && isActionTransactionText(value.commandId)
+    && isActionTransactionGeneration(value.generation)
+    && isActionTransactionText(value.operationId)
+    && isActionTransactionText(value.leaseToken)
+    && isPhysicPaintActionTransactionDirection(value.direction);
+}
+
+export function isPhysicPaintActionHistoryReleaseRequest(value: unknown): value is PhysicPaintActionHistoryReleaseRequest {
+  return isRecord(value)
+    && hasOnlyKeys(value, ['projectContextId', 'launchOperationId', 'commandId', 'generation', 'reason'])
+    && isActionTransactionText(value.projectContextId)
+    && isActionTransactionText(value.launchOperationId)
+    && isActionTransactionText(value.commandId)
+    && isActionTransactionGeneration(value.generation)
+    && isPhysicPaintActionHistoryReleaseReason(value.reason);
+}
+
+export function isPhysicPaintActionRetainedArtifactStatus(value: unknown): value is PhysicPaintActionRetainedArtifactStatus {
+  if (!isRecord(value) || !hasOnlyKeys(value, [
+    'schemaVersion', 'state', 'projectContextId', 'launchOperationId', 'commandId',
+    'generation', 'actionId', 'managedPath', 'originalRevision', 'integritySha256', 'byteLength',
+  ])) return false;
+  return value.schemaVersion === 1
+    && value.state === 'retained'
+    && isActionTransactionText(value.projectContextId)
+    && isActionTransactionText(value.launchOperationId)
+    && isPhysicPaintActionRetainedArtifactReference({
+      commandId: value.commandId,
+      generation: value.generation,
+      actionId: value.actionId,
+      managedPath: value.managedPath,
+      originalRevision: value.originalRevision,
+      integritySha256: value.integritySha256,
+    })
+    && isActionTransactionGeneration(value.byteLength);
+}
+
+function isPhysicPaintActionTransactionFailure(value: Record<string, unknown>): value is Record<string, unknown> & PhysicPaintActionTransactionFailure {
+  return hasOnlyKeys(value, ['state', 'code', 'error'])
+    && value.state === 'failed'
+    && (value.code === 'active-recovery-blocked'
+      || value.code === 'invoke-failed'
+      || value.code === 'malformed-response'
+      || value.code === 'correlation-mismatch'
+      || value.code === 'transaction-failed')
+    && isNonEmptyString(value.error);
+}
+
+export function isPhysicPaintActionTransactionResult(value: unknown): value is PhysicPaintActionTransactionResult {
+  if (!isRecord(value) || typeof value.state !== 'string') return false;
+  if (value.state === 'prepared' || value.state === 'committed' || value.state === 'recovery-required') {
+    const { schemaVersion, state: _state, ...request } = value;
+    return schemaVersion === 1 && isPhysicPaintActionTransactionPrepareRequest(request);
+  }
+  if (value.state === 'recovered-prepared') {
+    return hasOnlyKeys(value, ['state', 'token', 'actionPresent'])
+      && isActionTransactionToken(value.token)
+      && typeof value.actionPresent === 'boolean';
+  }
+  if (value.state === 'cleanup-pending') {
+    if (hasOnlyKeys(value, ['schemaVersion', 'state', 'token', 'commandId', 'generation', 'operationId', 'leaseToken', 'direction'])) {
+      const { schemaVersion, state: _state, ...request } = value;
+      return schemaVersion === 1 && isPhysicPaintActionTransactionAcknowledgeRequest(request);
+    }
+    if (hasOnlyKeys(value, ['schemaVersion', 'state', 'projectContextId', 'launchOperationId', 'commandId', 'generation', 'reason'])) {
+      const { schemaVersion, state: _state, ...request } = value;
+      return schemaVersion === 1 && isPhysicPaintActionHistoryReleaseRequest(request);
+    }
+    return false;
+  }
+  if (value.state === 'acknowledged') {
+    const { state: _state, cleaned, ...request } = value;
+    return typeof cleaned === 'boolean' && isPhysicPaintActionTransactionAcknowledgeRequest(request);
+  }
+  if (value.state === 'released') {
+    const { state: _state, released, ...request } = value;
+    return typeof released === 'boolean' && isPhysicPaintActionHistoryReleaseRequest(request);
+  }
+  if (value.state === 'retained') return isPhysicPaintActionRetainedArtifactStatus(value);
+  if (value.state === 'failed') return isPhysicPaintActionTransactionFailure(value);
+  return false;
+}
 
 export const PHYSIC_PAINT_MAX_APPLY_FRAMES = 600;
 export const PHYSIC_PAINT_DEFAULT_APPLY_FRAMES = 4;
