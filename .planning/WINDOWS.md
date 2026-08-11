@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 21
 waived_count: 1
-fixed_count: 40
-total_count: 62
-last_updated: 2026-08-11T12:51:10.023Z
+fixed_count: 41
+total_count: 63
+last_updated: 2026-08-11T17:32:28.720Z
 ---
 
 # Broken Windows Ledger
@@ -77,6 +77,7 @@ last_updated: 2026-08-11T12:51:10.023Z
 | 60 | 43.2 | deviation | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx |  | Forwarded accepted passive Action linkage to the existing Group Rail halo inputs. | fixed |  | 2026-08-11T12:47:34.722Z | 2026-08-11T12:51:09.300Z |
 | 61 | 43.2 | deviation | app/src/components/physic-paint/physicsPaintStudio.css |  | Added scoped linked Group navigation presentation and endpoint disabled styles. | fixed |  | 2026-08-11T12:47:34.814Z | 2026-08-11T12:51:09.670Z |
 | 62 | 43.2 | deviation | app/src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx |  | Updated stale rail ownership tracer expectations after the canonical terminology cutover. | fixed |  | 2026-08-11T12:47:34.900Z | 2026-08-11T12:51:10.023Z |
+| 63 | 43.2 | deviation | .planning/STATE.md |  | Skipped state.advance-plan to preserve blocked Plan 43.2-17 while completing out-of-order gap Plan 43.2-21. | fixed |  | 2026-08-11T17:30:56.351Z | 2026-08-11T17:32:28.720Z |
 
 ````json
 [
@@ -823,6 +824,18 @@ last_updated: 2026-08-11T12:51:10.023Z
     "reason": "",
     "recorded_at": "2026-08-11T12:47:34.900Z",
     "resolved_at": "2026-08-11T12:51:10.023Z"
+  },
+  {
+    "id": 63,
+    "kind": "deviation",
+    "phase": "43.2",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Skipped state.advance-plan to preserve blocked Plan 43.2-17 while completing out-of-order gap Plan 43.2-21.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-11T17:30:56.351Z",
+    "resolved_at": "2026-08-11T17:32:28.720Z"
   }
 ]
 ````
