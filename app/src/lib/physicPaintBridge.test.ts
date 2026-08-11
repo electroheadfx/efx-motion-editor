@@ -2401,6 +2401,126 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.proposed.proposal);
   });
 
+  it('settles exact Undo and Redo targets once through direction-specific leased authority', async () => {
+    const test = await lifecycleHarness('delete-action-groups', 'referenced-action-directions');
+    if (!('actionId' in test.proposed.impact)) throw new Error('Expected Action lifecycle impact.');
+    const base = {
+      schemaVersion: 1 as const,
+      commandId: 'history-command-directions',
+      generation: 9,
+      operationId: 'referenced-action-history-command-directions',
+      mode: 'delete-action-and-groups' as const,
+      impactDigest: 'c'.repeat(64),
+      retainedArtifact: {
+        commandId: 'history-command-directions', generation: 9, actionId: 'action-1',
+        managedPath: 'scripts/action-1.efx-roto-script.json', originalRevision: 'action-revision-1', integritySha256: 'd'.repeat(64),
+      },
+    };
+    const forward = {
+      ...base,
+      state: 'committed' as const,
+      token: '123e4567-e89b-42d3-a456-426614174201',
+      leaseToken: 'forward-lease',
+      direction: 'forward' as const,
+      authority: {
+        projectContextId, layerId: test.layer.id, launchOperationId: test.payload.launchOperationId,
+        actionId: 'action-1', expectedActionPresent: true, expectedActionRevision: 'action-revision-1',
+        expectedPhysicalRevision: test.current.revision,
+        expectedPhysicalHash: buildPhysicPaintRotoProjectEquality(test.current),
+      },
+      target: {
+        physicalRevision: test.proposed.proposal.revision,
+        physicalHash: buildPhysicPaintRotoProjectEquality(test.proposed.proposal),
+        physicalDocument: test.proposed.proposal,
+        selectedGroupId: null,
+        cursorAppFrame: test.proposed.proposal.cursorAppFrame,
+      },
+    };
+    const acceptedForward = applyCommittedReferencedActionDeletion({
+      committed: forward,
+      impact: test.proposed.impact,
+      before: test.current,
+      leaseToken: test.leaseToken,
+    });
+    if (!acceptedForward.ok) throw new Error(`Forward setup failed: ${acceptedForward.reason}`);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
+
+    const undoLease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, test.layer.id);
+    if (!undoLease) throw new Error('Expected Undo lease.');
+    const undo = {
+      ...base,
+      state: 'committed' as const,
+      token: '123e4567-e89b-42d3-a456-426614174202',
+      leaseToken: 'undo-lease',
+      direction: 'undo' as const,
+      authority: {
+        ...forward.authority,
+        expectedActionPresent: false,
+        expectedPhysicalRevision: acceptedForward.history.after.physicalRevision,
+        expectedPhysicalHash: acceptedForward.history.after.physicalHash,
+      },
+      target: {
+        physicalRevision: acceptedForward.history.before.physicalRevision,
+        physicalHash: acceptedForward.history.before.physicalHash,
+        physicalDocument: acceptedForward.history.before.document,
+        selectedGroupId: acceptedForward.history.selection.beforeGroupId,
+        cursorAppFrame: acceptedForward.history.before.document.cursorAppFrame,
+      },
+    };
+    const acceptedUndo = applyCommittedReferencedActionDeletion({
+      committed: undo,
+      history: acceptedForward.history,
+      leaseToken: undoLease,
+    });
+    const duplicateUndo = applyCommittedReferencedActionDeletion({
+      committed: undo,
+      history: acceptedForward.history,
+      leaseToken: undoLease,
+    });
+    expect(acceptedUndo).toMatchObject({ ok: true, settled: true });
+    expect(duplicateUndo).toMatchObject({ ok: true, settled: false });
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.current);
+
+    const redoLease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, test.layer.id);
+    if (!redoLease) throw new Error('Expected Redo lease.');
+    const redo = {
+      ...base,
+      state: 'committed' as const,
+      token: '123e4567-e89b-42d3-a456-426614174203',
+      leaseToken: 'redo-lease',
+      direction: 'redo' as const,
+      authority: {
+        ...forward.authority,
+        expectedActionPresent: true,
+        expectedPhysicalRevision: acceptedForward.history.before.physicalRevision,
+        expectedPhysicalHash: acceptedForward.history.before.physicalHash,
+      },
+      target: {
+        physicalRevision: acceptedForward.history.after.physicalRevision,
+        physicalHash: acceptedForward.history.after.physicalHash,
+        physicalDocument: acceptedForward.history.after.document,
+        selectedGroupId: acceptedForward.history.selection.afterGroupId,
+        cursorAppFrame: acceptedForward.history.after.document.cursorAppFrame,
+      },
+    };
+    const beforeRejected = physicPaintStore.getRotoPhysicalDocument(test.layer.id);
+    const rejected = applyCommittedReferencedActionDeletion({
+      committed: { ...redo, generation: redo.generation + 1 },
+      history: acceptedForward.history,
+      leaseToken: redoLease,
+    });
+    expect(rejected.ok).toBe(false);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(beforeRejected);
+
+    const acceptedRedo = applyCommittedReferencedActionDeletion({
+      committed: redo,
+      history: acceptedForward.history,
+      leaseToken: redoLease,
+    });
+    expect(acceptedRedo).toMatchObject({ ok: true, settled: true });
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.proposed.proposal);
+  });
+
   it('rejects stale, malformed, and semantically mismatched lifecycle candidates without publication', async () => {
     const variants = [
       (payload: Awaited<ReturnType<typeof lifecycleHarness>>['payload']) => ({
