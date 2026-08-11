@@ -836,6 +836,8 @@ function countLoopsReferencingSourceKey(
  * cycle's ENTIRE source key list AND the loop's placementStart coincided with
  * the cycle's pre-move first key frame (an original loop). A duplicated loop
  * keeps its own placementStart and keeps resolving the same source keys by id.
+ * Authorized source-cycle spacing additionally rebuilds finite lifecycle extent
+ * from post-mapping timing, even when the anchored first source key does not move.
  * Returns the complete next collection, or null when no loop record changes.
  */
 function computeSourceAttachedLoopPlacementFollow(
@@ -843,6 +845,7 @@ function computeSourceAttachedLoopPlacementFollow(
   loopClips: readonly PhysicPaintRotoLoopClip[],
   mapping: ReadonlyMap<string, number>,
   eligible: (clip: PhysicPaintRotoLoopClip) => boolean,
+  retimeFiniteLifecycle = false,
 ): readonly PhysicPaintRotoLoopClip[] | null {
   if (loopClips.length === 0) return null;
   let changed = false;
@@ -850,12 +853,51 @@ function computeSourceAttachedLoopPlacementFollow(
     if (!eligible(clip)) return clip;
     const firstKeyId = clip.sourceKeyIds[0];
     if (firstKeyId === undefined) return clip;
+
     const preMoveFrame = identities.framesByKeyId.get(firstKeyId);
-    if (preMoveFrame === undefined || clip.placementStart !== preMoveFrame) return clip;
     const postMoveFrame = mapping.get(firstKeyId);
-    if (postMoveFrame === undefined || postMoveFrame === preMoveFrame) return clip;
+    const placementFollowsSource = preMoveFrame !== undefined
+      && clip.placementStart === preMoveFrame
+      && postMoveFrame !== undefined
+      && postMoveFrame !== preMoveFrame;
+    const placementStart = placementFollowsSource ? postMoveFrame : clip.placementStart;
+
+    const hasFiniteLifecycle = retimeFiniteLifecycle
+      && typeof clip.repeat === 'number'
+      && clip.phaseOrigin !== undefined
+      && clip.originalEndExclusive !== undefined
+      && clip.visibleRanges !== undefined;
+    if (hasFiniteLifecycle) {
+      const sourcePositions = clip.sourceKeyIds.map((keyId) => mapping.get(keyId));
+      const validSourceTiming = sourcePositions.every((frame): frame is number => frame !== undefined)
+        && sourcePositions.every((frame, index) => index === 0 || sourcePositions[index - 1]! < frame);
+      if (validSourceTiming) {
+        const cycleLength = sourcePositions[sourcePositions.length - 1]! - sourcePositions[0]! + 1;
+        const originalEndExclusive = placementStart + cycleLength * clip.repeat;
+        const lifecycleChanged = placementStart !== clip.placementStart
+          || clip.phaseOrigin !== placementStart
+          || clip.originalEndExclusive !== originalEndExclusive
+          || clip.visibleRanges.length !== 1
+          || clip.visibleRanges[0]?.start !== placementStart
+          || clip.visibleRanges[0]?.endExclusive !== originalEndExclusive;
+        if (lifecycleChanged) {
+          changed = true;
+          return Object.freeze({
+            ...clip,
+            placementStart,
+            phaseOrigin: placementStart,
+            originalEndExclusive,
+            visibleRanges: Object.freeze([
+              Object.freeze({ start: placementStart, endExclusive: originalEndExclusive }),
+            ]),
+          }) as PhysicPaintRotoLoopClip;
+        }
+      }
+    }
+
+    if (!placementFollowsSource) return clip;
     changed = true;
-    return Object.freeze({ ...clip, placementStart: postMoveFrame }) as PhysicPaintRotoLoopClip;
+    return Object.freeze({ ...clip, placementStart }) as PhysicPaintRotoLoopClip;
   });
   return changed ? (Object.freeze(next) as readonly PhysicPaintRotoLoopClip[]) : null;
 }
@@ -1783,6 +1825,7 @@ function buildLinkedForceSpacingCandidate(
         loopClips,
         mapping,
         () => true,
+        true,
       ),
     },
   };
