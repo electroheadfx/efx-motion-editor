@@ -92,7 +92,6 @@ fn prepare_persists_exact_closed_recovery_payload_without_mutating_action() {
     let prepared = fixture.prepare_transaction(request.clone()).unwrap();
     assert_eq!(prepared["state"], "prepared");
     assert_eq!(prepared["token"], token);
-    assert_eq!(fixture.scan().unwrap().rows.len(), 1);
 
     let status = fixture.transaction_status(&token).unwrap();
     assert_eq!(status["state"], "prepared");
@@ -100,6 +99,7 @@ fn prepare_persists_exact_closed_recovery_payload_without_mutating_action() {
     assert_eq!(status["target"], request["target"]);
     assert_eq!(status["retainedArtifact"], request["retainedArtifact"]);
     assert_eq!(status["impactDigest"], request["impactDigest"]);
+    assert_eq!(fixture.scan().unwrap().rows.len(), 1);
 }
 
 #[test]
@@ -165,6 +165,85 @@ fn prepare_record_is_synced_json_with_exact_target_digest() {
     assert_eq!(stored["state"], "prepared");
     assert_eq!(stored["target"]["cursorAppFrame"], 18);
     assert_eq!(format!("{:x}", Sha256::digest(&bytes)).len(), 64);
+}
+
+#[test]
+fn commit_moves_action_to_hidden_tombstone_and_gates_ordinary_scan() {
+    let fixture = FixtureLibrary::new().unwrap();
+    let action_id = Uuid::new_v4().to_string();
+    let saved = fixture.save(action_document(&action_id)).unwrap();
+    let revision = saved.scan.rows[0].revision.clone();
+    let token = Uuid::new_v4().to_string();
+    fixture
+        .prepare_transaction(prepare_request(&action_id, &revision, &token))
+        .unwrap();
+
+    let committed = fixture.commit_transaction(&token).unwrap();
+    assert_eq!(committed["state"], "committed");
+    assert!(!fixture
+        .scripts_root()
+        .join(format!("{action_id}.efx-roto-script.json"))
+        .exists());
+    assert!(fixture
+        .scripts_root()
+        .join(".action-transactions")
+        .join(format!("tombstone-{token}.efx-roto-script.json"))
+        .is_file());
+    assert!(fixture
+        .scripts_root()
+        .join(".action-transactions")
+        .join(format!("committed-{token}.json"))
+        .is_file());
+    assert!(fixture.scan().unwrap_err().contains("recovery required"));
+
+    let recovery = fixture.recover_transaction(&token).unwrap();
+    assert_eq!(recovery["state"], "recovery-required");
+    assert_eq!(recovery["target"]["physicalDocument"]["revision"], "physical-after");
+    assert_eq!(recovery["token"], token);
+}
+
+#[test]
+fn prepared_restart_recovery_restores_action_before_normal_scan() {
+    let fixture = FixtureLibrary::new().unwrap();
+    let action_id = Uuid::new_v4().to_string();
+    let saved = fixture.save(action_document(&action_id)).unwrap();
+    let revision = saved.scan.rows[0].revision.clone();
+    let token = Uuid::new_v4().to_string();
+    fixture
+        .prepare_transaction(prepare_request(&action_id, &revision, &token))
+        .unwrap();
+
+    let action_path = fixture
+        .scripts_root()
+        .join(format!("{action_id}.efx-roto-script.json"));
+    let tombstone = fixture
+        .scripts_root()
+        .join(".action-transactions")
+        .join(format!("tombstone-{token}.efx-roto-script.json"));
+    std::fs::rename(&action_path, &tombstone).unwrap();
+
+    let scan = fixture.scan().unwrap();
+    assert_eq!(scan.rows.len(), 1);
+    assert!(action_path.is_file());
+    assert!(!tombstone.exists());
+    assert!(fixture.transaction_status(&token).is_err());
+}
+
+#[test]
+fn commit_and_recovery_reject_unknown_stale_and_replayed_tokens() {
+    let fixture = FixtureLibrary::new().unwrap();
+    assert!(fixture.commit_transaction(&Uuid::new_v4().to_string()).is_err());
+    assert!(fixture.recover_transaction(&Uuid::new_v4().to_string()).is_err());
+
+    let action_id = Uuid::new_v4().to_string();
+    let saved = fixture.save(action_document(&action_id)).unwrap();
+    let revision = saved.scan.rows[0].revision.clone();
+    let token = Uuid::new_v4().to_string();
+    fixture
+        .prepare_transaction(prepare_request(&action_id, &revision, &token))
+        .unwrap();
+    fixture.commit_transaction(&token).unwrap();
+    assert!(fixture.commit_transaction(&token).is_err());
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

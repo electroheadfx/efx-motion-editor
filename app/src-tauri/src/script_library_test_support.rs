@@ -70,6 +70,12 @@ impl FixtureLibrary {
     pub fn transaction_status(&self, token: &str) -> Result<Value, String> {
         script_library::transaction_status_value(&self.state, &self.authority, token)
     }
+    pub fn commit_transaction(&self, token: &str) -> Result<Value, String> {
+        script_library::commit_transaction_value(&self.state, &self.authority, token)
+    }
+    pub fn recover_transaction(&self, token: &str) -> Result<Value, String> {
+        script_library::recover_transaction_value(&self.state, &self.authority, token)
+    }
     pub fn migrate_to(
         &self,
         destination_name: &str,
