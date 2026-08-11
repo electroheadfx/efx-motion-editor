@@ -12,10 +12,12 @@ import type {
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
-import type {
-  PhysicPaintRotoFrameResolution,
-  PhysicPaintRotoPhysicalCell,
+import {
+  derivePhysicPaintRotoLoopRanges,
+  type PhysicPaintRotoFrameResolution,
+  type PhysicPaintRotoPhysicalCell,
 } from '../roto/physicsPaintRotoPhysicalResolver';
+import { projectPhysicsPaintLoopClipGeometry } from '../view/physicsPaintLoopClipPresentation';
 import {
   getPhysicsPaintRotoSourceCycleId,
   togglePhysicsPaintRotoSpacingProxy,
@@ -131,6 +133,25 @@ const linkedLoop: PhysicPaintRotoLoopClip = {
   repeat: 3,
   mode: 'static',
 };
+
+function spacingLifecycleGroup(): PhysicPaintRotoLoopClip {
+  return Object.freeze({
+    loopId: 'spacing-group',
+    placementStart: 10,
+    sourceKeyIds: Object.freeze(['A', 'B', 'C']),
+    repeat: 3,
+    mode: 'progressive',
+    scriptId: 'action-spacing',
+    motion: Object.freeze({ deformation: 4, position: 2 }),
+    overrideColor: '#123456',
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: 10,
+    originalEndExclusive: 19,
+    visibleRanges: Object.freeze([Object.freeze({ start: 10, endExclusive: 19 })]),
+    frameOverrides: Object.freeze([]),
+  });
+}
 
 function lifecycleGroup(overrides: Partial<PhysicPaintRotoLoopClip> = {}): PhysicPaintRotoLoopClip {
   return Object.freeze({
@@ -607,6 +628,75 @@ describe('useRotoTimelineActions rail-owned multi-capsule Force Spacing', () => 
     };
     expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ A: 0, B: 3, C: 6, X: 10, Y: 13 });
     expect(dispatched.proposal.nextLoopClips?.find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(10);
+  });
+
+  it.each([
+    { emptyFrames: 2, mappedFrames: { A: 10, B: 13, C: 16 }, cycleLength: 7, endExclusive: 31, width: 378 },
+    { emptyFrames: 3, mappedFrames: { A: 10, B: 14, C: 18 }, cycleLength: 9, endExclusive: 37, width: 486 },
+  ])('rebuilds complete Repeat 3 lifecycle and rail geometry for Group spacing $emptyFrames', async ({
+    emptyFrames,
+    mappedFrames,
+    cycleLength,
+    endExclusive,
+    width,
+  }) => {
+    const sourceRecords = [
+      realKeyRecord('A', 10),
+      realKeyRecord('B', 11),
+      realKeyRecord('C', 12),
+    ];
+    const group = spacingLifecycleGroup();
+    const { actions, executePhysicalEdit } = createHarness({
+      records: sourceRecords,
+      loopClips: [group],
+      selectedLoopClipIds: [group.loopId],
+      capacity: 100,
+    });
+    actions.physicalActions.setForceSpacingInput(String(emptyFrames));
+
+    expect(await actions.physicalActions.applyForceSpacing()).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: {
+        mapping: ReadonlyMap<string, number>;
+        nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null;
+      };
+    };
+    expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual(mappedFrames);
+    expect(dispatched.proposal.nextLoopClips).toEqual([{
+      ...group,
+      phaseOrigin: 10,
+      originalEndExclusive: endExclusive,
+      visibleRanges: [{ start: 10, endExclusive }],
+    }]);
+
+    const mappedRecords = sourceRecords.map((entry) => {
+      const appFrame = dispatched.proposal.mapping.get(entry.keyId) ?? entry.appFrame;
+      return { ...entry, appFrame, payload: { ...entry.payload, appFrame } };
+    });
+    const ranges = derivePhysicPaintRotoLoopRanges({
+      identities: mappedRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      loopClips: dispatched.proposal.nextLoopClips ?? [group],
+      parentEndExclusive: 100,
+      capacity: 100,
+      interpolationEnabled: false,
+    }).ranges;
+    expect(ranges).toHaveLength(1);
+    expect(ranges[0]).toMatchObject({
+      loopId: group.loopId,
+      placementStart: 10,
+      phaseOrigin: 10,
+      cycleLength,
+      repeat: 3,
+      requestedEnd: endExclusive,
+      effectiveEnd: endExclusive,
+      partialCycle: false,
+    });
+    expect(projectPhysicsPaintLoopClipGeometry(
+      ranges[0],
+      { startFrame: 0, endFrameExclusive: 100 },
+      18,
+    )).toEqual({ left: 180, width });
   });
 
   it('deduplicates identical shared source cycles selected through non-contiguous rails', async () => {

@@ -363,6 +363,72 @@ describe('D-11 rigid linked-key guard', () => {
     expect(loopClips).toEqual([loop(10, 3, 'L1'), loop(100, 2, 'L2')]);
   });
 
+  it('retimes lifecycle extents for anchored and duplicated Groups sharing one ordered source cycle', () => {
+    const records = [record('A', 10, 'A'), record('B', 11, 'B'), record('C', 12, 'C')];
+    const shared = {
+      sourceKeyIds: ['A', 'B', 'C'] as const,
+      repeat: 3 as const,
+      mode: 'progressive' as const,
+      scriptId: 'action-shared',
+      motion: { deformation: 4, position: 2 },
+      overrideColor: '#123456',
+      syncState: 'synchronized' as const,
+      provenanceState: 'attached' as const,
+      frameOverrides: [] as const,
+    };
+    const original: PhysicPaintRotoLoopClip = {
+      ...shared,
+      loopId: 'original',
+      placementStart: 10,
+      phaseOrigin: 10,
+      originalEndExclusive: 19,
+      visibleRanges: [{ start: 10, endExclusive: 19 }],
+    };
+    const duplicate: PhysicPaintRotoLoopClip = {
+      ...shared,
+      loopId: 'duplicate',
+      placementStart: 100,
+      phaseOrigin: 100,
+      originalEndExclusive: 109,
+      visibleRanges: [{ start: 100, endExclusive: 109 }],
+    };
+    const proposal = expectOk(resolveEdit({
+      records,
+      loopClips: [original, duplicate],
+      intent: {
+        kind: 'force-spacing',
+        emptyFrames: 3,
+        selectedKeyId: null,
+        scopeKeyIds: ['A', 'B', 'C'],
+        linkedSourceSpacingScopes: [linkedSpacingScope(['A', 'B', 'C'], ['A', 'B', 'C'])],
+      },
+    }));
+
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 10, B: 14, C: 18 });
+    expect(proposal.nextLoopClips).toEqual([
+      {
+        ...original,
+        phaseOrigin: 10,
+        originalEndExclusive: 37,
+        visibleRanges: [{ start: 10, endExclusive: 37 }],
+      },
+      {
+        ...duplicate,
+        phaseOrigin: 100,
+        originalEndExclusive: 127,
+        visibleRanges: [{ start: 100, endExclusive: 127 }],
+      },
+    ]);
+    expect(proposal.nextLoopClips?.map(({ loopId, placementStart, sourceKeyIds }) => ({
+      loopId,
+      placementStart,
+      sourceKeyIds,
+    }))).toEqual([
+      { loopId: 'original', placementStart: 10, sourceKeyIds: ['A', 'B', 'C'] },
+      { loopId: 'duplicate', placementStart: 100, sourceKeyIds: ['A', 'B', 'C'] },
+    ]);
+  });
+
   it('expands an earlier Progressive capsule and ripples a downstream Static/Hold capsule with its placement', () => {
     const records = [
       record('A', 0, 'A'),
