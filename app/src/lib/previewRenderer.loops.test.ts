@@ -245,6 +245,85 @@ describe('preview accepted Group lifecycle parity', () => {
     expect(ctx.operations.some((operation) => operation.type === 'drawImage')).toBe(false);
     expect(ctx.operations.some((operation) => operation.type === 'fillText')).toBe(false);
   });
+
+  it('uses an exact override only at its accepted occurrence', () => {
+    install(
+      [record('A0', 0), record('A1', 3), record('override-5', 5, 'override')],
+      [lifecycleGroup({
+        visibleRanges: [{ start: 0, endExclusive: 12 }],
+        frameOverrides: [{ appFrame: 5, keyId: 'override-5' }],
+      })],
+      { enabled: true, mode: 'duplicate' },
+    );
+
+    const override = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 5);
+    const neighbor = physicPaintStore.getRotoPhysicalRenderSource(LAYER, 6);
+
+    expect(override).toEqual(expect.objectContaining({
+      kind: 'real',
+      appFrame: 5,
+      keyId: 'override-5',
+      renderedFrame: expect.objectContaining({ dataUrl: payload(5, 'override').dataUrl }),
+    }));
+    expect(neighbor).toEqual(expect.objectContaining({
+      kind: 'generated',
+      appFrame: 6,
+      cycleOffset: 2,
+    }));
+    if (!neighbor || neighbor.kind !== 'generated') throw new Error('Expected generated Group neighbor.');
+    expect(neighbor.renderedFrame.dataUrl).not.toBe(payload(5, 'override').dataUrl);
+  });
+
+  it('retains immutable phase while detached and reflects accepted regeneration immediately', () => {
+    install(
+      [record('A0', 0), record('A1', 3)],
+      [lifecycleGroup({
+        provenanceState: 'detached',
+        visibleRanges: [{ start: 5, endExclusive: 12 }],
+      })],
+      { enabled: true, mode: 'duplicate' },
+    );
+
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 5)).toEqual(expect.objectContaining({
+      kind: 'generated',
+      cycleOffset: 1,
+    }));
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 7)).toEqual(expect.objectContaining({
+      kind: 'real',
+      keyId: 'A1',
+    }));
+
+    const regenerated = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, [lifecycleGroup({
+      syncState: 'synchronized',
+      visibleRanges: [{ start: 0, endExclusive: 12 }],
+    })]);
+    if (!regenerated.ok) throw new Error(regenerated.error);
+
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 1)).toEqual(expect.objectContaining({
+      kind: 'generated',
+      cycleOffset: 1,
+    }));
+  });
+
+  it('keeps lifecycle gaps empty while visible unavailable occurrences remain marked placeholders', () => {
+    install(
+      [record('A0', 0)],
+      [lifecycleGroup({
+        sourceKeyIds: ['A0', 'missing-source'],
+        visibleRanges: [
+          { start: 0, endExclusive: 1 },
+          { start: 2, endExclusive: 12 },
+        ],
+      })],
+    );
+
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 1)).toBeNull();
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 2)).toEqual(expect.objectContaining({
+      kind: 'loop-placeholder',
+      loopId: 'group-a',
+      missingSourceKeyIds: ['missing-source'],
+    }));
+  });
 });
 
 describe('preview linked-generated cache identity', () => {

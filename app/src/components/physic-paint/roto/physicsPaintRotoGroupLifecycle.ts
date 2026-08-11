@@ -216,7 +216,8 @@ export type PhysicPaintRotoGroupFrameTarget =
   | Readonly<{ kind: 'empty'; appFrame: number }>;
 
 export interface PhysicPaintRotoGroupFrameTargetInput {
-  readonly document: PhysicPaintRotoPhysicalDocument;
+  readonly document: Pick<PhysicPaintRotoPhysicalDocument, 'loopClips' | 'realKeyRecords'>
+    & Partial<Omit<PhysicPaintRotoPhysicalDocument, 'loopClips' | 'realKeyRecords'>>;
   readonly appFrame: number;
 }
 

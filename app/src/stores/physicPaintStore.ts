@@ -31,6 +31,8 @@ import {
   type PhysicPaintRotoLoopResolutionContext,
   type PhysicPaintRotoPhysicalTimelineProjection,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
+import { classifyPhysicPaintRotoGroupFrameTarget } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
+import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
 
 let _markProjectDirty: (() => void) | null = null;
 export function _setPhysicPaintMarkDirtyCallback(cb: () => void) { _markProjectDirty = cb; }
@@ -1692,19 +1694,13 @@ export const physicPaintStore = {
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'Invalid Loop Clip collection.' };
     }
-    const current = this.getRotoPhysicalLoopClips(layerId);
-    if (current.length === validated.length && current.every((clip, index) => {
-      const next = validated[index];
-      return next !== undefined
-        && clip.loopId === next.loopId
-        && clip.placementStart === next.placementStart
-        && clip.repeat === next.repeat
-        && clip.mode === next.mode
-        && clip.sourceKeyIds.length === next.sourceKeyIds.length
-        && clip.sourceKeyIds.every((keyId, keyIndex) => keyId === next.sourceKeyIds[keyIndex]);
-    })) {
-      return { ok: true };
-    }
+    const nextRevision = buildPhysicPaintRotoPhysicalRevision(
+      this.getRotoRealKeyRecords(layerId),
+      this.getRotoPhysicalInterpolationState(layerId),
+      validated,
+      this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId),
+    );
+    if (nextRevision === this.getRotoPhysicalContentRevision(layerId)) return { ok: true };
     _rotoPhysicalLoopClips.set(layerId, validated);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     _notifyVisualChange();
@@ -1831,6 +1827,78 @@ export const physicPaintStore = {
     if (!structural || !structural.projection) return null;
     const projection = structural.projection;
     const contentRevision = structural.contentRevision;
+    const lifecycleTarget = classifyPhysicPaintRotoGroupFrameTarget({
+      document: {
+        loopClips: structural.loopClips,
+        realKeyRecords: Array.from(structural.recordMap.values()),
+      },
+      appFrame,
+    });
+    switch (lifecycleTarget.kind) {
+      case 'override': {
+        const record = this.getRotoRealKeyRecord(layerId, lifecycleTarget.keyId);
+        if (!record) return null;
+        return {
+          kind: 'real',
+          layerId,
+          appFrame,
+          keyId: record.keyId,
+          contentRevision,
+          cacheRevision: `${contentRevision}:real:${record.keyId}`,
+          renderedFrame: record.payload,
+        };
+      }
+      case 'generated-occurrence': {
+        const left = this.getRotoRealKeyRecord(layerId, lifecycleTarget.leftSourceKeyId);
+        const right = this.getRotoRealKeyRecord(layerId, lifecycleTarget.rightSourceKeyId);
+        const interpolation = this.getRotoPhysicalInterpolationState(layerId);
+        if (!left || !right || !interpolation.enabled) return null;
+        const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode: interpolation.mode };
+        const rendered = interpolation.mode === 'duplicate'
+          ? renderDuplicateRotoInterpolationFrame(left.payload, appFrame, settings)
+          : renderBlendedRotoInterpolationFrame(left.payload, right.payload, appFrame, lifecycleTarget.progress, settings);
+        if (!rendered) return null;
+        const renderedFrame: PhysicPaintRotoRealKeyPayload = {
+          frameIndex: rendered.frameIndex,
+          appFrame,
+          dataUrl: rendered.dataUrl,
+          ...(rendered.width !== undefined ? { width: rendered.width } : {}),
+          ...(rendered.height !== undefined ? { height: rendered.height } : {}),
+        };
+        const group = structural.loopClips.find((candidate) => candidate.loopId === lifecycleTarget.groupId);
+        if (!group) return null;
+        const sourceCycleId = getPhysicsPaintRotoSourceCycleId(group.sourceKeyIds);
+        return {
+          kind: 'generated',
+          layerId,
+          appFrame,
+          leftKeyId: left.keyId,
+          rightKeyId: right.keyId,
+          interpolationMode: interpolation.mode,
+          sourceCycleId,
+          cycleOffset: lifecycleTarget.cycleOffset,
+          contentRevision,
+          cacheRevision: `${contentRevision}:linked-generated:${interpolation.mode}:${sourceCycleId}:${left.keyId}:${right.keyId}:${lifecycleTarget.cycleOffset}`,
+          renderedFrame,
+        };
+      }
+      case 'group-gap':
+      case 'ambiguous-group':
+        return null;
+      case 'source-occurrence':
+      case 'unresolved-group':
+      case 'ordinary-key':
+      case 'empty':
+        // Preserve Phase 43 source-key and unresolved placeholder behavior. The
+        // interval resolver below remains authoritative for these cases; the
+        // complete lifecycle target only intercepts exact overrides, visible
+        // generated occurrences, and accepted Group gaps.
+        break;
+      default: {
+        const exhaustive: never = lifecycleTarget;
+        throw new Error(`Unhandled Roto Group frame target: ${JSON.stringify(exhaustive)}`);
+      }
+    }
     const cell = projection.cells[appFrame];
     if (cell && cell.appFrame === appFrame && cell.kind === 'real') {
       const record = this.getRotoRealKeyRecord(layerId, cell.keyId);
