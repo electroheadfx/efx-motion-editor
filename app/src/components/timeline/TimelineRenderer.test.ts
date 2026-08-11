@@ -145,6 +145,44 @@ describe('physic-paint Roto key markers (C-04)', () => {
   });
 });
 
+describe('Motion Editor Group lifecycle regression boundary (43.2-17, D-05/D-38)', () => {
+  it('keeps Group lifecycle copy, identity, status, tooltip, and navigation out of the Motion Editor renderer', () => {
+    const code = source();
+    const forbidden = [
+      'syncState',
+      'provenanceState',
+      'linkedRotoLoopClipIds',
+      'linkedRotoActionName',
+      'selectedLoopClipId',
+      'activeLinkedLoopClipId',
+      'Linked Groups',
+      'Synchronized with Action',
+      'Modified locally',
+      'Action detached',
+      'Source Action unavailable',
+      'TimelineCapsuleTooltip',
+      'openPhysicPaintLoopEdit',
+      'requestPhysicPaintLoopOperation',
+    ];
+
+    for (const symbol of forbidden) expect(code).not.toContain(symbol);
+  });
+
+  it('keeps the main-timeline projection limited to passive ranges and ordinary real-key diamonds', () => {
+    const code = source();
+    const markerStart = code.indexOf('private drawPhysicPaintRepeatDurationMarkers');
+    const markerEnd = code.indexOf('private drawRotoKeyMarkers', markerStart);
+    const markerSource = code.slice(markerStart, markerEnd);
+
+    expect(markerStart).toBeGreaterThan(-1);
+    expect(markerSource).toContain('marker.mode');
+    expect(markerSource).toContain('ctx.fillRect(clippedLeft, markerY, clippedW, markerH)');
+    for (const interactionSurface of ['addEventListener', 'hitTest', 'tooltip', 'selected', 'hover', 'focus', 'onClick']) {
+      expect(markerSource).not.toContain(interactionSurface);
+    }
+  });
+});
+
 describe('Loop Clip rendering ownership (43-11, D-33R)', () => {
   it('projects layer-local passive marker geometry into main-timeline coordinates', async () => {
     const { getTimelineRepeatDurationMarkerGeometry, TRACK_HEADER_WIDTH } = await import('./TimelineRenderer');

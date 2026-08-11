@@ -105,6 +105,40 @@ describe('Physics Paint Play Script integration contract', () => {
   });
 });
 
+describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)', () => {
+  it('derives accepted Groups from the canonical store and existing physicPaintVersion channel', () => {
+    expect(studio).toContain("import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';");
+    expect(studio).toContain('const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, physicPaintVersion.value]);');
+    expect(studio).toContain('getRotoPhysicalDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId),');
+    expect(studio).toContain('getRotoPhysicalRenderSource: (layerId, appFrame) => physicPaintStore.getRotoPhysicalRenderSource(layerId, appFrame),');
+    expect(studio).toContain('getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, appFrame) : null,');
+
+    for (const secondAuthority of [
+      'useSignal<readonly PhysicPaintRotoLoopClip',
+      'useState<readonly PhysicPaintRotoLoopClip',
+      'useState<PhysicPaintRotoLoopClip',
+      'resolvePhysicPaintRotoGroupLifecycleFrame',
+      'const [rotoLoopClips',
+      'const groupDocument = useSignal',
+      'const groupVersion = useSignal',
+    ]) expect(studio).not.toContain(secondAuthority);
+  });
+
+  it('keeps deferred Group and Action editing surfaces absent from the accepted Studio UI', () => {
+    const production = [studio, studioView, scriptsPanel, workflowStrip, rightPanel, toolRail, topBar, playScriptDialog].join('\n');
+    for (const deferredSurface of [
+      'Update Action from Group Frame',
+      'Relink Group',
+      'Push Right',
+      'Push Left',
+      'Key Group',
+      'Scissor Group',
+      'Action Content Editor',
+      'Add Paint Track',
+    ]) expect(production).not.toContain(deferredSurface);
+  });
+});
+
 describe('Physics Paint Group and Action cross-selection (43.2-15)', () => {
   it('derives deduplicated placement-ordered linked Groups from accepted Action identity', () => {
     expect(studio).toContain('const activeLinkedLoopClipId = useSignal<string | null>(null);');

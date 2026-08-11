@@ -27,4 +27,27 @@ describe('Motion Editor passive Loop Clip marker interaction contract', () => {
     expect(canvas).not.toContain('hoveredLoopClipId');
     expect(canvas).not.toContain('focusedLoopClipId');
   });
+
+  it('keeps Group lifecycle, Action navigation, and deferred edit operations unreachable from Motion Editor input', () => {
+    for (const forbidden of [
+      'repeatDurationMarkers',
+      'syncState',
+      'provenanceState',
+      'linkedRotoLoopClipIds',
+      'activeLinkedLoopClipId',
+      'navigateLinkedGroup',
+      'Update Action from Group Frame',
+      'Relink',
+      'Push Right',
+      'Push Left',
+      'Key Group',
+      'Scissor',
+      'delete-group-frame',
+      'regenerate-group',
+    ]) expect(interaction).not.toContain(forbidden);
+
+    expect(interaction).toContain('const mode = this.fxDragModeFromX(e.clientX, fxTrack);');
+    expect(interaction).toContain('playbackEngine.seekToFrame(frame);');
+    expect(interaction).toContain('sequenceStore.reorderFxSequences(fromIndex, toIndex);');
+  });
 });
