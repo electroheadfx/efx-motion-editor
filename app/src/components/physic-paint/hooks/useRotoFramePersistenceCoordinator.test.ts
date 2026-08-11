@@ -145,7 +145,7 @@ function mergeCowFrame(ranges: readonly CowRange[], appFrame: number): readonly 
     .sort((left, right) => left.start - right.start);
   const merged: CowRange[] = [];
   for (const range of normalized) {
-    const prior = merged.at(-1);
+    const prior = merged[merged.length - 1];
     if (prior && prior.endExclusive >= range.start) {
       merged[merged.length - 1] = Object.freeze({
         start: prior.start,
