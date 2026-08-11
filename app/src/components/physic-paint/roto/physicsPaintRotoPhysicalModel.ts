@@ -253,6 +253,16 @@ export interface PhysicPaintRotoPhysicalState {
  * Derived loop state (effective duration, next-clip boundary, repeat-instance
  * mappings, resolved destination frames) is NEVER persisted (D-30).
  */
+export interface PhysicPaintRotoGroupVisibleRange {
+  readonly start: number;
+  readonly endExclusive: number;
+}
+
+export interface PhysicPaintRotoGroupFrameOverride {
+  readonly appFrame: number;
+  readonly keyId: string;
+}
+
 export interface PhysicPaintRotoLoopClip {
   readonly loopId: string;
   readonly placementStart: number;
@@ -262,6 +272,13 @@ export interface PhysicPaintRotoLoopClip {
   readonly scriptId?: string;
   readonly motion?: PhysicPaintRotoScriptMotionSettings;
   readonly overrideColor?: string | null;
+  /** Durable Group lifecycle facts. All six members are absent or present together. */
+  readonly syncState?: 'synchronized' | 'modified';
+  readonly provenanceState?: 'attached' | 'detached';
+  readonly phaseOrigin?: number;
+  readonly originalEndExclusive?: number;
+  readonly visibleRanges?: readonly PhysicPaintRotoGroupVisibleRange[];
+  readonly frameOverrides?: readonly PhysicPaintRotoGroupFrameOverride[];
 }
 
 /** Immutable empty Loop Clip collection shared by every absent-means-empty read. */
@@ -357,7 +374,32 @@ const PHYSIC_PAINT_ROTO_GENERATED_CELL_KEYS = new Set(['kind', 'appFrame', 'left
 const PHYSIC_PAINT_ROTO_INTERPOLATION_STATE_KEYS = new Set(['enabled', 'mode']);
 const PHYSIC_PAINT_ROTO_SCRIPT_MOTION_KEYS = new Set(['deformation', 'position']);
 const PHYSIC_PAINT_ROTO_PHYSICAL_STATE_KEYS = new Set(['realKeyRecords', 'interpolation', 'scriptMotion']);
-const PHYSIC_PAINT_ROTO_LOOP_CLIP_KEYS = new Set(['loopId', 'placementStart', 'sourceKeyIds', 'repeat', 'mode', 'scriptId', 'motion', 'overrideColor']);
+const PHYSIC_PAINT_ROTO_LOOP_CLIP_KEYS = new Set([
+  'loopId',
+  'placementStart',
+  'sourceKeyIds',
+  'repeat',
+  'mode',
+  'scriptId',
+  'motion',
+  'overrideColor',
+  'syncState',
+  'provenanceState',
+  'phaseOrigin',
+  'originalEndExclusive',
+  'visibleRanges',
+  'frameOverrides',
+]);
+const PHYSIC_PAINT_ROTO_GROUP_VISIBLE_RANGE_KEYS = new Set(['start', 'endExclusive']);
+const PHYSIC_PAINT_ROTO_GROUP_FRAME_OVERRIDE_KEYS = new Set(['appFrame', 'keyId']);
+const PHYSIC_PAINT_ROTO_GROUP_LIFECYCLE_KEYS = [
+  'syncState',
+  'provenanceState',
+  'phaseOrigin',
+  'originalEndExclusive',
+  'visibleRanges',
+  'frameOverrides',
+] as const;
 const PHYSIC_PAINT_ROTO_PHYSICAL_DOCUMENT_KEYS = new Set([
   'capacity',
   'realKeyRecords',
@@ -504,6 +546,45 @@ export function isPhysicPaintRotoScriptMotionSettings(value: unknown): value is 
   return isPercentInteger(value.deformation) && isPercentInteger(value.position);
 }
 
+function hasValidPhysicPaintRotoGroupLifecycle(value: Record<string, unknown>): boolean {
+  const lifecycleCount = PHYSIC_PAINT_ROTO_GROUP_LIFECYCLE_KEYS.reduce(
+    (count, key) => count + (value[key] !== undefined ? 1 : 0),
+    0,
+  );
+  if (lifecycleCount === 0) return true;
+  if (lifecycleCount !== PHYSIC_PAINT_ROTO_GROUP_LIFECYCLE_KEYS.length) return false;
+  if (value.syncState !== 'synchronized' && value.syncState !== 'modified') return false;
+  if (value.provenanceState !== 'attached' && value.provenanceState !== 'detached') return false;
+  if (!isNonNegativeInteger(value.phaseOrigin) || !isNonNegativeInteger(value.originalEndExclusive)) return false;
+  const phaseOrigin = value.phaseOrigin as number;
+  const originalEndExclusive = value.originalEndExclusive as number;
+  if (originalEndExclusive <= phaseOrigin) return false;
+  if (!Array.isArray(value.visibleRanges) || value.visibleRanges.length === 0) return false;
+  let previousEndExclusive = -1;
+  for (const range of value.visibleRanges) {
+    if (!isRecord(range) || !hasOnlyAllowedKeys(range, PHYSIC_PAINT_ROTO_GROUP_VISIBLE_RANGE_KEYS)) return false;
+    if (!isNonNegativeInteger(range.start) || !isNonNegativeInteger(range.endExclusive)) return false;
+    if (range.start < phaseOrigin || range.endExclusive > originalEndExclusive || range.endExclusive <= range.start) return false;
+    if (range.start <= previousEndExclusive) return false;
+    previousEndExclusive = range.endExclusive;
+  }
+  if (!Array.isArray(value.frameOverrides)) return false;
+  const overrideFrames = new Set<number>();
+  const overrideKeyIds = new Set<string>();
+  for (const override of value.frameOverrides) {
+    if (!isRecord(override) || !hasOnlyAllowedKeys(override, PHYSIC_PAINT_ROTO_GROUP_FRAME_OVERRIDE_KEYS)) return false;
+    if (!isNonNegativeInteger(override.appFrame)
+      || override.appFrame < phaseOrigin
+      || override.appFrame >= originalEndExclusive
+      || !isBoundedKeyId(override.keyId)
+      || overrideFrames.has(override.appFrame)
+      || overrideKeyIds.has(override.keyId)) return false;
+    overrideFrames.add(override.appFrame);
+    overrideKeyIds.add(override.keyId);
+  }
+  return true;
+}
+
 /**
  * Strict guard for {@link PhysicPaintRotoLoopClip}.
  *
@@ -530,11 +611,13 @@ export function isPhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintR
   if (value.mode !== 'progressive' && value.mode !== 'static') return false;
   // 43-06 provenance: all-or-nothing — any provenance key requires all three.
   const hasProvenance = value.scriptId !== undefined || value.motion !== undefined || value.overrideColor !== undefined;
-  if (!hasProvenance) return true;
-  if (!isBoundedKeyId(value.scriptId)) return false;
-  if (!isPhysicPaintRotoScriptMotionSettings(value.motion)) return false;
-  return value.overrideColor === null
-    || (typeof value.overrideColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.overrideColor));
+  if (hasProvenance) {
+    if (!isBoundedKeyId(value.scriptId)) return false;
+    if (!isPhysicPaintRotoScriptMotionSettings(value.motion)) return false;
+    if (value.overrideColor !== null
+      && !(typeof value.overrideColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.overrideColor))) return false;
+  }
+  return hasValidPhysicPaintRotoGroupLifecycle(value);
 }
 
 /**
@@ -568,6 +651,22 @@ export function parsePhysicPaintRotoLoopClips(value: unknown): readonly PhysicPa
             scriptId: entry.scriptId,
             motion: Object.freeze({ deformation: entry.motion!.deformation, position: entry.motion!.position }),
             overrideColor: entry.overrideColor ?? null,
+          }
+        : {}),
+      ...(entry.syncState !== undefined
+        ? {
+            syncState: entry.syncState,
+            provenanceState: entry.provenanceState!,
+            phaseOrigin: entry.phaseOrigin!,
+            originalEndExclusive: entry.originalEndExclusive!,
+            visibleRanges: Object.freeze(entry.visibleRanges!.map((range) => Object.freeze({
+              start: range.start,
+              endExclusive: range.endExclusive,
+            }))),
+            frameOverrides: Object.freeze(entry.frameOverrides!.map((override) => Object.freeze({
+              appFrame: override.appFrame,
+              keyId: override.keyId,
+            }))),
           }
         : {}),
     }) as PhysicPaintRotoLoopClip);
@@ -893,8 +992,64 @@ function encodeCanonicalLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[])
           encodeCanonicalString(clip.overrideColor ?? ''),
         ]
       : []),
+    ...(clip.syncState !== undefined
+      ? [
+          encodeCanonicalString(clip.syncState),
+          encodeCanonicalString(clip.provenanceState!),
+          encodeCanonicalNumber(clip.phaseOrigin!),
+          encodeCanonicalNumber(clip.originalEndExclusive!),
+          `ranges:${clip.visibleRanges!.length}:`,
+          ...clip.visibleRanges!.flatMap((range) => [
+            encodeCanonicalNumber(range.start),
+            encodeCanonicalNumber(range.endExclusive),
+          ]),
+          `overrides:${clip.frameOverrides!.length}:`,
+          ...clip.frameOverrides!.flatMap((override) => [
+            encodeCanonicalNumber(override.appFrame),
+            encodeCanonicalString(override.keyId),
+          ]),
+        ]
+      : []),
   ].join('')).join('');
   return `${ordered.length}:${encoded}`;
+}
+
+function validatePhysicPaintRotoGroupReferences(
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  capacity: number,
+): void {
+  const recordsById = new Map(records.map((record) => [record.keyId, record]));
+  for (const clip of loopClips) {
+    if (clip.syncState === undefined) continue;
+    if (clip.originalEndExclusive! > capacity) {
+      throw new Error(`PhysicPaintRotoPhysicalDocument: Group "${clip.loopId}" exceeds capacity.`);
+    }
+    for (const override of clip.frameOverrides!) {
+      const record = recordsById.get(override.keyId);
+      if (!record || record.appFrame !== override.appFrame) {
+        throw new Error(`PhysicPaintRotoPhysicalDocument: Group "${clip.loopId}" override reference mismatch.`);
+      }
+      if (clip.sourceKeyIds.includes(override.keyId)) {
+        throw new Error(`PhysicPaintRotoPhysicalDocument: Group "${clip.loopId}" override reuses source identity.`);
+      }
+    }
+  }
+
+  for (let leftIndex = 0; leftIndex < loopClips.length; leftIndex += 1) {
+    const left = loopClips[leftIndex];
+    const leftIds = new Set(left.sourceKeyIds);
+    for (let rightIndex = leftIndex + 1; rightIndex < loopClips.length; rightIndex += 1) {
+      const right = loopClips[rightIndex];
+      const overlaps = right.sourceKeyIds.some((keyId) => leftIds.has(keyId));
+      if (!overlaps) continue;
+      const identicalOrderedCycle = left.sourceKeyIds.length === right.sourceKeyIds.length
+        && left.sourceKeyIds.every((keyId, index) => right.sourceKeyIds[index] === keyId);
+      if (!identicalOrderedCycle) {
+        throw new Error('PhysicPaintRotoPhysicalDocument: ambiguous source sharing between Groups.');
+      }
+    }
+  }
 }
 
 /**
@@ -942,6 +1097,7 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
   const loopClips = value.loopClips === undefined
     ? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY
     : parsePhysicPaintRotoLoopClips(value.loopClips);
+  validatePhysicPaintRotoGroupReferences(loopClips, state.realKeyRecords, capacity);
   const incomingInterpolationBreakKeyIds = value.incomingInterpolationBreakKeyIds === undefined
     ? PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY
     : parsePhysicPaintRotoIncomingInterpolationBreakKeyIds(

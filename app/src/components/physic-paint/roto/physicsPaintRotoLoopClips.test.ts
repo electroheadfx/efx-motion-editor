@@ -445,7 +445,9 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
         visibleRanges: [{ start: 0, endExclusive: 25 }],
         frameOverrides: [{ appFrame: 7, keyId: 'override-7' }],
       });
-      expect(result.proposal.realKeyRecords.slice(0, 5).map((record) => record.payload.dataUrl)).toEqual(beforeSourceBytes);
+      expect(result.proposal.realKeyRecords
+        .filter((record) => SOURCE_KEY_IDS.includes(record.keyId))
+        .map((record) => record.payload.dataUrl)).toEqual(beforeSourceBytes);
       expect(JSON.stringify(result.proposal.loopClips[1])).toBe(beforeOtherGroup);
       expect(result.impact).toEqual({
         kind: 'paint-group-frame',
