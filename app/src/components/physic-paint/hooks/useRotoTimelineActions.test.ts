@@ -222,6 +222,7 @@ describe('useRotoTimelineActions unified Delete activation', () => {
     const harness = createHarness({
       records,
       loopClips: [lifecycleGroup()],
+      capacity: 30,
       getCurrentAppFrame,
       requestGroupDeleteChoice,
     });
@@ -247,6 +248,7 @@ describe('useRotoTimelineActions unified Delete activation', () => {
       records,
       loopClips: [lifecycleGroup({ visibleRanges: Object.freeze([Object.freeze({ start: 10, endExclusive: 11 })]) })],
       currentAppFrame: 12,
+      capacity: 30,
       requestGroupDeleteChoice,
     });
 

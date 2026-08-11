@@ -14,6 +14,7 @@ import type {
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+  PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPhysicalRevision,
   createPhysicPaintRotoKeyId,
 } from '../roto/physicsPaintRotoPhysicalModel';
@@ -23,7 +24,6 @@ import {
   createPhysicPaintRotoPasteKeyGroupIntent,
   createPhysicPaintRotoPasteKeyIntent,
   derivePhysicPaintRotoLoopRanges,
-  resolvePhysicPaintRotoLinkedFrameDeleteGuard,
   resolvePhysicPaintRotoLoopFrame,
   resolvePhysicPaintRotoPhysicalEdit,
   type PhysicPaintRotoFrameResolution,
@@ -35,6 +35,7 @@ import {
   type PhysicPaintRotoPhysicalEditTarget,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import type { RotoSessionCopiedGroupEntry } from '../roto/physicsPaintRotoSession';
+import { classifyPhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
 import { toEmptyKeyPayload } from './useRotoKeyUtilities';
 import {
   getPhysicsPaintRotoSourceCycleId,
@@ -144,6 +145,150 @@ export function mapRotoInsertProductReason(target: RotoInsertTarget): string | n
       return 'This frame is outside the physical timeline capacity.';
     case 'edit-in-flight':
       return 'A Roto physical edit is already in flight.';
+  }
+}
+
+export type RotoDeleteTarget =
+  | Readonly<{ kind: 'ordinary-key'; keyId: string }>
+  | Readonly<{ kind: 'ordinary-key-group'; keyIds: readonly string[] }>
+  | Readonly<{
+      kind: 'group-choice';
+      groupId: string;
+      appFrame: number;
+      mode: PhysicPaintRotoLoopClip['mode'];
+      phaseOrigin: number;
+      onlyOccurrence: boolean;
+    }>
+  | Readonly<{ kind: 'group-gap'; groupId: string; appFrame: number }>
+  | Readonly<{ kind: 'unresolved-group'; groupId: string; appFrame: number }>
+  | Readonly<{ kind: 'ambiguous-group'; appFrame: number }>
+  | Readonly<{ kind: 'generated'; appFrame: number }>
+  | Readonly<{ kind: 'no-target' }>
+  | Readonly<{ kind: 'edit-in-flight' }>
+  | Readonly<{ kind: 'unavailable' }>;
+
+export interface RotoDeleteTargetClassificationInput {
+  readonly launchReady: boolean;
+  readonly pendingOperationId: string | null;
+  readonly selectedKeyId: string | null;
+  readonly selectedKeyIds: readonly string[];
+  readonly currentAppFrame: number | null;
+  readonly capacity: number | null;
+  readonly records: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly interpolation: PhysicPaintRotoInterpolationState;
+  readonly physicalCells: readonly RotoPhysicalTimelineCell[];
+}
+
+/**
+ * One activation-time Delete authority shared by keyboard and visible actions.
+ * Group ownership is classified from the complete accepted records/Group facts;
+ * components only render the resulting choice and never infer ownership.
+ */
+export function classifyRotoDeleteTarget(
+  input: RotoDeleteTargetClassificationInput,
+): RotoDeleteTarget {
+  if (input.pendingOperationId !== null) return Object.freeze({ kind: 'edit-in-flight' });
+  if (!input.launchReady
+    || input.currentAppFrame === null
+    || !Number.isSafeInteger(input.currentAppFrame)
+    || input.currentAppFrame < 0
+    || input.capacity === null
+    || !Number.isSafeInteger(input.capacity)
+    || input.currentAppFrame >= input.capacity) {
+    return Object.freeze({ kind: 'unavailable' });
+  }
+
+  if (input.selectedKeyIds.length >= 2) {
+    const uniqueIds = new Set(input.selectedKeyIds);
+    const recordsById = new Map(input.records.map((record) => [record.keyId, record]));
+    if (uniqueIds.size === input.selectedKeyIds.length
+      && input.selectedKeyIds.every((keyId) => isBoundedKeyId(keyId) && recordsById.has(keyId))) {
+      return Object.freeze({
+        kind: 'ordinary-key-group',
+        keyIds: Object.freeze([...input.selectedKeyIds]),
+      });
+    }
+    return Object.freeze({ kind: 'no-target' });
+  }
+
+  const frameTarget = classifyPhysicPaintRotoGroupFrameTarget({
+    appFrame: input.currentAppFrame,
+    document: {
+      realKeyRecords: input.records,
+      interpolation: input.interpolation,
+      scriptMotion: PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
+      capacity: input.capacity,
+      background: null,
+      selectedKeyId: input.selectedKeyId,
+      cursorAppFrame: input.currentAppFrame,
+      revision: '',
+      loopClips: input.loopClips,
+      incomingInterpolationBreakKeyIds: [],
+    },
+  });
+  switch (frameTarget.kind) {
+    case 'source-occurrence':
+    case 'generated-occurrence':
+    case 'override': {
+      const group = input.loopClips.find((candidate) => candidate.loopId === frameTarget.groupId);
+      if (group?.phaseOrigin === undefined || group.visibleRanges === undefined) {
+        return Object.freeze({ kind: 'unresolved-group', groupId: frameTarget.groupId, appFrame: input.currentAppFrame });
+      }
+      const visibleCount = group.visibleRanges.reduce(
+        (count, range) => count + range.endExclusive - range.start,
+        0,
+      );
+      return Object.freeze({
+        kind: 'group-choice',
+        groupId: frameTarget.groupId,
+        appFrame: input.currentAppFrame,
+        mode: group.mode,
+        phaseOrigin: group.phaseOrigin,
+        onlyOccurrence: visibleCount === 1,
+      });
+    }
+    case 'group-gap':
+      return Object.freeze({ kind: 'group-gap', groupId: frameTarget.groupId, appFrame: input.currentAppFrame });
+    case 'unresolved-group':
+      return Object.freeze({ kind: 'unresolved-group', groupId: frameTarget.groupId, appFrame: input.currentAppFrame });
+    case 'ambiguous-group':
+      return Object.freeze({ kind: 'ambiguous-group', appFrame: input.currentAppFrame });
+    case 'ordinary-key':
+    case 'empty':
+      break;
+  }
+
+  if (isBoundedKeyId(input.selectedKeyId)
+    && input.records.filter((record) => record.keyId === input.selectedKeyId).length === 1) {
+    return Object.freeze({ kind: 'ordinary-key', keyId: input.selectedKeyId });
+  }
+  if (input.physicalCells[input.currentAppFrame]?.kind === 'generated') {
+    return Object.freeze({ kind: 'generated', appFrame: input.currentAppFrame });
+  }
+  return Object.freeze({ kind: 'no-target' });
+}
+
+export function mapRotoDeleteProductReason(target: RotoDeleteTarget): string | null {
+  switch (target.kind) {
+    case 'ordinary-key':
+    case 'ordinary-key-group':
+    case 'group-choice':
+      return null;
+    case 'group-gap':
+      return 'Delete is unavailable on an intentional Group gap.';
+    case 'unresolved-group':
+      return 'Delete is unavailable because this Group frame cannot be resolved.';
+    case 'ambiguous-group':
+      return 'Delete is unavailable because more than one Group owns this frame.';
+    case 'generated':
+      return 'Delete is unavailable on a generated render-only frame.';
+    case 'no-target':
+      return 'Select a real Roto key or Group frame to delete.';
+    case 'edit-in-flight':
+      return 'A Roto physical edit is already in flight.';
+    case 'unavailable':
+      return 'Select a Physics Paint Roto timeline before deleting.';
   }
 }
 
@@ -326,6 +471,8 @@ export interface RotoTimelineActionsInput {
   executePhysicalEdit?: (input: RotoPhysicalEditExecuteInput<PhysicPaintRotoPhysicalEditProposal>) => Promise<boolean>;
   /** Coordinator pending operation id Signal (Plan 36.14-04). */
   pendingOperationId?: ReadonlySignal<string | null>;
+  /** Studio-local request to render the exact Group Delete choice dialog. */
+  requestGroupDeleteChoice?: (target: Extract<RotoDeleteTarget, { kind: 'group-choice' }>) => void;
   /** Concise status/LOG publisher for resolver failures. */
   publishStatus?: (message: string | null) => void;
   /**
@@ -585,8 +732,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const insertTooltipDescription = computed(() => insertTarget.value.kind === 'genuinely-empty'
     ? 'Insert an empty key and start a new interpolation segment.'
     : 'Insert key before');
-  const canDeleteFrame = computed(() => computeDeleteAvailability(input).eligible);
-  const deleteDisabledReason = computed(() => computeDeleteAvailability(input).reason);
+  const deleteTarget = computed(() => classifyRotoDeleteTarget(readRotoDeleteTargetInput(input)));
+  const canDeleteFrame = computed(() => mapRotoDeleteProductReason(deleteTarget.value) === null);
+  const deleteDisabledReason = computed(() => mapRotoDeleteProductReason(deleteTarget.value));
   const canDragKey = computed(() => computeDragAvailability(input).eligible);
   const dragDisabledReason = computed(() => computeDragAvailability(input).reason);
   const canApplyForceSpacing = computed(() => computeForceSpacingAvailability(input).eligible);
@@ -694,55 +842,41 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   }, [runPhysicalAction, input]);
 
   const deleteRotoFrame = useCallback((): Promise<boolean> => {
-    // D-13 shared transaction: the Backspace/Delete keyboard route and the
-    // toolbar Delete icon already call this one bundle action, so every
-    // delete route shares the group branch with zero routing changes. The
-    // resolver is the membership authority ('unknown-operation-identity'
-    // rejects absent/unknown members fail-closed), so requiredKeyId is null.
-    const selectedKeyIds = input.getSelectedKeyIds?.() ?? [];
-    if (selectedKeyIds.length >= 2) {
+    // Keyboard Delete/Backspace and the visible Delete icon converge here. Read
+    // and classify one current accepted snapshot per activation; never trust a
+    // previously rendered availability result for ownership.
+    const target = classifyRotoDeleteTarget(readRotoDeleteTargetInput(input));
+    const rejection = mapRotoDeleteProductReason(target);
+    if (rejection !== null) {
+      input.publishStatus?.(rejection);
+      return Promise.resolve(false);
+    }
+    if (target.kind === 'group-choice') {
+      if (!input.requestGroupDeleteChoice) {
+        input.publishStatus?.('Group deletion choices are unavailable.');
+        return Promise.resolve(false);
+      }
+      input.requestGroupDeleteChoice(target);
+      // Opening the dialog is not an accepted physical edit.
+      return Promise.resolve(false);
+    }
+    if (target.kind === 'ordinary-key-group') {
       return runPhysicalAction({
-        intent: { kind: 'delete-key-group', keyIds: Object.freeze([...selectedKeyIds]) },
+        intent: { kind: 'delete-key-group', keyIds: target.keyIds },
         operationKind: 'delete-key-group',
         requiredKeyId: null,
         successMessage: GROUP_DELETE_SUCCESS_MESSAGE,
       });
     }
-    // Fail closed (CR-02): the keyboard route can reach this action with no
-    // valid selection; never throw — publish a status and resolve false.
-    const selectedKeyId = input.getSelectedKeyId?.() ?? null;
-    if (!isBoundedKeyId(selectedKeyId)) {
-      // D-13: Delete-key at a linked repetition frame is rejected with the
-      // locked verbatim copy — no local real key exists there; it never
-      // touches the modulo-resolved source key and never unlinks.
-      const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
-      const currentAppFrame = input.getCurrentAppFrame?.() ?? null;
-      if (loopClips.length > 0 && currentAppFrame !== null && input.getRotoKeyRecords && input.getRotoInterpolationState && input.getCapacity) {
-        const records = input.getRotoKeyRecords();
-        const interpolation = input.getRotoInterpolationState();
-        const capacity = input.getCapacity();
-        const context = derivePhysicPaintRotoLoopRanges({
-          identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
-          loopClips,
-          parentEndExclusive: capacity,
-          capacity,
-          interpolationEnabled: interpolation.enabled,
-        });
-        const rejection = resolvePhysicPaintRotoLinkedFrameDeleteGuard(context, currentAppFrame);
-        if (rejection) {
-          input.publishStatus?.(rejection.text);
-          return Promise.resolve(false);
-        }
-      }
-      input.publishStatus?.('Select a real Roto key to delete.');
-      return Promise.resolve(false);
+    if (target.kind === 'ordinary-key') {
+      return runPhysicalAction({
+        intent: { kind: 'delete-key', selectedKeyId: target.keyId },
+        operationKind: 'delete-key',
+        requiredKeyId: target.keyId,
+        successMessage: DELETE_SUCCESS_MESSAGE,
+      });
     }
-    return runPhysicalAction({
-      intent: { kind: 'delete-key', selectedKeyId },
-      operationKind: 'delete-key',
-      requiredKeyId: selectedKeyId,
-      successMessage: DELETE_SUCCESS_MESSAGE,
-    });
+    return Promise.resolve(false);
   }, [runPhysicalAction, input]);
 
   const duplicateKey = useCallback((sourceKeyId: string): Promise<boolean> => {
@@ -1269,23 +1403,19 @@ function mapRotoInsertFailureTarget(
   return classifyRotoInsertTarget(readRotoInsertTargetInput(input));
 }
 
-function computeDeleteAvailability(input: RotoTimelineActionsInput): ActionAvailability {
-  if (!input.getLaunchContext || !input.getLaunchContext()) {
-    return { eligible: false, reason: 'Select a real Roto key before editing the timeline.' };
-  }
-  if (input.pendingOperationId && input.pendingOperationId.value !== null) {
-    return { eligible: false, reason: 'A Roto physical edit is already in flight.' };
-  }
-  const selectedKeyId = input.getSelectedKeyId?.() ?? null;
-  if (!selectedKeyId) {
-    return { eligible: false, reason: 'Select a real Roto key to delete.' };
-  }
-  const records = input.getRotoKeyRecords?.() ?? [];
-  const selectedRecord = records.find((record) => record.keyId === selectedKeyId);
-  if (!selectedRecord) {
-    return { eligible: false, reason: 'The selected Roto key is no longer available.' };
-  }
-  return { eligible: true, reason: null };
+function readRotoDeleteTargetInput(input: RotoTimelineActionsInput): RotoDeleteTargetClassificationInput {
+  return {
+    launchReady: (input.getLaunchContext?.() ?? null) !== null,
+    pendingOperationId: input.pendingOperationId?.value ?? null,
+    selectedKeyId: input.getSelectedKeyId?.() ?? null,
+    selectedKeyIds: input.getSelectedKeyIds?.() ?? [],
+    currentAppFrame: input.getCurrentAppFrame?.() ?? null,
+    capacity: input.getCapacity?.() ?? null,
+    records: input.getRotoKeyRecords?.() ?? [],
+    loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+    interpolation: input.getRotoInterpolationState?.() ?? { enabled: false, mode: 'duplicate' },
+    physicalCells: input.getPhysicalCells?.() ?? [],
+  };
 }
 
 function computeDragAvailability(input: RotoTimelineActionsInput): ActionAvailability {
