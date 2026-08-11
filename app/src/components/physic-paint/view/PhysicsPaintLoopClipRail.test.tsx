@@ -164,6 +164,8 @@ function createLibrary(): RotoScriptLibraryController {
     busy: sig(false),
     rename: sig(null),
     deleteConfirmation: sig(null),
+    deleteError: sig(null),
+    actionMutationDisabledReason: sig(null),
     selectedId: sig(null),
     status: sig(null),
     skippedInvalidCount: sig(0),

@@ -146,22 +146,24 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(scriptsPanel).toContain('<Paintbrush size={16} />');
     expect(scriptsPanel).toContain('<Play size={16} />');
     expect(scriptsPanel).toContain('aria-label={`Edit Loop Clip — ${selectedLoopClip.displayName}`}');
-    expect(scriptsPanel).toContain("label=\"Play Script\" title={`Play Script — ${playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)'}`}");
+    expect(scriptsPanel).toContain("label=\"Play Script\" title={`Play Script — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)')}`}");
     expect(scriptsPanel).toMatch(/label="Play Script"[^>]*onClick=/);
     expect(scriptsPanel).not.toContain('label="Rename Script"');
     expect(scriptsPanel).toContain('role="option"');
     expect(scriptsPanel).toContain('tabIndex={0}');
-    expect(scriptsPanel).toContain('onClick={() => onActivateRow(row.id)}');
+    expect(scriptsPanel).toContain("aria-disabled={confirmationBusy ? 'true' : undefined}");
+    expect(scriptsPanel).toContain('onClick={() => {\n              if (confirmationBusy) return;\n              onActivateRow(row.id);');
     expect(scriptsPanel).toContain("event.key !== 'Enter' && event.key !== ' '");
     expect(scriptsPanel).toContain('event.preventDefault()');
-    expect(scriptsPanel).toContain('onActivateRow(row.id)');
+    expect(scriptsPanel).toContain('if (confirmationBusy) return;\n              onActivateRow(row.id);');
     expect(scriptsPanel).toContain('onClick={stopRowPointerActivation}');
     expect(scriptsPanel).toContain('event.stopPropagation()');
   });
 
-  it('keeps approved durable-load destination guard labels in the narrow Scripts subscriber', () => {
+  it('keeps approved durable-load destination guards in the narrow Scripts subscriber', () => {
+    expect(scriptsPanel).toContain('const actionMutationDisabledReason = library.actionMutationDisabledReason.value;');
+    expect(scriptsPanel).toContain('const loadAndApplyDisabledReason = actionMutationDisabledReason');
     expect(scriptsPanel).toContain("? 'Select a project script first.'");
-    expect(scriptsPanel).toContain("? 'Finish the current script library operation.'");
     expect(scriptsPanel).toContain('rotoScript.availability.value.replacementApplyDisabledReason');
     expect(studio).not.toContain('const scriptLoadAndApplyDisabledReason =');
   });

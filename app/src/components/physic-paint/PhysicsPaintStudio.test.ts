@@ -430,7 +430,9 @@ describe('Physics Paint navigation render localization', () => {
 
   it('derives frame-sensitive Load and Apply availability inside the Scripts subscriber', () => {
     expect(scriptsPanel).not.toContain('loadAndApplyDisabledReason: string | null');
-    expect(scriptsPanel).toContain('const loadAndApplyDisabledReason = !library.selected.value');
+    expect(scriptsPanel).toContain('const actionMutationDisabledReason = library.actionMutationDisabledReason.value;');
+    expect(scriptsPanel).toContain('const loadAndApplyDisabledReason = actionMutationDisabledReason');
+    expect(scriptsPanel).toContain('?? (!library.selected.value');
     expect(studio).not.toContain('const scriptLoadAndApplyDisabledReason =');
   });
 
