@@ -99,9 +99,11 @@ export interface RotoScriptLibraryController {
   skippedInvalidCount: Signal<number>;
   rename: Signal<{ id: string; draft: string; error: string | null } | null>;
   deleteConfirmation: Signal<RotoScriptDeleteConfirmation | null>;
+  deleteError: Signal<string | null>;
   referencedDeleteImpact: Signal<PhysicPaintRotoActionGroupLifecycleImpact | null>;
   transactionPhase: Signal<'idle' | 'preparing' | 'committed' | 'recovery-required'>;
   recoveryReady: Signal<boolean>;
+  actionMutationDisabledReason: ReadonlySignal<string | null>;
   availability: ReadonlySignal<RotoScriptLibraryAvailability>;
   updateProjectContext: (context: PhysicPaintLaunchContext) => Promise<void>;
   enterScripts: () => Promise<void>;
@@ -215,6 +217,17 @@ export async function prepareReferencedActionDeletion(
   return Object.freeze({ ok: true, request, impact: proposed.impact, before: currentDocument, committed });
 }
 
+function mapReferencedActionDeleteError(
+  code: 'unavailable' | 'lease-unavailable' | 'stale-authority' | 'invalid-candidate' | 'prepare-failed' | 'commit-failed',
+): string {
+  if (code === 'lease-unavailable') return 'Another Group operation is in progress. Nothing changed. Try again when it finishes.';
+  if (code === 'stale-authority' || code === 'invalid-candidate') {
+    return 'Action or Group references changed. Nothing changed. Review the affected Groups and try again.';
+  }
+  if (code === 'commit-failed') return 'Recovery is required before another Action change. Accepted Actions and Groups remain unchanged.';
+  return 'Couldn’t delete this Action. Nothing changed. Review the affected Groups and try again.';
+}
+
 export function buildRotoScriptDeleteReferenceImpact(
   document: PhysicPaintRotoPhysicalDocument | null,
   row: RotoScriptLibraryRow,
@@ -253,6 +266,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   const skippedInvalidCount = signal(0);
   const rename = signal<{ id: string; draft: string; error: string | null } | null>(null);
   const deleteConfirmation = signal<RotoScriptDeleteConfirmation | null>(null);
+  const deleteError = signal<string | null>(null);
   const referencedDeleteImpact = signal<PhysicPaintRotoActionGroupLifecycleImpact | null>(null);
   const transactionPhase = signal<'idle' | 'preparing' | 'committed' | 'recovery-required'>('idle');
   const recoveryReady = signal(!ports.referencedActionDeletion?.recoverBeforeAvailability);
@@ -264,12 +278,21 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   let lastAutoHydratedKey: string | null = null;
   let lastRecoveredContextKey: string | null = null;
   const selected = computed(() => rows.value.find((row) => row.id === selectedId.value) ?? null);
+  const actionMutationDisabledReason = computed<string | null>(() => {
+    if (!recoveryReady.value || transactionPhase.value === 'recovery-required') {
+      return 'Recover the pending Action change before starting another operation.';
+    }
+    if (busy.value || transactionPhase.value === 'preparing' || transactionPhase.value === 'committed') {
+      return 'Finish the current Action operation.';
+    }
+    return null;
+  });
   const availability = computed<RotoScriptLibraryAvailability>(() => ({
-    canSave: projectSaved.value && recoveryReady.value && !busy.value,
-    saveDisabledReason: !projectSaved.value ? 'Save the project first.' : !recoveryReady.value ? 'Recover the pending Action transaction first.' : busy.value ? 'Finish the current script library operation.' : null,
-    canLoad: Boolean(selected.value) && recoveryReady.value && !busy.value,
-    canRename: Boolean(selected.value) && recoveryReady.value && !busy.value,
-    canDelete: Boolean(selected.value) && recoveryReady.value && !busy.value,
+    canSave: projectSaved.value && actionMutationDisabledReason.value === null,
+    saveDisabledReason: !projectSaved.value ? 'Save the project first.' : actionMutationDisabledReason.value,
+    canLoad: Boolean(selected.value) && actionMutationDisabledReason.value === null,
+    canRename: Boolean(selected.value) && actionMutationDisabledReason.value === null,
+    canDelete: Boolean(selected.value) && actionMutationDisabledReason.value === null,
   }));
 
   function contextIdentity(context: PhysicPaintLaunchContext | null): string { return context?.project ? `${context.project.contextId}:${context.layerId}` : 'closed'; }
@@ -317,6 +340,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     selectedId.value = null;
     rename.value = null;
     deleteConfirmation.value = null;
+    deleteError.value = null;
     lastAutoHydratedKey = null;
     lastRecoveredContextKey = null;
     recoveryReady.value = !ports.referencedActionDeletion?.recoverBeforeAvailability;
@@ -338,6 +362,8 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     lastRecoveredContextKey = key;
     recoveryReady.value = true;
     transactionPhase.value = 'idle';
+    deleteError.value = null;
+    deleteConfirmation.value = null;
     return true;
   }
   async function refreshWithContext(context: PhysicPaintLaunchContext | null): Promise<void> {
@@ -348,7 +374,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     }
     const saved = Boolean(context?.project?.saved);
     projectSaved.value = saved;
-    if (!projectSaved.value) { operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; skippedInvalidCount.value = 0; rename.value = null; deleteConfirmation.value = null; status.value = null; return; }
+    if (!projectSaved.value) { operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; skippedInvalidCount.value = 0; rename.value = null; deleteConfirmation.value = null; deleteError.value = null; status.value = null; return; }
     if (!context) return;
     if (ports.referencedActionDeletion?.recoverBeforeAvailability && !await ensureRecovery(context)) return;
     const result = await execute({ kind: 'scan', operationId: operationId('scan') });
@@ -364,7 +390,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       applyContextReset(nextContextKey);
     }
     projectSaved.value = Boolean(context?.project?.saved);
-    if (!projectSaved.value) { operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; skippedInvalidCount.value = 0; rename.value = null; deleteConfirmation.value = null; status.value = null; return; }
+    if (!projectSaved.value) { operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; skippedInvalidCount.value = 0; rename.value = null; deleteConfirmation.value = null; deleteError.value = null; status.value = null; return; }
     if (lastAutoHydratedKey === contextKey) return;
     if (ports.referencedActionDeletion?.recoverBeforeAvailability && !await ensureRecovery(context)) return;
     lastAutoHydratedKey = contextKey;
@@ -481,13 +507,13 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     const currentImpact = buildRotoScriptDeleteReferenceImpact(document, row);
     const referenced = row.referenceImpact !== null;
     if (referenced && (!currentImpact || currentImpact.physicalRevision !== row.referenceImpact?.physicalRevision)) {
-      status.value = 'Action references changed. Review the updated Groups and try again.';
-      ports.log(status.value, true);
+      deleteError.value = 'Action or Group references changed. Nothing changed. Review the affected Groups and try again.';
+      ports.log(deleteError.value, true);
       return false;
     }
     if (!referenced && currentImpact) {
-      status.value = 'Action references changed. Review the affected Groups before deleting.';
-      ports.log(status.value, true);
+      deleteError.value = 'Action references changed. Nothing changed. Review the affected Groups before deleting.';
+      ports.log(deleteError.value, true);
       deleteConfirmation.value = Object.freeze({ ...row, referenceImpact: currentImpact });
       return false;
     }
@@ -507,6 +533,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
         } else {
           transactionPhase.value = 'idle';
         }
+        deleteError.value = mapReferencedActionDeleteError(prepared.code);
         status.value = prepared.error;
         ports.log(prepared.error, true);
         return false;
@@ -517,6 +544,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       if (!settled.ok) {
         transactionPorts.transferLeaseToRecovery?.(prepared.request.leaseToken);
         transactionPhase.value = 'recovery-required';
+        deleteError.value = 'Recovery is required before another Action change. Accepted Actions and Groups remain unchanged.';
         status.value = settled.error ?? 'Committed Action settlement requires recovery.';
         ports.log(status.value, true);
         return false;
@@ -533,15 +561,17 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       if (acknowledged && acknowledged.state !== 'acknowledged') {
         transactionPorts.transferLeaseToRecovery?.(prepared.request.leaseToken);
         transactionPhase.value = 'recovery-required';
-      } else {
-        transactionPorts.releaseLease(prepared.request.leaseToken);
-        transactionPhase.value = 'idle';
+        deleteError.value = 'Recovery is required before another Action change. Accepted Actions and Groups remain unchanged.';
+        return false;
       }
+      transactionPorts.releaseLease(prepared.request.leaseToken);
+      transactionPhase.value = 'idle';
       const scanRequest = { kind: 'scan' as const, operationId: operationId('settled-scan') };
       const scan = await ports.request(scanRequest);
       if (!disposed && scan.ok && scan.operationId === scanRequest.operationId && scan.kind === 'scan') {
         publishResult(scan, undefined, true);
       }
+      deleteError.value = null;
       deleteConfirmation.value = null;
       status.value = `Deleted ${row.name}`;
       return true;
@@ -550,18 +580,23 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     }
   }
   return {
-    rows, selectedId, selected, busy, status, skippedInvalidCount, rename, deleteConfirmation,
-    referencedDeleteImpact, transactionPhase, recoveryReady, availability,
+    rows, selectedId, selected, busy, status, skippedInvalidCount, rename, deleteConfirmation, deleteError,
+    referencedDeleteImpact, transactionPhase, recoveryReady, actionMutationDisabledReason, availability,
     updateProjectContext, enterScripts: refresh, refresh, saveActiveFrame, activateAndLoad, loadSnapshot, beginRename, updateRenameDraft, commitRename,
     cancelRename: () => { rename.value = null; }, requestDelete: () => {
       const row = selected.peek();
-      if (!row) return;
+      if (!row || actionMutationDisabledReason.peek()) return;
+      deleteError.value = null;
       const context = ports.getLaunchContext();
       const document = context ? ports.referencedActionDeletion?.getPhysicalDocument(context.layerId) ?? null : null;
       deleteConfirmation.value = Object.freeze({ ...row, referenceImpact: buildRotoScriptDeleteReferenceImpact(document, row) });
     }, confirmDelete,
-    cancelDelete: () => { deleteConfirmation.value = null; }, select: (id) => { if (rows.peek().some((row) => row.id === id)) selectedId.value = id; },
-    dispose: () => { disposed = true; contextGeneration += 1; operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; rename.value = null; deleteConfirmation.value = null; lastAutoHydratedKey = null; },
+    cancelDelete: () => {
+      if (actionMutationDisabledReason.peek()) return;
+      deleteError.value = null;
+      deleteConfirmation.value = null;
+    }, select: (id) => { if (rows.peek().some((row) => row.id === id)) selectedId.value = id; },
+    dispose: () => { disposed = true; contextGeneration += 1; operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; rename.value = null; deleteConfirmation.value = null; deleteError.value = null; lastAutoHydratedKey = null; },
   };
 }
 

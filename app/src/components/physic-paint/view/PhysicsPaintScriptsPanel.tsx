@@ -41,19 +41,26 @@ export function PhysicsPaintScriptsPanel({
   onRefresh,
 }: PhysicsPaintScriptsPanelProps) {
   const rows = library.rows.value;
+  const selectedActionId = library.selectedId.value;
   const availability = library.availability.value;
-  const loadAndApplyDisabledReason = !library.selected.value
-    ? 'Select a project script first.'
-    : library.busy.value
-      ? 'Finish the current script library operation.'
-      : rotoScript.availability.value.replacementApplyDisabledReason;
+  const actionMutationDisabledReason = library.actionMutationDisabledReason.value;
+  const confirmationBusy = actionMutationDisabledReason !== null;
+  const loadAndApplyDisabledReason = actionMutationDisabledReason
+    ?? (!library.selected.value
+      ? 'Select a project script first.'
+      : rotoScript.availability.value.replacementApplyDisabledReason);
+  const saveDisabledReason = actionMutationDisabledReason ?? availability.saveDisabledReason;
+  const playScriptDisabledReason = actionMutationDisabledReason ?? playScript.disabledReason.value;
   const rename = library.rename.value;
   const confirmation = library.deleteConfirmation.value;
+  const deleteError = library.deleteError.value;
   const referenceImpact = confirmation?.referenceImpact ?? null;
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
   const confirmationRef = useRef<HTMLDivElement>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
-  const previousConfirmation = useRef(false);
+  const previousConfirmation = useRef<typeof confirmation>(null);
   const saveReasonId = useId();
   const loadAndApplyReasonId = useId();
   const playReasonId = useId();
@@ -63,17 +70,36 @@ export function PhysicsPaintScriptsPanel({
   const copyScriptTooltip = useStyledTooltip();
   const applyScriptTooltip = useStyledTooltip();
   const clearScriptBufferTooltip = useStyledTooltip();
-  const canCopyRotoScript = rotoScript.availability.value.canCopy;
-  const canApplyRotoScript = rotoScript.availability.value.canApply;
-  const copyRotoScriptDisabledReason = canCopyRotoScript ? null : rotoScript.availability.value.copyDisabledReason;
-  const applyRotoScriptDisabledReason = canApplyRotoScript ? null : rotoScript.availability.value.applyDisabledReason;
-  const canClearScriptBuffer = rotoScript.availability.value.canDiscard;
-  const clearScriptBufferDisabledReason = canClearScriptBuffer ? null : rotoScript.availability.value.discardDisabledReason;
+  const canCopyRotoScript = actionMutationDisabledReason === null && rotoScript.availability.value.canCopy;
+  const canApplyRotoScript = actionMutationDisabledReason === null && rotoScript.availability.value.canApply;
+  const copyRotoScriptDisabledReason = actionMutationDisabledReason ?? (canCopyRotoScript ? null : rotoScript.availability.value.copyDisabledReason);
+  const applyRotoScriptDisabledReason = actionMutationDisabledReason ?? (canApplyRotoScript ? null : rotoScript.availability.value.applyDisabledReason);
+  const canClearScriptBuffer = actionMutationDisabledReason === null && rotoScript.availability.value.canDiscard;
+  const clearScriptBufferDisabledReason = actionMutationDisabledReason ?? (canClearScriptBuffer ? null : rotoScript.availability.value.discardDisabledReason);
   useEffect(() => {
-    if (confirmation) cancelDeleteRef.current?.focus();
-    else if (previousConfirmation.current) deleteButtonRef.current?.focus();
-    previousConfirmation.current = Boolean(confirmation);
-  }, [confirmation]);
+    const previous = previousConfirmation.current;
+    previousConfirmation.current = confirmation;
+    let focusFrame: number | null = null;
+    if (confirmation && !previous) {
+      focusFrame = requestAnimationFrame(() => cancelDeleteRef.current?.focus());
+    } else if (!confirmation && previous) {
+      focusFrame = requestAnimationFrame(() => {
+        if (rows.some((row) => row.id === previous.id)) {
+          deleteButtonRef.current?.focus();
+          return;
+        }
+        const selectedRow = selectedActionId
+          ? listRef.current?.querySelector<HTMLElement>(`[data-action-id="${CSS.escape(selectedActionId)}"]`)
+          : null;
+        const nearestRow = selectedRow ?? listRef.current?.querySelector<HTMLElement>('[data-action-id]');
+        const toolbarControl = toolbarRef.current?.querySelector<HTMLElement>('button:not(:disabled), [tabindex="0"]');
+        (nearestRow ?? toolbarControl)?.focus();
+      });
+    }
+    return () => {
+      if (focusFrame !== null) cancelAnimationFrame(focusFrame);
+    };
+  }, [confirmation, rows, selectedActionId]);
   const stopRowPointerActivation = (event: { stopPropagation: () => void }) => event.stopPropagation();
   const stopRowKeyboardActivation = (event: { key: string; stopPropagation: () => void }) => {
     if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
@@ -118,12 +144,12 @@ export function PhysicsPaintScriptsPanel({
 
   return (
     <div class="physics-paint-scripts-panel" role="tabpanel" aria-label="Project Roto scripts">
-      <div class="physics-paint-scripts-toolbar" role="toolbar" aria-label="Roto script library actions">
-        <IconButton label="Save Script" title={`Save Script — ${availability.saveDisabledReason ?? 'Save the active real Roto frame'}`} disabled={!availability.canSave} disabledReason={availability.saveDisabledReason ?? undefined} descriptionId={saveReasonId} onClick={onSave}><Save size={16} /></IconButton>
+      <div ref={toolbarRef} class="physics-paint-scripts-toolbar" role="toolbar" aria-label="Roto script library actions">
+        <IconButton label="Save Script" title={`Save Script — ${saveDisabledReason ?? 'Save the active real Roto frame'}`} disabled={saveDisabledReason !== null || !availability.canSave} disabledReason={saveDisabledReason ?? undefined} descriptionId={saveReasonId} onClick={onSave}><Save size={16} /></IconButton>
         <IconButton label="Load and Apply Script" title={`Load and Apply Script — ${loadAndApplyDisabledReason ?? 'Reload the selected preset and apply it to this Roto frame'}`} disabled={loadAndApplyDisabledReason !== null} disabledReason={loadAndApplyDisabledReason ?? undefined} descriptionId={loadAndApplyReasonId} onClick={onLoadAndApply}><Paintbrush size={16} /></IconButton>
-        <IconButton buttonRef={playButtonRef} label="Play Script" title={`Play Script — ${playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)'}`} disabled={playScript.disabledReason.value !== null} disabledReason={playScript.disabledReason.value ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
-        <IconButton buttonRef={deleteButtonRef} label="Delete Script" title="Delete Script — Remove the selected project preset" disabled={!availability.canDelete} onClick={library.requestDelete}><Trash2 size={16} /></IconButton>
-        <IconButton label="Refresh Scripts" title="Refresh Scripts — Scan the project scripts folder" disabled={library.busy.value} onClick={onRefresh}><RefreshCw size={16} /></IconButton>
+        <IconButton buttonRef={playButtonRef} label="Play Script" title={`Play Script — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Generate real Roto keys (progressive or static/hold)')}`} disabled={playScriptDisabledReason !== null} disabledReason={playScriptDisabledReason ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
+        <IconButton buttonRef={deleteButtonRef} label="Delete Script" title={`Delete Script — ${actionMutationDisabledReason ?? 'Remove the selected project preset'}`} disabled={actionMutationDisabledReason !== null || !availability.canDelete} disabledReason={actionMutationDisabledReason ?? undefined} onClick={library.requestDelete}><Trash2 size={16} /></IconButton>
+        <IconButton label="Refresh Scripts" title={`Refresh Scripts — ${actionMutationDisabledReason ?? 'Scan the project scripts folder'}`} disabled={actionMutationDisabledReason !== null} disabledReason={actionMutationDisabledReason ?? undefined} onClick={onRefresh}><RefreshCw size={16} /></IconButton>
         <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyScriptTooltip.onPointerEnter} onPointerLeave={copyScriptTooltip.onPointerLeave}>
           <button
             type="button"
@@ -209,19 +235,25 @@ export function PhysicsPaintScriptsPanel({
           </PhysicsPaintStyledTooltip>
         </span>
       </div>
-      <div class="physics-paint-scripts-list" role="listbox" aria-label="Saved Roto scripts">
+      <div ref={listRef} class="physics-paint-scripts-list" role="listbox" aria-label="Saved Roto scripts">
         {rows.map((row) => (
           <div
             key={row.id}
+            data-action-id={row.id}
             role="option"
             tabIndex={0}
             aria-selected={library.selectedId.value === row.id}
             aria-label={`Load ${row.name}`}
-            class={`physics-paint-script-row${library.selectedId.value === row.id ? ' selected' : ''}`}
-            onClick={() => onActivateRow(row.id)}
+            aria-disabled={confirmationBusy ? 'true' : undefined}
+            class={`physics-paint-script-row${selectedActionId === row.id ? ' selected' : ''}`}
+            onClick={() => {
+              if (confirmationBusy) return;
+              onActivateRow(row.id);
+            }}
             onKeyDown={(event) => {
               if (event.key !== 'Enter' && event.key !== ' ') return;
               event.preventDefault();
+              if (confirmationBusy) return;
               onActivateRow(row.id);
             }}
           >
@@ -248,7 +280,7 @@ export function PhysicsPaintScriptsPanel({
                   type="button"
                   class="physics-paint-script-name"
                   aria-label={`Rename ${row.name}`}
-                  disabled={library.busy.value}
+                  disabled={actionMutationDisabledReason !== null || !availability.canRename}
                   onClick={(event) => {
                     event.stopPropagation();
                     library.select(row.id);
@@ -268,7 +300,12 @@ export function PhysicsPaintScriptsPanel({
       {confirmation ? (
         <div ref={confirmationRef} class="physics-paint-script-confirmation" role="dialog" aria-modal="true" aria-label={`Delete ${confirmation.name}`}
           onKeyDown={(event) => {
-            if (event.key === 'Escape') { event.preventDefault(); library.cancelDelete(); return; }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              if (confirmationBusy) return;
+              library.cancelDelete();
+              return;
+            }
             if (event.key !== 'Tab') return;
             const controls = Array.from(confirmationRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), [tabindex]:not([tabindex="-1"])') ?? []);
             if (!controls.length) return;
@@ -278,6 +315,7 @@ export function PhysicsPaintScriptsPanel({
             else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
           }}>
           <strong>Delete “{confirmation.name}”?</strong>
+          {deleteError ? <span class="physics-paint-script-inline-error" role="alert">{deleteError}</span> : null}
           {referenceImpact ? (
             <div class="physics-paint-action-delete-groups">
               <p>
@@ -293,21 +331,73 @@ export function PhysicsPaintScriptsPanel({
                 ))}
               </ul>
               <div class="physics-paint-action-delete-choices">
-                <button type="button" class="physics-paint-action-delete-choice recommended" aria-label="Keep Groups" onClick={() => void library.confirmDelete('keep-groups')}>
+                <button
+                  type="button"
+                  class="physics-paint-action-delete-choice recommended"
+                  aria-label="Keep Groups"
+                  aria-disabled={confirmationBusy ? 'true' : undefined}
+                  onClick={() => {
+                    if (confirmationBusy) return;
+                    void library.confirmDelete('keep-groups');
+                  }}
+                >
                   <strong>Keep Groups</strong>
                   <span>Recommended. Delete the Action but keep every Group, fragment, key, timing value, cache, and rendered result. Groups become detached and timeline space stays occupied.</span>
                 </button>
-                <button type="button" class="physics-paint-action-delete-choice danger" aria-label="Delete Action and Groups" onClick={() => void library.confirmDelete('delete-action-and-groups')}>
+                <button
+                  type="button"
+                  class="physics-paint-action-delete-choice danger"
+                  aria-label="Delete Action and Groups"
+                  aria-disabled={confirmationBusy ? 'true' : undefined}
+                  onClick={() => {
+                    if (confirmationBusy) return;
+                    void library.confirmDelete('delete-action-and-groups');
+                  }}
+                >
                   <strong>Delete Action and Groups</strong>
                   <span>Delete the Action and all {referenceImpact.groupCount} referencing Groups, including uniquely owned source, cache, and Group-gap data. Their occupied timeline ranges are freed.</span>
                 </button>
-                <button ref={cancelDeleteRef} type="button" aria-label="Cancel" onClick={library.cancelDelete}>Cancel</button>
+                <button
+                  ref={cancelDeleteRef}
+                  type="button"
+                  aria-label="Cancel"
+                  aria-disabled={confirmationBusy ? 'true' : undefined}
+                  onClick={() => {
+                    if (confirmationBusy) return;
+                    library.cancelDelete();
+                  }}
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           ) : (
             <>
               <span>This removes the project Action file and cannot be undone.</span>
-              <div><button ref={cancelDeleteRef} type="button" onClick={library.cancelDelete}>Cancel</button><button type="button" class="danger" onClick={() => void library.confirmDelete()}>Delete Action</button></div>
+              <div>
+                <button
+                  ref={cancelDeleteRef}
+                  type="button"
+                  aria-disabled={confirmationBusy ? 'true' : undefined}
+                  onClick={() => {
+                    if (confirmationBusy) return;
+                    library.cancelDelete();
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  class="danger"
+                  aria-disabled={confirmationBusy ? 'true' : undefined}
+                  onClick={() => {
+                    if (confirmationBusy) return;
+                    void library.confirmDelete();
+                  }}
+                >
+                  Delete Action
+                </button>
+              </div>
             </>
           )}
         </div>

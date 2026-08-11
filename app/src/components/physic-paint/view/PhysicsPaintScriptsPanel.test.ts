@@ -144,7 +144,8 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(panel).toContain('role="option"');
     expect(panel).toContain('tabIndex={0}');
     expect(panel).toContain('aria-selected={library.selectedId.value === row.id}');
-    expect(panel).toContain('onClick={() => onActivateRow(row.id)}');
+    expect(panel).toContain('if (confirmationBusy) return;');
+    expect(panel).toContain('onActivateRow(row.id);');
     expect(panel).toContain("event.key !== 'Enter' && event.key !== ' '");
     expect(panel).toContain('event.preventDefault()');
     expect(panel).toContain('onActivateRow(row.id)');
