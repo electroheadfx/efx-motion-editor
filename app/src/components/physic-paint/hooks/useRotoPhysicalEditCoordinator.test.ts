@@ -343,7 +343,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     appFrame,
     overrideKeyId,
     renderedPayload: { frameIndex: 0, appFrame, dataUrl },
-  } as never);
+  });
   const executePlayScript = () => {
     const nextRecord = record('Z', 8);
     const nextRecords = [...records, nextRecord];
@@ -993,6 +993,23 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
     expect(test.coordinator.acceptedOutput.value).toBeNull();
     expect(test.coordinator.failureOutput.value?.reason).toBe('parent-rejection');
     expect(test.releaseLease).toHaveBeenCalledWith(test.leaseToken);
+  });
+
+  it('restores the accepted before snapshot and transfers ownership when deferred Group publication cannot finish', async () => {
+    const test = harness({ failFirstLoopReplace: true });
+    const before = groupLifecycleDocument({ gapAt: 4 });
+    test.seedGroupDocument(before);
+
+    expect(await test.executeGroupPaint(4, 'override-gap-4')).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    expect(test.getRecords()).toEqual(before.realKeyRecords);
+    expect(test.getLoopClips()).toEqual(before.loopClips);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(test.coordinator.acceptedOutput.value).toBeNull();
+    expect(test.coordinator.failureOutput.value?.reason).toBe('exception');
+    expect(test.transferLeaseToRecovery).toHaveBeenCalledWith(test.leaseToken);
+    expect(test.releaseLease).not.toHaveBeenCalled();
+    expect(test.coordinator.recoveryLease.value).toBe(test.recoveryLeaseToken);
   });
 });
 

@@ -26,9 +26,9 @@ import { useRotoTimelineActions } from './hooks/useRotoTimelineActions';
 import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
 import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
-import { useRotoFramePersistenceCoordinator, type RotoGroupFramePaintExecuteInput } from './hooks/useRotoFramePersistenceCoordinator';
+import { useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
 import { useRotoFrameEditingController } from './hooks/useRotoFrameEditingController';
-import { useRotoPhysicalEditCoordinator, type RotoPhysicalEditCoordinatorExecuteInput } from './hooks/useRotoPhysicalEditCoordinator';
+import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, type RotoPhysicalEditCoordinatorExecuteInput } from './hooks/useRotoPhysicalEditCoordinator';
 import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize } from './engine/physicsPaintCanvasSizing';
 import { usePhysicsPaintEngineLifecycle } from './engine/usePhysicsPaintEngineLifecycle';
 import { usePhysicsPaintEngineActions } from './engine/usePhysicsPaintEngineActions';
@@ -537,6 +537,7 @@ export function PhysicsPaintStudio() {
     engine,
     records: {
       getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId),
+      getDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId),
       getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId),
       getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId),
       getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId),

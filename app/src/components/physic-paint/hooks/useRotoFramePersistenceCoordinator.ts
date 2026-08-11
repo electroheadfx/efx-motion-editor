@@ -9,6 +9,7 @@ import { createRotoLivePixelCacheTransactions, type RotoLivePixelIdentity } from
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 import { useRotoEditBufferController } from './useRotoEditBufferController';
 import { useRotoReferenceController } from './useRotoReferenceController';
+import type { RotoGroupFramePaintExecuteInput } from './useRotoPhysicalEditCoordinator';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
 
 interface RotoPersistenceStorePort {
@@ -18,15 +19,6 @@ interface RotoPersistenceStorePort {
   getRotoRealKeyRecordByAppFrame: (layerId: string, appFrame: number) => PhysicPaintRotoRealKeyRecord | null;
   getRotoPhysicalRenderSource: (layerId: string, appFrame: number) => PhysicPaintRotoPhysicalRenderSource | null;
   updateRotoPhysicalRealKeyPayload: (layerId: string, keyId: string, expectedContentRevision: string, payload: PhysicPaintRotoRealKeyPayload, diagnostics?: { mutationId?: number; record: typeof recordPhysicsPaintPerformance }) => { ok: true; changed: boolean; contentRevision: string } | { ok: false; error: string };
-}
-
-export interface RotoGroupFramePaintExecuteInput {
-  readonly operationKind: 'paint-group-frame';
-  readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
-  readonly groupId: string;
-  readonly appFrame: number;
-  readonly overrideKeyId: string;
-  readonly renderedPayload: PhysicPaintRotoRealKeyPayload;
 }
 
 export interface RotoPhysicalPaintRouteInput {

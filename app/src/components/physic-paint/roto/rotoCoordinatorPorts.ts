@@ -212,6 +212,7 @@ export interface RotoPhysicalEditPresentation {
  */
 export interface RotoPhysicalEditRecordsPort {
   getRecords: (layerId: string) => readonly PhysicPaintRotoRealKeyRecord[];
+  getDocument?: (layerId: string) => import('./physicsPaintRotoPhysicalModel').PhysicPaintRotoPhysicalDocument | null;
   getInterpolation: (layerId: string) => PhysicPaintRotoInterpolationState;
   getCapacity: (layerId: string) => number;
   /**
