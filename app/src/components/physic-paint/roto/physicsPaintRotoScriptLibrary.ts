@@ -69,6 +69,25 @@ export interface RotoScriptLibraryAvailability {
   canDelete: boolean;
 }
 
+export interface RotoScriptDeleteAffectedGroup {
+  readonly groupId: string;
+  readonly name: string;
+  readonly placementStart: number;
+  readonly endExclusive: number;
+  readonly visibleRanges: readonly Readonly<{ start: number; endExclusive: number }>[];
+}
+
+export interface RotoScriptDeleteReferenceImpact {
+  readonly physicalRevision: string;
+  readonly groupCount: number;
+  readonly visibleRangeCount: number;
+  readonly affectedGroups: readonly RotoScriptDeleteAffectedGroup[];
+}
+
+export type RotoScriptDeleteConfirmation = RotoScriptLibraryRow & Readonly<{
+  referenceImpact: RotoScriptDeleteReferenceImpact | null;
+}>;
+
 type RotoScriptLibraryExecutionResult = PhysicPaintScriptLibraryResult & { stale?: true };
 
 export interface RotoScriptLibraryController {
@@ -79,7 +98,7 @@ export interface RotoScriptLibraryController {
   status: Signal<string | null>;
   skippedInvalidCount: Signal<number>;
   rename: Signal<{ id: string; draft: string; error: string | null } | null>;
-  deleteConfirmation: Signal<RotoScriptLibraryRow | null>;
+  deleteConfirmation: Signal<RotoScriptDeleteConfirmation | null>;
   referencedDeleteImpact: Signal<PhysicPaintRotoActionGroupLifecycleImpact | null>;
   transactionPhase: Signal<'idle' | 'preparing' | 'committed' | 'recovery-required'>;
   recoveryReady: Signal<boolean>;
@@ -196,6 +215,36 @@ export async function prepareReferencedActionDeletion(
   return Object.freeze({ ok: true, request, impact: proposed.impact, before: currentDocument, committed });
 }
 
+export function buildRotoScriptDeleteReferenceImpact(
+  document: PhysicPaintRotoPhysicalDocument | null,
+  row: RotoScriptLibraryRow,
+): RotoScriptDeleteReferenceImpact | null {
+  if (!document) return null;
+  const affectedGroups = document.loopClips
+    .filter((group) => group.scriptId === row.id && group.provenanceState === 'attached' && group.visibleRanges?.length)
+    .sort((left, right) => left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId))
+    .map((group) => {
+      const visibleRanges = Object.freeze(group.visibleRanges!.map((range) => Object.freeze({
+        start: range.start,
+        endExclusive: range.endExclusive,
+      })));
+      return Object.freeze({
+        groupId: group.loopId,
+        name: `${row.name} Group`,
+        placementStart: group.placementStart,
+        endExclusive: Math.max(...visibleRanges.map((range) => range.endExclusive)),
+        visibleRanges,
+      });
+    });
+  if (!affectedGroups.length) return null;
+  return Object.freeze({
+    physicalRevision: document.revision,
+    groupCount: affectedGroups.length,
+    visibleRangeCount: affectedGroups.reduce((total, group) => total + group.visibleRanges.length, 0),
+    affectedGroups: Object.freeze(affectedGroups),
+  });
+}
+
 export function createRotoScriptLibraryController(ports: RotoScriptLibraryControllerPorts): RotoScriptLibraryController {
   const rows = signal<readonly RotoScriptLibraryRow[]>([]);
   const selectedId = signal<string | null>(null);
@@ -203,7 +252,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   const status = signal<string | null>(null);
   const skippedInvalidCount = signal(0);
   const rename = signal<{ id: string; draft: string; error: string | null } | null>(null);
-  const deleteConfirmation = signal<RotoScriptLibraryRow | null>(null);
+  const deleteConfirmation = signal<RotoScriptDeleteConfirmation | null>(null);
   const referencedDeleteImpact = signal<PhysicPaintRotoActionGroupLifecycleImpact | null>(null);
   const transactionPhase = signal<'idle' | 'preparing' | 'committed' | 'recovery-required'>('idle');
   const recoveryReady = signal(!ports.referencedActionDeletion?.recoverBeforeAvailability);
@@ -428,9 +477,20 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     const row = deleteConfirmation.peek(); if (!row) return false;
     const transactionPorts = ports.referencedActionDeletion;
     const context = ports.getLaunchContext();
-    const document = context ? transactionPorts?.getPhysicalDocument(context.layerId) : null;
-    const referenced = Boolean(document?.loopClips.some((group) =>
-      group.scriptId === row.id && group.provenanceState === 'attached'));
+    const document = context ? transactionPorts?.getPhysicalDocument(context.layerId) ?? null : null;
+    const currentImpact = buildRotoScriptDeleteReferenceImpact(document, row);
+    const referenced = row.referenceImpact !== null;
+    if (referenced && (!currentImpact || currentImpact.physicalRevision !== row.referenceImpact?.physicalRevision)) {
+      status.value = 'Action references changed. Review the updated Groups and try again.';
+      ports.log(status.value, true);
+      return false;
+    }
+    if (!referenced && currentImpact) {
+      status.value = 'Action references changed. Review the affected Groups before deleting.';
+      ports.log(status.value, true);
+      deleteConfirmation.value = Object.freeze({ ...row, referenceImpact: currentImpact });
+      return false;
+    }
     if (!referenced || !transactionPorts || !context) {
       const result = await execute({ kind: 'delete', operationId: operationId('delete'), scriptId: row.id, expectedRevision: row.revision });
       deleteConfirmation.value = null; status.value = result.ok ? `Deleted ${row.name}` : result.error ?? 'Delete failed'; return result.ok;
@@ -493,7 +553,13 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     rows, selectedId, selected, busy, status, skippedInvalidCount, rename, deleteConfirmation,
     referencedDeleteImpact, transactionPhase, recoveryReady, availability,
     updateProjectContext, enterScripts: refresh, refresh, saveActiveFrame, activateAndLoad, loadSnapshot, beginRename, updateRenameDraft, commitRename,
-    cancelRename: () => { rename.value = null; }, requestDelete: () => { deleteConfirmation.value = selected.peek(); }, confirmDelete,
+    cancelRename: () => { rename.value = null; }, requestDelete: () => {
+      const row = selected.peek();
+      if (!row) return;
+      const context = ports.getLaunchContext();
+      const document = context ? ports.referencedActionDeletion?.getPhysicalDocument(context.layerId) ?? null : null;
+      deleteConfirmation.value = Object.freeze({ ...row, referenceImpact: buildRotoScriptDeleteReferenceImpact(document, row) });
+    }, confirmDelete,
     cancelDelete: () => { deleteConfirmation.value = null; }, select: (id) => { if (rows.peek().some((row) => row.id === id)) selectedId.value = id; },
     dispose: () => { disposed = true; contextGeneration += 1; operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; rename.value = null; deleteConfirmation.value = null; lastAutoHydratedKey = null; },
   };

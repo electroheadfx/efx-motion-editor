@@ -49,6 +49,7 @@ export function PhysicsPaintScriptsPanel({
       : rotoScript.availability.value.replacementApplyDisabledReason;
   const rename = library.rename.value;
   const confirmation = library.deleteConfirmation.value;
+  const referenceImpact = confirmation?.referenceImpact ?? null;
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
   const confirmationRef = useRef<HTMLDivElement>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
@@ -276,12 +277,47 @@ export function PhysicsPaintScriptsPanel({
             if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
             else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
           }}>
-          <strong>Delete “{confirmation.name}”?</strong><span>This removes the project script file and cannot be undone.</span>
-          <div><button ref={cancelDeleteRef} type="button" onClick={library.cancelDelete}>Cancel</button><button type="button" class="danger" onClick={() => void library.confirmDelete()}>Delete</button></div>
+          <strong>Delete “{confirmation.name}”?</strong>
+          {referenceImpact ? (
+            <div class="physics-paint-action-delete-groups">
+              <p>
+                This Action is referenced by {referenceImpact.groupCount} {referenceImpact.groupCount === 1 ? 'Group' : 'Groups'} across {referenceImpact.visibleRangeCount} visible {referenceImpact.visibleRangeCount === 1 ? 'range' : 'ranges'}.
+              </p>
+              <ul aria-label="Affected Groups">
+                {referenceImpact.affectedGroups.map((group) => (
+                  <li key={group.groupId}>
+                    <strong>{group.name} · {formatFrameRange(group.placementStart, group.endExclusive)}</strong>
+                    {group.visibleRanges.length > 1 ? <span> · {group.visibleRanges.length} ranges</span> : null}
+                    <span>Visible ranges: {group.visibleRanges.map((range) => formatFrameRange(range.start, range.endExclusive)).join(', ')}</span>
+                  </li>
+                ))}
+              </ul>
+              <div class="physics-paint-action-delete-choices">
+                <button type="button" class="physics-paint-action-delete-choice recommended" aria-label="Keep Groups" onClick={() => void library.confirmDelete('keep-groups')}>
+                  <strong>Keep Groups</strong>
+                  <span>Recommended. Delete the Action but keep every Group, fragment, key, timing value, cache, and rendered result. Groups become detached and timeline space stays occupied.</span>
+                </button>
+                <button type="button" class="physics-paint-action-delete-choice danger" aria-label="Delete Action and Groups" onClick={() => void library.confirmDelete('delete-action-and-groups')}>
+                  <strong>Delete Action and Groups</strong>
+                  <span>Delete the Action and all {referenceImpact.groupCount} referencing Groups, including uniquely owned source, cache, and Group-gap data. Their occupied timeline ranges are freed.</span>
+                </button>
+                <button ref={cancelDeleteRef} type="button" aria-label="Cancel" onClick={library.cancelDelete}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <span>This removes the project Action file and cannot be undone.</span>
+              <div><button ref={cancelDeleteRef} type="button" onClick={library.cancelDelete}>Cancel</button><button type="button" class="danger" onClick={() => void library.confirmDelete()}>Delete Action</button></div>
+            </>
+          )}
         </div>
       ) : null}
     </div>
   );
+}
+
+function formatFrameRange(start: number, endExclusive: number): string {
+  return `F${start}–F${endExclusive - 1}`;
 }
 
 function IconButton(props: { buttonRef?: Ref<HTMLButtonElement>; label: string; title: string; disabled?: boolean; disabledReason?: string; descriptionId?: string; onClick?: () => void; children: ComponentChildren }) {

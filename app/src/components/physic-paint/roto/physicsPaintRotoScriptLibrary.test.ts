@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext, PhysicPaintScriptLibraryRequest, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
-import { createRotoScriptLibraryController, prepareReferencedActionDeletion } from './physicsPaintRotoScriptLibrary';
+import { buildRotoScriptDeleteReferenceImpact, createRotoScriptLibraryController, prepareReferencedActionDeletion } from './physicsPaintRotoScriptLibrary';
 import { buildPhysicPaintRotoPhysicalRevision, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import { createPersistedRotoScript, type PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
@@ -365,6 +365,24 @@ function referencedActionDocument(): PhysicPaintRotoPhysicalDocument {
 }
 
 describe('production referenced Action deletion preflight', () => {
+  it('builds one immutable placement-ordered disclosure from accepted visible Group ranges', () => {
+    const document = referencedActionDocument();
+    const impact = buildRotoScriptDeleteReferenceImpact(document, { ...row('a', 'Walk Cycle'), id: scriptIds.a });
+
+    expect(impact).toEqual({
+      physicalRevision: document.revision,
+      groupCount: 2,
+      visibleRangeCount: 3,
+      affectedGroups: [
+        { groupId: 'group-early', name: 'Walk Cycle Group', placementStart: 2, endExclusive: 10, visibleRanges: [{ start: 2, endExclusive: 10 }] },
+        { groupId: 'group-late', name: 'Walk Cycle Group', placementStart: 12, endExclusive: 20, visibleRanges: [{ start: 12, endExclusive: 16 }, { start: 18, endExclusive: 20 }] },
+      ],
+    });
+    expect(Object.isFrozen(impact)).toBe(true);
+    expect(Object.isFrozen(impact?.affectedGroups)).toBe(true);
+    expect(Object.isFrozen(impact?.affectedGroups[1].visibleRanges)).toBe(true);
+  });
+
   it.each([
     ['keep-groups', ['group-early', 'group-late'], []],
     ['delete-action-and-groups', ['group-early', 'group-late'], ['override-only']],
