@@ -5,6 +5,8 @@ import {
   createRotoPlayScriptController,
   type RotoPlayScriptController,
   type RotoPlayScriptControllerPorts,
+  type RotoPlayScriptPhysicalPublication,
+  type RotoRegenerateGroupPhysicalPublication,
 } from '../roto/physicsPaintRotoPlayScriptController';
 import { PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditFailureOutput } from '../roto/rotoCoordinatorPorts';
@@ -67,7 +69,13 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       commit: async (publication, revalidateUnderLease) => {
         let leaseRejection: string | null = null;
         const operationKind = publication.semanticDelta.kind;
-        const action = operationKind === 'regenerate-group' ? 'Group Regenerate' : 'Group update';
+        const regeneratePublication = operationKind === 'regenerate-group'
+          ? publication as RotoRegenerateGroupPhysicalPublication
+          : null;
+        const playScriptPublication = regeneratePublication
+          ? null
+          : publication as RotoPlayScriptPhysicalPublication;
+        const action = regeneratePublication ? 'Group Regenerate' : 'Group update';
         const baseInput = {
           expectedLaunch: publication.expectedLaunch,
           expectedRevision: publication.expectedRevision,
@@ -84,19 +92,20 @@ export function useRotoPlayScriptController<EngineState = unknown>(
             },
           } : {}),
         };
-        const input: RotoPlayScriptExecuteInput | RotoRegenerateGroupExecuteInput = operationKind === 'regenerate-group'
+        const input: RotoPlayScriptExecuteInput | RotoRegenerateGroupExecuteInput = regeneratePublication
           ? {
               ...baseInput,
-              operationKind,
-              semanticDelta: publication.semanticDelta,
-              loopClips: publication.loopClips ?? [],
+              operationKind: 'regenerate-group',
+              semanticDelta: regeneratePublication.semanticDelta,
+              groupOverrideRecords: regeneratePublication.groupOverrideRecords,
+              loopClips: regeneratePublication.loopClips,
             }
           : {
               ...baseInput,
-              operationKind,
-              rotoBackground: publication.rotoBackground,
-              semanticDelta: publication.semanticDelta,
-              ...(publication.loopClips ? { loopClips: publication.loopClips } : {}),
+              operationKind: 'play-script',
+              rotoBackground: playScriptPublication!.rotoBackground,
+              semanticDelta: playScriptPublication!.semanticDelta,
+              ...(playScriptPublication!.loopClips ? { loopClips: playScriptPublication!.loopClips } : {}),
             };
         const settlement = await dispatchAndWaitForPlayScriptSettlement(
           portsRef.current.pendingOperationId,

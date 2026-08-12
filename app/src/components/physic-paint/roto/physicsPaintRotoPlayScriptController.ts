@@ -111,6 +111,7 @@ export interface RotoPlayScriptPhysicalPublication extends RotoGeneratedPhysical
 
 export interface RotoRegenerateGroupPhysicalPublication extends RotoGeneratedPhysicalPublicationBase {
   readonly semanticDelta: RotoRegenerateGroupSemanticDelta;
+  readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
 }
 
@@ -1228,6 +1229,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       });
       let loopClips: readonly PhysicPaintRotoLoopClip[] | undefined;
       let regeneratedRecords: readonly PhysicPaintRotoRealKeyRecord[] | null = null;
+      let regeneratedGroupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] | null = null;
       let regenerateSemanticDelta: RotoRegenerateGroupSemanticDelta | null = null;
       if (repairId) {
         // D-31 repair: regenerate + retarget the loop's sourceKeyIds atomically.
@@ -1247,6 +1249,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
             acceptedDocument.interpolation,
             acceptedDocument.loopClips,
             acceptedDocument.incomingInterpolationBreakKeyIds,
+            acceptedDocument.groupOverrideRecords,
           ),
         };
         for (const affected of preparedRegenerate.affectedGroups) {
@@ -1259,20 +1262,23 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           if (!proposal.ok) throw new Error(`Regenerate rejected — ${proposal.reason}.`);
           proposalDocument = proposal.proposal;
         }
-        const retainedKeyIds = new Set(proposalDocument.realKeyRecords.map((record) => record.keyId));
+        const retainedOverrideKeyIds = new Set(
+          (proposalDocument.groupOverrideRecords ?? []).map((record) => record.keyId),
+        );
         regenerateSemanticDelta = Object.freeze({
           kind: 'regenerate-group',
           groupId: preparedRegenerate.initiatingGroupId,
           expectedActionRevision: preparedRegenerate.actionRevision,
-          cleanupKeyIds: Object.freeze(acceptedDocument.realKeyRecords
+          cleanupKeyIds: Object.freeze((acceptedDocument.groupOverrideRecords ?? [])
             .map((record) => record.keyId)
-            .filter((keyId) => !retainedKeyIds.has(keyId))
+            .filter((keyId) => !retainedOverrideKeyIds.has(keyId))
             .sort()),
           previousRevision: acceptedDocument.revision,
           nextRevision: proposalDocument.revision,
         });
         loopClips = proposalDocument.loopClips;
         regeneratedRecords = proposalDocument.realKeyRecords;
+        regeneratedGroupOverrideRecords = proposalDocument.groupOverrideRecords ?? [];
       } else if (isSourceEdit && editTarget) {
         // Legacy Source Edit updates every pre-lifecycle loop sharing the cycle.
         loopClips = currentLoopClips().map((clip) => {
@@ -1308,6 +1314,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         ? {
             ...basePublication,
             records: publicationRecords,
+            groupOverrideRecords: regeneratedGroupOverrideRecords ?? [],
             semanticDelta: regenerateSemanticDelta,
             ...resolvePublicationSelection(commitAuthority),
             loopClips: loopClips ?? [],

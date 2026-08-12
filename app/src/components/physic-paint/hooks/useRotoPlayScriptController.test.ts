@@ -179,6 +179,7 @@ describe('useRotoPlayScriptController', () => {
         },
         selectedKeyId: null,
         selectedAppFrame: null,
+        groupOverrideRecords: [],
         loopClips: [],
       });
 
@@ -227,6 +228,7 @@ describe('useRotoPlayScriptController', () => {
       },
       selectedKeyId: null,
       selectedAppFrame: null,
+      groupOverrideRecords: [],
       loopClips: [],
     })).resolves.toEqual({
       ok: false,

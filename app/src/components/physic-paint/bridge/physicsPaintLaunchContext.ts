@@ -13,7 +13,7 @@ export interface PhysicsPaintLaunchStateSetters<Settings> {
 }
 
 const LAUNCH_KEYS = new Set(['operationId', 'layerId', 'project', 'startFrame', 'layerName', 'workflowLabel', 'width', 'height', 'fps', 'rotoPhysical', 'rotoPlayback', 'audioPreview']);
-const PHYSICAL_KEYS = new Set(['capacity', 'records', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds']);
+const PHYSICAL_KEYS = new Set(['capacity', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds']);
 const AUDIO_PREVIEW_KEYS = new Set(['revision', 'fps', 'tracks']);
 const AUDIO_PREVIEW_TRACK_KEYS = new Set(['id', 'assetUrl', 'offsetFrame', 'inFrame', 'outFrame', 'slipOffset', 'fadeInFrames', 'fadeOutFrames', 'volume', 'muted', 'fadeInCurve', 'fadeOutCurve']);
 
@@ -58,6 +58,9 @@ export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPai
   if (!isPhysicPaintLaunchContext(value) || !isPlainRecord(value.project) || !isPlainRecord(value.rotoPhysical)) return null;
   if (!hasOnlyKeys(value.rotoPhysical, PHYSICAL_KEYS) || !Array.isArray(value.rotoPhysical.records)) return null;
   if (!value.rotoPhysical.records.every(isPhysicPaintRotoPhysicalEditRecord)) return null;
+  if (value.rotoPhysical.groupOverrideRecords !== undefined
+    && (!Array.isArray(value.rotoPhysical.groupOverrideRecords)
+      || !value.rotoPhysical.groupOverrideRecords.every(isPhysicPaintRotoPhysicalEditRecord))) return null;
   if (value.audioPreview !== undefined) {
     if (!isPlainRecord(value.audioPreview) || !hasOnlyKeys(value.audioPreview, AUDIO_PREVIEW_KEYS)) return null;
     if (!isEfxPaintAudioPreviewContext(value.audioPreview)) return null;
@@ -67,6 +70,10 @@ export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPai
     const document = parsePhysicPaintRotoPhysicalDocument({
       capacity: value.rotoPhysical.capacity,
       realKeyRecords: value.rotoPhysical.records.map((record) => ({ ...record, kind: 'real-key' as const })),
+      groupOverrideRecords: (value.rotoPhysical.groupOverrideRecords ?? []).map((record) => ({
+        ...record,
+        kind: 'real-key' as const,
+      })),
       interpolation: {
         enabled: value.rotoPhysical.interpolationEnabled,
         mode: value.rotoPhysical.interpolationMode,
@@ -103,6 +110,11 @@ export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPai
       rotoPhysical: {
         capacity: document.capacity,
         records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
+        groupOverrideRecords: (document.groupOverrideRecords ?? []).map((record) => ({
+          keyId: record.keyId,
+          appFrame: record.appFrame,
+          payload: record.payload,
+        })),
         interpolationEnabled: document.interpolation.enabled,
         interpolationMode: document.interpolation.mode,
         scriptMotion: document.scriptMotion,

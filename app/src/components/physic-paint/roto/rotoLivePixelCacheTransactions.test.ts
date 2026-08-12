@@ -72,6 +72,22 @@ describe('Roto live pixel cache transactions', () => {
     expect(events).toEqual(['second-caller-returned', 'second-committed']);
   });
 
+  it('reports a rejected commit without accepting the produced pixels', async () => {
+    vi.useFakeTimers();
+    const commit = vi.fn(async () => false);
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    const work = transactions.capture({
+      sourceFrame: 7,
+      produce: async () => 'candidate',
+      commit,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    await expect(work).resolves.toBe(false);
+    expect(commit).toHaveBeenCalledWith('candidate');
+  });
+
   it('records handoff, producer, and accepted commit without changing capture behavior', async () => {
     vi.useFakeTimers();
     const samples: Array<{ stage: string; mutationId?: number; sourceFrame: number; outcome?: string }> = [];

@@ -279,6 +279,7 @@ export interface RotoPlayScriptExecuteInput extends RotoGeneratedPublicationExec
 
 export interface RotoRegenerateGroupExecuteInput extends RotoGeneratedPublicationExecuteInputBase {
   readonly operationKind: 'regenerate-group';
+  readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly semanticDelta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'regenerate-group' }>;
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
 }
@@ -836,6 +837,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         layerId: launch.layerId,
         projectContextId: launch.project?.contextId ?? null,
         records: cloneRecords(records),
+        groupOverrideRecords: cloneRecords(
+          portsRef.current.records.getDocument(launch.layerId)?.groupOverrideRecords ?? [],
+        ),
         interpolation: {
           enabled: interpolation.enabled,
           mode: interpolation.mode,
@@ -893,6 +897,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         document = parsePhysicPaintRotoPhysicalDocument({
           ...currentDocument,
           realKeyRecords: snapshot.records,
+          groupOverrideRecords: snapshot.groupOverrideRecords,
           interpolation: snapshot.interpolation,
           loopClips: snapshot.loopClips,
           incomingInterpolationBreakKeyIds: snapshot.incomingInterpolationBreakKeyIds,
@@ -904,6 +909,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
             snapshot.interpolation,
             snapshot.loopClips,
             snapshot.incomingInterpolationBreakKeyIds,
+            snapshot.groupOverrideRecords,
           ),
         });
       } catch {
@@ -955,6 +961,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         pending.operationKind === 'undo'
         || pending.operationKind === 'redo'
         || pending.operationKind === 'play-script'
+        || pending.operationKind === 'regenerate-group'
         || pending.operationKind === 'insert-empty-segment'
         || pending.operationKind === 'paint-group-frame'
         || pending.operationKind === 'delete-group-frame'
@@ -1003,7 +1010,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       const restored = shouldRestore ? restoreSnapshot(before, true) : true;
       if (!restored) {
         portsRef.current.status.logDiagnostic('Roto physical edit rollback failed: launch context changed before restore.');
-      } else if (shouldRestore) {
+      } else if (shouldRestore || pending.operationKind === 'paint-group-frame') {
         portsRef.current.reference.reconcileCurrentFrame(before.currentAppFrame);
       }
       if (options.transferLeaseToRecovery) {
@@ -1073,6 +1080,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         portsRef.current.records.getInterpolation(pending.layerId),
         portsRef.current.records.getLoopClips(pending.layerId),
         portsRef.current.records.getIncomingInterpolationBreakKeyIds(pending.layerId),
+        portsRef.current.records.getDocument(pending.layerId)?.groupOverrideRecords ?? [],
       );
       if (currentRevision !== pending.expectedRevision) {
         finalizeFailed(pending, before, 'settlement-mismatch', 'Accepted physical state no longer matches the child snapshot.');
@@ -1304,7 +1312,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       failureSignal.value = null;
       try {
         portsRef.current.paint.flushPendingStrokeFinalizations();
-        await portsRef.current.paint.flushLivePixels(flushAppFrame);
+        if (!isGroupFramePaint) {
+          await portsRef.current.paint.flushLivePixels(flushAppFrame);
+        }
         if (cancelledRef.current) {
           clearPendingOnce();
           return false;
@@ -1359,11 +1369,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           ? (currentSelectedKeyIdForEdit === null ? null : currentAppFrameForEdit)
           : requestedSelectedAppFrame;
         let targetCursorAppFrame = requestedSelectedAppFrame ?? currentAppFrameForEdit;
+        const currentGroupOverrideRecords = currentDocument.groupOverrideRecords ?? [];
         const expectedRevision = buildPhysicPaintRotoPhysicalRevision(
           currentRecords,
           currentInterpolation,
           currentLoopClips,
           currentIncomingInterpolationBreakKeyIds,
+          currentGroupOverrideRecords,
         );
         let groupFramePaintProposal: PhysicPaintRotoPhysicalDocument | null = null;
         let groupFramePaintImpact: PhysicPaintRotoGroupFramePaintImpact | null = null;
@@ -1375,6 +1387,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
             currentDocument.interpolation,
             currentDocument.loopClips,
             currentDocument.incomingInterpolationBreakKeyIds,
+            currentDocument.groupOverrideRecords,
           );
           if (currentDocument.capacity !== capacity
             || currentDocument.revision !== expectedRevision
@@ -1605,11 +1618,18 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
             ?? groupFramePaintProposal?.incomingInterpolationBreakKeyIds
             ?? proposal?.nextIncomingInterpolationBreakKeyIds
             ?? currentIncomingInterpolationBreakKeyIds;
+        const stagedGroupOverrideRecords = isReplay && replayTarget
+          ? replayTarget.groupOverrideRecords
+          : regenerateGroupInput?.groupOverrideRecords
+            ?? groupLifecycleDeleteProposal?.groupOverrideRecords
+            ?? groupFramePaintProposal?.groupOverrideRecords
+            ?? currentGroupOverrideRecords;
         const stagedRevision = buildPhysicPaintRotoPhysicalRevision(
           validatedStagedRecords,
           stagedInterpolation,
           stagedLoopClips,
           stagedIncomingInterpolationBreakKeyIds,
+          stagedGroupOverrideRecords,
         );
         if (isReplay && (
           !historyProvenance
@@ -1631,6 +1651,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           deferredDocument = parsePhysicPaintRotoPhysicalDocument({
             ...currentDocument,
             realKeyRecords: validatedStagedRecords,
+            groupOverrideRecords: stagedGroupOverrideRecords,
             interpolation: stagedInterpolation,
             background: playScriptInput?.rotoBackground ?? currentDocument.background,
             selectedKeyId: targetSelectedKeyId,
@@ -1660,6 +1681,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           projectContextId: leaseToken.projectContextId,
           expectedRevision,
           records: recordsToApplyPayloadRecords(validatedStagedRecords),
+          groupOverrideRecords: recordsToApplyPayloadRecords(stagedGroupOverrideRecords),
           interpolationEnabled: stagedInterpolation.enabled,
           interpolationMode: stagedInterpolation.mode,
           ...(playScriptInput ? { rotoBackground: { ...playScriptInput.rotoBackground } } : {}),

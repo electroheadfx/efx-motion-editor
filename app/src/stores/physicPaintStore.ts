@@ -127,6 +127,8 @@ const ROTO_INTERPOLATION_FAILURE_STATUS = 'Generated in-betweens could not regen
 // authority; generated cells are runtime-derived via the shared projection seam
 // and never stored as durable records.
 const _rotoRealKeyRecords = new Map<string, Map<string, PhysicPaintRotoRealKeyRecord>>();
+const _rotoGroupOverrideRecords = new Map<string, Map<string, PhysicPaintRotoRealKeyRecord>>();
+const EMPTY_ROTO_GROUP_OVERRIDE_RECORDS = new Map<string, PhysicPaintRotoRealKeyRecord>();
 const _rotoPhysicalInterpolationState = new Map<string, PhysicPaintRotoInterpolationState>();
 const _rotoPhysicalScriptMotion = new Map<string, PhysicPaintRotoScriptMotionSettings>();
 const _rotoPhysicalSelectedKeyId = new Map<string, string | null>();
@@ -223,6 +225,7 @@ function _validateRotoPhysicalProjectPublication(
 // record map or loop array would silently break this contract and is grep-gated.
 type RotoPhysicalStructuralCacheEntry = {
   recordMap: Map<string, PhysicPaintRotoRealKeyRecord>;
+  groupOverrideMap: Map<string, PhysicPaintRotoRealKeyRecord>;
   interpolation: PhysicPaintRotoInterpolationState;
   capacity: number;
   loopClips: readonly PhysicPaintRotoLoopClip[];
@@ -244,6 +247,7 @@ function _resolveRotoPhysicalStructural(layerId: string): RotoPhysicalStructural
     _rotoPhysicalStructuralCache.delete(layerId);
     return null;
   }
+  const groupOverrideMap = _rotoGroupOverrideRecords.get(layerId) ?? EMPTY_ROTO_GROUP_OVERRIDE_RECORDS;
   const interpolation = _rotoPhysicalInterpolationState.get(layerId) ?? PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED;
   const capacity = _rotoPhysicalCapacity.get(layerId) ?? PHYSIC_PAINT_MAX_APPLY_FRAMES;
   const loopClips = _rotoPhysicalLoopClips.get(layerId) ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
@@ -252,6 +256,7 @@ function _resolveRotoPhysicalStructural(layerId: string): RotoPhysicalStructural
   const cached = _rotoPhysicalStructuralCache.get(layerId);
   if (cached
     && cached.recordMap === recordMap
+    && cached.groupOverrideMap === groupOverrideMap
     && cached.interpolation === interpolation
     && cached.capacity === capacity
     && cached.loopClips === loopClips
@@ -266,12 +271,19 @@ function _resolveRotoPhysicalStructural(layerId: string): RotoPhysicalStructural
   });
   const entry: RotoPhysicalStructuralCacheEntry = {
     recordMap,
+    groupOverrideMap,
     interpolation,
     capacity,
     loopClips,
     incomingInterpolationBreakKeyIds,
     projection: result.ok ? result.projection : null,
-    contentRevision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, incomingInterpolationBreakKeyIds),
+    contentRevision: buildPhysicPaintRotoPhysicalRevision(
+      records,
+      interpolation,
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+      Array.from(groupOverrideMap.values()),
+    ),
     loopResolution: derivePhysicPaintRotoLoopRanges({
       identities,
       loopClips,
@@ -301,6 +313,7 @@ function _getLayerDataUrls(layerId: string): Set<string> {
   _collectFrameDataUrls(_rotoCacheMetadata.get(layerId)?.values() ?? [], dataUrls);
   _collectFrameDataUrls(_rotoGeneratedCacheMetadata.get(layerId)?.values() ?? [], dataUrls);
   for (const record of _rotoRealKeyRecords.get(layerId)?.values() ?? []) dataUrls.add(record.payload.dataUrl);
+  for (const record of _rotoGroupOverrideRecords.get(layerId)?.values() ?? []) dataUrls.add(record.payload.dataUrl);
   return dataUrls;
 }
 
@@ -315,6 +328,9 @@ function _isDataUrlReferenced(dataUrl: string): boolean {
   for (const metadata of _rotoCacheMetadata.values()) if (referencesDataUrl(metadata.values())) return true;
   for (const metadata of _rotoGeneratedCacheMetadata.values()) if (referencesDataUrl(metadata.values())) return true;
   for (const records of _rotoRealKeyRecords.values()) {
+    for (const record of records.values()) if (record.payload.dataUrl === dataUrl) return true;
+  }
+  for (const records of _rotoGroupOverrideRecords.values()) {
     for (const record of records.values()) if (record.payload.dataUrl === dataUrl) return true;
   }
   return false;
@@ -339,6 +355,7 @@ function _clearLayerState(layerId: string): boolean {
   changed = _rotoInterpolationSettings.delete(layerId) || changed;
   changed = _rotoInterpolationFailureStatus.delete(layerId) || changed;
   changed = _rotoRealKeyRecords.delete(layerId) || changed;
+  changed = _rotoGroupOverrideRecords.delete(layerId) || changed;
   changed = _rotoPhysicalInterpolationState.delete(layerId) || changed;
   changed = _rotoPhysicalScriptMotion.delete(layerId) || changed;
   changed = _rotoPhysicalLoopClips.delete(layerId) || changed;
@@ -882,10 +899,11 @@ export const physicPaintStore = {
 
   toMceOutputs(): PhysicPaintMceOutput[] {
     if (_cachedSerializationRevision === _serializationRevision) return structuredClone(_cachedMceOutputs);
-    const layerIds = new Set([..._frames.keys(), ..._rotoCacheMetadata.keys(), ..._rotoInterpolationSettings.keys(), ..._rotoBackgroundMetadata.keys(), ..._rotoRealKeyRecords.keys(), ..._rotoPlaybackSettings.keys()]);
+    const layerIds = new Set([..._frames.keys(), ..._rotoCacheMetadata.keys(), ..._rotoInterpolationSettings.keys(), ..._rotoBackgroundMetadata.keys(), ..._rotoRealKeyRecords.keys(), ..._rotoGroupOverrideRecords.keys(), ..._rotoPlaybackSettings.keys()]);
     const outputs = Array.from(layerIds).map((layerId): PhysicPaintMceOutput => {
       if (_rotoRealKeyRecords.has(layerId)) {
         const realKeyRecords = this.getRotoRealKeyRecords(layerId);
+        const groupOverrideRecords = this.getRotoGroupOverrideRecords(layerId);
         const interpolation = this.getRotoPhysicalInterpolationState(layerId);
         const capacity = this.getRotoPhysicalCapacity(layerId);
         const selectedCandidate = _rotoPhysicalSelectedKeyId.get(layerId) ?? null;
@@ -896,6 +914,7 @@ export const physicPaintStore = {
         const rotoPhysical = parsePhysicPaintRotoPhysicalDocument({
           capacity,
           realKeyRecords,
+          groupOverrideRecords,
           interpolation,
           scriptMotion: _rotoPhysicalScriptMotion.get(layerId) ?? PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
           background: _rotoBackgroundMetadata.get(layerId) ?? null,
@@ -906,6 +925,7 @@ export const physicPaintStore = {
             interpolation,
             this.getRotoPhysicalLoopClips(layerId),
             this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId),
+            groupOverrideRecords,
           ),
           loopClips: this.getRotoPhysicalLoopClips(layerId),
           incomingInterpolationBreakKeyIds: this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId),
@@ -943,6 +963,7 @@ export const physicPaintStore = {
     const nextCache = new Map<string, Map<number, PhysicPaintRotoCacheFrame>>();
     const nextInterpolationSettings = new Map<string, PhysicPaintRotoInterpolationSettings>();
     const nextPhysicalRecords = new Map<string, Map<string, PhysicPaintRotoRealKeyRecord>>();
+    const nextGroupOverrideRecords = new Map<string, Map<string, PhysicPaintRotoRealKeyRecord>>();
     const nextPhysicalInterpolation = new Map<string, PhysicPaintRotoInterpolationState>();
     const nextPhysicalScriptMotion = new Map<string, PhysicPaintRotoScriptMotionSettings>();
     const nextPhysicalLoopClips = new Map<string, readonly PhysicPaintRotoLoopClip[]>();
@@ -972,6 +993,10 @@ export const physicPaintStore = {
         });
         if (!projection.ok) throw new Error(projection.failure.text);
         nextPhysicalRecords.set(output.layer_id, new Map(physical.realKeyRecords.map((record) => [record.keyId, record])));
+        nextGroupOverrideRecords.set(
+          output.layer_id,
+          new Map((physical.groupOverrideRecords ?? []).map((record) => [record.keyId, record])),
+        );
         nextPhysicalInterpolation.set(output.layer_id, physical.interpolation);
         nextPhysicalScriptMotion.set(output.layer_id, physical.scriptMotion);
         nextPhysicalLoopClips.set(output.layer_id, physical.loopClips);
@@ -1008,6 +1033,7 @@ export const physicPaintStore = {
     _rotoInterpolationSettings.clear();
     _rotoInterpolationFailureStatus.clear();
     _rotoRealKeyRecords.clear();
+    _rotoGroupOverrideRecords.clear();
     _rotoPhysicalInterpolationState.clear();
     _rotoPhysicalScriptMotion.clear();
     _rotoPhysicalLoopClips.clear();
@@ -1022,6 +1048,7 @@ export const physicPaintStore = {
     for (const [layerId, value] of nextCache) _rotoCacheMetadata.set(layerId, value);
     for (const [layerId, value] of nextInterpolationSettings) _rotoInterpolationSettings.set(layerId, value);
     for (const [layerId, value] of nextPhysicalRecords) _rotoRealKeyRecords.set(layerId, value);
+    for (const [layerId, value] of nextGroupOverrideRecords) _rotoGroupOverrideRecords.set(layerId, value);
     for (const [layerId, value] of nextPhysicalInterpolation) _rotoPhysicalInterpolationState.set(layerId, value);
     for (const [layerId, value] of nextPhysicalScriptMotion) _rotoPhysicalScriptMotion.set(layerId, value);
     for (const [layerId, value] of nextPhysicalLoopClips) _rotoPhysicalLoopClips.set(layerId, value);
@@ -1292,7 +1319,7 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || _rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
@@ -1301,6 +1328,7 @@ export const physicPaintStore = {
     _rotoInterpolationFailureStatus.clear();
     if (resetAlphaCanvases) _rotoAlphaCanvasRegistry.clear();
     _rotoRealKeyRecords.clear();
+    _rotoGroupOverrideRecords.clear();
     _rotoPhysicalInterpolationState.clear();
     _rotoPhysicalScriptMotion.clear();
     _rotoPhysicalLoopClips.clear();
@@ -1387,14 +1415,27 @@ export const physicPaintStore = {
     }
 
     const previousRecords = this.getRotoRealKeyRecords(layerId);
-    const previousPayloadDataUrls = new Set(previousRecords.map((record) => record.payload.dataUrl));
+    const previousPayloadDataUrls = _getLayerDataUrls(layerId);
+    const groupOverrideRecords = this.getRotoGroupOverrideRecords(layerId);
     const previousInterpolation = this.getRotoPhysicalInterpolationState(layerId);
     const previousCapacity = this.getRotoPhysicalCapacity(layerId);
     // Records-only replacement: the Loop Clip collection is untouched, so both
     // sides of the revision comparison carry the current collection.
     const currentLoopClips = this.getRotoPhysicalLoopClips(layerId);
-    const previousRevision = buildPhysicPaintRotoPhysicalRevision(previousRecords, previousInterpolation, currentLoopClips, currentIncomingBreaks);
-    const nextRevision = buildPhysicPaintRotoPhysicalRevision(validatedRecords, interpolation, currentLoopClips, currentIncomingBreaks);
+    const previousRevision = buildPhysicPaintRotoPhysicalRevision(
+      previousRecords,
+      previousInterpolation,
+      currentLoopClips,
+      currentIncomingBreaks,
+      groupOverrideRecords,
+    );
+    const nextRevision = buildPhysicPaintRotoPhysicalRevision(
+      validatedRecords,
+      interpolation,
+      currentLoopClips,
+      currentIncomingBreaks,
+      groupOverrideRecords,
+    );
     if (_rotoRealKeyRecords.has(layerId) && previousRevision === nextRevision && previousCapacity === capacity) return { ok: true };
 
     // Atomically replace the complete record set and indexes.
@@ -1528,8 +1569,12 @@ export const physicPaintStore = {
     });
     if (!projection.ok) return { ok: false, error: projection.failure.text };
 
-    const previousPayloadDataUrls = new Set(this.getRotoRealKeyRecords(layerId).map((record) => record.payload.dataUrl));
+    const previousPayloadDataUrls = _getLayerDataUrls(layerId);
     _rotoRealKeyRecords.set(layerId, new Map(document.realKeyRecords.map((record) => [record.keyId, record])));
+    _rotoGroupOverrideRecords.set(
+      layerId,
+      new Map((document.groupOverrideRecords ?? []).map((record) => [record.keyId, record])),
+    );
     _rotoPhysicalInterpolationState.set(layerId, document.interpolation);
     _rotoPhysicalScriptMotion.set(layerId, document.scriptMotion);
     _rotoPhysicalLoopClips.set(layerId, document.loopClips);
@@ -1557,6 +1602,7 @@ export const physicPaintStore = {
     return parsePhysicPaintRotoPhysicalDocument({
       capacity,
       realKeyRecords,
+      groupOverrideRecords: this.getRotoGroupOverrideRecords(layerId),
       interpolation,
       scriptMotion: _rotoPhysicalScriptMotion.get(layerId) ?? PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
       background: _rotoBackgroundMetadata.get(layerId) ?? null,
@@ -1606,11 +1652,17 @@ export const physicPaintStore = {
     return Array.from(recordMap.values()).sort((a, b) => a.appFrame - b.appFrame);
   },
 
+  getRotoGroupOverrideRecords(layerId: string): PhysicPaintRotoRealKeyRecord[] {
+    return Array.from(_rotoGroupOverrideRecords.get(layerId)?.values() ?? [])
+      .sort((a, b) => a.appFrame - b.appFrame || a.keyId.localeCompare(b.keyId));
+  },
+
   /**
    * Read a single real-key record by stable `keyId`. Returns null when absent.
    */
   getRotoRealKeyRecord(layerId: string, keyId: string): PhysicPaintRotoRealKeyRecord | null {
-    const record = _rotoRealKeyRecords.get(layerId)?.get(keyId);
+    const record = _rotoRealKeyRecords.get(layerId)?.get(keyId)
+      ?? _rotoGroupOverrideRecords.get(layerId)?.get(keyId);
     return record ?? null;
   },
 
@@ -1699,6 +1751,7 @@ export const physicPaintStore = {
       this.getRotoPhysicalInterpolationState(layerId),
       validated,
       this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId),
+      this.getRotoGroupOverrideRecords(layerId),
     );
     if (nextRevision === this.getRotoPhysicalContentRevision(layerId)) return { ok: true };
     _rotoPhysicalLoopClips.set(layerId, validated);
@@ -2048,7 +2101,7 @@ export const physicPaintStore = {
     const leaseValidation = _validateRotoPhysicalLayerPublication(layerId, leaseToken);
     if (!leaseValidation.ok) return { ok: false, error: leaseValidation.reason };
     const currentRevision = this.getRotoPhysicalContentRevision(layerId);
-    const current = this.getRotoRealKeyRecord(layerId, keyId);
+    const current = _rotoRealKeyRecords.get(layerId)?.get(keyId) ?? null;
     const reject = (error: string): { ok: false; error: string } => {
       _pruneUnreferencedRotoAlphaCanvases([payload.dataUrl]);
       return { ok: false, error };
@@ -2067,6 +2120,7 @@ export const physicPaintStore = {
       this.getRotoPhysicalInterpolationState(layerId),
       this.getRotoPhysicalLoopClips(layerId),
       this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId),
+      this.getRotoGroupOverrideRecords(layerId),
     );
     if (nextRevision === currentRevision) return { ok: true, changed: false, contentRevision: currentRevision };
     _rotoRealKeyRecords.set(layerId, new Map(validated.map((record) => [record.keyId, record])));
@@ -2081,8 +2135,9 @@ export const physicPaintStore = {
    * replacement/disposal.
    */
   clearRotoPhysicalRecords(layerId: string): void {
-    const previousPayloadDataUrls = new Set(this.getRotoRealKeyRecords(layerId).map((record) => record.payload.dataUrl));
+    const previousPayloadDataUrls = _getLayerDataUrls(layerId);
     _rotoRealKeyRecords.delete(layerId);
+    _rotoGroupOverrideRecords.delete(layerId);
     _rotoPhysicalInterpolationState.delete(layerId);
     _rotoPhysicalScriptMotion.delete(layerId);
     _rotoPhysicalLoopClips.delete(layerId);

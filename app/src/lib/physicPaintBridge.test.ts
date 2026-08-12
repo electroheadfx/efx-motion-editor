@@ -2280,9 +2280,9 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     const records = [
       makePhysicalRecord('source-A', 0),
       makePhysicalRecord('source-B', 2),
-      makePhysicalRecord('override-5', 5),
       makePhysicalRecord('ordinary', 20),
     ];
+    const groupOverrideRecords = [makePhysicalRecord('override-5', 5)];
     const interpolation = { enabled: true, mode: 'blend' as const };
     const loopClips = [{
       loopId: 'group-1',
@@ -2303,12 +2303,13 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, {
       capacity: 30,
       realKeyRecords: records,
+      groupOverrideRecords,
       interpolation,
       scriptMotion: { deformation: 0, position: 0 },
       background: null,
       selectedKeyId: null,
       cursorAppFrame: 5,
-      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, ['source-B']),
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, ['source-B'], groupOverrideRecords),
       loopClips,
       incomingInterpolationBreakKeyIds: ['source-B'],
     });
@@ -2353,6 +2354,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
                   current.interpolation,
                   current.loopClips,
                   current.incomingInterpolationBreakKeyIds,
+                  current.groupOverrideRecords,
                 ),
               };
               const lifecycle = proposePhysicPaintRotoRegenerateGroup({
@@ -2391,6 +2393,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       projectContextId,
       expectedRevision: current.revision,
       records: proposed.proposal.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (proposed.proposal.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
       interpolationEnabled: proposed.proposal.interpolation.enabled,
       interpolationMode: proposed.proposal.interpolation.mode,
       loopClips: proposed.proposal.loopClips,
@@ -2819,9 +2822,11 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     const records = [
       makePhysicalRecord('source-A', 0),
       makePhysicalRecord('source-B', 2),
+      makePhysicalRecord('ordinary', 20),
+    ];
+    const groupOverrideRecords = [
       makePhysicalRecord('override-5', 5),
       makePhysicalRecord('override-15', 15),
-      makePhysicalRecord('ordinary', 20),
     ];
     const interpolation = { enabled: true, mode: 'blend' as const };
     const loopClips = [
@@ -2843,12 +2848,13 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, {
       capacity: 30,
       realKeyRecords: records,
+      groupOverrideRecords,
       interpolation,
       scriptMotion: { deformation: 0, position: 0 },
       background: null,
       selectedKeyId: null,
       cursorAppFrame: 5,
-      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, ['source-B']),
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, ['source-B'], groupOverrideRecords),
       loopClips,
       incomingInterpolationBreakKeyIds: ['source-B'],
     });
@@ -2879,6 +2885,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
         current.interpolation,
         current.loopClips,
         current.incomingInterpolationBreakKeyIds,
+        current.groupOverrideRecords,
       ),
     };
     for (const groupId of ['group-1', 'group-2']) {
@@ -2905,6 +2912,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       projectContextId,
       expectedRevision: current.revision,
       records: proposalDocument.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (proposalDocument.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
       interpolationEnabled: proposalDocument.interpolation.enabled,
       interpolationMode: proposalDocument.interpolation.mode,
       loopClips: proposalDocument.loopClips,
@@ -2957,6 +2965,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       projectContextId,
       expectedRevision: test.proposed.proposal.revision,
       records: test.current.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (test.current.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
       interpolationEnabled: test.current.interpolation.enabled,
       interpolationMode: test.current.interpolation.mode,
       loopClips: test.current.loopClips,
@@ -2987,6 +2996,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       projectContextId,
       expectedRevision: test.current.revision,
       records: test.proposed.proposal.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (test.proposed.proposal.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
       interpolationEnabled: test.proposed.proposal.interpolation.enabled,
       interpolationMode: test.proposed.proposal.interpolation.mode,
       loopClips: test.proposed.proposal.loopClips,
@@ -3467,6 +3477,103 @@ describe('Phase 43.2 leased exact-occurrence Paint parent tracer', () => {
     expect(rotoPhysicalRevision.peek()).toBe(beforePhysicalRevision + 1);
     expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.proposalResult.proposal);
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
+  });
+
+  it('preserves ordinary source bytes while Undo and Redo remove and restore a source-occurrence override', async () => {
+    const test = await harness('group-paint-source-history');
+    const sourceRecords = structuredClone(test.acceptedDocument.realKeyRecords);
+    const sourcePaint = proposePhysicPaintRotoGroupFramePaint({
+      document: test.acceptedDocument,
+      groupId: 'group-1',
+      appFrame: 0,
+      overrideKeyId: 'override-source-0',
+      renderedPayload: {
+        ...makePhysicalRecord('override-source-0', 0).payload,
+        dataUrl: OPAQUE_ONE_PIXEL_PNG,
+        width: 1,
+        height: 1,
+      },
+    });
+    if (!sourcePaint.ok) throw new Error(sourcePaint.reason);
+    const request = {
+      ...test.request,
+      operationId: 'group-paint-source-history',
+      appFrame: 0,
+      overrideKeyId: 'override-source-0',
+      renderedPayload: sourcePaint.proposal.groupOverrideRecords![0].payload,
+      proposal: sourcePaint.proposal,
+      impact: sourcePaint.impact,
+    };
+
+    const forward = applyPhysicPaintRotoGroupFramePaint(request);
+    expect(forward.ok).toBe(true);
+    if (!forward.ok) return;
+    expect(forward.acceptedDocument.realKeyRecords).toEqual(sourceRecords);
+    expect(forward.acceptedDocument.groupOverrideRecords).toEqual(sourcePaint.proposal.groupOverrideRecords);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
+
+    const undoLease = acquirePhysicalLease(test.layer.id, projectContextId);
+    const undo = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'group-paint-source-history-undo',
+      operationKind: 'undo',
+      layerId: test.layer.id,
+      leaseToken: undoLease,
+      startFrame: test.acceptedDocument.cursorAppFrame,
+      launchOperationId: request.launchOperationId,
+      projectContextId,
+      expectedRevision: sourcePaint.proposal.revision,
+      records: test.acceptedDocument.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: [],
+      interpolationEnabled: test.acceptedDocument.interpolation.enabled,
+      interpolationMode: test.acceptedDocument.interpolation.mode,
+      loopClips: test.acceptedDocument.loopClips,
+      incomingInterpolationBreakKeyIds: test.acceptedDocument.incomingInterpolationBreakKeyIds,
+      selectedKeyId: test.acceptedDocument.selectedKeyId,
+      selectedAppFrame: null,
+      cursorAppFrame: test.acceptedDocument.cursorAppFrame,
+      historyProvenance: {
+        historyCommandId: request.operationId,
+        historyDirection: 'undo',
+        sourceRevision: sourcePaint.proposal.revision,
+        targetRevision: test.acceptedDocument.revision,
+      },
+    });
+    expect(undo.ok, undo.ok ? undefined : undo.error).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.acceptedDocument);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(undoLease)).toBe(true);
+
+    const redoLease = acquirePhysicalLease(test.layer.id, projectContextId);
+    const redo = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'group-paint-source-history-redo',
+      operationKind: 'redo',
+      layerId: test.layer.id,
+      leaseToken: redoLease,
+      startFrame: sourcePaint.proposal.cursorAppFrame,
+      launchOperationId: request.launchOperationId,
+      projectContextId,
+      expectedRevision: test.acceptedDocument.revision,
+      records: sourcePaint.proposal.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: sourcePaint.proposal.groupOverrideRecords!.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: sourcePaint.proposal.interpolation.enabled,
+      interpolationMode: sourcePaint.proposal.interpolation.mode,
+      loopClips: sourcePaint.proposal.loopClips,
+      incomingInterpolationBreakKeyIds: sourcePaint.proposal.incomingInterpolationBreakKeyIds,
+      selectedKeyId: sourcePaint.proposal.selectedKeyId,
+      selectedAppFrame: null,
+      cursorAppFrame: sourcePaint.proposal.cursorAppFrame,
+      historyProvenance: {
+        historyCommandId: request.operationId,
+        historyDirection: 'redo',
+        sourceRevision: test.acceptedDocument.revision,
+        targetRevision: sourcePaint.proposal.revision,
+      },
+    });
+    expect(redo.ok, redo.ok ? undefined : redo.error).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(sourcePaint.proposal);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)?.realKeyRecords).toEqual(sourceRecords);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(redoLease)).toBe(true);
   });
 
   it.each([

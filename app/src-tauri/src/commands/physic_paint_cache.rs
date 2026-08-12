@@ -1,6 +1,7 @@
-use crate::services::physic_paint_cache::publish_cache_generation;
-use serde::Serialize;
-use std::fs;
+use crate::services::physic_paint_cache::{
+    publish_cache_generation, settle_cache_generation, CacheSettlementAction,
+};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -14,6 +15,20 @@ pub enum PhysicPaintCacheCleanupStatus {
 #[serde(rename_all = "camelCase")]
 pub struct PhysicPaintCachePublicationResult {
     pub accepted: bool,
+    pub replaced_existing: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PhysicPaintCacheSettlementAction {
+    Commit,
+    Rollback,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhysicPaintCacheSettlementResult {
+    pub accepted: bool,
     pub cleanup_status: PhysicPaintCacheCleanupStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cleanup_diagnostic: Option<String>,
@@ -26,28 +41,34 @@ pub fn publish_physic_paint_cache_generation(
 ) -> Result<PhysicPaintCachePublicationResult, String> {
     let project_dir = PathBuf::from(project_dir);
     let publication = publish_cache_generation(&project_dir, &staging_basename)?;
+    Ok(PhysicPaintCachePublicationResult {
+        accepted: true,
+        replaced_existing: publication.replaced_existing,
+    })
+}
 
-    if !publication.replaced_existing {
-        return Ok(PhysicPaintCachePublicationResult {
-            accepted: true,
-            cleanup_status: PhysicPaintCacheCleanupStatus::Complete,
-            cleanup_diagnostic: None,
-        });
-    }
-
-    let staging_path = project_dir.join("cache").join(staging_basename);
-    match fs::remove_dir_all(staging_path) {
-        Ok(()) => Ok(PhysicPaintCachePublicationResult {
-            accepted: true,
-            cleanup_status: PhysicPaintCacheCleanupStatus::Complete,
-            cleanup_diagnostic: None,
-        }),
-        Err(error) => Ok(PhysicPaintCachePublicationResult {
-            accepted: true,
-            cleanup_status: PhysicPaintCacheCleanupStatus::Deferred,
-            cleanup_diagnostic: Some(format!(
-                "Published Physics Paint cache; old generation cleanup was deferred: {error}"
-            )),
-        }),
-    }
+#[tauri::command]
+pub fn settle_physic_paint_cache_generation(
+    project_dir: String,
+    staging_basename: String,
+    action: PhysicPaintCacheSettlementAction,
+) -> Result<PhysicPaintCacheSettlementResult, String> {
+    let project_dir = PathBuf::from(project_dir);
+    let settlement = settle_cache_generation(
+        &project_dir,
+        &staging_basename,
+        match action {
+            PhysicPaintCacheSettlementAction::Commit => CacheSettlementAction::Commit,
+            PhysicPaintCacheSettlementAction::Rollback => CacheSettlementAction::Rollback,
+        },
+    )?;
+    Ok(PhysicPaintCacheSettlementResult {
+        accepted: true,
+        cleanup_status: if settlement.cleanup_deferred {
+            PhysicPaintCacheCleanupStatus::Deferred
+        } else {
+            PhysicPaintCacheCleanupStatus::Complete
+        },
+        cleanup_diagnostic: settlement.cleanup_diagnostic,
+    })
 }

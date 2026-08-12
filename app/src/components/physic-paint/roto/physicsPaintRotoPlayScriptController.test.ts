@@ -724,6 +724,7 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
         layerId: 'layer-1',
         projectContextId: 'context-1',
         records,
+        groupOverrideRecords: [],
         interpolation,
         loopClips: [],
         incomingInterpolationBreakKeyIds: [],
@@ -998,6 +999,7 @@ describe('createRotoPlayScriptController D-06 loop-shorten preflight', () => {
         layerId: 'layer-1',
         projectContextId: 'context-1',
         records,
+        groupOverrideRecords: [],
         interpolation,
         loopClips: loops,
         incomingInterpolationBreakKeyIds: [],
@@ -1198,6 +1200,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         layerId: 'layer-1',
         projectContextId: 'context-1',
         records,
+        groupOverrideRecords: [],
         interpolation,
         loopClips,
         incomingInterpolationBreakKeyIds: [],
@@ -2209,26 +2212,27 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
     });
 
     const regenerateDocument = (groups: readonly PhysicPaintRotoLoopClip[]) => {
-      const records: PhysicPaintRotoRealKeyRecord[] = [
-        ...CYCLE_IDS.slice(0, 3).map((keyId, index) => ({
-          kind: 'real-key' as const,
-          ...physicalRecord(keyId, 4 + index * 2, `source-${keyId}`),
-        })),
-        ...groups.flatMap((group) => (group.frameOverrides ?? []).map((override) => ({
+      const records: PhysicPaintRotoRealKeyRecord[] = CYCLE_IDS.slice(0, 3).map((keyId, index) => ({
+        kind: 'real-key' as const,
+        ...physicalRecord(keyId, 4 + index * 2, `source-${keyId}`),
+      }));
+      const groupOverrideRecords: PhysicPaintRotoRealKeyRecord[] = groups.flatMap(
+        (group) => (group.frameOverrides ?? []).map((override) => ({
           kind: 'real-key' as const,
           ...physicalRecord(override.keyId, override.appFrame, `local-${override.keyId}`),
-        }))),
-      ];
+        })),
+      );
       const interpolation = { enabled: true, mode: 'duplicate' as const };
       return Object.freeze({
         capacity: 100,
         realKeyRecords: Object.freeze(records),
+        groupOverrideRecords: Object.freeze(groupOverrideRecords),
         interpolation,
         scriptMotion: { deformation: 0, position: 0 },
         background: null,
         selectedKeyId: null,
         cursorAppFrame: 13,
-        revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, groups, []),
+        revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, groups, [], groupOverrideRecords),
         loopClips: Object.freeze([...groups]),
         incomingInterpolationBreakKeyIds: Object.freeze([] as string[]),
       });
@@ -2345,6 +2349,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(publication.selectedKeyId).toBeNull();
       expect(publication.selectedAppFrame).toBeNull();
       expect(publication.records.some((record) => record.keyId.startsWith('override-'))).toBe(false);
+      expect('groupOverrideRecords' in publication ? publication.groupOverrideRecords : null).toEqual([]);
       expect(publication.loopClips?.map((group) => ({
         loopId: group.loopId,
         placementStart: group.placementStart,

@@ -1,4 +1,8 @@
-import type { PhysicPaintRotoRealKeyRecord } from './physicsPaintRotoPhysicalModel';
+import type {
+  PhysicPaintRotoPhysicalDocument,
+  PhysicPaintRotoRealKeyRecord,
+} from './physicsPaintRotoPhysicalModel';
+import { classifyPhysicPaintRotoGroupFrameTarget } from './physicsPaintRotoGroupLifecycle';
 
 export interface RotoPhysicalOwnedFrame {
   readonly appFrame: number;
@@ -38,6 +42,30 @@ export type RotoPhysicalOwnershipResolution<TState, TFrame extends RotoPhysicalO
   | { readonly ok: true; readonly value: RotoPhysicalOwnershipResult<TState, TFrame> }
   | { readonly ok: false; readonly error: string };
 
+export function collectDiscardableRotoGroupOwnedFrames(input: {
+  readonly beforeDocument: PhysicPaintRotoPhysicalDocument;
+  readonly afterDocument: PhysicPaintRotoPhysicalDocument;
+  readonly snapshotFrames: readonly number[];
+}): number[] {
+  const directBeforeFrames = new Set(input.beforeDocument.realKeyRecords.map((record) => record.appFrame));
+  return [...new Set(input.snapshotFrames)]
+    .filter((appFrame) => {
+      if (directBeforeFrames.has(appFrame)) return false;
+      const beforeTarget = classifyPhysicPaintRotoGroupFrameTarget({
+        document: input.beforeDocument,
+        appFrame,
+      });
+      const afterTarget = classifyPhysicPaintRotoGroupFrameTarget({
+        document: input.afterDocument,
+        appFrame,
+      });
+      const beforeGroupId = 'groupId' in beforeTarget ? beforeTarget.groupId : null;
+      const afterGroupId = 'groupId' in afterTarget ? afterTarget.groupId : null;
+      return beforeGroupId !== null && beforeGroupId === afterGroupId;
+    })
+    .sort((left, right) => left - right);
+}
+
 function buildIdentityByFrame(records: readonly PhysicPaintRotoRealKeyRecord[]): Map<number, string> | null {
   const identities = new Set<string>();
   const byFrame = new Map<number, string>();
@@ -64,12 +92,16 @@ function remapOwnedMap<T>(
   source: ReadonlyMap<number, T>,
   ownerByOldFrame: ReadonlyMap<number, string>,
   frameByIdentity: ReadonlyMap<string, number>,
+  discardUnownedAppFrames: ReadonlySet<number>,
   project: (value: T, appFrame: number, keyId: string) => T,
 ): Map<number, T> | null {
   const result = new Map<number, T>();
   for (const [oldFrame, value] of source) {
     const keyId = ownerByOldFrame.get(oldFrame);
-    if (!keyId) return null;
+    if (!keyId) {
+      if (discardUnownedAppFrames.has(oldFrame)) continue;
+      return null;
+    }
     const nextFrame = frameByIdentity.get(keyId);
     if (nextFrame === undefined) continue;
     if (result.has(nextFrame)) return null;
@@ -82,11 +114,15 @@ function remapOwnedSet(
   source: ReadonlySet<number>,
   ownerByOldFrame: ReadonlyMap<number, string>,
   frameByIdentity: ReadonlyMap<string, number>,
+  discardUnownedAppFrames: ReadonlySet<number>,
 ): Set<number> | null {
   const result = new Set<number>();
   for (const oldFrame of source) {
     const keyId = ownerByOldFrame.get(oldFrame);
-    if (!keyId) return null;
+    if (!keyId) {
+      if (discardUnownedAppFrames.has(oldFrame)) continue;
+      return null;
+    }
     const nextFrame = frameByIdentity.get(keyId);
     if (nextFrame === undefined) continue;
     if (result.has(nextFrame)) return null;
@@ -99,15 +135,15 @@ function remapOwnedSet(
  * Rebuild every mutable frame-indexed child collection from one immutable
  * pre-state and one complete accepted stable-identity placement.
  *
- * Entries may only be owned by pre-state real keys. Deleted identities are
- * removed, survivors move to their accepted direct appFrame, and collisions,
- * partial ownership, generated-cell ownership, or malformed placement fail
- * closed without returning a partial result.
+ * Entries normally belong to pre-state real keys. Accepted callers may name
+ * exact Group-owned virtual frames whose derived buffers must be discarded
+ * before reconstruction; every other unowned frame still fails closed.
  */
 export function rebuildRotoPhysicalOwnership<TState, TFrame extends RotoPhysicalOwnedFrame>(input: {
   readonly beforeRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly afterRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly contentRevision: string;
+  readonly discardUnownedAppFrames?: readonly number[];
   readonly snapshot: RotoPhysicalOwnershipSnapshot<TState, TFrame>;
 }): RotoPhysicalOwnershipResolution<TState, TFrame> {
   const ownerByOldFrame = buildIdentityByFrame(input.beforeRecords);
@@ -115,6 +151,7 @@ export function rebuildRotoPhysicalOwnership<TState, TFrame extends RotoPhysical
   if (!ownerByOldFrame || !frameByIdentity) return { ok: false, error: 'Physical ownership records contain duplicate identity or frame.' };
   if (!input.contentRevision) return { ok: false, error: 'Physical ownership rebuild requires the accepted content revision.' };
 
+  const discardUnownedAppFrames = new Set(input.discardUnownedAppFrames ?? []);
   const remapFrame = (frame: TFrame, appFrame: number, keyId: string): TFrame => ({
     ...frame,
     appFrame,
@@ -122,13 +159,13 @@ export function rebuildRotoPhysicalOwnership<TState, TFrame extends RotoPhysical
     contentRevision: input.contentRevision,
     cacheRevision: `${input.contentRevision}:real:${keyId}`,
   });
-  const frameStates = remapOwnedMap(input.snapshot.frameStates, ownerByOldFrame, frameByIdentity, (value) => value);
-  const previewFrames = remapOwnedMap(input.snapshot.previewFrames, ownerByOldFrame, frameByIdentity, remapFrame);
-  const capturedFrames = remapOwnedMap(input.snapshot.capturedFrames, ownerByOldFrame, frameByIdentity, remapFrame);
-  const confirmedFrames = remapOwnedMap(input.snapshot.confirmedFrames, ownerByOldFrame, frameByIdentity, remapFrame);
-  const dirtyFrames = remapOwnedSet(input.snapshot.dirtyFrames, ownerByOldFrame, frameByIdentity);
-  const liveOverlayActionCounts = remapOwnedMap(input.snapshot.liveOverlayActionCounts, ownerByOldFrame, frameByIdentity, (value) => value);
-  const editableFrames = remapOwnedSet(new Set(input.snapshot.editableFrames), ownerByOldFrame, frameByIdentity);
+  const frameStates = remapOwnedMap(input.snapshot.frameStates, ownerByOldFrame, frameByIdentity, discardUnownedAppFrames, (value) => value);
+  const previewFrames = remapOwnedMap(input.snapshot.previewFrames, ownerByOldFrame, frameByIdentity, discardUnownedAppFrames, remapFrame);
+  const capturedFrames = remapOwnedMap(input.snapshot.capturedFrames, ownerByOldFrame, frameByIdentity, discardUnownedAppFrames, remapFrame);
+  const confirmedFrames = remapOwnedMap(input.snapshot.confirmedFrames, ownerByOldFrame, frameByIdentity, discardUnownedAppFrames, remapFrame);
+  const dirtyFrames = remapOwnedSet(input.snapshot.dirtyFrames, ownerByOldFrame, frameByIdentity, discardUnownedAppFrames);
+  const liveOverlayActionCounts = remapOwnedMap(input.snapshot.liveOverlayActionCounts, ownerByOldFrame, frameByIdentity, discardUnownedAppFrames, (value) => value);
+  const editableFrames = remapOwnedSet(new Set(input.snapshot.editableFrames), ownerByOldFrame, frameByIdentity, discardUnownedAppFrames);
   if (!frameStates || !previewFrames || !capturedFrames || !confirmedFrames || !dirtyFrames || !liveOverlayActionCounts || !editableFrames) {
     return { ok: false, error: 'Frame-indexed child state is not completely owned by the pre-state real-key identities.' };
   }
@@ -137,9 +174,14 @@ export function rebuildRotoPhysicalOwnership<TState, TFrame extends RotoPhysical
   let nextRepaintBase: TFrame | null = null;
   if (repaintBase) {
     const owner = ownerByOldFrame.get(repaintBase.appFrame);
-    if (!owner) return { ok: false, error: 'Cached reference is not owned by a pre-state real key.' };
-    const nextFrame = frameByIdentity.get(owner);
-    if (nextFrame !== undefined) nextRepaintBase = remapFrame(repaintBase, nextFrame, owner);
+    if (!owner) {
+      if (!discardUnownedAppFrames.has(repaintBase.appFrame)) {
+        return { ok: false, error: 'Cached reference is not owned by a pre-state real key.' };
+      }
+    } else {
+      const nextFrame = frameByIdentity.get(owner);
+      if (nextFrame !== undefined) nextRepaintBase = remapFrame(repaintBase, nextFrame, owner);
+    }
   }
 
   return {

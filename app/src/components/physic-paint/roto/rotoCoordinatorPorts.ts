@@ -138,6 +138,7 @@ export interface RotoPhysicalEditSnapshot<EngineState> {
   readonly layerId: string;
   readonly projectContextId: string | null;
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly interpolation: PhysicPaintRotoInterpolationState;
   /**
    * Durable Loop Clip collection (Phase 43, Q1/D-06/D-10): keys and loops

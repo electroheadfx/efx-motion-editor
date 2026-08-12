@@ -1,3 +1,5 @@
+import {readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
 import {describe, it, expect, beforeEach} from 'vitest';
 import {projectStore} from './projectStore';
 import {audioStore} from './audioStore';
@@ -7,6 +9,23 @@ import type {AudioTrack} from '../types/audio';
 import type {RuntimeMceProject} from '../types/project';
 
 /** Create a minimal AudioTrack for testing */
+describe('Physics Paint project/cache save transaction', () => {
+  it('keeps Save and Save As project writes inside the rollback-capable cache callback', () => {
+    const source = readFileSync(fileURLToPath(new URL('./projectStore.ts', import.meta.url)), 'utf8');
+    const saveStart = source.indexOf('async saveProject(options?');
+    const saveAsStart = source.indexOf('async saveProjectAs(newFilePath');
+    const saveSource = source.slice(saveStart, saveAsStart);
+    const saveAsSource = source.slice(saveAsStart, source.indexOf('/** Open a project', saveAsStart));
+
+    expect(saveSource).toContain('await savePhysicPaintDataWithProjectWrite(projectDir, project.physic_paint_outputs, async (physicPaintOutputs) => {');
+    expect(saveSource).toContain('const result = await ipcProjectSave({');
+    expect(saveAsSource).toContain('await savePhysicPaintDataWithProjectWrite(parentDir, project.physic_paint_outputs, async (physicPaintOutputs) => {');
+    expect(saveAsSource).toContain('const transaction = await projectSaveAsWithScriptLibrary(projectForSave, previousFilePath, newFilePath);');
+    expect(saveAsSource).toContain('const result = await ipcProjectSave(projectForSave, newFilePath);');
+    expect(source).not.toContain('physic_paint_outputs: await savePhysicPaintData(');
+  });
+});
+
 function makeTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
   return {
     id: 'track-1',

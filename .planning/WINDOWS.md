@@ -82,6 +82,11 @@ last_updated: 2026-08-12T05:51:29.071Z
 | 65 | 43.2 | deviation | .planning/STATE.md |  | Corrected state.update-progress metadata from percent 63 to 97 while preserving Plan 43.2-17 as blocked | fixed |  | 2026-08-11T17:53:43.789Z | 2026-08-11T17:54:00.857Z |
 | 66 | 43.2 | unrun-verify | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md |  | Plan 43.2-25 native Task 3 failed on 2418ed6c; replacement settlement candidate 69d07703 remains pending seven targeted parent/child retests | open |  | 2026-08-11T20:44:55.517Z |  |
 | 67 | 43.2 | unmet-truth | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md |  | Frozen 2418ed6c native Group operations partially settled; automated repair 69d07703 is pending seven targeted exact-once parent/child retests | open |  | 2026-08-12T05:51:29.071Z |  |
+| 68 | 43.2 | unmet-truth | app/src-tauri/capabilities |  | Frozen 69d07703 save rejects the project-local .physic-paint-staging UUID path under allow-exists; SAVE-REOPEN remains blocked without broad filesystem scope | open |  | 2026-08-12T11:58:21.000Z |  |
+| 69 | 43.2 | unmet-truth | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx |  | Frozen 69d07703 Delete Frame removes the occurrence and history works, but the accepted empty Group gap remains green | open |  | 2026-08-12T11:58:21.000Z |  |
+| 70 | 43.2 | unmet-truth | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Frozen 69d07703 cannot Paint directly into a deleted Group-owned gap; no exact-frame override or cache is accepted | open |  | 2026-08-12T11:58:21.000Z |  |
+| 71 | 43.2 | unmet-truth | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Frozen 69d07703 local Paint over Group content destroys both prior and requested content with no accepted cache | open |  | 2026-08-12T11:58:21.000Z |  |
+| 72 | 43.2 | unmet-truth | app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts |  | Frozen 69d07703 Regenerate retains deleted occurrences because reconstruction follows current visibleRanges instead of original Group extent | open |  | 2026-08-12T11:58:21.000Z |  |
 
 ````json
 [
@@ -887,6 +892,66 @@ last_updated: 2026-08-12T05:51:29.071Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-12T05:51:29.071Z",
+    "resolved_at": null
+  },
+  {
+    "id": 68,
+    "kind": "unmet-truth",
+    "phase": "43.2",
+    "file": "app/src-tauri/capabilities",
+    "line": null,
+    "description": "Frozen 69d07703 save rejects the project-local .physic-paint-staging UUID path under allow-exists; SAVE-REOPEN remains blocked without broad filesystem scope",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-12T11:58:21.000Z",
+    "resolved_at": null
+  },
+  {
+    "id": 69,
+    "kind": "unmet-truth",
+    "phase": "43.2",
+    "file": "app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx",
+    "line": null,
+    "description": "Frozen 69d07703 Delete Frame removes the occurrence and history works, but the accepted empty Group gap remains green",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-12T11:58:21.000Z",
+    "resolved_at": null
+  },
+  {
+    "id": 70,
+    "kind": "unmet-truth",
+    "phase": "43.2",
+    "file": "app/src/components/physic-paint/PhysicsPaintStudio.tsx",
+    "line": null,
+    "description": "Frozen 69d07703 cannot Paint directly into a deleted Group-owned gap; no exact-frame override or cache is accepted",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-12T11:58:21.000Z",
+    "resolved_at": null
+  },
+  {
+    "id": 71,
+    "kind": "unmet-truth",
+    "phase": "43.2",
+    "file": "app/src/components/physic-paint/PhysicsPaintStudio.tsx",
+    "line": null,
+    "description": "Frozen 69d07703 local Paint over Group content destroys both prior and requested content with no accepted cache",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-12T11:58:21.000Z",
+    "resolved_at": null
+  },
+  {
+    "id": 72,
+    "kind": "unmet-truth",
+    "phase": "43.2",
+    "file": "app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts",
+    "line": null,
+    "description": "Frozen 69d07703 Regenerate retains deleted occurrences because reconstruction follows current visibleRanges instead of original Group extent",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-12T11:58:21.000Z",
     "resolved_at": null
   }
 ]

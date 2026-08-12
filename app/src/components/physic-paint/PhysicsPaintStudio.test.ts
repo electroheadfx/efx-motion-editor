@@ -81,12 +81,13 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(navigationCoordinator).not.toContain('const lastRealFrame = assignments.length > 0');
   });
 
-  it('refreshes the current canvas immediately after an accepted Play Script commit', () => {
+  it('refreshes the current canvas immediately after accepted generated Group publications', () => {
     const finalizeStart = physicalEditCoordinator.indexOf('const finalizeAccepted = useCallback(');
     const finalizeEnd = physicalEditCoordinator.indexOf('const finalizeFailed = useCallback(', finalizeStart);
     const finalizeAccepted = physicalEditCoordinator.slice(finalizeStart, finalizeEnd);
     expect(finalizeStart).toBeGreaterThanOrEqual(0);
     expect(finalizeAccepted).toContain("pending.operationKind === 'play-script'");
+    expect(finalizeAccepted).toContain("pending.operationKind === 'regenerate-group'");
     expect(finalizeAccepted).toContain('portsRef.current.reference.reconcileCurrentFrame(after.currentAppFrame);');
   });
 
@@ -127,6 +128,29 @@ describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)'
       'const groupDocument = useSignal',
       'const groupVersion = useSignal',
     ]) expect(studio).not.toContain(secondAuthority);
+  });
+
+  it('routes Group Paint activation and completion by Group identity and restores accepted content when capture rejects', () => {
+    expect(studio).toContain('resolveRotoCompletedGroupPaintTarget(document, currentFrame, currentCellKeyId)');
+    expect(studio).toContain("paintTarget?.kind === 'group-frame'");
+    expect(studio).not.toContain("groupTarget?.kind === 'group-gap'");
+    expect(studio).toContain('resolveRotoCompletedGroupPaintTarget(document, appFrame, currentCellKeyId)');
+    expect(studio).toContain("completedTarget.kind === 'group-frame'");
+    expect(studio).toContain('keyId: keyId ?? undefined');
+    expect(studio).toContain('if (!await capture) {');
+    expect(studio).toContain('engineRef.current as PreviewBackgroundEngine | null,\n          undefined,\n          true,');
+  });
+
+  it('stamps records-only ownership rebuilds with the complete canonical revision', () => {
+    const replacementStart = studio.indexOf('const replacePhysicalRecordsWithOwnership = (');
+    const replacementEnd = studio.indexOf('const replacePhysicalDocumentWithOwnership = (', replacementStart);
+    const replacement = studio.slice(replacementStart, replacementEnd);
+    expect(replacementStart).toBeGreaterThanOrEqual(0);
+    expect(replacement).toContain('getRotoPhysicalLoopClips(layerId)');
+    expect(replacement).toContain('getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId)');
+    expect(replacement).toContain('getRotoGroupOverrideRecords(layerId)');
+    expect(replacement).toContain('records,\n      interpolation,\n      currentLoopClips,\n      currentIncomingBreaks,\n      currentGroupOverrides,');
+    expect(replacement).toContain('contentRevision: nextRevision');
   });
 
   it('keeps deferred Group and Action editing surfaces absent from the accepted Studio UI', () => {

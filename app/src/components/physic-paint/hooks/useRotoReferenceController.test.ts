@@ -147,6 +147,33 @@ describe('Roto reference controller', () => {
     expect(setApplyMessage).toHaveBeenCalledWith('Cached physical base loaded for frame 4. Add paint to update this key.');
   });
 
+  it('replaces rejected dirty pixels with one explicitly accepted physical base', () => {
+    const engine = createEngine();
+    const dirtyFrames = new Set([4]);
+    const liveOverlayActionCounts = new Map([[4, 2]]);
+    const accepted = frame(4, 'real-key', 'data:accepted');
+    const syncPending = vi.fn();
+    const loader = createRotoReferenceLoader({
+      getWorkflowMode: () => 'roto',
+      getSettingsBackground: () => 'white',
+      dirtyFrames,
+      liveOverlayActionCounts,
+      getReferenceFrame: () => accepted,
+      setReferenceUrl: vi.fn(),
+      setRepaintBaseFrame: vi.fn(),
+      syncPending,
+      setApplyMessage: vi.fn(),
+      replaceDirtyFrame: true,
+    });
+
+    expect(loader.load(4, engine)).toBe(true);
+    expect(dirtyFrames.has(4)).toBe(false);
+    expect(liveOverlayActionCounts.has(4)).toBe(false);
+    expect(engine.clear).toHaveBeenCalledOnce();
+    expect(engine.setPreviewBaseImageUrl).toHaveBeenCalledWith('data:accepted');
+    expect(syncPending).toHaveBeenCalledOnce();
+  });
+
   it('clears the preview base and resets background when no cached frame exists', () => {
     const engine = createEngine();
     const loader = createRotoReferenceLoader({

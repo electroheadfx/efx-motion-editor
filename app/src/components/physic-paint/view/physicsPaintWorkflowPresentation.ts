@@ -1,4 +1,5 @@
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
+import type { PhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
 import type {
   PhysicPaintRotoFrameResolution,
   PhysicPaintRotoPhysicalCell,
@@ -90,6 +91,21 @@ export function getRotoCellFill(
 ): RotoCellFill {
   if (hasCachedRotoFrame(cachedFrames, frame)) return 'cached-only';
   return 'empty';
+}
+
+export function getRotoAcceptedCellFillClass(input: {
+  readonly lifecycleTargetKind: PhysicPaintRotoGroupFrameTarget['kind'];
+  readonly resolutionKind: PhysicPaintRotoFrameResolution['kind'];
+  readonly isPhysicalRealKey: boolean;
+  readonly fill: RotoCellFill;
+  readonly viewModelFillClass: string;
+}): string {
+  if (input.lifecycleTargetKind === 'group-gap' || input.resolutionKind === 'linked-gap') {
+    return 'roto-fill-empty';
+  }
+  if (input.isPhysicalRealKey) return 'roto-fill-cached';
+  const fillClass = input.fill === 'cached-only' ? 'roto-fill-cached-only' : 'roto-fill-empty';
+  return `${fillClass} ${input.viewModelFillClass}`;
 }
 
 export function getRotoCellViewModel({

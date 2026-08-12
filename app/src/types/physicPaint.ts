@@ -828,6 +828,7 @@ interface PhysicPaintRotoPhysicalEditApplyPayloadBase {
   readonly projectContextId?: string;
   readonly expectedRevision: string;
   readonly records: readonly PhysicPaintRotoPhysicalEditRecord[];
+  readonly groupOverrideRecords?: readonly PhysicPaintRotoPhysicalEditRecord[];
   readonly interpolationEnabled: boolean;
   readonly interpolationMode: PhysicPaintRotoInterpolationMode;
   readonly rotoBackground?: PhysicPaintRotoBackgroundMetadata;
@@ -1158,7 +1159,7 @@ export function isPhysicPaintRotoPhysicalEditReplayProvenance(value: unknown): v
  */
 export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value is PhysicPaintRotoPhysicalEditApplyPayload {
   if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
+  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
   if (!isPhysicPaintRotoPhysicalEditOperationKind(value.operationKind)) return false;
@@ -1177,6 +1178,8 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
     && value.leaseToken.projectContextId !== value.projectContextId) return false;
   if (!isNonEmptyString(value.expectedRevision)) return false;
   if (!Array.isArray(value.records) || !value.records.every(isPhysicPaintRotoPhysicalEditRecord)) return false;
+  if (value.groupOverrideRecords !== undefined
+    && (!Array.isArray(value.groupOverrideRecords) || !value.groupOverrideRecords.every(isPhysicPaintRotoPhysicalEditRecord))) return false;
   if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isLifecycleCompletePhysicPaintRotoLoopClip))) return false;
   if (value.incomingInterpolationBreakKeyIds !== undefined && (!Array.isArray(value.incomingInterpolationBreakKeyIds) || !value.incomingInterpolationBreakKeyIds.every(isBoundedPhysicalKeyId))) return false;
   if (typeof value.interpolationEnabled !== 'boolean') return false;
@@ -1301,6 +1304,7 @@ export interface PhysicPaintProjectContext {
 export interface PhysicPaintRotoPhysicalDocumentPayload {
   readonly capacity: number;
   readonly records: readonly PhysicPaintRotoPhysicalEditRecord[];
+  readonly groupOverrideRecords?: readonly PhysicPaintRotoPhysicalEditRecord[];
   readonly interpolationEnabled: boolean;
   readonly interpolationMode: PhysicPaintRotoInterpolationMode;
   readonly scriptMotion: {
@@ -1995,9 +1999,11 @@ function optionalRotoCacheFrames(value: unknown): boolean {
 
 function optionalRotoPhysicalDocumentPayload(value: unknown): value is PhysicPaintRotoPhysicalDocumentPayload | undefined {
   if (value === undefined) return true;
-  if (!isRecord(value) || !hasOnlyKeys(value, ['capacity', 'records', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ['capacity', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
   if (!isNonNegativeInteger(value.capacity) || value.capacity < 1) return false;
   if (!Array.isArray(value.records) || !value.records.every(isPhysicPaintRotoPhysicalEditRecord)) return false;
+  if (value.groupOverrideRecords !== undefined
+    && (!Array.isArray(value.groupOverrideRecords) || !value.groupOverrideRecords.every(isPhysicPaintRotoPhysicalEditRecord))) return false;
   if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isLifecycleCompletePhysicPaintRotoLoopClip))) return false;
   if (value.incomingInterpolationBreakKeyIds !== undefined && (!Array.isArray(value.incomingInterpolationBreakKeyIds) || !value.incomingInterpolationBreakKeyIds.every(isBoundedPhysicalKeyId))) return false;
   if (typeof value.interpolationEnabled !== 'boolean') return false;

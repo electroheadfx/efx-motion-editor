@@ -8,6 +8,7 @@ import type {
 import {
   encodeRotoPhysicalLaunchDocument,
   rejectRotoLoopPlaceholderSource,
+  resolveRotoCompletedGroupPaintTarget,
   routeRotoPhysicalPaintFrame,
 } from './useRotoFramePersistenceCoordinator';
 
@@ -91,6 +92,7 @@ describe('Roto frame persistence coordinator launch publication', () => {
     expect(encodeRotoPhysicalLaunchDocument(document)).toEqual({
       capacity: 64,
       records: [{ keyId: 'key-32', appFrame: 32, payload: record.payload }],
+      groupOverrideRecords: [],
       interpolationEnabled: true,
       interpolationMode: 'duplicate',
       scriptMotion: { deformation: 0, position: 0 },
@@ -263,6 +265,28 @@ function routedPaintDocument(options: { gapFrame?: number; ambiguous?: boolean }
     incomingInterpolationBreakKeyIds: ['source-B'],
   };
 }
+
+describe('Phase 43.2 completed Group Paint target routing', () => {
+  it.each([
+    ['source occurrence', 3, 'source-A'],
+    ['generated occurrence', 4, undefined],
+    ['existing override', 5, 'override-5'],
+    ['deleted Group occurrence', 4, undefined],
+  ] as const)('does not require a direct occurrence key for a %s', (_label, appFrame, expectedKeyId) => {
+    const document = routedPaintDocument(_label === 'deleted Group occurrence' ? { gapFrame: appFrame } : {});
+
+    expect(resolveRotoCompletedGroupPaintTarget(document, appFrame, null)).toEqual({
+      kind: 'group-frame',
+      groupId: 'group-1',
+      appFrame,
+      expectedKeyId,
+    });
+  });
+
+  it('keeps ordinary empty frames on the first-key preparation path', () => {
+    expect(resolveRotoCompletedGroupPaintTarget(routedPaintDocument(), 10, null)).toEqual({ kind: 'empty' });
+  });
+});
 
 describe('Phase 43.2 production Paint target routing', () => {
   const renderedPayload = {

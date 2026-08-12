@@ -294,6 +294,7 @@ export const PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY: reado
  */
 export interface PhysicPaintRotoPhysicalDocument extends PhysicPaintRotoPhysicalState {
   readonly capacity: number;
+  readonly groupOverrideRecords?: readonly PhysicPaintRotoRealKeyRecord[];
   readonly background: PhysicPaintRotoBackgroundMetadata | null;
   readonly selectedKeyId: string | null;
   readonly cursorAppFrame: number;
@@ -406,6 +407,7 @@ const PHYSIC_PAINT_ROTO_GROUP_LIFECYCLE_KEYS = [
 const PHYSIC_PAINT_ROTO_PHYSICAL_DOCUMENT_KEYS = new Set([
   'capacity',
   'realKeyRecords',
+  'groupOverrideRecords',
   'interpolation',
   'scriptMotion',
   'background',
@@ -947,8 +949,9 @@ export function buildPhysicPaintRotoPhysicalRevision(
   interpolation: unknown,
   loopClips: unknown,
   incomingInterpolationBreakKeyIds: unknown = PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+  groupOverrideRecords: unknown = [],
 ): string {
-  const source = encodePhysicPaintRotoPhysicalContent(records, interpolation, loopClips, incomingInterpolationBreakKeyIds);
+  const source = encodePhysicPaintRotoPhysicalContent(records, interpolation, loopClips, incomingInterpolationBreakKeyIds, groupOverrideRecords);
   return `physical-${hashCanonicalPhysicalValue(source)}`;
 }
 
@@ -964,8 +967,10 @@ export function encodePhysicPaintRotoPhysicalContent(
   interpolation: unknown,
   loopClips: unknown,
   incomingInterpolationBreakKeyIds: unknown = PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+  groupOverrideRecords: unknown = [],
 ): string {
   const validated = parsePhysicPaintRotoRealKeyRecordCollection(records);
+  const validatedGroupOverrides = parsePhysicPaintRotoRealKeyRecordCollection(groupOverrideRecords);
   if (!isPhysicPaintRotoInterpolationState(interpolation)) {
     throw new Error('PhysicPaintRotoPhysicalRevision: invalid canonical interpolation state.');
   }
@@ -976,6 +981,7 @@ export function encodePhysicPaintRotoPhysicalContent(
     interpolation,
     validatedLoopClips,
     validatedIncomingBreaks,
+    validatedGroupOverrides,
   );
 }
 
@@ -984,19 +990,24 @@ function encodeValidatedPhysicPaintRotoPhysicalContent(
   interpolation: PhysicPaintRotoInterpolationState,
   loopClips: readonly PhysicPaintRotoLoopClip[],
   incomingInterpolationBreakKeyIds: readonly string[],
+  groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] = [],
 ): string {
-  const orderedByIdentity = [...records].sort((a, b) => a.keyId.localeCompare(b.keyId));
-  const encodedRecords = orderedByIdentity.map((record) => [
-    encodeCanonicalString(record.keyId),
-    encodeCanonicalNumber(record.appFrame),
-    encodeCanonicalNumber(record.payload.frameIndex),
-    encodeCanonicalNumber(record.payload.appFrame),
-    encodeCanonicalString(record.payload.dataUrl),
-    encodeCanonicalOptionalNumber(record.payload.width),
-    encodeCanonicalOptionalNumber(record.payload.height),
-  ].join('')).join('');
+  const encodeRecords = (source: readonly PhysicPaintRotoRealKeyRecord[]) => {
+    const ordered = [...source].sort((a, b) => a.keyId.localeCompare(b.keyId));
+    const encoded = ordered.map((record) => [
+      encodeCanonicalString(record.keyId),
+      encodeCanonicalNumber(record.appFrame),
+      encodeCanonicalNumber(record.payload.frameIndex),
+      encodeCanonicalNumber(record.payload.appFrame),
+      encodeCanonicalString(record.payload.dataUrl),
+      encodeCanonicalOptionalNumber(record.payload.width),
+      encodeCanonicalOptionalNumber(record.payload.height),
+    ].join('')).join('');
+    return `${ordered.length}:${encoded}`;
+  };
   return [
-    `records:${orderedByIdentity.length}:${encodedRecords}`,
+    `records:${encodeRecords(records)}`,
+    ...(groupOverrideRecords.length > 0 ? [`group-overrides:${encodeRecords(groupOverrideRecords)}`] : []),
     `interpolation:${validatedBoolean(interpolation.enabled)}`,
     `mode:${encodeCanonicalString(interpolation.mode)}`,
     // D-29 compatibility: the empty Loop Clip collection is semantically
@@ -1021,6 +1032,7 @@ export function buildPhysicPaintRotoProjectEquality(value: unknown): string {
       document.interpolation,
       document.loopClips,
       document.incomingInterpolationBreakKeyIds,
+      document.groupOverrideRecords,
     ),
     `capacity:${encodeCanonicalNumber(document.capacity)}`,
     `motion:${encodeCanonicalNumber(document.scriptMotion.deformation)}${encodeCanonicalNumber(document.scriptMotion.position)}`,
@@ -1085,9 +1097,20 @@ function encodeCanonicalLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[])
 function validatePhysicPaintRotoGroupReferences(
   loopClips: readonly PhysicPaintRotoLoopClip[],
   records: readonly PhysicPaintRotoRealKeyRecord[],
+  groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[],
   capacity: number,
 ): void {
-  const recordsById = new Map(records.map((record) => [record.keyId, record]));
+  const ordinaryKeyIds = new Set(records.map((record) => record.keyId));
+  const recordsById = new Map(groupOverrideRecords.map((record) => [record.keyId, record]));
+  const referencedOverrideKeyIds = new Set(loopClips.flatMap((clip) => clip.frameOverrides?.map((override) => override.keyId) ?? []));
+  for (const record of groupOverrideRecords) {
+    if (ordinaryKeyIds.has(record.keyId)) {
+      throw new Error(`PhysicPaintRotoPhysicalDocument: Group override reuses ordinary keyId "${record.keyId}".`);
+    }
+    if (!referencedOverrideKeyIds.has(record.keyId)) {
+      throw new Error(`PhysicPaintRotoPhysicalDocument: unreferenced Group override "${record.keyId}".`);
+    }
+  }
   for (const clip of loopClips) {
     if (clip.syncState === undefined) continue;
     if (clip.originalEndExclusive! > capacity) {
@@ -1168,7 +1191,10 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
   const loopClips = value.loopClips === undefined
     ? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY
     : parsePhysicPaintRotoLoopClips(value.loopClips);
-  validatePhysicPaintRotoGroupReferences(loopClips, state.realKeyRecords, capacity);
+  const groupOverrideRecords = value.groupOverrideRecords === undefined
+    ? Object.freeze([] as PhysicPaintRotoRealKeyRecord[])
+    : parsePhysicPaintRotoRealKeyRecordCollection(value.groupOverrideRecords, capacity);
+  validatePhysicPaintRotoGroupReferences(loopClips, state.realKeyRecords, groupOverrideRecords, capacity);
   const incomingInterpolationBreakKeyIds = value.incomingInterpolationBreakKeyIds === undefined
     ? PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY
     : parsePhysicPaintRotoIncomingInterpolationBreakKeyIds(
@@ -1180,6 +1206,7 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
     state.interpolation,
     loopClips,
     incomingInterpolationBreakKeyIds,
+    groupOverrideRecords,
   );
   if (value.revision !== revision) {
     const exactLegacyRevision = exactLegacyFiniteLoopClips === null
@@ -1198,6 +1225,7 @@ export function parsePhysicPaintRotoPhysicalDocument(value: unknown): PhysicPain
   return Object.freeze({
     capacity,
     realKeyRecords: state.realKeyRecords,
+    groupOverrideRecords,
     interpolation: state.interpolation,
     scriptMotion: state.scriptMotion,
     background,

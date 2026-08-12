@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampOnionCount, clampOnionOpacity,
-  getPhysicsPaintEngineStatusTone, getRotoCellFill,
+  getPhysicsPaintEngineStatusTone, getRotoAcceptedCellFillClass, getRotoCellFill,
   getRotoCellPresentationViewModel,
   getRotoCellSelectedTooltipCopy, getRotoCellStateLabel, getRotoCellStateTooltipCopy, getRotoCellViewModel, getRotoMissingFrameStatus,
   getRotoDragPreviewViewModel,
@@ -19,6 +19,33 @@ import type { PhysicPaintRotoPhysicalEditIntent } from '../roto/physicsPaintRoto
 import { resolvePhysicPaintRotoPhysicalEdit } from '../roto/physicsPaintRotoPhysicalResolver';
 
 describe('physicsPaintWorkflowPresentation', () => {
+
+  it('forces an accepted lifecycle Group gap neutral even when stale cache pixels remain', () => {
+    expect(getRotoAcceptedCellFillClass({
+      lifecycleTargetKind: 'group-gap',
+      resolutionKind: 'empty',
+      isPhysicalRealKey: false,
+      fill: 'cached-only',
+      viewModelFillClass: 'roto-fill-cached',
+    })).toBe('roto-fill-empty');
+  });
+
+  it('preserves ordinary cached and linked-gap fill semantics outside lifecycle deletion ownership', () => {
+    expect(getRotoAcceptedCellFillClass({
+      lifecycleTargetKind: 'empty',
+      resolutionKind: 'empty',
+      isPhysicalRealKey: false,
+      fill: 'cached-only',
+      viewModelFillClass: 'roto-fill-cached',
+    })).toContain('roto-fill-cached');
+    expect(getRotoAcceptedCellFillClass({
+      lifecycleTargetKind: 'generated-occurrence',
+      resolutionKind: 'linked-gap',
+      isPhysicalRealKey: false,
+      fill: 'cached-only',
+      viewModelFillClass: 'roto-fill-cached',
+    })).toBe('roto-fill-empty');
+  });
 
   it('classifies Roto cells with pixel-only gray and green semantic fills', () => {
     const cachedFrames = [

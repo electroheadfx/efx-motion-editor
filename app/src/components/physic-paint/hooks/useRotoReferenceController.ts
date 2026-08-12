@@ -58,13 +58,9 @@ function isCurrentGeneratedPngSource(source: PhysicPaintRotoPhysicalRenderableSo
     && isRotoPngDataUrl(source.renderedFrame.dataUrl);
 }
 
-/** Exact physical-cell lookup. No generic frame or neighboring-key fallback. */
-export function findCachedRotoDisplayFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoPhysicalLookupInput<Frame>): Frame | null {
+function findAcceptedRotoPhysicalFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoPhysicalLookupInput<Frame>): Frame | null {
   const source = input.getPhysicalRenderSource?.(appFrame) ?? null;
   if (!source) return null;
-  // Phase 43 (D-28, audit finding 6): the loop placeholder is never reference
-  // or display content — excluded explicitly, and a future render-source
-  // variant is a compile-time error at this consumer (Pitfall 7 convention).
   switch (source.kind) {
     case 'loop-placeholder':
       return null;
@@ -76,18 +72,28 @@ export function findCachedRotoDisplayFrame<Frame extends RotoReferenceFrame>(app
       throw new Error(`Unhandled Roto physical render-source kind: ${JSON.stringify(exhaustive)}`);
     }
   }
-  if (!isCurrentGeneratedPngSource(source)) return null;
-  if (source.kind === 'real' && input.dirtyFrames?.has(appFrame)) {
+  return isCurrentGeneratedPngSource(source) ? projectPhysicalSource<Frame>(source) : null;
+}
+
+/** Exact physical-cell lookup. No generic frame or neighboring-key fallback. */
+export function findCachedRotoDisplayFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoPhysicalLookupInput<Frame>): Frame | null {
+  const accepted = findAcceptedRotoPhysicalFrame(appFrame, input);
+  if (!accepted) return null;
+  if (accepted.keyId !== undefined && input.dirtyFrames?.has(appFrame)) {
     const preview = input.previewFrames?.get(appFrame);
     if (preview?.appFrame === appFrame
-      && preview.keyId === source.keyId
-      && preview.contentRevision === source.contentRevision) return preview;
+      && preview.keyId === accepted.keyId
+      && preview.contentRevision === accepted.contentRevision) return preview;
   }
-  return projectPhysicalSource<Frame>(source);
+  return accepted;
 }
 
 export function findCachedRotoReferenceFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoPhysicalLookupInput<Frame>): Frame | null {
   return findCachedRotoDisplayFrame(appFrame, input);
+}
+
+export function findAcceptedRotoReferenceFrame<Frame extends RotoReferenceFrame>(appFrame: number, input: RotoPhysicalLookupInput<Frame>): Frame | null {
+  return findAcceptedRotoPhysicalFrame(appFrame, input);
 }
 
 export interface RotoReferenceLoaderInput<Frame extends RotoReferenceFrame> {
@@ -100,6 +106,7 @@ export interface RotoReferenceLoaderInput<Frame extends RotoReferenceFrame> {
   setRepaintBaseFrame: (value: Frame | null | ((current: Frame | null) => Frame | null)) => void;
   syncPending: () => void;
   setApplyMessage: (message: string) => void;
+  replaceDirtyFrame?: boolean;
 }
 
 export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(input: RotoReferenceLoaderInput<Frame>) {
@@ -109,7 +116,7 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
       input.setRepaintBaseFrame(null);
       return false;
     }
-    if (input.dirtyFrames.has(appFrame)) {
+    if (input.dirtyFrames.has(appFrame) && !input.replaceDirtyFrame) {
       input.setReferenceUrl(null);
       input.setRepaintBaseFrame((current) => current?.appFrame === appFrame ? current : null);
       return false;
@@ -159,7 +166,8 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
   });
   const findDisplayFrame = useCallback((appFrame: number) => findCachedRotoDisplayFrame(appFrame, getLookup()), []);
   const findReferenceFrame = useCallback((appFrame: number) => findCachedRotoReferenceFrame(appFrame, getLookup()), []);
-  const loadCachedRotoReferenceFrame = useCallback((appFrame: number, engine: RotoReferenceEngine | null, refreshedFrame?: Frame | null) => {
+  const findAcceptedReferenceFrame = useCallback((appFrame: number) => findAcceptedRotoReferenceFrame(appFrame, getLookup()), []);
+  const loadCachedRotoReferenceFrame = useCallback((appFrame: number, engine: RotoReferenceEngine | null, refreshedFrame?: Frame | null, replaceDirtyFrame = false) => {
     const currentInput = inputRef.current;
     if (refreshedFrame !== undefined) explicitRestorationRef.current = { appFrame, frame: refreshedFrame };
     else if (explicitRestorationRef.current?.appFrame !== appFrame) explicitRestorationRef.current = null;
@@ -169,13 +177,18 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
       getSettingsBackground: () => currentInput.settingsBackground,
       dirtyFrames: currentInput.getDirtyFrames(),
       liveOverlayActionCounts: currentInput.getLiveOverlayActionCounts(),
-      getReferenceFrame: (frame) => frame === appFrame && explicitRestoration !== undefined ? explicitRestoration : findReferenceFrame(frame),
+      getReferenceFrame: (frame) => frame === appFrame && explicitRestoration !== undefined
+        ? explicitRestoration
+        : replaceDirtyFrame
+          ? findAcceptedReferenceFrame(frame)
+          : findReferenceFrame(frame),
       setReferenceUrl: setCachedRotoReferenceUrl,
       setRepaintBaseFrame: setCachedRotoRepaintBaseFrame,
       syncPending: currentInput.syncPending,
       setApplyMessage: currentInput.setApplyMessage,
+      replaceDirtyFrame,
     }).load(appFrame, engine);
-  }, [findReferenceFrame]);
+  }, [findAcceptedReferenceFrame, findReferenceFrame]);
   const clearCachedRotoReferenceUrl = useCallback(() => setCachedRotoReferenceUrl(null), []);
   const resetCachedRotoReference = useCallback(() => {
     setCachedRotoReferenceUrl(null);

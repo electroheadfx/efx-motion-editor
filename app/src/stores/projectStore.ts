@@ -26,7 +26,7 @@ import {physicPaintStore, _setPhysicPaintMarkDirtyCallback} from './physicPaintS
 import {motionBlurStore} from './motionBlurStore';
 import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
-import {loadPhysicPaintData, savePhysicPaintData} from '../lib/physicPaintPersistence';
+import {loadPhysicPaintData, savePhysicPaintDataWithProjectWrite} from '../lib/physicPaintPersistence';
 import {prepareRotoPhysicalDocumentPngs} from '../components/physic-paint/roto/rotoCanvasFrames';
 import {readFile} from '@tauri-apps/plugin-fs';
 
@@ -681,15 +681,14 @@ export const projectStore = {
         }
       }
 
-      const projectForSave: MceProject = {
-        ...project,
-        physic_paint_outputs: await savePhysicPaintData(currentDir ?? currentFilePath.substring(0, currentFilePath.lastIndexOf('/')), project.physic_paint_outputs),
-      };
-
-      const result = await ipcProjectSave(projectForSave, currentFilePath);
-      if (!result.ok) {
-        throw new Error(result.error);
-      }
+      const projectDir = currentDir ?? currentFilePath.substring(0, currentFilePath.lastIndexOf('/'));
+      await savePhysicPaintDataWithProjectWrite(projectDir, project.physic_paint_outputs, async (physicPaintOutputs) => {
+        const result = await ipcProjectSave({
+          ...project,
+          physic_paint_outputs: physicPaintOutputs,
+        }, currentFilePath);
+        if (!result.ok) throw new Error(result.error);
+      });
       if (!options?.deferScriptAuthority && !scriptLibraryAuthority.peek()) await bindScriptLibraryAuthority(currentFilePath);
       isDirty.value = false;
 
@@ -725,18 +724,20 @@ export const projectStore = {
     const parentDir = newFilePath.substring(0, newFilePath.lastIndexOf('/'));
     try {
       const project = buildMceProject();
-      const projectForSave: MceProject = {
-        ...project,
-        physic_paint_outputs: await savePhysicPaintData(parentDir, project.physic_paint_outputs),
-      };
-      if (previousFilePath && previousFilePath !== newFilePath) {
-        const transaction = await projectSaveAsWithScriptLibrary(projectForSave, previousFilePath, newFilePath);
-        if (!transaction.ok) throw new Error(transaction.error);
-        if (transaction.data.diagnostics.length > 0) console.warn('[projectStore] Script library Save As diagnostics', transaction.data.diagnostics);
-      } else {
-        const result = await ipcProjectSave(projectForSave, newFilePath);
-        if (!result.ok) throw new Error(result.error);
-      }
+      await savePhysicPaintDataWithProjectWrite(parentDir, project.physic_paint_outputs, async (physicPaintOutputs) => {
+        const projectForSave: MceProject = {
+          ...project,
+          physic_paint_outputs: physicPaintOutputs,
+        };
+        if (previousFilePath && previousFilePath !== newFilePath) {
+          const transaction = await projectSaveAsWithScriptLibrary(projectForSave, previousFilePath, newFilePath);
+          if (!transaction.ok) throw new Error(transaction.error);
+          if (transaction.data.diagnostics.length > 0) console.warn('[projectStore] Script library Save As diagnostics', transaction.data.diagnostics);
+        } else {
+          const result = await ipcProjectSave(projectForSave, newFilePath);
+          if (!result.ok) throw new Error(result.error);
+        }
+      });
       batch(() => {
         dirPath.value = parentDir;
         filePath.value = newFilePath;

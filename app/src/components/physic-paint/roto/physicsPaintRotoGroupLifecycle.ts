@@ -106,7 +106,9 @@ export function proposePhysicPaintRotoGroupFramePaint(
   if (existingOverride && existingOverride.keyId !== input.overrideKeyId) {
     return reject('override-identity-mismatch');
   }
-  const recordWithRequestedId = input.document.realKeyRecords.find((record) => record.keyId === input.overrideKeyId);
+  const groupOverrideRecords = input.document.groupOverrideRecords ?? [];
+  const recordWithRequestedId = [...input.document.realKeyRecords, ...groupOverrideRecords]
+    .find((record) => record.keyId === input.overrideKeyId);
   if (!existingOverride && recordWithRequestedId) return reject('duplicate-override-key-id');
 
   const referencedKeyIds = new Set(input.document.loopClips.flatMap((candidate) => [
@@ -124,9 +126,9 @@ export function proposePhysicPaintRotoGroupFramePaint(
     appFrame: input.appFrame,
     payload: input.renderedPayload,
   };
-  const nextRecords = existingOverride
-    ? input.document.realKeyRecords.map((record) => record.keyId === overrideKeyId ? overrideRecord : record)
-    : [...input.document.realKeyRecords, overrideRecord];
+  const nextGroupOverrideRecords = existingOverride
+    ? groupOverrideRecords.map((record) => record.keyId === overrideKeyId ? overrideRecord : record)
+    : [...groupOverrideRecords, overrideRecord];
   const filledDeletedOccurrence = !includesFrame(group.visibleRanges, input.appFrame);
   const nextGroup = {
     ...group,
@@ -144,14 +146,15 @@ export function proposePhysicPaintRotoGroupFramePaint(
   const nextLoopClips = input.document.loopClips.map((candidate, index) => index === groupIndex ? nextGroup : candidate);
   try {
     const nextRevision = buildPhysicPaintRotoPhysicalRevision(
-      nextRecords,
+      input.document.realKeyRecords,
       input.document.interpolation,
       nextLoopClips,
       input.document.incomingInterpolationBreakKeyIds,
+      nextGroupOverrideRecords,
     );
     const proposal = parsePhysicPaintRotoPhysicalDocument({
       ...input.document,
-      realKeyRecords: nextRecords,
+      groupOverrideRecords: nextGroupOverrideRecords,
       loopClips: nextLoopClips,
       revision: nextRevision,
     });
@@ -403,6 +406,7 @@ function buildLifecycleProposal(
 ): PhysicPaintRotoPhysicalDocument {
   const cleanup = new Set(cleanupKeyIds);
   const realKeyRecords = document.realKeyRecords.filter((record) => !cleanup.has(record.keyId));
+  const groupOverrideRecords = (document.groupOverrideRecords ?? []).filter((record) => !cleanup.has(record.keyId));
   const incomingInterpolationBreakKeyIds = document.incomingInterpolationBreakKeyIds
     .filter((keyId) => !cleanup.has(keyId));
   const selectedKeyId = document.selectedKeyId !== null && cleanup.has(document.selectedKeyId)
@@ -413,10 +417,12 @@ function buildLifecycleProposal(
     document.interpolation,
     loopClips,
     incomingInterpolationBreakKeyIds,
+    groupOverrideRecords,
   );
   return parsePhysicPaintRotoPhysicalDocument({
     ...document,
     realKeyRecords,
+    groupOverrideRecords,
     loopClips,
     incomingInterpolationBreakKeyIds,
     selectedKeyId,

@@ -1058,15 +1058,18 @@ function lifecycleDocument(
   records: readonly PhysicPaintRotoRealKeyRecord[] = [
     lifecycleRecord('A0', 0),
     lifecycleRecord('A1', 2),
-    lifecycleRecord('override-5', 5),
     lifecycleRecord('ordinary', 20),
   ],
   incomingInterpolationBreakKeyIds: readonly string[] = ['A1'],
+  groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] = loopClips.some((clip) => clip.frameOverrides?.some((override) => override.keyId === 'override-5'))
+    ? [lifecycleRecord('override-5', 5)]
+    : [],
 ): PhysicPaintRotoPhysicalDocument {
   const interpolation = { enabled: true, mode: 'blend' as const };
   return parsePhysicPaintRotoPhysicalDocument({
     capacity: 30,
     realKeyRecords: records,
+    groupOverrideRecords,
     interpolation,
     scriptMotion: { deformation: 0, position: 0 },
     background: null,
@@ -1079,6 +1082,7 @@ function lifecycleDocument(
       interpolation,
       loopClips,
       incomingInterpolationBreakKeyIds,
+      groupOverrideRecords,
     ),
   });
 }
@@ -1127,7 +1131,11 @@ describe('Phase 43.2 pure Group lifecycle proposals', () => {
     });
     expect(resolvePhysicPaintRotoLoopFrame(context, 4)).toEqual({ kind: 'empty' });
     expect(resolvePhysicPaintRotoLoopFrame(context, 5)).toMatchObject({
-      kind: 'real',
+      kind: 'linked',
+      sourceKeyId: 'A1',
+    });
+    expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 5 })).toMatchObject({
+      kind: 'override',
       keyId: 'override-5',
     });
     expect(resolvePhysicPaintRotoLoopFrame(context, 8)).toMatchObject({

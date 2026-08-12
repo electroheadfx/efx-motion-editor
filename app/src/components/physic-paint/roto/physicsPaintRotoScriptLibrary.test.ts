@@ -334,6 +334,8 @@ function referencedActionDocument(): PhysicPaintRotoPhysicalDocument {
   const realKeyRecords = [
     { kind: 'real-key' as const, keyId: 'source-a', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AA==', width: 10, height: 10 } },
     { kind: 'real-key' as const, keyId: 'source-b', appFrame: 4, payload: { frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,BB==', width: 10, height: 10 } },
+  ];
+  const groupOverrideRecords = [
     { kind: 'real-key' as const, keyId: 'override-only', appFrame: 15, payload: { frameIndex: 0, appFrame: 15, dataUrl: 'data:image/png;base64,CC==', width: 10, height: 10 } },
   ];
   const interpolation = { enabled: false, mode: 'duplicate' as const };
@@ -358,9 +360,9 @@ function referencedActionDocument(): PhysicPaintRotoPhysicalDocument {
     },
   ];
   return {
-    capacity: 60, realKeyRecords, interpolation, scriptMotion: { deformation: 9, position: 11 }, background: null,
+    capacity: 60, realKeyRecords, groupOverrideRecords, interpolation, scriptMotion: { deformation: 9, position: 11 }, background: null,
     selectedKeyId: null, cursorAppFrame: 15, loopClips, incomingInterpolationBreakKeyIds: ['source-b'],
-    revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, loopClips, ['source-b']),
+    revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, loopClips, ['source-b'], groupOverrideRecords),
   };
 }
 

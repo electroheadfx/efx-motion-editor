@@ -9,6 +9,18 @@ pub struct CachePublication {
     pub replaced_existing: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CacheSettlementAction {
+    Commit,
+    Rollback,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CacheSettlement {
+    pub cleanup_deferred: bool,
+    pub cleanup_diagnostic: Option<String>,
+}
+
 pub fn publish_cache_generation(
     project_dir: &Path,
     staging_basename: &str,
@@ -67,6 +79,82 @@ pub fn publish_cache_generation(
         Ok(CachePublication {
             replaced_existing: true,
         })
+    }
+}
+
+pub fn settle_cache_generation(
+    project_dir: &Path,
+    staging_basename: &str,
+    action: CacheSettlementAction,
+) -> Result<CacheSettlement, String> {
+    validate_staging_basename(staging_basename)?;
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (project_dir, action);
+        return Err("Physics Paint cache settlement is supported only on macOS".to_string());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let project_root = fs::canonicalize(project_dir).map_err(|error| {
+            format!("Could not resolve Physics Paint project directory: {error}")
+        })?;
+        let cache_parent = fs::canonicalize(project_root.join("cache"))
+            .map_err(|error| format!("Could not resolve Physics Paint cache parent: {error}"))?;
+        if cache_parent.parent() != Some(project_root.as_path()) {
+            return Err("Physics Paint cache parent escapes project authority".to_string());
+        }
+        let staging_path = cache_parent.join(staging_basename);
+        let canonical_path = cache_parent.join(CANONICAL_CACHE_BASENAME);
+
+        if !staging_path.exists() {
+            if action == CacheSettlementAction::Rollback {
+                let resolved_canonical = fs::canonicalize(&canonical_path).map_err(|error| {
+                    format!("Could not resolve uncommitted Physics Paint cache generation: {error}")
+                })?;
+                if resolved_canonical.parent() != Some(cache_parent.as_path()) || !resolved_canonical.is_dir() {
+                    return Err("Canonical Physics Paint cache must be a contained directory".to_string());
+                }
+                fs::remove_dir_all(&resolved_canonical).map_err(|error| {
+                    format!("Could not remove uncommitted Physics Paint cache generation: {error}")
+                })?;
+            }
+            return Ok(CacheSettlement {
+                cleanup_deferred: false,
+                cleanup_diagnostic: None,
+            });
+        }
+        let resolved_staging = fs::canonicalize(&staging_path).map_err(|error| {
+            format!("Could not resolve retained Physics Paint cache generation: {error}")
+        })?;
+        if resolved_staging.parent() != Some(cache_parent.as_path()) || !resolved_staging.is_dir() {
+            return Err("Retained Physics Paint cache generation must be a direct sibling directory".to_string());
+        }
+
+        if action == CacheSettlementAction::Rollback {
+            let resolved_canonical = fs::canonicalize(&canonical_path).map_err(|error| {
+                format!("Could not resolve canonical Physics Paint cache: {error}")
+            })?;
+            if resolved_canonical.parent() != Some(cache_parent.as_path()) || !resolved_canonical.is_dir() {
+                return Err("Canonical Physics Paint cache must be a contained directory".to_string());
+            }
+            atomic_exchange_directories(&resolved_staging, &resolved_canonical).map_err(|error| {
+                format!("Could not roll back Physics Paint cache generation: {error}")
+            })?;
+        }
+
+        match fs::remove_dir_all(&staging_path) {
+            Ok(()) => Ok(CacheSettlement {
+                cleanup_deferred: false,
+                cleanup_diagnostic: None,
+            }),
+            Err(error) => Ok(CacheSettlement {
+                cleanup_deferred: true,
+                cleanup_diagnostic: Some(format!(
+                    "Physics Paint cache settlement completed; obsolete generation cleanup was deferred: {error}"
+                )),
+            }),
+        }
     }
 }
 

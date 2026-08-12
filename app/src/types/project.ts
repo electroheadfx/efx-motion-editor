@@ -94,6 +94,7 @@ export interface McePhysicPaintRotoLoopClip {
 export interface McePhysicPaintRotoPhysicalDocument {
   readonly capacity: number;
   readonly realKeyRecords: readonly McePhysicPaintRotoPhysicalRecord[];
+  readonly groupOverrideRecords?: readonly McePhysicPaintRotoPhysicalRecord[];
   readonly interpolation: PhysicPaintRotoInterpolationState;
   readonly scriptMotion: PhysicPaintRotoScriptMotionSettings;
   readonly background: PhysicPaintRotoBackgroundMetadata | null;

@@ -1,6 +1,7 @@
 use efx_motion_editor_lib::physic_paint_cache::publish_cache_generation;
 use efx_motion_editor_lib::physic_paint_cache_command::{
-    publish_physic_paint_cache_generation, PhysicPaintCacheCleanupStatus,
+    publish_physic_paint_cache_generation, settle_physic_paint_cache_generation,
+    PhysicPaintCacheCleanupStatus, PhysicPaintCacheSettlementAction,
 };
 use std::collections::BTreeSet;
 use std::fs;
@@ -101,6 +102,126 @@ fn replacement_atomically_exchanges_complete_generations() {
 
 #[cfg(target_os = "macos")]
 #[test]
+fn rollback_restores_the_previous_canonical_generation() {
+    let project = fixture_dir("rollback-existing");
+    write_generation(&canonical_dir(&project), "old");
+    write_generation(&staging_dir(&project), "new");
+
+    publish_physic_paint_cache_generation(
+        project.to_string_lossy().into_owned(),
+        STAGING_BASENAME.to_string(),
+    )
+    .expect("replacement publication");
+    settle_physic_paint_cache_generation(
+        project.to_string_lossy().into_owned(),
+        STAGING_BASENAME.to_string(),
+        PhysicPaintCacheSettlementAction::Rollback,
+    )
+    .expect("rollback settlement");
+
+    assert_generation(&canonical_dir(&project), "old");
+    assert!(!staging_dir(&project).exists());
+    fs::remove_dir_all(project).expect("fixture cleanup");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn rollback_removes_an_uncommitted_first_generation() {
+    let project = fixture_dir("rollback-first");
+    write_generation(&staging_dir(&project), "new");
+
+    publish_physic_paint_cache_generation(
+        project.to_string_lossy().into_owned(),
+        STAGING_BASENAME.to_string(),
+    )
+    .expect("first publication");
+    settle_physic_paint_cache_generation(
+        project.to_string_lossy().into_owned(),
+        STAGING_BASENAME.to_string(),
+        PhysicPaintCacheSettlementAction::Rollback,
+    )
+    .expect("rollback settlement");
+
+    assert!(!canonical_dir(&project).exists());
+    assert!(!staging_dir(&project).exists());
+    fs::remove_dir_all(project).expect("fixture cleanup");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn rollback_replay_after_commit_is_rejected_without_mutating_canonical() {
+    let project = fixture_dir("rollback-replay");
+    write_generation(&staging_dir(&project), "new");
+
+    publish_physic_paint_cache_generation(
+        project.to_string_lossy().into_owned(),
+        STAGING_BASENAME.to_string(),
+    )
+    .expect("publication");
+    settle_physic_paint_cache_generation(
+        project.to_string_lossy().into_owned(),
+        STAGING_BASENAME.to_string(),
+        PhysicPaintCacheSettlementAction::Commit,
+    )
+    .expect("commit settlement");
+
+    let replay = settle_physic_paint_cache_generation(
+        project.to_string_lossy().into_owned(),
+        STAGING_BASENAME.to_string(),
+        PhysicPaintCacheSettlementAction::Rollback,
+    );
+
+    assert!(replay.is_err(), "a settled publication must not be replayable");
+    assert_generation(&canonical_dir(&project), "new");
+    fs::remove_dir_all(project).expect("fixture cleanup");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn delayed_rollback_cannot_delete_a_newer_canonical_generation() {
+    let project = fixture_dir("delayed-rollback");
+    let first_staging = ".physic-paint-staging-first";
+    let second_staging = ".physic-paint-staging-second";
+    write_generation(&project.join("cache").join(first_staging), "g1");
+
+    publish_physic_paint_cache_generation(
+        project.to_string_lossy().into_owned(),
+        first_staging.to_string(),
+    )
+    .expect("first publication");
+    settle_physic_paint_cache_generation(
+        project.to_string_lossy().into_owned(),
+        first_staging.to_string(),
+        PhysicPaintCacheSettlementAction::Commit,
+    )
+    .expect("first commit");
+
+    write_generation(&project.join("cache").join(second_staging), "g2");
+    publish_physic_paint_cache_generation(
+        project.to_string_lossy().into_owned(),
+        second_staging.to_string(),
+    )
+    .expect("second publication");
+
+    let delayed = settle_physic_paint_cache_generation(
+        project.to_string_lossy().into_owned(),
+        first_staging.to_string(),
+        PhysicPaintCacheSettlementAction::Rollback,
+    );
+
+    assert!(delayed.is_err(), "an older publication cannot settle a newer one");
+    assert_generation(&canonical_dir(&project), "g2");
+    settle_physic_paint_cache_generation(
+        project.to_string_lossy().into_owned(),
+        second_staging.to_string(),
+        PhysicPaintCacheSettlementAction::Rollback,
+    )
+    .expect("second rollback");
+    fs::remove_dir_all(project).expect("fixture cleanup");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
 fn failed_exchange_leaves_the_old_canonical_generation_unchanged() {
     use std::os::unix::fs::PermissionsExt;
 
@@ -180,12 +301,19 @@ fn command_accepts_publication_when_old_generation_cleanup_is_deferred() {
     )
     .expect("deny old-generation cleanup");
 
-    let result = publish_physic_paint_cache_generation(
+    let publication = publish_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
         STAGING_BASENAME.to_string(),
     )
     .expect("publication remains accepted");
+    let result = settle_physic_paint_cache_generation(
+        project.to_string_lossy().into_owned(),
+        STAGING_BASENAME.to_string(),
+        PhysicPaintCacheSettlementAction::Commit,
+    )
+    .expect("commit remains accepted");
 
+    assert!(publication.accepted);
     assert!(result.accepted);
     assert_eq!(result.cleanup_status, PhysicPaintCacheCleanupStatus::Deferred);
     assert!(result.cleanup_diagnostic.is_some());
@@ -197,6 +325,13 @@ fn command_accepts_publication_when_old_generation_cleanup_is_deferred() {
     )
     .expect("restore fixture permissions");
     fs::remove_dir_all(project).expect("fixture cleanup");
+}
+
+#[test]
+fn invoke_handler_registers_publish_and_settle_commands() {
+    let source = include_str!("../src/lib.rs");
+    assert!(source.contains("physic_paint_cache_commands::publish_physic_paint_cache_generation"));
+    assert!(source.contains("physic_paint_cache_commands::settle_physic_paint_cache_generation"));
 }
 
 #[test]

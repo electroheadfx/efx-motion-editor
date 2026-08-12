@@ -11,7 +11,7 @@ export interface RotoLivePixelCapture<T> {
   mutationId?: number;
   resolveCurrent: () => RotoLivePixelIdentity | null;
   produce: () => Promise<T> | T;
-  commit: (value: T, current: RotoLivePixelIdentity) => void | Promise<void>;
+  commit: (value: T, current: RotoLivePixelIdentity) => void | boolean | Promise<void | boolean>;
   recordPerformance?: (sample: { stage: string; category: 'sync-cpu' | 'scheduled-wait' | 'async-elapsed'; durationMs: number; timestamp: number; mutationId?: number; sourceFrame: number; outcome?: string }) => void;
 }
 
@@ -92,7 +92,8 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
         const current = input.resolveCurrent();
         if (revisions.get(key) !== pixelRevision || !matchesIdentity(input.identity, current)) return reject('stale-before-commit');
         const commitStartedAt = input.recordPerformance ? performance.now() : 0;
-        await input.commit(value, current);
+        const committed = await input.commit(value, current);
+        if (committed === false) return reject('commit-rejected');
         input.recordPerformance?.({ stage: 'cache-accepted-commit', category: 'sync-cpu', durationMs: performance.now() - commitStartedAt, timestamp: performance.now(), mutationId: input.mutationId, sourceFrame: current.appFrame, outcome: 'accepted' });
         return true;
       })();

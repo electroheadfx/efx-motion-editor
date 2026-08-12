@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
 
@@ -29,6 +30,7 @@ function moveGeneration(projectDir: string, stagingBasename: string): void {
 
 vi.mock('../../../lib/ipc', () => ({
   publishPhysicPaintCacheGeneration,
+  settlePhysicPaintCacheGeneration,
 }));
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
@@ -59,6 +61,7 @@ import {
   isPhysicPaintRotoLoopClip,
   parsePhysicPaintRotoLoopClips,
   parsePhysicPaintRotoPhysicalDocument,
+  type PhysicPaintRotoPhysicalDocument,
 } from './physicsPaintRotoPhysicalModel';
 import { proposePhysicPaintRotoGroupFramePaint } from './physicsPaintRotoGroupLifecycle';
 import { isPhysicPaintRotoPhysicalEditApplyPayload } from '../../../types/physicPaint';
@@ -482,6 +485,41 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
       expect(Object.isFrozen(result.impact)).toBe(true);
     });
 
+    it('paints an original source-frame occurrence through a separate override record without moving or mutating the source cycle', () => {
+      const group = proposedGroup();
+      const sharedGroup = proposedGroup({
+        loopId: 'loop-shared',
+        placementStart: 30,
+        phaseOrigin: 30,
+        originalEndExclusive: 55,
+        visibleRanges: [{ start: 30, endExclusive: 55 }],
+      });
+      const document = parsePhysicPaintRotoPhysicalDocument(baseDocument([group, sharedGroup]));
+      const beforeRecords = document.realKeyRecords;
+
+      const result = proposePhysicPaintRotoGroupFramePaint({
+        document,
+        groupId: 'loop-1',
+        appFrame: 0,
+        overrideKeyId: 'override-0',
+        renderedPayload: { frameIndex: 0, appFrame: 0, dataUrl: pngDataUrl('painted-0'), width: 10, height: 10 },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.proposal.realKeyRecords).toEqual(beforeRecords);
+      expect((result.proposal as PhysicPaintRotoPhysicalDocument & {
+        readonly groupOverrideRecords: readonly ReturnType<typeof realKey>[];
+      }).groupOverrideRecords).toEqual([{
+        kind: 'real-key',
+        keyId: 'override-0',
+        appFrame: 0,
+        payload: { frameIndex: 0, appFrame: 0, dataUrl: pngDataUrl('painted-0'), width: 10, height: 10 },
+      }]);
+      expect(result.proposal.loopClips[0].frameOverrides).toEqual([{ appFrame: 0, keyId: 'override-0' }]);
+      expect(result.proposal.loopClips[1]).toEqual(document.loopClips[1]);
+    });
+
     it('rejects duplicate IDs, ambiguous sharing, unresolved precedence, and cleanup mismatch before acceptance', () => {
       const base = proposedGroup();
       const validDocument = parsePhysicPaintRotoPhysicalDocument(baseDocument([base]));
@@ -641,8 +679,12 @@ describe('physicPaintPersistence loopClips save/reopen', () => {
       moveGeneration(projectDir, stagingBasename);
       return {
         ok: true,
-        data: { accepted: true, cleanupStatus: 'complete' },
+        data: { accepted: true, replacedExisting: false },
       };
+    });
+    settlePhysicPaintCacheGeneration.mockResolvedValue({
+      ok: true,
+      data: { accepted: true, cleanupStatus: 'complete' },
     });
   });
 

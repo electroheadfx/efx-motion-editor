@@ -56,6 +56,7 @@ function snapshot(
     layerId: 'layer-1',
     projectContextId: 'project-1',
     records,
+    groupOverrideRecords: [],
     interpolation: INTERPOLATION,
     loopClips,
     incomingInterpolationBreakKeyIds: [],

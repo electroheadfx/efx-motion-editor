@@ -45,6 +45,12 @@ export function prepareRotoPhysicalLaunch(
         appFrame: record.appFrame,
         payload: record.payload,
       })),
+      groupOverrideRecords: (physical.groupOverrideRecords ?? []).map((record) => ({
+        kind: 'real-key' as const,
+        keyId: record.keyId,
+        appFrame: record.appFrame,
+        payload: record.payload,
+      })),
       interpolation: {
         enabled: physical.interpolationEnabled,
         mode: physical.interpolationMode,
@@ -82,7 +88,10 @@ export async function hydrateRotoPhysicalLaunchContext(
   if (!prepared.ok) return prepared;
 
   try {
-    await prepareRotoPhysicalRealKeyPngs(prepared.document.realKeyRecords);
+    await prepareRotoPhysicalRealKeyPngs([
+      ...prepared.document.realKeyRecords,
+      ...(prepared.document.groupOverrideRecords ?? []),
+    ]);
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Canonical Roto PNG hydration failed.' };
   }

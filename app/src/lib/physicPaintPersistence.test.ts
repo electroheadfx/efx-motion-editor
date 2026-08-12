@@ -1,37 +1,43 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RuntimePhysicPaintOutput } from '../types/project';
 import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
-import { loadPhysicPaintData, savePhysicPaintData } from './physicPaintPersistence';
+import { loadPhysicPaintData, savePhysicPaintData, savePhysicPaintDataWithProjectWrite } from './physicPaintPersistence';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
+const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const files = new Map<string, Uint8Array>();
 const dirs = new Set<string>();
 
-function moveGeneration(projectDir: string, stagingBasename: string): void {
+function exchangeGeneration(projectDir: string, stagingBasename: string): void {
   const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
   const canonicalRoot = `${projectDir}/cache/physic-paint`;
+  const stagingFiles = Array.from(files.entries())
+    .filter(([key]) => key.startsWith(`${stagingRoot}/`))
+    .map(([key, value]) => [`${canonicalRoot}${key.slice(stagingRoot.length)}`, value] as const);
+  const canonicalFiles = Array.from(files.entries())
+    .filter(([key]) => key.startsWith(`${canonicalRoot}/`))
+    .map(([key, value]) => [`${stagingRoot}${key.slice(canonicalRoot.length)}`, value] as const);
+  const stagingDirs = Array.from(dirs)
+    .filter((key) => key === stagingRoot || key.startsWith(`${stagingRoot}/`))
+    .map((key) => `${canonicalRoot}${key.slice(stagingRoot.length)}`);
+  const canonicalDirs = Array.from(dirs)
+    .filter((key) => key === canonicalRoot || key.startsWith(`${canonicalRoot}/`))
+    .map((key) => `${stagingRoot}${key.slice(canonicalRoot.length)}`);
   for (const key of Array.from(files.keys())) {
-    if (key === canonicalRoot || key.startsWith(`${canonicalRoot}/`)) files.delete(key);
+    if (key.startsWith(`${stagingRoot}/`) || key.startsWith(`${canonicalRoot}/`)) files.delete(key);
   }
-  for (const key of Array.from(dirs.keys())) {
-    if (key === canonicalRoot || key.startsWith(`${canonicalRoot}/`)) dirs.delete(key);
+  for (const key of Array.from(dirs)) {
+    if (key === stagingRoot || key.startsWith(`${stagingRoot}/`) || key === canonicalRoot || key.startsWith(`${canonicalRoot}/`)) dirs.delete(key);
   }
-  for (const [key, value] of Array.from(files.entries())) {
-    if (key.startsWith(`${stagingRoot}/`)) {
-      files.delete(key);
-      files.set(`${canonicalRoot}${key.slice(stagingRoot.length)}`, value);
-    }
-  }
-  for (const key of Array.from(dirs.keys())) {
-    if (key === stagingRoot || key.startsWith(`${stagingRoot}/`)) {
-      dirs.delete(key);
-      dirs.add(`${canonicalRoot}${key.slice(stagingRoot.length)}`);
-    }
-  }
+  for (const [key, value] of [...stagingFiles, ...canonicalFiles]) files.set(key, value);
+  for (const key of [...stagingDirs, ...canonicalDirs]) dirs.add(key);
 }
 
 vi.mock('./ipc', () => ({
   publishPhysicPaintCacheGeneration,
+  settlePhysicPaintCacheGeneration,
 }));
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
@@ -85,7 +91,6 @@ const GROUP_FIELD_PARTICIPATION = [
 const lifecycleRecords = () => [
   { keyId: 'key-0', appFrame: 0 },
   { keyId: 'key-3', appFrame: 3 },
-  { keyId: 'override-8', appFrame: 8 },
 ].map(({ keyId, appFrame }) => ({
   keyId,
   appFrame,
@@ -115,6 +120,18 @@ const completeLifecycleGroup = () => ({
 
 function makeLifecyclePhysicalOutput(loopClip: unknown = completeLifecycleGroup()): RuntimePhysicPaintOutput[] {
   const records = lifecycleRecords();
+  const groupOverrideRecords = [{ keyId: 'override-8', appFrame: 8 }].map(({ keyId, appFrame }) => ({
+    keyId,
+    appFrame,
+    kind: 'real-key' as const,
+    payload: {
+      frameIndex: 0,
+      appFrame,
+      dataUrl: `data:image/png;base64,${btoa(`real-${keyId}`)}`,
+      width: 100,
+      height: 50,
+    },
+  }));
   const interpolation = { enabled: false, mode: 'duplicate' as const };
   const loopClips = [loopClip];
   return [{
@@ -123,6 +140,7 @@ function makeLifecyclePhysicalOutput(loopClip: unknown = completeLifecycleGroup(
     roto_physical: {
       capacity: 600,
       realKeyRecords: records,
+      groupOverrideRecords,
       interpolation,
       scriptMotion: { deformation: 0, position: 0 },
       background: null,
@@ -130,7 +148,7 @@ function makeLifecyclePhysicalOutput(loopClip: unknown = completeLifecycleGroup(
       cursorAppFrame: 0,
       revision: (() => {
         try {
-          return buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips);
+          return buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, [], groupOverrideRecords);
         } catch {
           return 'invalid-group-revision';
         }
@@ -142,17 +160,85 @@ function makeLifecyclePhysicalOutput(loopClip: unknown = completeLifecycleGroup(
 }
 
 describe('physicPaintPersistence', () => {
-  beforeEach(() => {
+  it('scopes generated hidden staging paths without adding home or Desktop grants', () => {
+    const capability = JSON.parse(readFileSync(
+      fileURLToPath(new URL('../../src-tauri/capabilities/default.json', import.meta.url)),
+      'utf8',
+    ));
+    const scope = capability.permissions.find((permission: unknown) => (
+      typeof permission === 'object'
+      && permission !== null
+      && (permission as { identifier?: unknown }).identifier === 'fs:scope'
+    ));
+    const paths = scope.allow.map((entry: { path: string }) => entry.path);
+
+    expect(paths).toContain('**/cache/.physic-paint-staging-*');
+    expect(paths).toContain('**/cache/.physic-paint-staging-*/**');
+    expect(paths).not.toContain('$HOME/**');
+    expect(paths).not.toContain('$DESKTOP/**');
+  });
+
+  beforeEach(async () => {
     files.clear();
     dirs.clear();
     vi.clearAllMocks();
+    const { exists } = await import('@tauri-apps/plugin-fs');
+    vi.mocked(exists).mockImplementation(async (path) => dirs.has(String(path)) || files.has(String(path)));
     publishPhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, stagingBasename: string) => {
-      moveGeneration(projectDir, stagingBasename);
+      const replacedExisting = dirs.has(`${projectDir}/cache/physic-paint`);
+      exchangeGeneration(projectDir, stagingBasename);
       return {
         ok: true,
-        data: { accepted: true, cleanupStatus: 'complete' },
+        data: { accepted: true, replacedExisting },
       };
     });
+    settlePhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, stagingBasename: string, action: 'commit' | 'rollback') => {
+      if (action === 'rollback') exchangeGeneration(projectDir, stagingBasename);
+      const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
+      for (const key of Array.from(files.keys())) {
+        if (key.startsWith(`${stagingRoot}/`)) files.delete(key);
+      }
+      for (const key of Array.from(dirs)) {
+        if (key === stagingRoot || key.startsWith(`${stagingRoot}/`)) dirs.delete(key);
+      }
+      return { ok: true, data: { accepted: true, cleanupStatus: 'complete' } };
+    });
+  });
+
+  it('restores the previous canonical cache when the project file write rejects', async () => {
+    const oldPath = '/project/cache/physic-paint/existing/frame.png';
+    const oldBytes = new Uint8Array([9, 8, 7]);
+    dirs.add('/project/cache/physic-paint');
+    dirs.add('/project/cache/physic-paint/existing');
+    files.set(oldPath, oldBytes);
+
+    await expect(savePhysicPaintDataWithProjectWrite('/project', makeOutput(90), async () => {
+      throw new Error('forced project save failure');
+    })).rejects.toThrow('forced project save failure');
+
+    expect(files.get(oldPath)).toEqual(oldBytes);
+    expect(settlePhysicPaintCacheGeneration).toHaveBeenCalledWith(
+      '/project',
+      expect.stringMatching(/^\.physic-paint-staging-/),
+      'rollback',
+    );
+
+    await savePhysicPaintData('/project', makeOutput(90));
+    expect(publishPhysicPaintCacheGeneration).toHaveBeenCalledTimes(2);
+  });
+
+  it('removes an uncommitted first cache generation when the project file write rejects', async () => {
+    await expect(savePhysicPaintDataWithProjectWrite('/project', makeOutput(89), async () => {
+      throw new Error('forced first project save failure');
+    })).rejects.toThrow('forced first project save failure');
+
+    expect(dirs.has('/project/cache/physic-paint')).toBe(false);
+    expect(Array.from(files.keys()).some((path) => path.startsWith('/project/cache/physic-paint/'))).toBe(false);
+    expect(settlePhysicPaintCacheGeneration).toHaveBeenCalledWith(
+      '/project',
+      expect.stringMatching(/^\.physic-paint-staging-/),
+      'rollback',
+    );
   });
 
   it('keeps the previous canonical cache when a staged sidecar write fails', async () => {
@@ -168,6 +254,22 @@ describe('physicPaintPersistence', () => {
 
     expect(publishPhysicPaintCacheGeneration).not.toHaveBeenCalled();
     expect(files.get(oldPath)).toEqual(oldBytes);
+  });
+
+  it('never probes generated staging paths through allow-exists', async () => {
+    const { exists } = await import('@tauri-apps/plugin-fs');
+    vi.mocked(exists).mockImplementation(async (path) => {
+      if (String(path).includes('/cache/.physic-paint-staging-')) {
+        throw new Error(`forbidden path: ${path}, maybe it is not allowed on the scope for allow-exists permission in your capability file`);
+      }
+      return dirs.has(String(path)) || files.has(String(path));
+    });
+
+    const persisted = await savePhysicPaintData('/project', makeOutput(95));
+
+    expect(persisted[0].frames[0].cache_path).toMatch(/^cache\/physic-paint\//);
+    expect(publishPhysicPaintCacheGeneration).toHaveBeenCalledOnce();
+    expect(vi.mocked(exists).mock.calls.every(([path]) => !String(path).includes('/cache/.physic-paint-staging-'))).toBe(true);
   });
 
   it('stores rendered frames in the project cache and serializes only cache paths', async () => {
@@ -213,17 +315,31 @@ describe('physicPaintPersistence', () => {
     expect(publishPhysicPaintCacheGeneration).toHaveBeenCalledTimes(2);
   });
 
-  it('accepts deferred cleanup after publication and retains canonical metadata', async () => {
-    publishPhysicPaintCacheGeneration.mockImplementationOnce(async (projectDir: string, stagingBasename: string) => {
-      moveGeneration(projectDir, stagingBasename);
-      return {
-        ok: true,
-        data: {
-          accepted: true,
-          cleanupStatus: 'deferred',
-          cleanupDiagnostic: 'forced cleanup deferral',
-        },
-      };
+  it('keeps a successful project/cache pair accepted when commit cleanup acknowledgement fails', async () => {
+    settlePhysicPaintCacheGeneration.mockResolvedValueOnce({
+      ok: false,
+      error: 'forced cleanup acknowledgement failure',
+    });
+
+    const writeProject = vi.fn(async () => {});
+    const persisted = await savePhysicPaintDataWithProjectWrite('/project', makeOutput(88), writeProject);
+
+    expect(writeProject).toHaveBeenCalledOnce();
+    expect(persisted[0].frames[0].cache_path).toMatch(/^cache\/physic-paint\//);
+    expect(Array.from(files.keys()).some((path) => path.startsWith('/project/cache/physic-paint/'))).toBe(true);
+
+    await savePhysicPaintData('/project', makeOutput(88));
+    expect(publishPhysicPaintCacheGeneration).toHaveBeenCalledOnce();
+  });
+
+  it('accepts deferred cleanup after project commit and retains canonical metadata', async () => {
+    settlePhysicPaintCacheGeneration.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        accepted: true,
+        cleanupStatus: 'deferred',
+        cleanupDiagnostic: 'forced cleanup deferral',
+      },
     });
 
     const persisted = await savePhysicPaintData('/project', makeOutput(93));
@@ -422,13 +538,13 @@ describe('physicPaintPersistence', () => {
 
     expect(persistedDocument.loopClips).toEqual([completeLifecycleGroup()]);
     expect(JSON.stringify(persistedDocument)).not.toContain('data:image/png');
-    const overrideRecord = persistedDocument.realKeyRecords.find((record) => record.keyId === 'override-8');
-    expect(overrideRecord?.payload.cache_path).toMatch(/key-000008-override-8-[0-9a-f]{8}\.png$/);
-    expect(Array.from(files.keys()).some((path) => /key-000008-override-8-[0-9a-f]{8}\.png$/.test(path))).toBe(true);
+    const overrideRecord = persistedDocument.groupOverrideRecords?.find((record) => record.keyId === 'override-8');
+    expect(overrideRecord?.payload.cache_path).toMatch(/override-000008-override-8-[0-9a-f]{8}\.png$/);
+    expect(Array.from(files.keys()).some((path) => /override-000008-override-8-[0-9a-f]{8}\.png$/.test(path))).toBe(true);
 
     const hydrated = await loadPhysicPaintData('/project', persisted);
     expect(hydrated?.[0].roto_physical?.loopClips).toEqual([completeLifecycleGroup()]);
-    expect(hydrated?.[0].roto_physical?.realKeyRecords.find((record) => record.keyId === 'override-8')?.payload.dataUrl)
+    expect(hydrated?.[0].roto_physical?.groupOverrideRecords?.find((record) => record.keyId === 'override-8')?.payload.dataUrl)
       .toBe(`data:image/png;base64,${btoa('real-override-8')}`);
   });
 

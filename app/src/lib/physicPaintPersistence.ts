@@ -12,14 +12,14 @@ import type {
   RuntimePhysicPaintOutput,
 } from '../types/project';
 import { isPhysicPaintRenderedFrame, isPhysicPaintRotoPlaybackSettings, type PhysicPaintRenderedFrame } from '../types/physicPaint';
-import { publishPhysicPaintCacheGeneration } from './ipc';
+import { publishPhysicPaintCacheGeneration, settlePhysicPaintCacheGeneration } from './ipc';
 
 const PHYSIC_PAINT_CACHE_DIR = 'cache/physic-paint';
 const PHYSIC_PAINT_CACHE_PARENT_DIR = 'cache';
 const PHYSIC_PAINT_STAGING_PREFIX = '.physic-paint-staging-';
 const DATA_URL_PREFIX = 'data:image/png;base64,';
 const OUTPUT_KEYS = new Set(['layer_id', 'frames', 'roto_physical', 'roto_playback']);
-const PERSISTED_DOCUMENT_KEYS = new Set(['capacity', 'realKeyRecords', 'interpolation', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds']);
+const PERSISTED_DOCUMENT_KEYS = new Set(['capacity', 'realKeyRecords', 'groupOverrideRecords', 'interpolation', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds']);
 const PERSISTED_RECORD_KEYS = new Set(['kind', 'keyId', 'appFrame', 'payload']);
 const PERSISTED_PAYLOAD_KEYS = new Set(['frameIndex', 'appFrame', 'cache_path', 'width', 'height']);
 
@@ -102,7 +102,7 @@ function createStagingBasename(): string {
 
 async function removeStagingGeneration(path: string): Promise<void> {
   try {
-    if (await exists(path)) await remove(path, { recursive: true });
+    await remove(path, { recursive: true });
   } catch {
     // Staging cleanup is non-authoritative. Canonical publication state is
     // determined only by the native publication result.
@@ -160,19 +160,37 @@ function validateRuntimeOutputs(outputs: readonly RuntimePhysicPaintOutput[]): r
   return outputs;
 }
 
-export async function savePhysicPaintData(projectDir: string, outputs: RuntimePhysicPaintOutput[] | undefined): Promise<McePhysicPaintOutput[]> {
-  const rootDir = `${projectDir}/${PHYSIC_PAINT_CACHE_DIR}`;
+interface PreparedPhysicPaintSave {
+  readonly persistedOutputs: McePhysicPaintOutput[];
+  readonly cacheKey: string | null;
+  readonly publication: Readonly<{
+    stagingBasename: string;
+  }> | null;
+  readonly removeCanonicalAfterCommit: boolean;
+}
+
+async function preparePhysicPaintDataSave(projectDir: string, outputs: RuntimePhysicPaintOutput[] | undefined): Promise<PreparedPhysicPaintSave> {
   if (!outputs || outputs.length === 0) {
-    if (await exists(rootDir)) await remove(rootDir, { recursive: true });
-    savedOutputCache.clear();
-    return [];
+    return {
+      persistedOutputs: [],
+      cacheKey: null,
+      publication: null,
+      removeCanonicalAfterCommit: true,
+    };
   }
 
   await cleanupStaleStagingGenerations(projectDir);
   const validatedOutputs = validateRuntimeOutputs(outputs);
   const cacheKey = buildSaveCacheKey(projectDir, validatedOutputs);
   const cached = savedOutputCache.get(cacheKey);
-  if (cached) return structuredClone(cached);
+  if (cached) {
+    return {
+      persistedOutputs: structuredClone(cached),
+      cacheKey,
+      publication: null,
+      removeCanonicalAfterCommit: false,
+    };
+  }
 
   const pendingWrites: PendingWrite[] = [];
   const persistedOutputs: McePhysicPaintOutput[] = [];
@@ -192,10 +210,13 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
     let rotoPhysical: McePhysicPaintRotoPhysicalDocument | undefined;
     if (output.roto_physical) {
       const physical = parsePhysicPaintRotoPhysicalDocument(output.roto_physical);
-      const realKeyRecords: McePhysicPaintRotoPhysicalRecord[] = physical.realKeyRecords.map((record) => {
+      const persistPhysicalRecords = (
+        records: readonly PhysicPaintRotoPhysicalDocument['realKeyRecords'][number][],
+        prefix: string,
+      ): McePhysicPaintRotoPhysicalRecord[] => records.map((record) => {
         const bytes = decodePngDataUrl(record.payload.dataUrl);
         if (!bytes) throw new Error(`Physical Roto key ${output.layer_id}:${record.keyId} is not a canonical PNG data URL.`);
-        const cachePath = `${PHYSIC_PAINT_CACHE_DIR}/${layerDirName}/key-${String(record.appFrame).padStart(6, '0')}-${stableSegment(record.keyId)}.png`;
+        const cachePath = `${PHYSIC_PAINT_CACHE_DIR}/${layerDirName}/${prefix}-${String(record.appFrame).padStart(6, '0')}-${stableSegment(record.keyId)}.png`;
         pendingWrites.push({ path: cachePath, bytes });
         return {
           kind: 'real-key',
@@ -210,9 +231,12 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
           },
         };
       });
+      const realKeyRecords = persistPhysicalRecords(physical.realKeyRecords, 'key');
+      const groupOverrideRecords = persistPhysicalRecords(physical.groupOverrideRecords ?? [], 'override');
       rotoPhysical = {
         capacity: physical.capacity,
         realKeyRecords,
+        groupOverrideRecords,
         interpolation: physical.interpolation,
         scriptMotion: physical.scriptMotion,
         background: physical.background,
@@ -259,13 +283,13 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
   await ensureDir(`${projectDir}/${PHYSIC_PAINT_CACHE_PARENT_DIR}`);
 
   try {
-    await ensureDir(stagingRoot);
+    await mkdir(stagingRoot, { recursive: true });
     const ensuredDirectories = new Set<string>();
     for (const write of pendingWrites) {
       const stagingRelativePath = `${stagingRelativeRoot}${write.path.slice(PHYSIC_PAINT_CACHE_DIR.length)}`;
       const directory = stagingRelativePath.slice(0, stagingRelativePath.lastIndexOf('/'));
       if (!ensuredDirectories.has(directory)) {
-        await ensureDir(`${projectDir}/${directory}`);
+        await mkdir(`${projectDir}/${directory}`, { recursive: true });
         ensuredDirectories.add(directory);
       }
       await writeFile(`${projectDir}/${stagingRelativePath}`, write.bytes);
@@ -273,14 +297,62 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
 
     const publication = await publishPhysicPaintCacheGeneration(projectDir, stagingBasename);
     if (!publication.ok) throw new Error(publication.error);
+    return {
+      persistedOutputs,
+      cacheKey,
+      publication: { stagingBasename },
+      removeCanonicalAfterCommit: false,
+    };
   } catch (error) {
     await removeStagingGeneration(stagingRoot);
     throw error;
   }
+}
 
-  savedOutputCache.clear();
-  savedOutputCache.set(cacheKey, structuredClone(persistedOutputs));
-  return persistedOutputs;
+async function settlePreparedPhysicPaintSave(
+  projectDir: string,
+  prepared: PreparedPhysicPaintSave,
+  action: 'commit' | 'rollback',
+): Promise<void> {
+  if (prepared.publication) {
+    const result = await settlePhysicPaintCacheGeneration(
+      projectDir,
+      prepared.publication.stagingBasename,
+      action,
+    );
+    if (!result.ok && action === 'rollback') throw new Error(result.error);
+  }
+  if (action === 'commit') {
+    if (prepared.removeCanonicalAfterCommit) {
+      const rootDir = `${projectDir}/${PHYSIC_PAINT_CACHE_DIR}`;
+      if (await exists(rootDir)) await remove(rootDir, { recursive: true });
+    }
+    savedOutputCache.clear();
+    if (prepared.cacheKey) savedOutputCache.set(prepared.cacheKey, structuredClone(prepared.persistedOutputs));
+  }
+}
+
+export async function savePhysicPaintDataWithProjectWrite(
+  projectDir: string,
+  outputs: RuntimePhysicPaintOutput[] | undefined,
+  writeProject: (persistedOutputs: McePhysicPaintOutput[]) => Promise<void>,
+): Promise<McePhysicPaintOutput[]> {
+  const prepared = await preparePhysicPaintDataSave(projectDir, outputs);
+  try {
+    await writeProject(prepared.persistedOutputs);
+  } catch (error) {
+    await settlePreparedPhysicPaintSave(projectDir, prepared, 'rollback');
+    throw error;
+  }
+  await settlePreparedPhysicPaintSave(projectDir, prepared, 'commit');
+  return prepared.persistedOutputs;
+}
+
+export function savePhysicPaintData(
+  projectDir: string,
+  outputs: RuntimePhysicPaintOutput[] | undefined,
+): Promise<McePhysicPaintOutput[]> {
+  return savePhysicPaintDataWithProjectWrite(projectDir, outputs, async () => {});
 }
 
 function parsePersistedPhysicalDocument(value: unknown): McePhysicPaintRotoPhysicalDocument {
@@ -299,7 +371,10 @@ function parsePersistedPhysicalDocument(value: unknown): McePhysicPaintRotoPhysi
       || !value.incomingInterpolationBreakKeyIds.every(isNonEmptyString))) {
     throw new Error('Persisted physical Roto document incoming break member is malformed.');
   }
-  for (const record of value.realKeyRecords) {
+  if (value.groupOverrideRecords !== undefined && !Array.isArray(value.groupOverrideRecords)) {
+    throw new Error('Persisted physical Roto Group overrides member is malformed.');
+  }
+  for (const record of [...value.realKeyRecords, ...(value.groupOverrideRecords ?? [])]) {
     if (!isPlainRecord(record) || !hasOnlyKeys(record, PERSISTED_RECORD_KEYS) || record.kind !== 'real-key') {
       throw new Error('Persisted physical Roto record is malformed.');
     }
@@ -318,7 +393,7 @@ function parsePersistedPhysicalDocument(value: unknown): McePhysicPaintRotoPhysi
 
 async function hydratePhysicalDocument(projectDir: string, value: unknown): Promise<PhysicPaintRotoPhysicalDocument> {
   const persisted = parsePersistedPhysicalDocument(value);
-  const records = await Promise.all(persisted.realKeyRecords.map(async (record) => {
+  const hydrateRecords = (records: readonly McePhysicPaintRotoPhysicalRecord[]) => Promise.all(records.map(async (record) => {
     const bytes = await readFile(`${projectDir}/${record.payload.cache_path}`);
     if (bytes.length === 0) throw new Error(`Physical Roto sidecar is empty: ${record.payload.cache_path}`);
     return {
@@ -334,9 +409,12 @@ async function hydratePhysicalDocument(projectDir: string, value: unknown): Prom
       },
     };
   }));
+  const records = await hydrateRecords(persisted.realKeyRecords);
+  const groupOverrideRecords = await hydrateRecords(persisted.groupOverrideRecords ?? []);
   return parsePhysicPaintRotoPhysicalDocument({
     capacity: persisted.capacity,
     realKeyRecords: records,
+    groupOverrideRecords,
     interpolation: persisted.interpolation,
     scriptMotion: persisted.scriptMotion,
     background: persisted.background,

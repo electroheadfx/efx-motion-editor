@@ -28,7 +28,11 @@
     "fs:scope-appdata-recursive",
     {
       "identifier": "fs:scope",
-      "allow": [{ "path": "**" }]
+      "allow": [
+        { "path": "**" },
+        { "path": "**/cache/.physic-paint-staging-*" },
+        { "path": "**/cache/.physic-paint-staging-*/**" }
+      ]
     },
     "notification:default"
   ]

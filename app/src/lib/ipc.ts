@@ -300,6 +300,11 @@ export async function pathExists(filePath: string): Promise<Result<boolean>> {
 
 export interface PhysicPaintCachePublicationResult {
   accepted: true;
+  replacedExisting: boolean;
+}
+
+export interface PhysicPaintCacheSettlementResult {
+  accepted: true;
   cleanupStatus: 'complete' | 'deferred';
   cleanupDiagnostic?: string;
 }
@@ -311,6 +316,17 @@ export function publishPhysicPaintCacheGeneration(
   return safeInvoke<PhysicPaintCachePublicationResult>(
     'publish_physic_paint_cache_generation',
     { projectDir, stagingBasename },
+  );
+}
+
+export function settlePhysicPaintCacheGeneration(
+  projectDir: string,
+  stagingBasename: string,
+  action: 'commit' | 'rollback',
+): Promise<Result<PhysicPaintCacheSettlementResult>> {
+  return safeInvoke<PhysicPaintCacheSettlementResult>(
+    'settle_physic_paint_cache_generation',
+    { projectDir, stagingBasename, action },
   );
 }
 

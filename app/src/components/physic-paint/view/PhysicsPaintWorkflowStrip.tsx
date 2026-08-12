@@ -7,6 +7,7 @@ import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
   collectRotoDragVacatedAppFrames,
+  getRotoAcceptedCellFillClass,
   getRotoCellFill, getRotoCellPresentationViewModel, getRotoCellViewModel,
   getRotoCellSelectedTooltipCopy,
   getRotoCellStateTooltipCopy,
@@ -25,8 +26,10 @@ import type { RotoKeyUtilityActionState } from '../roto/physicsPaintRotoKeyContr
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type {
   PhysicPaintRotoInterpolationState,
+  PhysicPaintRotoLoopClip,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
+import { classifyPhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
 import type { PhysicPaintRotoLoopResolutionContext } from '../roto/physicsPaintRotoPhysicalResolver';
 import {
   getRotoFrameKeyInteraction,
@@ -170,6 +173,8 @@ export interface PhysicsPaintWorkflowStripProps {
   onPasteRotoFrame?: () => void;
   /** Physical real-key records for identity-based Drag targeting (D-01/D-07). */
   rotoKeyRecords?: readonly PhysicPaintRotoRealKeyRecord[];
+  /** Accepted lifecycle Groups used to distinguish owned deletion gaps from unrelated empty cells. */
+  rotoLoopClips?: readonly PhysicPaintRotoLoopClip[];
   /** Accepted stable real-key owners of incoming interpolation breaks. */
   rotoIncomingInterpolationBreakKeyIds?: readonly string[];
   /** Reactive physical timeline cells (D-10) for vacated-cell diffing during Drag preview. */
@@ -236,10 +241,6 @@ function buildRulerTicks(frameCells: number[]): number[] {
 
 function isSavedFrame(markers: PhysicsPaintWorkflowStripFrameMarker[] | undefined, frame: number): boolean {
   return Boolean(markers?.some(marker => marker.frame === frame && marker.saved !== false && marker.source !== 'generated-interpolation'));
-}
-
-function getRotoFillClass(fill: ReturnType<typeof getRotoCellFill>): string {
-  return fill === 'cached-only' ? 'roto-fill-cached-only' : 'roto-fill-empty';
 }
 
 /**
@@ -584,6 +585,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     [props.rotoKeyRecords],
   );
   const incomingInterpolationBreakKeyIds = props.rotoIncomingInterpolationBreakKeyIds ?? [];
+  const acceptedGroupDocument = useMemo(() => ({
+    realKeyRecords: props.rotoKeyRecords ?? [],
+    loopClips: props.rotoLoopClips ?? [],
+  }), [props.rotoKeyRecords, props.rotoLoopClips]);
   const physicalCellByAppFrame = useMemo(
     () => new Map(currentPhysicalCells.map((cell) => [cell.appFrame, cell])),
     [currentPhysicalCells],
@@ -1489,11 +1494,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   // inline derivation.
                   const { vm, fill } = getRotoCellDerivation(frame);
                   const isPhysicalRealKey = semanticCell?.kind === 'real';
-                  const fillClass = frameResolution?.kind === 'linked-gap'
-                    ? 'roto-fill-empty'
-                    : isPhysicalRealKey
-                      ? 'roto-fill-cached'
-                      : `${getRotoFillClass(fill)} ${vm.fillClass}`;
+                  const lifecycleTarget = classifyPhysicPaintRotoGroupFrameTarget({
+                    document: acceptedGroupDocument,
+                    appFrame: frame,
+                  });
+                  const fillClass = getRotoAcceptedCellFillClass({
+                    lifecycleTargetKind: lifecycleTarget.kind,
+                    resolutionKind: frameResolution?.kind ?? 'empty',
+                    isPhysicalRealKey,
+                    fill,
+                    viewModelFillClass: vm.fillClass,
+                  });
                   const isOccupiedRealKey = isPhysicalRealKey;
                   const semanticKind = isGenerated ? 'generated' : isOccupiedRealKey ? 'real-key' : 'empty';
                   const generatedTitle = isGenerated ? getGeneratedRotoTitle(frame) : null;

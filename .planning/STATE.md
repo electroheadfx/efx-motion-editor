@@ -5,10 +5,10 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.2
 current_phase_name: Motion and Static Group Stabilization and Action Lifecycle
 status: executing
-stopped_at: Exact-once Group settlement repair automated-ready at 69d07703; seven targeted native retests pending
-last_updated: "2026-08-12T13:20:00.000Z"
+stopped_at: Frozen 69d07703 native retest preserves Repeat and Delete Frame history but exposes save staging plus Group gap, Paint, and Regenerate failures
+last_updated: "2026-08-12T11:58:21.000Z"
 last_activity: 2026-08-12
-last_activity_desc: Repaired parent-first complete-document settlement, late terminal acknowledgement, Group gap Paint/presentation, and canonical shared Group Regenerate; all automated freeze gates pass and Plan 43.2-17 remains native-blocked
+last_activity_desc: Recorded five independent frozen-native failures; Repeat and Delete Frame structural Undo/Redo remain accepted while Plan 43.2-17 stays blocked
 progress:
   total_phases: 8
   completed_phases: 5
@@ -30,8 +30,8 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 Phase: 43.2 (Motion and Static Group Stabilization and Action Lifecycle) — EXECUTING
 Plan: 17 of 25
-Status: Exact-once Group settlement repair is automated-ready at `69d07703`; Plan 43.2-17 and phase completion remain blocked pending one fully restarted parent/child session for the seven targeted native retests
-Last activity: 2026-08-12 — Parent-first atomic document publication, terminal acknowledgement correlation, Group gap Paint/presentation, and shared Group Regenerate recomputation passed focused and complete automated gates
+Status: Frozen `69d07703` native retest confirms Repeat and Delete Frame structural Undo/Redo, but Plan 43.2-17 and phase completion remain blocked by save staging plus Group gap presentation/ownership, local Paint atomicity, and Regenerate restoration failures
+Last activity: 2026-08-12 — Recorded five independent failures from one fully quit/restarted parent/child build with no hot reload; preserved the passing Repeat and Delete Frame history paths
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -394,7 +394,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: Frozen implementation `2418ed6c` failed native exact-once Group settlement and remains the immutable failure baseline.
 - [Phase 43.2]: Accepted structural operations are parent-first: the child publishes one complete canonical physical document only after the exact correlated acceptance and publishes zero structural state on rejection, transport failure, or timeout.
 - [Phase 43.2]: Regenerate is a distinct `regenerate-group` transaction; the parent independently derives the complete truly shared Group set, preserves each Group's own settings, and validates one aggregate canonical target.
-- [Phase 43.2]: Automated repair candidate `69d07703` is blocked on seven targeted native retests before Plan 43.2-17 or the remaining checklist can resume.
+- [Phase 43.2]: Frozen `69d07703` native retest confirms Create/Edit Group, Repeat forward/Undo/Redo/usability, and Delete Frame structural Undo/Redo; preserve those paths.
+- [Phase 43.2]: The same restarted build independently fails project-local save staging permission, neutral deleted-gap presentation, Paint into a deleted Group gap, copy-on-write Paint over an existing Group frame, and Regenerate restoration from original extent.
+- [Phase 43.2]: `[SAVE-REOPEN]` remains a separate narrow Tauri capability/publication defect from the linked Group ownership, Paint, and Regenerate failures.
 
 ### Pending Todos
 
@@ -404,9 +406,12 @@ None yet.
 
 - Quick 260730-mn0 completed Apple signing preparation: one valid Developer ID identity, App Store Connect Team Key setup, fail-loud release script, and two operational guides. The real credentialed build/notarization/stapling/Gatekeeper/external-launch proof was explicitly deferred until after milestone close and remains unverified — run `docs/macos-signed-release.md`.
 - v0.8.0 audit-accepted tech debt and follow-ups are tracked in `## Deferred Items` below and in the MILESTONES.md v0.8.0 entry (resolver regression tests, CR-01/CR-02 + WR-01..04, legacy dual-model seam, dead playScriptMarkers, cache footprint).
-- Frozen `2418ed6c` remains the authoritative failed-native baseline for Delete Group Undo overwrite, Repeat rejection, Delete Frame partial settlement, Paint-into-gap failure, and Regenerate partial settlement.
-- Automated repair candidate `69d07703` makes parent acceptance the only structural publication authority, correlates late terminal output by exact operation ID, replaces the complete physical document once after acceptance, reconciles runtime ownership before publication, and performs zero child publication for rejection, transport failure, or timeout.
-- Plan 43.2-17 and phase completion remain blocked. Do not resume the remaining native checklist until the repaired candidate passes Delete Group history, Repeat history/deletion, Delete Frame F12 history, Paint-into-gap, Regenerate success/rejection atomicity, and current terminology targeted retests.
+- Frozen `2418ed6c` remains the authoritative failed-native baseline for the original Delete Group Undo overwrite, Repeat rejection, Delete Frame partial settlement, Paint-into-gap failure, and Regenerate partial settlement.
+- Frozen `69d07703` proves the settlement repair for Create/Edit Group, Repeat forward/Undo/Redo/usability, and Delete Frame structural Undo/Redo; do not reopen or rewrite those paths unnecessarily.
+- `[SAVE-REOPEN]` independently fails because the generated project-local `cache/.physic-paint-staging-<uuid>` path is outside the narrow Tauri `allow-exists` scope. Preserve atomic staging/publication, avoid broad filesystem grants, clean failed staging safely, and preserve the prior accepted cache on rejection.
+- Group ownership remains incomplete after Delete Frame: the accepted gap stays green, cannot receive direct Paint, and Regenerate follows shortened `visibleRanges` instead of restoring the stored original extent.
+- Local Paint over an existing Group frame still destroys both the prior accepted content/cache and the requested replacement, violating copy-on-write and zero-mutation rejection atomicity.
+- Plan 43.2-17 and phase completion remain blocked. Keep `[SAVE-REOPEN]` separate, preserve passing Repeat/Delete history behavior, and do not resume the remaining native checklist before a new frozen candidate passes the eight requested retests.
 
 ### Quick Tasks Completed
 
@@ -587,14 +592,15 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-12T13:20:00.000Z
-Stopped at: Exact-once Group settlement repair automated-ready at `69d07703`; seven targeted native retests pending
+Last session: 2026-08-12T11:58:21.000Z
+Stopped at: Frozen `69d07703` native retest recorded; save staging plus Group gap, Paint, and Regenerate red loops required
 Resume file: .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md
 
 ## Operator Next Steps
 
-- Build `69d07703`, fully quit and restart both parent and Physics Paint child, and record the exact parent/child bundle identity before testing.
-- Execute only the seven blocking targeted retests recorded in `43.2-UAT.md`: Delete Group history; Repeat history then Delete Group; Delete Frame F12 history; direct Paint into F12; Regenerate success; Regenerate rejection/timeout; current terminology and canonical reasons.
-- Keep Plan 43.2-17 and phase completion blocked; do not resume the remaining native checklist before all seven targeted retests pass from that one frozen session.
-- Keep `[SAVE-REOPEN]` separate from this settlement checkpoint.
+- Preserve the confirmed frozen-native passes: Create/Edit Group, Repeat forward/Undo/Redo/usability, and Delete Frame structural Undo/Redo.
+- Build separate red loops for the narrow project-local Tauri staging permission and for the shared deleted-position ownership / exact-frame Paint COW / original-extent Regenerate boundary.
+- Repair without broad filesystem scope, Insert workarounds, forced CSS state, optimistic cache publication, local lifecycle overrides, restart/reload, silent revision refresh, modal dismissal, or longer timeout.
+- Run complete automated gates, freeze a new implementation commit, then request the eight native retests recorded in `43.2-UAT.md`.
+- Keep Plan 43.2-17 and phase completion blocked, and keep `[SAVE-REOPEN]` separate from Group Paint and Regenerate.
 - Keep Phase 43.1 DF-01 through DF-04 deferred; do not create additional Phase 43.1 plans.

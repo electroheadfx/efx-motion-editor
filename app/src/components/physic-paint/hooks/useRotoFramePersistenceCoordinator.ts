@@ -49,6 +49,52 @@ export type RotoPhysicalPaintRouteResult =
   | Readonly<{ ok: true; kind: 'group-frame'; groupId: string; appFrame: number }>
   | Readonly<{ ok: false; reason: 'stale-target' | 'unresolved-target' | 'ambiguous-target' | 'empty-target' | 'lease-or-settlement-rejected' }>;
 
+export type RotoCompletedPaintTarget =
+  | Readonly<{ kind: 'ordinary-key'; keyId: string; appFrame: number }>
+  | Readonly<{ kind: 'group-frame'; groupId: string; appFrame: number; expectedKeyId?: string }>
+  | Readonly<{ kind: 'empty' }>
+  | Readonly<{ kind: 'blocked' }>;
+
+export function resolveRotoCompletedGroupPaintTarget(
+  document: PhysicPaintRotoPhysicalDocument,
+  appFrame: number,
+  currentCellKeyId: string | null,
+): RotoCompletedPaintTarget {
+  const target = classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame });
+  switch (target.kind) {
+    case 'ordinary-key':
+      return currentCellKeyId !== null && currentCellKeyId !== target.keyId
+        ? Object.freeze({ kind: 'blocked' })
+        : Object.freeze({ kind: 'ordinary-key', keyId: target.keyId, appFrame });
+    case 'source-occurrence':
+      return Object.freeze({
+        kind: 'group-frame',
+        groupId: target.groupId,
+        appFrame,
+        expectedKeyId: target.sourceKeyId,
+      });
+    case 'override':
+      return Object.freeze({
+        kind: 'group-frame',
+        groupId: target.groupId,
+        appFrame,
+        expectedKeyId: target.keyId,
+      });
+    case 'generated-occurrence':
+    case 'group-gap':
+      return Object.freeze({ kind: 'group-frame', groupId: target.groupId, appFrame });
+    case 'empty':
+      return Object.freeze({ kind: 'empty' });
+    case 'unresolved-group':
+    case 'ambiguous-group':
+      return Object.freeze({ kind: 'blocked' });
+    default: {
+      const exhaustive: never = target;
+      throw new Error(`Unhandled completed Group Paint target: ${JSON.stringify(exhaustive)}`);
+    }
+  }
+}
+
 /**
  * Classify one accepted Paint destination before any store/cache publication.
  * Ordinary real keys retain the direct payload seam; every lifecycle Group
@@ -178,6 +224,8 @@ export function encodeRotoPhysicalLaunchDocument(document: PhysicPaintRotoPhysic
   return {
     capacity: document.capacity,
     records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
+    groupOverrideRecords: (document.groupOverrideRecords ?? [])
+      .map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
     interpolationEnabled: document.interpolation.enabled,
     interpolationMode: document.interpolation.mode,
     scriptMotion: document.scriptMotion,
@@ -389,9 +437,18 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       produce: () => capture.cachedBase
         ? mergeCachedRotoAlphaFrame(capture.cachedBase, capture.liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId)
         : encodeRotoFrameFromCanvas(capture.liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId),
-      commit: async (rendered, current) => {
-        await upsertCachedFrame({ ...rendered, appFrame: current.appFrame }, capture.backgroundOnly === true, undefined, undefined, capture.layerId, capture.mutationId, launchId, capture.background, capture.keyId, contentRevision);
-      },
+      commit: (rendered, current) => upsertCachedFrame(
+        { ...rendered, appFrame: current.appFrame },
+        capture.backgroundOnly === true,
+        undefined,
+        undefined,
+        capture.layerId,
+        capture.mutationId,
+        launchId,
+        capture.background,
+        capture.keyId,
+        contentRevision,
+      ),
     });
   }, [getCurrentIdentity, upsertCachedFrame]);
 

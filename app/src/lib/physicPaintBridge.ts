@@ -138,6 +138,7 @@ const activeLaunchOperationByLayer = new Map<string, string>();
  */
 interface AcceptedPhysicalCommandSnapshot {
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly interpolation: PhysicPaintRotoInterpolationState;
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
   readonly incomingInterpolationBreakKeyIds: readonly string[];
@@ -230,6 +231,7 @@ function cloneAndDeepFreezePlainData<T>(value: T): T {
 
 function createAcceptedPhysicalCommandSnapshot(input: {
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly interpolation: PhysicPaintRotoInterpolationState;
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
   readonly incomingInterpolationBreakKeyIds: readonly string[];
@@ -243,6 +245,7 @@ function createAcceptedPhysicalCommandSnapshot(input: {
     : input.records.find((record) => record.keyId === input.selectedKeyId) ?? null;
   return cloneAndDeepFreezePlainData({
     records: input.records,
+    groupOverrideRecords: input.groupOverrideRecords,
     interpolation: input.interpolation,
     loopClips: input.loopClips,
     incomingInterpolationBreakKeyIds: input.incomingInterpolationBreakKeyIds,
@@ -457,12 +460,14 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
   if (remainingCapacity === null || physicalRemaining <= 0) return failure('No remaining Physics Paint sequence capacity is available.');
   const capacity = Math.min(remainingCapacity, physicalRemaining, PHYSIC_PAINT_MAX_APPLY_FRAMES);
   const records = physicPaintStore.getRotoRealKeyRecords(request.layerId);
+  const groupOverrideRecords = physicPaintStore.getRotoGroupOverrideRecords(request.layerId);
   const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(request.layerId);
   const physicalRevision = buildPhysicPaintRotoPhysicalRevision(
     records,
     interpolation,
     physicPaintStore.getRotoPhysicalLoopClips(request.layerId),
     physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(request.layerId),
+    groupOverrideRecords,
   );
   const physicalRecords = records.map((record) => ({
     keyId: record.keyId,
@@ -553,10 +558,17 @@ function fingerprintApplyPayload(payload: PhysicPaintApplyPayload): string {
       appFrame: record.appFrame,
       payload: record.payload,
     }));
+    const canonicalGroupOverrideRecords = (payload.groupOverrideRecords ?? []).map((record) => ({
+      kind: 'real-key' as const,
+      keyId: record.keyId,
+      appFrame: record.appFrame,
+      payload: record.payload,
+    }));
     const content = encodePhysicPaintRotoPhysicalContent(canonicalRecords, {
       enabled: payload.interpolationEnabled,
       mode: payload.interpolationMode,
-    }, payload.loopClips ?? [], payload.incomingInterpolationBreakKeyIds ?? []);
+    }, payload.loopClips ?? [], payload.incomingInterpolationBreakKeyIds ?? [], canonicalGroupOverrideRecords);
+    const groupOverridesPresence = payload.groupOverrideRecords === undefined ? 'omitted' : 'present';
     const incomingBreaksPresence = payload.incomingInterpolationBreakKeyIds === undefined ? 'omitted' : 'present';
     const provenance = payload.historyProvenance
       ? `${payload.historyProvenance.historyCommandId}:${payload.historyProvenance.historyDirection}:${payload.historyProvenance.sourceRevision}:${payload.historyProvenance.targetRevision}`
@@ -574,6 +586,7 @@ function fingerprintApplyPayload(payload: PhysicPaintApplyPayload): string {
       payload.projectContextId ?? '',
       payload.expectedRevision,
       content,
+      groupOverridesPresence,
       incomingBreaksPresence,
       payload.selectedKeyId ?? '',
       payload.selectedAppFrame === null ? 'null' : String(payload.selectedAppFrame),
@@ -694,6 +707,8 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
   readonly intent: PhysicPaintRotoPhysicalEditIntent;
   readonly currentRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly proposedRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly currentGroupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly proposedGroupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly currentInterpolation: PhysicPaintRotoInterpolationState;
   readonly proposedInterpolation: PhysicPaintRotoInterpolationState;
   readonly currentLoopClips: readonly PhysicPaintRotoLoopClip[];
@@ -732,8 +747,10 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
     input.currentInterpolation,
     canonicalLoopClips,
     canonicalIncomingInterpolationBreakKeyIds,
+    input.currentGroupOverrideRecords,
   );
   if (!sameCompletePhysicalRecords(canonicalRecords, input.proposedRecords)
+    || !sameCompletePhysicalRecords(input.currentGroupOverrideRecords, input.proposedGroupOverrideRecords)
     || stableSerialize(canonicalLoopClips, new WeakSet<object>()) !== stableSerialize(input.proposedLoopClips, new WeakSet<object>())
     || canonicalIncomingInterpolationBreakKeyIds.length !== input.proposedIncomingInterpolationBreakKeyIds.length
     || canonicalIncomingInterpolationBreakKeyIds.some((keyId, index) => keyId !== input.proposedIncomingInterpolationBreakKeyIds[index])
@@ -938,12 +955,16 @@ function physicalEditResult(
   if (!stagedRevision) {
     try {
       const records = payload.records.map((record) => ({ kind: 'real-key' as const, ...record }));
+      const groupOverrideRecords = payload.groupOverrideRecords === undefined
+        ? physicPaintStore.getRotoGroupOverrideRecords(payload.layerId)
+        : payload.groupOverrideRecords.map((record) => ({ kind: 'real-key' as const, ...record }));
       stagedRevision = buildPhysicPaintRotoPhysicalRevision(records, {
         enabled: payload.interpolationEnabled,
         mode: payload.interpolationMode,
       }, payload.loopClips ?? physicPaintStore.getRotoPhysicalLoopClips(payload.layerId),
       payload.incomingInterpolationBreakKeyIds
-        ?? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(payload.layerId));
+        ?? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(payload.layerId),
+      groupOverrideRecords);
     } catch {
       stagedRevision = 'invalid-physical-revision';
     }
@@ -1010,12 +1031,13 @@ function recomputeCanonicalGroupRegenerate(input: {
   readonly currentDocument: PhysicPaintRotoPhysicalDocument;
   readonly targetDocument: PhysicPaintRotoPhysicalDocument;
   readonly proposedRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly proposedGroupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly delta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'regenerate-group' }>;
 }): {
   readonly proposal: PhysicPaintRotoPhysicalDocument;
   readonly impact: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'regenerate-group' }>;
 } | string {
-  const { currentDocument, targetDocument, proposedRecords, delta } = input;
+  const { currentDocument, targetDocument, proposedRecords, proposedGroupOverrideRecords, delta } = input;
   const initiatingGroup = currentDocument.loopClips.find((group) => group.loopId === delta.groupId);
   if (!initiatingGroup || !isCompleteRegenerateGroup(initiatingGroup)) {
     return 'Group Regenerate initiating Group is unavailable.';
@@ -1065,21 +1087,37 @@ function recomputeCanonicalGroupRegenerate(input: {
     return 'Group Regenerate cleanup declaration does not match the canonical shared Groups.';
   }
 
-  const allowedChangedIds = new Set([...sourceKeyIds, ...expectedCleanupKeyIds]);
   for (const current of currentDocument.realKeyRecords) {
     const proposed = proposedByKeyId.get(current.keyId);
-    if (expectedCleanupKeyIds.includes(current.keyId)) {
-      if (proposed) return 'Group Regenerate retained a canonical override cleanup record.';
-      continue;
-    }
     if (!proposed) return 'Group Regenerate removed an unrelated physical record.';
-    if (!allowedChangedIds.has(current.keyId) && !samePhysicalRecord(current, proposed)) {
+    if (!sourceKeyIdSet.has(current.keyId) && !samePhysicalRecord(current, proposed)) {
       return 'Group Regenerate changed an unrelated physical record.';
     }
   }
   for (const proposed of proposedRecords) {
     if (!currentByKeyId.has(proposed.keyId)) {
       return 'Group Regenerate introduced a new physical identity.';
+    }
+  }
+  const currentOverridesByKeyId = new Map(
+    (currentDocument.groupOverrideRecords ?? []).map((record) => [record.keyId, record]),
+  );
+  const proposedOverridesByKeyId = new Map(
+    proposedGroupOverrideRecords.map((record) => [record.keyId, record]),
+  );
+  for (const current of currentDocument.groupOverrideRecords ?? []) {
+    const proposed = proposedOverridesByKeyId.get(current.keyId);
+    if (expectedCleanupKeyIds.includes(current.keyId)) {
+      if (proposed) return 'Group Regenerate retained a canonical override cleanup record.';
+      continue;
+    }
+    if (!proposed || !samePhysicalRecord(current, proposed)) {
+      return 'Group Regenerate changed an unrelated Group override record.';
+    }
+  }
+  for (const proposed of proposedGroupOverrideRecords) {
+    if (!currentOverridesByKeyId.has(proposed.keyId)) {
+      return 'Group Regenerate introduced a new Group override identity.';
     }
   }
 
@@ -1091,6 +1129,7 @@ function recomputeCanonicalGroupRegenerate(input: {
     proposalDocument = parsePhysicPaintRotoPhysicalDocument({
       ...targetDocument,
       realKeyRecords: sourceUpdatedRecords,
+      groupOverrideRecords: currentDocument.groupOverrideRecords,
       loopClips: currentDocument.loopClips,
       incomingInterpolationBreakKeyIds: currentDocument.incomingInterpolationBreakKeyIds,
       revision: buildPhysicPaintRotoPhysicalRevision(
@@ -1098,6 +1137,7 @@ function recomputeCanonicalGroupRegenerate(input: {
         currentDocument.interpolation,
         currentDocument.loopClips,
         currentDocument.incomingInterpolationBreakKeyIds,
+        currentDocument.groupOverrideRecords,
       ),
     });
   } catch {
@@ -1130,6 +1170,7 @@ function validateCanonicalGroupLifecycleEdit(input: {
   readonly payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>;
   readonly currentDocument: PhysicPaintRotoPhysicalDocument | null;
   readonly proposedRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly proposedGroupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly proposedLoopClips: readonly PhysicPaintRotoLoopClip[];
   readonly proposedIncomingInterpolationBreakKeyIds: readonly string[];
   readonly stagedInterpolation: PhysicPaintRotoInterpolationState;
@@ -1166,7 +1207,7 @@ function validateCanonicalGroupLifecycleEdit(input: {
     if (target.kind === 'unresolved-group' || target.kind === 'ambiguous-group') {
       return 'Group Paint target precedence is unresolved.';
     }
-    const overrideRecord = input.proposedRecords.find((record) => record.keyId === delta.overrideKeyId);
+    const overrideRecord = input.proposedGroupOverrideRecords.find((record) => record.keyId === delta.overrideKeyId);
     if (!overrideRecord || overrideRecord.appFrame !== delta.appFrame) {
       return 'Group Paint override record does not match the declared exact occurrence.';
     }
@@ -1193,6 +1234,7 @@ function validateCanonicalGroupLifecycleEdit(input: {
       currentDocument,
       targetDocument,
       proposedRecords: input.proposedRecords,
+      proposedGroupOverrideRecords: input.proposedGroupOverrideRecords,
       delta,
     });
     if (typeof aggregate === 'string') return aggregate;
@@ -1215,6 +1257,7 @@ function validateCanonicalGroupLifecycleEdit(input: {
   }
   const proposal = recomputed.proposal;
   if (!sameCompletePhysicalRecords(proposal.realKeyRecords, input.proposedRecords)
+    || !sameCompletePhysicalRecords(proposal.groupOverrideRecords ?? [], input.proposedGroupOverrideRecords)
     || stableSerialize(proposal.loopClips, new WeakSet<object>())
       !== stableSerialize(input.proposedLoopClips, new WeakSet<object>())
     || stableSerialize(proposal.incomingInterpolationBreakKeyIds, new WeakSet<object>())
@@ -1268,6 +1311,7 @@ function applyPhysicPaintRotoPhysicalMap(
     return reject(`Roto physical operation lease rejected: ${leaseValidation.reason}.`);
   }
   const currentRecords = physicPaintStore.getRotoRealKeyRecords(payload.layerId);
+  const currentGroupOverrideRecords = physicPaintStore.getRotoGroupOverrideRecords(payload.layerId);
   const currentInterpolation = physicPaintStore.getRotoPhysicalInterpolationState(payload.layerId);
   const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(payload.layerId);
   const currentIncomingInterpolationBreakKeyIds = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(payload.layerId);
@@ -1277,6 +1321,7 @@ function applyPhysicPaintRotoPhysicalMap(
     currentInterpolation,
     currentLoopClips,
     currentIncomingInterpolationBreakKeyIds,
+    currentGroupOverrideRecords,
   );
   const capacity = physicPaintStore.getRotoPhysicalCapacity(payload.layerId);
   const isReplay = payload.operationKind === 'undo' || payload.operationKind === 'redo';
@@ -1295,6 +1340,7 @@ function applyPhysicPaintRotoPhysicalMap(
     }
     const liveSourceSnapshot = createAcceptedPhysicalCommandSnapshot({
       records: currentRecords,
+      groupOverrideRecords: currentGroupOverrideRecords,
       interpolation: currentInterpolation,
       loopClips: currentLoopClips,
       incomingInterpolationBreakKeyIds: currentIncomingInterpolationBreakKeyIds,
@@ -1327,6 +1373,17 @@ function applyPhysicPaintRotoPhysicalMap(
     );
   } catch (error) {
     return reject(error instanceof Error ? error.message : 'Roto physical records are malformed.');
+  }
+  let proposedGroupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  try {
+    proposedGroupOverrideRecords = payload.groupOverrideRecords === undefined
+      ? currentGroupOverrideRecords
+      : parsePhysicPaintRotoRealKeyRecordCollection(
+          payload.groupOverrideRecords.map((record) => ({ kind: 'real-key' as const, ...record })),
+          capacity,
+        );
+  } catch (error) {
+    return reject(error instanceof Error ? error.message : 'Roto physical Group override records are malformed.');
   }
   // Loop Clip threading (Phase 43, D-29/D-31): a commit carrying loopClips is
   // validated fail-closed and delivered to the store apply path unchanged; a
@@ -1371,8 +1428,9 @@ function applyPhysicPaintRotoPhysicalMap(
     return reject('Ordinary physical edits must preserve the accepted interpolation state.');
   }
   if (isInterpolationChange) {
-    if (!sameCompletePhysicalRecords(currentRecords, proposedRecords)) {
-      return reject('Interpolation change must preserve every physical real-key record exactly.');
+    if (!sameCompletePhysicalRecords(currentRecords, proposedRecords)
+      || !sameCompletePhysicalRecords(currentGroupOverrideRecords, proposedGroupOverrideRecords)) {
+      return reject('Interpolation change must preserve every physical record exactly.');
     }
     if (isInterpolationEnabledChange
       && (payload.interpolationEnabled === currentInterpolation.enabled
@@ -1410,12 +1468,15 @@ function applyPhysicPaintRotoPhysicalMap(
     stagedInterpolation,
     proposedLoopClips,
     proposedIncomingInterpolationBreakKeyIds,
+    proposedGroupOverrideRecords,
   );
   if (payload.intent !== undefined) {
     const canonicalValidationError = validateCanonicalOrdinaryPhysicalEdit({
       intent: payload.intent,
       currentRecords,
       proposedRecords,
+      currentGroupOverrideRecords,
+      proposedGroupOverrideRecords,
       currentInterpolation,
       proposedInterpolation: stagedInterpolation,
       currentLoopClips,
@@ -1460,6 +1521,7 @@ function applyPhysicPaintRotoPhysicalMap(
     payload,
     currentDocument,
     proposedRecords,
+    proposedGroupOverrideRecords,
     proposedLoopClips,
     proposedIncomingInterpolationBreakKeyIds,
     stagedInterpolation,
@@ -1476,6 +1538,7 @@ function applyPhysicPaintRotoPhysicalMap(
       : original.after;
     const proposedTargetSnapshot = createAcceptedPhysicalCommandSnapshot({
       records: proposedRecords,
+      groupOverrideRecords: proposedGroupOverrideRecords,
       interpolation: stagedInterpolation,
       loopClips: proposedLoopClips,
       incomingInterpolationBreakKeyIds: proposedIncomingInterpolationBreakKeyIds,
@@ -1494,6 +1557,7 @@ function applyPhysicPaintRotoPhysicalMap(
   const stagedDocument = parsePhysicPaintRotoPhysicalDocument({
     capacity,
     realKeyRecords: proposedRecords,
+    groupOverrideRecords: proposedGroupOverrideRecords,
     interpolation: stagedInterpolation,
     scriptMotion: currentDocument?.scriptMotion ?? PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
     background: isPlayScript
@@ -1521,6 +1585,7 @@ function applyPhysicPaintRotoPhysicalMap(
     const groupLifecycleAuthority = GROUP_LIFECYCLE_OPERATION_KINDS.has(payload.operationKind);
     const beforeSnapshot = createAcceptedPhysicalCommandSnapshot({
       records: currentRecords,
+      groupOverrideRecords: currentGroupOverrideRecords,
       interpolation: currentInterpolation,
       loopClips: currentLoopClips,
       incomingInterpolationBreakKeyIds: currentIncomingInterpolationBreakKeyIds,
@@ -1535,6 +1600,7 @@ function applyPhysicPaintRotoPhysicalMap(
     });
     const afterSnapshot = createAcceptedPhysicalCommandSnapshot({
       records: acceptedDocument.realKeyRecords,
+      groupOverrideRecords: acceptedDocument.groupOverrideRecords ?? [],
       interpolation: acceptedDocument.interpolation,
       loopClips: acceptedDocument.loopClips,
       incomingInterpolationBreakKeyIds: acceptedDocument.incomingInterpolationBreakKeyIds,
@@ -1735,6 +1801,7 @@ export function applyPhysicPaintRotoGroupFramePaint(
     capacity: currentDocument.capacity,
     before: createAcceptedPhysicalCommandSnapshot({
       records: currentDocument.realKeyRecords,
+      groupOverrideRecords: currentDocument.groupOverrideRecords ?? [],
       interpolation: currentDocument.interpolation,
       loopClips: currentDocument.loopClips,
       incomingInterpolationBreakKeyIds: currentDocument.incomingInterpolationBreakKeyIds,
@@ -1745,6 +1812,7 @@ export function applyPhysicPaintRotoGroupFramePaint(
     }),
     after: createAcceptedPhysicalCommandSnapshot({
       records: replaceResult.document.realKeyRecords,
+      groupOverrideRecords: replaceResult.document.groupOverrideRecords ?? [],
       interpolation: replaceResult.document.interpolation,
       loopClips: replaceResult.document.loopClips,
       incomingInterpolationBreakKeyIds: replaceResult.document.incomingInterpolationBreakKeyIds,
@@ -1969,12 +2037,12 @@ export function applyCommittedReferencedActionDeletion(
     launchOperationId: authority.launchOperationId,
     capacity: current.capacity,
     before: createAcceptedPhysicalCommandSnapshot({
-      records: current.realKeyRecords, interpolation: current.interpolation, loopClips: current.loopClips,
+      records: current.realKeyRecords, groupOverrideRecords: current.groupOverrideRecords ?? [], interpolation: current.interpolation, loopClips: current.loopClips,
       incomingInterpolationBreakKeyIds: current.incomingInterpolationBreakKeyIds, selectedKeyId: current.selectedKeyId,
       cursorAppFrame: current.cursorAppFrame, capacity: current.capacity, revision: current.revision,
     }),
     after: createAcceptedPhysicalCommandSnapshot({
-      records: replacement.document.realKeyRecords, interpolation: replacement.document.interpolation, loopClips: replacement.document.loopClips,
+      records: replacement.document.realKeyRecords, groupOverrideRecords: replacement.document.groupOverrideRecords ?? [], interpolation: replacement.document.interpolation, loopClips: replacement.document.loopClips,
       incomingInterpolationBreakKeyIds: replacement.document.incomingInterpolationBreakKeyIds, selectedKeyId: replacement.document.selectedKeyId,
       cursorAppFrame: replacement.document.cursorAppFrame, capacity: replacement.document.capacity, revision: replacement.document.revision,
     }),
@@ -2485,6 +2553,11 @@ export function createPhysicPaintLaunchContext(
     rotoPhysical: {
       capacity: document.capacity,
       records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
+      groupOverrideRecords: (document.groupOverrideRecords ?? []).map((record) => ({
+        keyId: record.keyId,
+        appFrame: record.appFrame,
+        payload: record.payload,
+      })),
       interpolationEnabled: document.interpolation.enabled,
       interpolationMode: document.interpolation.mode,
       scriptMotion: document.scriptMotion,

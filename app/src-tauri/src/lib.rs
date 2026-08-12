@@ -731,6 +731,7 @@ pub fn run() {
             image::image_get_info,
             image::import_images,
             physic_paint_cache_commands::publish_physic_paint_cache_generation,
+            physic_paint_cache_commands::settle_physic_paint_cache_generation,
             config::config_get_theme,
             config::config_set_theme,
             config::config_get_canvas_bg,

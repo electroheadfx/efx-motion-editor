@@ -91,6 +91,7 @@ export type RotoPhysicalEditReplaySourceSnapshot = Pick<
   | 'layerId'
   | 'projectContextId'
   | 'records'
+  | 'groupOverrideRecords'
   | 'interpolation'
   | 'loopClips'
   | 'incomingInterpolationBreakKeyIds'
@@ -217,14 +218,14 @@ function isOrdinaryOperationKind(
     || kind === 'delete-action-groups';
 }
 
-function snapshotRecordsEqual(
-  before: RotoPhysicalEditReplaySourceSnapshot,
-  after: RotoPhysicalEditReplaySourceSnapshot,
+function physicalRecordsEqual(
+  leftRecords: RotoPhysicalEditReplaySourceSnapshot['records'],
+  rightRecords: RotoPhysicalEditReplaySourceSnapshot['records'],
 ): boolean {
-  if (before.records.length !== after.records.length) return false;
-  for (let index = 0; index < before.records.length; index += 1) {
-    const left = before.records[index];
-    const right = after.records[index];
+  if (leftRecords.length !== rightRecords.length) return false;
+  for (let index = 0; index < leftRecords.length; index += 1) {
+    const left = leftRecords[index];
+    const right = rightRecords[index];
     if (left.keyId !== right.keyId) return false;
     if (left.appFrame !== right.appFrame) return false;
     if (left.payload.dataUrl !== right.payload.dataUrl) return false;
@@ -233,6 +234,15 @@ function snapshotRecordsEqual(
     if (left.payload.width !== right.payload.width) return false;
     if (left.payload.height !== right.payload.height) return false;
   }
+  return true;
+}
+
+function snapshotRecordsEqual(
+  before: RotoPhysicalEditReplaySourceSnapshot,
+  after: RotoPhysicalEditReplaySourceSnapshot,
+): boolean {
+  if (!physicalRecordsEqual(before.records, after.records)
+    || !physicalRecordsEqual(before.groupOverrideRecords, after.groupOverrideRecords)) return false;
   if (before.interpolation.enabled !== after.interpolation.enabled) return false;
   if (before.interpolation.mode !== after.interpolation.mode) return false;
   // Loop Clips are durable canonical state (Phase 43, Q1): a loop-only
@@ -296,6 +306,7 @@ function snapshotRevision(snapshot: RotoPhysicalEditReplaySourceSnapshot): strin
     snapshot.interpolation,
     snapshot.loopClips,
     snapshot.incomingInterpolationBreakKeyIds,
+    snapshot.groupOverrideRecords,
   );
 }
 
