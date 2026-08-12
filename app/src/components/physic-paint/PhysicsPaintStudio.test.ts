@@ -107,7 +107,12 @@ describe('Physics Paint Play Script integration contract', () => {
 
 describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)', () => {
   it('derives accepted Groups from the canonical store and existing physicPaintVersion channel', () => {
-    expect(studio).toContain("import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';");
+    const storeImport = studio
+      .split('\n')
+      .find((line) => line.includes("from '../../stores/physicPaintStore';"));
+    expect(storeImport).toContain('physicPaintRotoPhysicalOperationLeaseVersion');
+    expect(storeImport).toContain('physicPaintStore');
+    expect(storeImport).toContain('physicPaintVersion');
     expect(studio).toContain('const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, physicPaintVersion.value]);');
     expect(studio).toContain('getRotoPhysicalDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId),');
     expect(studio).toContain('getRotoPhysicalRenderSource: (layerId, appFrame) => physicPaintStore.getRotoPhysicalRenderSource(layerId, appFrame),');

@@ -67,6 +67,7 @@ import {
   buildPhysicPaintRotoProjectEquality,
   isPhysicPaintRotoInterpolationState,
   parsePhysicPaintRotoLoopClips,
+  parsePhysicPaintRotoPhysicalDocument,
   parsePhysicPaintRotoRealKeyRecordCollection,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
@@ -237,11 +238,7 @@ interface PendingPhysicalEditContext extends PendingPhysicPaintRotoPhysicalEdit 
   readonly appliedFrameCount: number;
   readonly semanticDelta: PhysicPaintRotoPhysicalEditSemanticDelta | null;
   readonly historyProvenance: import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditReplayProvenance | null;
-  readonly stagedIncomingInterpolationBreakKeyIds: readonly string[];
-  readonly deferredRecords: readonly PhysicPaintRotoRealKeyRecord[] | null;
-  readonly deferredInterpolation: PhysicPaintRotoInterpolationState | null;
-  readonly deferredLoopClips: readonly PhysicPaintRotoLoopClip[] | null;
-  readonly stagedLocally: boolean;
+  readonly deferredDocument: PhysicPaintRotoPhysicalDocument;
 }
 
 export interface RotoInterpolationEnabledExecuteInput {
@@ -262,24 +259,28 @@ export interface RotoInterpolationModeExecuteInput {
   readonly selectedAppFrame: number | null;
 }
 
-export interface RotoPlayScriptExecuteInput {
-  readonly operationKind: 'play-script';
+interface RotoGeneratedPublicationExecuteInputBase {
   readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
   readonly expectedRevision: string;
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
   readonly interpolationEnabled: boolean;
   readonly interpolationMode: PhysicPaintRotoInterpolationState['mode'];
-  readonly rotoBackground: PhysicPaintRotoBackgroundMetadata;
-  readonly semanticDelta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'play-script' }>;
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
-  /** Final non-physical authority check executed while the project/layer lease is held. */
   readonly revalidateAfterLease?: () => Promise<boolean>;
-  /**
-   * Complete staged Loop Clip collection (43-06). Present when the op changes
-   * loop state; absent stages the layer's current collection unchanged.
-   */
+}
+
+export interface RotoPlayScriptExecuteInput extends RotoGeneratedPublicationExecuteInputBase {
+  readonly operationKind: 'play-script';
+  readonly rotoBackground: PhysicPaintRotoBackgroundMetadata;
+  readonly semanticDelta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'play-script' }>;
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+}
+
+export interface RotoRegenerateGroupExecuteInput extends RotoGeneratedPublicationExecuteInputBase {
+  readonly operationKind: 'regenerate-group';
+  readonly semanticDelta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'regenerate-group' }>;
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
 }
 
 export interface RotoGroupFramePaintExecuteInput {
@@ -308,6 +309,7 @@ export type RotoPhysicalEditCoordinatorExecuteInput<EngineState = unknown> =
   | RotoInterpolationEnabledExecuteInput
   | RotoInterpolationModeExecuteInput
   | RotoPlayScriptExecuteInput
+  | RotoRegenerateGroupExecuteInput
   | RotoGroupFramePaintExecuteInput
   | RotoGroupLifecycleDeleteExecuteInput;
 
@@ -405,6 +407,13 @@ function semanticDeltaEquals(
       && left.previousRevision === right.previousRevision
       && left.nextRevision === right.nextRevision;
   }
+  if (left.kind === 'regenerate-group' && right.kind === 'regenerate-group') {
+    return left.groupId === right.groupId
+      && left.expectedActionRevision === right.expectedActionRevision
+      && stringArraysEqual(left.cleanupKeyIds, right.cleanupKeyIds)
+      && left.previousRevision === right.previousRevision
+      && left.nextRevision === right.nextRevision;
+  }
   if (left.kind === 'paste-key-group' && right.kind === 'paste-key-group') {
     if (left.destinationAppFrame !== right.destinationAppFrame) return false;
     if (left.entries.length !== right.entries.length) return false;
@@ -473,7 +482,7 @@ function transitionPhysicalEditResult(
     || !replayProvenanceEquals(detail.historyProvenance, pending.historyProvenance)
     || (detail.ok && !stringArraysEqual(
       detail.incomingInterpolationBreakKeyIds ?? [],
-      pending.stagedIncomingInterpolationBreakKeyIds,
+      pending.deferredDocument.incomingInterpolationBreakKeyIds,
     ))
     || (detail.ok ? detail.acceptedRevision !== pending.stagedRevision : detail.acceptedRevision !== null)
   ) {
@@ -704,11 +713,7 @@ function replayProposalMatchesTarget(
 function createPendingPhysicalEdit(
   payload: PhysicPaintRotoPhysicalEditApplyPayload,
   stagedRevision: string,
-  deferredTarget?: {
-    readonly records: readonly PhysicPaintRotoRealKeyRecord[];
-    readonly interpolation: PhysicPaintRotoInterpolationState;
-    readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
-  },
+  deferredDocument: PhysicPaintRotoPhysicalDocument,
 ): PendingPhysicalEditContext {
   return {
     operationId: payload.operationId,
@@ -726,18 +731,7 @@ function createPendingPhysicalEdit(
     appliedFrameCount: payload.records.length,
     semanticDelta: payload.semanticDelta ?? null,
     historyProvenance: payload.historyProvenance ?? null,
-    stagedIncomingInterpolationBreakKeyIds: cloneIncomingInterpolationBreakKeyIds(
-      payload.incomingInterpolationBreakKeyIds ?? [],
-    ),
-    deferredRecords: deferredTarget ? cloneRecords(deferredTarget.records) : null,
-    deferredInterpolation: deferredTarget
-      ? {
-          enabled: deferredTarget.interpolation.enabled,
-          mode: deferredTarget.interpolation.mode,
-        }
-      : null,
-    deferredLoopClips: deferredTarget?.loopClips ? cloneLoopClips(deferredTarget.loopClips) : null,
-    stagedLocally: deferredTarget === undefined,
+    deferredDocument,
   };
 }
 
@@ -870,60 +864,52 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
     [],
   );
 
-  const replaceRecordsAndBreaks = useCallback((
+  const publishCompleteDocument = useCallback((
     layerId: string,
-    records: readonly PhysicPaintRotoRealKeyRecord[],
-    interpolation: PhysicPaintRotoInterpolationState,
-    incomingInterpolationBreakKeyIds: readonly string[],
-  ): boolean => {
-    const currentRecords = portsRef.current.records.getRecords(layerId);
-    const currentBreaks = portsRef.current.records.getIncomingInterpolationBreakKeyIds(layerId);
-    const currentKeyIds = new Set(currentRecords.map((record) => record.keyId));
-    const targetKeyIds = new Set(records.map((record) => record.keyId));
-    const targetBreaksCanApplyFirst = incomingInterpolationBreakKeyIds.every((keyId) => currentKeyIds.has(keyId));
-    const currentBreaksSurviveRecordReplacement = currentBreaks.every((keyId) => targetKeyIds.has(keyId));
-
-    if (targetBreaksCanApplyFirst) {
-      const breakResult = portsRef.current.records.replaceIncomingInterpolationBreakKeyIds(
-        layerId,
-        incomingInterpolationBreakKeyIds,
-      );
-      if (!breakResult.ok) return false;
-      return portsRef.current.records.replaceRecords(layerId, records, interpolation).ok;
-    }
-    if (currentBreaksSurviveRecordReplacement) {
-      const recordResult = portsRef.current.records.replaceRecords(layerId, records, interpolation);
-      if (!recordResult.ok) return false;
-      return portsRef.current.records.replaceIncomingInterpolationBreakKeyIds(
-        layerId,
-        incomingInterpolationBreakKeyIds,
-      ).ok;
-    }
-
-    const clearResult = portsRef.current.records.replaceIncomingInterpolationBreakKeyIds(layerId, []);
-    if (!clearResult.ok) return false;
-    const recordResult = portsRef.current.records.replaceRecords(layerId, records, interpolation);
-    if (!recordResult.ok) return false;
-    return portsRef.current.records.replaceIncomingInterpolationBreakKeyIds(
-      layerId,
-      incomingInterpolationBreakKeyIds,
-    ).ok;
+    document: PhysicPaintRotoPhysicalDocument,
+  ): { ok: true } | { ok: false; error: string } => {
+    const leaseToken = leaseRef.current;
+    if (!leaseToken) return { ok: false, error: 'Physical edit lease became unavailable before child publication.' };
+    const result = portsRef.current.records.replaceDocument(layerId, document, leaseToken);
+    if (!result.ok) return result;
+    portsRef.current.selection.setSelectedKeyId(document.selectedKeyId);
+    portsRef.current.selection.setCurrentAppFrame(document.cursorAppFrame);
+    portsRef.current.launch.setLaunchContextStartFrame(document.cursorAppFrame);
+    portsRef.current.launch.setLaunchContextCachedFrames(
+      document.realKeyRecords,
+      { preserveRuntimeCaches: true },
+    );
+    return { ok: true };
   }, []);
 
   const restoreSnapshot = useCallback(
     (snapshot: RotoPhysicalEditSnapshot<EngineState>, restoreCanvas: boolean): boolean => {
       const launch = portsRef.current.launch.getLaunchContext();
       if (!launch || launch.layerId !== snapshot.layerId || launch.operationId !== snapshot.launchOperationId) return false;
-      if (!replaceRecordsAndBreaks(
-        snapshot.layerId,
-        snapshot.records,
-        snapshot.interpolation,
-        snapshot.incomingInterpolationBreakKeyIds,
-      )) return false;
-      // Loop Clips ride the same snapshot (Q1/D-06): replay and rollback
-      // restore keys and loops together.
-      const loopResult = portsRef.current.records.replaceLoopClips(snapshot.layerId, snapshot.loopClips);
-      if (!loopResult.ok) return false;
+      const currentDocument = portsRef.current.records.getDocument(snapshot.layerId);
+      if (!currentDocument) return false;
+      let document: PhysicPaintRotoPhysicalDocument;
+      try {
+        document = parsePhysicPaintRotoPhysicalDocument({
+          ...currentDocument,
+          realKeyRecords: snapshot.records,
+          interpolation: snapshot.interpolation,
+          loopClips: snapshot.loopClips,
+          incomingInterpolationBreakKeyIds: snapshot.incomingInterpolationBreakKeyIds,
+          capacity: snapshot.capacity,
+          selectedKeyId: snapshot.selectedKeyId,
+          cursorAppFrame: snapshot.currentAppFrame,
+          revision: buildPhysicPaintRotoPhysicalRevision(
+            snapshot.records,
+            snapshot.interpolation,
+            snapshot.loopClips,
+            snapshot.incomingInterpolationBreakKeyIds,
+          ),
+        });
+      } catch {
+        return false;
+      }
+      if (!publishCompleteDocument(snapshot.layerId, document).ok) return false;
       portsRef.current.buffer.replaceFrameStates(snapshot.frameStates);
       portsRef.current.buffer.replacePreviewFrames(snapshot.previewFrames);
       portsRef.current.buffer.replaceCapturedFrames(snapshot.capturedFrames);
@@ -931,17 +917,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       portsRef.current.buffer.replaceDirtyFrames(snapshot.dirtyFrames);
       portsRef.current.buffer.replaceLiveOverlayActionCounts(snapshot.liveOverlayActionCounts);
       portsRef.current.buffer.setEditableFrameList([...snapshot.editableFrames]);
-      portsRef.current.selection.setSelectedKeyId(snapshot.selectedKeyId);
-      portsRef.current.selection.setCurrentAppFrame(snapshot.currentAppFrame);
       portsRef.current.reference.setCachedReference(snapshot.cachedReference);
-      portsRef.current.launch.setLaunchContextStartFrame(snapshot.currentAppFrame);
-      portsRef.current.launch.setLaunchContextCachedFrames(snapshot.records, { preserveRuntimeCaches: true });
       if (restoreCanvas && snapshot.engineState !== null && portsRef.current.engine) {
         portsRef.current.engineState.loadEngineState(snapshot.engineState);
       }
       return true;
     },
-    [replaceRecordsAndBreaks],
+    [publishCompleteDocument],
   );
 
   const finalizeAccepted = useCallback(
@@ -1017,7 +999,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         readonly transferLeaseToRecovery?: boolean;
       } = {},
     ) => {
-      const shouldRestore = pending.stagedLocally || options.restoreDeferred === true;
+      const shouldRestore = options.restoreDeferred === true;
       const restored = shouldRestore ? restoreSnapshot(before, true) : true;
       if (!restored) {
         portsRef.current.status.logDiagnostic('Roto physical edit rollback failed: launch context changed before restore.');
@@ -1036,7 +1018,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           portsRef.current.status.logDiagnostic('Roto physical edit cleanup could not transfer its lease to recovery ownership.');
         }
       }
-      failureSignal.value = { restored: before, reason, error };
+      failureSignal.value = {
+        operationId: pending.operationId,
+        operationKind: pending.operationKind,
+        restored: before,
+        reason,
+        error,
+      };
       acceptedSignal.value = null;
       const message = reason === 'timeout'
         ? PHYSICAL_EDIT_TIMEOUT_MESSAGE
@@ -1080,77 +1068,45 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         finalizeFailed(pending, before, 'settlement-mismatch', 'Launch context changed before settlement.');
         return 'accepted';
       }
-      let currentStaged = buildPhysicPaintRotoPhysicalRevision(
+      const currentRevision = buildPhysicPaintRotoPhysicalRevision(
         portsRef.current.records.getRecords(pending.layerId),
         portsRef.current.records.getInterpolation(pending.layerId),
         portsRef.current.records.getLoopClips(pending.layerId),
         portsRef.current.records.getIncomingInterpolationBreakKeyIds(pending.layerId),
       );
-      if (pending.operationKind === 'set-interpolation-enabled'
-        || pending.operationKind === 'set-interpolation-mode'
-        || pending.operationKind === 'play-script'
-        || pending.operationKind === 'insert-empty-segment'
-        || pending.operationKind === 'paint-group-frame'
-        || pending.operationKind === 'delete-group-frame'
-        || pending.operationKind === 'delete-group') {
-        if (currentStaged !== pending.expectedRevision
-          || !pending.deferredRecords
-          || !pending.deferredInterpolation) {
-          finalizeFailed(pending, before, 'settlement-mismatch', 'Accepted deferred physical state no longer matches the child snapshot.');
-          return 'accepted';
-        }
-        const replaced = replaceRecordsAndBreaks(
-          pending.layerId,
-          pending.deferredRecords,
-          pending.deferredInterpolation,
-          pending.stagedIncomingInterpolationBreakKeyIds,
-        );
-        if (!replaced) {
-          finalizeFailed(
-            pending,
-            before,
-            'exception',
-            'Could not publish deferred records and incoming interpolation breaks together.',
-            { restoreDeferred: true, transferLeaseToRecovery: true },
-          );
-          return 'accepted';
-        }
-        // 43-06: a play-script commit carrying loopClips settles the staged
-        // Loop Clip collection with the deferred records (one atomic accept).
-        if (pending.deferredLoopClips) {
-          const loopResult = portsRef.current.records.replaceLoopClips(pending.layerId, pending.deferredLoopClips);
-          if (!loopResult.ok) {
-            finalizeFailed(
-              pending,
-              before,
-              'exception',
-              loopResult.error,
-              { restoreDeferred: true, transferLeaseToRecovery: true },
-            );
-            return 'accepted';
-          }
-        }
-        portsRef.current.selection.setSelectedKeyId(pending.selectedKeyId);
-        portsRef.current.selection.setCurrentAppFrame(pending.cursorAppFrame);
-        portsRef.current.launch.setLaunchContextCachedFrames(
-          pending.deferredRecords,
-          { preserveRuntimeCaches: true },
-        );
-        currentStaged = buildPhysicPaintRotoPhysicalRevision(
-          portsRef.current.records.getRecords(pending.layerId),
-          portsRef.current.records.getInterpolation(pending.layerId),
-          portsRef.current.records.getLoopClips(pending.layerId),
-          portsRef.current.records.getIncomingInterpolationBreakKeyIds(pending.layerId),
-        );
+      if (currentRevision !== pending.expectedRevision) {
+        finalizeFailed(pending, before, 'settlement-mismatch', 'Accepted physical state no longer matches the child snapshot.');
+        return 'accepted';
       }
-      if (currentStaged !== pending.stagedRevision) {
-        finalizeFailed(pending, before, 'settlement-mismatch', 'Staged revision drifted before settlement.');
+      const publication = publishCompleteDocument(pending.layerId, pending.deferredDocument);
+      if (!publication.ok) {
+        finalizeFailed(
+          pending,
+          before,
+          'exception',
+          publication.error,
+          { transferLeaseToRecovery: true },
+        );
+        return 'accepted';
+      }
+      const currentDocument = portsRef.current.records.getDocument(pending.layerId);
+      if (!currentDocument
+        || currentDocument.revision !== pending.stagedRevision
+        || currentDocument.selectedKeyId !== pending.selectedKeyId
+        || currentDocument.cursorAppFrame !== pending.cursorAppFrame) {
+        finalizeFailed(
+          pending,
+          before,
+          'settlement-mismatch',
+          'Published physical document drifted before settlement.',
+          { transferLeaseToRecovery: true },
+        );
         return 'accepted';
       }
       finalizeAccepted(pending, transition.detail, before);
       return 'accepted';
     },
-    [finalizeAccepted, finalizeFailed, replaceRecordsAndBreaks],
+    [finalizeAccepted, finalizeFailed, publishCompleteDocument],
   );
 
   const consumeBridgeApplyResult = useCallback(
@@ -1220,19 +1176,19 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       const isInterpolationModeChange = input.operationKind === 'set-interpolation-mode';
       const isInterpolationChange = isInterpolationEnabledChange || isInterpolationModeChange;
       const isPlayScript = input.operationKind === 'play-script';
-      const isInsertEmptySegment = input.operationKind === 'insert-empty-segment';
+      const isRegenerateGroup = input.operationKind === 'regenerate-group';
+      const isGeneratedPublication = isPlayScript || isRegenerateGroup;
       const isGroupFramePaint = input.operationKind === 'paint-group-frame';
       const isGroupLifecycleDelete = input.operationKind === 'delete-group-frame'
         || input.operationKind === 'delete-group';
-      const isDeferredPublication = isInterpolationChange
-        || isPlayScript
-        || isInsertEmptySegment
-        || isGroupFramePaint
-        || isGroupLifecycleDelete;
       const interpolationInput = isInterpolationChange && 'targetInterpolation' in input
         ? input as RotoInterpolationEnabledExecuteInput | RotoInterpolationModeExecuteInput
         : null;
       const playScriptInput = isPlayScript && 'semanticDelta' in input ? input as RotoPlayScriptExecuteInput : null;
+      const regenerateGroupInput = isRegenerateGroup && 'semanticDelta' in input
+        ? input as RotoRegenerateGroupExecuteInput
+        : null;
+      const generatedPublicationInput = playScriptInput ?? regenerateGroupInput;
       const groupFramePaintInput = isGroupFramePaint && 'groupId' in input ? input as RotoGroupFramePaintExecuteInput : null;
       const groupLifecycleDeleteInput = isGroupLifecycleDelete && 'groupId' in input
         ? input as RotoGroupLifecycleDeleteExecuteInput
@@ -1250,7 +1206,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         || input.operationKind === 'insert-empty-segment';
       const isOrdinary = !isReplay
         && !isInterpolationChange
-        && !isPlayScript
+        && !isGeneratedPublication
         && !isGroupFramePaint
         && !isGroupLifecycleDelete;
       if (isOrdinary) {
@@ -1272,12 +1228,14 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           return false;
         }
-      } else if (isPlayScript) {
-        if (!playScriptInput
+      } else if (isGeneratedPublication) {
+        if (!generatedPublicationInput
           || proposal
           || historyProvenance !== undefined
           || replayTarget !== undefined
-          || playScriptInput.semanticDelta.kind !== 'play-script') {
+          || generatedPublicationInput.semanticDelta.kind !== input.operationKind
+          || (isPlayScript && !playScriptInput)
+          || (isRegenerateGroup && (!regenerateGroupInput || regenerateGroupInput.loopClips.length === 0))) {
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           return false;
         }
@@ -1314,12 +1272,12 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
-      if (!isReplay && !isInterpolationChange && !isPlayScript && !isGroupFramePaint && !isGroupLifecycleDelete
+      if (!isReplay && !isInterpolationChange && !isGeneratedPublication && !isGroupFramePaint && !isGroupLifecycleDelete
         && proposal?.status.operationKind !== input.operationKind) {
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
-      if (!isInterpolationChange && !isPlayScript && !isGroupFramePaint && !isGroupLifecycleDelete
+      if (!isInterpolationChange && !isGeneratedPublication && !isGroupFramePaint && !isGroupLifecycleDelete
         && (proposal?.selectedKeyId !== requestedSelectedKeyId || proposal?.selectedAppFrame !== requestedSelectedAppFrame)) {
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
@@ -1374,7 +1332,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           clearPendingOnce();
           return false;
         }
-        if (isPlayScript && input.revalidateAfterLease && !await input.revalidateAfterLease()) {
+        if (isGeneratedPublication && input.revalidateAfterLease && !await input.revalidateAfterLease()) {
+          portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+          clearPendingOnce();
+          return false;
+        }
+        const currentDocument = portsRef.current.records.getDocument(revalidatedLaunch.layerId);
+        if (!currentDocument) {
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
@@ -1406,18 +1370,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         let groupLifecycleDeleteProposal: PhysicPaintRotoPhysicalDocument | null = null;
         let groupLifecycleDeleteImpact: RotoGroupLifecycleDeleteImpact | null = null;
         if (isGroupFramePaint || isGroupLifecycleDelete) {
-          const getDocument = portsRef.current.records.getDocument;
-          const currentDocument = getDocument?.(revalidatedLaunch.layerId) ?? null;
-          const documentRevision = currentDocument
-            ? buildPhysicPaintRotoPhysicalRevision(
-                currentDocument.realKeyRecords,
-                currentDocument.interpolation,
-                currentDocument.loopClips,
-                currentDocument.incomingInterpolationBreakKeyIds,
-              )
-            : null;
-          if (!currentDocument
-            || currentDocument.capacity !== capacity
+          const documentRevision = buildPhysicPaintRotoPhysicalRevision(
+            currentDocument.realKeyRecords,
+            currentDocument.interpolation,
+            currentDocument.loopClips,
+            currentDocument.incomingInterpolationBreakKeyIds,
+          );
+          if (currentDocument.capacity !== capacity
             || currentDocument.revision !== expectedRevision
             || documentRevision !== expectedRevision
             || !recordsEqual(currentDocument.realKeyRecords, currentRecords)
@@ -1527,25 +1486,33 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
             return false;
           }
         }
-        if (isPlayScript) {
-          const playValidationError = !playScriptInput
-            || playScriptInput.expectedRevision !== expectedRevision
-            ? 'Play Script physical revision became stale before staging.'
-            : validatePlayScriptInput(playScriptInput, currentRecords, currentInterpolation, capacity);
+        if (isGeneratedPublication) {
+          const generatedValidationError = !generatedPublicationInput
+            || generatedPublicationInput.expectedRevision !== expectedRevision
+            ? `${isRegenerateGroup ? 'Group Regenerate' : 'Play Script'} physical revision became stale before staging.`
+            : isPlayScript && playScriptInput
+              ? validatePlayScriptInput(playScriptInput, currentRecords, currentInterpolation, capacity)
+              : null;
           const currentSelectedKeyId = portsRef.current.selection.getSelectedKeyId();
-          const currentSelectedRecord = currentRecords.find((record) => record.appFrame === playScriptInput?.selectedAppFrame);
-          if (playValidationError
+          const currentSelectedRecord = currentRecords.find(
+            (record) => record.appFrame === generatedPublicationInput?.selectedAppFrame,
+          );
+          if (generatedValidationError
             || (currentSelectedRecord ? currentSelectedKeyId !== currentSelectedRecord.keyId : currentSelectedKeyId !== null)) {
             portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
-            if (playValidationError) portsRef.current.status.logDiagnostic(`Play Script physical validation failed: ${playValidationError}`);
+            if (generatedValidationError) {
+              portsRef.current.status.logDiagnostic(
+                `${isRegenerateGroup ? 'Group Regenerate' : 'Play Script'} physical validation failed: ${generatedValidationError}`,
+              );
+            }
             clearPendingOnce();
             return false;
           }
         }
         const stagedRecords = isInterpolationChange
           ? cloneRecords(currentRecords)
-          : isPlayScript && playScriptInput
-            ? cloneRecords(playScriptInput.records)
+          : isGeneratedPublication && generatedPublicationInput
+            ? cloneRecords(generatedPublicationInput.records)
             : isGroupFramePaint && groupFramePaintProposal
               ? cloneRecords(groupFramePaintProposal.realKeyRecords)
               : isGroupLifecycleDelete && groupLifecycleDeleteProposal
@@ -1582,10 +1549,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
               enabled: interpolationInput.targetInterpolation.enabled,
               mode: interpolationInput.targetInterpolation.mode,
             }
-          : isPlayScript && playScriptInput
+          : isGeneratedPublication && generatedPublicationInput
             ? {
-                enabled: playScriptInput.interpolationEnabled,
-                mode: playScriptInput.interpolationMode,
+                enabled: generatedPublicationInput.interpolationEnabled,
+                mode: generatedPublicationInput.interpolationMode,
               }
             : isGroupFramePaint && groupFramePaintProposal
               ? {
@@ -1629,7 +1596,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           ? replayTarget.loopClips
           : groupLifecycleDeleteProposal?.loopClips
             ?? groupFramePaintProposal?.loopClips
-            ?? playScriptInput?.loopClips
+            ?? generatedPublicationInput?.loopClips
             ?? proposal?.nextLoopClips
             ?? currentLoopClips;
         const stagedIncomingInterpolationBreakKeyIds = isReplay && replayTarget
@@ -1656,6 +1623,25 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         const before = captureSnapshot(expectedRevision, stagedRevision);
         if (!before) {
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+          clearPendingOnce();
+          return false;
+        }
+        let deferredDocument: PhysicPaintRotoPhysicalDocument;
+        try {
+          deferredDocument = parsePhysicPaintRotoPhysicalDocument({
+            ...currentDocument,
+            realKeyRecords: validatedStagedRecords,
+            interpolation: stagedInterpolation,
+            background: playScriptInput?.rotoBackground ?? currentDocument.background,
+            selectedKeyId: targetSelectedKeyId,
+            cursorAppFrame: targetCursorAppFrame,
+            revision: stagedRevision,
+            loopClips: stagedLoopClips,
+            incomingInterpolationBreakKeyIds: stagedIncomingInterpolationBreakKeyIds,
+          });
+        } catch (error) {
+          portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+          portsRef.current.status.logDiagnostic(`Roto physical target document validation failed: ${error instanceof Error ? error.message : String(error)}`);
           clearPendingOnce();
           return false;
         }
@@ -1688,8 +1674,8 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
             ? { semanticDelta: groupLifecycleDeleteImpact }
             : groupFramePaintImpact
               ? { semanticDelta: groupFramePaintImpact }
-            : playScriptInput
-              ? { semanticDelta: playScriptInput.semanticDelta }
+            : generatedPublicationInput
+              ? { semanticDelta: generatedPublicationInput.semanticDelta }
               : proposal?.semanticDelta
                 ? { semanticDelta: proposal.semanticDelta }
                 : {}),
@@ -1705,62 +1691,12 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
           clearPendingOnce();
           return false;
         }
-        const pending = createPendingPhysicalEdit(
-          payload,
-          stagedRevision,
-          isDeferredPublication
-            ? {
-                records: validatedStagedRecords,
-                interpolation: stagedInterpolation,
-                // Loop state settles with deferred Play Script and exact-frame
-                // Group Paint targets so range reunion is accepted atomically.
-                ...(isPlayScript || isGroupFramePaint || isGroupLifecycleDelete
-                  ? { loopClips: stagedLoopClips }
-                  : {}),
-              }
-            : undefined,
-        );
+        const pending = createPendingPhysicalEdit(payload, stagedRevision, deferredDocument);
         beforeRef.current = before;
         pendingRef.current = pending;
         pendingOperationIdSignal.value = operationId;
         pendingOperationKindSignal.value = input.operationKind;
         portsRef.current.settlement.registerPendingSettlement(pending);
-
-        if (isDeferredPublication) {
-          // The parent is authoritative for canonical interpolation, Play, and
-          // empty-segment publication. Keep the accepted child document visible
-          // until the exact matching acknowledgement, then apply the deferred
-          // canonical target in consumePhysicalEditResult.
-        } else if (isReplay && replayTarget) {
-          if (!restoreSnapshot(replayTarget, true)) {
-            finalizeFailed(pending, before, 'exception', 'Could not stage the immutable replay target snapshot.');
-            return false;
-          }
-        } else {
-          if (!replaceRecordsAndBreaks(
-            revalidatedLaunch.layerId,
-            validatedStagedRecords,
-            stagedInterpolation,
-            stagedIncomingInterpolationBreakKeyIds,
-          )) {
-            finalizeFailed(pending, before, 'exception', 'Could not stage records and incoming interpolation breaks together.');
-            return false;
-          }
-          if (proposal?.nextLoopClips !== null && proposal?.nextLoopClips !== undefined) {
-            const loopResult = portsRef.current.records.replaceLoopClips(revalidatedLaunch.layerId, stagedLoopClips);
-            if (!loopResult.ok) {
-              finalizeFailed(pending, before, 'exception', loopResult.error);
-              return false;
-            }
-          }
-          portsRef.current.selection.setSelectedKeyId(targetSelectedKeyId);
-          if (targetSelectedAppFrame !== null) portsRef.current.selection.setCurrentAppFrame(targetSelectedAppFrame);
-          portsRef.current.launch.setLaunchContextStartFrame(targetSelectedAppFrame ?? before.currentAppFrame);
-          portsRef.current.launch.setLaunchContextCachedFrames(
-            validatedStagedRecords,
-            { preserveRuntimeCaches: true },
-          );
-        }
 
         presentationSignal.value = { status: 'pending', conciseMessage: PHYSICAL_EDIT_PENDING_MESSAGE };
         portsRef.current.status.setApplyStatus('applying');
@@ -1792,15 +1728,12 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         return false;
       }
     },
-    [captureSnapshot, clearTimeoutOnce, finalizeFailed, clearPendingOnce, replaceRecordsAndBreaks, restoreSnapshot],
+    [captureSnapshot, clearTimeoutOnce, finalizeFailed, clearPendingOnce],
   );
 
   useEffect(() => () => {
     if (pendingRef.current && beforeRef.current && !cancelledRef.current) {
       cancelledRef.current = true;
-      if (pendingRef.current.stagedLocally) {
-        restoreSnapshot(beforeRef.current, true);
-      }
     }
     clearPendingOnce();
     const settled = settledLeaseRef.current;

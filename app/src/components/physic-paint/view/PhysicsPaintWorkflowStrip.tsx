@@ -1489,9 +1489,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   // inline derivation.
                   const { vm, fill } = getRotoCellDerivation(frame);
                   const isPhysicalRealKey = semanticCell?.kind === 'real';
-                  const fillClass = isPhysicalRealKey
-                    ? 'roto-fill-cached'
-                    : `${getRotoFillClass(fill)} ${vm.fillClass}`;
+                  const fillClass = frameResolution?.kind === 'linked-gap'
+                    ? 'roto-fill-empty'
+                    : isPhysicalRealKey
+                      ? 'roto-fill-cached'
+                      : `${getRotoFillClass(fill)} ${vm.fillClass}`;
                   const isOccupiedRealKey = isPhysicalRealKey;
                   const semanticKind = isGenerated ? 'generated' : isOccupiedRealKey ? 'real-key' : 'empty';
                   const generatedTitle = isGenerated ? getGeneratedRotoTitle(frame) : null;

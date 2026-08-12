@@ -88,23 +88,35 @@ export type RotoPlayScriptSemanticDelta = Extract<
   { readonly kind: 'play-script' }
 >;
 
-export interface RotoPlayScriptPhysicalPublication {
+export type RotoRegenerateGroupSemanticDelta = Extract<
+  PhysicPaintRotoPhysicalEditSemanticDelta,
+  { readonly kind: 'regenerate-group' }
+>;
+
+interface RotoGeneratedPhysicalPublicationBase {
   readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
   readonly expectedRevision: string;
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
   readonly interpolationEnabled: boolean;
   readonly interpolationMode: PhysicPaintRotoAuthorityResult['interpolationMode'];
   readonly rotoBackground: PhysicPaintRotoBackgroundMetadata;
-  readonly semanticDelta: RotoPlayScriptSemanticDelta;
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
-  /**
-   * Complete staged Loop Clip collection (43-06). Present exactly when the op
-   * changes loop state (apply-time loop creation, Update/Unlink/Duplicate/
-   * Repair/Relink); absent preserves the layer's current collection.
-   */
+}
+
+export interface RotoPlayScriptPhysicalPublication extends RotoGeneratedPhysicalPublicationBase {
+  readonly semanticDelta: RotoPlayScriptSemanticDelta;
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
 }
+
+export interface RotoRegenerateGroupPhysicalPublication extends RotoGeneratedPhysicalPublicationBase {
+  readonly semanticDelta: RotoRegenerateGroupSemanticDelta;
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+}
+
+export type RotoGeneratedPhysicalPublication =
+  | RotoPlayScriptPhysicalPublication
+  | RotoRegenerateGroupPhysicalPublication;
 
 export type RotoPlayScriptCommitResult =
   | {
@@ -155,7 +167,7 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
   availabilityRevision?: ReadonlySignal<number>;
   requestAuthority: (operationId: string, start: number) => Promise<PhysicPaintRotoAuthorityResult>;
   commit: (
-    publication: RotoPlayScriptPhysicalPublication,
+    publication: RotoGeneratedPhysicalPublication,
     revalidateUnderLease?: () => Promise<string | null>,
   ) => Promise<RotoPlayScriptCommitResult>;
   stopPlayback: () => void;
@@ -808,6 +820,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   // --- 43-06 atomic loop ops through the ONE existing commit port (D-03/D-05/D-10/D-31) ---
 
   function resolvePublicationSelection(authority: PhysicPaintRotoAuthorityResult): { selectedKeyId: string | null; selectedAppFrame: number | null } {
+    const document = ports.getPhysicalDocument?.() ?? null;
+    if (document?.selectedKeyId) {
+      const record = authority.physicalRecords.find((entry) => entry.keyId === document.selectedKeyId);
+      if (record) return { selectedKeyId: record.keyId, selectedAppFrame: record.appFrame };
+    }
+    if (document) return { selectedKeyId: null, selectedAppFrame: null };
     const selection = ports.getSelection();
     if (selection.kind === 'real-key' && selection.keyId) {
       const record = authority.physicalRecords.find((entry) => entry.keyId === selection.keyId && entry.appFrame === selection.appFrame);
@@ -1210,6 +1228,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       });
       let loopClips: readonly PhysicPaintRotoLoopClip[] | undefined;
       let regeneratedRecords: readonly PhysicPaintRotoRealKeyRecord[] | null = null;
+      let regenerateSemanticDelta: RotoRegenerateGroupSemanticDelta | null = null;
       if (repairId) {
         // D-31 repair: regenerate + retarget the loop's sourceKeyIds atomically.
         loopClips = currentLoopClips().map((clip) => (clip.loopId === repairId
@@ -1220,25 +1239,13 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         if (!acceptedDocument || acceptedDocument.revision !== preparedRegenerate.documentRevision) {
           throw new Error('Regenerate rejected — physical Group document changed.');
         }
-        const affectedIds = new Set(preparedRegenerate.affectedGroups.map((group) => group.groupId));
-        const retargetedGroups = acceptedDocument.loopClips.map((clip) => affectedIds.has(clip.loopId)
-          ? {
-              ...clip,
-              sourceKeyIds: Object.freeze([...cycleKeyIds]),
-              mode: preparedRegenerate.storedSettings.mode,
-              scriptId: preparedRegenerate.actionId,
-              motion: { ...preparedRegenerate.storedSettings.motion },
-              overrideColor: preparedRegenerate.storedSettings.overrideColor,
-            }
-          : clip);
         let proposalDocument: PhysicPaintRotoPhysicalDocument = {
           ...acceptedDocument,
           realKeyRecords: basePublication.records,
-          loopClips: retargetedGroups,
           revision: buildPhysicPaintRotoPhysicalRevision(
             basePublication.records,
             acceptedDocument.interpolation,
-            retargetedGroups,
+            acceptedDocument.loopClips,
             acceptedDocument.incomingInterpolationBreakKeyIds,
           ),
         };
@@ -1252,6 +1259,18 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           if (!proposal.ok) throw new Error(`Regenerate rejected — ${proposal.reason}.`);
           proposalDocument = proposal.proposal;
         }
+        const retainedKeyIds = new Set(proposalDocument.realKeyRecords.map((record) => record.keyId));
+        regenerateSemanticDelta = Object.freeze({
+          kind: 'regenerate-group',
+          groupId: preparedRegenerate.initiatingGroupId,
+          expectedActionRevision: preparedRegenerate.actionRevision,
+          cleanupKeyIds: Object.freeze(acceptedDocument.realKeyRecords
+            .map((record) => record.keyId)
+            .filter((keyId) => !retainedKeyIds.has(keyId))
+            .sort()),
+          previousRevision: acceptedDocument.revision,
+          nextRevision: proposalDocument.revision,
+        });
         loopClips = proposalDocument.loopClips;
         regeneratedRecords = proposalDocument.realKeyRecords;
       } else if (isSourceEdit && editTarget) {
@@ -1285,22 +1304,30 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         loopClips = Object.freeze([...currentLoopClips(), newLoop]);
       }
       const publicationRecords = regeneratedRecords ?? basePublication.records;
-      const publication: RotoPlayScriptPhysicalPublication = isSourceEdit
+      const publication: RotoGeneratedPhysicalPublication = regenerateSemanticDelta
         ? {
             ...basePublication,
             records: publicationRecords,
-            // Opened from a Group, not a timeline-key selection — preserve the
-            // accepted cursor/selection while publishing the complete lifecycle.
-            semanticDelta: {
-              ...basePublication.semanticDelta,
-              proposedRecords: publicationRecords.map(toPhysicalEditRecord),
-              preserveSelection: true,
-            },
+            semanticDelta: regenerateSemanticDelta,
             ...resolvePublicationSelection(commitAuthority),
-            ...(loopClips ? { loopClips } : {}),
+            loopClips: loopClips ?? [],
           }
-        : { ...basePublication, ...(loopClips ? { loopClips } : {}) };
-      phase.value = 'committing'; status.value = 'Committing Play Script…'; abortController = null;
+        : isSourceEdit
+          ? {
+              ...basePublication,
+              records: publicationRecords,
+              semanticDelta: {
+                ...basePublication.semanticDelta,
+                proposedRecords: publicationRecords.map(toPhysicalEditRecord),
+                preserveSelection: true,
+              },
+              ...resolvePublicationSelection(commitAuthority),
+              ...(loopClips ? { loopClips } : {}),
+            }
+          : { ...basePublication, ...(loopClips ? { loopClips } : {}) };
+      phase.value = 'committing';
+      status.value = preparedRegenerate ? 'Committing Group Regenerate…' : 'Committing Play Script…';
+      abortController = null;
       const revalidateUnderLease = preparedRegenerate ? async (): Promise<string | null> => {
         const currentDocument = ports.getPhysicalDocument?.() ?? null;
         if (!currentDocument || currentDocument.revision !== preparedRegenerate.documentRevision) {
@@ -1332,7 +1359,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       hasSuccessfulGeneration = true;
       phase.value = 'regenerating'; status.value = 'Regenerating interpolation…';
       ports.stopPlayback();
-      phase.value = 'complete'; progress.value = { completed: count, total: count }; status.value = `Play Script complete · ${count} frames`;
+      phase.value = 'complete';
+      progress.value = { completed: count, total: count };
+      status.value = preparedRegenerate
+        ? `Group Regenerate complete · ${preparedRegenerate.affectedGroups.length} Group${preparedRegenerate.affectedGroups.length === 1 ? '' : 's'}`
+        : `Play Script complete · ${count} frames`;
       confirmationOpen.value = false; ports.log(status.value); return true;
     } catch (cause) {
       if (isAbort(cause)) { phase.value = 'cancelled'; status.value = 'Play Script cancelled'; error.value = null; ports.log(status.value); }
@@ -1341,7 +1372,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     } finally { if (generation === acceptedGeneration) abortController = null; }
   }
 
-  function assertPublicationAck(publication: RotoPlayScriptPhysicalPublication, result: Extract<RotoPlayScriptCommitResult, { ok: true }>): void {
+  function assertPublicationAck(publication: RotoGeneratedPhysicalPublication, result: Extract<RotoPlayScriptCommitResult, { ok: true }>): void {
     const acknowledgedSelectedAppFrame = result.selectedKeyId === null ? null : result.selectedAppFrame;
     if (result.interpolationMode !== publication.interpolationMode
       || result.selectedKeyId !== publication.selectedKeyId

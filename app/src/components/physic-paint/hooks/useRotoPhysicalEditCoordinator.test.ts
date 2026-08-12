@@ -27,6 +27,7 @@ import {
   getPhysicsPaintRotoSourceCycleId,
 } from '../roto/physicsPaintRotoSpacingSelection';
 import { resolvePhysicPaintRotoPhysicalEdit } from '../roto/physicsPaintRotoPhysicalResolver';
+import { proposePhysicPaintRotoRegenerateGroup } from '../roto/physicsPaintRotoGroupLifecycle';
 import type { RotoPhysicalEditCoordinatorPorts } from '../roto/rotoCoordinatorPorts';
 import {
   executePhysicPaintRotoGroupFramePaintTransaction,
@@ -180,8 +181,9 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
   let selectedKeyId: string | null = null;
   let canonicalCursorAppFrame = 0;
   let canonicalSelectedKeyId: string | null = null;
-  let failNextLoopReplace = options.failFirstLoopReplace ?? false;
+  let failNextDocumentReplace = options.failFirstLoopReplace ?? false;
   let payload: PhysicPaintRotoPhysicalEditApplyPayload | null = null;
+  let structuralPublicationCount = 0;
   const leaseOrder: string[] = [];
   const leaseToken = Object.freeze({
     projectContextId: 'project-1',
@@ -210,17 +212,15 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
   ) => {
     records = nextRecords;
     interpolation = nextInterpolation;
+    structuralPublicationCount += 1;
     return { ok: true as const };
   });
   const replaceLoopClips = vi.fn((
     _layerId: string,
     nextLoopClips: readonly PhysicPaintRotoLoopClip[],
   ) => {
-    if (failNextLoopReplace) {
-      failNextLoopReplace = false;
-      return { ok: false as const, error: 'loop replacement failed' };
-    }
     loopClips = nextLoopClips;
+    structuralPublicationCount += 1;
     return { ok: true as const };
   });
   const sendPhysicalEditPayload = vi.fn(async (nextPayload: PhysicPaintRotoPhysicalEditApplyPayload) => {
@@ -260,6 +260,23 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     loopClips,
     incomingInterpolationBreakKeyIds,
   });
+  const replaceDocument = vi.fn((
+    _layerId: string,
+    document: ReturnType<typeof parsePhysicPaintRotoPhysicalDocument>,
+  ) => {
+    if (failNextDocumentReplace) {
+      failNextDocumentReplace = false;
+      return { ok: false as const, error: 'document replacement failed' };
+    }
+    records = document.realKeyRecords;
+    interpolation = document.interpolation;
+    loopClips = document.loopClips;
+    incomingInterpolationBreakKeyIds = document.incomingInterpolationBreakKeyIds;
+    canonicalSelectedKeyId = document.selectedKeyId;
+    canonicalCursorAppFrame = document.cursorAppFrame;
+    structuralPublicationCount += 1;
+    return { ok: true as const, document };
+  });
   const ports: RotoPhysicalEditCoordinatorPorts<null> = {
     engine: null,
     records: {
@@ -268,6 +285,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
         return records;
       },
       getDocument: getCanonicalDocument,
+      replaceDocument,
       getInterpolation: () => interpolation,
       getCapacity: () => 30,
       getLoopClips: () => loopClips,
@@ -435,6 +453,53 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     groupId: 'group-1',
     appFrame: currentFrame,
   });
+  const executeRegenerateGroup = () => {
+    const currentDocument = getCanonicalDocument();
+    const regeneratedRecords = currentDocument.realKeyRecords.map((entry) => (
+      entry.keyId === 'A' || entry.keyId === 'B'
+        ? { ...entry, payload: { ...entry.payload, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' } }
+        : entry
+    ));
+    const sourceUpdatedDocument = parsePhysicPaintRotoPhysicalDocument({
+      ...currentDocument,
+      realKeyRecords: regeneratedRecords,
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        regeneratedRecords,
+        currentDocument.interpolation,
+        currentDocument.loopClips,
+        currentDocument.incomingInterpolationBreakKeyIds,
+      ),
+    });
+    const proposed = proposePhysicPaintRotoRegenerateGroup({
+      document: sourceUpdatedDocument,
+      groupId: 'group-1',
+      expectedActionRevision: 'action-revision-1',
+      currentActionRevision: 'action-revision-1',
+    });
+    if (!proposed.ok) throw new Error(proposed.reason);
+    const retainedIds = new Set(proposed.proposal.realKeyRecords.map((entry) => entry.keyId));
+    return coordinator.executePhysicalEdit({
+      operationKind: 'regenerate-group',
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      expectedRevision: currentDocument.revision,
+      records: proposed.proposal.realKeyRecords,
+      interpolationEnabled: proposed.proposal.interpolation.enabled,
+      interpolationMode: proposed.proposal.interpolation.mode,
+      semanticDelta: {
+        kind: 'regenerate-group',
+        groupId: 'group-1',
+        expectedActionRevision: 'action-revision-1',
+        cleanupKeyIds: currentDocument.realKeyRecords
+          .map((entry) => entry.keyId)
+          .filter((keyId) => !retainedIds.has(keyId)),
+        previousRevision: currentDocument.revision,
+        nextRevision: proposed.proposal.revision,
+      },
+      selectedKeyId: proposed.proposal.selectedKeyId,
+      selectedAppFrame: proposed.proposal.selectedKeyId === null ? null : proposed.proposal.cursorAppFrame,
+      loopClips: proposed.proposal.loopClips,
+    });
+  };
   const executePlayScript = (revalidateAfterLease?: () => Promise<boolean>) => {
     const nextRecord = record('Z', 8);
     const nextRecords = [...records, nextRecord];
@@ -518,6 +583,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     executeGroupPaint,
     executeDeleteGroupFrame,
     executeDeleteGroup,
+    executeRegenerateGroup,
     executePlayScript,
     seedGroupDocument,
     setStudioSelection,
@@ -528,6 +594,7 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     initial,
     replaceRecords,
     replaceLoopClips,
+    replaceDocument,
     sendPhysicalEditPayload,
     reconcileCurrentFrame,
     setCachedReference,
@@ -559,6 +626,8 @@ function harness(options: { failFirstLoopReplace?: boolean; transportRejects?: b
     getRecords: () => records,
     getLoopClips: () => loopClips,
     getIncomingInterpolationBreakKeyIds: () => incomingInterpolationBreakKeyIds,
+    getStructuralPublicationCount: () => structuralPublicationCount,
+    resetStructuralPublicationCount: () => { structuralPublicationCount = 0; },
     getSelectedKeyId: () => selectedKeyId,
     getCurrentFrame: () => currentFrame,
     getPayload: () => payload,
@@ -967,27 +1036,25 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.coordinator.failureOutput.value?.reason).toBe('transport');
   });
 
-  it('stages changed records and the complete next Loop Clip collection before publication', async () => {
+  it('keeps the child document unchanged until one accepted complete publication', async () => {
     const test = harness();
 
     expect(await test.execute()).toBe(true);
     expect(Object.fromEntries(test.getRecords().map((entry) => [entry.keyId, entry.appFrame]))).toEqual({
       A: 0,
-      B: 3,
-      C: 6,
-      X: 10,
-      Y: 11,
+      B: 1,
+      C: 2,
+      X: 6,
+      Y: 7,
     });
-    expect(test.getLoopClips().find((clip) => clip.loopId === 'loop-a')).toEqual({
+    expect(test.getLoopClips()).toEqual(test.initial.loopClips);
+    expect(test.replaceDocument).not.toHaveBeenCalled();
+    expect(test.getPayload()?.loopClips?.find((clip) => clip.loopId === 'loop-a')).toEqual({
       ...test.initial.loopClips[0],
       phaseOrigin: 0,
       originalEndExclusive: 21,
       visibleRanges: [{ start: 0, endExclusive: 21 }],
     });
-    expect(test.getLoopClips().find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(10);
-    expect(test.getPayload()?.loopClips?.find((clip) => clip.loopId === 'loop-a')).toEqual(
-      test.getLoopClips().find((clip) => clip.loopId === 'loop-a'),
-    );
     expect(test.getPayload()?.loopClips?.find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(10);
     expect(test.getPayload()?.intent).toBe(test.initial.intent);
     expect(test.getPayload()?.intent).toEqual({
@@ -1005,6 +1072,15 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.getPayload()?.incomingInterpolationBreakKeyIds).not.toBe(test.getIncomingInterpolationBreakKeyIds());
 
     expect(test.accept()).toBe('accepted');
+    expect(test.replaceDocument).toHaveBeenCalledTimes(1);
+    expect(Object.fromEntries(test.getRecords().map((entry) => [entry.keyId, entry.appFrame]))).toEqual({
+      A: 0,
+      B: 3,
+      C: 6,
+      X: 10,
+      Y: 11,
+    });
+    expect(test.getLoopClips().find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(10);
     expect(test.acceptedEvents).toHaveLength(1);
     expect(test.historyCommands).toEqual([test.getPayload()!.operationId]);
     expect(test.coordinator.acceptedOutput.value?.after.loopClips).toEqual(test.getPayload()?.loopClips);
@@ -1029,10 +1105,10 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     );
   });
 
-  it('restores the complete before snapshot when Loop Clip staging fails after record replacement', async () => {
+  it('does not call split record or Loop Clip publication before parent acceptance', async () => {
     const test = harness({ failFirstLoopReplace: true });
 
-    expect(await test.execute()).toBe(false);
+    expect(await test.execute()).toBe(true);
     expect(Object.fromEntries(test.getRecords().map((entry) => [entry.keyId, entry.appFrame]))).toEqual({
       A: 0,
       B: 1,
@@ -1040,15 +1116,16 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       X: 6,
       Y: 7,
     });
-    expect(test.getLoopClips().find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(6);
+    expect(test.getLoopClips()).toEqual(test.initial.loopClips);
     expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
-    expect(test.replaceRecords).toHaveBeenCalledTimes(2);
-    expect(test.replaceLoopClips).toHaveBeenCalledTimes(2);
-    expect(test.sendPhysicalEditPayload).not.toHaveBeenCalled();
-    expect(test.coordinator.failureOutput.value?.reason).toBe('exception');
+    expect(test.replaceRecords).not.toHaveBeenCalled();
+    expect(test.replaceLoopClips).not.toHaveBeenCalled();
+    expect(test.replaceDocument).not.toHaveBeenCalled();
+    expect(test.sendPhysicalEditPayload).toHaveBeenCalledOnce();
+    expect(test.coordinator.failureOutput.value).toBeNull();
   });
 
-  it('restores records and Loop Clips together when transport fails after staging', async () => {
+  it('publishes zero child state when transport fails before parent acceptance', async () => {
     const test = harness({ transportRejects: true });
 
     expect(await test.execute()).toBe(false);
@@ -1059,24 +1136,70 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       X: 6,
       Y: 7,
     });
-    expect(test.getLoopClips()).toEqual([
-      test.initial.loopClips[0],
-      {
-        ...test.initial.loopClips[1],
-        syncState: 'synchronized',
-        provenanceState: 'attached',
-        phaseOrigin: 6,
-        originalEndExclusive: 14,
-        visibleRanges: [{ start: 6, endExclusive: 14 }],
-        frameOverrides: [],
-      },
-    ]);
-    expect(test.getLoopClips().find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(6);
+    expect(test.getLoopClips()).toEqual(test.initial.loopClips);
     expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
+    expect(test.replaceDocument).not.toHaveBeenCalled();
     expect(test.coordinator.acceptedOutput.value).toBeNull();
     expect(test.acceptedEvents).toEqual([]);
     expect(test.historyCommands).toEqual([]);
     expect(test.coordinator.failureOutput.value?.reason).toBe('transport');
+  });
+});
+
+describe('Phase 43.2 Group Regenerate atomic settlement', () => {
+  it('publishes zero child state when the parent rejects Regenerate', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument({ existingOverride: true });
+    test.seedGroupDocument(before);
+
+    expect(await test.executeRegenerateGroup()).toBe(true);
+    expect(test.getRecords()).toEqual(before.realKeyRecords);
+    expect(test.getLoopClips()).toEqual(before.loopClips);
+    expect(test.replaceDocument).not.toHaveBeenCalled();
+
+    expect(test.reject()).toBe('accepted');
+    expect(test.getRecords()).toEqual(before.realKeyRecords);
+    expect(test.getLoopClips()).toEqual(before.loopClips);
+    expect(test.replaceDocument).not.toHaveBeenCalled();
+    expect(test.coordinator.acceptedOutput.value).toBeNull();
+    expect(test.coordinator.failureOutput.value).toMatchObject({
+      operationKind: 'regenerate-group',
+      reason: 'parent-rejection',
+    });
+  });
+
+  it('publishes zero child state when Regenerate times out', async () => {
+    vi.useFakeTimers();
+    const originalWindow = globalThis.window;
+    Object.defineProperty(globalThis, 'window', {
+      value: globalThis,
+      writable: true,
+      configurable: true,
+    });
+    try {
+      const test = harness();
+      const before = groupLifecycleDocument({ existingOverride: true });
+      test.seedGroupDocument(before);
+
+      expect(await test.executeRegenerateGroup()).toBe(true);
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(test.getRecords()).toEqual(before.realKeyRecords);
+      expect(test.getLoopClips()).toEqual(before.loopClips);
+      expect(test.replaceDocument).not.toHaveBeenCalled();
+      expect(test.coordinator.acceptedOutput.value).toBeNull();
+      expect(test.coordinator.failureOutput.value).toMatchObject({
+        operationKind: 'regenerate-group',
+        reason: 'timeout',
+      });
+    } finally {
+      vi.useRealTimers();
+      Object.defineProperty(globalThis, 'window', {
+        value: originalWindow,
+        writable: true,
+        configurable: true,
+      });
+    }
   });
 });
 
@@ -1384,6 +1507,22 @@ describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
         loopClips: [expect.objectContaining({ provenanceState: 'attached' })],
       },
       after: { loopClips: [] },
+    });
+  });
+
+  it('publishes one complete child document for an accepted Group frame deletion', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument();
+    test.seedGroupDocument(before);
+    test.resetStructuralPublicationCount();
+
+    expect(await test.executeDeleteGroupFrame(4)).toBe(true);
+    expect(test.accept()).toBe('accepted');
+
+    expect(test.getStructuralPublicationCount()).toBe(1);
+    expect(test.getLoopClips()[0]).toMatchObject({
+      syncState: 'modified',
+      visibleRanges: [{ start: 0, endExclusive: 4 }, { start: 5, endExclusive: 6 }],
     });
   });
 

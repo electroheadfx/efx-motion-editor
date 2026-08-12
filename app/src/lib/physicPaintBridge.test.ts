@@ -22,6 +22,7 @@ import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
   buildPhysicPaintRotoPhysicalRevision,
   buildPhysicPaintRotoProjectEquality,
+  type PhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { resolvePhysicPaintRotoPhysicalEdit } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import {
@@ -2316,21 +2317,62 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
     const launch = await openPhysicPaintCanvas({ layer, frame: 5 });
     if (!launch.ok) throw new Error(launch.error);
-    const current = physicPaintStore.getRotoPhysicalDocument(layer.id);
-    if (!current) throw new Error('Expected lifecycle document.');
+    const parentDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!parentDocument) throw new Error('Expected lifecycle document.');
+    const current = Object.freeze({
+      ...parentDocument,
+      selectedKeyId: null,
+      cursorAppFrame: 5,
+    });
     const proposed = operationKind === 'delete-group-frame'
       ? proposePhysicPaintRotoDeleteGroupFrame({ document: current, groupId: 'group-1', appFrame: 5 })
       : operationKind === 'delete-group'
         ? proposePhysicPaintRotoDeleteGroup({ document: current, groupId: 'group-1' })
         : operationKind === 'regenerate-group'
-          ? proposePhysicPaintRotoRegenerateGroup({
-              document: current,
-              groupId: 'group-1',
-              expectedActionRevision: 'action-revision-1',
-              currentActionRevision: 'action-revision-1',
-            })
+          ? (() => {
+              const regeneratedRecords = current.realKeyRecords.map((record) => (
+                record.keyId === 'source-A' || record.keyId === 'source-B'
+                  ? {
+                      ...record,
+                      payload: {
+                        ...record.payload,
+                        dataUrl: record.keyId === 'source-A'
+                          ? OPAQUE_ONE_PIXEL_PNG
+                          : TRANSPARENT_ONE_PIXEL_PNG,
+                        width: 1,
+                        height: 1,
+                      },
+                    }
+                  : record
+              ));
+              const regeneratedDocument = {
+                ...current,
+                realKeyRecords: regeneratedRecords,
+                revision: buildPhysicPaintRotoPhysicalRevision(
+                  regeneratedRecords,
+                  current.interpolation,
+                  current.loopClips,
+                  current.incomingInterpolationBreakKeyIds,
+                ),
+              };
+              const lifecycle = proposePhysicPaintRotoRegenerateGroup({
+                document: regeneratedDocument,
+                groupId: 'group-1',
+                expectedActionRevision: 'action-revision-1',
+                currentActionRevision: 'action-revision-1',
+              });
+              if (!lifecycle.ok) return lifecycle;
+              return Object.freeze({
+                ok: true as const,
+                proposal: lifecycle.proposal,
+                impact: Object.freeze({
+                  ...lifecycle.impact,
+                  previousRevision: current.revision,
+                }),
+              });
+            })()
           : proposePhysicPaintRotoActionGroupLifecycle({
-              document: current,
+              document: parentDocument,
               actionId: 'action-1',
               expectedActionRevision: 'action-revision-1',
               currentActionRevision: 'action-revision-1',
@@ -2358,7 +2400,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       cursorAppFrame: proposed.proposal.cursorAppFrame,
       semanticDelta: proposed.impact,
     };
-    return { layer, current, proposed, payload, leaseToken };
+    return { layer, parentDocument, current, proposed, payload, leaseToken };
   }
 
   async function selectionAuthorityHarness(input: {
@@ -2520,6 +2562,54 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     }
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
     expect(physicPaintStore.isRotoPhysicalOperationAvailable(projectContextId, test.layer.id)).toBe(true);
+  });
+
+  it('restores the child-authoritative pre-delete cursor through Group Delete Undo', async () => {
+    const test = await selectionAuthorityHarness({
+      placementStart: 8,
+      repeat: 3,
+      selectionKind: 'group-rail',
+      operationId: 'selection-authority-history-delete',
+    });
+
+    expect(test.parentDocument.cursorAppFrame).toBe(0);
+    expect(test.childDocument.cursorAppFrame).toBe(20);
+
+    const forward = applyPhysicPaintPayload(test.payload as PhysicPaintApplyPayload);
+    expect(forward.ok).toBe(true);
+    if (!forward.ok || !('acceptedRevision' in forward)) throw new Error('Expected accepted Group deletion.');
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
+
+    const undoLease = acquirePhysicalLease(test.layer.id, projectContextId);
+    const undo = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'selection-authority-history-undo',
+      operationKind: 'undo',
+      layerId: test.layer.id,
+      leaseToken: undoLease,
+      startFrame: test.childDocument.cursorAppFrame,
+      launchOperationId: test.payload.launchOperationId,
+      projectContextId,
+      expectedRevision: test.proposed.proposal.revision,
+      records: test.childDocument.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: test.childDocument.interpolation.enabled,
+      interpolationMode: test.childDocument.interpolation.mode,
+      loopClips: test.childDocument.loopClips,
+      incomingInterpolationBreakKeyIds: test.childDocument.incomingInterpolationBreakKeyIds,
+      selectedKeyId: test.childDocument.selectedKeyId,
+      selectedAppFrame: null,
+      cursorAppFrame: test.childDocument.cursorAppFrame,
+      historyProvenance: {
+        historyCommandId: test.payload.operationId,
+        historyDirection: 'undo',
+        sourceRevision: test.proposed.proposal.revision,
+        targetRevision: test.childDocument.revision,
+      },
+    });
+
+    expect(undo.ok, undo.ok ? undefined : undo.error).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.childDocument);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(undoLease)).toBe(true);
   });
 
   it.each([
@@ -2715,11 +2805,136 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
 
     const result = applyPhysicPaintPayload(test.payload as PhysicPaintApplyPayload);
 
-    expect(result.ok).toBe(true);
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
     expect(replace).toHaveBeenCalledTimes(1);
     expect(replace).toHaveBeenCalledWith(test.layer.id, test.proposed.proposal, test.leaseToken);
     expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.proposed.proposal);
     expect(physicPaintVersion.peek()).toBe(beforeVersion + 1);
+  });
+
+  it('recomputes every truly shared Group in one aggregate Regenerate publication', async () => {
+    const layer = physicLayer();
+    mockLayers([layer]);
+    projectStore.projectContextId.value = projectContextId;
+    const records = [
+      makePhysicalRecord('source-A', 0),
+      makePhysicalRecord('source-B', 2),
+      makePhysicalRecord('override-5', 5),
+      makePhysicalRecord('override-15', 15),
+      makePhysicalRecord('ordinary', 20),
+    ];
+    const interpolation = { enabled: true, mode: 'blend' as const };
+    const loopClips = [
+      {
+        loopId: 'group-1', placementStart: 0, sourceKeyIds: ['source-A', 'source-B'], repeat: 3 as const,
+        mode: 'progressive' as const, scriptId: 'action-1', motion: { deformation: 0, position: 0 },
+        overrideColor: null, syncState: 'modified' as const, provenanceState: 'attached' as const,
+        phaseOrigin: 0, originalEndExclusive: 9, visibleRanges: [{ start: 0, endExclusive: 9 }],
+        frameOverrides: [{ appFrame: 5, keyId: 'override-5' }],
+      },
+      {
+        loopId: 'group-2', placementStart: 10, sourceKeyIds: ['source-A', 'source-B'], repeat: 2 as const,
+        mode: 'static' as const, scriptId: 'action-1', motion: { deformation: 7, position: 3 },
+        overrideColor: '#123456', syncState: 'modified' as const, provenanceState: 'attached' as const,
+        phaseOrigin: 10, originalEndExclusive: 16, visibleRanges: [{ start: 10, endExclusive: 16 }],
+        frameOverrides: [{ appFrame: 15, keyId: 'override-15' }],
+      },
+    ];
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, {
+      capacity: 30,
+      realKeyRecords: records,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 5,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, ['source-B']),
+      loopClips,
+      incomingInterpolationBreakKeyIds: ['source-B'],
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 5 });
+    if (!launch.ok) throw new Error(launch.error);
+    const current = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!current) throw new Error('Expected shared Group document.');
+    const regeneratedRecords = current.realKeyRecords.map((record) => (
+      record.keyId === 'source-A' || record.keyId === 'source-B'
+        ? {
+            ...record,
+            payload: {
+              ...record.payload,
+              dataUrl: record.keyId === 'source-A' ? OPAQUE_ONE_PIXEL_PNG : TRANSPARENT_ONE_PIXEL_PNG,
+              width: 1,
+              height: 1,
+            },
+          }
+        : record
+    ));
+    let proposalDocument: PhysicPaintRotoPhysicalDocument = {
+      ...current,
+      realKeyRecords: regeneratedRecords,
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        regeneratedRecords,
+        current.interpolation,
+        current.loopClips,
+        current.incomingInterpolationBreakKeyIds,
+      ),
+    };
+    for (const groupId of ['group-1', 'group-2']) {
+      const proposal = proposePhysicPaintRotoRegenerateGroup({
+        document: proposalDocument,
+        groupId,
+        expectedActionRevision: 'action-revision-1',
+        currentActionRevision: 'action-revision-1',
+      });
+      if (!proposal.ok) throw new Error(proposal.reason);
+      proposalDocument = proposal.proposal;
+    }
+    const leaseToken = acquirePhysicalLease(layer.id, projectContextId);
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+
+    const result = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'shared-group-regenerate',
+      operationKind: 'regenerate-group',
+      leaseToken,
+      layerId: layer.id,
+      startFrame: 5,
+      launchOperationId: launch.data.operationId,
+      projectContextId,
+      expectedRevision: current.revision,
+      records: proposalDocument.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: proposalDocument.interpolation.enabled,
+      interpolationMode: proposalDocument.interpolation.mode,
+      loopClips: proposalDocument.loopClips,
+      incomingInterpolationBreakKeyIds: proposalDocument.incomingInterpolationBreakKeyIds,
+      selectedKeyId: proposalDocument.selectedKeyId,
+      selectedAppFrame: null,
+      cursorAppFrame: proposalDocument.cursorAppFrame,
+      semanticDelta: {
+        kind: 'regenerate-group',
+        groupId: 'group-1',
+        expectedActionRevision: 'action-revision-1',
+        cleanupKeyIds: ['override-15', 'override-5'],
+        previousRevision: current.revision,
+        nextRevision: proposalDocument.revision,
+      },
+    });
+
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(proposalDocument);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layer.id)).toEqual([
+      expect.objectContaining({
+        loopId: 'group-1', mode: 'progressive', motion: { deformation: 0, position: 0 },
+        overrideColor: null, syncState: 'synchronized', frameOverrides: [],
+      }),
+      expect.objectContaining({
+        loopId: 'group-2', mode: 'static', motion: { deformation: 7, position: 3 },
+        overrideColor: '#123456', syncState: 'synchronized', frameOverrides: [],
+      }),
+    ]);
   });
 
   it('restores and reapplies the complete Group deletion document through leased Undo and Redo', async () => {
@@ -2803,8 +3018,8 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       authority: {
         projectContextId, layerId: test.layer.id, launchOperationId: test.payload.launchOperationId,
         actionId: 'action-1', expectedActionPresent: true, expectedActionRevision: 'action-revision-1',
-        expectedPhysicalRevision: test.current.revision,
-        expectedPhysicalHash: buildPhysicPaintRotoProjectEquality(test.current),
+        expectedPhysicalRevision: test.parentDocument.revision,
+        expectedPhysicalHash: buildPhysicPaintRotoProjectEquality(test.parentDocument),
       },
       impactDigest: 'a'.repeat(64),
       retainedArtifact: {
@@ -2821,15 +3036,15 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
     const beforeVersion = physicPaintVersion.peek();
 
-    const accepted = applyCommittedReferencedActionDeletion({ committed, impact: test.proposed.impact, before: test.current, leaseToken: test.leaseToken });
-    const duplicate = applyCommittedReferencedActionDeletion({ committed, impact: test.proposed.impact, before: test.current, leaseToken: test.leaseToken });
+    const accepted = applyCommittedReferencedActionDeletion({ committed, impact: test.proposed.impact, before: test.parentDocument, leaseToken: test.leaseToken });
+    const duplicate = applyCommittedReferencedActionDeletion({ committed, impact: test.proposed.impact, before: test.parentDocument, leaseToken: test.leaseToken });
 
     expect(accepted).toMatchObject({
       ok: true, settled: true,
       history: {
         commandId: 'history-command-1', generation: 3, direction: 'forward', mode: 'keep-groups',
         retainedArtifact: committed.retainedArtifact,
-        before: { physicalRevision: test.current.revision },
+        before: { physicalRevision: test.parentDocument.revision },
         after: { physicalRevision: test.proposed.proposal.revision },
       },
     });
@@ -2863,8 +3078,8 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       authority: {
         projectContextId, layerId: test.layer.id, launchOperationId: test.payload.launchOperationId,
         actionId: 'action-1', expectedActionPresent: true, expectedActionRevision: 'action-revision-1',
-        expectedPhysicalRevision: test.current.revision,
-        expectedPhysicalHash: buildPhysicPaintRotoProjectEquality(test.current),
+        expectedPhysicalRevision: test.parentDocument.revision,
+        expectedPhysicalHash: buildPhysicPaintRotoProjectEquality(test.parentDocument),
       },
       target: {
         physicalRevision: test.proposed.proposal.revision,
@@ -2877,7 +3092,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     const acceptedForward = applyCommittedReferencedActionDeletion({
       committed: forward,
       impact: test.proposed.impact,
-      before: test.current,
+      before: test.parentDocument,
       leaseToken: test.leaseToken,
     });
     if (!acceptedForward.ok) throw new Error(`Forward setup failed: ${acceptedForward.reason}`);
@@ -2917,7 +3132,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     });
     expect(acceptedUndo).toMatchObject({ ok: true, settled: true });
     expect(duplicateUndo).toMatchObject({ ok: true, settled: false });
-    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.current);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(test.parentDocument);
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(undoLease)).toBe(true);
 
     const redoLease = physicPaintStore.acquireRotoPhysicalOperationLease(projectContextId, test.layer.id);

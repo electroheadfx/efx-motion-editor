@@ -6,6 +6,7 @@ import type { RotoSessionCopiedGroupEntry } from './physicsPaintRotoSession';
 import type {
   PhysicPaintRotoInterpolationState,
   PhysicPaintRotoLoopClip,
+  PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
@@ -189,6 +190,8 @@ export interface RotoPhysicalEditAcceptedOutput<EngineState> {
  * settlement. Carries the restored snapshot for diagnostic LOG-only routing.
  */
 export interface RotoPhysicalEditFailureOutput<EngineState> {
+  readonly operationId: string;
+  readonly operationKind: import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditOperationKind;
   readonly restored: RotoPhysicalEditSnapshot<EngineState>;
   readonly reason: 'transport' | 'parent-rejection' | 'timeout' | 'settlement-mismatch' | 'exception';
   readonly error?: unknown;
@@ -212,7 +215,6 @@ export interface RotoPhysicalEditPresentation {
  */
 export interface RotoPhysicalEditRecordsPort {
   getRecords: (layerId: string) => readonly PhysicPaintRotoRealKeyRecord[];
-  getDocument?: (layerId: string) => import('./physicsPaintRotoPhysicalModel').PhysicPaintRotoPhysicalDocument | null;
   getInterpolation: (layerId: string) => PhysicPaintRotoInterpolationState;
   getCapacity: (layerId: string) => number;
   /**
@@ -353,7 +355,14 @@ export interface RotoPhysicalEditStatusPort {
  */
 export interface RotoPhysicalEditCoordinatorPorts<EngineState = SerializedProject> {
   readonly engine: EfxPaintEngine | null;
-  readonly records: RotoPhysicalEditRecordsPort;
+  readonly records: RotoPhysicalEditRecordsPort & {
+    getDocument: (layerId: string) => PhysicPaintRotoPhysicalDocument | null;
+    replaceDocument: (
+      layerId: string,
+      document: PhysicPaintRotoPhysicalDocument,
+      leaseToken: PhysicPaintRotoPhysicalOperationLeaseToken,
+    ) => { ok: true; document: PhysicPaintRotoPhysicalDocument } | { ok: false; error: string };
+  };
   readonly buffer: RotoPhysicalEditBufferPort;
   readonly selection: RotoPhysicalEditSelectionPort;
   readonly reference: RotoPhysicalEditReferencePort;

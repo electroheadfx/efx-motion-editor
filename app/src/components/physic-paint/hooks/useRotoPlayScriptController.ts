@@ -7,15 +7,21 @@ import {
   type RotoPlayScriptControllerPorts,
 } from '../roto/physicsPaintRotoPlayScriptController';
 import { PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY } from '../roto/physicsPaintRotoPhysicalModel';
-import type { RotoPhysicalEditAcceptedOutput } from '../roto/rotoCoordinatorPorts';
-import type { RotoPlayScriptExecuteInput } from './useRotoPhysicalEditCoordinator';
+import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditFailureOutput } from '../roto/rotoCoordinatorPorts';
+import type {
+  RotoPlayScriptExecuteInput,
+  RotoRegenerateGroupExecuteInput,
+} from './useRotoPhysicalEditCoordinator';
 import { sendPhysicPaintRotoAuthorityRequest } from '../bridge/physicsPaintBridgeTransport';
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintRotoAuthorityResultBridge, type PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 
 interface RotoPlayScriptCoordinatorPort<EngineState> {
-  executePhysicalEdit: (input: RotoPlayScriptExecuteInput) => Promise<boolean>;
+  executePhysicalEdit: (
+    input: RotoPlayScriptExecuteInput | RotoRegenerateGroupExecuteInput,
+  ) => Promise<boolean>;
   readonly pendingOperationId: ReadonlySignal<string | null>;
   readonly acceptedOutput: ReadonlySignal<RotoPhysicalEditAcceptedOutput<EngineState> | null>;
+  readonly failureOutput: ReadonlySignal<RotoPhysicalEditFailureOutput<EngineState> | null>;
 }
 
 export function useRotoPlayScriptController<EngineState = unknown>(
@@ -60,33 +66,51 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       }, authorityFailure(operationId, portsRef.current)),
       commit: async (publication, revalidateUnderLease) => {
         let leaseRejection: string | null = null;
-        const accepted = await dispatchAndWaitForAcceptedPlayScript(
+        const operationKind = publication.semanticDelta.kind;
+        const action = operationKind === 'regenerate-group' ? 'Group Regenerate' : 'Group update';
+        const baseInput = {
+          expectedLaunch: publication.expectedLaunch,
+          expectedRevision: publication.expectedRevision,
+          records: publication.records,
+          interpolationEnabled: publication.interpolationEnabled,
+          interpolationMode: publication.interpolationMode,
+          semanticDelta: publication.semanticDelta,
+          selectedKeyId: publication.selectedKeyId,
+          selectedAppFrame: publication.selectedAppFrame,
+          ...(revalidateUnderLease ? {
+            revalidateAfterLease: async () => {
+              leaseRejection = await revalidateUnderLease();
+              return leaseRejection === null;
+            },
+          } : {}),
+        };
+        const input: RotoPlayScriptExecuteInput | RotoRegenerateGroupExecuteInput = operationKind === 'regenerate-group'
+          ? {
+              ...baseInput,
+              operationKind,
+              semanticDelta: publication.semanticDelta,
+              loopClips: publication.loopClips ?? [],
+            }
+          : {
+              ...baseInput,
+              operationKind,
+              rotoBackground: publication.rotoBackground,
+              semanticDelta: publication.semanticDelta,
+              ...(publication.loopClips ? { loopClips: publication.loopClips } : {}),
+            };
+        const settlement = await dispatchAndWaitForPlayScriptSettlement(
           portsRef.current.pendingOperationId,
           portsRef.current.acceptedOutput,
-          () => portsRef.current.executePhysicalEdit({
-            operationKind: 'play-script',
-            expectedLaunch: publication.expectedLaunch,
-            expectedRevision: publication.expectedRevision,
-            records: publication.records,
-            interpolationEnabled: publication.interpolationEnabled,
-            interpolationMode: publication.interpolationMode,
-            rotoBackground: publication.rotoBackground,
-            semanticDelta: publication.semanticDelta,
-            selectedKeyId: publication.selectedKeyId,
-            selectedAppFrame: publication.selectedAppFrame,
-            // 43-06: loop state rides the same staged commit (HOLD-03).
-            ...(publication.loopClips ? { loopClips: publication.loopClips } : {}),
-            ...(revalidateUnderLease ? {
-              revalidateAfterLease: async () => {
-                leaseRejection = await revalidateUnderLease();
-                return leaseRejection === null;
-              },
-            } : {}),
-          }),
+          portsRef.current.failureOutput,
+          () => portsRef.current.executePhysicalEdit(input),
         );
-        if (!accepted || accepted.operationKind !== 'play-script') {
-          return { ok: false, error: leaseRejection ?? 'Play Script physical commit was rejected or timed out.' };
+        if (!settlement.ok || settlement.accepted.operationKind !== operationKind) {
+          return {
+            ok: false,
+            error: leaseRejection ?? formatPhysicalCommitFailure(action, settlement),
+          };
         }
+        const accepted = settlement.accepted;
         return {
           ok: true,
           operationId: accepted.operationId,
@@ -129,9 +153,9 @@ function sameAvailabilitySnapshot(left: ReturnType<typeof readAvailabilitySnapsh
 
 function requestWithTimeout<T>(pending: Map<string, (result: T) => void>, operationId: string, send: () => Promise<void>, fallback: T): Promise<T> {
   return new Promise((resolve) => {
-    const timeout = window.setTimeout(() => { pending.delete(operationId); resolve(fallback); }, 15_000);
-    pending.set(operationId, (result) => { window.clearTimeout(timeout); resolve(result); });
-    void send().catch(() => { window.clearTimeout(timeout); pending.delete(operationId); resolve(fallback); });
+    const timeout = globalThis.setTimeout(() => { pending.delete(operationId); resolve(fallback); }, 15_000);
+    pending.set(operationId, (result) => { globalThis.clearTimeout(timeout); resolve(result); });
+    void send().catch(() => { globalThis.clearTimeout(timeout); pending.delete(operationId); resolve(fallback); });
   });
 }
 function authorityFailure(operationId: string, ports: Pick<RotoPlayScriptControllerPorts, 'getLaunchContext' | 'getSelection'>): PhysicPaintRotoAuthorityResult {
@@ -156,27 +180,70 @@ function authorityFailure(operationId: string, ports: Pick<RotoPlayScriptControl
   };
 }
 
-async function dispatchAndWaitForAcceptedPlayScript<EngineState>(
+type RotoPlayScriptSettlement<EngineState> =
+  | Readonly<{ ok: true; accepted: RotoPhysicalEditAcceptedOutput<EngineState> }>
+  | Readonly<{ ok: false; failure: RotoPhysicalEditFailureOutput<EngineState> | null; timedOut: boolean }>;
+
+async function dispatchAndWaitForPlayScriptSettlement<EngineState>(
   pendingOperationId: ReadonlySignal<string | null>,
   acceptedOutput: ReadonlySignal<RotoPhysicalEditAcceptedOutput<EngineState> | null>,
+  failureOutput: ReadonlySignal<RotoPhysicalEditFailureOutput<EngineState> | null>,
   dispatch: () => Promise<boolean>,
-): Promise<RotoPhysicalEditAcceptedOutput<EngineState> | null> {
+): Promise<RotoPlayScriptSettlement<EngineState>> {
   let expectedOperationId = pendingOperationId.peek();
-  const unsubscribe = pendingOperationId.subscribe((operationId) => {
+  const captureOperationId = pendingOperationId.subscribe((operationId) => {
     if (expectedOperationId === null && operationId !== null) expectedOperationId = operationId;
   });
   try {
-    if (!await dispatch() || expectedOperationId === null) return null;
-    const deadline = performance.now() + 5_500;
-    while (performance.now() < deadline) {
-      const accepted = acceptedOutput.peek();
-      if (accepted?.operationId === expectedOperationId) return accepted;
-      if (pendingOperationId.peek() === null) return null;
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 16));
-    }
-    const accepted = acceptedOutput.peek();
-    return accepted?.operationId === expectedOperationId ? accepted : null;
+    const dispatched = await dispatch();
+    if (expectedOperationId === null) return { ok: false, failure: null, timedOut: false };
+    const existingAccepted = acceptedOutput.peek();
+    if (existingAccepted?.operationId === expectedOperationId) return { ok: true, accepted: existingAccepted };
+    const existingFailure = failureOutput.peek();
+    if (existingFailure?.operationId === expectedOperationId) return { ok: false, failure: existingFailure, timedOut: false };
+    if (!dispatched) return { ok: false, failure: null, timedOut: false };
+    return await new Promise<RotoPlayScriptSettlement<EngineState>>((resolve) => {
+      let settled = false;
+      let timeout: ReturnType<typeof globalThis.setTimeout> | null = null;
+      let unsubscribeAccepted = () => {};
+      let unsubscribeFailure = () => {};
+      const finish = (result: RotoPlayScriptSettlement<EngineState>) => {
+        if (settled) return;
+        settled = true;
+        if (timeout !== null) globalThis.clearTimeout(timeout);
+        unsubscribeAccepted();
+        unsubscribeFailure();
+        resolve(result);
+      };
+      unsubscribeAccepted = acceptedOutput.subscribe((accepted) => {
+        if (accepted?.operationId === expectedOperationId) finish({ ok: true, accepted });
+      });
+      unsubscribeFailure = failureOutput.subscribe((failure) => {
+        if (failure?.operationId === expectedOperationId) finish({ ok: false, failure, timedOut: false });
+      });
+      timeout = globalThis.setTimeout(() => finish({ ok: false, failure: null, timedOut: true }), 5_500);
+    });
   } finally {
-    unsubscribe();
+    captureOperationId();
   }
+}
+
+function formatPhysicalCommitFailure<EngineState>(
+  action: string,
+  settlement: RotoPlayScriptSettlement<EngineState>,
+): string {
+  if (settlement.ok) return `${action} returned a mismatched acknowledgement.`;
+  if (settlement.timedOut) return `${action} timed out before canonical settlement.`;
+  const failure = settlement.failure;
+  if (!failure) return `${action} was not dispatched.`;
+  const detail = failure.error instanceof Error
+    ? failure.error.message
+    : failure.error === undefined
+      ? null
+      : String(failure.error);
+  if (detail) return `${action} rejected — ${detail}`;
+  if (failure.reason === 'transport') return `${action} could not reach the parent authority.`;
+  if (failure.reason === 'settlement-mismatch') return `${action} settlement did not match the accepted Group document.`;
+  if (failure.reason === 'timeout') return `${action} timed out before canonical settlement.`;
+  return `${action} failed during canonical settlement.`;
 }

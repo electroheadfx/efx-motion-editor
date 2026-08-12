@@ -73,8 +73,8 @@ import {
 import type { PhysicPaintRotoPhysicalEditProposal } from '../roto/physicsPaintRotoPhysicalResolver';
 import type {
   RotoPhysicalEditAcceptedOutput,
-  RotoPhysicalEditCoordinatorPorts,
   RotoPhysicalEditExecuteInput,
+  RotoPhysicalEditRecordsPort,
   RotoPhysicalEditSnapshot,
 } from '../roto/rotoCoordinatorPorts';
 
@@ -180,7 +180,7 @@ export interface UseRotoPhysicalEditHistoryInput<EngineState> {
   identity: RotoPhysicalEditHistoryIdentity | null;
   availability: Signal<PaintHistoryAvailability>;
   coordinator: RotoPhysicalEditCoordinatorRoute<EngineState>;
-  recordsPort: RotoPhysicalEditCoordinatorPorts<EngineState>['records'];
+  recordsPort: RotoPhysicalEditRecordsPort;
   getLiveSourceSnapshot: () => RotoPhysicalEditReplaySourceSnapshot;
   referencedActionHistory?: ReferencedActionHistoryRoute;
   undoPaint: () => boolean;

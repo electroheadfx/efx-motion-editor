@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { useComputed, useSignal } from '@preact/signals';
 import type { CompletedPaintMutation, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample, SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings } from '../../types/physicPaint';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
-import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
+import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
+import { classifyPhysicPaintRotoGroupFrameTarget } from './roto/physicsPaintRotoGroupLifecycle';
 import { rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
 import {
@@ -624,11 +625,55 @@ export function PhysicsPaintStudio() {
     setCachedRotoRepaintBaseFrame(next.reference.cachedRepaintBase);
     return result;
   };
+  const replacePhysicalDocumentWithOwnership = (
+    layerId: string,
+    document: PhysicPaintRotoPhysicalDocument,
+    leaseToken: PhysicPaintRotoPhysicalOperationLeaseToken,
+  ) => {
+    const beforeRecords = physicPaintStore.getRotoRealKeyRecords(layerId);
+    const repaintBase = cachedRotoRepaintBaseFrameRef.current;
+    const realKeyOwnedReference = repaintBase && beforeRecords.some((record) => record.appFrame === repaintBase.appFrame)
+      ? { url: cachedRotoReferenceUrlRef.current, cachedRepaintBase: repaintBase }
+      : { url: null, cachedRepaintBase: null };
+    const ownership = rebuildRotoPhysicalOwnership({
+      beforeRecords,
+      afterRecords: document.realKeyRecords,
+      contentRevision: document.revision,
+      snapshot: {
+        frameStates: rotoEditBuffer.bufferRef.current.frameStates,
+        previewFrames: rotoEditBuffer.bufferRef.current.previewFrames,
+        capturedFrames: rotoEditBuffer.bufferRef.current.capturedFrames,
+        confirmedFrames: rotoPersistence.confirmedFramesRef.current,
+        dirtyFrames: rotoEditBuffer.bufferRef.current.dirtyFrames,
+        liveOverlayActionCounts: rotoEditBuffer.bufferRef.current.liveOverlayActionCounts,
+        editableFrames: rotoEditableFramesRef.current,
+        reference: realKeyOwnedReference,
+      },
+    });
+    if (!ownership.ok) return { ok: false as const, error: ownership.error };
+    const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, document, leaseToken);
+    if (!result.ok) return result;
+    const next = ownership.value;
+    rotoEditBuffer.replaceFrameStates(next.frameStates);
+    rotoEditBuffer.replacePreviewFrames(next.previewFrames);
+    rotoEditBuffer.bufferRef.current.capturedFrames = next.capturedFrames;
+    rotoEditBuffer.replaceDirtyFrames(next.dirtyFrames);
+    rotoEditBuffer.bufferRef.current.liveOverlayActionCounts = next.liveOverlayActionCounts;
+    rotoEditableFramesRef.current = next.editableFrames;
+    rotoEditBuffer.setEditableFrameList(() => next.editableFrames);
+    rotoPersistence.confirmedFramesRef.current = next.confirmedFrames;
+    cachedRotoReferenceUrlRef.current = next.reference.url;
+    cachedRotoRepaintBaseFrameRef.current = next.reference.cachedRepaintBase;
+    setCachedRotoReferenceUrl(next.reference.url);
+    setCachedRotoRepaintBaseFrame(next.reference.cachedRepaintBase);
+    return result;
+  };
   const physicalEditCoordinator = useRotoPhysicalEditCoordinator<SerializedProject>({
     engine,
     records: {
       getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId),
       getDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId),
+      replaceDocument: replacePhysicalDocumentWithOwnership,
       getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId),
       getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId),
       getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId),
@@ -990,6 +1035,7 @@ export function PhysicsPaintStudio() {
     executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     acceptedOutput: physicalEditCoordinator.acceptedOutput,
+    failureOutput: physicalEditCoordinator.failureOutput,
     stopPlayback: rotoCachedPlayback.stop,
     log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
   }, bridgeMode);
@@ -1116,7 +1162,11 @@ export function PhysicsPaintStudio() {
   const beginRotoFrameEditImplRef = useRef<() => void>(() => {});
   beginRotoFrameEditImplRef.current = () => {
     const launch = launchContextRef.current;
-    if (currentFrameSelectionKind !== 'empty' || !launch) {
+    const document = launch ? physicPaintStore.getRotoPhysicalDocument(launch.layerId) : null;
+    const groupTarget = document
+      ? classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: currentFrame })
+      : null;
+    if (currentFrameSelectionKind !== 'empty' || !launch || groupTarget?.kind === 'group-gap') {
       pendingFirstPaintTargetRef.current = null;
       rotoFrameEditing.beginFrameEdit();
       return;

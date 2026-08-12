@@ -993,6 +993,139 @@ const GROUP_LIFECYCLE_OPERATION_KINDS = new Set<PhysicPaintRotoPhysicalEditOpera
   'delete-action-groups',
 ]);
 
+function sameOrderedKeyIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((keyId, index) => keyId === right[index]);
+}
+
+function isCompleteRegenerateGroup(group: PhysicPaintRotoLoopClip): boolean {
+  return group.syncState !== undefined
+    && group.provenanceState !== undefined
+    && group.phaseOrigin !== undefined
+    && group.originalEndExclusive !== undefined
+    && group.visibleRanges !== undefined
+    && group.frameOverrides !== undefined;
+}
+
+function recomputeCanonicalGroupRegenerate(input: {
+  readonly currentDocument: PhysicPaintRotoPhysicalDocument;
+  readonly targetDocument: PhysicPaintRotoPhysicalDocument;
+  readonly proposedRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly delta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'regenerate-group' }>;
+}): {
+  readonly proposal: PhysicPaintRotoPhysicalDocument;
+  readonly impact: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'regenerate-group' }>;
+} | string {
+  const { currentDocument, targetDocument, proposedRecords, delta } = input;
+  const initiatingGroup = currentDocument.loopClips.find((group) => group.loopId === delta.groupId);
+  if (!initiatingGroup || !isCompleteRegenerateGroup(initiatingGroup)) {
+    return 'Group Regenerate initiating Group is unavailable.';
+  }
+  if (initiatingGroup.provenanceState !== 'attached' || !initiatingGroup.scriptId) {
+    return 'Group Regenerate initiating Group is detached from its Action.';
+  }
+  const sourceKeyIds = initiatingGroup.sourceKeyIds;
+  const sourceKeyIdSet = new Set(sourceKeyIds);
+  const affectedGroups: PhysicPaintRotoLoopClip[] = [];
+  for (const group of currentDocument.loopClips) {
+    const overlapsSource = group.sourceKeyIds.some((keyId) => sourceKeyIdSet.has(keyId));
+    if (!overlapsSource) continue;
+    if (!sameOrderedKeyIds(group.sourceKeyIds, sourceKeyIds)
+      || !isCompleteRegenerateGroup(group)
+      || group.scriptId !== initiatingGroup.scriptId
+      || group.provenanceState !== 'attached') {
+      return 'Group Regenerate source sharing is ambiguous.';
+    }
+    affectedGroups.push(group);
+  }
+  affectedGroups.sort((left, right) => left.phaseOrigin! - right.phaseOrigin! || left.loopId.localeCompare(right.loopId));
+  if (!affectedGroups.some((group) => group.loopId === delta.groupId)) {
+    return 'Group Regenerate initiating Group is not in the canonical shared set.';
+  }
+
+  const currentByKeyId = new Map(currentDocument.realKeyRecords.map((record) => [record.keyId, record]));
+  const proposedByKeyId = new Map(proposedRecords.map((record) => [record.keyId, record]));
+  for (const sourceKeyId of sourceKeyIds) {
+    const current = currentByKeyId.get(sourceKeyId);
+    const proposed = proposedByKeyId.get(sourceKeyId);
+    if (!current || !proposed || proposed.appFrame !== current.appFrame || !isRotoPngDataUrl(proposed.payload.dataUrl)) {
+      return 'Group Regenerate changed source identity or timing.';
+    }
+  }
+
+  const affectedGroupIds = new Set(affectedGroups.map((group) => group.loopId));
+  const candidateCleanupIds = new Set(affectedGroups.flatMap((group) => group.frameOverrides!.map((override) => override.keyId)));
+  const remainingReferences = new Set(currentDocument.loopClips.flatMap((group) => [
+    ...group.sourceKeyIds,
+    ...(affectedGroupIds.has(group.loopId) ? [] : group.frameOverrides?.map((override) => override.keyId) ?? []),
+  ]));
+  const expectedCleanupKeyIds = [...candidateCleanupIds]
+    .filter((keyId) => !remainingReferences.has(keyId))
+    .sort();
+  if (!sameOrderedKeyIds(expectedCleanupKeyIds, delta.cleanupKeyIds)) {
+    return 'Group Regenerate cleanup declaration does not match the canonical shared Groups.';
+  }
+
+  const allowedChangedIds = new Set([...sourceKeyIds, ...expectedCleanupKeyIds]);
+  for (const current of currentDocument.realKeyRecords) {
+    const proposed = proposedByKeyId.get(current.keyId);
+    if (expectedCleanupKeyIds.includes(current.keyId)) {
+      if (proposed) return 'Group Regenerate retained a canonical override cleanup record.';
+      continue;
+    }
+    if (!proposed) return 'Group Regenerate removed an unrelated physical record.';
+    if (!allowedChangedIds.has(current.keyId) && !samePhysicalRecord(current, proposed)) {
+      return 'Group Regenerate changed an unrelated physical record.';
+    }
+  }
+  for (const proposed of proposedRecords) {
+    if (!currentByKeyId.has(proposed.keyId)) {
+      return 'Group Regenerate introduced a new physical identity.';
+    }
+  }
+
+  const sourceUpdatedRecords = currentDocument.realKeyRecords.map((record) => (
+    sourceKeyIdSet.has(record.keyId) ? proposedByKeyId.get(record.keyId)! : record
+  ));
+  let proposalDocument: PhysicPaintRotoPhysicalDocument;
+  try {
+    proposalDocument = parsePhysicPaintRotoPhysicalDocument({
+      ...targetDocument,
+      realKeyRecords: sourceUpdatedRecords,
+      loopClips: currentDocument.loopClips,
+      incomingInterpolationBreakKeyIds: currentDocument.incomingInterpolationBreakKeyIds,
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        sourceUpdatedRecords,
+        currentDocument.interpolation,
+        currentDocument.loopClips,
+        currentDocument.incomingInterpolationBreakKeyIds,
+      ),
+    });
+  } catch {
+    return 'Group Regenerate source payload proposal is malformed.';
+  }
+  for (const group of affectedGroups) {
+    const proposed = proposePhysicPaintRotoRegenerateGroup({
+      document: proposalDocument,
+      groupId: group.loopId,
+      expectedActionRevision: delta.expectedActionRevision,
+      currentActionRevision: delta.expectedActionRevision,
+    });
+    if (!proposed.ok) return `Group Regenerate proposal rejected: ${proposed.reason}.`;
+    proposalDocument = proposed.proposal;
+  }
+  return {
+    proposal: proposalDocument,
+    impact: Object.freeze({
+      kind: 'regenerate-group',
+      groupId: delta.groupId,
+      expectedActionRevision: delta.expectedActionRevision,
+      cleanupKeyIds: Object.freeze(expectedCleanupKeyIds),
+      previousRevision: currentDocument.revision,
+      nextRevision: proposalDocument.revision,
+    }),
+  };
+}
+
 function validateCanonicalGroupLifecycleEdit(input: {
   readonly payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>;
   readonly currentDocument: PhysicPaintRotoPhysicalDocument | null;
@@ -1056,14 +1189,14 @@ function validateCanonicalGroupLifecycleEdit(input: {
       groupId: delta.groupId,
     });
   } else if (delta.kind === 'regenerate-group') {
-    // The prepared Action transaction owns the live revision lookup. This seam
-    // independently binds the exact revision string into the recomputed impact.
-    recomputed = proposePhysicPaintRotoRegenerateGroup({
-      document: targetDocument,
-      groupId: delta.groupId,
-      expectedActionRevision: delta.expectedActionRevision,
-      currentActionRevision: delta.expectedActionRevision,
+    const aggregate = recomputeCanonicalGroupRegenerate({
+      currentDocument,
+      targetDocument,
+      proposedRecords: input.proposedRecords,
+      delta,
     });
+    if (typeof aggregate === 'string') return aggregate;
+    recomputed = Object.freeze({ ok: true as const, ...aggregate });
   } else if (delta.kind === 'detach-action-groups' || delta.kind === 'delete-action-groups') {
     recomputed = proposePhysicPaintRotoActionGroupLifecycle({
       document: targetDocument,
@@ -1385,13 +1518,18 @@ function applyPhysicPaintRotoPhysicalMap(
   if (!isReplay && !isInterpolationChange) {
     // Phase 43 (D-06/D-10): Play Script generation commits join the ledger so
     // a generation plus its derived loop shrink replays as one Undo/Redo.
+    const groupLifecycleAuthority = GROUP_LIFECYCLE_OPERATION_KINDS.has(payload.operationKind);
     const beforeSnapshot = createAcceptedPhysicalCommandSnapshot({
       records: currentRecords,
       interpolation: currentInterpolation,
       loopClips: currentLoopClips,
       incomingInterpolationBreakKeyIds: currentIncomingInterpolationBreakKeyIds,
-      selectedKeyId: currentDocument?.selectedKeyId ?? null,
-      cursorAppFrame: currentDocument?.cursorAppFrame ?? payload.cursorAppFrame,
+      selectedKeyId: groupLifecycleAuthority
+        ? payload.selectedKeyId
+        : currentDocument?.selectedKeyId ?? null,
+      cursorAppFrame: groupLifecycleAuthority
+        ? payload.cursorAppFrame
+        : currentDocument?.cursorAppFrame ?? payload.cursorAppFrame,
       capacity,
       revision: currentRevision,
     });

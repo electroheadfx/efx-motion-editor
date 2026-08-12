@@ -292,7 +292,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(map).toContain("isLinkedRepeatSourceKey ? 'roto-linked-repeat roto-linked-repeat-source-key'");
     expect(map).toContain("frameResolution?.kind === 'linked-generated' ? 'roto-linked-source-generated'");
     expect(map).toContain("${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''}");
-    expect(map).toContain("const fillClass = isPhysicalRealKey");
+    expect(map).toContain("const fillClass = frameResolution?.kind === 'linked-gap'");
+    expect(map).toContain("? 'roto-fill-empty'");
     expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
     expect(map).toContain('getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById)');
     expect(map).toContain('const cellAriaLabel =');

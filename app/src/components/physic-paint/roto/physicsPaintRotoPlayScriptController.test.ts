@@ -2,7 +2,15 @@ import { signal } from '@preact/signals';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult } from '../../../types/physicPaint';
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
-import { createRotoPlayScriptController, type RotoPlayScriptCommitResult, type RotoPlayScriptController, type RotoPlayScriptControllerPorts, type RotoPlayScriptSourceCycleMatchInput } from './physicsPaintRotoPlayScriptController';
+import {
+  createRotoPlayScriptController,
+  type RotoGeneratedPhysicalPublication,
+  type RotoPlayScriptCommitResult,
+  type RotoPlayScriptController,
+  type RotoPlayScriptControllerPorts,
+  type RotoPlayScriptPhysicalPublication,
+  type RotoPlayScriptSourceCycleMatchInput,
+} from './physicsPaintRotoPlayScriptController';
 
 // Preact hook shims for the REAL useRotoPhysicalEditHistory hook driven by the
 // HOLD-03 one-history-command case below (same idiom as the hook's own spec).
@@ -74,7 +82,7 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
     select: vi.fn(), updateProjectContext: vi.fn(), enterScripts: vi.fn(), refresh: vi.fn(),
   } as unknown as RotoPlayScriptControllerPorts['library'];
   const requestAuthority = vi.fn(async () => authority());
-  const commit = vi.fn(async (publication: RotoPlayScriptPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
+  const commit = vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
     ok: true,
     operationId: 'accepted-operation',
     acceptedRevision: 'revision-2',
@@ -97,7 +105,15 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
   return { controller, library, requestAuthority, commit, stopPlayback, log, getMotion, setMotion: (next: { deformation: number; position: number }) => { motion = next; }, setBrushColor: (next: string) => { brushColor = next; }, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
 }
 
-type RotoPlayScriptPhysicalPublication = Parameters<RotoPlayScriptControllerPorts['commit']>[0];
+function expectPlayScriptPublication(
+  publication: RotoGeneratedPhysicalPublication,
+): RotoPlayScriptPhysicalPublication {
+  expect(publication.semanticDelta.kind).toBe('play-script');
+  if (publication.semanticDelta.kind !== 'play-script') {
+    throw new Error('Expected Play Script publication.');
+  }
+  return publication as RotoPlayScriptPhysicalPublication;
+}
 
 describe('createRotoPlayScriptController', () => {
   beforeEach(() => {
@@ -152,7 +168,7 @@ describe('createRotoPlayScriptController', () => {
     const test = harness(); await test.controller.openConfirmation(); test.controller.countText.value = '2';
     expect(await test.controller.confirm()).toBe(true);
     expect(test.commit).toHaveBeenCalledOnce();
-    const publication = test.commit.mock.calls[0][0];
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0][0]);
     expect(publication.records.map((record) => record.appFrame)).toEqual([1, 4, 5]);
     expect(publication.records[0].payload.dataUrl).toBe(pngDataUrl('existing'));
     expect(publication.records[0].keyId).toBe('key-1');
@@ -427,7 +443,7 @@ describe('createRotoPlayScriptController', () => {
   it('clears a stale generation error when a new generation starts, and retry succeeds from a clean error state', async () => {
     const commit = vi.fn()
       .mockImplementationOnce(async (): Promise<RotoPlayScriptCommitResult> => ({ ok: false, error: 'rejected' }))
-      .mockImplementation(async (publication: RotoPlayScriptPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
+      .mockImplementation(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
         ok: true,
         operationId: 'accepted-operation',
         acceptedRevision: 'revision-2',
@@ -681,7 +697,7 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
 
     // One atomic commit for the whole generation — no second commit path.
     expect(test.commit).toHaveBeenCalledTimes(1);
-    const publication = test.commit.mock.calls[0][0];
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0][0]);
     expect(publication.records.map((record) => record.appFrame)).toEqual([1, 4, 5, 6]);
     expect(publication.semanticDelta.kind).toBe('play-script');
     expect(publication.semanticDelta.affectedStartAppFrame).toBe(4);
@@ -820,7 +836,7 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
     expect(await test.controller.confirm()).toBe(true);
 
     expect(test.commit).toHaveBeenCalledTimes(2);
-    const second = test.commit.mock.calls[1][0];
+    const second = expectPlayScriptPublication(test.commit.mock.calls[1][0]);
     // Same script + destination + options → the committed record set is byte-identical:
     // existing keyIds are reused and the staged payloads are deterministic.
     expect(JSON.stringify(second.records)).toBe(JSON.stringify(first.records));
@@ -1128,7 +1144,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       interpolationEnabled: localAuthority.interpolationEnabled,
       remainingCapacity: Math.max(0, localAuthority.physicalCapacity - placementStart),
     }));
-    const commit = vi.fn(async (publication: RotoPlayScriptPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
+    const commit = vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
       ok: true,
       operationId: 'accepted-operation',
       acceptedRevision: 'revision-2',
@@ -1169,7 +1185,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
   const driveLoopHistory = (input: {
     beforeRecords: readonly PhysicPaintRotoRealKeyRecord[];
     beforeLoopClips: readonly PhysicPaintRotoLoopClip[];
-    publication: RotoPlayScriptPhysicalPublication;
+    publication: RotoGeneratedPhysicalPublication;
   }) => {
     const interpolation = { enabled: true, mode: 'duplicate' } as const;
     const snapshot = (
@@ -1253,7 +1269,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       after: afterSnapshot,
       acceptedRevision: buildPhysicPaintRotoPhysicalRevision(afterSnapshot.records, afterSnapshot.interpolation, afterSnapshot.loopClips),
       operationId: 'accepted-operation',
-      operationKind: 'play-script',
+      operationKind: input.publication.semanticDelta.kind,
       historyProvenance: null,
     };
     return { history, availability, beforeSnapshot, afterSnapshot, getCurrent: () => current };
@@ -1409,6 +1425,22 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.confirmationOpen.value).toBe(false);
     });
 
+    it('keeps loop-only Group selection null when the rail cursor is on a source key', async () => {
+      const test = loopOpHarness([lifecycleLoopClip(10, 3)], {}, {
+        getSelection: () => ({ kind: 'real-key', keyId: 'S1', appFrame: 10 }),
+        getPhysicalDocument: () => ({ selectedKeyId: null, cursorAppFrame: 10 } as never),
+      });
+
+      expect(await test.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+      test.controller.repeatText.value = '2';
+      expect(await test.controller.confirm()).toBe(true);
+
+      expect(test.commit).toHaveBeenCalledWith(expect.objectContaining({
+        selectedKeyId: null,
+        selectedAppFrame: null,
+      }));
+    });
+
     it.each([
       { placementStart: 0, initialRepeat: 1, nextRepeat: 3 },
       { placementStart: 0, initialRepeat: 3, nextRepeat: 1 },
@@ -1506,7 +1538,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         interpolationEnabled: localAuthority.interpolationEnabled,
         remainingCapacity: localAuthority.physicalCapacity - placementStart,
       });
-      const commit = vi.fn(async (publication: RotoPlayScriptPhysicalPublication): Promise<RotoPlayScriptCommitResult> => {
+      const commit = vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => {
         loops = publication.loopClips ?? loops;
         return {
           ok: true,
@@ -1987,7 +2019,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
 
     it('rejects the commit when the parent acknowledgement echoes mismatched loopClips', async () => {
       const test = loopOpHarness([loopClip('L1', 10, 3)], {}, {
-        commit: vi.fn(async (publication: RotoPlayScriptPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
+        commit: vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
           ok: true,
           operationId: 'accepted-operation',
           acceptedRevision: 'revision-2',
@@ -2082,7 +2114,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.countText.value).toBe('3');
       expect(await test.controller.confirm()).toBe(true);
       expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ frameCount: 3, canonicalStart: 0 }));
-      const publication = test.commit.mock.calls[0][0];
+      const publication = expectPlayScriptPublication(test.commit.mock.calls[0][0]);
       expect(publication.records.map(({ keyId, appFrame }) => ({ keyId, appFrame }))).toEqual([
         { keyId: 'S1', appFrame: 0 },
         { keyId: 'S2', appFrame: 3 },

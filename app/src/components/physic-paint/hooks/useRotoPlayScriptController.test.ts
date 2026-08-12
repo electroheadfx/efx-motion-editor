@@ -91,6 +91,7 @@ function ports(version: number): HookPorts {
     executePhysicalEdit: vi.fn(async () => true),
     pendingOperationId: signal<string | null>(null),
     acceptedOutput: signal(null),
+    failureOutput: signal(null),
   };
 }
 
@@ -132,6 +133,105 @@ describe('useRotoPlayScriptController', () => {
       operationKind: 'play-script',
       rotoBackground,
     }));
+  });
+
+  it('settles a committed Group update when accepted publication follows pending cleanup', async () => {
+    vi.useFakeTimers();
+    try {
+      const hookPorts = ports(1);
+      const pendingOperationId = hookPorts.pendingOperationId as ReturnType<typeof signal<string | null>>;
+      const acceptedOutput = hookPorts.acceptedOutput as ReturnType<typeof signal<unknown>>;
+      hookPorts.executePhysicalEdit = vi.fn(async () => {
+        pendingOperationId.value = 'physical-operation-1';
+        pendingOperationId.value = null;
+        globalThis.setTimeout(() => {
+          acceptedOutput.value = {
+            operationId: 'physical-operation-1',
+            operationKind: 'regenerate-group',
+            acceptedRevision: 'revision-2',
+            after: {
+              records: [],
+              interpolation: { enabled: false, mode: 'duplicate' },
+              selectedKeyId: null,
+              selectedAppFrame: null,
+              loopClips: [],
+            },
+          };
+        }, 0);
+        return true;
+      });
+      renderHook(hookPorts);
+
+      const resultPromise = captured.ports!.commit({
+        expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+        expectedRevision: 'revision-1',
+        records: [],
+        interpolationEnabled: false,
+        interpolationMode: 'duplicate',
+        rotoBackground: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 },
+        semanticDelta: {
+          kind: 'regenerate-group',
+          groupId: 'loop-1',
+          expectedActionRevision: 'script-revision-1',
+          cleanupKeyIds: [],
+          previousRevision: 'revision-1',
+          nextRevision: 'revision-2',
+        },
+        selectedKeyId: null,
+        selectedAppFrame: null,
+        loopClips: [],
+      });
+
+      await vi.runAllTimersAsync();
+      await expect(resultPromise).resolves.toMatchObject({
+        ok: true,
+        operationId: 'physical-operation-1',
+        acceptedRevision: 'revision-2',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('surfaces the canonical Group Regenerate rejection reason with current terminology', async () => {
+    const hookPorts = ports(1);
+    const pendingOperationId = hookPorts.pendingOperationId as ReturnType<typeof signal<string | null>>;
+    const failureOutput = hookPorts.failureOutput as ReturnType<typeof signal<unknown>>;
+    hookPorts.executePhysicalEdit = vi.fn(async () => {
+      pendingOperationId.value = 'physical-operation-rejected';
+      failureOutput.value = {
+        operationId: 'physical-operation-rejected',
+        operationKind: 'regenerate-group',
+        reason: 'parent-rejection',
+        error: 'Group lifecycle target document does not match parent recomputation.',
+        restored: {},
+      };
+      return true;
+    });
+    renderHook(hookPorts);
+
+    await expect(captured.ports!.commit({
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      expectedRevision: 'revision-1',
+      records: [],
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      rotoBackground: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 },
+      semanticDelta: {
+        kind: 'regenerate-group',
+        groupId: 'loop-1',
+        expectedActionRevision: 'script-revision-1',
+        cleanupKeyIds: [],
+        previousRevision: 'revision-1',
+        nextRevision: 'revision-2',
+      },
+      selectedKeyId: null,
+      selectedAppFrame: null,
+      loopClips: [],
+    })).resolves.toEqual({
+      ok: false,
+      error: 'Group Regenerate rejected — Group lifecycle target document does not match parent recomputation.',
+    });
   });
 
   it('proxies every dynamic port and refreshes availability after rerender', () => {
