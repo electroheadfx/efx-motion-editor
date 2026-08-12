@@ -728,6 +728,19 @@ export function PhysicsPaintStudio() {
       replaceDirtyFrames: (frames) => { rotoEditBuffer.replaceDirtyFrames(new Set(frames)); },
       replaceLiveOverlayActionCounts: (counts) => { rotoEditBuffer.bufferRef.current.liveOverlayActionCounts = new Map(counts); },
       setEditableFrameList: (frames) => { rotoEditableFramesRef.current = [...frames]; rotoEditBuffer.setEditableFrameList(() => [...frames]); },
+      evictAcceptedFrames: (frames) => {
+        const affected = new Set(frames);
+        for (const frame of affected) {
+          rotoEditBuffer.bufferRef.current.frameStates.delete(frame);
+          rotoEditBuffer.bufferRef.current.previewFrames.delete(frame);
+          rotoEditBuffer.bufferRef.current.capturedFrames.delete(frame);
+          rotoEditBuffer.bufferRef.current.dirtyFrames.delete(frame);
+          rotoEditBuffer.bufferRef.current.liveOverlayActionCounts.delete(frame);
+          rotoPersistence.confirmedFramesRef.current.delete(frame);
+        }
+        rotoEditableFramesRef.current = rotoEditableFramesRef.current.filter((frame) => !affected.has(frame));
+        rotoEditBuffer.setEditableFrameList((editable) => editable.filter((frame) => !affected.has(frame)));
+      },
     },
     selection: {
       getSelectedKeyId: () => selectedKeyId.value,

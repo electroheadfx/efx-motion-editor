@@ -613,7 +613,9 @@ describe('valid-loop preview/export parity (success path, D-27, audit finding 8)
     hoisted.fm = makeFm(6);
 
     const detached = await resolveBothSurfaces(6);
-    const expectedKeys = new Map([[0, 'A0'], [1, 'A1'], [3, 'override-3'], [4, 'A0'], [5, 'A1']]);
+    // 43.2 phase-propagation: the override painted at frame 3 (phase 1) shows
+    // at every matching phase across the repeats — frames 1, 3, and 5.
+    const expectedKeys = new Map([[0, 'A0'], [1, 'override-3'], [3, 'override-3'], [4, 'A0'], [5, 'override-3']]);
     for (const [frame, keyId] of expectedKeys) {
       const exportSource = detached.exportByFrame.get(frame);
       const previewSource = detached.previewByFrame.get(frame);

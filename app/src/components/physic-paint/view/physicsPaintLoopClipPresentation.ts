@@ -71,13 +71,16 @@ export function projectPhysicsPaintLoopClipPresentation(
   const cycleLabel = range.repeat === 'infinity'
     ? `Cycle ${range.cycleLength}f × ∞`
     : `Cycle ${range.cycleLength}f × ${range.repeat} = ${requestedDuration}f`;
-  const effectiveDuration = Math.max(0, range.effectiveEnd - range.placementStart);
+  const effectiveEnd = range.requestedEnd === 'infinity'
+    ? range.effectiveEnd
+    : range.requestedEnd;
+  const effectiveDuration = Math.max(0, effectiveEnd - range.phaseOrigin);
   const mode = clip?.mode ?? 'progressive';
   const modeLabel = mode === 'static' ? 'Static' : 'Motion';
   const groupTypeLabel = `${modeLabel} Group` as const;
   const groupDisplayName = options.groupDisplayName?.trim();
   const displayName = groupDisplayName
-    || (sourceActionName ? `${sourceActionName} Group` : `${groupTypeLabel} at F${range.placementStart}`);
+    || (sourceActionName ? `${sourceActionName} Group` : `${groupTypeLabel} at F${range.phaseOrigin}`);
   const lifecycle = resolveGroupLifecycle(range, clip, sourceActionName);
   const statusLabel = statusLabelFor(lifecycle);
   const synchronizationDot = lifecycle === 'unresolved' ? null : lifecycle;
@@ -106,7 +109,7 @@ export function projectPhysicsPaintLoopClipPresentation(
     loopId: range.loopId,
     displayName,
     sourceLabel: sourceActionName ?? 'Source Action unavailable',
-    placementLabel: `F${range.placementStart}`,
+    placementLabel: `F${range.phaseOrigin}`,
     cycleLabel,
     effectiveLabel: `Effective ${effectiveDuration}f`,
     mode,

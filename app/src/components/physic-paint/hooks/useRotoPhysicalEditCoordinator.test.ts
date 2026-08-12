@@ -58,12 +58,13 @@ function groupLifecycleDocument(options: {
   sharedSourceOwner?: boolean;
 } = {}) {
   const records = [record('A', 0), record('B', 1)];
-  const groupOverrideRecords = options.existingOverride ? [record('override-4', 4)] : [];
+  const groupOverrideRecords = options.existingOverride ? [record('override-4', 0)] : [];
   const visibleRanges = options.gapAt === undefined
     ? [{ start: 0, endExclusive: 6 }]
     : [
-        { start: 0, endExclusive: options.gapAt },
-        { start: options.gapAt + 1, endExclusive: 6 },
+        { start: 1, endExclusive: 2 },
+        { start: 3, endExclusive: 4 },
+        { start: 5, endExclusive: 6 },
       ];
   const primaryGroup: PhysicPaintRotoLoopClip = {
     loopId: 'group-1',
@@ -79,7 +80,7 @@ function groupLifecycleDocument(options: {
     phaseOrigin: 0,
     originalEndExclusive: 6,
     visibleRanges,
-    frameOverrides: options.existingOverride ? [{ appFrame: 4, keyId: 'override-4' }] : [],
+    frameOverrides: options.existingOverride ? [{ appFrame: 0, keyId: 'override-4' }] : [],
   };
   const loopClips: readonly PhysicPaintRotoLoopClip[] = options.sharedSourceOwner
     ? [
@@ -244,6 +245,15 @@ function harness(options: {
   const capturedFrames = new Map<number, unknown>([[8, sharedCacheFact]]);
   const confirmedFrames = new Map<number, unknown>([[9, sharedCacheFact]]);
   const emptySet = new Set<number>();
+  const seedCacheFrames = (frames: readonly number[]) => {
+    for (const frame of frames) {
+      frameStates.set(frame, sharedCacheFact);
+      previewFrames.set(frame, sharedCacheFact);
+      capturedFrames.set(frame, sharedCacheFact);
+      confirmedFrames.set(frame, sharedCacheFact);
+      emptySet.add(frame);
+    }
+  };
   const cachedReference = Object.freeze({
     url: 'blob:shared-source-reference',
     cachedRepaintBase: Object.freeze({
@@ -328,6 +338,16 @@ function harness(options: {
       replaceDirtyFrames: vi.fn(),
       replaceLiveOverlayActionCounts: vi.fn(),
       setEditableFrameList: vi.fn(),
+      evictAcceptedFrames: (frames) => {
+        const affected = new Set(frames);
+        for (const frame of affected) {
+          frameStates.delete(frame);
+          previewFrames.delete(frame);
+          capturedFrames.delete(frame);
+          confirmedFrames.delete(frame);
+          emptySet.delete(frame);
+        }
+      },
     },
     selection: {
       getSelectedKeyId: () => selectedKeyId,
@@ -609,6 +629,7 @@ function harness(options: {
     seedGroupDocument,
     setStudioSelection,
     publishCanonicalGroupSelection,
+    seedCacheFrames,
     accept,
     reject,
     mismatch,
@@ -1244,7 +1265,7 @@ describe('Phase 43.2 Group Regenerate atomic settlement', () => {
   });
 });
 
-describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
+describe('Phase 43.2 accepted source-phase Group Paint settlement', () => {
   it('does not wait on the live-pixel transaction that is dispatching Group Paint', async () => {
     const test = harness();
     test.seedGroupDocument(groupLifecycleDocument({ gapAt: 4 }));
@@ -1273,7 +1294,7 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
     expect(test.sendPhysicalEditPayload).toHaveBeenCalledOnce();
   });
 
-  it('does not self-flush an existing exact override while its live-pixel transaction is committing', async () => {
+  it('does not self-flush an existing phase override while its live-pixel transaction is committing', async () => {
     const test = harness();
     test.seedGroupDocument(groupLifecycleDocument({ existingOverride: true }));
 
@@ -1288,7 +1309,7 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
     const identity = {
       launchId: 'launch-1',
       layerId: 'layer-1',
-      keyId: 'group:group-1:4',
+      keyId: 'group:group-1:phase:0',
       contentRevision: groupLifecycleDocument({ existingOverride: true }).revision,
       appFrame: 4,
     };
@@ -1312,10 +1333,11 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
     expect(test.sendPhysicalEditPayload).toHaveBeenCalledOnce();
   });
 
-  it('refills and reunites a deleted occurrence only after exact acknowledgement', async () => {
+  it('refills every deleted phase occurrence only after exact acknowledgement', async () => {
     const test = harness();
     const before = groupLifecycleDocument({ gapAt: 4 });
     test.seedGroupDocument(before);
+    test.seedCacheFrames([0, 2, 4]);
     const acceptedEvents: unknown[] = [];
     const unsubscribe = test.coordinator.acceptedOutput.subscribe((value) => {
       if (value) acceptedEvents.push(value);
@@ -1335,6 +1357,8 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
         kind: 'paint-group-frame',
         groupId: 'group-1',
         appFrame: 4,
+        phaseAppFrame: 0,
+        affectedAppFrames: [0, 2, 4],
         overrideKeyId: 'override-gap-4',
         createdOverride: true,
         filledDeletedOccurrence: true,
@@ -1343,15 +1367,21 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
 
     expect(test.accept()).toBe('accepted');
     expect(test.getGroupOverrideRecords().find((entry) => entry.keyId === 'override-gap-4')).toMatchObject({
-      appFrame: 4,
-      payload: { dataUrl: 'data:image/png;base64,UEFJTlQ=' },
+      appFrame: 0,
+      payload: { appFrame: 0, dataUrl: 'data:image/png;base64,UEFJTlQ=' },
     });
     expect(test.getLoopClips()[0]).toMatchObject({
       syncState: 'modified',
       visibleRanges: [{ start: 0, endExclusive: 6 }],
-      frameOverrides: [{ appFrame: 4, keyId: 'override-gap-4' }],
+      frameOverrides: [{ appFrame: 0, keyId: 'override-gap-4' }],
     });
     expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(test.getCacheFacts()).toMatchObject({
+      frameStates: [],
+      previewFrames: [[1, expect.anything()]],
+      capturedFrames: [[8, expect.anything()]],
+      confirmedFrames: [[9, expect.anything()]],
+    });
     expect(test.reconcileCurrentFrame).toHaveBeenCalledOnce();
     expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(4);
     expect(acceptedEvents).toHaveLength(1);
@@ -1361,7 +1391,7 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
     unsubscribe();
   });
 
-  it('reuses one exact override and remains Modified on repaint', async () => {
+  it('reuses one canonical phase override and remains Modified on repaint', async () => {
     const test = harness();
     test.seedGroupDocument(groupLifecycleDocument({ existingOverride: true }));
 
@@ -1371,11 +1401,11 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
     expect(test.getGroupOverrideRecords().find((entry) => entry.keyId === 'override-4')?.payload.dataUrl).toBe('data:image/png;base64,UkVQQUlOVA==');
     expect(test.getLoopClips()[0]).toMatchObject({
       syncState: 'modified',
-      frameOverrides: [{ appFrame: 4, keyId: 'override-4' }],
+      frameOverrides: [{ appFrame: 0, keyId: 'override-4' }],
     });
   });
 
-  it('materializes one source occurrence without changing its source cycle or sharing Group', async () => {
+  it('materializes one source phase without changing its source cycle or sharing Group', async () => {
     const test = harness();
     const before = groupLifecycleDocument({ sharedSourceOwner: true, cursorAppFrame: 3 });
     test.seedGroupDocument(before);
@@ -1384,7 +1414,7 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
     expect(test.accept()).toBe('accepted');
 
     expect(test.getGroupOverrideRecords().filter((entry) => entry.keyId === 'override-3')).toEqual([
-      expect.objectContaining({ appFrame: 3, payload: expect.objectContaining({ dataUrl: 'data:image/png;base64,UEFJTlQ=' }) }),
+      expect.objectContaining({ appFrame: 1, payload: expect.objectContaining({ appFrame: 1, dataUrl: 'data:image/png;base64,UEFJTlQ=' }) }),
     ]);
     expect(test.getRecords().find((entry) => entry.keyId === 'A')).toEqual(before.realKeyRecords.find((entry) => entry.keyId === 'A'));
     expect(test.getRecords().find((entry) => entry.keyId === 'B')).toEqual(before.realKeyRecords.find((entry) => entry.keyId === 'B'));
@@ -1392,7 +1422,7 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
       expect.objectContaining({
         loopId: 'group-1',
         syncState: 'modified',
-        frameOverrides: [{ appFrame: 3, keyId: 'override-3' }],
+        frameOverrides: [{ appFrame: 1, keyId: 'override-3' }],
       }),
       before.loopClips[1],
     ]);
@@ -1418,6 +1448,8 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
     const test = harness();
     const before = groupLifecycleDocument({ gapAt: 4 });
     test.seedGroupDocument(before);
+    test.seedCacheFrames([0, 2, 4]);
+    const beforeCacheFacts = test.getCacheFacts();
 
     expect(await test.executeGroupPaint(4, 'override-gap-4')).toBe(true);
     expect(test.reject()).toBe('accepted');
@@ -1426,6 +1458,7 @@ describe('Phase 43.2 accepted exact-frame Group Paint settlement', () => {
     expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
     expect(test.replaceRecords).not.toHaveBeenCalled();
     expect(test.replaceLoopClips).not.toHaveBeenCalled();
+    expect(test.getCacheFacts()).toEqual(beforeCacheFacts);
     expect(test.reconcileCurrentFrame).toHaveBeenCalledOnce();
     expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(4);
     expect(test.coordinator.acceptedOutput.value).toBeNull();
@@ -1556,6 +1589,8 @@ describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
         kind: 'delete-group-frame',
         groupId: 'group-1',
         appFrame: 3,
+        phaseAppFrame: 1,
+        affectedAppFrames: [1, 3, 5],
         cleanupKeyIds: [],
       },
     });
@@ -1568,8 +1603,9 @@ describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
         phaseOrigin: 0,
         syncState: 'modified',
         visibleRanges: [
-          { start: 0, endExclusive: 3 },
-          { start: 4, endExclusive: 6 },
+          { start: 0, endExclusive: 1 },
+          { start: 2, endExclusive: 3 },
+          { start: 4, endExclusive: 5 },
         ],
       }),
     ]);
@@ -1581,7 +1617,7 @@ describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
     unsubscribe();
   });
 
-  it('deletes one middle occurrence only after acknowledgement and holds the lease through settlement', async () => {
+  it('deletes one repeated source phase only after acknowledgement and holds the lease through settlement', async () => {
     const test = harness();
     const before = groupLifecycleDocument({ existingOverride: true });
     test.seedGroupDocument(before);
@@ -1601,6 +1637,8 @@ describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
         kind: 'delete-group-frame',
         groupId: 'group-1',
         appFrame: 4,
+        phaseAppFrame: 0,
+        affectedAppFrames: [0, 2, 4],
         cleanupKeyIds: ['override-4'],
       },
     });
@@ -1613,7 +1651,8 @@ describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
         phaseOrigin: 0,
         syncState: 'modified',
         visibleRanges: [
-          { start: 0, endExclusive: 4 },
+          { start: 1, endExclusive: 2 },
+          { start: 3, endExclusive: 4 },
           { start: 5, endExclusive: 6 },
         ],
         frameOverrides: [],
@@ -1670,7 +1709,11 @@ describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
     expect(test.getStructuralPublicationCount()).toBe(1);
     expect(test.getLoopClips()[0]).toMatchObject({
       syncState: 'modified',
-      visibleRanges: [{ start: 0, endExclusive: 4 }, { start: 5, endExclusive: 6 }],
+      visibleRanges: [
+        { start: 1, endExclusive: 2 },
+        { start: 3, endExclusive: 4 },
+        { start: 5, endExclusive: 6 },
+      ],
     });
   });
 
@@ -1701,7 +1744,7 @@ describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
   });
 });
 
-describe('Phase 43.2 leased exact-occurrence Paint coordinator tracer', () => {
+describe('Phase 43.2 leased source-phase Paint coordinator tracer', () => {
   function groupDocument() {
     const records = [record('A', 0), record('B', 1)];
     const loopClips = [{

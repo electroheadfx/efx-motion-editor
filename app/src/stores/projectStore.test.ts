@@ -17,11 +17,11 @@ describe('Physics Paint project/cache save transaction', () => {
     const saveSource = source.slice(saveStart, saveAsStart);
     const saveAsSource = source.slice(saveAsStart, source.indexOf('/** Open a project', saveAsStart));
 
-    expect(saveSource).toContain('await savePhysicPaintDataWithProjectWrite(projectDir, project.physic_paint_outputs, async (physicPaintOutputs) => {');
-    expect(saveSource).toContain('const result = await ipcProjectSave({');
-    expect(saveAsSource).toContain('await savePhysicPaintDataWithProjectWrite(parentDir, project.physic_paint_outputs, async (physicPaintOutputs) => {');
-    expect(saveAsSource).toContain('const transaction = await projectSaveAsWithScriptLibrary(projectForSave, previousFilePath, newFilePath);');
-    expect(saveAsSource).toContain('const result = await ipcProjectSave(projectForSave, newFilePath);');
+    expect(saveSource).toContain('await savePhysicPaintDataWithProjectWrite(projectDir, project.physic_paint_outputs, async (physicPaintOutputs, cacheTransactionId) => {');
+    expect(saveSource).toContain('}, currentFilePath, cacheTransactionId);');
+    expect(saveAsSource).toContain('await savePhysicPaintDataWithProjectWrite(parentDir, project.physic_paint_outputs, async (physicPaintOutputs, cacheTransactionId) => {');
+    expect(saveAsSource).toContain('newFilePath,\n            cacheTransactionId,');
+    expect(saveAsSource).toContain('const result = await ipcProjectSave(projectForSave, newFilePath, cacheTransactionId);');
     expect(source).not.toContain('physic_paint_outputs: await savePhysicPaintData(');
   });
 });

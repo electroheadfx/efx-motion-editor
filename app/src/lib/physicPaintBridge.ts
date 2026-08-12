@@ -1208,8 +1208,8 @@ function validateCanonicalGroupLifecycleEdit(input: {
       return 'Group Paint target precedence is unresolved.';
     }
     const overrideRecord = input.proposedGroupOverrideRecords.find((record) => record.keyId === delta.overrideKeyId);
-    if (!overrideRecord || overrideRecord.appFrame !== delta.appFrame) {
-      return 'Group Paint override record does not match the declared exact occurrence.';
+    if (!overrideRecord || overrideRecord.appFrame !== delta.phaseAppFrame) {
+      return 'Group Paint override record does not match the declared source phase.';
     }
     recomputed = proposePhysicPaintRotoGroupFramePaint({
       document: targetDocument,
@@ -1697,7 +1697,7 @@ function parsePhysicPaintRotoGroupFramePaintApplyRequest(
 }
 
 /**
- * Parent-authoritative exact-occurrence Paint commit. The child proposal and
+ * Parent-authoritative source-phase Paint commit. The child proposal and
  * impact are untrusted: this path rechecks every authority, independently
  * rebuilds the candidate, and publishes only that recomputed document through
  * the token-checked sole store replacement.

@@ -3338,7 +3338,7 @@ describe('Phase 43.2 exact accepted history and newer-document protection contra
   });
 });
 
-describe('Phase 43.2 leased exact-occurrence Paint parent tracer', () => {
+describe('Phase 43.2 leased source-phase Paint parent tracer', () => {
   const projectContextId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
   beforeEach(() => {

@@ -682,11 +682,11 @@ export const projectStore = {
       }
 
       const projectDir = currentDir ?? currentFilePath.substring(0, currentFilePath.lastIndexOf('/'));
-      await savePhysicPaintDataWithProjectWrite(projectDir, project.physic_paint_outputs, async (physicPaintOutputs) => {
+      await savePhysicPaintDataWithProjectWrite(projectDir, project.physic_paint_outputs, async (physicPaintOutputs, cacheTransactionId) => {
         const result = await ipcProjectSave({
           ...project,
           physic_paint_outputs: physicPaintOutputs,
-        }, currentFilePath);
+        }, currentFilePath, cacheTransactionId);
         if (!result.ok) throw new Error(result.error);
       });
       if (!options?.deferScriptAuthority && !scriptLibraryAuthority.peek()) await bindScriptLibraryAuthority(currentFilePath);
@@ -724,17 +724,22 @@ export const projectStore = {
     const parentDir = newFilePath.substring(0, newFilePath.lastIndexOf('/'));
     try {
       const project = buildMceProject();
-      await savePhysicPaintDataWithProjectWrite(parentDir, project.physic_paint_outputs, async (physicPaintOutputs) => {
+      await savePhysicPaintDataWithProjectWrite(parentDir, project.physic_paint_outputs, async (physicPaintOutputs, cacheTransactionId) => {
         const projectForSave: MceProject = {
           ...project,
           physic_paint_outputs: physicPaintOutputs,
         };
         if (previousFilePath && previousFilePath !== newFilePath) {
-          const transaction = await projectSaveAsWithScriptLibrary(projectForSave, previousFilePath, newFilePath);
+          const transaction = await projectSaveAsWithScriptLibrary(
+            projectForSave,
+            previousFilePath,
+            newFilePath,
+            cacheTransactionId,
+          );
           if (!transaction.ok) throw new Error(transaction.error);
           if (transaction.data.diagnostics.length > 0) console.warn('[projectStore] Script library Save As diagnostics', transaction.data.diagnostics);
         } else {
-          const result = await ipcProjectSave(projectForSave, newFilePath);
+          const result = await ipcProjectSave(projectForSave, newFilePath, cacheTransactionId);
           if (!result.ok) throw new Error(result.error);
         }
       });

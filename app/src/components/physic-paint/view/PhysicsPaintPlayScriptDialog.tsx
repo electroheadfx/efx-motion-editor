@@ -518,7 +518,7 @@ export function PhysicsPaintPlayScriptDialog({
                 disabled={busy}
                 onClick={keepLocalChanges}
               >
-                Keep local changes
+                Keep Local Changes
               </button>
               <button
                 type="button"
@@ -542,7 +542,7 @@ export function PhysicsPaintPlayScriptDialog({
                     if (targetId) void playScript.openSourceEdit(targetId);
                   }}
                 >
-                  Regenerate…
+                  Regenerate Group
                 </button>
               ) : null}
               {!playScript.canCancel.value ? (
@@ -552,7 +552,9 @@ export function PhysicsPaintPlayScriptDialog({
                   disabled={Boolean(playScript.validationError.value) || Boolean(playScript.repeatError.value)}
                   onClick={() => { void playScript.confirm(); }}
                 >
-                  {loopEdit ? 'Update Group' : sourceEdit ? 'Regenerate source cycle' : 'Create Group'}
+                  {loopEdit
+                    ? playScript.mode.value === 'static' ? 'Update Static' : 'Update Motion'
+                    : sourceEdit ? 'Regenerate source cycle' : 'Create Group'}
                 </button>
               ) : null}
             </>)}

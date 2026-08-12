@@ -628,10 +628,23 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const loopBoundaryFrames = useMemo(() => {
     const starts = new Set<number>();
     const ends = new Set<number>();
+    const extents = new Map<string, { start: number; endExclusive: number }>();
     for (const range of loopResolutionContext?.ranges ?? []) {
-      if (range.effectiveEnd <= range.placementStart) continue;
-      starts.add(range.placementStart);
-      ends.add(range.effectiveEnd - 1);
+      const current = extents.get(range.loopId);
+      const endExclusive = range.requestedEnd === 'infinity'
+        ? range.effectiveEnd
+        : range.requestedEnd;
+      if (current) {
+        current.start = Math.min(current.start, range.phaseOrigin);
+        current.endExclusive = Math.max(current.endExclusive, endExclusive);
+      } else {
+        extents.set(range.loopId, { start: range.phaseOrigin, endExclusive });
+      }
+    }
+    for (const extent of extents.values()) {
+      if (extent.endExclusive <= extent.start) continue;
+      starts.add(extent.start);
+      ends.add(extent.endExclusive - 1);
     }
     return { starts, ends };
   }, [loopResolutionContext]);
@@ -1632,34 +1645,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {buildGuardedActionTooltipCopy('Add key', addRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
-                <span class="physics-paint-roto-key-icon-action" onPointerEnter={duplicateKeyTooltip.onPointerEnter} onPointerLeave={duplicateKeyTooltip.onPointerLeave}>
-                  <button
-                    type="button"
-                    class="physics-paint-roto-key-icon-button"
-                    aria-label="Duplicate key"
-                    aria-disabled={!canDuplicateRotoKey ? 'true' : undefined}
-                    aria-describedby={!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? 'roto-key-action-reason-duplicate' : undefined}
-                    onFocus={duplicateKeyTooltip.onFocus}
-                    onBlur={duplicateKeyTooltip.onBlur}
-                    onClick={() => {
-                      duplicateKeyTooltip.hide();
-                      if (!canDuplicateRotoKey) return;
-                      props.onDuplicateRotoKey?.();
-                    }}
-                    onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && !canDuplicateRotoKey) event.preventDefault();
-                    }}
-                  >
-                    <CopyPlus size={18} aria-hidden="true" />
-                    <span class="physics-paint-roto-key-icon-label">Duplicate</span>
-                  </button>
-                  {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? (
-                    <span id="roto-key-action-reason-duplicate" class="physics-paint-sr-only">{duplicateRotoKeyDisabledReason}</span>
-                  ) : null}
-                  <PhysicsPaintStyledTooltip visible={duplicateKeyTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy('Duplicate key', duplicateRotoKeyDisabledReason)}
-                  </PhysicsPaintStyledTooltip>
-                </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={insertKeyTooltip.onPointerEnter} onPointerLeave={insertKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
@@ -1686,6 +1671,34 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={insertKeyTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy(insertRotoKeyDescription, insertRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={duplicateKeyTooltip.onPointerEnter} onPointerLeave={duplicateKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Duplicate key"
+                    aria-disabled={!canDuplicateRotoKey ? 'true' : undefined}
+                    aria-describedby={!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? 'roto-key-action-reason-duplicate' : undefined}
+                    onFocus={duplicateKeyTooltip.onFocus}
+                    onBlur={duplicateKeyTooltip.onBlur}
+                    onClick={() => {
+                      duplicateKeyTooltip.hide();
+                      if (!canDuplicateRotoKey) return;
+                      props.onDuplicateRotoKey?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canDuplicateRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <CopyPlus size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Duplicate</span>
+                  </button>
+                  {!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-duplicate" class="physics-paint-sr-only">{duplicateRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={duplicateKeyTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy('Duplicate key', duplicateRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyKeyTooltip.onPointerEnter} onPointerLeave={copyKeyTooltip.onPointerLeave}>

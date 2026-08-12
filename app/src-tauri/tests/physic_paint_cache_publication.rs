@@ -1,4 +1,7 @@
-use efx_motion_editor_lib::physic_paint_cache::publish_cache_generation;
+use efx_motion_editor_lib::physic_paint_cache::{
+    bind_cache_transaction_to_project_write, publish_cache_generation, recover_cache_transaction,
+    settle_cache_generation, CacheSettlementAction,
+};
 use efx_motion_editor_lib::physic_paint_cache_command::{
     publish_physic_paint_cache_generation, settle_physic_paint_cache_generation,
     PhysicPaintCacheCleanupStatus, PhysicPaintCacheSettlementAction,
@@ -10,8 +13,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 const STAGING_BASENAME: &str = ".physic-paint-staging-test";
+const TRANSACTION_MARKER: &str = "cache/.physic-paint-transaction.json";
 
 fn fixture_dir(tag: &str) -> PathBuf {
     let nonce = SystemTime::now()
@@ -34,6 +39,10 @@ fn staging_dir(project_dir: &Path) -> PathBuf {
     project_dir.join("cache").join(STAGING_BASENAME)
 }
 
+fn project_file(project_dir: &Path) -> PathBuf {
+    project_dir.join("project.mce")
+}
+
 fn write_generation(path: &Path, generation: &str) {
     fs::create_dir_all(path.join("nested")).expect("generation directory");
     fs::write(path.join(format!("{generation}-manifest")), generation).expect("manifest write");
@@ -42,15 +51,26 @@ fn write_generation(path: &Path, generation: &str) {
     fs::write(path.join("nested/frame.png"), generation).expect("nested frame write");
 }
 
+fn bind_project_write(project: &Path, transaction_id: &str, bytes: &[u8]) {
+    bind_cache_transaction_to_project_write(project, &project_file(project), bytes, transaction_id)
+        .expect("bind project write");
+}
+
+fn bind_and_write_project(project: &Path, transaction_id: &str, bytes: &[u8]) {
+    bind_project_write(project, transaction_id, bytes);
+    fs::write(project_file(project), bytes).expect("project write");
+}
+
 fn generation_file_names(path: &Path) -> BTreeSet<String> {
     fs::read_dir(path)
         .expect("generation must remain reachable")
-        .map(|entry| {
-            entry
+        .filter_map(|entry| {
+            let name = entry
                 .expect("valid generation entry")
                 .file_name()
                 .to_string_lossy()
-                .into_owned()
+                .into_owned();
+            (!name.starts_with(".physic-paint-transaction-")).then_some(name)
         })
         .collect()
 }
@@ -71,6 +91,10 @@ fn assert_generation(path: &Path, generation: &str) {
     );
 }
 
+fn assert_transaction_settled(project: &Path) {
+    assert!(!project.join(TRANSACTION_MARKER).exists());
+}
+
 #[test]
 fn first_publication_moves_the_complete_staged_generation_to_canonical() {
     let project = fixture_dir("first");
@@ -79,6 +103,7 @@ fn first_publication_moves_the_complete_staged_generation_to_canonical() {
     let result = publish_cache_generation(&project, STAGING_BASENAME).expect("first publication");
 
     assert!(!result.replaced_existing);
+    assert!(Uuid::parse_str(&result.transaction_id).is_ok());
     assert_generation(&canonical_dir(&project), "new");
     assert!(!staging_dir(&project).exists());
     fs::remove_dir_all(project).expect("fixture cleanup");
@@ -107,20 +132,21 @@ fn rollback_restores_the_previous_canonical_generation() {
     write_generation(&canonical_dir(&project), "old");
     write_generation(&staging_dir(&project), "new");
 
-    publish_physic_paint_cache_generation(
+    let publication = publish_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
         STAGING_BASENAME.to_string(),
     )
     .expect("replacement publication");
     settle_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
-        STAGING_BASENAME.to_string(),
+        publication.transaction_id,
         PhysicPaintCacheSettlementAction::Rollback,
     )
     .expect("rollback settlement");
 
     assert_generation(&canonical_dir(&project), "old");
     assert!(!staging_dir(&project).exists());
+    assert_transaction_settled(&project);
     fs::remove_dir_all(project).expect("fixture cleanup");
 }
 
@@ -130,20 +156,21 @@ fn rollback_removes_an_uncommitted_first_generation() {
     let project = fixture_dir("rollback-first");
     write_generation(&staging_dir(&project), "new");
 
-    publish_physic_paint_cache_generation(
+    let publication = publish_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
         STAGING_BASENAME.to_string(),
     )
     .expect("first publication");
     settle_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
-        STAGING_BASENAME.to_string(),
+        publication.transaction_id,
         PhysicPaintCacheSettlementAction::Rollback,
     )
     .expect("rollback settlement");
 
     assert!(!canonical_dir(&project).exists());
     assert!(!staging_dir(&project).exists());
+    assert_transaction_settled(&project);
     fs::remove_dir_all(project).expect("fixture cleanup");
 }
 
@@ -153,25 +180,29 @@ fn rollback_replay_after_commit_is_rejected_without_mutating_canonical() {
     let project = fixture_dir("rollback-replay");
     write_generation(&staging_dir(&project), "new");
 
-    publish_physic_paint_cache_generation(
+    let publication = publish_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
         STAGING_BASENAME.to_string(),
     )
     .expect("publication");
+    bind_and_write_project(&project, &publication.transaction_id, b"accepted-project");
     settle_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
-        STAGING_BASENAME.to_string(),
+        publication.transaction_id.clone(),
         PhysicPaintCacheSettlementAction::Commit,
     )
     .expect("commit settlement");
 
     let replay = settle_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
-        STAGING_BASENAME.to_string(),
+        publication.transaction_id,
         PhysicPaintCacheSettlementAction::Rollback,
     );
 
-    assert!(replay.is_err(), "a settled publication must not be replayable");
+    assert!(
+        replay.is_err(),
+        "a settled publication must not be replayable"
+    );
     assert_generation(&canonical_dir(&project), "new");
     fs::remove_dir_all(project).expect("fixture cleanup");
 }
@@ -184,20 +215,21 @@ fn delayed_rollback_cannot_delete_a_newer_canonical_generation() {
     let second_staging = ".physic-paint-staging-second";
     write_generation(&project.join("cache").join(first_staging), "g1");
 
-    publish_physic_paint_cache_generation(
+    let first = publish_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
         first_staging.to_string(),
     )
     .expect("first publication");
+    bind_and_write_project(&project, &first.transaction_id, b"g1-project");
     settle_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
-        first_staging.to_string(),
+        first.transaction_id.clone(),
         PhysicPaintCacheSettlementAction::Commit,
     )
     .expect("first commit");
 
     write_generation(&project.join("cache").join(second_staging), "g2");
-    publish_physic_paint_cache_generation(
+    let second = publish_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
         second_staging.to_string(),
     )
@@ -205,18 +237,130 @@ fn delayed_rollback_cannot_delete_a_newer_canonical_generation() {
 
     let delayed = settle_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
-        first_staging.to_string(),
+        first.transaction_id,
         PhysicPaintCacheSettlementAction::Rollback,
     );
 
-    assert!(delayed.is_err(), "an older publication cannot settle a newer one");
+    assert!(
+        delayed.is_err(),
+        "an older publication cannot settle a newer one"
+    );
     assert_generation(&canonical_dir(&project), "g2");
     settle_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
-        second_staging.to_string(),
+        second.transaction_id,
         PhysicPaintCacheSettlementAction::Rollback,
     )
     .expect("second rollback");
+    assert_generation(&canonical_dir(&project), "g1");
+    fs::remove_dir_all(project).expect("fixture cleanup");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn rollback_request_after_durable_project_commit_preserves_the_committed_pair() {
+    let project = fixture_dir("rollback-after-durable-commit");
+    write_generation(&canonical_dir(&project), "old");
+    write_generation(&staging_dir(&project), "new");
+    let publication = publish_cache_generation(&project, STAGING_BASENAME).expect("publication");
+    bind_and_write_project(&project, &publication.transaction_id, b"accepted-project");
+
+    settle_cache_generation(
+        &project,
+        &publication.transaction_id,
+        CacheSettlementAction::Rollback,
+    )
+    .expect("durable project commit wins");
+
+    assert_generation(&canonical_dir(&project), "new");
+    assert!(!staging_dir(&project).exists());
+    assert_transaction_settled(&project);
+    fs::remove_dir_all(project).expect("fixture cleanup");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn wrong_transaction_id_is_rejected_without_mutating_authority() {
+    let project = fixture_dir("wrong-id");
+    write_generation(&canonical_dir(&project), "old");
+    write_generation(&staging_dir(&project), "new");
+    let publication = publish_cache_generation(&project, STAGING_BASENAME).expect("publication");
+
+    let result = settle_cache_generation(
+        &project,
+        &Uuid::new_v4().to_string(),
+        CacheSettlementAction::Rollback,
+    );
+
+    assert!(result.is_err());
+    assert_generation(&canonical_dir(&project), "new");
+    settle_cache_generation(
+        &project,
+        &publication.transaction_id,
+        CacheSettlementAction::Rollback,
+    )
+    .expect("authoritative rollback");
+    fs::remove_dir_all(project).expect("fixture cleanup");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn recovery_rolls_back_when_project_rename_never_committed() {
+    let project = fixture_dir("recover-before-project");
+    fs::write(project_file(&project), b"old-project").expect("old project");
+    write_generation(&canonical_dir(&project), "old");
+    write_generation(&staging_dir(&project), "new");
+    let publication = publish_cache_generation(&project, STAGING_BASENAME).expect("publication");
+    bind_project_write(&project, &publication.transaction_id, b"new-project");
+
+    recover_cache_transaction(&project).expect("recovery");
+
+    assert_eq!(
+        fs::read(project_file(&project)).expect("project bytes"),
+        b"old-project"
+    );
+    assert_generation(&canonical_dir(&project), "old");
+    assert!(!staging_dir(&project).exists());
+    assert_transaction_settled(&project);
+    fs::remove_dir_all(project).expect("fixture cleanup");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn recovery_commits_when_project_bytes_match_after_interruption() {
+    let project = fixture_dir("recover-after-project");
+    fs::write(project_file(&project), b"old-project").expect("old project");
+    write_generation(&canonical_dir(&project), "old");
+    write_generation(&staging_dir(&project), "new");
+    let publication = publish_cache_generation(&project, STAGING_BASENAME).expect("publication");
+    bind_and_write_project(&project, &publication.transaction_id, b"new-project");
+
+    let recovered = recover_cache_transaction(&project)
+        .expect("recovery")
+        .expect("active transaction");
+
+    assert!(!recovered.cleanup_deferred);
+    assert_generation(&canonical_dir(&project), "new");
+    assert!(!staging_dir(&project).exists());
+    assert_transaction_settled(&project);
+    assert!(recover_cache_transaction(&project)
+        .expect("repeated recovery")
+        .is_none());
+    assert_generation(&canonical_dir(&project), "new");
+    fs::remove_dir_all(project).expect("fixture cleanup");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn recovery_removes_an_interrupted_uncommitted_first_generation() {
+    let project = fixture_dir("recover-first");
+    write_generation(&staging_dir(&project), "new");
+    publish_cache_generation(&project, STAGING_BASENAME).expect("publication");
+
+    recover_cache_transaction(&project).expect("recovery");
+
+    assert!(!canonical_dir(&project).exists());
+    assert_transaction_settled(&project);
     fs::remove_dir_all(project).expect("fixture cleanup");
 }
 
@@ -243,6 +387,7 @@ fn failed_exchange_leaves_the_old_canonical_generation_unchanged() {
     assert!(result.is_err(), "exchange must fail before publication");
     assert_generation(&canonical_dir(&project), "old");
     assert_generation(&staging_dir(&project), "new");
+    assert_transaction_settled(&project);
     fs::remove_dir_all(project).expect("fixture cleanup");
 }
 
@@ -273,8 +418,20 @@ fn repeated_exchanges_never_make_canonical_absent_or_mix_directory_entries() {
     for index in 1..=24 {
         let generation = format!("g{index}");
         write_generation(&staging_dir(&project), &generation);
-        publish_cache_generation(&project, STAGING_BASENAME).expect("atomic replacement");
-        fs::remove_dir_all(staging_dir(&project)).expect("remove exchanged old generation");
+        let publication =
+            publish_cache_generation(&project, STAGING_BASENAME).expect("atomic replacement");
+        let project_bytes = format!("project-{index}");
+        bind_and_write_project(
+            &project,
+            &publication.transaction_id,
+            project_bytes.as_bytes(),
+        );
+        settle_cache_generation(
+            &project,
+            &publication.transaction_id,
+            CacheSettlementAction::Commit,
+        )
+        .expect("commit generation");
     }
 
     running.store(false, Ordering::Release);
@@ -295,27 +452,28 @@ fn command_accepts_publication_when_old_generation_cleanup_is_deferred() {
         .expect("canonical metadata")
         .permissions()
         .mode();
-    fs::set_permissions(
-        canonical_dir(&project),
-        fs::Permissions::from_mode(0o555),
-    )
-    .expect("deny old-generation cleanup");
+    fs::set_permissions(canonical_dir(&project), fs::Permissions::from_mode(0o555))
+        .expect("deny old-generation cleanup");
 
     let publication = publish_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
         STAGING_BASENAME.to_string(),
     )
     .expect("publication remains accepted");
+    bind_and_write_project(&project, &publication.transaction_id, b"accepted-project");
     let result = settle_physic_paint_cache_generation(
         project.to_string_lossy().into_owned(),
-        STAGING_BASENAME.to_string(),
+        publication.transaction_id,
         PhysicPaintCacheSettlementAction::Commit,
     )
     .expect("commit remains accepted");
 
     assert!(publication.accepted);
     assert!(result.accepted);
-    assert_eq!(result.cleanup_status, PhysicPaintCacheCleanupStatus::Deferred);
+    assert_eq!(
+        result.cleanup_status,
+        PhysicPaintCacheCleanupStatus::Deferred
+    );
     assert!(result.cleanup_diagnostic.is_some());
     assert_generation(&canonical_dir(&project), "new");
     assert_generation(&staging_dir(&project), "old");

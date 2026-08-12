@@ -29,9 +29,18 @@
     {
       "identifier": "fs:scope",
       "allow": [
-        { "path": "**" },
+        { "path": "**/cache" },
+        { "path": "**/cache/physic-paint" },
+        { "path": "**/cache/physic-paint/**" },
         { "path": "**/cache/.physic-paint-staging-*" },
-        { "path": "**/cache/.physic-paint-staging-*/**" }
+        { "path": "**/cache/.physic-paint-staging-*/**" },
+        { "path": "**/paint" },
+        { "path": "**/paint/**" },
+        { "path": "**/audio" },
+        { "path": "**/audio/**" },
+        { "path": "**/videos" },
+        { "path": "**/videos/**" },
+        { "path": "**/images/**" }
       ]
     },
     "notification:default"

@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RuntimePhysicPaintOutput } from '../types/project';
 import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
-import { loadPhysicPaintData, savePhysicPaintData, savePhysicPaintDataWithProjectWrite } from './physicPaintPersistence';
+import { loadPhysicPaintData, savePhysicPaintDataWithProjectWrite } from './physicPaintPersistence';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
 const settlePhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
@@ -65,6 +65,13 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     files.set(path, contents);
   }),
 }));
+
+function savePhysicPaintData(
+  projectDir: string,
+  outputs: RuntimePhysicPaintOutput[] | undefined,
+) {
+  return savePhysicPaintDataWithProjectWrite(projectDir, outputs, async () => {});
+}
 
 function makeOutput(appFrame = 12): RuntimePhysicPaintOutput[] {
   return [{
@@ -160,7 +167,7 @@ function makeLifecyclePhysicalOutput(loopClip: unknown = completeLifecycleGroup(
 }
 
 describe('physicPaintPersistence', () => {
-  it('scopes generated hidden staging paths without adding home or Desktop grants', () => {
+  it('scopes the main window to project-local data only, never the whole filesystem', () => {
     const capability = JSON.parse(readFileSync(
       fileURLToPath(new URL('../../src-tauri/capabilities/default.json', import.meta.url)),
       'utf8',
@@ -172,10 +179,37 @@ describe('physicPaintPersistence', () => {
     ));
     const paths = scope.allow.map((entry: { path: string }) => entry.path);
 
-    expect(paths).toContain('**/cache/.physic-paint-staging-*');
-    expect(paths).toContain('**/cache/.physic-paint-staging-*/**');
+    expect(paths).not.toContain('**');
     expect(paths).not.toContain('$HOME/**');
     expect(paths).not.toContain('$DESKTOP/**');
+    expect(paths).not.toContain('$DOCUMENT/**');
+    expect(paths).not.toContain('$DOWNLOAD/**');
+    for (const required of [
+      '**/cache',
+      '**/cache/physic-paint',
+      '**/cache/physic-paint/**',
+      '**/cache/.physic-paint-staging-*',
+      '**/cache/.physic-paint-staging-*/**',
+      '**/paint',
+      '**/paint/**',
+      '**/audio',
+      '**/audio/**',
+      '**/videos',
+      '**/videos/**',
+      '**/images/**',
+    ]) {
+      expect(paths).toContain(required);
+    }
+    // Dialog-picked paths (state JSON, import sources, .mce targets) are
+    // runtime-granted by the dialog plugin, never capability-granted.
+    expect(capability.permissions).toContain('dialog:allow-open');
+    expect(capability.permissions).toContain('dialog:allow-save');
+    // The standalone Physics Paint window keeps zero filesystem access.
+    const paintCapability = JSON.parse(readFileSync(
+      fileURLToPath(new URL('../../src-tauri/capabilities/physics-paint.json', import.meta.url)),
+      'utf8',
+    ));
+    expect(JSON.stringify(paintCapability.permissions)).not.toContain('fs:');
   });
 
   beforeEach(async () => {
@@ -184,15 +218,20 @@ describe('physicPaintPersistence', () => {
     vi.clearAllMocks();
     const { exists } = await import('@tauri-apps/plugin-fs');
     vi.mocked(exists).mockImplementation(async (path) => dirs.has(String(path)) || files.has(String(path)));
+    const activeTransactions = new Map<string, string>();
     publishPhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, stagingBasename: string) => {
       const replacedExisting = dirs.has(`${projectDir}/cache/physic-paint`);
+      const transactionId = crypto.randomUUID();
+      activeTransactions.set(transactionId, stagingBasename);
       exchangeGeneration(projectDir, stagingBasename);
       return {
         ok: true,
-        data: { accepted: true, replacedExisting },
+        data: { accepted: true, transactionId, replacedExisting },
       };
     });
-    settlePhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, stagingBasename: string, action: 'commit' | 'rollback') => {
+    settlePhysicPaintCacheGeneration.mockImplementation(async (projectDir: string, transactionId: string, action: 'commit' | 'rollback') => {
+      const stagingBasename = activeTransactions.get(transactionId);
+      if (!stagingBasename) return { ok: false, error: 'inactive transaction' };
       if (action === 'rollback') exchangeGeneration(projectDir, stagingBasename);
       const stagingRoot = `${projectDir}/cache/${stagingBasename}`;
       for (const key of Array.from(files.keys())) {
@@ -201,6 +240,7 @@ describe('physicPaintPersistence', () => {
       for (const key of Array.from(dirs)) {
         if (key === stagingRoot || key.startsWith(`${stagingRoot}/`)) dirs.delete(key);
       }
+      activeTransactions.delete(transactionId);
       return { ok: true, data: { accepted: true, cleanupStatus: 'complete' } };
     });
   });
@@ -219,7 +259,7 @@ describe('physicPaintPersistence', () => {
     expect(files.get(oldPath)).toEqual(oldBytes);
     expect(settlePhysicPaintCacheGeneration).toHaveBeenCalledWith(
       '/project',
-      expect.stringMatching(/^\.physic-paint-staging-/),
+      expect.stringMatching(/^[0-9a-f-]{36}$/),
       'rollback',
     );
 
@@ -236,7 +276,7 @@ describe('physicPaintPersistence', () => {
     expect(Array.from(files.keys()).some((path) => path.startsWith('/project/cache/physic-paint/'))).toBe(false);
     expect(settlePhysicPaintCacheGeneration).toHaveBeenCalledWith(
       '/project',
-      expect.stringMatching(/^\.physic-paint-staging-/),
+      expect.stringMatching(/^[0-9a-f-]{36}$/),
       'rollback',
     );
   });
@@ -349,21 +389,16 @@ describe('physicPaintPersistence', () => {
     expect(Array.from(files.keys()).some((path) => path.includes('/cache/physic-paint/'))).toBe(true);
   });
 
-  it('best-effort removes only stale Physics Paint staging siblings before saving', async () => {
-    const stale = '/project/cache/.physic-paint-staging-stale';
-    const unrelated = '/project/cache/unrelated-directory';
+  it('does not let renderer cleanup delete a native-owned rollback generation', async () => {
+    const rollbackGeneration = '/project/cache/.physic-paint-staging-active';
     dirs.add('/project/cache');
-    dirs.add(stale);
-    dirs.add(unrelated);
-    files.set(`${stale}/old.png`, new Uint8Array([1]));
-    files.set(`${unrelated}/keep.png`, new Uint8Array([2]));
+    dirs.add(rollbackGeneration);
+    files.set(`${rollbackGeneration}/old.png`, new Uint8Array([1]));
 
     await savePhysicPaintData('/project', makeOutput(94));
 
-    expect(dirs.has(stale)).toBe(false);
-    expect(files.has(`${stale}/old.png`)).toBe(false);
-    expect(dirs.has(unrelated)).toBe(true);
-    expect(files.has(`${unrelated}/keep.png`)).toBe(true);
+    expect(dirs.has(rollbackGeneration)).toBe(true);
+    expect(files.has(`${rollbackGeneration}/old.png`)).toBe(true);
   });
 
   it('removes the project Physics Paint cache when no outputs remain', async () => {

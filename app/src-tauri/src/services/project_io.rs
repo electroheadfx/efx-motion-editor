@@ -1,5 +1,7 @@
 use crate::models::project::MceProject;
-use std::fs;
+use crate::services::physic_paint_cache::bind_cache_transaction_to_project_write;
+use std::fs::{self, File};
+use std::io::Write;
 use std::path::Path;
 
 /// Create the project directory with images/, images/.thumbs/, videos/, paint/, and cache/ subdirectories.
@@ -32,27 +34,49 @@ pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
 
 /// Save project to .mce file using atomic write (temp file + rename).
 /// The project_root is the directory containing the .mce file.
-pub fn save_project(project: &MceProject, file_path: &str, _project_root: &str) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(project)
+pub fn save_project(
+    project: &MceProject,
+    file_path: &str,
+    project_root: &str,
+    physic_paint_cache_transaction_id: Option<&str>,
+) -> Result<(), String> {
+    let json = serde_json::to_vec_pretty(project)
         .map_err(|e| format!("Failed to serialize project: {}", e))?;
+    let file_path = Path::new(file_path);
+    let project_root = Path::new(project_root);
+    let tmp_path = file_path.with_extension(format!(
+        "{}.tmp",
+        file_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+    ));
 
-    let tmp_path = format!("{}.tmp", file_path);
-
-    // Write to temp file first
-    fs::write(&tmp_path, &json)
+    let mut temp_file =
+        File::create(&tmp_path).map_err(|e| format!("Failed to create temp file: {}", e))?;
+    temp_file
+        .write_all(&json)
         .map_err(|e| format!("Failed to write temp file: {}", e))?;
+    temp_file
+        .sync_all()
+        .map_err(|e| format!("Failed to synchronize temp file: {}", e))?;
 
-    // Atomic rename
-    fs::rename(&tmp_path, file_path)
-        .map_err(|e| format!("Failed to rename temp file: {}", e))?;
+    if let Some(transaction_id) = physic_paint_cache_transaction_id {
+        bind_cache_transaction_to_project_write(project_root, file_path, &json, transaction_id)?;
+    }
+
+    fs::rename(&tmp_path, file_path).map_err(|e| format!("Failed to rename temp file: {}", e))?;
+    File::open(project_root)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|e| format!("Failed to synchronize project directory: {}", e))?;
 
     Ok(())
 }
 
 /// Open project from .mce file. Returns MceProject with paths as stored (relative).
 pub fn open_project(file_path: &str) -> Result<MceProject, String> {
-    let content = fs::read_to_string(file_path)
-        .map_err(|e| format!("Failed to read project file: {}", e))?;
+    let content =
+        fs::read_to_string(file_path).map_err(|e| format!("Failed to read project file: {}", e))?;
 
     let project: MceProject = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse project file: {}", e))?;
@@ -145,6 +169,10 @@ mod tests {
     use crate::models::project::{
         MceImageRef, MceLayer, MceLayerSource, MceLayerTransform, MceSequence,
     };
+    use crate::services::physic_paint_cache::{
+        publish_cache_generation, recover_cache_transaction,
+    };
+    use uuid::Uuid;
 
     #[test]
     fn test_create_project_dir_creates_subdirectories() {
@@ -203,7 +231,7 @@ mod tests {
 
         let mce_path = test_dir.join("test.mce");
         let project_root = test_dir.to_str().unwrap();
-        save_project(&project, mce_path.to_str().unwrap(), project_root).unwrap();
+        save_project(&project, mce_path.to_str().unwrap(), project_root, None).unwrap();
 
         assert!(mce_path.exists());
 
@@ -216,10 +244,69 @@ mod tests {
         assert_eq!(loaded.physic_paint_outputs.len(), 1);
         assert_eq!(loaded.physic_paint_outputs[0].layer_id, "phys-layer-1");
         assert_eq!(loaded.physic_paint_outputs[0].frames[0].app_frame, 12);
-        assert_eq!(loaded.physic_paint_outputs[0].frames[0].cache_path, "cache/physic-paint/phys-layer-1/frame-000012-0000.png");
-        assert_eq!(loaded.physic_paint_outputs[0].roto_physical.as_ref().unwrap()["background"], "canvas2");
+        assert_eq!(
+            loaded.physic_paint_outputs[0].frames[0].cache_path,
+            "cache/physic-paint/phys-layer-1/frame-000012-0000.png"
+        );
+        assert_eq!(
+            loaded.physic_paint_outputs[0]
+                .roto_physical
+                .as_ref()
+                .unwrap()["background"],
+            "canvas2"
+        );
 
         let _ = std::fs::remove_dir_all(&test_dir);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn project_save_binds_cache_transaction_for_open_time_commit_recovery() {
+        let test_dir =
+            std::env::temp_dir().join(format!("efx_test_cache_project_save_{}", Uuid::new_v4()));
+        std::fs::create_dir_all(test_dir.join("cache/physic-paint")).expect("canonical cache");
+        std::fs::write(test_dir.join("cache/physic-paint/old.png"), b"old").expect("old cache");
+        let staging_basename = format!(".physic-paint-staging-{}", Uuid::new_v4());
+        let staging = test_dir.join("cache").join(&staging_basename);
+        std::fs::create_dir_all(&staging).expect("staging cache");
+        std::fs::write(staging.join("new.png"), b"new").expect("new cache");
+        let publication =
+            publish_cache_generation(&test_dir, &staging_basename).expect("cache publication");
+        let project = MceProject {
+            version: 1,
+            name: "Cache Transaction".into(),
+            fps: 24,
+            width: 1920,
+            height: 1080,
+            created_at: "2026-08-12T00:00:00Z".into(),
+            modified_at: "2026-08-12T00:00:00Z".into(),
+            sequences: vec![],
+            images: vec![],
+            audio_tracks: vec![],
+            physic_paint_outputs: vec![],
+        };
+        let project_path = test_dir.join("project.mce");
+
+        save_project(
+            &project,
+            project_path.to_str().unwrap(),
+            test_dir.to_str().unwrap(),
+            Some(&publication.transaction_id),
+        )
+        .expect("project save");
+        recover_cache_transaction(&test_dir).expect("open-time recovery");
+
+        assert!(test_dir.join("cache/physic-paint/new.png").exists());
+        assert!(!test_dir.join("cache/physic-paint/old.png").exists());
+        assert!(!staging.exists());
+        assert!(!test_dir
+            .join("cache/.physic-paint-transaction.json")
+            .exists());
+        assert_eq!(
+            open_project(project_path.to_str().unwrap()).unwrap().name,
+            project.name
+        );
+        std::fs::remove_dir_all(test_dir).expect("fixture cleanup");
     }
 
     #[test]
@@ -257,6 +344,7 @@ mod tests {
             &project,
             mce_path.to_str().unwrap(),
             test_dir.to_str().unwrap(),
+            None,
         )
         .unwrap();
 
@@ -459,7 +547,13 @@ mod tests {
 
         // Save
         let mce_path = test_dir.join("test_fx.mce");
-        save_project(&project, mce_path.to_str().unwrap(), test_dir.to_str().unwrap()).unwrap();
+        save_project(
+            &project,
+            mce_path.to_str().unwrap(),
+            test_dir.to_str().unwrap(),
+            None,
+        )
+        .unwrap();
 
         // Open
         let loaded = open_project(mce_path.to_str().unwrap()).unwrap();

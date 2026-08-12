@@ -1,8 +1,9 @@
 use crate::models::project::{MceProject, ProjectData};
+use crate::services::physic_paint_cache::recover_cache_transaction;
 use crate::services::project_io;
+use crate::services::script_library::ScriptLibraryState;
 use tauri::command;
 use tauri::Manager;
-use crate::services::script_library::ScriptLibraryState;
 
 /// Legacy command -- kept for backward compatibility
 #[command]
@@ -31,8 +32,8 @@ pub fn project_create(
     // Canonicalize then register with asset protocol scope.
     // This resolves macOS Unicode normalization differences (NFC vs NFD)
     // that cause 403 errors on paths with accented characters (e.g. "Téléchargements").
-    let canonical = std::fs::canonicalize(&dir_path)
-        .unwrap_or_else(|_| std::path::PathBuf::from(&dir_path));
+    let canonical =
+        std::fs::canonicalize(&dir_path).unwrap_or_else(|_| std::path::PathBuf::from(&dir_path));
     let scope = app.asset_protocol_scope();
     scope
         .allow_directory(&canonical, true)
@@ -56,14 +57,23 @@ pub fn project_create(
 
 /// Save project to .mce file (atomic write)
 #[command]
-pub fn project_save(project: MceProject, file_path: String) -> Result<(), String> {
+pub fn project_save(
+    project: MceProject,
+    file_path: String,
+    physic_paint_cache_transaction_id: Option<String>,
+) -> Result<(), String> {
     let project_root = std::path::Path::new(&file_path)
         .parent()
         .ok_or_else(|| "Invalid file path: no parent directory".to_string())?
         .to_str()
         .ok_or_else(|| "Invalid file path: non-UTF8 characters".to_string())?;
 
-    project_io::save_project(&project, &file_path, project_root)
+    project_io::save_project(
+        &project,
+        &file_path,
+        project_root,
+        physic_paint_cache_transaction_id.as_deref(),
+    )
 }
 
 #[command]
@@ -73,13 +83,32 @@ pub fn project_save_as_with_script_library(
     project: MceProject,
     source_file_path: String,
     destination_file_path: String,
+    physic_paint_cache_transaction_id: Option<String>,
 ) -> Result<crate::services::script_library::ScriptLibraryMigration, String> {
-    if window.label() != "main" { return Err("Save As is owned by the main window".to_string()); }
-    let source_root = std::path::Path::new(&source_file_path).parent().ok_or_else(|| "Source project path has no parent".to_string())?;
-    let destination_root = std::path::Path::new(&destination_file_path).parent().ok_or_else(|| "Destination project path has no parent".to_string())?;
+    if window.label() != "main" {
+        return Err("Save As is owned by the main window".to_string());
+    }
+    let source_root = std::path::Path::new(&source_file_path)
+        .parent()
+        .ok_or_else(|| "Source project path has no parent".to_string())?;
+    let destination_root = std::path::Path::new(&destination_file_path)
+        .parent()
+        .ok_or_else(|| "Destination project path has no parent".to_string())?;
     let destination_path = std::path::Path::new(&destination_file_path);
-    let previous_destination = if destination_path.exists() { Some(std::fs::read(destination_path).map_err(|error| format!("Could not stage existing Save As destination: {error}"))?) } else { None };
-    project_io::save_project(&project, &destination_file_path, destination_root.to_string_lossy().as_ref())?;
+    let previous_destination =
+        if destination_path.exists() {
+            Some(std::fs::read(destination_path).map_err(|error| {
+                format!("Could not stage existing Save As destination: {error}")
+            })?)
+        } else {
+            None
+        };
+    project_io::save_project(
+        &project,
+        &destination_file_path,
+        destination_root.to_string_lossy().as_ref(),
+        physic_paint_cache_transaction_id.as_deref(),
+    )?;
     match state.migrate_active(source_root, destination_root) {
         Ok(migration) => Ok(migration),
         Err(error) => {
@@ -87,8 +116,12 @@ pub fn project_save_as_with_script_library(
                 Some(bytes) => std::fs::write(destination_path, bytes),
                 None => std::fs::remove_file(destination_path),
             };
-            if let Err(rollback_error) = rollback { return Err(format!("Save As script migration failed: {error}. Destination rollback also failed: {rollback_error}")); }
-            Err(format!("Save As script migration failed; destination project was restored: {error}"))
+            if let Err(rollback_error) = rollback {
+                return Err(format!("Save As script migration failed: {error}. Destination rollback also failed: {rollback_error}"));
+            }
+            Err(format!(
+                "Save As script migration failed; destination project was restored: {error}"
+            ))
         }
     }
 }
@@ -104,8 +137,10 @@ pub fn project_open(app: tauri::AppHandle, file_path: String) -> Result<MceProje
     // Canonicalize then register with asset protocol scope.
     // This resolves macOS Unicode normalization differences (NFC vs NFD)
     // that cause 403 errors on paths with accented characters.
-    let canonical = std::fs::canonicalize(project_root)
-        .unwrap_or_else(|_| project_root.to_path_buf());
+    let canonical =
+        std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
+    recover_cache_transaction(&canonical)?;
+
     let scope = app.asset_protocol_scope();
     scope
         .allow_directory(&canonical, true)

@@ -456,6 +456,129 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
   });
 
+  it('atomically restores and reapplies one deleted source phase across Repeat 3', async () => {
+    const records = [record('A', 0), record('B', 1)];
+    const override = record('override-phase-0', 0);
+    const beforeLoop: PhysicPaintRotoLoopClip = {
+      loopId: 'phase-group',
+      placementStart: 0,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 3,
+      mode: 'progressive',
+      scriptId: 'action-phase',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      frameOverrides: [{ appFrame: 0, keyId: override.keyId }],
+    };
+    const afterLoop: PhysicPaintRotoLoopClip = {
+      ...beforeLoop,
+      visibleRanges: [
+        { start: 1, endExclusive: 2 },
+        { start: 3, endExclusive: 4 },
+        { start: 5, endExclusive: 6 },
+      ],
+      frameOverrides: [],
+    };
+    const buildSnapshot = (
+      loopClips: readonly PhysicPaintRotoLoopClip[],
+      groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[],
+    ): RotoPhysicalEditSnapshot<null> => {
+      const interpolation = { enabled: false, mode: 'duplicate' as const };
+      const revision = buildPhysicPaintRotoPhysicalRevision(
+        records,
+        interpolation,
+        loopClips,
+        [],
+        groupOverrideRecords,
+      );
+      return {
+        ...snapshot(records, 'A', 0),
+        records,
+        groupOverrideRecords,
+        interpolation,
+        loopClips,
+        capacity: 10,
+        expectedRevision: revision,
+        stagedRevision: revision,
+      };
+    };
+    const before = buildSnapshot([beforeLoop], [override]);
+    const after = buildSnapshot([afterLoop], []);
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    let current = after;
+    let replayNumber = 0;
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      const source = current;
+      current = target;
+      replayNumber += 1;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
+          target.records,
+          target.interpolation,
+          target.loopClips,
+          target.incomingInterpolationBreakKeyIds,
+          target.groupOverrideRecords,
+        ),
+        operationId: `phase-replay-${replayNumber}`,
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+    const history = useRotoPhysicalEditHistory({
+      identity: {
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 10,
+      },
+      availability,
+      coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => current.records,
+        getInterpolation: () => current.interpolation,
+        getCapacity: () => current.capacity,
+        getLoopClips: () => current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => current,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: after.stagedRevision,
+      operationId: 'delete-group-frame-phase-0',
+      operationKind: 'delete-group-frame',
+      historyProvenance: null,
+    };
+
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(await history.undo()).toBe(true);
+    expect(current.loopClips[0]).toEqual(beforeLoop);
+    expect(current.groupOverrideRecords).toEqual([override]);
+    expect(await history.redo()).toBe(true);
+    expect(current.loopClips[0]).toEqual(afterLoop);
+    expect(current.groupOverrideRecords).toEqual([]);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
   it('records resolver-complete force spacing once and restores exact Repeat 3 lifecycle through Undo and Redo', async () => {
     const beforeRecords = [record('A', 10), record('B', 11), record('C', 12)];
     const beforeLoop: PhysicPaintRotoLoopClip = {

@@ -1897,8 +1897,11 @@ export const physicPaintStore = {
           appFrame,
           keyId: record.keyId,
           contentRevision,
-          cacheRevision: `${contentRevision}:real:${record.keyId}`,
-          renderedFrame: record.payload,
+          cacheRevision: `${contentRevision}:group-phase:${lifecycleTarget.groupId}:${record.keyId}:${lifecycleTarget.cycleOffset}`,
+          renderedFrame: {
+            ...record.payload,
+            appFrame,
+          },
         };
       }
       case 'generated-occurrence': {

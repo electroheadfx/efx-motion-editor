@@ -129,6 +129,41 @@ describe('linked-loop render-source branch (D-26/D-27)', () => {
     expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, 25)).toBeNull();
   });
 
+  it('resolves one Group-local phase override through every matching repeated occurrence', () => {
+    const records = [record('A', 0), record('B', 3), record('C', 6)];
+    const override = record('override-phase-1', 11, 'group-phase');
+    const loop = {
+      ...loopClip('loop-phase', 10, ['A', 'B', 'C'], 3, 10, 7),
+      syncState: 'modified' as const,
+      frameOverrides: [{ appFrame: 11, keyId: override.keyId }],
+    };
+    const interpolation = { enabled: true, mode: 'duplicate' as const };
+    const installed = physicPaintStore.replaceRotoPhysicalDocument(LAYER, {
+      capacity: 40,
+      realKeyRecords: records,
+      groupOverrideRecords: [override],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 18,
+      loopClips: [loop],
+      incomingInterpolationBreakKeyIds: [],
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, [loop], [], [override]),
+    });
+    expect(installed.ok).toBe(true);
+    const revision = physicPaintStore.getRotoPhysicalContentRevision(LAYER)!;
+
+    for (const appFrame of [11, 18, 25]) {
+      const source = expectRealSource(LAYER, appFrame);
+      expect(source.keyId).toBe('override-phase-1');
+      expect(source.appFrame).toBe(appFrame);
+      expect(source.renderedFrame).toEqual({ ...override.payload, appFrame });
+      expect(source.cacheRevision).toBe(`${revision}:group-phase:loop-phase:override-phase-1:1`);
+    }
+    expect(expectRealSource(LAYER, 20).keyId).toBe('B');
+  });
+
   it('one source-key paint edit invalidates the single source cache entry so every occurrence reflects it', () => {
     installRecords(cycleRecords());
     installLoops([loopClip('loop-1', 0, ['A', 'B', 'C', 'D', 'E'], 5)]);

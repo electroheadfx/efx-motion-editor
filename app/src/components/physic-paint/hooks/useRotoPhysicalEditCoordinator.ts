@@ -167,7 +167,7 @@ export interface PhysicPaintRotoGroupFramePaintTransactionPorts {
 }
 
 /**
- * Execute the first exact-occurrence Group Paint authority transaction.
+ * Execute one source-phase Group Paint authority transaction.
  * Acquisition precedes the final snapshot; history is inserted only after an
  * accepted parent settlement; release is terminal and unconditional.
  */
@@ -389,6 +389,8 @@ function semanticDeltaEquals(
   if (left.kind === 'paint-group-frame' && right.kind === 'paint-group-frame') {
     return left.groupId === right.groupId
       && left.appFrame === right.appFrame
+      && left.phaseAppFrame === right.phaseAppFrame
+      && numberArraysEqual(left.affectedAppFrames, right.affectedAppFrames)
       && left.overrideKeyId === right.overrideKeyId
       && left.createdOverride === right.createdOverride
       && left.filledDeletedOccurrence === right.filledDeletedOccurrence
@@ -398,6 +400,8 @@ function semanticDeltaEquals(
   if (left.kind === 'delete-group-frame' && right.kind === 'delete-group-frame') {
     return left.groupId === right.groupId
       && left.appFrame === right.appFrame
+      && left.phaseAppFrame === right.phaseAppFrame
+      && numberArraysEqual(left.affectedAppFrames, right.affectedAppFrames)
       && stringArraysEqual(left.cleanupKeyIds, right.cleanupKeyIds)
       && left.previousRevision === right.previousRevision
       && left.nextRevision === right.nextRevision;
@@ -583,6 +587,20 @@ function applyPayloadRecordsEqual(
       && record.payload.width === candidate.payload.width
       && record.payload.height === candidate.payload.height;
   });
+}
+
+function numberArraysEqual(left: readonly number[], right: readonly number[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function phaseAffectedFrames(
+  semanticDelta: PhysicPaintRotoPhysicalEditSemanticDelta | null,
+): readonly number[] {
+  if (semanticDelta?.kind === 'paint-group-frame'
+    || semanticDelta?.kind === 'delete-group-frame') {
+    return semanticDelta.affectedAppFrames;
+  }
+  return [];
 }
 
 function stringArraysEqual(left: readonly string[], right: readonly string[]): boolean {
@@ -934,10 +952,14 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
 
   const finalizeAccepted = useCallback(
     (
-      pending: PendingPhysicPaintRotoPhysicalEdit,
+      pending: PendingPhysicalEditContext,
       detail: PhysicPaintRotoPhysicalEditApplyResult,
       before: RotoPhysicalEditSnapshot<EngineState>,
     ) => {
+      const affectedFrames = phaseAffectedFrames(pending.semanticDelta);
+      if (affectedFrames.length > 0) {
+        portsRef.current.buffer.evictAcceptedFrames(affectedFrames);
+      }
       const after = captureSnapshot(pending.expectedRevision, pending.stagedRevision);
       if (!after) {
         portsRef.current.status.logDiagnostic('Roto physical edit acceptance failed: launch context changed before after-snapshot capture.');
@@ -1449,6 +1471,8 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
                   kind: 'delete-group-frame',
                   groupId: proposed.impact.groupId,
                   appFrame: groupLifecycleDeleteInput.appFrame,
+                  phaseAppFrame: proposed.impact.phaseAppFrame!,
+                  affectedAppFrames: proposed.impact.affectedAppFrames!,
                   cleanupKeyIds: proposed.impact.cleanupKeyIds,
                   previousRevision: proposed.impact.previousRevision,
                   nextRevision: proposed.impact.nextRevision,

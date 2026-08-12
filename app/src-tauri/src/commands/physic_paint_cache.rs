@@ -15,6 +15,7 @@ pub enum PhysicPaintCacheCleanupStatus {
 #[serde(rename_all = "camelCase")]
 pub struct PhysicPaintCachePublicationResult {
     pub accepted: bool,
+    pub transaction_id: String,
     pub replaced_existing: bool,
 }
 
@@ -43,6 +44,7 @@ pub fn publish_physic_paint_cache_generation(
     let publication = publish_cache_generation(&project_dir, &staging_basename)?;
     Ok(PhysicPaintCachePublicationResult {
         accepted: true,
+        transaction_id: publication.transaction_id,
         replaced_existing: publication.replaced_existing,
     })
 }
@@ -50,13 +52,13 @@ pub fn publish_physic_paint_cache_generation(
 #[tauri::command]
 pub fn settle_physic_paint_cache_generation(
     project_dir: String,
-    staging_basename: String,
+    transaction_id: String,
     action: PhysicPaintCacheSettlementAction,
 ) -> Result<PhysicPaintCacheSettlementResult, String> {
     let project_dir = PathBuf::from(project_dir);
     let settlement = settle_cache_generation(
         &project_dir,
-        &staging_basename,
+        &transaction_id,
         match action {
             PhysicPaintCacheSettlementAction::Commit => CacheSettlementAction::Commit,
             PhysicPaintCacheSettlementAction::Rollback => CacheSettlementAction::Rollback,

@@ -731,6 +731,8 @@ export type PhysicPaintRotoPhysicalEditSemanticDelta =
       readonly kind: 'paint-group-frame';
       readonly groupId: string;
       readonly appFrame: number;
+      readonly phaseAppFrame: number;
+      readonly affectedAppFrames: readonly number[];
       readonly overrideKeyId: string;
       readonly createdOverride: boolean;
       readonly filledDeletedOccurrence: boolean;
@@ -741,6 +743,8 @@ export type PhysicPaintRotoPhysicalEditSemanticDelta =
       readonly kind: 'delete-group-frame';
       readonly groupId: string;
       readonly appFrame: number;
+      readonly phaseAppFrame: number;
+      readonly affectedAppFrames: readonly number[];
       readonly cleanupKeyIds: readonly string[];
       readonly previousRevision: string;
       readonly nextRevision: string;
@@ -1068,18 +1072,30 @@ export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): valu
     return new Set(value.freshKeyIds).size === value.freshKeyIds.length;
   }
   if (value.kind === 'paint-group-frame') {
-    return hasOnlyKeys(value, ['kind', 'groupId', 'appFrame', 'overrideKeyId', 'createdOverride', 'filledDeletedOccurrence', 'previousRevision', 'nextRevision'])
+    return hasOnlyKeys(value, ['kind', 'groupId', 'appFrame', 'phaseAppFrame', 'affectedAppFrames', 'overrideKeyId', 'createdOverride', 'filledDeletedOccurrence', 'previousRevision', 'nextRevision'])
       && isBoundedPhysicalKeyId(value.groupId)
       && isNonNegativeInteger(value.appFrame)
+      && isNonNegativeInteger(value.phaseAppFrame)
+      && Array.isArray(value.affectedAppFrames)
+      && value.affectedAppFrames.length > 0
+      && value.affectedAppFrames.every(isNonNegativeInteger)
+      && new Set(value.affectedAppFrames).size === value.affectedAppFrames.length
+      && value.affectedAppFrames.includes(value.phaseAppFrame)
       && isBoundedPhysicalKeyId(value.overrideKeyId)
       && typeof value.createdOverride === 'boolean'
       && typeof value.filledDeletedOccurrence === 'boolean'
       && hasValidPhysicalRevisionTransition(value);
   }
   if (value.kind === 'delete-group-frame') {
-    return hasOnlyKeys(value, ['kind', 'groupId', 'appFrame', 'cleanupKeyIds', 'previousRevision', 'nextRevision'])
+    return hasOnlyKeys(value, ['kind', 'groupId', 'appFrame', 'phaseAppFrame', 'affectedAppFrames', 'cleanupKeyIds', 'previousRevision', 'nextRevision'])
       && isBoundedPhysicalKeyId(value.groupId)
       && isNonNegativeInteger(value.appFrame)
+      && isNonNegativeInteger(value.phaseAppFrame)
+      && Array.isArray(value.affectedAppFrames)
+      && value.affectedAppFrames.length > 0
+      && value.affectedAppFrames.every(isNonNegativeInteger)
+      && new Set(value.affectedAppFrames).size === value.affectedAppFrames.length
+      && value.affectedAppFrames.includes(value.phaseAppFrame)
       && isUniqueBoundedPhysicalKeyIdCollection(value.cleanupKeyIds)
       && hasValidPhysicalRevisionTransition(value);
   }

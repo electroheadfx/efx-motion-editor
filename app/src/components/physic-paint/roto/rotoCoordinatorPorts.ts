@@ -259,6 +259,7 @@ export interface RotoPhysicalEditBufferPort {
   replaceDirtyFrames: (frames: ReadonlySet<number>) => void;
   replaceLiveOverlayActionCounts: (counts: ReadonlyMap<number, number>) => void;
   setEditableFrameList: (frames: readonly number[]) => void;
+  evictAcceptedFrames: (frames: readonly number[]) => void;
 }
 
 /**

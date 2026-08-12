@@ -3,7 +3,6 @@ import type { PhysicPaintRotoLoopRange } from '../roto/physicsPaintRotoPhysicalR
 import type { PhysicsPaintRotoSpacingSelectionGesture } from '../roto/physicsPaintRotoSpacingSelection';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
-  projectPhysicsPaintLoopClipFragmentPresentation,
   projectPhysicsPaintLoopClipGeometry,
   type PhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
@@ -159,42 +158,52 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
 }
 
 export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
-  const rangesByGroup = new Map<string, PhysicPaintRotoLoopRange[]>();
+  const rangeAuthorityByGroup = new Map<string, {
+    range: PhysicPaintRotoLoopRange;
+    resolvedEnd: number;
+  }>();
   for (const range of props.ranges) {
-    const groupRanges = rangesByGroup.get(range.loopId);
-    if (groupRanges) groupRanges.push(range);
-    else rangesByGroup.set(range.loopId, [range]);
+    const current = rangeAuthorityByGroup.get(range.loopId);
+    if (current) {
+      current.resolvedEnd = Math.max(current.resolvedEnd, range.effectiveEnd);
+    } else {
+      rangeAuthorityByGroup.set(range.loopId, {
+        range,
+        resolvedEnd: range.effectiveEnd,
+      });
+    }
   }
-  const visibleTargets = props.ranges.flatMap((range) => {
-    const basePresentation = props.presentations.get(range.loopId);
+  const visibleTargets = [...rangeAuthorityByGroup.values()].flatMap(({ range, resolvedEnd }) => {
+    const presentation = props.presentations.get(range.loopId);
+    const continuousRange = {
+      ...range,
+      placementStart: range.phaseOrigin,
+      effectiveEnd: range.requestedEnd === 'infinity' ? resolvedEnd : range.requestedEnd,
+    };
     const geometry = projectPhysicsPaintLoopClipGeometry(
-      range,
+      continuousRange,
       props.visibleFrameWindow,
       props.framePitch,
     );
-    const groupRanges = rangesByGroup.get(range.loopId) ?? [range];
-    const fragmentIndex = groupRanges.indexOf(range) + 1;
     const actionLinked = props.linkedLoopClipIds?.includes(range.loopId) ?? false;
-    const presentation = basePresentation
-      ? projectPhysicsPaintLoopClipFragmentPresentation(
-          basePresentation,
-          {
-            index: fragmentIndex,
-            count: groupRanges.length,
-            start: range.placementStart,
-            endExclusive: range.effectiveEnd,
-          },
-          actionLinked ? props.linkedActionName ?? null : null,
-        )
+    const linkedActionName = actionLinked ? props.linkedActionName?.trim() : null;
+    const linkedDescription = linkedActionName
+      ? `Linked to selected Action ${linkedActionName}.`
       : null;
-    return presentation && geometry ? [{
-      key: `${range.loopId}:${fragmentIndex}:${range.placementStart}:${range.effectiveEnd}`,
-      range,
-      presentation,
+    const targetPresentation = presentation
+      ? {
+          ...presentation,
+          linkedDescription,
+          accessibleName: `${presentation.accessibleName}${linkedDescription ? ` ${linkedDescription}` : ''}`,
+        }
+      : null;
+    return targetPresentation && geometry ? [{
+      range: continuousRange,
+      presentation: targetPresentation,
       geometry,
       actionLinked,
-      showStartBoundary: range.placementStart >= props.visibleFrameWindow.startFrame,
-      showEndBoundary: range.effectiveEnd <= props.visibleFrameWindow.endFrameExclusive,
+      showStartBoundary: continuousRange.placementStart >= props.visibleFrameWindow.startFrame,
+      showEndBoundary: continuousRange.effectiveEnd <= props.visibleFrameWindow.endFrameExclusive,
     }] : [];
   });
 
@@ -202,9 +211,9 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
 
   return (
     <div class="physics-paint-loop-clip-rail" role="group" aria-label="Groups">
-      {visibleTargets.map(({ key, range, presentation, geometry, actionLinked, showStartBoundary, showEndBoundary }) => (
+      {visibleTargets.map(({ range, presentation, geometry, actionLinked, showStartBoundary, showEndBoundary }) => (
         <PhysicsPaintLoopClipRailTarget
-          key={key}
+          key={range.loopId}
           range={range}
           presentation={presentation}
           left={geometry.left}

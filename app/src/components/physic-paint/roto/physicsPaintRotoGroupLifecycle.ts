@@ -22,6 +22,8 @@ export interface PhysicPaintRotoGroupFramePaintImpact {
   readonly kind: 'paint-group-frame';
   readonly groupId: string;
   readonly appFrame: number;
+  readonly phaseAppFrame: number;
+  readonly affectedAppFrames: readonly number[];
   readonly overrideKeyId: string;
   readonly createdOverride: boolean;
   readonly filledDeletedOccurrence: boolean;
@@ -80,7 +82,7 @@ function mergeFrameIntoRanges(
 }
 
 /**
- * Build one exact-occurrence Group Paint candidate without publishing authority.
+ * Build one source-phase Group Paint candidate without publishing authority.
  *
  * The helper is intentionally pure: it owns no store, Signal, version, history,
  * cache, selection, rendering, filesystem, DOM, lease, or settlement state.
@@ -92,17 +94,18 @@ export function proposePhysicPaintRotoGroupFramePaint(
   const groupIndex = input.document.loopClips.findIndex((group) => group.loopId === input.groupId);
   if (groupIndex < 0) return reject('group-not-found');
   const group = input.document.loopClips[groupIndex];
-  if (group.syncState === undefined
-    || group.provenanceState === undefined
-    || group.phaseOrigin === undefined
-    || group.originalEndExclusive === undefined
-    || group.visibleRanges === undefined
-    || group.frameOverrides === undefined) return reject('group-lifecycle-unavailable');
+  if (!isLifecycleGroup(group)) return reject('group-lifecycle-unavailable');
   if (!Number.isSafeInteger(input.appFrame)
     || input.appFrame < group.phaseOrigin
     || input.appFrame >= group.originalEndExclusive) return reject('frame-outside-group-extent');
 
-  const existingOverride = group.frameOverrides.find((override) => override.appFrame === input.appFrame);
+  const phase = resolveGroupPhaseAuthority(input.document, group, input.appFrame);
+  if (!phase) return reject('malformed-proposal');
+  const phaseOverrides = group.frameOverrides.filter((override) => (
+    positiveModulo(override.appFrame - group.phaseOrigin, phase.cycleLength) === phase.cycleOffset
+  ));
+  if (phaseOverrides.length > 1) return reject('override-identity-mismatch');
+  const existingOverride = phaseOverrides[0];
   if (existingOverride && existingOverride.keyId !== input.overrideKeyId) {
     return reject('override-identity-mismatch');
   }
@@ -123,25 +126,29 @@ export function proposePhysicPaintRotoGroupFramePaint(
   const overrideRecord: PhysicPaintRotoRealKeyRecord = {
     kind: 'real-key',
     keyId: overrideKeyId,
-    appFrame: input.appFrame,
-    payload: input.renderedPayload,
+    appFrame: phase.phaseAppFrame,
+    payload: {
+      ...input.renderedPayload,
+      appFrame: phase.phaseAppFrame,
+    },
   };
   const nextGroupOverrideRecords = existingOverride
     ? groupOverrideRecords.map((record) => record.keyId === overrideKeyId ? overrideRecord : record)
     : [...groupOverrideRecords, overrideRecord];
-  const filledDeletedOccurrence = !includesFrame(group.visibleRanges, input.appFrame);
+  const filledDeletedOccurrence = phase.affectedAppFrames
+    .some((appFrame) => !includesFrame(group.visibleRanges, appFrame));
+  const visibleRanges = phase.affectedAppFrames.reduce(
+    (ranges, appFrame) => mergeFrameIntoRanges(ranges, appFrame),
+    group.visibleRanges,
+  );
   const nextGroup = {
     ...group,
     syncState: 'modified' as const,
-    visibleRanges: filledDeletedOccurrence
-      ? mergeFrameIntoRanges(group.visibleRanges, input.appFrame)
-      : group.visibleRanges,
-    frameOverrides: existingOverride
-      ? group.frameOverrides
-      : Object.freeze([
-          ...group.frameOverrides,
-          Object.freeze({ appFrame: input.appFrame, keyId: overrideKeyId }),
-        ].sort((left, right) => left.appFrame - right.appFrame)),
+    visibleRanges,
+    frameOverrides: Object.freeze([
+      ...group.frameOverrides.filter((override) => override.keyId !== overrideKeyId),
+      Object.freeze({ appFrame: phase.phaseAppFrame, keyId: overrideKeyId }),
+    ].sort((left, right) => left.appFrame - right.appFrame)),
   };
   const nextLoopClips = input.document.loopClips.map((candidate, index) => index === groupIndex ? nextGroup : candidate);
   try {
@@ -162,6 +169,8 @@ export function proposePhysicPaintRotoGroupFramePaint(
       kind: 'paint-group-frame',
       groupId: input.groupId,
       appFrame: input.appFrame,
+      phaseAppFrame: phase.phaseAppFrame,
+      affectedAppFrames: phase.affectedAppFrames,
       overrideKeyId,
       createdOverride: !existingOverride,
       filledDeletedOccurrence,
@@ -206,8 +215,23 @@ export type PhysicPaintRotoGroupFrameTarget =
       repeatInstance: number;
       progress: number;
     }>
-  | Readonly<{ kind: 'override'; groupId: string; appFrame: number; keyId: string }>
-  | Readonly<{ kind: 'group-gap'; groupId: string; appFrame: number }>
+  | Readonly<{
+      kind: 'override';
+      groupId: string;
+      appFrame: number;
+      keyId: string;
+      phaseAppFrame: number;
+      cycleOffset: number;
+      repeatInstance: number;
+    }>
+  | Readonly<{
+      kind: 'group-gap';
+      groupId: string;
+      appFrame: number;
+      phaseAppFrame: number;
+      cycleOffset: number;
+      repeatInstance: number;
+    }>
   | Readonly<{
       kind: 'unresolved-group';
       groupId: string;
@@ -240,6 +264,48 @@ function positiveModulo(value: number, divisor: number): number {
   return ((value % divisor) + divisor) % divisor;
 }
 
+interface PhysicPaintRotoGroupPhaseAuthority {
+  readonly cycleOffset: number;
+  readonly cycleLength: number;
+  readonly phaseAppFrame: number;
+  readonly affectedAppFrames: readonly number[];
+}
+
+function resolveGroupPhaseAuthority(
+  document: Pick<PhysicPaintRotoPhysicalDocument, 'realKeyRecords'>,
+  group: PhysicPaintRotoLoopClip & Required<Pick<
+    PhysicPaintRotoLoopClip,
+    'phaseOrigin' | 'originalEndExclusive'
+  >>,
+  appFrame: number,
+): PhysicPaintRotoGroupPhaseAuthority | null {
+  const recordsById = new Map(document.realKeyRecords.map((record) => [record.keyId, record]));
+  const sourceFrames = group.sourceKeyIds.map((keyId) => recordsById.get(keyId)?.appFrame);
+  if (sourceFrames.some((frame) => frame === undefined)
+    || sourceFrames.some((frame, index) => index > 0 && sourceFrames[index - 1]! >= frame!)) {
+    return null;
+  }
+  const firstSourceFrame = sourceFrames[0]!;
+  const cycleLength = sourceFrames[sourceFrames.length - 1]! - firstSourceFrame + 1;
+  if (!Number.isSafeInteger(cycleLength) || cycleLength <= 0) return null;
+  const cycleOffset = positiveModulo(appFrame - group.phaseOrigin, cycleLength);
+  const phaseAppFrame = group.phaseOrigin + cycleOffset;
+  const affectedAppFrames: number[] = [];
+  for (
+    let candidate = phaseAppFrame;
+    candidate < group.originalEndExclusive;
+    candidate += cycleLength
+  ) {
+    affectedAppFrames.push(candidate);
+  }
+  return Object.freeze({
+    cycleOffset,
+    cycleLength,
+    phaseAppFrame,
+    affectedAppFrames: Object.freeze(affectedAppFrames),
+  });
+}
+
 /** Classify an activation frame from one complete accepted document. */
 export function classifyPhysicPaintRotoGroupFrameTarget(
   input: PhysicPaintRotoGroupFrameTargetInput,
@@ -268,12 +334,52 @@ export function classifyPhysicPaintRotoGroupFrameTarget(
       ? Object.freeze({ kind: 'ordinary-key', appFrame, keyId: record.keyId })
       : Object.freeze({ kind: 'empty', appFrame });
   }
-  const override = group.frameOverrides.find((candidate) => candidate.appFrame === appFrame);
-  if (override) {
-    return Object.freeze({ kind: 'override', groupId: group.loopId, appFrame, keyId: override.keyId });
+  const phase = resolveGroupPhaseAuthority(input.document, group, appFrame);
+  if (!phase) {
+    const missingSourceKeyIds = group.sourceKeyIds.filter((keyId) => (
+      !input.document.realKeyRecords.some((record) => record.keyId === keyId)
+    ));
+    return Object.freeze({
+      kind: 'unresolved-group',
+      groupId: group.loopId,
+      appFrame,
+      missingSourceKeyIds: Object.freeze(missingSourceKeyIds),
+      ...(missingSourceKeyIds.length === 0 ? { invalidSourceTiming: true as const } : {}),
+    });
+  }
+  const repeatInstance = Math.floor((appFrame - group.phaseOrigin) / phase.cycleLength);
+  const phaseOverrides = group.frameOverrides.filter((candidate) => (
+    positiveModulo(candidate.appFrame - group.phaseOrigin, phase.cycleLength) === phase.cycleOffset
+  ));
+  if (phaseOverrides.length === 1 && includesFrame(group.visibleRanges, appFrame)) {
+    return Object.freeze({
+      kind: 'override',
+      groupId: group.loopId,
+      appFrame,
+      keyId: phaseOverrides[0].keyId,
+      phaseAppFrame: phase.phaseAppFrame,
+      cycleOffset: phase.cycleOffset,
+      repeatInstance,
+    });
   }
   if (!includesFrame(group.visibleRanges, appFrame)) {
-    return Object.freeze({ kind: 'group-gap', groupId: group.loopId, appFrame });
+    return Object.freeze({
+      kind: 'group-gap',
+      groupId: group.loopId,
+      appFrame,
+      phaseAppFrame: phase.phaseAppFrame,
+      cycleOffset: phase.cycleOffset,
+      repeatInstance,
+    });
+  }
+  if (phaseOverrides.length > 1) {
+    return Object.freeze({
+      kind: 'unresolved-group',
+      groupId: group.loopId,
+      appFrame,
+      missingSourceKeyIds: Object.freeze([]),
+      invalidSourceTiming: true as const,
+    });
   }
 
   const recordsById = new Map(input.document.realKeyRecords.map((record) => [record.keyId, record]));
@@ -294,10 +400,7 @@ export function classifyPhysicPaintRotoGroupFrameTarget(
 
   const firstSourceFrame = sourceFrames[0]!;
   const sourceOffsets = sourceFrames.map((frame) => frame! - firstSourceFrame);
-  const cycleLength = sourceOffsets[sourceOffsets.length - 1]! + 1;
-  const phaseOffset = appFrame - group.phaseOrigin;
-  const cycleOffset = positiveModulo(phaseOffset, cycleLength);
-  const repeatInstance = Math.floor(phaseOffset / cycleLength);
+  const cycleOffset = phase.cycleOffset;
   const exactSourceIndex = sourceOffsets.indexOf(cycleOffset);
   if (exactSourceIndex >= 0) {
     return Object.freeze({
@@ -339,6 +442,8 @@ export interface PhysicPaintRotoGroupLifecycleImpact {
   readonly kind: 'delete-group-frame' | 'delete-group' | 'regenerate-group';
   readonly groupId: string;
   readonly appFrame?: number;
+  readonly phaseAppFrame?: number;
+  readonly affectedAppFrames?: readonly number[];
   readonly expectedActionRevision?: string;
   readonly cleanupKeyIds: readonly string[];
   readonly previousRevision: string;
@@ -447,8 +552,13 @@ export function proposePhysicPaintRotoDeleteGroupFrame(
     return rejectLifecycle('frame-outside-group-extent');
   }
   if (!includesFrame(group.visibleRanges, input.appFrame)) return rejectLifecycle('frame-not-visible');
+  const phase = resolveGroupPhaseAuthority(input.document, group, input.appFrame);
+  if (!phase) return rejectLifecycle('malformed-proposal');
+  const visibleTargets = phase.affectedAppFrames
+    .filter((appFrame) => includesFrame(group.visibleRanges, appFrame));
+  if (visibleTargets.length === 0) return rejectLifecycle('frame-not-visible');
   const visibleCount = group.visibleRanges.reduce((count, range) => count + range.endExclusive - range.start, 0);
-  if (visibleCount === 1) {
+  if (visibleTargets.length === visibleCount) {
     const deleted = proposePhysicPaintRotoDeleteGroup({
       document: input.document,
       groupId: input.groupId,
@@ -461,21 +571,31 @@ export function proposePhysicPaintRotoDeleteGroupFrame(
         ...deleted.impact,
         kind: 'delete-group-frame',
         appFrame: input.appFrame,
+        phaseAppFrame: phase.phaseAppFrame,
+        affectedAppFrames: phase.affectedAppFrames,
       }),
     });
   }
 
-  const removedOverride = group.frameOverrides.find((override) => override.appFrame === input.appFrame);
+  const removedOverrides = group.frameOverrides.filter((override) => (
+    positiveModulo(override.appFrame - group.phaseOrigin, phase.cycleLength) === phase.cycleOffset
+  ));
+  const visibleRanges = phase.affectedAppFrames.reduce(
+    (ranges, appFrame) => normalizeRangesAfterFrameRemoval(ranges, appFrame),
+    group.visibleRanges,
+  );
+  const removedOverrideKeyIds = new Set(removedOverrides.map((override) => override.keyId));
   const nextGroup = {
     ...group,
     syncState: 'modified' as const,
-    visibleRanges: normalizeRangesAfterFrameRemoval(group.visibleRanges, input.appFrame),
-    frameOverrides: Object.freeze(group.frameOverrides.filter((override) => override.appFrame !== input.appFrame)),
+    visibleRanges,
+    frameOverrides: Object.freeze(group.frameOverrides.filter((override) => !removedOverrideKeyIds.has(override.keyId))),
   };
   const loopClips = input.document.loopClips.map((candidate, index) => index === groupIndex ? nextGroup : candidate);
-  const cleanupKeyIds = removedOverride && !referencedKeyIds(loopClips).has(removedOverride.keyId)
-    ? Object.freeze([removedOverride.keyId])
-    : Object.freeze([] as string[]);
+  const remainingReferences = referencedKeyIds(loopClips);
+  const cleanupKeyIds = Object.freeze([...removedOverrideKeyIds]
+    .filter((keyId) => !remainingReferences.has(keyId))
+    .sort());
   try {
     const proposal = buildLifecycleProposal(input.document, loopClips, cleanupKeyIds);
     return Object.freeze({
@@ -485,6 +605,8 @@ export function proposePhysicPaintRotoDeleteGroupFrame(
         kind: 'delete-group-frame',
         groupId: input.groupId,
         appFrame: input.appFrame,
+        phaseAppFrame: phase.phaseAppFrame,
+        affectedAppFrames: phase.affectedAppFrames,
         cleanupKeyIds,
         previousRevision: input.document.revision,
         nextRevision: proposal.revision,

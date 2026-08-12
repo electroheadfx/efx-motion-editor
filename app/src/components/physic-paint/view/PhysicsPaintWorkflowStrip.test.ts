@@ -64,8 +64,8 @@ function countOccurrences(code: string, literal: string): number {
 
 const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: string }> = [
   { label: 'Add key', guard: 'canAddRotoKey', handler: 'props.onAddRotoKey?.()' },
-  { label: 'Duplicate key', guard: 'canDuplicateRotoKey', handler: 'props.onDuplicateRotoKey?.()' },
   { label: 'Insert key before', guard: 'canInsertRotoKey', handler: 'props.onInsertRotoFrame?.()' },
+  { label: 'Duplicate key', guard: 'canDuplicateRotoKey', handler: 'props.onDuplicateRotoKey?.()' },
   { label: 'Copy key', guard: 'canCopyRotoKey', handler: 'props.onCopyRotoFrame?.()' },
   { label: 'Cut key', guard: 'canCutRotoKey', handler: 'props.onCutRotoFrame?.()' },
   { label: 'Paste key', guard: 'canPasteRotoKey', handler: 'props.onPasteRotoFrame?.()' },
@@ -905,25 +905,25 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     expect(code).not.toContain('<option value="blend">Blend</option>');
   });
 
-  it('orders the bottom action row as layer, Key chip, Add key, Duplicate, Insert, Copy, Paste, Delete, Set Key Space', () => {
+  it('orders the bottom action row as layer, Key chip, Add key, Insert, Duplicate, Copy, Paste, Delete, Set Key Space', () => {
     const row = getActionRowBlock(source());
     const layerIndex = row.indexOf('physics-paint-roto-key-layer');
     const chipIndex = row.indexOf('physics-paint-roto-key-context');
     const addIndex = row.indexOf('aria-label="Add key"');
-    const duplicateIndex = row.indexOf('aria-label="Duplicate key"');
     const insertIndex = row.indexOf(getActionAriaLabelToken('Insert key before'));
+    const duplicateIndex = row.indexOf('aria-label="Duplicate key"');
     const copyIndex = row.indexOf('aria-label="Copy key"');
     const pasteIndex = row.indexOf('aria-label="Paste key"');
     const deleteIndex = row.indexOf('aria-label="Delete key"');
     const spacingIndex = row.indexOf('physics-paint-pill--apply-spacing');
-    for (const index of [layerIndex, chipIndex, addIndex, duplicateIndex, insertIndex, copyIndex, pasteIndex, deleteIndex, spacingIndex]) {
+    for (const index of [layerIndex, chipIndex, addIndex, insertIndex, duplicateIndex, copyIndex, pasteIndex, deleteIndex, spacingIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
     expect(chipIndex).toBeGreaterThan(layerIndex);
     expect(addIndex).toBeGreaterThan(chipIndex);
-    expect(duplicateIndex).toBeGreaterThan(addIndex);
-    expect(insertIndex).toBeGreaterThan(duplicateIndex);
-    expect(copyIndex).toBeGreaterThan(insertIndex);
+    expect(insertIndex).toBeGreaterThan(addIndex);
+    expect(duplicateIndex).toBeGreaterThan(insertIndex);
+    expect(copyIndex).toBeGreaterThan(duplicateIndex);
     expect(pasteIndex).toBeGreaterThan(copyIndex);
     expect(deleteIndex).toBeGreaterThan(pasteIndex);
     expect(spacingIndex).toBeGreaterThan(deleteIndex);

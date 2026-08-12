@@ -47,12 +47,26 @@ export async function projectCreate(name: string, fps: number, dirPath: string):
   return safeInvoke<MceProject>('project_create', { name, fps, dirPath });
 }
 
-export async function projectSave(project: MceProject, filePath: string): Promise<Result<null>> {
-  return safeInvoke<null>('project_save', { project, filePath });
+export async function projectSave(
+  project: MceProject,
+  filePath: string,
+  physicPaintCacheTransactionId: string | null = null,
+): Promise<Result<null>> {
+  return safeInvoke<null>('project_save', { project, filePath, physicPaintCacheTransactionId });
 }
 
-export async function projectSaveAsWithScriptLibrary(project: MceProject, sourceFilePath: string, destinationFilePath: string): Promise<Result<ScriptLibraryMigrationResult>> {
-  return safeInvoke('project_save_as_with_script_library', { project, sourceFilePath, destinationFilePath });
+export async function projectSaveAsWithScriptLibrary(
+  project: MceProject,
+  sourceFilePath: string,
+  destinationFilePath: string,
+  physicPaintCacheTransactionId: string | null = null,
+): Promise<Result<ScriptLibraryMigrationResult>> {
+  return safeInvoke('project_save_as_with_script_library', {
+    project,
+    sourceFilePath,
+    destinationFilePath,
+    physicPaintCacheTransactionId,
+  });
 }
 
 export async function projectOpen(filePath: string): Promise<Result<MceProject>> {
@@ -300,6 +314,7 @@ export async function pathExists(filePath: string): Promise<Result<boolean>> {
 
 export interface PhysicPaintCachePublicationResult {
   accepted: true;
+  transactionId: string;
   replacedExisting: boolean;
 }
 
@@ -321,12 +336,12 @@ export function publishPhysicPaintCacheGeneration(
 
 export function settlePhysicPaintCacheGeneration(
   projectDir: string,
-  stagingBasename: string,
+  transactionId: string,
   action: 'commit' | 'rollback',
 ): Promise<Result<PhysicPaintCacheSettlementResult>> {
   return safeInvoke<PhysicPaintCacheSettlementResult>(
     'settle_physic_paint_cache_generation',
-    { projectDir, stagingBasename, action },
+    { projectDir, transactionId, action },
   );
 }
 

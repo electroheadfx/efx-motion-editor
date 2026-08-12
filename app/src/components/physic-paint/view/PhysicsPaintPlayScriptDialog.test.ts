@@ -936,16 +936,30 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     loopReadout: 'Requested: 15f (5f × 3) · Effective: 8f — shortened by the next clip',
   };
 
-  it('renders the locked title, range readout, and the Update Group / Regenerate… actions', () => {
+  it('renders the locked title, range readout, and the Update Static / Regenerate Group actions', () => {
     const { controller } = createFakeController(loopEditSeed);
     const tree = renderDialog(controller);
     expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe('Edit Group');
     expect(textOf(findOne(tree, byClass('physics-paint-play-script-header-range')))).toBe('F10 · Cycle 5f');
     const footer = findOne(tree, byClass('physics-paint-play-script-actions'));
-    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Update Group'))).toBe('Update Group');
-    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Regenerate…'))).toBe('Regenerate…');
+    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Update Static'))).toBe('Update Static');
+    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Regenerate Group'))).toBe('Regenerate Group');
+    expect(findAll(footer, (vnode) => textOf(vnode) === 'Update Motion')).toHaveLength(0);
     expect(findAll(footer, (vnode) => textOf(vnode) === 'Create Group')).toHaveLength(0);
     expect(findAll(footer, (vnode) => textOf(vnode) === 'Regenerate source cycle')).toHaveLength(0);
+  });
+
+  it('uses Update Motion for a Motion Group without changing the loop-edit action route', () => {
+    const { controller } = createFakeController({
+      ...loopEditSeed,
+      mode: 'progressive',
+      loopEditTarget: { ...target, mode: 'progressive' },
+    });
+    const tree = renderDialog(controller);
+    const updateMotion = findOne(tree, (vnode) => textOf(vnode) === 'Update Motion');
+    handler(updateMotion, 'onClick')();
+    expect(controller.confirm).toHaveBeenCalledTimes(1);
+    expect(findAll(tree, (vnode) => textOf(vnode) === 'Update Static')).toHaveLength(0);
   });
 
   it('keeps the source edit count separate from a longer physical cycle-duration readout', () => {
@@ -992,19 +1006,19 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     expect(textOf(findOne(bar, byClass('physics-paint-play-script-summary-effective')))).toBe('Effective: 8f — shortened by the next clip');
   });
 
-  it('Update Group confirms; Regenerate… opens the source-edit mode for the target loop', () => {
+  it('Update Static confirms; Regenerate Group opens the source-edit mode for the target loop', () => {
     const { controller } = createFakeController(loopEditSeed);
     const tree = renderDialog(controller);
-    handler(findOne(tree, (vnode) => textOf(vnode) === 'Update Group'), 'onClick')();
+    handler(findOne(tree, (vnode) => textOf(vnode) === 'Update Static'), 'onClick')();
     expect(controller.confirm).toHaveBeenCalledTimes(1);
-    handler(findOne(tree, (vnode) => textOf(vnode) === 'Regenerate…'), 'onClick')();
+    handler(findOne(tree, (vnode) => textOf(vnode) === 'Regenerate Group'), 'onClick')();
     expect(controller.openSourceEdit).toHaveBeenCalledWith('L1');
   });
 
-  it('keeps Update Group disabled while Repeat is invalid', () => {
+  it('keeps Update Static disabled while Repeat is invalid', () => {
     const { controller } = createFakeController({ ...loopEditSeed, repeatError: 'Enter a positive integer.' });
     const tree = renderDialog(controller);
-    expect(findOne(tree, (vnode) => textOf(vnode) === 'Update Group').props.disabled).toBe(true);
+    expect(findOne(tree, (vnode) => textOf(vnode) === 'Update Static').props.disabled).toBe(true);
   });
 });
 
@@ -1060,7 +1074,7 @@ describe('PhysicsPaintPlayScriptDialog Group Regenerate confirmation (43.2-09 G3
     ]);
     expect(findAll(tree, (vnode) => vnode.type === 'img' || hasClass(vnode, 'thumbnail'))).toHaveLength(0);
     expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(0);
-    expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Keep local changes'))).toBe('Keep local changes');
+    expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Keep Local Changes'))).toBe('Keep Local Changes');
     expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Group'))).toBe('Regenerate Group');
   });
 
@@ -1087,7 +1101,7 @@ describe('PhysicsPaintPlayScriptDialog Group Regenerate confirmation (43.2-09 G3
   it('returns to Edit Group without mutation, disables acceptance while busy, and keeps stale rejection in an alert', () => {
     const idle = createFakeController(sourceEditSeed);
     let tree = renderDialog(idle.controller);
-    handler(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Keep local changes'), 'onClick')();
+    handler(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Keep Local Changes'), 'onClick')();
     expect(idle.controller.openLoopEdit).toHaveBeenCalledWith('G1');
     expect(idle.controller.confirm).not.toHaveBeenCalled();
 
@@ -1146,12 +1160,14 @@ describe('PhysicsPaintPlayScriptDialog apply-time Link/Create choice (S4, D-05)'
 });
 
 describe('PhysicsPaintPlayScriptDialog 43-06 copy + token contract', () => {
-  it('ships every locked 43-06 dialog string verbatim and never the prohibited terms (D-20)', () => {
-    for (const locked of ['Edit Group', 'Edit Source Cycle', 'Update Group', 'Regenerate…', 'Regenerate source cycle', 'Link to existing cycle', 'Create new cycle']) {
+  it('ships the revised Group action labels in normal casing and never the prohibited terms', () => {
+    for (const locked of ['Edit Group', 'Edit Source Cycle', 'Update Motion', 'Update Static', 'Regenerate Group', 'Regenerate source cycle', 'Keep Local Changes', 'Cancel', 'Link to existing cycle', 'Create new cycle']) {
       expect(source).toContain(locked);
     }
+    expect(source).not.toContain('Update Group');
     expect(source).not.toContain('clip bloquant');
     expect((source.match(/clip bloquant/g) ?? []).length).toBe(0);
+    expect(playScriptCssRule('.physics-paint-play-script-button')).toContain('text-transform: none');
   });
 
   it('introduces no new CSS color tokens — the locked/notice rules reference only the Phase 42 --ps-* set', () => {

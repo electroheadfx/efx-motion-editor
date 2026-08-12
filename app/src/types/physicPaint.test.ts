@@ -87,6 +87,8 @@ function groupLifecycleApplyPayload(overrides: Record<string, unknown> = {}) {
       kind: 'paint-group-frame',
       groupId: 'loop-1',
       appFrame: 1,
+      phaseAppFrame: 1,
+      affectedAppFrames: [1],
       overrideKeyId: 'override-1',
       createdOverride: true,
       filledDeletedOccurrence: false,
@@ -371,6 +373,7 @@ describe('physic paint payload contracts', () => {
   it.each([
     ['delete-group-frame', {
       kind: 'delete-group-frame', groupId: 'loop-1', appFrame: 1,
+      phaseAppFrame: 1, affectedAppFrames: [1],
       cleanupKeyIds: ['override-1'], previousRevision: 'revision-1', nextRevision: 'revision-2',
     }],
     ['delete-group', {

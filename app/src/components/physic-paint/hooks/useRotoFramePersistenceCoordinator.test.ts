@@ -9,6 +9,7 @@ import {
   encodeRotoPhysicalLaunchDocument,
   rejectRotoLoopPlaceholderSource,
   resolveRotoCompletedGroupPaintTarget,
+  resolveRotoLivePixelIdentityKey,
   routeRotoPhysicalPaintFrame,
 } from './useRotoFramePersistenceCoordinator';
 
@@ -133,6 +134,7 @@ type CowGroup = Readonly<{
   groupId: string;
   placementStart: number;
   orderedSourceKeyIds: readonly string[];
+  originalEndExclusive: number;
   visibleRanges: readonly CowRange[];
   frameOverrides: readonly Readonly<{ appFrame: number; keyId: string }>[];
   syncState: 'synchronized' | 'modified';
@@ -170,19 +172,28 @@ function paintControlledGroupFrame(
 ): CowState {
   const group = state.groups.find((candidate) => candidate.groupId === groupId);
   if (!group) throw new Error(`Unknown Group ${groupId}`);
-  const existingOverride = group.frameOverrides.find((override) => override.appFrame === appFrame);
-  const sourceIndex = (appFrame - group.placementStart) % group.orderedSourceKeyIds.length;
-  if (sourceIndex < 0) throw new Error('Frame precedes Group placement');
-  const sourceKeyId = group.orderedSourceKeyIds[sourceIndex];
+  const cycleLength = group.orderedSourceKeyIds.length;
+  const cycleOffset = (appFrame - group.placementStart) % cycleLength;
+  if (cycleOffset < 0) throw new Error('Frame precedes Group placement');
+  const phaseAppFrame = group.placementStart + cycleOffset;
+  const existingOverride = group.frameOverrides.find((override) => (
+    (override.appFrame - group.placementStart) % cycleLength === cycleOffset
+  ));
+  const sourceKeyId = group.orderedSourceKeyIds[cycleOffset];
   const overrideKeyId = existingOverride?.keyId ?? allocateKeyId();
   if (!(sourceKeyId in state.rasterBytes)) throw new Error(`Missing source ${sourceKeyId}`);
+  const affectedAppFrames: number[] = [];
+  for (let frame = phaseAppFrame; frame < group.originalEndExclusive; frame += cycleLength) {
+    affectedAppFrames.push(frame);
+  }
 
   const nextGroup: CowGroup = Object.freeze({
     ...group,
-    visibleRanges: mergeCowFrame(group.visibleRanges, appFrame),
-    frameOverrides: existingOverride
-      ? group.frameOverrides
-      : Object.freeze([...group.frameOverrides, Object.freeze({ appFrame, keyId: overrideKeyId })]),
+    visibleRanges: affectedAppFrames.reduce(mergeCowFrame, group.visibleRanges),
+    frameOverrides: Object.freeze([
+      ...group.frameOverrides.filter((override) => override.keyId !== overrideKeyId),
+      Object.freeze({ appFrame: phaseAppFrame, keyId: overrideKeyId }),
+    ]),
     syncState: 'modified',
   });
   return Object.freeze({
@@ -197,9 +208,12 @@ function paintControlledGroupFrame(
 function resolveControlledGroupBytes(state: CowState, groupId: string, appFrame: number): string {
   const group = state.groups.find((candidate) => candidate.groupId === groupId);
   if (!group) throw new Error(`Unknown Group ${groupId}`);
-  const override = group.frameOverrides.find((candidate) => candidate.appFrame === appFrame);
-  const sourceIndex = (appFrame - group.placementStart) % group.orderedSourceKeyIds.length;
-  const keyId = override?.keyId ?? group.orderedSourceKeyIds[sourceIndex];
+  const cycleLength = group.orderedSourceKeyIds.length;
+  const cycleOffset = (appFrame - group.placementStart) % cycleLength;
+  const override = group.frameOverrides.find((candidate) => (
+    (candidate.appFrame - group.placementStart) % cycleLength === cycleOffset
+  ));
+  const keyId = override?.keyId ?? group.orderedSourceKeyIds[cycleOffset];
   return state.rasterBytes[keyId];
 }
 
@@ -223,19 +237,25 @@ function routedPaintDocument(options: { gapFrame?: number; ambiguous?: boolean }
       appFrame: 8,
       payload: { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,Tw==' },
     },
-    {
-      kind: 'real-key' as const,
-      keyId: 'override-5',
-      appFrame: 5,
-      payload: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,Vg==' },
-    },
   ];
+  const groupOverrideRecords = [{
+    kind: 'real-key' as const,
+    keyId: 'override-5',
+    appFrame: 2,
+    payload: { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,Vg==' },
+  }];
   const visibleRanges = options.gapFrame === undefined
     ? [{ start: 0, endExclusive: 6 }]
-    : [
-        { start: 0, endExclusive: options.gapFrame },
-        { start: options.gapFrame + 1, endExclusive: 6 },
-      ];
+    : options.gapFrame === 4
+      ? [
+          { start: 0, endExclusive: 1 },
+          { start: 2, endExclusive: 4 },
+          { start: 5, endExclusive: 6 },
+        ]
+      : [
+          { start: 0, endExclusive: options.gapFrame },
+          { start: options.gapFrame + 1, endExclusive: 6 },
+        ];
   const group = {
     loopId: 'group-1',
     placementStart: 0,
@@ -247,7 +267,7 @@ function routedPaintDocument(options: { gapFrame?: number; ambiguous?: boolean }
     phaseOrigin: 0,
     originalEndExclusive: 6,
     visibleRanges,
-    frameOverrides: [{ appFrame: 5, keyId: 'override-5' }],
+    frameOverrides: [{ appFrame: 2, keyId: 'override-5' }],
   };
   const loopClips = options.ambiguous
     ? [group, { ...group, loopId: 'group-2', frameOverrides: [] }]
@@ -255,6 +275,7 @@ function routedPaintDocument(options: { gapFrame?: number; ambiguous?: boolean }
   return {
     capacity: 12,
     realKeyRecords: records,
+    groupOverrideRecords,
     interpolation: { enabled: false, mode: 'duplicate' },
     scriptMotion: { deformation: 0, position: 0 },
     background: null,
@@ -285,6 +306,33 @@ describe('Phase 43.2 completed Group Paint target routing', () => {
 
   it('keeps ordinary empty frames on the first-key preparation path', () => {
     expect(resolveRotoCompletedGroupPaintTarget(routedPaintDocument(), 10, null)).toEqual({ kind: 'empty' });
+  });
+});
+
+describe('Phase 43.2 Group-phase live-pixel identity', () => {
+  it('keeps one identity across repeats and after canonical override settlement', () => {
+    const before = routedPaintDocument();
+    const accepted = {
+      ...before,
+      loopClips: before.loopClips.map((group) => group.loopId === 'group-1'
+        ? { ...group, frameOverrides: [{ appFrame: 2, keyId: 'override-5' }] }
+        : group),
+    };
+
+    expect(resolveRotoLivePixelIdentityKey(before, 2)).toBe('group:group-1:phase:2');
+    expect(resolveRotoLivePixelIdentityKey(before, 5)).toBe('group:group-1:phase:2');
+    expect(resolveRotoLivePixelIdentityKey(accepted, 2)).toBe('group:group-1:phase:2');
+    expect(resolveRotoLivePixelIdentityKey(accepted, 5)).toBe('group:group-1:phase:2');
+    expect(resolveRotoLivePixelIdentityKey(before, 8)).toBe('ordinary-8');
+  });
+
+  it('fails closed for empty, unresolved, and ambiguous targets', () => {
+    expect(resolveRotoLivePixelIdentityKey(routedPaintDocument(), 10)).toBeNull();
+    expect(resolveRotoLivePixelIdentityKey({
+      ...routedPaintDocument(),
+      realKeyRecords: routedPaintDocument().realKeyRecords.filter((record) => record.keyId !== 'source-B'),
+    }, 3)).toBeNull();
+    expect(resolveRotoLivePixelIdentityKey(routedPaintDocument({ ambiguous: true }), 3)).toBeNull();
   });
 });
 
@@ -320,7 +368,7 @@ describe('Phase 43.2 production Paint target routing', () => {
     ['generated occurrence', 4, undefined],
     ['existing override', 5, 'override-5'],
     ['deleted Group occurrence', 4, undefined],
-  ] as const)('routes a %s through one exact-frame COW physical edit', async (_label, appFrame, expectedOverrideKeyId) => {
+  ] as const)('routes a %s through one source-phase COW physical edit', async (_label, appFrame, expectedOverrideKeyId) => {
     const document = routedPaintDocument(_label === 'deleted Group occurrence' ? { gapFrame: appFrame } : {});
     const updateOrdinaryKey = vi.fn();
     const executePhysicalEdit = vi.fn(async () => true);
@@ -374,7 +422,7 @@ describe('Phase 43.2 production Paint target routing', () => {
   });
 });
 
-describe('Phase 43.2 exact-frame copy-on-write persistence contract', () => {
+describe('Phase 43.2 source-phase copy-on-write persistence contract', () => {
   const sourceBytes = Object.freeze({
     'source-A': 'bytes-A',
     'source-B': 'bytes-B',
@@ -383,6 +431,7 @@ describe('Phase 43.2 exact-frame copy-on-write persistence contract', () => {
     groupId: 'motion-1',
     placementStart: 0,
     orderedSourceKeyIds: Object.freeze(['source-A', 'source-B']),
+    originalEndExclusive: 6,
     visibleRanges: Object.freeze([Object.freeze({ start: 0, endExclusive: 6 })]),
     frameOverrides: Object.freeze([]),
     syncState: 'synchronized',
@@ -391,9 +440,11 @@ describe('Phase 43.2 exact-frame copy-on-write persistence contract', () => {
     ...motionGroup,
     groupId: 'motion-2',
     placementStart: 6,
+    originalEndExclusive: 12,
+    visibleRanges: Object.freeze([Object.freeze({ start: 6, endExclusive: 12 })]),
   });
 
-  it('isolates one repeated occurrence and one Group before mutating raster bytes', () => {
+  it('propagates one repeated source phase while isolating the selected Group', () => {
     const before: CowState = Object.freeze({
       groups: Object.freeze([motionGroup, sharingGroup]),
       rasterBytes: sourceBytes,
@@ -401,22 +452,50 @@ describe('Phase 43.2 exact-frame copy-on-write persistence contract', () => {
     const after = paintControlledGroupFrame(before, 'motion-1', 4, 'painted-frame-4', () => 'override-4');
 
     expect(resolveControlledGroupBytes(after, 'motion-1', 4)).toBe('painted-frame-4');
-    expect(resolveControlledGroupBytes(after, 'motion-1', 0)).toBe('bytes-A');
+    expect(resolveControlledGroupBytes(after, 'motion-1', 0)).toBe('painted-frame-4');
+    expect(resolveControlledGroupBytes(after, 'motion-1', 2)).toBe('painted-frame-4');
     expect(resolveControlledGroupBytes(after, 'motion-2', 6)).toBe('bytes-A');
     expect(after.rasterBytes['source-A']).toBe('bytes-A');
     expect(after.groups.find((group) => group.groupId === 'motion-1')).toMatchObject({
       syncState: 'modified',
-      frameOverrides: [{ appFrame: 4, keyId: 'override-4' }],
+      frameOverrides: [{ appFrame: 0, keyId: 'override-4' }],
     });
     expect(after.groups.find((group) => group.groupId === 'motion-2')).toBe(sharingGroup);
   });
 
-  it('fills a deleted-range gap, rejoins adjacent ranges, and reuses the exact override identity', () => {
+  it.each([
+    { operation: 'Paint', rasterSequence: ['painted-phase'] },
+    { operation: 'Paint-over', rasterSequence: ['painted-phase', 'painted-over-phase'] },
+    { operation: 'Erase', rasterSequence: ['painted-phase', 'erased-phase'] },
+  ])('propagates $operation raster bytes through every repeat of one source phase', ({ rasterSequence }) => {
+    let allocations = 0;
+    let state: CowState = Object.freeze({
+      groups: Object.freeze([motionGroup, sharingGroup]),
+      rasterBytes: sourceBytes,
+    });
+    for (const rasterBytes of rasterSequence) {
+      state = paintControlledGroupFrame(state, 'motion-1', 4, rasterBytes, () => {
+        allocations += 1;
+        return 'override-phase-0';
+      });
+    }
+
+    const expectedBytes = rasterSequence[rasterSequence.length - 1];
+    for (const appFrame of [0, 2, 4]) {
+      expect(resolveControlledGroupBytes(state, 'motion-1', appFrame)).toBe(expectedBytes);
+    }
+    expect(resolveControlledGroupBytes(state, 'motion-2', 6)).toBe('bytes-A');
+    expect(state.groups[0].frameOverrides).toEqual([{ appFrame: 0, keyId: 'override-phase-0' }]);
+    expect(allocations).toBe(1);
+  });
+
+  it('fills every deleted phase gap and reuses one canonical override identity', () => {
     const gapGroup: CowGroup = Object.freeze({
       ...motionGroup,
       visibleRanges: Object.freeze([
-        Object.freeze({ start: 0, endExclusive: 2 }),
-        Object.freeze({ start: 3, endExclusive: 6 }),
+        Object.freeze({ start: 1, endExclusive: 2 }),
+        Object.freeze({ start: 3, endExclusive: 4 }),
+        Object.freeze({ start: 5, endExclusive: 6 }),
       ]),
       syncState: 'modified',
     });
@@ -432,8 +511,10 @@ describe('Phase 43.2 exact-frame copy-on-write persistence contract', () => {
     });
 
     expect(filled.groups[0].visibleRanges).toEqual([{ start: 0, endExclusive: 6 }]);
-    expect(repainted.groups[0].frameOverrides).toEqual([{ appFrame: 2, keyId: 'override-gap-2' }]);
+    expect(repainted.groups[0].frameOverrides).toEqual([{ appFrame: 0, keyId: 'override-gap-2' }]);
+    expect(resolveControlledGroupBytes(repainted, 'motion-1', 0)).toBe('repainted-gap');
     expect(resolveControlledGroupBytes(repainted, 'motion-1', 2)).toBe('repainted-gap');
+    expect(resolveControlledGroupBytes(repainted, 'motion-1', 4)).toBe('repainted-gap');
     expect(repainted.groups[0].syncState).toBe('modified');
     expect(allocations).toBe(1);
   });

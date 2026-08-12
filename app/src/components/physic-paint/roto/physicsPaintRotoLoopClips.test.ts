@@ -65,7 +65,7 @@ import {
 } from './physicsPaintRotoPhysicalModel';
 import { proposePhysicPaintRotoGroupFramePaint } from './physicsPaintRotoGroupLifecycle';
 import { isPhysicPaintRotoPhysicalEditApplyPayload } from '../../../types/physicPaint';
-import { loadPhysicPaintData, savePhysicPaintData } from '../../../lib/physicPaintPersistence';
+import { loadPhysicPaintData, savePhysicPaintDataWithProjectWrite } from '../../../lib/physicPaintPersistence';
 import type { RuntimePhysicPaintOutput } from '../../../types/project';
 
 /** Minimal valid PNG data URL (real signature bytes) for canonical payloads. */
@@ -360,7 +360,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
     });
   });
 
-  describe('Phase 43.2 Group lifecycle and exact-occurrence Paint tracer', () => {
+  describe('Phase 43.2 Group lifecycle and source-phase Paint tracer', () => {
     const lifecycleFixtures = [
       { name: 'synchronized Group', record: proposedGroup() },
       { name: 'modified Group', record: proposedGroup({ syncState: 'modified' }) },
@@ -441,7 +441,7 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
       expect(() => parsePhysicPaintRotoLoopClips([record])).toThrow();
     });
 
-    it('creates one frozen exact-frame override while preserving every unaffected byte', () => {
+    it('creates one frozen source-phase override while preserving every unaffected byte', () => {
       const group = proposedGroup({
         visibleRanges: [{ start: 0, endExclusive: 7 }, { start: 8, endExclusive: 25 }],
       });
@@ -474,6 +474,8 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
         kind: 'paint-group-frame',
         groupId: 'loop-1',
         appFrame: 7,
+        phaseAppFrame: 7,
+        affectedAppFrames: [7, 20],
         overrideKeyId: 'override-7',
         createdOverride: true,
         filledDeletedOccurrence: true,
@@ -670,6 +672,13 @@ describe('parsePhysicPaintRotoPhysicalDocument incoming interpolation breaks', (
   });
 });
 
+function savePhysicPaintData(
+  projectDir: string,
+  outputs: RuntimePhysicPaintOutput[] | undefined,
+) {
+  return savePhysicPaintDataWithProjectWrite(projectDir, outputs, async () => {});
+}
+
 describe('physicPaintPersistence loopClips save/reopen', () => {
   beforeEach(() => {
     files.clear();
@@ -679,7 +688,7 @@ describe('physicPaintPersistence loopClips save/reopen', () => {
       moveGeneration(projectDir, stagingBasename);
       return {
         ok: true,
-        data: { accepted: true, replacedExisting: false },
+        data: { accepted: true, transactionId: crypto.randomUUID(), replacedExisting: false },
       };
     });
     settlePhysicPaintCacheGeneration.mockResolvedValue({

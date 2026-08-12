@@ -25,6 +25,7 @@ import {
   proposePhysicPaintRotoActionGroupLifecycle,
   proposePhysicPaintRotoDeleteGroup,
   proposePhysicPaintRotoDeleteGroupFrame,
+  proposePhysicPaintRotoGroupFramePaint,
   proposePhysicPaintRotoRegenerateGroup,
 } from './physicsPaintRotoGroupLifecycle';
 import {
@@ -1087,8 +1088,168 @@ function lifecycleDocument(
   });
 }
 
-describe('Phase 43.2 pure Group lifecycle proposals', () => {
-  it('classifies every exact frame target and preserves immutable phase across fragments', () => {
+describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
+  it.each([
+    { repeat: 1, expectedFrames: [1] },
+    { repeat: 2, expectedFrames: [1, 4] },
+    { repeat: 3, expectedFrames: [1, 4, 7] },
+  ])('Paint stores one canonical phase override and resolves it across Repeat $repeat', ({ repeat, expectedFrames }) => {
+    const group = lifecycleGroup({
+      repeat,
+      syncState: 'synchronized',
+      originalEndExclusive: repeat * 3,
+      visibleRanges: [{ start: 0, endExclusive: repeat * 3 }],
+      frameOverrides: [],
+    });
+    const document = lifecycleDocument([group], undefined, undefined, []);
+    const result = proposePhysicPaintRotoGroupFramePaint({
+      document,
+      groupId: 'group-a',
+      appFrame: expectedFrames[expectedFrames.length - 1],
+      overrideKeyId: 'override-phase-1',
+      renderedPayload: lifecycleRecord('override-phase-1', expectedFrames[expectedFrames.length - 1]).payload,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Source-phase Paint must resolve');
+    expect(result.proposal.loopClips[0].frameOverrides).toEqual([
+      { appFrame: 1, keyId: 'override-phase-1' },
+    ]);
+    expect(result.proposal.groupOverrideRecords).toEqual([
+      expect.objectContaining({ keyId: 'override-phase-1', appFrame: 1 }),
+    ]);
+    expect(result.impact).toMatchObject({
+      groupId: 'group-a',
+      appFrame: expectedFrames[expectedFrames.length - 1],
+      phaseAppFrame: 1,
+      affectedAppFrames: expectedFrames,
+    });
+    for (const appFrame of expectedFrames) {
+      expect(classifyPhysicPaintRotoGroupFrameTarget({ document: result.proposal, appFrame })).toEqual({
+        kind: 'override',
+        groupId: 'group-a',
+        appFrame,
+        keyId: 'override-phase-1',
+        phaseAppFrame: 1,
+        cycleOffset: 1,
+        repeatInstance: Math.floor(appFrame / 3),
+      });
+    }
+  });
+
+  it('anchors source-phase Paint to nonzero placement and leaves a source-sharing Group byte-identical', () => {
+    const selected = lifecycleGroup({
+      loopId: 'group-a',
+      placementStart: 10,
+      phaseOrigin: 10,
+      originalEndExclusive: 19,
+      visibleRanges: [{ start: 10, endExclusive: 19 }],
+      frameOverrides: [],
+    });
+    const peer = lifecycleGroup({
+      loopId: 'group-b',
+      placementStart: 21,
+      phaseOrigin: 21,
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 21, endExclusive: 30 }],
+      frameOverrides: [],
+    });
+    const document = lifecycleDocument([selected, peer], undefined, undefined, []);
+    const result = proposePhysicPaintRotoGroupFramePaint({
+      document,
+      groupId: 'group-a',
+      appFrame: 17,
+      overrideKeyId: 'override-phase-1',
+      renderedPayload: lifecycleRecord('override-phase-1', 17).payload,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Placed source-phase Paint must resolve');
+    expect(result.proposal.loopClips).toEqual([
+      expect.objectContaining({
+        loopId: 'group-a',
+        syncState: 'modified',
+        frameOverrides: [{ appFrame: 11, keyId: 'override-phase-1' }],
+      }),
+      peer,
+    ]);
+    expect(result.impact).toMatchObject({
+      phaseAppFrame: 11,
+      affectedAppFrames: [11, 14, 17],
+    });
+  });
+
+  it('Delete Frame removes the selected source phase from every repeat and cleans its one phase override', () => {
+    const group = lifecycleGroup({
+      visibleRanges: [{ start: 0, endExclusive: 9 }],
+      frameOverrides: [{ appFrame: 1, keyId: 'override-phase-1' }],
+    });
+    const result = proposePhysicPaintRotoDeleteGroupFrame({
+      document: lifecycleDocument(
+        [group],
+        undefined,
+        undefined,
+        [lifecycleRecord('override-phase-1', 1)],
+      ),
+      groupId: 'group-a',
+      appFrame: 7,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Phase Delete Frame must resolve');
+    expect(result.proposal.loopClips[0]).toMatchObject({
+      loopId: 'group-a',
+      syncState: 'modified',
+      visibleRanges: [
+        { start: 0, endExclusive: 1 },
+        { start: 2, endExclusive: 4 },
+        { start: 5, endExclusive: 7 },
+        { start: 8, endExclusive: 9 },
+      ],
+      frameOverrides: [],
+    });
+    expect(result.impact).toMatchObject({
+      appFrame: 7,
+      phaseAppFrame: 1,
+      affectedAppFrames: [1, 4, 7],
+      cleanupKeyIds: ['override-phase-1'],
+    });
+  });
+
+  it('Paint into one deleted phase refills every matching repeat through one canonical override', () => {
+    const group = lifecycleGroup({
+      visibleRanges: [
+        { start: 0, endExclusive: 1 },
+        { start: 2, endExclusive: 4 },
+        { start: 5, endExclusive: 7 },
+        { start: 8, endExclusive: 9 },
+      ],
+      frameOverrides: [],
+    });
+    const result = proposePhysicPaintRotoGroupFramePaint({
+      document: lifecycleDocument([group], undefined, undefined, []),
+      groupId: 'group-a',
+      appFrame: 4,
+      overrideKeyId: 'override-phase-1',
+      renderedPayload: lifecycleRecord('override-phase-1', 4).payload,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Phase gap Paint must resolve');
+    expect(result.proposal.loopClips[0]).toMatchObject({
+      syncState: 'modified',
+      visibleRanges: [{ start: 0, endExclusive: 9 }],
+      frameOverrides: [{ appFrame: 1, keyId: 'override-phase-1' }],
+    });
+    expect(result.impact).toMatchObject({
+      appFrame: 4,
+      phaseAppFrame: 1,
+      affectedAppFrames: [1, 4, 7],
+      filledDeletedOccurrence: true,
+    });
+  });
+
+  it('classifies every physical frame target and preserves immutable phase across lifecycle gaps', () => {
     const document = lifecycleDocument();
     expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 0 })).toMatchObject({
       kind: 'source-occurrence',
@@ -1106,11 +1267,17 @@ describe('Phase 43.2 pure Group lifecycle proposals', () => {
       groupId: 'group-a',
       appFrame: 5,
       keyId: 'override-5',
+      phaseAppFrame: 2,
+      cycleOffset: 2,
+      repeatInstance: 1,
     });
     expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 4 })).toEqual({
       kind: 'group-gap',
       groupId: 'group-a',
       appFrame: 4,
+      phaseAppFrame: 1,
+      cycleOffset: 1,
+      repeatInstance: 1,
     });
     expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 20 })).toEqual({
       kind: 'ordinary-key',
@@ -1162,7 +1329,7 @@ describe('Phase 43.2 pure Group lifecycle proposals', () => {
     });
   });
 
-  it('deletes one occurrence by normalized range authority and cleans only its final override reference', () => {
+  it('deletes one source phase by normalized range authority and cleans only its final override reference', () => {
     const result = proposePhysicPaintRotoDeleteGroupFrame({
       document: lifecycleDocument(),
       groupId: 'group-a',
@@ -1171,19 +1338,24 @@ describe('Phase 43.2 pure Group lifecycle proposals', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('Delete Group Frame must resolve');
     expect(result.proposal.loopClips[0].visibleRanges).toEqual([
-      { start: 0, endExclusive: 4 },
-      { start: 6, endExclusive: 9 },
+      { start: 0, endExclusive: 2 },
+      { start: 3, endExclusive: 4 },
+      { start: 6, endExclusive: 8 },
     ]);
     expect(result.proposal.loopClips[0].phaseOrigin).toBe(0);
     expect(result.proposal.loopClips[0].frameOverrides).toEqual([]);
     expect(result.proposal.realKeyRecords.map((record) => record.keyId)).toEqual(['A0', 'A1', 'ordinary']);
     expect(result.proposal.incomingInterpolationBreakKeyIds).toEqual(['A1']);
-    expect(result.impact.cleanupKeyIds).toEqual(['override-5']);
+    expect(result.impact).toMatchObject({
+      phaseAppFrame: 2,
+      affectedAppFrames: [2, 5, 8],
+      cleanupKeyIds: ['override-5'],
+    });
     expect(Object.isFrozen(result.proposal)).toBe(true);
     expect(Object.isFrozen(result.impact)).toBe(true);
   });
 
-  it('shortens first and last visible edges without changing Group identity or phase', () => {
+  it('removes first and last source phases across repeats without changing Group identity or phase', () => {
     const first = proposePhysicPaintRotoDeleteGroupFrame({
       document: lifecycleDocument(),
       groupId: 'group-a',
@@ -1195,7 +1367,11 @@ describe('Phase 43.2 pure Group lifecycle proposals', () => {
       loopId: 'group-a',
       phaseOrigin: 0,
       syncState: 'modified',
-      visibleRanges: [{ start: 1, endExclusive: 4 }, { start: 5, endExclusive: 9 }],
+      visibleRanges: [
+        { start: 1, endExclusive: 3 },
+        { start: 5, endExclusive: 6 },
+        { start: 7, endExclusive: 9 },
+      ],
     });
 
     const last = proposePhysicPaintRotoDeleteGroupFrame({
@@ -1209,7 +1385,11 @@ describe('Phase 43.2 pure Group lifecycle proposals', () => {
       loopId: 'group-a',
       phaseOrigin: 0,
       syncState: 'modified',
-      visibleRanges: [{ start: 0, endExclusive: 4 }, { start: 5, endExclusive: 8 }],
+      visibleRanges: [
+        { start: 0, endExclusive: 2 },
+        { start: 3, endExclusive: 4 },
+        { start: 6, endExclusive: 8 },
+      ],
     });
   });
 

@@ -231,7 +231,7 @@ function renderWorkflowStrip(
   selectedLoopClipIds: readonly string[],
   onSelectLoopClip: (loopId: string | null, gesture?: 'plain' | 'toggle' | 'range') => void,
   onOpenLoopEdit: (loopId: string) => Promise<unknown>,
-  cellProps: Pick<Parameters<typeof PhysicsPaintWorkflowStrip>[0], 'rotoPhysicalCells' | 'cachedRotoFrames' | 'rotoSpacingSelection'> = {},
+  cellProps: Pick<Parameters<typeof PhysicsPaintWorkflowStrip>[0], 'rotoPhysicalCells' | 'cachedRotoFrames' | 'rotoSpacingSelection' | 'rotoKeyRecords' | 'rotoLoopClips'> = {},
 ): unknown {
   hooks.reset();
   return PhysicsPaintWorkflowStrip({
@@ -276,8 +276,11 @@ function explicitGroupRange(start: number, endExclusive: number, overrides: Part
 }
 
 describe('PhysicsPaintLoopClipRail ownership tracer', () => {
-  it('renders explicit fragments as separate targets for one stable selected Group', () => {
-    const ranges = [explicitGroupRange(10, 12), explicitGroupRange(13, 16)];
+  it('renders one continuous target across fragmented visible ranges for one stable selected Group', () => {
+    const ranges = [
+      explicitGroupRange(10, 12, { requestedEnd: 16 }),
+      explicitGroupRange(13, 16, { requestedEnd: 16 }),
+    ];
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'group-a',
       placementStart: 10,
@@ -312,31 +315,113 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
 
     const rail = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail'));
     expect(rail.props['aria-label']).toBe('Groups');
-    const anchors = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-anchor'));
-    expect(anchors.map((anchor) => anchor.props.style)).toEqual([
-      { left: '36px', width: '36px' },
-      { left: '90px', width: '54px' },
-    ]);
-    const targets = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
-    expect(targets).toHaveLength(2);
-    expect(targets.map((target) => target.props['aria-pressed'])).toEqual([true, true]);
-    expect(targets.map((target) => target.props['aria-label'])).toEqual([
-      'Walk Group. Fragment 1 of 2, frames 10 through 11. Motion Group. Modified locally — Regenerate to restore from Action.',
-      'Walk Group. Fragment 2 of 2, frames 13 through 15. Motion Group. Modified locally — Regenerate to restore from Action.',
-    ]);
-    expect(textOf(tree)).toContain('Range F10–F11 · Fragment 1 of 2');
-    expect(textOf(tree)).toContain('Range F13–F15 · Fragment 2 of 2');
+    const anchor = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-anchor'));
+    expect(anchor.props.style).toEqual({ left: '36px', width: '108px' });
+    const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+    expect(target.props['aria-pressed']).toBe(true);
+    expect(target.props['aria-label']).toBe(
+      'Walk Group. Motion Group. Cycle 6f × 1 = 6f. Effective 6 frames. Modified locally — Regenerate to restore from Action.',
+    );
+    expect(hasClass(target, 'selected')).toBe(true);
+    expect(hasClass(target, 'boundary-start')).toBe(true);
+    expect(hasClass(target, 'boundary-end')).toBe(true);
+    expect(textOf(tree)).not.toContain('Fragment');
+    expect(textOf(tree)).not.toContain('Range F');
 
-    const dots = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lifecycle-dot'));
-    expect(dots).toHaveLength(2);
-    expect(dots.every((dot) => hasClass(dot, 'modified'))).toBe(true);
-    expect(dots.map((dot) => dot.props['aria-hidden'])).toEqual(['true', 'true']);
+    const dot = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lifecycle-dot'));
+    expect(hasClass(dot, 'modified')).toBe(true);
+    expect(dot.props['aria-hidden']).toBe('true');
 
     const space = { key: ' ', stopPropagation: vi.fn(), preventDefault: vi.fn() };
-    (targets[1].props.onKeyDown as (event: typeof space) => void)(space);
+    (target.props.onKeyDown as (event: typeof space) => void)(space);
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
     expect(onSelectLoopClip).toHaveBeenLastCalledWith('group-a', 'plain');
     expect(onOpenLoopEdit).not.toHaveBeenCalled();
+  });
+
+  it('keeps deleted Group phases gray under one rail and exposes only true outer endpoint cuts', () => {
+    const records: PhysicPaintRotoRealKeyRecord[] = [
+      { keyId: 'A', appFrame: 0, kind: 'real-key', payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,YQ==' } },
+      { keyId: 'B', appFrame: 1, kind: 'real-key', payload: { frameIndex: 1, appFrame: 1, dataUrl: 'data:image/png;base64,Yg==' } },
+    ];
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'group-a',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 3,
+      mode: 'progressive',
+      scriptId: 'action-a',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 16,
+      visibleRanges: [
+        { start: 10, endExclusive: 11 },
+        { start: 12, endExclusive: 13 },
+        { start: 14, endExclusive: 15 },
+      ],
+      frameOverrides: [],
+    };
+    const ranges = [
+      explicitGroupRange(10, 11, {
+        cycleLength: 2,
+        sourceFrameCount: 2,
+        sourceOffsets: [0, 1],
+        repeat: 3,
+        requestedEnd: 16,
+      }),
+      explicitGroupRange(12, 13, {
+        cycleLength: 2,
+        sourceFrameCount: 2,
+        sourceOffsets: [0, 1],
+        repeat: 3,
+        requestedEnd: 16,
+      }),
+      explicitGroupRange(14, 15, {
+        cycleLength: 2,
+        sourceFrameCount: 2,
+        sourceOffsets: [0, 1],
+        repeat: 3,
+        requestedEnd: 16,
+      }),
+    ];
+    const loopContext = {
+      ranges,
+      keyIdByAppFrame: new Map(records.map((record) => [record.appFrame, record.keyId])),
+      interpolationEnabled: false,
+    };
+    const presentations = new Map([[
+      clip.loopId,
+      projectPhysicsPaintLoopClipPresentation(ranges[0], clip, 'Walk'),
+    ]]);
+
+    const tree = renderWorkflowStrip(
+      loopContext,
+      presentations,
+      [],
+      () => {},
+      async () => {},
+      {
+        rotoKeyRecords: records,
+        rotoLoopClips: [clip],
+      },
+    );
+
+    const cells = new Map(
+      findAll(tree, (vnode) => typeof vnode.props.frame === 'number' && typeof vnode.props.cellClass === 'string')
+        .map((vnode) => [vnode.props.frame as number, String(vnode.props.cellClass)]),
+    );
+    for (const frame of [11, 13, 15]) {
+      expect(cells.get(frame)).toContain('roto-fill-empty');
+    }
+    expect(cells.get(10)).toContain('roto-loop-boundary-start');
+    expect(cells.get(10)).not.toContain('roto-loop-boundary-end');
+    expect(cells.get(15)).toContain('roto-loop-boundary-end');
+    expect(cells.get(15)).not.toContain('roto-loop-boundary-start');
+    for (const frame of [11, 12, 13, 14]) {
+      expect(cells.get(frame)).not.toContain('roto-loop-boundary-start');
+      expect(cells.get(frame)).not.toContain('roto-loop-boundary-end');
+    }
   });
 
   it.each([
@@ -386,7 +471,10 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     ['progressive', '#c4b5fd'],
     ['static', '#67e8f9'],
   ] as const)('keeps linked-only %s Groups to one passive 3px segment', (mode, linkedColor) => {
-    const ranges = [explicitGroupRange(10, 12), explicitGroupRange(13, 16)];
+    const ranges = [
+      explicitGroupRange(10, 12, { requestedEnd: 16 }),
+      explicitGroupRange(13, 16, { requestedEnd: 16 }),
+    ];
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'group-a', placementStart: 10, sourceKeyIds: ['A'], repeat: 1,
       mode, scriptId: 'action-a', syncState: 'synchronized', provenanceState: 'attached',
@@ -406,16 +494,16 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       onOpenLoopEdit: vi.fn(async () => {}),
     }), new Set(['PhysicsPaintLoopClipRailTarget']));
 
-    const targets = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
-    expect(targets).toHaveLength(2);
-    expect(targets.every((target) => hasClass(target, 'action-linked'))).toBe(true);
-    expect(targets.every((target) => !hasClass(target, 'selected'))).toBe(true);
-    expect(targets.map((target) => target.props['aria-pressed'])).toEqual([false, false]);
-    expect(targets.every((target) => target.props['aria-selected'] === undefined)).toBe(true);
-    expect(targets.every((target) => String(target.props['aria-label']).endsWith('Linked to selected Action Pose.'))).toBe(true);
-    for (const target of targets) {
-      expect(findAll(target, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-segment'))).toHaveLength(1);
-    }
+    const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+    expect(hasClass(target, 'action-linked')).toBe(true);
+    expect(hasClass(target, 'selected')).toBe(false);
+    expect(target.props['aria-pressed']).toBe(false);
+    expect(target.props['aria-selected']).toBeUndefined();
+    expect(String(target.props['aria-label'])).toBe(
+      `Pose Group. ${mode === 'static' ? 'Static' : 'Motion'} Group. Cycle 6f × 1 = 6f. Effective 6 frames. Synchronized with Action. Linked to selected Action Pose.`,
+    );
+    expect(String(target.props['aria-label'])).not.toContain('Fragment');
+    expect(findAll(target, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-segment'))).toHaveLength(1);
 
     const linkedSegmentRule = cssRule(`.physics-paint-loop-clip-rail-target.mode-${mode}.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment {`);
     expect(linkedSegmentRule).toContain(`background: ${linkedColor}`);

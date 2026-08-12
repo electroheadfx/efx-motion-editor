@@ -1,4 +1,4 @@
-import { exists, mkdir, readDir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs';
+import { exists, mkdir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs';
 import {
   buildPhysicPaintRotoProjectEquality,
   isPhysicPaintRotoLoopClip,
@@ -109,20 +109,6 @@ async function removeStagingGeneration(path: string): Promise<void> {
   }
 }
 
-async function cleanupStaleStagingGenerations(projectDir: string): Promise<void> {
-  const cacheParent = `${projectDir}/${PHYSIC_PAINT_CACHE_PARENT_DIR}`;
-  try {
-    if (!(await exists(cacheParent))) return;
-    const entries = await readDir(cacheParent);
-    await Promise.all(entries
-      .filter((entry) => entry.isDirectory && entry.name.startsWith(PHYSIC_PAINT_STAGING_PREFIX))
-      .map((entry) => removeStagingGeneration(`${cacheParent}/${entry.name}`)));
-  } catch {
-    // A stale generation never owns canonical authority. Failure to inspect or
-    // remove one must not block assembling and publishing a fresh generation.
-  }
-}
-
 function buildSaveCacheKey(projectDir: string, outputs: readonly RuntimePhysicPaintOutput[]): string {
   const segments = outputs.map((output) => {
     const physical = output.roto_physical ? buildPhysicPaintRotoProjectEquality(output.roto_physical) : 'none';
@@ -164,7 +150,7 @@ interface PreparedPhysicPaintSave {
   readonly persistedOutputs: McePhysicPaintOutput[];
   readonly cacheKey: string | null;
   readonly publication: Readonly<{
-    stagingBasename: string;
+    transactionId: string;
   }> | null;
   readonly removeCanonicalAfterCommit: boolean;
 }
@@ -179,7 +165,6 @@ async function preparePhysicPaintDataSave(projectDir: string, outputs: RuntimePh
     };
   }
 
-  await cleanupStaleStagingGenerations(projectDir);
   const validatedOutputs = validateRuntimeOutputs(outputs);
   const cacheKey = buildSaveCacheKey(projectDir, validatedOutputs);
   const cached = savedOutputCache.get(cacheKey);
@@ -300,7 +285,7 @@ async function preparePhysicPaintDataSave(projectDir: string, outputs: RuntimePh
     return {
       persistedOutputs,
       cacheKey,
-      publication: { stagingBasename },
+      publication: { transactionId: publication.data.transactionId },
       removeCanonicalAfterCommit: false,
     };
   } catch (error) {
@@ -317,7 +302,7 @@ async function settlePreparedPhysicPaintSave(
   if (prepared.publication) {
     const result = await settlePhysicPaintCacheGeneration(
       projectDir,
-      prepared.publication.stagingBasename,
+      prepared.publication.transactionId,
       action,
     );
     if (!result.ok && action === 'rollback') throw new Error(result.error);
@@ -335,24 +320,23 @@ async function settlePreparedPhysicPaintSave(
 export async function savePhysicPaintDataWithProjectWrite(
   projectDir: string,
   outputs: RuntimePhysicPaintOutput[] | undefined,
-  writeProject: (persistedOutputs: McePhysicPaintOutput[]) => Promise<void>,
+  writeProject: (
+    persistedOutputs: McePhysicPaintOutput[],
+    cacheTransactionId: string | null,
+  ) => Promise<void>,
 ): Promise<McePhysicPaintOutput[]> {
   const prepared = await preparePhysicPaintDataSave(projectDir, outputs);
   try {
-    await writeProject(prepared.persistedOutputs);
+    await writeProject(
+      prepared.persistedOutputs,
+      prepared.publication?.transactionId ?? null,
+    );
   } catch (error) {
     await settlePreparedPhysicPaintSave(projectDir, prepared, 'rollback');
     throw error;
   }
   await settlePreparedPhysicPaintSave(projectDir, prepared, 'commit');
   return prepared.persistedOutputs;
-}
-
-export function savePhysicPaintData(
-  projectDir: string,
-  outputs: RuntimePhysicPaintOutput[] | undefined,
-): Promise<McePhysicPaintOutput[]> {
-  return savePhysicPaintDataWithProjectWrite(projectDir, outputs, async () => {});
 }
 
 function parsePersistedPhysicalDocument(value: unknown): McePhysicPaintRotoPhysicalDocument {
