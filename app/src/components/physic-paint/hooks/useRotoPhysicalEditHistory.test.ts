@@ -137,6 +137,149 @@ function spacingSnapshot(
   };
 }
 
+describe('useRotoPhysicalEditHistory ordinary-key delete beside Groups', () => {
+  const deleteBesideGroupsClips = (): PhysicPaintRotoLoopClip[] => [{
+    ...lifecycleLoopClip(),
+    loopId: 'group-1',
+    sourceKeyIds: ['G1A', 'G1B'],
+    phaseOrigin: 0,
+    originalEndExclusive: 4,
+    visibleRanges: [{ start: 0, endExclusive: 4 }],
+  }, {
+    ...lifecycleLoopClip(),
+    loopId: 'group-2',
+    placementStart: 8,
+    sourceKeyIds: ['G2A', 'G2B'],
+    phaseOrigin: 8,
+    originalEndExclusive: 12,
+    visibleRanges: [{ start: 8, endExclusive: 12 }],
+  }];
+
+  it('restores the exact pre-delete document through Undo and removes only X again through Redo', async () => {
+    const loopClips = deleteBesideGroupsClips();
+    const records = [
+      record('G1A', 0),
+      record('G1B', 1),
+      record('X', 5),
+      record('G2A', 8),
+      record('G2B', 9),
+    ];
+    const before = spacingSnapshot(records, loopClips, 'X', 5);
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: { kind: 'delete-key', selectedKeyId: 'X' },
+      capacity: 100,
+      interpolationEnabled: false,
+      loopClips,
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Ordinary-key delete beside Groups must resolve');
+    const afterRecords = resolution.proposal.assignments.map(({ keyId, appFrame }) => record(keyId, appFrame));
+    const after = spacingSnapshot(
+      afterRecords,
+      loopClips,
+      resolution.proposal.selectedKeyId,
+      resolution.proposal.selectedAppFrame,
+    );
+
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    let current = after;
+    let replayNumber = 0;
+
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      const source = current;
+      current = target;
+      replayNumber += 1;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
+          target.records,
+          target.interpolation,
+          target.loopClips,
+          target.incomingInterpolationBreakKeyIds,
+        ),
+        operationId: `replay-${replayNumber}`,
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+
+    const history = useRotoPhysicalEditHistory({
+      identity: {
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 100,
+      },
+      availability,
+      coordinator: {
+        executePhysicalEdit: executePhysicalEdit as never,
+        pendingOperationId,
+        acceptedOutput,
+      },
+      recordsPort: {
+        getRecords: () => current.records,
+        getInterpolation: () => current.interpolation,
+        getCapacity: () => current.capacity,
+        getLoopClips: () => current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => current,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
+        after.records,
+        after.interpolation,
+        after.loopClips,
+        after.incomingInterpolationBreakKeyIds,
+      ),
+      operationId: 'delete-x-1',
+      operationKind: 'delete-key',
+      historyProvenance: null,
+    };
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(after.records.map(({ keyId, appFrame }) => ({ keyId, appFrame }))).toEqual([
+      { keyId: 'G1A', appFrame: 0 },
+      { keyId: 'G1B', appFrame: 1 },
+      { keyId: 'G2A', appFrame: 8 },
+      { keyId: 'G2B', appFrame: 9 },
+    ]);
+
+    expect(await history.undo()).toBe(true);
+    expect(current.records.map(({ keyId, appFrame }) => ({ keyId, appFrame }))).toEqual(
+      before.records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+    );
+    expect(JSON.stringify(current.loopClips)).toBe(JSON.stringify(before.loopClips));
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    expect(await history.redo()).toBe(true);
+    expect(current.records.map(({ keyId, appFrame }) => ({ keyId, appFrame }))).toEqual([
+      { keyId: 'G1A', appFrame: 0 },
+      { keyId: 'G1B', appFrame: 1 },
+      { keyId: 'G2A', appFrame: 8 },
+      { keyId: 'G2B', appFrame: 9 },
+    ]);
+    expect(JSON.stringify(current.loopClips)).toBe(JSON.stringify(before.loopClips));
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('useRotoPhysicalEditHistory rigid group drag', () => {
   it('records one accepted move, then moves the same command through one Undo and one Redo', async () => {
     const before = snapshot([

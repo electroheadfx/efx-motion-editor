@@ -1088,6 +1088,143 @@ function lifecycleDocument(
   });
 }
 
+describe('Phase 43.2 ordinary-key delete beside Groups', () => {
+  const group1: PhysicPaintRotoLoopClip = {
+    loopId: 'group-1',
+    placementStart: 0,
+    sourceKeyIds: ['G1A', 'G1B'],
+    repeat: 2,
+    mode: 'progressive',
+    scriptId: 'action-1',
+    motion: { deformation: 0, position: 0 },
+    overrideColor: null,
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: 0,
+    originalEndExclusive: 4,
+    visibleRanges: [{ start: 0, endExclusive: 4 }],
+    frameOverrides: [],
+  };
+  const group2: PhysicPaintRotoLoopClip = {
+    ...group1,
+    loopId: 'group-2',
+    placementStart: 8,
+    sourceKeyIds: ['G2A', 'G2B'],
+    phaseOrigin: 8,
+    originalEndExclusive: 12,
+    visibleRanges: [{ start: 8, endExclusive: 12 }],
+  };
+  const identities: PhysicPaintRotoKeyIdentity[] = [
+    { keyId: 'G1A', appFrame: 0 },
+    { keyId: 'G1B', appFrame: 1 },
+    { keyId: 'X', appFrame: 5 },
+    { keyId: 'G2A', appFrame: 8 },
+    { keyId: 'G2B', appFrame: 9 },
+  ];
+
+  it('removes only the ordinary key and preserves absolute Group positions and records', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      intent: { kind: 'delete-key', selectedKeyId: 'X' },
+      capacity: 32,
+      interpolationEnabled: false,
+      loopClips: [group1, group2],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Ordinary-key delete beside Groups must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      G1A: 0,
+      G1B: 1,
+      G2A: 8,
+      G2B: 9,
+    });
+    expect(resolution.proposal.removedKeyIds).toEqual(['X']);
+    expect(resolution.proposal.changes).toEqual([]);
+    expect(resolution.proposal.nextLoopClips).toBeNull();
+    expect(resolution.proposal.selectedKeyId).toBe('G2A');
+    expect(resolution.proposal.selectedAppFrame).toBe(8);
+  });
+
+  it('keeps the legacy left ripple when no surviving key is Group-owned', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'A', appFrame: 0 },
+        { keyId: 'X', appFrame: 5 },
+        { keyId: 'B', appFrame: 8 },
+      ],
+      intent: { kind: 'delete-key', selectedKeyId: 'X' },
+      capacity: 32,
+      interpolationEnabled: false,
+      loopClips: [group1],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Ordinary-only delete must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      A: 0,
+      B: 7,
+    });
+  });
+
+  it('suppresses the ripple for ordinary survivors between the removed slot and the next Group', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+        { keyId: 'Y', appFrame: 6 },
+        { keyId: 'G2A', appFrame: 8 },
+        { keyId: 'G2B', appFrame: 9 },
+      ],
+      intent: { kind: 'delete-key', selectedKeyId: 'X' },
+      capacity: 32,
+      interpolationEnabled: false,
+      loopClips: [group1, group2],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Delete before an ordinary survivor must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      G1A: 0,
+      G1B: 1,
+      Y: 6,
+      G2A: 8,
+      G2B: 9,
+    });
+    expect(resolution.proposal.changes).toEqual([]);
+  });
+
+  it('applies the same absolute-position guard to delete-key-group beside Groups', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X1', appFrame: 5 },
+        { keyId: 'X2', appFrame: 6 },
+        { keyId: 'G2A', appFrame: 8 },
+        { keyId: 'G2B', appFrame: 9 },
+      ],
+      intent: { kind: 'delete-key-group', keyIds: ['X1', 'X2'] },
+      capacity: 32,
+      interpolationEnabled: false,
+      loopClips: [group1, group2],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Group delete beside Groups must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      G1A: 0,
+      G1B: 1,
+      G2A: 8,
+      G2B: 9,
+    });
+    expect(resolution.proposal.removedKeyIds).toEqual(['X1', 'X2']);
+    expect(resolution.proposal.changes).toEqual([]);
+    expect(resolution.proposal.nextLoopClips).toBeNull();
+  });
+});
+
 describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
   it.each([
     { repeat: 1, expectedFrames: [1] },

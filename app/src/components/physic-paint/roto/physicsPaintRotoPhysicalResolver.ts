@@ -25,7 +25,11 @@
  * - D-06: Delete removes the selected identity and its physical slot, shifts
  *   every later survivor left by exactly one, preserves survivor payload/
  *   identity, selects deterministically, and returns one immutable complete
- *   proposal.
+ *   proposal. 43.2 amendment: when any surviving key after the removed slot
+ *   is Group-referenced, the left ripple is suppressed — every survivor keeps
+ *   its absolute physical position and the removed slot stays empty, so
+ *   Group-owned source keys can never be compacted against their unchanged
+ *   lifecycle records.
  * - D-07/D-29: single-key Drag to an empty/generated physical cell remains a
  *   source-closing cut-and-insert at the direct requested appFrame. Occupied
  *   before/after identity boundaries remove only the moved identity, preserve
@@ -1077,8 +1081,18 @@ function buildInsertEmptySegmentCandidate(
 function buildDeleteCandidate(
   identities: ValidatedIdentities,
   selectedKeyId: string,
+  loopReferencedKeyIds?: ReadonlySet<string>,
 ): Candidate {
   const selectedFrame = identities.framesByKeyId.get(selectedKeyId) as number;
+  // 43.2 ordinary-delete ownership guard: when ANY surviving key after the
+  // removed slot is Group-referenced, the left ripple is suppressed entirely —
+  // every survivor keeps its absolute physical position and the removed slot
+  // stays empty. Compacting Group-owned source keys against their unchanged
+  // lifecycle records (placementStart/phaseOrigin/extent) corrupts the Group.
+  const suppressRipple = loopReferencedKeyIds !== undefined
+    && identities.ordered.some((identity) => (
+      identity.appFrame > selectedFrame && loopReferencedKeyIds.has(identity.keyId)
+    ));
   const mapping = new Map<string, number>();
   const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
   const expectedKeyIds = new Set<string>();
@@ -1088,15 +1102,15 @@ function buildDeleteCandidate(
   for (const identity of identities.ordered) {
     if (identity.keyId === selectedKeyId) continue;
     expectedKeyIds.add(identity.keyId);
-    if (identity.appFrame > selectedFrame) {
+    if (identity.appFrame > selectedFrame && !suppressRipple) {
       mapping.set(identity.keyId, identity.appFrame - 1);
       roleByKeyId.set(identity.keyId, 'ripple-left');
-      if (successorKeyId === null && identity.appFrame > selectedFrame) {
-        // Track the smallest-frame survivor strictly after the removed slot.
-        successorKeyId = identity.keyId;
-      }
     } else {
       mapping.set(identity.keyId, identity.appFrame);
+    }
+    if (identity.appFrame > selectedFrame && successorKeyId === null) {
+      // Track the smallest-frame survivor strictly after the removed slot.
+      successorKeyId = identity.keyId;
     }
     if (identity.appFrame < selectedFrame) {
       previousKeyId = identity.keyId;
@@ -1133,6 +1147,7 @@ function buildDeleteCandidate(
 function buildDeleteGroupCandidate(
   identities: ValidatedIdentities,
   keyIds: readonly string[],
+  loopReferencedKeyIds?: ReadonlySet<string>,
 ): Candidate {
   const removalSet = new Set(keyIds);
   let minRemovedFrame = Number.POSITIVE_INFINITY;
@@ -1145,6 +1160,16 @@ function buildDeleteGroupCandidate(
     if (identity.appFrame > maxRemovedFrame) maxRemovedFrame = identity.appFrame;
   }
 
+  // 43.2 ownership guard (same rule as delete-key): when ANY surviving key
+  // after the removed group's last position is Group-referenced, the left
+  // ripple is suppressed entirely so Group-owned source keys keep absolute
+  // physical positions against their unchanged lifecycle records.
+  const suppressRipple = loopReferencedKeyIds !== undefined
+    && identities.ordered.some((identity) => (
+      !removalSet.has(identity.keyId)
+      && identity.appFrame > maxRemovedFrame
+      && loopReferencedKeyIds.has(identity.keyId)
+    ));
   const mapping = new Map<string, number>();
   const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
   const expectedKeyIds = new Set<string>();
@@ -1155,8 +1180,10 @@ function buildDeleteGroupCandidate(
     if (removalSet.has(identity.keyId)) continue;
     expectedKeyIds.add(identity.keyId);
     let shift = 0;
-    for (const removedFrame of removedFramesAsc) {
-      if (removedFrame < identity.appFrame) shift += 1;
+    if (!suppressRipple) {
+      for (const removedFrame of removedFramesAsc) {
+        if (removedFrame < identity.appFrame) shift += 1;
+      }
     }
     mapping.set(identity.keyId, identity.appFrame - shift);
     if (shift > 0) roleByKeyId.set(identity.keyId, 'ripple-left');
@@ -2670,7 +2697,11 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       return fail('loop-source-key-delete-rejected', operationKind, loopSourceKeyDeleteRejectedText(referencingLoops));
     }
     const candidate = {
-      ...buildDeleteCandidate(identities, intent.selectedKeyId),
+      ...buildDeleteCandidate(
+        identities,
+        intent.selectedKeyId,
+        new Set(loopClips.flatMap((clip) => clip.sourceKeyIds)),
+      ),
       nextIncomingInterpolationBreakKeyIds: Object.freeze(
         incomingInterpolationBreakKeyIds.filter((keyId) => keyId !== intent.selectedKeyId),
       ),
@@ -2713,7 +2744,11 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     const removedBreakOwners = new Set(intent.keyIds);
     const candidate = {
-      ...buildDeleteGroupCandidate(identities, intent.keyIds),
+      ...buildDeleteGroupCandidate(
+        identities,
+        intent.keyIds,
+        new Set(loopClips.flatMap((clip) => clip.sourceKeyIds)),
+      ),
       nextIncomingInterpolationBreakKeyIds: Object.freeze(
         incomingInterpolationBreakKeyIds.filter((keyId) => !removedBreakOwners.has(keyId)),
       ),
