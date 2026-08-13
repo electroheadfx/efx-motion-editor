@@ -785,7 +785,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached fre
     ]);
   });
 
-  it('fails closed on unknown loopId, non-source-attached Groups, and out-of-capacity destinations with no proposal', () => {
+  it('fails closed on unknown loopId and out-of-capacity destinations with no proposal', () => {
     const records = buildBaselineRecords();
     const loopClips = buildSourceAttachedGroup();
     const base = {
@@ -805,8 +805,27 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached fre
     expect(unknownLoop.failure.code).toBe('unknown-operation-identity');
     expect('proposal' in unknownLoop).toBe(false);
 
-    const detached = resolvePhysicPaintRotoPhysicalEdit({
+    const overflow = resolvePhysicPaintRotoPhysicalEdit({
       ...base,
+      intent: { kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: 20 },
+    });
+    expect(overflow.ok).toBe(false);
+    if (overflow.ok) throw new Error('out-of-capacity destination must reject');
+    expect(overflow.failure.code).toBe('out-of-range-frame');
+    expect('proposal' in overflow).toBe(false);
+  });
+
+  it('resolves a placement whose start differs from its first source key frame as a placement-only move', () => {
+    // Task 2 (D-11): a placement that does not coincide with its first source
+    // key frame is a duplicated shared-source placement, not a malformed Group.
+    // The move maps every key to its current frame (identity, zero key movement)
+    // and translates only the dragged clip's placementStart to the destination.
+    const records = buildBaselineRecords();
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      capacity: 16,
+      interpolationEnabled: false,
       loopClips: Object.freeze([
         Object.freeze({
           loopId: 'loop-detached',
@@ -818,19 +837,15 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached fre
       ]),
       intent: { kind: 'move-group', loopId: 'loop-detached', destinationPlacementStart: 4 },
     });
-    expect(detached.ok).toBe(false);
-    if (detached.ok) throw new Error('non-source-attached Group must reject');
-    expect(detached.failure.code).toBe('malformed-identity');
-    expect('proposal' in detached).toBe(false);
 
-    const overflow = resolvePhysicPaintRotoPhysicalEdit({
-      ...base,
-      intent: { kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: 20 },
-    });
-    expect(overflow.ok).toBe(false);
-    if (overflow.ok) throw new Error('out-of-capacity destination must reject');
-    expect(overflow.failure.code).toBe('out-of-range-frame');
-    expect('proposal' in overflow).toBe(false);
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('duplicated placement must resolve ok');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 1, B: 3, C: 5, D: 10 });
+    expect(resolution.proposal.nextLoopClips).not.toBeNull();
+    if (!resolution.proposal.nextLoopClips) throw new Error('nextLoopClips must be present');
+    const movedClip = resolution.proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-detached');
+    expect(movedClip?.placementStart).toBe(4);
+    expect(movedClip?.sourceKeyIds).toEqual(['A', 'C']);
   });
 
   it('clamps a destination that would translate a key outside capacity into free space', () => {
@@ -1122,6 +1137,189 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
     expect(clamped.ok).toBe(true);
     if (!clamped.ok) throw new Error('Zero-width clamp must resolve ok');
     expect(clamped.destinationPlacementStart).toBe(2);
+  });
+});
+
+describe('resolvePhysicPaintRotoPhysicalEdit — move-group duplicated shared-source placement (D-11, D-19)', () => {
+  /**
+   * loop-A is the source-attached owner of the [A,C] cycle at [1,9); loop-B is
+   * a duplicated placement of the SAME source cycle starting at 12. Because
+   * loop-B's placementStart (12) differs from its first source key frame (A@1),
+   * dragging loop-B is a placement-only move: the shared source keys never move
+   * and only the dragged placement's interval translates (D-11, D-19).
+   */
+  const buildDuplicatedPlacementClips = (): readonly PhysicPaintRotoLoopClip[] => Object.freeze([
+    Object.freeze({
+      loopId: 'loop-A',
+      placementStart: 1,
+      sourceKeyIds: ['A', 'C'],
+      repeat: 2,
+      mode: 'static',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 1,
+      originalEndExclusive: 9,
+      visibleRanges: Object.freeze([
+        Object.freeze({ start: 1, endExclusive: 4 }),
+        Object.freeze({ start: 5, endExclusive: 9 }),
+      ]),
+      frameOverrides: Object.freeze([]),
+    }),
+    Object.freeze({
+      loopId: 'loop-B',
+      placementStart: 12,
+      sourceKeyIds: ['A', 'C'],
+      repeat: 2,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 12,
+      originalEndExclusive: 20,
+      visibleRanges: Object.freeze([
+        Object.freeze({ start: 12, endExclusive: 15 }),
+        Object.freeze({ start: 17, endExclusive: 20 }),
+      ]),
+      frameOverrides: Object.freeze([]),
+    }),
+  ]);
+
+  const resolveDuplicated = (
+    loopClips: readonly PhysicPaintRotoLoopClip[],
+    loopId: string,
+    destinationPlacementStart: number,
+    extra: { readonly incomingInterpolationBreakKeyIds?: readonly string[] } = {},
+  ): PhysicPaintRotoPhysicalEditResolution => resolvePhysicPaintRotoPhysicalEdit({
+    identities: buildBaselineIdentities(),
+    intent: { kind: 'move-group', loopId, destinationPlacementStart },
+    capacity: 24,
+    interpolationEnabled: false,
+    loopClips,
+    ...extra,
+  });
+
+  it('moves a duplicated placement with identity key mapping and placement-only nextLoopClips', () => {
+    // loop-B [12,20) span 8 dragged right to 14: no D-08 boundary inside
+    // [14,22), so the clamp keeps the proposed destination. delta = 2, but NO
+    // key moves — the mapping is identity. Only the placement interval and its
+    // lifecycle translate by the placement delta.
+    const resolution = resolveDuplicated(buildDuplicatedPlacementClips(), 'loop-B', 14);
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Duplicated placement move must resolve ok');
+    const { proposal } = resolution;
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 1, B: 3, C: 5, D: 10 });
+    expect(proposal.status.operationKind).toBe('move-group');
+    expect(proposal.status.code).toBe('ok-no-change');
+    expect(proposal.nextLoopClips).not.toBeNull();
+    if (!proposal.nextLoopClips) throw new Error('nextLoopClips must be present');
+    expect(proposal.nextLoopClips.length).toBe(2);
+    const movedClip = proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-B');
+    const ownerClip = proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-A');
+    expect(movedClip?.placementStart).toBe(14);
+    expect(movedClip?.phaseOrigin).toBe(14);
+    expect(movedClip?.originalEndExclusive).toBe(22);
+    expect(movedClip?.visibleRanges).toEqual([
+      { start: 14, endExclusive: 17 },
+      { start: 19, endExclusive: 22 },
+    ]);
+    expect(movedClip?.repeat).toBe(2);
+    expect(movedClip?.mode).toBe('progressive');
+    expect(ownerClip?.placementStart).toBe(1);
+    expect(ownerClip?.originalEndExclusive).toBe(9);
+  });
+
+  it('clamps a duplicated placement at physical capacity while the keys stay put', () => {
+    // loop-B [12,20) span 8: the rightmost legal placement in a 24-frame
+    // capacity is 16 (16 + 8 = 24). A proposed destination of 20 clamps to 16.
+    const resolution = resolveDuplicated(buildDuplicatedPlacementClips(), 'loop-B', 20);
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Duplicated placement capacity clamp must resolve ok');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 1, B: 3, C: 5, D: 10 });
+    expect(resolution.proposal.nextLoopClips).not.toBeNull();
+    if (!resolution.proposal.nextLoopClips) throw new Error('nextLoopClips must be present');
+    const movedClip = resolution.proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-B');
+    expect(movedClip?.placementStart).toBe(16);
+    expect(movedClip?.phaseOrigin).toBe(16);
+    expect(movedClip?.originalEndExclusive).toBe(24);
+  });
+
+  it('keeps shared source keys and their owned incoming breaks byte-identical', () => {
+    const resolution = resolveDuplicated(
+      buildDuplicatedPlacementClips(),
+      'loop-B',
+      14,
+      { incomingInterpolationBreakKeyIds: ['C'] },
+    );
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Duplicated placement with breaks must resolve ok');
+    const { proposal } = resolution;
+    // Shared source keys A/C keep their current frames; the break owner C is
+    // untouched and the incoming break collection echoes byte-identical (D-11).
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 1, B: 3, C: 5, D: 10 });
+    expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['C']);
+  });
+
+  it('fails closed on ambiguous attachment authority with no proposal', () => {
+    const missingFirstSource = Object.freeze([
+      Object.freeze({
+        loopId: 'loop-M',
+        placementStart: 2,
+        sourceKeyIds: ['missing', 'C'],
+        repeat: 2,
+        mode: 'static',
+      }) as PhysicPaintRotoLoopClip,
+    ]);
+    const missing = resolveDuplicated(missingFirstSource, 'loop-M', 4);
+    expect(missing.ok).toBe(false);
+    if (missing.ok) throw new Error('missing first source key must reject');
+    expect(missing.failure.code).toBe('malformed-identity');
+    expect('proposal' in missing).toBe(false);
+
+    // Partial lifecycle (5 of 6 fields) fails the all-or-nothing validator.
+    const partialLifecycle = Object.freeze([
+      Object.freeze({
+        loopId: 'loop-P',
+        placementStart: 2,
+        sourceKeyIds: ['A', 'C'],
+        repeat: 2,
+        mode: 'static',
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 2,
+        originalEndExclusive: 10,
+        visibleRanges: Object.freeze([Object.freeze({ start: 2, endExclusive: 10 })]),
+        // frameOverrides intentionally omitted -> lifecycleCount 5 -> invalid
+      }) as unknown as PhysicPaintRotoLoopClip,
+    ]);
+    const malformed = resolveDuplicated(partialLifecycle, 'loop-P', 4);
+    expect(malformed.ok).toBe(false);
+    if (malformed.ok) throw new Error('malformed lifecycle must reject');
+    expect(malformed.failure.code).toBe('malformed-loop-clips');
+    expect('proposal' in malformed).toBe(false);
+  });
+
+  it('never materializes linked occurrences, duplicates source assets, or changes repeat or mode', () => {
+    const loopClips = buildDuplicatedPlacementClips();
+    const resolution = resolveDuplicated(loopClips, 'loop-B', 14);
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Duplicated placement move must resolve ok');
+    const { proposal } = resolution;
+    // No new records: the next collection has exactly the same clips, with only
+    // the dragged placement's interval translated (D-19).
+    expect(proposal.nextLoopClips).not.toBeNull();
+    if (!proposal.nextLoopClips) throw new Error('nextLoopClips must be present');
+    expect(proposal.nextLoopClips.length).toBe(loopClips.length);
+    const movedClip = proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-B');
+    expect(movedClip?.repeat).toBe(2);
+    expect(movedClip?.mode).toBe('progressive');
+    expect(movedClip?.sourceKeyIds).toEqual(['A', 'C']);
+    expect(movedClip?.frameOverrides).toEqual([]);
+    // The owner keeps its exact source key list — no duplication of assets.
+    const ownerClip = proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-A');
+    expect(ownerClip?.sourceKeyIds).toEqual(['A', 'C']);
   });
 });
 
