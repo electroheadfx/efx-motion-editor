@@ -1,6 +1,14 @@
 import { useEffect, useRef } from 'preact/hooks';
 import type { PhysicPaintRotoLoopRange } from '../roto/physicsPaintRotoPhysicalResolver';
 import type { PhysicsPaintRotoSpacingSelectionGesture } from '../roto/physicsPaintRotoSpacingSelection';
+import {
+  usePhysicsPaintGroupRailDrag,
+  type GroupRailDragWindowLike,
+} from '../hooks/usePhysicsPaintGroupRailDrag';
+import type {
+  RotoGroupDragPreparationResult,
+  RotoGroupDragPublication,
+} from '../hooks/useRotoTimelineActions';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
   projectPhysicsPaintLoopClipGeometry,
@@ -26,6 +34,17 @@ export interface PhysicsPaintLoopClipRailProps {
     gesture: PhysicsPaintRotoSpacingSelectionGesture,
   ) => void;
   readonly onOpenLoopEdit: (loopId: string) => Promise<unknown>;
+  /**
+   * Group-drag ports. Absent until the strip wires the bundle (plan 03); the
+   * rail then behaves byte-identically to the pre-drag contract.
+   */
+  readonly prepareRotoGroupDrag?: (
+    loopId: string,
+    destinationPlacementStart: number,
+  ) => RotoGroupDragPreparationResult;
+  readonly commitRotoGroupDrag?: (publication: RotoGroupDragPublication) => Promise<boolean>;
+  /** Injectable window surface for node-environment session tests. */
+  readonly windowLike?: GroupRailDragWindowLike;
 }
 
 interface RailMouseEvent {
@@ -52,11 +71,22 @@ interface RailTargetProps {
   readonly actionLinked: boolean;
   readonly showStartBoundary: boolean;
   readonly showEndBoundary: boolean;
+  readonly framePitch: number;
+  readonly visibleFrameWindow: {
+    readonly startFrame: number;
+    readonly endFrameExclusive: number;
+  };
   readonly onSelectLoopClip: (
     loopId: string,
     gesture: PhysicsPaintRotoSpacingSelectionGesture,
   ) => void;
   readonly onOpenLoopEdit: (loopId: string) => Promise<unknown>;
+  readonly prepareRotoGroupDrag?: (
+    loopId: string,
+    destinationPlacementStart: number,
+  ) => RotoGroupDragPreparationResult;
+  readonly commitRotoGroupDrag?: (publication: RotoGroupDragPublication) => Promise<boolean>;
+  readonly windowLike?: GroupRailDragWindowLike;
 }
 
 function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
@@ -77,11 +107,22 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   };
   useEffect(() => clearClickSequence, []);
 
-  const stopPointerEvent = (event: { stopPropagation(): void }) => {
-    event.stopPropagation();
-  };
+  const { onPointerDown, ghost, consumeClickSuppression } = usePhysicsPaintGroupRailDrag({
+    loopId: range.loopId,
+    range,
+    presentation,
+    framePitch: props.framePitch,
+    visibleFrameWindow: props.visibleFrameWindow,
+    prepareRotoGroupDrag: props.prepareRotoGroupDrag,
+    commitRotoGroupDrag: props.commitRotoGroupDrag,
+    clearClickSequence,
+    windowLike: props.windowLike,
+  });
   const handleClick = (event: RailMouseEvent) => {
     event.stopPropagation();
+    // A completed drag drops a trailing `click` event; consume the suppression
+    // so it cannot re-fire selection or the Edit Group timer (Pitfall 2).
+    if (consumeClickSuppression()) return;
     tooltip.hide();
     const gesture: PhysicsPaintRotoSpacingSelectionGesture = event.shiftKey
       ? 'range'
@@ -140,7 +181,7 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
         class={`physics-paint-loop-clip-rail-target mode-${presentation.mode}${props.selected ? ' selected' : ''}${props.actionLinked ? ' action-linked' : ''}${props.showStartBoundary ? ' boundary-start' : ''}${props.showEndBoundary ? ' boundary-end' : ''}${range.truncated ? ' truncated' : ''}${range.unresolved ? ' unresolved' : ''}`}
         aria-label={presentation.accessibleName}
         aria-pressed={props.selected}
-        onPointerDown={stopPointerEvent}
+        onPointerDown={onPointerDown}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
         onFocus={tooltip.onFocus}
@@ -151,6 +192,13 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
           <span class={`physics-paint-loop-clip-lifecycle-dot ${presentation.synchronizationDot}`} aria-hidden="true" />
         ) : null}
       </button>
+      {ghost.active ? (
+        <span
+          class={`physics-paint-loop-clip-rail-ghost mode-${ghost.mode}${ghost.effectiveZero ? ' effective-zero' : ''}`}
+          style={{ left: `${ghost.left - props.left}px`, width: `${ghost.width}px` }}
+          aria-hidden="true"
+        />
+      ) : null}
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom" anchorRef={anchorRef} topmost>
         <span class="physics-paint-loop-clip-tooltip-copy">
           {presentation.tooltipLines.map((line, index) => index === 0
@@ -230,8 +278,13 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
           actionLinked={actionLinked}
           showStartBoundary={showStartBoundary}
           showEndBoundary={showEndBoundary}
+          framePitch={props.framePitch}
+          visibleFrameWindow={props.visibleFrameWindow}
           onSelectLoopClip={props.onSelectLoopClip}
           onOpenLoopEdit={props.onOpenLoopEdit}
+          prepareRotoGroupDrag={props.prepareRotoGroupDrag}
+          commitRotoGroupDrag={props.commitRotoGroupDrag}
+          windowLike={props.windowLike}
         />
       ))}
     </div>

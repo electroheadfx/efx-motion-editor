@@ -2890,6 +2890,31 @@ button.destructive {
   outline-offset: 2px;
 }
 
+/* 43.3 G2 ghost rail: presentation-only destination proposal. Painted above
+   the accepted 3px rail paint (layer 7) and below the rail focus ring and
+   styled tooltip (layer 8); pointer-events none so the rail target owns all
+   interaction. The accepted rail never translates, dims, or hides before
+   parent acknowledgement (D-01). */
+.physics-paint-loop-clip-rail-ghost {
+  position: absolute;
+  top: 0;
+  height: 3px;
+  background: #8b5cf6;
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.physics-paint-loop-clip-rail-ghost.mode-static {
+  background: #06b6d4;
+}
+
+/* Effective 0f Groups ghost the 8x6px flag glyph at 55% opacity. */
+.physics-paint-loop-clip-rail-ghost.effective-zero {
+  height: 6px;
+  width: 8px;
+}
+
 .physics-paint-loop-clip-tooltip-copy {
   display: flex;
   flex-direction: column;

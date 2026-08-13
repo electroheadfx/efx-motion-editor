@@ -13,6 +13,12 @@ const hooks = vi.hoisted(() => ({
     this.cursor = 0;
     this.idCursor = 0;
   },
+  // Rewind the hook cursor without clearing refs/values so a re-render reads
+  // the same hook indices (used by the drag-session ghost re-render).
+  rewind() {
+    this.cursor = 0;
+    this.idCursor = 0;
+  },
 }));
 
 vi.mock('preact/hooks', () => ({
@@ -70,6 +76,7 @@ import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScrip
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
 import { LOOP_CLIP_FAST_DOUBLE_CLICK_MS, LOOP_CLIP_SINGLE_CLICK_DELAY_MS, PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
+import type { RotoGroupDragPreparationResult, RotoGroupDragPublication } from '../hooks/useRotoTimelineActions';
 import { PhysicsPaintScriptsPanel } from './PhysicsPaintScriptsPanel';
 import { PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
 import {
@@ -1068,5 +1075,276 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(selectedRepeat).not.toContain('outline:');
     expect(cssRule('.physics-paint-roto-cell.roto-loop-boundary-start {')).toContain('border-left-color: #f8fafc');
     expect(cssRule('.physics-paint-roto-cell.roto-loop-boundary-end {')).toContain('border-right-color: #f8fafc');
+  });
+
+  describe('Group Rail drag session (usePhysicsPaintGroupRailDrag)', () => {
+    interface MockWindow {
+      addEventListener: (type: string, listener: (event: unknown) => void) => void;
+      removeEventListener: (type: string, listener: (event: unknown) => void) => void;
+      setTimeout: (handler: () => void) => number;
+      dispatch: (type: string, event: unknown) => void;
+    }
+
+    function createMockWindow(): MockWindow {
+      const listeners = new Map<string, Set<(event: unknown) => void>>();
+      return {
+        addEventListener: (type, listener) => {
+          if (!listeners.has(type)) listeners.set(type, new Set());
+          listeners.get(type)!.add(listener);
+        },
+        removeEventListener: (type, listener) => {
+          listeners.get(type)?.delete(listener);
+        },
+        // No-op: the post-drop click suppression stays latched until the
+        // trailing click consumes it (Pitfall 2 idiom).
+        setTimeout: () => 0,
+        dispatch: (type, event) => {
+          for (const listener of listeners.get(type) ?? []) listener(event);
+        },
+      };
+    }
+
+    function createMockSourceElement() {
+      return {
+        setPointerCapture: vi.fn(),
+        hasPointerCapture: vi.fn(() => true),
+        releasePointerCapture: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        focus: vi.fn(),
+      };
+    }
+
+    function createPointerDown(sourceElement: unknown, clientX = 100, clientY = 50) {
+      return {
+        isPrimary: true,
+        button: 0,
+        metaKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        pointerId: 1,
+        clientX,
+        clientY,
+        currentTarget: sourceElement,
+        stopPropagation: vi.fn(),
+        preventDefault: vi.fn(),
+      };
+    }
+
+    function createPointerMove(clientX: number, clientY = 50) {
+      return { pointerId: 1, clientX, clientY, preventDefault: vi.fn() };
+    }
+
+    function createPointerUp(clientX: number, clientY = 50) {
+      return { pointerId: 1, clientX, clientY, preventDefault: vi.fn() };
+    }
+
+    function createGroupDragPublication(loopId: string, destinationPlacementStart: number): RotoGroupDragPublication {
+      return {
+        proposal: {
+          mapping: new Map([['A', destinationPlacementStart]]),
+          orderedKeyIds: ['A'],
+          assignments: [],
+          cells: [],
+          generatedCells: [],
+          selectedKeyId: 'A',
+          selectedAppFrame: destinationPlacementStart,
+          changes: [],
+          removedKeyId: null,
+          removedKeyIds: [],
+          drag: null,
+          nextRecords: null,
+          nextLoopClips: null,
+          nextIncomingInterpolationBreakKeyIds: null,
+          semanticDelta: null,
+          status: {
+            operationKind: 'move-group',
+            changed: true,
+            affectedKeyIds: ['A'],
+            affectedCount: 1,
+            code: 'ok',
+            text: 'Moved Group.',
+          },
+        },
+        intent: { kind: 'move-group', loopId, destinationPlacementStart },
+        proposalVersion: `v:${loopId}:${destinationPlacementStart}`,
+        expectedLaunch: { operationId: 'op-1', layerId: 'layer-1' },
+        loopId,
+      };
+    }
+
+    function renderDragRail(
+      mockWindow: MockWindow,
+      prepareRotoGroupDrag: (loopId: string, destinationPlacementStart: number) => RotoGroupDragPreparationResult,
+      commitRotoGroupDrag: (publication: RotoGroupDragPublication) => Promise<boolean>,
+      onSelectLoopClip: (loopId: string, gesture: 'plain' | 'toggle' | 'range') => void,
+      onOpenLoopEdit: (loopId: string) => Promise<unknown>,
+    ): unknown {
+      const range = explicitGroupRange(10, 16);
+      const clip: PhysicPaintRotoLoopClip = {
+        loopId: 'group-a', placementStart: 10, sourceKeyIds: ['A'], repeat: 1,
+        mode: 'progressive', scriptId: 'action-a', syncState: 'modified', provenanceState: 'attached',
+      };
+      const presentations = new Map([['group-a', projectPhysicsPaintLoopClipPresentation(range, clip, 'Walk')]]);
+      return materializeNamedComponents(PhysicsPaintLoopClipRail({
+        ranges: [range],
+        presentations,
+        visibleFrameWindow: { startFrame: 8, endFrameExclusive: 18 },
+        framePitch: 18,
+        selectedLoopClipIds: [],
+        onSelectLoopClip,
+        onOpenLoopEdit,
+        prepareRotoGroupDrag,
+        commitRotoGroupDrag,
+        windowLike: mockWindow,
+      }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    }
+
+    it('preserves plain click selection when the pointer releases below the drag threshold', () => {
+      vi.useFakeTimers();
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn();
+      const commitRotoGroupDrag = vi.fn(async () => true);
+      const onSelectLoopClip = vi.fn();
+      const onOpenLoopEdit = vi.fn(async () => {});
+      hooks.reset();
+      const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit);
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+      const sourceElement = createMockSourceElement();
+      const pointerDown = createPointerDown(sourceElement, 100, 50);
+      (target.props.onPointerDown as (event: unknown) => void)(pointerDown);
+      expect(pointerDown.stopPropagation).toHaveBeenCalledOnce();
+      mockWindow.dispatch('pointermove', createPointerMove(102, 50));
+      mockWindow.dispatch('pointerup', createPointerUp(102, 50));
+      expect(prepareRotoGroupDrag).not.toHaveBeenCalled();
+      expect(commitRotoGroupDrag).not.toHaveBeenCalled();
+
+      const clickEvent = { timeStamp: 100, metaKey: false, ctrlKey: false, shiftKey: false, stopPropagation: vi.fn(), preventDefault: vi.fn() };
+      (target.props.onClick as (event: unknown) => void)(clickEvent);
+      vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
+      expect(onSelectLoopClip).toHaveBeenCalledOnce();
+      expect(onSelectLoopClip).toHaveBeenLastCalledWith('group-a', 'plain');
+      expect(onOpenLoopEdit).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it('cancels the pending single-click timer when the drag crosses the threshold', () => {
+      vi.useFakeTimers();
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => ({
+        ok: true,
+        publication: createGroupDragPublication(loopId, destinationPlacementStart),
+      }));
+      const commitRotoGroupDrag = vi.fn(async () => true);
+      const onSelectLoopClip = vi.fn();
+      const onOpenLoopEdit = vi.fn(async () => {});
+      hooks.reset();
+      const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit);
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+      // A plain click schedules the deferred single-click selection.
+      const firstClick = { timeStamp: 100, metaKey: false, ctrlKey: false, shiftKey: false, stopPropagation: vi.fn(), preventDefault: vi.fn() };
+      (target.props.onClick as (event: unknown) => void)(firstClick);
+
+      // A drag crosses the threshold before the timer fires.
+      const sourceElement = createMockSourceElement();
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(sourceElement, 100, 50));
+      mockWindow.dispatch('pointermove', createPointerMove(110, 50));
+      expect(prepareRotoGroupDrag).toHaveBeenCalledOnce();
+      expect(prepareRotoGroupDrag).toHaveBeenLastCalledWith('group-a', 11);
+
+      vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
+      expect(onSelectLoopClip).not.toHaveBeenCalled();
+      expect(onOpenLoopEdit).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it('Escape mid-session cancels with zero commit and restores source focus', () => {
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => ({
+        ok: true,
+        publication: createGroupDragPublication(loopId, destinationPlacementStart),
+      }));
+      const commitRotoGroupDrag = vi.fn(async () => true);
+      const onSelectLoopClip = vi.fn();
+      const onOpenLoopEdit = vi.fn(async () => {});
+      hooks.reset();
+      const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit);
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+      const sourceElement = createMockSourceElement();
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(sourceElement, 100, 50));
+      mockWindow.dispatch('pointermove', createPointerMove(110, 50));
+      expect(prepareRotoGroupDrag).toHaveBeenCalledOnce();
+
+      const escapeEvent = { key: 'Escape', preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() };
+      mockWindow.dispatch('keydown', escapeEvent);
+      expect(escapeEvent.preventDefault).toHaveBeenCalledOnce();
+      expect(escapeEvent.stopImmediatePropagation).toHaveBeenCalledOnce();
+      expect(commitRotoGroupDrag).not.toHaveBeenCalled();
+      expect(onSelectLoopClip).not.toHaveBeenCalled();
+      expect(onOpenLoopEdit).not.toHaveBeenCalled();
+      expect(sourceElement.focus).toHaveBeenCalledOnce();
+
+      // Re-render on the same hook indices: the ghost is gone.
+      hooks.rewind();
+      const tree2 = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit);
+      expect(findAll(tree2, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost'))).toHaveLength(0);
+    });
+
+    it('suppresses the post-drop click so it cannot re-fire selection or Edit Group', () => {
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => ({
+        ok: true,
+        publication: createGroupDragPublication(loopId, destinationPlacementStart),
+      }));
+      const commitRotoGroupDrag = vi.fn(async () => true);
+      const onSelectLoopClip = vi.fn();
+      const onOpenLoopEdit = vi.fn(async () => {});
+      hooks.reset();
+      const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit);
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+      const sourceElement = createMockSourceElement();
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(sourceElement, 100, 50));
+      mockWindow.dispatch('pointermove', createPointerMove(110, 50));
+      mockWindow.dispatch('pointerup', createPointerUp(110, 50));
+      expect(commitRotoGroupDrag).toHaveBeenCalledOnce();
+
+      const clickEvent = { timeStamp: 200, metaKey: false, ctrlKey: false, shiftKey: false, stopPropagation: vi.fn(), preventDefault: vi.fn() };
+      (target.props.onClick as (event: unknown) => void)(clickEvent);
+      expect(onSelectLoopClip).not.toHaveBeenCalled();
+      expect(onOpenLoopEdit).not.toHaveBeenCalled();
+    });
+
+    it('renders the ghost with aria-hidden and pointer-events none at 55% opacity', () => {
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => ({
+        ok: true,
+        publication: createGroupDragPublication(loopId, destinationPlacementStart),
+      }));
+      const commitRotoGroupDrag = vi.fn(async () => true);
+      const onSelectLoopClip = vi.fn();
+      const onOpenLoopEdit = vi.fn(async () => {});
+      hooks.reset();
+      const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit);
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+      const sourceElement = createMockSourceElement();
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(sourceElement, 100, 50));
+      mockWindow.dispatch('pointermove', createPointerMove(110, 50));
+
+      // Re-render on the same hook indices so the session ghost state survives.
+      hooks.rewind();
+      const tree2 = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit);
+      const ghost = findOne(tree2, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost'));
+      expect(ghost.props['aria-hidden']).toBe('true');
+      expect(ghost.props.style).toEqual({ left: '18px', width: '90px' });
+      const ghostRule = cssRule('.physics-paint-loop-clip-rail-ghost {');
+      expect(ghostRule).toContain('pointer-events: none');
+      expect(ghostRule).toContain('opacity: 0.55');
+      expect(ghostRule).toContain('height: 3px');
+    });
   });
 });
