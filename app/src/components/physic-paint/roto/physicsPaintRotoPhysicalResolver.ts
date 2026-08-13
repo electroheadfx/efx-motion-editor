@@ -121,6 +121,7 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'delete-key-group'
   | 'move-key'
   | 'move-key-group'
+  | 'move-group'
   | 'force-spacing'
   | 'duplicate-key'
   | 'paste-key'
@@ -758,6 +759,7 @@ function isResolverOperationKind(value: unknown): value is PhysicPaintRotoPhysic
     || value === 'delete-key-group'
     || value === 'move-key'
     || value === 'move-key-group'
+    || value === 'move-group'
     || value === 'force-spacing'
     || value === 'duplicate-key'
     || value === 'paste-key'
@@ -1770,6 +1772,120 @@ function buildMoveGroupCandidate(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Group Rail Drag (move-group) is one rigid physical-frame translation of a
+// whole Loop Clip's source cycle. The delta is derived from the requested
+// destination placement start minus the clip's current placement start; every
+// source key and every durable lifecycle field (phaseOrigin,
+// originalEndExclusive, every visibleRanges entry, every frameOverrides
+// appFrame) translates by the same signed delta with relative offsets preserved
+// verbatim (D-13). The single-range visibleRanges rebuild owned by Key Spacing
+// retime (computeSourceAttachedLoopPlacementFollow) is deliberately NOT copied
+// (Pitfall 6).
+// ---------------------------------------------------------------------------
+
+function buildMoveGroupNextLoopClips(
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  movedClip: PhysicPaintRotoLoopClip,
+  delta: number,
+): readonly PhysicPaintRotoLoopClip[] | null {
+  if (loopClips.length === 0 || delta === 0) return null;
+  let changed = false;
+  const next = loopClips.map((clip) => {
+    if (clip.loopId !== movedClip.loopId) return clip;
+    const phaseOrigin = typeof clip.phaseOrigin === 'number' ? clip.phaseOrigin + delta : undefined;
+    const originalEndExclusive = typeof clip.originalEndExclusive === 'number' ? clip.originalEndExclusive + delta : undefined;
+    const visibleRanges = clip.visibleRanges === undefined
+      ? undefined
+      : Object.freeze(clip.visibleRanges.map((range) => (
+          Object.freeze({ start: range.start + delta, endExclusive: range.endExclusive + delta })
+        )));
+    const frameOverrides = clip.frameOverrides === undefined
+      ? undefined
+      : Object.freeze(clip.frameOverrides.map((override) => (
+          Object.freeze({ appFrame: override.appFrame + delta, keyId: override.keyId })
+        )));
+    changed = true;
+    return Object.freeze({
+      ...clip,
+      placementStart: movedClip.placementStart + delta,
+      ...(phaseOrigin !== undefined ? { phaseOrigin } : {}),
+      ...(originalEndExclusive !== undefined ? { originalEndExclusive } : {}),
+      ...(visibleRanges !== undefined ? { visibleRanges } : {}),
+      ...(frameOverrides !== undefined ? { frameOverrides } : {}),
+    }) as PhysicPaintRotoLoopClip;
+  });
+  return changed ? (Object.freeze(next) as readonly PhysicPaintRotoLoopClip[]) : null;
+}
+
+function buildMoveGroupClipCandidate(
+  identities: ValidatedIdentities,
+  clip: PhysicPaintRotoLoopClip,
+  destinationPlacementStart: number,
+  capacity: number,
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+): MoveBuilderResult {
+  const movedKeyIds = clip.sourceKeyIds;
+  const movedSet = new Set(movedKeyIds);
+  const delta = destinationPlacementStart - clip.placementStart;
+  const mapping = new Map<string, number>();
+  const unselectedFrames = new Set<number>();
+  for (const identity of identities.ordered) {
+    mapping.set(identity.keyId, identity.appFrame);
+    if (!movedSet.has(identity.keyId)) unselectedFrames.add(identity.appFrame);
+  }
+
+  const destinations = new Map<string, number>();
+  const conflictingAppFrames = new Set<number>();
+  for (const identity of identities.ordered) {
+    if (!movedSet.has(identity.keyId)) continue;
+    const destination = identity.appFrame + delta;
+    if (destination < 0 || destination >= capacity) {
+      return {
+        ok: false,
+        resolution: fail('over-capacity', 'move-group', `Selected destination frame ${destination} is outside capacity ${capacity}.`),
+      };
+    }
+    destinations.set(identity.keyId, destination);
+    if (unselectedFrames.has(destination)) conflictingAppFrames.add(destination);
+  }
+
+  if (conflictingAppFrames.size > 0) {
+    const conflicts = [...conflictingAppFrames];
+    return {
+      ok: false,
+      resolution: fail(
+        'duplicate-destination-frame',
+        'move-group',
+        `Selected destination frame ${conflicts[0]} is occupied by an unselected real key.`,
+        conflicts,
+      ),
+    };
+  }
+
+  const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+  for (const [keyId, destination] of destinations) {
+    mapping.set(keyId, destination);
+    if (destination !== identities.framesByKeyId.get(keyId)) roleByKeyId.set(keyId, 'moved');
+  }
+
+  return {
+    ok: true,
+    candidate: {
+      mapping,
+      expectedKeyIds: identities.keyIds,
+      removedKeyId: null,
+      removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+      selectedKeyId: clip.sourceKeyIds[0],
+      operationKind: 'move-group',
+      changed: computeChanged(identities, mapping),
+      roleByKeyId,
+      drag: null,
+      nextLoopClips: buildMoveGroupNextLoopClips(loopClips, clip, delta),
+    },
+  };
+}
+
 /**
  * Compute whether the final mapping differs from the input. Used by Drag and
  * Force Spacing so an already-exact request yields a valid no-change proposal.
@@ -2369,6 +2485,10 @@ function buildStatusText(
   if (operationKind === 'move-key-group') {
     if (!changed) return 'No change';
     return 'Keys moved';
+  }
+  if (operationKind === 'move-group') {
+    if (!changed) return 'No change';
+    return 'Group moved';
   }
   if (operationKind === 'force-spacing') {
     if (!changed) return 'No change';
@@ -3011,6 +3131,37 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       return fail('malformed-target', operationKind, 'Group move target must be a discriminated record.');
     }
     const moveResult = buildMoveGroupCandidate(identities, intent.movedKeyIds, intent.grabbedKeyId, intent.target, input.capacity, loopClips);
+    if (!moveResult.ok) return moveResult.resolution;
+    const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
+    if (!finalized.ok) return finalized.resolution;
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'move-group') {
+    if (!isBoundedKeyId(intent.loopId)) {
+      return fail('malformed-identity', operationKind, 'Group move requires a bounded loopId.');
+    }
+    if (!isNonNegativeInteger(intent.destinationPlacementStart) || intent.destinationPlacementStart >= input.capacity) {
+      return fail('out-of-range-frame', operationKind, 'Group move destination placement start is outside capacity.');
+    }
+    const matchingClips = loopClips.filter((clip) => clip.loopId === intent.loopId);
+    if (matchingClips.length === 0) {
+      return fail('unknown-operation-identity', operationKind, `Group move targets unknown loop "${intent.loopId}".`);
+    }
+    if (matchingClips.length !== 1) {
+      return fail('malformed-loop-clips', operationKind, 'Group move loopId must be unique in the Loop Clip collection.');
+    }
+    const clip = matchingClips[0];
+    if (clip.sourceKeyIds.length === 0) {
+      return fail('malformed-identity', operationKind, 'Group move requires a Group with source keys.');
+    }
+    // Source attachment is resolver-derived (Pitfall 4): the clip's placement
+    // start must coincide with its first source key's pre-move frame.
+    const firstSourceFrame = identities.framesByKeyId.get(clip.sourceKeyIds[0]);
+    if (firstSourceFrame === undefined || clip.placementStart !== firstSourceFrame) {
+      return fail('malformed-identity', operationKind, 'Group move requires a source-attached Group.');
+    }
+    const moveResult = buildMoveGroupClipCandidate(identities, clip, intent.destinationPlacementStart, input.capacity, loopClips);
     if (!moveResult.ok) return moveResult.resolution;
     const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;

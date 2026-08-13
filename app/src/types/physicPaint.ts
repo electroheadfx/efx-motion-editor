@@ -401,6 +401,11 @@ export type PhysicPaintRotoPhysicalEditIntent =
       readonly target: PhysicPaintRotoPhysicalEditTarget;
     }
   | {
+      readonly kind: 'move-group';
+      readonly loopId: string;
+      readonly destinationPlacementStart: number;
+    }
+  | {
       readonly kind: 'force-spacing';
       readonly emptyFrames: number;
       readonly selectedKeyId: string | null;
@@ -526,6 +531,11 @@ export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is Ph
       && value.movedKeyIds.includes(value.grabbedKeyId)
       && isPhysicPaintRotoPhysicalEditTarget(value.target);
   }
+  if (value.kind === 'move-group') {
+    return hasOnlyKeys(value, ['kind', 'loopId', 'destinationPlacementStart'])
+      && isBoundedPhysicalKeyId(value.loopId)
+      && isNonNegativeInteger(value.destinationPlacementStart);
+  }
   if (value.kind === 'force-spacing') {
     if (!hasOnlyKeys(value, ['kind', 'emptyFrames', 'selectedKeyId', 'scopeKeyIds', 'linkedSourceSpacingScopes'])) return false;
     if (!isNonNegativeInteger(value.emptyFrames)) return false;
@@ -584,6 +594,8 @@ export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRo
       return JSON.stringify({ kind: intent.kind, movedKeyId: intent.movedKeyId, target: canonicalPhysicalEditTarget(intent.target) });
     case 'move-key-group':
       return JSON.stringify({ kind: intent.kind, movedKeyIds: [...intent.movedKeyIds], grabbedKeyId: intent.grabbedKeyId, target: canonicalPhysicalEditTarget(intent.target) });
+    case 'move-group':
+      return JSON.stringify({ kind: intent.kind, loopId: intent.loopId, destinationPlacementStart: intent.destinationPlacementStart });
     case 'force-spacing': {
       const canonical: Record<string, unknown> = { kind: intent.kind, emptyFrames: intent.emptyFrames, selectedKeyId: intent.selectedKeyId };
       if (intent.scopeKeyIds !== undefined) canonical.scopeKeyIds = intent.scopeKeyIds === null ? null : [...intent.scopeKeyIds];
@@ -659,6 +671,7 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'delete-key-group'
   | 'move-key'
   | 'move-key-group'
+  | 'move-group'
   | 'force-spacing'
   | 'duplicate-key'
   | 'paste-key'
@@ -938,6 +951,7 @@ function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is Ph
     || value === 'delete-key-group'
     || value === 'move-key'
     || value === 'move-key-group'
+    || value === 'move-group'
     || value === 'force-spacing'
     || value === 'duplicate-key'
     || value === 'paste-key'
@@ -964,6 +978,7 @@ function isPhysicPaintRotoOrdinaryOperationKind(
     || value === 'delete-key-group'
     || value === 'move-key'
     || value === 'move-key-group'
+    || value === 'move-group'
     || value === 'force-spacing'
     || value === 'duplicate-key'
     || value === 'paste-key'

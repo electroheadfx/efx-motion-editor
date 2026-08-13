@@ -342,6 +342,8 @@ function createAuthorizedPhysicalEditPayload(
       return intent?.kind === 'move-key' ? { ...base, operationKind, intent } : null;
     case 'move-key-group':
       return intent?.kind === 'move-key-group' ? { ...base, operationKind, intent } : null;
+    case 'move-group':
+      return intent?.kind === 'move-group' ? { ...base, operationKind, intent } : null;
     case 'force-spacing':
       return intent?.kind === 'force-spacing' ? { ...base, operationKind, intent } : null;
     case 'duplicate-key':
