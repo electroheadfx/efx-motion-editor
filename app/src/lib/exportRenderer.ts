@@ -131,22 +131,24 @@ export function renderGlobalFrame(
   const frameIndex = Math.floor(globalFrame);
   const fractionalOffset = globalFrame - frameIndex;
 
-  if (frameIndex < 0 || frameIndex >= fm.length) return;
+  if (frameIndex < 0) return;
 
   const entry = fm[frameIndex];
-  if (!entry) return;
+  const seq = entry ? allSeqs.find((s) => s.id === entry.sequenceId) : undefined;
+  const hasContentEntry = !!seq && seq.kind !== 'fx';
 
-  const seq = allSeqs.find((s) => s.id === entry.sequenceId);
-  if (!seq || seq.kind === 'fx') return;
-
-  // Compute sequence start frame and local frame from frameMap
+  // Compute sequence start frame and local frame from frameMap (content only)
   let seqStart = frameIndex;
+  let seqFrames: FrameEntry[] = [];
+  let localFrame = frameIndex + fractionalOffset;
+  let handledByCrossDissolve = false;
+
+  if (hasContentEntry && seq && entry) {
   while (seqStart > 0 && fm[seqStart - 1]?.sequenceId === entry.sequenceId) seqStart--;
-  const seqFrames = fm.filter((e) => e.sequenceId === entry.sequenceId);
-  const localFrame = frameIndex - seqStart + fractionalOffset;
+  seqFrames = fm.filter((e) => e.sequenceId === entry.sequenceId);
+  localFrame = frameIndex - seqStart + fractionalOffset;
 
   // === Cross dissolve check (BEFORE normal render) ===
-  let handledByCrossDissolve = false;
 
   for (const overlap of overlaps) {
     if (globalFrame >= overlap.overlapStart && globalFrame < overlap.overlapEnd) {
@@ -291,6 +293,7 @@ export function renderGlobalFrame(
       renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, fadeOpacity, globalFrame);
     }
   }
+  } // end if (hasContentEntry)
 
   // Composite overlay sequences (FX + content overlays): skip entirely in solo mode (D-08)
   if (!soloActive) {
@@ -325,7 +328,7 @@ export function renderGlobalFrame(
         // Apply fade opacity to content-overlay sequence (transparency mode only)
         const overlayTotalFrames = (overlaySeq.outFrame ?? 100) - (overlaySeq.inFrame ?? 0);
         const overlayFadeOpacity = computeFadeOpacity(overlayLocalFrame, overlayTotalFrames, overlaySeq.fadeIn, overlaySeq.fadeOut);
-        renderer.renderFrame(overlayLayers, overlayLocalFrame, seqFrames, seq.fps, false, overlayFadeOpacity, globalFrame);
+        renderer.renderFrame(overlayLayers, overlayLocalFrame, hasContentEntry ? seqFrames : [], overlaySeq.fps, false, overlayFadeOpacity, globalFrame);
       }
     } else {
       // FX sequence: apply keyframe interpolation to FX layers
@@ -350,7 +353,7 @@ export function renderGlobalFrame(
       if (fxLayers.length > 0) {
         // Apply fade opacity to FX sequence (transparency mode only)
         const fxFadeOpacity = computeFadeOpacity(fxLocalFrame, fxTotalFrames, overlaySeq.fadeIn, overlaySeq.fadeOut);
-        renderer.renderFrame(fxLayers, localFrame, seqFrames, seq.fps, false, fxFadeOpacity, globalFrame);
+        renderer.renderFrame(fxLayers, localFrame, hasContentEntry ? seqFrames : [], overlaySeq.fps, false, fxFadeOpacity, globalFrame);
       }
     }
   }
