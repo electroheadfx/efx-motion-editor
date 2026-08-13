@@ -1350,11 +1350,53 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       const tree2 = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit);
       const ghost = findOne(tree2, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost'));
       expect(ghost.props['aria-hidden']).toBe('true');
-      expect(ghost.props.style).toEqual({ left: '18px', width: '90px' });
+      // Rightward +1 frame → destination 11 → offset 18px, constant resolved
+      // width 108px (D-13 rigid — no longer shrunk from the anchor's right edge).
+      expect(ghost.props.style).toEqual({ left: '18px', width: '108px' });
       const ghostRule = cssRule('.physics-paint-loop-clip-rail-ghost {');
       expect(ghostRule).toContain('pointer-events: none');
       expect(ghostRule).toContain('opacity: 0.55');
       expect(ghostRule).toContain('height: 3px');
+    });
+
+    it('renders identical constant-width ghost geometry for leftward and rightward drags (D-13 rigid)', () => {
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => ({
+        ok: true,
+        publication: createGroupDragPublication(loopId, destinationPlacementStart),
+      }));
+      const commitRotoGroupDrag = vi.fn(async () => true);
+      const onSelectLoopClip = vi.fn();
+      const onOpenLoopEdit = vi.fn(async () => {});
+      // range: phaseOrigin 10, effectiveEnd 16, framePitch 18 →
+      // resolved width (16-10)*18 = 108px; anchor at left 36px, width 108px.
+      const renderGhost = (clientX: number): { left: string; width: string } => {
+        hooks.reset();
+        const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit);
+        const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+        const sourceElement = createMockSourceElement();
+        (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(sourceElement, 100, 50));
+        mockWindow.dispatch('pointermove', createPointerMove(clientX, 50));
+        hooks.rewind();
+        const tree2 = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit);
+        const ghost = findOne(tree2, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost'));
+        return ghost.props.style as { left: string; width: string };
+      };
+
+      // Leftward −2 frames → destination 8 → ghost offset −36px, full width 108px.
+      const leftward = renderGhost(100 - 2 * 18);
+      expect(leftward).toEqual({ left: '-36px', width: '108px' });
+      // Rightward +2 frames → destination 12 → ghost offset +36px, full width 108px.
+      const rightward = renderGhost(100 + 2 * 18);
+      expect(rightward).toEqual({ left: '36px', width: '108px' });
+      // Identical geometry: equal width, positions symmetric about the original rail.
+      expect(rightward.width).toBe(leftward.width);
+      expect(parseInt(rightward.left)).toBe(-parseInt(leftward.left));
+      // Rightward beyond the original extent (destination 18 ≥ effectiveEnd 16):
+      // the ghost must keep its full constant width and shift right, never collapse
+      // to a 1px sliver (the reported rightward-preview defect).
+      const rightwardFar = renderGhost(100 + 8 * 18);
+      expect(rightwardFar).toEqual({ left: '144px', width: '108px' });
     });
 
     it('renders the blocked-edge bar on the right edge when the clamp binds rightward', () => {
