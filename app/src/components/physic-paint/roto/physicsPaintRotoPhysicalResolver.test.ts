@@ -1350,6 +1350,60 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
     expect(movedClip?.repeat).toBe('infinity');
   });
 
+  // SKIPPED — separate-debug anchor for the PRE-EXISTING Infinity
+  // repeat-resolution debt (proven on the 38cf2448 baseline; not a 43.3
+  // regression). Un-skip and fix in the dedicated debug: the derivation must
+  // honor repeat='infinity' for lifecycle-available clips (and updateLoop must
+  // rebuild lifecycle for infinity). See 43.3-UAT.md Infinity row.
+  it.skip('resolves Infinity repeat occurrences through the accepted boundary for a lifecycle-available Group (baseline contract)', () => {
+    // A Group with lifecycle fields (as the UI produces after attachment) whose
+    // Repeat is set to 'infinity' must derive occurrences from its placement
+    // through the next Group boundary / parent end — not stay pinned to the
+    // stale source-cycle extent. This is the baseline contract the Infinity
+    // drag row depends on (RESEARCH Open Question 1).
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-inf',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 'infinity',
+      mode: 'progressive',
+      scriptId: 'action-a',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 12, // stale source-cycle end after repeat → infinity
+      visibleRanges: [{ start: 10, endExclusive: 12 }],
+      frameOverrides: [],
+    };
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: [
+        { keyId: 'A', appFrame: 10 },
+        { keyId: 'B', appFrame: 11 },
+      ],
+      loopClips: [clip],
+      parentEndExclusive: 30,
+      capacity: 120,
+      interpolationEnabled: false,
+    });
+    const range = context.ranges.find((entry) => entry.loopId === 'loop-inf');
+    expect(range).toBeDefined();
+    if (!range) return;
+    // Repeat authority preserved.
+    expect(range.repeat).toBe('infinity');
+    // The Infinity range must extend through the parent end (30), not stop at
+    // the stale source-cycle end (12).
+    expect(range.effectiveEnd).toBe(30);
+    // Derived occurrences resolve through the accepted boundary.
+    expect(resolvePhysicPaintRotoLoopFrame(context, 20).kind).not.toBe('empty');
+    expect(resolvePhysicPaintRotoLoopFrame(context, 29).kind).not.toBe('empty');
+    // No materialized duplicate source keys: the source keyIds stay the two
+    // originals and the derived frames are generated, not new real keys.
+    expect(range.sourceKeyIds).toEqual(['A', 'B']);
+    expect(context.keyIdByAppFrame.size).toBe(2);
+  });
+
   it('clamps a zero-width (0f) dragged interval without division errors and keeps the Group draggable', () => {
     // A zero-width dragged interval (effectiveEnd === phaseOrigin) overlaps no
     // band, but the moved keys still cannot land on unowned real key frames:
