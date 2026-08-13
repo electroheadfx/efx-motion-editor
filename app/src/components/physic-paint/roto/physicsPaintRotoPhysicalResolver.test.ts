@@ -34,6 +34,7 @@ import {
 } from './physicsPaintRotoPhysicalResolver';
 import {
   PHYSIC_PAINT_MAX_APPLY_FRAMES,
+  isPhysicPaintRotoPhysicalEditApplyPayload,
   isPhysicPaintRotoPhysicalEditIntent,
   serializePhysicPaintRotoPhysicalEditIntent,
 } from '../../../types/physicPaint';
@@ -216,6 +217,47 @@ describe('transport-safe physical edit intent tracer', () => {
     expect(rejected.ok).toBe(false);
     if (rejected.ok) throw new Error('Parsed empty Force Spacing must reject');
     expect(rejected.failure.code).toBe('empty-key-set');
+  });
+
+  it('round-trips a move-group intent through the strict parser and canonical serializer', () => {
+    const intent = { kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: 7 } as const;
+    const parsed = parsePhysicalEditIntent(intent);
+
+    expect(parsed).toEqual(intent);
+    expect(serializePhysicPaintRotoPhysicalEditIntent(parsed)).toBe(serializePhysicPaintRotoPhysicalEditIntent(intent));
+  });
+
+  it('rejects move-group payloads with excess or missing keys and malformed frames', () => {
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: 7, extra: true })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'move-group', loopId: 'loop-A' })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'move-group', destinationPlacementStart: 7 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'move-group', loopId: '', destinationPlacementStart: 7 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: -1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: 1.5 })).toBe(false);
+  });
+
+  it('accepts move-group as an ordinary physical-edit operation kind', () => {
+    const payload = {
+      kind: 'replace-roto-physical-map',
+      operationId: 'move-group-1',
+      operationKind: 'move-group',
+      intent: { kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: 7 },
+      layerId: 'layer-1',
+      leaseToken: { projectContextId: 'project-1', layerId: 'layer-1', generation: 1, owner: 'exclusive' },
+      startFrame: 0,
+      launchOperationId: 'launch-1',
+      expectedRevision: 'revision-1',
+      records: [],
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      selectedKeyId: null,
+      selectedAppFrame: null,
+      cursorAppFrame: 0,
+    } as const;
+
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(payload)).toBe(true);
+    // 'move-group' is ordinary: a specialized payload (no intent) must be rejected.
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, intent: undefined })).toBe(false);
   });
 });
 
@@ -677,6 +719,122 @@ describe('resolvePhysicPaintRotoPhysicalEdit — rigid move-key-group', () => {
     expect(grabbedOutsideSet.ok).toBe(false);
     if (grabbedOutsideSet.ok) throw new Error('grabbed key outside the moved set must reject');
     expect(grabbedOutsideSet.failure.code).toBe('malformed-identity');
+  });
+});
+
+describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached free-space)', () => {
+  const buildSourceAttachedGroup = (): readonly PhysicPaintRotoLoopClip[] => Object.freeze([
+    Object.freeze({
+      loopId: 'loop-A',
+      placementStart: 1,
+      sourceKeyIds: ['A', 'C'],
+      repeat: 2,
+      mode: 'static',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 1,
+      originalEndExclusive: 9,
+      visibleRanges: Object.freeze([
+        Object.freeze({ start: 1, endExclusive: 5 }),
+        Object.freeze({ start: 5, endExclusive: 9 }),
+      ]),
+      frameOverrides: Object.freeze([
+        Object.freeze({ appFrame: 3, keyId: 'override-3' }),
+        Object.freeze({ appFrame: 7, keyId: 'override-7' }),
+      ]),
+    }),
+  ]);
+
+  it('rigidly translates every source key and the Group lifecycle fields by the same delta', () => {
+    const records = buildBaselineRecords();
+    const loopClips = buildSourceAttachedGroup();
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: { kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: 4 },
+      capacity: 16,
+      interpolationEnabled: false,
+      loopClips,
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Source-attached move-group must resolve ok');
+    const { proposal } = resolution;
+    // delta = 4 - 1 = 3; A@1 -> 4, C@5 -> 8; B@3 and D@10 stay fixed.
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 4, B: 3, C: 8, D: 10 });
+    expect(proposal.status.operationKind).toBe('move-group');
+    expect(proposal.nextLoopClips).not.toBeNull();
+    if (!proposal.nextLoopClips) throw new Error('nextLoopClips must be present');
+    const movedClip = proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-A');
+    expect(movedClip).toBeDefined();
+    expect(movedClip?.placementStart).toBe(4);
+    expect(movedClip?.phaseOrigin).toBe(4);
+    expect(movedClip?.originalEndExclusive).toBe(12);
+    expect(movedClip?.visibleRanges).toEqual([
+      { start: 4, endExclusive: 8 },
+      { start: 8, endExclusive: 12 },
+    ]);
+    expect(movedClip?.frameOverrides).toEqual([
+      { appFrame: 6, keyId: 'override-3' },
+      { appFrame: 10, keyId: 'override-7' },
+    ]);
+  });
+
+  it('fails closed on unknown loopId, non-source-attached Groups, and out-of-capacity destinations with no proposal', () => {
+    const records = buildBaselineRecords();
+    const loopClips = buildSourceAttachedGroup();
+    const base = {
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      capacity: 16,
+      interpolationEnabled: false,
+      loopClips,
+    } as const;
+
+    const unknownLoop = resolvePhysicPaintRotoPhysicalEdit({
+      ...base,
+      intent: { kind: 'move-group', loopId: 'loop-unknown', destinationPlacementStart: 4 },
+    });
+    expect(unknownLoop.ok).toBe(false);
+    if (unknownLoop.ok) throw new Error('unknown loopId must reject');
+    expect(unknownLoop.failure.code).toBe('unknown-operation-identity');
+    expect('proposal' in unknownLoop).toBe(false);
+
+    const detached = resolvePhysicPaintRotoPhysicalEdit({
+      ...base,
+      loopClips: Object.freeze([
+        Object.freeze({
+          loopId: 'loop-detached',
+          placementStart: 2,
+          sourceKeyIds: ['A', 'C'],
+          repeat: 2,
+          mode: 'static',
+        }),
+      ]),
+      intent: { kind: 'move-group', loopId: 'loop-detached', destinationPlacementStart: 4 },
+    });
+    expect(detached.ok).toBe(false);
+    if (detached.ok) throw new Error('non-source-attached Group must reject');
+    expect(detached.failure.code).toBe('malformed-identity');
+    expect('proposal' in detached).toBe(false);
+
+    const overflow = resolvePhysicPaintRotoPhysicalEdit({
+      ...base,
+      intent: { kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: 20 },
+    });
+    expect(overflow.ok).toBe(false);
+    if (overflow.ok) throw new Error('out-of-capacity destination must reject');
+    expect(overflow.failure.code).toBe('out-of-range-frame');
+    expect('proposal' in overflow).toBe(false);
+
+    const keyOverflow = resolvePhysicPaintRotoPhysicalEdit({
+      ...base,
+      intent: { kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: 12 },
+    });
+    expect(keyOverflow.ok).toBe(false);
+    if (keyOverflow.ok) throw new Error('destination translating a key outside capacity must reject');
+    expect(keyOverflow.failure.code).toBe('over-capacity');
+    expect('proposal' in keyOverflow).toBe(false);
   });
 });
 
