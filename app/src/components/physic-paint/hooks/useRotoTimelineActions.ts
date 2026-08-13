@@ -370,6 +370,33 @@ export type RotoDragPreparationResult =
       readonly detail?: string;
     };
 
+/**
+ * Immutable versioned Group-drag publication (GDRAG-07). Carries the exact
+ * resolver proposal, the break-aware proposalVersion derived from the physical
+ * content revision plus the incoming interpolation break collection and
+ * launch/layer context at preparation time, the expected launch tuple, and the
+ * moved Group identity.
+ *
+ * The view retains this opaquely and submits it unchanged to
+ * {@link RotoPhysicalTimelineActionBundle.commitRotoGroupDrag}. No cloning,
+ * normalization, or recomputation is permitted.
+ */
+export interface RotoGroupDragPublication {
+  readonly proposal: PhysicPaintRotoPhysicalEditProposal;
+  readonly intent: Extract<PhysicPaintRotoPhysicalEditIntent, { readonly kind: 'move-group' }>;
+  readonly proposalVersion: string;
+  readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
+  readonly loopId: string;
+}
+
+/**
+ * Group-drag preparation result. The failure branch carries no proposal; the
+ * success branch carries one immutable publication.
+ */
+export type RotoGroupDragPreparationResult =
+  | { readonly ok: true; readonly publication: RotoGroupDragPublication }
+  | { readonly ok: false; readonly reason: string; readonly detail?: string };
+
 export interface RotoPhysicalTimelineActionBundle {
   /** Insert one empty physical slot before the selected real key (D-05). */
   readonly insertRotoFrame: () => Promise<boolean>;
@@ -431,6 +458,27 @@ export interface RotoPhysicalTimelineActionBundle {
    * coordinator performs the authoritative post-barrier revalidation.
    */
   readonly commitRotoKeyGroupDrag: (publication: RotoDragPublication) => Promise<boolean>;
+  /**
+   * Prepare one versioned Group-drag publication for the rail drag (GDRAG-07).
+   * Mirrors the single-key/group guard order exactly, reads one coherent
+   * current physical snapshot, builds the 'move-group' intent, invokes the
+   * pure resolver with the incoming interpolation break collection threaded
+   * into BOTH the resolver input and a break-aware revision fingerprint
+   * (Pitfall 1), rejects no-change results, and returns one immutable
+   * publication carrying the exact proposal plus authoritative
+   * proposalVersion/expected launch tuple. The view retains the publication
+   * opaquely and submits it unchanged to {@link commitRotoGroupDrag}.
+   */
+  readonly prepareRotoGroupDrag: (loopId: string, destinationPlacementStart: number) => RotoGroupDragPreparationResult;
+  /**
+   * Submit the exact retained Group-drag publication to the acknowledged
+   * physical coordinator (GDRAG-07). Verifies wrapper coherence (operation
+   * kind, intent kind, loopId match, non-empty launch tuple) and passes the
+   * same proposal object plus captured expected launch tuple to
+   * `executePhysicalEdit` without resolver or mapping recomputation. The
+   * coordinator performs the authoritative post-barrier revalidation.
+   */
+  readonly commitRotoGroupDrag: (publication: RotoGroupDragPublication) => Promise<boolean>;
   /** Reactive Drag availability derived from selection + pending authority. */
   readonly canDragKey: ReadonlySignal<boolean>;
   /** Reactive Drag disabled reason, or null when eligible. */
@@ -1235,6 +1283,81 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     });
   }, [input]);
 
+  const prepareRotoGroupDrag = useCallback((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => {
+    const launch = input.getLaunchContext?.() ?? null;
+    if (!launch) {
+      return { ok: false, reason: 'Select a real Roto key before editing the timeline.' };
+    }
+    if (!input.executePhysicalEdit || !input.getRotoKeyRecords || !input.getRotoInterpolationState || !input.getCapacity) {
+      return { ok: false, reason: 'Timeline editing is unavailable.' };
+    }
+    if (input.pendingOperationId && input.pendingOperationId.value !== null) {
+      return { ok: false, reason: 'A Roto physical edit is already in flight.' };
+    }
+    if (!isBoundedKeyId(loopId)) {
+      return { ok: false, reason: 'The dragged Group identity is malformed.' };
+    }
+    const records = input.getRotoKeyRecords();
+    const interpolation = input.getRotoInterpolationState();
+    const capacity = input.getCapacity();
+    const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
+    const incomingInterpolationBreakKeyIds = input.getIncomingInterpolationBreakKeyIds?.() ?? [];
+    const identities = records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
+    const intent = Object.freeze({
+      kind: 'move-group',
+      loopId,
+      destinationPlacementStart,
+    }) as Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'move-group' }>;
+    const resolution: PhysicPaintRotoPhysicalEditResolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      intent,
+      capacity,
+      interpolationEnabled: interpolation.enabled,
+      loopClips,
+      // GDRAG-07 / Pitfall 1: the incoming break collection reaches BOTH the
+      // resolver input and the break-aware revision fingerprint below.
+      incomingInterpolationBreakKeyIds,
+    });
+    if (!resolution.ok) {
+      return { ok: false, reason: resolution.failure.text || 'The Group move is invalid.', detail: resolution.failure.text };
+    }
+    const proposal = resolution.proposal;
+    if (!proposal.status.changed) {
+      // Valid no-change: never publish as a Drag preview or commit (D-09).
+      return { ok: false, reason: 'This move would not change the timeline.' };
+    }
+    const proposalVersion = buildGroupDragProposalVersion(records, interpolation, loopClips, incomingInterpolationBreakKeyIds, launch);
+    return {
+      ok: true,
+      publication: Object.freeze({
+        proposal,
+        intent,
+        proposalVersion,
+        expectedLaunch: { operationId: launch.operationId, layerId: launch.layerId },
+        loopId,
+      }) as RotoGroupDragPublication,
+    };
+  }, [input]);
+
+  const commitRotoGroupDrag = useCallback(async (publication: RotoGroupDragPublication): Promise<boolean> => {
+    if (!input.executePhysicalEdit) return false;
+    // Wrapper coherence (GDRAG-07): operation kind, intent kind, loopId match,
+    // and a non-empty launch tuple. No resolver or mapping recomputation — the
+    // exact retained objects pass through (D-09).
+    const intent = publication.intent;
+    if (publication.proposal.status.operationKind !== 'move-group' || intent.kind !== 'move-group') return false;
+    if (intent.loopId !== publication.loopId) return false;
+    if (publication.expectedLaunch.operationId.length === 0 || publication.expectedLaunch.layerId.length === 0) return false;
+    return input.executePhysicalEdit({
+      proposal: publication.proposal,
+      expectedLaunch: publication.expectedLaunch,
+      operationKind: 'move-group',
+      intent,
+      selectedKeyId: publication.proposal.selectedKeyId,
+      selectedAppFrame: publication.proposal.selectedAppFrame,
+    });
+  }, [input]);
+
   const setForceSpacingInput = useCallback((value: string) => {
     forceSpacingInput.value = value;
   }, [forceSpacingInput]);
@@ -1351,6 +1474,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     commitRotoKeyDrag,
     prepareRotoKeyGroupDrag,
     commitRotoKeyGroupDrag,
+    prepareRotoGroupDrag,
+    commitRotoGroupDrag,
     canDragKey,
     dragDisabledReason,
     forceSpacingInput,
@@ -1362,7 +1487,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     addEmptyKeyDisabledReason,
     canSelectAllKeys,
     selectAllKeysDisabledReason,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,
@@ -1402,6 +1527,25 @@ function buildProposalVersion(
   launch: PhysicPaintLaunchContext,
 ): string {
   const revision = buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips);
+  return `${revision}:${launch.operationId}:${launch.layerId}`;
+}
+
+/**
+ * Break-aware proposal-version fingerprint for the Group-drag publication
+ * (GDRAG-07 / RESEARCH Pitfall 1). Unlike {@link buildProposalVersion}, the
+ * incoming interpolation break collection is threaded as the 4th revision
+ * parameter so stale break authority produces a different fingerprint and is
+ * rejected before mutation. Existing call sites of buildProposalVersion are
+ * intentionally untouched (regression boundary).
+ */
+function buildGroupDragProposalVersion(
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  interpolation: PhysicPaintRotoInterpolationState,
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  incomingInterpolationBreakKeyIds: readonly string[],
+  launch: PhysicPaintLaunchContext,
+): string {
+  const revision = buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, incomingInterpolationBreakKeyIds);
   return `${revision}:${launch.operationId}:${launch.layerId}`;
 }
 
