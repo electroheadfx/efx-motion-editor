@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.3
 current_phase_name: motion-and-static-group-drag-within-free-space
 status: executing
-stopped_at: Completed 43.3-02-PLAN.md
-last_updated: "2026-08-13T17:06:49.570Z"
+stopped_at: Completed 43.3-03-PLAN.md
+last_updated: "2026-08-13T17:41:48.749Z"
 last_activity: 2026-08-13
 last_activity_desc: Phase 43.2 complete, transitioned to Phase 44
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 70
-  completed_plans: 68
+  completed_plans: 69
   percent: 67
 ---
 
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.3 (motion-and-static-group-drag-within-free-space) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-08-13 — Phase 43.3 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [██████████] 97%
+Progress: [██████████] 99%
 
 ## Performance Metrics
 
@@ -220,6 +220,7 @@ Progress: [██████████] 97%
 | Phase 43.2 P24 | 4min | 2 tasks | 3 files |
 | Phase 43.3 P01 | 96 | 3 tasks | 10 files |
 | Phase 43.3 P02 | 17 | 3 tasks | 3 files |
+| Phase 43.3-motion-and-static-group-drag-within-free-space P03 | 24 | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -410,6 +411,11 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: Clamp-and-commit replaces the plan-01 fail-closed-on-collision tracer behavior; rejection only when zero valid movement exists in the dragged direction (D-05, D-06 substrate)
 - [Phase ?]: Attachment is resolver-derived from canonical facts only (placementStart === first source key frame); duplicated placements move only placement with identity key mapping (Pitfall 4, D-11)
 - [Phase ?]: Break derivation is complete-collection replacement: vacated-interval successor owns/reuses the incoming break, landing gap before the first source key creates a new break, breaks on moved keys travel unchanged, Group-local fragments never convert (D-09..D-13)
+- [Phase ?]: The ghost destination derives from the plan-02 exported pure clamp function (clampPhysicPaintGroupDragDestination) — never reimplemented in the view layer — so preview-is-the-commit holds by construction (D-05)
+- [Phase ?]: Blocked-edge direction: a rightward intent pulled back (clamped < proposed) leaves the ghost's right edge flush against the blocking content; a leftward intent pushed forward (clamped > proposed) leaves the left edge flush; equal means unclamped — no bar (UI-SPEC G4)
+- [Phase ?]: The vacated gap is the Group's original half-open interval [phaseOrigin, resolvedEffectiveEnd), reported only when source-attached; a duplicated placement never moves its shared source keys so vacatedInterval is null (D-07, D-11)
+- [Phase ?]: The duplicated placement arm reports changed when the placement translates (identity key mapping is not a no-change) so duplicated placement drags commit instead of rejecting as 'This move would not change the timeline.' (D-11, Rule 1 fix)
+- [Phase ?]: Commit acceptance publishes through the same .then((accepted) => ...) continuation the strip drag uses, NOT runPhysicalAction whose kind union is a bounded Extract (D-07)
 
 ### Pending Todos
 
@@ -607,8 +613,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-13T17:06:45.894Z
-Stopped at: Completed 43.3-02-PLAN.md
+Last session: 2026-08-13T17:41:48.723Z
+Stopped at: Completed 43.3-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

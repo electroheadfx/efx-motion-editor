@@ -232,7 +232,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 43.3-03-PLAN.md — Clamped ghost + red blocked-edge bar + roto-fill-empty gap preview, locked status copy via single mapper, busy gate, D-17 post-commit stability (GDRAG-02, GDRAG-06, GDRAG-07, GDRAG-08)
+- [x] 43.3-03-PLAN.md — Clamped ghost + red blocked-edge bar + roto-fill-empty gap preview, locked status copy via single mapper, busy gate, D-17 post-commit stability (GDRAG-02, GDRAG-06, GDRAG-07, GDRAG-08)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
