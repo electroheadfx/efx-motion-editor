@@ -293,6 +293,8 @@ export type PhysicPaintRotoPhysicalEditFailureCode =
   | 'invalid-semantic-delta'
   | 'malformed-loop-clips'
   | 'loop-source-key-delete-rejected'
+  | 'loop-source-key-insert-rejected'
+  | 'loop-source-key-duplicate-rejected'
   | 'loop-source-key-move-rejected'
   | 'invalid-linked-source-spacing-scope'
   | 'linked-source-spacing-order-rejected'
@@ -802,6 +804,16 @@ const LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT =
 /** Locked D-07 rejection copy; N counts every loop referencing the key's source cycle. */
 function loopSourceKeyDeleteRejectedText(referencingLoopCount: number): string {
   return `This key belongs to a source cycle used by ${referencingLoopCount} linked loop(s). Unlink the loop(s) before deleting it.`;
+}
+
+/** Locked 43.2 insert guard copy; N counts the Group-referenced keys the right ripple would move. */
+function loopSourceKeyInsertRejectedText(movedGroupKeyCount: number): string {
+  return `Insert is unavailable because the right ripple would move ${movedGroupKeyCount} Group-referenced source key(s). Insert into an empty frame instead, or unlink the loop(s) first.`;
+}
+
+/** Locked 43.2 duplicate guard copy; N counts the Group-referenced keys the right ripple would move. */
+function loopSourceKeyDuplicateRejectedText(movedGroupKeyCount: number): string {
+  return `Duplicate is unavailable because the right ripple would move ${movedGroupKeyCount} Group-referenced source key(s). Unlink the loop(s) first.`;
 }
 
 /**
@@ -2606,6 +2618,20 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (identities.ordered.length === 0) {
       return fail('empty-key-set', operationKind, 'Insert requires at least one real key.');
     }
+    // 43.2 ordinary-edit ownership guard (CR-01): the right ripple moves every
+    // key at appFrame >= selectedFrame. When ANY of them is Group-referenced,
+    // the insert would shift Group-owned source keys against their unchanged
+    // lifecycle records — fail closed. No suppression is possible for a right
+    // ripple (the pinned key cannot share the opened slot), so the only safe
+    // path is an empty-frame insert-empty-segment.
+    const loopReferencedKeyIds = new Set(loopClips.flatMap((clip) => clip.sourceKeyIds));
+    const selectedFrame = identities.framesByKeyId.get(intent.selectedKeyId) as number;
+    const rippledGroupKeys = identities.ordered.filter(
+      (identity) => identity.appFrame >= selectedFrame && loopReferencedKeyIds.has(identity.keyId),
+    );
+    if (rippledGroupKeys.length > 0) {
+      return fail('loop-source-key-insert-rejected', operationKind, loopSourceKeyInsertRejectedText(rippledGroupKeys.length));
+    }
     const candidate = buildInsertCandidate(identities, intent.selectedKeyId);
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
@@ -2770,6 +2796,21 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     const recordsResult = validateSemanticInputRecords(input.records, identities, input.capacity, 'duplicate-key');
     if (!recordsResult.ok) return recordsResult.resolution;
+    // 43.2 ordinary-edit ownership guard (CR-01): the right ripple moves every
+    // key at appFrame >= destination (source + 1). When ANY of them is
+    // Group-referenced, the duplicate would shift Group-owned source keys
+    // against their unchanged lifecycle records — fail closed. The source key
+    // itself never moves, so duplicating a Group source key stays legal when
+    // no later key is pinned.
+    const sourceRecord = recordsResult.records.find((record) => record.keyId === intent.sourceKeyId) as PhysicPaintRotoRealKeyRecord;
+    const duplicateDestination = sourceRecord.appFrame + 1;
+    const loopReferencedKeyIds = new Set(loopClips.flatMap((clip) => clip.sourceKeyIds));
+    const rippledGroupKeys = identities.ordered.filter(
+      (identity) => identity.appFrame >= duplicateDestination && loopReferencedKeyIds.has(identity.keyId),
+    );
+    if (rippledGroupKeys.length > 0) {
+      return fail('loop-source-key-duplicate-rejected', operationKind, loopSourceKeyDuplicateRejectedText(rippledGroupKeys.length));
+    }
     const candidate = buildDuplicateCandidate(identities, recordsResult.records, intent.sourceKeyId, intent.newKeyId);
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;

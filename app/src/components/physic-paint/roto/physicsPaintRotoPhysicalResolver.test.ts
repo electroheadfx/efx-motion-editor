@@ -1225,6 +1225,195 @@ describe('Phase 43.2 ordinary-key delete beside Groups', () => {
   });
 });
 
+describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
+  const group1: PhysicPaintRotoLoopClip = {
+    loopId: 'group-1',
+    placementStart: 0,
+    sourceKeyIds: ['G1A', 'G1B'],
+    repeat: 2,
+    mode: 'progressive',
+    scriptId: 'action-1',
+    motion: { deformation: 0, position: 0 },
+    overrideColor: null,
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: 0,
+    originalEndExclusive: 4,
+    visibleRanges: [{ start: 0, endExclusive: 4 }],
+    frameOverrides: [],
+  };
+  const group2: PhysicPaintRotoLoopClip = {
+    ...group1,
+    loopId: 'group-2',
+    placementStart: 8,
+    sourceKeyIds: ['G2A', 'G2B'],
+    phaseOrigin: 8,
+    originalEndExclusive: 12,
+    visibleRanges: [{ start: 8, endExclusive: 12 }],
+  };
+  const singleSourceGroup: PhysicPaintRotoLoopClip = {
+    ...group1,
+    loopId: 'group-single',
+    sourceKeyIds: ['G1A'],
+    originalEndExclusive: 2,
+    visibleRanges: [{ start: 0, endExclusive: 2 }],
+  };
+  const recordsFrom = (identities: readonly PhysicPaintRotoKeyIdentity[]): PhysicPaintRotoRealKeyRecord[] =>
+    identities.map(({ keyId, appFrame }) => ({
+      kind: 'real-key' as const,
+      keyId,
+      appFrame,
+      payload: { frameIndex: 0, appFrame, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 },
+    }));
+
+  it('rejects insert-slot when the selected key is Group-referenced', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+      ],
+      intent: { kind: 'insert-slot', selectedKeyId: 'G1A' },
+      capacity: 32,
+      interpolationEnabled: false,
+      loopClips: [group1],
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Insert on a Group source key must fail closed');
+    expect(resolution.failure.code).toBe('loop-source-key-insert-rejected');
+    expect(resolution.failure.operationKind).toBe('insert-slot');
+  });
+
+  it('rejects insert-slot when the right ripple would move a Group-referenced key', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+        { keyId: 'G2A', appFrame: 8 },
+        { keyId: 'G2B', appFrame: 9 },
+      ],
+      intent: { kind: 'insert-slot', selectedKeyId: 'X' },
+      capacity: 32,
+      interpolationEnabled: false,
+      loopClips: [group1, group2],
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Insert before a Group must fail closed');
+    expect(resolution.failure.code).toBe('loop-source-key-insert-rejected');
+    expect(resolution.failure.operationKind).toBe('insert-slot');
+  });
+
+  it('keeps the legacy right ripple when no key at or after the selected frame is Group-owned', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+        { keyId: 'Y', appFrame: 6 },
+      ],
+      intent: { kind: 'insert-slot', selectedKeyId: 'X' },
+      capacity: 32,
+      interpolationEnabled: false,
+      loopClips: [group1],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Ordinary insert after the last Group must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      G1A: 0,
+      G1B: 1,
+      X: 6,
+      Y: 7,
+    });
+    expect(resolution.proposal.nextLoopClips).toBeNull();
+  });
+
+  it('rejects duplicate-key when the right ripple would move a Group-referenced key', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'X', appFrame: 5 },
+        { keyId: 'G2A', appFrame: 8 },
+        { keyId: 'G2B', appFrame: 9 },
+      ],
+      records: recordsFrom([
+        { keyId: 'X', appFrame: 5 },
+        { keyId: 'G2A', appFrame: 8 },
+        { keyId: 'G2B', appFrame: 9 },
+      ]),
+      intent: { kind: 'duplicate-key', sourceKeyId: 'X', newKeyId: 'X-copy' },
+      capacity: 32,
+      interpolationEnabled: false,
+      loopClips: [group2],
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Duplicate before a Group must fail closed');
+    expect(resolution.failure.code).toBe('loop-source-key-duplicate-rejected');
+    expect(resolution.failure.operationKind).toBe('duplicate-key');
+  });
+
+  it('allows duplicating a Group source key when no later key is Group-referenced', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'X', appFrame: 5 },
+      ],
+      records: recordsFrom([
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'X', appFrame: 5 },
+      ]),
+      intent: { kind: 'duplicate-key', sourceKeyId: 'G1A', newKeyId: 'G1A-copy' },
+      capacity: 32,
+      interpolationEnabled: false,
+      loopClips: [singleSourceGroup],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Duplicating a sole Group source key must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      G1A: 0,
+      'G1A-copy': 1,
+      X: 6,
+    });
+    expect(resolution.proposal.nextLoopClips).toBeNull();
+  });
+
+  it('keeps the legacy right ripple for ordinary duplicates after the last Group', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+        { keyId: 'Y', appFrame: 8 },
+      ],
+      records: recordsFrom([
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+        { keyId: 'Y', appFrame: 8 },
+      ]),
+      intent: { kind: 'duplicate-key', sourceKeyId: 'X', newKeyId: 'X-copy' },
+      capacity: 32,
+      interpolationEnabled: false,
+      loopClips: [group1],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Ordinary duplicate after the last Group must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      G1A: 0,
+      G1B: 1,
+      X: 5,
+      'X-copy': 6,
+      Y: 9,
+    });
+    expect(resolution.proposal.nextLoopClips).toBeNull();
+  });
+});
+
 describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
   it.each([
     { repeat: 1, expectedFrames: [1] },
