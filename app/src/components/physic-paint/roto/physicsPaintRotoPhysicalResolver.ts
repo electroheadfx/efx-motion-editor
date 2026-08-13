@@ -299,7 +299,8 @@ export type PhysicPaintRotoPhysicalEditFailureCode =
   | 'loop-source-key-move-rejected'
   | 'invalid-linked-source-spacing-scope'
   | 'linked-source-spacing-order-rejected'
-  | 'linked-frame-delete-rejected';
+  | 'linked-frame-delete-rejected'
+  | 'no-free-space-in-direction';
 
 /**
  * Discriminated failure result. The failure branch cannot carry a partial
@@ -1887,6 +1888,126 @@ function buildMoveGroupClipCandidate(
 }
 
 /**
+ * Pure clamp authority for Group Rail drag destinations (D-05, D-08, RESEARCH
+ * Open Question 2). The dragged Group's interval at the proposed placement must
+ * overlap none of the D-08 collision boundaries: frame 0, physical
+ * capacity/parent end, every unowned real key outside the Group's own current
+ * interval, and every other Group's derived interval (including linked
+ * occurrences). The moved Group's own current interval is pass-through space —
+ * a drag crossing its original span is never blocked by it. Returns the nearest
+ * free placement in the drag direction (never moving backward past the current
+ * placement), or `ok: false` when zero valid movement exists in that direction
+ * (the branch surfaces the dedicated `no-free-space-in-direction` code). One
+ * exported authority, consumed by the resolver branch and (plan 03) the ghost
+ * preview so preview-is-the-commit holds (D-05).
+ */
+export interface PhysicPaintRotoGroupDragClampInput {
+  /** The dragged Loop Clip (`repeat: 'infinity'` pins the interval right edge). */
+  readonly clip: PhysicPaintRotoLoopClip;
+  /**
+   * The dragged Group's current derived interval — phaseOrigin to resolved
+   * effectiveEnd from `derivePhysicPaintRotoLoopRanges` (the same projection
+   * the rail draws). Infinity Groups use the resolved effectiveEnd so rightward
+   * drags legitimately shrink derived occurrences (Pitfall 7, D-19).
+   */
+  readonly draggedInterval: { readonly phaseOrigin: number; readonly effectiveEnd: number };
+  readonly proposedDestinationPlacementStart: number;
+  readonly identities: readonly PhysicPaintRotoKeyIdentity[];
+  /** Complete derived Loop Clip ranges (each other Group's full effective interval). */
+  readonly loopRanges: readonly PhysicPaintRotoLoopRange[];
+  readonly capacity: number;
+}
+
+export type PhysicPaintRotoGroupDragClampResult =
+  | { readonly ok: true; readonly destinationPlacementStart: number }
+  | { readonly ok: false };
+
+export function clampPhysicPaintGroupDragDestination(
+  input: PhysicPaintRotoGroupDragClampInput,
+): PhysicPaintRotoGroupDragClampResult {
+  const {
+    clip,
+    draggedInterval,
+    proposedDestinationPlacementStart: proposed,
+    identities,
+    loopRanges,
+    capacity,
+  } = input;
+  const current = clip.placementStart;
+  const span = Math.max(0, draggedInterval.effectiveEnd - draggedInterval.phaseOrigin);
+  const infinity = clip.repeat === 'infinity';
+
+  const ownedKeyIds = new Set<string>([
+    ...clip.sourceKeyIds,
+    ...(clip.frameOverrides ?? []).map((override) => override.keyId),
+  ]);
+  const frameByKeyId = new Map(identities.map((identity) => [identity.keyId, identity.appFrame] as const));
+  const unownedKeyFrames = new Set<number>();
+  const boundaryKeyFrames = new Set<number>();
+  for (const identity of identities) {
+    if (ownedKeyIds.has(identity.keyId)) continue;
+    unownedKeyFrames.add(identity.appFrame);
+    // D-08 pass-through: real keys inside the moved Group's own current
+    // interval are not interval boundaries — the drag crossing its original
+    // span is not blocked by them.
+    if (identity.appFrame >= draggedInterval.phaseOrigin && identity.appFrame < draggedInterval.effectiveEnd) continue;
+    boundaryKeyFrames.add(identity.appFrame);
+  }
+
+  const otherIntervals = loopRanges
+    .filter((range) => range.loopId !== clip.loopId)
+    .map((range) => ({ start: range.placementStart, end: range.effectiveEnd }));
+
+  const intervalFree = (destination: number): boolean => {
+    if (destination < 0) return false;
+    // Infinity Groups pin the right edge at the resolved effectiveEnd, so a
+    // rightward drag shrinks the derived interval instead of translating it.
+    const end = infinity ? draggedInterval.effectiveEnd : destination + span;
+    if (end > capacity) return false;
+    if (span <= 0) return true; // zero-width interval overlaps nothing (Pitfall 7)
+    for (const frame of boundaryKeyFrames) {
+      if (frame >= destination && frame < end) return false;
+    }
+    for (const other of otherIntervals) {
+      if (destination < other.end && other.start < end) return false;
+    }
+    return true;
+  };
+
+  const keysLandFree = (destination: number): boolean => {
+    const delta = destination - current;
+    for (const keyId of clip.sourceKeyIds) {
+      const sourceFrame = frameByKeyId.get(keyId);
+      if (sourceFrame === undefined) continue;
+      const next = sourceFrame + delta;
+      if (next < 0 || next >= capacity) return false;
+      if (unownedKeyFrames.has(next)) return false;
+    }
+    return true;
+  };
+
+  const valid = (destination: number): boolean => intervalFree(destination) && keysLandFree(destination);
+
+  if (proposed === current) {
+    return { ok: true, destinationPlacementStart: current };
+  }
+  if (proposed > current) {
+    // Rightward drag: nearest free placement at or before the proposed
+    // destination, never moving left of the current placement.
+    for (let destination = proposed; destination > current; destination -= 1) {
+      if (valid(destination)) return { ok: true, destinationPlacementStart: destination };
+    }
+    return { ok: false };
+  }
+  // Leftward drag: nearest free placement at or after the proposed destination,
+  // never moving right of the current placement.
+  for (let destination = proposed; destination < current; destination += 1) {
+    if (valid(destination)) return { ok: true, destinationPlacementStart: destination };
+  }
+  return { ok: false };
+}
+
+/**
  * Compute whether the final mapping differs from the input. Used by Drag and
  * Force Spacing so an already-exact request yields a valid no-change proposal.
  */
@@ -3161,7 +3282,35 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (firstSourceFrame === undefined || clip.placementStart !== firstSourceFrame) {
       return fail('malformed-identity', operationKind, 'Group move requires a source-attached Group.');
     }
-    const moveResult = buildMoveGroupClipCandidate(identities, clip, intent.destinationPlacementStart, input.capacity, loopClips);
+    // D-05 / D-08: derive the dragged Group's interval (the same projection the
+    // rail draws) and clamp the proposed destination BEFORE computing delta.
+    // The clamp is the single pure authority shared with the plan 03 preview,
+    // so preview-is-the-commit holds. Rejection happens only when zero valid
+    // movement exists in the dragged direction (D-06 substrate).
+    const derivation = derivePhysicPaintRotoLoopRanges({
+      identities: identities.ordered,
+      loopClips,
+      capacity: input.capacity,
+      parentEndExclusive: input.capacity,
+      interpolationEnabled: input.interpolationEnabled,
+    });
+    const draggedRanges = derivation.ranges.filter((range) => range.loopId === clip.loopId);
+    const phaseOrigin = clip.phaseOrigin ?? clip.placementStart;
+    const resolvedEffectiveEnd = draggedRanges.length > 0
+      ? Math.max(...draggedRanges.map((range) => range.effectiveEnd))
+      : (clip.originalEndExclusive ?? phaseOrigin);
+    const clampResult = clampPhysicPaintGroupDragDestination({
+      clip,
+      draggedInterval: { phaseOrigin, effectiveEnd: resolvedEffectiveEnd },
+      proposedDestinationPlacementStart: intent.destinationPlacementStart,
+      identities: identities.ordered,
+      loopRanges: derivation.ranges,
+      capacity: input.capacity,
+    });
+    if (!clampResult.ok) {
+      return fail('no-free-space-in-direction', operationKind, 'Group drag has no free space in the dragged direction.');
+    }
+    const moveResult = buildMoveGroupClipCandidate(identities, clip, clampResult.destinationPlacementStart, input.capacity, loopClips);
     if (!moveResult.ok) return moveResult.resolution;
     const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
