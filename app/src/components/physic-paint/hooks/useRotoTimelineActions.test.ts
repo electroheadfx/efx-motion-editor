@@ -1036,7 +1036,9 @@ describe('useRotoTimelineActions Group-drag prepare/commit publication pair', ()
     const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 4);
     expect(preparation.ok).toBe(true);
     if (!preparation.ok) throw new Error('Group drag must prepare');
-    expect(Object.fromEntries(preparation.publication.proposal.mapping)).toEqual({ A: 4, B: 3, C: 8, D: 10 });
+    // Task 1 (plan 02) clamps before computing delta (D-05): destination 4
+    // clamps to 2 so the interval [2,10) stops at unowned D@10, delta 1.
+    expect(Object.fromEntries(preparation.publication.proposal.mapping)).toEqual({ A: 2, B: 3, C: 6, D: 10 });
 
     const accepted = await actions.physicalActions.commitRotoGroupDrag(preparation.publication);
 

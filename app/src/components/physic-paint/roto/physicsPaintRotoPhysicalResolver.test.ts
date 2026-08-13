@@ -761,23 +761,27 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached fre
     expect(resolution.ok).toBe(true);
     if (!resolution.ok) throw new Error('Source-attached move-group must resolve ok');
     const { proposal } = resolution;
-    // delta = 4 - 1 = 3; A@1 -> 4, C@5 -> 8; B@3 and D@10 stay fixed.
-    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 4, B: 3, C: 8, D: 10 });
+    // D-08 clamp-and-commit (plan 02 Task 1): the proposed destination 4 would
+    // place the interval [4,12) over unowned real key D@10, so the pure clamp
+    // commits at the nearest free placement 2 (next real key frame 10 minus
+    // interval width 8). delta = 2 - 1 = 1; A@1 -> 2, C@5 -> 6; B@3 and D@10
+    // stay fixed. The lifecycle fields still translate by the SAME signed delta.
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 2, B: 3, C: 6, D: 10 });
     expect(proposal.status.operationKind).toBe('move-group');
     expect(proposal.nextLoopClips).not.toBeNull();
     if (!proposal.nextLoopClips) throw new Error('nextLoopClips must be present');
     const movedClip = proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-A');
     expect(movedClip).toBeDefined();
-    expect(movedClip?.placementStart).toBe(4);
-    expect(movedClip?.phaseOrigin).toBe(4);
-    expect(movedClip?.originalEndExclusive).toBe(12);
+    expect(movedClip?.placementStart).toBe(2);
+    expect(movedClip?.phaseOrigin).toBe(2);
+    expect(movedClip?.originalEndExclusive).toBe(10);
     expect(movedClip?.visibleRanges).toEqual([
-      { start: 4, endExclusive: 7 },
-      { start: 8, endExclusive: 12 },
+      { start: 2, endExclusive: 5 },
+      { start: 6, endExclusive: 10 },
     ]);
     expect(movedClip?.frameOverrides).toEqual([
-      { appFrame: 6, keyId: 'override-3' },
-      { appFrame: 10, keyId: 'override-7' },
+      { appFrame: 4, keyId: 'override-3' },
+      { appFrame: 8, keyId: 'override-7' },
     ]);
   });
 
@@ -827,15 +831,27 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached fre
     if (overflow.ok) throw new Error('out-of-capacity destination must reject');
     expect(overflow.failure.code).toBe('out-of-range-frame');
     expect('proposal' in overflow).toBe(false);
+  });
 
-    const keyOverflow = resolvePhysicPaintRotoPhysicalEdit({
-      ...base,
+  it('clamps a destination that would translate a key outside capacity into free space', () => {
+    // D-08 clamp-and-commit (plan 02 Task 1): destination 12 stays inside the
+    // 16-frame capacity as a proposed value, but the derived interval [12,20)
+    // exceeds both capacity and the D@10 boundary, so the clamp commits at the
+    // nearest free placement 2 instead of rejecting over-capacity.
+    const records = buildBaselineRecords();
+    const loopClips = buildSourceAttachedGroup();
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
       intent: { kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: 12 },
+      capacity: 16,
+      interpolationEnabled: false,
+      loopClips,
     });
-    expect(keyOverflow.ok).toBe(false);
-    if (keyOverflow.ok) throw new Error('destination translating a key outside capacity must reject');
-    expect(keyOverflow.failure.code).toBe('over-capacity');
-    expect('proposal' in keyOverflow).toBe(false);
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Out-of-capacity-key destination must clamp and commit');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 2, B: 3, C: 6, D: 10 });
   });
 });
 
@@ -857,6 +873,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
       phaseOrigin: 1,
       originalEndExclusive: 9,
       visibleRanges: Object.freeze([Object.freeze({ start: 1, endExclusive: 9 })]),
+      frameOverrides: Object.freeze([]),
       ...overrides,
     }) as PhysicPaintRotoLoopClip,
   ]);
@@ -913,7 +930,14 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
         { keyId: 'A', appFrame: 2 },
         { keyId: 'C', appFrame: 6 },
       ],
-      buildClampGroup({ placementStart: 2, phaseOrigin: 2, originalEndExclusive: 10 }),
+      buildClampGroup({
+        placementStart: 2,
+        phaseOrigin: 2,
+        originalEndExclusive: 10,
+        // The visible range must match the moved origin: the derivation projects
+        // effectiveEnd from visibleRanges, so a stale [{1,9}] would yield span 7.
+        visibleRanges: Object.freeze([Object.freeze({ start: 2, endExclusive: 10 })]),
+      }),
       'loop-R',
       0,
     );
@@ -987,6 +1011,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
         phaseOrigin: 11,
         originalEndExclusive: 20,
         visibleRanges: Object.freeze([Object.freeze({ start: 11, endExclusive: 20 })]),
+        frameOverrides: Object.freeze([]),
       }) as PhysicPaintRotoLoopClip,
     ];
 
@@ -1051,11 +1076,14 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
       loopId: 'loop-I',
       repeat: 'infinity',
       mode: 'progressive',
-      syncState: 'synchronized',
-      provenanceState: 'attached',
+      // All six lifecycle fields cleared together so the all-or-nothing
+      // validator (lifecycleCount === 0) accepts the pre-attachment clip.
+      syncState: undefined,
+      provenanceState: undefined,
       phaseOrigin: undefined,
       originalEndExclusive: undefined,
       visibleRanges: undefined,
+      frameOverrides: undefined,
     });
 
     const resolution = resolveMoveGroup(
