@@ -1942,6 +1942,12 @@ export function clampPhysicPaintGroupDragDestination(
     ...(clip.frameOverrides ?? []).map((override) => override.keyId),
   ]);
   const frameByKeyId = new Map(identities.map((identity) => [identity.keyId, identity.appFrame] as const));
+  // Attachment is derived from canonical facts only (Pitfall 4): a placement
+  // that coincides with its first source key frame is source-attached, so its
+  // keys move with the drag and must land free. A duplicated placement (D-11)
+  // is a placement-only move — its keys never move, so only interval-free
+  // applies. The dragged Group's own current interval is pass-through either way.
+  const attached = frameByKeyId.get(clip.sourceKeyIds[0]) === clip.placementStart;
   const unownedKeyFrames = new Set<number>();
   const boundaryKeyFrames = new Set<number>();
   for (const identity of identities) {
@@ -1986,7 +1992,14 @@ export function clampPhysicPaintGroupDragDestination(
     return true;
   };
 
-  const valid = (destination: number): boolean => intervalFree(destination) && keysLandFree(destination);
+  const valid = (destination: number): boolean => {
+    if (!intervalFree(destination)) return false;
+    // Duplicated placements never move their (shared) source keys (D-11), so
+    // the key-landing check is inapplicable — only the interval placement is
+    // constrained.
+    if (!attached) return true;
+    return keysLandFree(destination);
+  };
 
   if (proposed === current) {
     return { ok: true, destinationPlacementStart: current };
@@ -3276,11 +3289,13 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (clip.sourceKeyIds.length === 0) {
       return fail('malformed-identity', operationKind, 'Group move requires a Group with source keys.');
     }
-    // Source attachment is resolver-derived (Pitfall 4): the clip's placement
-    // start must coincide with its first source key's pre-move frame.
+    // Attachment is resolver-derived (Pitfall 4): the clip's first source key
+    // must exist in the identity set, and the placement start either coincides
+    // with that key's pre-move frame (source-attached) or differs (duplicated
+    // shared-source placement, D-11). Never accept a UI-supplied attachment flag.
     const firstSourceFrame = identities.framesByKeyId.get(clip.sourceKeyIds[0]);
-    if (firstSourceFrame === undefined || clip.placementStart !== firstSourceFrame) {
-      return fail('malformed-identity', operationKind, 'Group move requires a source-attached Group.');
+    if (firstSourceFrame === undefined) {
+      return fail('malformed-identity', operationKind, 'Group move requires its first source key to exist in the identity set.');
     }
     // D-05 / D-08: derive the dragged Group's interval (the same projection the
     // rail draws) and clamp the proposed destination BEFORE computing delta.
@@ -3310,9 +3325,44 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (!clampResult.ok) {
       return fail('no-free-space-in-direction', operationKind, 'Group drag has no free space in the dragged direction.');
     }
-    const moveResult = buildMoveGroupClipCandidate(identities, clip, clampResult.destinationPlacementStart, input.capacity, loopClips);
-    if (!moveResult.ok) return moveResult.resolution;
-    const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
+    const destination = clampResult.destinationPlacementStart;
+
+    if (clip.placementStart === firstSourceFrame) {
+      // Source-attached arm (plan-01 + Task-1 clamp): rigid translation — every
+      // source key and the Group lifecycle fields translate by the same delta.
+      const moveResult = buildMoveGroupClipCandidate(identities, clip, destination, input.capacity, loopClips);
+      if (!moveResult.ok) return moveResult.resolution;
+      const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
+      if (!finalized.ok) return finalized.resolution;
+      return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+    }
+
+    // Duplicated shared-source placement (D-11, D-19): a placement-only move.
+    // Identity mapping — every key maps to its current frame, so shared source
+    // keys and their owned breaks never move. nextLoopClips updates ONLY the
+    // dragged clip's placementStart and lifecycle fields by the placement delta
+    // (Group-local deleted phases keep their original relative source phases,
+    // D-13). No materialization, no source duplication, repeat/mode unchanged.
+    const delta = destination - clip.placementStart;
+    const mapping = new Map(identities.ordered.map((identity) => [identity.keyId, identity.appFrame] as const));
+    const candidate = {
+      mapping,
+      expectedKeyIds: identities.keyIds,
+      removedKeyId: null,
+      removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+      selectedKeyId: clip.sourceKeyIds[0],
+      operationKind: 'move-group' as const,
+      changed: computeChanged(identities, mapping),
+      roleByKeyId: new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>(),
+      drag: null,
+      nextLoopClips: buildMoveGroupNextLoopClips(loopClips, clip, delta),
+      // No interval vacates in a placement-only move, so the incoming breaks
+      // echo byte-identical (D-11); Task 3's vacated/residual rules refine this.
+      nextIncomingInterpolationBreakKeyIds: Object.freeze(
+        [...incomingInterpolationBreakKeyIds],
+      ) as readonly string[],
+    };
+    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
