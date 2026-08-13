@@ -735,7 +735,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached fre
       phaseOrigin: 1,
       originalEndExclusive: 9,
       visibleRanges: Object.freeze([
-        Object.freeze({ start: 1, endExclusive: 5 }),
+        Object.freeze({ start: 1, endExclusive: 4 }),
         Object.freeze({ start: 5, endExclusive: 9 }),
       ]),
       frameOverrides: Object.freeze([
@@ -771,7 +771,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached fre
     expect(movedClip?.phaseOrigin).toBe(4);
     expect(movedClip?.originalEndExclusive).toBe(12);
     expect(movedClip?.visibleRanges).toEqual([
-      { start: 4, endExclusive: 8 },
+      { start: 4, endExclusive: 7 },
       { start: 8, endExclusive: 12 },
     ]);
     expect(movedClip?.frameOverrides).toEqual([
