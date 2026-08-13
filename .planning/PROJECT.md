@@ -123,10 +123,10 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Desktop build hygiene: chunkSizeWarningLimit 1100 documented and test-pinned; 4 triage-approved mixed-import corrections with non-return assertions — v0.9.0 Phase 40
 - ✓ EFX Paint audio preview monitoring: read-only main-editor audio in the child window, frame-synchronized (anchor model, silent scrub, loop-wrap re-seek, 40ms drift correction), revisioned launch payload + push updates, doubled-audio ownership guard with auto-resume, session-local toggle, engine release on close, D-04-proven single-token CSP grant; native packaged UAT approved — v0.9.0 Phase 41
 - ✓ PlayScript application modes + color override: progressive vs static/hold modes generating one source cycle of real keys, application-time color-only override fed live from the brush color (read-only, snapshot at Generate, erase strokes excluded), application-time Motion, Hold Loop repeat/infinity as Phase 43 loop intent (Requested/Effective readout only — never materialized), two-line success-only Scripts panel summary, compact dark draggable modal (approved playscript-proposal direction); native UAT approved — v0.9.0 Phase 42
+- ✓ Linked Hold Loop Clips (cycle × repeat 1..∞) with filmstrip timeline visualization, no duplicated source assets — v0.9.0 Phase 43 (Validated in Phase 43: Hold Loop Clips + Integrated Loop Rail)
 
 ### Active
 
-- [ ] Linked Hold Loop Clips (cycle × repeat 1..∞) with filmstrip timeline visualization, no duplicated source assets — v0.9.0 (Phase 43; repeats the Phase 42 source cycle by reference)
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 
@@ -279,4 +279,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-13 after Phase 43.2 completion — Motion and Static Group stabilization and Action lifecycle shipped and UAT-approved (frozen 89d10685); milestone v0.9.0 (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
+*Last updated: 2026-08-13 after Phase 43 verification closure — Hold Loop Clips + Integrated Loop Rail verified (6/6 must-haves, native UAT approved); milestone v0.9.0 (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
