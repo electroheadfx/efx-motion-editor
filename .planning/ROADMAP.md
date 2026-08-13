@@ -26,7 +26,7 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 - [x] **Phase 42: PlayScript Application Modes + Color Override** — Explicit progressive vs static/hold modes and application-time color override with clear Scripts panel UI (completed 2026-08-06)
 - [x] **Phase 43: Hold Loop Clips + Integrated Loop Rail** — Deterministic static/hold rendering with linked Loop Clips (cycle × repeat 1..∞), an EFX-local integrated rail/contextual inspector, and one passive Motion Editor PPaint FX-bar duration marker per effective interval with zero Loop Clip-specific interaction (completed 2026-08-08)
 - [x] **Phase 43.1: Intentional Gap Insert and Local Interpolation Breaks** — Existing Insert context-dispatches a genuinely empty cursor into one atomic empty-key-plus-stable-break transaction, preserving local interpolation, persistence, history, and accepted physical-strip geometry (completed 2026-08-10)
-- [ ] **Phase 43.2: Motion and Static Group Stabilization and Action Lifecycle** — Durable Groups, exact local lifecycle edits, leased bidirectional Action deletion history, and canonical save/playback/preview/export parity
+- [x] **Phase 43.2: Motion and Static Group Stabilization and Action Lifecycle** — Durable Groups, exact local lifecycle edits, leased bidirectional Action deletion history, and canonical save/playback/preview/export parity (completed 2026-08-13)
 - [ ] **Phase 44: Integrated UAT + Signed Release** — All automated gates, packaged native UAT per spec, signed/notarized downloaded-artifact verification, publish 2026-08-31
 
 ## Phase Details
@@ -282,7 +282,7 @@ Plans:
 **Goal:** Users can preserve, locally modify, fragment, regenerate, navigate, detach, or remove durable Motion and Static Groups through a complete Action lifecycle while one canonical accepted physical document remains authoritative across save/reopen, playback, preview, and export.
 **Requirements:** GRP-01, GRP-02, GRP-03, GRP-04, GRP-05, GRP-06, GRP-07, GRP-08 (planning-local; do not add to REQUIREMENTS.md)
 **Depends on:** Phase 43.1
-**Plans:** 20 plans
+**Plans:** 25/25 plans complete
 
 Plans:
 
@@ -322,7 +322,7 @@ Plans:
 **Waves 16–17 — parity, regression, and acceptance**
 
 - [x] 43.2-16-PLAN.md — Shared accepted frameMap/playback/preview/export lifecycle resolution (GRP-08)
-- [ ] 43.2-17-PLAN.md — Motion Editor regressions, full lease/history/recovery gates, source audit, and blocking frozen-session native UAT (GRP-01..GRP-08)
+- [x] 43.2-17-PLAN.md — Motion Editor regressions, full lease/history/recovery gates, source audit, and blocking frozen-session native UAT (GRP-01..GRP-08)
 
 ### Phase 44: Integrated UAT + Signed Release
 
@@ -494,5 +494,5 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 42. PlayScript Modes + Color Override | v0.9.0 | 6/6 | Complete    | 2026-08-06 |
 | 43. Hold Loop Clips + Integrated Loop Rail | v0.9.0 | 15/15 | Complete | 2026-08-08 |
 | 43.1 Intentional Gap Insert + Local Breaks | v0.9.0 | 12/12 | Complete    | 2026-08-10 |
-| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 23/24 | In Progress|  |
+| 43.2 Motion/Static Group + Action Lifecycle | v0.9.0 | 25/25 | Complete    | 2026-08-13 |
 | 44. Integrated UAT + Signed Release | v0.9.0 | 0/TBD | Not started | - |
