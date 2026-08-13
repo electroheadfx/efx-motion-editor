@@ -279,4 +279,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-06 after Phase 42 completion — PlayScript application modes + color override shipped and UAT-approved; milestone v0.9.0 (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
+*Last updated: 2026-08-13 after Phase 43.2 completion — Motion and Static Group stabilization and Action lifecycle shipped and UAT-approved (frozen 89d10685); milestone v0.9.0 (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
