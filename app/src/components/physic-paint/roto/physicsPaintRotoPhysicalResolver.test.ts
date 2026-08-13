@@ -527,6 +527,235 @@ describe('incoming interpolation break lifecycle', () => {
     if (!group.ok) throw new Error('Group delete must resolve');
     expect(group.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['C']);
   });
+
+  // --- Task 3 (plan 02): stable-key-owned break derivation for move-group (D-09..D-13) ---
+
+  /** Source-attached Group over A@1/C@5 with lifecycle extent [1,9). */
+  const buildGroupAt = (overrides: Partial<PhysicPaintRotoLoopClip> = {}): readonly PhysicPaintRotoLoopClip[] => Object.freeze([
+    Object.freeze({
+      loopId: 'loop-A',
+      placementStart: 1,
+      sourceKeyIds: ['A', 'C'],
+      repeat: 2,
+      mode: 'static',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 1,
+      originalEndExclusive: 9,
+      visibleRanges: Object.freeze([
+        Object.freeze({ start: 1, endExclusive: 4 }),
+        Object.freeze({ start: 5, endExclusive: 9 }),
+      ]),
+      frameOverrides: Object.freeze([]),
+      ...overrides,
+    }) as PhysicPaintRotoLoopClip,
+  ]);
+
+  const resolveMove = (
+    identities: readonly PhysicPaintRotoKeyIdentity[],
+    loopClips: readonly PhysicPaintRotoLoopClip[],
+    loopId: string,
+    destinationPlacementStart: number,
+    extra: { readonly incomingInterpolationBreakKeyIds?: readonly string[]; readonly capacity?: number } = {},
+  ): PhysicPaintRotoPhysicalEditResolution => resolvePhysicPaintRotoPhysicalEdit({
+    identities,
+    intent: { kind: 'move-group', loopId, destinationPlacementStart },
+    capacity: 16,
+    interpolationEnabled: true,
+    loopClips,
+    ...extra,
+  });
+
+  const resolveGroupMove = (
+    loopClips: readonly PhysicPaintRotoLoopClip[],
+    loopId: string,
+    destinationPlacementStart: number,
+    extra: { readonly incomingInterpolationBreakKeyIds?: readonly string[] } = {},
+  ): PhysicPaintRotoPhysicalEditResolution => resolveMove(buildBaselineIdentities(), loopClips, loopId, destinationPlacementStart, extra);
+
+  it('D-09: gives the vacated interval successor the incoming break, never a standalone gap record', () => {
+    // Group [1,9) with A@1/C@5 clamps to destination 2 (interval [2,10) stops at
+    // unowned D@10). The vacated interval [1,9) leaves D@10 as the next real key
+    // after it, so D owns the incoming break: the [7,9) tail of the vacated span
+    // is never interpolated. No standalone frame-range gap record exists.
+    const resolution = resolveGroupMove(buildGroupAt(), 'loop-A', 4);
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Source-attached move must resolve');
+    const { proposal } = resolution;
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 2, B: 3, C: 6, D: 10 });
+    expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['D']);
+    expect(proposal.semanticDelta).toBeNull();
+    expect(proposal.drag).toBeNull();
+    expect(proposal.generatedCells.some((cell) => cell.appFrame === 7 || cell.appFrame === 8)).toBe(false);
+    // The projection interpolates the full B@3→C@6 interior (frames 4,5); the
+    // Group's visible-range gap at frame 5 is masked at the loop-clip layer,
+    // not the projection layer (the projection knows no visible ranges).
+    expect(proposal.generatedCells.map((cell) => cell.appFrame)).toEqual([4, 5]);
+  });
+
+  it('D-10: opens a landing-gap break on the first source key, never on an adjacent landing', () => {
+    const identities = [
+      { keyId: 'P', appFrame: 0 },
+      { keyId: 'A', appFrame: 2 },
+      { keyId: 'C', appFrame: 6 },
+    ] as const;
+    const group = buildGroupAt({
+      placementStart: 2,
+      phaseOrigin: 2,
+      originalEndExclusive: 10,
+      visibleRanges: Object.freeze([Object.freeze({ start: 2, endExclusive: 10 })]),
+    });
+
+    // Rightward to 5: A lands at 5 with predecessor P@0 and an opened gap [1,5),
+    // so A owns a NEW incoming break; the vacated interval [2,10) has no
+    // successor (content ends at C@9).
+    const gapped = resolveMove(identities, group, 'loop-A', 5);
+    expect(gapped.ok).toBe(true);
+    if (!gapped.ok) throw new Error('Gapped landing must resolve');
+    expect(Object.fromEntries(gapped.proposal.mapping)).toEqual({ P: 0, A: 5, C: 9 });
+    expect(gapped.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['A']);
+    expect(gapped.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'A')).toBe(false);
+
+    // Leftward to 1: A lands adjacent to P@0 — no landing-gap break.
+    const adjacent = resolveMove(identities, group, 'loop-A', 1);
+    expect(adjacent.ok).toBe(true);
+    if (!adjacent.ok) throw new Error('Adjacent landing must resolve');
+    expect(Object.fromEntries(adjacent.proposal.mapping)).toEqual({ P: 0, A: 1, C: 5 });
+    expect(adjacent.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
+  });
+
+  it('43.1 D-14: carries breaks owned by moved keys unchanged through the drag', () => {
+    // Input break on C (a moved source key). The drag adds the vacated-successor
+    // break on D but never removes or duplicates the C break (D-10).
+    const resolution = resolveGroupMove(buildGroupAt(), 'loop-A', 4, { incomingInterpolationBreakKeyIds: ['C'] });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Identity-travel move must resolve');
+    const { proposal } = resolution;
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 2, B: 3, C: 6, D: 10 });
+    expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['C', 'D']);
+    expect(proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'C')).toBe(false);
+    expect(proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'D')).toBe(false);
+  });
+
+  it('D-12: no break when nothing would interpolate across the gap', () => {
+    const identities = [
+      { keyId: 'P', appFrame: 0 },
+      { keyId: 'A', appFrame: 2 },
+      { keyId: 'C', appFrame: 6 },
+    ] as const;
+    const group = buildGroupAt({
+      placementStart: 2,
+      phaseOrigin: 2,
+      originalEndExclusive: 10,
+      visibleRanges: Object.freeze([Object.freeze({ start: 2, endExclusive: 10 })]),
+    });
+
+    // (i) Vacated interval [2,10) at end of content (no successor after frame 10):
+    // only the landing-gap break on A appears — the vacated rule contributes none.
+    const vacatedAtEnd = resolveMove(identities, group, 'loop-A', 5);
+    expect(vacatedAtEnd.ok).toBe(true);
+    if (!vacatedAtEnd.ok) throw new Error('Vacated-at-end move must resolve');
+    expect(vacatedAtEnd.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['A']);
+
+    // (ii) Landing before all content: A lands at 0 (first key, no predecessor),
+    // so no landing-gap break, and the vacated interval has no successor.
+    const noPredecessor = resolveMove(
+      [
+        { keyId: 'A', appFrame: 2 },
+        { keyId: 'C', appFrame: 6 },
+      ] as const,
+      group,
+      'loop-A',
+      0,
+    );
+    expect(noPredecessor.ok).toBe(true);
+    if (!noPredecessor.ok) throw new Error('No-predecessor move must resolve');
+    expect(Object.fromEntries(noPredecessor.proposal.mapping)).toEqual({ A: 0, C: 4 });
+    expect(noPredecessor.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
+  });
+
+  it('D-11: a duplicated placement move updates only the vacated-interval break authority', () => {
+    const baseIdentities = [
+      { keyId: 'A', appFrame: 1 },
+      { keyId: 'B', appFrame: 3 },
+      { keyId: 'C', appFrame: 5 },
+      { keyId: 'D', appFrame: 10 },
+    ] as const;
+    const duplicated = (): readonly PhysicPaintRotoLoopClip[] => Object.freeze([
+      Object.freeze({
+        loopId: 'loop-B',
+        placementStart: 12,
+        sourceKeyIds: ['A', 'C'],
+        repeat: 2,
+        mode: 'progressive',
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 12,
+        originalEndExclusive: 20,
+        visibleRanges: Object.freeze([
+          Object.freeze({ start: 12, endExclusive: 15 }),
+          Object.freeze({ start: 17, endExclusive: 20 }),
+        ]),
+        frameOverrides: Object.freeze([]),
+      }) as PhysicPaintRotoLoopClip,
+    ]);
+
+    // (i) Successor E@24 after the vacated interval [12,20) owns the break.
+    const withSuccessor = [
+      ...baseIdentities,
+      { keyId: 'E', appFrame: 24 },
+    ] as const;
+    const vacated = resolveMove(withSuccessor, duplicated(), 'loop-B', 14, { capacity: 30 });
+    expect(vacated.ok).toBe(true);
+    if (!vacated.ok) throw new Error('Duplicated vacated move must resolve');
+    expect(vacated.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['E']);
+
+    // (ii) Reuse: an existing break on the successor is reused, never duplicated.
+    const reused = resolveMove(withSuccessor, duplicated(), 'loop-B', 14, { capacity: 30, incomingInterpolationBreakKeyIds: ['E'] });
+    expect(reused.ok).toBe(true);
+    if (!reused.ok) throw new Error('Duplicated reuse move must resolve');
+    expect(reused.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['E']);
+
+    // (iii) No successor: the collection equals the input — existing
+    // destination-gap breaks are preserved and reused. Capacity must cover the
+    // duplicated interval [12,20) or the clamp rejects the destination.
+    const noGap = resolveMove(baseIdentities, duplicated(), 'loop-B', 14, { incomingInterpolationBreakKeyIds: ['C'], capacity: 30 });
+    expect(noGap.ok).toBe(true);
+    if (!noGap.ok) throw new Error('Duplicated no-gap move must resolve');
+    expect(noGap.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['C']);
+  });
+
+  it('D-13: Group-local deleted phases and visibleRanges travel rigidly and never become key-owned breaks', () => {
+    // The plan-01 Group carries frameOverrides (deleted phases) and a visibleRanges
+    // gap [4,5). Moving it clamps to 2; the ONLY break is the external
+    // vacated-interval successor D@10. The internal fragments translate rigidly.
+    const groupWithLocalGaps = buildGroupAt({
+      frameOverrides: Object.freeze([
+        Object.freeze({ appFrame: 3, keyId: 'override-3' }),
+        Object.freeze({ appFrame: 7, keyId: 'override-7' }),
+      ]),
+    });
+    const resolution = resolveGroupMove(groupWithLocalGaps, 'loop-A', 4);
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('D-13 move must resolve');
+    const { proposal } = resolution;
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 2, B: 3, C: 6, D: 10 });
+    expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['D']);
+    expect(proposal.nextLoopClips).not.toBeNull();
+    if (!proposal.nextLoopClips) throw new Error('nextLoopClips must be present');
+    const movedClip = proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-A');
+    expect(movedClip?.visibleRanges).toEqual([
+      { start: 2, endExclusive: 5 },
+      { start: 6, endExclusive: 10 },
+    ]);
+    expect(movedClip?.frameOverrides).toEqual([
+      { appFrame: 4, keyId: 'override-3' },
+      { appFrame: 8, keyId: 'override-7' },
+    ]);
+  });
 });
 
 describe('resolvePhysicPaintRotoPhysicalEdit — rigid move-key-group', () => {
