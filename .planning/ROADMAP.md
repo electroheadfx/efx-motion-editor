@@ -236,7 +236,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 43.3-04-PLAN.md — Full regression gate with locked-boundary/frozen-path non-modification proofs + blocking frozen-session native UAT (GDRAG-09, GDRAG-10)
+- [x] 43.3-04-PLAN.md — Full regression gate with locked-boundary/frozen-path non-modification proofs + blocking frozen-session native UAT (GDRAG-09, GDRAG-10)
 
 ### Phase 43.1: Intentional Gap Insert and Local Interpolation Breaks
 
