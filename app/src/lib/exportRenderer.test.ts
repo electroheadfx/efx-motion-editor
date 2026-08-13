@@ -11,7 +11,7 @@ import type { Sequence } from '../types/sequence';
 import { physicPaintStore } from '../stores/physicPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PreviewPhysicPaintFrameSource, PreviewRenderer } from './previewRenderer';
-import { preloadExportImages } from './exportRenderer';
+import { preloadExportImages, renderGlobalFrame } from './exportRenderer';
 import { resolveMissingRotoFrameDraw } from './rotoFrameDraw';
 
 const root = resolve(__dirname, '../..');
@@ -377,6 +377,91 @@ describe('physics paint cache-first preview/export contract', () => {
 
 describe('exportRenderer', () => {
   describe('renderGlobalFrame', () => {
+    const makeFxPaintSequence = (layer: Layer): Sequence => ({
+      id: 'fx-paint',
+      kind: 'fx',
+      name: 'Paint',
+      fps: 24,
+      width: 1000,
+      height: 650,
+      keyPhotos: [],
+      inFrame: 0,
+      outFrame: 100,
+      layers: [layer],
+    });
+
+    const makeRendererStub = () => ({ renderFrame: vi.fn() }) as unknown as PreviewRenderer;
+    const makeCanvasStub = () => ({ width: 1000, height: 650 }) as unknown as HTMLCanvasElement;
+
+    it('composites a physic-paint overlay with an empty frameMap (no Timeline key photos)', () => {
+      const layer = makeRotoLayer();
+      const fxSeq = makeFxPaintSequence(layer);
+      sequenceStore.sequences.value = [fxSeq];
+      // Mirrors the user report: paint keys at appFrames 41/44/47, zero Timeline key photos.
+      seedPhysicalRoto([
+        { keyId: 'key-41', appFrame: 41, dataUrl: 'data:image/png;base64,cGFpbnQtNDE=' },
+        { keyId: 'key-44', appFrame: 44, dataUrl: 'data:image/png;base64,cGFpbnQtNDQ=' },
+        { keyId: 'key-47', appFrame: 47, dataUrl: 'data:image/png;base64,cGFpbnQtNDc=' },
+      ]);
+      const renderer = makeRendererStub();
+
+      renderGlobalFrame(renderer, makeCanvasStub(), 41, [], [fxSeq], [], false);
+
+      const renderFrame = vi.mocked(renderer.renderFrame);
+      expect(renderFrame).toHaveBeenCalled();
+      const call = renderFrame.mock.calls.find(
+        (args) => (args[0] as Layer[]).some((candidate) => candidate.id === 'roto-layer'),
+      );
+      expect(call).toBeDefined();
+      // Paint lookup is keyed by the global frame passed through (previewRenderer paintLookupFrame).
+      expect(call?.[6]).toBe(41);
+    });
+
+    it('hydrated paint-only project renders after simulated reopen (no content sequences registered)', () => {
+      const fxSeq = makeFxPaintSequence(makeRotoLayer());
+      // Simulated reopen: zero content sequences registered, only the FX sequence survives.
+      sequenceStore.sequences.value = [fxSeq];
+      // replaceRotoPhysicalDocument installs exactly what loadFromMceOutputs restores on
+      // reopen — the physical document authority is layerId-keyed and never touches
+      // timeline key photos. Persistence is NOT the defect; the render gate is.
+      seedPhysicalRoto([
+        { keyId: 'key-41', appFrame: 41, dataUrl: 'data:image/png;base64,cGFpbnQtNDE=' },
+        { keyId: 'key-44', appFrame: 44, dataUrl: 'data:image/png;base64,cGFpbnQtNDQ=' },
+        { keyId: 'key-47', appFrame: 47, dataUrl: 'data:image/png;base64,cGFpbnQtNDc=' },
+      ]);
+
+      const source = physicPaintStore.getRotoPhysicalRenderSource('roto-layer', 41);
+      expect(source).not.toBeNull();
+      expect(source?.kind).not.toBe('loop-placeholder');
+
+      const renderer = makeRendererStub();
+      renderGlobalFrame(renderer, makeCanvasStub(), 41, [], [fxSeq], [], false);
+
+      expect(vi.mocked(renderer.renderFrame)).toHaveBeenCalled();
+    });
+
+    it('content project renders unchanged (guard: content pass + overlay pass)', () => {
+      const layer = makeRotoLayer();
+      const contentSeq = makeSequence(layer);
+      const fxSeq = makeFxPaintSequence(makeRotoLayer());
+      sequenceStore.sequences.value = [contentSeq, fxSeq];
+      seedPhysicalRoto([
+        { keyId: 'key-0', appFrame: 0, dataUrl: 'data:image/png;base64,cGFpbnQtMA==' },
+      ]);
+      const fm = [
+        { globalFrame: 0, sequenceId: contentSeq.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 0 },
+        { globalFrame: 1, sequenceId: contentSeq.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 1 },
+      ];
+      const renderer = makeRendererStub();
+
+      renderGlobalFrame(renderer, makeCanvasStub(), 0, fm, [contentSeq, fxSeq], [], false);
+
+      const renderFrame = vi.mocked(renderer.renderFrame);
+      // Content pass clears the canvas; overlay pass composites on top.
+      expect(renderFrame.mock.calls.some((args) => args[4] === true)).toBe(true);
+      expect(renderFrame.mock.calls.some((args) => args[4] === false)).toBe(true);
+    });
+
     it.todo('renders a single content frame identically to Preview.tsx');
     it.todo('renders cross-dissolve overlap with correct blending');
     it.todo('renders FX overlay sequences with keyframe interpolation');
