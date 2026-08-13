@@ -28,7 +28,10 @@ fn physical_document(revision: &str) -> Value {
 
 fn prepare_fixture(direction: &str, mode: &str) -> Value {
     let action_id = Uuid::new_v4().to_string();
-    let physical_document = physical_document(&format!("physical-{direction}"));
+    // Canonical revision for this exact fixture document (see the parity
+    // vector in script_library_transaction_contract.rs).
+    let canonical_revision = "physical-292-ea77b953";
+    let physical_document = physical_document(canonical_revision);
     let physical_hash = canonical_physical_hash(&physical_document).unwrap();
     json!({
         "token": Uuid::new_v4().to_string(),
@@ -58,7 +61,7 @@ fn prepare_fixture(direction: &str, mode: &str) -> Value {
             "integritySha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
         },
         "target": {
-            "physicalRevision": format!("physical-{direction}"),
+            "physicalRevision": canonical_revision,
             "physicalHash": physical_hash,
             "physicalDocument": physical_document,
             "selectedGroupId": if mode == "delete-action-and-groups" { Value::Null } else { json!("group-1") },

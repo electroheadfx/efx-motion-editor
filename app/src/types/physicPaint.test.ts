@@ -576,6 +576,31 @@ describe('referenced Action transaction contracts', () => {
     })).toBe(false);
   });
 
+  it('pins the canonical physical hash reference vector shared with the Rust boundary', () => {
+    const realKeyRecords = [
+      { kind: 'real-key', keyId: 'key-1', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 } },
+      { kind: 'real-key', keyId: 'key-2', appFrame: 5, payload: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,BBBB' } },
+    ];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const loopClips = [
+      { loopId: 'group-1', placementStart: 0, sourceKeyIds: ['key-1'], repeat: 2, mode: 'progressive' as const, scriptId: 'action-1', motion: { deformation: 0, position: 0 }, overrideColor: null, syncState: 'synchronized' as const, provenanceState: 'attached' as const, phaseOrigin: 0, originalEndExclusive: 2, visibleRanges: [{ start: 0, endExclusive: 2 }], frameOverrides: [] },
+    ];
+    const document = {
+      capacity: 24,
+      realKeyRecords,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 18,
+      revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, loopClips),
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+    };
+    expect(buildPhysicPaintRotoProjectEquality(document)).toBe('project-360-b521097e');
+  });
+
   it('distinguishes every durable journal and retained-history result state', () => {
     const request = actionTransactionPrepare();
     const record = { schemaVersion: 1, state: 'prepared', ...request };

@@ -84,12 +84,12 @@ fn prepare_request_with_direction(
     direction: &str,
 ) -> Value {
     let expected_action_present = direction != "undo";
-    let target_suffix = if direction == "undo" {
-        "before"
-    } else {
-        "after"
-    };
-    let physical_document = physical_document(&format!("physical-{target_suffix}"));
+    // The canonical revision for this exact fixture document, computed by
+    // `buildPhysicPaintRotoPhysicalRevision` in physicsPaintRotoPhysicalModel.ts.
+    // Using it keeps the fixture a valid TypeScript document so the parity
+    // vector pins both trust boundaries on the same input.
+    let canonical_revision = "physical-292-ea77b953";
+    let physical_document = physical_document(canonical_revision);
     let physical_hash =
         efx_motion_editor_lib::script_library_test_support::canonical_physical_hash(&physical_document)
             .unwrap();
@@ -121,7 +121,7 @@ fn prepare_request_with_direction(
             "integritySha256": integrity_sha256
         },
         "target": {
-            "physicalRevision": format!("physical-{target_suffix}"),
+            "physicalRevision": canonical_revision,
             "physicalHash": physical_hash,
             "physicalDocument": physical_document,
             "selectedGroupId": "group-1",
@@ -295,7 +295,7 @@ fn commit_moves_action_to_hidden_tombstone_and_gates_ordinary_scan() {
     assert_eq!(recovery["state"], "recovery-required");
     assert_eq!(
         recovery["target"]["physicalDocument"]["revision"],
-        "physical-after"
+        "physical-292-ea77b953"
     );
     assert_eq!(recovery["token"], token);
 }
@@ -476,7 +476,7 @@ fn history_undo_and_redo_restore_and_remove_exact_action_authority() {
     assert_eq!(undo_committed["direction"], "undo");
     assert_eq!(
         undo_committed["target"]["physicalRevision"],
-        "physical-before"
+        "physical-292-ea77b953"
     );
     assert_eq!(std::fs::read(&action_path).unwrap(), original_bytes);
     fixture
@@ -491,7 +491,7 @@ fn history_undo_and_redo_restore_and_remove_exact_action_authority() {
     assert_eq!(redo_committed["direction"], "redo");
     assert_eq!(
         redo_committed["target"]["physicalRevision"],
-        "physical-after"
+        "physical-292-ea77b953"
     );
     assert!(!action_path.exists());
     fixture
