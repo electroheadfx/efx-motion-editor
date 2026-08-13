@@ -1,5 +1,6 @@
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type { PhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
+import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
 import type {
   PhysicPaintRotoFrameResolution,
   PhysicPaintRotoPhysicalCell,
@@ -738,4 +739,42 @@ export function collectRotoDragVacatedAppFrames(
     if (!proposalOccupied.has(frame)) vacated.add(frame);
   }
   return vacated;
+}
+
+/**
+ * Group-drag gap preview (UI-SPEC G3, D-02): the frames that preview as
+ * ordinary `roto-fill-empty` cells during a Group Rail drag session. Returns
+ * the vacated interval (the Group's original span, now empty) plus any newly
+ * opened destination interval between the moved Group's first source key and
+ * its new predecessor. An adjacent landing previews zero destination-gap
+ * cells; a before-all-content landing (no predecessor) previews no
+ * break-bearing gap (D-12 mirrored in preview). Class application only — the
+ * caller overrides the cell fill class; no new DOM nodes are introduced.
+ */
+export function collectRotoGroupDragGapPreviewAppFrames(
+  currentCells: readonly PhysicPaintRotoPhysicalCell[],
+  proposal: PhysicPaintRotoPhysicalEditProposal,
+  clip: PhysicPaintRotoLoopClip,
+): Set<number> {
+  const vacated = collectRotoDragVacatedAppFrames(currentCells, proposal);
+  const firstSourceKeyId = clip.sourceKeyIds[0];
+  const movedFrame = proposal.mapping.get(firstSourceKeyId);
+  if (movedFrame === undefined) return vacated;
+  // Newly opened destination interval: frames strictly between the moved
+  // Group's first source key and its new predecessor in the proposal. Only
+  // when a predecessor exists (D-12 no-break cases).
+  const occupied = new Set<number>();
+  for (const cell of proposal.cells) {
+    if (cell.kind === 'real' || cell.kind === 'generated') occupied.add(cell.appFrame);
+  }
+  let predecessor = -1;
+  for (const frame of occupied) {
+    if (frame < movedFrame && frame > predecessor) predecessor = frame;
+  }
+  if (predecessor < 0) return vacated;
+  const destinationGap = new Set<number>();
+  for (let frame = predecessor + 1; frame < movedFrame; frame++) {
+    destinationGap.add(frame);
+  }
+  return new Set([...vacated, ...destinationGap]);
 }

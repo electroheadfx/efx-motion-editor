@@ -1,8 +1,12 @@
 import { useEffect, useRef } from 'preact/hooks';
-import type { PhysicPaintRotoLoopRange } from '../roto/physicsPaintRotoPhysicalResolver';
+import type {
+  PhysicPaintRotoGroupDragClampInput,
+  PhysicPaintRotoLoopRange,
+} from '../roto/physicsPaintRotoPhysicalResolver';
 import type { PhysicsPaintRotoSpacingSelectionGesture } from '../roto/physicsPaintRotoSpacingSelection';
 import {
   usePhysicsPaintGroupRailDrag,
+  type GroupRailDragPreviewState,
   type GroupRailDragWindowLike,
 } from '../hooks/usePhysicsPaintGroupRailDrag';
 import type {
@@ -43,6 +47,14 @@ export interface PhysicsPaintLoopClipRailProps {
     destinationPlacementStart: number,
   ) => RotoGroupDragPreparationResult;
   readonly commitRotoGroupDrag?: (publication: RotoGroupDragPublication) => Promise<boolean>;
+  /** Supplies the static clamp inputs for the plan-02 pure clamp authority (D-05). */
+  readonly getClampInput?: (
+    loopId: string,
+  ) => Omit<PhysicPaintRotoGroupDragClampInput, 'proposedDestinationPlacementStart'> | null;
+  /** Publishes the mapped rejection reason on a zero-movement drop (D-06). */
+  readonly onRotoGroupDragRejected?: (reason: string, detail?: string) => void;
+  /** Surfaces the retained publication to the strip for the gap preview. */
+  readonly onPreviewChange?: (preview: GroupRailDragPreviewState | null) => void;
   /** Injectable window surface for node-environment session tests. */
   readonly windowLike?: GroupRailDragWindowLike;
 }
@@ -86,6 +98,11 @@ interface RailTargetProps {
     destinationPlacementStart: number,
   ) => RotoGroupDragPreparationResult;
   readonly commitRotoGroupDrag?: (publication: RotoGroupDragPublication) => Promise<boolean>;
+  readonly getClampInput?: (
+    loopId: string,
+  ) => Omit<PhysicPaintRotoGroupDragClampInput, 'proposedDestinationPlacementStart'> | null;
+  readonly onRotoGroupDragRejected?: (reason: string, detail?: string) => void;
+  readonly onPreviewChange?: (preview: GroupRailDragPreviewState | null) => void;
   readonly windowLike?: GroupRailDragWindowLike;
 }
 
@@ -115,6 +132,9 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     visibleFrameWindow: props.visibleFrameWindow,
     prepareRotoGroupDrag: props.prepareRotoGroupDrag,
     commitRotoGroupDrag: props.commitRotoGroupDrag,
+    getClampInput: props.getClampInput,
+    onRejected: props.onRotoGroupDragRejected,
+    onPreviewChange: props.onPreviewChange,
     clearClickSequence,
     windowLike: props.windowLike,
   });
@@ -196,6 +216,13 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
         <span
           class={`physics-paint-loop-clip-rail-ghost mode-${ghost.mode}${ghost.effectiveZero ? ' effective-zero' : ''}`}
           style={{ left: `${ghost.left - props.left}px`, width: `${ghost.width}px` }}
+          aria-hidden="true"
+        />
+      ) : null}
+      {ghost.active && ghost.blockedEdge !== null ? (
+        <span
+          class={`physics-paint-loop-clip-rail-ghost-blocked-edge edge-${ghost.blockedEdge}`}
+          style={{ left: `${ghost.left - props.left + (ghost.blockedEdge === 'left' ? 0 : ghost.width - 2)}px` }}
           aria-hidden="true"
         />
       ) : null}
@@ -284,6 +311,9 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
           onOpenLoopEdit={props.onOpenLoopEdit}
           prepareRotoGroupDrag={props.prepareRotoGroupDrag}
           commitRotoGroupDrag={props.commitRotoGroupDrag}
+          getClampInput={props.getClampInput}
+          onRotoGroupDragRejected={props.onRotoGroupDragRejected}
+          onPreviewChange={props.onPreviewChange}
           windowLike={props.windowLike}
         />
       ))}

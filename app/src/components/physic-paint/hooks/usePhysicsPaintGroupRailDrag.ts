@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { PhysicPaintRotoLoopRange } from '../roto/physicsPaintRotoPhysicalResolver';
+import {
+  clampPhysicPaintGroupDragDestination,
+  type PhysicPaintRotoGroupDragClampInput,
+  type PhysicPaintRotoLoopRange,
+} from '../roto/physicsPaintRotoPhysicalResolver';
 import type { PhysicsPaintLoopClipPresentation } from '../view/physicsPaintLoopClipPresentation';
 import type {
   RotoGroupDragPreparationResult,
@@ -23,6 +27,20 @@ export interface GroupRailDragGhostState {
   readonly width: number;
   readonly mode: 'progressive' | 'static';
   readonly effectiveZero: boolean;
+  /**
+   * Which edge the clamp bound against, when the ghost is clamped at a D-08
+   * collision boundary. Null when the ghost is unclamped (UI-SPEC G4).
+   */
+  readonly blockedEdge: 'left' | 'right' | null;
+}
+
+/**
+ * Presentation-only Group-drag preview state surfaced to the strip for the
+ * gap preview. Consumed for paint only; never canonical revision, history, or
+ * persistence (Pitfall 5, T-43.3-03-01).
+ */
+export interface GroupRailDragPreviewState {
+  readonly publication: RotoGroupDragPublication;
 }
 
 /**
@@ -83,6 +101,28 @@ export interface GroupRailDragSessionInput {
     destinationPlacementStart: number,
   ) => RotoGroupDragPreparationResult;
   readonly commitRotoGroupDrag?: (publication: RotoGroupDragPublication) => Promise<boolean>;
+  /**
+   * Supplies the static clamp inputs (clip, dragged interval, identities, loop
+   * ranges, capacity) for the dragged Group. The session hook fills in the
+   * live proposed destination and calls the plan-02 exported pure clamp
+   * authority so the previewed destination IS the clamped value the resolver
+   * will commit (D-05 — never duplicate the clamp math in the view layer).
+   * Absent: the session skips clamping and previews the raw destination.
+   */
+  readonly getClampInput?: (
+    loopId: string,
+  ) => Omit<PhysicPaintRotoGroupDragClampInput, 'proposedDestinationPlacementStart'> | null;
+  /**
+   * Publishes the mapped rejection reason when a drag drops with no retained
+   * publication (zero free space in the dragged direction, D-06). The reason
+   * is the prepare port's mapped product copy — the single copy owner.
+   */
+  readonly onRejected?: (reason: string, detail?: string) => void;
+  /**
+   * Surfaces the retained publication to the strip for the gap preview while
+   * the session is active; null removes every preview paint (Escape/reject).
+   */
+  readonly onPreviewChange?: (preview: GroupRailDragPreviewState | null) => void;
   /** Cancels the rail's pending single-click timer on threshold crossing. */
   readonly clearClickSequence: () => void;
   readonly windowLike?: GroupRailDragWindowLike;
@@ -108,6 +148,8 @@ interface GroupRailDragSession {
   latestY: number;
   started: boolean;
   publication: RotoGroupDragPublication | null;
+  /** Last prepare rejection, published on drop when no publication is retained. */
+  lastRejection: { readonly reason: string; readonly detail?: string } | null;
   cleanup: () => void;
 }
 
@@ -117,6 +159,7 @@ const GHOST_INACTIVE: GroupRailDragGhostState = Object.freeze({
   width: 0,
   mode: 'progressive',
   effectiveZero: false,
+  blockedEdge: null,
 });
 
 /**
@@ -162,6 +205,7 @@ export function usePhysicsPaintGroupRailDrag(
       latestY: event.clientY,
       started: false,
       publication: null,
+      lastRejection: null,
       cleanup: () => {},
     };
     const clearSuppressionSoon = () => {
@@ -187,29 +231,55 @@ export function usePhysicsPaintGroupRailDrag(
       }
       if (sessionRef.current === session) sessionRef.current = null;
       setGhost(GHOST_INACTIVE);
+      input.onPreviewChange?.(null);
     };
     const computeDestination = () => {
       const deltaFrames = Math.round((session.latestX - session.originX) / input.framePitch);
       return input.range.placementStart + deltaFrames;
     };
-    const updateGhost = () => {
-      const destination = computeDestination();
+    const updateGhost = (destination: number, blockedEdge: 'left' | 'right' | null) => {
       const effectiveZero = input.range.effectiveEnd <= input.range.placementStart;
       const left = (destination - input.visibleFrameWindow.startFrame) * input.framePitch;
       const width = effectiveZero
         ? 8
         : Math.max(1, (input.range.effectiveEnd - destination) * input.framePitch);
-      setGhost({ active: true, left, width, mode: input.presentation.mode, effectiveZero });
+      setGhost({ active: true, left, width, mode: input.presentation.mode, effectiveZero, blockedEdge });
     };
     const prepareAt = () => {
       const destination = computeDestination();
-      const preparation = input.prepareRotoGroupDrag!(input.loopId, destination);
+      // D-05: the previewed destination IS the clamped value the resolver will
+      // commit. The plan-02 exported pure clamp is the single authority — never
+      // reimplement the clamp math in the view layer.
+      const clampInput = input.getClampInput?.(input.loopId);
+      let clampedDestination = destination;
+      let blockedEdge: 'left' | 'right' | null = null;
+      if (clampInput) {
+        const clampResult = clampPhysicPaintGroupDragDestination({
+          ...clampInput,
+          proposedDestinationPlacementStart: destination,
+        });
+        if (clampResult.ok) {
+          clampedDestination = clampResult.destinationPlacementStart;
+          // UI-SPEC G4: the bar sits on the edge the clamp bound against. A
+          // rightward intent pulled back (clamped < proposed) leaves the
+          // ghost's right edge flush against the blocking content; a leftward
+          // intent pushed forward (clamped > proposed) leaves the left edge
+          // flush. Equal means unclamped — no bar.
+          if (clampedDestination < destination) blockedEdge = 'right';
+          else if (clampedDestination > destination) blockedEdge = 'left';
+        }
+      }
+      const preparation = input.prepareRotoGroupDrag!(input.loopId, clampedDestination);
       if (preparation.ok) {
         session.publication = preparation.publication;
-        updateGhost();
+        session.lastRejection = null;
+        updateGhost(clampedDestination, blockedEdge);
+        input.onPreviewChange?.({ publication: preparation.publication });
       } else {
         session.publication = null;
+        session.lastRejection = { reason: preparation.reason, detail: preparation.detail };
         setGhost(GHOST_INACTIVE);
+        input.onPreviewChange?.(null);
       }
     };
     const beginDrag = () => {
@@ -250,10 +320,14 @@ export function usePhysicsPaintGroupRailDrag(
       }
       upEvent.preventDefault();
       const retainedPublication = session.publication;
+      const lastRejection = session.lastRejection;
       cleanup();
       clearSuppressionSoon();
       if (retainedPublication === null) {
         restoreSourceFocus();
+        // D-06: a drop with zero valid movement in the dragged direction
+        // publishes the mapped rejection reason with zero mutation.
+        if (lastRejection !== null) input.onRejected?.(lastRejection.reason, lastRejection.detail);
         return;
       }
       void input.commitRotoGroupDrag!(retainedPublication).then((accepted) => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampOnionCount, clampOnionOpacity,
+  collectRotoGroupDragGapPreviewAppFrames,
   getPhysicsPaintEngineStatusTone, getRotoAcceptedCellFillClass, getRotoCellFill,
   getRotoCellPresentationViewModel,
   getRotoCellSelectedTooltipCopy, getRotoCellStateLabel, getRotoCellStateTooltipCopy, getRotoCellViewModel, getRotoMissingFrameStatus,
@@ -14,8 +15,12 @@ import {
 } from './physicsPaintWorkflowPresentation';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
-import type { PhysicPaintRotoKeyIdentity } from '../roto/physicsPaintRotoPhysicalModel';
-import type { PhysicPaintRotoPhysicalEditIntent } from '../roto/physicsPaintRotoPhysicalResolver';
+import type { PhysicPaintRotoKeyIdentity, PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
+import type {
+  PhysicPaintRotoPhysicalCell,
+  PhysicPaintRotoPhysicalEditIntent,
+  PhysicPaintRotoPhysicalEditProposal,
+} from '../roto/physicsPaintRotoPhysicalResolver';
 import { resolvePhysicPaintRotoPhysicalEdit } from '../roto/physicsPaintRotoPhysicalResolver';
 
 describe('physicsPaintWorkflowPresentation', () => {
@@ -546,5 +551,102 @@ describe('getRotoResolutionCellTooltipKind — linked frames keep existing cell-
     };
     expect(getRotoResolutionCellTooltipCopy(unresolved, 'empty', new Map([['L1', 5]])))
       .toBe('Linked loop unresolved · 2 source frames missing');
+  });
+});
+
+describe('collectRotoGroupDragGapPreviewAppFrames — Group-drag gap preview (43.3-03, UI-SPEC G3, D-02/D-12)', () => {
+  function createGapPreviewProposal(
+    mapping: ReadonlyMap<string, number>,
+    cells: readonly PhysicPaintRotoPhysicalCell[],
+  ): PhysicPaintRotoPhysicalEditProposal {
+    return {
+      mapping,
+      orderedKeyIds: [...mapping.keys()],
+      assignments: [...mapping.entries()].map(([keyId, appFrame]) => ({ keyId, appFrame })),
+      cells,
+      generatedCells: [],
+      selectedKeyId: null,
+      selectedAppFrame: null,
+      changes: [],
+      removedKeyId: null,
+      removedKeyIds: [],
+      drag: null,
+      nextRecords: null,
+      nextLoopClips: null,
+      nextIncomingInterpolationBreakKeyIds: null,
+      semanticDelta: null,
+      status: {
+        operationKind: 'move-group',
+        changed: true,
+        affectedKeyIds: [...mapping.keys()],
+        affectedCount: mapping.size,
+        code: 'ok',
+        text: 'Moved Group.',
+      },
+    };
+  }
+
+  const clip: PhysicPaintRotoLoopClip = {
+    loopId: 'group-a',
+    placementStart: 10,
+    sourceKeyIds: ['A'],
+    repeat: 1,
+    mode: 'progressive',
+  };
+
+  it('marks the vacated interval plus the newly opened destination gap', () => {
+    const currentCells: readonly PhysicPaintRotoPhysicalCell[] = [
+      { kind: 'real', appFrame: 10, keyId: 'A' },
+      { kind: 'real', appFrame: 14, keyId: 'C' },
+      { kind: 'real', appFrame: 20, keyId: 'B' },
+    ];
+    // A moves 10 → 18, landing after C@14: frames 15-17 open between them.
+    const proposal = createGapPreviewProposal(
+      new Map([['A', 18], ['C', 14], ['B', 20]]),
+      [
+        { kind: 'real', appFrame: 18, keyId: 'A' },
+        { kind: 'real', appFrame: 14, keyId: 'C' },
+        { kind: 'real', appFrame: 20, keyId: 'B' },
+      ],
+    );
+    expect(collectRotoGroupDragGapPreviewAppFrames(currentCells, proposal, clip))
+      .toEqual(new Set([10, 15, 16, 17]));
+  });
+
+  it('previews no destination-gap cells on an adjacent landing', () => {
+    const currentCells: readonly PhysicPaintRotoPhysicalCell[] = [
+      { kind: 'real', appFrame: 10, keyId: 'A' },
+      { kind: 'real', appFrame: 14, keyId: 'C' },
+      { kind: 'real', appFrame: 20, keyId: 'B' },
+    ];
+    // A moves 10 → 15, landing immediately after C@14: no frames open.
+    const proposal = createGapPreviewProposal(
+      new Map([['A', 15], ['C', 14], ['B', 20]]),
+      [
+        { kind: 'real', appFrame: 15, keyId: 'A' },
+        { kind: 'real', appFrame: 14, keyId: 'C' },
+        { kind: 'real', appFrame: 20, keyId: 'B' },
+      ],
+    );
+    expect(collectRotoGroupDragGapPreviewAppFrames(currentCells, proposal, clip))
+      .toEqual(new Set([10]));
+  });
+
+  it('previews only the vacated interval when the Group lands before all content', () => {
+    const currentCells: readonly PhysicPaintRotoPhysicalCell[] = [
+      { kind: 'real', appFrame: 10, keyId: 'A' },
+      { kind: 'real', appFrame: 20, keyId: 'B' },
+    ];
+    // A moves 10 → 8, before every other occupied frame: no predecessor, so no
+    // break-bearing destination gap (D-12 mirrored in preview).
+    const proposal = createGapPreviewProposal(
+      new Map([['A', 8], ['B', 20]]),
+      [
+        { kind: 'real', appFrame: 8, keyId: 'A' },
+        { kind: 'real', appFrame: 20, keyId: 'B' },
+      ],
+    );
+    expect(collectRotoGroupDragGapPreviewAppFrames(currentCells, proposal, clip))
+      .toEqual(new Set([10]));
   });
 });

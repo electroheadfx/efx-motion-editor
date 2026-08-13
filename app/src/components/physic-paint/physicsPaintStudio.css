@@ -2915,6 +2915,19 @@ button.destructive {
   width: 8px;
 }
 
+/* UI-SPEC G4: 2px x 12px #FF6B6B vertical bar on the ghost's blocked edge when
+   the clamp binds against a D-08 collision boundary. Paint-only, shares the
+   ghost's z-layer, absent whenever the ghost is unclamped. */
+.physics-paint-loop-clip-rail-ghost-blocked-edge {
+  position: absolute;
+  top: 0;
+  height: 12px;
+  width: 2px;
+  background: #ff6b6b;
+  pointer-events: none;
+  z-index: 1;
+}
+
 .physics-paint-loop-clip-tooltip-copy {
   display: flex;
   flex-direction: column;

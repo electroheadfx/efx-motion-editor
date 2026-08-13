@@ -1508,3 +1508,40 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(ordinarySelection).toContain('outline: 2px solid rgba(245, 166, 35, 0.9)');
   });
 });
+
+describe('PhysicsPaintWorkflowStrip Group-drag gap preview contract (43.3-03, UI-SPEC G3, D-02/D-05)', () => {
+  it('wires the clamp provider, rejection publisher, and preview surface to the rail', () => {
+    const code = source();
+    expect(code).toContain('getClampInput={getRotoGroupDragClampInput}');
+    expect(code).toContain('onRotoGroupDragRejected={(reason, detail) => props.onRotoGroupDragRejected?.(reason, detail ?? \'\')}');
+    expect(code).toContain('onPreviewChange={setRotoGroupDragPreview}');
+    expect(code).toContain('prepareRotoGroupDrag={physicalActions?.prepareRotoGroupDrag}');
+    expect(code).toContain('commitRotoGroupDrag={physicalActions?.commitRotoGroupDrag}');
+  });
+
+  it('derives the clamp inputs from canonical document facts only (D-05, Pitfall 4)', () => {
+    const code = source();
+    expect(code).toContain('const getRotoGroupDragClampInput = useCallback(');
+    expect(code).toContain('const clip = props.rotoLoopClips?.find((candidate) => candidate.loopId === loopId);');
+    expect(code).toContain('const phaseOrigin = clip.phaseOrigin ?? clip.placementStart;');
+    expect(code).toContain('const effectiveEnd = draggedRanges.length > 0');
+    expect(code).toContain('Math.max(...draggedRanges.map((range) => range.effectiveEnd))');
+    expect(code).toContain('identities: rotoKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }))');
+    expect(code).toContain('loopRanges: loopResolutionContext.ranges');
+    expect(code).toContain('capacity: currentPhysicalCells.length');
+  });
+
+  it('paints gap-preview frames as ordinary roto-fill-empty cells with no new DOM nodes', () => {
+    const code = source();
+    const map = getRotoMapBlock(code);
+    expect(map).toContain('const isRotoGroupDragGapPreview = rotoGroupDragGapPreviewAppFrames.has(frame);');
+    expect(map).toContain("const effectiveFillClass = isRotoGroupDragGapPreview ? 'roto-fill-empty' : fillClass;");
+    expect(map).toContain('physics-paint-roto-cell ${effectiveFillClass}');
+    // The gap-preview frame set derives from the rail session's retained
+    // publication via the pure presentation helper (memo lives above the map).
+    expect(code).toContain('collectRotoGroupDragGapPreviewAppFrames(');
+    expect(code).toContain('currentPhysicalCells,');
+    expect(code).toContain('rotoGroupDragPreview.publication.proposal,');
+    expect(code).toContain('if (!rotoGroupDragPreview) return new Set<number>();');
+  });
+});

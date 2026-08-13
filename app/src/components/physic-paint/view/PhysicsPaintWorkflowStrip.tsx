@@ -7,6 +7,7 @@ import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
   collectRotoDragVacatedAppFrames,
+  collectRotoGroupDragGapPreviewAppFrames,
   getRotoAcceptedCellFillClass,
   getRotoCellFill, getRotoCellPresentationViewModel, getRotoCellViewModel,
   getRotoCellSelectedTooltipCopy,
@@ -30,7 +31,10 @@ import type {
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import { classifyPhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
-import type { PhysicPaintRotoLoopResolutionContext } from '../roto/physicsPaintRotoPhysicalResolver';
+import type {
+  PhysicPaintRotoGroupDragClampInput,
+  PhysicPaintRotoLoopResolutionContext,
+} from '../roto/physicsPaintRotoPhysicalResolver';
 import {
   getRotoFrameKeyInteraction,
   resolveRotoVisibleFrameResolutions,
@@ -43,6 +47,7 @@ import type {
 } from '../roto/physicsPaintRotoSpacingSelection';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import { PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
+import type { GroupRailDragPreviewState } from '../hooks/usePhysicsPaintGroupRailDrag';
 import {
   projectPhysicsPaintGroupProductReason,
   type PhysicsPaintLoopClipPresentation,
@@ -567,6 +572,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   recordPhysicsPaintPerformanceCounter('render.workflowStrip');
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
   const [rotoDragPreview, setRotoDragPreview] = useState<RotoDragPreviewState | null>(null);
+  // Group Rail drag preview (plan 03): session-only publication surfaced by the
+  // rail's session hook, consumed for the gap preview paint only (Pitfall 5).
+  const [rotoGroupDragPreview, setRotoGroupDragPreview] = useState<GroupRailDragPreviewState | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineContentRef = useRef<HTMLDivElement>(null);
   const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
@@ -819,6 +827,43 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (!rotoDragPreview?.publication) return new Set<number>();
     return collectRotoDragVacatedAppFrames(currentPhysicalCells, rotoDragPreview.publication.proposal);
   }, [currentPhysicalCells, rotoDragPreview]);
+  // Group-drag clamp inputs (plan 03, D-05): the static facts the plan-02 pure
+  // clamp authority needs, derived from canonical document facts only — never a
+  // UI-supplied attachment flag (Pitfall 4). The session hook fills in the live
+  // proposed destination and calls the shared clamp so preview-is-the-commit
+  // holds by construction.
+  const getRotoGroupDragClampInput = useCallback((
+    loopId: string,
+  ): Omit<PhysicPaintRotoGroupDragClampInput, 'proposedDestinationPlacementStart'> | null => {
+    if (loopResolutionContext === null) return null;
+    const clip = props.rotoLoopClips?.find((candidate) => candidate.loopId === loopId);
+    if (!clip) return null;
+    const draggedRanges = loopResolutionContext.ranges.filter((range) => range.loopId === loopId);
+    const phaseOrigin = clip.phaseOrigin ?? clip.placementStart;
+    const effectiveEnd = draggedRanges.length > 0
+      ? Math.max(...draggedRanges.map((range) => range.effectiveEnd))
+      : (clip.originalEndExclusive ?? phaseOrigin);
+    return {
+      clip,
+      draggedInterval: { phaseOrigin, effectiveEnd },
+      identities: rotoKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+      loopRanges: loopResolutionContext.ranges,
+      capacity: currentPhysicalCells.length,
+    };
+  }, [loopResolutionContext, props.rotoLoopClips, rotoKeyRecords, currentPhysicalCells]);
+  // Group-drag gap preview (UI-SPEC G3): vacated + destination-gap frames from
+  // the rail session's retained publication, painted as ordinary roto-fill-empty
+  // cells byte-identical to the 43.2 deleted-Group-gap treatment (D-02).
+  const rotoGroupDragGapPreviewAppFrames = useMemo(() => {
+    if (!rotoGroupDragPreview) return new Set<number>();
+    const clip = props.rotoLoopClips?.find((candidate) => candidate.loopId === rotoGroupDragPreview.publication.loopId);
+    if (!clip) return new Set<number>();
+    return collectRotoGroupDragGapPreviewAppFrames(
+      currentPhysicalCells,
+      rotoGroupDragPreview.publication.proposal,
+      clip,
+    );
+  }, [rotoGroupDragPreview, props.rotoLoopClips, currentPhysicalCells]);
   // Header status capsule (D-15/D-18/D-19): one prioritized line derived
   // render-time from EXISTING props/signal reads only — no new controller
   // state, no effect copying props into local state (key_links). The ambient
@@ -1464,6 +1509,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   linkedActionName={props.linkedRotoActionName ?? null}
                   onSelectLoopClip={props.onSelectRotoLoopClip}
                   onOpenLoopEdit={props.onOpenRotoLoopEdit}
+                  prepareRotoGroupDrag={physicalActions?.prepareRotoGroupDrag}
+                  commitRotoGroupDrag={physicalActions?.commitRotoGroupDrag}
+                  getClampInput={getRotoGroupDragClampInput}
+                  onRotoGroupDragRejected={(reason, detail) => props.onRotoGroupDragRejected?.(reason, detail ?? '')}
+                  onPreviewChange={setRotoGroupDragPreview}
                 />
               ) : null}
               <div class="physics-paint-roto-cells" role="row">
@@ -1589,7 +1639,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   });
                   const cellAriaLabel = cellPresentation.ariaLabel;
                   const cellTooltipCopy = cellPresentation.tooltipCopy;
-                  const cellClass = `physics-paint-roto-cell ${fillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${cellPresentation.startsInterpolationSegment ? 'starts-interpolation-segment' : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${hasCurrentTreatment ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
+                  // UI-SPEC G3: Group-drag gap-preview frames paint as ordinary
+                  // roto-fill-empty cells, byte-identical to the 43.2 deleted-Group
+                  // gap treatment (D-02). Class application only — no new DOM nodes.
+                  const isRotoGroupDragGapPreview = rotoGroupDragGapPreviewAppFrames.has(frame);
+                  const effectiveFillClass = isRotoGroupDragGapPreview ? 'roto-fill-empty' : fillClass;
+                  const cellClass = `physics-paint-roto-cell ${effectiveFillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${cellPresentation.startsInterpolationSegment ? 'starts-interpolation-segment' : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${hasCurrentTreatment ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
                   return (
                     <RotoTimelineCellButton
                       key={frame}

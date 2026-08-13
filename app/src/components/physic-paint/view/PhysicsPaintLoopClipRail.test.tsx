@@ -64,12 +64,14 @@ import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { sequenceStore } from '../../../stores/sequenceStore';
 import {
   buildPhysicPaintRotoPhysicalRevision,
+  type PhysicPaintRotoKeyIdentity,
   type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
   derivePhysicPaintRotoLoopRanges,
   resolvePhysicPaintRotoSpacingProxy,
+  type PhysicPaintRotoGroupDragClampInput,
   type PhysicPaintRotoLoopRange,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
@@ -1179,6 +1181,10 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       commitRotoGroupDrag: (publication: RotoGroupDragPublication) => Promise<boolean>,
       onSelectLoopClip: (loopId: string, gesture: 'plain' | 'toggle' | 'range') => void,
       onOpenLoopEdit: (loopId: string) => Promise<unknown>,
+      options: {
+        getClampInput?: (loopId: string) => Omit<PhysicPaintRotoGroupDragClampInput, 'proposedDestinationPlacementStart'> | null;
+        onRotoGroupDragRejected?: (reason: string, detail?: string) => void;
+      } = {},
     ): unknown {
       const range = explicitGroupRange(10, 16);
       const clip: PhysicPaintRotoLoopClip = {
@@ -1196,6 +1202,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
         onOpenLoopEdit,
         prepareRotoGroupDrag,
         commitRotoGroupDrag,
+        getClampInput: options.getClampInput,
+        onRotoGroupDragRejected: options.onRotoGroupDragRejected,
         windowLike: mockWindow,
       }), new Set(['PhysicsPaintLoopClipRailTarget']));
     }
@@ -1345,6 +1353,112 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       expect(ghostRule).toContain('pointer-events: none');
       expect(ghostRule).toContain('opacity: 0.55');
       expect(ghostRule).toContain('height: 3px');
+    });
+
+    it('renders the blocked-edge bar on the right edge when the clamp binds rightward', () => {
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => ({
+        ok: true,
+        publication: createGroupDragPublication(loopId, destinationPlacementStart),
+      }));
+      const commitRotoGroupDrag = vi.fn(async () => true);
+      const onSelectLoopClip = vi.fn();
+      const onOpenLoopEdit = vi.fn(async () => {});
+      // D-08 collision: B@20 blocks every destination whose derived interval
+      // [destination, destination+6) contains 20, so a rightward drag to 18
+      // clamps to 14 — the first free placement — and binds the right edge.
+      const identities: PhysicPaintRotoKeyIdentity[] = [
+        { keyId: 'A', appFrame: 10 },
+        { keyId: 'B', appFrame: 20 },
+      ];
+      const getClampInput = (loopId: string): Omit<PhysicPaintRotoGroupDragClampInput, 'proposedDestinationPlacementStart'> | null => ({
+        clip: { loopId, placementStart: 10, sourceKeyIds: ['A'], repeat: 1, mode: 'progressive' },
+        draggedInterval: { phaseOrigin: 10, effectiveEnd: 16 },
+        identities,
+        loopRanges: [explicitGroupRange(10, 16)],
+        capacity: 24,
+      });
+      hooks.reset();
+      const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit, { getClampInput });
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+      const sourceElement = createMockSourceElement();
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(sourceElement, 100, 50));
+      // clientX 244 = origin 100 + 8 frames * 18px pitch → proposed destination 18.
+      mockWindow.dispatch('pointermove', createPointerMove(244, 50));
+      expect(prepareRotoGroupDrag).toHaveBeenLastCalledWith('group-a', 14);
+
+      hooks.rewind();
+      const tree2 = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit, { getClampInput });
+      const bar = findOne(tree2, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost-blocked-edge'));
+      expect(hasClass(bar, 'edge-right')).toBe(true);
+      const barRule = cssRule('.physics-paint-loop-clip-rail-ghost-blocked-edge {');
+      expect(barRule).toContain('background: #ff6b6b');
+      expect(barRule).toContain('width: 2px');
+      expect(barRule).toContain('height: 12px');
+    });
+
+    it('renders no blocked-edge bar when the ghost is unclamped', () => {
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => ({
+        ok: true,
+        publication: createGroupDragPublication(loopId, destinationPlacementStart),
+      }));
+      const commitRotoGroupDrag = vi.fn(async () => true);
+      const onSelectLoopClip = vi.fn();
+      const onOpenLoopEdit = vi.fn(async () => {});
+      hooks.reset();
+      // No getClampInput: the session previews the raw destination with no clamp.
+      const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit);
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+      const sourceElement = createMockSourceElement();
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(sourceElement, 100, 50));
+      mockWindow.dispatch('pointermove', createPointerMove(110, 50));
+
+      hooks.rewind();
+      const tree2 = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit);
+      expect(findOne(tree2, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost'))).toBeDefined();
+      expect(findAll(tree2, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost-blocked-edge'))).toHaveLength(0);
+    });
+
+    it('Escape removes the ghost and the blocked-edge bar together', () => {
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => ({
+        ok: true,
+        publication: createGroupDragPublication(loopId, destinationPlacementStart),
+      }));
+      const commitRotoGroupDrag = vi.fn(async () => true);
+      const onSelectLoopClip = vi.fn();
+      const onOpenLoopEdit = vi.fn(async () => {});
+      const identities: PhysicPaintRotoKeyIdentity[] = [
+        { keyId: 'A', appFrame: 10 },
+        { keyId: 'B', appFrame: 20 },
+      ];
+      const getClampInput = (loopId: string): Omit<PhysicPaintRotoGroupDragClampInput, 'proposedDestinationPlacementStart'> | null => ({
+        clip: { loopId, placementStart: 10, sourceKeyIds: ['A'], repeat: 1, mode: 'progressive' },
+        draggedInterval: { phaseOrigin: 10, effectiveEnd: 16 },
+        identities,
+        loopRanges: [explicitGroupRange(10, 16)],
+        capacity: 24,
+      });
+      hooks.reset();
+      const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit, { getClampInput });
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+      const sourceElement = createMockSourceElement();
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(sourceElement, 100, 50));
+      mockWindow.dispatch('pointermove', createPointerMove(244, 50));
+      expect(prepareRotoGroupDrag).toHaveBeenLastCalledWith('group-a', 14);
+
+      const escapeEvent = { key: 'Escape', preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() };
+      mockWindow.dispatch('keydown', escapeEvent);
+      expect(commitRotoGroupDrag).not.toHaveBeenCalled();
+
+      hooks.rewind();
+      const tree2 = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, onSelectLoopClip, onOpenLoopEdit, { getClampInput });
+      expect(findAll(tree2, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost'))).toHaveLength(0);
+      expect(findAll(tree2, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost-blocked-edge'))).toHaveLength(0);
     });
   });
 });
