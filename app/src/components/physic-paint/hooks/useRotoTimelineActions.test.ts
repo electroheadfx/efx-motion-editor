@@ -971,8 +971,10 @@ describe('useRotoTimelineActions Group-drag prepare/commit publication pair', ()
     sourceKeyIds: Object.freeze(['A', 'C']),
     phaseOrigin: 1,
     originalEndExclusive: 9,
+    // Lifecycle validator requires strictly increasing ranges with a gap
+    // (start > previous endExclusive); contiguous ranges are rejected.
     visibleRanges: Object.freeze([
-      Object.freeze({ start: 1, endExclusive: 5 }),
+      Object.freeze({ start: 1, endExclusive: 4 }),
       Object.freeze({ start: 5, endExclusive: 9 }),
     ]),
   });
@@ -1063,7 +1065,10 @@ describe('useRotoTimelineActions Group-drag prepare/commit publication pair', ()
 
     const kindMismatch = {
       ...publication,
-      proposal: { ...publication.proposal, status: { ...publication.proposal.status, operationKind: 'move-key-group' } },
+      proposal: {
+        ...publication.proposal,
+        status: { ...publication.proposal.status, operationKind: 'move-key-group' as const },
+      },
     };
     expect(await actions.physicalActions.commitRotoGroupDrag(kindMismatch)).toBe(false);
 
