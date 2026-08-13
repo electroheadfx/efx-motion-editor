@@ -4,15 +4,15 @@ milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.3
 current_phase_name: Motion and Static Group Drag Within Free Space
-status: planning
-stopped_at: Phase 43.3 context gathered
-last_updated: "2026-08-13T13:34:10.766Z"
+status: executing
+stopped_at: Phase 43.3 UI-SPEC approved
+last_updated: "2026-08-13T15:06:14.514Z"
 last_activity: 2026-08-13
 last_activity_desc: Phase 43.2 complete, transitioned to Phase 44
 progress:
   total_phases: 9
   completed_phases: 6
-  total_plans: 66
+  total_plans: 70
   completed_plans: 66
   percent: 67
 ---
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 Phase: 43.3 — Motion and Static Group Drag Within Free Space
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-08-13 - Completed quick task 260813-ibo: Paint layer visible in Studio without Timeline key photos
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
@@ -595,9 +595,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-13T13:34:10.736Z
-Stopped at: Phase 43.3 context gathered
-Resume file: .planning/phases/43.3-motion-and-static-group-drag-within-free-space/43.3-CONTEXT.md
+Last session: 2026-08-13T13:54:39.459Z
+Stopped at: Phase 43.3 UI-SPEC approved
+Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/43.3-motion-and-static-group-drag-within-free-space/43.3-UI-SPEC.md
 
 ## Operator Next Steps
 
