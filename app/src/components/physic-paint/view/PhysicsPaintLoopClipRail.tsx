@@ -92,7 +92,12 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     const elapsed = previousTimestamp === null
       ? Number.POSITIVE_INFINITY
       : event.timeStamp - previousTimestamp;
-    if (elapsed >= 0 && elapsed <= LOOP_CLIP_FAST_DOUBLE_CLICK_MS) {
+    // A second click while a single-click timer is still pending is a
+    // double-click intent (open the editor) regardless of the exact elapsed
+    // time — this closes the (FAST_DOUBLE_CLICK_MS, SINGLE_CLICK_DELAY_MS]
+    // dead zone where a deliberate double-click was silently dropped (WR-02).
+    const hasPendingSingleClick = pendingSingleClickRef.current !== null;
+    if (hasPendingSingleClick || (elapsed >= 0 && elapsed <= LOOP_CLIP_FAST_DOUBLE_CLICK_MS)) {
       event.preventDefault();
       clearClickSequence();
       props.onSelectLoopClip(range.loopId, 'plain');
