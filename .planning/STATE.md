@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: 44 — Integrated UAT + Signed Release
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-13 — Phase 43.2 complete, transitioned to Phase 44
+Last activity: 2026-08-13 - Completed quick task 260813-ibo: Paint layer visible in Studio without Timeline key photos
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -437,6 +437,7 @@ None yet.
 | 260729-taj | Close milestone audit gap EDIT-02/B-01: install physic-paint frame-sync listener | 2026-07-29 | ed590d2b |  | [260729-taj-close-milestone-audit-gap-edit-02-b-01-i](./quick/260729-taj-close-milestone-audit-gap-edit-02-b-01-i/) |
 | 260730-mn0 | Prepare Apple Developer ID signing, notarization, and release documentation | 2026-07-30 | 1292351a | Prepared | [260730-mn0-configure-apple-developer-id-signing-har](./quick/260730-mn0-configure-apple-developer-id-signing-har/) |
 | 260731-9l0 | Add Cut tool to Efx Paint bottom timeline toolbar (copy + atomic delete, Cmd+X) | 2026-07-31 | 4f81df5d | Verified | [260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t](./quick/260731-9l0-add-a-cut-tool-to-the-efx-paint-bottom-t/) |
+| 260813-ibo | Paint layer visible in Studio without Timeline key photos (incl. after reopen) | 2026-08-13 | e071775c | Verified | [260813-ibo-paint-layer-invisible-in-studio-without-](./quick/260813-ibo-paint-layer-invisible-in-studio-without-/) |
 | 260801-jun | Create the v0.8.1 macOS packaging hotfix (frontend entry fix, EFX icons, version bump, codesign PATH hardening, release docs) | 2026-08-01 | 7a2ad433 | Verified | [260801-jun-create-the-v0-8-1-macos-packaging-hotfix](./quick/260801-jun-create-the-v0-8-1-macos-packaging-hotfix/) |
 | 260801-azb | Close G-01: add Tauri listen branch to installPhysicPaintFrameSyncListener for physic-paint:seek-frame | 2026-08-01 | 8c9defa1 |  | [260801-azb-close-g-01-add-tauri-listen-branch-to-in](./quick/260801-azb-close-g-01-add-tauri-listen-branch-to-in/) |
 | 260801-o30 | Fix v0.8.1 production Tauri CSP regression (grant data: scheme in img-src for cached Roto/Physics Paint PNGs) | 2026-08-01 | 65e86af2 | Verified | [260801-o30-fix-v0-8-1-production-tauri-csp-regressi](./quick/260801-o30-fix-v0-8-1-production-tauri-csp-regressi/) |
