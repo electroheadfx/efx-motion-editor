@@ -4,6 +4,7 @@ import type {
   PhysicPaintRotoPhysicalEditResolution,
 } from './physicsPaintRotoPhysicalResolver';
 import {
+  clampPhysicPaintGroupDragDestination,
   createPhysicPaintRotoPasteKeyGroupIntent,
   projectPhysicPaintRotoPhysicalTimeline,
   resolvePhysicPaintRotoPhysicalEdit,
@@ -835,6 +836,264 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached fre
     if (keyOverflow.ok) throw new Error('destination translating a key outside capacity must reject');
     expect(keyOverflow.failure.code).toBe('over-capacity');
     expect('proposal' in keyOverflow).toBe(false);
+  });
+});
+
+describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, D-08)', () => {
+  /**
+   * Clean source-attached Group over A@1/C@5 with a single full-range lifecycle
+   * record [1,9) (span 8). No unowned real key lies inside the own interval, so
+   * every external boundary below is unambiguous.
+   */
+  const buildClampGroup = (overrides: Partial<PhysicPaintRotoLoopClip> = {}): readonly PhysicPaintRotoLoopClip[] => Object.freeze([
+    Object.freeze({
+      loopId: 'loop-R',
+      placementStart: 1,
+      sourceKeyIds: ['A', 'C'],
+      repeat: 2,
+      mode: 'static',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 1,
+      originalEndExclusive: 9,
+      visibleRanges: Object.freeze([Object.freeze({ start: 1, endExclusive: 9 })]),
+      ...overrides,
+    }) as PhysicPaintRotoLoopClip,
+  ]);
+
+  const resolveMoveGroup = (
+    identities: readonly PhysicPaintRotoKeyIdentity[],
+    loopClips: readonly PhysicPaintRotoLoopClip[],
+    loopId: string,
+    destinationPlacementStart: number,
+    capacity = PHYSIC_PAINT_MAX_APPLY_FRAMES,
+  ): PhysicPaintRotoPhysicalEditResolution => resolvePhysicPaintRotoPhysicalEdit({
+    identities,
+    intent: { kind: 'move-group', loopId, destinationPlacementStart },
+    capacity,
+    interpolationEnabled: false,
+    loopClips,
+  });
+
+  it('clamps a rightward drag at the next real key frame minus interval width and commits there', () => {
+    // Group [1,9) has span 8; unowned real key D@10 bounds the rightward drag.
+    // Next real key frame 10 minus interval width 8 = destination 2.
+    const resolution = resolveMoveGroup(
+      [
+        { keyId: 'A', appFrame: 1 },
+        { keyId: 'C', appFrame: 5 },
+        { keyId: 'D', appFrame: 10 },
+      ],
+      buildClampGroup(),
+      'loop-R',
+      5,
+    );
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Clamped rightward drag must resolve ok');
+    const { proposal } = resolution;
+    // delta = 2 - 1 = 1; A@1 -> 2, C@5 -> 6, D@10 stays fixed.
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 2, C: 6, D: 10 });
+    expect(proposal.status.operationKind).toBe('move-group');
+    expect(proposal.nextLoopClips).not.toBeNull();
+    if (!proposal.nextLoopClips) throw new Error('nextLoopClips must be present');
+    const movedClip = proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-R');
+    expect(movedClip?.placementStart).toBe(2);
+    expect(movedClip?.phaseOrigin).toBe(2);
+    expect(movedClip?.originalEndExclusive).toBe(10);
+  });
+
+  it('clamps a leftward drag at the previous real key following frame', () => {
+    // Group [2,10) has span 8; unowned real key P@0 sits before it. The proposed
+    // destination 0 would push the interval [0,8) over P@0, so the clamp pulls
+    // the placement back to P@0 + 1 = 1 ("the previous key's following frame").
+    const resolution = resolveMoveGroup(
+      [
+        { keyId: 'P', appFrame: 0 },
+        { keyId: 'A', appFrame: 2 },
+        { keyId: 'C', appFrame: 6 },
+      ],
+      buildClampGroup({ placementStart: 2, phaseOrigin: 2, originalEndExclusive: 10 }),
+      'loop-R',
+      0,
+    );
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Clamped leftward drag must resolve ok');
+    // delta = 1 - 2 = -1; A@2 -> 1, C@6 -> 5.
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ P: 0, A: 1, C: 5 });
+    expect(resolution.proposal.nextLoopClips?.[0]?.placementStart).toBe(1);
+  });
+
+  it('clamps a leftward drag at frame 0 without a negative placement', () => {
+    // No unowned key precedes the Group, so the frame-0 boundary is the only
+    // leftward limit: the destination reaches 0 and never goes negative.
+    const resolution = resolveMoveGroup(
+      [
+        { keyId: 'A', appFrame: 1 },
+        { keyId: 'C', appFrame: 5 },
+      ],
+      buildClampGroup(),
+      'loop-R',
+      0,
+    );
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Frame-0 clamp must resolve ok');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 0, C: 4 });
+    expect(resolution.proposal.nextLoopClips?.[0]?.placementStart).toBe(0);
+  });
+
+  it('clamps a rightward drag at physical capacity (capacity minus interval width)', () => {
+    // Group [1,9) span 8 with capacity 12: the rightmost legal placement is
+    // 12 - 8 = 4. A proposed destination of 11 clamps to 4 and commits there.
+    const resolution = resolveMoveGroup(
+      [
+        { keyId: 'A', appFrame: 1 },
+        { keyId: 'C', appFrame: 5 },
+      ],
+      buildClampGroup(),
+      'loop-R',
+      11,
+      12,
+    );
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Capacity clamp must resolve ok');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 4, C: 8 });
+    expect(resolution.proposal.nextLoopClips?.[0]?.placementStart).toBe(4);
+  });
+
+  it('clamps at another Group interval including its linked occurrence interval', () => {
+    // loop-G2 spans [11,20) through repeat 3 (cycleLength 3), i.e. linked
+    // occurrences fill the derived interval. loop-R dragged right clamps to
+    // 11 - 8 = 3 so its interval [3,11) stops before loop-G2's start.
+    const identities = [
+      { keyId: 'A', appFrame: 1 },
+      { keyId: 'C', appFrame: 5 },
+      { keyId: 'D', appFrame: 11 },
+      { keyId: 'E', appFrame: 13 },
+    ] as const;
+    const loopClips = [
+      ...buildClampGroup(),
+      Object.freeze({
+        loopId: 'loop-G2',
+        placementStart: 11,
+        sourceKeyIds: ['D', 'E'],
+        repeat: 3,
+        mode: 'progressive',
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 11,
+        originalEndExclusive: 20,
+        visibleRanges: Object.freeze([Object.freeze({ start: 11, endExclusive: 20 })]),
+      }) as PhysicPaintRotoLoopClip,
+    ];
+
+    const resolution = resolveMoveGroup(
+      identities as unknown as readonly PhysicPaintRotoKeyIdentity[],
+      loopClips,
+      'loop-R',
+      7,
+      24,
+    );
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Other-Group boundary clamp must resolve ok');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 3, C: 7, D: 11, E: 13 });
+    expect(resolution.proposal.nextLoopClips?.[0]?.placementStart).toBe(3);
+  });
+
+  it('treats the dragged Group own current interval as pass-through space', () => {
+    // Only A@1/C@5 exist; a rightward drag to 6 crosses the original span
+    // [1,9) freely — the own interval is excluded from the boundary set.
+    const resolution = resolveMoveGroup(
+      [
+        { keyId: 'A', appFrame: 1 },
+        { keyId: 'C', appFrame: 5 },
+      ],
+      buildClampGroup(),
+      'loop-R',
+      6,
+    );
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Pass-through drag must resolve ok');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 6, C: 10 });
+    expect(resolution.proposal.nextLoopClips?.[0]?.placementStart).toBe(6);
+  });
+
+  it('rejects with no-free-space-in-direction when zero valid movement exists and carries no proposal', () => {
+    // Unowned D@9 sits exactly at the current interval end: 9 - 8 = 1, so the
+    // Group is already at the rightmost legal placement and cannot move right.
+    const resolution = resolveMoveGroup(
+      [
+        { keyId: 'A', appFrame: 1 },
+        { keyId: 'C', appFrame: 5 },
+        { keyId: 'D', appFrame: 9 },
+      ],
+      buildClampGroup(),
+      'loop-R',
+      3,
+    );
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Zero-space rightward drag must reject');
+    expect(resolution.failure.code).toBe('no-free-space-in-direction');
+    expect('proposal' in resolution).toBe(false);
+  });
+
+  it('derives an Infinity Group dragged interval from phaseOrigin to resolved effectiveEnd and permits the rightward drag', () => {
+    // Infinity Group [1,600) fills the physical track; a rightward drag to 30
+    // legitimately shrinks the derived occurrences to [30,600) — not a Repeat
+    // change (D-19), and no Repeat field is touched.
+    const loopClips = buildClampGroup({
+      loopId: 'loop-I',
+      repeat: 'infinity',
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: undefined,
+      originalEndExclusive: undefined,
+      visibleRanges: undefined,
+    });
+
+    const resolution = resolveMoveGroup(
+      [
+        { keyId: 'A', appFrame: 1 },
+        { keyId: 'C', appFrame: 5 },
+      ],
+      loopClips,
+      'loop-I',
+      30,
+    );
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Infinity rightward drag must resolve ok');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 30, C: 34 });
+    expect(resolution.proposal.nextLoopClips).not.toBeNull();
+    if (!resolution.proposal.nextLoopClips) throw new Error('nextLoopClips must be present');
+    const movedClip = resolution.proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-I');
+    expect(movedClip?.placementStart).toBe(30);
+    expect(movedClip?.repeat).toBe('infinity');
+  });
+
+  it('clamps a zero-width (0f) dragged interval without division errors and keeps the Group draggable', () => {
+    // A zero-width dragged interval (effectiveEnd === phaseOrigin) overlaps no
+    // band, but the moved keys still cannot land on unowned real key frames:
+    // proposed 3 would put A at B@3, so the clamp pulls back to 2.
+    const clamped = clampPhysicPaintGroupDragDestination({
+      clip: buildClampGroup()[0] as PhysicPaintRotoLoopClip,
+      draggedInterval: { phaseOrigin: 1, effectiveEnd: 1 },
+      proposedDestinationPlacementStart: 3,
+      identities: buildBaselineIdentities(),
+      loopRanges: [],
+      capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES,
+    });
+
+    expect(clamped.ok).toBe(true);
+    if (!clamped.ok) throw new Error('Zero-width clamp must resolve ok');
+    expect(clamped.destinationPlacementStart).toBe(2);
   });
 });
 
