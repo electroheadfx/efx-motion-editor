@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.3
 current_phase_name: motion-and-static-group-drag-within-free-space
 status: executing
-stopped_at: Completed 43.3-01-PLAN.md
-last_updated: "2026-08-13T15:59:51.252Z"
+stopped_at: Completed 43.3-02-PLAN.md
+last_updated: "2026-08-13T17:06:49.570Z"
 last_activity: 2026-08-13
 last_activity_desc: Phase 43.2 complete, transitioned to Phase 44
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 70
-  completed_plans: 67
+  completed_plans: 68
   percent: 67
 ---
 
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.3 (motion-and-static-group-drag-within-free-space) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-08-13 — Phase 43.3 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [██████████] 96%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -219,6 +219,7 @@ Progress: [██████████] 96%
 | Phase 43.2 P23 | 5min | 2 tasks | 2 files |
 | Phase 43.2 P24 | 4min | 2 tasks | 3 files |
 | Phase 43.3 P01 | 96 | 3 tasks | 10 files |
+| Phase 43.3 P02 | 17 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -405,6 +406,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: beginDrag does not prepare: the move handler that crossed the threshold calls prepareAt() right after, so the publication is prepared exactly once per destination change
 - [Phase ?]: Ghost geometry is session-only and consumed for paint only; commit consumes the immutable retained publication (D-01)
 - [Phase ?]: Injectable windowLike/source-element surfaces keep the session state machine unit-testable in the node vitest environment
+- [Phase ?]: One exported pure clamp function (clampPhysicPaintGroupDragDestination) is the single authority for both the resolver branch and the plan 03 ghost preview — preview-is-the-commit (D-05, RESEARCH Open Question 2)
+- [Phase ?]: Clamp-and-commit replaces the plan-01 fail-closed-on-collision tracer behavior; rejection only when zero valid movement exists in the dragged direction (D-05, D-06 substrate)
+- [Phase ?]: Attachment is resolver-derived from canonical facts only (placementStart === first source key frame); duplicated placements move only placement with identity key mapping (Pitfall 4, D-11)
+- [Phase ?]: Break derivation is complete-collection replacement: vacated-interval successor owns/reuses the incoming break, landing gap before the first source key creates a new break, breaks on moved keys travel unchanged, Group-local fragments never convert (D-09..D-13)
 
 ### Pending Todos
 
@@ -602,8 +607,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-13T15:59:51.224Z
-Stopped at: Completed 43.3-01-PLAN.md
+Last session: 2026-08-13T17:06:45.894Z
+Stopped at: Completed 43.3-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

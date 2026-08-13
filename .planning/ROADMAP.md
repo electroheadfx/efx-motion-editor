@@ -228,7 +228,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 43.3-02-PLAN.md — TDD: pure clamp authority vs all D-08 boundaries, duplicated placement-only branch, stable-key-owned break derivation D-09..D-13 (GDRAG-04, GDRAG-05, GDRAG-06, GDRAG-08)
+- [x] 43.3-02-PLAN.md — TDD: pure clamp authority vs all D-08 boundaries, duplicated placement-only branch, stable-key-owned break derivation D-09..D-13 (GDRAG-04, GDRAG-05, GDRAG-06, GDRAG-08)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
