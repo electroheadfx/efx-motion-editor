@@ -27,6 +27,7 @@ import {
   classifyRotoDeleteTarget,
   classifyRotoInsertTarget,
   mapRotoDeleteProductReason,
+  mapRotoGroupDragProductReason,
   mapRotoInsertProductReason,
   useRotoTimelineActions,
   type RotoDeleteTarget,
@@ -1081,5 +1082,141 @@ describe('useRotoTimelineActions Group-drag prepare/commit publication pair', ()
     expect(await actions.physicalActions.commitRotoGroupDrag(emptyLaunch)).toBe(false);
 
     expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+});
+
+describe('useRotoTimelineActions Group-drag status, busy gate, and post-commit stability (43.3-03 Task 2)', () => {
+  const groupRecords = [
+    realKeyRecord('A', 1),
+    realKeyRecord('B', 3),
+    realKeyRecord('C', 5),
+    realKeyRecord('D', 10),
+  ];
+  const group = lifecycleGroup({
+    loopId: 'group-1',
+    placementStart: 1,
+    sourceKeyIds: Object.freeze(['A', 'C']),
+    phaseOrigin: 1,
+    originalEndExclusive: 9,
+    visibleRanges: Object.freeze([
+      Object.freeze({ start: 1, endExclusive: 4 }),
+      Object.freeze({ start: 5, endExclusive: 9 }),
+    ]),
+  });
+  // A duplicated shared-source placement (D-11): placementStart 10 differs from
+  // the first source key frame A@1, so its keys never move with the drag.
+  const duplicatedGroup = lifecycleGroup({
+    loopId: 'group-dup',
+    placementStart: 10,
+    sourceKeyIds: Object.freeze(['A', 'C']),
+    phaseOrigin: 10,
+    originalEndExclusive: 18,
+    visibleRanges: Object.freeze([
+      Object.freeze({ start: 10, endExclusive: 13 }),
+      Object.freeze({ start: 14, endExclusive: 18 }),
+    ]),
+  });
+
+  it('publishes the locked no-space copy with zero mutation when the clamp finds no free space (D-06)', () => {
+    const { actions, executePhysicalEdit } = createHarness({ records: groupRecords, loopClips: [group], capacity: 16 });
+    // Leftward drag to 0: the only candidate destination [0,8) overlaps the
+    // boundary key D@10's interval, so the plan-02 clamp returns ok:false.
+    const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 0);
+    expect(preparation.ok).toBe(false);
+    if (preparation.ok) throw new Error('No-space group drag must reject');
+    expect(preparation.reason).toBe('No empty space in that direction.');
+    expect(preparation.reason).not.toContain('no free space');
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+
+  it('publishes the accepted destination copy with no gap fact for a duplicated placement (D-07, D-11)', async () => {
+    const { actions, publishStatus } = createHarness({
+      records: [realKeyRecord('A', 1), realKeyRecord('C', 5)],
+      loopClips: [duplicatedGroup],
+      capacity: 24,
+    });
+    const preparation = actions.physicalActions.prepareRotoGroupDrag('group-dup', 12);
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Duplicated group drag must prepare');
+    expect(preparation.publication.clampedDestinationPlacementStart).toBe(12);
+    expect(preparation.publication.vacatedInterval).toBeNull();
+
+    const accepted = await actions.physicalActions.commitRotoGroupDrag(preparation.publication);
+    expect(accepted).toBe(true);
+    expect(publishStatus).toHaveBeenCalledWith('Moved Group to frame 12.');
+  });
+
+  it('appends the inclusive vacated-gap range when a source-attached move opens a gap (D-07)', async () => {
+    const { actions, publishStatus } = createHarness({ records: groupRecords, loopClips: [group], capacity: 16 });
+    const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 4);
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Group drag must prepare');
+    // Destination 4 clamps to 2 (D-05); the vacated interval is the Group's
+    // original half-open span [1,9) → inclusive product range 1–8.
+    expect(preparation.publication.clampedDestinationPlacementStart).toBe(2);
+    expect(preparation.publication.vacatedInterval).toEqual({ phaseOrigin: 1, effectiveEnd: 9 });
+
+    const accepted = await actions.physicalActions.commitRotoGroupDrag(preparation.publication);
+    expect(accepted).toBe(true);
+    expect(publishStatus).toHaveBeenCalledWith('Moved Group to frame 2. Gap left at frames 1–8.');
+  });
+
+  it('routes disabled, rejection, and acceptance copy through the single Group-drag mapper', () => {
+    // Disabled preflight flows through the mapper.
+    const noLaunch = createHarness({ launch: null, records: groupRecords, loopClips: [group] });
+    expect(noLaunch.actions.physicalActions.prepareRotoGroupDrag('group-1', 4).reason).toBe(
+      mapRotoGroupDragProductReason({ kind: 'disabled', reason: 'Select a real Roto key before editing the timeline.' }),
+    );
+    // Zero-space rejection maps to the locked literal copy — never the raw
+    // resolver diagnostic (T-43.3-03-03).
+    const { actions } = createHarness({ records: groupRecords, loopClips: [group], capacity: 16 });
+    const rejected = actions.physicalActions.prepareRotoGroupDrag('group-1', 0);
+    expect(rejected.ok).toBe(false);
+    if (rejected.ok) throw new Error('No-space group drag must reject');
+    expect(rejected.reason).toBe(mapRotoGroupDragProductReason({
+      kind: 'rejected',
+      failureCode: 'no-free-space-in-direction',
+      failureText: 'Group drag has no free space in the dragged direction.',
+    }));
+    expect(rejected.reason).not.toContain('no free space');
+    // Acceptance copy flows through the mapper.
+    expect(mapRotoGroupDragProductReason({ kind: 'accepted', destinationPlacementStart: 2, vacatedInterval: { phaseOrigin: 1, effectiveEnd: 9 } }))
+      .toBe('Moved Group to frame 2. Gap left at frames 1–8.');
+    expect(mapRotoGroupDragProductReason({ kind: 'accepted', destinationPlacementStart: 12, vacatedInterval: null }))
+      .toBe('Moved Group to frame 12.');
+  });
+
+  it('rejects a second drag session while a Group mutation is in flight (busy gate, T-43.3-03-04)', () => {
+    const { actions } = createHarness({ records: groupRecords, loopClips: [group], capacity: 16, pendingOperationId: 'op-in-flight' });
+    const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 4);
+    expect(preparation.ok).toBe(false);
+    if (preparation.ok) throw new Error('Busy gate must reject');
+    expect(preparation.reason).toBe('A Roto physical edit is already in flight.');
+  });
+
+  it('keeps the moved Group selected with the cursor unmoved and no navigation after acceptance (D-17)', async () => {
+    const { actions, executePhysicalEdit, publishStatus, publishDiagnostic } = createHarness({ records: groupRecords, loopClips: [group], capacity: 16 });
+    const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 4);
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Group drag must prepare');
+    const publication = preparation.publication;
+
+    const accepted = await actions.physicalActions.commitRotoGroupDrag(publication);
+    expect(accepted).toBe(true);
+    // The moved Group stays selected and the physical cursor stays put: the
+    // publication's selectedKeyId/selectedAppFrame are forwarded unchanged.
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as {
+      selectedKeyId: string | null;
+      selectedAppFrame: number | null;
+    };
+    expect(dispatched.selectedKeyId).toBe(publication.proposal.selectedKeyId);
+    expect(dispatched.selectedAppFrame).toBe(publication.proposal.selectedAppFrame);
+    // No navigation and no error diagnostics: the commit path only publishes
+    // the accepted status. Canvas reconciliation runs through the existing
+    // current-frame reconciliation path in the Studio handler, which re-renders
+    // only when the current frame's content changed (43.1-04 precedent).
+    expect(publishDiagnostic).not.toHaveBeenCalled();
+    expect(publishStatus).toHaveBeenCalledTimes(1);
+    expect(publishStatus).toHaveBeenCalledWith('Moved Group to frame 2. Gap left at frames 1–8.');
   });
 });
