@@ -214,6 +214,30 @@ Plans:
 
 **Boundary note:** Loop Clips persist as canonical linked loop regions in the existing physical-frame document authority. v0.9.0 adds no project schema migration or clean format break; accepted open/save/reopen behavior remains intact. The EFX-local Integrated Loop Rail ships with the resolver as a visible-window view of accepted ranges and owns Loop Clip selection/interaction. The Motion Editor receives only paint-only `{startFrame, frameCount, mode}` intervals for passive 3px Progressive-purple or Static/Hold-cyan paint with white canonical endpoint cuts. Key Spacing selection/provenance remains session-only, while accepted records, source-attached placement changes, and Play Script background remain inside the complete physical document transaction.
 
+### Phase 43.3: Motion and Static Group Drag Within Free Space (INSERTED)
+
+**Goal:** Users can drag a Motion or Static Group directly from its integrated Group Rail into available empty timeline space — a source-attached Group moving its complete real source cycle, rail, linked repeat interval, placement, and lifecycle boundaries together, a duplicated shared-source placement moving only its placement — with clamp-and-commit at every collision boundary, a translucent ghost/blocked-edge/gap preview before commit, every vacated or newly opened interval recorded as a persistent Phase 43.1 stable-key-owned interpolation break, and the accepted movement landing as one atomic parent-acknowledged transaction with one Undo/Redo surviving save/reopen.
+**Requirements**: GDRAG-01, GDRAG-02, GDRAG-03, GDRAG-04, GDRAG-05, GDRAG-06, GDRAG-07, GDRAG-08, GDRAG-09, GDRAG-10 (planning-local; do not add to REQUIREMENTS.md)
+**Depends on:** Phase 43.2
+**Plans:** 4 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 43.3-01-PLAN.md — Tracer: 'move-group' closed-union intent + resolver source-attached happy path + break-aware prepare/commit pair + rail drag session with unclamped ghost (GDRAG-01, GDRAG-03, GDRAG-07)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 43.3-02-PLAN.md — TDD: pure clamp authority vs all D-08 boundaries, duplicated placement-only branch, stable-key-owned break derivation D-09..D-13 (GDRAG-04, GDRAG-05, GDRAG-06, GDRAG-08)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 43.3-03-PLAN.md — Clamped ghost + red blocked-edge bar + roto-fill-empty gap preview, locked status copy via single mapper, busy gate, D-17 post-commit stability (GDRAG-02, GDRAG-06, GDRAG-07, GDRAG-08)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 43.3-04-PLAN.md — Full regression gate with locked-boundary/frozen-path non-modification proofs + blocking frozen-session native UAT (GDRAG-09, GDRAG-10)
+
 ### Phase 43.1: Intentional Gap Insert and Local Interpolation Breaks
 
 **Goal**: Users can start a new isolated Roto key segment at a distant genuinely empty frame through the existing Insert action, without interpolation bridging from the preceding segment, while the empty key and its stable-identity-owned incoming break remain one accepted physical-document/history fact.
