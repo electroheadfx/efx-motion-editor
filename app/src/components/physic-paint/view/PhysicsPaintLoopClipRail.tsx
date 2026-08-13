@@ -183,7 +183,10 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
     const continuousRange = {
       ...range,
       placementStart: range.phaseOrigin,
-      effectiveEnd: range.requestedEnd === 'infinity' ? resolvedEnd : range.requestedEnd,
+      // Draw to the resolved (parent-truncated) end for finite loops too, so
+      // the clip extent matches the frames that actually resolve (WR-03).
+      // resolvedEnd is the max effectiveEnd across the loop's fragments.
+      effectiveEnd: resolvedEnd,
     };
     const geometry = projectPhysicsPaintLoopClipGeometry(
       continuousRange,

@@ -71,9 +71,12 @@ export function projectPhysicsPaintLoopClipPresentation(
   const cycleLabel = range.repeat === 'infinity'
     ? `Cycle ${range.cycleLength}f × ∞`
     : `Cycle ${range.cycleLength}f × ${range.repeat} = ${requestedDuration}f`;
-  const effectiveEnd = range.requestedEnd === 'infinity'
-    ? range.effectiveEnd
-    : range.requestedEnd;
+  // The effective duration reflects the frames that actually resolve: the
+  // resolver truncates finite loops at the parent end (effectiveEnd <
+  // requestedEnd when truncated), so use effectiveEnd for both finite and
+  // infinity loops. requestedEnd stays in the cycle label, which correctly
+  // describes the user's intent (WR-03).
+  const effectiveEnd = range.effectiveEnd;
   const effectiveDuration = Math.max(0, effectiveEnd - range.phaseOrigin);
   const mode = clip?.mode ?? 'progressive';
   const modeLabel = mode === 'static' ? 'Static' : 'Motion';

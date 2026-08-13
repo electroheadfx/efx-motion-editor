@@ -297,7 +297,10 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     };
     const presentations = new Map([[
       clip.loopId,
-      projectPhysicsPaintLoopClipPresentation(ranges[0], clip, 'Walk'),
+      // The presentation reflects the loop's overall resolved extent, so it is
+      // built from the last fragment (max effectiveEnd) — matching how the
+      // studio builds the loopId-keyed presentation map (WR-03).
+      projectPhysicsPaintLoopClipPresentation(ranges[1], clip, 'Walk'),
     ]]);
     const onSelectLoopClip = vi.fn();
     const onOpenLoopEdit = vi.fn(async () => {});
@@ -479,7 +482,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       loopId: 'group-a', placementStart: 10, sourceKeyIds: ['A'], repeat: 1,
       mode, scriptId: 'action-a', syncState: 'synchronized', provenanceState: 'attached',
     };
-    const presentations = new Map([['group-a', projectPhysicsPaintLoopClipPresentation(ranges[0], clip, 'Pose')]]);
+    const presentations = new Map([['group-a', projectPhysicsPaintLoopClipPresentation(ranges[1], clip, 'Pose')]]);
 
     hooks.reset();
     const tree = materializeNamedComponents(PhysicsPaintLoopClipRail({
