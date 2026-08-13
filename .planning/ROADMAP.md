@@ -219,7 +219,7 @@ Plans:
 **Goal:** Users can drag a Motion or Static Group directly from its integrated Group Rail into available empty timeline space — a source-attached Group moving its complete real source cycle, rail, linked repeat interval, placement, and lifecycle boundaries together, a duplicated shared-source placement moving only its placement — with clamp-and-commit at every collision boundary, a translucent ghost/blocked-edge/gap preview before commit, every vacated or newly opened interval recorded as a persistent Phase 43.1 stable-key-owned interpolation break, and the accepted movement landing as one atomic parent-acknowledged transaction with one Undo/Redo surviving save/reopen.
 **Requirements**: GDRAG-01, GDRAG-02, GDRAG-03, GDRAG-04, GDRAG-05, GDRAG-06, GDRAG-07, GDRAG-08, GDRAG-09, GDRAG-10 (planning-local; do not add to REQUIREMENTS.md)
 **Depends on:** Phase 43.2
-**Plans:** 4 plans
+**Plans:** 4/4 plans complete
 
 Plans:
 **Wave 1**

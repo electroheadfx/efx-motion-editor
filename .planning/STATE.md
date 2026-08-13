@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-current_phase: 43.3
-current_phase_name: motion-and-static-group-drag-within-free-space
-status: verifying
+current_phase: 44
+current_phase_name: Integrated UAT + Signed Release
+status: planning
 stopped_at: Completed 43.3-03-PLAN.md
-last_updated: "2026-08-13T19:29:09.687Z"
+last_updated: "2026-08-13T19:46:31.518Z"
 last_activity: 2026-08-13
 last_activity_desc: Phase 43.2 complete, transitioned to Phase 44
 progress:
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 ## Current Position
 
-Phase: 43.3 (motion-and-static-group-drag-within-free-space) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-08-13 — Phase 43.3 execution started
+Phase: 44 — Integrated UAT + Signed Release
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-13 — Phase 43.3 complete, transitioned to Phase 44
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -41,7 +41,7 @@ Progress: [██████████] 99%
 
 **Velocity:**
 
-- Total plans completed: 147 for v0.8.0
+- Total plans completed: 151 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -74,6 +74,7 @@ Progress: [██████████] 99%
 | 43 | 15/15 | Complete through corrected implementation, cleanup, native UAT, and summary closure | - |
 | 43.1 | 12 | - | - |
 | 43.2 | 25 | - | - |
+| 43.3 | 4 | - | - |
 
 **Recent Trend:**
 
