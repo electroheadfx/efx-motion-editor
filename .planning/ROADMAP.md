@@ -224,7 +224,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 43.3-01-PLAN.md — Tracer: 'move-group' closed-union intent + resolver source-attached happy path + break-aware prepare/commit pair + rail drag session with unclamped ghost (GDRAG-01, GDRAG-03, GDRAG-07)
+- [x] 43.3-01-PLAN.md — Tracer: 'move-group' closed-union intent + resolver source-attached happy path + break-aware prepare/commit pair + rail drag session with unclamped ghost (GDRAG-01, GDRAG-03, GDRAG-07)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 

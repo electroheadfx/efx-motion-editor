@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.3
-current_phase_name: Motion and Static Group Drag Within Free Space
+current_phase_name: motion-and-static-group-drag-within-free-space
 status: executing
-stopped_at: Phase 43.3 UI-SPEC approved
-last_updated: "2026-08-13T15:06:14.514Z"
+stopped_at: Completed 43.3-01-PLAN.md
+last_updated: "2026-08-13T15:59:51.252Z"
 last_activity: 2026-08-13
 last_activity_desc: Phase 43.2 complete, transitioned to Phase 44
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 70
-  completed_plans: 66
+  completed_plans: 67
   percent: 67
 ---
 
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 43.2 — Motion and Static Group Stabilization and Action Lifecycle
+**Current focus:** Phase 43.3 — motion-and-static-group-drag-within-free-space
 
 ## Current Position
 
-Phase: 43.3 — Motion and Static Group Drag Within Free Space
-Plan: Not started
+Phase: 43.3 (motion-and-static-group-drag-within-free-space) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-08-13 - Completed quick task 260813-ibo: Paint layer visible in Studio without Timeline key photos
+Last activity: 2026-08-13 — Phase 43.3 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [██████████] 97%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -218,6 +218,7 @@ Progress: [██████████] 97%
 | Phase 43.2 P22 | 9min | 2 tasks | 5 files |
 | Phase 43.2 P23 | 5min | 2 tasks | 2 files |
 | Phase 43.2 P24 | 4min | 2 tasks | 3 files |
+| Phase 43.3 P01 | 96 | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -398,6 +399,12 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.2]: Frozen `69d07703` native retest confirms Create/Edit Group, Repeat forward/Undo/Redo/usability, and Delete Frame structural Undo/Redo; preserve those paths.
 - [Phase 43.2]: The same restarted build independently fails project-local save staging permission, neutral deleted-gap presentation, Paint into a deleted Group gap, copy-on-write Paint over an existing Group frame, and Regenerate restoration from original extent.
 - [Phase 43.2]: `[SAVE-REOPEN]` remains a separate narrow Tauri capability/publication defect from the linked Group ownership, Paint, and Regenerate failures.
+- [Phase ?]: GROUP_RAIL_DRAG_THRESHOLD_PX = 4 is horizontal-only; the 6px Euclidean ROTO_DRAG_THRESHOLD_PX belongs to the locked physical-cell drag path and stays untouched (43.3 PATTERNS)
+- [Phase ?]: The rail target always stops pointerdown propagation so the physical-cell handlers below never see it (43 D-42 isolation)
+- [Phase ?]: Modifier presses never arm a drag session: Cmd/Ctrl/Shift clicks remain selection gestures handled by the rail click machinery (Pitfall 6)
+- [Phase ?]: beginDrag does not prepare: the move handler that crossed the threshold calls prepareAt() right after, so the publication is prepared exactly once per destination change
+- [Phase ?]: Ghost geometry is session-only and consumed for paint only; commit consumes the immutable retained publication (D-01)
+- [Phase ?]: Injectable windowLike/source-element surfaces keep the session state machine unit-testable in the node vitest environment
 
 ### Pending Todos
 
@@ -595,9 +602,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-13T13:54:39.459Z
-Stopped at: Phase 43.3 UI-SPEC approved
-Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/43.3-motion-and-static-group-drag-within-free-space/43.3-UI-SPEC.md
+Last session: 2026-08-13T15:59:51.224Z
+Stopped at: Completed 43.3-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
