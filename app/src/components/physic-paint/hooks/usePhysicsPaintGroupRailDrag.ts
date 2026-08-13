@@ -240,9 +240,15 @@ export function usePhysicsPaintGroupRailDrag(
     const updateGhost = (destination: number, blockedEdge: 'left' | 'right' | null) => {
       const effectiveZero = input.range.effectiveEnd <= input.range.placementStart;
       const left = (destination - input.visibleFrameWindow.startFrame) * input.framePitch;
+      // D-13 rigid translation: the ghost is the group's full resolved width
+      // (effectiveEnd − placementStart) translated by the drag delta. Anchoring
+      // the right edge at the original effectiveEnd shrank the ghost on
+      // rightward drag until it collapsed to a 1px sliver beyond the anchor —
+      // the rightward preview defect. Constant width keeps leftward/rightward
+      // geometry identical (D-05 preview-is-the-commit).
       const width = effectiveZero
         ? 8
-        : Math.max(1, (input.range.effectiveEnd - destination) * input.framePitch);
+        : Math.max(1, (input.range.effectiveEnd - input.range.placementStart) * input.framePitch);
       setGhost({ active: true, left, width, mode: input.presentation.mode, effectiveZero, blockedEdge });
     };
     const prepareAt = () => {
