@@ -79,6 +79,8 @@ interface HarnessOptions {
   incomingInterpolationBreakKeyIds?: readonly string[];
   capacity?: number;
   blankDataUrl?: string;
+  /** Omit the four physical-edit ports (executePhysicalEdit, getRotoKeyRecords, getRotoInterpolationState, getCapacity) to exercise the guard-order rejection path. */
+  omitPhysicalEditPorts?: boolean;
   executeGroupLifecycleDelete?: (activation: GroupDeleteActivation) => Promise<boolean>;
   requestSoleOccurrenceDeleteWarning?: (activation: GroupDeleteActivation) => void;
   requestGroupDeleteChoice?: (target: Extract<RotoDeleteTarget, { kind: 'group-choice' }>) => void;
@@ -95,8 +97,12 @@ function createHarness(options: HarnessOptions = {}) {
   const pendingOperationId = signal<string | null>(options.pendingOperationId ?? null);
   const input: RotoTimelineActionsInput = {
     getModel: () => ({ settings: {}, realSourceFrames: [] }) as never,
-    getRotoKeyRecords: () => records,
-    getRotoInterpolationState: () => ({ enabled: false, mode: 'duplicate' }),
+    ...(options.omitPhysicalEditPorts ? {} : {
+      getRotoKeyRecords: () => records,
+      getRotoInterpolationState: () => ({ enabled: false, mode: 'duplicate' }),
+      getCapacity: () => options.capacity ?? 10,
+      executePhysicalEdit: executePhysicalEdit as never,
+    }),
     getRotoLoopClips: () => options.loopClips ?? [],
     getRotoSpacingSelection: () => options.spacingSelection ?? null,
     getPhysicalCells: () => options.physicalCells ?? [],
@@ -106,7 +112,6 @@ function createHarness(options: HarnessOptions = {}) {
     getSelectedLoopClipIds: () => options.selectedLoopClipIds ?? [],
     getCurrentAppFrame: options.getCurrentAppFrame ?? (() => options.currentAppFrame ?? 3),
     getLaunchContext: () => launch,
-    getCapacity: () => options.capacity ?? 10,
     getIncomingInterpolationBreakKeyIds: () => options.incomingInterpolationBreakKeyIds ?? [],
     buildBlankRotoFrame: (appFrame) => ({
       frameIndex: 0,
@@ -116,7 +121,6 @@ function createHarness(options: HarnessOptions = {}) {
       height: 80,
       source: 'real-key',
     }),
-    executePhysicalEdit: executePhysicalEdit as never,
     pendingOperationId,
     publishStatus,
     publishDiagnostic,
@@ -950,6 +954,125 @@ describe('useRotoTimelineActions rigid group-drag settlement', () => {
     expect(preparation.reason).toBe('Move rejected — key in the way');
     expect(preparation.conflictingAppFrames).toEqual([7]);
     expect(preparation.detail).toContain('occupied by an unselected real key');
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+});
+
+describe('useRotoTimelineActions Group-drag prepare/commit publication pair', () => {
+  const groupRecords = [
+    realKeyRecord('A', 1),
+    realKeyRecord('B', 3),
+    realKeyRecord('C', 5),
+    realKeyRecord('D', 10),
+  ];
+  const group = lifecycleGroup({
+    loopId: 'group-1',
+    placementStart: 1,
+    sourceKeyIds: Object.freeze(['A', 'C']),
+    phaseOrigin: 1,
+    originalEndExclusive: 9,
+    visibleRanges: Object.freeze([
+      Object.freeze({ start: 1, endExclusive: 5 }),
+      Object.freeze({ start: 5, endExclusive: 9 }),
+    ]),
+  });
+
+  it('rejects in the same guard order as prepareRotoKeyGroupDrag', () => {
+    const noLaunch = createHarness({ launch: null, records: groupRecords, loopClips: [group] });
+    expect(noLaunch.actions.physicalActions.prepareRotoGroupDrag('group-1', 4)).toEqual({
+      ok: false,
+      reason: 'Select a real Roto key before editing the timeline.',
+    });
+
+    const noPorts = createHarness({ records: groupRecords, loopClips: [group], omitPhysicalEditPorts: true });
+    expect(noPorts.actions.physicalActions.prepareRotoGroupDrag('group-1', 4)).toEqual({
+      ok: false,
+      reason: 'Timeline editing is unavailable.',
+    });
+
+    const inFlight = createHarness({ records: groupRecords, loopClips: [group], pendingOperationId: 'op-busy' });
+    expect(inFlight.actions.physicalActions.prepareRotoGroupDrag('group-1', 4)).toEqual({
+      ok: false,
+      reason: 'A Roto physical edit is already in flight.',
+    });
+  });
+
+  it('threads the incoming break collection into both the resolver input and a break-aware proposalVersion', () => {
+    const base = { records: groupRecords, loopClips: [group], capacity: 16 };
+    const withoutBreaks = createHarness({ ...base, incomingInterpolationBreakKeyIds: [] });
+    const withBreaks = createHarness({ ...base, incomingInterpolationBreakKeyIds: ['D'] });
+
+    const plain = withoutBreaks.actions.physicalActions.prepareRotoGroupDrag('group-1', 4);
+    const broken = withBreaks.actions.physicalActions.prepareRotoGroupDrag('group-1', 4);
+
+    expect(plain.ok).toBe(true);
+    expect(broken.ok).toBe(true);
+    if (!plain.ok || !broken.ok) throw new Error('Both preparations must succeed');
+    // Break authority reaches the fingerprint: identical except break authority
+    // produce different proposalVersions (Pitfall 1).
+    expect(plain.publication.proposalVersion).not.toBe(broken.publication.proposalVersion);
+
+    // Break authority reaches the resolver input: a break owner outside the
+    // identity set fails closed at prepare (resolver validation).
+    const invalidBreak = createHarness({ ...base, incomingInterpolationBreakKeyIds: ['unknown-break'] });
+    const rejected = invalidBreak.actions.physicalActions.prepareRotoGroupDrag('group-1', 4);
+    expect(rejected.ok).toBe(false);
+    if (rejected.ok) throw new Error('Invalid break authority must reject');
+    expect(rejected.reason).toContain('does not exist');
+  });
+
+  it('rejects a no-change drag at prepare with no publication', () => {
+    const { actions } = createHarness({ records: groupRecords, loopClips: [group], capacity: 16 });
+    const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 1);
+    expect(preparation.ok).toBe(false);
+    if (preparation.ok) throw new Error('No-change group drag must reject');
+    expect(preparation.reason).toBe('This move would not change the timeline.');
+  });
+
+  it('commits the exact retained move-group publication once', async () => {
+    const { actions, executePhysicalEdit } = createHarness({ records: groupRecords, loopClips: [group], capacity: 16 });
+    const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 4);
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Group drag must prepare');
+    expect(Object.fromEntries(preparation.publication.proposal.mapping)).toEqual({ A: 4, B: 3, C: 8, D: 10 });
+
+    const accepted = await actions.physicalActions.commitRotoGroupDrag(preparation.publication);
+
+    expect(accepted).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: unknown;
+      operationKind: string;
+      intent: unknown;
+      selectedKeyId: string | null;
+      selectedAppFrame: number | null;
+    };
+    expect(dispatched.proposal).toBe(preparation.publication.proposal);
+    expect(dispatched.operationKind).toBe('move-group');
+    expect(dispatched.intent).toBe(preparation.publication.intent);
+    expect(dispatched.selectedKeyId).toBe(preparation.publication.proposal.selectedKeyId);
+    expect(dispatched.selectedAppFrame).toBe(preparation.publication.proposal.selectedAppFrame);
+  });
+
+  it('rejects a mismatched or empty-launch publication without dispatching', async () => {
+    const { actions, executePhysicalEdit } = createHarness({ records: groupRecords, loopClips: [group], capacity: 16 });
+    const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 4);
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Group drag must prepare');
+    const publication = preparation.publication;
+
+    const kindMismatch = {
+      ...publication,
+      proposal: { ...publication.proposal, status: { ...publication.proposal.status, operationKind: 'move-key-group' } },
+    };
+    expect(await actions.physicalActions.commitRotoGroupDrag(kindMismatch)).toBe(false);
+
+    const loopMismatch = { ...publication, loopId: 'other-loop' };
+    expect(await actions.physicalActions.commitRotoGroupDrag(loopMismatch)).toBe(false);
+
+    const emptyLaunch = { ...publication, expectedLaunch: { operationId: '', layerId: '' } };
+    expect(await actions.physicalActions.commitRotoGroupDrag(emptyLaunch)).toBe(false);
+
     expect(executePhysicalEdit).not.toHaveBeenCalled();
   });
 });
