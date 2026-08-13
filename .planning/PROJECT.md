@@ -279,4 +279,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-13 after Phase 43 verification closure — Hold Loop Clips + Integrated Loop Rail verified (6/6 must-haves, native UAT approved); milestone v0.9.0 (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
+*Last updated: 2026-08-13 after Phase 43.3 verification closure — Motion/Static Group Rail drag within free space verified (10/10 must-haves, native UAT approved; rightward-ghost defect fixed in-phase; Infinity repeat-resolution failure documented as pre-existing transferred baseline debt with a separate debug); milestone v0.9.0 (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
