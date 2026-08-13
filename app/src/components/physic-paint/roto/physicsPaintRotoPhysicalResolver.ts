@@ -2021,6 +2021,69 @@ export function clampPhysicPaintGroupDragDestination(
 }
 
 /**
+ * D-09..D-13: derive the complete incoming-interpolation-break collection after
+ * a Group drag. Stable-key-owned breaks only, under exact 43.1 semantics:
+ * (a) the next real key at or after the vacated interval's end owns (or reuses)
+ * the incoming break when one exists — never when the interval ends content
+ * (D-12); (b) a source-attached move opens a landing gap when the first source
+ * key lands more than one frame after its new predecessor, giving that key a new
+ * incoming break (D-10); (c) every existing break is carried unchanged (43.1
+ * D-14). Group-local fragments (visibleRanges gaps, frameOverrides) never
+ * convert to key-owned breaks (D-13). A duplicated placement applies only the
+ * vacated-successor rule — shared source keys never move, so no landing gap
+ * exists (D-11). Reuse-never-duplicate: the output is a complete collection
+ * replacement, never a delta.
+ */
+function deriveMoveGroupIncomingInterpolationBreakKeyIds(input: {
+  readonly clip: PhysicPaintRotoLoopClip;
+  readonly draggedInterval: { readonly phaseOrigin: number; readonly effectiveEnd: number };
+  readonly attached: boolean;
+  readonly mapping: ReadonlyMap<string, number>;
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
+}): readonly string[] {
+  const { clip, draggedInterval, attached, mapping, incomingInterpolationBreakKeyIds } = input;
+  const owners = new Set(incomingInterpolationBreakKeyIds);
+
+  // (a) D-09/D-12: the next real key at or after the vacated interval's end owns
+  // the incoming break when one exists (never when the interval ends content).
+  const { phaseOrigin, effectiveEnd } = draggedInterval;
+  if (effectiveEnd > phaseOrigin) {
+    let successor: string | null = null;
+    let successorFrame = Number.POSITIVE_INFINITY;
+    for (const [keyId, frame] of mapping) {
+      if (frame >= effectiveEnd && frame < successorFrame) {
+        successor = keyId;
+        successorFrame = frame;
+      }
+    }
+    if (successor !== null) owners.add(successor);
+  }
+
+  // (b) D-10/D-12: a source-attached move opens a landing gap when the first
+  // source key lands more than one frame after its new predecessor. A first key
+  // with no predecessor (landing before all content) never creates a break.
+  if (attached) {
+    const firstSourceKey = clip.sourceKeyIds[0];
+    const firstSourceFrame = mapping.get(firstSourceKey);
+    if (firstSourceFrame !== undefined) {
+      let predecessorFrame = -1;
+      for (const frame of mapping.values()) {
+        if (frame < firstSourceFrame && frame > predecessorFrame) predecessorFrame = frame;
+      }
+      if (predecessorFrame !== -1 && firstSourceFrame - predecessorFrame > 1) owners.add(firstSourceKey);
+    }
+  }
+
+  // Deterministic ascending physical-frame order (the canonical fingerprint
+  // sorts independently, so this is presentation-stable only).
+  return [...owners].sort((left, right) => {
+    const frameLeft = mapping.get(left) ?? Number.POSITIVE_INFINITY;
+    const frameRight = mapping.get(right) ?? Number.POSITIVE_INFINITY;
+    return frameLeft - frameRight || left.localeCompare(right);
+  });
+}
+
+/**
  * Compute whether the final mapping differs from the input. Used by Drag and
  * Force Spacing so an already-exact request yields a valid no-change proposal.
  */
@@ -3332,7 +3395,23 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       // source key and the Group lifecycle fields translate by the same delta.
       const moveResult = buildMoveGroupClipCandidate(identities, clip, destination, input.capacity, loopClips);
       if (!moveResult.ok) return moveResult.resolution;
-      const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
+      // Task 3: emit the complete next incoming-break collection through the
+      // existing finalizeProposal threading (D-09..D-13). The vacated interval's
+      // successor owns/reuses the break; a landing gap before the first source
+      // key creates a new break; breaks on moved keys travel unchanged.
+      const candidate = {
+        ...moveResult.candidate,
+        nextIncomingInterpolationBreakKeyIds: Object.freeze(
+          deriveMoveGroupIncomingInterpolationBreakKeyIds({
+            clip,
+            draggedInterval: { phaseOrigin, effectiveEnd: resolvedEffectiveEnd },
+            attached: true,
+            mapping: moveResult.candidate.mapping,
+            incomingInterpolationBreakKeyIds,
+          }),
+        ) as readonly string[],
+      };
+      const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
       if (!finalized.ok) return finalized.resolution;
       return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
     }
@@ -3356,10 +3435,18 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       roleByKeyId: new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>(),
       drag: null,
       nextLoopClips: buildMoveGroupNextLoopClips(loopClips, clip, delta),
-      // No interval vacates in a placement-only move, so the incoming breaks
-      // echo byte-identical (D-11); Task 3's vacated/residual rules refine this.
+      // Task 3: a placement-only move vacates no interval and moves no keys, so
+      // the incoming breaks echo byte-identical (D-11); the helper still runs
+      // with attached:false so the vacated-successor rule stays inert and the
+      // landing-gap rule never fires on a duplicated placement.
       nextIncomingInterpolationBreakKeyIds: Object.freeze(
-        [...incomingInterpolationBreakKeyIds],
+        deriveMoveGroupIncomingInterpolationBreakKeyIds({
+          clip,
+          draggedInterval: { phaseOrigin, effectiveEnd: resolvedEffectiveEnd },
+          attached: false,
+          mapping,
+          incomingInterpolationBreakKeyIds,
+        }),
       ) as readonly string[],
     };
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
