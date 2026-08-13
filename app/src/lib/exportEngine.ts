@@ -70,23 +70,34 @@ function findUnresolvedExportLoop(
   fromFrame: number,
   toFrame: number,
 ): string | null {
-  const hits: Array<{ layerId: string; loop: PhysicPaintRotoPhysicalUnresolvedLoop }> = [];
+  const hits: Array<{ layerId: string; seqStart: number; loop: PhysicPaintRotoPhysicalUnresolvedLoop }> = [];
   for (const seq of sequences) {
+    // Loop ranges are layer-local (0-based within the sequence's authored
+    // span, offset by seq.inFrame); translate the global export window into
+    // layer-local coordinates before querying (WR-01). Clamping the lower
+    // bound to >= 0 keeps the store's integer guard satisfied when the export
+    // window starts before the sequence.
+    const seqStart = seq.inFrame ?? 0;
+    const localFrom = Math.max(0, fromFrame - seqStart);
+    const localTo = Math.max(0, toFrame - seqStart);
     for (const layer of seq.layers) {
       if (layer.type !== 'physic-paint') continue;
       const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-      for (const loop of physicPaintStore.getRotoPhysicalUnresolvedLoops(paintLayerId, fromFrame, toFrame)) {
-        hits.push({ layerId: paintLayerId, loop });
+      for (const loop of physicPaintStore.getRotoPhysicalUnresolvedLoops(paintLayerId, localFrom, localTo)) {
+        hits.push({ layerId: paintLayerId, seqStart, loop });
       }
     }
   }
   if (hits.length === 0) return null;
-  // Earliest placementStart names first; fixing it and re-exporting surfaces
+  // Earliest global placement names first; fixing it and re-exporting surfaces
   // the next (loopId tiebreak keeps the order deterministic).
-  hits.sort((a, b) => a.loop.placementStart - b.loop.placementStart || a.loop.loopId.localeCompare(b.loop.loopId));
+  hits.sort((a, b) =>
+    (a.loop.placementStart + a.seqStart) - (b.loop.placementStart + b.seqStart)
+    || a.loop.loopId.localeCompare(b.loop.loopId));
   const first = hits[0];
+  const globalPlacement = first.loop.placementStart + first.seqStart;
   if (first.loop.invalidSourceTiming) {
-    return `Export blocked — Group at frame ${first.loop.placementStart} has invalid source timing. Repair or unlink the Group, then export again.`;
+    return `Export blocked — Group at frame ${globalPlacement} has invalid source timing. Repair or unlink the Group, then export again.`;
   }
   const clip = physicPaintStore.getRotoPhysicalLoopClips(first.layerId)
     .find((candidate) => candidate.loopId === first.loop.loopId);
@@ -95,7 +106,7 @@ function findUnresolvedExportLoop(
     ? clip.sourceKeyIds.indexOf(firstMissingKeyId)
     : -1;
   const missingSourceFrame = first.loop.placementStart + (sourceIndex >= 0 ? sourceIndex : 0);
-  return `Export blocked — Group at frame ${first.loop.placementStart} references a missing source frame (${missingSourceFrame}). Repair or unlink the Group, then export again.`;
+  return `Export blocked — Group at frame ${globalPlacement} references a missing source frame (${missingSourceFrame}). Repair or unlink the Group, then export again.`;
 }
 
 /**
