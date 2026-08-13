@@ -3431,7 +3431,12 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       removedKeyIds: EMPTY_REMOVED_KEY_IDS,
       selectedKeyId: clip.sourceKeyIds[0],
       operationKind: 'move-group' as const,
-      changed: computeChanged(identities, mapping),
+      // D-11 placement-only move: the key mapping is identity (shared source
+      // keys never move), so computeChanged is always false — but the dragged
+      // placement itself DID translate. `changed` must reflect the placement
+      // delta, not the key mapping, or every duplicated placement drag would be
+      // rejected as a no-change (43.3-03 Task 2 regression).
+      changed: destination !== clip.placementStart,
       roleByKeyId: new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>(),
       drag: null,
       nextLoopClips: buildMoveGroupNextLoopClips(loopClips, clip, delta),

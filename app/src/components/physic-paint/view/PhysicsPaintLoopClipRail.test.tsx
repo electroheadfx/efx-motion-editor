@@ -1172,6 +1172,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
         proposalVersion: `v:${loopId}:${destinationPlacementStart}`,
         expectedLaunch: { operationId: 'op-1', layerId: 'layer-1' },
         loopId,
+        clampedDestinationPlacementStart: destinationPlacementStart,
+        vacatedInterval: null,
       };
     }
 

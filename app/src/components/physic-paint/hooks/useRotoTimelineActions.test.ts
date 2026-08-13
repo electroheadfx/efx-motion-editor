@@ -1116,12 +1116,30 @@ describe('useRotoTimelineActions Group-drag status, busy gate, and post-commit s
       Object.freeze({ start: 14, endExclusive: 18 }),
     ]),
   });
+  // A source-attached Group pinned at the end of content with an unowned
+  // boundary key immediately after its interval and a tight capacity: every
+  // rightward destination either exceeds capacity or contains B@16, so the
+  // plan-02 clamp returns ok:false (D-06 substrate).
+  const endOfContentGroup = lifecycleGroup({
+    loopId: 'group-1',
+    placementStart: 10,
+    sourceKeyIds: Object.freeze(['A', 'C']),
+    phaseOrigin: 10,
+    originalEndExclusive: 16,
+    visibleRanges: Object.freeze([Object.freeze({ start: 10, endExclusive: 16 })]),
+  });
+  const endOfContentRecords = [
+    realKeyRecord('A', 10),
+    realKeyRecord('B', 16),
+    realKeyRecord('C', 12),
+  ];
 
   it('publishes the locked no-space copy with zero mutation when the clamp finds no free space (D-06)', () => {
-    const { actions, executePhysicalEdit } = createHarness({ records: groupRecords, loopClips: [group], capacity: 16 });
-    // Leftward drag to 0: the only candidate destination [0,8) overlaps the
-    // boundary key D@10's interval, so the plan-02 clamp returns ok:false.
-    const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 0);
+    const { actions, executePhysicalEdit } = createHarness({ records: endOfContentRecords, loopClips: [endOfContentGroup], capacity: 20 });
+    // Rightward drag to 15: every destination [d, d+6) either exceeds capacity
+    // 20 or contains the boundary key B@16, so the plan-02 clamp returns
+    // ok:false and the mapper publishes the locked literal copy.
+    const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 15);
     expect(preparation.ok).toBe(false);
     if (preparation.ok) throw new Error('No-space group drag must reject');
     expect(preparation.reason).toBe('No empty space in that direction.');
@@ -1164,13 +1182,16 @@ describe('useRotoTimelineActions Group-drag status, busy gate, and post-commit s
   it('routes disabled, rejection, and acceptance copy through the single Group-drag mapper', () => {
     // Disabled preflight flows through the mapper.
     const noLaunch = createHarness({ launch: null, records: groupRecords, loopClips: [group] });
-    expect(noLaunch.actions.physicalActions.prepareRotoGroupDrag('group-1', 4).reason).toBe(
+    const disabled = noLaunch.actions.physicalActions.prepareRotoGroupDrag('group-1', 4);
+    expect(disabled.ok).toBe(false);
+    if (disabled.ok) throw new Error('Disabled preflight must reject');
+    expect(disabled.reason).toBe(
       mapRotoGroupDragProductReason({ kind: 'disabled', reason: 'Select a real Roto key before editing the timeline.' }),
     );
     // Zero-space rejection maps to the locked literal copy — never the raw
     // resolver diagnostic (T-43.3-03-03).
-    const { actions } = createHarness({ records: groupRecords, loopClips: [group], capacity: 16 });
-    const rejected = actions.physicalActions.prepareRotoGroupDrag('group-1', 0);
+    const { actions } = createHarness({ records: endOfContentRecords, loopClips: [endOfContentGroup], capacity: 20 });
+    const rejected = actions.physicalActions.prepareRotoGroupDrag('group-1', 15);
     expect(rejected.ok).toBe(false);
     if (rejected.ok) throw new Error('No-space group drag must reject');
     expect(rejected.reason).toBe(mapRotoGroupDragProductReason({

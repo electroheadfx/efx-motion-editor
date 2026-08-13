@@ -1438,7 +1438,10 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group duplicated shared-so
     const { proposal } = resolution;
     expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 1, B: 3, C: 5, D: 10 });
     expect(proposal.status.operationKind).toBe('move-group');
-    expect(proposal.status.code).toBe('ok-no-change');
+    // The placement translated (12 -> 14) even though the key mapping is
+    // identity, so the move reports `ok` — a duplicated placement drag is a
+    // real placement change, never a no-change (43.3-03 Task 2 regression).
+    expect(proposal.status.code).toBe('ok');
     expect(proposal.nextLoopClips).not.toBeNull();
     if (!proposal.nextLoopClips) throw new Error('nextLoopClips must be present');
     expect(proposal.nextLoopClips.length).toBe(2);

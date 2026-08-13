@@ -29,6 +29,7 @@ import {
   type PhysicPaintRotoFrameResolution,
   type PhysicPaintRotoLinkedSourceSpacingScope,
   type PhysicPaintRotoPhysicalEditFailure,
+  type PhysicPaintRotoPhysicalEditFailureCode,
   type PhysicPaintRotoPhysicalEditIntent,
   type PhysicPaintRotoPhysicalEditProposal,
   type PhysicPaintRotoPhysicalEditResolution,
@@ -145,6 +146,50 @@ export function mapRotoInsertProductReason(target: RotoInsertTarget): string | n
       return 'This frame is outside the physical timeline capacity.';
     case 'edit-in-flight':
       return 'A Roto physical edit is already in flight.';
+  }
+}
+
+/**
+ * Group-drag product-reason input (43.3-03 Task 2, D-06/D-07). One mapper owns
+ * disabled preflight, rejection, and acceptance copy — the single copy owner
+ * per the 43.1/43.2 precedent. Raw resolver diagnostics stay internal: the
+ * zero-space failure code maps to the locked literal copy, and no raw resolver
+ * text ever reaches the status line for the D-06 rejection (T-43.3-03-03).
+ */
+export type RotoGroupDragProductReasonInput =
+  | { readonly kind: 'disabled'; readonly reason: string }
+  | {
+      readonly kind: 'rejected';
+      readonly failureCode: PhysicPaintRotoPhysicalEditFailureCode;
+      readonly failureText: string;
+    }
+  | {
+      readonly kind: 'accepted';
+      readonly destinationPlacementStart: number;
+      /** The Group's original half-open interval when source-attached; null for duplicated placements (D-11). */
+      readonly vacatedInterval: { readonly phaseOrigin: number; readonly effectiveEnd: number } | null;
+    };
+
+export function mapRotoGroupDragProductReason(input: RotoGroupDragProductReasonInput): string {
+  switch (input.kind) {
+    case 'disabled':
+      return input.reason;
+    case 'rejected':
+      // D-06 locked copy: the plan-02 zero-space code maps to the literal
+      // product reason; every other resolver failure keeps its existing
+      // diagnostic text (preflight guards make those unreachable in practice).
+      return input.failureCode === 'no-free-space-in-direction'
+        ? 'No empty space in that direction.'
+        : (input.failureText || 'The Group move is invalid.');
+    case 'accepted': {
+      const moved = `Moved Group to frame ${input.destinationPlacementStart}.`;
+      if (input.vacatedInterval === null) return moved;
+      // D-07: inclusive product range derived from the canonical half-open
+      // vacated interval at presentation time only (43.2 presentation rule).
+      const start = input.vacatedInterval.phaseOrigin;
+      const end = input.vacatedInterval.effectiveEnd - 1;
+      return `${moved} Gap left at frames ${start}–${end}.`;
+    }
   }
 }
 
@@ -387,6 +432,17 @@ export interface RotoGroupDragPublication {
   readonly proposalVersion: string;
   readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
   readonly loopId: string;
+  /**
+   * The accepted destination placementStart — the moved clip's new
+   * placementStart in both the source-attached and duplicated arms (D-07 {N}).
+   */
+  readonly clampedDestinationPlacementStart: number;
+  /**
+   * The Group's original half-open interval when source-attached (the vacated
+   * gap, D-07 {A}–{B}); null for duplicated shared-source placements whose
+   * keys never move (D-11).
+   */
+  readonly vacatedInterval: { readonly phaseOrigin: number; readonly effectiveEnd: number } | null;
 }
 
 /**
@@ -1286,16 +1342,16 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const prepareRotoGroupDrag = useCallback((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => {
     const launch = input.getLaunchContext?.() ?? null;
     if (!launch) {
-      return { ok: false, reason: 'Select a real Roto key before editing the timeline.' };
+      return { ok: false, reason: mapRotoGroupDragProductReason({ kind: 'disabled', reason: 'Select a real Roto key before editing the timeline.' }) };
     }
     if (!input.executePhysicalEdit || !input.getRotoKeyRecords || !input.getRotoInterpolationState || !input.getCapacity) {
-      return { ok: false, reason: 'Timeline editing is unavailable.' };
+      return { ok: false, reason: mapRotoGroupDragProductReason({ kind: 'disabled', reason: 'Timeline editing is unavailable.' }) };
     }
     if (input.pendingOperationId && input.pendingOperationId.value !== null) {
-      return { ok: false, reason: 'A Roto physical edit is already in flight.' };
+      return { ok: false, reason: mapRotoGroupDragProductReason({ kind: 'disabled', reason: 'A Roto physical edit is already in flight.' }) };
     }
     if (!isBoundedKeyId(loopId)) {
-      return { ok: false, reason: 'The dragged Group identity is malformed.' };
+      return { ok: false, reason: mapRotoGroupDragProductReason({ kind: 'disabled', reason: 'The dragged Group identity is malformed.' }) };
     }
     const records = input.getRotoKeyRecords();
     const interpolation = input.getRotoInterpolationState();
@@ -1319,12 +1375,50 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       incomingInterpolationBreakKeyIds,
     });
     if (!resolution.ok) {
-      return { ok: false, reason: resolution.failure.text || 'The Group move is invalid.', detail: resolution.failure.text };
+      // D-06: the zero-space failure code maps to the locked literal copy via
+      // the single mapper; the raw resolver text stays in the diagnostic
+      // `detail` channel only (T-43.3-03-03).
+      return {
+        ok: false,
+        reason: mapRotoGroupDragProductReason({
+          kind: 'rejected',
+          failureCode: resolution.failure.code,
+          failureText: resolution.failure.text,
+        }),
+        detail: resolution.failure.text,
+      };
     }
     const proposal = resolution.proposal;
     if (!proposal.status.changed) {
       // Valid no-change: never publish as a Drag preview or commit (D-09).
-      return { ok: false, reason: 'This move would not change the timeline.' };
+      return { ok: false, reason: mapRotoGroupDragProductReason({ kind: 'disabled', reason: 'This move would not change the timeline.' }) };
+    }
+    // D-07 {N}: the accepted destination is the moved clip's new placementStart
+    // in both the source-attached and duplicated arms.
+    const movedClip = proposal.nextLoopClips?.find((candidate) => candidate.loopId === loopId);
+    const clampedDestinationPlacementStart = movedClip?.placementStart ?? intent.destinationPlacementStart;
+    // D-07 {A}–{B}: the vacated gap is the Group's original half-open interval,
+    // reported only when source-attached (a duplicated placement never moves
+    // its shared source keys, D-11). Derived from the same canonical range
+    // projection the resolver and rail draw.
+    const clip = loopClips.find((candidate) => candidate.loopId === loopId);
+    const firstSourceFrame = records.find((record) => record.keyId === clip?.sourceKeyIds[0])?.appFrame;
+    const attached = clip !== undefined && firstSourceFrame !== undefined && clip.placementStart === firstSourceFrame;
+    let vacatedInterval: { phaseOrigin: number; effectiveEnd: number } | null = null;
+    if (attached && clip) {
+      const derivation = derivePhysicPaintRotoLoopRanges({
+        identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+        loopClips,
+        capacity,
+        parentEndExclusive: capacity,
+        interpolationEnabled: interpolation.enabled,
+      });
+      const draggedRanges = derivation.ranges.filter((range) => range.loopId === loopId);
+      const phaseOrigin = clip.phaseOrigin ?? clip.placementStart;
+      const resolvedEffectiveEnd = draggedRanges.length > 0
+        ? Math.max(...draggedRanges.map((range) => range.effectiveEnd))
+        : (clip.originalEndExclusive ?? phaseOrigin);
+      vacatedInterval = { phaseOrigin, effectiveEnd: resolvedEffectiveEnd };
     }
     const proposalVersion = buildGroupDragProposalVersion(records, interpolation, loopClips, incomingInterpolationBreakKeyIds, launch);
     return {
@@ -1335,6 +1429,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         proposalVersion,
         expectedLaunch: { operationId: launch.operationId, layerId: launch.layerId },
         loopId,
+        clampedDestinationPlacementStart,
+        vacatedInterval,
       }) as RotoGroupDragPublication,
     };
   }, [input]);
@@ -1348,7 +1444,14 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     if (publication.proposal.status.operationKind !== 'move-group' || intent.kind !== 'move-group') return false;
     if (intent.loopId !== publication.loopId) return false;
     if (publication.expectedLaunch.operationId.length === 0 || publication.expectedLaunch.layerId.length === 0) return false;
-    return input.executePhysicalEdit({
+    // D-07: publish the accepted destination-plus-gap facts through the single
+    // mapper on acceptance — the same .then((accepted) => ...) continuation
+    // pattern the strip drag uses, NOT runPhysicalAction (its kind union is a
+    // bounded Extract that excludes move-group). Post-commit stability (D-17):
+    // the moved Group stays selected and the cursor stays put because the
+    // publication's selectedKeyId/selectedAppFrame are forwarded unchanged and
+    // no navigation is triggered here.
+    const accepted = await input.executePhysicalEdit({
       proposal: publication.proposal,
       expectedLaunch: publication.expectedLaunch,
       operationKind: 'move-group',
@@ -1356,6 +1459,14 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       selectedKeyId: publication.proposal.selectedKeyId,
       selectedAppFrame: publication.proposal.selectedAppFrame,
     });
+    if (accepted) {
+      input.publishStatus?.(mapRotoGroupDragProductReason({
+        kind: 'accepted',
+        destinationPlacementStart: publication.clampedDestinationPlacementStart,
+        vacatedInterval: publication.vacatedInterval,
+      }));
+    }
+    return accepted;
   }, [input]);
 
   const setForceSpacingInput = useCallback((value: string) => {
