@@ -21,7 +21,10 @@ import {
   normalizePhysicPaintRotoSegmentSpacingOverrides,
   serializePhysicPaintRotoPhysicalEditIntent,
 } from './physicPaint';
-import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import {
+  buildPhysicPaintRotoPhysicalRevision,
+  buildPhysicPaintRotoProjectEquality,
+} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
 const renderedFrame = { frameIndex: 0, appFrame: 12, dataUrl: 'data:image/png;base64,aGVsbG8=', width: 1000, height: 650 };
 
@@ -490,7 +493,7 @@ const actionTransactionPrepare = (direction: 'forward' | 'undo' | 'redo' = 'forw
     },
     target: {
       physicalRevision: physicalDocument.revision,
-      physicalHash: 'target-hash-1',
+      physicalHash: buildPhysicPaintRotoProjectEquality(physicalDocument),
       physicalDocument,
       selectedGroupId: null,
       cursorAppFrame: 18,
@@ -556,6 +559,20 @@ describe('referenced Action transaction contracts', () => {
     expect(isPhysicPaintActionTransactionPrepareRequest({
       ...request,
       target: { ...request.target, physicalDocument: { ...request.target.physicalDocument, unknown: true } },
+    })).toBe(false);
+  });
+
+  it('rejects a target whose physicalHash does not match the canonical physical document', () => {
+    const request = actionTransactionPrepare();
+    expect(isPhysicPaintActionTransactionPrepareRequest({
+      ...request, target: { ...request.target, physicalHash: 'tampered-hash' },
+    })).toBe(false);
+    expect(isPhysicPaintActionTransactionPrepareRequest({
+      ...request,
+      target: {
+        ...request.target,
+        physicalDocument: { ...request.target.physicalDocument, cursorAppFrame: 19 },
+      },
     })).toBe(false);
   });
 

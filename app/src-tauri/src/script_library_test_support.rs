@@ -120,6 +120,13 @@ pub fn validate_document(value: Value, expected_id: Option<&str>) -> Result<Valu
     script_library::validate_document(value, expected_id)
 }
 
+/// Recompute the canonical physical hash for a transaction target document,
+/// mirroring the TypeScript `buildPhysicPaintRotoProjectEquality`. Exposed for
+/// the parity contract tests that pin the Rust and TypeScript encodings.
+pub fn canonical_physical_hash(document: &Value) -> Result<String, String> {
+    script_library::canonical_physical_hash(document)
+}
+
 pub fn validate_webp(bytes: &[u8]) -> Result<(u64, u64), String> {
     script_library::validate_webp_payload(bytes)
 }

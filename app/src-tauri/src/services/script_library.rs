@@ -1215,7 +1215,384 @@ fn validate_prepare_request(
     if let Some(selected_group_id) = &request.target.selected_group_id {
         validate_transaction_text(selected_group_id, "selected Group ID")?;
     }
+    // WR-01: the physical hash is the recovery settlement anchor — recompute
+    // the canonical project equality from the opaque physical document and
+    // reject a caller-supplied hash that does not match before any retained
+    // artifact or recovery anchor is persisted.
+    let recomputed_hash = canonical_physical_hash(&request.target.physical_document)?;
+    if recomputed_hash != request.target.physical_hash {
+        return Err("Target physical hash does not match the canonical physical document".to_string());
+    }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// WR-01 canonical physical hash. The encoding mirrors
+// `buildPhysicPaintRotoProjectEquality` in physicsPaintRotoPhysicalModel.ts
+// byte-for-byte; the parity contract tests pin the two implementations
+// together. Numbers format via Rust's shortest f64 Display, which matches
+// JavaScript's `String(number)` for every value the canonical document can
+// carry (bounded integers plus the [0,1] grain strength float).
+// ---------------------------------------------------------------------------
+
+fn canonical_string(value: &str) -> String {
+    format!("s{}:{};", value.len(), value)
+}
+
+fn canonical_number(value: f64) -> String {
+    format!("n{value};")
+}
+
+fn canonical_optional_number(value: Option<f64>) -> String {
+    match value {
+        Some(number) => canonical_number(number),
+        None => "u;".to_string(),
+    }
+}
+
+fn canonical_boolean(value: bool) -> String {
+    if value {
+        "1;".to_string()
+    } else {
+        "0;".to_string()
+    }
+}
+
+fn canonical_background(value: Option<&Value>) -> Result<String, String> {
+    match value {
+        Some(Value::Null) | None => Ok("null;".to_string()),
+        Some(Value::Object(object)) => {
+            let background = object
+                .get("background")
+                .and_then(Value::as_str)
+                .ok_or("Target physical document background is malformed")?;
+            let paper_grain = object
+                .get("paperGrain")
+                .and_then(Value::as_str)
+                .ok_or("Target physical document paperGrain is malformed")?;
+            let grain_strength = object
+                .get("grainStrength")
+                .and_then(Value::as_f64)
+                .ok_or("Target physical document grainStrength is malformed")?;
+            let color = object.get("color").and_then(Value::as_str);
+            let mut encoded = String::new();
+            encoded.push_str(&canonical_string(background));
+            encoded.push_str(&canonical_string(paper_grain));
+            encoded.push_str(&canonical_number(grain_strength));
+            match color {
+                Some(color) => encoded.push_str(&canonical_string(color)),
+                None => encoded.push_str("u;"),
+            }
+            Ok(encoded)
+        }
+        Some(_) => Err("Target physical document background must be an object or null".to_string()),
+    }
+}
+
+fn canonical_records(records: &[Value]) -> Result<String, String> {
+    let mut ordered: Vec<&Value> = records.iter().collect();
+    ordered.sort_by(|left, right| {
+        let left_id = left.get("keyId").and_then(Value::as_str).unwrap_or("");
+        let right_id = right.get("keyId").and_then(Value::as_str).unwrap_or("");
+        left_id.cmp(right_id)
+    });
+    let mut encoded = String::new();
+    for record in &ordered {
+        let key_id = record
+            .get("keyId")
+            .and_then(Value::as_str)
+            .ok_or("Target physical document record keyId is malformed")?;
+        let app_frame = record
+            .get("appFrame")
+            .and_then(Value::as_f64)
+            .ok_or("Target physical document record appFrame is malformed")?;
+        let payload = record
+            .get("payload")
+            .and_then(Value::as_object)
+            .ok_or("Target physical document record payload is malformed")?;
+        let frame_index = payload
+            .get("frameIndex")
+            .and_then(Value::as_f64)
+            .ok_or("Target physical document payload frameIndex is malformed")?;
+        let payload_app_frame = payload
+            .get("appFrame")
+            .and_then(Value::as_f64)
+            .ok_or("Target physical document payload appFrame is malformed")?;
+        let data_url = payload
+            .get("dataUrl")
+            .and_then(Value::as_str)
+            .ok_or("Target physical document payload dataUrl is malformed")?;
+        let width = payload.get("width").and_then(Value::as_f64);
+        let height = payload.get("height").and_then(Value::as_f64);
+        encoded.push_str(&canonical_string(key_id));
+        encoded.push_str(&canonical_number(app_frame));
+        encoded.push_str(&canonical_number(frame_index));
+        encoded.push_str(&canonical_number(payload_app_frame));
+        encoded.push_str(&canonical_string(data_url));
+        encoded.push_str(&canonical_optional_number(width));
+        encoded.push_str(&canonical_optional_number(height));
+    }
+    Ok(format!("{}:{encoded}", ordered.len()))
+}
+
+fn canonical_loop_clips(loop_clips: &[Value]) -> Result<String, String> {
+    let mut ordered: Vec<&Value> = loop_clips.iter().collect();
+    ordered.sort_by(|left, right| {
+        let left_id = left.get("loopId").and_then(Value::as_str).unwrap_or("");
+        let right_id = right.get("loopId").and_then(Value::as_str).unwrap_or("");
+        left_id.cmp(right_id)
+    });
+    let mut encoded = String::new();
+    for clip in &ordered {
+        let loop_id = clip
+            .get("loopId")
+            .and_then(Value::as_str)
+            .ok_or("Target physical document loop loopId is malformed")?;
+        let placement_start = clip
+            .get("placementStart")
+            .and_then(Value::as_f64)
+            .ok_or("Target physical document loop placementStart is malformed")?;
+        let source_key_ids = clip
+            .get("sourceKeyIds")
+            .and_then(Value::as_array)
+            .ok_or("Target physical document loop sourceKeyIds is malformed")?;
+        let mode = clip
+            .get("mode")
+            .and_then(Value::as_str)
+            .ok_or("Target physical document loop mode is malformed")?;
+        encoded.push_str(&canonical_string(loop_id));
+        encoded.push_str(&canonical_number(placement_start));
+        encoded.push_str(&format!("ids:{}:", source_key_ids.len()));
+        for source_key_id in source_key_ids {
+            encoded.push_str(&canonical_string(
+                source_key_id
+                    .as_str()
+                    .ok_or("Target physical document loop source key id is malformed")?,
+            ));
+        }
+        match clip.get("repeat") {
+            Some(Value::String(repeat)) if repeat == "infinity" => {
+                encoded.push_str(&canonical_string("infinity"));
+            }
+            Some(repeat) => {
+                encoded.push_str(&canonical_number(
+                    repeat
+                        .as_f64()
+                        .ok_or("Target physical document loop repeat is malformed")?,
+                ));
+            }
+            None => return Err("Target physical document loop repeat is missing".to_string()),
+        }
+        encoded.push_str(&canonical_string(mode));
+        if let Some(script_id) = clip.get("scriptId").and_then(Value::as_str) {
+            let motion = clip
+                .get("motion")
+                .and_then(Value::as_object)
+                .ok_or("Target physical document loop motion is malformed")?;
+            let deformation = motion
+                .get("deformation")
+                .and_then(Value::as_f64)
+                .ok_or("Target physical document loop motion deformation is malformed")?;
+            let position = motion
+                .get("position")
+                .and_then(Value::as_f64)
+                .ok_or("Target physical document loop motion position is malformed")?;
+            let override_color = clip
+                .get("overrideColor")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            encoded.push_str(&canonical_string(script_id));
+            encoded.push_str(&canonical_number(deformation));
+            encoded.push_str(&canonical_number(position));
+            encoded.push_str(&canonical_string(override_color));
+        }
+        if let Some(sync_state) = clip.get("syncState").and_then(Value::as_str) {
+            let provenance_state = clip
+                .get("provenanceState")
+                .and_then(Value::as_str)
+                .ok_or("Target physical document loop provenanceState is malformed")?;
+            let phase_origin = clip
+                .get("phaseOrigin")
+                .and_then(Value::as_f64)
+                .ok_or("Target physical document loop phaseOrigin is malformed")?;
+            let original_end_exclusive = clip
+                .get("originalEndExclusive")
+                .and_then(Value::as_f64)
+                .ok_or("Target physical document loop originalEndExclusive is malformed")?;
+            let visible_ranges = clip
+                .get("visibleRanges")
+                .and_then(Value::as_array)
+                .ok_or("Target physical document loop visibleRanges is malformed")?;
+            let frame_overrides = clip
+                .get("frameOverrides")
+                .and_then(Value::as_array)
+                .ok_or("Target physical document loop frameOverrides is malformed")?;
+            encoded.push_str(&canonical_string(sync_state));
+            encoded.push_str(&canonical_string(provenance_state));
+            encoded.push_str(&canonical_number(phase_origin));
+            encoded.push_str(&canonical_number(original_end_exclusive));
+            encoded.push_str(&format!("ranges:{}:", visible_ranges.len()));
+            for range in visible_ranges {
+                let start = range
+                    .get("start")
+                    .and_then(Value::as_f64)
+                    .ok_or("Target physical document loop range start is malformed")?;
+                let end_exclusive = range
+                    .get("endExclusive")
+                    .and_then(Value::as_f64)
+                    .ok_or("Target physical document loop range endExclusive is malformed")?;
+                encoded.push_str(&canonical_number(start));
+                encoded.push_str(&canonical_number(end_exclusive));
+            }
+            encoded.push_str(&format!("overrides:{}:", frame_overrides.len()));
+            for frame_override in frame_overrides {
+                let app_frame = frame_override
+                    .get("appFrame")
+                    .and_then(Value::as_f64)
+                    .ok_or("Target physical document loop override appFrame is malformed")?;
+                let key_id = frame_override
+                    .get("keyId")
+                    .and_then(Value::as_str)
+                    .ok_or("Target physical document loop override keyId is malformed")?;
+                encoded.push_str(&canonical_number(app_frame));
+                encoded.push_str(&canonical_string(key_id));
+            }
+        }
+    }
+    Ok(format!("{}:{encoded}", ordered.len()))
+}
+
+fn canonical_incoming_breaks(breaks: &[Value]) -> Result<String, String> {
+    let mut ordered: Vec<&Value> = breaks.iter().collect();
+    ordered.sort_by(|left, right| {
+        left.as_str()
+            .unwrap_or("")
+            .cmp(right.as_str().unwrap_or(""))
+    });
+    let mut encoded = String::new();
+    for break_id in &ordered {
+        encoded.push_str(&canonical_string(
+            break_id
+                .as_str()
+                .ok_or("Target physical document incoming break id is malformed")?,
+        ));
+    }
+    Ok(format!("{}:{encoded}", ordered.len()))
+}
+
+fn hash_canonical_physical_value(source: &str) -> String {
+    let mut hash: u32 = 2_166_136_261;
+    for byte in source.bytes() {
+        hash ^= u32::from(byte);
+        hash = hash.wrapping_mul(16_777_619);
+    }
+    format!("{}-{:x}", source.len(), hash)
+}
+
+/// Recompute the canonical project equality fingerprint for one physical
+/// document, mirroring `buildPhysicPaintRotoProjectEquality` in
+/// physicsPaintRotoPhysicalModel.ts. Returns the `project-<len>-<hex>` string
+/// or a closed error when the document is not a canonical physical document.
+pub fn canonical_physical_hash(document: &Value) -> Result<String, String> {
+    let object = document
+        .as_object()
+        .ok_or("Target physical document must be an object")?;
+    let records = object
+        .get("realKeyRecords")
+        .and_then(Value::as_array)
+        .ok_or("Target physical document is missing realKeyRecords")?;
+    let group_overrides = object.get("groupOverrideRecords").and_then(Value::as_array);
+    let interpolation = object
+        .get("interpolation")
+        .and_then(Value::as_object)
+        .ok_or("Target physical document is missing interpolation")?;
+    let loop_clips = match object.get("loopClips").and_then(Value::as_array) {
+        Some(loop_clips) => loop_clips.as_slice(),
+        None => &[],
+    };
+    let incoming_breaks = match object
+        .get("incomingInterpolationBreakKeyIds")
+        .and_then(Value::as_array)
+    {
+        Some(incoming_breaks) => incoming_breaks.as_slice(),
+        None => &[],
+    };
+    let capacity = object
+        .get("capacity")
+        .and_then(Value::as_f64)
+        .ok_or("Target physical document is missing capacity")?;
+    let script_motion = object
+        .get("scriptMotion")
+        .and_then(Value::as_object)
+        .ok_or("Target physical document is missing scriptMotion")?;
+    let background = object.get("background");
+    let selected_key_id = object.get("selectedKeyId");
+    let cursor_app_frame = object
+        .get("cursorAppFrame")
+        .and_then(Value::as_f64)
+        .ok_or("Target physical document is missing cursorAppFrame")?;
+
+    let mut source = String::new();
+    source.push_str(&format!("records:{}", canonical_records(records)?));
+    if let Some(group_overrides) = group_overrides {
+        if !group_overrides.is_empty() {
+            source.push_str(&format!(
+                "group-overrides:{}",
+                canonical_records(group_overrides)?
+            ));
+        }
+    }
+    let interpolation_enabled = interpolation
+        .get("enabled")
+        .and_then(Value::as_bool)
+        .ok_or("Target physical document interpolation enabled is malformed")?;
+    let interpolation_mode = interpolation
+        .get("mode")
+        .and_then(Value::as_str)
+        .ok_or("Target physical document interpolation mode is malformed")?;
+    source.push_str(&format!(
+        "interpolation:{}",
+        canonical_boolean(interpolation_enabled)
+    ));
+    source.push_str(&format!("mode:{}", canonical_string(interpolation_mode)));
+    if !loop_clips.is_empty() {
+        source.push_str(&format!("loops:{}", canonical_loop_clips(loop_clips)?));
+    }
+    if !incoming_breaks.is_empty() {
+        source.push_str(&format!(
+            "incoming-breaks:{}",
+            canonical_incoming_breaks(incoming_breaks)?
+        ));
+    }
+    source.push_str(&format!("capacity:{}", canonical_number(capacity)));
+    let deformation = script_motion
+        .get("deformation")
+        .and_then(Value::as_f64)
+        .ok_or("Target physical document scriptMotion deformation is malformed")?;
+    let position = script_motion
+        .get("position")
+        .and_then(Value::as_f64)
+        .ok_or("Target physical document scriptMotion position is malformed")?;
+    source.push_str(&format!(
+        "motion:{}{}",
+        canonical_number(deformation),
+        canonical_number(position)
+    ));
+    source.push_str(&format!("background:{}", canonical_background(background)?));
+    source.push_str(&format!(
+        "selection:{}",
+        match selected_key_id {
+            Some(Value::Null) | None => "null;".to_string(),
+            Some(selected) => canonical_string(
+                selected
+                    .as_str()
+                    .ok_or("Target physical document selectedKeyId is malformed")?,
+            ),
+        }
+    ));
+    source.push_str(&format!("cursor:{}", canonical_number(cursor_app_frame)));
+
+    Ok(format!("project-{}", hash_canonical_physical_value(&source)))
 }
 
 fn prepare_or_validate_retained_artifact(

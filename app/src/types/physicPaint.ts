@@ -4,6 +4,7 @@ import type { PersistedRotoScriptV1, RotoScriptLibraryRow } from '../components/
 import { isCanonicalRotoScriptId, isPersistedRotoScriptV1, normalizeRotoScriptName } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
 import {
+  buildPhysicPaintRotoProjectEquality,
   isPhysicPaintRotoLoopClip,
   isPhysicPaintRotoRealKeyPayload,
   parsePhysicPaintRotoPhysicalDocument,
@@ -228,7 +229,11 @@ function isPhysicPaintActionTransactionTarget(value: unknown): value is PhysicPa
   try {
     const physicalDocument = parsePhysicPaintRotoPhysicalDocument(value.physicalDocument);
     return value.physicalRevision === physicalDocument.revision
-      && value.cursorAppFrame === physicalDocument.cursorAppFrame;
+      && value.cursorAppFrame === physicalDocument.cursorAppFrame
+      // WR-01: the physical hash is the recovery settlement anchor — recompute
+      // the canonical project equality from the parsed document and reject a
+      // caller-supplied hash that does not match before any settlement.
+      && value.physicalHash === buildPhysicPaintRotoProjectEquality(physicalDocument);
   } catch {
     return false;
   }

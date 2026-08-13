@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import {
+  buildPhysicPaintRotoPhysicalRevision,
+  buildPhysicPaintRotoProjectEquality,
+} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type {
   PhysicPaintActionHistoryReleaseRequest,
   PhysicPaintActionTransactionAcknowledgeRequest,
@@ -75,7 +78,7 @@ function prepareRequest(
     },
     target: {
       physicalRevision: physicalDocument.revision,
-      physicalHash: 'target-hash-1',
+      physicalHash: buildPhysicPaintRotoProjectEquality(physicalDocument),
       physicalDocument,
       selectedGroupId: null,
       cursorAppFrame: 18,

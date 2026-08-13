@@ -1,12 +1,35 @@
 use efx_motion_editor_lib::script_library_test_support::{
-    validate_action_transaction_acknowledge_command,
+    canonical_physical_hash, validate_action_transaction_acknowledge_command,
     validate_action_transaction_prepare_command,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+fn physical_document(revision: &str) -> Value {
+    json!({
+        "capacity": 24,
+        "realKeyRecords": [
+            {"kind":"real-key","keyId":"key-1","appFrame":0,"payload":{"frameIndex":0,"appFrame":0,"dataUrl":"data:image/png;base64,AAAA","width":2,"height":2}},
+            {"kind":"real-key","keyId":"key-2","appFrame":5,"payload":{"frameIndex":0,"appFrame":5,"dataUrl":"data:image/png;base64,BBBB"}}
+        ],
+        "groupOverrideRecords": [],
+        "interpolation": {"enabled":false,"mode":"duplicate"},
+        "scriptMotion": {"deformation":0,"position":0},
+        "background": null,
+        "selectedKeyId": null,
+        "cursorAppFrame": 18,
+        "revision": revision,
+        "loopClips": [
+            {"loopId":"group-1","placementStart":0,"sourceKeyIds":["key-1"],"repeat":2,"mode":"progressive","scriptId":"action-1","motion":{"deformation":0,"position":0},"overrideColor":null,"syncState":"synchronized","provenanceState":"attached","phaseOrigin":0,"originalEndExclusive":2,"visibleRanges":[{"start":0,"endExclusive":2}],"frameOverrides":[]}
+        ],
+        "incomingInterpolationBreakKeyIds": []
+    })
+}
+
 fn prepare_fixture(direction: &str, mode: &str) -> Value {
     let action_id = Uuid::new_v4().to_string();
+    let physical_document = physical_document(&format!("physical-{direction}"));
+    let physical_hash = canonical_physical_hash(&physical_document).unwrap();
     json!({
         "token": Uuid::new_v4().to_string(),
         "commandId": "history-command-9",
@@ -36,8 +59,8 @@ fn prepare_fixture(direction: &str, mode: &str) -> Value {
         },
         "target": {
             "physicalRevision": format!("physical-{direction}"),
-            "physicalHash": format!("hash-{direction}"),
-            "physicalDocument": {"revision": format!("physical-{direction}"), "realKeyRecords": [], "loopClips": []},
+            "physicalHash": physical_hash,
+            "physicalDocument": physical_document,
             "selectedGroupId": if mode == "delete-action-and-groups" { Value::Null } else { json!("group-1") },
             "cursorAppFrame": 18
         }

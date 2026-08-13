@@ -52,6 +52,30 @@ fn action_integrity(fixture: &FixtureLibrary, action_id: &str) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+/// A canonical full physical document exercising records, a finite Group, and
+/// the empty collections, so the WR-01 hash recomputation covers every
+/// encoding branch.
+fn physical_document(revision: &str) -> Value {
+    json!({
+        "capacity": 24,
+        "realKeyRecords": [
+            {"kind":"real-key","keyId":"key-1","appFrame":0,"payload":{"frameIndex":0,"appFrame":0,"dataUrl":"data:image/png;base64,AAAA","width":2,"height":2}},
+            {"kind":"real-key","keyId":"key-2","appFrame":5,"payload":{"frameIndex":0,"appFrame":5,"dataUrl":"data:image/png;base64,BBBB"}}
+        ],
+        "groupOverrideRecords": [],
+        "interpolation": {"enabled":false,"mode":"duplicate"},
+        "scriptMotion": {"deformation":0,"position":0},
+        "background": null,
+        "selectedKeyId": null,
+        "cursorAppFrame": 18,
+        "revision": revision,
+        "loopClips": [
+            {"loopId":"group-1","placementStart":0,"sourceKeyIds":["key-1"],"repeat":2,"mode":"progressive","scriptId":"action-1","motion":{"deformation":0,"position":0},"overrideColor":null,"syncState":"synchronized","provenanceState":"attached","phaseOrigin":0,"originalEndExclusive":2,"visibleRanges":[{"start":0,"endExclusive":2}],"frameOverrides":[]}
+        ],
+        "incomingInterpolationBreakKeyIds": []
+    })
+}
+
 fn prepare_request_with_direction(
     action_id: &str,
     action_revision: &str,
@@ -65,6 +89,10 @@ fn prepare_request_with_direction(
     } else {
         "after"
     };
+    let physical_document = physical_document(&format!("physical-{target_suffix}"));
+    let physical_hash =
+        efx_motion_editor_lib::script_library_test_support::canonical_physical_hash(&physical_document)
+            .unwrap();
     json!({
         "token": token,
         "commandId": "history-command-10",
@@ -94,8 +122,8 @@ fn prepare_request_with_direction(
         },
         "target": {
             "physicalRevision": format!("physical-{target_suffix}"),
-            "physicalHash": format!("hash-{target_suffix}"),
-            "physicalDocument": {"revision":format!("physical-{target_suffix}"),"realKeyRecords":[],"loopClips":[]},
+            "physicalHash": physical_hash,
+            "physicalDocument": physical_document,
             "selectedGroupId": "group-1",
             "cursorAppFrame": 18
         }
@@ -115,6 +143,35 @@ fn prepare_request(
         token,
         "forward",
     )
+}
+
+#[test]
+fn canonical_physical_hash_matches_the_typescript_reference_vector() {
+    // Reference vector computed from `buildPhysicPaintRotoProjectEquality` in
+    // physicsPaintRotoPhysicalModel.ts for the exact `physical_document`
+    // fixture below. If the TypeScript canonical encoding changes, this vector
+    // must be recomputed — the parity pin is what keeps the two trust
+    // boundaries from drifting.
+    let document = physical_document("physical-after");
+    let hash =
+        efx_motion_editor_lib::script_library_test_support::canonical_physical_hash(&document)
+            .unwrap();
+    assert_eq!(hash, "project-360-b521097e");
+}
+
+#[test]
+fn prepare_rejects_a_target_whose_physical_hash_does_not_match_the_document() {
+    let fixture = FixtureLibrary::new().unwrap();
+    let action_id = Uuid::new_v4().to_string();
+    let saved = fixture.save(action_document(&action_id)).unwrap();
+    let revision = saved.scan.rows[0].revision.clone();
+    let mut request = prepare_request(&fixture, &action_id, &revision, &Uuid::new_v4().to_string());
+    request["target"]["physicalHash"] = json!("tampered-hash");
+    let error = fixture.prepare_transaction(request).unwrap_err();
+    assert!(
+        error.contains("physical hash"),
+        "expected a physical hash mismatch rejection, got: {error}"
+    );
 }
 
 #[test]
