@@ -4,6 +4,7 @@ import {
   collapseRotoKeySelection,
   extendRotoKeySelectionRange,
   resolvePostAcceptanceRotoSelection,
+  resolvePostAcceptanceRotoStudioSelection,
   selectAllRotoKeyIds,
   toggleRotoKeySelection,
 } from './physicsPaintRotoMultiSelection';
@@ -112,6 +113,40 @@ describe('collapseRotoKeySelection (D-02)', () => {
 
   it('returns the empty state for a null current', () => {
     expect(collapseRotoKeySelection(null)).toEqual({ selectedKeyIds: [], anchorKeyId: null });
+  });
+});
+
+describe('resolvePostAcceptanceRotoStudioSelection', () => {
+  it.each(['move-group', 'undo', 'redo'])('preserves Group Rail identity and clears physical keys after %s acceptance', (operationKind) => {
+    const result = resolvePostAcceptanceRotoStudioSelection({
+      selectedLoopClipIds: ['group-history'],
+      selectedLoopClipId: 'group-history',
+      operationKind,
+      acceptedSelectedKeyId: 'A',
+      keySelection: selection(['A', 'B'], 'A'),
+      currentKeyId: 'A',
+    });
+
+    expect(result).toEqual({
+      selectedLoopClipIds: ['group-history'],
+      selectedLoopClipId: 'group-history',
+      keySelection: { selectedKeyIds: [], anchorKeyId: null },
+    });
+  });
+
+  it('delegates to the established accepted-key reducer when no Group Rail selection is active', () => {
+    expect(resolvePostAcceptanceRotoStudioSelection({
+      selectedLoopClipIds: [],
+      selectedLoopClipId: null,
+      operationKind: 'move-key-group',
+      acceptedSelectedKeyId: 'B',
+      keySelection: selection(['A', 'B'], 'A'),
+      currentKeyId: 'A',
+    })).toEqual({
+      selectedLoopClipIds: [],
+      selectedLoopClipId: null,
+      keySelection: { selectedKeyIds: ['A', 'B'], anchorKeyId: 'B' },
+    });
   });
 });
 

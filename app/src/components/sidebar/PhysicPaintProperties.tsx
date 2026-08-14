@@ -41,6 +41,7 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
       if (!result || result.layerId !== sourceLayerId) return;
 
       if (!result.ok) {
+        setStatusMessage(null);
         setErrorMessage(result.error || 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.');
         return;
       }

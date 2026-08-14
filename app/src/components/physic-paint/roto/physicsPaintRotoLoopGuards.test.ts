@@ -129,6 +129,7 @@ function resolveEdit(input: {
     records: input.records,
     intent: input.intent,
     ...(input.loopClips !== undefined ? { loopClips: input.loopClips } : {}),
+    parentEndExclusive: CAPACITY,
     capacity: CAPACITY,
     interpolationEnabled: false,
   });
@@ -259,6 +260,7 @@ describe('D-07 source-key deletion guard', () => {
       identities: SOURCE_RECORDS().map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       intent: { kind: 'delete-key', selectedKeyId: 'B' },
       loopClips: [{ loopId: 'L1' }] as never,
+      parentEndExclusive: CAPACITY,
       capacity: CAPACITY,
       interpolationEnabled: false,
     });
@@ -481,6 +483,7 @@ describe('D-11 rigid linked-key guard', () => {
       records,
       intent,
       loopClips,
+      parentEndExclusive: CAPACITY,
       capacity: CAPACITY,
       interpolationEnabled: true,
     });

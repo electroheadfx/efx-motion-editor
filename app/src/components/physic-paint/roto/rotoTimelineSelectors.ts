@@ -239,6 +239,8 @@ export interface RotoPhysicalTimelineViewSelectorInput {
   readonly interpolation: PhysicPaintRotoInterpolationState;
   /** Bounded physical frame capacity. */
   readonly capacity: number;
+  /** Authoritative parent sequence end (exclusive); never physical-capacity fallback (D-25). */
+  readonly parentEndExclusive: number;
   /** Current direct physical navigation frame. */
   readonly currentAppFrame: number;
   /** Selected stable `keyId`, or null when no real key is selected. */
@@ -295,12 +297,8 @@ export function selectRotoPhysicalTimelineStructuralView(input: {
   readonly incomingInterpolationBreakKeyIds?: readonly string[];
   /** Phase 43 additive Loop Clip collection; absent means empty (D-29). */
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
-  /**
-   * Parent sequence end (exclusive). Defaults to the physical capacity for
-   * the Studio-owned physical timeline; the main editor passes the live
-   * parent end so infinity loops track it dynamically (D-25).
-   */
-  readonly parentEndExclusive?: number;
+  /** Authoritative parent sequence end (exclusive); never physical-capacity fallback (D-25). */
+  readonly parentEndExclusive: number;
 }): RotoPhysicalTimelineStructuralView {
   const { realKeyRecords, interpolation, capacity } = input;
 
@@ -344,7 +342,7 @@ export function selectRotoPhysicalTimelineStructuralView(input: {
     loopResolution: derivePhysicPaintRotoLoopRanges({
       identities,
       loopClips: input.loopClips ?? [],
-      parentEndExclusive: input.parentEndExclusive ?? capacity,
+      parentEndExclusive: input.parentEndExclusive,
       capacity,
       interpolationEnabled: interpolation.enabled,
     }),

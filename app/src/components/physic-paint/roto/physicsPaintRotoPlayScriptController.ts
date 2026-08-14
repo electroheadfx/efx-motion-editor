@@ -18,7 +18,11 @@ import {
   type PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
 import { proposePhysicPaintRotoRegenerateGroup } from './physicsPaintRotoGroupLifecycle';
-import { derivePhysicPaintRotoLoopRanges, derivePhysicPaintRotoLoopShortenPreflight } from './physicsPaintRotoPhysicalResolver';
+import {
+  derivePhysicPaintRotoLoopRanges,
+  derivePhysicPaintRotoLoopShortenPreflight,
+  resolvePhysicPaintRotoGroupEffectiveEnd,
+} from './physicsPaintRotoPhysicalResolver';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 import { renderRotoPlayScriptFrames } from './physicsPaintRotoPlayScriptRenderer';
 import { isRotoPngDataUrl } from './rotoCanvasFrames';
@@ -738,13 +742,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           sourceKeyIds: Object.freeze([...group.sourceKeyIds]),
         }),
       });
-      prefillEditMode(group, {
-        identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
-        physicalCapacity: document.capacity,
-        layerEndExclusive: document.capacity,
-        remainingCapacity: Math.max(0, document.capacity - sourceStart),
-        interpolationEnabled: document.interpolation.enabled,
-      }, sourceStart, 'source-edit', false);
+      const loopEditSnapshot = ports.getLoopEditSnapshot?.(sourceStart) ?? null;
+      if (!loopEditSnapshot) return rejectLoopOp('The accepted local Roto physical document is unavailable.');
+      prefillEditMode(group, loopEditSnapshot, sourceStart, 'source-edit', false);
       confirmationOpen.value = true;
       phase.value = 'idle';
       status.value = `Group Regenerate · ${regenerateImpact.value.restoredRange}`;
@@ -933,11 +933,28 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         }).ranges.find((range) => range.loopId === target.loopId)?.cycleLength ?? target.sourceKeyIds.length
       : target.sourceKeyIds.length;
     let rebuiltLifecycle: Pick<PhysicPaintRotoLoopClip, 'originalEndExclusive' | 'visibleRanges'> | null = null;
-    if (draftRepeat !== 'infinity'
-      && target.phaseOrigin !== undefined
+    if (target.phaseOrigin !== undefined
       && target.originalEndExclusive !== undefined
       && target.visibleRanges !== undefined) {
-      const originalEndExclusive = target.phaseOrigin + cycleDuration * draftRepeat;
+      const originalEndExclusive = draftRepeat === 'infinity'
+        ? (() => {
+            if (!snapshot) return target.originalEndExclusive!;
+            const draftLoops = currentLoops.map((clip) => (clip.loopId === target.loopId
+              ? { ...clip, repeat: draftRepeat }
+              : clip));
+            const targetRanges = derivePhysicPaintRotoLoopRanges({
+              identities: snapshot.identities,
+              loopClips: draftLoops,
+              parentEndExclusive: snapshot.parentEndExclusive,
+              capacity: snapshot.capacity,
+              interpolationEnabled: snapshot.interpolationEnabled,
+            }).ranges.filter((range) => range.loopId === target.loopId);
+            const draftTarget = draftLoops.find((clip) => clip.loopId === target.loopId);
+            return draftTarget
+              ? resolvePhysicPaintRotoGroupEffectiveEnd(draftTarget, targetRanges)
+              : target.originalEndExclusive!;
+          })()
+        : target.phaseOrigin + cycleDuration * draftRepeat;
       if (target.frameOverrides?.some((override) => override.appFrame >= originalEndExclusive)) {
         fail(new Error('Repeat cannot remove locally painted Group frames. Regenerate the Group first.'));
         return false;

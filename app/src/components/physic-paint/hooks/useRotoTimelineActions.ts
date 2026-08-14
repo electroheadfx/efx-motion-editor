@@ -24,6 +24,7 @@ import {
   createPhysicPaintRotoPasteKeyGroupIntent,
   createPhysicPaintRotoPasteKeyIntent,
   derivePhysicPaintRotoLoopRanges,
+  resolvePhysicPaintRotoGroupEffectiveEnd,
   resolvePhysicPaintRotoLoopFrame,
   resolvePhysicPaintRotoPhysicalEdit,
   type PhysicPaintRotoFrameResolution,
@@ -594,6 +595,8 @@ export interface RotoTimelineActionsInput {
   getLaunchContext?: () => PhysicPaintLaunchContext | null;
   /** Bounded physical frame capacity (D-01/D-02). */
   getCapacity?: () => number;
+  /** Required authoritative current parent/layer end, independent from physical capacity. */
+  getParentEndExclusive: () => number;
   /** Complete stable-key-owned incoming interpolation break collection. */
   getIncomingInterpolationBreakKeyIds?: () => readonly string[];
   /** Existing transparent blank-frame builder shared with + Key. */
@@ -911,6 +914,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       identities,
       records,
       intent: runnerInput.intent,
+      parentEndExclusive: input.getParentEndExclusive(),
       capacity,
       interpolationEnabled: interpolation.enabled,
       // Phase 43: loop-aware guards (D-07 source-key deletion) consult the
@@ -1165,6 +1169,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     const resolution: PhysicPaintRotoPhysicalEditResolution = resolvePhysicPaintRotoPhysicalEdit({
       identities,
       intent,
+      parentEndExclusive: input.getParentEndExclusive(),
       capacity,
       interpolationEnabled: interpolation.enabled,
       // Phase 43: D-11 rejects single-key ripple drags on linked source keys.
@@ -1265,6 +1270,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     const resolution: PhysicPaintRotoPhysicalEditResolution = resolvePhysicPaintRotoPhysicalEdit({
       identities,
       intent,
+      parentEndExclusive: input.getParentEndExclusive(),
       capacity,
       interpolationEnabled: interpolation.enabled,
       // Phase 43: rigid whole-cycle drags carry the original-loop
@@ -1367,6 +1373,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     const resolution: PhysicPaintRotoPhysicalEditResolution = resolvePhysicPaintRotoPhysicalEdit({
       identities,
       intent,
+      parentEndExclusive: input.getParentEndExclusive(),
       capacity,
       interpolationEnabled: interpolation.enabled,
       loopClips,
@@ -1410,14 +1417,12 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
         loopClips,
         capacity,
-        parentEndExclusive: capacity,
+        parentEndExclusive: input.getParentEndExclusive(),
         interpolationEnabled: interpolation.enabled,
       });
       const draggedRanges = derivation.ranges.filter((range) => range.loopId === loopId);
       const phaseOrigin = clip.phaseOrigin ?? clip.placementStart;
-      const resolvedEffectiveEnd = draggedRanges.length > 0
-        ? Math.max(...draggedRanges.map((range) => range.effectiveEnd))
-        : (clip.originalEndExclusive ?? phaseOrigin);
+      const resolvedEffectiveEnd = resolvePhysicPaintRotoGroupEffectiveEnd(clip, draggedRanges);
       vacatedInterval = { phaseOrigin, effectiveEnd: resolvedEffectiveEnd };
     }
     const proposalVersion = buildGroupDragProposalVersion(records, interpolation, loopClips, incomingInterpolationBreakKeyIds, launch);
@@ -1436,7 +1441,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   }, [input]);
 
   const commitRotoGroupDrag = useCallback(async (publication: RotoGroupDragPublication): Promise<boolean> => {
-    if (!input.executePhysicalEdit) return false;
+    if (!input.executePhysicalEdit || !input.getRotoKeyRecords || !input.getRotoInterpolationState) return false;
     // Wrapper coherence (GDRAG-07): operation kind, intent kind, loopId match,
     // and a non-empty launch tuple. No resolver or mapping recomputation — the
     // exact retained objects pass through (D-09).
@@ -1444,6 +1449,20 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     if (publication.proposal.status.operationKind !== 'move-group' || intent.kind !== 'move-group') return false;
     if (intent.loopId !== publication.loopId) return false;
     if (publication.expectedLaunch.operationId.length === 0 || publication.expectedLaunch.layerId.length === 0) return false;
+    const currentLaunch = input.getLaunchContext?.() ?? null;
+    if (!currentLaunch) return false;
+    try {
+      const currentProposalVersion = buildGroupDragProposalVersion(
+        input.getRotoKeyRecords(),
+        input.getRotoInterpolationState(),
+        input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+        input.getIncomingInterpolationBreakKeyIds?.() ?? [],
+        currentLaunch,
+      );
+      if (currentProposalVersion !== publication.proposalVersion) return false;
+    } catch {
+      return false;
+    }
     // D-07: publish the accepted destination-plus-gap facts through the single
     // mapper on acceptance — the same .then((accepted) => ...) continuation
     // pattern the strip drag uses, NOT runPhysicalAction (its kind union is a
@@ -1531,6 +1550,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities,
       intent,
+      parentEndExclusive: input.getParentEndExclusive(),
       capacity,
       interpolationEnabled: interpolation.enabled,
       loopClips,
@@ -1677,7 +1697,7 @@ function readRotoInsertTargetInput(input: RotoTimelineActionsInput): RotoInsertT
       frameResolution = resolvePhysicPaintRotoLoopFrame(derivePhysicPaintRotoLoopRanges({
         identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
         loopClips,
-        parentEndExclusive: capacity,
+        parentEndExclusive: input.getParentEndExclusive(),
         capacity,
         interpolationEnabled: input.getRotoInterpolationState?.().enabled ?? false,
       }), currentAppFrame);

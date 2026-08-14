@@ -289,8 +289,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(map).toContain("const isLinkedRepeat = frameResolution?.kind === 'linked-unresolved'");
     expect(map).toContain('frameResolution.repeatInstance > 0');
     expect(map).toContain("const isLinkedRepeatSourceKey = frameResolution?.kind === 'linked'");
+    expect(map).toContain('&& !isGenerated;');
     expect(map).toContain("isLinkedRepeatSourceKey ? 'roto-linked-repeat roto-linked-repeat-source-key'");
-    expect(map).toContain("frameResolution?.kind === 'linked-generated' ? 'roto-linked-source-generated'");
+    expect(map).toContain("frameResolution?.kind === 'linked-generated' || (frameResolution?.kind === 'linked' && isGenerated)");
+    expect(map).toContain("? 'roto-linked-source-generated'");
     expect(map).toContain("${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''}");
     expect(map).toContain('const lifecycleTarget = classifyPhysicPaintRotoGroupFrameTarget({');
     expect(map).toContain('const fillClass = getRotoAcceptedCellFillClass({');
@@ -1524,8 +1526,8 @@ describe('PhysicsPaintWorkflowStrip Group-drag gap preview contract (43.3-03, UI
     expect(code).toContain('const getRotoGroupDragClampInput = useCallback(');
     expect(code).toContain('const clip = props.rotoLoopClips?.find((candidate) => candidate.loopId === loopId);');
     expect(code).toContain('const phaseOrigin = clip.phaseOrigin ?? clip.placementStart;');
-    expect(code).toContain('const effectiveEnd = draggedRanges.length > 0');
-    expect(code).toContain('Math.max(...draggedRanges.map((range) => range.effectiveEnd))');
+    expect(code).toContain('const effectiveEnd = resolvePhysicPaintRotoGroupEffectiveEnd(clip, draggedRanges);');
+    expect(code).not.toContain('Math.max(...draggedRanges.map((range) => range.effectiveEnd))');
     expect(code).toContain('identities: rotoKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }))');
     expect(code).toContain('loopRanges: loopResolutionContext.ranges');
     expect(code).toContain('capacity: currentPhysicalCells.length');

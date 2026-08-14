@@ -368,6 +368,7 @@ function resolveProposal(
   const resolution = resolvePhysicPaintRotoPhysicalEdit({
     identities,
     intent,
+    parentEndExclusive: PHYSIC_PAINT_MAX_APPLY_FRAMES,
     capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES,
     interpolationEnabled: false,
   });

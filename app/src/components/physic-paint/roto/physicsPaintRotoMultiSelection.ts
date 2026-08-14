@@ -169,3 +169,33 @@ export function resolvePostAcceptanceRotoSelection(input: {
   }
   return collapseRotoKeySelection(acceptedSelectedKeyId);
 }
+
+/** Preserve active Group Rail identity while settling accepted physical-key selection. */
+export function resolvePostAcceptanceRotoStudioSelection(input: {
+  readonly selectedLoopClipIds: readonly string[];
+  readonly selectedLoopClipId: string | null;
+  readonly operationKind: string;
+  readonly acceptedSelectedKeyId: string | null;
+  readonly keySelection: RotoKeySelectionState;
+  readonly currentKeyId: string | null;
+  readonly acceptedAddedKeyIds?: readonly string[];
+}): Readonly<{
+  selectedLoopClipIds: readonly string[];
+  selectedLoopClipId: string | null;
+  keySelection: RotoKeySelectionState;
+}> {
+  const railSelectionActive = input.selectedLoopClipIds.length > 0;
+  return {
+    selectedLoopClipIds: input.selectedLoopClipIds,
+    selectedLoopClipId: input.selectedLoopClipId,
+    keySelection: railSelectionActive
+      ? { selectedKeyIds: [], anchorKeyId: null }
+      : resolvePostAcceptanceRotoSelection({
+        operationKind: input.operationKind,
+        acceptedSelectedKeyId: input.acceptedSelectedKeyId,
+        state: input.keySelection,
+        currentKeyId: input.currentKeyId,
+        acceptedAddedKeyIds: input.acceptedAddedKeyIds,
+      }),
+  };
+}

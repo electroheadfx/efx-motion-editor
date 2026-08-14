@@ -170,11 +170,13 @@ describe('derivePhysicPaintRotoLoopRanges — compact interval derivation (D-32)
       'sourceFrameCount',
       'sourceKeyIds',
       'sourceOffsets',
+      'strictInteriorPolicy',
       'truncated',
       'unresolved',
     ];
     for (const range of combined.ranges) {
       expect(Object.keys(range).sort()).toEqual(expectedKeys);
+      expect(range.strictInteriorPolicy).toBe('gap');
     }
 
     // A distant frame deep inside the huge repeat resolves correctly without

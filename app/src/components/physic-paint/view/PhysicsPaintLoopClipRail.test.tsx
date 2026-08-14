@@ -59,17 +59,22 @@ import { describe, expect, it } from 'vitest';
 import type { ComponentChildren } from 'preact';
 import { defaultTransform, type Layer } from '../../../types/layer';
 import type { Sequence } from '../../../types/sequence';
+import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import { frameMap, fxTrackLayouts } from '../../../lib/frameMap';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { sequenceStore } from '../../../stores/sequenceStore';
 import {
   buildPhysicPaintRotoPhysicalRevision,
+  parsePhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoKeyIdentity,
   type PhysicPaintRotoLoopClip,
+  type PhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
   derivePhysicPaintRotoLoopRanges,
+  projectPhysicPaintRotoPhysicalTimeline,
+  resolvePhysicPaintRotoLoopFrame,
   resolvePhysicPaintRotoSpacingProxy,
   type PhysicPaintRotoGroupDragClampInput,
   type PhysicPaintRotoLoopRange,
@@ -78,7 +83,12 @@ import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScrip
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
 import { LOOP_CLIP_FAST_DOUBLE_CLICK_MS, LOOP_CLIP_SINGLE_CLICK_DELAY_MS, PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
-import type { RotoGroupDragPreparationResult, RotoGroupDragPublication } from '../hooks/useRotoTimelineActions';
+import {
+  useRotoTimelineActions,
+  type RotoGroupDragPreparationResult,
+  type RotoGroupDragPublication,
+  type RotoTimelineActionsInput,
+} from '../hooks/useRotoTimelineActions';
 import { PhysicsPaintScriptsPanel } from './PhysicsPaintScriptsPanel';
 import { PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
 import {
@@ -263,6 +273,97 @@ function renderWorkflowStrip(
   });
 }
 
+function createGeneratedPresentationDocument(
+  mode: PhysicPaintRotoLoopClip['mode'],
+  options: {
+    readonly visibleRanges?: PhysicPaintRotoLoopClip['visibleRanges'];
+    readonly incomingInterpolationBreakKeyIds?: readonly string[];
+  } = {},
+): PhysicPaintRotoPhysicalDocument {
+  const records: PhysicPaintRotoRealKeyRecord[] = [
+    { keyId: 'A', appFrame: 0, kind: 'real-key', payload: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,YQ==' } },
+    { keyId: 'B', appFrame: 3, kind: 'real-key', payload: { frameIndex: 1, appFrame: 3, dataUrl: 'data:image/png;base64,Yg==' } },
+  ];
+  const clip: PhysicPaintRotoLoopClip = {
+    loopId: `generated-${mode}`,
+    placementStart: 0,
+    sourceKeyIds: ['A', 'B'],
+    repeat: 1,
+    mode,
+    scriptId: `script-${mode}`,
+    motion: { deformation: 0, position: 0 },
+    overrideColor: null,
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: 0,
+    originalEndExclusive: 4,
+    visibleRanges: options.visibleRanges ?? [{ start: 0, endExclusive: 4 }],
+    frameOverrides: [],
+  };
+  const interpolation = { enabled: true, mode: 'duplicate' as const };
+  const incomingInterpolationBreakKeyIds = options.incomingInterpolationBreakKeyIds ?? [];
+  return parsePhysicPaintRotoPhysicalDocument({
+    capacity: 12,
+    realKeyRecords: records,
+    groupOverrideRecords: [],
+    interpolation,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame: 0,
+    loopClips: [clip],
+    incomingInterpolationBreakKeyIds,
+    revision: buildPhysicPaintRotoPhysicalRevision(
+      records,
+      interpolation,
+      [clip],
+      incomingInterpolationBreakKeyIds,
+      [],
+    ),
+  });
+}
+
+function renderGeneratedPresentationDocument(document: PhysicPaintRotoPhysicalDocument): {
+  readonly classesByFrame: ReadonlyMap<number, string>;
+  readonly semanticKindsByFrame: ReadonlyMap<number, unknown>;
+  readonly resolutionKindsByFrame: ReadonlyMap<number, string>;
+} {
+  const identities = document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame }));
+  const loopContext = derivePhysicPaintRotoLoopRanges({
+    identities,
+    loopClips: document.loopClips,
+    parentEndExclusive: 4,
+    capacity: document.capacity,
+    interpolationEnabled: document.interpolation.enabled,
+  });
+  const projection = projectPhysicPaintRotoPhysicalTimeline({
+    identities,
+    capacity: document.capacity,
+    interpolationEnabled: document.interpolation.enabled,
+    incomingInterpolationBreakKeyIds: document.incomingInterpolationBreakKeyIds,
+  });
+  if (!projection.ok) throw new Error('Expected presentation physical projection.');
+  const presentations = new Map(document.loopClips.map((clip) => {
+    const range = loopContext.ranges.find((candidate) => candidate.loopId === clip.loopId);
+    if (!range) throw new Error('Expected presentation Group range.');
+    return [clip.loopId, projectPhysicsPaintLoopClipPresentation(range, clip, 'Presentation oracle')] as const;
+  }));
+  const tree = renderWorkflowStrip(loopContext, presentations, [], () => {}, async () => {}, {
+    rotoPhysicalCells: projection.projection.cells,
+    rotoKeyRecords: document.realKeyRecords,
+    rotoLoopClips: document.loopClips,
+  });
+  const cells = findAll(tree, (vnode) => typeof vnode.props.frame === 'number' && typeof vnode.props.cellClass === 'string');
+  return {
+    classesByFrame: new Map(cells.map((cell) => [cell.props.frame as number, String(cell.props.cellClass)])),
+    semanticKindsByFrame: new Map(cells.map((cell) => [cell.props.frame as number, cell.props.semanticKind])),
+    resolutionKindsByFrame: new Map(cells.map((cell) => {
+      const frame = cell.props.frame as number;
+      return [frame, resolvePhysicPaintRotoLoopFrame(loopContext, frame).kind];
+    })),
+  };
+}
+
 function explicitGroupRange(start: number, endExclusive: number, overrides: Partial<PhysicPaintRotoLoopRange> = {}): PhysicPaintRotoLoopRange {
   return {
     loopId: 'group-a',
@@ -349,6 +450,74 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
     expect(onSelectLoopClip).toHaveBeenLastCalledWith('group-a', 'plain');
     expect(onOpenLoopEdit).not.toHaveBeenCalled();
+  });
+
+  it('publishes the shared Infinity boundary to Group Rail drag despite a deleted tail', () => {
+    const records: PhysicPaintRotoRealKeyRecord[] = [
+      { keyId: 'A', appFrame: 10, kind: 'real-key', payload: { frameIndex: 0, appFrame: 10, dataUrl: 'data:image/png;base64,YQ==' } },
+      { keyId: 'B', appFrame: 12, kind: 'real-key', payload: { frameIndex: 1, appFrame: 12, dataUrl: 'data:image/png;base64,Yg==' } },
+      { keyId: 'C', appFrame: 30, kind: 'real-key', payload: { frameIndex: 2, appFrame: 30, dataUrl: 'data:image/png;base64,Yw==' } },
+      { keyId: 'D', appFrame: 31, kind: 'real-key', payload: { frameIndex: 3, appFrame: 31, dataUrl: 'data:image/png;base64,ZA==' } },
+    ];
+    const infinityClip: PhysicPaintRotoLoopClip = {
+      loopId: 'group-a',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 'infinity',
+      mode: 'progressive',
+      scriptId: 'action-a',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 10, endExclusive: 25 }],
+      frameOverrides: [],
+    };
+    const nextClip: PhysicPaintRotoLoopClip = {
+      loopId: 'group-next',
+      placementStart: 30,
+      sourceKeyIds: ['C', 'D'],
+      repeat: 1,
+      mode: 'static',
+    };
+    const loopContext = derivePhysicPaintRotoLoopRanges({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      loopClips: [infinityClip, nextClip],
+      parentEndExclusive: 40,
+      capacity: 40,
+      interpolationEnabled: false,
+    });
+    const infinityRange = loopContext.ranges.find((range) => range.loopId === infinityClip.loopId);
+    if (!infinityRange) throw new Error('Expected Infinity Group range.');
+    const presentations = new Map([[
+      infinityClip.loopId,
+      projectPhysicsPaintLoopClipPresentation(infinityRange, infinityClip, 'Walk'),
+    ]]);
+
+    const tree = renderWorkflowStrip(
+      loopContext,
+      presentations,
+      [],
+      vi.fn(),
+      vi.fn(async () => {}),
+      { rotoKeyRecords: records, rotoLoopClips: [infinityClip, nextClip] },
+    );
+    const rail = findOne(tree, (vnode) => vnode.type === PhysicsPaintLoopClipRail);
+    const getClampInput = rail.props.getClampInput as (
+      loopId: string,
+    ) => Omit<
+      PhysicPaintRotoGroupDragClampInput,
+      'proposedDestinationPlacementStart'
+    > | null;
+    const clampInput = getClampInput(infinityClip.loopId);
+    if (!clampInput) throw new Error('Expected Group Rail clamp input.');
+
+    expect(clampInput.draggedInterval).toEqual({
+      phaseOrigin: 10,
+      effectiveEnd: 30,
+    });
   });
 
   it('keeps deleted Group phases gray under one rail and exposes only true outer endpoint cuts', () => {
@@ -1079,12 +1248,77 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(cssRule('.physics-paint-roto-cell.roto-loop-boundary-end {')).toContain('border-right-color: #f8fafc');
   });
 
+  describe('generated Group cell presentation authority', () => {
+    it.each([
+      ['progressive', 'linked-generated'],
+      ['static', 'linked'],
+    ] as const)('keeps valid %s source-cycle interpolation blue with its generated dash', (mode, expectedResolutionKind) => {
+      const rendered = renderGeneratedPresentationDocument(createGeneratedPresentationDocument(mode));
+      const generatedClass = rendered.classesByFrame.get(1) ?? '';
+
+      expect(rendered.semanticKindsByFrame.get(1)).toBe('generated');
+      expect(rendered.resolutionKindsByFrame.get(1)).toBe(expectedResolutionKind);
+      expect(generatedClass).toContain('roto-fill-generated');
+      expect(generatedClass).toContain('roto-linked-source-generated');
+      expect(generatedClass).not.toContain('roto-linked-source-key');
+      expect(cssRule('.physics-paint-roto-cell.roto-fill-generated {')).toContain('background: #365ed6');
+      expect(cssRule('.physics-paint-roto-cell.roto-fill-generated::before {')).toContain("content: ''");
+    });
+
+    it('keeps genuine lifecycle deletion and external movement gaps neutral instead of generated blue', () => {
+      const deleted = renderGeneratedPresentationDocument(createGeneratedPresentationDocument('static', {
+        visibleRanges: [{ start: 0, endExclusive: 1 }, { start: 3, endExclusive: 4 }],
+        incomingInterpolationBreakKeyIds: ['B'],
+      }));
+      const externalGap = renderGeneratedPresentationDocument(createGeneratedPresentationDocument('static', {
+        incomingInterpolationBreakKeyIds: ['B'],
+      }));
+
+      expect(deleted.semanticKindsByFrame.get(1)).toBe('empty');
+      expect(deleted.resolutionKindsByFrame.get(1)).toBe('empty');
+      expect(deleted.classesByFrame.get(1)).toContain('roto-fill-empty');
+      expect(deleted.classesByFrame.get(1)).not.toContain('roto-fill-generated');
+
+      expect(externalGap.semanticKindsByFrame.get(1)).toBe('empty');
+      expect(externalGap.classesByFrame.get(1)).toContain('roto-fill-empty');
+      expect(externalGap.classesByFrame.get(1)).not.toContain('roto-fill-generated');
+    });
+
+    it('keeps real source keys on the existing cached source-key presentation', () => {
+      const rendered = renderGeneratedPresentationDocument(createGeneratedPresentationDocument('static'));
+      const sourceClass = rendered.classesByFrame.get(0) ?? '';
+
+      expect(rendered.semanticKindsByFrame.get(0)).toBe('real-key');
+      expect(rendered.resolutionKindsByFrame.get(0)).toBe('real');
+      expect(sourceClass).toContain('roto-fill-cached');
+      expect(sourceClass).toContain('occupied');
+      expect(sourceClass).toContain('saved');
+      expect(sourceClass).not.toContain('roto-fill-generated');
+    });
+
+    it.each(['progressive', 'static'] as const)('preserves %s generated classifications and fill classes after save/reopen parsing', (mode) => {
+      const beforeDocument = createGeneratedPresentationDocument(mode);
+      const reopenedDocument = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify(beforeDocument)));
+      const before = renderGeneratedPresentationDocument(beforeDocument);
+      const reopened = renderGeneratedPresentationDocument(reopenedDocument);
+
+      expect(reopened.semanticKindsByFrame).toEqual(before.semanticKindsByFrame);
+      expect(reopened.resolutionKindsByFrame).toEqual(before.resolutionKindsByFrame);
+      expect(reopened.classesByFrame).toEqual(before.classesByFrame);
+      expect(reopened.classesByFrame.get(1)).toContain('roto-fill-generated');
+      expect(reopened.classesByFrame.get(1)).toContain('roto-linked-source-generated');
+      expect(reopened.classesByFrame.get(1)).not.toContain('roto-linked-source-key');
+    });
+  });
+
   describe('Group Rail drag session (usePhysicsPaintGroupRailDrag)', () => {
     interface MockWindow {
       addEventListener: (type: string, listener: (event: unknown) => void) => void;
       removeEventListener: (type: string, listener: (event: unknown) => void) => void;
       setTimeout: (handler: () => void) => number;
       dispatch: (type: string, event: unknown) => void;
+      listenerCount: (type: string) => number;
+      listenersFor: (type: string) => readonly ((event: unknown) => void)[];
     }
 
     function createMockWindow(): MockWindow {
@@ -1103,28 +1337,33 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
         dispatch: (type, event) => {
           for (const listener of listeners.get(type) ?? []) listener(event);
         },
+        listenerCount: (type) => listeners.get(type)?.size ?? 0,
+        listenersFor: (type) => [...(listeners.get(type) ?? [])],
       };
     }
 
     function createMockSourceElement() {
+      let capturedPointerId: number | null = null;
       return {
-        setPointerCapture: vi.fn(),
-        hasPointerCapture: vi.fn(() => true),
-        releasePointerCapture: vi.fn(),
+        setPointerCapture: vi.fn((pointerId: number) => { capturedPointerId = pointerId; }),
+        hasPointerCapture: vi.fn((pointerId: number) => capturedPointerId === pointerId),
+        releasePointerCapture: vi.fn((pointerId: number) => {
+          if (capturedPointerId === pointerId) capturedPointerId = null;
+        }),
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
         focus: vi.fn(),
       };
     }
 
-    function createPointerDown(sourceElement: unknown, clientX = 100, clientY = 50) {
+    function createPointerDown(sourceElement: unknown, clientX = 100, clientY = 50, pointerId = 1) {
       return {
         isPrimary: true,
         button: 0,
         metaKey: false,
         ctrlKey: false,
         shiftKey: false,
-        pointerId: 1,
+        pointerId,
         clientX,
         clientY,
         currentTarget: sourceElement,
@@ -1133,15 +1372,20 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       };
     }
 
-    function createPointerMove(clientX: number, clientY = 50) {
-      return { pointerId: 1, clientX, clientY, preventDefault: vi.fn() };
+    function createPointerMove(clientX: number, clientY = 50, pointerId = 1) {
+      return { pointerId, clientX, clientY, preventDefault: vi.fn() };
     }
 
-    function createPointerUp(clientX: number, clientY = 50) {
-      return { pointerId: 1, clientX, clientY, preventDefault: vi.fn() };
+    function createPointerUp(clientX: number, clientY = 50, pointerId = 1) {
+      return { pointerId, clientX, clientY, preventDefault: vi.fn() };
     }
 
-    function createGroupDragPublication(loopId: string, destinationPlacementStart: number): RotoGroupDragPublication {
+    function createGroupDragPublication(
+      loopId: string,
+      destinationPlacementStart: number,
+      preparedEffectiveEnd = destinationPlacementStart + 6,
+      movedClipOverrides: Partial<PhysicPaintRotoLoopClip> = {},
+    ): RotoGroupDragPublication {
       return {
         proposal: {
           mapping: new Map([['A', destinationPlacementStart]]),
@@ -1156,7 +1400,20 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
           removedKeyIds: [],
           drag: null,
           nextRecords: null,
-          nextLoopClips: null,
+          nextLoopClips: [{
+            loopId,
+            placementStart: destinationPlacementStart,
+            sourceKeyIds: ['A'],
+            repeat: 'infinity',
+            mode: 'progressive',
+            syncState: 'synchronized',
+            provenanceState: 'attached',
+            phaseOrigin: destinationPlacementStart,
+            originalEndExclusive: preparedEffectiveEnd,
+            visibleRanges: [{ start: destinationPlacementStart, endExclusive: preparedEffectiveEnd }],
+            frameOverrides: [],
+            ...movedClipOverrides,
+          }],
           nextIncomingInterpolationBreakKeyIds: null,
           semanticDelta: null,
           status: {
@@ -1237,6 +1494,74 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       expect(onSelectLoopClip).toHaveBeenLastCalledWith('group-a', 'plain');
       expect(onOpenLoopEdit).not.toHaveBeenCalled();
       vi.useRealTimers();
+    });
+
+    it('Escape disarms a below-threshold session before any later pointermove can start it', () => {
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => ({
+        ok: true,
+        publication: createGroupDragPublication(loopId, destinationPlacementStart),
+      }));
+      const commitRotoGroupDrag = vi.fn(async () => true);
+      hooks.reset();
+      const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, vi.fn(), vi.fn(async () => {}));
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+      const sourceElement = createMockSourceElement();
+
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(sourceElement, 100, 50));
+      mockWindow.dispatch('pointermove', createPointerMove(102, 50));
+      const escapeEvent = { key: 'Escape', preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() };
+      mockWindow.dispatch('keydown', escapeEvent);
+      mockWindow.dispatch('pointermove', createPointerMove(110, 50));
+
+      expect(prepareRotoGroupDrag).not.toHaveBeenCalled();
+      expect(commitRotoGroupDrag).not.toHaveBeenCalled();
+      expect(escapeEvent.preventDefault).toHaveBeenCalledOnce();
+      expect(escapeEvent.stopImmediatePropagation).toHaveBeenCalledOnce();
+      expect(sourceElement.setPointerCapture).not.toHaveBeenCalled();
+      expect(sourceElement.releasePointerCapture).not.toHaveBeenCalled();
+      expect(sourceElement.focus).toHaveBeenCalledOnce();
+      for (const type of ['pointermove', 'pointerup', 'pointercancel', 'keydown']) {
+        expect(mockWindow.listenerCount(type)).toBe(0);
+      }
+    });
+
+    it('ignores an obsolete pointercancel closure after a newer pointer session becomes current', async () => {
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => ({
+        ok: true,
+        publication: createGroupDragPublication(loopId, destinationPlacementStart),
+      }));
+      const commitRotoGroupDrag = vi.fn(async () => true);
+      hooks.reset();
+      const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, commitRotoGroupDrag, vi.fn(), vi.fn(async () => {}));
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+      const firstSource = createMockSourceElement();
+
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(firstSource, 100, 50, 1));
+      mockWindow.dispatch('pointermove', createPointerMove(110, 50, 1));
+      const stalePointerCancel = mockWindow.listenersFor('pointercancel')[0];
+      const sessionRef = [...hooks.refs.values()].find((ref) => (
+        (ref.current as { pointerId?: number } | null)?.pointerId === 1
+      ));
+      expect(stalePointerCancel).toBeDefined();
+      expect(sessionRef).toBeDefined();
+      if (!stalePointerCancel || !sessionRef) throw new Error('First pointer session must be retained');
+      sessionRef.current = null;
+      prepareRotoGroupDrag.mockClear();
+
+      const secondSource = createMockSourceElement();
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(secondSource, 200, 50, 2));
+      stalePointerCancel({ pointerId: 1 });
+      mockWindow.dispatch('pointermove', createPointerMove(210, 50, 2));
+      mockWindow.dispatch('pointerup', createPointerUp(210, 50, 2));
+      await Promise.resolve();
+
+      expect(firstSource.releasePointerCapture).not.toHaveBeenCalled();
+      expect(firstSource.focus).not.toHaveBeenCalled();
+      expect(prepareRotoGroupDrag).toHaveBeenCalledOnce();
+      expect(commitRotoGroupDrag).toHaveBeenCalledOnce();
+      expect(secondSource.releasePointerCapture).toHaveBeenCalledWith(2);
     });
 
     it('cancels the pending single-click timer when the drag crosses the threshold', () => {
@@ -1357,6 +1682,183 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       expect(ghostRule).toContain('pointer-events: none');
       expect(ghostRule).toContain('opacity: 0.55');
       expect(ghostRule).toContain('height: 3px');
+    });
+
+    it('uses finite moved visible geometry instead of a deleted-tail lifecycle end for the ghost', () => {
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => ({
+        ok: true,
+        publication: createGroupDragPublication(loopId, destinationPlacementStart, 20, {
+          repeat: 2,
+          visibleRanges: [{ start: destinationPlacementStart, endExclusive: 16 }],
+        }),
+      }));
+      hooks.reset();
+      const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, vi.fn(async () => true), vi.fn(), vi.fn(async () => {}));
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(createMockSourceElement(), 100, 50));
+      mockWindow.dispatch('pointermove', createPointerMove(100 + 2 * 18, 50));
+
+      hooks.rewind();
+      const movedTree = renderDragRail(mockWindow, prepareRotoGroupDrag, vi.fn(async () => true), vi.fn(), vi.fn(async () => {}));
+      const ghost = findOne(movedTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost'));
+      expect(ghost.props.style).toEqual({ left: '36px', width: '72px' });
+      expect(hasClass(ghost, 'effective-zero')).toBe(false);
+    });
+
+    it('renders finite empty moved visible geometry as an effective-zero ghost', () => {
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => ({
+        ok: true,
+        publication: createGroupDragPublication(loopId, destinationPlacementStart, 20, {
+          repeat: 2,
+          visibleRanges: [],
+        }),
+      }));
+      hooks.reset();
+      const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, vi.fn(async () => true), vi.fn(), vi.fn(async () => {}));
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(createMockSourceElement(), 100, 50));
+      mockWindow.dispatch('pointermove', createPointerMove(100 + 2 * 18, 50));
+
+      hooks.rewind();
+      const movedTree = renderDragRail(mockWindow, prepareRotoGroupDrag, vi.fn(async () => true), vi.fn(), vi.fn(async () => {}));
+      const ghost = findOne(movedTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost'));
+      expect(ghost.props.style).toEqual({ left: '36px', width: '8px' });
+      expect(hasClass(ghost, 'effective-zero')).toBe(true);
+    });
+
+    it('renders and commits the detached Infinity boundary from the real timeline resolver publication', async () => {
+      const records: readonly PhysicPaintRotoRealKeyRecord[] = Object.freeze([
+        Object.freeze({
+          kind: 'real-key',
+          keyId: 'A',
+          appFrame: 1,
+          payload: Object.freeze({ frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,YQ==' }),
+        }),
+        Object.freeze({
+          kind: 'real-key',
+          keyId: 'C',
+          appFrame: 5,
+          payload: Object.freeze({ frameIndex: 1, appFrame: 5, dataUrl: 'data:image/png;base64,Yw==' }),
+        }),
+      ]);
+      const clip: PhysicPaintRotoLoopClip = Object.freeze({
+        loopId: 'group-detached-infinity',
+        placementStart: 12,
+        sourceKeyIds: Object.freeze(['A', 'C']),
+        repeat: 'infinity',
+        mode: 'progressive',
+        syncState: 'modified',
+        provenanceState: 'detached',
+        phaseOrigin: 12,
+        originalEndExclusive: 20,
+        visibleRanges: Object.freeze([
+          Object.freeze({ start: 12, endExclusive: 15 }),
+          Object.freeze({ start: 17, endExclusive: 20 }),
+        ]),
+        frameOverrides: Object.freeze([]),
+      });
+      const executePhysicalEdit = vi.fn(async (_input: unknown) => true);
+      const timeline = useRotoTimelineActions({
+        getModel: () => ({ settings: {}, realSourceFrames: [] }) as never,
+        getRotoKeyRecords: () => records,
+        getRotoInterpolationState: () => ({ enabled: false, mode: 'duplicate' }),
+        getCapacity: () => 24,
+        getParentEndExclusive: () => 20,
+        getRotoLoopClips: () => [clip],
+        getLaunchContext: () => ({ operationId: 'op-detached', layerId: 'layer-detached' }) as PhysicPaintLaunchContext,
+        getIncomingInterpolationBreakKeyIds: () => [],
+        executePhysicalEdit: executePhysicalEdit as never,
+      } as RotoTimelineActionsInput);
+      const context = derivePhysicPaintRotoLoopRanges({
+        identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        loopClips: [clip],
+        parentEndExclusive: 20,
+        capacity: 24,
+        interpolationEnabled: false,
+      });
+      const range = context.ranges[0];
+      const presentations = new Map([[
+        clip.loopId,
+        projectPhysicsPaintLoopClipPresentation(range, clip, 'Detached Infinity'),
+      ]]);
+      const mockWindow = createMockWindow();
+      const render = () => materializeNamedComponents(PhysicsPaintLoopClipRail({
+        ranges: [range],
+        presentations,
+        visibleFrameWindow: { startFrame: 10, endFrameExclusive: 22 },
+        framePitch: 18,
+        selectedLoopClipIds: [],
+        onSelectLoopClip: vi.fn(),
+        onOpenLoopEdit: vi.fn(async () => {}),
+        prepareRotoGroupDrag: timeline.physicalActions.prepareRotoGroupDrag,
+        commitRotoGroupDrag: timeline.physicalActions.commitRotoGroupDrag,
+        windowLike: mockWindow,
+      }), new Set(['PhysicsPaintLoopClipRailTarget']));
+
+      hooks.reset();
+      const tree = render();
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(createMockSourceElement(), 100, 50));
+      mockWindow.dispatch('pointermove', createPointerMove(100 + 2 * 18, 50));
+
+      hooks.rewind();
+      const movedTree = render();
+      const ghost = findOne(movedTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost'));
+      expect(ghost.props.style).toEqual({ left: '36px', width: '108px' });
+
+      mockWindow.dispatch('pointerup', createPointerUp(100 + 2 * 18, 50));
+      await Promise.resolve();
+      expect(executePhysicalEdit).toHaveBeenCalledOnce();
+      const submitted = executePhysicalEdit.mock.calls[0][0] as { proposal: RotoGroupDragPublication['proposal'] };
+      const movedClip = submitted.proposal.nextLoopClips?.find((candidate) => candidate.loopId === clip.loopId);
+      expect(movedClip).toMatchObject({
+        placementStart: 14,
+        phaseOrigin: 14,
+        repeat: 'infinity',
+        originalEndExclusive: 20,
+        visibleRanges: [
+          { start: 14, endExclusive: 17 },
+          { start: 19, endExclusive: 20 },
+        ],
+      });
+    });
+
+    it('shrinks the Infinity ghost rightward to the retained next-Group candidate boundary', () => {
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => ({
+        ok: true,
+        publication: createGroupDragPublication(loopId, destinationPlacementStart, 16),
+      }));
+      hooks.reset();
+      const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, vi.fn(async () => true), vi.fn(), vi.fn(async () => {}));
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(createMockSourceElement(), 100, 50));
+      mockWindow.dispatch('pointermove', createPointerMove(100 + 2 * 18, 50));
+
+      hooks.rewind();
+      const movedTree = renderDragRail(mockWindow, prepareRotoGroupDrag, vi.fn(async () => true), vi.fn(), vi.fn(async () => {}));
+      const ghost = findOne(movedTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost'));
+      expect(ghost.props.style).toEqual({ left: '36px', width: '72px' });
+    });
+
+    it('expands the Infinity ghost leftward to the retained parent/capacity candidate boundary', () => {
+      const mockWindow = createMockWindow();
+      const prepareRotoGroupDrag = vi.fn((loopId: string, destinationPlacementStart: number): RotoGroupDragPreparationResult => ({
+        ok: true,
+        publication: createGroupDragPublication(loopId, destinationPlacementStart, 16),
+      }));
+      hooks.reset();
+      const tree = renderDragRail(mockWindow, prepareRotoGroupDrag, vi.fn(async () => true), vi.fn(), vi.fn(async () => {}));
+      const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+      (target.props.onPointerDown as (event: unknown) => void)(createPointerDown(createMockSourceElement(), 100, 50));
+      mockWindow.dispatch('pointermove', createPointerMove(100 - 2 * 18, 50));
+
+      hooks.rewind();
+      const movedTree = renderDragRail(mockWindow, prepareRotoGroupDrag, vi.fn(async () => true), vi.fn(), vi.fn(async () => {}));
+      const ghost = findOne(movedTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost'));
+      expect(ghost.props.style).toEqual({ left: '-36px', width: '144px' });
     });
 
     it('renders identical constant-width ghost geometry for leftward and rightward drags (D-13 rigid)', () => {

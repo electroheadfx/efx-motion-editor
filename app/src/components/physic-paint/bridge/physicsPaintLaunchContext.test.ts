@@ -12,6 +12,7 @@ const EMPTY_INTERPOLATION = { enabled: false, mode: 'duplicate' } as const;
 function makeRotoPhysical(overrides: Record<string, unknown> = {}) {
   return {
     capacity: 12,
+    layerEndExclusive: 12,
     records: [],
     interpolationEnabled: EMPTY_INTERPOLATION.enabled,
     interpolationMode: EMPTY_INTERPOLATION.mode,

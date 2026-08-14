@@ -15,6 +15,7 @@ import {
 import { defaultTransform, type Layer } from '../types/layer';
 import { layerStore } from './layerStore';
 import { projectStore } from './projectStore';
+import { sequenceStore } from './sequenceStore';
 import { applyPhysicPaintPayload, openPhysicPaintCanvas } from '../lib/physicPaintBridge';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
 import { resolvePhysicPaintRotoPhysicalEdit } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
@@ -578,6 +579,7 @@ function canonicalBridgePayload(
     identities: currentRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
     records: currentRecords,
     intent,
+    parentEndExclusive: physicPaintStore.getRotoPhysicalCapacity(BRIDGE_LAYER),
     capacity: physicPaintStore.getRotoPhysicalCapacity(BRIDGE_LAYER),
     interpolationEnabled: false,
     loopClips: currentLoopClips,
@@ -619,7 +621,20 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});
     physicPaintStore.reset();
-    vi.spyOn(layerStore.layers, 'peek').mockReturnValue([bridgeLayer()]);
+    const layer = bridgeLayer();
+    sequenceStore.sequences.value = [{
+      id: 'store-loop-bridge-parent-sequence',
+      kind: 'fx',
+      name: 'Store Loop Clip bridge authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: 600,
+    }];
+    vi.spyOn(layerStore.layers, 'peek').mockReturnValue([layer]);
     vi.spyOn(layerStore.overlayLayers, 'peek').mockReturnValue([]);
     Object.defineProperty(globalThis, 'window', {
       value: {

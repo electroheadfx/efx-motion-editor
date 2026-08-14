@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Layer } from '../types/layer';
 import { defaultTransform } from '../types/layer';
+import type { Sequence } from '../types/sequence';
+import { paintStore } from '../stores/paintStore';
 import { physicPaintStore, _setPhysicPaintMarkDirtyCallback } from '../stores/physicPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
@@ -18,6 +20,7 @@ vi.mock('../stores/projectStore', () => ({
 }));
 
 import { PreviewRenderer } from './previewRenderer';
+import { renderGlobalFrame } from './exportRenderer';
 import { clearProjectPaperRasterCache } from './projectPaperRaster';
 
 const root = resolve(__dirname, '../..');
@@ -197,7 +200,7 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     const source = readSource('src/lib/previewRenderer.ts');
 
     expect(source).toContain("import {drawRotoFrameComposite, resolveMissingRotoFrameDraw} from './rotoFrameDraw'");
-    expect(source).toContain('resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame)');
+    expect(source).toContain('resolveMissingRotoFrameDrawForLayer(layer, physicPaintLookupFrame)');
     expect(source).toContain('drawRotoFrameComposite(ctx, backgroundDraw, logicalW, logicalH, null, paperCanvas, source)');
   });
 
@@ -206,9 +209,9 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     const branchStart = source.lastIndexOf("layer.type === 'physic-paint'");
     const physicPaintBranch = source.slice(branchStart, source.indexOf("} else if (layer.type === 'paint')", branchStart));
 
-    expect(physicPaintBranch).toContain('resolvePhysicPaintFrameSource(paintLayerId, paintLookupFrame)');
-    expect(physicPaintBranch.indexOf('resolvePhysicPaintFrameSource(paintLayerId, paintLookupFrame)')).toBeLessThan(
-      physicPaintBranch.indexOf('resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame)'),
+    expect(physicPaintBranch).toContain('resolvePhysicPaintFrameSource(paintLayerId, physicPaintLookupFrame)');
+    expect(physicPaintBranch.indexOf('resolvePhysicPaintFrameSource(paintLayerId, physicPaintLookupFrame)')).toBeLessThan(
+      physicPaintBranch.indexOf('resolveMissingRotoFrameDrawForLayer(layer, physicPaintLookupFrame)'),
     );
     expect(physicPaintBranch).toContain("const backgroundDraw = physicalBackgroundDraw ?? (missingDraw?.kind === 'background-only' ? missingDraw : null)");
     expect(physicPaintBranch).not.toContain('setFrame(');
@@ -379,5 +382,48 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     expect(mergedAlphaIndex).toBeGreaterThanOrEqual(0);
     expect(paperIndex).toBeLessThan(mergedAlphaIndex);
     expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'createPattern', source: '/img/paper_1.jpg' }));
+  });
+
+  it('renders content Physics Paint in layer-local frames while ordinary Paint stays sequence-global', () => {
+    seedPhysicalRoto([
+      { keyId: 'key-0', appFrame: 0, dataUrl: 'data:image/png;base64,bG9jYWwtMA==' },
+    ]);
+    const physicalLookup = vi.spyOn(physicPaintStore, 'getRotoPhysicalRenderSource');
+    const ordinaryPaintLookup = vi.mocked(paintStore.getFrame);
+    ordinaryPaintLookup.mockClear();
+    const paintLayer: Layer = {
+      id: 'paint-layer',
+      name: 'Paint',
+      type: 'paint',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'paint', layerId: 'paint-layer' },
+    };
+    const sequence: Sequence = {
+      id: 'content-at-100',
+      name: 'Content at F100',
+      kind: 'content',
+      fps: 24,
+      width: 4,
+      height: 3,
+      keyPhotos: [{ id: 'kp-local-0', imageId: '', holdFrames: 1 }],
+      layers: [makeRotoLayer(), paintLayer],
+    };
+    const frames = Array.from({ length: 101 }, (_, globalFrame) => ({
+      globalFrame,
+      sequenceId: globalFrame === 100 ? sequence.id : 'earlier-content',
+      keyPhotoId: globalFrame === 100 ? 'kp-local-0' : 'kp-earlier',
+      imageId: '',
+      localFrame: globalFrame === 100 ? 0 : globalFrame,
+    }));
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderGlobalFrame(renderer, makeCanvas(ctx), 100, frames, [sequence], []);
+
+    expect(physicalLookup).toHaveBeenCalledWith('roto-layer', 0);
+    expect(ordinaryPaintLookup).toHaveBeenCalledWith('paint-layer', 100);
   });
 });

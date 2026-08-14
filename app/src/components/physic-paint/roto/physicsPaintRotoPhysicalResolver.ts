@@ -102,6 +102,60 @@ import {
   type PhysicsPaintRotoSpacingProxy,
 } from './physicsPaintRotoSpacingSelection';
 
+export function buildCanonicalMoveGroupOverrideRecords(input: {
+  readonly currentLoopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly stagedLoopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly currentGroupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly movedLoopId: string;
+  readonly capacity: number;
+}): readonly PhysicPaintRotoRealKeyRecord[] | null {
+  const currentClip = input.currentLoopClips.find((clip) => clip.loopId === input.movedLoopId);
+  const stagedClip = input.stagedLoopClips.find((clip) => clip.loopId === input.movedLoopId);
+  if (!currentClip || !stagedClip) return null;
+  const currentReferences = new Map(
+    (currentClip.frameOverrides ?? []).map((override) => [override.keyId, override.appFrame]),
+  );
+  const stagedReferences = new Map(
+    (stagedClip.frameOverrides ?? []).map((override) => [override.keyId, override.appFrame]),
+  );
+  if (currentReferences.size !== stagedReferences.size) return null;
+  if (currentReferences.size === 0) return input.currentGroupOverrideRecords;
+
+  const referencedOutsideMovedGroup = new Set(input.currentLoopClips
+    .filter((clip) => clip.loopId !== input.movedLoopId)
+    .flatMap((clip) => clip.frameOverrides?.map((override) => override.keyId) ?? []));
+  const movedRecords = input.currentGroupOverrideRecords.map((record) => {
+    const currentAppFrame = currentReferences.get(record.keyId);
+    if (currentAppFrame === undefined) return record;
+    const stagedAppFrame = stagedReferences.get(record.keyId);
+    if (stagedAppFrame === undefined
+      || record.appFrame !== currentAppFrame
+      || referencedOutsideMovedGroup.has(record.keyId)) return null;
+    return {
+      ...record,
+      appFrame: stagedAppFrame,
+      payload: {
+        frameIndex: record.payload.frameIndex,
+        appFrame: stagedAppFrame,
+        dataUrl: record.payload.dataUrl,
+        ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
+        ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
+      },
+    } as PhysicPaintRotoRealKeyRecord;
+  });
+  if (movedRecords.some((record) => record === null)) return null;
+  const movedRecordIds = new Set(movedRecords.flatMap((record) => record ? [record.keyId] : []));
+  if ([...stagedReferences.keys()].some((keyId) => !movedRecordIds.has(keyId))) return null;
+  try {
+    return parsePhysicPaintRotoRealKeyRecordCollection(
+      movedRecords as readonly PhysicPaintRotoRealKeyRecord[],
+      input.capacity,
+    );
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Closed edit intent, input, and result contracts.
 // ---------------------------------------------------------------------------
@@ -138,6 +192,8 @@ export interface PhysicPaintRotoPhysicalEditInput {
   /** Required for identity/payload-changing Duplicate and Paste operations. */
   readonly records?: readonly PhysicPaintRotoRealKeyRecord[];
   readonly intent: PhysicPaintRotoPhysicalEditIntent;
+  /** Authoritative parent sequence end, distinct from the physical storage capacity. */
+  readonly parentEndExclusive: number;
   readonly capacity: number;
   readonly interpolationEnabled: boolean;
   /**
@@ -1789,18 +1845,46 @@ function buildMoveGroupNextLoopClips(
   loopClips: readonly PhysicPaintRotoLoopClip[],
   movedClip: PhysicPaintRotoLoopClip,
   delta: number,
+  acceptedEffectiveEnd?: number,
 ): readonly PhysicPaintRotoLoopClip[] | null {
   if (loopClips.length === 0 || delta === 0) return null;
   let changed = false;
   const next = loopClips.map((clip) => {
     if (clip.loopId !== movedClip.loopId) return clip;
     const phaseOrigin = typeof clip.phaseOrigin === 'number' ? clip.phaseOrigin + delta : undefined;
-    const originalEndExclusive = typeof clip.originalEndExclusive === 'number' ? clip.originalEndExclusive + delta : undefined;
-    const visibleRanges = clip.visibleRanges === undefined
+    const pinsInfinityLifecycleEnd = clip.repeat === 'infinity'
+      && acceptedEffectiveEnd !== undefined
+      && clip.originalEndExclusive !== undefined
+      && clip.visibleRanges !== undefined;
+    const originalEndExclusive = typeof clip.originalEndExclusive === 'number'
+      ? (pinsInfinityLifecycleEnd ? acceptedEffectiveEnd : clip.originalEndExclusive + delta)
+      : undefined;
+    let visibleRanges = clip.visibleRanges === undefined
       ? undefined
-      : Object.freeze(clip.visibleRanges.map((range) => (
-          Object.freeze({ start: range.start + delta, endExclusive: range.endExclusive + delta })
-        )));
+      : clip.visibleRanges.map((range) => (
+          { start: range.start + delta, endExclusive: range.endExclusive + delta }
+        ));
+    if (pinsInfinityLifecycleEnd && visibleRanges !== undefined) {
+      const translatedOriginalEndExclusive = clip.originalEndExclusive! + delta;
+      visibleRanges = visibleRanges
+        .map((range) => ({ ...range, endExclusive: Math.min(range.endExclusive, acceptedEffectiveEnd) }))
+        .filter((range) => range.start < range.endExclusive);
+      if (translatedOriginalEndExclusive < acceptedEffectiveEnd) {
+        const lastIndex = visibleRanges.length - 1;
+        const lastRange = visibleRanges[lastIndex];
+        if (lastRange?.endExclusive === translatedOriginalEndExclusive) {
+          visibleRanges[lastIndex] = { ...lastRange, endExclusive: acceptedEffectiveEnd };
+        } else {
+          visibleRanges.push({
+            start: translatedOriginalEndExclusive,
+            endExclusive: acceptedEffectiveEnd,
+          });
+        }
+      }
+    }
+    const frozenVisibleRanges = visibleRanges === undefined
+      ? undefined
+      : Object.freeze(visibleRanges.map((range) => Object.freeze(range)));
     const frameOverrides = clip.frameOverrides === undefined
       ? undefined
       : Object.freeze(clip.frameOverrides.map((override) => (
@@ -1812,7 +1896,7 @@ function buildMoveGroupNextLoopClips(
       placementStart: movedClip.placementStart + delta,
       ...(phaseOrigin !== undefined ? { phaseOrigin } : {}),
       ...(originalEndExclusive !== undefined ? { originalEndExclusive } : {}),
-      ...(visibleRanges !== undefined ? { visibleRanges } : {}),
+      ...(frozenVisibleRanges !== undefined ? { visibleRanges: frozenVisibleRanges } : {}),
       ...(frameOverrides !== undefined ? { frameOverrides } : {}),
     }) as PhysicPaintRotoLoopClip;
   });
@@ -1825,6 +1909,7 @@ function buildMoveGroupClipCandidate(
   destinationPlacementStart: number,
   capacity: number,
   loopClips: readonly PhysicPaintRotoLoopClip[],
+  acceptedEffectiveEnd: number,
 ): MoveBuilderResult {
   const movedKeyIds = clip.sourceKeyIds;
   const movedSet = new Set(movedKeyIds);
@@ -1877,12 +1962,12 @@ function buildMoveGroupClipCandidate(
       expectedKeyIds: identities.keyIds,
       removedKeyId: null,
       removedKeyIds: EMPTY_REMOVED_KEY_IDS,
-      selectedKeyId: clip.sourceKeyIds[0],
+      selectedKeyId: null,
       operationKind: 'move-group',
       changed: computeChanged(identities, mapping),
       roleByKeyId,
       drag: null,
-      nextLoopClips: buildMoveGroupNextLoopClips(loopClips, clip, delta),
+      nextLoopClips: buildMoveGroupNextLoopClips(loopClips, clip, delta, acceptedEffectiveEnd),
     },
   };
 }
@@ -2029,28 +2114,44 @@ export function clampPhysicPaintGroupDragDestination(
  * key lands more than one frame after its new predecessor, giving that key a new
  * incoming break (D-10); (c) every existing break is carried unchanged (43.1
  * D-14). Group-local fragments (visibleRanges gaps, frameOverrides) never
- * convert to key-owned breaks (D-13). A duplicated placement applies only the
- * vacated-successor rule — shared source keys never move, so no landing gap
- * exists (D-11). Reuse-never-duplicate: the output is a complete collection
+ * convert to key-owned breaks (D-13). A duplicated placement moves no physical
+ * keys, so it manufactures neither a vacated-successor nor a landing-gap break;
+ * existing stable-key-owned breaks remain unchanged (D-11). Reuse-never-duplicate:
+ * the output is a complete collection
  * replacement, never a delta.
  */
 function deriveMoveGroupIncomingInterpolationBreakKeyIds(input: {
   readonly clip: PhysicPaintRotoLoopClip;
   readonly draggedInterval: { readonly phaseOrigin: number; readonly effectiveEnd: number };
   readonly attached: boolean;
+  readonly preMoveFramesByKeyId: ReadonlyMap<string, number>;
   readonly mapping: ReadonlyMap<string, number>;
   readonly incomingInterpolationBreakKeyIds: readonly string[];
 }): readonly string[] {
-  const { clip, draggedInterval, attached, mapping, incomingInterpolationBreakKeyIds } = input;
+  const {
+    clip,
+    draggedInterval,
+    attached,
+    preMoveFramesByKeyId,
+    mapping,
+    incomingInterpolationBreakKeyIds,
+  } = input;
   const owners = new Set(incomingInterpolationBreakKeyIds);
+  const groupOwnedKeyIds = new Set([
+    ...clip.sourceKeyIds,
+    ...(clip.frameOverrides ?? []).map((override) => override.keyId),
+  ]);
 
-  // (a) D-09/D-12: the next real key at or after the vacated interval's end owns
-  // the incoming break when one exists (never when the interval ends content).
+  // (a) D-09/D-12: vacated-gap ownership is a pre-move fact. Select the next
+  // external real key from stable identity frames, then carry only its keyId
+  // through the translated mapping. Placement-only moves vacate no physical
+  // keys, and Group-owned source/override identities can never own this break.
   const { phaseOrigin, effectiveEnd } = draggedInterval;
-  if (effectiveEnd > phaseOrigin) {
+  if (attached && effectiveEnd > phaseOrigin) {
     let successor: string | null = null;
     let successorFrame = Number.POSITIVE_INFINITY;
-    for (const [keyId, frame] of mapping) {
+    for (const [keyId, frame] of preMoveFramesByKeyId) {
+      if (groupOwnedKeyIds.has(keyId)) continue;
       if (frame >= effectiveEnd && frame < successorFrame) {
         successor = keyId;
         successorFrame = frame;
@@ -2059,15 +2160,16 @@ function deriveMoveGroupIncomingInterpolationBreakKeyIds(input: {
     if (successor !== null) owners.add(successor);
   }
 
-  // (b) D-10/D-12: a source-attached move opens a landing gap when the first
-  // source key lands more than one frame after its new predecessor. A first key
-  // with no predecessor (landing before all content) never creates a break.
+  // (b) D-10/D-12: a source-attached move opens a landing gap only against an
+  // external predecessor. The break belongs to the first source key, so it can
+  // suppress only the external landing segment, never an internal source span.
   if (attached) {
     const firstSourceKey = clip.sourceKeyIds[0];
     const firstSourceFrame = mapping.get(firstSourceKey);
     if (firstSourceFrame !== undefined) {
       let predecessorFrame = -1;
-      for (const frame of mapping.values()) {
+      for (const [keyId, frame] of mapping) {
+        if (groupOwnedKeyIds.has(keyId)) continue;
         if (frame < firstSourceFrame && frame > predecessorFrame) predecessorFrame = frame;
       }
       if (predecessorFrame !== -1 && firstSourceFrame - predecessorFrame > 1) owners.add(firstSourceKey);
@@ -2907,6 +3009,9 @@ export function resolvePhysicPaintRotoPhysicalEdit(
   if (!validateCapacity(input.capacity)) {
     return fail('invalid-capacity', operationKind, 'Capacity must be an integer from 1 through PHYSIC_PAINT_MAX_APPLY_FRAMES.');
   }
+  if (!isNonNegativeInteger(input.parentEndExclusive)) {
+    return fail('malformed-target', operationKind, 'Parent end must be a nonnegative integer.');
+  }
 
   const identitiesResult = validateIdentities(input.identities, input.capacity, operationKind);
   if (!identitiesResult.ok) return identitiesResult.resolution;
@@ -2988,7 +3093,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       const loopContext = derivePhysicPaintRotoLoopRanges({
         identities: identities.ordered,
         loopClips,
-        parentEndExclusive: input.capacity,
+        parentEndExclusive: input.parentEndExclusive,
         capacity: input.capacity,
         interpolationEnabled: input.interpolationEnabled,
       });
@@ -3369,14 +3474,12 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       identities: identities.ordered,
       loopClips,
       capacity: input.capacity,
-      parentEndExclusive: input.capacity,
+      parentEndExclusive: input.parentEndExclusive,
       interpolationEnabled: input.interpolationEnabled,
     });
     const draggedRanges = derivation.ranges.filter((range) => range.loopId === clip.loopId);
     const phaseOrigin = clip.phaseOrigin ?? clip.placementStart;
-    const resolvedEffectiveEnd = draggedRanges.length > 0
-      ? Math.max(...draggedRanges.map((range) => range.effectiveEnd))
-      : (clip.originalEndExclusive ?? phaseOrigin);
+    const resolvedEffectiveEnd = resolvePhysicPaintRotoGroupEffectiveEnd(clip, draggedRanges);
     const clampResult = clampPhysicPaintGroupDragDestination({
       clip,
       draggedInterval: { phaseOrigin, effectiveEnd: resolvedEffectiveEnd },
@@ -3393,7 +3496,14 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (clip.placementStart === firstSourceFrame) {
       // Source-attached arm (plan-01 + Task-1 clamp): rigid translation — every
       // source key and the Group lifecycle fields translate by the same delta.
-      const moveResult = buildMoveGroupClipCandidate(identities, clip, destination, input.capacity, loopClips);
+      const moveResult = buildMoveGroupClipCandidate(
+        identities,
+        clip,
+        destination,
+        input.capacity,
+        loopClips,
+        resolvedEffectiveEnd,
+      );
       if (!moveResult.ok) return moveResult.resolution;
       // Task 3: emit the complete next incoming-break collection through the
       // existing finalizeProposal threading (D-09..D-13). The vacated interval's
@@ -3406,6 +3516,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
             clip,
             draggedInterval: { phaseOrigin, effectiveEnd: resolvedEffectiveEnd },
             attached: true,
+            preMoveFramesByKeyId: identities.framesByKeyId,
             mapping: moveResult.candidate.mapping,
             incomingInterpolationBreakKeyIds,
           }),
@@ -3429,7 +3540,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       expectedKeyIds: identities.keyIds,
       removedKeyId: null,
       removedKeyIds: EMPTY_REMOVED_KEY_IDS,
-      selectedKeyId: clip.sourceKeyIds[0],
+      selectedKeyId: null,
       operationKind: 'move-group' as const,
       // D-11 placement-only move: the key mapping is identity (shared source
       // keys never move), so computeChanged is always false — but the dragged
@@ -3439,7 +3550,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       changed: destination !== clip.placementStart,
       roleByKeyId: new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>(),
       drag: null,
-      nextLoopClips: buildMoveGroupNextLoopClips(loopClips, clip, delta),
+      nextLoopClips: buildMoveGroupNextLoopClips(loopClips, clip, delta, resolvedEffectiveEnd),
       // Task 3: a placement-only move vacates no interval and moves no keys, so
       // the incoming breaks echo byte-identical (D-11); the helper still runs
       // with attached:false so the vacated-successor rule stays inert and the
@@ -3449,6 +3560,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
           clip,
           draggedInterval: { phaseOrigin, effectiveEnd: resolvedEffectiveEnd },
           attached: false,
+          preMoveFramesByKeyId: identities.framesByKeyId,
           mapping,
           incomingInterpolationBreakKeyIds,
         }),
@@ -3542,6 +3654,8 @@ export interface PhysicPaintRotoLoopRange {
   readonly sourceCycleId: string;
   /** Physical positions normalized to the first ordered source key. */
   readonly sourceOffsets: readonly number[];
+  /** Canonical strict-interior timing policy, independent from visible/deleted fragments. */
+  readonly strictInteriorPolicy: 'hold' | 'generate' | 'gap';
   readonly repeat: number | 'infinity';
   readonly requestedEnd: number | 'infinity';
   readonly effectiveEnd: number;
@@ -3552,6 +3666,23 @@ export interface PhysicPaintRotoLoopRange {
     readonly missingSourceKeyIds: readonly string[];
     readonly invalidSourceTiming?: true;
   } | null;
+}
+
+/**
+ * Resolve one Group's canonical effective end from its already-derived ranges.
+ * Lifecycle Infinity fragments share one boundary even when durable deletions
+ * make the final visible fragment end earlier; finite Groups retain visible
+ * fragment extent. Empty derivations preserve the lifecycle fallback.
+ */
+export function resolvePhysicPaintRotoGroupEffectiveEnd(
+  clip: PhysicPaintRotoLoopClip,
+  draggedRanges: readonly PhysicPaintRotoLoopRange[],
+): number {
+  const phaseOrigin = clip.phaseOrigin ?? clip.placementStart;
+  if (draggedRanges.length === 0) return clip.originalEndExclusive ?? phaseOrigin;
+  return clip.repeat === 'infinity'
+    ? draggedRanges[0]!.boundary.frame
+    : Math.max(...draggedRanges.map((range) => range.effectiveEnd));
 }
 
 /**
@@ -3715,45 +3846,69 @@ export function derivePhysicPaintRotoLoopRanges(
       && clip.visibleRanges !== undefined;
     const phaseOrigin = lifecycleAvailable ? clip.phaseOrigin! : clip.placementStart;
     const finite = typeof clip.repeat === 'number';
-    const requestedEnd: number | 'infinity' = lifecycleAvailable
+    const requestedEnd: number | 'infinity' = lifecycleAvailable && finite
       ? clip.originalEndExclusive!
       : finite
         ? clip.placementStart + cycleLength * (clip.repeat as number)
         : 'infinity';
-    const naturalEnd = lifecycleAvailable
+    const naturalEnd = lifecycleAvailable && finite
       ? clip.originalEndExclusive!
       : finite ? (requestedEnd as number) : infinityNaturalEnd;
-    const visibleFragments = lifecycleAvailable
+    let visibleFragments = lifecycleAvailable
       ? clip.visibleRanges!
       : [{ start: clip.placementStart, endExclusive: naturalEnd }];
+    if (lifecycleAvailable && !finite && naturalEnd > clip.originalEndExclusive!) {
+      const last = visibleFragments[visibleFragments.length - 1];
+      visibleFragments = last?.endExclusive === clip.originalEndExclusive
+        ? [...visibleFragments.slice(0, -1), { ...last, endExclusive: naturalEnd }]
+        : [...visibleFragments, { start: clip.originalEndExclusive!, endExclusive: naturalEnd }];
+    }
 
-    return visibleFragments.map((fragment) => {
-      // D-24 candidate scan. A loop never truncates itself: its own start, its
-      // virtual occurrences, and its referenced source keyIds are excluded.
-      let boundaryKind: PhysicPaintRotoLoopBoundaryKind = 'parent-end';
-      let boundaryFrame = finite ? input.parentEndExclusive : infinityNaturalEnd;
-      const consider = (kind: PhysicPaintRotoLoopBoundaryKind, frame: number): void => {
+    const sharesGroupBoundary = lifecycleAvailable && !finite;
+    const deriveBoundary = (scanStart: number): PhysicPaintRotoLoopBoundary => {
+      let kind: PhysicPaintRotoLoopBoundaryKind = 'parent-end';
+      let frame = finite ? input.parentEndExclusive : infinityNaturalEnd;
+      const consider = (candidateKind: PhysicPaintRotoLoopBoundaryKind, candidateFrame: number): void => {
         if (
-          frame < boundaryFrame
-          || (frame === boundaryFrame && LOOP_BOUNDARY_KIND_RANK[kind] < LOOP_BOUNDARY_KIND_RANK[boundaryKind])
+          candidateFrame < frame
+          || (candidateFrame === frame && LOOP_BOUNDARY_KIND_RANK[candidateKind] < LOOP_BOUNDARY_KIND_RANK[kind])
         ) {
-          boundaryKind = kind;
-          boundaryFrame = frame;
+          kind = candidateKind;
+          frame = candidateFrame;
         }
       };
       for (const identity of input.identities) {
-        if (identity.appFrame < fragment.start) continue;
+        if (identity.appFrame < scanStart) continue;
         if (ownedSourceKeyIds.has(identity.keyId)) continue;
         consider('real-key', identity.appFrame);
       }
       for (const other of input.loopClips) {
         if (other.loopId === clip.loopId) continue;
-        if (other.placementStart <= fragment.start) continue;
+        if (other.placementStart <= scanStart) continue;
         consider('loop-start', other.placementStart);
       }
+      return Object.freeze({ kind, frame }) as PhysicPaintRotoLoopBoundary;
+    };
+    // Finding 1 applies only to lifecycle Infinity: every durable fragment
+    // shares one boundary from the Group phase so later fragments cannot
+    // reappear beyond the next Group/real-key/parent end. Finite and ordinary
+    // clips retain their established per-fragment boundary semantics.
+    const sharedBoundary = sharesGroupBoundary
+      ? deriveBoundary(phaseOrigin)
+      : null;
 
-      const effectiveEnd = Math.max(fragment.start, Math.min(naturalEnd, fragment.endExclusive, boundaryFrame));
-      return Object.freeze({
+    return visibleFragments.flatMap((fragment) => {
+      const boundary = sharedBoundary ?? deriveBoundary(fragment.start);
+      if (
+        sharesGroupBoundary
+        && fragment.start >= boundary.frame
+        && fragment.start !== phaseOrigin
+      ) return [];
+      const effectiveEnd = Math.max(
+        fragment.start,
+        Math.min(naturalEnd, fragment.endExclusive, boundary.frame),
+      );
+      return [Object.freeze({
         loopId: clip.loopId,
         placementStart: fragment.start,
         phaseOrigin,
@@ -3762,10 +3917,13 @@ export function derivePhysicPaintRotoLoopRanges(
         sourceKeyIds: Object.freeze([...clip.sourceKeyIds]),
         sourceCycleId: getPhysicsPaintRotoSourceCycleId(clip.sourceKeyIds),
         sourceOffsets: Object.freeze(sourceOffsets),
+        strictInteriorPolicy: lifecycleAvailable
+          ? (clip.mode === 'static' || !input.interpolationEnabled ? 'hold' : 'generate')
+          : (input.interpolationEnabled ? 'generate' : 'gap'),
         repeat: clip.repeat,
         requestedEnd,
         effectiveEnd,
-        boundary: Object.freeze({ kind: boundaryKind, frame: boundaryFrame }) as PhysicPaintRotoLoopBoundary,
+        boundary,
         truncated: effectiveEnd < naturalEnd,
         partialCycle: (effectiveEnd - phaseOrigin) % cycleLength !== 0,
         unresolved: !sourceTimingIsValid
@@ -3774,7 +3932,7 @@ export function derivePhysicPaintRotoLoopRanges(
               ...(missingSourceKeyIds.length === 0 ? { invalidSourceTiming: true as const } : {}),
             })
           : null,
-      }) as PhysicPaintRotoLoopRange;
+      }) as PhysicPaintRotoLoopRange];
     });
   });
 
@@ -3886,6 +4044,17 @@ export function resolvePhysicPaintRotoLoopFrame(
 
       const rightSourceIndex = leftSourceIndex + 1;
       if (rightSourceIndex >= range.sourceOffsets.length) return EMPTY_FRAME_RESOLUTION;
+      if (range.strictInteriorPolicy === 'hold') {
+        return Object.freeze({
+          kind: 'linked',
+          loopId: range.loopId,
+          appFrame,
+          sourceKeyId: range.sourceKeyIds[leftSourceIndex],
+          sourceIndex: leftSourceIndex,
+          cycleOffset,
+          repeatInstance,
+        }) as PhysicPaintRotoFrameResolution;
+      }
       const sharedInterior = {
         loopId: range.loopId,
         appFrame,
@@ -3896,7 +4065,7 @@ export function resolvePhysicPaintRotoLoopFrame(
         cycleOffset,
         repeatInstance,
       };
-      if (!context.interpolationEnabled) {
+      if (range.strictInteriorPolicy === 'gap') {
         return Object.freeze({ kind: 'linked-gap', ...sharedInterior }) as PhysicPaintRotoFrameResolution;
       }
       const leftOffset = range.sourceOffsets[leftSourceIndex];

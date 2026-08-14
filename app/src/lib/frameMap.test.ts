@@ -1,7 +1,7 @@
 import {describe, it, expect, beforeEach} from 'vitest';
 import {sequenceStore} from '../stores/sequenceStore';
 import {defaultTransform, type Layer} from '../types/layer';
-import {frameMap, fxTrackLayouts} from './frameMap';
+import {frameMap, fxTrackLayouts, resolveSequenceTimelineRange, trackLayouts} from './frameMap';
 import {physicPaintStore} from '../stores/physicPaintStore';
 import {buildPhysicPaintRotoPhysicalRevision} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type {Sequence} from '../types/sequence';
@@ -117,6 +117,91 @@ describe('frameMap solid/transparent entries', () => {
   beforeEach(() => {
     sequenceStore.reset();
     physicPaintStore.reset();
+  });
+
+  it('resolves a 30-frame content Sequence at global F100 from one validated track layout', () => {
+    const sequence = makeSequence({
+      id: 'content-at-100',
+      keyPhotos: [
+        { id: 'kp-a', imageId: 'a', holdFrames: 10 },
+        { id: 'kp-b', imageId: 'b', holdFrames: 20 },
+      ],
+    });
+
+    expect(resolveSequenceTimelineRange(sequence, [{
+      sequenceId: sequence.id,
+      sequenceName: sequence.name,
+      startFrame: 100,
+      endFrame: 130,
+      keyPhotoRanges: [],
+    }])).toEqual({
+      globalStart: 100,
+      globalEndExclusive: 130,
+      localEndExclusive: 30,
+    });
+  });
+
+  it('fails closed on missing, duplicate, malformed, or timing-divergent content layouts', () => {
+    const sequence = makeSequence({
+      id: 'content-at-100',
+      keyPhotos: [{ id: 'kp', imageId: 'a', holdFrames: 30 }],
+    });
+    const validLayout = {
+      sequenceId: sequence.id,
+      sequenceName: sequence.name,
+      startFrame: 100,
+      endFrame: 130,
+      keyPhotoRanges: [],
+    };
+
+    expect(resolveSequenceTimelineRange(sequence, [])).toBeNull();
+    expect(resolveSequenceTimelineRange(sequence, [validLayout, { ...validLayout }])).toBeNull();
+    expect(resolveSequenceTimelineRange(sequence, [{ ...validLayout, startFrame: -1, endFrame: 29 }])).toBeNull();
+    expect(resolveSequenceTimelineRange(sequence, [{ ...validLayout, endFrame: 131 }])).toBeNull();
+    expect(resolveSequenceTimelineRange({ ...sequence, keyPhotos: [{ id: 'kp', imageId: 'a', holdFrames: 0 }] }, [validLayout])).toBeNull();
+  });
+
+  it('retains validated FX in/out duration semantics without track layouts', () => {
+    const sequence = makeFxSequence('fx-range', 'FX range', makePhysicPaintLayer('fx-layer'));
+    sequence.inFrame = 7;
+    sequence.outFrame = 39;
+
+    expect(resolveSequenceTimelineRange(sequence, [])).toEqual({
+      globalStart: 7,
+      globalEndExclusive: 39,
+      localEndExclusive: 32,
+    });
+    expect(resolveSequenceTimelineRange({ ...sequence, outFrame: 7 }, [])).toBeNull();
+    expect(resolveSequenceTimelineRange({ ...sequence, inFrame: undefined }, [])).toBeNull();
+  });
+
+  it('keeps a second content Infinity Group bounded to its local 30-frame span at global F100', () => {
+    const layerId = 'content-infinity-layer';
+    const leading = makeSequence({
+      id: 'leading-content',
+      keyPhotos: [{ id: 'leading-key', imageId: 'leading', holdFrames: 100 }],
+    });
+    const sequence = makeSequence({
+      id: 'content-at-100',
+      layers: [makePhysicPaintLayer(layerId)],
+      keyPhotos: [{ id: 'local-key', imageId: 'local', holdFrames: 30 }],
+    });
+    sequenceStore.sequences.value = [leading, sequence];
+    installRotoDocument(layerId, [0, 1, 2, 3, 4], [makeLoopClip('content-infinity', 10, 'infinity')]);
+
+    const layout = trackLayouts.value.find((candidate) => candidate.sequenceId === sequence.id);
+    expect(layout).toEqual(expect.objectContaining({ startFrame: 100, endFrame: 130 }));
+    expect(resolveSequenceTimelineRange(sequence, trackLayouts.value)).toEqual({
+      globalStart: 100,
+      globalEndExclusive: 130,
+      localEndExclusive: 30,
+    });
+    expect(frameMap.value).toHaveLength(130);
+    expect(frameMap.value[100]).toEqual(expect.objectContaining({
+      globalFrame: 100,
+      sequenceId: sequence.id,
+      localFrame: 0,
+    }));
   });
 
   it('produces FrameEntry with solidColor for key solid entries', () => {

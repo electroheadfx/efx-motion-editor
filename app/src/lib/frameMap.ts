@@ -123,14 +123,52 @@ function getLayerId(layer: Layer): string {
   return layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
 }
 
-/** Main-editor parent end for a physic-paint layer (43-03 flag seam): the
- *  FX sequence's AUTHORED span in layer-local frames — D-25 dynamic parent-end
- *  tracking. Deliberately NOT the roto-extended outFrame (that would make the
- *  loop's effective end circularly depend on itself). */
-function getPhysicPaintAuthoredSpanFrames(seq: Sequence): number {
-  const start = seq.inFrame ?? 0;
-  const end = seq.outFrame ?? 100; // same fallback as getTimelineOverlaySequenceOutFrame
-  return Math.max(0, end - start);
+export interface SequenceTimelineRange {
+  readonly globalStart: number;
+  readonly globalEndExclusive: number;
+  readonly localEndExclusive: number;
+}
+
+/** Resolve authored Sequence timing without consulting Physics Paint output.
+ *  Content uses one validated track layout plus positive key-photo duration;
+ *  FX/content-overlay retain explicit validated in/out semantics. */
+export function resolveSequenceTimelineRange(
+  sequence: Sequence,
+  layouts: readonly TrackLayout[],
+): SequenceTimelineRange | null {
+  if (sequence.kind === 'content') {
+    const matchingLayouts = layouts.filter((layout) => layout.sequenceId === sequence.id);
+    if (matchingLayouts.length !== 1) return null;
+    const layout = matchingLayouts[0];
+    if (!Number.isInteger(layout.startFrame) || layout.startFrame < 0) return null;
+    if (sequence.keyPhotos.length === 0
+      || sequence.keyPhotos.some((photo) => !Number.isInteger(photo.holdFrames) || photo.holdFrames <= 0)) return null;
+    const localEndExclusive = sequence.keyPhotos.reduce((total, photo) => total + photo.holdFrames, 0);
+    const globalEndExclusive = layout.startFrame + localEndExclusive;
+    if (!Number.isSafeInteger(globalEndExclusive)
+      || !Number.isInteger(layout.endFrame)
+      || layout.endFrame !== globalEndExclusive) return null;
+    return {
+      globalStart: layout.startFrame,
+      globalEndExclusive,
+      localEndExclusive,
+    };
+  }
+  const globalStart = Number.isInteger(sequence.inFrame) && sequence.inFrame !== undefined
+    ? sequence.inFrame
+    : null;
+  const globalEndExclusive = Number.isInteger(sequence.outFrame) && sequence.outFrame !== undefined
+    ? sequence.outFrame
+    : null;
+  if (globalStart === null
+    || globalEndExclusive === null
+    || globalStart < 0
+    || globalEndExclusive <= globalStart) return null;
+  return {
+    globalStart,
+    globalEndExclusive,
+    localEndExclusive: globalEndExclusive - globalStart,
+  };
 }
 
 /** The 43-02 interval derivation read through the store with the main-editor
@@ -140,11 +178,13 @@ function deriveMainEditorLoopRanges(layer: Layer, seq: Sequence): PhysicPaintRot
   const layerId = getLayerId(layer);
   const loopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId);
   if (loopClips.length === 0) return null;
+  const timelineRange = resolveSequenceTimelineRange(seq, trackLayouts.value);
+  if (!timelineRange) return null;
   const records = physicPaintStore.getRotoRealKeyRecords(layerId);
   return derivePhysicPaintRotoLoopRanges({
     identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
     loopClips,
-    parentEndExclusive: getPhysicPaintAuthoredSpanFrames(seq),
+    parentEndExclusive: timelineRange.localEndExclusive,
     capacity: physicPaintStore.getRotoPhysicalCapacity(layerId),
     interpolationEnabled: physicPaintStore.getRotoPhysicalInterpolationState(layerId).enabled,
   });
@@ -179,8 +219,11 @@ function getTimelineRepeatDurationMarkers(
  *  max loop effective end) with the sequence-authored parent end (D-25).
  *  Falls back to the store's capacity-bounded read when no loops exist. */
 function getPhysicPaintRotoDisplayEndFrame(layer: Layer, seq: Sequence): number | null {
+  const layerId = getLayerId(layer);
+  const loopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId);
+  if (loopClips.length === 0) return physicPaintStore.getRotoPhysicalEndFrame(layerId);
   const loopContext = deriveMainEditorLoopRanges(layer, seq);
-  if (!loopContext) return physicPaintStore.getRotoPhysicalEndFrame(getLayerId(layer));
+  if (!loopContext) return null;
   const records = physicPaintStore.getRotoRealKeyRecords(getLayerId(layer));
   const lastRealEnd = records.length === 0 ? null : records[records.length - 1].appFrame + 1;
   let loopEnd: number | null = null;
@@ -195,9 +238,10 @@ function getTimelineRequiredFrameCount(sequences: readonly Sequence[], contentFr
   let required = contentFrameCount;
   for (const seq of sequences) {
     if (seq.visible === false) continue;
-    const seqStart = seq.kind === 'content' ? 0 : seq.inFrame ?? 0;
-    const seqEnd = seq.kind === 'content' ? contentFrameCount : seq.outFrame ?? contentFrameCount;
-    required = Math.max(required, seqEnd);
+    const timelineRange = resolveSequenceTimelineRange(seq, trackLayouts.value);
+    if (!timelineRange) continue;
+    const seqStart = timelineRange.globalStart;
+    required = Math.max(required, timelineRange.globalEndExclusive);
     for (const layer of seq.layers) {
       if (layer.type !== 'physic-paint') continue;
       const rotoEnd = getPhysicPaintRotoDisplayEndFrame(layer, seq);

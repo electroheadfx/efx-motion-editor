@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { signal } from '@preact/signals';
 
 vi.mock('preact/hooks', () => ({
   useCallback: <Value>(callback: Value) => callback,
@@ -13,6 +14,7 @@ vi.mock('@preact/signals', async () => {
 });
 
 import type {
+  PhysicPaintRotoAuthorityResult,
   PhysicPaintRotoPhysicalEditApplyPayload,
   PhysicPaintRotoPhysicalEditApplyResult,
 } from '../../../types/physicPaint';
@@ -28,12 +30,20 @@ import {
 } from '../roto/physicsPaintRotoSpacingSelection';
 import { resolvePhysicPaintRotoPhysicalEdit } from '../roto/physicsPaintRotoPhysicalResolver';
 import { proposePhysicPaintRotoRegenerateGroup } from '../roto/physicsPaintRotoGroupLifecycle';
+import {
+  createRotoPlayScriptController,
+  type RotoGeneratedPhysicalPublication,
+  type RotoPlayScriptCommitResult,
+  type RotoPlayScriptControllerPorts,
+} from '../roto/physicsPaintRotoPlayScriptController';
+import { resolvePostAcceptanceRotoStudioSelection } from '../roto/physicsPaintRotoMultiSelection';
 import { createRotoLivePixelCacheTransactions } from '../roto/rotoLivePixelCacheTransactions';
 import type { RotoPhysicalEditCoordinatorPorts } from '../roto/rotoCoordinatorPorts';
 import {
   executePhysicPaintRotoGroupFramePaintTransaction,
   useRotoPhysicalEditCoordinator,
 } from './useRotoPhysicalEditCoordinator';
+import { useRotoPhysicalEditHistory } from './useRotoPhysicalEditHistory';
 
 const INTERPOLATION: PhysicPaintRotoInterpolationState = { enabled: false, mode: 'duplicate' };
 
@@ -56,6 +66,7 @@ function groupLifecycleDocument(options: {
   selectedKeyId?: string | null;
   cursorAppFrame?: number;
   sharedSourceOwner?: boolean;
+  sharedOverrideReference?: boolean;
 } = {}) {
   const records = [record('A', 0), record('B', 1)];
   const groupOverrideRecords = options.existingOverride ? [record('override-4', 0)] : [];
@@ -82,26 +93,30 @@ function groupLifecycleDocument(options: {
     visibleRanges,
     frameOverrides: options.existingOverride ? [{ appFrame: 0, keyId: 'override-4' }] : [],
   };
+  const secondaryGroup: PhysicPaintRotoLoopClip = {
+    loopId: 'group-shared',
+    placementStart: options.sharedOverrideReference ? 0 : 8,
+    sourceKeyIds: ['A', 'B'],
+    repeat: options.sharedOverrideReference ? 3 : 1,
+    mode: 'progressive',
+    scriptId: 'action-1',
+    motion: { deformation: 0, position: 0 },
+    overrideColor: null,
+    syncState: options.sharedOverrideReference ? 'modified' : 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: options.sharedOverrideReference ? 0 : 8,
+    originalEndExclusive: options.sharedOverrideReference ? 6 : 10,
+    visibleRanges: [{
+      start: options.sharedOverrideReference ? 0 : 8,
+      endExclusive: options.sharedOverrideReference ? 6 : 10,
+    }],
+    frameOverrides: options.sharedOverrideReference
+      ? [{ appFrame: 0, keyId: 'override-4' }]
+      : [],
+  };
   const loopClips: readonly PhysicPaintRotoLoopClip[] = options.sharedSourceOwner
-    ? [
-        primaryGroup,
-        {
-          loopId: 'group-shared',
-          placementStart: 8,
-          sourceKeyIds: ['A', 'B'],
-          repeat: 1,
-          mode: 'progressive',
-          scriptId: 'action-1',
-          motion: { deformation: 0, position: 0 },
-          overrideColor: null,
-          syncState: 'synchronized',
-          provenanceState: 'attached',
-          phaseOrigin: 8,
-          originalEndExclusive: 10,
-          visibleRanges: [{ start: 8, endExclusive: 10 }],
-          frameOverrides: [],
-        },
-      ]
+      || options.sharedOverrideReference
+    ? [primaryGroup, secondaryGroup]
     : [primaryGroup];
   return parsePhysicPaintRotoPhysicalDocument({
     capacity: 30,
@@ -167,6 +182,7 @@ function fixture() {
     records,
     intent,
     loopClips,
+    parentEndExclusive: 30,
     capacity: 30,
     interpolationEnabled: false,
   });
@@ -435,6 +451,7 @@ function harness(options: {
       records,
       intent,
       loopClips,
+      parentEndExclusive: 30,
       capacity: 30,
       interpolationEnabled: interpolation.enabled,
       incomingInterpolationBreakKeyIds,
@@ -490,6 +507,27 @@ function harness(options: {
     groupId: 'group-1',
     appFrame: currentFrame,
   });
+  const executeMoveGroup = (loopId: string, destinationPlacementStart: number) => {
+    const intent = { kind: 'move-group', loopId, destinationPlacementStart } as const;
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      intent,
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: interpolation.enabled,
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+    });
+    if (!resolution.ok) throw new Error(resolution.failure.text);
+    return coordinator.executePhysicalEdit({
+      proposal: resolution.proposal,
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      operationKind: 'move-group',
+      intent,
+      selectedKeyId: resolution.proposal.selectedKeyId,
+      selectedAppFrame: resolution.proposal.selectedAppFrame,
+    });
+  };
   const executeRegenerateGroup = () => {
     const currentDocument = getCanonicalDocument();
     const regeneratedRecords = currentDocument.realKeyRecords.map((entry) => (
@@ -604,6 +642,7 @@ function harness(options: {
       appliedFrameCount: payload.records.length,
       ok: true,
       semanticDelta: payload.semanticDelta,
+      historyProvenance: payload.historyProvenance,
       loopClips: payload.loopClips,
       incomingInterpolationBreakKeyIds: payload.incomingInterpolationBreakKeyIds,
       ...overrides,
@@ -624,6 +663,7 @@ function harness(options: {
     executeGroupPaint,
     executeDeleteGroupFrame,
     executeDeleteGroup,
+    executeMoveGroup,
     executeRegenerateGroup,
     executePlayScript,
     seedGroupDocument,
@@ -1262,6 +1302,828 @@ describe('Phase 43.2 Group Regenerate atomic settlement', () => {
         configurable: true,
       });
     }
+  });
+});
+
+function freshFiniteGroupDragHistoryDocument(externalKeyFrame = 10) {
+  const records = [record('A', 1), record('B', 2), record('C', 3), record('D', externalKeyFrame)];
+  const loopClips: readonly PhysicPaintRotoLoopClip[] = [{
+    loopId: 'group-history',
+    placementStart: 1,
+    sourceKeyIds: ['A', 'B', 'C'],
+    repeat: 2,
+    mode: 'progressive',
+    scriptId: 'action-history',
+    motion: { deformation: 3, position: 2 },
+    overrideColor: '#336699',
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: 1,
+    originalEndExclusive: 7,
+    visibleRanges: [{ start: 1, endExclusive: 7 }],
+    frameOverrides: [],
+  }];
+  return parsePhysicPaintRotoPhysicalDocument({
+    capacity: 30,
+    realKeyRecords: records,
+    groupOverrideRecords: [],
+    interpolation: INTERPOLATION,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame: 6,
+    revision: buildPhysicPaintRotoPhysicalRevision(records, INTERPOLATION, loopClips, [], []),
+    loopClips,
+    incomingInterpolationBreakKeyIds: [],
+  });
+}
+
+async function settleGroupRepeatThroughPublicController(
+  setupHarness: ReturnType<typeof harness>,
+  repeat: number | 'infinity',
+): Promise<Readonly<{
+  document: ReturnType<typeof parsePhysicPaintRotoPhysicalDocument>;
+  publication: RotoGeneratedPhysicalPublication;
+  settlementAcknowledged: boolean;
+}>> {
+  const beforeTransition = setupHarness.getCanonicalDocument();
+  const acceptedPublications: RotoGeneratedPhysicalPublication[] = [];
+  const snapshotAuthorityRevisions: string[] = [];
+  const loopAuthorityRepeats: Array<number | 'infinity' | null> = [];
+  const library = {
+    selectedId: signal<string | null>('action-history'),
+    selected: signal<{ id: string } | null>({ id: 'action-history' }),
+    busy: signal(false),
+    loadSnapshot: vi.fn(),
+  } as unknown as RotoPlayScriptControllerPorts['library'];
+  const commit = vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => {
+    if (publication.semanticDelta.kind !== 'play-script') throw new Error('Expected Loop Edit Play Script publication.');
+    acceptedPublications.push(publication);
+    const currentDocument = setupHarness.getCanonicalDocument();
+    expect(publication.expectedRevision).toBe(currentDocument.revision);
+    const executed = await setupHarness.coordinator.executePhysicalEdit({
+      operationKind: 'play-script',
+      expectedLaunch: publication.expectedLaunch,
+      expectedRevision: currentDocument.revision,
+      records: publication.records,
+      interpolationEnabled: publication.interpolationEnabled,
+      interpolationMode: publication.interpolationMode,
+      rotoBackground: publication.rotoBackground,
+      semanticDelta: publication.semanticDelta,
+      selectedKeyId: publication.selectedKeyId,
+      selectedAppFrame: publication.selectedAppFrame,
+      ...(publication.loopClips ? { loopClips: publication.loopClips } : {}),
+    });
+    if (!executed) throw new Error(`Coordinator rejected Loop Edit dispatch: ${JSON.stringify({ failure: setupHarness.coordinator.failureOutput.value, messages: setupHarness.setConciseMessage.mock.calls })}`);
+    expect(executed).toBe(true);
+    const acceptance = setupHarness.accept();
+    if (acceptance !== 'accepted') throw new Error(`Coordinator returned ${acceptance} for Loop Edit settlement.`);
+    expect(acceptance).toBe('accepted');
+    const accepted = setupHarness.coordinator.acceptedOutput.value;
+    if (!accepted) throw new Error('Expected accepted canonical Loop Edit settlement.');
+    expect(accepted.operationKind).toBe('play-script');
+    expect(setupHarness.coordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release')).toBe(true);
+    return {
+      ok: true,
+      operationId: accepted.operationId,
+      acceptedRevision: accepted.acceptedRevision,
+      records: accepted.after.records,
+      interpolationMode: accepted.after.interpolation.mode,
+      selectedKeyId: accepted.after.selectedKeyId,
+      selectedAppFrame: accepted.after.selectedAppFrame,
+      ...(publication.loopClips ? { loopClips: accepted.after.loopClips } : {}),
+    };
+  });
+  const controller = createRotoPlayScriptController({
+    library,
+    getLaunchContext: () => ({
+      operationId: 'launch-1',
+      layerId: 'layer-1',
+      startFrame: 1,
+      width: 10,
+      height: 10,
+      project: { name: 'Project', saved: true, contextId: 'project-1' },
+    }),
+    getSelection: () => ({ kind: 'empty', keyId: null, appFrame: setupHarness.getStudioSelection().cursorAppFrame }),
+    getMotion: () => ({ deformation: 3, position: 2 }),
+    getBrushColor: () => '#336699',
+    getBackgroundMetadata: () => ({ background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 }),
+    getOperationLocked: () => false,
+    getSize: () => ({ width: 10, height: 10 }),
+    getRotoLoopClips: () => {
+      const document = setupHarness.getCanonicalDocument();
+      loopAuthorityRepeats.push(document.loopClips[0]?.repeat ?? null);
+      return document.loopClips;
+    },
+    getLoopEditSnapshot: (placementStart) => {
+      const document = setupHarness.getCanonicalDocument();
+      snapshotAuthorityRevisions.push(document.revision);
+      return {
+        identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        physicalCapacity: document.capacity,
+        layerEndExclusive: 30,
+        interpolationEnabled: document.interpolation.enabled,
+        remainingCapacity: Math.max(0, 30 - placementStart),
+      };
+    },
+    requestAuthority: async (operationId) => {
+      const document = setupHarness.getCanonicalDocument();
+      const authority: PhysicPaintRotoAuthorityResult = {
+        operationId,
+        ok: true,
+        projectContextId: 'project-1',
+        layerId: 'layer-1',
+        canonicalStart: 1,
+        layerEndExclusive: 30,
+        capacity: 29,
+        physicalCapacity: document.capacity,
+        rotoRevision: document.revision,
+        physicalRevision: document.revision,
+        physicalRecords: document.realKeyRecords.map(({ keyId, appFrame, payload }) => ({ keyId, appFrame, payload })),
+        interpolationEnabled: document.interpolation.enabled,
+        interpolationMode: document.interpolation.mode,
+        frames: [],
+        interpolationSettings: {
+          enabled: false,
+          inBetweenCount: 0,
+          mode: 'duplicate',
+          deform: 0,
+          position: 0,
+        },
+      };
+      return authority;
+    },
+    commit,
+    stopPlayback: vi.fn(),
+    log: vi.fn(),
+  });
+  expect(await controller.openLoopEdit('group-history')).toEqual({ ok: true, reason: null });
+  if (repeat === 'infinity') {
+    controller.setInfinity(true);
+  } else {
+    controller.setInfinity(false);
+    controller.repeatText.value = String(repeat);
+  }
+  const confirmed = await controller.confirm();
+  if (!confirmed) throw new Error(controller.error.value ?? 'Expected Loop Edit confirmation to succeed.');
+  expect(confirmed).toBe(true);
+  expect(commit).toHaveBeenCalledTimes(1);
+  const publication = acceptedPublications[0];
+  if (!publication) throw new Error('Expected accepted Loop Edit publication.');
+  expect(publication.loopClips).toBeDefined();
+  expect(snapshotAuthorityRevisions).not.toHaveLength(0);
+  expect(snapshotAuthorityRevisions.every((revision) => revision === beforeTransition.revision)).toBe(true);
+  expect(loopAuthorityRepeats).toContain(beforeTransition.loopClips[0]?.repeat ?? null);
+  const document = setupHarness.getCanonicalDocument();
+  const accepted = setupHarness.coordinator.acceptedOutput.value;
+  expect(accepted?.after.records).toEqual(document.realKeyRecords);
+  expect(accepted?.after.incomingInterpolationBreakKeyIds).toEqual(document.incomingInterpolationBreakKeyIds);
+  expect(accepted?.after.loopClips).toEqual(document.loopClips);
+  expect(accepted?.acceptedRevision).toBe(document.revision);
+  expect(document.revision).toBe(buildPhysicPaintRotoPhysicalRevision(
+    document.realKeyRecords,
+    document.interpolation,
+    document.loopClips,
+    document.incomingInterpolationBreakKeyIds,
+    document.groupOverrideRecords,
+  ));
+  expect(document.loopClips[0]?.repeat).toBe(repeat);
+  return { document, publication, settlementAcknowledged: setupHarness.releaseLease.mock.calls.length > 0 };
+}
+
+async function spacingInfinityFiniteGroupDragHistoryDocument(
+  spacingHarness = harness(),
+) {
+  const fresh = freshFiniteGroupDragHistoryDocument(18);
+  const spacingIntent = {
+    kind: 'force-spacing',
+    emptyFrames: 2,
+    selectedKeyId: null,
+    scopeKeyIds: ['A', 'B', 'C'],
+    linkedSourceSpacingScopes: [{
+      sourceCycleId: getPhysicsPaintRotoSourceCycleId(['A', 'B', 'C']),
+      sourceKeyIds: ['A', 'B', 'C'],
+      selectedSourceKeyIds: ['A', 'B', 'C'],
+    }],
+  } as const;
+  const spacing = resolvePhysicPaintRotoPhysicalEdit({
+    identities: fresh.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+    records: fresh.realKeyRecords,
+    intent: spacingIntent,
+    parentEndExclusive: 30,
+    capacity: 30,
+    interpolationEnabled: false,
+    loopClips: fresh.loopClips,
+    incomingInterpolationBreakKeyIds: [],
+  });
+  if (!spacing.ok) throw new Error(spacing.failure.text);
+  spacingHarness.seedGroupDocument(fresh);
+  expect(await spacingHarness.coordinator.executePhysicalEdit({
+    proposal: spacing.proposal,
+    expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+    operationKind: 'force-spacing',
+    intent: spacingIntent,
+    selectedKeyId: spacing.proposal.selectedKeyId,
+    selectedAppFrame: spacing.proposal.selectedAppFrame,
+  })).toBe(true);
+  expect(spacingHarness.accept()).toBe('accepted');
+  const spacingAccepted = spacingHarness.coordinator.acceptedOutput.value;
+  if (!spacingAccepted) throw new Error('Expected accepted force-spacing settlement.');
+  const spacingOperationId = spacingHarness.getPayload()?.operationId;
+  if (!spacingOperationId) throw new Error('Expected force-spacing operation ID.');
+  expect(spacingHarness.coordinator.acknowledgePhysicalEditSettlement(spacingOperationId, 'release')).toBe(true);
+  expect(spacingHarness.releaseLease).toHaveBeenCalledTimes(1);
+  const spaced = spacingHarness.getCanonicalDocument();
+  expect(spacingAccepted.operationKind).toBe('force-spacing');
+  expect(spacingAccepted.after.records).toEqual(spaced.realKeyRecords);
+  expect(spacingAccepted.after.groupOverrideRecords).toEqual(spaced.groupOverrideRecords);
+  expect(spacingAccepted.after.interpolation).toEqual(spaced.interpolation);
+  expect(spacingAccepted.after.loopClips).toEqual(spaced.loopClips);
+  expect(spacingAccepted.after.incomingInterpolationBreakKeyIds).toEqual(spaced.incomingInterpolationBreakKeyIds);
+  expect(spacingAccepted.after.capacity).toBe(spaced.capacity);
+  expect(spacingAccepted.after.selectedKeyId).toBe(spaced.selectedKeyId);
+  expect(spacingAccepted.after.currentAppFrame).toBe(spaced.cursorAppFrame);
+  expect(spacingAccepted.acceptedRevision).toBe(spaced.revision);
+  expect(spaced.revision).toBe(buildPhysicPaintRotoPhysicalRevision(
+    spaced.realKeyRecords,
+    spaced.interpolation,
+    spaced.loopClips,
+    spaced.incomingInterpolationBreakKeyIds,
+    spaced.groupOverrideRecords,
+  ));
+  expect(spaced.loopClips[0]?.repeat).toBe(2);
+  expect(spaced.incomingInterpolationBreakKeyIds).toEqual([]);
+
+  const infinitySettlement = await settleGroupRepeatThroughPublicController(spacingHarness, 'infinity');
+  expect(spacingHarness.releaseLease).toHaveBeenCalledTimes(2);
+  expect(infinitySettlement.document.realKeyRecords).toEqual(spaced.realKeyRecords);
+  expect(infinitySettlement.document.incomingInterpolationBreakKeyIds).toEqual(spaced.incomingInterpolationBreakKeyIds);
+  const finiteSettlement = await settleGroupRepeatThroughPublicController(spacingHarness, 2);
+  expect(spacingHarness.releaseLease).toHaveBeenCalledTimes(3);
+  expect(finiteSettlement.document.realKeyRecords).toEqual(spaced.realKeyRecords);
+  expect(finiteSettlement.document.incomingInterpolationBreakKeyIds).toEqual(spaced.incomingInterpolationBreakKeyIds);
+  const document = spacingHarness.getCanonicalDocument();
+  expect(document).toEqual(finiteSettlement.document);
+  return {
+    document,
+    setupEvidence: {
+      spacingAccepted: true,
+      spacingSettlementAcknowledged: true,
+      spacedSourceFrames: document.realKeyRecords.filter((entry) => entry.keyId !== 'D').map((entry) => entry.appFrame),
+      infinityAccepted: infinitySettlement.publication.semanticDelta.kind === 'play-script',
+      infinitySettlementAcknowledged: infinitySettlement.settlementAcknowledged,
+      infinityRepeat: infinitySettlement.document.loopClips[0]?.repeat ?? null,
+      finiteAccepted: finiteSettlement.publication.semanticDelta.kind === 'play-script',
+      finiteSettlementAcknowledged: finiteSettlement.settlementAcknowledged,
+      finiteRepeat: finiteSettlement.document.loopClips[0]?.repeat ?? null,
+    },
+  };
+}
+
+function expectedMovedGroupDragHistoryDocument(
+  before: ReturnType<typeof freshFiniteGroupDragHistoryDocument>,
+) {
+  const movedRecords = before.realKeyRecords.map((entry) => (
+    entry.keyId === 'D' ? entry : record(entry.keyId, entry.appFrame + 1)
+  ));
+  const movedGroupOverrideRecords = (before.groupOverrideRecords ?? []).map((entry) => record(entry.keyId, entry.appFrame + 1));
+  const movedLoopClips = before.loopClips.map((clip) => ({
+    ...clip,
+    placementStart: clip.placementStart + 1,
+    phaseOrigin: (clip.phaseOrigin ?? clip.placementStart) + 1,
+    originalEndExclusive: (clip.originalEndExclusive ?? clip.placementStart) + 1,
+    visibleRanges: clip.visibleRanges?.map((range) => ({
+      start: range.start + 1,
+      endExclusive: range.endExclusive + 1,
+    })),
+    frameOverrides: clip.frameOverrides?.map((override) => ({
+      appFrame: override.appFrame + 1,
+      keyId: override.keyId,
+    })),
+  }));
+  return parsePhysicPaintRotoPhysicalDocument({
+    ...before,
+    realKeyRecords: movedRecords,
+    groupOverrideRecords: movedGroupOverrideRecords,
+    selectedKeyId: null,
+    cursorAppFrame: before.cursorAppFrame,
+    revision: buildPhysicPaintRotoPhysicalRevision(
+      movedRecords,
+      before.interpolation,
+      movedLoopClips,
+      ['D'],
+      movedGroupOverrideRecords,
+    ),
+    loopClips: movedLoopClips,
+    incomingInterpolationBreakKeyIds: ['D'],
+  });
+}
+
+function attachGroupReplayHistory(test: ReturnType<typeof harness>) {
+  const availability = signal({ undo: 0, redo: 0 });
+  const history = useRotoPhysicalEditHistory({
+    identity: {
+      launchOperationId: 'launch-1',
+      layerId: 'layer-1',
+      projectContextId: 'project-1',
+      capacity: 30,
+    },
+    availability,
+    coordinator: test.coordinator,
+    recordsPort: {
+      getRecords: () => test.getRecords(),
+      getInterpolation: () => test.getCanonicalDocument().interpolation,
+      getCapacity: () => 30,
+      getLoopClips: () => test.getLoopClips(),
+      getIncomingInterpolationBreakKeyIds: () => test.getIncomingInterpolationBreakKeyIds(),
+      replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+      replaceLoopClips: () => ({ ok: true }),
+      replaceRecords: () => ({ ok: true }),
+    },
+    getLiveSourceSnapshot: () => {
+      const document = test.getCanonicalDocument();
+      const liveSelection = test.getStudioSelection();
+      const selectedRecord = liveSelection.selectedKeyId === null
+        ? null
+        : document.realKeyRecords.find((entry) => entry.keyId === liveSelection.selectedKeyId) ?? null;
+      return {
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        records: document.realKeyRecords,
+        groupOverrideRecords: document.groupOverrideRecords ?? [],
+        interpolation: document.interpolation,
+        loopClips: document.loopClips,
+        incomingInterpolationBreakKeyIds: document.incomingInterpolationBreakKeyIds,
+        capacity: document.capacity,
+        selectedKeyId: selectedRecord?.keyId ?? null,
+        selectedAppFrame: selectedRecord?.appFrame ?? null,
+        currentAppFrame: liveSelection.cursorAppFrame,
+      };
+    },
+    undoPaint: () => false,
+    redoPaint: () => false,
+  });
+  return { history, availability };
+}
+
+describe('Phase 43.3 Group Rail drag canonical history controls', () => {
+  it('traverses the real spacing, Infinity, finite, and Group move commands in one durable ledger', async () => {
+    const test = harness();
+    const { history, availability } = attachGroupReplayHistory(test);
+    const setup = await spacingInfinityFiniteGroupDragHistoryDocument(test);
+
+    expect(availability.value).toEqual({ undo: 3, redo: 0 });
+    expect(await test.executeMoveGroup('group-history', 2)).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const moveOperationId = test.getPayload()?.operationId;
+    if (!moveOperationId) throw new Error('Expected accepted move operation ID.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(moveOperationId, 'release')).toBe(true);
+    expect(availability.value).toEqual({ undo: 4, redo: 0 });
+
+    const ordinaryCommands = test.acceptedEvents.filter((event) => event.operationKind !== 'undo' && event.operationKind !== 'redo');
+    expect(ordinaryCommands.map((event) => event.operationKind)).toEqual([
+      'force-spacing',
+      'play-script',
+      'play-script',
+      'move-group',
+    ]);
+    expect(new Set(ordinaryCommands.map((event) => event.operationId)).size).toBe(4);
+
+    for (let index = ordinaryCommands.length - 1; index >= 0; index -= 1) {
+      const command = ordinaryCommands[index]!;
+      const beforeDispatch = availability.value;
+      expect(await history.undo(), `Undo command ${command.operationKind}:${command.operationId}`).toBe(true);
+      const replayPayload = test.getPayload();
+      expect(replayPayload?.historyProvenance).toEqual({
+        historyCommandId: command.operationId,
+        historyDirection: 'undo',
+        sourceRevision: command.acceptedRevision,
+        targetRevision: command.before.expectedRevision,
+      });
+      expect(replayPayload?.cursorAppFrame).toBe(command.before.currentAppFrame);
+      expect(availability.value).toEqual(beforeDispatch);
+      expect(test.accept()).toBe('accepted');
+      expect(availability.value).toEqual({ undo: index, redo: ordinaryCommands.length - index });
+      const replayOperationId = replayPayload?.operationId;
+      if (!replayOperationId) throw new Error('Expected Undo replay operation ID.');
+      expect(test.coordinator.acknowledgePhysicalEditSettlement(replayOperationId, 'release')).toBe(true);
+      expect(availability.value).toEqual({ undo: index, redo: ordinaryCommands.length - index });
+    }
+
+    expect(test.getCanonicalDocument()).toEqual(freshFiniteGroupDragHistoryDocument(18));
+    expect(await history.undo()).toBe(false);
+    expect(availability.value).toEqual({ undo: 0, redo: 4 });
+    expect(test.sendPhysicalEditPayload).toHaveBeenCalledTimes(8);
+
+    for (let index = 0; index < ordinaryCommands.length; index += 1) {
+      const command = ordinaryCommands[index]!;
+      expect(await history.redo(), `Redo command ${command.operationKind}:${command.operationId}`).toBe(true);
+      const replayPayload = test.getPayload();
+      expect(replayPayload?.historyProvenance).toEqual({
+        historyCommandId: command.operationId,
+        historyDirection: 'redo',
+        sourceRevision: command.before.expectedRevision,
+        targetRevision: command.acceptedRevision,
+      });
+      expect(test.accept()).toBe('accepted');
+      const replayOperationId = replayPayload?.operationId;
+      if (!replayOperationId) throw new Error('Expected Redo replay operation ID.');
+      expect(test.coordinator.acknowledgePhysicalEditSettlement(replayOperationId, 'release')).toBe(true);
+      expect(availability.value).toEqual({ undo: index + 1, redo: ordinaryCommands.length - index - 1 });
+    }
+
+    expect(test.getCanonicalDocument()).toEqual(expectedMovedGroupDragHistoryDocument(setup.document));
+    expect(await history.redo()).toBe(false);
+    expect(availability.value).toEqual({ undo: 4, redo: 0 });
+    expect(test.sendPhysicalEditPayload).toHaveBeenCalledTimes(12);
+  });
+  it('bounds Group move history at ten commands and exhausts Undo and Redo without dispatch', async () => {
+    const test = harness();
+    test.seedGroupDocument(freshFiniteGroupDragHistoryDocument(24));
+    const { history, availability } = attachGroupReplayHistory(test);
+    type BoundedHistoryState = Readonly<{
+      document: ReturnType<typeof test.getCanonicalDocument>;
+      canonicalSelection: ReturnType<typeof test.getCanonicalSelection>;
+      studioSelection: ReturnType<typeof test.getStudioSelection>;
+    }>;
+    let retainedPostFirstMove: BoundedHistoryState | null = null;
+    let finalEleventhMove: BoundedHistoryState | null = null;
+
+    for (let index = 0; index < 11; index += 1) {
+      expect(await test.executeMoveGroup('group-history', index + 2)).toBe(true);
+      expect(test.accept()).toBe('accepted');
+      const operationId = test.getPayload()?.operationId;
+      if (!operationId) throw new Error('Expected accepted bounded move operation ID.');
+      expect(test.coordinator.acknowledgePhysicalEditSettlement(operationId, 'release')).toBe(true);
+      const acceptedState = {
+        document: test.getCanonicalDocument(),
+        canonicalSelection: test.getCanonicalSelection(),
+        studioSelection: test.getStudioSelection(),
+      };
+      if (index === 0) retainedPostFirstMove = acceptedState;
+      if (index === 10) finalEleventhMove = acceptedState;
+    }
+    if (!retainedPostFirstMove || !finalEleventhMove) throw new Error('Expected retained and final bounded history states.');
+    expect(retainedPostFirstMove.document).not.toEqual(finalEleventhMove.document);
+    expect(availability.value).toEqual({ undo: 10, redo: 0 });
+    const ordinaryCommands = test.acceptedEvents.filter((event) => event.operationKind === 'move-group');
+    expect(ordinaryCommands).toHaveLength(11);
+    expect(new Set(ordinaryCommands.map((event) => event.operationId)).size).toBe(11);
+
+    for (let index = 0; index < 10; index += 1) {
+      const command = ordinaryCommands[10 - index]!;
+      expect(await history.undo()).toBe(true);
+      const replayPayload = test.getPayload();
+      expect(replayPayload?.historyProvenance).toEqual({
+        historyCommandId: command.operationId,
+        historyDirection: 'undo',
+        sourceRevision: command.acceptedRevision,
+        targetRevision: command.before.expectedRevision,
+      });
+      expect(test.accept()).toBe('accepted');
+      const operationId = replayPayload?.operationId;
+      if (!operationId) throw new Error('Expected bounded Undo operation ID.');
+      expect(test.coordinator.acknowledgePhysicalEditSettlement(operationId, 'release')).toBe(true);
+      expect(availability.value).toEqual({ undo: 9 - index, redo: index + 1 });
+    }
+    expect(test.getCanonicalDocument()).toEqual(retainedPostFirstMove.document);
+    expect(test.getCanonicalDocument().loopClips).toEqual(retainedPostFirstMove.document.loopClips);
+    expect(test.getCanonicalDocument().incomingInterpolationBreakKeyIds).toEqual(retainedPostFirstMove.document.incomingInterpolationBreakKeyIds);
+    expect(test.getCanonicalDocument().revision).toBe(retainedPostFirstMove.document.revision);
+    expect(test.getCanonicalSelection()).toEqual(retainedPostFirstMove.canonicalSelection);
+    expect(test.getStudioSelection()).toEqual(retainedPostFirstMove.studioSelection);
+    expect(availability.value).toEqual({ undo: 0, redo: 10 });
+    const retainedAfterUndo = test.getCanonicalDocument();
+    const retainedCanonicalSelection = test.getCanonicalSelection();
+    const retainedStudioSelection = test.getStudioSelection();
+    const afterUndoDispatches = test.sendPhysicalEditPayload.mock.calls.length;
+    expect(await history.undo()).toBe(false);
+    expect(test.sendPhysicalEditPayload).toHaveBeenCalledTimes(afterUndoDispatches);
+    expect(test.getCanonicalDocument()).toEqual(retainedAfterUndo);
+    expect(test.getCanonicalSelection()).toEqual(retainedCanonicalSelection);
+    expect(test.getStudioSelection()).toEqual(retainedStudioSelection);
+    expect(availability.value).toEqual({ undo: 0, redo: 10 });
+
+    for (let index = 0; index < 10; index += 1) {
+      const command = ordinaryCommands[index + 1]!;
+      expect(await history.redo()).toBe(true);
+      const replayPayload = test.getPayload();
+      expect(replayPayload?.historyProvenance).toEqual({
+        historyCommandId: command.operationId,
+        historyDirection: 'redo',
+        sourceRevision: command.before.expectedRevision,
+        targetRevision: command.acceptedRevision,
+      });
+      expect(test.accept()).toBe('accepted');
+      const operationId = replayPayload?.operationId;
+      if (!operationId) throw new Error('Expected bounded Redo operation ID.');
+      expect(test.coordinator.acknowledgePhysicalEditSettlement(operationId, 'release')).toBe(true);
+      expect(availability.value).toEqual({ undo: index + 1, redo: 9 - index });
+    }
+    expect(test.getCanonicalDocument()).toEqual(finalEleventhMove.document);
+    expect(test.getCanonicalDocument().loopClips).toEqual(finalEleventhMove.document.loopClips);
+    expect(test.getCanonicalDocument().incomingInterpolationBreakKeyIds).toEqual(finalEleventhMove.document.incomingInterpolationBreakKeyIds);
+    expect(test.getCanonicalDocument().revision).toBe(finalEleventhMove.document.revision);
+    expect(test.getCanonicalSelection()).toEqual(finalEleventhMove.canonicalSelection);
+    expect(test.getStudioSelection()).toEqual(finalEleventhMove.studioSelection);
+    expect(availability.value).toEqual({ undo: 10, redo: 0 });
+    const retainedAfterRedo = test.getCanonicalDocument();
+    const finalCanonicalSelection = test.getCanonicalSelection();
+    const finalStudioSelection = test.getStudioSelection();
+    const afterRedoDispatches = test.sendPhysicalEditPayload.mock.calls.length;
+    expect(await history.redo()).toBe(false);
+    expect(test.sendPhysicalEditPayload).toHaveBeenCalledTimes(afterRedoDispatches);
+    expect(test.getCanonicalDocument()).toEqual(retainedAfterRedo);
+    expect(test.getCanonicalSelection()).toEqual(finalCanonicalSelection);
+    expect(test.getStudioSelection()).toEqual(finalStudioSelection);
+    expect(availability.value).toEqual({ undo: 10, redo: 0 });
+  });
+
+  it('truncates the Redo branch after Undo followed by a newly accepted Group move', async () => {
+    const test = harness();
+    test.seedGroupDocument(freshFiniteGroupDragHistoryDocument());
+    const { history, availability } = attachGroupReplayHistory(test);
+
+    for (const destination of [2, 3]) {
+      expect(await test.executeMoveGroup('group-history', destination)).toBe(true);
+      expect(test.accept()).toBe('accepted');
+      const operationId = test.getPayload()?.operationId;
+      if (!operationId) throw new Error('Expected branch setup operation ID.');
+      expect(test.coordinator.acknowledgePhysicalEditSettlement(operationId, 'release')).toBe(true);
+    }
+    expect(await history.undo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const undoOperationId = test.getPayload()?.operationId;
+    if (!undoOperationId) throw new Error('Expected branch Undo operation ID.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(undoOperationId, 'release')).toBe(true);
+    expect(availability.value).toEqual({ undo: 1, redo: 1 });
+
+    expect(await test.executeMoveGroup('group-history', 4)).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const branchOperationId = test.getPayload()?.operationId;
+    if (!branchOperationId) throw new Error('Expected new branch operation ID.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(branchOperationId, 'release')).toBe(true);
+    expect(availability.value).toEqual({ undo: 2, redo: 0 });
+    const dispatches = test.sendPhysicalEditPayload.mock.calls.length;
+    expect(await history.redo()).toBe(false);
+    expect(test.sendPhysicalEditPayload).toHaveBeenCalledTimes(dispatches);
+  });
+
+  it('keeps document, selection, caches, and history unchanged when replay is rejected', async () => {
+    const test = harness();
+    test.seedGroupDocument(freshFiniteGroupDragHistoryDocument());
+    const { history, availability } = attachGroupReplayHistory(test);
+    expect(await test.executeMoveGroup('group-history', 2)).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const moveOperationId = test.getPayload()?.operationId;
+    if (!moveOperationId) throw new Error('Expected rejection setup operation ID.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(moveOperationId, 'release')).toBe(true);
+
+    const beforeDocument = test.getCanonicalDocument();
+    const beforeSelection = test.getStudioSelection();
+    const beforeCaches = test.getCacheFacts();
+    const beforeOrdinaryCount = test.acceptedEvents.filter((event) => event.operationKind !== 'undo' && event.operationKind !== 'redo').length;
+    expect(await history.undo()).toBe(true);
+    expect(test.reject()).toBe('accepted');
+
+    expect(test.getCanonicalDocument()).toEqual(beforeDocument);
+    expect(test.getStudioSelection()).toEqual(beforeSelection);
+    expect(test.getCacheFacts()).toEqual(beforeCaches);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(test.acceptedEvents.filter((event) => event.operationKind !== 'undo' && event.operationKind !== 'redo')).toHaveLength(beforeOrdinaryCount);
+  });
+
+  it.each([
+    { control: 'A', variant: 'finite', description: 'fresh finite Group without Infinity or Key Spacing' },
+    { control: 'B', variant: 'spacing-infinity-finite', description: 'Key Spacing to Infinity to finite Group' },
+  ] as const)('control $control restores and reapplies the complete $description move as one command', async ({ variant }) => {
+    const test = harness();
+    const setup = variant === 'finite'
+      ? { document: freshFiniteGroupDragHistoryDocument(), setupEvidence: null }
+      : await spacingInfinityFiniteGroupDragHistoryDocument();
+    const before = setup.document;
+    const expectedAfter = expectedMovedGroupDragHistoryDocument(before);
+    test.seedGroupDocument(before);
+    const selectedLoopClipIds = signal<readonly string[]>(['group-history']);
+    const selectedLoopClipId = signal<string | null>('group-history');
+    const selectedKeyIds = signal<readonly string[]>([]);
+    const selectionAnchorKeyId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const settleStudioSelection = () => {
+      const accepted = test.coordinator.acceptedOutput.value;
+      if (!accepted) throw new Error('Expected accepted settlement output.');
+      const next = resolvePostAcceptanceRotoStudioSelection({
+        selectedLoopClipIds: selectedLoopClipIds.peek(),
+        selectedLoopClipId: selectedLoopClipId.peek(),
+        operationKind: accepted.operationKind,
+        acceptedSelectedKeyId: accepted.after.selectedKeyId,
+        keySelection: { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() },
+        currentKeyId: accepted.after.selectedKeyId,
+        acceptedAddedKeyIds: [],
+      });
+      selectedLoopClipIds.value = next.selectedLoopClipIds;
+      selectedLoopClipId.value = next.selectedLoopClipId;
+      selectedKeyIds.value = next.keySelection.selectedKeyIds;
+      selectionAnchorKeyId.value = next.keySelection.anchorKeyId;
+    };
+    const history = useRotoPhysicalEditHistory({
+      identity: {
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 30,
+      },
+      availability,
+      coordinator: test.coordinator,
+      recordsPort: {
+        getRecords: () => test.getRecords(),
+        getInterpolation: () => test.getCanonicalDocument().interpolation,
+        getCapacity: () => 30,
+        getLoopClips: () => test.getLoopClips(),
+        getIncomingInterpolationBreakKeyIds: () => test.getIncomingInterpolationBreakKeyIds(),
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => {
+        const document = test.getCanonicalDocument();
+        const liveSelection = test.getStudioSelection();
+        const selectedRecord = liveSelection.selectedKeyId === null
+          ? null
+          : document.realKeyRecords.find((entry) => entry.keyId === liveSelection.selectedKeyId) ?? null;
+        return {
+          launchOperationId: 'launch-1',
+          layerId: 'layer-1',
+          projectContextId: 'project-1',
+          records: document.realKeyRecords,
+          groupOverrideRecords: document.groupOverrideRecords ?? [],
+          interpolation: document.interpolation,
+          loopClips: document.loopClips,
+          incomingInterpolationBreakKeyIds: document.incomingInterpolationBreakKeyIds,
+          capacity: document.capacity,
+          selectedKeyId: selectedRecord?.keyId ?? null,
+          selectedAppFrame: selectedRecord?.appFrame ?? null,
+          currentAppFrame: liveSelection.cursorAppFrame,
+        };
+      },
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    expect(test.getCanonicalDocument()).toEqual(before);
+    expect(before.groupOverrideRecords).toEqual([]);
+    expect(before.loopClips[0]?.frameOverrides).toEqual([]);
+    expect(before.loopClips[0]?.repeat).toBe(2);
+    expect(before.incomingInterpolationBreakKeyIds).toEqual([]);
+    expect(availability.value).toEqual({ undo: 0, redo: 0 });
+    if (variant === 'finite') {
+      expect(before.realKeyRecords.filter((entry) => entry.keyId !== 'D').map((entry) => entry.appFrame)).toEqual([1, 2, 3]);
+      expect(setup.setupEvidence).toBeNull();
+    } else {
+      expect(setup.setupEvidence).toEqual({
+        spacingAccepted: true,
+        spacingSettlementAcknowledged: true,
+        spacedSourceFrames: [1, 4, 7],
+        infinityAccepted: true,
+        infinitySettlementAcknowledged: true,
+        infinityRepeat: 'infinity',
+        finiteAccepted: true,
+        finiteSettlementAcknowledged: true,
+        finiteRepeat: 2,
+      });
+    }
+    expect(selectedLoopClipIds.value).toEqual(['group-history']);
+    expect(selectedLoopClipId.value).toBe('group-history');
+    expect(selectedKeyIds.value).toEqual([]);
+    expect(selectionAnchorKeyId.value).toBeNull();
+    expect(test.getCurrentFrame()).toBe(6);
+
+    expect(await test.executeMoveGroup('group-history', 2)).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    settleStudioSelection();
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(selectedLoopClipIds.value).toEqual(['group-history']);
+    expect(selectedLoopClipId.value).toBe('group-history');
+    expect(selectedKeyIds.value).toEqual([]);
+    expect(selectionAnchorKeyId.value).toBeNull();
+    expect(test.getCurrentFrame()).toBe(6);
+    const moveOperationId = test.getPayload()?.operationId;
+    if (!moveOperationId) throw new Error('Expected accepted move operation ID.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(moveOperationId, 'release')).toBe(true);
+    const afterMove = test.getCanonicalDocument();
+
+    expect(await history.undo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    settleStudioSelection();
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+    expect(selectedLoopClipIds.value).toEqual(['group-history']);
+    expect(selectedLoopClipId.value).toBe('group-history');
+    expect(selectedKeyIds.value).toEqual([]);
+    expect(selectionAnchorKeyId.value).toBeNull();
+    expect(test.getCurrentFrame()).toBe(6);
+    const undoOperationId = test.getPayload()?.operationId;
+    if (!undoOperationId) throw new Error('Expected accepted Undo operation ID.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(undoOperationId, 'release')).toBe(true);
+    const afterUndo = test.getCanonicalDocument();
+
+    expect(await history.redo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    settleStudioSelection();
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(selectedLoopClipIds.value).toEqual(['group-history']);
+    expect(selectedLoopClipId.value).toBe('group-history');
+    expect(selectedKeyIds.value).toEqual([]);
+    expect(selectionAnchorKeyId.value).toBeNull();
+    expect(test.getCurrentFrame()).toBe(6);
+    const redoOperationId = test.getPayload()?.operationId;
+    if (!redoOperationId) throw new Error('Expected accepted Redo operation ID.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(redoOperationId, 'release')).toBe(true);
+    const afterRedo = test.getCanonicalDocument();
+
+    expect.soft(afterMove).toEqual(expectedAfter);
+    expect.soft(afterUndo).toEqual(before);
+    expect.soft(afterRedo).toEqual(expectedAfter);
+    expect.soft(expectedAfter.incomingInterpolationBreakKeyIds).toEqual(['D']);
+  });
+});
+
+describe('Phase 43.3 move-group override publication', () => {
+  it('translates the canonical matching override record with its moved Group reference', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument({ existingOverride: true, cursorAppFrame: 4 });
+    test.seedGroupDocument(before);
+    const originalOverride = before.groupOverrideRecords?.[0];
+    if (!originalOverride) throw new Error('Expected canonical Group override record.');
+
+    expect(await test.executeMoveGroup('group-1', 3)).toBe(true);
+    expect(test.getPayload()).toMatchObject({
+      operationKind: 'move-group',
+      groupOverrideRecords: [{
+        keyId: originalOverride.keyId,
+        appFrame: 3,
+        payload: {
+          ...originalOverride.payload,
+          appFrame: 3,
+        },
+      }],
+      loopClips: [expect.objectContaining({
+        loopId: 'group-1',
+        frameOverrides: [{ appFrame: 3, keyId: originalOverride.keyId }],
+      })],
+    });
+
+    expect(test.accept()).toBe('accepted');
+    expect(test.getGroupOverrideRecords()).toEqual([{
+      ...originalOverride,
+      appFrame: 3,
+      payload: { ...originalOverride.payload, appFrame: 3 },
+    }]);
+  });
+
+  it('fails closed before publication when another Group references the moved override payload', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument({
+      existingOverride: true,
+      sharedOverrideReference: true,
+      cursorAppFrame: 4,
+    });
+    test.seedGroupDocument(before);
+    const intent = {
+      kind: 'move-group',
+      loopId: 'group-1',
+      destinationPlacementStart: 3,
+    } as const;
+    const isolatedResolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: before.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      intent,
+      parentEndExclusive: before.capacity,
+      capacity: before.capacity,
+      interpolationEnabled: before.interpolation.enabled,
+      loopClips: [before.loopClips[0]],
+      incomingInterpolationBreakKeyIds: before.incomingInterpolationBreakKeyIds,
+    });
+    if (!isolatedResolution.ok) throw new Error(isolatedResolution.failure.text);
+    const movedPrimary = isolatedResolution.proposal.nextLoopClips?.[0];
+    if (!movedPrimary) throw new Error('Expected moved primary Group.');
+    const proposal = {
+      ...isolatedResolution.proposal,
+      nextLoopClips: [movedPrimary, before.loopClips[1]],
+    };
+
+    expect(await test.coordinator.executePhysicalEdit({
+      proposal,
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      operationKind: 'move-group',
+      intent,
+      selectedKeyId: proposal.selectedKeyId,
+      selectedAppFrame: proposal.selectedAppFrame,
+    })).toBe(false);
+    expect(test.sendPhysicalEditPayload).not.toHaveBeenCalled();
+    expect(test.coordinator.acceptedOutput.value).toBeNull();
+    expect(test.getRecords()).toEqual(before.realKeyRecords);
+    expect(test.getGroupOverrideRecords()).toEqual(before.groupOverrideRecords);
+    expect(test.getLoopClips()).toEqual(before.loopClips);
   });
 });
 

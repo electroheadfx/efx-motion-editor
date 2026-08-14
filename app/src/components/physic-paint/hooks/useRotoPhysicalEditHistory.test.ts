@@ -169,6 +169,7 @@ describe('useRotoPhysicalEditHistory ordinary-key delete beside Groups', () => {
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
       intent: { kind: 'delete-key', selectedKeyId: 'X' },
+      parentEndExclusive: 100,
       capacity: 100,
       interpolationEnabled: false,
       loopClips,
@@ -722,6 +723,135 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
   });
 
+  it('restores and reapplies an actual Infinity Group move through Undo and Redo', async () => {
+    const beforeRecords = [
+      record('A', 10),
+      record('B', 12),
+      record('N', 30),
+      record('O', 31),
+    ];
+    const beforeLoop: PhysicPaintRotoLoopClip = {
+      loopId: 'infinity-move-history',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 'infinity',
+      mode: 'static',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 10, endExclusive: 25 }],
+      frameOverrides: [],
+    };
+    const nextLoop: PhysicPaintRotoLoopClip = {
+      loopId: 'infinity-move-history-next',
+      placementStart: 30,
+      sourceKeyIds: ['N', 'O'],
+      repeat: 2,
+      mode: 'static',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 30,
+      originalEndExclusive: 34,
+      visibleRanges: [{ start: 30, endExclusive: 34 }],
+      frameOverrides: [],
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: beforeRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records: beforeRecords,
+      loopClips: [beforeLoop, nextLoop],
+      parentEndExclusive: 40,
+      capacity: 100,
+      interpolationEnabled: false,
+      intent: {
+        kind: 'move-group',
+        loopId: beforeLoop.loopId,
+        destinationPlacementStart: 8,
+      },
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error(resolution.failure.text);
+
+    const afterRecords = beforeRecords.map((entry) => {
+      const appFrame = resolution.proposal.mapping.get(entry.keyId) ?? entry.appFrame;
+      return { ...entry, appFrame, payload: { ...entry.payload, appFrame } };
+    });
+    const afterLoopClips = resolution.proposal.nextLoopClips ?? [beforeLoop, nextLoop];
+    const before = spacingSnapshot(beforeRecords, [beforeLoop, nextLoop], 'A', 10);
+    const after = spacingSnapshot(
+      afterRecords,
+      afterLoopClips,
+      resolution.proposal.selectedKeyId,
+      resolution.proposal.selectedAppFrame,
+    );
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    let current = after;
+    let replayNumber = 0;
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      const source = current;
+      current = target;
+      replayNumber += 1;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
+          target.records,
+          target.interpolation,
+          target.loopClips,
+          target.incomingInterpolationBreakKeyIds,
+        ),
+        operationId: `infinity-move-replay-${replayNumber}`,
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+    const history = useRotoPhysicalEditHistory({
+      identity: {
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 100,
+      },
+      availability,
+      coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => current.records,
+        getInterpolation: () => current.interpolation,
+        getCapacity: () => current.capacity,
+        getLoopClips: () => current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => current,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: after.stagedRevision,
+      operationId: 'move-group-infinity-accepted',
+      operationKind: 'move-group',
+      historyProvenance: null,
+    };
+
+    expect(current.records).toEqual(afterRecords);
+    expect(current.loopClips).toEqual(afterLoopClips);
+    expect(await history.undo()).toBe(true);
+    expect(current).toEqual(before);
+    expect(await history.redo()).toBe(true);
+    expect(current).toEqual(after);
+    expect(executePhysicalEdit.mock.calls.map(([input]) => input.operationKind)).toEqual(['undo', 'redo']);
+  });
+
   it('records resolver-complete force spacing once and restores exact Repeat 3 lifecycle through Undo and Redo', async () => {
     const beforeRecords = [record('A', 10), record('B', 11), record('C', 12)];
     const beforeLoop: PhysicPaintRotoLoopClip = {
@@ -744,6 +874,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
       identities: beforeRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records: beforeRecords,
       loopClips: [beforeLoop],
+      parentEndExclusive: 100,
       capacity: 100,
       interpolationEnabled: false,
       intent: {

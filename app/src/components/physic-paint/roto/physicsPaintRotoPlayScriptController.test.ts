@@ -17,18 +17,32 @@ import {
 vi.mock('preact/hooks', () => ({
   useCallback: <Value>(callback: Value) => callback,
   useEffect: (setup: () => void | (() => void)) => setup(),
+  useMemo: <Value>(factory: () => Value) => factory(),
   useRef: <Value>(value: Value) => ({ current: value }),
 }));
 
 import type { PhysicPaintRotoRealKeyRecord, PhysicPaintRotoLoopClip } from './physicsPaintRotoPhysicalModel';
-import { buildPhysicPaintRotoPhysicalRevision } from './physicsPaintRotoPhysicalModel';
-import { derivePhysicPaintRotoLoopRanges } from './physicsPaintRotoPhysicalResolver';
+import {
+  buildPhysicPaintRotoPhysicalRevision,
+  parsePhysicPaintRotoPhysicalDocument,
+} from './physicsPaintRotoPhysicalModel';
+import {
+  derivePhysicPaintRotoLoopRanges,
+  resolvePhysicPaintRotoLoopFrame,
+  resolvePhysicPaintRotoPhysicalEdit,
+  type PhysicPaintRotoPhysicalEditProposal,
+} from './physicsPaintRotoPhysicalResolver';
+import { getPhysicsPaintRotoSourceCycleId } from './physicsPaintRotoSpacingSelection';
 import type {
   RotoPhysicalEditAcceptedOutput,
   RotoPhysicalEditExecuteInput,
   RotoPhysicalEditSnapshot,
 } from './rotoCoordinatorPorts';
 import { useRotoPhysicalEditHistory } from '../hooks/useRotoPhysicalEditHistory';
+import {
+  useRotoTimelineActions,
+  type RotoTimelineActionsInput,
+} from '../hooks/useRotoTimelineActions';
 
 const rendered = vi.hoisted(() => vi.fn());
 vi.mock('./physicsPaintRotoPlayScriptRenderer', () => ({ renderRotoPlayScriptFrames: rendered }));
@@ -1144,7 +1158,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       physicalCapacity: localAuthority.physicalCapacity,
       layerEndExclusive: localAuthority.layerEndExclusive,
       interpolationEnabled: localAuthority.interpolationEnabled,
-      remainingCapacity: Math.max(0, localAuthority.physicalCapacity - placementStart),
+      remainingCapacity: Math.max(0, localAuthority.layerEndExclusive - placementStart),
     }));
     const commit = vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
       ok: true,
@@ -1513,6 +1527,601 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         originalEndExclusive: expectedEnd,
         visibleRanges: expectedRanges,
       }]);
+    });
+
+    it('rebuilds lifecycle authority through the accepted boundary when a finite Modified Group changes to Infinity', async () => {
+      const beforeGroup: PhysicPaintRotoLoopClip = {
+        ...lifecycleLoopClip(10, 3),
+        syncState: 'modified',
+        visibleRanges: [{ start: 10, endExclusive: 17 }, { start: 18, endExclusive: 25 }],
+        frameOverrides: [{ appFrame: 14, keyId: 'override-14' }],
+      };
+      const nextGroup = loopClip('L2', 30, 2);
+      const test = loopOpHarness([beforeGroup, nextGroup]);
+
+      expect(await test.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+      test.controller.setInfinity(true);
+      expect(await test.controller.confirm()).toBe(true);
+
+      const publication = test.commit.mock.calls[0][0];
+      expect(publication.loopClips).toEqual([{
+        ...beforeGroup,
+        repeat: 'infinity',
+        originalEndExclusive: 30,
+        visibleRanges: [{ start: 10, endExclusive: 17 }, { start: 18, endExclusive: 30 }],
+      }, nextGroup]);
+      const context = derivePhysicPaintRotoLoopRanges({
+        identities: publication.records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        loopClips: publication.loopClips ?? [],
+        parentEndExclusive: 40,
+        capacity: 600,
+        interpolationEnabled: false,
+      });
+      expect(resolvePhysicPaintRotoLoopFrame(context, 17).kind).toBe('empty');
+      expect(resolvePhysicPaintRotoLoopFrame(context, 29).kind).not.toBe('empty');
+      const targetRanges = context.ranges.filter((range) => range.loopId === 'L1');
+      expect(targetRanges[targetRanges.length - 1]?.effectiveEnd).toBe(30);
+    });
+
+    it('preserves a genuine deleted tail when a finite Modified Group changes to Infinity', async () => {
+      const beforeGroup: PhysicPaintRotoLoopClip = {
+        ...lifecycleLoopClip(10, 3),
+        syncState: 'modified',
+        visibleRanges: [{ start: 10, endExclusive: 22 }],
+      };
+      const nextGroup = loopClip('L2', 24, 2);
+      const test = loopOpHarness([beforeGroup, nextGroup]);
+
+      expect(await test.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+      test.controller.setInfinity(true);
+      expect(await test.controller.confirm()).toBe(true);
+
+      const publication = test.commit.mock.calls[0][0];
+      const expectedGroup: PhysicPaintRotoLoopClip = {
+        ...beforeGroup,
+        repeat: 'infinity',
+        originalEndExclusive: 24,
+        visibleRanges: [{ start: 10, endExclusive: 22 }],
+      };
+      expect(publication.loopClips).toEqual([expectedGroup, nextGroup]);
+
+      const context = derivePhysicPaintRotoLoopRanges({
+        identities: publication.records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        loopClips: publication.loopClips ?? [],
+        parentEndExclusive: 40,
+        capacity: 600,
+        interpolationEnabled: false,
+      });
+      expect(resolvePhysicPaintRotoLoopFrame(context, 22).kind).toBe('empty');
+      expect(resolvePhysicPaintRotoLoopFrame(context, 23).kind).toBe('empty');
+
+      const interpolation = { enabled: false, mode: 'duplicate' as const };
+      const revision = buildPhysicPaintRotoPhysicalRevision(
+        publication.records,
+        interpolation,
+        publication.loopClips ?? [],
+      );
+      const reopened = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify({
+        capacity: 600,
+        realKeyRecords: publication.records,
+        groupOverrideRecords: [],
+        interpolation,
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        selectedKeyId: null,
+        cursorAppFrame: 10,
+        loopClips: publication.loopClips ?? [],
+        incomingInterpolationBreakKeyIds: [],
+        revision,
+      })));
+      expect(reopened.loopClips[0]).toEqual(expectedGroup);
+
+      const historyDriver = driveLoopHistory({
+        beforeRecords: asRealKeyRecords(loopAuthority().physicalRecords),
+        beforeLoopClips: [beforeGroup, nextGroup],
+        publication,
+      });
+      expect(historyDriver.getCurrent().loopClips).toEqual([expectedGroup, nextGroup]);
+      expect(await historyDriver.history.undo()).toBe(true);
+      expect(historyDriver.getCurrent().loopClips).toEqual([beforeGroup, nextGroup]);
+      expect(await historyDriver.history.redo()).toBe(true);
+      expect(historyDriver.getCurrent().loopClips).toEqual([expectedGroup, nextGroup]);
+    });
+
+    it.each([
+      { order: 'spacing-before-infinity' as const, mode: 'progressive' as const, label: 'Motion' },
+      { order: 'spacing-before-infinity' as const, mode: 'static' as const, label: 'Static' },
+      { order: 'spacing-during-infinity' as const, mode: 'progressive' as const, label: 'Motion' },
+      { order: 'spacing-during-infinity' as const, mode: 'static' as const, label: 'Static' },
+    ])('keeps $label Key Spacing as source timing through $order, finite rebuild, and both Group move directions', async ({ order, mode }) => {
+      const toAuthorityRecords = (records: readonly PhysicPaintRotoRealKeyRecord[]) => records.map((record) => ({
+        keyId: record.keyId,
+        appFrame: record.appFrame,
+        payload: record.payload,
+      }));
+      let lastRepeatPublication: RotoGeneratedPhysicalPublication | null = null;
+      const transitionRepeat = async (
+        records: readonly PhysicPaintRotoRealKeyRecord[],
+        loopClips: readonly PhysicPaintRotoLoopClip[],
+        repeat: number | 'infinity',
+      ): Promise<readonly PhysicPaintRotoLoopClip[]> => {
+        const test = loopOpHarness(loopClips, {
+          physicalRecords: toAuthorityRecords(records),
+          layerEndExclusive: 40,
+        });
+        expect(await test.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+        if (repeat === 'infinity') {
+          test.controller.setInfinity(true);
+        } else {
+          test.controller.setInfinity(false);
+          test.controller.repeatText.value = String(repeat);
+        }
+        expect(await test.controller.confirm()).toBe(true);
+        const publication = test.commit.mock.calls[0][0];
+        lastRepeatPublication = publication;
+        expect(publication.records.map(({ keyId, payload }) => ({ keyId, payload })))
+          .toEqual(records.map(({ keyId, payload }) => ({ keyId, payload })));
+        return publication.loopClips ?? loopClips;
+      };
+      const applySpacing = (
+        records: readonly PhysicPaintRotoRealKeyRecord[],
+        loopClips: readonly PhysicPaintRotoLoopClip[],
+      ): { records: readonly PhysicPaintRotoRealKeyRecord[]; loopClips: readonly PhysicPaintRotoLoopClip[] } => {
+        const resolution = resolvePhysicPaintRotoPhysicalEdit({
+          identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+          records,
+          intent: {
+            kind: 'force-spacing',
+            emptyFrames: 1,
+            selectedKeyId: null,
+            scopeKeyIds: [...CYCLE_IDS],
+            linkedSourceSpacingScopes: [{
+              sourceCycleId: CYCLE_IDS.map((keyId) => `${keyId.length}:${keyId}`).join('|'),
+              sourceKeyIds: [...CYCLE_IDS],
+              selectedSourceKeyIds: [...CYCLE_IDS],
+            }],
+          },
+          parentEndExclusive: 60,
+          capacity: 60,
+          interpolationEnabled: false,
+          loopClips,
+          incomingInterpolationBreakKeyIds: [],
+        });
+        expect(resolution.ok).toBe(true);
+        if (!resolution.ok) throw new Error('Authorized source-cycle Key Spacing must resolve');
+        const nextRecords = records.map((record) => {
+          const appFrame = resolution.proposal.mapping.get(record.keyId)!;
+          return { ...record, appFrame, payload: { ...record.payload, appFrame } };
+        });
+        return {
+          records: nextRecords,
+          loopClips: resolution.proposal.nextLoopClips ?? loopClips,
+        };
+      };
+
+      let records: readonly PhysicPaintRotoRealKeyRecord[] = asRealKeyRecords(loopAuthority().physicalRecords);
+      let loopClips: readonly PhysicPaintRotoLoopClip[] = [{
+        ...lifecycleLoopClip(10, 2),
+        mode,
+        visibleRanges: [{ start: 10, endExclusive: 20 }],
+        frameOverrides: [],
+      }];
+      if (order === 'spacing-before-infinity') {
+        ({ records, loopClips } = applySpacing(records, loopClips));
+        loopClips = await transitionRepeat(records, loopClips, 'infinity');
+      } else {
+        loopClips = await transitionRepeat(records, loopClips, 'infinity');
+        ({ records, loopClips } = applySpacing(records, loopClips));
+      }
+      const infinityLoopClips = loopClips;
+      loopClips = await transitionRepeat(records, loopClips, 2);
+
+      const finite = loopClips.find((clip) => clip.loopId === 'L1');
+      expect(finite).toMatchObject({
+        mode,
+        repeat: 2,
+        placementStart: 10,
+        phaseOrigin: 10,
+        originalEndExclusive: 28,
+        visibleRanges: [{ start: 10, endExclusive: 28 }],
+        sourceKeyIds: [...CYCLE_IDS],
+        frameOverrides: [],
+      });
+
+      const interpolation = { enabled: false, mode: 'duplicate' as const };
+      const revision = buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips);
+      const parsed = parsePhysicPaintRotoPhysicalDocument({
+        capacity: 60,
+        realKeyRecords: records,
+        groupOverrideRecords: [],
+        interpolation,
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        selectedKeyId: CYCLE_IDS[0],
+        cursorAppFrame: 10,
+        loopClips,
+        incomingInterpolationBreakKeyIds: [],
+        revision,
+      });
+      const reopened = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify(parsed)));
+      expect(reopened.revision).toBe(revision);
+      expect(reopened.realKeyRecords).toEqual(records);
+      expect(reopened.loopClips).toEqual(parsed.loopClips);
+
+      if (lastRepeatPublication === null) throw new Error('Finite Repeat publication must exist');
+      const historyDriver = driveLoopHistory({
+        beforeRecords: records,
+        beforeLoopClips: infinityLoopClips,
+        publication: lastRepeatPublication,
+      });
+      expect(historyDriver.getCurrent().loopClips).toEqual(loopClips);
+      expect(await historyDriver.history.undo()).toBe(true);
+      expect(historyDriver.getCurrent().loopClips).toEqual(infinityLoopClips);
+      expect(await historyDriver.history.redo()).toBe(true);
+      expect(historyDriver.getCurrent().loopClips).toEqual(loopClips);
+      expect(historyDriver.getCurrent().records).toEqual(records);
+
+      for (const destinationPlacementStart of [12, 8]) {
+        const moved = resolvePhysicPaintRotoPhysicalEdit({
+          identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+          records,
+          intent: { kind: 'move-group', loopId: 'L1', destinationPlacementStart },
+          parentEndExclusive: 60,
+          capacity: 60,
+          interpolationEnabled: false,
+          loopClips,
+          incomingInterpolationBreakKeyIds: [],
+        });
+        expect(moved.ok).toBe(true);
+        if (!moved.ok) throw new Error('Finite Group move after Infinity lifecycle must resolve');
+        expect(moved.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
+        const movedClip = moved.proposal.nextLoopClips?.find((clip) => clip.loopId === 'L1');
+        expect(movedClip).toMatchObject({
+          mode,
+          repeat: 2,
+          placementStart: destinationPlacementStart,
+          phaseOrigin: destinationPlacementStart,
+          originalEndExclusive: destinationPlacementStart + 18,
+          visibleRanges: [{ start: destinationPlacementStart, endExclusive: destinationPlacementStart + 18 }],
+          sourceKeyIds: [...CYCLE_IDS],
+          frameOverrides: [],
+        });
+        const context = derivePhysicPaintRotoLoopRanges({
+          identities: [...moved.proposal.mapping].map(([keyId, appFrame]) => ({ keyId, appFrame })),
+          loopClips: moved.proposal.nextLoopClips ?? loopClips,
+          parentEndExclusive: 60,
+          capacity: 60,
+          interpolationEnabled: false,
+        });
+        const forbiddenGaps: { appFrame: number; kind: string }[] = [];
+        for (let appFrame = destinationPlacementStart; appFrame < destinationPlacementStart + 18; appFrame += 1) {
+          const kind = resolvePhysicPaintRotoLoopFrame(context, appFrame).kind;
+          if (kind === 'empty' || kind === 'linked-gap') forbiddenGaps.push({ appFrame, kind });
+        }
+        expect.soft(forbiddenGaps, `destination ${destinationPlacementStart}`).toEqual([]);
+      }
+    });
+
+    it.each([
+      { emptyFrames: 1, spacingOrder: 'before' },
+      { emptyFrames: 2, spacingOrder: 'before' },
+      { emptyFrames: 3, spacingOrder: 'before' },
+      { emptyFrames: 1, spacingOrder: 'during' },
+      { emptyFrames: 2, spacingOrder: 'during' },
+      { emptyFrames: 3, spacingOrder: 'during' },
+    ] as const)('keeps all $emptyFrames Key Spacing in-betweens generated when spacing runs $spacingOrder Infinity, then finite, through both Group Rail move directions', async ({ emptyFrames, spacingOrder }) => {
+      const sourceKeyIds = ['K0', 'K1'] as const;
+      const toAuthorityRecords = (records: readonly PhysicPaintRotoRealKeyRecord[]) => records.map((record) => ({
+        keyId: record.keyId,
+        appFrame: record.appFrame,
+        payload: record.payload,
+      }));
+      let records: readonly PhysicPaintRotoRealKeyRecord[] = asRealKeyRecords([
+        physicalRecord('K0', 10, 'source-K0'),
+        physicalRecord('K1', 11, 'source-K1'),
+      ]);
+      let loopClips: readonly PhysicPaintRotoLoopClip[] = [{
+        loopId: 'L1',
+        placementStart: 10,
+        sourceKeyIds: [...sourceKeyIds],
+        repeat: 1,
+        mode: 'progressive',
+        scriptId: PROVENANCE.scriptId,
+        motion: { ...PROVENANCE.motion },
+        overrideColor: PROVENANCE.overrideColor,
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 10,
+        originalEndExclusive: 12,
+        visibleRanges: [{ start: 10, endExclusive: 12 }],
+        frameOverrides: [],
+      }];
+
+      const transitionRepeat = async (repeat: number | 'infinity') => {
+        const test = loopOpHarness(loopClips, {
+          physicalRecords: toAuthorityRecords(records),
+          interpolationEnabled: true,
+          layerEndExclusive: 40,
+          physicalCapacity: 40,
+        });
+        expect(await test.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+        if (repeat === 'infinity') {
+          test.controller.setInfinity(true);
+        } else {
+          test.controller.setInfinity(false);
+          test.controller.repeatText.value = String(repeat);
+        }
+        expect(await test.controller.confirm()).toBe(true);
+        const publication = test.commit.mock.calls[0][0];
+        records = publication.records;
+        loopClips = publication.loopClips ?? loopClips;
+      };
+
+      if (spacingOrder === 'during') await transitionRepeat('infinity');
+
+      const spacing = resolvePhysicPaintRotoPhysicalEdit({
+        identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        records,
+        intent: {
+          kind: 'force-spacing',
+          emptyFrames,
+          selectedKeyId: null,
+          scopeKeyIds: [...sourceKeyIds],
+          linkedSourceSpacingScopes: [{
+            sourceCycleId: getPhysicsPaintRotoSourceCycleId(sourceKeyIds),
+            sourceKeyIds: [...sourceKeyIds],
+            selectedSourceKeyIds: [...sourceKeyIds],
+          }],
+        },
+        parentEndExclusive: 40,
+        capacity: 40,
+        interpolationEnabled: true,
+        loopClips,
+        incomingInterpolationBreakKeyIds: [],
+      });
+      expect(spacing.ok).toBe(true);
+      if (!spacing.ok) throw new Error('Key Spacing must resolve through the public physical edit seam');
+      records = records.map((record) => {
+        const appFrame = spacing.proposal.mapping.get(record.keyId)!;
+        return { ...record, appFrame, payload: { ...record.payload, appFrame } };
+      });
+      loopClips = spacing.proposal.nextLoopClips ?? loopClips;
+
+      const expectedSourceFrames = [10, 11 + emptyFrames];
+      const expectedFiniteEnd = 12 + emptyFrames;
+      const expectedBetweenFrames = Array.from({ length: emptyFrames }, (_, index) => 11 + index);
+      expect(records.map(({ appFrame }) => appFrame)).toEqual(expectedSourceFrames);
+      expect(loopClips[0]).toMatchObject(spacingOrder === 'before'
+        ? {
+            repeat: 1,
+            placementStart: 10,
+            phaseOrigin: 10,
+            originalEndExclusive: expectedFiniteEnd,
+            visibleRanges: [{ start: 10, endExclusive: expectedFiniteEnd }],
+            frameOverrides: [],
+          }
+        : {
+            repeat: 'infinity',
+            placementStart: 10,
+            phaseOrigin: 10,
+            originalEndExclusive: 40,
+            visibleRanges: [{ start: 10, endExclusive: 40 }],
+            frameOverrides: [],
+          });
+
+      const resolveKinds = (
+        currentRecords: readonly PhysicPaintRotoRealKeyRecord[],
+        currentLoopClips: readonly PhysicPaintRotoLoopClip[],
+        appFrames: readonly number[],
+      ) => {
+        const context = derivePhysicPaintRotoLoopRanges({
+          identities: currentRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+          loopClips: currentLoopClips,
+          parentEndExclusive: 40,
+          capacity: 40,
+          interpolationEnabled: true,
+        });
+        return appFrames.map((appFrame) => ({
+          appFrame,
+          kind: resolvePhysicPaintRotoLoopFrame(context, appFrame).kind,
+        }));
+      };
+      const expectedGeneratedKinds = expectedBetweenFrames.map((appFrame) => ({
+        appFrame,
+        kind: 'linked-generated',
+      }));
+      expect(resolveKinds(records, loopClips, expectedBetweenFrames)).toEqual(expectedGeneratedKinds);
+
+      if (spacingOrder === 'before') await transitionRepeat('infinity');
+      expect(loopClips[0]).toMatchObject({
+        repeat: 'infinity',
+        visibleRanges: [{ start: 10, endExclusive: 40 }],
+      });
+      expect(resolveKinds(records, loopClips, expectedBetweenFrames)).toEqual(expectedGeneratedKinds);
+
+      await transitionRepeat(1);
+      expect(loopClips[0]).toMatchObject({
+        repeat: 1,
+        placementStart: 10,
+        phaseOrigin: 10,
+        originalEndExclusive: expectedFiniteEnd,
+        visibleRanges: [{ start: 10, endExclusive: expectedFiniteEnd }],
+      });
+      expect(resolveKinds(records, loopClips, expectedBetweenFrames)).toEqual(expectedGeneratedKinds);
+
+      for (const destinationPlacementStart of [12, 8]) {
+        let persistedIncomingBreakKeyIds: readonly string[] = [];
+        const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<PhysicPaintRotoPhysicalEditProposal>) => {
+          persistedIncomingBreakKeyIds = input.proposal.nextIncomingInterpolationBreakKeyIds ?? persistedIncomingBreakKeyIds;
+          return true;
+        });
+        const actions = useRotoTimelineActions({
+          getModel: () => ({ settings: {}, realSourceFrames: [] }) as never,
+          getRotoKeyRecords: () => records,
+          getRotoInterpolationState: () => ({ enabled: true, mode: 'duplicate' }),
+          getCapacity: () => 40,
+          getParentEndExclusive: () => 40,
+          executePhysicalEdit: executePhysicalEdit as never,
+          getRotoLoopClips: () => loopClips,
+          getRotoSpacingSelection: () => null,
+          getPhysicalCells: () => [],
+          getFrameResolution: () => ({ kind: 'empty' }),
+          getSelectedKeyId: () => null,
+          getSelectedKeyIds: () => [],
+          getSelectedLoopClipIds: () => ['L1'],
+          getCurrentAppFrame: () => 10,
+          getLaunchContext: () => ({ operationId: 'launch', layerId: 'layer-1' }) as PhysicPaintLaunchContext,
+          getIncomingInterpolationBreakKeyIds: () => [],
+          buildBlankRotoFrame: (appFrame) => ({
+            frameIndex: 0,
+            appFrame,
+            dataUrl: pngDataUrl(`blank-${appFrame}`),
+            width: 10,
+            height: 10,
+            source: 'real-key',
+          }),
+          pendingOperationId: signal<string | null>(null),
+        } as RotoTimelineActionsInput);
+
+        const preparation = actions.physicalActions.prepareRotoGroupDrag('L1', destinationPlacementStart);
+        expect(preparation.ok).toBe(true);
+        if (!preparation.ok) throw new Error('Accepted Group Rail move must prepare');
+        expect(await actions.physicalActions.commitRotoGroupDrag(preparation.publication)).toBe(true);
+        expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+
+        const proposal = preparation.publication.proposal;
+        const movedSourceFrames = sourceKeyIds.map((keyId) => proposal.mapping.get(keyId));
+        expect(movedSourceFrames).toEqual([
+          destinationPlacementStart,
+          destinationPlacementStart + 1 + emptyFrames,
+        ]);
+        expect((movedSourceFrames[1] ?? 0) - (movedSourceFrames[0] ?? 0)).toBe(emptyFrames + 1);
+        const movedClip = proposal.nextLoopClips?.find((clip) => clip.loopId === 'L1');
+        expect(movedClip).toMatchObject({
+          repeat: 1,
+          placementStart: destinationPlacementStart,
+          phaseOrigin: destinationPlacementStart,
+          originalEndExclusive: destinationPlacementStart + 2 + emptyFrames,
+          visibleRanges: [{
+            start: destinationPlacementStart,
+            endExclusive: destinationPlacementStart + 2 + emptyFrames,
+          }],
+          frameOverrides: [],
+        });
+
+        const movedBetweenFrames = Array.from(
+          { length: emptyFrames },
+          (_, index) => destinationPlacementStart + 1 + index,
+        );
+        const movedRecords = [...proposal.mapping].map(([keyId, appFrame]) => {
+          const record = records.find((candidate) => candidate.keyId === keyId)!;
+          return { ...record, appFrame, payload: { ...record.payload, appFrame } };
+        });
+        const expectedPhysicalKinds = movedBetweenFrames.map((appFrame) => ({ appFrame, kind: 'generated' }));
+        const expectedResolvedKinds = movedBetweenFrames.map((appFrame) => ({ appFrame, kind: 'linked-generated' }));
+        expect({
+          movedSourceFrames,
+          visibleRanges: movedClip?.visibleRanges,
+          breakOwners: proposal.nextIncomingInterpolationBreakKeyIds,
+          persistedBreakOwners: persistedIncomingBreakKeyIds,
+          internalBreakOwners: proposal.nextIncomingInterpolationBreakKeyIds?.filter((keyId) => sourceKeyIds.includes(keyId as typeof sourceKeyIds[number])),
+          physicalKinds: movedBetweenFrames.map((appFrame) => ({
+            appFrame,
+            kind: proposal.cells[appFrame]?.kind,
+          })),
+          resolvedKinds: resolveKinds(
+            movedRecords,
+            proposal.nextLoopClips ?? loopClips,
+            movedBetweenFrames,
+          ),
+        }).toEqual({
+          movedSourceFrames: [
+            destinationPlacementStart,
+            destinationPlacementStart + 1 + emptyFrames,
+          ],
+          visibleRanges: [{
+            start: destinationPlacementStart,
+            endExclusive: destinationPlacementStart + 2 + emptyFrames,
+          }],
+          breakOwners: [],
+          persistedBreakOwners: [],
+          internalBreakOwners: [],
+          physicalKinds: expectedPhysicalKinds,
+          resolvedKinds: expectedResolvedKinds,
+        });
+      }
+    });
+
+    it('keeps a finite no-spacing control contiguous through Infinity and both move directions', async () => {
+      const before = lifecycleLoopClip(10, 2);
+      const records = asRealKeyRecords(loopAuthority().physicalRecords);
+      const infinityTest = loopOpHarness([before]);
+      expect(await infinityTest.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+      infinityTest.controller.setInfinity(true);
+      expect(await infinityTest.controller.confirm()).toBe(true);
+      const infinityLoops = infinityTest.commit.mock.calls[0][0].loopClips ?? [before];
+      const finiteTest = loopOpHarness(infinityLoops);
+      expect(await finiteTest.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+      finiteTest.controller.setInfinity(false);
+      finiteTest.controller.repeatText.value = '2';
+      expect(await finiteTest.controller.confirm()).toBe(true);
+      const finiteLoops = finiteTest.commit.mock.calls[0][0].loopClips ?? infinityLoops;
+
+      for (const destinationPlacementStart of [12, 8]) {
+        const moved = resolvePhysicPaintRotoPhysicalEdit({
+          identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+          records,
+          intent: { kind: 'move-group', loopId: 'L1', destinationPlacementStart },
+          parentEndExclusive: 60,
+          capacity: 60,
+          interpolationEnabled: false,
+          loopClips: finiteLoops,
+          incomingInterpolationBreakKeyIds: [],
+        });
+        expect(moved.ok).toBe(true);
+        if (!moved.ok) throw new Error('No-spacing control move must resolve');
+        expect(moved.proposal.nextLoopClips?.find((clip) => clip.loopId === 'L1')?.visibleRanges)
+          .toEqual([{ start: destinationPlacementStart, endExclusive: destinationPlacementStart + 10 }]);
+      }
+    });
+
+    it.each([
+      { destinationPlacementStart: 12, delta: 2 },
+      { destinationPlacementStart: 8, delta: -2 },
+    ])('keeps a genuine Delete Frame hole at its relative source phase through move to $destinationPlacementStart', ({ destinationPlacementStart, delta }) => {
+      const before: PhysicPaintRotoLoopClip = {
+        ...lifecycleLoopClip(10, 2),
+        syncState: 'modified',
+        visibleRanges: [
+          { start: 10, endExclusive: 11 },
+          { start: 12, endExclusive: 16 },
+          { start: 17, endExclusive: 20 },
+        ],
+        frameOverrides: [],
+      };
+      const records = asRealKeyRecords(loopAuthority().physicalRecords);
+      const moved = resolvePhysicPaintRotoPhysicalEdit({
+        identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        records,
+        intent: { kind: 'move-group', loopId: 'L1', destinationPlacementStart },
+        parentEndExclusive: 60,
+        capacity: 60,
+        interpolationEnabled: false,
+        loopClips: [before],
+        incomingInterpolationBreakKeyIds: [],
+      });
+      if (!moved.ok) throw new Error(`Delete Frame control move must resolve: ${JSON.stringify(moved.failure)}`);
+      expect(moved.ok).toBe(true);
+      expect(moved.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
+      expect(moved.proposal.nextLoopClips?.[0]).toMatchObject({
+        sourceKeyIds: [...CYCLE_IDS],
+        frameOverrides: [],
+        visibleRanges: [
+          { start: 10 + delta, endExclusive: 11 + delta },
+          { start: 12 + delta, endExclusive: 16 + delta },
+          { start: 17 + delta, endExclusive: 20 + delta },
+        ],
+      });
     });
 
     it('rejects Repeat contraction before commit when it would discard a locally painted override', async () => {
@@ -2249,7 +2858,10 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       brushCount: 1,
     });
 
-    function regenerateHarness(groups: readonly PhysicPaintRotoLoopClip[]) {
+    function regenerateHarness(
+      groups: readonly PhysicPaintRotoLoopClip[],
+      authorityOverrides: Partial<PhysicPaintRotoAuthorityResult> = {},
+    ) {
       const document = regenerateDocument(groups);
       const rows = signal([actionRow()] as never);
       const library = {
@@ -2267,6 +2879,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         physicalRevision: document.revision,
         rotoRevision: document.revision,
         physicalRecords: document.realKeyRecords,
+        ...authorityOverrides,
       });
       const test = loopOpHarness(groups, localAuthority, {
         library,
@@ -2311,6 +2924,19 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(prepared.controller.regenerateImpact.value?.actionHash).toMatch(/^action-/);
       expect(Object.isFrozen(prepared.controller.regenerateImpact.value)).toBe(true);
       expect(prepared.library.loadSnapshot).toHaveBeenCalledWith('script-1');
+    });
+
+    it('prepares Group Regenerate against the parent end rather than physical capacity', async () => {
+      const prepared = regenerateHarness([lifecycleGroup('G1', 10)], {
+        layerEndExclusive: 40,
+        capacity: 36,
+        physicalCapacity: 100,
+      });
+
+      expect(await prepared.controller.openSourceEdit('G1')).toEqual({ ok: true, reason: null });
+      expect(prepared.getLoopEditSnapshot).toHaveBeenCalledWith(4);
+      expect(prepared.controller.layerEndExclusive.value).toBe(40);
+      expect(prepared.controller.capacity.value).toBe(36);
     });
 
     it('rejects ambiguous sharing and stale Action authority without publishing', async () => {

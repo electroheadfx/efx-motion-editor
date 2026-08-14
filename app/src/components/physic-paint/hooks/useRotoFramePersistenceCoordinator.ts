@@ -244,9 +244,13 @@ function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument): Phys
   }));
 }
 
-export function encodeRotoPhysicalLaunchDocument(document: PhysicPaintRotoPhysicalDocument) {
+export function encodeRotoPhysicalLaunchDocument(
+  document: PhysicPaintRotoPhysicalDocument,
+  layerEndExclusive: number,
+) {
   return {
     capacity: document.capacity,
+    layerEndExclusive,
     records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
     groupOverrideRecords: (document.groupOverrideRecords ?? [])
       .map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
@@ -327,8 +331,19 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     if (!options?.preserveRuntimeCaches) {
       confirmedFramesRef.current = new Map(frames.map((frame) => [frame.appFrame, frame]));
     }
-    inputRef.current.setLaunchContext((current) => current && current.layerId === layerId && current.operationId === launchId
-      ? { ...current, startFrame: document.cursorAppFrame, rotoPhysical: encodeRotoPhysicalLaunchDocument(document), cachedRotoFrames: frames }
+    inputRef.current.setLaunchContext((current) => current
+      && current.layerId === layerId
+      && current.operationId === launchId
+      && current.rotoPhysical
+      ? {
+          ...current,
+          startFrame: document.cursorAppFrame,
+          rotoPhysical: encodeRotoPhysicalLaunchDocument(
+            document,
+            current.rotoPhysical.layerEndExclusive,
+          ),
+          cachedRotoFrames: frames,
+        }
       : current);
   }, []);
 

@@ -124,6 +124,7 @@ describe('rotoTimelineSelectors', () => {
     const model = createRotoTimelineModel({
       cachedRotoFrames: [frame(0, 0), frame(3, 1), frame(6, 2), frame(4, 1, 'generated-interpolation')],
       currentFrame: 4,
+      rotoParentEndExclusive: 0,
       interpolationSettings: { enabled: true, inBetweenCount: 2, mode: 'duplicate' },
     });
 

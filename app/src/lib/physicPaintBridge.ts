@@ -4,7 +4,11 @@ import type { Layer } from '../types/layer';
 import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
-import { resolvePhysicPaintRotoPhysicalEdit, validatePhysicPaintRotoPhysicalEditSemanticDelta } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
+import {
+  buildCanonicalMoveGroupOverrideRecords,
+  resolvePhysicPaintRotoPhysicalEdit,
+  validatePhysicPaintRotoPhysicalEditSemanticDelta,
+} from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import { isRotoPngDataUrl, prepareRotoPhysicalRealKeyPngs } from '../components/physic-paint/roto/rotoCanvasFrames';
 import {
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
@@ -42,6 +46,7 @@ import {
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import { projectStore } from '../stores/projectStore';
+import { resolveSequenceTimelineRange, trackLayouts } from './frameMap';
 import { assetUrl, scriptLibraryDelete, scriptLibraryEncodeThumbnailWebp, scriptLibraryLoad, scriptLibraryRename, scriptLibrarySave, scriptLibraryScan } from './ipc';
 
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
@@ -717,6 +722,7 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
   readonly proposedIncomingInterpolationBreakKeyIds: readonly string[];
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
+  readonly parentEndExclusive: number;
   readonly capacity: number;
   readonly stagedRevision: string;
 }): string | null {
@@ -724,6 +730,7 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
     identities: input.currentRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
     records: input.currentRecords,
     intent: input.intent,
+    parentEndExclusive: input.parentEndExclusive,
     capacity: input.capacity,
     interpolationEnabled: input.currentInterpolation.enabled,
     loopClips: input.currentLoopClips,
@@ -740,6 +747,18 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
     return 'Submitted physical document does not match the canonical parent-resolved edit.';
   }
   const canonicalLoopClips = proposal.nextLoopClips ?? input.currentLoopClips;
+  const canonicalGroupOverrideRecords = input.intent.kind === 'move-group'
+    ? buildCanonicalMoveGroupOverrideRecords({
+        currentLoopClips: input.currentLoopClips,
+        stagedLoopClips: canonicalLoopClips,
+        currentGroupOverrideRecords: input.currentGroupOverrideRecords,
+        movedLoopId: input.intent.loopId,
+        capacity: input.capacity,
+      })
+    : input.currentGroupOverrideRecords;
+  if (canonicalGroupOverrideRecords === null) {
+    return 'Submitted physical document does not match the canonical parent-resolved edit.';
+  }
   const canonicalIncomingInterpolationBreakKeyIds = proposal.nextIncomingInterpolationBreakKeyIds
     ?? input.currentIncomingInterpolationBreakKeyIds;
   const canonicalRevision = buildPhysicPaintRotoPhysicalRevision(
@@ -747,10 +766,10 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
     input.currentInterpolation,
     canonicalLoopClips,
     canonicalIncomingInterpolationBreakKeyIds,
-    input.currentGroupOverrideRecords,
+    canonicalGroupOverrideRecords,
   );
   if (!sameCompletePhysicalRecords(canonicalRecords, input.proposedRecords)
-    || !sameCompletePhysicalRecords(input.currentGroupOverrideRecords, input.proposedGroupOverrideRecords)
+    || !sameCompletePhysicalRecords(canonicalGroupOverrideRecords, input.proposedGroupOverrideRecords)
     || stableSerialize(canonicalLoopClips, new WeakSet<object>()) !== stableSerialize(input.proposedLoopClips, new WeakSet<object>())
     || canonicalIncomingInterpolationBreakKeyIds.length !== input.proposedIncomingInterpolationBreakKeyIds.length
     || canonicalIncomingInterpolationBreakKeyIds.some((keyId, index) => keyId !== input.proposedIncomingInterpolationBreakKeyIds[index])
@@ -1324,6 +1343,13 @@ function applyPhysicPaintRotoPhysicalMap(
     currentGroupOverrideRecords,
   );
   const capacity = physicPaintStore.getRotoPhysicalCapacity(payload.layerId);
+  const parentEndExclusive = getTimelineRangeEndExclusive(layer);
+  if (payload.intent !== undefined && parentEndExclusive === null) {
+    return reject('Physics Paint layer has no authoritative parent timeline range.');
+  }
+  const canonicalParentEndExclusive = parentEndExclusive === null
+    ? null
+    : Math.min(parentEndExclusive, capacity);
   const isReplay = payload.operationKind === 'undo' || payload.operationKind === 'redo';
   let replayEntry: AcceptedPhysicalCommandEntry | null = null;
   if (isReplay) {
@@ -1471,6 +1497,9 @@ function applyPhysicPaintRotoPhysicalMap(
     proposedGroupOverrideRecords,
   );
   if (payload.intent !== undefined) {
+    if (canonicalParentEndExclusive === null) {
+      return reject('Physics Paint layer has no authoritative parent timeline range.', stagedRevision);
+    }
     const canonicalValidationError = validateCanonicalOrdinaryPhysicalEdit({
       intent: payload.intent,
       currentRecords,
@@ -1485,6 +1514,7 @@ function applyPhysicPaintRotoPhysicalMap(
       proposedIncomingInterpolationBreakKeyIds,
       selectedKeyId: payload.selectedKeyId,
       selectedAppFrame: payload.selectedAppFrame,
+      parentEndExclusive: canonicalParentEndExclusive,
       capacity,
       stagedRevision,
     });
@@ -1582,17 +1612,18 @@ function applyPhysicPaintRotoPhysicalMap(
   if (!isReplay && !isInterpolationChange) {
     // Phase 43 (D-06/D-10): Play Script generation commits join the ledger so
     // a generation plus its derived loop shrink replays as one Undo/Redo.
-    const groupLifecycleAuthority = GROUP_LIFECYCLE_OPERATION_KINDS.has(payload.operationKind);
+    const childBeforeAuthority = payload.operationKind === 'move-group'
+      || GROUP_LIFECYCLE_OPERATION_KINDS.has(payload.operationKind);
     const beforeSnapshot = createAcceptedPhysicalCommandSnapshot({
       records: currentRecords,
       groupOverrideRecords: currentGroupOverrideRecords,
       interpolation: currentInterpolation,
       loopClips: currentLoopClips,
       incomingInterpolationBreakKeyIds: currentIncomingInterpolationBreakKeyIds,
-      selectedKeyId: groupLifecycleAuthority
+      selectedKeyId: childBeforeAuthority
         ? payload.selectedKeyId
         : currentDocument?.selectedKeyId ?? null,
-      cursorAppFrame: groupLifecycleAuthority
+      cursorAppFrame: childBeforeAuthority
         ? payload.cursorAppFrame
         : currentDocument?.cursorAppFrame ?? payload.cursorAppFrame,
       capacity,
@@ -2508,7 +2539,13 @@ export function createPhysicPaintLaunchContext(
 ): PhysicPaintLaunchContext {
   const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId);
-  const requestedFrame = Math.max(0, Math.min(capacity - 1, Math.trunc(frame)));
+  const timelineRange = getLayerLocalTimelineRange(layer);
+  if (timelineRange === null) {
+    throw new Error('Physics Paint layer has no authoritative parent timeline range.');
+  }
+  const layerEndExclusive = Math.min(timelineRange.localEndExclusive, capacity);
+  const localFrame = Math.trunc(frame) - timelineRange.globalStart;
+  const requestedFrame = Math.max(0, Math.min(layerEndExclusive - 1, localFrame));
   const storedDocument = physicPaintStore.getRotoPhysicalDocument(layerId);
   const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, requestedFrame);
   const document = parsePhysicPaintRotoPhysicalDocument(storedDocument
@@ -2552,6 +2589,7 @@ export function createPhysicPaintLaunchContext(
     ...(audioStore.tracks.peek().length > 0 ? { audioPreview: buildPhysicPaintAudioPreviewSection() } : {}),
     rotoPhysical: {
       capacity: document.capacity,
+      layerEndExclusive,
       records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
       groupOverrideRecords: (document.groupOverrideRecords ?? []).map((record) => ({
         keyId: record.keyId,
@@ -2671,17 +2709,19 @@ function isTauriPhysicsPaintLaunchResult(value: unknown): value is TauriPhysicsP
   );
 }
 
-function getTimelineRangeFrameCount(layer: Layer, frame: number): number | null {
+function getLayerLocalTimelineRange(layer: Layer) {
   const sequence = sequenceStore.sequences.peek().find((candidate) => candidate.layers.some((candidateLayer) => candidateLayer.id === layer.id));
-  if (!sequence) return null;
-  const rangeStart = Number.isInteger(sequence.inFrame) && sequence.inFrame !== undefined ? sequence.inFrame : 0;
-  const rangeEnd = Number.isInteger(sequence.outFrame) && sequence.outFrame !== undefined
-    ? sequence.outFrame
-    : sequence.kind === 'content'
-      ? sequence.keyPhotos.reduce((total, photo) => total + Math.max(0, photo.holdFrames), 0)
-      : null;
-  if (rangeEnd === null) return null;
-  const remaining = rangeEnd - Math.max(frame, rangeStart);
+  return sequence ? resolveSequenceTimelineRange(sequence, trackLayouts.peek()) : null;
+}
+
+function getTimelineRangeEndExclusive(layer: Layer): number | null {
+  return getLayerLocalTimelineRange(layer)?.localEndExclusive ?? null;
+}
+
+function getTimelineRangeFrameCount(layer: Layer, localFrame: number): number | null {
+  const localEndExclusive = getTimelineRangeEndExclusive(layer);
+  if (localEndExclusive === null || !Number.isInteger(localFrame) || localFrame < 0) return null;
+  const remaining = localEndExclusive - localFrame;
   return remaining > 0 ? remaining : null;
 }
 

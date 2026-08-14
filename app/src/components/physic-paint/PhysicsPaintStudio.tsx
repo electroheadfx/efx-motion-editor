@@ -5,7 +5,7 @@ import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoC
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { collectDiscardableRotoGroupOwnedFrames, rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
-import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoSelection } from './roto/physicsPaintRotoMultiSelection';
+import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoStudioSelection } from './roto/physicsPaintRotoMultiSelection';
 import {
   extendPhysicsPaintRotoSpacingProxyRange,
   reconcilePhysicsPaintRotoLoopClipSelection,
@@ -441,7 +441,7 @@ export function PhysicsPaintStudio() {
     selectedKeyId: selectedKeyId.value,
     incomingInterpolationBreakKeyIds: rotoIncomingInterpolationBreakKeyIds,
     rotoLoopClips,
-    rotoParentEndExclusive: rotoPhysicalCapacity,
+    rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0,
   });
   const timelineOccupiedRotoFrames = rotoTimelineModel.occupiedRotoFrames.value;
   const timelineSavedRotoFrames = rotoTimelineModel.savedRotoFrames.value;
@@ -870,6 +870,13 @@ export function PhysicsPaintStudio() {
     getCurrentAppFrame: () => currentFrame,
     getLaunchContext: () => launchContextRef.current,
     getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId) : 1,
+    getParentEndExclusive: () => {
+      const parentEndExclusive = launchContextRef.current?.rotoPhysical?.layerEndExclusive;
+      if (parentEndExclusive === undefined) {
+        throw new Error('Physics Paint launch has no authoritative parent timeline end.');
+      }
+      return parentEndExclusive;
+    },
     getIncomingInterpolationBreakKeyIds: () => launchContext
       ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId)
       : [],
@@ -1064,13 +1071,14 @@ export function PhysicsPaintStudio() {
     getLoopEditSnapshot: (placementStart) => {
       if (!launchContext) return null;
       const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId);
-      if (!document) return null;
+      const layerEndExclusive = launchContext.rotoPhysical?.layerEndExclusive;
+      if (!document || layerEndExclusive === undefined) return null;
       const physicalCapacity = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId);
       return {
         identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
         physicalCapacity,
-        layerEndExclusive: physicalCapacity,
-        remainingCapacity: Math.max(0, physicalCapacity - placementStart),
+        layerEndExclusive,
+        remainingCapacity: Math.max(0, layerEndExclusive - placementStart),
         interpolationEnabled: document.interpolation.enabled,
       };
     },
@@ -1526,18 +1534,19 @@ export function PhysicsPaintStudio() {
         const acceptedAddedKeyIds = accepted.after.records
           .filter((record) => !beforeKeyIds.has(record.keyId))
           .map((record) => record.keyId);
-        const railSelectionActive = selectedLoopClipIds.peek().length > 0;
-        const nextSelection = railSelectionActive
-          ? { selectedKeyIds: [], anchorKeyId: null }
-          : resolvePostAcceptanceRotoSelection({
-            operationKind: accepted.operationKind,
-            acceptedSelectedKeyId: accepted.after.selectedKeyId,
-            state: { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() },
-            currentKeyId: accepted.after.selectedKeyId,
-            acceptedAddedKeyIds,
-          });
-        selectedKeyIds.value = nextSelection.selectedKeyIds;
-        selectionAnchorKeyId.value = nextSelection.anchorKeyId;
+        const nextSelection = resolvePostAcceptanceRotoStudioSelection({
+          selectedLoopClipIds: selectedLoopClipIds.peek(),
+          selectedLoopClipId: selectedLoopClipId.peek(),
+          operationKind: accepted.operationKind,
+          acceptedSelectedKeyId: accepted.after.selectedKeyId,
+          keySelection: { selectedKeyIds: selectedKeyIds.peek(), anchorKeyId: selectionAnchorKeyId.peek() },
+          currentKeyId: accepted.after.selectedKeyId,
+          acceptedAddedKeyIds,
+        });
+        selectedLoopClipIds.value = nextSelection.selectedLoopClipIds;
+        selectedLoopClipId.value = nextSelection.selectedLoopClipId;
+        selectedKeyIds.value = nextSelection.keySelection.selectedKeyIds;
+        selectionAnchorKeyId.value = nextSelection.keySelection.anchorKeyId;
       }
       const currentLaunch = launchContextRef.current;
       const currentEngine = engineRef.current;

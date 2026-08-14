@@ -97,6 +97,7 @@ function resolveIdentities(
   return resolvePhysicPaintRotoPhysicalEdit({
     identities,
     intent,
+    parentEndExclusive: capacity,
     capacity,
     interpolationEnabled: false,
   });
@@ -115,6 +116,7 @@ function resolveBaselineWithRecords(
     identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
     records,
     intent,
+    parentEndExclusive: capacity,
     capacity,
     interpolationEnabled: false,
   });
@@ -307,6 +309,7 @@ describe('intentional incoming interpolation breaks', () => {
           height: 2,
         },
       },
+      parentEndExclusive: 8,
       capacity: 8,
       interpolationEnabled: false,
       loopClips,
@@ -350,6 +353,7 @@ describe('intentional incoming interpolation breaks', () => {
     const base = {
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
+      parentEndExclusive: 16,
       capacity: 16,
       interpolationEnabled: false,
       incomingInterpolationBreakKeyIds: [],
@@ -429,6 +433,7 @@ describe('incoming interpolation break lifecycle', () => {
     const common = {
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
+      parentEndExclusive: 16,
       capacity: 16,
       interpolationEnabled: true,
     } as const;
@@ -480,6 +485,7 @@ describe('incoming interpolation break lifecycle', () => {
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
       intent,
+      parentEndExclusive: 16,
       capacity: 16,
       interpolationEnabled: true,
       incomingInterpolationBreakKeyIds: [owner],
@@ -506,6 +512,7 @@ describe('incoming interpolation break lifecycle', () => {
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
       intent: { kind: 'delete-key', selectedKeyId: 'B' },
+      parentEndExclusive: 16,
       capacity: 16,
       interpolationEnabled: true,
       incomingInterpolationBreakKeyIds: ['B', 'D'],
@@ -514,6 +521,7 @@ describe('incoming interpolation break lifecycle', () => {
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
       intent: { kind: 'delete-key-group', keyIds: ['B', 'D'] },
+      parentEndExclusive: 16,
       capacity: 16,
       interpolationEnabled: true,
       incomingInterpolationBreakKeyIds: ['B', 'C', 'D'],
@@ -560,6 +568,7 @@ describe('incoming interpolation break lifecycle', () => {
   ): PhysicPaintRotoPhysicalEditResolution => resolvePhysicPaintRotoPhysicalEdit({
     identities,
     intent: { kind: 'move-group', loopId, destinationPlacementStart },
+    parentEndExclusive: 16,
     capacity: 16,
     interpolationEnabled: true,
     loopClips,
@@ -594,6 +603,38 @@ describe('incoming interpolation break lifecycle', () => {
     expect(proposal.generatedCells.map((cell) => cell.appFrame)).toEqual([4, 5]);
   });
 
+  it('selects a genuine vacated successor from pre-move external identities and excludes moved Group ownership', () => {
+    const identities = [
+      { keyId: 'A', appFrame: 1 },
+      { keyId: 'C', appFrame: 8 },
+      { keyId: 'override-owned', appFrame: 9 },
+      { keyId: 'D', appFrame: 12 },
+    ] as const;
+    const group = buildGroupAt({
+      sourceKeyIds: ['A', 'C'],
+      repeat: 1,
+      originalEndExclusive: 9,
+      visibleRanges: Object.freeze([Object.freeze({ start: 1, endExclusive: 9 })]),
+      frameOverrides: Object.freeze([
+        Object.freeze({ appFrame: 8, keyId: 'override-owned' }),
+      ]),
+    });
+
+    const resolution = resolveMove(identities, group, 'loop-A', 3);
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Owned-key exclusion move must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      A: 3,
+      C: 10,
+      'override-owned': 9,
+      D: 12,
+    });
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['D']);
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).not.toContain('C');
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).not.toContain('override-owned');
+  });
+
   it('D-10: opens a landing-gap break on the first source key, never on an adjacent landing', () => {
     const identities = [
       { keyId: 'P', appFrame: 0 },
@@ -616,6 +657,7 @@ describe('incoming interpolation break lifecycle', () => {
     expect(Object.fromEntries(gapped.proposal.mapping)).toEqual({ P: 0, A: 5, C: 9 });
     expect(gapped.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['A']);
     expect(gapped.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'A')).toBe(false);
+    expect(gapped.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'C')).toBe(true);
 
     // Leftward to 1: A lands adjacent to P@0 — no landing-gap break.
     const adjacent = resolveMove(identities, group, 'loop-A', 1);
@@ -676,7 +718,7 @@ describe('incoming interpolation break lifecycle', () => {
     expect(noPredecessor.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
   });
 
-  it('D-11: a duplicated placement move updates only the vacated-interval break authority', () => {
+  it('D-11: a duplicated placement move preserves existing breaks without manufacturing a vacated successor', () => {
     const baseIdentities = [
       { keyId: 'A', appFrame: 1 },
       { keyId: 'B', appFrame: 3 },
@@ -702,17 +744,18 @@ describe('incoming interpolation break lifecycle', () => {
       }) as PhysicPaintRotoLoopClip,
     ]);
 
-    // (i) Successor E@24 after the vacated interval [12,20) owns the break.
+    // (i) A placement-only move translates no physical keys, so external E@24
+    // does not become a manufactured vacated-gap owner.
     const withSuccessor = [
       ...baseIdentities,
       { keyId: 'E', appFrame: 24 },
     ] as const;
     const vacated = resolveMove(withSuccessor, duplicated(), 'loop-B', 14, { capacity: 30 });
     expect(vacated.ok).toBe(true);
-    if (!vacated.ok) throw new Error('Duplicated vacated move must resolve');
-    expect(vacated.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['E']);
+    if (!vacated.ok) throw new Error('Duplicated placement-only move must resolve');
+    expect(vacated.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
 
-    // (ii) Reuse: an existing break on the successor is reused, never duplicated.
+    // (ii) An existing stable-ID break on E is preserved, never duplicated.
     const reused = resolveMove(withSuccessor, duplicated(), 'loop-B', 14, { capacity: 30, incomingInterpolationBreakKeyIds: ['E'] });
     expect(reused.ok).toBe(true);
     if (!reused.ok) throw new Error('Duplicated reuse move must resolve');
@@ -982,6 +1025,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached fre
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
       intent: { kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: 4 },
+      parentEndExclusive: 16,
       capacity: 16,
       interpolationEnabled: false,
       loopClips,
@@ -1020,6 +1064,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached fre
     const base = {
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
+      parentEndExclusive: 16,
       capacity: 16,
       interpolationEnabled: false,
       loopClips,
@@ -1053,6 +1098,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached fre
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
+      parentEndExclusive: 16,
       capacity: 16,
       interpolationEnabled: false,
       loopClips: Object.freeze([
@@ -1088,6 +1134,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached fre
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
       intent: { kind: 'move-group', loopId: 'loop-A', destinationPlacementStart: 12 },
+      parentEndExclusive: 16,
       capacity: 16,
       interpolationEnabled: false,
       loopClips,
@@ -1131,6 +1178,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
   ): PhysicPaintRotoPhysicalEditResolution => resolvePhysicPaintRotoPhysicalEdit({
     identities,
     intent: { kind: 'move-group', loopId, destinationPlacementStart },
+    parentEndExclusive: capacity,
     capacity,
     interpolationEnabled: false,
     loopClips,
@@ -1350,12 +1398,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
     expect(movedClip?.repeat).toBe('infinity');
   });
 
-  // SKIPPED — separate-debug anchor for the PRE-EXISTING Infinity
-  // repeat-resolution debt (proven on the 38cf2448 baseline; not a 43.3
-  // regression). Un-skip and fix in the dedicated debug: the derivation must
-  // honor repeat='infinity' for lifecycle-available clips (and updateLoop must
-  // rebuild lifecycle for infinity). See 43.3-UAT.md Infinity row.
-  it.skip('resolves Infinity repeat occurrences through the accepted boundary for a lifecycle-available Group (baseline contract)', () => {
+  it('resolves Infinity repeat occurrences through the accepted boundary for a lifecycle-available Group (baseline contract)', () => {
     // A Group with lifecycle fields (as the UI produces after attachment) whose
     // Repeat is set to 'infinity' must derive occurrences from its placement
     // through the next Group boundary / parent end — not stay pinned to the
@@ -1402,6 +1445,567 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
     // originals and the derived frames are generated, not new real keys.
     expect(range.sourceKeyIds).toEqual(['A', 'B']);
     expect(context.keyIdByAppFrame.size).toBe(2);
+  });
+
+  it('preserves generated ownership for lifecycle Motion strict interiors when interpolation is enabled', () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-lifecycle-motion-generated',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 2,
+      mode: 'progressive',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 16,
+      visibleRanges: [{ start: 10, endExclusive: 16 }],
+      frameOverrides: [],
+    };
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: [
+        { keyId: 'A', appFrame: 10 },
+        { keyId: 'B', appFrame: 12 },
+      ],
+      loopClips: [clip],
+      parentEndExclusive: 20,
+      capacity: 20,
+      interpolationEnabled: true,
+    });
+
+    expect(resolvePhysicPaintRotoLoopFrame(context, 11)).toMatchObject({
+      kind: 'linked-generated',
+      loopId: clip.loopId,
+      leftSourceKeyId: 'A',
+      rightSourceKeyId: 'B',
+      progress: 0.5,
+    });
+  });
+
+  it.each([
+    {
+      label: 'lifecycle Static with interpolation enabled',
+      lifecycle: true,
+      mode: 'static' as const,
+      interpolationEnabled: true,
+      expectedKind: 'linked',
+    },
+    {
+      label: 'lifecycle Motion with interpolation disabled',
+      lifecycle: true,
+      mode: 'progressive' as const,
+      interpolationEnabled: false,
+      expectedKind: 'linked',
+    },
+    {
+      label: 'ordinary Motion with interpolation enabled',
+      lifecycle: false,
+      mode: 'progressive' as const,
+      interpolationEnabled: true,
+      expectedKind: 'linked-generated',
+    },
+    {
+      label: 'ordinary Motion with interpolation disabled',
+      lifecycle: false,
+      mode: 'progressive' as const,
+      interpolationEnabled: false,
+      expectedKind: 'linked-gap',
+    },
+  ])('applies the narrow strict-interior policy for $label', ({
+    lifecycle,
+    mode,
+    interpolationEnabled,
+    expectedKind,
+  }) => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-strict-interior-policy',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 2,
+      mode,
+      ...(lifecycle
+        ? {
+            syncState: 'modified' as const,
+            provenanceState: 'attached' as const,
+            phaseOrigin: 10,
+            originalEndExclusive: 16,
+            visibleRanges: [{ start: 10, endExclusive: 16 }],
+            frameOverrides: [],
+          }
+        : {}),
+    };
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: [
+        { keyId: 'A', appFrame: 10 },
+        { keyId: 'B', appFrame: 12 },
+      ],
+      loopClips: [clip],
+      parentEndExclusive: 20,
+      capacity: 20,
+      interpolationEnabled,
+    });
+
+    expect(resolvePhysicPaintRotoLoopFrame(context, 11).kind).toBe(expectedKind);
+  });
+
+  it('keeps explicit lifecycle omissions empty and contiguous source timing unchanged', () => {
+    const deletedContext = derivePhysicPaintRotoLoopRanges({
+      identities: [
+        { keyId: 'A', appFrame: 10 },
+        { keyId: 'B', appFrame: 12 },
+      ],
+      loopClips: [{
+        loopId: 'loop-deleted-interior',
+        placementStart: 10,
+        sourceKeyIds: ['A', 'B'],
+        repeat: 2,
+        mode: 'static',
+        syncState: 'modified',
+        provenanceState: 'attached',
+        phaseOrigin: 10,
+        originalEndExclusive: 16,
+        visibleRanges: [
+          { start: 10, endExclusive: 11 },
+          { start: 12, endExclusive: 16 },
+        ],
+        frameOverrides: [],
+      }],
+      parentEndExclusive: 20,
+      capacity: 20,
+      interpolationEnabled: true,
+    });
+    expect(resolvePhysicPaintRotoLoopFrame(deletedContext, 11)).toEqual({ kind: 'empty' });
+
+    const contiguousContext = derivePhysicPaintRotoLoopRanges({
+      identities: [
+        { keyId: 'C', appFrame: 10 },
+        { keyId: 'D', appFrame: 11 },
+      ],
+      loopClips: [{
+        loopId: 'loop-contiguous-timing',
+        placementStart: 10,
+        sourceKeyIds: ['C', 'D'],
+        repeat: 2,
+        mode: 'progressive',
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 10,
+        originalEndExclusive: 14,
+        visibleRanges: [{ start: 10, endExclusive: 14 }],
+        frameOverrides: [],
+      }],
+      parentEndExclusive: 20,
+      capacity: 20,
+      interpolationEnabled: true,
+    });
+    expect(resolvePhysicPaintRotoLoopFrame(contiguousContext, 12)).toMatchObject({
+      kind: 'linked',
+      loopId: 'loop-contiguous-timing',
+      sourceKeyId: 'C',
+    });
+  });
+
+  it('uses one Group-level next boundary for every Infinity lifecycle fragment', () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-fragmented-infinity',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 'infinity',
+      mode: 'progressive',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 50,
+      visibleRanges: [
+        { start: 10, endExclusive: 20 },
+        { start: 40, endExclusive: 50 },
+      ],
+      frameOverrides: [],
+    };
+    const nextGroup: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-next',
+      placementStart: 30,
+      sourceKeyIds: ['N', 'O'],
+      repeat: 2,
+      mode: 'static',
+    };
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: [
+        { keyId: 'A', appFrame: 10 },
+        { keyId: 'B', appFrame: 11 },
+        { keyId: 'N', appFrame: 30 },
+        { keyId: 'O', appFrame: 31 },
+      ],
+      loopClips: [clip, nextGroup],
+      parentEndExclusive: 60,
+      capacity: 60,
+      interpolationEnabled: false,
+    });
+
+    expect(context.ranges.filter((range) => range.loopId === clip.loopId)).toMatchObject([
+      {
+        placementStart: 10,
+        effectiveEnd: 20,
+        boundary: { kind: 'loop-start', frame: 30 },
+      },
+    ]);
+    expect(resolvePhysicPaintRotoLoopFrame(context, 40)).toEqual({ kind: 'empty' });
+  });
+
+  it.each([
+    { mode: 'progressive' as const, label: 'Motion' },
+    { mode: 'static' as const, label: 'Static' },
+  ])('uses one re-derived candidate geometry for $label Infinity rightward preview and commit at the next-Group boundary', ({ mode }) => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-infinity',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 'infinity',
+      mode,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 10, endExclusive: 30 }],
+      frameOverrides: [{ appFrame: 11, keyId: 'override-B' }],
+    };
+    const nextGroup: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-next',
+      placementStart: 30,
+      sourceKeyIds: ['N', 'O'],
+      repeat: 2,
+      mode: 'static',
+    };
+    const identities = [
+      { keyId: 'A', appFrame: 10 },
+      { keyId: 'B', appFrame: 11 },
+      { keyId: 'N', appFrame: 30 },
+      { keyId: 'O', appFrame: 31 },
+    ] as const;
+    const loopClips = [clip, nextGroup] as const;
+    const derivation = derivePhysicPaintRotoLoopRanges({
+      identities,
+      loopClips,
+      parentEndExclusive: 50,
+      capacity: 50,
+      interpolationEnabled: false,
+    });
+    const draggedRanges = derivation.ranges.filter((range) => range.loopId === clip.loopId);
+    const preview = clampPhysicPaintGroupDragDestination({
+      clip,
+      draggedInterval: {
+        phaseOrigin: 10,
+        effectiveEnd: Math.max(...draggedRanges.map((range) => range.effectiveEnd)),
+      },
+      proposedDestinationPlacementStart: 14,
+      identities,
+      loopRanges: derivation.ranges,
+      capacity: 50,
+    });
+    expect(preview).toEqual({ ok: true, destinationPlacementStart: 14 });
+
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      intent: { kind: 'move-group', loopId: clip.loopId, destinationPlacementStart: 14 },
+      parentEndExclusive: 50,
+      capacity: 50,
+      interpolationEnabled: false,
+      loopClips,
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok || !preview.ok) throw new Error('Infinity next-Group move must resolve');
+    expect(resolution.proposal.mapping.get('A')).toBe(preview.destinationPlacementStart);
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 14, B: 15, N: 30, O: 31 });
+    const moved = resolution.proposal.nextLoopClips?.find((entry) => entry.loopId === clip.loopId);
+    expect(moved).toMatchObject({
+      placementStart: 14,
+      phaseOrigin: 14,
+      repeat: 'infinity',
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 14, endExclusive: 30 }],
+      frameOverrides: [{ appFrame: 15, keyId: 'override-B' }],
+      sourceKeyIds: ['A', 'B'],
+    });
+    const committed = derivePhysicPaintRotoLoopRanges({
+      identities: [...resolution.proposal.mapping].map(([keyId, appFrame]) => ({ keyId, appFrame })),
+      loopClips: resolution.proposal.nextLoopClips ?? loopClips,
+      parentEndExclusive: 50,
+      capacity: 50,
+      interpolationEnabled: false,
+    }).ranges.filter((range) => range.loopId === clip.loopId);
+    expect(Math.max(...committed.map((range) => range.effectiveEnd))).toBe(30);
+    expect(committed.every((range) => range.repeat === 'infinity' && range.boundary.frame === 30)).toBe(true);
+  });
+
+  it('preserves a translated deleted tail while exposing new Infinity coverage after a leftward move', () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-infinity-deleted-tail',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 'infinity',
+      mode: 'static',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 10, endExclusive: 25 }],
+      frameOverrides: [],
+    };
+    const nextGroup: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-next-after-deleted-tail',
+      placementStart: 30,
+      sourceKeyIds: ['N', 'O'],
+      repeat: 2,
+      mode: 'static',
+    };
+    const loopClips = [clip, nextGroup] as const;
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'A', appFrame: 10 },
+        { keyId: 'B', appFrame: 12 },
+        { keyId: 'N', appFrame: 30 },
+        { keyId: 'O', appFrame: 31 },
+      ],
+      intent: {
+        kind: 'move-group',
+        loopId: clip.loopId,
+        destinationPlacementStart: 8,
+      },
+      parentEndExclusive: 40,
+      capacity: 40,
+      interpolationEnabled: false,
+      loopClips,
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok || !resolution.proposal.nextLoopClips) {
+      throw new Error('Infinity deleted-tail move must resolve');
+    }
+
+    const moved = resolution.proposal.nextLoopClips.find((entry) => entry.loopId === clip.loopId);
+    expect(moved).toMatchObject({
+      placementStart: 8,
+      phaseOrigin: 8,
+      originalEndExclusive: 30,
+      visibleRanges: [
+        { start: 8, endExclusive: 23 },
+        { start: 28, endExclusive: 30 },
+      ],
+    });
+
+    const committed = derivePhysicPaintRotoLoopRanges({
+      identities: [...resolution.proposal.mapping].map(([keyId, appFrame]) => ({ keyId, appFrame })),
+      loopClips: resolution.proposal.nextLoopClips,
+      parentEndExclusive: 40,
+      capacity: 40,
+      interpolationEnabled: false,
+    });
+    expect(resolvePhysicPaintRotoLoopFrame(committed, 24)).toEqual({ kind: 'empty' });
+    expect(resolvePhysicPaintRotoLoopFrame(committed, 28)).toMatchObject({
+      kind: 'linked',
+      loopId: clip.loopId,
+      sourceKeyId: 'B',
+    });
+    expect(resolvePhysicPaintRotoLoopFrame(committed, 29)).toMatchObject({
+      kind: 'linked',
+      loopId: clip.loopId,
+      sourceKeyId: 'A',
+    });
+    expect(
+      committed.ranges.find(
+        (range) => range.loopId === clip.loopId && range.placementStart === 28,
+      ),
+    ).toMatchObject({
+      effectiveEnd: 30,
+      partialCycle: true,
+      boundary: { kind: 'loop-start', frame: 30 },
+    });
+  });
+
+  it('round-trips the complete physical document after an Infinity Group move', () => {
+    const records = [
+      lifecycleRecord('A', 10),
+      lifecycleRecord('B', 12),
+      lifecycleRecord('N', 30),
+      lifecycleRecord('O', 31),
+    ];
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-infinity-round-trip',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 'infinity',
+      mode: 'static',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 10, endExclusive: 25 }],
+      frameOverrides: [],
+    };
+    const nextGroup: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-round-trip-next',
+      placementStart: 30,
+      sourceKeyIds: ['N', 'O'],
+      repeat: 2,
+      mode: 'static',
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: {
+        kind: 'move-group',
+        loopId: clip.loopId,
+        destinationPlacementStart: 8,
+      },
+      parentEndExclusive: 40,
+      capacity: 40,
+      interpolationEnabled: false,
+      loopClips: [clip, nextGroup],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok || !resolution.proposal.nextLoopClips) {
+      throw new Error('Infinity document round-trip move must resolve');
+    }
+
+    const movedRecords = records.map((record) => {
+      const appFrame = resolution.proposal.mapping.get(record.keyId) ?? record.appFrame;
+      return { ...record, appFrame, payload: { ...record.payload, appFrame } };
+    });
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const revision = buildPhysicPaintRotoPhysicalRevision(
+      movedRecords,
+      interpolation,
+      resolution.proposal.nextLoopClips,
+      [],
+      [],
+    );
+    const parsed = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 40,
+      realKeyRecords: movedRecords,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: resolution.proposal.selectedKeyId,
+      cursorAppFrame: resolution.proposal.selectedAppFrame ?? 0,
+      loopClips: resolution.proposal.nextLoopClips,
+      incomingInterpolationBreakKeyIds: [],
+      revision,
+    });
+    const reopened = parsePhysicPaintRotoPhysicalDocument(JSON.parse(JSON.stringify(parsed)));
+
+    expect(reopened.revision).toBe(revision);
+    expect(reopened.realKeyRecords).toEqual(movedRecords);
+    expect(reopened.loopClips).toEqual(parsed.loopClips);
+    expect(reopened.loopClips.find((entry) => entry.loopId === clip.loopId))
+      .toEqual(resolution.proposal.nextLoopClips.find((entry) => entry.loopId === clip.loopId));
+  });
+
+  it.each([
+    { mode: 'progressive' as const, label: 'Motion' },
+    { mode: 'static' as const, label: 'Static' },
+  ])('uses one re-derived candidate geometry for $label Infinity rightward preview and commit at the parent-end fallback', ({ mode }) => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-infinity-parent',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 'infinity',
+      mode,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 40,
+      visibleRanges: [{ start: 10, endExclusive: 40 }],
+      frameOverrides: [],
+    };
+    const identities = [{ keyId: 'A', appFrame: 10 }, { keyId: 'B', appFrame: 11 }] as const;
+    const derivation = derivePhysicPaintRotoLoopRanges({
+      identities,
+      loopClips: [clip],
+      parentEndExclusive: 40,
+      capacity: 40,
+      interpolationEnabled: false,
+    });
+    const preview = clampPhysicPaintGroupDragDestination({
+      clip,
+      draggedInterval: { phaseOrigin: 10, effectiveEnd: 40 },
+      proposedDestinationPlacementStart: 16,
+      identities,
+      loopRanges: derivation.ranges,
+      capacity: 40,
+    });
+    expect(preview).toEqual({ ok: true, destinationPlacementStart: 16 });
+
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      intent: { kind: 'move-group', loopId: clip.loopId, destinationPlacementStart: 16 },
+      parentEndExclusive: 40,
+      capacity: 40,
+      interpolationEnabled: false,
+      loopClips: [clip],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok || !preview.ok) throw new Error('Infinity parent-end move must resolve');
+    expect(resolution.proposal.mapping.get('A')).toBe(preview.destinationPlacementStart);
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 16, B: 17 });
+    const moved = resolution.proposal.nextLoopClips?.[0];
+    expect(moved).toMatchObject({
+      placementStart: 16,
+      phaseOrigin: 16,
+      repeat: 'infinity',
+      originalEndExclusive: 40,
+      visibleRanges: [{ start: 16, endExclusive: 40 }],
+      sourceKeyIds: ['A', 'B'],
+      frameOverrides: [],
+    });
+    const committed = derivePhysicPaintRotoLoopRanges({
+      identities: [...resolution.proposal.mapping].map(([keyId, appFrame]) => ({ keyId, appFrame })),
+      loopClips: resolution.proposal.nextLoopClips ?? [clip],
+      parentEndExclusive: 40,
+      capacity: 40,
+      interpolationEnabled: false,
+    }).ranges.filter((range) => range.loopId === clip.loopId);
+    expect(Math.max(...committed.map((range) => range.effectiveEnd))).toBe(40);
+    expect(committed.every((range) => range.repeat === 'infinity' && range.boundary.frame === 40)).toBe(true);
+  });
+
+  it('keeps Infinity move commit at the authoritative parent end when physical capacity is larger', () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-parent-before-capacity',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 'infinity',
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 40,
+      visibleRanges: [{ start: 10, endExclusive: 40 }],
+      frameOverrides: [],
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'A', appFrame: 10 },
+        { keyId: 'B', appFrame: 11 },
+      ],
+      intent: {
+        kind: 'move-group',
+        loopId: clip.loopId,
+        destinationPlacementStart: 16,
+      },
+      parentEndExclusive: 40,
+      capacity: 600,
+      interpolationEnabled: false,
+      loopClips: [clip],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Parent-bounded Infinity move must resolve');
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      placementStart: 16,
+      phaseOrigin: 16,
+      originalEndExclusive: 40,
+      visibleRanges: [{ start: 16, endExclusive: 40 }],
+    });
   });
 
   it('clamps a zero-width (0f) dragged interval without division errors and keeps the Group draggable', () => {
@@ -1474,6 +2078,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group duplicated shared-so
   ): PhysicPaintRotoPhysicalEditResolution => resolvePhysicPaintRotoPhysicalEdit({
     identities: buildBaselineIdentities(),
     intent: { kind: 'move-group', loopId, destinationPlacementStart },
+    parentEndExclusive: 24,
     capacity: 24,
     interpolationEnabled: false,
     loopClips,
@@ -1512,6 +2117,58 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group duplicated shared-so
     expect(movedClip?.mode).toBe('progressive');
     expect(ownerClip?.placementStart).toBe(1);
     expect(ownerClip?.originalEndExclusive).toBe(9);
+  });
+
+  it('pins a detached Infinity placement move to the shared parent boundary while source keys stay put', () => {
+    const detachedInfinity = Object.freeze([
+      Object.freeze({
+        loopId: 'loop-infinity-detached',
+        placementStart: 12,
+        sourceKeyIds: ['A', 'C'],
+        repeat: 'infinity',
+        mode: 'progressive',
+        syncState: 'modified',
+        provenanceState: 'detached',
+        phaseOrigin: 12,
+        originalEndExclusive: 20,
+        visibleRanges: Object.freeze([
+          Object.freeze({ start: 12, endExclusive: 15 }),
+          Object.freeze({ start: 17, endExclusive: 20 }),
+        ]),
+        frameOverrides: Object.freeze([]),
+      }) as PhysicPaintRotoLoopClip,
+    ]);
+
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: buildBaselineIdentities(),
+      intent: {
+        kind: 'move-group',
+        loopId: 'loop-infinity-detached',
+        destinationPlacementStart: 14,
+      },
+      parentEndExclusive: 20,
+      capacity: 24,
+      interpolationEnabled: false,
+      loopClips: detachedInfinity,
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Detached Infinity placement move must resolve ok');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 1, B: 3, C: 5, D: 10 });
+    expect(resolution.proposal.nextLoopClips).not.toBeNull();
+    if (!resolution.proposal.nextLoopClips) throw new Error('nextLoopClips must be present');
+    const movedClip = resolution.proposal.nextLoopClips[0];
+    expect(movedClip).toMatchObject({
+      loopId: 'loop-infinity-detached',
+      placementStart: 14,
+      phaseOrigin: 14,
+      repeat: 'infinity',
+      originalEndExclusive: 20,
+      visibleRanges: [
+        { start: 14, endExclusive: 17 },
+        { start: 19, endExclusive: 20 },
+      ],
+    });
   });
 
   it('clamps a duplicated placement at physical capacity while the keys stay put', () => {
@@ -1819,6 +2476,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — paste-key-group (GP-1..GP-7, D-
       identities: denseRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records: denseRecords,
       intent: overCapacityIntent,
+      parentEndExclusive: 5,
       capacity: 5,
       interpolationEnabled: false,
     });
@@ -2055,6 +2713,7 @@ describe('Phase 43.2 ordinary-key delete beside Groups', () => {
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities,
       intent: { kind: 'delete-key', selectedKeyId: 'X' },
+      parentEndExclusive: 32,
       capacity: 32,
       interpolationEnabled: false,
       loopClips: [group1, group2],
@@ -2083,6 +2742,7 @@ describe('Phase 43.2 ordinary-key delete beside Groups', () => {
         { keyId: 'B', appFrame: 8 },
       ],
       intent: { kind: 'delete-key', selectedKeyId: 'X' },
+      parentEndExclusive: 32,
       capacity: 32,
       interpolationEnabled: false,
       loopClips: [group1],
@@ -2107,6 +2767,7 @@ describe('Phase 43.2 ordinary-key delete beside Groups', () => {
         { keyId: 'G2B', appFrame: 9 },
       ],
       intent: { kind: 'delete-key', selectedKeyId: 'X' },
+      parentEndExclusive: 32,
       capacity: 32,
       interpolationEnabled: false,
       loopClips: [group1, group2],
@@ -2135,6 +2796,7 @@ describe('Phase 43.2 ordinary-key delete beside Groups', () => {
         { keyId: 'G2B', appFrame: 9 },
       ],
       intent: { kind: 'delete-key-group', keyIds: ['X1', 'X2'] },
+      parentEndExclusive: 32,
       capacity: 32,
       interpolationEnabled: false,
       loopClips: [group1, group2],
@@ -2203,6 +2865,7 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
         { keyId: 'X', appFrame: 5 },
       ],
       intent: { kind: 'insert-slot', selectedKeyId: 'G1A' },
+      parentEndExclusive: 32,
       capacity: 32,
       interpolationEnabled: false,
       loopClips: [group1],
@@ -2224,6 +2887,7 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
         { keyId: 'G2B', appFrame: 9 },
       ],
       intent: { kind: 'insert-slot', selectedKeyId: 'X' },
+      parentEndExclusive: 32,
       capacity: 32,
       interpolationEnabled: false,
       loopClips: [group1, group2],
@@ -2244,6 +2908,7 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
         { keyId: 'Y', appFrame: 6 },
       ],
       intent: { kind: 'insert-slot', selectedKeyId: 'X' },
+      parentEndExclusive: 32,
       capacity: 32,
       interpolationEnabled: false,
       loopClips: [group1],
@@ -2273,6 +2938,7 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
         { keyId: 'G2B', appFrame: 9 },
       ]),
       intent: { kind: 'duplicate-key', sourceKeyId: 'X', newKeyId: 'X-copy' },
+      parentEndExclusive: 32,
       capacity: 32,
       interpolationEnabled: false,
       loopClips: [group2],
@@ -2295,6 +2961,7 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
         { keyId: 'X', appFrame: 5 },
       ]),
       intent: { kind: 'duplicate-key', sourceKeyId: 'G1A', newKeyId: 'G1A-copy' },
+      parentEndExclusive: 32,
       capacity: 32,
       interpolationEnabled: false,
       loopClips: [singleSourceGroup],
@@ -2325,6 +2992,7 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
         { keyId: 'Y', appFrame: 8 },
       ]),
       intent: { kind: 'duplicate-key', sourceKeyId: 'X', newKeyId: 'X-copy' },
+      parentEndExclusive: 32,
       capacity: 32,
       interpolationEnabled: false,
       loopClips: [group1],

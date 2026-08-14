@@ -307,8 +307,10 @@ export class PreviewRenderer {
    * @param frame - current frame number (0-based, local to the sequence)
    * @param frames - flattened frame map for image-sequence base layer lookup
    * @param fps - frames per second from the active sequence, needed for video layer time sync
-   * @param globalFrame - absolute timeline frame for paint layer lookup (paint
-   *   data is stored by global frame). When omitted, falls back to `frame`.
+   * @param globalFrame - absolute timeline frame for ordinary Paint lookup.
+   *   When omitted, falls back to `frame`.
+   * @param physicPaintFrame - layer-local frame for Physics Paint lookup.
+   *   When omitted, falls back to `frame`.
    */
   renderFrame(
     layers: Layer[],
@@ -318,10 +320,12 @@ export class PreviewRenderer {
     clearCanvas = true,
     sequenceOpacity = 1.0,
     globalFrame?: number,
+    physicPaintFrame?: number,
   ): void {
-    // Paint layers are keyed by global (absolute) timeline frame, not the
-    // sequence-local frame used for content/generator layers.
+    // Ordinary Paint is keyed globally; Physics Paint physical documents are
+    // keyed in the owning sequence's local coordinate space.
     const paintLookupFrame = globalFrame ?? frame;
+    const physicPaintLookupFrame = physicPaintFrame ?? frame;
     // Integer frame index for frames[] array lookups — fractional frames from
     // export sub-frame accumulation must not be used as array indices.
     const frameIdx = Math.floor(frame);
@@ -359,8 +363,8 @@ export class PreviewRenderer {
           continue;
         } else if (layer.type === 'physic-paint') {
           const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-          const frameSource = resolvePhysicPaintFrameSource(paintLayerId, paintLookupFrame);
-          if (frameSource || hasMissingRotoBackground(layer, paintLookupFrame) || resolvePhysicPaintLoopPlaceholder(paintLayerId, paintLookupFrame)) {
+          const frameSource = resolvePhysicPaintFrameSource(paintLayerId, physicPaintLookupFrame);
+          if (frameSource || hasMissingRotoBackground(layer, physicPaintLookupFrame) || resolvePhysicPaintLoopPlaceholder(paintLayerId, physicPaintLookupFrame)) {
             hasDrawable = true;
             break;
           }
@@ -462,12 +466,12 @@ export class PreviewRenderer {
         this.drawAdjustmentLayer(layer, logicalW, logicalH, sequenceOpacity);
       } else if (layer.type === 'physic-paint') {
         const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-        const frameSource = resolvePhysicPaintFrameSource(paintLayerId, paintLookupFrame);
+        const frameSource = resolvePhysicPaintFrameSource(paintLayerId, physicPaintLookupFrame);
         // D-28: an unresolved Loop Clip frame paints as a marked, visible
         // placeholder — never a blank frame, never blocking; playback and the
         // scrubber continue past it. Export never reaches this arm (the 43-09
         // preflight blocks the range before the first frame renders).
-        const loopPlaceholder = frameSource ? null : resolvePhysicPaintLoopPlaceholder(paintLayerId, paintLookupFrame);
+        const loopPlaceholder = frameSource ? null : resolvePhysicPaintLoopPlaceholder(paintLayerId, physicPaintLookupFrame);
         if (loopPlaceholder) {
           ctx.save();
           ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
@@ -476,7 +480,7 @@ export class PreviewRenderer {
           ctx.restore();
           continue;
         }
-        const missingDraw = isPhysicalRotoWorkflowLayer(paintLayerId) ? resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame) : null;
+        const missingDraw = isPhysicalRotoWorkflowLayer(paintLayerId) ? resolveMissingRotoFrameDrawForLayer(layer, physicPaintLookupFrame) : null;
         const physicalBackgroundDraw = frameSource ? resolvePhysicalRotoFrameBackgroundDrawForLayer(layer) : null;
         const source = frameSource ? this.getPhysicPaintImageSource(frameSource) : null;
         const backgroundDraw = physicalBackgroundDraw ?? (missingDraw?.kind === 'background-only' ? missingDraw : null);

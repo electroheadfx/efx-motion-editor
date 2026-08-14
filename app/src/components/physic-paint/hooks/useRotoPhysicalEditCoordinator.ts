@@ -78,7 +78,10 @@ import {
 } from '../roto/physicsPaintRotoGroupLifecycle';
 import type { PhysicPaintRotoPhysicalOperationLeaseToken } from '../../../stores/physicPaintStore';
 import type { PhysicPaintRotoPhysicalEditProposal } from '../roto/physicsPaintRotoPhysicalResolver';
-import { validatePhysicPaintRotoPhysicalEditSemanticDelta } from '../roto/physicsPaintRotoPhysicalResolver';
+import {
+  buildCanonicalMoveGroupOverrideRecords,
+  validatePhysicPaintRotoPhysicalEditSemanticDelta,
+} from '../roto/physicsPaintRotoPhysicalResolver';
 import { isRotoPngDataUrl } from '../roto/rotoCanvasFrames';
 import type {
   PendingPhysicPaintRotoPhysicalEdit,
@@ -1644,11 +1647,29 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
             ?? groupFramePaintProposal?.incomingInterpolationBreakKeyIds
             ?? proposal?.nextIncomingInterpolationBreakKeyIds
             ?? currentIncomingInterpolationBreakKeyIds;
+        const moveGroupOverrideRecords = input.operationKind === 'move-group'
+          && intent?.kind === 'move-group'
+          && proposal?.nextLoopClips
+          ? buildCanonicalMoveGroupOverrideRecords({
+              currentLoopClips,
+              stagedLoopClips,
+              currentGroupOverrideRecords,
+              movedLoopId: intent.loopId,
+              capacity,
+            })
+          : undefined;
+        if (moveGroupOverrideRecords === null) {
+          portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+          portsRef.current.status.logDiagnostic('Group move override publication collided or no longer matched canonical authority.');
+          clearPendingOnce();
+          return false;
+        }
         const stagedGroupOverrideRecords = isReplay && replayTarget
           ? replayTarget.groupOverrideRecords
           : regenerateGroupInput?.groupOverrideRecords
             ?? groupLifecycleDeleteProposal?.groupOverrideRecords
             ?? groupFramePaintProposal?.groupOverrideRecords
+            ?? moveGroupOverrideRecords
             ?? currentGroupOverrideRecords;
         const stagedRevision = buildPhysicPaintRotoPhysicalRevision(
           validatedStagedRecords,

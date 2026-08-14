@@ -1339,6 +1339,8 @@ export interface PhysicPaintProjectContext {
 /** Closed plain-data physical document carried by launch and bridge envelopes. */
 export interface PhysicPaintRotoPhysicalDocumentPayload {
   readonly capacity: number;
+  /** Authoritative current parent/layer end, independently derived from sequence timing. */
+  readonly layerEndExclusive: number;
   readonly records: readonly PhysicPaintRotoPhysicalEditRecord[];
   readonly groupOverrideRecords?: readonly PhysicPaintRotoPhysicalEditRecord[];
   readonly interpolationEnabled: boolean;
@@ -2035,8 +2037,11 @@ function optionalRotoCacheFrames(value: unknown): boolean {
 
 function optionalRotoPhysicalDocumentPayload(value: unknown): value is PhysicPaintRotoPhysicalDocumentPayload | undefined {
   if (value === undefined) return true;
-  if (!isRecord(value) || !hasOnlyKeys(value, ['capacity', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ['capacity', 'layerEndExclusive', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
   if (!isNonNegativeInteger(value.capacity) || value.capacity < 1) return false;
+  if (!isNonNegativeInteger(value.layerEndExclusive)
+    || value.layerEndExclusive < 1
+    || value.layerEndExclusive > value.capacity) return false;
   if (!Array.isArray(value.records) || !value.records.every(isPhysicPaintRotoPhysicalEditRecord)) return false;
   if (value.groupOverrideRecords !== undefined
     && (!Array.isArray(value.groupOverrideRecords) || !value.groupOverrideRecords.every(isPhysicPaintRotoPhysicalEditRecord))) return false;
@@ -2048,7 +2053,8 @@ function optionalRotoPhysicalDocumentPayload(value: unknown): value is PhysicPai
   if (!isPercentInteger(value.scriptMotion.deformation) || !isPercentInteger(value.scriptMotion.position)) return false;
   if (value.background !== null && !isPhysicPaintRotoBackgroundMetadata(value.background)) return false;
   if (value.selectedKeyId !== null && !isBoundedPhysicalKeyId(value.selectedKeyId)) return false;
-  if (!isNonNegativeInteger(value.cursorAppFrame) || value.cursorAppFrame >= value.capacity) return false;
+  if (!isNonNegativeInteger(value.cursorAppFrame)
+    || value.cursorAppFrame >= value.layerEndExclusive) return false;
   return isNonEmptyString(value.revision);
 }
 

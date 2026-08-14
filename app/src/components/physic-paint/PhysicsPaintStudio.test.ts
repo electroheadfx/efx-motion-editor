@@ -95,8 +95,12 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('selectedLoopClipId.value = loopId;\n      return rotoPlayScript.openLoopEdit(loopId);');
     expect(studio).toContain('getLoopEditSnapshot: (placementStart) => {');
     expect(studio).toContain('physicPaintStore.getRotoPhysicalDocument(launchContext.layerId)');
-    expect(studio).toContain('layerEndExclusive: physicalCapacity');
-    expect(studio).toContain('remainingCapacity: Math.max(0, physicalCapacity - placementStart)');
+    expect(studio).toContain('const layerEndExclusive = launchContext.rotoPhysical?.layerEndExclusive;');
+    expect(studio).toContain('layerEndExclusive,');
+    expect(studio).toContain('remainingCapacity: Math.max(0, layerEndExclusive - placementStart)');
+    expect(studio).toContain('rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0,');
+    expect(studio).not.toContain('rotoParentEndExclusive: rotoPhysicalCapacity');
+    expect(studio).not.toContain('layerEndExclusive: physicalCapacity');
     expect(studio).toContain('onOpenLoopEdit: handleOpenRotoLoopEdit,');
     expect(studio).toContain('onOpenRotoLoopEdit: handleOpenRotoLoopEdit,');
     expect(studio).toContain('onCloseLoopClip: handleCloseRotoLoopClip,');
@@ -303,6 +307,36 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
     const publishAllIndex = selectAll.indexOf('selectedKeyIds.value = next.selectedKeyIds;');
     expect(clearStoreIndex).toBeGreaterThan(clearPrimaryIndex);
     expect(publishAllIndex).toBeGreaterThan(clearStoreIndex);
+  });
+
+  it('builds physical history snapshots from live launch, store, selection, and cursor authority', () => {
+    const snapshotStart = studio.indexOf('getLiveSourceSnapshot: () => {');
+    const snapshotEnd = studio.indexOf('referencedActionHistory:', snapshotStart);
+    const snapshot = studio.slice(snapshotStart, snapshotEnd);
+    expect(snapshotStart).toBeGreaterThanOrEqual(0);
+    expect(snapshot).toContain('const liveLaunch = launchContextRef.current;');
+    expect(snapshot).toContain('const liveSelectedKeyId = selectedKeyId.peek();');
+    expect(snapshot).toContain('physicPaintStore.getRotoRealKeyRecords(layerId)');
+    expect(snapshot).toContain('physicPaintStore.getRotoGroupOverrideRecords(layerId)');
+    expect(snapshot).toContain('physicPaintStore.getRotoPhysicalLoopClips(layerId)');
+    expect(snapshot).toContain('physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId)');
+    expect(snapshot).toContain('currentAppFrame: liveLaunch?.startFrame ?? 0,');
+    expect(snapshot).not.toContain('acceptedOutput');
+  });
+
+  it('settles accepted move, Undo, and Redo through the shared Group-aware selection reducer', () => {
+    const routeStart = studio.indexOf('physicalEditCoordinatorRouteRef.current = {');
+    const routeEnd = studio.indexOf('const handlePhysicsPaintKeyDown', routeStart);
+    const route = studio.slice(routeStart, routeEnd);
+    expect(routeStart).toBeGreaterThanOrEqual(0);
+    expect(route).toContain('resolvePostAcceptanceRotoStudioSelection({');
+    expect(route).toContain('selectedLoopClipIds: selectedLoopClipIds.peek(),');
+    expect(route).toContain('selectedLoopClipId: selectedLoopClipId.peek(),');
+    expect(route).toContain('operationKind: accepted.operationKind,');
+    expect(route).toContain('selectedLoopClipIds.value = nextSelection.selectedLoopClipIds;');
+    expect(route).toContain('selectedLoopClipId.value = nextSelection.selectedLoopClipId;');
+    expect(route).toContain('selectedKeyIds.value = nextSelection.keySelection.selectedKeyIds;');
+    expect(route).toContain('selectionAnchorKeyId.value = nextSelection.keySelection.anchorKeyId;');
   });
 
   it('resets all spacing selection on launch replacement and session reset, while accepted spacing keeps identities', () => {

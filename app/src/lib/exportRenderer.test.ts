@@ -90,9 +90,9 @@ describe('physics paint cache-first preview/export contract', () => {
     const source = readSource('src/lib/previewRenderer.ts');
 
     expect(source).toContain('void physicPaintVersion.value');
-    expect(source).toContain('resolvePhysicPaintFrameSource(paintLayerId, paintLookupFrame)');
+    expect(source).toContain('resolvePhysicPaintFrameSource(paintLayerId, physicPaintLookupFrame)');
     expect(source).toContain('physicPaintStore.getRotoPhysicalRenderSource(layerId, frame)');
-    expect(source).toContain('resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame)');
+    expect(source).toContain('resolveMissingRotoFrameDrawForLayer(layer, physicPaintLookupFrame)');
     expect(source).toContain('physicPaintStore.getRotoRealKeyRecords(paintLayerId)');
     expect(source).toContain('drawRotoFrameComposite(ctx, backgroundDraw, logicalW, logicalH, null, paperCanvas, source)');
     expect(source).not.toMatch(/renderFromStrokes/);
@@ -116,7 +116,7 @@ describe('physics paint cache-first preview/export contract', () => {
     const renderFrameCalls = source.match(/\.renderFrame\(/g) ?? [];
 
     expect(renderFrameCalls.length).toBeGreaterThanOrEqual(4);
-    expect(source).toContain('renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, fadeOpacity, globalFrame)');
+    expect(source).toMatch(/renderer\.renderFrame\(\s*interpolatedLayers,\s*localFrame,\s*seqFrames,\s*seq\.fps,\s*true,\s*fadeOpacity,\s*globalFrame,\s*localFrame\s*\)/);
     expect(source).not.toMatch(/if \([^)]*missing/i);
     expect(source).not.toMatch(/background-only/);
   });
@@ -204,7 +204,7 @@ describe('physics paint cache-first preview/export contract', () => {
 
   it('36.13-PREVIEW-EXPORT-PARITY preloads store-regenerated 2 -> 6 span output at direct physical appFrame positions', () => {
     const layer = makeRotoLayer();
-    const sequence = { ...makeSequence(layer), kind: 'fx' as const, keyPhotos: [], inFrame: 4, outFrame: 5 };
+    const sequence = { ...makeSequence(layer), kind: 'fx' as const, keyPhotos: [], inFrame: 4, outFrame: 9 };
     seedPhysicalRoto([
       { keyId: 'key-0', appFrame: 0, dataUrl: 'data:image/png;base64,cmVhbC0w' },
       { keyId: 'key-1', appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' },
@@ -231,12 +231,12 @@ describe('physics paint cache-first preview/export contract', () => {
     } as unknown as PreviewRenderer;
 
     // The 2 -> 6 span derives gap interiors at direct physical appFrames 3, 4, 5.
-    const frameMap = Array.from({ length: 5 }, (_, frame) => ({
-      globalFrame: frame,
-      sequenceId: frame === 4 ? sequence.id : 'content-seq',
+    const frameMap = Array.from({ length: 9 }, (_, globalFrame) => ({
+      globalFrame,
+      sequenceId: globalFrame === 8 ? sequence.id : 'content-seq',
       keyPhotoId: 'kp-1',
       imageId: 'base-image',
-      localFrame: frame,
+      localFrame: globalFrame === 8 ? 4 : globalFrame,
     }));
 
     preloadExportImages(renderer, frameMap, undefined, [sequence]);
@@ -498,6 +498,46 @@ describe('exportRenderer', () => {
       expect(renderer.collectPhysicPaintFrameSources).toHaveBeenCalledWith(sequence.layers, 0);
       expect(renderer.preloadPhysicPaintFrames).toHaveBeenCalledWith([frameSource]);
       expect(renderer.isPhysicPaintFrameResolved).toHaveBeenCalledWith(frameSource);
+    });
+
+    it('preloads content Physics Paint from local F0 when the Sequence starts globally at F100', async () => {
+      const sequence = { ...makeSequence(makeRotoLayer()), id: 'content-at-100', keyPhotos: [{ id: 'kp-local-0', imageId: '', holdFrames: 1 }] };
+      seedPhysicalRoto([
+        { keyId: 'key-0', appFrame: 0, dataUrl: 'data:image/png;base64,bG9jYWwtMA==' },
+      ]);
+      const preloadedFrames: PreviewPhysicPaintFrameSource[] = [];
+      const renderer = {
+        onImageLoaded: null,
+        collectRotoPaperTextures: vi.fn(() => []),
+        collectPhysicPaintFrameSources: vi.fn((layers: readonly Layer[], frame: number) => collectPhysicalFrameSources(layers, frame)),
+        preloadImages: vi.fn(),
+        preloadPaperTextures: vi.fn(),
+        preloadPhysicPaintFrames: vi.fn((frames: readonly PreviewPhysicPaintFrameSource[]) => {
+          preloadedFrames.push(...frames);
+        }),
+        getImageSource: vi.fn(() => ({ naturalWidth: 1, naturalHeight: 1 })),
+        isImageFailed: vi.fn(() => false),
+        isPaperTextureResolved: vi.fn(() => true),
+        isPhysicPaintFrameResolved: vi.fn((source: PreviewPhysicPaintFrameSource) => preloadedFrames.includes(source)),
+      } as unknown as PreviewRenderer;
+      const frames = Array.from({ length: 101 }, (_, globalFrame) => ({
+        globalFrame,
+        sequenceId: globalFrame === 100 ? sequence.id : 'earlier-content',
+        keyPhotoId: globalFrame === 100 ? 'kp-local-0' : 'kp-earlier',
+        imageId: '',
+        localFrame: globalFrame === 100 ? 0 : globalFrame,
+      }));
+
+      await preloadExportImages(renderer, frames, undefined, [sequence]);
+
+      expect(renderer.collectPhysicPaintFrameSources).toHaveBeenCalledWith(sequence.layers, 0);
+      expect(renderer.preloadPhysicPaintFrames).toHaveBeenCalledWith([
+        expect.objectContaining({
+          layerId: 'roto-layer',
+          frame: 0,
+          renderedFrame: expect.objectContaining({ appFrame: 0, dataUrl: 'data:image/png;base64,bG9jYWwtMA==' }),
+        }),
+      ]);
     });
 
     it.todo('resolves when all images are loaded');

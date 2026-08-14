@@ -48,6 +48,7 @@ function physicalInput(overrides: Partial<RotoTimelineModelInput> = {}): RotoTim
     rotoKeyRecords: buildSixtyRecords(),
     rotoInterpolationState: { enabled: true, mode: 'duplicate' },
     capacity: 200,
+    rotoParentEndExclusive: 200,
     currentFrame: 0,
     selectedKeyId: null,
     ...overrides,

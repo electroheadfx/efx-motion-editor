@@ -39,6 +39,7 @@ import {
   applyPhysicPaintPayload,
   applyPhysicPaintRotoGroupFramePaint,
   createPhysicPaintLaunchContext,
+  getPhysicPaintRotoAuthority,
   handlePhysicPaintFrameSyncMessage,
   installPhysicPaintApplyListener,
   installPhysicPaintAudioContextPublisher,
@@ -183,9 +184,26 @@ function applyCanvasPayload(overrides: Partial<PhysicPaintApplyPayload> = {}): P
 
 
 
-function mockLayers(layers: Layer[]): void {
+function setParentSequence(layers: Layer[], parentEndExclusive: number): void {
+  sequenceStore.sequences.value = [{
+    id: 'bridge-test-parent-sequence',
+    kind: 'fx',
+    name: 'Bridge test parent authority',
+    fps: 24,
+    width: 1920,
+    height: 1080,
+    keyPhotos: [],
+    layers,
+    inFrame: 0,
+    outFrame: parentEndExclusive,
+  }];
+}
+
+function mockLayers(layers: Layer[], parentEndExclusive: number | null = 600): void {
   vi.spyOn(layerStore.layers, 'peek').mockReturnValue(layers);
   vi.spyOn(layerStore.overlayLayers, 'peek').mockReturnValue([]);
+  if (parentEndExclusive === null) sequenceStore.sequences.value = [];
+  else setParentSequence(layers, parentEndExclusive);
 }
 
 function physicLayer(overrides: Partial<Layer> = {}): Layer {
@@ -237,6 +255,7 @@ function makeAudioTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
 describe('physicPaintBridge', () => {
   beforeEach(() => {
     physicPaintStore.reset();
+    setParentSequence([physicLayer()], 600);
     Object.defineProperty(globalThis, 'window', {
       value: {
         open: vi.fn(),
@@ -301,6 +320,237 @@ describe('physicPaintBridge', () => {
 
     expect(context.workflowLabel).toBe('PPaint #2');
     expect(context.layerName).toBe('Water smoke');
+  });
+
+  it('carries the authoritative layer end separately from physical capacity', () => {
+    const layer = physicLayer();
+    sequenceStore.sequences.value = [];
+    sequenceStore.add({
+      id: 'parent-end-sequence',
+      kind: 'fx',
+      name: 'Parent end authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: 40,
+    });
+
+    const context = createPhysicPaintLaunchContext(layer, 10);
+
+    expect(context.rotoPhysical).toMatchObject({
+      capacity: 600,
+      layerEndExclusive: 40,
+    });
+  });
+
+  it('launches a nonzero-inFrame sequence at its layer-local origin', () => {
+    const layer = physicLayer();
+    sequenceStore.sequences.value = [];
+    sequenceStore.add({
+      id: 'nonzero-launch-origin-sequence',
+      kind: 'fx',
+      name: 'Nonzero launch origin authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 10,
+      outFrame: 40,
+    });
+
+    const context = createPhysicPaintLaunchContext(layer, 10);
+
+    expect(context).toMatchObject({
+      startFrame: 0,
+      rotoPhysical: {
+        capacity: 600,
+        cursorAppFrame: 0,
+        layerEndExclusive: 30,
+      },
+    });
+  });
+
+  it('converts and clamps later global launch frames in layer-local coordinates', () => {
+    const layer = physicLayer();
+    sequenceStore.sequences.value = [];
+    sequenceStore.add({
+      id: 'nonzero-later-launch-sequence',
+      kind: 'fx',
+      name: 'Nonzero later launch authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 10,
+      outFrame: 40,
+    });
+
+    const withinRange = createPhysicPaintLaunchContext(layer, 25);
+    const afterRange = createPhysicPaintLaunchContext(layer, 45);
+
+    expect(withinRange).toMatchObject({
+      startFrame: 15,
+      rotoPhysical: { cursorAppFrame: 15, layerEndExclusive: 30 },
+    });
+    expect(afterRange).toMatchObject({
+      startFrame: 29,
+      rotoPhysical: { cursorAppFrame: 29, layerEndExclusive: 30 },
+    });
+  });
+
+  it('launches a non-first content Sequence from its track layout origin in layer-local coordinates', () => {
+    const layer = physicLayer();
+    sequenceStore.sequences.value = [{
+      id: 'content-before-physical-sequence',
+      kind: 'content',
+      name: 'Content before physical sequence',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [{ id: 'content-before-key', imageId: 'image-before', holdFrames: 100 }],
+      layers: [],
+    }, {
+      id: 'content-physical-sequence',
+      kind: 'content',
+      name: 'Content physical authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [{ id: 'content-physical-key', imageId: 'image-physical', holdFrames: 30 }],
+      layers: [layer],
+    }];
+
+    const atStart = createPhysicPaintLaunchContext(layer, 100);
+    const later = createPhysicPaintLaunchContext(layer, 112);
+
+    expect(atStart).toMatchObject({
+      startFrame: 0,
+      rotoPhysical: { cursorAppFrame: 0, layerEndExclusive: 30 },
+    });
+    expect(later).toMatchObject({
+      startFrame: 12,
+      rotoPhysical: { cursorAppFrame: 12, layerEndExclusive: 30 },
+    });
+  });
+
+  it('bounds a non-first content Sequence local end by physical capacity', () => {
+    const layer = physicLayer();
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, {
+      capacity: 20,
+      realKeyRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision([], interpolation, []),
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    sequenceStore.sequences.value = [{
+      id: 'content-before-capacity-sequence',
+      kind: 'content',
+      name: 'Content before capacity sequence',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [{ id: 'content-before-capacity-key', imageId: 'image-before', holdFrames: 100 }],
+      layers: [],
+    }, {
+      id: 'content-capacity-sequence',
+      kind: 'content',
+      name: 'Content capacity authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [{ id: 'content-capacity-key', imageId: 'image-capacity', holdFrames: 30 }],
+      layers: [layer],
+    }];
+
+    const context = createPhysicPaintLaunchContext(layer, 125);
+
+    expect(context).toMatchObject({
+      startFrame: 19,
+      rotoPhysical: { capacity: 20, cursorAppFrame: 19, layerEndExclusive: 20 },
+    });
+  });
+
+  it('fails closed when content timing cannot validate its matching track layout', () => {
+    const layer = physicLayer();
+    sequenceStore.sequences.value = [{
+      id: 'invalid-content-range-sequence',
+      kind: 'content',
+      name: 'Invalid content range authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [{ id: 'invalid-content-key', imageId: 'invalid-image', holdFrames: 0 }],
+      layers: [layer],
+    }];
+
+    expect(() => createPhysicPaintLaunchContext(layer, 0))
+      .toThrow('Physics Paint layer has no authoritative parent timeline range.');
+  });
+
+  it('computes Play Script authority from an already-local canonical start', () => {
+    const layer = physicLayer();
+    mockLayers([layer], null);
+    sequenceStore.add({
+      id: 'nonzero-play-script-authority-sequence',
+      kind: 'fx',
+      name: 'Nonzero Play Script authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 10,
+      outFrame: 40,
+    });
+
+    const authority = getPhysicPaintRotoAuthority({
+      operationId: 'nonzero-play-script-authority',
+      projectContextId: projectStore.projectContextId.peek(),
+      layerId: layer.id,
+      canonicalStart: 5,
+    });
+
+    expect(authority).toMatchObject({
+      ok: true,
+      canonicalStart: 5,
+      layerEndExclusive: 30,
+      capacity: 25,
+      physicalCapacity: 600,
+    });
+  });
+
+  it('fails closed when an FX layer has missing or invalid Sequence range authority', () => {
+    const layer = physicLayer();
+    sequenceStore.sequences.value = [];
+
+    expect(() => createPhysicPaintLaunchContext(layer, 10))
+      .toThrow('Physics Paint layer has no authoritative parent timeline range.');
+
+    sequenceStore.add({
+      id: 'invalid-parent-range-sequence',
+      kind: 'fx',
+      name: 'Invalid parent range authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 40,
+      outFrame: 10,
+    });
+
+    expect(() => createPhysicPaintLaunchContext(layer, 10))
+      .toThrow('Physics Paint layer has no authoritative parent timeline range.');
   });
 
   it('hydrates every cached Roto frame summary into launch context', () => {
@@ -590,6 +840,8 @@ describe('physicPaintBridge', () => {
       invoke: vi.fn().mockRejectedValue(new Error('permission denied')),
     }));
     const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
+    const { sequenceStore: nativeSequenceStore } = await import('../stores/sequenceStore');
+    nativeSequenceStore.sequences.value = sequenceStore.sequences.peek();
 
     const result = await openCanvas({ layer: physicLayer(), frame: 4 });
 
@@ -617,6 +869,8 @@ describe('physicPaintBridge', () => {
     });
     vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke }));
     const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
+    const { sequenceStore: nativeSequenceStore } = await import('../stores/sequenceStore');
+    nativeSequenceStore.sequences.value = sequenceStore.sequences.peek();
 
     const result = await openCanvas({ layer: physicLayer(), frame: 4 });
 
@@ -646,6 +900,8 @@ describe('physicPaintBridge', () => {
     });
     vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke }));
     const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
+    const { sequenceStore: nativeSequenceStore } = await import('../stores/sequenceStore');
+    nativeSequenceStore.sequences.value = sequenceStore.sequences.peek();
 
     const result = await openCanvas({ layer: physicLayer(), frame: 4 });
 
@@ -914,6 +1170,7 @@ describe('physicPaintBridge', () => {
         identities: baseline.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
         records: baseline,
         intent,
+        parentEndExclusive: launch.data.rotoPhysical.capacity,
         capacity: launch.data.rotoPhysical.capacity,
         interpolationEnabled: false,
         loopClips: [],
@@ -977,6 +1234,353 @@ describe('physicPaintBridge', () => {
       expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
       replace.mockRestore();
     }
+  });
+
+  it('accepts and replays a moved local-boundary Infinity Group with the child-authoritative pre-move cursor', async () => {
+    const layer = physicLayer();
+    mockLayers([layer], null);
+    sequenceStore.add({
+      id: 'bridge-override-move-sequence',
+      kind: 'fx',
+      name: 'Bridge override move authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 10,
+      outFrame: 60,
+    });
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const records = [
+      makePhysicalRecord('A', 10),
+      makePhysicalRecord('B', 11),
+      makePhysicalRecord('N', 30),
+      makePhysicalRecord('O', 31),
+    ];
+    const groupOverrideRecords = [makePhysicalRecord('override-B', 11)];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const loopClips = [{
+      loopId: 'loop-infinity',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 'infinity' as const,
+      mode: 'static' as const,
+      syncState: 'synchronized' as const,
+      provenanceState: 'attached' as const,
+      phaseOrigin: 10,
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 10, endExclusive: 30 }],
+      frameOverrides: [{ appFrame: 11, keyId: 'override-B' }],
+    }, {
+      loopId: 'loop-next',
+      placementStart: 30,
+      sourceKeyIds: ['N', 'O'],
+      repeat: 2 as const,
+      mode: 'static' as const,
+      syncState: 'synchronized' as const,
+      provenanceState: 'attached' as const,
+      phaseOrigin: 30,
+      originalEndExclusive: 34,
+      visibleRanges: [{ start: 30, endExclusive: 34 }],
+      frameOverrides: [],
+    }];
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, {
+      capacity: 50,
+      realKeyRecords: records,
+      groupOverrideRecords,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 10,
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        records,
+        interpolation,
+        loopClips,
+        [],
+        groupOverrideRecords,
+      ),
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 20 });
+    if (!launch.ok || !launch.data.rotoPhysical) throw new Error('Expected physical launch authority.');
+    expect(launch.data).toMatchObject({
+      startFrame: 10,
+      rotoPhysical: { cursorAppFrame: 10, layerEndExclusive: 50 },
+    });
+    const intent = {
+      kind: 'move-group' as const,
+      loopId: 'loop-infinity',
+      destinationPlacementStart: 14,
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent,
+      parentEndExclusive: 50,
+      capacity: 50,
+      interpolationEnabled: false,
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+    });
+    if (!resolution.ok) {
+      throw new Error('Expected canonical Infinity Group move proposal.');
+    }
+    const proposal = resolution.proposal;
+    const nextLoopClips = proposal.nextLoopClips;
+    if (!nextLoopClips) throw new Error('Expected moved Infinity Group clips.');
+    const proposedRecords = proposal.orderedKeyIds.map((keyId) => {
+      const current = records.find((record) => record.keyId === keyId);
+      const appFrame = proposal.mapping.get(keyId);
+      if (!current || appFrame === undefined) throw new Error(`Missing moved record ${keyId}.`);
+      return movePhysicalRecord(current, appFrame);
+    });
+    const proposedGroupOverrideRecords = [movePhysicalRecord(groupOverrideRecords[0], 15)];
+    const movedGroup = nextLoopClips.find((clip) => clip.loopId === intent.loopId);
+    expect(movedGroup?.frameOverrides).toEqual([{ appFrame: 15, keyId: 'override-B' }]);
+    expect(proposedGroupOverrideRecords[0]).toMatchObject({
+      keyId: 'override-B',
+      appFrame: 15,
+      payload: { appFrame: 15 },
+    });
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!beforeDocument) throw new Error('Expected pre-move physical document.');
+    const childBeforeDocument = Object.freeze({
+      ...beforeDocument,
+      selectedKeyId: null,
+      cursorAppFrame: 14,
+    });
+    expect(childBeforeDocument.revision).toBe(beforeDocument.revision);
+    const leaseToken = acquirePhysicalLease(layer.id);
+
+    const result = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'move-infinity-group-with-override',
+      operationKind: 'move-group',
+      intent,
+      layerId: layer.id,
+      leaseToken,
+      startFrame: 14,
+      cursorAppFrame: 14,
+      launchOperationId: launch.data.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: launch.data.rotoPhysical.revision,
+      records: proposedRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: proposedGroupOverrideRecords.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      loopClips: proposal.nextLoopClips,
+      incomingInterpolationBreakKeyIds: proposal.nextIncomingInterpolationBreakKeyIds ?? [],
+      selectedKeyId: proposal.selectedKeyId,
+      selectedAppFrame: proposal.selectedAppFrame,
+    });
+
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    expect(acceptedDocument?.groupOverrideRecords).toEqual(proposedGroupOverrideRecords);
+    expect(acceptedDocument?.loopClips.find((clip) => clip.loopId === 'loop-infinity')).toMatchObject({
+      placementStart: 14,
+      phaseOrigin: 14,
+      frameOverrides: [{ appFrame: 15, keyId: 'override-B' }],
+    });
+    if (!acceptedDocument || !result.ok) throw new Error('Expected accepted moved document.');
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
+
+    const undoLease = acquirePhysicalLease(layer.id);
+    const undo = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'move-infinity-group-with-override-undo',
+      operationKind: 'undo',
+      layerId: layer.id,
+      leaseToken: undoLease,
+      startFrame: childBeforeDocument.cursorAppFrame,
+      cursorAppFrame: childBeforeDocument.cursorAppFrame,
+      launchOperationId: launch.data.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: acceptedDocument.revision,
+      records: childBeforeDocument.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (childBeforeDocument.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: childBeforeDocument.interpolation.enabled,
+      interpolationMode: childBeforeDocument.interpolation.mode,
+      loopClips: childBeforeDocument.loopClips,
+      incomingInterpolationBreakKeyIds: childBeforeDocument.incomingInterpolationBreakKeyIds,
+      selectedKeyId: childBeforeDocument.selectedKeyId,
+      selectedAppFrame: childBeforeDocument.selectedKeyId === null ? null : childBeforeDocument.cursorAppFrame,
+      historyProvenance: {
+        historyCommandId: 'move-infinity-group-with-override',
+        historyDirection: 'undo',
+        sourceRevision: acceptedDocument.revision,
+        targetRevision: beforeDocument.revision,
+      },
+    });
+    expect(undo.ok, undo.ok ? undefined : undo.error).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(childBeforeDocument);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(undoLease)).toBe(true);
+
+    const redoLease = acquirePhysicalLease(layer.id);
+    const redo = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'move-infinity-group-with-override-redo',
+      operationKind: 'redo',
+      layerId: layer.id,
+      leaseToken: redoLease,
+      startFrame: acceptedDocument.cursorAppFrame,
+      cursorAppFrame: acceptedDocument.cursorAppFrame,
+      launchOperationId: launch.data.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: beforeDocument.revision,
+      records: acceptedDocument.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (acceptedDocument.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: acceptedDocument.interpolation.enabled,
+      interpolationMode: acceptedDocument.interpolation.mode,
+      loopClips: acceptedDocument.loopClips,
+      incomingInterpolationBreakKeyIds: acceptedDocument.incomingInterpolationBreakKeyIds,
+      selectedKeyId: acceptedDocument.selectedKeyId,
+      selectedAppFrame: acceptedDocument.selectedKeyId === null ? null : acceptedDocument.cursorAppFrame,
+      historyProvenance: {
+        historyCommandId: 'move-infinity-group-with-override',
+        historyDirection: 'redo',
+        sourceRevision: beforeDocument.revision,
+        targetRevision: acceptedDocument.revision,
+      },
+    });
+    expect(redo.ok, redo.ok ? undefined : redo.error).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(acceptedDocument);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(redoLease)).toBe(true);
+  });
+
+  it('parent-recomputes Infinity Group movement against a non-first content Sequence local end', async () => {
+    const layer = physicLayer();
+    mockLayers([layer], null);
+    sequenceStore.sequences.value = [{
+      id: 'bridge-content-before-sequence',
+      kind: 'content',
+      name: 'Bridge content before authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [{ id: 'bridge-content-before-key', imageId: 'bridge-before-image', holdFrames: 10 }],
+      layers: [],
+    }, {
+      id: 'bridge-content-parent-end-sequence',
+      kind: 'content',
+      name: 'Bridge content parent end authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [{ id: 'bridge-content-parent-key', imageId: 'bridge-parent-image', holdFrames: 30 }],
+      layers: [layer],
+    }];
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const records = [
+      makePhysicalRecord('A', 10),
+      makePhysicalRecord('B', 12),
+    ];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const loopClips = [{
+      loopId: 'loop-infinity-parent-end',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 'infinity' as const,
+      mode: 'static' as const,
+      syncState: 'synchronized' as const,
+      provenanceState: 'attached' as const,
+      phaseOrigin: 10,
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 10, endExclusive: 30 }],
+      frameOverrides: [],
+    }];
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, {
+      capacity: 600,
+      realKeyRecords: records,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 10,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, []),
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 20 });
+    if (!launch.ok || !launch.data.rotoPhysical) throw new Error('Expected physical launch authority.');
+    expect(launch.data).toMatchObject({
+      startFrame: 10,
+      rotoPhysical: { capacity: 600, cursorAppFrame: 10, layerEndExclusive: 30 },
+    });
+    const intent = {
+      kind: 'move-group' as const,
+      loopId: 'loop-infinity-parent-end',
+      destinationPlacementStart: 16,
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent,
+      parentEndExclusive: 30,
+      capacity: 600,
+      interpolationEnabled: false,
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+    });
+    if (!resolution.ok) {
+      throw new Error('Expected canonical local-F30 Infinity Group move proposal.');
+    }
+    const proposal = resolution.proposal;
+    const nextLoopClips = proposal.nextLoopClips;
+    if (!nextLoopClips) throw new Error('Expected moved local-F30 Infinity Group clips.');
+    expect(nextLoopClips[0]).toMatchObject({
+      placementStart: 16,
+      phaseOrigin: 16,
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 16, endExclusive: 30 }],
+    });
+    const proposedRecords = proposal.orderedKeyIds.map((keyId) => {
+      const current = records.find((record) => record.keyId === keyId);
+      const appFrame = proposal.mapping.get(keyId);
+      if (!current || appFrame === undefined) throw new Error(`Missing moved record ${keyId}.`);
+      return movePhysicalRecord(current, appFrame);
+    });
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    const beforeRevisionSignal = rotoPhysicalRevision.peek();
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+    const leaseToken = acquirePhysicalLease(layer.id);
+
+    const result = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'move-infinity-group-at-parent-end',
+      operationKind: 'move-group',
+      intent,
+      layerId: layer.id,
+      leaseToken,
+      startFrame: 16,
+      cursorAppFrame: 16,
+      launchOperationId: launch.data.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: launch.data.rotoPhysical.revision,
+      records: proposedRecords.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      loopClips: proposal.nextLoopClips,
+      incomingInterpolationBreakKeyIds: proposal.nextIncomingInterpolationBreakKeyIds ?? [],
+      selectedKeyId: proposal.selectedKeyId,
+      selectedAppFrame: proposal.selectedAppFrame,
+    });
+
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)?.loopClips[0]).toMatchObject({
+      placementStart: 16,
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 16, endExclusive: 30 }],
+    });
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).not.toEqual(beforeDocument);
+    expect(rotoPhysicalRevision.peek()).not.toBe(beforeRevisionSignal);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
   });
 
   it('rejects replay of an equal-revision command from another project context without mutation or publication', async () => {
@@ -1087,6 +1691,7 @@ describe('physicPaintBridge', () => {
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
       intent: { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null },
+      parentEndExclusive: launch.data.rotoPhysical.capacity,
       capacity: launch.data.rotoPhysical.capacity,
       interpolationEnabled: false,
       loopClips: [],
@@ -1126,6 +1731,18 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(commandLease)).toBe(true);
     const replayLease = acquirePhysicalLease(layer.id, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
     const beforeReplay = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!beforeReplay) throw new Error('Expected complete pre-rejection physical document.');
+    const beforeReplayIntegrity = {
+      revision: beforeReplay.revision,
+      records: beforeReplay.realKeyRecords,
+      groupOverrideRecords: beforeReplay.groupOverrideRecords ?? [],
+      interpolation: beforeReplay.interpolation,
+      loopClips: beforeReplay.loopClips,
+      incomingInterpolationBreakKeyIds: beforeReplay.incomingInterpolationBreakKeyIds,
+      selectedKeyId: beforeReplay.selectedKeyId,
+      cursorAppFrame: beforeReplay.cursorAppFrame,
+      capacity: beforeReplay.capacity,
+    };
     const beforeRevisionSignal = rotoPhysicalRevision.peek();
     const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
     const dispatch = window.dispatchEvent as ReturnType<typeof vi.fn>;
@@ -1158,7 +1775,20 @@ describe('physicPaintBridge', () => {
     });
 
     expect(replay.ok).toBe(false);
-    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(beforeReplay);
+    expect(replay.ok ? null : replay.error).toBe('Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. Roto physical replay target snapshot does not match the original accepted command.');
+    const afterReplay = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    expect(afterReplay).toEqual(beforeReplay);
+    expect(afterReplay && {
+      revision: afterReplay.revision,
+      records: afterReplay.realKeyRecords,
+      groupOverrideRecords: afterReplay.groupOverrideRecords ?? [],
+      interpolation: afterReplay.interpolation,
+      loopClips: afterReplay.loopClips,
+      incomingInterpolationBreakKeyIds: afterReplay.incomingInterpolationBreakKeyIds,
+      selectedKeyId: afterReplay.selectedKeyId,
+      cursorAppFrame: afterReplay.cursorAppFrame,
+      capacity: afterReplay.capacity,
+    }).toEqual(beforeReplayIntegrity);
     expect(rotoPhysicalRevision.peek()).toBe(beforeRevisionSignal);
     expect(replace).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalled();
@@ -1357,10 +1987,12 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds('missing-layer')).toBe(
       PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
     );
-    const fresh = createPhysicPaintLaunchContext(physicLayer({
+    const freshLayer = physicLayer({
       id: 'fresh-layer',
       source: { type: 'physic-paint', layerId: 'fresh-layer' },
-    }), 0);
+    });
+    setParentSequence([freshLayer], 600);
+    const fresh = createPhysicPaintLaunchContext(freshLayer, 0);
     expect(fresh.rotoPhysical?.incomingInterpolationBreakKeyIds).toEqual([]);
     expect(Object.isFrozen(fresh.rotoPhysical?.incomingInterpolationBreakKeyIds)).toBe(true);
     open.mockRestore();
@@ -1621,28 +2253,39 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
   });
 
-  it('accepts the first Progressive Play Script and Loop Clip on a fresh layer', async () => {
+  it('accepts Play Script and Loop Edit authority against a non-first content Sequence local end', async () => {
     const layer = physicLayer();
-    mockLayers([layer]);
-    sequenceStore.add({
-      id: 'seq-fresh-play-script',
-      kind: 'fx',
-      name: 'Fresh Play Script',
+    mockLayers([layer], null);
+    sequenceStore.sequences.value = [{
+      id: 'content-before-fresh-play-script',
+      kind: 'content',
+      name: 'Content before fresh Play Script',
       fps: 24,
       width: 1920,
       height: 1080,
-      keyPhotos: [],
+      keyPhotos: [{ id: 'content-before-fresh-key', imageId: 'content-before-fresh-image', holdFrames: 10 }],
+      layers: [],
+    }, {
+      id: 'content-fresh-play-script',
+      kind: 'content',
+      name: 'Fresh content Play Script',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [{ id: 'content-fresh-key', imageId: 'content-fresh-image', holdFrames: 30 }],
       layers: [layer],
-      inFrame: 0,
-      outFrame: 50,
-    });
+    }];
     projectStore.filePath.value = '/tmp/fresh-play-script.mce';
     projectStore.scriptLibraryAuthority.value = '/tmp/fresh-play-script/Scripts';
     const open = vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
-    const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
+    const launch = await openPhysicPaintCanvas({ layer, frame: 10 });
 
     expect(launch.ok).toBe(true);
     if (!launch.ok || !launch.data.rotoPhysical || !launch.data.project) return;
+    expect(launch.data).toMatchObject({
+      startFrame: 0,
+      rotoPhysical: { cursorAppFrame: 0, layerEndExclusive: 30 },
+    });
     expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toBeNull();
     const leaseToken = acquirePhysicalLease(layer.id, launch.data.project.contextId);
 
@@ -1693,7 +2336,7 @@ describe('physicPaintBridge', () => {
         affectedStartAppFrame: 0,
         affectedEndAppFrame: 4,
         expectedLayerCapacity: launch.data.rotoPhysical.capacity,
-        expectedLayerEndExclusive: 50,
+        expectedLayerEndExclusive: 30,
         proposedRecords: records,
         freshKeyIds: records.map((record) => record.keyId),
       },
@@ -1950,6 +2593,7 @@ describe('physicPaintBridge', () => {
 
   it('persists and hydrates physic-paint source layer ids for apply validation', () => {
     const layer = physicLayer({ id: 'hydrated-phys-layer', source: { type: 'physic-paint', layerId: 'hydrated-phys-layer' } });
+    sequenceStore.sequences.value = [];
     sequenceStore.add({
       id: 'seq-physic-paint',
       kind: 'fx',
@@ -2652,6 +3296,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       identities: initial.childDocument.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records: initial.childDocument.realKeyRecords,
       intent: spacingIntent,
+      parentEndExclusive: initial.childDocument.capacity,
       capacity: initial.childDocument.capacity,
       interpolationEnabled: initial.childDocument.interpolation.enabled,
       loopClips: initial.childDocument.loopClips,
@@ -3761,6 +4406,7 @@ describe('Phase 43.2 UAT-13 cross-window first-paint settlement', () => {
         identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
         records: document.realKeyRecords,
         intent,
+        parentEndExclusive: document.capacity,
         capacity: document.capacity,
         interpolationEnabled: document.interpolation.enabled,
         loopClips: document.loopClips,

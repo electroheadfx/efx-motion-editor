@@ -204,6 +204,7 @@ function isOrdinaryOperationKind(
     || kind === 'delete-key-group'
     || kind === 'move-key'
     || kind === 'move-key-group'
+    || kind === 'move-group'
     || kind === 'force-spacing'
     || kind === 'duplicate-key'
     || kind === 'paste-key'

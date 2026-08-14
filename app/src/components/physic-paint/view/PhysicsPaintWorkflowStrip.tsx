@@ -31,9 +31,10 @@ import type {
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import { classifyPhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
-import type {
-  PhysicPaintRotoGroupDragClampInput,
-  PhysicPaintRotoLoopResolutionContext,
+import {
+  resolvePhysicPaintRotoGroupEffectiveEnd,
+  type PhysicPaintRotoGroupDragClampInput,
+  type PhysicPaintRotoLoopResolutionContext,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import {
   getRotoFrameKeyInteraction,
@@ -840,9 +841,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (!clip) return null;
     const draggedRanges = loopResolutionContext.ranges.filter((range) => range.loopId === loopId);
     const phaseOrigin = clip.phaseOrigin ?? clip.placementStart;
-    const effectiveEnd = draggedRanges.length > 0
-      ? Math.max(...draggedRanges.map((range) => range.effectiveEnd))
-      : (clip.originalEndExclusive ?? phaseOrigin);
+    const effectiveEnd = resolvePhysicPaintRotoGroupEffectiveEnd(clip, draggedRanges);
     return {
       clip,
       draggedInterval: { phaseOrigin, effectiveEnd },
@@ -1543,10 +1542,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       || frameResolution?.kind === 'linked-gap')
                       && frameResolution.repeatInstance > 0);
                   const isLinkedRepeatSourceKey = frameResolution?.kind === 'linked'
-                    && frameResolution.repeatInstance > 0;
+                    && frameResolution.repeatInstance > 0
+                    && !isGenerated;
                   const linkedLoopClass = isLinkedRepeat
                     ? isLinkedRepeatSourceKey ? 'roto-linked-repeat roto-linked-repeat-source-key' : 'roto-linked-repeat'
-                    : frameResolution?.kind === 'linked-generated' ? 'roto-linked-source-generated'
+                    : frameResolution?.kind === 'linked-generated' || (frameResolution?.kind === 'linked' && isGenerated)
+                      ? 'roto-linked-source-generated'
                       : frameResolution?.kind === 'linked' ? 'roto-linked-source-key'
                         : frameResolution?.kind === 'linked-gap' ? 'roto-linked-source-gap'
                           : '';

@@ -583,6 +583,27 @@ describe('physicPaintPersistence', () => {
       .toBe(`data:image/png;base64,${btoa('real-override-8')}`);
   });
 
+  it('preserves a layer-local F30 Infinity boundary inside an F600 physical document through save/reopen', async () => {
+    const infinityGroup = {
+      ...completeLifecycleGroup(),
+      repeat: 'infinity' as const,
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 0, endExclusive: 7 }, { start: 8, endExclusive: 30 }],
+    };
+
+    const persisted = await savePhysicPaintData('/project', makeLifecyclePhysicalOutput(infinityGroup));
+    expect(persisted[0].roto_physical).toMatchObject({
+      capacity: 600,
+      loopClips: [infinityGroup],
+    });
+
+    const hydrated = await loadPhysicPaintData('/project', persisted);
+    expect(hydrated?.[0].roto_physical).toMatchObject({
+      capacity: 600,
+      loopClips: [infinityGroup],
+    });
+  });
+
   it.each(GROUP_FIELD_PARTICIPATION)('rejects a persisted Group carrying only the $field lifecycle field', async ({ field, value }) => {
     const partialGroup = {
       loopId: 'loop-1', placementStart: 0, sourceKeyIds: ['key-0', 'key-3'], repeat: 2, mode: 'progressive', [field]: value,

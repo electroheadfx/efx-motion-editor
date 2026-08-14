@@ -13,7 +13,7 @@ export interface PhysicsPaintLaunchStateSetters<Settings> {
 }
 
 const LAUNCH_KEYS = new Set(['operationId', 'layerId', 'project', 'startFrame', 'layerName', 'workflowLabel', 'width', 'height', 'fps', 'rotoPhysical', 'rotoPlayback', 'audioPreview']);
-const PHYSICAL_KEYS = new Set(['capacity', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds']);
+const PHYSICAL_KEYS = new Set(['capacity', 'layerEndExclusive', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'scriptMotion', 'background', 'selectedKeyId', 'cursorAppFrame', 'revision', 'loopClips', 'incomingInterpolationBreakKeyIds']);
 const AUDIO_PREVIEW_KEYS = new Set(['revision', 'fps', 'tracks']);
 const AUDIO_PREVIEW_TRACK_KEYS = new Set(['id', 'assetUrl', 'offsetFrame', 'inFrame', 'outFrame', 'slipOffset', 'fadeInFrames', 'fadeOutFrames', 'volume', 'muted', 'fadeInCurve', 'fadeOutCurve']);
 
@@ -109,6 +109,7 @@ export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPai
         : {}),
       rotoPhysical: {
         capacity: document.capacity,
+        layerEndExclusive: value.rotoPhysical.layerEndExclusive,
         records: document.realKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame, payload: record.payload })),
         groupOverrideRecords: (document.groupOverrideRecords ?? []).map((record) => ({
           keyId: record.keyId,

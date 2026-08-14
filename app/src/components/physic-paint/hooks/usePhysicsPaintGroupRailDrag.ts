@@ -230,25 +230,36 @@ export function usePhysicsPaintGroupRailDrag(
         sourceElement.releasePointerCapture(session.pointerId);
       }
       if (sessionRef.current === session) sessionRef.current = null;
-      setGhost(GHOST_INACTIVE);
-      input.onPreviewChange?.(null);
+      if (session.started) {
+        setGhost(GHOST_INACTIVE);
+        input.onPreviewChange?.(null);
+      }
     };
     const computeDestination = () => {
       const deltaFrames = Math.round((session.latestX - session.originX) / input.framePitch);
       return input.range.placementStart + deltaFrames;
     };
-    const updateGhost = (destination: number, blockedEdge: 'left' | 'right' | null) => {
-      const effectiveZero = input.range.effectiveEnd <= input.range.placementStart;
-      const left = (destination - input.visibleFrameWindow.startFrame) * input.framePitch;
-      // D-13 rigid translation: the ghost is the group's full resolved width
-      // (effectiveEnd − placementStart) translated by the drag delta. Anchoring
-      // the right edge at the original effectiveEnd shrank the ghost on
-      // rightward drag until it collapsed to a 1px sliver beyond the anchor —
-      // the rightward preview defect. Constant width keeps leftward/rightward
-      // geometry identical (D-05 preview-is-the-commit).
+    const updateGhost = (
+      publication: RotoGroupDragPublication,
+      destination: number,
+      blockedEdge: 'left' | 'right' | null,
+    ) => {
+      const movedClip = publication.proposal.nextLoopClips?.find((clip) => clip.loopId === input.loopId);
+      const preparedStart = movedClip?.phaseOrigin ?? movedClip?.placementStart ?? destination;
+      const fallbackEnd = preparedStart + (input.range.effectiveEnd - input.range.placementStart);
+      const preparedEnd = movedClip?.repeat === 'infinity'
+        ? movedClip.originalEndExclusive ?? fallbackEnd
+        : movedClip?.visibleRanges !== undefined
+          ? movedClip.visibleRanges.reduce(
+              (end, range) => Math.max(end, range.endExclusive),
+              preparedStart,
+            )
+          : movedClip?.originalEndExclusive ?? fallbackEnd;
+      const effectiveZero = preparedEnd <= preparedStart;
+      const left = (preparedStart - input.visibleFrameWindow.startFrame) * input.framePitch;
       const width = effectiveZero
         ? 8
-        : Math.max(1, (input.range.effectiveEnd - input.range.placementStart) * input.framePitch);
+        : Math.max(1, (preparedEnd - preparedStart) * input.framePitch);
       setGhost({ active: true, left, width, mode: input.presentation.mode, effectiveZero, blockedEdge });
     };
     const prepareAt = () => {
@@ -279,7 +290,7 @@ export function usePhysicsPaintGroupRailDrag(
       if (preparation.ok) {
         session.publication = preparation.publication;
         session.lastRejection = null;
-        updateGhost(clampedDestination, blockedEdge);
+        updateGhost(preparation.publication, clampedDestination, blockedEdge);
         input.onPreviewChange?.({ publication: preparation.publication });
       } else {
         session.publication = null;
@@ -341,7 +352,7 @@ export function usePhysicsPaintGroupRailDrag(
       });
     };
     const handlePointerCancel = (cancelEvent: PointerEvent) => {
-      if (cancelEvent.pointerId !== session.pointerId) return;
+      if (cancelEvent.pointerId !== session.pointerId || sessionRef.current !== session) return;
       cleanup();
       clearSuppressionSoon();
       restoreSourceFocus();
@@ -353,11 +364,12 @@ export function usePhysicsPaintGroupRailDrag(
       restoreSourceFocus();
     };
     const handleEscape = (keyEvent: KeyboardEvent) => {
-      if (keyEvent.key !== 'Escape' || sessionRef.current !== session || !session.started) return;
+      if (keyEvent.key !== 'Escape' || sessionRef.current !== session) return;
       keyEvent.preventDefault();
       keyEvent.stopImmediatePropagation();
+      const started = session.started;
       cleanup();
-      clearSuppressionSoon();
+      if (started) clearSuppressionSoon();
       restoreSourceFocus();
     };
     session.cleanup = cleanup;

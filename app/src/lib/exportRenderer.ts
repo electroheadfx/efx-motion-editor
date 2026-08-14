@@ -76,7 +76,8 @@ function collectExportPhysicPaintFrameSources(renderer: PreviewRenderer, fm: Fra
     if (!seq || seq.kind === 'fx') continue;
     let seqStart = globalFrame;
     while (seqStart > 0 && fm[seqStart - 1]?.sequenceId === entry.sequenceId) seqStart -= 1;
-    addSources(interpolateLayers(seq, globalFrame - seqStart), globalFrame);
+    const localFrame = globalFrame - seqStart;
+    addSources(interpolateLayers(seq, localFrame), localFrame);
   }
 
   for (const seq of sequences) {
@@ -84,7 +85,8 @@ function collectExportPhysicPaintFrameSources(renderer: PreviewRenderer, fm: Fra
     const start = Math.max(0, seq.inFrame ?? 0);
     const end = Math.max(start, Math.min(fm.length, getTimelineOverlaySequenceOutFrame(seq, fm.length)));
     for (let globalFrame = start; globalFrame < end; globalFrame += 1) {
-      addSources(interpolateLayers(seq, globalFrame - start), globalFrame);
+      const localFrame = globalFrame - start;
+      addSources(interpolateLayers(seq, localFrame), localFrame);
     }
   }
 
@@ -175,14 +177,14 @@ export function renderGlobalFrame(
             const outFrames = buildSequenceFrames(outSeq);
             const outLayers = interpolateLayers(outSeq, outLocalFrame);
             const rendererA = renderer.cloneForCanvas(offA);
-            rendererA.renderFrame(outLayers, outLocalFrame, outFrames, outSeq.fps, true, 1.0, globalFrame);
+            rendererA.renderFrame(outLayers, outLocalFrame, outFrames, outSeq.fps, true, 1.0, globalFrame, outLocalFrame);
 
             // Render incoming sequence to offscreen B (share image cache with main renderer)
             const inLocalFrame = overlap.incomingLocalFrameStart + framesIntoOverlap;
             const inFrames = buildSequenceFrames(inSeq);
             const inLayers = interpolateLayers(inSeq, inLocalFrame);
             const rendererB = renderer.cloneForCanvas(offB);
-            rendererB.renderFrame(inLayers, inLocalFrame, inFrames, inSeq.fps, true, 1.0, globalFrame);
+            rendererB.renderFrame(inLayers, inLocalFrame, inFrames, inSeq.fps, true, 1.0, globalFrame, inLocalFrame);
 
             // Compute eased progress (per D-07)
             const progress = computeTransitionProgress(
@@ -232,7 +234,7 @@ export function renderGlobalFrame(
           const fadeOpacity = computeFadeOpacity(outLocalFrame, outSeqTotalFrames, undefined, outSeq.fadeOut);
           effectiveOutOpacity *= fadeOpacity;
         }
-        renderer.renderFrame(outLayers, outLocalFrame, outFrames, outSeq.fps, true, effectiveOutOpacity, globalFrame);
+        renderer.renderFrame(outLayers, outLocalFrame, outFrames, outSeq.fps, true, effectiveOutOpacity, globalFrame, outLocalFrame);
       }
 
       // --- Render incoming sequence ON TOP ---
@@ -252,7 +254,7 @@ export function renderGlobalFrame(
           effectiveInOpacity *= fadeOpacity;
         }
         // clearCanvas=false so incoming composites ON TOP of outgoing
-        renderer.renderFrame(inLayers, inLocalFrame, inFrames, inSeq.fps, false, effectiveInOpacity, globalFrame);
+        renderer.renderFrame(inLayers, inLocalFrame, inFrames, inSeq.fps, false, effectiveInOpacity, globalFrame, inLocalFrame);
       }
 
       break; // Only one cross dissolve can be active at a time
@@ -276,7 +278,7 @@ export function renderGlobalFrame(
 
     if (isSolidMode) {
       // Solid mode: render content at full opacity, then overlay solid color
-      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, 1.0, globalFrame);
+      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, 1.0, globalFrame, localFrame);
       const solidAlpha = computeSolidFadeAlpha(localFrame, totalSeqFrames, seq.fadeIn, seq.fadeOut);
       if (solidAlpha > 0) {
         const color = activeFade?.color ?? '#000000';
@@ -290,7 +292,7 @@ export function renderGlobalFrame(
       }
     } else {
       // Transparency mode: render content with reduced opacity via sequenceOpacity
-      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, fadeOpacity, globalFrame);
+      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, fadeOpacity, globalFrame, localFrame);
     }
   }
   } // end if (hasContentEntry)
@@ -328,7 +330,7 @@ export function renderGlobalFrame(
         // Apply fade opacity to content-overlay sequence (transparency mode only)
         const overlayTotalFrames = (overlaySeq.outFrame ?? 100) - (overlaySeq.inFrame ?? 0);
         const overlayFadeOpacity = computeFadeOpacity(overlayLocalFrame, overlayTotalFrames, overlaySeq.fadeIn, overlaySeq.fadeOut);
-        renderer.renderFrame(overlayLayers, overlayLocalFrame, hasContentEntry ? seqFrames : [], overlaySeq.fps, false, overlayFadeOpacity, globalFrame);
+        renderer.renderFrame(overlayLayers, overlayLocalFrame, hasContentEntry ? seqFrames : [], overlaySeq.fps, false, overlayFadeOpacity, globalFrame, overlayLocalFrame);
       }
     } else {
       // FX sequence: apply keyframe interpolation to FX layers
@@ -353,7 +355,7 @@ export function renderGlobalFrame(
       if (fxLayers.length > 0) {
         // Apply fade opacity to FX sequence (transparency mode only)
         const fxFadeOpacity = computeFadeOpacity(fxLocalFrame, fxTotalFrames, overlaySeq.fadeIn, overlaySeq.fadeOut);
-        renderer.renderFrame(fxLayers, localFrame, hasContentEntry ? seqFrames : [], overlaySeq.fps, false, fxFadeOpacity, globalFrame);
+        renderer.renderFrame(fxLayers, localFrame, hasContentEntry ? seqFrames : [], overlaySeq.fps, false, fxFadeOpacity, globalFrame, fxLocalFrame);
       }
     }
   }

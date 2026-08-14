@@ -37,8 +37,8 @@ export interface RotoTimelineModelInput {
   incomingInterpolationBreakKeyIds?: readonly string[];
   /** Phase 43 additive Loop Clip collection; absent means empty (D-29). */
   rotoLoopClips?: readonly PhysicPaintRotoLoopClip[];
-  /** Parent sequence end (exclusive); defaults to capacity (D-25). */
-  rotoParentEndExclusive?: number;
+  /** Authoritative parent sequence end (exclusive); zero only while no launch is active (D-25). */
+  rotoParentEndExclusive: number;
 }
 
 export interface RotoTimelineModel {

@@ -90,8 +90,9 @@ describe('Roto frame persistence coordinator launch publication', () => {
       incomingInterpolationBreakKeyIds: ['key-32'],
     };
 
-    expect(encodeRotoPhysicalLaunchDocument(document)).toEqual({
+    expect(encodeRotoPhysicalLaunchDocument(document, 40)).toEqual({
       capacity: 64,
+      layerEndExclusive: 40,
       records: [{ keyId: 'key-32', appFrame: 32, payload: record.payload }],
       groupOverrideRecords: [],
       interpolationEnabled: true,

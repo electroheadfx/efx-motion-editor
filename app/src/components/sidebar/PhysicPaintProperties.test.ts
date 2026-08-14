@@ -29,6 +29,12 @@ describe('PhysicPaintProperties source contract', () => {
     expect(source).not.toContain('Opening Play paint');
   });
 
+  it('clears a prior success status when an apply result fails', () => {
+    const handler = source.slice(source.indexOf('const handleApplyResult'), source.indexOf('window.addEventListener'));
+    const failureBranch = handler.slice(handler.indexOf('if (!result.ok)'), handler.indexOf('setErrorMessage(null)'));
+    expect(failureBranch).toContain('setStatusMessage(null)');
+  });
+
   it('keeps invalid context copy and readable button labels', () => {
     expect(source).toContain('Select a physics paint layer and frame first.');
     expect(source).toContain('disabled:opacity-50 disabled:cursor-not-allowed');

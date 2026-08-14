@@ -79,6 +79,7 @@ interface HarnessOptions {
   selectedLoopClipIds?: readonly string[];
   incomingInterpolationBreakKeyIds?: readonly string[];
   capacity?: number;
+  parentEndExclusive?: number;
   blankDataUrl?: string;
   /** Omit the four physical-edit ports (executePhysicalEdit, getRotoKeyRecords, getRotoInterpolationState, getCapacity) to exercise the guard-order rejection path. */
   omitPhysicalEditPorts?: boolean;
@@ -102,6 +103,7 @@ function createHarness(options: HarnessOptions = {}) {
       getRotoKeyRecords: () => records,
       getRotoInterpolationState: () => ({ enabled: false, mode: 'duplicate' }),
       getCapacity: () => options.capacity ?? 10,
+      getParentEndExclusive: () => options.parentEndExclusive ?? options.capacity ?? 10,
       executePhysicalEdit: executePhysicalEdit as never,
     }),
     getRotoLoopClips: () => options.loopClips ?? [],
@@ -1032,6 +1034,42 @@ describe('useRotoTimelineActions Group-drag prepare/commit publication pair', ()
     expect(preparation.reason).toBe('This move would not change the timeline.');
   });
 
+  it('prepares and publishes Infinity Group movement against parent end rather than physical capacity', async () => {
+    const infinityRecords = [realKeyRecord('A', 10), realKeyRecord('B', 12)];
+    const infinityGroup = lifecycleGroup({
+      placementStart: 10,
+      sourceKeyIds: Object.freeze(['A', 'B']),
+      repeat: 'infinity',
+      mode: 'static',
+      phaseOrigin: 10,
+      originalEndExclusive: 40,
+      visibleRanges: Object.freeze([Object.freeze({ start: 10, endExclusive: 40 })]),
+    });
+    const { actions, executePhysicalEdit } = createHarness({
+      records: infinityRecords,
+      loopClips: [infinityGroup],
+      parentEndExclusive: 40,
+      capacity: 600,
+    });
+
+    const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 16);
+
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Infinity Group drag must prepare.');
+    expect(preparation.publication.proposal.nextLoopClips?.[0]).toMatchObject({
+      placementStart: 16,
+      phaseOrigin: 16,
+      originalEndExclusive: 40,
+      visibleRanges: [{ start: 16, endExclusive: 40 }],
+    });
+
+    expect(await actions.physicalActions.commitRotoGroupDrag(preparation.publication)).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledWith(expect.objectContaining({
+      operationKind: 'move-group',
+      proposal: preparation.publication.proposal,
+    }));
+  });
+
   it('commits the exact retained move-group publication once', async () => {
     const { actions, executePhysicalEdit } = createHarness({ records: groupRecords, loopClips: [group], capacity: 16 });
     const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 4);
@@ -1057,6 +1095,19 @@ describe('useRotoTimelineActions Group-drag prepare/commit publication pair', ()
     expect(dispatched.intent).toBe(preparation.publication.intent);
     expect(dispatched.selectedKeyId).toBe(preparation.publication.proposal.selectedKeyId);
     expect(dispatched.selectedAppFrame).toBe(preparation.publication.proposal.selectedAppFrame);
+  });
+
+  it('rejects a retained Group proposal when structural authority changes before commit', async () => {
+    const records = [...groupRecords];
+    const { actions, executePhysicalEdit } = createHarness({ records, loopClips: [group], capacity: 16 });
+    const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 4);
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Group drag must prepare');
+
+    records.push(realKeyRecord('new-authority', 15));
+
+    expect(await actions.physicalActions.commitRotoGroupDrag(preparation.publication)).toBe(false);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
   });
 
   it('rejects a mismatched or empty-launch publication without dispatching', async () => {
@@ -1177,6 +1228,33 @@ describe('useRotoTimelineActions Group-drag status, busy gate, and post-commit s
     const accepted = await actions.physicalActions.commitRotoGroupDrag(preparation.publication);
     expect(accepted).toBe(true);
     expect(publishStatus).toHaveBeenCalledWith('Moved Group to frame 2. Gap left at frames 1–8.');
+  });
+
+  it('publishes the shared Infinity boundary when deleted tail fragments end before the parent boundary', () => {
+    const infinityGroup = lifecycleGroup({
+      placementStart: 10,
+      sourceKeyIds: Object.freeze(['A', 'B']),
+      repeat: 'infinity',
+      mode: 'static',
+      phaseOrigin: 10,
+      originalEndExclusive: 30,
+      visibleRanges: Object.freeze([
+        Object.freeze({ start: 10, endExclusive: 18 }),
+        Object.freeze({ start: 20, endExclusive: 25 }),
+      ]),
+    });
+    const { actions } = createHarness({
+      records: [realKeyRecord('A', 10), realKeyRecord('B', 12)],
+      loopClips: [infinityGroup],
+      parentEndExclusive: 30,
+      capacity: 40,
+    });
+
+    const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 8);
+
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Fragmented Infinity Group drag must prepare');
+    expect(preparation.publication.vacatedInterval).toEqual({ phaseOrigin: 10, effectiveEnd: 30 });
   });
 
   it('routes disabled, rejection, and acceptance copy through the single Group-drag mapper', () => {
