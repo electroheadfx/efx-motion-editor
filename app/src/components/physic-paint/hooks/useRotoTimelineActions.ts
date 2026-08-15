@@ -47,6 +47,7 @@ import type {
   RotoPhysicalEditExecuteInput,
   RotoPhysicalKeyUtilityPort,
 } from '../roto/rotoCoordinatorPorts';
+import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 
 /**
  * Stable physical timeline action bundle exposed by {@link useRotoTimelineActions}.
@@ -299,9 +300,22 @@ export interface RotoGroupLifecycleDeleteTarget {
   readonly onlyOccurrence: boolean;
 }
 
+export interface RotoKeyRailSelection {
+  readonly firstKeyId: string;
+  readonly keyIds: readonly string[];
+}
+
 export type RotoDeleteTarget =
   | Readonly<{ kind: 'ordinary-key'; keyId: string }>
   | Readonly<{ kind: 'ordinary-key-group'; keyIds: readonly string[] }>
+  | Readonly<{
+    kind: 'key-rail';
+    firstKeyId: string;
+    keyIds: readonly string[];
+    firstKeyFrame: number;
+    lastKeyFrame: number;
+  }>
+  | Readonly<{ kind: 'stale-key-rail' }>
   | Readonly<RotoGroupLifecycleDeleteTarget & { kind: 'group-frame' }>
   | Readonly<RotoGroupLifecycleDeleteTarget & { kind: 'group' }>
   | Readonly<{ kind: 'group-gap'; groupId: string; appFrame: number }>
@@ -317,12 +331,14 @@ export interface RotoDeleteTargetClassificationInput {
   readonly pendingOperationId: string | null;
   readonly selectedKeyId: string | null;
   readonly selectedKeyIds: readonly string[];
+  readonly selectedKeyRail?: RotoKeyRailSelection | null;
   readonly selectedLoopClipIds: readonly string[];
   readonly currentAppFrame: number | null;
   readonly capacity: number | null;
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
   readonly interpolation: PhysicPaintRotoInterpolationState;
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
   readonly physicalCells: readonly RotoPhysicalTimelineCell[];
 }
 
@@ -365,6 +381,40 @@ export function classifyRotoDeleteTarget(
       mode: group.mode,
       phaseOrigin: group.phaseOrigin,
       onlyOccurrence: visibleCount === 1,
+    });
+  }
+
+  if (input.selectedKeyId === null && input.selectedKeyRail !== null && input.selectedKeyRail !== undefined) {
+    const selection = input.selectedKeyRail;
+    const selectionIsWellFormed = isBoundedKeyId(selection.firstKeyId)
+      && selection.keyIds.length > 0
+      && selection.keyIds[0] === selection.firstKeyId
+      && selection.keyIds.every(isBoundedKeyId)
+      && new Set(selection.keyIds).size === selection.keyIds.length;
+    if (!selectionIsWellFormed) return Object.freeze({ kind: 'stale-key-rail' });
+
+    const groupOwnedKeyIds = new Set<string>();
+    for (const loopClip of input.loopClips) {
+      loopClip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+      (loopClip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+    }
+    const segments = deriveKeyRailSegments({
+      orderedRealKeys: [...input.records]
+        .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId))
+        .map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+      incomingInterpolationBreakKeyIds: new Set(input.incomingInterpolationBreakKeyIds ?? []),
+      groupOwnedKeyIds,
+    });
+    const matches = segments.filter((segment) => segment.firstKeyId === selection.firstKeyId
+      && sameOrderedIds(segment.keyIds, selection.keyIds));
+    if (matches.length !== 1) return Object.freeze({ kind: 'stale-key-rail' });
+    const segment = matches[0];
+    return Object.freeze({
+      kind: 'key-rail',
+      firstKeyId: segment.firstKeyId,
+      keyIds: segment.keyIds,
+      firstKeyFrame: segment.firstKeyFrame,
+      lastKeyFrame: segment.lastKeyFrame,
     });
   }
 
@@ -438,10 +488,19 @@ export function classifyRotoDeleteTarget(
   return Object.freeze({ kind: 'no-target' });
 }
 
+export function buildDeleteKeyRailSuccessMessage(
+  target: Extract<RotoDeleteTarget, { kind: 'key-rail' }>,
+): string {
+  return target.keyIds.length === 1
+    ? `Deleted Key Rail — frame ${target.firstKeyFrame}, 1 key. The interval stays an intentional gap.`
+    : `Deleted Key Rail — frames ${target.firstKeyFrame}–${target.lastKeyFrame}, ${target.keyIds.length} keys. The interval stays an intentional gap.`;
+}
+
 export function mapRotoDeleteProductReason(target: RotoDeleteTarget): string | null {
   switch (target.kind) {
     case 'ordinary-key':
     case 'ordinary-key-group':
+    case 'key-rail':
     case 'group-frame':
     case 'group':
       return null;
@@ -453,6 +512,8 @@ export function mapRotoDeleteProductReason(target: RotoDeleteTarget): string | n
       return 'Delete is unavailable because more than one Group owns this frame.';
     case 'generated':
       return 'Delete is unavailable on a generated render-only frame.';
+    case 'stale-key-rail':
+      return 'The selected Key Rail is no longer available.';
     case 'no-target':
       return 'Select a real Roto key or Group frame to delete.';
     case 'edit-in-flight':
@@ -688,6 +749,8 @@ export interface RotoTimelineActionsInput {
    * never persists it or sends it across the bridge.
    */
   getSelectedKeyIds?: () => readonly string[];
+  /** Session-local derived Key Rail selection; Plan 06 supplies the live signal. */
+  getSelectedKeyRail?: () => RotoKeyRailSelection | null;
   /** Selected Loop Rail identities in canonical placement order. */
   getSelectedLoopClipIds?: () => readonly string[];
   /** Reconciled session-only exact Loop Clip source-position selection. */
@@ -728,7 +791,7 @@ export interface RotoTimelineActionsInput {
 
 type PhysicalActionRunnerKind = Extract<
   PhysicPaintRotoPhysicalEditIntent['kind'],
-  'insert-slot' | 'insert-empty-segment' | 'delete-key' | 'delete-key-group' | 'scissor-key-rail' | 'duplicate-key' | 'paste-key' | 'paste-key-group'
+  'insert-slot' | 'insert-empty-segment' | 'delete-key' | 'delete-key-group' | 'delete-key-rail' | 'scissor-key-rail' | 'duplicate-key' | 'paste-key' | 'paste-key-group'
 >;
 
 type PhysicalActionRunnerInput = {
@@ -755,6 +818,8 @@ function physicalActionAuthorization(input: PhysicalActionRunnerInput) {
     case 'delete-key':
       return { operationKind: input.operationKind, intent: input.intent };
     case 'delete-key-group':
+      return { operationKind: input.operationKind, intent: input.intent };
+    case 'delete-key-rail':
       return { operationKind: input.operationKind, intent: input.intent };
     case 'scissor-key-rail':
       return { operationKind: input.operationKind, intent: input.intent };
@@ -1126,6 +1191,17 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         phaseOrigin: target.phaseOrigin,
         onlyOccurrence: target.onlyOccurrence,
       }));
+    }
+    if (target.kind === 'key-rail') {
+      return runPhysicalAction({
+        intent: { kind: 'delete-key-rail', keyIds: target.keyIds },
+        operationKind: 'delete-key-rail',
+        requiredKeyId: target.firstKeyId,
+        successMessage: buildDeleteKeyRailSuccessMessage(target),
+        rejectedCopy: (failure) => mapRotoDeleteProductReason(
+          classifyRotoDeleteTarget(readRotoDeleteTargetInput(input)),
+        ) ?? (failure.text || 'The selected Key Rail is no longer available.'),
+      });
     }
     if (target.kind === 'ordinary-key-group') {
       return runPhysicalAction({
@@ -1868,12 +1944,14 @@ function readRotoDeleteTargetInput(input: RotoTimelineActionsInput): RotoDeleteT
     pendingOperationId: input.pendingOperationId?.value ?? null,
     selectedKeyId: input.getSelectedKeyId?.() ?? null,
     selectedKeyIds: input.getSelectedKeyIds?.() ?? [],
+    selectedKeyRail: input.getSelectedKeyRail?.() ?? null,
     selectedLoopClipIds: input.getSelectedLoopClipIds?.() ?? [],
     currentAppFrame: input.getCurrentAppFrame?.() ?? null,
     capacity: input.getCapacity?.() ?? null,
     records: input.getRotoKeyRecords?.() ?? [],
     loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
     interpolation: input.getRotoInterpolationState?.() ?? { enabled: false, mode: 'duplicate' },
+    incomingInterpolationBreakKeyIds: input.getIncomingInterpolationBreakKeyIds?.() ?? [],
     physicalCells: input.getPhysicalCells?.() ?? [],
   };
 }
