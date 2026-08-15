@@ -1667,6 +1667,88 @@ function attachGroupReplayHistory(test: ReturnType<typeof harness>) {
   return { history, availability };
 }
 
+describe('Phase 43.4 Key Rail coordinator/history integration', () => {
+  const operations = [
+    {
+      operationKind: 'scissor-key-rail' as const,
+      intent: { kind: 'scissor-key-rail' as const, breakOwnerKeyId: 'B' },
+    },
+    {
+      operationKind: 'move-key-rail' as const,
+      intent: { kind: 'move-key-rail' as const, memberKeyIds: ['A', 'B'], destinationFirstKeyAppFrame: 1 },
+    },
+    {
+      operationKind: 'delete-key-rail' as const,
+      intent: { kind: 'delete-key-rail' as const, keyIds: ['A', 'B'] },
+    },
+  ];
+
+  it.each(operations)('settles $operationKind once through executePhysicalEdit and replays its complete document as one command', async ({ operationKind, intent }) => {
+    const test = harness();
+    const records = [record('A', 0), record('B', 2), record('C', 6), record('D', 8)];
+    const before = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 30,
+      realKeyRecords: records,
+      groupOverrideRecords: [],
+      interpolation: INTERPOLATION,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: 'B',
+      cursorAppFrame: 2,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, INTERPOLATION, [], ['C'], []),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: ['C'],
+    });
+    test.seedGroupDocument(before);
+    const { history, availability } = attachGroupReplayHistory(test);
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: before.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records: before.realKeyRecords,
+      intent,
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: false,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: before.incomingInterpolationBreakKeyIds,
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error(resolution.failure.text);
+
+    expect(await test.coordinator.executePhysicalEdit({
+      proposal: resolution.proposal,
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      operationKind,
+      intent,
+      selectedKeyId: resolution.proposal.selectedKeyId,
+      selectedAppFrame: resolution.proposal.selectedAppFrame,
+    } as never)).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const accepted = test.coordinator.acceptedOutput.value;
+    if (!accepted) throw new Error('Expected accepted Key Rail operation.');
+    const after = test.getCanonicalDocument();
+    expect(accepted.operationKind).toBe(operationKind);
+    expect(test.historyCommands).toEqual([accepted.operationId]);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release')).toBe(true);
+
+    expect(await history.undo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const undoOperationId = test.getPayload()?.operationId;
+    if (!undoOperationId) throw new Error('Expected Key Rail Undo operation ID.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(undoOperationId, 'release')).toBe(true);
+    expect(test.getCanonicalDocument()).toEqual(before);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    expect(await history.redo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const redoOperationId = test.getPayload()?.operationId;
+    if (!redoOperationId) throw new Error('Expected Key Rail Redo operation ID.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(redoOperationId, 'release')).toBe(true);
+    expect(test.getCanonicalDocument()).toEqual(after);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+});
+
 describe('Phase 43.3 Group Rail drag canonical history controls', () => {
   it('traverses the real spacing, Infinity, finite, and Group move commands in one durable ledger', async () => {
     const test = harness();

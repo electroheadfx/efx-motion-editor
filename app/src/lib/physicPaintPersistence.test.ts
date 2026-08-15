@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RuntimePhysicPaintOutput } from '../types/project';
 import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { deriveKeyRailSegments } from '../components/physic-paint/view/physicsPaintKeyRailPresentation';
 import { loadPhysicPaintData, savePhysicPaintDataWithProjectWrite } from './physicPaintPersistence';
 
 const publishPhysicPaintCacheGeneration = vi.hoisted(() => vi.fn());
@@ -466,6 +467,83 @@ describe('physicPaintPersistence', () => {
       { keyId: 'key-4', appFrame: 4, dataUrl: `data:image/png;base64,${btoa('real-4')}` },
       { keyId: 'key-8', appFrame: 8, dataUrl: `data:image/png;base64,${btoa('real-8')}` },
     ]);
+  });
+
+  it('reconstructs identical Key Rails, cuts, and deletion gaps after save/reopen independently of interpolation', async () => {
+    // Accepted state after deleting the middle C/D rail: A/B and E/F survive
+    // around the intentional frame 3-9 gap, while E retains the normalized cut.
+    const records = [
+      { keyId: 'A', appFrame: 0 },
+      { keyId: 'B', appFrame: 2 },
+      { keyId: 'E', appFrame: 10 },
+      { keyId: 'F', appFrame: 12 },
+    ].map(({ keyId, appFrame }) => ({
+      keyId,
+      appFrame,
+      kind: 'real-key' as const,
+      payload: {
+        frameIndex: 0,
+        appFrame,
+        dataUrl: `data:image/png;base64,${btoa(`rail-${keyId}`)}`,
+        width: 100,
+        height: 50,
+      },
+    }));
+    const incomingInterpolationBreakKeyIds = ['E'];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const runtime: RuntimePhysicPaintOutput[] = [{
+      layer_id: 'key-rail-layer',
+      frames: [],
+      roto_physical: {
+        capacity: 30,
+        realKeyRecords: records,
+        groupOverrideRecords: [],
+        interpolation,
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        selectedKeyId: 'E',
+        cursorAppFrame: 10,
+        revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, [], incomingInterpolationBreakKeyIds, []),
+        loopClips: [],
+        incomingInterpolationBreakKeyIds,
+      },
+    }];
+    const derive = (physical: NonNullable<RuntimePhysicPaintOutput['roto_physical']>) => deriveKeyRailSegments({
+      orderedRealKeys: physical.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      incomingInterpolationBreakKeyIds: new Set(physical.incomingInterpolationBreakKeyIds),
+      groupOwnedKeyIds: new Set(),
+    });
+    const beforeRails = derive(runtime[0].roto_physical!);
+    expect(beforeRails).toEqual([
+      { firstKeyId: 'A', keyIds: ['A', 'B'], firstKeyFrame: 0, lastKeyFrame: 2 },
+      { firstKeyId: 'E', keyIds: ['E', 'F'], firstKeyFrame: 10, lastKeyFrame: 12 },
+    ]);
+    expect({ start: beforeRails[0]!.lastKeyFrame + 1, endExclusive: beforeRails[1]!.firstKeyFrame })
+      .toEqual({ start: 3, endExclusive: 10 });
+
+    const persisted = await savePhysicPaintData('/project', runtime);
+    expect(Object.keys(persisted[0].roto_physical!).sort()).toEqual([
+      'background',
+      'capacity',
+      'cursorAppFrame',
+      'groupOverrideRecords',
+      'incomingInterpolationBreakKeyIds',
+      'interpolation',
+      'loopClips',
+      'realKeyRecords',
+      'revision',
+      'scriptMotion',
+      'selectedKeyId',
+    ]);
+    const hydrated = await loadPhysicPaintData('/project', persisted);
+    const reopened = hydrated?.[0].roto_physical;
+    if (!reopened) throw new Error('Expected reopened Key Rail physical document.');
+
+    expect(reopened.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })))
+      .toEqual(records.map(({ keyId, appFrame }) => ({ keyId, appFrame })));
+    expect(reopened.incomingInterpolationBreakKeyIds).toEqual(incomingInterpolationBreakKeyIds);
+    expect(derive(reopened)).toEqual(beforeRails);
+    expect(derive({ ...reopened, interpolation: { enabled: true, mode: 'duplicate' } })).toEqual(beforeRails);
   });
 
   it('loads a literal pre-43.2 finite Group through the persistence seam', async () => {
