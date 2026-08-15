@@ -26,9 +26,11 @@ import {
 import {
   classifyRotoDeleteTarget,
   classifyRotoInsertTarget,
+  classifyRotoScissorTarget,
   mapRotoDeleteProductReason,
   mapRotoGroupDragProductReason,
   mapRotoInsertProductReason,
+  mapRotoScissorProductReason,
   useRotoTimelineActions,
   type RotoDeleteTarget,
   type RotoInsertTarget,
@@ -1317,5 +1319,101 @@ describe('useRotoTimelineActions Group-drag status, busy gate, and post-commit s
     expect(publishDiagnostic).not.toHaveBeenCalled();
     expect(publishStatus).toHaveBeenCalledTimes(1);
     expect(publishStatus).toHaveBeenCalledWith('Moved Group to frame 2. Gap left at frames 1–8.');
+  });
+});
+
+describe('useRotoTimelineActions Scissor availability and activation', () => {
+  const records = [
+    realKeyRecord('A', 0),
+    realKeyRecord('B', 3),
+    realKeyRecord('C', 6),
+    realKeyRecord('D', 9),
+  ];
+  const group = lifecycleGroup({
+    placementStart: 6,
+    sourceKeyIds: Object.freeze(['C']),
+    phaseOrigin: 6,
+    originalEndExclusive: 10,
+    visibleRanges: Object.freeze([Object.freeze({ start: 6, endExclusive: 10 })]),
+    frameOverrides: Object.freeze([Object.freeze({ appFrame: 9, keyId: 'D' })]),
+  });
+  const base = {
+    launchReady: true,
+    pendingOperationId: null,
+    selectedKeyId: null,
+    selectedLoopClipIds: [] as readonly string[],
+    currentAppFrame: 0,
+    capacity: 12,
+    records,
+    loopClips: [group],
+    physicalCells: [] as readonly PhysicPaintRotoPhysicalCell[],
+    frameResolution: null,
+    incomingInterpolationBreakKeyIds: [] as readonly string[],
+  };
+
+  it('prefers a selected ordinary key, falls back to the cursor key, and ignores rail selection alone', () => {
+    expect(classifyRotoScissorTarget({ ...base, selectedKeyId: 'B' })).toEqual({
+      kind: 'ok',
+      keyId: 'B',
+      appFrame: 3,
+    });
+    expect(classifyRotoScissorTarget(base)).toEqual({ kind: 'ok', keyId: 'A', appFrame: 0 });
+    expect(classifyRotoScissorTarget({ ...base, selectedLoopClipIds: ['group-1'] })).toEqual({
+      kind: 'ok',
+      keyId: 'A',
+      appFrame: 0,
+    });
+  });
+
+  it('classifies every guarded arm fail-closed and maps the locked product reason', () => {
+    const generatedCells = [] as PhysicPaintRotoPhysicalCell[];
+    generatedCells[2] = { kind: 'generated', appFrame: 2, leftKeyId: 'A', rightKeyId: 'B' };
+    const cases = [
+      [classifyRotoScissorTarget({ ...base, pendingOperationId: 'busy' }), 'A Roto physical edit is already in flight.'],
+      [classifyRotoScissorTarget({ ...base, launchReady: false }), 'Scissor is unavailable.'],
+      [classifyRotoScissorTarget({ ...base, currentAppFrame: 2, physicalCells: generatedCells }), 'Scissor is unavailable on a generated frame. Select a real ordinary key.'],
+      [classifyRotoScissorTarget({ ...base, currentAppFrame: 2 }), 'Scissor is unavailable on an empty frame. Select a real ordinary key.'],
+      [classifyRotoScissorTarget({ ...base, selectedKeyId: 'C' }), 'Scissor is unavailable on a Motion or Static Group frame.'],
+      [classifyRotoScissorTarget({ ...base, currentAppFrame: 2, frameResolution: { kind: 'linked' } as never }), 'Scissor is unavailable on a linked Group frame.'],
+      [classifyRotoScissorTarget({ ...base, incomingInterpolationBreakKeyIds: ['A'] }), 'This key already starts a Key Rail segment.'],
+      [classifyRotoScissorTarget(base), null],
+    ] as const;
+
+    for (const [target, reason] of cases) {
+      expect(mapRotoScissorProductReason(target)).toBe(reason);
+    }
+  });
+
+  it('returns an exact silent no-op when the target already owns a break', async () => {
+    const { actions, executePhysicalEdit, publishStatus } = createHarness({
+      records,
+      selectedKeyId: 'A',
+      incomingInterpolationBreakKeyIds: ['A'],
+      capacity: 12,
+    });
+
+    expect(actions.physicalActions.canScissor.value).toBe(false);
+    expect(actions.physicalActions.scissorDisabledReason.value).toBe('This key already starts a Key Rail segment.');
+    expect(await actions.physicalActions.scissorKeyRail()).toBe(false);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+    expect(publishStatus).not.toHaveBeenCalled();
+  });
+
+  it('routes an eligible owner through the physical runner with locked acceptance copy', async () => {
+    const { actions, executePhysicalEdit, publishStatus } = createHarness({
+      records,
+      selectedKeyId: 'B',
+      incomingInterpolationBreakKeyIds: ['A'],
+      capacity: 12,
+    });
+
+    expect(actions.physicalActions.canScissor.value).toBe(true);
+    expect(actions.physicalActions.scissorDisabledReason.value).toBeNull();
+    expect(await actions.physicalActions.scissorKeyRail()).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledWith(expect.objectContaining({
+      operationKind: 'scissor-key-rail',
+      intent: { kind: 'scissor-key-rail', breakOwnerKeyId: 'B' },
+    }));
+    expect(publishStatus).toHaveBeenCalledWith('Split Key Rail before frame 3.');
   });
 });
