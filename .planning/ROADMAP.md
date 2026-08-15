@@ -242,7 +242,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 43.4-07-PLAN.md — D-01 terminology migration on touched rail surfaces with copy tests + residue gate + locked-boundary non-modification proofs (TERM-01, REG-01)
+- [x] 43.4-07-PLAN.md — D-01 terminology migration on touched rail surfaces with copy tests + residue gate + locked-boundary non-modification proofs (TERM-01, REG-01)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
