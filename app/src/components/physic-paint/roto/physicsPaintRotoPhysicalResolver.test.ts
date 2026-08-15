@@ -2651,6 +2651,126 @@ describe('resolvePhysicPaintRotoPhysicalEdit — scissor-key-rail', () => {
   });
 });
 
+describe('resolvePhysicPaintRotoPhysicalEdit — delete-key-rail', () => {
+  const identities = Object.freeze([
+    Object.freeze({ keyId: 'A', appFrame: 1 }),
+    Object.freeze({ keyId: 'B', appFrame: 4 }),
+    Object.freeze({ keyId: 'C', appFrame: 6 }),
+    Object.freeze({ keyId: 'D', appFrame: 10 }),
+    Object.freeze({ keyId: 'E', appFrame: 14 }),
+  ]);
+
+  const resolveDelete = (input: {
+    readonly keyIds?: readonly string[];
+    readonly breaks?: readonly string[];
+    readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  } = {}): PhysicPaintRotoPhysicalEditResolution => resolvePhysicPaintRotoPhysicalEdit({
+    identities,
+    intent: { kind: 'delete-key-rail', keyIds: input.keyIds ?? ['B', 'C'] },
+    parentEndExclusive: 20,
+    capacity: 20,
+    interpolationEnabled: true,
+    incomingInterpolationBreakKeyIds: input.breaks ?? ['B', 'D', 'E'],
+    loopClips: input.loopClips ?? [],
+  });
+
+  it('removes every middle-rail member without moving survivors and normalizes the complete successor-break collection', () => {
+    const resolution = resolveDelete();
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Key Rail delete must resolve');
+
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 1, D: 10, E: 14 });
+    expect(resolution.proposal.removedKeyIds).toEqual(['B', 'C']);
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['D', 'E']);
+    expect(resolution.proposal.status.operationKind).toBe('delete-key-rail');
+    expect(deriveKeyRailSegments({
+      orderedRealKeys: [...resolution.proposal.mapping].map(([keyId, appFrame]) => ({ keyId, appFrame })),
+      incomingInterpolationBreakKeyIds: new Set(resolution.proposal.nextIncomingInterpolationBreakKeyIds ?? []),
+      groupOwnedKeyIds: new Set(),
+    })).toEqual([
+      { firstKeyId: 'A', keyIds: ['A'], firstKeyFrame: 1, lastKeyFrame: 1 },
+      { firstKeyId: 'D', keyIds: ['D'], firstKeyFrame: 10, lastKeyFrame: 10 },
+      { firstKeyId: 'E', keyIds: ['E'], firstKeyFrame: 14, lastKeyFrame: 14 },
+    ]);
+  });
+
+  it('adds a dormant successor break after first-content deletion and adds none after last-content deletion', () => {
+    const first = resolveDelete({ keyIds: ['A'], breaks: ['B', 'D', 'E'] });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error('First Key Rail delete must resolve');
+    expect(Object.fromEntries(first.proposal.mapping)).toEqual({ B: 4, C: 6, D: 10, E: 14 });
+    expect(first.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['B', 'D', 'E']);
+
+    const last = resolveDelete({ keyIds: ['E'], breaks: ['B', 'D', 'E'] });
+    expect(last.ok).toBe(true);
+    if (!last.ok) throw new Error('Last Key Rail delete must resolve');
+    expect(Object.fromEntries(last.proposal.mapping)).toEqual({ A: 1, B: 4, C: 6, D: 10 });
+    expect(last.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['B', 'D']);
+  });
+
+  it('adds a missing successor owner, removes deleted owners, preserves unrelated owners, and sorts by surviving frame', () => {
+    const groupOwnedSeparator = Object.freeze({
+      loopId: 'loop-X',
+      placementStart: 8,
+      sourceKeyIds: Object.freeze(['X']),
+      repeat: 1,
+      mode: 'static',
+    }) as PhysicPaintRotoLoopClip;
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'A', appFrame: 1 },
+        { keyId: 'B', appFrame: 4 },
+        { keyId: 'C', appFrame: 6 },
+        { keyId: 'X', appFrame: 8 },
+        { keyId: 'D', appFrame: 10 },
+        { keyId: 'E', appFrame: 14 },
+      ],
+      intent: { kind: 'delete-key-rail', keyIds: ['B', 'C'] },
+      parentEndExclusive: 20,
+      capacity: 20,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['B', 'E'],
+      loopClips: [groupOwnedSeparator],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Successor normalization must resolve');
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['D', 'E']);
+  });
+
+  it('fails closed for empty, unknown, duplicate, stale partial, Group-owned, and linked-source member lists', () => {
+    const group = Object.freeze({
+      loopId: 'loop-B',
+      placementStart: 4,
+      sourceKeyIds: Object.freeze(['B']),
+      repeat: 1,
+      mode: 'static',
+    }) as PhysicPaintRotoLoopClip;
+    const malformedIntents = [
+      { kind: 'delete-key-rail', keyIds: [] },
+      { kind: 'delete-key-rail', keyIds: ['B', 'missing'] },
+      { kind: 'delete-key-rail', keyIds: ['B', 'B'] },
+      { kind: 'delete-key-rail', keyIds: ['B'] },
+    ] as unknown as PhysicPaintRotoPhysicalEditIntent[];
+
+    const resolutions = malformedIntents.map((intent) => resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      intent,
+      parentEndExclusive: 20,
+      capacity: 20,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['B', 'D', 'E'],
+    }));
+    resolutions.push(resolveDelete({ keyIds: ['B'], breaks: ['D', 'E'], loopClips: [group] }));
+    resolutions.push(resolveDelete({ keyIds: ['B'], loopClips: [group] }));
+
+    for (const resolution of resolutions) {
+      expect(resolution.ok).toBe(false);
+      expect('proposal' in resolution).toBe(false);
+    }
+  });
+});
+
 describe('resolvePhysicPaintRotoPhysicalEdit — delete-key-group (GDel-1/GDel-2, D-13..D-15)', () => {
   it('GDel-1: removes the group atomically, ripples survivors left, and selects the D-14 survivor', () => {
     const resolution = resolveBaseline({
