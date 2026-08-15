@@ -52,7 +52,7 @@ coverage:
       - kind: other
         ref: "pnpm typecheck && pnpm vitest run && pnpm build && git diff --check"
         status: pass
-    human_judgment: false
+    human_judgment: true
 
 duration: 3min
 completed: 2026-08-15
@@ -144,6 +144,15 @@ Passed
 ```
 
 The skipped and todo tests reported by the full suite were pre-existing and were not added or modified by this task.
+
+## Native Acceptance
+
+Approved by the user on 2026-08-15:
+
+- Undo and Redo display no numeric counts.
+- Their existing active and inactive appearance remains unchanged.
+- Clicking the controls and using their shortcuts behaves as before.
+- No layout gap or stale badge remains.
 
 ## Known Stubs
 
