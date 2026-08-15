@@ -229,7 +229,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 43.4-03-PLAN.md — TDD: move-key-rail/delete-key-rail transport members, pure key-rail clamp authority, (a)/(b)/(c) post-move break re-derivation, delete successor-break normalization (KDRAG-01, KDRAG-02, KDEL-02, GUARD-01)
+- [x] 43.4-03-PLAN.md — TDD: move-key-rail/delete-key-rail transport members, pure key-rail clamp authority, (a)/(b)/(c) post-move break re-derivation, delete successor-break normalization (KDRAG-01, KDRAG-02, KDEL-02, GUARD-01)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
