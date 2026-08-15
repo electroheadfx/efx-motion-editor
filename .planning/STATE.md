@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.4
 current_phase_name: Derived Key Groups and Scissor Breaks
 status: executing
-stopped_at: Completed 43.4-01-PLAN.md
-last_updated: "2026-08-15T15:56:37.134Z"
+stopped_at: Completed 43.4-02-PLAN.md
+last_updated: "2026-08-15T16:05:20.468Z"
 last_activity: 2026-08-15
 last_activity_desc: "Native UAT approved for quick task 260815-bmg: Count-free Paint/Physics Paint Undo/Redo controls"
 progress:
   total_phases: 10
   completed_phases: 7
   total_plans: 78
-  completed_plans: 71
+  completed_plans: 72
   percent: 70
 ---
 
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.4 (Derived Key Groups and Scissor Breaks) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
 Last activity: 2026-08-15 — Phase 43.4 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [█████████░] 91%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -223,6 +223,7 @@ Progress: [█████████░] 91%
 | Phase 43.3 P02 | 17 | 3 tasks | 3 files |
 | Phase 43.3-motion-and-static-group-drag-within-free-space P03 | 24 | 2 tasks | 12 files |
 | Phase 43.4 P01 | 14min | 3 tasks | 11 files |
+| Phase 43.4 P02 | 6min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -421,6 +422,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: Key Rails remain a pure derived presentation over ordinary real keys, stable-key incoming breaks, and Group ownership; no durable rail records are introduced.
 - [Phase ?]: Scissor replaces the complete ascending stable-key break-owner collection through the existing finalization authority, and already-broken activation is a pre-runner exact no-op.
 - [Phase ?]: Scissor uses SquareSplitHorizontal without a keyboard shortcut, preserving Scissors as the Cut-only glyph.
+- [Phase ?]: 43.4-02: Keep Key Rail dragging in a focused sibling hook rather than generalizing the approved Group Rail hook.
+- [Phase ?]: 43.4-02: Inject projection, clamp, preparation, and commit ports so drag sessions own no resolver, store, or model authority.
+- [Phase ?]: 43.4-02: Use Signals for presentation state and refs for active pointer-session identity without effect-mirrored state.
 
 ### Pending Todos
 
@@ -621,8 +625,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-15T15:56:37.120Z
-Stopped at: Completed 43.4-01-PLAN.md
+Last session: 2026-08-15T16:05:20.454Z
+Stopped at: Completed 43.4-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
