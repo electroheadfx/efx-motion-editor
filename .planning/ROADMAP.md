@@ -234,7 +234,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 43.4-04-PLAN.md — key-rail delete classifier arm + dynamic Delete scope labels + D-14 acceptance copy through the single mapper (KDEL-01, KDEL-02)
-- [ ] 43.4-05-PLAN.md — prepareKeyRailDrag/commitKeyRailDrag with break-inclusive fingerprint + D-18/D-20 drag status copy (KDRAG-02, HIST-01, GUARD-01)
+- [x] 43.4-05-PLAN.md — prepareKeyRailDrag/commitKeyRailDrag with break-inclusive fingerprint + D-18/D-20 drag status copy (KDRAG-02, HIST-01, GUARD-01)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 

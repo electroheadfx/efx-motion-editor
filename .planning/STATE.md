@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.4
 current_phase_name: Derived Key Groups and Scissor Breaks
 status: executing
-stopped_at: Completed 43.4-04-PLAN.md
-last_updated: "2026-08-15T16:40:50.350Z"
+stopped_at: Completed 43.4-05-PLAN.md
+last_updated: "2026-08-15T16:54:46.735Z"
 last_activity: 2026-08-15
 last_activity_desc: "Native UAT approved for quick task 260815-bmg: Count-free Paint/Physics Paint Undo/Redo controls"
 progress:
   total_phases: 10
   completed_phases: 7
   total_plans: 78
-  completed_plans: 74
+  completed_plans: 75
   percent: 70
 ---
 
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.4 (Derived Key Groups and Scissor Breaks) — EXECUTING
-Plan: 5 of 8
+Plan: 6 of 8
 Status: Ready to execute
 Last activity: 2026-08-15 — Phase 43.4 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [██████████] 95%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -226,6 +226,7 @@ Progress: [██████████] 95%
 | Phase 43.4 P02 | 6min | 2 tasks | 2 files |
 | Phase 43.4 P03 | 11min | 3 tasks | 4 files |
 | Phase 43.4 P04 | 10min | 2 tasks | 5 files |
+| Phase 43.4 P05 | 8min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -433,6 +434,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: A selected Key Rail is authorized only when firstKeyId and its complete ordered members match exactly one current derived segment; stale selection fails closed.
 - [Phase ?]: Delete scope is computed once in the action layer and shared by accessibility and guarded tooltip presentation.
 - [Phase ?]: Group Rail display names remain presentation-only and never participate in destructive mutation authorization.
+- [Phase ?]: Key Rail drag derives and freezes exact segment authority once, then commit forwards retained objects without resolver recomputation.
+- [Phase ?]: Key Rail drag staleness fingerprints include records, interpolation, Loop Clips, incoming breaks, and launch identity.
+- [Phase ?]: Key Rail no-space rejection delegates to the existing Group drag mapper so the locked sentence has one literal source.
 
 ### Pending Todos
 
@@ -633,8 +637,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-15T16:40:50.335Z
-Stopped at: Completed 43.4-04-PLAN.md
+Last session: 2026-08-15T16:54:46.721Z
+Stopped at: Completed 43.4-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
