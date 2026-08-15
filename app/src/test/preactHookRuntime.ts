@@ -26,6 +26,14 @@ export class PreactHookRuntime {
   private pendingEffects: Array<() => void> = [];
   private unmounted = false;
 
+  reset(): void {
+    for (const slot of this.slots) slot.cleanup?.();
+    this.slots.length = 0;
+    this.cursor = 0;
+    this.pendingEffects = [];
+    this.unmounted = false;
+  }
+
   beginRender(): void {
     this.cursor = 0;
     this.pendingEffects = [];

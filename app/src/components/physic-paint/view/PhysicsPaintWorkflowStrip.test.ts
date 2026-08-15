@@ -26,7 +26,7 @@ function getRotoMapBlock(code: string): string {
   return code.slice(mapStart, code.indexOf('physics-paint-roto-key-utilities', mapStart));
 }
 function getWorkflowStripPropsInterface(code: string): string {
-  return code.slice(code.indexOf('export interface PhysicsPaintWorkflowStripProps'), code.indexOf('const VIRTUAL_TIMELINE_FRAME_COUNT'));
+  return code.slice(code.indexOf('export interface PhysicsPaintWorkflowStripProps'), code.indexOf('const RULER_STEP'));
 }
 function getActionRowBlock(code: string): string {
   // Anchored at the action-row band (not the tools group) so the block spans
@@ -294,7 +294,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(map).toContain("frameResolution?.kind === 'linked-generated' || (frameResolution?.kind === 'linked' && isGenerated)");
     expect(map).toContain("? 'roto-linked-source-generated'");
     expect(map).toContain("${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''}");
-    expect(map).toContain('const lifecycleTarget = classifyPhysicPaintRotoGroupFrameTarget({');
+    expect(map).toContain('const lifecycleTarget = lifecycleTargetByAppFrame.get(frame)!;');
     expect(map).toContain('const fillClass = getRotoAcceptedCellFillClass({');
     expect(map).toContain('lifecycleTargetKind: lifecycleTarget.kind');
     expect(map).toContain("resolutionKind: frameResolution?.kind ?? 'empty'");
@@ -323,7 +323,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(repeatDot).toContain('top: 2px');
     expect(repeatDot).toContain('right: 2px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 24px');
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).toContain('repeat(120, 18px)');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
   });
 
   it('renders an accepted predecessor-aware interpolation cut inside the existing cell target', () => {
@@ -357,7 +357,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(cut).not.toMatch(/background:\s*(?:white|#fff(?:fff)?|#f8fafc|rgba?\(255)/i);
     expect(cut).not.toMatch(/(?:^|\n)\s*(?:height|padding|margin|min-width|max-width):/);
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 24px');
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).toContain('grid-template-columns: repeat(120, 18px)');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('grid-template-columns');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-loop-boundary-start {')).toContain('border-left-color: #f8fafc');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-loop-boundary-end {')).toContain('border-right-color: #f8fafc');
   });
@@ -432,7 +432,9 @@ describe('localized render contract', () => {
     expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.install')");
     expect(observerEffect).toContain("recordPhysicsPaintPerformanceCounter('observer.timeline.resize.cleanup')");
     expect(code).toContain('useLayoutEffect(() => {\n    updateScrollbar();\n  }, [frameCells, currentPhysicalCells, updateScrollbar]);');
-    expect(code).toContain('ref={timelineContentRef} class="physics-paint-lane"');
+    expect(code).toContain('ref={timelineContentRef}');
+    expect(code).toContain('class="physics-paint-lane"');
+    expect(code).toContain('gridTemplateColumns: `${rotoLaneWidthPx}px`');
   });
 
   it('preserves the wheel and drag cleanup contracts while observer ownership changes', () => {
@@ -731,33 +733,40 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
 });
 
 describe('PhysicsPaintWorkflowStrip strip geometry pitch contract (36.15-06 task 1)', () => {
-  it('derives one lane-width constant from the virtual frame count and binds the ruler inline style to it', () => {
+  it('requires the canonical physical projection and binds all scroll content to its extent', () => {
     const code = source();
+    const props = getWorkflowStripPropsInterface(code);
+    expect(props).toContain('rotoPhysicalCells: readonly RotoPhysicalTimelineCell[];');
     expect(code).toContain('ROTO_CELL_WIDTH_PX = 18');
-    expect(code).toMatch(/ROTO_LANE_WIDTH_PX\s*=\s*VIRTUAL_TIMELINE_FRAME_COUNT\s*\*\s*ROTO_CELL_WIDTH_PX/);
+    expect(code).toContain('const currentPhysicalCells = props.rotoPhysicalCells;');
+    expect(code).toContain('buildRotoTimelineStructuralIndex(currentPhysicalCells, cachedRotoFrames, acceptedGroupDocument)');
+    expect(code).toContain('if (!cell || cell.appFrame !== appFrame) {');
+    expect(code).toContain('const rotoLaneWidthPx = frameCells.length * ROTO_CELL_WIDTH_PX;');
+    expect(code).not.toContain('buildPhysicsPaintRotoFrameCells');
+    expect(code).not.toContain('VIRTUAL_TIMELINE_FRAME_COUNT');
+    expect(code).not.toContain('fallbackFrameCells');
     const rulerIndex = code.indexOf('class="physics-paint-ruler"');
     expect(rulerIndex).toBeGreaterThanOrEqual(0);
     const rulerTagEnd = code.indexOf('aria-hidden="true"', rulerIndex);
     const rulerTag = code.slice(rulerIndex, rulerTagEnd === -1 ? code.length : rulerTagEnd);
-    expect(rulerTag).toContain('ROTO_LANE_WIDTH_PX');
-    expect(code).not.toContain('1800px');
+    expect(rulerTag).toContain('rotoLaneWidthPx');
+    expect(code).toContain('style={{ gridTemplateColumns: `repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)` }}');
   });
 
-  it('locks the cells grid to 18px abutting columns with zero gap', () => {
+  it('locks the dynamically sized cells grid to 18px abutting columns with zero gap', () => {
     const styles = css();
     const cells = getCssRuleBlock(styles, '.physics-paint-roto-cells {');
-    expect(cells).toContain('grid-template-columns: repeat(120, 18px)');
+    expect(cells).not.toContain('grid-template-columns');
     expect(cells).toContain('gap: 0');
-    expect(styles).not.toContain('repeat(120, 13px)');
+    expect(source()).toContain('repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)');
   });
 
-  it('aligns ruler and lane to the derived 2160px width with fixed-pitch 54px ticks', () => {
+  it('keeps extent out of CSS while preserving fixed-pitch 54px ruler ticks', () => {
     const styles = css();
-    expect(getCssRuleBlock(styles, '.physics-paint-ruler {')).toContain('2160px');
+    expect(getCssRuleBlock(styles, '.physics-paint-ruler {')).not.toContain('2160px');
     const lane = getCssRuleBlock(styles, '.physics-paint-lane {');
-    expect(lane).toContain('grid-template-columns: 2160px');
-    expect(lane).toContain('min-width: 2160px');
-    expect(styles).not.toContain('1800px');
+    expect(lane).not.toContain('grid-template-columns');
+    expect(lane).not.toContain('min-width: 2160px');
     const tick = getCssRuleBlock(styles, '.physics-paint-ruler-tick {');
     expect(tick).toContain('54px');
     expect(tick).not.toContain('flex: 1 1 0');
@@ -1126,11 +1135,11 @@ describe('PhysicsPaintWorkflowStrip Gap H band and lane contract (36.15-12, UAT 
     // ruler-to-cell alignment stay consistent.
     const scroll = getCssRuleBlock(styles, '.physics-paint-timeline-scroll {');
     expect(scroll).toContain('padding-left: 4px');
-    // The lane geometry itself is untouched: derived 2160px width, 18px
-    // abutting cells, 54px ticks.
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).toContain('grid-template-columns: repeat(120, 18px)');
+    // The lane geometry itself remains projection-derived with 18px abutting
+    // cells and 54px ticks; CSS owns no fixed extent fallback.
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('grid-template-columns');
     const lane = getCssRuleBlock(styles, '.physics-paint-lane {');
-    expect(lane).toContain('grid-template-columns: 2160px');
+    expect(lane).not.toContain('grid-template-columns');
     expect(lane).not.toContain('padding-left');
     expect(getCssRuleBlock(styles, '.physics-paint-ruler {')).not.toContain('padding-left');
     expect(getCssRuleBlock(styles, '.physics-paint-ruler-tick {')).toContain('54px');
@@ -1196,6 +1205,7 @@ describe('PhysicsPaintWorkflowStrip loop resolution wiring (43-02, Pitfall 7)', 
     // of any loop's effective range.
     expect(code).toContain('resolveRotoVisibleFrameResolutions(');
     expect(code).toContain('resolveRotoVisibleSpacingProxies(');
+    expect(code).toContain('buildRotoSpacingProxySourceIndex(loopResolutionContext, frameCells.length)');
     for (const helperName of ['resolveRotoVisibleFrameResolutions(', 'resolveRotoVisibleSpacingProxies(']) {
       const helperCall = code.indexOf(helperName);
       const callBlock = code.slice(helperCall, code.indexOf(')', helperCall) + 200);
@@ -1240,8 +1250,8 @@ describe('PhysicsPaintWorkflowStrip loop resolution wiring (43-02, Pitfall 7)', 
       capacity: 600,
       interpolationEnabled: false,
     });
-    // A 120-cell visible window (the strip's viewport scale) inside a
-    // 500000-frame effective range issues exactly 120 lazy queries.
+    // A bounded 120-frame query sample inside a 500000-frame effective range
+    // issues exactly one lazy query per requested physical frame.
     const visibleWindow = Array.from({ length: 120 }, (_, index) => 250000 + index);
     const query = vi.fn(resolvePhysicPaintRotoLoopFrame);
     const resolutions = resolveRotoVisibleFrameResolutions(context, visibleWindow, query);
@@ -1459,7 +1469,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-target.boundary-start .physics-paint-loop-clip-rail-segment::before,')).toContain('height: 3px');
     expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-lifecycle-dot {')).toContain('width: 6px');
     expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-target:focus-visible {')).toContain('outline: 2px solid #f2f5f7');
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).toContain('repeat(120, 18px)');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
     expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 38px');
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 161px');
   });

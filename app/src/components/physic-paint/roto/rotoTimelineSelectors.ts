@@ -1,3 +1,4 @@
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowStripFrameMarker } from '../view/PhysicsPaintWorkflowStrip';
 import {
@@ -15,8 +16,8 @@ import {
   derivePhysicPaintRotoLoopRanges,
   projectPhysicPaintRotoPhysicalTimeline,
   resolvePhysicPaintRotoLoopFrame,
-  resolvePhysicPaintRotoSpacingProxy,
   type PhysicPaintRotoFrameResolution,
+  type PhysicPaintRotoLoopRange,
   type PhysicPaintRotoLoopResolutionContext,
   type PhysicPaintRotoPhysicalTimelineProjection,
 } from './physicsPaintRotoPhysicalResolver';
@@ -481,14 +482,117 @@ export function resolveRotoVisibleFrameResolutions(
   return resolutions;
 }
 
-export function resolveRotoVisibleSpacingProxies(
+interface RotoSpacingProxySourceOccurrence {
+  readonly range: PhysicPaintRotoLoopRange;
+  readonly sourceIndex: number;
+}
+
+function isNonNegativeSafePhysicalFrame(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
+function hasFiniteBoundedSpacingProxyOccurrences(range: PhysicPaintRotoLoopRange): boolean {
+  if (
+    !isNonNegativeSafePhysicalFrame(range.phaseOrigin)
+    || !isNonNegativeSafePhysicalFrame(range.placementStart)
+    || !isNonNegativeSafePhysicalFrame(range.effectiveEnd)
+    || !Number.isSafeInteger(range.cycleLength)
+    || range.cycleLength <= 0
+    || !range.sourceOffsets.every(isNonNegativeSafePhysicalFrame)
+  ) return false;
+
+  for (const sourceOffset of range.sourceOffsets) {
+    const firstOccurrence = range.phaseOrigin + sourceOffset;
+    if (!Number.isSafeInteger(firstOccurrence)) return false;
+    const nextOccurrence = firstOccurrence + range.cycleLength;
+    if (!Number.isSafeInteger(nextOccurrence) || nextOccurrence <= firstOccurrence) return false;
+  }
+  return true;
+}
+
+function getFirstSpacingProxyOccurrenceInDomain(
+  range: PhysicPaintRotoLoopRange,
+  sourceOffset: number,
+  domainEndExclusive: number,
+): number | null {
+  const domainStart = Math.max(0, range.placementStart);
+  const domainEnd = Math.min(range.effectiveEnd, domainEndExclusive);
+  const firstOccurrence = range.phaseOrigin + sourceOffset;
+  if (!Number.isSafeInteger(domainStart) || !Number.isSafeInteger(domainEnd) || !Number.isSafeInteger(firstOccurrence)) return null;
+  if (domainEnd <= domainStart || firstOccurrence >= domainEnd) return null;
+  if (firstOccurrence >= domainStart) return firstOccurrence;
+
+  const cyclesToDomain = Math.ceil((domainStart - firstOccurrence) / range.cycleLength);
+  if (!Number.isSafeInteger(cyclesToDomain) || cyclesToDomain < 0) return null;
+  const firstInDomain = firstOccurrence + cyclesToDomain * range.cycleLength;
+  if (!Number.isSafeInteger(firstInDomain) || firstInDomain < domainStart || firstInDomain >= domainEnd) return null;
+  return firstInDomain;
+}
+
+/**
+ * Structural lookup for session-only Key Spacing proxies. It is deliberately
+ * built from the same loop-resolution context as the canonical per-frame
+ * projection: exact source occurrences are indexed once, then cell rendering
+ * can reuse its already-resolved frame contract without re-scanning ranges or
+ * source offsets for every physical cell.
+ */
+export function buildRotoSpacingProxySourceIndex(
   context: PhysicPaintRotoLoopResolutionContext,
+  domainEndExclusive = PHYSIC_PAINT_MAX_APPLY_FRAMES,
+): ReadonlyMap<number, RotoSpacingProxySourceOccurrence> {
+  const sourceOccurrenceByAppFrame = new Map<number, RotoSpacingProxySourceOccurrence>();
+  if (!Number.isSafeInteger(domainEndExclusive) || domainEndExclusive <= 0 || domainEndExclusive > PHYSIC_PAINT_MAX_APPLY_FRAMES) {
+    return sourceOccurrenceByAppFrame;
+  }
+  for (const range of context.ranges) {
+    if (range.unresolved !== null || range.sourceKeyIds.length < 2) continue;
+    if (!hasFiniteBoundedSpacingProxyOccurrences(range)) continue;
+    for (let sourceIndex = 0; sourceIndex < range.sourceOffsets.length; sourceIndex += 1) {
+      const firstOccurrence = getFirstSpacingProxyOccurrenceInDomain(
+        range,
+        range.sourceOffsets[sourceIndex]!,
+        domainEndExclusive,
+      );
+      if (firstOccurrence === null) continue;
+      const domainEnd = Math.min(range.effectiveEnd, domainEndExclusive);
+      for (
+        let appFrame = firstOccurrence;
+        appFrame < domainEnd;
+        appFrame += range.cycleLength
+      ) {
+        sourceOccurrenceByAppFrame.set(appFrame, { range, sourceIndex });
+      }
+    }
+  }
+  return sourceOccurrenceByAppFrame;
+}
+
+export function resolveRotoVisibleSpacingProxies(
+  _context: PhysicPaintRotoLoopResolutionContext,
   visibleFrames: readonly number[],
+  resolutions: ReadonlyMap<number, PhysicPaintRotoFrameResolution> = resolveRotoVisibleFrameResolutions(_context, visibleFrames),
+  sourceOccurrenceByAppFrame: ReadonlyMap<number, RotoSpacingProxySourceOccurrence> = buildRotoSpacingProxySourceIndex(_context),
 ): ReadonlyMap<number, PhysicsPaintRotoSpacingProxy> {
   const proxies = new Map<number, PhysicsPaintRotoSpacingProxy>();
   for (const frame of visibleFrames) {
-    const proxy = resolvePhysicPaintRotoSpacingProxy(context, frame);
-    if (proxy !== null) proxies.set(frame, proxy);
+    const resolution = resolutions.get(frame);
+    const occurrence = sourceOccurrenceByAppFrame.get(frame);
+    if (!resolution || !occurrence || (resolution.kind !== 'real' && resolution.kind !== 'linked')) continue;
+    const { range, sourceIndex } = occurrence;
+    const sourceKeyId = range.sourceKeyIds[sourceIndex]!;
+    if (resolution.kind === 'real' && resolution.keyId !== sourceKeyId) continue;
+    if (resolution.kind === 'linked' && (
+      resolution.loopId !== range.loopId
+      || resolution.sourceKeyId !== sourceKeyId
+      || resolution.sourceIndex !== sourceIndex
+    )) continue;
+    proxies.set(frame, Object.freeze({
+      loopId: range.loopId,
+      sourceCycleId: range.sourceCycleId,
+      sourceKeyIds: range.sourceKeyIds,
+      sourceKeyId,
+      sourceIndex,
+    }) as PhysicsPaintRotoSpacingProxy);
   }
   return proxies;
 }

@@ -80,6 +80,7 @@ import {
   type PhysicPaintRotoLoopRange,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
+import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
 import { LOOP_CLIP_FAST_DOUBLE_CLICK_MS, LOOP_CLIP_SINGLE_CLICK_DELAY_MS, PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
@@ -244,13 +245,23 @@ function renderScriptsPanel(
   return materializeNamedComponents(tree, new Set(['IconButton']));
 }
 
+function createPhysicalCells(
+  capacity: number,
+  overrides: readonly RotoPhysicalTimelineCell[] = [],
+): readonly RotoPhysicalTimelineCell[] {
+  const byFrame = new Map(overrides.map((cell) => [cell.appFrame, cell]));
+  return Array.from({ length: capacity }, (_, appFrame) => (
+    byFrame.get(appFrame) ?? { kind: 'empty', appFrame }
+  ));
+}
+
 function renderWorkflowStrip(
   loopContext: ReturnType<typeof derivePhysicPaintRotoLoopRanges> | null,
   presentations: ReadonlyMap<string, PhysicsPaintLoopClipPresentation>,
   selectedLoopClipIds: readonly string[],
   onSelectLoopClip: (loopId: string | null, gesture?: 'plain' | 'toggle' | 'range') => void,
   onOpenLoopEdit: (loopId: string) => Promise<unknown>,
-  cellProps: Pick<Parameters<typeof PhysicsPaintWorkflowStrip>[0], 'rotoPhysicalCells' | 'cachedRotoFrames' | 'rotoSpacingSelection' | 'rotoKeyRecords' | 'rotoLoopClips'> = {},
+  cellProps: Partial<Pick<Parameters<typeof PhysicsPaintWorkflowStrip>[0], 'rotoPhysicalCells' | 'cachedRotoFrames' | 'rotoSpacingSelection' | 'rotoKeyRecords' | 'rotoLoopClips'>> = {},
 ): unknown {
   hooks.reset();
   return PhysicsPaintWorkflowStrip({
@@ -258,6 +269,7 @@ function renderWorkflowStrip(
     isPlaying: false,
     ready: true,
     onion: { enabled: false, previous: false, next: false, count: 1, opacity: 0.5 },
+    rotoPhysicalCells: createPhysicalCells(120),
     rotoLoopResolutionContext: loopContext,
     rotoLoopPresentations: presentations,
     selectedRotoLoopClipIds: selectedLoopClipIds,
@@ -450,6 +462,62 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(onSelectLoopClip).toHaveBeenCalledOnce();
     expect(onSelectLoopClip).toHaveBeenLastCalledWith('group-a', 'plain');
     expect(onOpenLoopEdit).not.toHaveBeenCalled();
+  });
+
+  it('projects Motion and Static Group rails against the complete 600-frame extent', () => {
+    const clips: readonly PhysicPaintRotoLoopClip[] = [
+      { loopId: 'motion-high', placementStart: 540, sourceKeyIds: ['M1', 'M2'], repeat: 2, mode: 'progressive' },
+      { loopId: 'static-high', placementStart: 570, sourceKeyIds: ['S1', 'S2'], repeat: 2, mode: 'static' },
+    ];
+    const identities = [
+      { keyId: 'M1', appFrame: 0 },
+      { keyId: 'M2', appFrame: 1 },
+      { keyId: 'S1', appFrame: 10 },
+      { keyId: 'S2', appFrame: 11 },
+    ];
+    const loopContext = derivePhysicPaintRotoLoopRanges({
+      identities,
+      loopClips: clips,
+      parentEndExclusive: 600,
+      capacity: 600,
+      interpolationEnabled: false,
+    });
+    const presentations = new Map(loopContext.ranges.map((range) => {
+      const clip = clips.find((candidate) => candidate.loopId === range.loopId)!;
+      return [range.loopId, projectPhysicsPaintLoopClipPresentation(range, clip, null)] as const;
+    }));
+    const tree = renderWorkflowStrip(
+      loopContext,
+      presentations,
+      [],
+      vi.fn(),
+      vi.fn(async () => {}),
+      { rotoPhysicalCells: createPhysicalCells(600), rotoLoopClips: clips },
+    );
+    const rail = findOne(tree, (vnode) => vnode.type === PhysicsPaintLoopClipRail);
+
+    expect(rail.props.visibleFrameWindow).toEqual({ startFrame: 0, endFrameExclusive: 600 });
+    expect(rail.props.framePitch).toBe(18);
+
+    hooks.reset();
+    const railTree = materializeNamedComponents(
+      PhysicsPaintLoopClipRail(rail.props as unknown as Parameters<typeof PhysicsPaintLoopClipRail>[0]),
+      new Set(['PhysicsPaintLoopClipRailTarget']),
+    );
+    const anchors = findAll(railTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-anchor'));
+    const targets = findAll(railTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+    expect(anchors.map((anchor) => anchor.props.style)).toEqual([
+      { left: '9720px', width: '72px' },
+      { left: '10260px', width: '72px' },
+    ]);
+    expect(targets).toHaveLength(2);
+    expect(hasClass(targets[0], 'mode-progressive')).toBe(true);
+    expect(hasClass(targets[1], 'mode-static')).toBe(true);
+    for (const target of targets) {
+      expect(hasClass(target, 'boundary-start')).toBe(true);
+      expect(hasClass(target, 'boundary-end')).toBe(true);
+    }
   });
 
   it('publishes the shared Infinity boundary to Group Rail drag despite a deleted tail', () => {
@@ -1201,11 +1269,11 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       () => {},
       async () => {},
       {
-        rotoPhysicalCells: [
+        rotoPhysicalCells: createPhysicalCells(120, [
           { kind: 'real', appFrame: 0, keyId: 'A' },
           { kind: 'generated', appFrame: 1, leftKeyId: 'A', rightKeyId: 'B' },
           { kind: 'generated', appFrame: 8, leftKeyId: 'A', rightKeyId: 'B' },
-        ],
+        ]),
         cachedRotoFrames: [
           { frameIndex: 1, appFrame: 1, dataUrl: 'data:image/png;base64,source', source: 'generated-interpolation' },
           { frameIndex: 8, appFrame: 8, dataUrl: 'data:image/png;base64,repeat', source: 'generated-interpolation' },

@@ -2734,7 +2734,6 @@ button.destructive {
   display: flex;
   align-items: center;
   height: 28px;
-  min-width: 2160px;
   border-bottom: 1px solid #5c6066;
   background: #47494b;
 }
@@ -2766,7 +2765,7 @@ button.destructive {
   position: absolute;
   inset: 0;
   z-index: 4;
-  width: 2160px;
+  width: 100%;
   height: 12px;
   pointer-events: none;
 }
@@ -2944,9 +2943,7 @@ button.destructive {
 .physics-paint-lane {
   position: relative;
   display: grid;
-  grid-template-columns: 2160px;
   align-items: center;
-  min-width: 2160px;
   height: 38px;
   padding: 0;
   background: #37393a;
@@ -3002,7 +2999,6 @@ button.destructive {
 
 .physics-paint-roto-cells {
   display: grid;
-  grid-template-columns: repeat(120, 18px);
   gap: 0;
   min-width: 0;
 }

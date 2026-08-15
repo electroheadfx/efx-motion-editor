@@ -40,7 +40,7 @@ export interface RotoCellViewModel {
 export interface RotoCellViewModelInput {
   frame: number;
   currentFrame?: number;
-  cachedFrames?: readonly PhysicPaintRotoCacheFrame[] | ReadonlySet<number> | readonly number[];
+  cachedFrames?: readonly PhysicPaintRotoCacheFrame[] | ReadonlyMap<number, PhysicPaintRotoCacheFrame> | ReadonlySet<number> | readonly number[];
   pendingFrames?: readonly number[] | ReadonlySet<number>;
   isSaving?: boolean;
 }
@@ -88,7 +88,7 @@ export function clampOnionOpacity(value: unknown): number {
 
 export function getRotoCellFill(
   frame: number,
-  cachedFrames: readonly PhysicPaintRotoCacheFrame[] | ReadonlySet<number> | readonly number[] | undefined,
+  cachedFrames: readonly PhysicPaintRotoCacheFrame[] | ReadonlyMap<number, PhysicPaintRotoCacheFrame> | ReadonlySet<number> | readonly number[] | undefined,
 ): RotoCellFill {
   if (hasCachedRotoFrame(cachedFrames, frame)) return 'cached-only';
   return 'empty';
@@ -290,8 +290,8 @@ export type RotoCellPresentationKind = 'real' | 'generated' | 'linked' | 'empty'
 export interface RotoCellPresentationViewModelInput {
   readonly kind: RotoCellPresentationKind;
   readonly keyId: string | null;
-  readonly orderedRealKeyIds: readonly string[];
-  readonly incomingInterpolationBreakKeyIds: readonly string[];
+  readonly orderedRealKeyIds: readonly string[] | ReadonlyMap<string, number>;
+  readonly incomingInterpolationBreakKeyIds: readonly string[] | ReadonlySet<string>;
   readonly baseCopy: string;
   readonly ariaLabel?: string;
 }
@@ -316,10 +316,19 @@ export function getRotoCellPresentationViewModel({
   baseCopy,
   ariaLabel = baseCopy,
 }: RotoCellPresentationViewModelInput): RotoCellPresentationViewModel {
+  const keyOrder = keyId === null
+    ? -1
+    : typeof (orderedRealKeyIds as ReadonlyMap<string, number>).get === 'function'
+      ? (orderedRealKeyIds as ReadonlyMap<string, number>).get(keyId) ?? -1
+      : (orderedRealKeyIds as readonly string[]).indexOf(keyId);
+  const hasIncomingInterpolationBreak = keyId !== null
+    && (typeof (incomingInterpolationBreakKeyIds as ReadonlySet<string>).has === 'function'
+      ? (incomingInterpolationBreakKeyIds as ReadonlySet<string>).has(keyId)
+      : (incomingInterpolationBreakKeyIds as readonly string[]).includes(keyId));
   const startsInterpolationSegment = kind === 'real'
     && keyId !== null
-    && orderedRealKeyIds.indexOf(keyId) > 0
-    && incomingInterpolationBreakKeyIds.includes(keyId);
+    && keyOrder > 0
+    && hasIncomingInterpolationBreak;
   const tooltipCopy = startsInterpolationSegment
     ? `${baseCopy} · ${ROTO_STARTS_INTERPOLATION_SEGMENT_COPY}`
     : baseCopy;
@@ -456,19 +465,25 @@ function hasFrame(frames: readonly number[] | ReadonlySet<number> | undefined, f
 }
 
 function hasCachedRotoFrame(
-  frames: readonly PhysicPaintRotoCacheFrame[] | ReadonlySet<number> | readonly number[] | undefined,
+  frames: readonly PhysicPaintRotoCacheFrame[] | ReadonlyMap<number, PhysicPaintRotoCacheFrame> | ReadonlySet<number> | readonly number[] | undefined,
   frame: number,
 ): boolean {
   if (!Number.isInteger(frame) || frame < 0 || !frames) return false;
+  if (typeof (frames as ReadonlyMap<number, PhysicPaintRotoCacheFrame>).get === 'function') {
+    return (frames as ReadonlyMap<number, PhysicPaintRotoCacheFrame>).has(frame);
+  }
   if (typeof (frames as ReadonlySet<number>).has === 'function') return (frames as ReadonlySet<number>).has(frame);
   return (frames as readonly (PhysicPaintRotoCacheFrame | number)[]).some((entry) => typeof entry === 'number' ? entry === frame : entry.appFrame === frame);
 }
 
 function getCachedRotoFrame(
-  frames: readonly PhysicPaintRotoCacheFrame[] | ReadonlySet<number> | readonly number[] | undefined,
+  frames: readonly PhysicPaintRotoCacheFrame[] | ReadonlyMap<number, PhysicPaintRotoCacheFrame> | ReadonlySet<number> | readonly number[] | undefined,
   frame: number,
 ): PhysicPaintRotoCacheFrame | null {
   if (!Number.isInteger(frame) || frame < 0 || !frames) return null;
+  if (typeof (frames as ReadonlyMap<number, PhysicPaintRotoCacheFrame>).get === 'function') {
+    return (frames as ReadonlyMap<number, PhysicPaintRotoCacheFrame>).get(frame) ?? null;
+  }
   if (typeof (frames as ReadonlySet<number>).has === 'function') {
     return (frames as ReadonlySet<number>).has(frame) ? createSyntheticRotoCacheFrame(frame) : null;
   }

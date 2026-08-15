@@ -22,15 +22,20 @@ import {
   type RotoCellViewModel, type RotoMissingFrameStatusKind,
   type RotoDragPreviewViewModel,
 } from './physicsPaintWorkflowPresentation';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type { RotoKeyUtilityActionState } from '../roto/physicsPaintRotoKeyController';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type {
   PhysicPaintRotoInterpolationState,
   PhysicPaintRotoLoopClip,
+  PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
-import { classifyPhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
+import {
+  classifyPhysicPaintRotoGroupFrameTarget,
+  type PhysicPaintRotoGroupFrameTarget,
+} from '../roto/physicsPaintRotoGroupLifecycle';
 import {
   resolvePhysicPaintRotoGroupEffectiveEnd,
   type PhysicPaintRotoGroupDragClampInput,
@@ -38,6 +43,7 @@ import {
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import {
   getRotoFrameKeyInteraction,
+  buildRotoSpacingProxySourceIndex,
   resolveRotoVisibleFrameResolutions,
   resolveRotoVisibleSpacingProxies,
 } from '../roto/rotoTimelineSelectors';
@@ -183,8 +189,8 @@ export interface PhysicsPaintWorkflowStripProps {
   rotoLoopClips?: readonly PhysicPaintRotoLoopClip[];
   /** Accepted stable real-key owners of incoming interpolation breaks. */
   rotoIncomingInterpolationBreakKeyIds?: readonly string[];
-  /** Reactive physical timeline cells (D-10) for vacated-cell diffing during Drag preview. */
-  rotoPhysicalCells?: readonly RotoPhysicalTimelineCell[];
+  /** Complete bounded `0 .. capacity - 1` physical projection and horizontal extent authority. */
+  rotoPhysicalCells: readonly RotoPhysicalTimelineCell[];
   /**
    * Phase 43: prepared loop resolution context (one compact interval record
    * per Loop Clip). When present, the strip resolves the lazy per-frame
@@ -225,22 +231,78 @@ export interface PhysicsPaintWorkflowStripProps {
   onOnionChange: (onion: PhysicsPaintOnionState) => void;
 }
 
-const VIRTUAL_TIMELINE_FRAME_COUNT = 120;
 const RULER_STEP = 3;
 const ROTO_CELL_WIDTH_PX = 18;
-const ROTO_LANE_WIDTH_PX = VIRTUAL_TIMELINE_FRAME_COUNT * ROTO_CELL_WIDTH_PX;
 const EMPTY_LOOP_PRESENTATIONS: ReadonlyMap<string, PhysicsPaintLoopClipPresentation> = new Map();
 const EMPTY_SPACING_PROXIES: ReadonlyMap<number, PhysicsPaintRotoSpacingProxy> = new Map();
-
-export function buildPhysicsPaintRotoFrameCells(currentFrame: number): number[] {
-  const visibleCount = VIRTUAL_TIMELINE_FRAME_COUNT;
-  const maxStart = Math.max(0, currentFrame - Math.floor(visibleCount / 2));
-  const start = Math.max(0, Math.min(maxStart, currentFrame));
-  return Array.from({ length: visibleCount }, (_, index) => start + index);
-}
+const EMPTY_CACHED_ROTO_FRAMES: readonly PhysicPaintRotoCacheFrame[] = [];
+const EMPTY_STRING_IDS: readonly string[] = [];
 
 function buildRulerTicks(frameCells: number[]): number[] {
   return frameCells.filter((frame) => frame % RULER_STEP === 0);
+}
+
+interface RotoTimelineStructuralIndex {
+  readonly frameCells: number[];
+  readonly physicalCellByAppFrame: ReadonlyMap<number, RotoPhysicalTimelineCell>;
+  readonly generatedRotoFrames: readonly number[];
+  readonly cachedFrameByAppFrame: ReadonlyMap<number, PhysicPaintRotoCacheFrame>;
+  readonly realCachedFrameSet: ReadonlySet<number>;
+  readonly lifecycleTargetByAppFrame: ReadonlyMap<number, PhysicPaintRotoGroupFrameTarget>;
+}
+
+/**
+ * The strip's sole physical extent boundary. A projection is safe to render
+ * only when every array position names that same physical frame; otherwise a
+ * partial, duplicate, or reordered input could silently create a second extent.
+ */
+export function buildRotoTimelineStructuralIndex(
+  physicalCells: readonly RotoPhysicalTimelineCell[],
+  cachedFrames: readonly PhysicPaintRotoCacheFrame[],
+  acceptedGroupDocument: Pick<PhysicPaintRotoPhysicalDocument, 'realKeyRecords' | 'loopClips'>,
+  classifyTarget: typeof classifyPhysicPaintRotoGroupFrameTarget = classifyPhysicPaintRotoGroupFrameTarget,
+): RotoTimelineStructuralIndex {
+  if (physicalCells.length === 0 || physicalCells.length > PHYSIC_PAINT_MAX_APPLY_FRAMES) {
+    throw new Error(`Invalid Roto physical projection length: expected 1 to ${PHYSIC_PAINT_MAX_APPLY_FRAMES} cells.`);
+  }
+  const frameCells: number[] = [];
+  const physicalCellByAppFrame = new Map<number, RotoPhysicalTimelineCell>();
+  const generatedRotoFrames: number[] = [];
+  const cachedFrameByAppFrame = new Map<number, PhysicPaintRotoCacheFrame>();
+  const realCachedFrameSet = new Set<number>();
+  for (const cachedFrame of cachedFrames) {
+    const existing = cachedFrameByAppFrame.get(cachedFrame.appFrame);
+    if (!existing || (existing.source !== 'real-key' && cachedFrame.source === 'real-key')) {
+      cachedFrameByAppFrame.set(cachedFrame.appFrame, cachedFrame);
+    }
+    if (cachedFrame.source === 'real-key') realCachedFrameSet.add(cachedFrame.appFrame);
+  }
+
+  const lifecycleTargetByAppFrame = new Map<number, PhysicPaintRotoGroupFrameTarget>();
+  for (let appFrame = 0; appFrame < physicalCells.length; appFrame += 1) {
+    const cell = physicalCells[appFrame];
+    if (!cell || cell.appFrame !== appFrame) {
+      throw new Error(`Invalid Roto physical projection at index ${appFrame}: expected appFrame ${appFrame}.`);
+    }
+    frameCells.push(appFrame);
+    physicalCellByAppFrame.set(appFrame, cell);
+    if (cell.kind === 'generated') {
+      generatedRotoFrames.push(appFrame);
+      if (!cachedFrameByAppFrame.has(appFrame)) {
+        cachedFrameByAppFrame.set(appFrame, {
+          frameIndex: 0,
+          appFrame,
+          dataUrl: 'data:image/png;base64,',
+          source: 'generated-interpolation',
+        });
+      }
+    }
+    lifecycleTargetByAppFrame.set(appFrame, classifyTarget({
+      document: acceptedGroupDocument,
+      appFrame,
+    }));
+  }
+  return { frameCells, physicalCellByAppFrame, generatedRotoFrames, cachedFrameByAppFrame, realCachedFrameSet, lifecycleTargetByAppFrame };
 }
 
 
@@ -513,16 +575,16 @@ interface RotoCellDerivation {
 }
 
 interface RotoCellDerivationCache {
-  physicalCellByAppFrame: Map<number, RotoPhysicalTimelineCell>;
-  cachedRotoFrames: readonly PhysicPaintRotoCacheFrame[];
-  realCachedRotoFrames: PhysicPaintRotoCacheFrame[];
+  physicalCellByAppFrame: ReadonlyMap<number, RotoPhysicalTimelineCell>;
+  cachedFrameByAppFrame: ReadonlyMap<number, PhysicPaintRotoCacheFrame>;
+  realCachedFrameSet: ReadonlySet<number>;
   currentFrame: number;
   entries: Map<number, RotoCellDerivation>;
 }
 
 /**
  * One physical-frame cell with its own styled-tooltip controller (D-16/C-06).
- * Hooks cannot run inside the 120-cell map in the strip body, so each cell is
+ * Hooks cannot run inside the physical-cell map in the strip body, so each cell is
  * a child component owning one `useStyledTooltip` instance. The button keeps
  * every `data-roto-*` attribute, class hook, and drag handler verbatim — only
  * the native `title` is retired in favor of the styled tooltip (Pitfall 4).
@@ -586,36 +648,33 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
   const interpolationEnabled = props.rotoInterpolationEnabled === true;
   const interpolationMode = props.rotoInterpolationMode ?? 'duplicate';
-  const currentPhysicalCells = props.rotoPhysicalCells ?? [];
-  const orderedRealKeyIds = useMemo(
-    () => [...(props.rotoKeyRecords ?? [])]
+  const currentPhysicalCells = props.rotoPhysicalCells;
+  const realKeyOrderById = useMemo(
+    () => new Map([...(props.rotoKeyRecords ?? [])]
       .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId))
-      .map((record) => record.keyId),
+      .map((record, index) => [record.keyId, index] as const)),
     [props.rotoKeyRecords],
   );
-  const incomingInterpolationBreakKeyIds = props.rotoIncomingInterpolationBreakKeyIds ?? [];
-  const acceptedGroupDocument = useMemo(() => ({
+  const incomingInterpolationBreakKeyIds = props.rotoIncomingInterpolationBreakKeyIds ?? EMPTY_STRING_IDS;
+  const incomingInterpolationBreakKeyIdSet = useMemo(
+    () => new Set(incomingInterpolationBreakKeyIds),
+    [incomingInterpolationBreakKeyIds],
+  );
+  const acceptedGroupDocument = useMemo<Pick<PhysicPaintRotoPhysicalDocument, 'realKeyRecords' | 'loopClips'>>(() => ({
     realKeyRecords: props.rotoKeyRecords ?? [],
     loopClips: props.rotoLoopClips ?? [],
   }), [props.rotoKeyRecords, props.rotoLoopClips]);
-  const physicalCellByAppFrame = useMemo(
-    () => new Map(currentPhysicalCells.map((cell) => [cell.appFrame, cell])),
-    [currentPhysicalCells],
+  const cachedRotoFrames = props.cachedRotoFrames ?? EMPTY_CACHED_ROTO_FRAMES;
+  const structuralIndex = useMemo(
+    () => buildRotoTimelineStructuralIndex(currentPhysicalCells, cachedRotoFrames, acceptedGroupDocument),
+    [currentPhysicalCells, cachedRotoFrames, acceptedGroupDocument],
   );
-  const generatedRotoFrames = useMemo(
-    () => currentPhysicalCells.filter((cell) => cell.kind === 'generated').map((cell) => cell.appFrame),
-    [currentPhysicalCells],
-  );
-  const cachedRotoFrames = props.cachedRotoFrames ?? [];
-  const realCachedRotoFrames = useMemo(
-    () => cachedRotoFrames.filter((frame) => frame.source === 'real-key'),
-    [cachedRotoFrames],
-  );
-  const frameCells = useMemo(() => buildPhysicsPaintRotoFrameCells(props.currentFrame), [props.currentFrame]);
+  const { frameCells, physicalCellByAppFrame, generatedRotoFrames, cachedFrameByAppFrame, realCachedFrameSet, lifecycleTargetByAppFrame } = structuralIndex;
+  const rotoLaneWidthPx = frameCells.length * ROTO_CELL_WIDTH_PX;
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
   // Phase 43 loop resolution (Pitfall 7, D-32): the lazy per-frame contract
-  // is queried for EXACTLY the visible window (frameCells) — one query per
-  // visible frame, never proportional to any loop's effective range. Null
+  // is queried for exactly the represented physical extent (frameCells) — one
+  // query per capacity-bounded frame, never proportional to any loop's effective range. Null
   // when no loop context is supplied (pre-43 byte-identical path).
   const loopResolutionContext = props.rotoLoopResolutionContext ?? null;
   const visibleFrameResolutions = useMemo(
@@ -624,11 +683,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       : resolveRotoVisibleFrameResolutions(loopResolutionContext, frameCells),
     [loopResolutionContext, frameCells],
   );
+  const spacingProxySourceIndex = useMemo(
+    () => loopResolutionContext === null ? null : buildRotoSpacingProxySourceIndex(loopResolutionContext, frameCells.length),
+    [loopResolutionContext, frameCells.length],
+  );
   const visibleSpacingProxies = useMemo(
     () => loopResolutionContext === null
       ? null
-      : resolveRotoVisibleSpacingProxies(loopResolutionContext, frameCells),
-    [loopResolutionContext, frameCells],
+      : resolveRotoVisibleSpacingProxies(loopResolutionContext, frameCells, visibleFrameResolutions!, spacingProxySourceIndex!),
+    [loopResolutionContext, frameCells, visibleFrameResolutions, spacingProxySourceIndex],
   );
   const loopSourceFrameCountById = useMemo(
     () => new Map((loopResolutionContext?.ranges ?? []).map((range) => [range.loopId, range.sourceFrameCount] as const)),
@@ -670,27 +733,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   if (
     activeCellDerivationCache === null ||
     activeCellDerivationCache.physicalCellByAppFrame !== physicalCellByAppFrame ||
-    activeCellDerivationCache.cachedRotoFrames !== cachedRotoFrames
+    activeCellDerivationCache.cachedFrameByAppFrame !== cachedFrameByAppFrame
   ) {
     rotoCellDerivationCacheRef.current = {
       physicalCellByAppFrame,
-      cachedRotoFrames,
-      realCachedRotoFrames,
+      cachedFrameByAppFrame,
+      realCachedFrameSet,
       currentFrame: props.currentFrame,
       entries: new Map(),
     };
   } else if (activeCellDerivationCache.currentFrame !== props.currentFrame) {
     activeCellDerivationCache.entries.delete(activeCellDerivationCache.currentFrame);
     activeCellDerivationCache.entries.delete(props.currentFrame);
-    // Bound the cache to the active window (38.1 review WR-03): the window
-    // slides with currentFrame, so entries for frames that scrolled out are
-    // evicted here — a long scrub session cannot grow the Map without bound.
-    // frameCells is memoized on props.currentFrame, so it only changes on
-    // this branch; structural changes reset entries to a fresh Map above.
-    const visibleFrames = new Set(frameCells);
-    for (const cachedFrame of activeCellDerivationCache.entries.keys()) {
-      if (!visibleFrames.has(cachedFrame)) activeCellDerivationCache.entries.delete(cachedFrame);
-    }
     activeCellDerivationCache.currentFrame = props.currentFrame;
   }
   const getRotoCellDerivation = (frame: number): RotoCellDerivation => {
@@ -699,17 +753,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (cached) return cached;
     // Byte-identical to the pre-cache cell-loop derivation: same inputs, same
     // pure helpers, same argument order — only WHEN it runs changed (D-09).
-    const semanticCell = cache.physicalCellByAppFrame.get(frame) ?? null;
-    const isGenerated = semanticCell?.kind === 'generated';
-    const cachedFramesForCell = isGenerated && !cache.cachedRotoFrames.some((candidate) => candidate.appFrame === frame)
-      ? [...cache.cachedRotoFrames, { frameIndex: 0, appFrame: frame, dataUrl: 'data:image/png;base64,', source: 'generated-interpolation' as const }]
-      : cache.cachedRotoFrames;
+    const cachedFramesForCell = cache.cachedFrameByAppFrame;
     const vm = getRotoCellViewModel({
       frame,
       currentFrame: props.currentFrame,
       cachedFrames: cachedFramesForCell,
     });
-    const fill = getRotoCellFill(frame, cache.realCachedRotoFrames);
+    const fill = getRotoCellFill(frame, cache.realCachedFrameSet);
     const derivation: RotoCellDerivation = { vm, fill };
     cache.entries.set(frame, derivation);
     return derivation;
@@ -721,10 +771,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       : 'Generated in-betweens on — save at least two real Roto keys.'
     : INTERPOLATION_DISABLED_STATUS;
   const currentSemanticCell = physicalCellByAppFrame.get(props.currentFrame) ?? null;
-  const currentCellFrames = currentSemanticCell?.kind === 'generated'
-    ? [...cachedRotoFrames, { frameIndex: 0, appFrame: props.currentFrame, dataUrl: 'data:image/png;base64,', source: 'generated-interpolation' as const }]
-    : cachedRotoFrames;
-  const currentRotoCell = getRotoCellViewModel({ frame: props.currentFrame, currentFrame: props.currentFrame, cachedFrames: currentCellFrames });
+  const currentRotoCell = getRotoCellViewModel({ frame: props.currentFrame, currentFrame: props.currentFrame, cachedFrames: cachedFrameByAppFrame });
   const isCurrentRealRotoKey = currentSemanticCell?.kind === 'real';
   const sessionKeyAvailability = props.rotoKeyState?.actionAvailability;
   const physicalActions = props.rotoPhysicalActions;
@@ -1487,13 +1534,21 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">
         <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" onScroll={updateScrollbar}>
-          <div class="physics-paint-ruler" style={{ width: `${ROTO_LANE_WIDTH_PX}px`, minWidth: `${ROTO_LANE_WIDTH_PX}px` }} aria-hidden="true">
+          <div class="physics-paint-ruler" style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }} aria-hidden="true">
             {rotoRulerTicks.map(frame => (
               <span key={frame} class="physics-paint-ruler-tick">{frame}</span>
             ))}
           </div>
 
-            <div ref={timelineContentRef} class="physics-paint-lane">
+            <div
+              ref={timelineContentRef}
+              class="physics-paint-lane"
+              style={{
+                width: `${rotoLaneWidthPx}px`,
+                minWidth: `${rotoLaneWidthPx}px`,
+                gridTemplateColumns: `${rotoLaneWidthPx}px`,
+              }}
+            >
               {loopResolutionContext !== null
                 && loopResolutionContext.ranges.length > 0
                 && props.onSelectRotoLoopClip
@@ -1515,7 +1570,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   onPreviewChange={setRotoGroupDragPreview}
                 />
               ) : null}
-              <div class="physics-paint-roto-cells" role="row">
+              <div
+                class="physics-paint-roto-cells"
+                role="row"
+                style={{ gridTemplateColumns: `repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)` }}
+              >
                 {frameCells.map(frame => {
                   const semanticCell = physicalCellByAppFrame.get(frame) ?? null;
                   const isGenerated = semanticCell?.kind === 'generated';
@@ -1558,10 +1617,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   // inline derivation.
                   const { vm, fill } = getRotoCellDerivation(frame);
                   const isPhysicalRealKey = semanticCell?.kind === 'real';
-                  const lifecycleTarget = classifyPhysicPaintRotoGroupFrameTarget({
-                    document: acceptedGroupDocument,
-                    appFrame: frame,
-                  });
+                  const lifecycleTarget = lifecycleTargetByAppFrame.get(frame)!;
                   const fillClass = getRotoAcceptedCellFillClass({
                     lifecycleTargetKind: lifecycleTarget.kind,
                     resolutionKind: frameResolution?.kind ?? 'empty',
@@ -1633,8 +1689,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   const cellPresentation = getRotoCellPresentationViewModel({
                     kind: hasLinkedLoopBadge ? 'linked' : isPhysicalRealKey ? 'real' : isGenerated ? 'generated' : 'empty',
                     keyId: cellKeyId,
-                    orderedRealKeyIds,
-                    incomingInterpolationBreakKeyIds,
+                    orderedRealKeyIds: realKeyOrderById,
+                    incomingInterpolationBreakKeyIds: incomingInterpolationBreakKeyIdSet,
                     baseCopy: cellBaseTooltipCopy,
                     ariaLabel: cellBaseAriaLabel,
                   });

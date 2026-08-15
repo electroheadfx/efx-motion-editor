@@ -666,6 +666,44 @@ describe('Workflow navigation render localization', () => {
     expect(workflowBlock).toContain('onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange');
     expect(workflowBlock).toContain('onNavigateToSyncedFrame: handleNavigateToSyncedFrame');
   });
+
+  it('keeps ordinary Workflow frame navigation outside physical edit, document replacement, and history authority', () => {
+    const handlerStart = studio.indexOf('const handleNavigateToSyncedFrame = useCallback(');
+    const handlerEnd = studio.indexOf('const navigateLinkedGroup = useCallback(', handlerStart);
+    const handler = studio.slice(handlerStart, handlerEnd);
+    expect(handlerStart).toBeGreaterThanOrEqual(0);
+    expect(handler).toContain('requestRotoFrameNavigationRef.current(frame)');
+
+    const requestStart = navigationCoordinator.indexOf('const requestNavigation = useCallback(');
+    const requestEnd = navigationCoordinator.indexOf('const createNavigationActions = useCallback(', requestStart);
+    const request = navigationCoordinator.slice(requestStart, requestEnd);
+    expect(requestStart).toBeGreaterThanOrEqual(0);
+    expect(request).toContain('runtimePortRef.current.navigateToSyncedFrame(targetFrame)');
+
+    const navigationStart = studio.indexOf('const navigateToSyncedPhysicalFrame = useCallback(');
+    const navigationEnd = studio.indexOf('rotoNavigation.configureRuntimePort(', navigationStart);
+    const navigation = studio.slice(navigationStart, navigationEnd);
+    expect(navigationStart).toBeGreaterThanOrEqual(0);
+    expect(navigation).toContain('engine.clear();');
+    expect(navigation).toContain('physicPaintStore.setRotoPhysicalSelection(');
+    expect(navigation).toContain('scheduleRotoStartFramePropagation(frame);');
+    expect(navigation).toContain('sendPhysicPaintFrameSyncMessage(frame, bridgeMode)');
+    expect(studio).toContain('rotoNavigation.configureRuntimePort({ navigateToSyncedFrame: navigateToSyncedPhysicalFrame });');
+
+    const navigationOnlyBoundary = [handler, request, navigation].join('\n');
+    for (const editOrHistoryAuthority of [
+      'executePhysicalEdit',
+      'dispatchAndWaitForAcceptedRotoPhysicalEdit',
+      'replacePhysicalDocumentWithOwnership',
+      'replacePhysicalRecordsWithOwnership',
+      'replaceRotoPhysicalDocument',
+      'rotoMoveHistory',
+      'undoPaint',
+      'redoPaint',
+    ]) {
+      expect(navigationOnlyBoundary).not.toContain(editOrHistoryAuthority);
+    }
+  });
 });
 
 describe('localized render instrumentation', () => {

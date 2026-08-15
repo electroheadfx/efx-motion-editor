@@ -3,6 +3,7 @@ import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import { saveRotoRealKeyTransaction } from './physicsPaintRotoKeyController';
 import {
   getRotoFrameKeyInteraction,
+  buildRotoSpacingProxySourceIndex,
   resolveRotoVisibleFrameResolutions,
   resolveRotoVisibleSpacingProxies,
   selectProjectedRealCachedRotoFrames,
@@ -276,6 +277,98 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
     expect(proxies.get(16)).toMatchObject({ sourceKeyId: 'B', sourceIndex: 1 });
     expect(proxies.has(18)).toBe(true);
     expect(proxies.has(40)).toBe(false);
+  });
+
+  it.each([0, -5, Number.MIN_VALUE, 0.5, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    'fails closed without source occurrences or spacing proxies when a cycle length is malformed (%s)',
+    (cycleLength) => {
+      const baseContext = buildLoopContext(5, 40);
+      const context = {
+        ...baseContext,
+        ranges: baseContext.ranges.map((range) => ({ ...range, cycleLength })),
+      };
+      const visibleFrames = [10, 11, 15, 16, 18];
+      const resolutions = resolveRotoVisibleFrameResolutions(context, visibleFrames);
+      const sourceOccurrenceByAppFrame = buildRotoSpacingProxySourceIndex(context);
+
+      expect(sourceOccurrenceByAppFrame).toEqual(new Map());
+      expect(resolveRotoVisibleSpacingProxies(context, visibleFrames, resolutions, sourceOccurrenceByAppFrame)).toEqual(new Map());
+    },
+  );
+
+  it.each([
+    ['phase origin', { phaseOrigin: -1 }],
+    ['phase origin', { phaseOrigin: 10.5 }],
+    ['phase origin', { phaseOrigin: Number.POSITIVE_INFINITY }],
+    ['phase origin', { phaseOrigin: Number.NEGATIVE_INFINITY }],
+    ['phase origin', { phaseOrigin: Number.NaN }],
+    ['effective end', { effectiveEnd: -1 }],
+    ['effective end', { effectiveEnd: 39.5 }],
+    ['effective end', { effectiveEnd: Number.POSITIVE_INFINITY }],
+    ['effective end', { effectiveEnd: Number.NEGATIVE_INFINITY }],
+    ['effective end', { effectiveEnd: Number.NaN }],
+    ['placement start', { placementStart: -1 }],
+    ['placement start', { placementStart: 10.5 }],
+    ['placement start', { placementStart: Number.POSITIVE_INFINITY }],
+    ['source offset', { sourceOffsets: [-1, 1, 3, 4, 5] }],
+    ['source offset', { sourceOffsets: [0, 1.5, 3, 4, 5] }],
+    ['source offset', { sourceOffsets: [0, Number.NaN, 3, 4, 5] }],
+    ['source offset', { sourceOffsets: [0, Number.POSITIVE_INFINITY, 3, 4, 5] }],
+    ['source offset', { sourceOffsets: [0, Number.NEGATIVE_INFINITY, 3, 4, 5] }],
+  ] as const)('fails closed when a %s cannot produce bounded source occurrences', (_label, patch) => {
+    const baseContext = buildLoopContext(5, 40);
+    const context = {
+      ...baseContext,
+      ranges: baseContext.ranges.map((range) => ({ ...range, ...patch })),
+    };
+    const sourceOccurrenceByAppFrame = buildRotoSpacingProxySourceIndex(context);
+
+    expect(sourceOccurrenceByAppFrame).toEqual(new Map());
+    expect(resolveRotoVisibleSpacingProxies(context, [10, 11], new Map(), sourceOccurrenceByAppFrame)).toEqual(new Map());
+  });
+
+  it.each([120, 600])('reuses one grouped source-occurrence index across %i physical cells', (capacity) => {
+    const baseContext = buildLoopContext('infinity', capacity);
+    const sourceOffsetIndexOf = vi.fn(function indexOf(this: readonly number[], searchElement: number, fromIndex?: number) {
+      return Array.prototype.indexOf.call(this, searchElement, fromIndex);
+    });
+    const context = {
+      ...baseContext,
+      ranges: baseContext.ranges.map((range) => {
+        const sourceOffsets = [...range.sourceOffsets];
+        sourceOffsets.indexOf = sourceOffsetIndexOf;
+        return { ...range, sourceOffsets };
+      }),
+    };
+    const frames = Array.from({ length: capacity }, (_, appFrame) => appFrame);
+    const resolutions = resolveRotoVisibleFrameResolutions(context, frames);
+    const sourceOccurrenceByAppFrame = buildRotoSpacingProxySourceIndex(context);
+
+    const proxies = resolveRotoVisibleSpacingProxies(context, frames, resolutions, sourceOccurrenceByAppFrame);
+
+    expect(sourceOccurrenceByAppFrame.size).toBe(capacity - 10);
+    expect(proxies.size).toBe(capacity - 10);
+    expect(proxies.get(10)).toMatchObject({ sourceKeyId: 'A', sourceIndex: 0 });
+    expect(proxies.get(capacity - 1)).toMatchObject({ sourceKeyId: 'E', sourceIndex: 4 });
+    expect(sourceOffsetIndexOf).not.toHaveBeenCalled();
+  });
+
+  it('keeps a finite Group that extends beyond the 600-cell projection and indexes only that projection', () => {
+    const projectedCapacity = 600;
+    const context = buildLoopContext(239, 1205);
+    const projectedFrames = Array.from({ length: projectedCapacity }, (_, appFrame) => appFrame);
+    const resolutions = resolveRotoVisibleFrameResolutions(context, projectedFrames);
+    const sourceOccurrenceByAppFrame = buildRotoSpacingProxySourceIndex(context, projectedCapacity);
+    const defaultSourceOccurrenceByAppFrame = buildRotoSpacingProxySourceIndex(context);
+    const proxies = resolveRotoVisibleSpacingProxies(context, projectedFrames, resolutions, sourceOccurrenceByAppFrame);
+
+    expect(sourceOccurrenceByAppFrame.get(10)).toMatchObject({ sourceIndex: 0 });
+    expect(sourceOccurrenceByAppFrame.get(599)).toMatchObject({ sourceIndex: 4 });
+    expect(proxies.get(10)).toMatchObject({ sourceKeyId: 'A', sourceIndex: 0 });
+    expect(proxies.get(599)).toMatchObject({ sourceKeyId: 'E', sourceIndex: 4 });
+    expect([...sourceOccurrenceByAppFrame.keys()].every((appFrame) => appFrame >= 0 && appFrame < projectedCapacity)).toBe(true);
+    expect(sourceOccurrenceByAppFrame.has(600)).toBe(false);
+    expect(defaultSourceOccurrenceByAppFrame).toEqual(sourceOccurrenceByAppFrame);
   });
 
   it('resolveRotoVisibleFrameResolutions issues exactly one lazy query per visible frame — never range-proportional (D-32)', () => {
