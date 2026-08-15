@@ -78,6 +78,7 @@ interface HarnessOptions {
   pendingOperationId?: string | null;
   selectedKeyId?: string | null;
   selectedKeyIds?: readonly string[];
+  selectedKeyRail?: Readonly<{ firstKeyId: string; keyIds: readonly string[] }> | null;
   selectedLoopClipIds?: readonly string[];
   incomingInterpolationBreakKeyIds?: readonly string[];
   capacity?: number;
@@ -114,6 +115,7 @@ function createHarness(options: HarnessOptions = {}) {
     getFrameResolution: () => options.frameResolution ?? { kind: 'empty' },
     getSelectedKeyId: () => options.selectedKeyId ?? null,
     getSelectedKeyIds: () => options.selectedKeyIds ?? options.spacingSelection?.selectedSourceKeyIds ?? [],
+    getSelectedKeyRail: () => options.selectedKeyRail ?? null,
     getSelectedLoopClipIds: () => options.selectedLoopClipIds ?? [],
     getCurrentAppFrame: options.getCurrentAppFrame ?? (() => options.currentAppFrame ?? 3),
     getLaunchContext: () => launch,
@@ -238,6 +240,67 @@ describe('useRotoTimelineActions selection-scoped Delete activation', () => {
       phaseOrigin: 10,
       onlyOccurrence: false,
     });
+  });
+
+  it('classifies an exact derived Key Rail before ordinary multi-key Delete while physical selection remains authoritative', () => {
+    const railRecords = [
+      realKeyRecord('rail-a', 2),
+      realKeyRecord('rail-b', 5),
+      realKeyRecord('next-rail', 9),
+    ];
+    const base = {
+      launchReady: true,
+      pendingOperationId: null,
+      selectedKeyId: null,
+      selectedKeyIds: ['rail-a', 'rail-b'] as readonly string[],
+      selectedKeyRail: { firstKeyId: 'rail-a', keyIds: ['rail-a', 'rail-b'] as readonly string[] },
+      selectedLoopClipIds: [] as readonly string[],
+      currentAppFrame: 5,
+      capacity: 20,
+      records: railRecords,
+      loopClips: [] as readonly PhysicPaintRotoLoopClip[],
+      interpolation: { enabled: true, mode: 'duplicate' as const },
+      incomingInterpolationBreakKeyIds: ['next-rail'] as readonly string[],
+      physicalCells: [] as readonly PhysicPaintRotoPhysicalCell[],
+    };
+
+    expect(classifyRotoDeleteTarget(base)).toEqual({
+      kind: 'key-rail',
+      firstKeyId: 'rail-a',
+      keyIds: ['rail-a', 'rail-b'],
+      firstKeyFrame: 2,
+      lastKeyFrame: 5,
+    });
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      selectedKeyId: 'rail-b',
+      selectedKeyIds: ['rail-b'],
+    })).toEqual({ kind: 'ordinary-key', keyId: 'rail-b' });
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      selectedKeyRail: null,
+    })).toEqual({ kind: 'ordinary-key-group', keyIds: ['rail-a', 'rail-b'] });
+  });
+
+  it('fails closed when a selected Key Rail no longer matches the accepted derivation', () => {
+    const target = classifyRotoDeleteTarget({
+      launchReady: true,
+      pendingOperationId: null,
+      selectedKeyId: null,
+      selectedKeyIds: [] as readonly string[],
+      selectedKeyRail: { firstKeyId: 'rail-a', keyIds: ['rail-a', 'stale-member'] },
+      selectedLoopClipIds: [] as readonly string[],
+      currentAppFrame: 5,
+      capacity: 20,
+      records: [realKeyRecord('rail-a', 2), realKeyRecord('rail-b', 5)],
+      loopClips: [] as readonly PhysicPaintRotoLoopClip[],
+      interpolation: { enabled: true, mode: 'duplicate' as const },
+      incomingInterpolationBreakKeyIds: [] as readonly string[],
+      physicalCells: [] as readonly PhysicPaintRotoPhysicalCell[],
+    });
+
+    expect(target).toEqual({ kind: 'stale-key-rail' });
+    expect(mapRotoDeleteProductReason(target)).toBe('The selected Key Rail is no longer available.');
   });
 
   it('preserves ordinary single-key and multi-key Delete while mapping every non-deletable target once', () => {
@@ -380,6 +443,61 @@ describe('useRotoTimelineActions selection-scoped Delete activation', () => {
     expect(executeGroupLifecycleDelete).toHaveBeenCalledTimes(2);
     expect(requestGroupDeleteChoice).not.toHaveBeenCalled();
     expect(harness.pendingOperationId.value).toBeNull();
+  });
+
+  it('deletes exact multiple-key and single-key rails with the locked acceptance copy', async () => {
+    const multiple = createHarness({
+      records: [
+        realKeyRecord('rail-a', 2),
+        realKeyRecord('rail-b', 5),
+        realKeyRecord('next-rail', 9),
+      ],
+      selectedKeyRail: { firstKeyId: 'rail-a', keyIds: ['rail-a', 'rail-b'] },
+      incomingInterpolationBreakKeyIds: ['next-rail'],
+      currentAppFrame: 5,
+      capacity: 20,
+      parentEndExclusive: 20,
+    });
+
+    expect(await multiple.actions.physicalActions.deleteRotoFrame()).toBe(true);
+    expect(multiple.executePhysicalEdit).toHaveBeenCalledWith(expect.objectContaining({
+      operationKind: 'delete-key-rail',
+      intent: { kind: 'delete-key-rail', keyIds: ['rail-a', 'rail-b'] },
+    }));
+    expect(multiple.publishStatus).toHaveBeenCalledWith(
+      'Deleted Key Rail — frames 2–5, 2 keys. The interval stays an intentional gap.',
+    );
+
+    const single = createHarness({
+      records: [realKeyRecord('only-rail', 4)],
+      selectedKeyRail: { firstKeyId: 'only-rail', keyIds: ['only-rail'] },
+      currentAppFrame: 4,
+      capacity: 20,
+      parentEndExclusive: 20,
+    });
+
+    expect(await single.actions.physicalActions.deleteRotoFrame()).toBe(true);
+    expect(single.executePhysicalEdit).toHaveBeenCalledWith(expect.objectContaining({
+      operationKind: 'delete-key-rail',
+      intent: { kind: 'delete-key-rail', keyIds: ['only-rail'] },
+    }));
+    expect(single.publishStatus).toHaveBeenCalledWith(
+      'Deleted Key Rail — frame 4, 1 key. The interval stays an intentional gap.',
+    );
+  });
+
+  it('rejects stale Key Rail selection before mutation or success publication', async () => {
+    const harness = createHarness({
+      records: [realKeyRecord('rail-a', 2), realKeyRecord('rail-b', 5)],
+      selectedKeyRail: { firstKeyId: 'rail-a', keyIds: ['rail-a', 'stale-member'] },
+      currentAppFrame: 5,
+      capacity: 20,
+    });
+
+    expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(false);
+    expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
+    expect(harness.publishStatus).toHaveBeenCalledTimes(1);
+    expect(harness.publishStatus).toHaveBeenCalledWith('The selected Key Rail is no longer available.');
   });
 
   it('keeps ordinary-key deletion on the existing physical edit path', async () => {
