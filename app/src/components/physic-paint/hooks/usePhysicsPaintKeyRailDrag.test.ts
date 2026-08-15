@@ -60,7 +60,7 @@ class WindowDouble implements KeyRailDragWindowLike {
     return this.timers.length;
   }
 
-  emit(type: string, event: Record<string, unknown>) {
+  emit(type: string, event: unknown) {
     for (const listener of this.listeners.get(type) ?? []) listener(event);
   }
 }
