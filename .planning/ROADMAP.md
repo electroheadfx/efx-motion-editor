@@ -238,7 +238,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 43.4-06-PLAN.md — PhysicsPaintKeyRail host + additive gray CSS + strip mount with own gate + gap preview + Studio selection signal with mutual exclusion and stale-authority clearing (KRAIL-01, KRAIL-02, KDRAG-01)
+- [x] 43.4-06-PLAN.md — PhysicsPaintKeyRail host + additive gray CSS + strip mount with own gate + gap preview + Studio selection signal with mutual exclusion and stale-authority clearing (KRAIL-01, KRAIL-02, KDRAG-01)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
