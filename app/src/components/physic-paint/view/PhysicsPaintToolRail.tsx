@@ -84,18 +84,16 @@ function PhysicsPaintHistoryActionButton({
 }) {
   const availability = historyAvailability?.value;
   const count = item.id === 'undo' ? availability?.undo ?? 0 : availability?.redo ?? 0;
-  const label = `${item.label} (${count} available)`;
   return (
     <button
       type="button"
       class="physics-paint-icon-button"
       disabled={disabled || count === 0}
-      title={label}
-      aria-label={label}
+      title={item.label}
+      aria-label={item.label}
       onClick={onAction}
     >
       <img src={item.icon} alt="" aria-hidden="true" style={item.id === 'redo' ? { transform: 'scaleX(-1)' } : undefined} />
-      <span class="physics-paint-history-badge" aria-hidden="true">{count}</span>
     </button>
   );
 }

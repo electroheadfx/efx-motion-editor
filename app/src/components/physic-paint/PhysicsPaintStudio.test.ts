@@ -602,14 +602,22 @@ describe('Physics Paint navigation render localization', () => {
     expect(studio).not.toContain('const scriptLoadAndApplyDisabledReason =');
   });
 
-  it('subscribes to history availability only in the narrow Undo and Redo child', () => {
+  it('keeps Undo and Redo count-free while preserving narrow availability-driven disabling', () => {
     const childStart = toolRail.indexOf('function PhysicsPaintHistoryActionButton');
     const railStart = toolRail.indexOf('function PhysicsPaintToolRailImpl');
     const railEnd = toolRail.indexOf('export const PhysicsPaintToolRail', railStart);
+    const historyActionButton = toolRail.slice(childStart, railStart);
     expect(childStart).toBeGreaterThanOrEqual(0);
     expect(childStart).toBeLessThan(railStart);
-    expect(toolRail.slice(childStart, railStart)).toContain('historyAvailability?.value');
+    expect(historyActionButton).toContain('historyAvailability?.value');
+    expect(historyActionButton).toContain("const count = item.id === 'undo' ? availability?.undo ?? 0 : availability?.redo ?? 0;");
+    expect(historyActionButton).toContain('disabled={disabled || count === 0}');
+    expect(historyActionButton).toContain('title={item.label}');
+    expect(historyActionButton).toContain('aria-label={item.label}');
+    expect(historyActionButton).not.toContain('physics-paint-history-badge');
+    expect(historyActionButton).not.toContain('available)');
     expect(toolRail.slice(railStart, railEnd)).not.toContain('historyAvailability?.value');
+    expect(css).not.toContain('.physics-paint-history-badge');
   });
 });
 
