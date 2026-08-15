@@ -214,6 +214,40 @@ Plans:
 
 **Boundary note:** Loop Clips persist as canonical linked loop regions in the existing physical-frame document authority. v0.9.0 adds no project schema migration or clean format break; accepted open/save/reopen behavior remains intact. The EFX-local Integrated Loop Rail ships with the resolver as a visible-window view of accepted ranges and owns Loop Clip selection/interaction. The Motion Editor receives only paint-only `{startFrame, frameCount, mode}` intervals for passive 3px Progressive-purple or Static/Hold-cyan paint with white canonical endpoint cuts. Key Spacing selection/provenance remains session-only, while accepted records, source-attached placement changes, and Play Script background remain inside the complete physical document transaction.
 
+### Phase 43.4: Derived Key Groups and Scissor Breaks (INSERTED)
+
+**Goal:** Ordinary real Roto keys not owned by a Motion/Static Group present as derived mid-gray Key Rails segmented by persistent 43.1 breaks — with a Scissor toolbar action splitting a rail via one stable-key-owned break, selection-scoped direct Delete Key Rail leaving a persistent intentional gap, and 43.3 clamp-and-commit Key Rail drag — each operation one atomic parent-acknowledged history command with one Undo/Redo, surviving save/reopen and Interpolation Off/On, under the coherent Motion Rail / Static Rail / Key Rail user-facing vocabulary.
+**Requirements**: KRAIL-01, KRAIL-02, SCISSOR-01, SCISSOR-02, KDEL-01, KDEL-02, KDRAG-01, KDRAG-02, HIST-01, TERM-01, GUARD-01, REG-01 (planning-local; do not add to REQUIREMENTS.md)
+**Depends on:** Phase 43.3
+**Plans:** 8 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 43.4-01-PLAN.md — Tracer: scissor closed-union intent + resolver break branch + pure Key Rail segment derivation with D-10 copy family + availability/no-op preflight + Scissor toolbar button after Cut (KRAIL-01, SCISSOR-01, SCISSOR-02, GUARD-01)
+- [ ] 43.4-02-PLAN.md — Key Rail drag session hook fork: 4px threshold, pointer capture, Escape cancel, click suppression, presentation-only ghost/preview state via injected ports (KDRAG-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 43.4-03-PLAN.md — TDD: move-key-rail/delete-key-rail transport members, pure key-rail clamp authority, (a)/(b)/(c) post-move break re-derivation, delete successor-break normalization (KDRAG-01, KDRAG-02, KDEL-02, GUARD-01)
+- [ ] 43.4-04-PLAN.md — key-rail delete classifier arm + dynamic Delete scope labels + D-14 acceptance copy through the single mapper (KDEL-01, KDEL-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 43.4-05-PLAN.md — prepareKeyRailDrag/commitKeyRailDrag with break-inclusive fingerprint + D-18/D-20 drag status copy (KDRAG-02, HIST-01, GUARD-01)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 43.4-06-PLAN.md — PhysicsPaintKeyRail host + additive gray CSS + strip mount with own gate + gap preview + Studio selection signal with mutual exclusion and stale-authority clearing (KRAIL-01, KRAIL-02, KDRAG-01)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 43.4-07-PLAN.md — D-01 terminology migration on touched rail surfaces with copy tests + residue gate + locked-boundary non-modification proofs (TERM-01, REG-01)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 43.4-08-PLAN.md — History/persistence integration proofs (one-command Undo/Redo, Redo truncation, save/reopen parity) + blocking frozen-session native UAT (HIST-01, REG-01)
+
 ### Phase 43.3: Motion and Static Group Drag Within Free Space (INSERTED)
 
 **Goal:** Users can drag a Motion or Static Group directly from its integrated Group Rail into available empty timeline space — a source-attached Group moving its complete real source cycle, rail, linked repeat interval, placement, and lifecycle boundaries together, a duplicated shared-source placement moving only its placement — with clamp-and-commit at every collision boundary, a translucent ghost/blocked-edge/gap preview before commit, every vacated or newly opened interval recorded as a persistent Phase 43.1 stable-key-owned interpolation break, and the accepted movement landing as one atomic parent-acknowledged transaction with one Undo/Redo surviving save/reopen.
