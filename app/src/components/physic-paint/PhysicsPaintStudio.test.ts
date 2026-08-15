@@ -425,13 +425,13 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
     expect(studio).not.toContain('keyRailSegments[0]');
   });
 
-  it('feeds classifier and strip paint from the reconciled selection without changing Plan 07 copy', () => {
+  it('feeds classifier and strip paint from the reconciled selection with mode-resolved Rail deletion copy', () => {
     expect(studio).toContain('getSelectedKeyRail: () => effectiveSelectedRotoKeyRail,');
     expect(studio).toContain('selectedRotoKeyRail: effectiveSelectedRotoKeyRail');
     expect(studio).toContain('onSelectRotoKeyRail: handleSelectRotoKeyRail');
     expect(studio).toContain('onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected');
     expect(studio).toContain('rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0');
-    expect(studio).toContain("target.operationKind === 'delete-group'\n      ? `Deleted Group at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`");
+    expect(studio).toContain("target.operationKind === 'delete-group'\n      ? target.mode === 'static'\n        ? `Deleted Static Rail at F${target.phaseOrigin}.`\n        : `Deleted Motion Rail at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`");
   });
 });
 

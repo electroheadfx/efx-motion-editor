@@ -55,13 +55,13 @@ describe('canonical Group presentation copy', () => {
     );
 
     expect(presentation).toMatchObject({
-      displayName: 'Walk Cycle Group',
+      displayName: 'Walk Cycle Rail',
       sourceLabel: 'Walk Cycle',
       placementLabel: 'F12',
       cycleLabel: 'Cycle 4f × 3 = 12f',
       effectiveLabel: 'Effective 12f',
       modeLabel: 'Motion',
-      groupTypeLabel: 'Motion Group',
+      groupTypeLabel: 'Motion Rail',
       lifecycle: 'synchronized',
       statusLabel: 'Synchronized with Action.',
       synchronizationDot: 'synchronized',
@@ -70,14 +70,14 @@ describe('canonical Group presentation copy', () => {
       linkedDescription: null,
     });
     expect(presentation.tooltipLines).toEqual([
-      'Walk Cycle Group',
+      'Walk Cycle Rail',
       'Type: Motion',
       'Cycle 4f × 3 = 12f',
       'Effective 12f',
       'Status: Synchronized with Action.',
     ]);
     expect(presentation.accessibleName).toBe(
-      'Walk Cycle Group. Motion Group. Cycle 4f × 3 = 12f. Effective 12 frames. Synchronized with Action.',
+      'Walk Cycle Rail. Motion Rail. Cycle 4f × 3 = 12f. Effective 12 frames. Synchronized with Action.',
     );
   });
 
@@ -93,16 +93,16 @@ describe('canonical Group presentation copy', () => {
       clip({ mode: 'static' }),
       null,
     )).toMatchObject({
-      displayName: 'Static Group at F12',
+      displayName: 'Static Rail at F12',
       sourceLabel: 'Source Action unavailable',
       modeLabel: 'Static',
-      groupTypeLabel: 'Static Group',
+      groupTypeLabel: 'Static Rail',
     });
     expect(projectPhysicsPaintLoopClipPresentation(
       range(),
       clip(),
       null,
-    ).displayName).toBe('Motion Group at F12');
+    ).displayName).toBe('Motion Rail at F12');
   });
 
   it.each([
@@ -190,7 +190,7 @@ describe('canonical Group presentation copy', () => {
     expect(presentation.linkedDescription).toBe('Linked to selected Action Walk Cycle.');
     expect(presentation.tooltipLines[presentation.tooltipLines.length - 1]).toBe('Range F18–F21 · Fragment 2 of 3');
     expect(presentation.accessibleName).toBe(
-      'Walk Cycle Group. Fragment 2 of 3, frames 18 through 21. Motion Group. Synchronized with Action. Linked to selected Action Walk Cycle.',
+      'Walk Cycle Rail. Fragment 2 of 3, frames 18 through 21. Motion Rail. Synchronized with Action. Linked to selected Action Walk Cycle.',
     );
     expect(presentation.loopId).toBe('internal-loop-id');
   });

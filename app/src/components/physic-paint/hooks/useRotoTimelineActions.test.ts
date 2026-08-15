@@ -1530,6 +1530,7 @@ describe('useRotoTimelineActions Group-drag status, busy gate, and post-commit s
     loopId: 'group-dup',
     placementStart: 10,
     sourceKeyIds: Object.freeze(['A', 'C']),
+    mode: 'static',
     phaseOrigin: 10,
     originalEndExclusive: 18,
     visibleRanges: Object.freeze([
@@ -1582,7 +1583,7 @@ describe('useRotoTimelineActions Group-drag status, busy gate, and post-commit s
 
     const accepted = await actions.physicalActions.commitRotoGroupDrag(preparation.publication);
     expect(accepted).toBe(true);
-    expect(publishStatus).toHaveBeenCalledWith('Moved Group to frame 12.');
+    expect(publishStatus).toHaveBeenCalledWith('Moved Static Rail to frame 12.');
   });
 
   it('appends the inclusive vacated-gap range when a source-attached move opens a gap (D-07)', async () => {
@@ -1597,7 +1598,7 @@ describe('useRotoTimelineActions Group-drag status, busy gate, and post-commit s
 
     const accepted = await actions.physicalActions.commitRotoGroupDrag(preparation.publication);
     expect(accepted).toBe(true);
-    expect(publishStatus).toHaveBeenCalledWith('Moved Group to frame 2. Gap left at frames 1–8.');
+    expect(publishStatus).toHaveBeenCalledWith('Moved Motion Rail to frame 2. Gap left at frames 1–8.');
   });
 
   it('publishes the shared Infinity boundary when deleted tail fragments end before the parent boundary', () => {
@@ -1649,10 +1650,18 @@ describe('useRotoTimelineActions Group-drag status, busy gate, and post-commit s
     }));
     expect(rejected.reason).not.toContain('no free space');
     // Acceptance copy flows through the mapper.
-    expect(mapRotoGroupDragProductReason({ kind: 'accepted', destinationPlacementStart: 2, vacatedInterval: { phaseOrigin: 1, effectiveEnd: 9 } }))
-      .toBe('Moved Group to frame 2. Gap left at frames 1–8.');
-    expect(mapRotoGroupDragProductReason({ kind: 'accepted', destinationPlacementStart: 12, vacatedInterval: null }))
-      .toBe('Moved Group to frame 12.');
+    expect(mapRotoGroupDragProductReason({
+      kind: 'accepted',
+      mode: 'progressive',
+      destinationPlacementStart: 2,
+      vacatedInterval: { phaseOrigin: 1, effectiveEnd: 9 },
+    })).toBe('Moved Motion Rail to frame 2. Gap left at frames 1–8.');
+    expect(mapRotoGroupDragProductReason({
+      kind: 'accepted',
+      mode: 'static',
+      destinationPlacementStart: 12,
+      vacatedInterval: null,
+    })).toBe('Moved Static Rail to frame 12.');
   });
 
   it('rejects a second drag session while a Group mutation is in flight (busy gate, T-43.3-03-04)', () => {
@@ -1686,7 +1695,7 @@ describe('useRotoTimelineActions Group-drag status, busy gate, and post-commit s
     // only when the current frame's content changed (43.1-04 precedent).
     expect(publishDiagnostic).not.toHaveBeenCalled();
     expect(publishStatus).toHaveBeenCalledTimes(1);
-    expect(publishStatus).toHaveBeenCalledWith('Moved Group to frame 2. Gap left at frames 1–8.');
+    expect(publishStatus).toHaveBeenCalledWith('Moved Motion Rail to frame 2. Gap left at frames 1–8.');
   });
 });
 
