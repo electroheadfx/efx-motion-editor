@@ -2495,7 +2495,7 @@ describe('clampPhysicPaintKeyRailDragDestination and move-key-rail', () => {
     parentEndExclusive: input.parentEndExclusive ?? 16,
     capacity: input.capacity ?? 16,
     interpolationEnabled: true,
-    incomingInterpolationBreakKeyIds: input.breaks ?? ['U'],
+    incomingInterpolationBreakKeyIds: input.breaks ?? ['S', 'U'],
     loopClips: input.loopClips ?? [group],
   });
 
@@ -2557,7 +2557,7 @@ describe('clampPhysicPaintKeyRailDragDestination and move-key-rail', () => {
           { keyId: 'M2', appFrame: 6 },
           { keyId: 'S', appFrame: 7 },
         ],
-        breaks: [],
+        breaks: ['S'],
         loopClips: [],
         destination: 6,
       }),
@@ -2567,7 +2567,7 @@ describe('clampPhysicPaintKeyRailDragDestination and move-key-rail', () => {
       expect(resolution.ok).toBe(false);
       expect('proposal' in resolution).toBe(false);
     }
-    const blocked = cases.at(-1);
+    const blocked = cases[cases.length - 1];
     if (!blocked || blocked.ok) throw new Error('Blocked Key Rail move must reject');
     expect(blocked.failure.code).toBe('no-free-space-in-direction');
   });

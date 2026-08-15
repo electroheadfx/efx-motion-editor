@@ -101,6 +101,7 @@ import {
   getPhysicsPaintRotoSourceCycleId,
   type PhysicsPaintRotoSpacingProxy,
 } from './physicsPaintRotoSpacingSelection';
+import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 
 export function buildCanonicalMoveGroupOverrideRecords(input: {
   readonly currentLoopClips: readonly PhysicPaintRotoLoopClip[];
@@ -2111,6 +2112,126 @@ export function clampPhysicPaintGroupDragDestination(
   return { ok: false };
 }
 
+export interface PhysicPaintRotoKeyRailDragClampInput {
+  readonly memberKeyIds: readonly string[];
+  readonly firstKeyFrame: number;
+  readonly lastKeyFrame: number;
+  readonly proposedDestinationFirstKeyAppFrame: number;
+  readonly identities: readonly PhysicPaintRotoKeyIdentity[];
+  readonly loopRanges: readonly PhysicPaintRotoLoopRange[];
+  readonly parentEndExclusive: number;
+  readonly capacity: number;
+}
+
+export type PhysicPaintRotoKeyRailDragClampResult =
+  | { readonly ok: true; readonly destinationFirstKeyAppFrame: number }
+  | { readonly ok: false };
+
+/**
+ * Pure Key Rail drag clamp. The rail's own stable identities are pass-through;
+ * every external real key and every derived Group interval is a hard boundary.
+ * The same directional nearest-free search is consumed by preview and commit.
+ */
+export function clampPhysicPaintKeyRailDragDestination(
+  input: PhysicPaintRotoKeyRailDragClampInput,
+): PhysicPaintRotoKeyRailDragClampResult {
+  const current = input.firstKeyFrame;
+  const proposed = input.proposedDestinationFirstKeyAppFrame;
+  const span = input.lastKeyFrame - input.firstKeyFrame + 1;
+  const endExclusive = Math.min(input.capacity, input.parentEndExclusive);
+  if (span <= 0 || endExclusive <= 0) return { ok: false };
+
+  const memberKeyIds = new Set(input.memberKeyIds);
+  const boundaryKeyFrames = new Set<number>();
+  for (const identity of input.identities) {
+    if (memberKeyIds.has(identity.keyId)) continue;
+    boundaryKeyFrames.add(identity.appFrame);
+  }
+  const groupIntervals = input.loopRanges.map((range) => ({
+    start: range.placementStart,
+    end: range.effectiveEnd,
+  }));
+
+  const intervalFree = (destination: number): boolean => {
+    const end = destination + span;
+    if (destination < 0 || end > endExclusive) return false;
+    for (const frame of boundaryKeyFrames) {
+      if (frame >= destination && frame < end) return false;
+    }
+    for (const interval of groupIntervals) {
+      if (destination < interval.end && interval.start < end) return false;
+    }
+    return true;
+  };
+
+  const keysLandFree = (destination: number): boolean => {
+    const delta = destination - current;
+    for (const identity of input.identities) {
+      if (!memberKeyIds.has(identity.keyId)) continue;
+      const next = identity.appFrame + delta;
+      if (next < 0 || next >= endExclusive || boundaryKeyFrames.has(next)) return false;
+    }
+    return true;
+  };
+
+  const valid = (destination: number): boolean => intervalFree(destination) && keysLandFree(destination);
+  if (proposed === current) {
+    return valid(current) ? { ok: true, destinationFirstKeyAppFrame: current } : { ok: false };
+  }
+  if (proposed > current) {
+    for (let destination = proposed; destination > current; destination -= 1) {
+      if (valid(destination)) return { ok: true, destinationFirstKeyAppFrame: destination };
+    }
+    return { ok: false };
+  }
+  for (let destination = proposed; destination < current; destination += 1) {
+    if (valid(destination)) return { ok: true, destinationFirstKeyAppFrame: destination };
+  }
+  return { ok: false };
+}
+
+function deriveMoveKeyRailIncomingInterpolationBreakKeyIds(input: {
+  readonly memberKeyIds: readonly string[];
+  readonly firstKeyFrame: number;
+  readonly lastKeyFrame: number;
+  readonly groupOwnedKeyIds: ReadonlySet<string>;
+  readonly preMoveFramesByKeyId: ReadonlyMap<string, number>;
+  readonly mapping: ReadonlyMap<string, number>;
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
+}): readonly string[] {
+  const owners = new Set(input.incomingInterpolationBreakKeyIds);
+  const memberKeyIds = new Set(input.memberKeyIds);
+  const vacatedEndExclusive = input.lastKeyFrame + 1;
+
+  let successor: string | null = null;
+  let successorFrame = Number.POSITIVE_INFINITY;
+  for (const [keyId, frame] of input.preMoveFramesByKeyId) {
+    if (memberKeyIds.has(keyId) || input.groupOwnedKeyIds.has(keyId)) continue;
+    if (frame >= vacatedEndExclusive && frame < successorFrame) {
+      successor = keyId;
+      successorFrame = frame;
+    }
+  }
+  if (successor !== null) owners.add(successor);
+
+  const firstKeyId = input.memberKeyIds[0];
+  const firstDestination = input.mapping.get(firstKeyId);
+  if (firstDestination !== undefined) {
+    let predecessorFrame = -1;
+    for (const [keyId, frame] of input.mapping) {
+      if (memberKeyIds.has(keyId) || input.groupOwnedKeyIds.has(keyId)) continue;
+      if (frame < firstDestination && frame > predecessorFrame) predecessorFrame = frame;
+    }
+    if (predecessorFrame !== -1 && firstDestination - predecessorFrame > 1) owners.add(firstKeyId);
+  }
+
+  return [...owners].sort((left, right) => {
+    const frameLeft = input.mapping.get(left) ?? Number.POSITIVE_INFINITY;
+    const frameRight = input.mapping.get(right) ?? Number.POSITIVE_INFINITY;
+    return frameLeft - frameRight || left.localeCompare(right);
+  });
+}
+
 /**
  * D-09..D-13: derive the complete incoming-interpolation-break collection after
  * a Group drag. Stable-key-owned breaks only, under exact 43.1 semantics:
@@ -2787,6 +2908,10 @@ function buildStatusText(
       ? 'Moved key'
       : `Moved key to frame ${selectedAppFrame}`;
   }
+  if (operationKind === 'move-key-rail') {
+    if (!changed) return 'No change';
+    return selectedAppFrame === null ? 'Key Rail moved' : `Key Rail moved to frame ${selectedAppFrame}`;
+  }
   if (operationKind === 'move-key-group') {
     if (!changed) return 'No change';
     return 'Keys moved';
@@ -3411,6 +3536,105 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     );
     if (!spacingResult.ok) return spacingResult.resolution;
     const finalized = finalizeProposal(spacingResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
+    if (!finalized.ok) return finalized.resolution;
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'move-key-rail') {
+    if (!Array.isArray(intent.memberKeyIds) || intent.memberKeyIds.length === 0) {
+      return fail('malformed-identity', operationKind, 'Key Rail move requires a non-empty memberKeyIds array.');
+    }
+    const seenMemberKeyIds = new Set<string>();
+    for (const keyId of intent.memberKeyIds) {
+      if (!isBoundedKeyId(keyId)) {
+        return fail('malformed-identity', operationKind, 'Key Rail move requires bounded member keyIds.');
+      }
+      if (seenMemberKeyIds.has(keyId)) {
+        return fail('duplicate-id', operationKind, `Duplicate keyId "${keyId}".`);
+      }
+      seenMemberKeyIds.add(keyId);
+      if (!identities.keyIds.has(keyId)) {
+        return fail('unknown-operation-identity', operationKind, `Key Rail move targets unknown identity "${keyId}".`);
+      }
+    }
+    if (!isNonNegativeInteger(intent.destinationFirstKeyAppFrame) || intent.destinationFirstKeyAppFrame >= input.capacity) {
+      return fail('out-of-range-frame', operationKind, 'Key Rail move destination is outside capacity.');
+    }
+
+    const groupOwnedKeyIds = new Set<string>();
+    for (const clip of loopClips) {
+      clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+      (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+    }
+    if (intent.memberKeyIds.some((keyId) => groupOwnedKeyIds.has(keyId))) {
+      return fail('malformed-target', operationKind, 'Key Rail move requires ordinary real-key members outside Group ownership.');
+    }
+
+    const segments = deriveKeyRailSegments({
+      orderedRealKeys: identities.ordered,
+      incomingInterpolationBreakKeyIds: new Set(incomingInterpolationBreakKeyIds),
+      groupOwnedKeyIds,
+    });
+    const matchingSegment = segments.find((segment) => (
+      segment.keyIds.length === intent.memberKeyIds.length
+      && segment.keyIds.every((keyId, index) => keyId === intent.memberKeyIds[index])
+    ));
+    if (!matchingSegment) {
+      return fail('malformed-target', operationKind, 'Key Rail move members must match exactly one current derived segment.');
+    }
+
+    const loopRangeContext = derivePhysicPaintRotoLoopRanges({
+      identities: identities.ordered,
+      loopClips,
+      capacity: input.capacity,
+      parentEndExclusive: input.parentEndExclusive,
+      interpolationEnabled: input.interpolationEnabled,
+    });
+    const clampResult = clampPhysicPaintKeyRailDragDestination({
+      memberKeyIds: intent.memberKeyIds,
+      firstKeyFrame: matchingSegment.firstKeyFrame,
+      lastKeyFrame: matchingSegment.lastKeyFrame,
+      proposedDestinationFirstKeyAppFrame: intent.destinationFirstKeyAppFrame,
+      identities: identities.ordered,
+      loopRanges: loopRangeContext.ranges,
+      parentEndExclusive: input.parentEndExclusive,
+      capacity: input.capacity,
+    });
+    if (!clampResult.ok || clampResult.destinationFirstKeyAppFrame === matchingSegment.firstKeyFrame) {
+      return fail('no-free-space-in-direction', operationKind, 'Key Rail drag has no free space in the dragged direction.');
+    }
+
+    const delta = clampResult.destinationFirstKeyAppFrame - matchingSegment.firstKeyFrame;
+    const mapping = new Map(identities.ordered.map((identity) => [identity.keyId, identity.appFrame] as const));
+    const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+    for (const keyId of intent.memberKeyIds) {
+      const currentFrame = identities.framesByKeyId.get(keyId) as number;
+      mapping.set(keyId, currentFrame + delta);
+      roleByKeyId.set(keyId, 'moved');
+    }
+    const candidate: Candidate = {
+      mapping,
+      expectedKeyIds: identities.keyIds,
+      removedKeyId: null,
+      removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+      selectedKeyId: intent.memberKeyIds[0],
+      operationKind: 'move-key-rail',
+      changed: true,
+      roleByKeyId,
+      drag: null,
+      nextIncomingInterpolationBreakKeyIds: Object.freeze(
+        deriveMoveKeyRailIncomingInterpolationBreakKeyIds({
+          memberKeyIds: intent.memberKeyIds,
+          firstKeyFrame: matchingSegment.firstKeyFrame,
+          lastKeyFrame: matchingSegment.lastKeyFrame,
+          groupOwnedKeyIds,
+          preMoveFramesByKeyId: identities.framesByKeyId,
+          mapping,
+          incomingInterpolationBreakKeyIds,
+        }),
+      ),
+    };
+    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
