@@ -293,7 +293,7 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
   if (visibleTargets.length === 0) return null;
 
   return (
-    <div class="physics-paint-loop-clip-rail" role="group" aria-label="Groups">
+    <div class="physics-paint-loop-clip-rail" role="group" aria-label="Rails">
       {visibleTargets.map(({ range, presentation, geometry, actionLinked, showStartBoundary, showEndBoundary }) => (
         <PhysicsPaintLoopClipRailTarget
           key={range.loopId}

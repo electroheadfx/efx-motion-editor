@@ -264,6 +264,7 @@ export type RotoGroupDragProductReasonInput =
     }
   | {
       readonly kind: 'accepted';
+      readonly mode: PhysicPaintRotoLoopClip['mode'];
       readonly destinationPlacementStart: number;
       /** The Group's original half-open interval when source-attached; null for duplicated placements (D-11). */
       readonly vacatedInterval: { readonly phaseOrigin: number; readonly effectiveEnd: number } | null;
@@ -281,7 +282,8 @@ export function mapRotoGroupDragProductReason(input: RotoGroupDragProductReasonI
         ? 'No empty space in that direction.'
         : (input.failureText || 'The Group move is invalid.');
     case 'accepted': {
-      const moved = `Moved Group to frame ${input.destinationPlacementStart}.`;
+      const railType = input.mode === 'static' ? 'Static Rail' : 'Motion Rail';
+      const moved = `Moved ${railType} to frame ${input.destinationPlacementStart}.`;
       if (input.vacatedInterval === null) return moved;
       // D-07: inclusive product range derived from the canonical half-open
       // vacated interval at presentation time only (43.2 presentation rule).
@@ -1768,8 +1770,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       selectedAppFrame: publication.proposal.selectedAppFrame,
     });
     if (accepted) {
+      const mode = input.getRotoLoopClips?.().find((clip) => clip.loopId === publication.loopId)?.mode
+        ?? 'progressive';
       input.publishStatus?.(mapRotoGroupDragProductReason({
         kind: 'accepted',
+        mode,
         destinationPlacementStart: publication.clampedDestinationPlacementStart,
         vacatedInterval: publication.vacatedInterval,
       }));

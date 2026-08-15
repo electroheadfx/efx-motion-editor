@@ -875,8 +875,12 @@ export function PhysicsPaintStudio() {
       ? selectedLoopClipIds.peek().filter((groupId) => groupId !== target.groupId)
       : selectedLoopClipIds.peek();
     if (selectedLoopClipIds.value.length === 0) loopSelectionAnchorId.value = null;
+    const deletedGroupMode = rotoLoopClips.find((clip) => clip.loopId === target.groupId)?.mode
+      ?? 'progressive';
     setApplyMessage(target.operationKind === 'delete-group'
-      ? `Deleted Group at F${target.phaseOrigin}.`
+      ? deletedGroupMode === 'static'
+        ? `Deleted Static Rail at F${target.phaseOrigin}.`
+        : `Deleted Motion Rail at F${target.phaseOrigin}.`
       : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`);
     return accepted !== null;
   };

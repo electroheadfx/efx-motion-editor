@@ -431,7 +431,8 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
     expect(studio).toContain('onSelectRotoKeyRail: handleSelectRotoKeyRail');
     expect(studio).toContain('onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected');
     expect(studio).toContain('rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0');
-    expect(studio).toContain("target.operationKind === 'delete-group'\n      ? target.mode === 'static'\n        ? `Deleted Static Rail at F${target.phaseOrigin}.`\n        : `Deleted Motion Rail at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`");
+    expect(studio).toContain("const deletedGroupMode = rotoLoopClips.find((clip) => clip.loopId === target.groupId)?.mode\n      ?? 'progressive';");
+    expect(studio).toContain("target.operationKind === 'delete-group'\n      ? deletedGroupMode === 'static'\n        ? `Deleted Static Rail at F${target.phaseOrigin}.`\n        : `Deleted Motion Rail at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`");
   });
 });
 

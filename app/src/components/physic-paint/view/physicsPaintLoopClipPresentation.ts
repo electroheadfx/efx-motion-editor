@@ -32,7 +32,7 @@ export interface PhysicsPaintLoopClipPresentation {
   readonly effectiveLabel: string;
   readonly mode: PhysicPaintRotoLoopClip['mode'];
   readonly modeLabel: 'Motion' | 'Static';
-  readonly groupTypeLabel: 'Motion Group' | 'Static Group';
+  readonly groupTypeLabel: 'Motion Rail' | 'Static Rail';
   readonly lifecycle: PhysicsPaintGroupLifecycle;
   readonly statusLabel: string;
   readonly synchronizationDot: PhysicsPaintGroupSynchronizationDot | null;
@@ -80,10 +80,10 @@ export function projectPhysicsPaintLoopClipPresentation(
   const effectiveDuration = Math.max(0, effectiveEnd - range.phaseOrigin);
   const mode = clip?.mode ?? 'progressive';
   const modeLabel = mode === 'static' ? 'Static' : 'Motion';
-  const groupTypeLabel = `${modeLabel} Group` as const;
+  const groupTypeLabel = `${modeLabel} Rail` as const;
   const groupDisplayName = options.groupDisplayName?.trim();
   const displayName = groupDisplayName
-    || (sourceActionName ? `${sourceActionName} Group` : `${groupTypeLabel} at F${range.phaseOrigin}`);
+    || (sourceActionName ? `${sourceActionName} Rail` : `${groupTypeLabel} at F${range.phaseOrigin}`);
   const lifecycle = resolveGroupLifecycle(range, clip, sourceActionName);
   const statusLabel = statusLabelFor(lifecycle);
   const synchronizationDot = lifecycle === 'unresolved' ? null : lifecycle;
