@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, Play, Plus, RotateCcw, Scissors, Square, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
 
 import { memo } from 'preact/compat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -182,6 +182,7 @@ export interface PhysicsPaintWorkflowStripProps {
   onSelectAllRotoKeys?: () => void;
   onCopyRotoFrame?: () => void;
   onCutRotoFrame?: () => void;
+  onScissorKeyRail?: () => void;
   onPasteRotoFrame?: () => void;
   /** Physical real-key records for identity-based Drag targeting (D-01/D-07). */
   rotoKeyRecords?: readonly PhysicPaintRotoRealKeyRecord[];
@@ -777,9 +778,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const physicalActions = props.rotoPhysicalActions;
   const physicalInsertAvailable = physicalActions?.canInsertFrame.value ?? false;
   const physicalDeleteAvailable = physicalActions?.canDeleteFrame.value ?? false;
+  const physicalScissorAvailable = physicalActions?.canScissor.value ?? false;
   const physicalInsertDisabledReason = physicalActions?.insertDisabledReason.value ?? null;
   const insertRotoKeyDescription = physicalActions?.insertTooltipDescription.value ?? 'Insert key before';
   const physicalDeleteDisabledReason = physicalActions?.deleteDisabledReason.value ?? null;
+  const physicalScissorDisabledReason = physicalActions?.scissorDisabledReason.value ?? null;
   const forceSpacingInput = physicalActions?.forceSpacingInput.value ?? '1';
   const forceSpacingAvailable = physicalActions?.canApplyForceSpacing.value ?? false;
   const forceSpacingDisabledReason = physicalActions?.forceSpacingDisabledReason.value ?? null;
@@ -799,6 +802,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const canCopyRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canCopy || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
   const canPasteRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canPaste && props.ready !== false : Boolean(props.hasCopiedRotoKey) && !keyUtilitiesDisabledByBusyState;
   const canDeleteRotoKey = physicalActions ? physicalDeleteAvailable && props.ready !== false : (sessionKeyAvailability ? (sessionKeyAvailability.canDelete || canUseSourceRotoKey) && props.ready !== false : canUseSourceRotoKey);
+  const canScissorRotoKey = Boolean(physicalActions)
+    && physicalScissorAvailable
+    && props.ready !== false
+    && !keyUtilitiesDisabledByBusyState;
+  const scissorRotoKeyDisabledReason = canScissorRotoKey
+    ? null
+    : physicalScissorDisabledReason ?? 'Scissor is unavailable.';
   const physicalDragAvailable = physicalActions?.canDragKey.value ?? false;
   const rotoDragLocked = keyUtilitiesDisabledByBusyState || !physicalActions || !physicalDragAvailable;
   // Guarded-icon-action availability reasons (D-12): verbatim controller ports
@@ -839,6 +849,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const duplicateKeyTooltip = useStyledTooltip();
   const copyKeyTooltip = useStyledTooltip();
   const cutKeyTooltip = useStyledTooltip();
+  const scissorKeyTooltip = useStyledTooltip();
   const pasteKeyTooltip = useStyledTooltip();
   const deleteKeyTooltip = useStyledTooltip();
   const selectAllTooltip = useStyledTooltip();
@@ -1867,6 +1878,34 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={cutKeyTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy('Cut key', cutRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={scissorKeyTooltip.onPointerEnter} onPointerLeave={scissorKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Split Key Rail"
+                    aria-disabled={!canScissorRotoKey ? 'true' : undefined}
+                    aria-describedby={!canScissorRotoKey && scissorRotoKeyDisabledReason ? 'roto-key-action-reason-scissor' : undefined}
+                    onFocus={scissorKeyTooltip.onFocus}
+                    onBlur={scissorKeyTooltip.onBlur}
+                    onClick={() => {
+                      scissorKeyTooltip.hide();
+                      if (!canScissorRotoKey) return;
+                      props.onScissorKeyRail?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canScissorRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <SquareSplitHorizontal size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Scissor</span>
+                  </button>
+                  {!canScissorRotoKey && scissorRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-scissor" class="physics-paint-sr-only">{scissorRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={scissorKeyTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy('Split the Key Rail before this key.', scissorRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={pasteKeyTooltip.onPointerEnter} onPointerLeave={pasteKeyTooltip.onPointerLeave}>

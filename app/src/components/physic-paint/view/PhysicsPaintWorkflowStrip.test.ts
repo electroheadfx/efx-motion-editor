@@ -68,6 +68,7 @@ const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: s
   { label: 'Duplicate key', guard: 'canDuplicateRotoKey', handler: 'props.onDuplicateRotoKey?.()' },
   { label: 'Copy key', guard: 'canCopyRotoKey', handler: 'props.onCopyRotoFrame?.()' },
   { label: 'Cut key', guard: 'canCutRotoKey', handler: 'props.onCutRotoFrame?.()' },
+  { label: 'Split Key Rail', guard: 'canScissorRotoKey', handler: 'props.onScissorKeyRail?.()' },
   { label: 'Paste key', guard: 'canPasteRotoKey', handler: 'props.onPasteRotoFrame?.()' },
   { label: 'Delete key', guard: 'canDeleteRotoKey', handler: 'props.onDeleteRotoFrame?.()' },
 ];
@@ -225,8 +226,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('function buildGuardedActionTooltipCopy(description: string, disabledReason: string | null)');
     expect(code).toContain('return disabledReason ? `unavailable: ${disabledReason}` : description;');
     const builderCalls = (row.match(/buildGuardedActionTooltipCopy\(/g) ?? []).length;
-    // Seven guarded icon actions plus the Set Key Space form.
-    expect(builderCalls).toBeGreaterThanOrEqual(8);
+    // Eight guarded icon actions plus the Set Key Space form.
+    expect(builderCalls).toBeGreaterThanOrEqual(9);
     // Script copy/apply availability reasons now surface in the Scripts
     // sidebar toolbar, not the strip (Gap C).
     expect(code).not.toContain('copyDisabledReason');
@@ -241,6 +242,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       { action: 'Insert key before', icon: 'BetweenVerticalStart', label: 'Insert' },
       { action: 'Copy key', icon: 'ClipboardCopy', label: 'Copy' },
       { action: 'Cut key', icon: 'Scissors', label: 'Cut' },
+      { action: 'Split Key Rail', icon: 'SquareSplitHorizontal', label: 'Scissor' },
       { action: 'Paste key', icon: 'ClipboardPaste', label: 'Paste' },
       { action: 'Delete key', icon: 'Trash2', label: 'Delete' },
     ];
@@ -376,15 +378,17 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 });
 
 describe('PhysicsPaintWorkflowStrip Cut key contract (quick 260731-9l0)', () => {
-  it('renders the clipboard row in locked Copy, Cut, Paste, Delete order', () => {
+  it('renders the clipboard row in locked Copy, Cut, Scissor, Paste, Delete order', () => {
     const row = getActionRowBlock(source());
     const copyIndex = row.indexOf('aria-label="Copy key"');
     const cutIndex = row.indexOf('aria-label="Cut key"');
+    const scissorIndex = row.indexOf('aria-label="Split Key Rail"');
     const pasteIndex = row.indexOf('aria-label="Paste key"');
     const deleteIndex = row.indexOf('aria-label="Delete key"');
     expect(copyIndex).toBeGreaterThanOrEqual(0);
     expect(cutIndex).toBeGreaterThan(copyIndex);
-    expect(pasteIndex).toBeGreaterThan(cutIndex);
+    expect(scissorIndex).toBeGreaterThan(cutIndex);
+    expect(pasteIndex).toBeGreaterThan(scissorIndex);
     expect(deleteIndex).toBeGreaterThan(pasteIndex);
   });
 
@@ -415,6 +419,29 @@ describe('PhysicsPaintWorkflowStrip Cut key contract (quick 260731-9l0)', () => 
     expect(code).toContain('id="roto-key-action-reason-cut"');
     expect(code).toContain("buildGuardedActionTooltipCopy('Cut key', cutRotoKeyDisabledReason)");
     expect(getWorkflowStripPropsInterface(code)).toContain('onCutRotoFrame?: () => void;');
+  });
+});
+
+describe('PhysicsPaintWorkflowStrip Scissor key-rail contract (43.4-01)', () => {
+  it('guards activation, exposes the locked reason and tooltip, and keeps the distinct icon', () => {
+    const code = source();
+    const row = getActionRowBlock(code);
+    const block = getButtonBlock(row, 'Split Key Rail');
+
+    expect(block).toContain('aria-label="Split Key Rail"');
+    expect(block).toContain('aria-disabled={!canScissorRotoKey');
+    expect(block).toContain("aria-describedby={!canScissorRotoKey && scissorRotoKeyDisabledReason ? 'roto-key-action-reason-scissor' : undefined}");
+    expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(block).not.toContain('title=');
+    expect(block.indexOf('if (!canScissorRotoKey) return;')).toBeGreaterThanOrEqual(0);
+    expect(block.indexOf('props.onScissorKeyRail?.()')).toBeGreaterThan(block.indexOf('if (!canScissorRotoKey) return;'));
+    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canScissorRotoKey");
+    expect(block).toContain('<SquareSplitHorizontal size={18} aria-hidden="true" />');
+    expect(block).not.toContain('<Scissors');
+    expect(block).toContain('<span class="physics-paint-roto-key-icon-label">Scissor</span>');
+    expect(code).toContain('id="roto-key-action-reason-scissor"');
+    expect(code).toContain("buildGuardedActionTooltipCopy('Split the Key Rail before this key.', scissorRotoKeyDisabledReason)");
+    expect(getWorkflowStripPropsInterface(code)).toContain('onScissorKeyRail?: () => void;');
   });
 });
 
