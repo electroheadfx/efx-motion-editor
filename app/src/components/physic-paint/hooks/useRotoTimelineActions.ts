@@ -292,6 +292,34 @@ export function mapRotoGroupDragProductReason(input: RotoGroupDragProductReasonI
   }
 }
 
+export type RotoKeyRailDragProductReasonInput =
+  | { readonly kind: 'disabled'; readonly reason: string }
+  | {
+      readonly kind: 'rejected';
+      readonly failureCode: PhysicPaintRotoPhysicalEditFailureCode;
+      readonly failureText: string;
+    }
+  | {
+      readonly kind: 'accepted';
+      readonly destinationFirstKeyAppFrame: number;
+      readonly vacatedInterval: { readonly phaseOrigin: number; readonly effectiveEnd: number } | null;
+    };
+
+/**
+ * Key Rail drag copy owner. Rejections reuse the existing Group-drag mapping so
+ * the shared no-space sentence has one literal source; accepted copy retains
+ * Key Rail terminology without changing the locked Group mapper arms.
+ */
+export function mapRotoKeyRailDragProductReason(input: RotoKeyRailDragProductReasonInput): string {
+  if (input.kind === 'accepted') {
+    const moved = `Moved Key Rail to frame ${input.destinationFirstKeyAppFrame}.`;
+    if (input.vacatedInterval === null) return moved;
+    return `${moved} Gap left at frames ${input.vacatedInterval.phaseOrigin}–${input.vacatedInterval.effectiveEnd - 1}.`;
+  }
+  if (input.kind === 'disabled') return input.reason;
+  return mapRotoGroupDragProductReason(input);
+}
+
 export interface RotoGroupLifecycleDeleteTarget {
   readonly groupId: string;
   readonly appFrame: number;
@@ -642,6 +670,7 @@ export interface RotoKeyRailDragPublication {
   readonly firstKeyId: string;
   readonly memberKeyIds: readonly string[];
   readonly destinationFirstKeyAppFrame: number;
+  readonly vacatedInterval: { readonly phaseOrigin: number; readonly effectiveEnd: number } | null;
 }
 
 export type RotoKeyRailDragPreparationResult =
@@ -1754,16 +1783,16 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   ): RotoKeyRailDragPreparationResult => {
     const launch = input.getLaunchContext?.() ?? null;
     if (!launch) {
-      return { ok: false, reason: 'Select a real Roto key before editing the timeline.' };
+      return { ok: false, reason: mapRotoKeyRailDragProductReason({ kind: 'disabled', reason: 'Select a real Roto key before editing the timeline.' }) };
     }
     if (!input.executePhysicalEdit || !input.getRotoKeyRecords || !input.getRotoInterpolationState || !input.getCapacity) {
-      return { ok: false, reason: 'Timeline editing is unavailable.' };
+      return { ok: false, reason: mapRotoKeyRailDragProductReason({ kind: 'disabled', reason: 'Timeline editing is unavailable.' }) };
     }
     if (input.pendingOperationId && input.pendingOperationId.value !== null) {
-      return { ok: false, reason: 'A Roto physical edit is already in flight.' };
+      return { ok: false, reason: mapRotoKeyRailDragProductReason({ kind: 'disabled', reason: 'A Roto physical edit is already in flight.' }) };
     }
     if (!isBoundedKeyId(firstKeyId)) {
-      return { ok: false, reason: 'The dragged Key Rail identity is malformed.' };
+      return { ok: false, reason: mapRotoKeyRailDragProductReason({ kind: 'disabled', reason: 'The dragged Key Rail identity is malformed.' }) };
     }
 
     const records = input.getRotoKeyRecords();
@@ -1785,7 +1814,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       groupOwnedKeyIds,
     }).filter((segment) => segment.firstKeyId === firstKeyId);
     if (matchingSegments.length !== 1) {
-      return { ok: false, reason: 'The dragged Key Rail is no longer available.' };
+      return { ok: false, reason: mapRotoKeyRailDragProductReason({ kind: 'disabled', reason: 'The dragged Key Rail is no longer available.' }) };
     }
 
     const segment = matchingSegments[0];
@@ -1807,7 +1836,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     if (!resolution.ok) {
       return {
         ok: false,
-        reason: resolution.failure.text || 'The Key Rail move is invalid.',
+        reason: mapRotoKeyRailDragProductReason({
+          kind: 'rejected',
+          failureCode: resolution.failure.code,
+          failureText: resolution.failure.text,
+        }),
         detail: resolution.failure.text,
       };
     }
@@ -1819,6 +1852,17 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     if (acceptedDestination === undefined) {
       return { ok: false, reason: 'The Key Rail move is invalid.' };
     }
+    const delta = acceptedDestination - segment.firstKeyFrame;
+    const destinationLastKeyFrame = segment.lastKeyFrame + delta;
+    const vacatedStart = delta > 0
+      ? segment.firstKeyFrame
+      : Math.max(destinationLastKeyFrame + 1, segment.firstKeyFrame);
+    const vacatedEnd = delta > 0
+      ? Math.min(acceptedDestination, segment.lastKeyFrame + 1)
+      : segment.lastKeyFrame + 1;
+    const vacatedInterval = vacatedStart < vacatedEnd
+      ? Object.freeze({ phaseOrigin: vacatedStart, effectiveEnd: vacatedEnd })
+      : null;
     const expectedLaunch = Object.freeze({
       operationId: launch.operationId,
       layerId: launch.layerId,
@@ -1839,6 +1883,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         firstKeyId,
         memberKeyIds,
         destinationFirstKeyAppFrame: acceptedDestination,
+        vacatedInterval,
       }) as RotoKeyRailDragPublication,
     };
   }, [input]);
@@ -1870,7 +1915,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     } catch {
       return false;
     }
-    return input.executePhysicalEdit({
+    const accepted = await input.executePhysicalEdit({
       proposal: publication.proposal,
       expectedLaunch: publication.expectedLaunch,
       operationKind: 'move-key-rail',
@@ -1878,6 +1923,14 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       selectedKeyId: publication.proposal.selectedKeyId,
       selectedAppFrame: publication.proposal.selectedAppFrame,
     });
+    if (accepted) {
+      input.publishStatus?.(mapRotoKeyRailDragProductReason({
+        kind: 'accepted',
+        destinationFirstKeyAppFrame: publication.destinationFirstKeyAppFrame,
+        vacatedInterval: publication.vacatedInterval,
+      }));
+    }
+    return accepted;
   }, [input]);
 
   const setForceSpacingInput = useCallback((value: string) => {
