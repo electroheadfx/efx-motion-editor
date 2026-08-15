@@ -1627,7 +1627,8 @@ describe('PhysicsPaintWorkflowStrip Group-drag gap preview contract (43.3-03, UI
     const code = source();
     const map = getRotoMapBlock(code);
     expect(map).toContain('const isRotoGroupDragGapPreview = rotoGroupDragGapPreviewAppFrames.has(frame);');
-    expect(map).toContain("const effectiveFillClass = isRotoGroupDragGapPreview ? 'roto-fill-empty' : fillClass;");
+    expect(map).toContain('const effectiveFillClass = isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview');
+    expect(map).toContain("? 'roto-fill-empty' : fillClass;");
     expect(map).toContain('physics-paint-roto-cell ${effectiveFillClass}');
     // The gap-preview frame set derives from the rail session's retained
     // publication via the pure presentation helper (memo lives above the map).
@@ -1645,7 +1646,7 @@ describe('PhysicsPaintWorkflowStrip Key Rail integration (43.4-06)', () => {
     const keyRailGate = code.slice(code.lastIndexOf('{', keyRailStart), keyRailStart);
     expect(code).toContain('const keyRailSegments = useMemo(() => deriveKeyRailSegments({');
     expect(keyRailGate).toContain('keyRailSegments.length > 0');
-    expect(keyRailGate).toContain('props.onSelectRotoKeyRail');
+    expect(keyRailGate).not.toContain('props.onSelectRotoKeyRail');
     expect(keyRailGate).not.toContain('loopResolutionContext');
     expect(keyRailGate).not.toContain('onSelectRotoLoopClip');
     expect(keyRailGate).not.toContain('onOpenRotoLoopEdit');
@@ -1667,7 +1668,7 @@ describe('PhysicsPaintWorkflowStrip Key Rail integration (43.4-06)', () => {
     const start = code.indexOf('<PhysicsPaintKeyRail');
     const rail = code.slice(start, code.indexOf('/>', start));
     expect(rail).toContain('selectedKeyRail={props.selectedRotoKeyRail ?? null}');
-    expect(rail).toContain('onSelectKeyRail={props.onSelectRotoKeyRail}');
+    expect(rail).toContain('onSelectKeyRail={props.onSelectRotoKeyRail ?? NOOP_KEY_RAIL_SELECTION}');
     expect(rail).toContain('prepareKeyRailDrag={physicalActions?.prepareKeyRailDrag}');
     expect(rail).toContain('commitKeyRailDrag={physicalActions?.commitKeyRailDrag}');
     expect(rail).toContain('getClampInput={getRotoKeyRailDragClampInput}');

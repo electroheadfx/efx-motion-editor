@@ -39,6 +39,7 @@ import {
 import {
   resolvePhysicPaintRotoGroupEffectiveEnd,
   type PhysicPaintRotoGroupDragClampInput,
+  type PhysicPaintRotoKeyRailDragClampInput,
   type PhysicPaintRotoLoopResolutionContext,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import {
@@ -54,7 +55,10 @@ import type {
 } from '../roto/physicsPaintRotoSpacingSelection';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import { PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
+import { PhysicsPaintKeyRail } from './PhysicsPaintKeyRail';
+import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 import type { GroupRailDragPreviewState } from '../hooks/usePhysicsPaintGroupRailDrag';
+import type { KeyRailDragPreviewState } from '../hooks/usePhysicsPaintKeyRailDrag';
 import {
   projectPhysicsPaintGroupProductReason,
   type PhysicsPaintLoopClipPresentation,
@@ -64,6 +68,8 @@ import type {
   RotoDragPreparationResult,
   RotoDragTarget,
   RotoDragTargetSignature,
+  RotoKeyRailDragPublication,
+  RotoKeyRailSelection,
   RotoPhysicalTimelineActionBundle,
 } from '../hooks/useRotoTimelineActions';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
@@ -214,6 +220,14 @@ export interface PhysicsPaintWorkflowStripProps {
     loopId: string | null,
     gesture?: PhysicsPaintRotoSpacingSelectionGesture,
   ) => void;
+  /** Session-only exact Key Rail identity; never persisted or bridged. */
+  selectedRotoKeyRail?: RotoKeyRailSelection | null;
+  /** Plain-only Key Rail selection intent. */
+  onSelectRotoKeyRail?: (selection: RotoKeyRailSelection) => void;
+  /** Key Rail rejection copy publisher for the shared status capsule. */
+  onRotoKeyRailDragRejected?: (reason?: string, detail?: string) => void;
+  /** Accepted parent boundary used by the canonical Key Rail clamp. */
+  rotoParentEndExclusive?: number;
   /** Existing Studio-local Loop Edit controller port (D-37/D-39). */
   onOpenRotoLoopEdit?: (loopId: string) => Promise<unknown>;
   rotoDragContextKey?: string;
@@ -238,6 +252,7 @@ const EMPTY_LOOP_PRESENTATIONS: ReadonlyMap<string, PhysicsPaintLoopClipPresenta
 const EMPTY_SPACING_PROXIES: ReadonlyMap<number, PhysicsPaintRotoSpacingProxy> = new Map();
 const EMPTY_CACHED_ROTO_FRAMES: readonly PhysicPaintRotoCacheFrame[] = [];
 const EMPTY_STRING_IDS: readonly string[] = [];
+const NOOP_KEY_RAIL_SELECTION = (_selection: RotoKeyRailSelection): void => {};
 
 function buildRulerTicks(frameCells: number[]): number[] {
   return frameCells.filter((frame) => frame % RULER_STEP === 0);
@@ -639,6 +654,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // Group Rail drag preview (plan 03): session-only publication surfaced by the
   // rail's session hook, consumed for the gap preview paint only (Pitfall 5).
   const [rotoGroupDragPreview, setRotoGroupDragPreview] = useState<GroupRailDragPreviewState | null>(null);
+  const [rotoKeyRailDragPreview, setRotoKeyRailDragPreview] = useState<
+    KeyRailDragPreviewState<RotoKeyRailDragPublication> | null
+  >(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineContentRef = useRef<HTMLDivElement>(null);
   const rotoDragGestureRef = useRef<RotoDragGestureSession | null>(null);
@@ -650,8 +668,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const interpolationEnabled = props.rotoInterpolationEnabled === true;
   const interpolationMode = props.rotoInterpolationMode ?? 'duplicate';
   const currentPhysicalCells = props.rotoPhysicalCells;
+  const rotoKeyRecords = props.rotoKeyRecords ?? [];
   const realKeyOrderById = useMemo(
-    () => new Map([...(props.rotoKeyRecords ?? [])]
+    () => new Map([...rotoKeyRecords]
       .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId))
       .map((record, index) => [record.keyId, index] as const)),
     [props.rotoKeyRecords],
@@ -678,6 +697,20 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // query per capacity-bounded frame, never proportional to any loop's effective range. Null
   // when no loop context is supplied (pre-43 byte-identical path).
   const loopResolutionContext = props.rotoLoopResolutionContext ?? null;
+  const keyRailGroupOwnedKeyIds = useMemo(() => {
+    const owned = new Set<string>();
+    for (const clip of props.rotoLoopClips ?? []) {
+      clip.sourceKeyIds.forEach((keyId) => owned.add(keyId));
+      (clip.frameOverrides ?? []).forEach((override) => owned.add(override.keyId));
+    }
+    return owned;
+  }, [props.rotoLoopClips]);
+  const keyRailSegments = useMemo(() => deriveKeyRailSegments({
+    orderedRealKeys: [...rotoKeyRecords]
+      .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId)),
+    incomingInterpolationBreakKeyIds: new Set(props.rotoIncomingInterpolationBreakKeyIds ?? []),
+    groupOwnedKeyIds: keyRailGroupOwnedKeyIds,
+  }), [rotoKeyRecords, props.rotoIncomingInterpolationBreakKeyIds, keyRailGroupOwnedKeyIds]);
   const visibleFrameResolutions = useMemo(
     () => loopResolutionContext === null
       ? null
@@ -855,7 +888,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const deleteKeyTooltip = useStyledTooltip();
   const selectAllTooltip = useStyledTooltip();
   const forceSpacingTooltip = useStyledTooltip();
-  const rotoKeyRecords = props.rotoKeyRecords ?? [];
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
     for (const record of rotoKeyRecords) map.set(record.appFrame, record.keyId);
@@ -922,6 +954,41 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       clip,
     );
   }, [rotoGroupDragPreview, props.rotoLoopClips, currentPhysicalCells]);
+  const getRotoKeyRailDragClampInput = useCallback((
+    segment: KeyRailSegment,
+  ): Omit<PhysicPaintRotoKeyRailDragClampInput, 'proposedDestinationFirstKeyAppFrame'> => ({
+    memberKeyIds: segment.keyIds,
+    firstKeyFrame: segment.firstKeyFrame,
+    lastKeyFrame: segment.lastKeyFrame,
+    identities: rotoKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+    loopRanges: loopResolutionContext?.ranges ?? [],
+    parentEndExclusive: props.rotoParentEndExclusive ?? currentPhysicalCells.length,
+    capacity: currentPhysicalCells.length,
+  }), [rotoKeyRecords, loopResolutionContext, props.rotoParentEndExclusive, currentPhysicalCells.length]);
+  // Key Rail gap preview is presentation-only. The retained publication owns
+  // both the vacated edge and the exact accepted destination; null preview from
+  // commit, cancel, or rejection synchronously clears this entire Set.
+  const rotoKeyRailDragGapPreviewAppFrames = useMemo(() => {
+    if (!rotoKeyRailDragPreview) return new Set<number>();
+    const frames = new Set<number>();
+    const publication = rotoKeyRailDragPreview.publication;
+    const vacated = rotoKeyRailDragPreview.publication.vacatedInterval;
+    if (vacated) {
+      for (let frame = vacated.phaseOrigin; frame < vacated.effectiveEnd; frame += 1) frames.add(frame);
+    }
+    const movedFrame = rotoKeyRailDragPreview.publication.destinationFirstKeyAppFrame;
+    const occupied = publication.proposal.cells
+      .filter((cell) => cell.kind === 'real' || cell.kind === 'generated')
+      .map((cell) => cell.appFrame);
+    let predecessor = -1;
+    for (const frame of occupied) {
+      if (frame < movedFrame && frame > predecessor) predecessor = frame;
+    }
+    if (predecessor >= 0) {
+      for (let frame = predecessor + 1; frame < movedFrame; frame += 1) frames.add(frame);
+    }
+    return frames;
+  }, [rotoKeyRailDragPreview]);
   // Header status capsule (D-15/D-18/D-19): one prioritized line derived
   // render-time from EXISTING props/signal reads only — no new controller
   // state, no effect copying props into local state (key_links). The ambient
@@ -1561,6 +1628,25 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 gridTemplateColumns: `${rotoLaneWidthPx}px`,
               }}
             >
+              {keyRailSegments.length > 0 ? (
+                <PhysicsPaintKeyRail
+                  segments={keyRailSegments}
+                  visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
+                  framePitch={ROTO_CELL_WIDTH_PX}
+                  selectedKeyRail={props.selectedRotoKeyRail ?? null}
+                  onSelectKeyRail={props.onSelectRotoKeyRail ?? NOOP_KEY_RAIL_SELECTION}
+                  prepareKeyRailDrag={physicalActions?.prepareKeyRailDrag}
+                  commitKeyRailDrag={physicalActions?.commitKeyRailDrag}
+                  getClampInput={getRotoKeyRailDragClampInput}
+                  onKeyRailDragRejected={props.onRotoKeyRailDragRejected}
+                  onPreviewChange={setRotoKeyRailDragPreview}
+                  dragUnavailableReason={keyUtilitiesDisabledByBusyState
+                    ? ROTO_KEY_BUSY_STATUS_TEMPLATE
+                    : undefined}
+                  deleteUnavailableReason={deleteRotoKeyDisabledReason}
+                  busy={keyUtilitiesDisabledByBusyState}
+                />
+              ) : null}
               {loopResolutionContext !== null
                 && loopResolutionContext.ranges.length > 0
                 && props.onSelectRotoLoopClip
@@ -1712,7 +1798,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   // roto-fill-empty cells, byte-identical to the 43.2 deleted-Group
                   // gap treatment (D-02). Class application only — no new DOM nodes.
                   const isRotoGroupDragGapPreview = rotoGroupDragGapPreviewAppFrames.has(frame);
-                  const effectiveFillClass = isRotoGroupDragGapPreview ? 'roto-fill-empty' : fillClass;
+                  const isRotoKeyRailDragGapPreview = rotoKeyRailDragGapPreviewAppFrames.has(frame);
+                  const effectiveFillClass = isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview
+                    ? 'roto-fill-empty' : fillClass;
                   const cellClass = `physics-paint-roto-cell ${effectiveFillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${cellPresentation.startsInterpolationSegment ? 'starts-interpolation-segment' : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${hasCurrentTreatment ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
                   return (
                     <RotoTimelineCellButton
