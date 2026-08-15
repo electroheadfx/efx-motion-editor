@@ -1637,3 +1637,55 @@ describe('PhysicsPaintWorkflowStrip Group-drag gap preview contract (43.3-03, UI
     expect(code).toContain('if (!rotoGroupDragPreview) return new Set<number>();');
   });
 });
+
+describe('PhysicsPaintWorkflowStrip Key Rail integration (43.4-06)', () => {
+  it('mounts Key Rails under ordinary segment authority, independently of Group infrastructure', () => {
+    const code = source();
+    const keyRailStart = code.indexOf('<PhysicsPaintKeyRail');
+    const keyRailGate = code.slice(code.lastIndexOf('{', keyRailStart), keyRailStart);
+    expect(code).toContain('const keyRailSegments = useMemo(() => deriveKeyRailSegments({');
+    expect(keyRailGate).toContain('keyRailSegments.length > 0');
+    expect(keyRailGate).toContain('props.onSelectRotoKeyRail');
+    expect(keyRailGate).not.toContain('loopResolutionContext');
+    expect(keyRailGate).not.toContain('onSelectRotoLoopClip');
+    expect(keyRailGate).not.toContain('onOpenRotoLoopEdit');
+    expect(code.indexOf('<PhysicsPaintKeyRail')).toBeGreaterThan(code.indexOf('class="physics-paint-lane"'));
+    expect(code.indexOf('<PhysicsPaintKeyRail')).toBeLessThan(code.indexOf('class="physics-paint-roto-cells"'));
+  });
+
+  it('derives ordinary segments by excluding all Motion and Static Group-owned identities', () => {
+    const code = source();
+    expect(code).toContain('const keyRailGroupOwnedKeyIds = useMemo(() => {');
+    expect(code).toContain('clip.sourceKeyIds.forEach((keyId) => owned.add(keyId));');
+    expect(code).toContain('(clip.frameOverrides ?? []).forEach((override) => owned.add(override.keyId));');
+    expect(code).toContain('incomingInterpolationBreakKeyIds: new Set(props.rotoIncomingInterpolationBreakKeyIds ?? [])');
+    expect(code).toContain('groupOwnedKeyIds: keyRailGroupOwnedKeyIds');
+  });
+
+  it('wires prepare, commit, clamp, rejection, selection, and preview ports to the Key Rail host', () => {
+    const code = source();
+    const start = code.indexOf('<PhysicsPaintKeyRail');
+    const rail = code.slice(start, code.indexOf('/>', start));
+    expect(rail).toContain('selectedKeyRail={props.selectedRotoKeyRail ?? null}');
+    expect(rail).toContain('onSelectKeyRail={props.onSelectRotoKeyRail}');
+    expect(rail).toContain('prepareKeyRailDrag={physicalActions?.prepareKeyRailDrag}');
+    expect(rail).toContain('commitKeyRailDrag={physicalActions?.commitKeyRailDrag}');
+    expect(rail).toContain('getClampInput={getRotoKeyRailDragClampInput}');
+    expect(rail).toContain('onKeyRailDragRejected={props.onRotoKeyRailDragRejected}');
+    expect(rail).toContain('onPreviewChange={setRotoKeyRailDragPreview}');
+  });
+
+  it('paints Key Rail vacated and destination gaps through the existing empty-cell class and clears with null preview', () => {
+    const code = source();
+    const map = getRotoMapBlock(code);
+    expect(code).toContain('const [rotoKeyRailDragPreview, setRotoKeyRailDragPreview]');
+    expect(code).toContain('if (!rotoKeyRailDragPreview) return new Set<number>();');
+    expect(code).toContain('rotoKeyRailDragPreview.publication.vacatedInterval');
+    expect(code).toContain('rotoKeyRailDragPreview.publication.destinationFirstKeyAppFrame');
+    expect(map).toContain('const isRotoKeyRailDragGapPreview = rotoKeyRailDragGapPreviewAppFrames.has(frame);');
+    expect(map).toContain('isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview');
+    expect(map).toContain("? 'roto-fill-empty' : fillClass");
+    expect(code).toContain('onPreviewChange={setRotoKeyRailDragPreview}');
+    expect(css()).not.toContain('key-rail-gap-preview');
+  });
+});
