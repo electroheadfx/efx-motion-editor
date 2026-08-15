@@ -8,6 +8,7 @@ vi.mock('preact/hooks', () => ({
 
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import type {
+  PhysicPaintRotoInterpolationState,
   PhysicPaintRotoLoopClip,
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
@@ -31,6 +32,7 @@ import {
   mapRotoGroupDragProductReason,
   mapRotoInsertProductReason,
   mapRotoScissorProductReason,
+  buildKeyRailDragProposalVersion,
   useRotoTimelineActions,
   type RotoDeleteTarget,
   type RotoInsertTarget,
@@ -82,6 +84,9 @@ interface HarnessOptions {
   selectedLoopClipIds?: readonly string[];
   selectedLoopRailDisplayName?: string | null;
   incomingInterpolationBreakKeyIds?: readonly string[];
+  getIncomingInterpolationBreakKeyIds?: () => readonly string[];
+  getRotoInterpolationState?: () => PhysicPaintRotoInterpolationState;
+  getRotoLoopClips?: () => readonly PhysicPaintRotoLoopClip[];
   capacity?: number;
   parentEndExclusive?: number;
   blankDataUrl?: string;
@@ -105,12 +110,13 @@ function createHarness(options: HarnessOptions = {}) {
     getModel: () => ({ settings: {}, realSourceFrames: [] }) as never,
     ...(options.omitPhysicalEditPorts ? {} : {
       getRotoKeyRecords: () => records,
-      getRotoInterpolationState: () => ({ enabled: false, mode: 'duplicate' }),
+      getRotoInterpolationState: options.getRotoInterpolationState
+        ?? (() => ({ enabled: false, mode: 'duplicate' })),
       getCapacity: () => options.capacity ?? 10,
       getParentEndExclusive: () => options.parentEndExclusive ?? options.capacity ?? 10,
       executePhysicalEdit: executePhysicalEdit as never,
     }),
-    getRotoLoopClips: () => options.loopClips ?? [],
+    getRotoLoopClips: options.getRotoLoopClips ?? (() => options.loopClips ?? []),
     getRotoSpacingSelection: () => options.spacingSelection ?? null,
     getPhysicalCells: () => options.physicalCells ?? [],
     getFrameResolution: () => options.frameResolution ?? { kind: 'empty' },
@@ -121,7 +127,8 @@ function createHarness(options: HarnessOptions = {}) {
     getSelectedLoopRailDisplayName: () => options.selectedLoopRailDisplayName ?? null,
     getCurrentAppFrame: options.getCurrentAppFrame ?? (() => options.currentAppFrame ?? 3),
     getLaunchContext: () => launch,
-    getIncomingInterpolationBreakKeyIds: () => options.incomingInterpolationBreakKeyIds ?? [],
+    getIncomingInterpolationBreakKeyIds: options.getIncomingInterpolationBreakKeyIds
+      ?? (() => options.incomingInterpolationBreakKeyIds ?? []),
     buildBlankRotoFrame: (appFrame) => ({
       frameIndex: 0,
       appFrame,
@@ -1085,6 +1092,172 @@ describe('useRotoTimelineActions rigid group-drag settlement', () => {
     expect(preparation.conflictingAppFrames).toEqual([7]);
     expect(preparation.detail).toContain('occupied by an unselected real key');
     expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+});
+
+describe('useRotoTimelineActions Key Rail drag prepare/commit publication pair', () => {
+  const railRecords = [
+    realKeyRecord('A', 0),
+    realKeyRecord('B', 3),
+    realKeyRecord('C', 6),
+    realKeyRecord('D', 10),
+  ];
+
+  it('rejects in the same launch, ports, then in-flight guard order as Group drag', () => {
+    const noLaunch = createHarness({ launch: null, records: railRecords, capacity: 16 });
+    expect(noLaunch.actions.physicalActions.prepareKeyRailDrag('A', 3)).toEqual({
+      ok: false,
+      reason: 'Select a real Roto key before editing the timeline.',
+    });
+
+    const noPorts = createHarness({ records: railRecords, capacity: 16, omitPhysicalEditPorts: true });
+    expect(noPorts.actions.physicalActions.prepareKeyRailDrag('A', 3)).toEqual({
+      ok: false,
+      reason: 'Timeline editing is unavailable.',
+    });
+
+    const inFlight = createHarness({ records: railRecords, capacity: 16, pendingOperationId: 'op-busy' });
+    expect(inFlight.actions.physicalActions.prepareKeyRailDrag('A', 3)).toEqual({
+      ok: false,
+      reason: 'A Roto physical edit is already in flight.',
+    });
+  });
+
+  it('threads break authority into the resolver and exported proposal-version fingerprint', () => {
+    const base = { records: railRecords, capacity: 16 };
+    const withoutBreaks = createHarness({ ...base, incomingInterpolationBreakKeyIds: [] });
+    const withFirstKeyBreak = createHarness({ ...base, incomingInterpolationBreakKeyIds: ['A'] });
+
+    const plain = withoutBreaks.actions.physicalActions.prepareKeyRailDrag('A', 3);
+    const broken = withFirstKeyBreak.actions.physicalActions.prepareKeyRailDrag('A', 3);
+
+    expect(plain.ok).toBe(true);
+    expect(broken.ok).toBe(true);
+    if (!plain.ok || !broken.ok) throw new Error('Both Key Rail preparations must succeed');
+    expect(plain.publication.proposalVersion).not.toBe(broken.publication.proposalVersion);
+    expect(Object.isFrozen(plain.publication)).toBe(true);
+    expect(Object.isFrozen(plain.publication.memberKeyIds)).toBe(true);
+    expect(plain.publication.memberKeyIds).toEqual(['A', 'B', 'C', 'D']);
+
+    expect(buildKeyRailDragProposalVersion(
+      railRecords,
+      { enabled: false, mode: 'duplicate' },
+      [],
+      [],
+      { operationId: 'op-1', layerId: 'layer-1' },
+    )).not.toBe(buildKeyRailDragProposalVersion(
+      railRecords,
+      { enabled: false, mode: 'duplicate' },
+      [],
+      ['A'],
+      { operationId: 'op-1', layerId: 'layer-1' },
+    ));
+
+    const invalidBreak = createHarness({ ...base, incomingInterpolationBreakKeyIds: ['unknown-break'] });
+    const rejected = invalidBreak.actions.physicalActions.prepareKeyRailDrag('A', 3);
+    expect(rejected.ok).toBe(false);
+    if (rejected.ok) throw new Error('Invalid break authority must reject');
+    expect(rejected.detail).toContain('does not exist');
+  });
+
+  it('rejects a no-change destination at prepare with no publication', () => {
+    const { actions, executePhysicalEdit } = createHarness({ records: railRecords, capacity: 16 });
+    const preparation = actions.physicalActions.prepareKeyRailDrag('A', 0);
+
+    expect(preparation.ok).toBe(false);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+
+  it('rejects incoherent publications and every stale structural authority silently', async () => {
+    const incoherent = createHarness({ records: railRecords, capacity: 16 });
+    const preparation = incoherent.actions.physicalActions.prepareKeyRailDrag('A', 3);
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Key Rail drag must prepare');
+    const publication = preparation.publication;
+
+    const kindMismatch = {
+      ...publication,
+      proposal: {
+        ...publication.proposal,
+        status: { ...publication.proposal.status, operationKind: 'move-key-group' as const },
+      },
+    };
+    const intentMismatch = {
+      ...publication,
+      intent: { kind: 'move-group', loopId: 'group-1', destinationPlacementStart: 3 },
+    };
+    const firstKeyMismatch = { ...publication, firstKeyId: 'B' };
+    const memberMismatch = { ...publication, memberKeyIds: Object.freeze(['A', 'C']) };
+    const emptyLaunch = { ...publication, expectedLaunch: { operationId: '', layerId: '' } };
+
+    expect(await incoherent.actions.physicalActions.commitKeyRailDrag(kindMismatch as never)).toBe(false);
+    expect(await incoherent.actions.physicalActions.commitKeyRailDrag(intentMismatch as never)).toBe(false);
+    expect(await incoherent.actions.physicalActions.commitKeyRailDrag(firstKeyMismatch)).toBe(false);
+    expect(await incoherent.actions.physicalActions.commitKeyRailDrag(memberMismatch)).toBe(false);
+    expect(await incoherent.actions.physicalActions.commitKeyRailDrag(emptyLaunch)).toBe(false);
+    expect(incoherent.executePhysicalEdit).not.toHaveBeenCalled();
+    expect(incoherent.publishStatus).not.toHaveBeenCalled();
+
+    const mutableRecords = [...railRecords];
+    const staleRecords = createHarness({ records: mutableRecords, capacity: 16 });
+    const recordsPublication = staleRecords.actions.physicalActions.prepareKeyRailDrag('A', 3);
+    if (!recordsPublication.ok) throw new Error('Records publication must prepare');
+    mutableRecords.push(realKeyRecord('E', 14));
+    expect(await staleRecords.actions.physicalActions.commitKeyRailDrag(recordsPublication.publication)).toBe(false);
+
+    let interpolation: PhysicPaintRotoInterpolationState = { enabled: false, mode: 'duplicate' };
+    const staleInterpolation = createHarness({
+      records: railRecords,
+      capacity: 16,
+      getRotoInterpolationState: () => interpolation,
+    });
+    const interpolationPublication = staleInterpolation.actions.physicalActions.prepareKeyRailDrag('A', 3);
+    if (!interpolationPublication.ok) throw new Error('Interpolation publication must prepare');
+    interpolation = { enabled: true, mode: 'duplicate' };
+    expect(await staleInterpolation.actions.physicalActions.commitKeyRailDrag(interpolationPublication.publication)).toBe(false);
+
+    let loopClips: readonly PhysicPaintRotoLoopClip[] = [];
+    const staleLoops = createHarness({ records: railRecords, capacity: 16, getRotoLoopClips: () => loopClips });
+    const loopsPublication = staleLoops.actions.physicalActions.prepareKeyRailDrag('A', 3);
+    if (!loopsPublication.ok) throw new Error('Loop publication must prepare');
+    loopClips = [lifecycleGroup({ loopId: 'new-group', placementStart: 12, sourceKeyIds: Object.freeze(['E']) })];
+    expect(await staleLoops.actions.physicalActions.commitKeyRailDrag(loopsPublication.publication)).toBe(false);
+
+    let breaks: readonly string[] = [];
+    const staleBreaks = createHarness({ records: railRecords, capacity: 16, getIncomingInterpolationBreakKeyIds: () => breaks });
+    const breaksPublication = staleBreaks.actions.physicalActions.prepareKeyRailDrag('A', 3);
+    if (!breaksPublication.ok) throw new Error('Break publication must prepare');
+    breaks = ['A'];
+    expect(await staleBreaks.actions.physicalActions.commitKeyRailDrag(breaksPublication.publication)).toBe(false);
+
+    for (const harness of [staleRecords, staleInterpolation, staleLoops, staleBreaks]) {
+      expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
+      expect(harness.publishStatus).not.toHaveBeenCalled();
+    }
+  });
+
+  it('commits the exact retained move-key-rail objects once without recomputation', async () => {
+    const { actions, executePhysicalEdit } = createHarness({ records: railRecords, capacity: 16 });
+    const preparation = actions.physicalActions.prepareKeyRailDrag('A', 3);
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Key Rail drag must prepare');
+
+    expect(await actions.physicalActions.commitKeyRailDrag(preparation.publication)).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as {
+      proposal: unknown;
+      expectedLaunch: unknown;
+      operationKind: string;
+      intent: unknown;
+      selectedKeyId: string | null;
+      selectedAppFrame: number | null;
+    };
+    expect(dispatched.proposal).toBe(preparation.publication.proposal);
+    expect(dispatched.expectedLaunch).toBe(preparation.publication.expectedLaunch);
+    expect(dispatched.operationKind).toBe('move-key-rail');
+    expect(dispatched.intent).toBe(preparation.publication.intent);
+    expect(dispatched.selectedKeyId).toBe(preparation.publication.proposal.selectedKeyId);
+    expect(dispatched.selectedAppFrame).toBe(preparation.publication.proposal.selectedAppFrame);
   });
 });
 
