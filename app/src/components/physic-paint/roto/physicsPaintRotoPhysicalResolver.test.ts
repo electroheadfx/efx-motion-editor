@@ -39,6 +39,7 @@ import {
   isPhysicPaintRotoPhysicalEditIntent,
   serializePhysicPaintRotoPhysicalEditIntent,
 } from '../../../types/physicPaint';
+import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 
 /**
  * Group-operation regression anchors. Group Drag uses the current rigid
@@ -260,6 +261,43 @@ describe('transport-safe physical edit intent tracer', () => {
 
     expect(isPhysicPaintRotoPhysicalEditApplyPayload(payload)).toBe(true);
     // 'move-group' is ordinary: a specialized payload (no intent) must be rejected.
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, intent: undefined })).toBe(false);
+  });
+
+  it('round-trips the strict scissor intent and admits it as an ordinary operation kind', () => {
+    const intent = { kind: 'scissor-key-rail', breakOwnerKeyId: 'B' } as const;
+    const parsed = parsePhysicalEditIntent(intent);
+    expect(parsed).toEqual(intent);
+    expect(serializePhysicPaintRotoPhysicalEditIntent(parsed)).toBe(
+      '{"kind":"scissor-key-rail","breakOwnerKeyId":"B"}',
+    );
+
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, extra: true })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'scissor-key-rail' })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'scissor-key-rail', breakOwnerKeyId: '' })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({
+      kind: 'scissor-key-rail',
+      breakOwnerKeyId: 'x'.repeat(257),
+    })).toBe(false);
+
+    const payload = {
+      kind: 'replace-roto-physical-map',
+      operationId: 'scissor-1',
+      operationKind: 'scissor-key-rail',
+      intent,
+      layerId: 'layer-1',
+      leaseToken: { projectContextId: 'project-1', layerId: 'layer-1', generation: 1, owner: 'exclusive' },
+      startFrame: 0,
+      launchOperationId: 'launch-1',
+      expectedRevision: 'revision-1',
+      records: [],
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      selectedKeyId: null,
+      selectedAppFrame: null,
+      cursorAppFrame: 0,
+    } as const;
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(payload)).toBe(true);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, intent: undefined })).toBe(false);
   });
 });
@@ -2263,6 +2301,84 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group duplicated shared-so
     // The owner keeps its exact source key list — no duplication of assets.
     const ownerClip = proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-A');
     expect(ownerClip?.sourceKeyIds).toEqual(['A', 'C']);
+  });
+});
+
+describe('resolvePhysicPaintRotoPhysicalEdit — scissor-key-rail', () => {
+  const identities = Object.freeze([
+    Object.freeze({ keyId: 'A', appFrame: 1 }),
+    Object.freeze({ keyId: 'B', appFrame: 4 }),
+    Object.freeze({ keyId: 'C', appFrame: 7 }),
+    Object.freeze({ keyId: 'D', appFrame: 10 }),
+  ]);
+  const group = Object.freeze({
+    loopId: 'loop-C',
+    placementStart: 7,
+    sourceKeyIds: Object.freeze(['C']),
+    repeat: 1,
+    mode: 'static',
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: 7,
+    originalEndExclusive: 11,
+    visibleRanges: Object.freeze([Object.freeze({ start: 7, endExclusive: 11 })]),
+    frameOverrides: Object.freeze([Object.freeze({ appFrame: 10, keyId: 'D' })]),
+  }) as PhysicPaintRotoLoopClip;
+
+  const resolveScissor = (
+    breakOwnerKeyId: string,
+    incomingInterpolationBreakKeyIds: readonly string[] = ['A'],
+    loopClips: readonly PhysicPaintRotoLoopClip[] = [],
+  ): PhysicPaintRotoPhysicalEditResolution => resolvePhysicPaintRotoPhysicalEdit({
+    identities,
+    intent: { kind: 'scissor-key-rail', breakOwnerKeyId },
+    parentEndExclusive: 16,
+    capacity: 16,
+    interpolationEnabled: true,
+    incomingInterpolationBreakKeyIds,
+    loopClips,
+  });
+
+  it('adds one ordinary owner through complete ascending break replacement and re-derives two rails', () => {
+    const resolution = resolveScissor('B');
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Scissor must resolve');
+
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['A', 'B']);
+    expect(resolution.proposal.mapping).toEqual(new Map([
+      ['A', 1],
+      ['B', 4],
+      ['C', 7],
+      ['D', 10],
+    ]));
+    expect(resolution.proposal.generatedCells.some(
+      (cell) => cell.kind === 'generated' && cell.rightKeyId === 'B',
+    )).toBe(false);
+
+    expect(deriveKeyRailSegments({
+      orderedRealKeys: identities,
+      incomingInterpolationBreakKeyIds: new Set(resolution.proposal.nextIncomingInterpolationBreakKeyIds ?? []),
+      groupOwnedKeyIds: new Set(['C', 'D']),
+    })).toEqual([
+      { firstKeyId: 'A', keyIds: ['A'], firstKeyFrame: 1, lastKeyFrame: 1 },
+      { firstKeyId: 'B', keyIds: ['B'], firstKeyFrame: 4, lastKeyFrame: 4 },
+    ]);
+  });
+
+  it('fails closed for unknown, Group-owned, already-broken, malformed, or duplicate-break inputs', () => {
+    const cases = [
+      resolveScissor('missing'),
+      resolveScissor('C', [], [group]),
+      resolveScissor('D', [], [group]),
+      resolveScissor('', []),
+      resolveScissor('B', ['B']),
+      resolveScissor('B', ['A', 'A']),
+    ];
+
+    for (const resolution of cases) {
+      expect(resolution.ok).toBe(false);
+      expect('proposal' in resolution).toBe(false);
+    }
   });
 });
 
