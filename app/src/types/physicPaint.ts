@@ -389,6 +389,7 @@ export type PhysicPaintRotoPhysicalEditIntent =
     }
   | { readonly kind: 'delete-key'; readonly selectedKeyId: string }
   | { readonly kind: 'delete-key-group'; readonly keyIds: readonly string[] }
+  | { readonly kind: 'scissor-key-rail'; readonly breakOwnerKeyId: string }
   | {
       readonly kind: 'move-key';
       readonly movedKeyId: string;
@@ -519,6 +520,10 @@ export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is Ph
   if (value.kind === 'delete-key-group') {
     return hasOnlyKeys(value, ['kind', 'keyIds']) && hasUniqueBoundedPhysicalKeyIds(value.keyIds);
   }
+  if (value.kind === 'scissor-key-rail') {
+    return hasOnlyKeys(value, ['kind', 'breakOwnerKeyId'])
+      && isBoundedPhysicalKeyId(value.breakOwnerKeyId);
+  }
   if (value.kind === 'move-key') {
     return hasOnlyKeys(value, ['kind', 'movedKeyId', 'target'])
       && isBoundedPhysicalKeyId(value.movedKeyId)
@@ -590,6 +595,8 @@ export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRo
       return JSON.stringify({ kind: intent.kind, destinationAppFrame: intent.destinationAppFrame, insertedKeyId: intent.insertedKeyId, blankPayload: canonicalPhysicalEditPayload(intent.blankPayload) });
     case 'delete-key-group':
       return JSON.stringify({ kind: intent.kind, keyIds: [...intent.keyIds] });
+    case 'scissor-key-rail':
+      return JSON.stringify({ kind: intent.kind, breakOwnerKeyId: intent.breakOwnerKeyId });
     case 'move-key':
       return JSON.stringify({ kind: intent.kind, movedKeyId: intent.movedKeyId, target: canonicalPhysicalEditTarget(intent.target) });
     case 'move-key-group':
@@ -669,6 +676,7 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-empty-segment'
   | 'delete-key'
   | 'delete-key-group'
+  | 'scissor-key-rail'
   | 'move-key'
   | 'move-key-group'
   | 'move-group'
@@ -949,6 +957,7 @@ function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is Ph
     || value === 'insert-empty-segment'
     || value === 'delete-key'
     || value === 'delete-key-group'
+    || value === 'scissor-key-rail'
     || value === 'move-key'
     || value === 'move-key-group'
     || value === 'move-group'
@@ -976,6 +985,7 @@ function isPhysicPaintRotoOrdinaryOperationKind(
     || value === 'insert-empty-segment'
     || value === 'delete-key'
     || value === 'delete-key-group'
+    || value === 'scissor-key-rail'
     || value === 'move-key'
     || value === 'move-key-group'
     || value === 'move-group'

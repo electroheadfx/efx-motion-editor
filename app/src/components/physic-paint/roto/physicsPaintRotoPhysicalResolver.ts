@@ -173,6 +173,7 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-empty-segment'
   | 'delete-key'
   | 'delete-key-group'
+  | 'scissor-key-rail'
   | 'move-key'
   | 'move-key-group'
   | 'move-group'
@@ -814,6 +815,7 @@ function isResolverOperationKind(value: unknown): value is PhysicPaintRotoPhysic
     || value === 'insert-empty-segment'
     || value === 'delete-key'
     || value === 'delete-key-group'
+    || value === 'scissor-key-rail'
     || value === 'move-key'
     || value === 'move-key-group'
     || value === 'move-group'
@@ -2799,6 +2801,11 @@ function buildStatusText(
   if (operationKind === 'paste-key') {
     return selectedAppFrame === null ? 'Pasted key' : `Pasted key at frame ${selectedAppFrame}`;
   }
+  if (operationKind === 'scissor-key-rail') {
+    return selectedAppFrame === null
+      ? 'Split Key Rail'
+      : `Split Key Rail before frame ${selectedAppFrame}`;
+  }
   return 'No change';
 }
 
@@ -3567,6 +3574,55 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       ) as readonly string[],
     };
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
+    if (!finalized.ok) return finalized.resolution;
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'scissor-key-rail') {
+    if (!isBoundedKeyId(intent.breakOwnerKeyId)) {
+      return fail('malformed-identity', operationKind, 'Scissor requires a bounded breakOwnerKeyId.');
+    }
+    if (!identities.keyIds.has(intent.breakOwnerKeyId)) {
+      return fail('unknown-operation-identity', operationKind, `Scissor targets unknown identity "${intent.breakOwnerKeyId}".`);
+    }
+
+    const groupOwnedKeyIds = new Set<string>();
+    for (const loopClip of loopClips) {
+      loopClip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+      (loopClip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+    }
+    if (groupOwnedKeyIds.has(intent.breakOwnerKeyId)) {
+      return fail('malformed-target', operationKind, 'Scissor requires an ordinary real key outside Group ownership.');
+    }
+    if (incomingInterpolationBreakKeyIds.includes(intent.breakOwnerKeyId)) {
+      return fail('malformed-target', operationKind, 'Scissor target already owns an incoming interpolation break.');
+    }
+
+    const nextBreakOwners = new Set(incomingInterpolationBreakKeyIds);
+    nextBreakOwners.add(intent.breakOwnerKeyId);
+    const candidate: Candidate = {
+      mapping: new Map(identities.ordered.map((identity) => [identity.keyId, identity.appFrame] as const)),
+      expectedKeyIds: identities.keyIds,
+      removedKeyId: null,
+      removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+      selectedKeyId: intent.breakOwnerKeyId,
+      operationKind: 'scissor-key-rail',
+      changed: true,
+      roleByKeyId: new Map(),
+      drag: null,
+      nextIncomingInterpolationBreakKeyIds: Object.freeze(
+        identities.ordered
+          .filter((identity) => nextBreakOwners.has(identity.keyId))
+          .map((identity) => identity.keyId),
+      ),
+    };
+    const finalized = finalizeProposal(
+      candidate,
+      identities,
+      input.capacity,
+      input.interpolationEnabled,
+      incomingInterpolationBreakKeyIds,
+    );
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
