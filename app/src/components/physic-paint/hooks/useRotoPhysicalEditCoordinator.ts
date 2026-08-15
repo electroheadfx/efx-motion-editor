@@ -341,8 +341,12 @@ function createAuthorizedPhysicalEditPayload(
       return intent?.kind === 'delete-key' ? { ...base, operationKind, intent } : null;
     case 'delete-key-group':
       return intent?.kind === 'delete-key-group' ? { ...base, operationKind, intent } : null;
+    case 'delete-key-rail':
+      return intent?.kind === 'delete-key-rail' ? { ...base, operationKind, intent } : null;
     case 'scissor-key-rail':
       return intent?.kind === 'scissor-key-rail' ? { ...base, operationKind, intent } : null;
+    case 'move-key-rail':
+      return intent?.kind === 'move-key-rail' ? { ...base, operationKind, intent } : null;
     case 'move-key':
       return intent?.kind === 'move-key' ? { ...base, operationKind, intent } : null;
     case 'move-key-group':
