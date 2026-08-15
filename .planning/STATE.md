@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-current_phase: 44
-current_phase_name: Integrated UAT + Signed Release
+current_phase: 43.4
+current_phase_name: Derived Key Groups and Scissor Breaks
 status: planning
-stopped_at: Completed 43.3-03-PLAN.md
-last_updated: "2026-08-15T06:56:02Z"
+stopped_at: Phase 43.4 context gathered
+last_updated: "2026-08-15T10:36:51.232Z"
 last_activity: 2026-08-15
 last_activity_desc: "Native UAT approved for quick task 260815-bmg: Count-free Paint/Physics Paint Undo/Redo controls"
 progress:
-  total_phases: 9
+  total_phases: 10
   completed_phases: 7
   total_plans: 70
   completed_plans: 70
-  percent: 78
+  percent: 70
 ---
 
 # Project State
@@ -24,11 +24,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 43.3 — motion-and-static-group-drag-within-free-space
+**Current focus:** Phase 43.4 — Derived Key Groups and Scissor Breaks
 
 ## Current Position
 
-Phase: 44 — Integrated UAT + Signed Release
+Phase: 43.4 — Derived Key Groups and Scissor Breaks
 Plan: Not started
 Status: Ready to plan
 Last activity: 2026-08-15 — Native UAT approved for quick task 260815-bmg: Count-free Paint/Physics Paint Undo/Redo controls
@@ -487,6 +487,7 @@ None yet.
 - Phase 43.1 inserted after Phase 43: Intentional Gap Insert — use SPECS/milestone-v0.9.0-new-phases/phase-43.1-intentional-gap-insert-prompt.md (URGENT)
 - Phase 43.2 inserted after Phase 43: Motion and Static Group Stabilization and Action Lifecycle — use SPECS/milestone-v0.9.0-new-phases/phase-43.2-motion-static-group-stabilization-action-lifecycle-prompt.md (URGENT)
 - Phase 43.3 inserted after Phase 43: Motion and Static Group Drag Within Free Space — intent source: SPECS/milestone-v0.9.0-new-phases/phase-43.3-group-drag-free-space-prompt.md (URGENT)
+- Phase 43.4 inserted after Phase 43: Derived Key Groups and Scissor Breaks — intent source: SPECS/milestone-v0.9.0-new-phases/phase-43.4-derived-key-groups-scissor-prompt.md (URGENT)
 
 ## Deferred Items
 
@@ -616,9 +617,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-13T17:41:48.723Z
-Stopped at: Completed 43.3-03-PLAN.md
-Resume file: None
+Last session: 2026-08-15T10:36:51.201Z
+Stopped at: Phase 43.4 context gathered
+Resume file: .planning/phases/43.4-derived-key-groups-and-scissor-breaks/43.4-CONTEXT.md
 
 ## Operator Next Steps
 
