@@ -360,6 +360,81 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
   });
 });
 
+describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
+  it('owns exact Key Rail identity as session-only Signal state', () => {
+    expect(studio).toContain("import { deriveKeyRailSegments } from './view/physicsPaintKeyRailPresentation';");
+    expect(studio).toContain('type RotoKeyRailSelection');
+    expect(studio).toContain('const selectedRotoKeyRail = useSignal<RotoKeyRailSelection | null>(null);');
+    expect(studio).toContain('Session-local Key Rail selection');
+    expect(studio).toContain('never persisted and never sent across the bridge');
+    expect([bridge, types, projectTypes, store].join('\n')).not.toContain('selectedRotoKeyRail');
+  });
+
+  it('makes Key Rail, Group Rail, and physical selection mutually exclusive synchronously', () => {
+    const keyRailStart = studio.indexOf('const handleSelectRotoKeyRail = useCallback((');
+    const keyRailEnd = studio.indexOf('const handleSelectRotoLoopClip', keyRailStart);
+    const keyRailSelection = studio.slice(keyRailStart, keyRailEnd);
+    expect(keyRailStart).toBeGreaterThanOrEqual(0);
+    expect(keyRailSelection).toContain('clearRotoLoopSelection();');
+    expect(keyRailSelection).toContain('selectedKeyId.value = null;');
+    expect(keyRailSelection).toContain('selectedKeyIds.value = [];');
+    expect(keyRailSelection).toContain('selectionAnchorKeyId.value = null;');
+    expect(keyRailSelection).toContain('rotoSpacingSelection.value = null;');
+    expect(keyRailSelection).toContain('selectedRotoKeyRail.value = selection;');
+    expect(keyRailSelection).toContain('physicPaintStore.setRotoPhysicalSelection(');
+
+    const groupStart = studio.indexOf('const handleSelectRotoLoopClip = useCallback((');
+    const groupEnd = studio.indexOf('const handleOpenRotoLoopEdit', groupStart);
+    expect(studio.slice(groupStart, groupEnd)).toContain('selectedRotoKeyRail.value = null;');
+
+    for (const handler of [
+      'const handleSelectRotoSpacingProxy = useCallback((',
+      'const handleToggleRotoKeySelection = useCallback(',
+      'const handleCollapseRotoSelectionToKey = useCallback(',
+      'const handleExtendRotoKeySelection = useCallback(',
+    ]) {
+      const start = studio.indexOf(handler);
+      const end = studio.indexOf('\n  const ', start + handler.length);
+      expect(start, handler).toBeGreaterThanOrEqual(0);
+      expect(studio.slice(start, end)).toContain('selectedRotoKeyRail.value = null;');
+    }
+  });
+
+  it('clears Key Rail selection on launch replacement and Select All', () => {
+    const launchStart = studio.indexOf('if (next?.operationId !== current?.operationId || next?.layerId !== current?.layerId) {');
+    const launchEnd = studio.indexOf('} else if (next && next.startFrame !== current?.startFrame)', launchStart);
+    expect(studio.slice(launchStart, launchEnd)).toContain('selectedRotoKeyRail.value = null;');
+
+    const selectAllStart = studio.indexOf('const selectAllRotoKeys = useCallback(() => {');
+    const selectAllEnd = studio.indexOf('const [, setLastError]', selectAllStart);
+    expect(studio.slice(selectAllStart, selectAllEnd)).toContain('selectedRotoKeyRail.value = null;');
+  });
+
+  it('fails closed when accepted Key Rail identity no longer exactly matches canonical derivation', () => {
+    expect(studio).toContain('const keyRailGroupOwnedKeyIds = useMemo(() => {');
+    expect(studio).toContain('clip.sourceKeyIds.forEach((keyId) => owned.add(keyId));');
+    expect(studio).toContain('(clip.frameOverrides ?? []).forEach((override) => owned.add(override.keyId));');
+    expect(studio).toContain('const keyRailSegments = useMemo(() => deriveKeyRailSegments({');
+    expect(studio).toContain('incomingInterpolationBreakKeyIds: new Set(rotoIncomingInterpolationBreakKeyIds),');
+    expect(studio).toContain('groupOwnedKeyIds: keyRailGroupOwnedKeyIds,');
+    expect(studio).toContain('const effectiveSelectedRotoKeyRail = reconcileRotoKeyRailSelection(');
+    expect(studio).toContain('selection.firstKeyId === segment.firstKeyId');
+    expect(studio).toContain('selection.keyIds.length === segment.keyIds.length');
+    expect(studio).toContain('selection.keyIds.every((keyId, index) => keyId === segment.keyIds[index])');
+    expect(studio).toContain('if (selectedRotoKeyRail.peek() !== null && effectiveSelectedRotoKeyRail === null) {\n    selectedRotoKeyRail.value = null;\n  }');
+    expect(studio).not.toContain('keyRailSegments[0]');
+  });
+
+  it('feeds classifier and strip paint from the reconciled selection without changing Plan 07 copy', () => {
+    expect(studio).toContain('getSelectedKeyRail: () => effectiveSelectedRotoKeyRail,');
+    expect(studio).toContain('selectedRotoKeyRail: effectiveSelectedRotoKeyRail');
+    expect(studio).toContain('onSelectRotoKeyRail: handleSelectRotoKeyRail');
+    expect(studio).toContain('onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected');
+    expect(studio).toContain('rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0');
+    expect(studio).toContain("target.operationKind === 'delete-group'\n      ? `Deleted Group at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`");
+  });
+});
+
 describe('Physics Paint selection-scoped Group deletion (43.2-17)', () => {
   it('wires direct Group lifecycle deletion and removes the routine scope-choice modal', () => {
     expect(studio).toContain('executeGroupLifecycleDelete:');
