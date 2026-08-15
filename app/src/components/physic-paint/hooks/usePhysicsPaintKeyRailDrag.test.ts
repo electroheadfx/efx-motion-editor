@@ -112,15 +112,26 @@ function pointerEvent(source: SourceDouble, overrides: Partial<PointerEvent> = {
   } as unknown as PointerEvent;
 }
 
-function createHarness() {
+function createHarness(options: {
+  readonly clampDestination?: (destination: number) => {
+    destination: number;
+    left: number;
+    width: number;
+    blockedEdge: 'left' | 'right' | null;
+  };
+  readonly prepareAtDestination?: (destination: number) =>
+    | Readonly<{ ok: true; publication: Publication }>
+    | Readonly<{ ok: false; reason?: string; detail?: string }>;
+  readonly onDropCommit?: (publication: Publication) => Promise<boolean>;
+} = {}) {
   hookRuntime.reset();
   const windowLike = new WindowDouble();
   const source = new SourceDouble();
-  const prepareAtDestination = vi.fn((destination: number) => ({
+  const prepareAtDestination = vi.fn(options.prepareAtDestination ?? ((destination: number) => ({
     ok: true as const,
     publication: Object.freeze({ destination }),
-  }));
-  const onDropCommit = vi.fn(async (_publication: Publication) => true);
+  })));
+  const onDropCommit = vi.fn(options.onDropCommit ?? (async (_publication: Publication) => true));
   const onCancel = vi.fn();
   const clearClickSequence = vi.fn();
   const render = () => {
@@ -128,12 +139,12 @@ function createHarness() {
     return usePhysicsPaintKeyRailDrag<Publication>({
       windowLike,
       projectDestination: ({ clientX }) => clientX,
-      clampDestination: (destination) => ({
+      clampDestination: options.clampDestination ?? ((destination) => ({
         destination,
         left: destination,
         width: 54,
         blockedEdge: null,
-      }),
+      })),
       prepareAtDestination,
       onDropCommit,
       onCancel,
@@ -237,5 +248,72 @@ describe('usePhysicsPaintKeyRailDrag', () => {
     api.onPointerDown(pointerEvent(harness.source, { pointerId: 9, clientX: 200 }));
     harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
     expect(harness.source.captured).toEqual([7]);
+  });
+
+  it('publishes exact clamped ghost geometry and blocked-edge state from live pointer projection', () => {
+    const clampDestination = vi.fn((destination: number) => ({
+      destination: 108,
+      left: 144,
+      width: 72,
+      blockedEdge: destination > 108 ? 'right' as const : null,
+    }));
+    const harness = createHarness({ clampDestination });
+    const api = harness.render();
+    api.onPointerDown(pointerEvent(harness.source));
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 112 }));
+
+    expect(clampDestination).toHaveBeenCalledWith(112);
+    expect(harness.prepareAtDestination).toHaveBeenCalledWith(108);
+    expect(harness.render().ghost).toEqual({
+      active: true,
+      left: 144,
+      width: 72,
+      blockedEdge: 'right',
+    });
+  });
+
+  it('retains the prepared publication by identity for preview paint and commit', () => {
+    const publication = Object.freeze({ destination: 108 });
+    const harness = createHarness({
+      prepareAtDestination: () => ({ ok: true, publication }),
+    });
+    const api = harness.render();
+    api.onPointerDown(pointerEvent(harness.source));
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
+
+    expect(harness.render().preview?.publication).toBe(publication);
+    harness.windowLike.emit('pointerup', pointerEvent(harness.source, { clientX: 105 }));
+    expect(harness.onDropCommit).toHaveBeenCalledWith(publication);
+  });
+
+  it('clears ghost and preview synchronously when a later destination is rejected', () => {
+    const prepareAtDestination = vi.fn((destination: number) => destination === 105
+      ? { ok: true as const, publication: Object.freeze({ destination }) }
+      : { ok: false as const, reason: 'blocked' });
+    const harness = createHarness({ prepareAtDestination });
+    const api = harness.render();
+    api.onPointerDown(pointerEvent(harness.source));
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
+    expect(harness.render().ghost.active).toBe(true);
+
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 106 }));
+    expect(harness.render().ghost.active).toBe(false);
+    expect(harness.render().preview).toBeNull();
+  });
+
+  it('clears paint and restores focus when the commit port rejects', async () => {
+    const harness = createHarness({
+      onDropCommit: async () => { throw new Error('transport failed'); },
+    });
+    const api = harness.render();
+    api.onPointerDown(pointerEvent(harness.source));
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
+    harness.windowLike.emit('pointerup', pointerEvent(harness.source, { clientX: 105 }));
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(harness.render().ghost.active).toBe(false);
+    expect(harness.render().preview).toBeNull();
+    expect(harness.source.focus).toHaveBeenCalledTimes(1);
   });
 });
