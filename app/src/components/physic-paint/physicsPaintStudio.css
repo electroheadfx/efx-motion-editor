@@ -2901,6 +2901,131 @@ button.destructive {
   z-index: 1;
 }
 
+/* 43.4 Key Rails share the integrated 12px rail band without changing its
+   geometry. These sibling rules are additive so Motion/Static Group paint
+   remains an independent regression boundary. */
+.physics-paint-key-rail {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 12px;
+  pointer-events: none;
+}
+
+.physics-paint-key-rail-anchor {
+  position: absolute;
+  top: 0;
+  height: 12px;
+  min-width: 12px;
+  pointer-events: auto;
+}
+
+.physics-paint-key-rail-target {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 12px;
+  min-width: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.physics-paint-key-rail-target.dragging {
+  cursor: grabbing;
+}
+
+.physics-paint-key-rail-target:hover:not(:disabled),
+.physics-paint-key-rail-target:focus-visible:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.physics-paint-key-rail-segment {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: #8a939c;
+  pointer-events: none;
+}
+
+.physics-paint-key-rail-target:hover:not(.selected) .physics-paint-key-rail-segment,
+.physics-paint-key-rail-target:focus-visible:not(.selected) .physics-paint-key-rail-segment {
+  background: #a7b0b9;
+}
+
+.physics-paint-key-rail-target.selected .physics-paint-key-rail-segment {
+  background: #f59e0b;
+}
+
+.physics-paint-key-rail-target.boundary-start .physics-paint-key-rail-segment::before,
+.physics-paint-key-rail-target.boundary-end .physics-paint-key-rail-segment::after {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 3px;
+  background: #f8fafc;
+  content: '';
+}
+
+.physics-paint-key-rail-target.boundary-start .physics-paint-key-rail-segment::before {
+  left: 0;
+}
+
+.physics-paint-key-rail-target.boundary-end .physics-paint-key-rail-segment::after {
+  right: 0;
+}
+
+.physics-paint-key-rail-target.boundary-cell-start {
+  border-left: 1px solid #f8fafc;
+}
+
+.physics-paint-key-rail-target.boundary-cell-end {
+  border-right: 1px solid #f8fafc;
+}
+
+.physics-paint-key-rail-target:focus-visible {
+  z-index: 2;
+  outline: 2px solid #f2f5f7;
+  outline-offset: 1px;
+}
+
+.physics-paint-key-rail-target.busy {
+  opacity: 0.55;
+}
+
+.physics-paint-key-rail-ghost {
+  position: absolute;
+  top: 0;
+  z-index: 1;
+  height: 3px;
+  background: #8a939c;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.physics-paint-key-rail-ghost-blocked-edge {
+  position: absolute;
+  top: 0;
+  z-index: 1;
+  width: 2px;
+  height: 12px;
+  background: #ff6b6b;
+  pointer-events: none;
+}
+
+.physics-paint-key-rail-tooltip-copy {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .physics-paint-loop-clip-tooltip-copy {
   display: flex;
   flex-direction: column;

@@ -18,6 +18,14 @@ const tooltip = vi.hoisted(() => ({
   onBlur: vi.fn(),
 }));
 
+vi.mock('preact/hooks', async () => {
+  const actual = await vi.importActual<typeof import('preact/hooks')>('preact/hooks');
+  return {
+    ...actual,
+    useRef: <Value,>(initial: Value) => ({ current: initial }),
+  };
+});
+
 vi.mock('../hooks/usePhysicsPaintKeyRailDrag', () => ({
   usePhysicsPaintKeyRailDrag: (input: Record<string, unknown>) => {
     drag.input = input;
@@ -207,6 +215,7 @@ describe('PhysicsPaintKeyRail', () => {
     expect(onSelectKeyRail).not.toHaveBeenCalled();
     expect(enter.preventDefault).not.toHaveBeenCalled();
 
+    tooltip.hide.mockClear();
     const escape = { key: 'Escape', stopPropagation: vi.fn(), preventDefault: vi.fn() };
     (target.props.onKeyDown as (event: typeof escape) => void)(escape);
     expect(tooltip.hide).toHaveBeenCalledOnce();
