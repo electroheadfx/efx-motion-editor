@@ -5,6 +5,7 @@ import type {
 } from './physicsPaintRotoPhysicalResolver';
 import {
   clampPhysicPaintGroupDragDestination,
+  clampPhysicPaintKeyRailDragDestination,
   createPhysicPaintRotoPasteKeyGroupIntent,
   projectPhysicPaintRotoPhysicalTimeline,
   resolvePhysicPaintRotoPhysicalEdit,
@@ -2380,6 +2381,195 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group duplicated shared-so
     // The owner keeps its exact source key list — no duplication of assets.
     const ownerClip = proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-A');
     expect(ownerClip?.sourceKeyIds).toEqual(['A', 'C']);
+  });
+});
+
+describe('clampPhysicPaintKeyRailDragDestination and move-key-rail', () => {
+  const group = Object.freeze({
+    loopId: 'loop-G',
+    placementStart: 2,
+    sourceKeyIds: Object.freeze(['G']),
+    repeat: 2,
+    mode: 'static',
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: 2,
+    originalEndExclusive: 4,
+    visibleRanges: Object.freeze([Object.freeze({ start: 2, endExclusive: 4 })]),
+    frameOverrides: Object.freeze([]),
+  }) as PhysicPaintRotoLoopClip;
+
+  const clamp = (overrides: Partial<Parameters<typeof clampPhysicPaintKeyRailDragDestination>[0]> = {}) => (
+    clampPhysicPaintKeyRailDragDestination({
+      memberKeyIds: ['M1', 'M2'],
+      firstKeyFrame: 4,
+      lastKeyFrame: 6,
+      proposedDestinationFirstKeyAppFrame: 8,
+      identities: [
+        { keyId: 'P', appFrame: 1 },
+        { keyId: 'M1', appFrame: 4 },
+        { keyId: 'M2', appFrame: 6 },
+        { keyId: 'S', appFrame: 10 },
+      ],
+      loopRanges: [],
+      parentEndExclusive: 16,
+      capacity: 16,
+      ...overrides,
+    })
+  );
+
+  it('clamps at frame, parent/capacity, external real-key, Group, and linked-occurrence boundaries while own members pass through', () => {
+    expect(clamp({ proposedDestinationFirstKeyAppFrame: -4 })).toEqual({
+      ok: true,
+      destinationFirstKeyAppFrame: 2,
+    });
+    expect(clamp({
+      identities: [{ keyId: 'M1', appFrame: 4 }, { keyId: 'M2', appFrame: 6 }],
+      proposedDestinationFirstKeyAppFrame: 15,
+      parentEndExclusive: 12,
+    })).toEqual({ ok: true, destinationFirstKeyAppFrame: 9 });
+    expect(clamp()).toEqual({ ok: true, destinationFirstKeyAppFrame: 7 });
+    expect(clamp({
+      identities: [{ keyId: 'M1', appFrame: 4 }, { keyId: 'M2', appFrame: 6 }],
+      proposedDestinationFirstKeyAppFrame: 5,
+    })).toEqual({ ok: true, destinationFirstKeyAppFrame: 5 });
+
+    const groupRanges = derivePhysicPaintRotoLoopRanges({
+      identities: [
+        { keyId: 'M1', appFrame: 4 },
+        { keyId: 'M2', appFrame: 6 },
+        { keyId: 'G', appFrame: 9 },
+      ],
+      loopClips: [{ ...group, placementStart: 9, phaseOrigin: 9, originalEndExclusive: 14, visibleRanges: [{ start: 9, endExclusive: 14 }] }],
+      parentEndExclusive: 20,
+      capacity: 20,
+      interpolationEnabled: false,
+    }).ranges;
+    expect(clamp({
+      identities: [
+        { keyId: 'M1', appFrame: 4 },
+        { keyId: 'M2', appFrame: 6 },
+        { keyId: 'G', appFrame: 9 },
+      ],
+      loopRanges: groupRanges,
+      proposedDestinationFirstKeyAppFrame: 8,
+      parentEndExclusive: 20,
+      capacity: 20,
+    })).toEqual({ ok: true, destinationFirstKeyAppFrame: 6 });
+  });
+
+  it('allows break-adjacent landing and rejects only when zero valid movement exists in the direction', () => {
+    expect(clamp()).toEqual({ ok: true, destinationFirstKeyAppFrame: 7 });
+    expect(clamp({
+      identities: [
+        { keyId: 'M1', appFrame: 4 },
+        { keyId: 'M2', appFrame: 6 },
+        { keyId: 'S', appFrame: 7 },
+      ],
+      proposedDestinationFirstKeyAppFrame: 6,
+    })).toEqual({ ok: false });
+  });
+
+  const resolveMove = (input: {
+    readonly identities?: readonly PhysicPaintRotoKeyIdentity[];
+    readonly memberKeyIds?: readonly string[];
+    readonly destination?: number;
+    readonly breaks?: readonly string[];
+    readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+    readonly parentEndExclusive?: number;
+    readonly capacity?: number;
+  } = {}): PhysicPaintRotoPhysicalEditResolution => resolvePhysicPaintRotoPhysicalEdit({
+    identities: input.identities ?? [
+      { keyId: 'P', appFrame: 1 },
+      { keyId: 'G', appFrame: 2 },
+      { keyId: 'M1', appFrame: 4 },
+      { keyId: 'M2', appFrame: 6 },
+      { keyId: 'S', appFrame: 10 },
+      { keyId: 'U', appFrame: 14 },
+    ],
+    intent: {
+      kind: 'move-key-rail',
+      memberKeyIds: input.memberKeyIds ?? ['M1', 'M2'],
+      destinationFirstKeyAppFrame: input.destination ?? 7,
+    },
+    parentEndExclusive: input.parentEndExclusive ?? 16,
+    capacity: input.capacity ?? 16,
+    interpolationEnabled: true,
+    incomingInterpolationBreakKeyIds: input.breaks ?? ['U'],
+    loopClips: input.loopClips ?? [group],
+  });
+
+  it('rigidly translates one exact derived rail and emits complete sorted rule-(a)/(b)/(c) break ownership', () => {
+    const resolution = resolveMove();
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Key Rail move must resolve');
+
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      P: 1,
+      G: 2,
+      M1: 7,
+      M2: 9,
+      S: 10,
+      U: 14,
+    });
+    expect(resolution.proposal.changes).toEqual([
+      { keyId: 'M1', beforeAppFrame: 4, afterAppFrame: 7, role: 'moved' },
+      { keyId: 'M2', beforeAppFrame: 6, afterAppFrame: 9, role: 'moved' },
+    ]);
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['M1', 'S', 'U']);
+    expect(resolution.proposal.status.operationKind).toBe('move-key-rail');
+  });
+
+  it('carries a moved stable break, reuses successor ownership, and adds no vacated break when the rail ends content', () => {
+    const carried = resolveMove({ breaks: ['M1', 'S', 'U'] });
+    expect(carried.ok).toBe(true);
+    if (!carried.ok) throw new Error('Stable break move must resolve');
+    expect(carried.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['M1', 'S', 'U']);
+
+    const lastRail = resolveMove({
+      identities: [
+        { keyId: 'P', appFrame: 1 },
+        { keyId: 'M1', appFrame: 4 },
+        { keyId: 'M2', appFrame: 6 },
+      ],
+      breaks: ['M1'],
+      loopClips: [],
+      destination: 7,
+      parentEndExclusive: 12,
+      capacity: 12,
+    });
+    expect(lastRail.ok).toBe(true);
+    if (!lastRail.ok) throw new Error('Last Key Rail move must resolve');
+    expect(lastRail.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['M1']);
+  });
+
+  it('fails closed for stale membership, malformed identities, Group ownership, over-range translation, and no movement space', () => {
+    const cases = [
+      resolveMove({ memberKeyIds: ['M1', 'missing'] }),
+      resolveMove({ memberKeyIds: ['M1', 'M1'] }),
+      resolveMove({ memberKeyIds: ['M1'] }),
+      resolveMove({ memberKeyIds: ['G'] }),
+      resolveMove({ destination: 16 }),
+      resolveMove({ destination: 4 }),
+      resolveMove({
+        identities: [
+          { keyId: 'M1', appFrame: 4 },
+          { keyId: 'M2', appFrame: 6 },
+          { keyId: 'S', appFrame: 7 },
+        ],
+        breaks: [],
+        loopClips: [],
+        destination: 6,
+      }),
+    ];
+
+    for (const resolution of cases) {
+      expect(resolution.ok).toBe(false);
+      expect('proposal' in resolution).toBe(false);
+    }
+    const blocked = cases.at(-1);
+    if (!blocked || blocked.ok) throw new Error('Blocked Key Rail move must reject');
+    expect(blocked.failure.code).toBe('no-free-space-in-direction');
   });
 });
 
