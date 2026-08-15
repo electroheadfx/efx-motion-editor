@@ -592,7 +592,7 @@ describe('createRotoPlayScriptController', () => {
     test.setBrushColor('#ff0000');
     await test.controller.openConfirmation();
     expect(test.controller.appliedSummary.line1.value).toBe('Progressive · Override #3366ff · Motion 25/40');
-    expect(test.controller.appliedSummary.line2.value).toBe('F4–F7 · 4 frames generated');
+    expect(test.controller.appliedSummary.line2.value).toBe('F4–F6 · 3 frames generated');
   });
 
   it('composes the first-open summary line 1 from the CURRENT port value when the override is enabled', async () => {

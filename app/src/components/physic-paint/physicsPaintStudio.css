@@ -1655,15 +1655,15 @@ button.destructive {
   font-size: 11px;
 }
 
-/* Hold Loop row (D-12): repeat input + Infinity checkbox, gap 10px; 15px accent box. */
-.physics-paint-play-script-repeat-row {
+/* Timing rows: finite input + Max/Infinity checkbox, gap 10px; 15px accent box. */
+.physics-paint-play-script-timing-row {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
 }
 
-.physics-paint-play-script-repeat-row input:not([type="checkbox"]) { flex: 1 1 auto; }
+.physics-paint-play-script-timing-row input:not([type="checkbox"]) { flex: 1 1 auto; }
 
 .physics-paint-play-script-content input[type="checkbox"] {
   width: 15px;
@@ -1673,7 +1673,7 @@ button.destructive {
   accent-color: var(--ps-accent);
 }
 
-.physics-paint-play-script-infinity-toggle {
+.physics-paint-play-script-timing-toggle {
   display: inline-flex;
   align-items: center;
   gap: 7px;

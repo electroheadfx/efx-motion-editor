@@ -135,12 +135,9 @@ export function PhysicsPaintPlayScriptDialog({
   const busy = playScript.canCancel.value;
   const activeMode = PLAY_SCRIPT_MODES.find((option) => option.value === playScript.mode.value) ?? PLAY_SCRIPT_MODES[0];
 
-  // D-03 revised: switching to Static / Hold with 'Max' in the field normalizes it to '1';
-  // a numeric value is never rewritten by a mode switch.
   const selectMode = (value: RotoPlayScriptMode) => {
     if (loopEdit) return; // D-01: source fields are locked in loop-edit mode
     playScript.mode.value = value;
-    if (value === 'static' && playScript.countText.value.trim().toLowerCase() === 'max') playScript.countText.value = '1';
   };
 
   // W3C APG radio pattern (D-05): arrow keys move focus AND check with wrap-around; the checked
@@ -317,24 +314,36 @@ export function PhysicsPaintPlayScriptDialog({
             <span class="physics-paint-play-script-card-title">Timing</span>
             <div class={`physics-paint-play-script-field${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
               <label for="physics-play-script-count">{playScript.mode.value === 'static' || loopEdit ? 'Frames per cycle' : 'Frames'}</label>
-              <input
-                ref={inputRef}
-                id="physics-play-script-count"
-                inputMode="numeric"
-                value={playScript.countText.value}
-                disabled={busy || loopEdit}
-                aria-invalid={Boolean(playScript.validationError.value)}
-                aria-describedby="physics-play-script-help physics-play-script-error"
-                onInput={(event) => {
-                  playScript.countText.value = (event.currentTarget as HTMLInputElement).value;
-                }}
-              />
-              <span id="physics-play-script-help" class="physics-paint-play-script-hint">Enter a positive integer or Max.</span>
+              <div class="physics-paint-play-script-timing-row">
+                <input
+                  ref={inputRef}
+                  id="physics-play-script-count"
+                  inputMode="numeric"
+                  value={playScript.countText.value}
+                  disabled={busy || loopEdit || playScript.max.value}
+                  aria-invalid={Boolean(playScript.validationError.value)}
+                  aria-describedby="physics-play-script-help physics-play-script-error"
+                  onInput={(event) => {
+                    playScript.countText.value = (event.currentTarget as HTMLInputElement).value;
+                  }}
+                />
+                <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-max">
+                  <input
+                    id="physics-play-script-max"
+                    type="checkbox"
+                    checked={playScript.max.value}
+                    disabled={busy || loopEdit}
+                    onChange={(event) => playScript.setMax((event.currentTarget as HTMLInputElement).checked)}
+                  />
+                  Max
+                </label>
+              </div>
+              <span id="physics-play-script-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
               {playScript.validationError.value ? <span id="physics-play-script-error" class="physics-paint-script-inline-error">{playScript.validationError.value}</span> : null}
             </div>
             <div class="physics-paint-play-script-field">
               <label for="physics-play-script-repeat">Repeat</label>
-              <div class="physics-paint-play-script-repeat-row">
+              <div class="physics-paint-play-script-timing-row">
                 <input
                   ref={repeatInputRef}
                   id="physics-play-script-repeat"
@@ -347,8 +356,9 @@ export function PhysicsPaintPlayScriptDialog({
                     playScript.repeatText.value = (event.currentTarget as HTMLInputElement).value;
                   }}
                 />
-                <label class="physics-paint-play-script-infinity-toggle">
+                <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-infinity">
                   <input
+                    id="physics-play-script-infinity"
                     type="checkbox"
                     checked={playScript.infinity.value}
                     disabled={busy}

@@ -182,6 +182,8 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
 export interface RotoPlayScriptController {
   confirmationOpen: Signal<boolean>;
   countText: Signal<string>;
+  max: Signal<boolean>;
+  lastFiniteCount: Signal<string>;
   capacity: Signal<number>;
   mode: Signal<RotoPlayScriptMode>;
   overrideEnabled: Signal<boolean>;
@@ -242,6 +244,7 @@ export interface RotoPlayScriptController {
   closeConfirmation: () => void;
   confirm: () => Promise<boolean>;
   cancel: () => void;
+  setMax: (enabled: boolean) => void;
   setInfinity: (enabled: boolean) => void;
   resetDialogMotion: () => void;
   dispose: () => void;
@@ -249,7 +252,9 @@ export interface RotoPlayScriptController {
 
 export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPorts): RotoPlayScriptController {
   const confirmationOpen = signal(false);
-  const countText = signal('Max');
+  const countText = signal('3');
+  const max = signal(false);
+  const lastFiniteCount = signal('3');
   const capacity = signal(0);
   const canonicalStart = signal<number | null>(null);
   const mode = signal<RotoPlayScriptMode>('progressive');
@@ -288,7 +293,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     if (selection.kind === 'generated-interpolation') return `Generated frame ${selection.appFrame} is render-only. Select an empty frame or a real Roto key to generate a Play Script.`;
     return null;
   });
-  const parsedCount = computed(() => parseCount(countText.value, capacity.value));
+  const parsedCount = computed(() => max.value
+    ? capacity.value > 0
+      ? { count: capacity.value, error: null }
+      : { count: null, error: 'No real-key capacity remains.' }
+    : parseCount(countText.value, capacity.value));
   const validationError = computed(() => parsedCount.value.error);
   const destinationRange = computed(() => {
     const start = canonicalStart.value;
@@ -459,11 +468,24 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const stopStaticDefaults = effect(() => {
     if (mode.value === 'static' && !staticDefaultsApplied) {
       staticDefaultsApplied = true;
-      countText.value = '1';
+      countText.value = '3';
+      lastFiniteCount.value = '3';
+      max.value = false;
       repeatText.value = '1';
       infinity.value = false;
     }
   });
+
+  function setMax(enabled: boolean): void {
+    if (enabled) {
+      // Preserve the last VALID finite frame count; an invalid disabled draft never overwrites it.
+      if (parseCount(countText.peek(), capacity.peek()).count !== null) lastFiniteCount.value = countText.peek();
+      max.value = true;
+    } else {
+      countText.value = lastFiniteCount.peek();
+      max.value = false;
+    }
+  }
 
   function setInfinity(enabled: boolean): void {
     if (enabled) {
@@ -512,7 +534,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       loopEditTargetId.value = null;
       sourceEditRepairId.value = null;
       linkChoice.value = 'link';
-      countText.value = 'Max';
+      countText.value = '3';
+      lastFiniteCount.value = '3';
+      max.value = false;
       dialogMotion.value = { ...ports.getMotion() };
       if (!hasSuccessfulGeneration) {
         // First-time defaults refresh: before the first successful Generate line 1 tracks the
@@ -570,6 +594,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     sourceEditRepairId.value = repair ? loop.loopId : null;
     linkChoice.value = 'link';
     countText.value = String(loop.sourceKeyIds.length);
+    lastFiniteCount.value = countText.value;
+    max.value = false;
     if (loop.motion) dialogMotion.value = { ...loop.motion };
     overrideEnabled.value = (loop.overrideColor ?? null) !== null;
     if (loop.repeat === 'infinity') {
@@ -1414,20 +1440,18 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   function nextOperationId(kind: string): string { return `roto-play-script-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
 
   return {
-    confirmationOpen, countText, capacity, mode, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, loopShortenPreflight, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel,
+    confirmationOpen, countText, max, lastFiniteCount, capacity, mode, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, loopShortenPreflight, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel,
     dialogMode, loopEditTargetId, loopEditTarget, loopEditSourceStart, sourceEditSharedLoopCount, regenerateDisabledReason, regenerateImpact, loopIntentActive, identicalSourceCycle, linkChoice,
     openLoopEdit, openSourceEdit, repairLoop, updateLoop, unlinkLoop, duplicateLinkedLoop, relinkLoop, findIdenticalSourceCycle,
-    openConfirmation, closeConfirmation, confirm, cancel, setInfinity, resetDialogMotion, dispose: () => { disposed = true; generation += 1; stopStaticDefaults(); abortController?.abort(); abortController = null; },
+    openConfirmation, closeConfirmation, confirm, cancel, setMax, setInfinity, resetDialogMotion, dispose: () => { disposed = true; generation += 1; stopStaticDefaults(); abortController?.abort(); abortController = null; },
   };
 }
 
 function parseCount(value: string, capacity: number): { count: number | null; error: string | null } {
   const text = value.trim();
-  if (!text) return { count: null, error: 'Enter a positive integer or Max.' };
-  if (/^max$/i.test(text)) return capacity > 0 ? { count: capacity, error: null } : { count: null, error: 'No real-key capacity remains.' };
-  if (!/^\d+$/.test(text)) return { count: null, error: 'Enter a positive integer or Max.' };
+  if (!text || !/^\d+$/.test(text)) return { count: null, error: 'Enter a positive integer.' };
   const count = Number(text);
-  if (!Number.isSafeInteger(count) || count <= 0) return { count: null, error: 'Enter a positive integer or Max.' };
+  if (!Number.isSafeInteger(count) || count <= 0) return { count: null, error: 'Enter a positive integer.' };
   if (count > capacity) return { count: null, error: `Maximum available count is ${capacity}.` };
   return { count, error: null };
 }

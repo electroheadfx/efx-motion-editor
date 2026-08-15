@@ -1006,7 +1006,7 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     expect(hasClass(findOne(tree, byClass('physics-paint-play-script-card-mode')), 'physics-paint-play-script-locked')).toBe(true);
     expect(hasClass(findOne(tree, byClass('physics-paint-play-script-card-color')), 'physics-paint-play-script-locked')).toBe(true);
     expect(hasClass(findOne(tree, byClass('physics-paint-play-script-card-motion')), 'physics-paint-play-script-locked')).toBe(true);
-    expect(hasClass(parentOf(tree, countInput)!, 'physics-paint-play-script-locked')).toBe(true);
+    expect(hasClass(parentOf(tree, parentOf(tree, countInput)!)!, 'physics-paint-play-script-locked')).toBe(true);
     // Every mode/color radio is disabled; the Motion sliders and Reset defaults are disabled.
     for (const radio of findAll(tree, (vnode) => vnode.props?.role === 'radio')) {
       expect(radio.props['aria-disabled']).toBe(true);
