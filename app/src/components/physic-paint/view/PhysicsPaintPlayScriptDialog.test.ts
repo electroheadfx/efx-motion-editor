@@ -92,6 +92,7 @@ function sig<Value>(value: Value): { value: Value } {
 interface FakeControllerSeed {
   mode?: RotoPlayScriptMode;
   countText?: string;
+  max?: boolean;
   repeatText?: string;
   infinity?: boolean;
   overrideEnabled?: boolean;
@@ -139,7 +140,9 @@ interface FakeControllerSeed {
 function createFakeController(seed: FakeControllerSeed = {}) {
   const signals = {
     confirmationOpen: sig(true),
-    countText: sig(seed.countText ?? 'Max'),
+    countText: sig(seed.countText ?? '3'),
+    max: sig(seed.max ?? false),
+    lastFiniteCount: sig('3'),
     capacity: sig(4),
     mode: sig<RotoPlayScriptMode>(seed.mode ?? 'progressive'),
     overrideEnabled: sig(seed.overrideEnabled ?? false),
@@ -181,6 +184,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     closeConfirmation: vi.fn(),
     confirm: vi.fn(async () => true),
     cancel: vi.fn(),
+    setMax: vi.fn(),
     setInfinity: vi.fn(),
     resetDialogMotion: vi.fn(),
     dispose: vi.fn(),
@@ -482,51 +486,42 @@ describe('PhysicsPaintPlayScriptDialog frame field (D-03 revised)', () => {
     expect(textOf(findOne(tree, (vnode) => vnode.props?.for === 'physics-play-script-count'))).toBe('Frames per cycle');
     // Still ONE shared input — no second field appears in Static / Hold.
     expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(1);
-    expect(textOf(findOne(tree, byId('physics-play-script-help')))).toBe('Enter a positive integer or Max.');
+    expect(textOf(findOne(tree, byId('physics-play-script-help')))).toBe('Enter a positive integer.');
   });
 
-  it("normalizes 'Max' to '1' when switching to Static / Hold, on click and on arrow keys", () => {
-    const { controller, signals } = createFakeController({ countText: 'Max' });
+  it('keeps the finite Frames draft unchanged when switching between Motion and Static', () => {
+    const { controller, signals } = createFakeController({ countText: '3' });
     let tree = renderDialog(controller);
     const radios = findAll(findOne(tree, byRadioGroup('Group Type')), (vnode) => vnode.props?.role === 'radio');
     handler(radios[1], 'onClick')({ currentTarget: { focus: vi.fn() } });
     expect(signals.mode.value).toBe('static');
-    expect(signals.countText.value).toBe('1');
+    expect(signals.countText.value).toBe('3');
 
-    // Arrow-key path applies the same normalization.
-    signals.mode.value = 'progressive';
-    signals.countText.value = 'Max';
-    tree = renderDialog(controller);
-    handler(findOne(tree, byRadioGroup('Group Type')), 'onKeyDown')({
-      key: 'ArrowRight',
-      preventDefault: vi.fn(),
-      currentTarget: { querySelectorAll: () => [{ focus: vi.fn() }, { focus: vi.fn() }] },
-    });
-    expect(signals.mode.value).toBe('static');
-    expect(signals.countText.value).toBe('1');
-
-    // A numeric value is never rewritten by a mode switch.
-    signals.mode.value = 'progressive';
     signals.countText.value = '6';
     tree = renderDialog(controller);
     handler(findOne(tree, byRadioGroup('Group Type')), 'onKeyDown')({
-      key: 'ArrowRight',
+      key: 'ArrowLeft',
       preventDefault: vi.fn(),
       currentTarget: { querySelectorAll: () => [{ focus: vi.fn() }, { focus: vi.fn() }] },
     });
+    expect(signals.mode.value).toBe('progressive');
     expect(signals.countText.value).toBe('6');
   });
 });
 
 describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both modes)', () => {
-  it('renders Repeat + Infinity inside the Timing card in BOTH modes as session-level loop intent', () => {
+  it('renders distinct Frames + Max and Repeat + Infinity controls in BOTH Group Types', () => {
     const { controller, signals } = createFakeController();
     for (const mode of ['progressive', 'static'] as const) {
       signals.mode.value = mode;
       const tree = renderDialog(controller);
       const timingCard = findOne(tree, byClass('physics-paint-play-script-card-timing'));
+      expect(findOne(timingCard, byId('physics-play-script-count'))).toBeTruthy();
+      expect(findOne(timingCard, byId('physics-play-script-max'))).toBeTruthy();
       expect(findOne(timingCard, byId('physics-play-script-repeat'))).toBeTruthy();
-      expect(findOne(timingCard, (vnode) => vnode.props?.type === 'checkbox')).toBeTruthy();
+      expect(findOne(timingCard, byId('physics-play-script-infinity'))).toBeTruthy();
+      expect(textOf(findOne(timingCard, (vnode) => vnode.props?.for === 'physics-play-script-max'))).toBe('Max');
+      expect(textOf(findOne(timingCard, (vnode) => vnode.props?.for === 'physics-play-script-infinity'))).toBe('Infinity');
     }
   });
 
@@ -537,24 +532,45 @@ describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both 
     expect(textOf(findOne(tree, byId('physics-play-script-repeat-error')))).toBe('Repeat is too large for this cycle length.');
   });
 
-  it('wires the Infinity toggle through the controller setInfinity boundary only', () => {
+  it('wires Max and Infinity through their distinct controller boundaries only', () => {
     const { controller, signals } = createFakeController();
     const tree = renderDialog(controller);
-    const toggle = findOne(tree, (vnode) => vnode.props?.type === 'checkbox');
-    handler(toggle, 'onChange')({ currentTarget: { checked: true } });
+    handler(findOne(tree, byId('physics-play-script-max')), 'onChange')({ currentTarget: { checked: true } });
+    expect(controller.setMax).toHaveBeenCalledTimes(1);
+    expect(controller.setMax).toHaveBeenCalledWith(true);
+    expect(controller.setInfinity).not.toHaveBeenCalled();
+    expect(signals.max.value).toBe(false);
+    expect(signals.lastFiniteCount.value).toBe('3');
+
+    handler(findOne(tree, byId('physics-play-script-infinity')), 'onChange')({ currentTarget: { checked: true } });
     expect(controller.setInfinity).toHaveBeenCalledTimes(1);
     expect(controller.setInfinity).toHaveBeenCalledWith(true);
-    // The dialog never manipulates the infinity/lastFiniteRepeat signals directly.
+    expect(controller.setMax).toHaveBeenCalledTimes(1);
     expect(signals.infinity.value).toBe(false);
     expect(signals.lastFiniteRepeat.value).toBe('1');
   });
 
-  it('renders the repeat input disabled with its value intact while Infinity is on', () => {
-    const { controller } = createFakeController({ infinity: true, repeatText: '5', loopReadout: 'Cycle 4f × ∞ · Effective: 4f' });
+  it('keeps each finite value visible while its matching capacity toggle disables the input', () => {
+    const { controller } = createFakeController({ max: true, countText: '5', infinity: true, repeatText: '7', loopReadout: 'Cycle 4f × ∞ · Effective: 4f' });
     const tree = renderDialog(controller);
+    const count = findOne(tree, byId('physics-play-script-count'));
     const repeat = findOne(tree, byId('physics-play-script-repeat'));
+    expect(count.props.disabled).toBe(true);
+    expect(count.props.value).toBe('5');
     expect(repeat.props.disabled).toBe(true);
-    expect(repeat.props.value).toBe('5');
+    expect(repeat.props.value).toBe('7');
+  });
+
+  it('reuses the same timing-row and toggle styling contract for Max and Infinity', () => {
+    expect(playScriptCssRule('.physics-paint-play-script-timing-row')).toContain('gap: 10px');
+    expect(playScriptCssRule('.physics-paint-play-script-timing-row input:not([type="checkbox"])')).toContain('flex: 1 1 auto');
+    const toggleRule = playScriptCssRule('.physics-paint-play-script-timing-toggle');
+    expect(toggleRule).toContain('gap: 7px');
+    expect(toggleRule).toContain('white-space: nowrap');
+    expect(toggleRule).toContain('cursor: pointer');
+    const checkboxRule = playScriptCssRule('.physics-paint-play-script-content input[type="checkbox"]');
+    expect(checkboxRule).toContain('width: 15px');
+    expect(checkboxRule).toContain('accent-color: var(--ps-accent)');
   });
 });
 
@@ -689,8 +705,10 @@ describe('PhysicsPaintPlayScriptDialog generation states (E5)', () => {
       expect(radio.props['aria-disabled']).toBe(true);
       expect(radio.props.tabIndex).toBe(-1);
     }
+    expect(findOne(tree, byId('physics-play-script-count')).props.disabled).toBe(true);
     expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(true);
-    expect(findOne(tree, (vnode) => vnode.props?.type === 'checkbox').props.disabled).toBe(true);
+    expect(findOne(tree, byId('physics-play-script-max')).props.disabled).toBe(true);
+    expect(findOne(tree, byId('physics-play-script-infinity')).props.disabled).toBe(true);
     expect(findOne(tree, byId('physics-play-script-motion-deformation')).props.disabled).toBe(true);
     const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
     expect(findOne(footer, (vnode) => vnode.type === 'progress')).toBeTruthy();
@@ -996,10 +1014,10 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     expect(findOne(tree, byId('physics-play-script-motion-deformation')).props.disabled).toBe(true);
     expect(findOne(tree, byId('physics-play-script-motion-position')).props.disabled).toBe(true);
     expect(findOne(tree, (vnode) => textOf(vnode) === 'Reset defaults').props.disabled).toBe(true);
-    // Repeat + Infinity remain editable.
+    // Repeat + Infinity remain editable; Max stays locked with the source count.
     expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(false);
-    const infinityToggle = findOne(tree, (vnode) => vnode.props?.type === 'checkbox');
-    expect(infinityToggle.props.disabled).toBe(false);
+    expect(findOne(tree, byId('physics-play-script-infinity')).props.disabled).toBe(false);
+    expect(findOne(tree, byId('physics-play-script-max')).props.disabled).toBe(true);
     // The Requested/Effective readout renders in the summary bar.
     const bar = findOne(tree, byClass('physics-paint-play-script-summary-bar'));
     expect(textOf(findOne(bar, byClass('physics-paint-play-script-summary-requested')))).toBe('Requested: 15f (5f × 3)');

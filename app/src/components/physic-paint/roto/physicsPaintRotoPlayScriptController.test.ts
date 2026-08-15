@@ -159,8 +159,9 @@ describe('createRotoPlayScriptController', () => {
   });
 
   it.each([
-    ['', 'Enter a positive integer or Max.'], ['0', 'Enter a positive integer or Max.'], ['-1', 'Enter a positive integer or Max.'],
-    ['1.5', 'Enter a positive integer or Max.'], ['1x', 'Enter a positive integer or Max.'], ['5', 'Maximum available count is 4.'],
+    ['', 'Enter a positive integer.'], ['0', 'Enter a positive integer.'], ['-1', 'Enter a positive integer.'],
+    ['1.5', 'Enter a positive integer.'], ['1x', 'Enter a positive integer.'], ['Max', 'Enter a positive integer.'],
+    ['5', 'Maximum available count is 4.'],
   ])('strictly rejects count %j without clamping', async (value, message) => {
     const test = harness(); await test.controller.openConfirmation(); test.controller.countText.value = value;
     expect(test.controller.validationError.value).toBe(message);
@@ -168,14 +169,55 @@ describe('createRotoPlayScriptController', () => {
     expect(rendered).not.toHaveBeenCalled();
   });
 
-  it('uses current Max and reloads the selected durable row into the operation snapshot', async () => {
+  it('opens every fresh Create Group at finite 3 with Max off, independent of remembered Group Type', async () => {
+    const test = harness();
+    expect(test.controller.countText.value).toBe('3');
+    expect(test.controller.max.value).toBe(false);
+
+    await test.controller.openConfirmation();
+    expect(test.controller.countText.value).toBe('3');
+    expect(test.controller.max.value).toBe(false);
+    expect(test.controller.destinationRange.value).toBe('F4–F6');
+
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '7';
+    test.controller.setMax(true);
+    test.controller.closeConfirmation();
+    await test.controller.openConfirmation();
+    expect(test.controller.mode.value).toBe('static');
+    expect(test.controller.countText.value).toBe('3');
+    expect(test.controller.max.value).toBe(false);
+  });
+
+  it('uses current capacity through parsed count, destination, readout, and confirm when Max is checked', async () => {
     const test = harness(); await test.controller.openConfirmation();
+    test.controller.setMax(true);
     expect(test.controller.capacity.value).toBe(4);
+    expect(test.controller.countText.value).toBe('3');
+    expect(test.controller.validationError.value).toBeNull();
     expect(test.controller.destinationRange.value).toBe('F4–F7');
+    expect(test.controller.loopReadout.value).toBe('Requested: 4f (4f × 1) · Effective: 4f');
     expect(await test.controller.confirm()).toBe(true);
     expect(test.library.loadSnapshot).toHaveBeenCalledWith('script-1');
     expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ script: expect.objectContaining({ brushes: [expect.objectContaining({ primary: expect.objectContaining({ points: [expect.objectContaining({ x: 99 })] }) })] }), frameCount: 4, canonicalStart: 4, motion: { deformation: 25, position: 40 } }));
     expect(test.requestAuthority).toHaveBeenCalledTimes(3);
+  });
+
+  it('preserves the last valid finite Frames value across Max and ignores invalid disabled drafts', async () => {
+    const test = harness({ requestAuthority: vi.fn(async () => authority({ canonicalStart: 4, layerEndExclusive: 22, capacity: 18 })) });
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '5';
+    test.controller.setMax(true);
+    expect(test.controller.max.value).toBe(true);
+    expect(test.controller.lastFiniteCount.value).toBe('5');
+    expect(test.controller.countText.value).toBe('5');
+    expect(test.controller.destinationRange.value).toBe('F4–F21');
+    test.controller.countText.value = 'junk';
+    expect(test.controller.validationError.value).toBeNull();
+    test.controller.setMax(false);
+    expect(test.controller.max.value).toBe(false);
+    expect(test.controller.countText.value).toBe('5');
+    expect(test.controller.validationError.value).toBeNull();
   });
 
   it('commits one complete additive real-key set, then validates the parent acknowledgement and stops playback', async () => {
@@ -377,19 +419,22 @@ describe('createRotoPlayScriptController', () => {
     expect(test.controller.repeatText.value).toBe('1801439850948198');
   });
 
-  it('applies first-time Static / Hold defaults (cycle 1, repeat 1, infinity off) only once', async () => {
+  it('applies first-time Static / Hold defaults (cycle 3, repeat 1, Max and Infinity off) only once', async () => {
     const test = harness();
-    expect(test.controller.countText.value).toBe('Max'); // progressive defaults untouched
+    expect(test.controller.countText.value).toBe('3');
+    expect(test.controller.max.value).toBe(false);
     test.controller.mode.value = 'static';
-    expect(test.controller.countText.value).toBe('1');
+    expect(test.controller.countText.value).toBe('3');
     expect(test.controller.repeatText.value).toBe('1');
+    expect(test.controller.max.value).toBe(false);
     expect(test.controller.infinity.value).toBe(false);
     // Session memory: later mode switches never re-apply the first-time defaults.
+    test.controller.countText.value = '6';
     test.controller.repeatText.value = '7';
     test.controller.mode.value = 'progressive';
     test.controller.mode.value = 'static';
     expect(test.controller.repeatText.value).toBe('7');
-    expect(test.controller.countText.value).toBe('1');
+    expect(test.controller.countText.value).toBe('6');
   });
 
   it('keeps loop and option signals across dialog close/reopen within the session', async () => {
@@ -1317,6 +1362,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.loopEditTarget.value?.loopId).toBe('L1');
       expect(test.controller.repeatText.value).toBe('3');
       expect(test.controller.infinity.value).toBe(false);
+      expect(test.controller.max.value).toBe(false);
       // Frames-per-cycle is locked at the cycle length with its value preserved.
       expect(test.controller.countText.value).toBe('5');
       expect(test.controller.loopEditSourceStart.value).toBe(10);
@@ -2692,6 +2738,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.confirmationOpen.value).toBe(true);
       expect(test.controller.mode.value).toBe('static');
       expect(test.controller.countText.value).toBe('5'); // Frames per cycle from the source cycle
+      expect(test.controller.max.value).toBe(false);
       expect(test.controller.destinationRange.value).toBe('F10–F14');
       expect(test.controller.dialogMotion.value).toEqual({ deformation: 0, position: 0 }); // from provenance, not the defaults port
       expect(test.controller.overrideEnabled.value).toBe(false); // overrideColor null
