@@ -6,9 +6,9 @@ current_phase: 44
 current_phase_name: Integrated UAT + Signed Release
 status: planning
 stopped_at: Completed 43.3-03-PLAN.md
-last_updated: "2026-08-15T05:56:16Z"
+last_updated: "2026-08-15T06:29:48Z"
 last_activity: 2026-08-15
-last_activity_desc: "Completed quick task 260815-ala: Group timing defaults and Max checkbox"
+last_activity_desc: "Completed quick task 260815-bmg: Remove numeric Undo/Redo counts from Paint/Physics Paint Studio controls"
 progress:
   total_phases: 9
   completed_phases: 7
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: 44 — Integrated UAT + Signed Release
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-15 — Completed quick task 260815-ala: Group timing defaults and Max checkbox
+Last activity: 2026-08-15 — Completed quick task 260815-bmg: Remove numeric Undo/Redo counts from Paint/Physics Paint Studio controls
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -464,6 +464,7 @@ None yet.
 | 260805-ht3 | Phase 41 remediation: CR-01 orphaned audio guard, WR-07 efxasset range underflow, WR-08 efxasset path scoping | 2026-08-05 | b3a83841 | Verified | [260805-ht3-phase-41-remediation-cr-01-orphaned-audi](./quick/260805-ht3-phase-41-remediation-cr-01-orphaned-audi/) |
 | 260809-aac | Make Select All clear prior real/empty frame highlights without breaking normal empty-frame Add key targeting | 2026-08-09 | 39fe1895 | Verified | [260809-aac-when-select-all-keyframes-is-used-clear-](./quick/260809-aac-when-select-all-keyframes-is-used-clear-/) |
 | 260815-ala | In paint app, make Group Edit timing default to 3 frames and expose Max as an unchecked Infinity-style checkbox | 2026-08-15 | 4aa958a4 | Verified | [260815-ala-in-paint-app-make-group-edit-with-timing](./quick/260815-ala-in-paint-app-make-group-edit-with-timing/) |
+| 260815-bmg | Remove numeric Undo/Redo counts from Paint and Physics Paint Studio controls | 2026-08-15 | 357965a1 | Automated | [260815-bmg-remove-numeric-undo-redo-counts-from-pai](./quick/260815-bmg-remove-numeric-undo-redo-counts-from-pai/) |
 
 ### Roadmap Evolution
 
