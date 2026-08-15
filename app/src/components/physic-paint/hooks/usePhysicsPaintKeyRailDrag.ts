@@ -258,9 +258,16 @@ export function usePhysicsPaintKeyRailDrag<Publication>(
         input.onRejected?.(retainedRejection?.reason, retainedRejection?.detail);
         return;
       }
-      void input.onDropCommit(retainedPublication).then((accepted) => {
-        if (!accepted) restoreSourceFocus();
-      });
+      void input.onDropCommit(retainedPublication)
+        .then((accepted) => {
+          if (!accepted) restoreSourceFocus();
+        })
+        .catch(() => {
+          // Transport or coordinator failures reject the commit port. The
+          // accepted rail remains authoritative; restore keyboard focus and
+          // leave no session paint behind.
+          restoreSourceFocus();
+        });
     };
     const cancelSession = () => {
       const started = session.started;
