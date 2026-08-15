@@ -629,6 +629,25 @@ export type RotoGroupDragPreparationResult =
   | { readonly ok: true; readonly publication: RotoGroupDragPublication }
   | { readonly ok: false; readonly reason: string; readonly detail?: string };
 
+/**
+ * Immutable Key Rail drag publication. The ordered member identities, resolver
+ * proposal, intent, launch tuple, and break-aware proposal version are captured
+ * once during prepare and forwarded unchanged during commit.
+ */
+export interface RotoKeyRailDragPublication {
+  readonly proposal: PhysicPaintRotoPhysicalEditProposal;
+  readonly intent: Extract<PhysicPaintRotoPhysicalEditIntent, { readonly kind: 'move-key-rail' }>;
+  readonly proposalVersion: string;
+  readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
+  readonly firstKeyId: string;
+  readonly memberKeyIds: readonly string[];
+  readonly destinationFirstKeyAppFrame: number;
+}
+
+export type RotoKeyRailDragPreparationResult =
+  | { readonly ok: true; readonly publication: RotoKeyRailDragPublication }
+  | { readonly ok: false; readonly reason: string; readonly detail?: string };
+
 export interface RotoPhysicalTimelineActionBundle {
   /** Insert one empty physical slot before the selected real key (D-05). */
   readonly insertRotoFrame: () => Promise<boolean>;
@@ -719,6 +738,13 @@ export interface RotoPhysicalTimelineActionBundle {
    * coordinator performs the authoritative post-barrier revalidation.
    */
   readonly commitRotoGroupDrag: (publication: RotoGroupDragPublication) => Promise<boolean>;
+  /** Prepare one exact derived Key Rail for an atomic rigid drag commit. */
+  readonly prepareKeyRailDrag: (
+    firstKeyId: string,
+    destinationFirstKeyAppFrame: number,
+  ) => RotoKeyRailDragPreparationResult;
+  /** Commit the exact retained Key Rail publication after coherence and staleness checks. */
+  readonly commitKeyRailDrag: (publication: RotoKeyRailDragPublication) => Promise<boolean>;
   /** Reactive Drag availability derived from selection + pending authority. */
   readonly canDragKey: ReadonlySignal<boolean>;
   /** Reactive Drag disabled reason, or null when eligible. */
@@ -1722,6 +1748,138 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     return accepted;
   }, [input]);
 
+  const prepareKeyRailDrag = useCallback((
+    firstKeyId: string,
+    destinationFirstKeyAppFrame: number,
+  ): RotoKeyRailDragPreparationResult => {
+    const launch = input.getLaunchContext?.() ?? null;
+    if (!launch) {
+      return { ok: false, reason: 'Select a real Roto key before editing the timeline.' };
+    }
+    if (!input.executePhysicalEdit || !input.getRotoKeyRecords || !input.getRotoInterpolationState || !input.getCapacity) {
+      return { ok: false, reason: 'Timeline editing is unavailable.' };
+    }
+    if (input.pendingOperationId && input.pendingOperationId.value !== null) {
+      return { ok: false, reason: 'A Roto physical edit is already in flight.' };
+    }
+    if (!isBoundedKeyId(firstKeyId)) {
+      return { ok: false, reason: 'The dragged Key Rail identity is malformed.' };
+    }
+
+    const records = input.getRotoKeyRecords();
+    const interpolation = input.getRotoInterpolationState();
+    const capacity = input.getCapacity();
+    const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
+    const incomingInterpolationBreakKeyIds = input.getIncomingInterpolationBreakKeyIds?.() ?? [];
+    const groupOwnedKeyIds = new Set<string>();
+    for (const loopClip of loopClips) {
+      loopClip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+      (loopClip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+    }
+    const orderedRealKeys = [...records]
+      .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId))
+      .map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
+    const matchingSegments = deriveKeyRailSegments({
+      orderedRealKeys,
+      incomingInterpolationBreakKeyIds: new Set(incomingInterpolationBreakKeyIds),
+      groupOwnedKeyIds,
+    }).filter((segment) => segment.firstKeyId === firstKeyId);
+    if (matchingSegments.length !== 1) {
+      return { ok: false, reason: 'The dragged Key Rail is no longer available.' };
+    }
+
+    const segment = matchingSegments[0];
+    const memberKeyIds = Object.freeze([...segment.keyIds]) as readonly string[];
+    const intent = Object.freeze({
+      kind: 'move-key-rail',
+      memberKeyIds,
+      destinationFirstKeyAppFrame,
+    }) as Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'move-key-rail' }>;
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: orderedRealKeys,
+      intent,
+      parentEndExclusive: input.getParentEndExclusive(),
+      capacity,
+      interpolationEnabled: interpolation.enabled,
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+    });
+    if (!resolution.ok) {
+      return {
+        ok: false,
+        reason: resolution.failure.text || 'The Key Rail move is invalid.',
+        detail: resolution.failure.text,
+      };
+    }
+    const proposal = resolution.proposal;
+    if (!proposal.status.changed) {
+      return { ok: false, reason: 'This move would not change the timeline.' };
+    }
+    const acceptedDestination = proposal.mapping.get(firstKeyId);
+    if (acceptedDestination === undefined) {
+      return { ok: false, reason: 'The Key Rail move is invalid.' };
+    }
+    const expectedLaunch = Object.freeze({
+      operationId: launch.operationId,
+      layerId: launch.layerId,
+    });
+    return {
+      ok: true,
+      publication: Object.freeze({
+        proposal,
+        intent,
+        proposalVersion: buildKeyRailDragProposalVersion(
+          records,
+          interpolation,
+          loopClips,
+          incomingInterpolationBreakKeyIds,
+          launch,
+        ),
+        expectedLaunch,
+        firstKeyId,
+        memberKeyIds,
+        destinationFirstKeyAppFrame: acceptedDestination,
+      }) as RotoKeyRailDragPublication,
+    };
+  }, [input]);
+
+  const commitKeyRailDrag = useCallback(async (
+    publication: RotoKeyRailDragPublication,
+  ): Promise<boolean> => {
+    if (!input.executePhysicalEdit || !input.getRotoKeyRecords || !input.getRotoInterpolationState) return false;
+    const intent = publication.intent;
+    if (publication.proposal.status.operationKind !== 'move-key-rail' || intent.kind !== 'move-key-rail') return false;
+    if (publication.firstKeyId !== publication.memberKeyIds[0]) return false;
+    if (
+      publication.memberKeyIds.length === 0
+      || publication.memberKeyIds.length !== intent.memberKeyIds.length
+      || publication.memberKeyIds.some((keyId, index) => keyId !== intent.memberKeyIds[index])
+    ) return false;
+    if (publication.expectedLaunch.operationId.length === 0 || publication.expectedLaunch.layerId.length === 0) return false;
+    const currentLaunch = input.getLaunchContext?.() ?? null;
+    if (!currentLaunch) return false;
+    try {
+      const currentProposalVersion = buildKeyRailDragProposalVersion(
+        input.getRotoKeyRecords(),
+        input.getRotoInterpolationState(),
+        input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+        input.getIncomingInterpolationBreakKeyIds?.() ?? [],
+        currentLaunch,
+      );
+      if (currentProposalVersion !== publication.proposalVersion) return false;
+    } catch {
+      return false;
+    }
+    return input.executePhysicalEdit({
+      proposal: publication.proposal,
+      expectedLaunch: publication.expectedLaunch,
+      operationKind: 'move-key-rail',
+      intent,
+      selectedKeyId: publication.proposal.selectedKeyId,
+      selectedAppFrame: publication.proposal.selectedAppFrame,
+    });
+  }, [input]);
+
   const setForceSpacingInput = useCallback((value: string) => {
     forceSpacingInput.value = value;
   }, [forceSpacingInput]);
@@ -1845,6 +2003,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     commitRotoKeyGroupDrag,
     prepareRotoGroupDrag,
     commitRotoGroupDrag,
+    prepareKeyRailDrag,
+    commitKeyRailDrag,
     canDragKey,
     dragDisabledReason,
     forceSpacingInput,
@@ -1856,7 +2016,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     addEmptyKeyDisabledReason,
     canSelectAllKeys,
     selectAllKeysDisabledReason,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,
@@ -1915,6 +2075,23 @@ function buildGroupDragProposalVersion(
   launch: PhysicPaintLaunchContext,
 ): string {
   const revision = buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, incomingInterpolationBreakKeyIds);
+  return `${revision}:${launch.operationId}:${launch.layerId}`;
+}
+
+/** Break-aware staleness fingerprint dedicated to Key Rail drag publications. */
+export function buildKeyRailDragProposalVersion(
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  interpolation: PhysicPaintRotoInterpolationState,
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  incomingInterpolationBreakKeyIds: readonly string[],
+  launch: PhysicPaintLaunchContext,
+): string {
+  const revision = buildPhysicPaintRotoPhysicalRevision(
+    records,
+    interpolation,
+    loopClips,
+    incomingInterpolationBreakKeyIds,
+  );
   return `${revision}:${launch.operationId}:${launch.layerId}`;
 }
 

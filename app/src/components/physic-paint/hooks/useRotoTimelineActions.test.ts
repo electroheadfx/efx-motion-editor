@@ -1144,13 +1144,13 @@ describe('useRotoTimelineActions Key Rail drag prepare/commit publication pair',
       { enabled: false, mode: 'duplicate' },
       [],
       [],
-      { operationId: 'op-1', layerId: 'layer-1' },
+      { operationId: 'op-1', layerId: 'layer-1', startFrame: 0 },
     )).not.toBe(buildKeyRailDragProposalVersion(
       railRecords,
       { enabled: false, mode: 'duplicate' },
       [],
       ['A'],
-      { operationId: 'op-1', layerId: 'layer-1' },
+      { operationId: 'op-1', layerId: 'layer-1', startFrame: 0 },
     ));
 
     const invalidBreak = createHarness({ ...base, incomingInterpolationBreakKeyIds: ['unknown-break'] });
