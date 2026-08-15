@@ -858,6 +858,15 @@ export function PhysicsPaintStudio() {
     getSelectedKeyId: () => selectedKeyId.value,
     getSelectedKeyIds: () => selectedKeyIds.value,
     getSelectedLoopClipIds: () => effectiveRotoLoopClipSelection?.selectedLoopClipIds ?? [],
+    getSelectedLoopRailDisplayName: (loopId) => {
+      const range = rotoTimelineModel.loopResolutionContext.value?.ranges.find((candidate) => candidate.loopId === loopId);
+      const clip = rotoLoopClips.find((candidate) => candidate.loopId === loopId);
+      if (!range || !clip) return null;
+      const sourceScriptName = clip.scriptId
+        ? loopScriptRows.find((row) => row.id === clip.scriptId)?.name ?? null
+        : null;
+      return projectPhysicsPaintLoopClipPresentation(range, clip, sourceScriptName).displayName;
+    },
     getRotoSpacingSelection: () => reconcilePhysicsPaintRotoSpacingSelection(
       rotoSpacingSelection.peek(),
       (launchContextRef.current ? physicPaintStore.getRotoPhysicalLoopClips(launchContextRef.current.layerId) : [])

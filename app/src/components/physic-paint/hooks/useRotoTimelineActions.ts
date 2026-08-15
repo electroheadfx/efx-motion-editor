@@ -488,6 +488,23 @@ export function classifyRotoDeleteTarget(
   return Object.freeze({ kind: 'no-target' });
 }
 
+export function buildRotoDeleteScopeLabel(
+  target: RotoDeleteTarget,
+  groupDisplayName: string | null = null,
+): string {
+  if (target.kind === 'key-rail') {
+    return target.keyIds.length === 1
+      ? `Delete Key Rail — frame ${target.firstKeyFrame}, 1 key.`
+      : `Delete Key Rail — frames ${target.firstKeyFrame}–${target.lastKeyFrame}, ${target.keyIds.length} keys.`;
+  }
+  if (target.kind === 'group') {
+    const railType = target.mode === 'static' ? 'Static' : 'Motion';
+    const displayName = groupDisplayName?.trim() || `${railType} Rail at F${target.phaseOrigin}`;
+    return `Delete ${railType} Rail — ${displayName}`;
+  }
+  return 'Delete Frame';
+}
+
 export function buildDeleteKeyRailSuccessMessage(
   target: Extract<RotoDeleteTarget, { kind: 'key-rail' }>,
 ): string {
@@ -627,6 +644,8 @@ export interface RotoPhysicalTimelineActionBundle {
   readonly canDeleteFrame: ReadonlySignal<boolean>;
   /** Reactive Delete disabled reason, or null when eligible. */
   readonly deleteDisabledReason: ReadonlySignal<string | null>;
+  /** Live selection-owned Delete accessible name and tooltip heading. */
+  readonly deleteScopeLabel: ReadonlySignal<string>;
   /** Split the current ordinary Key Rail immediately before its target key. */
   readonly scissorKeyRail: () => Promise<boolean>;
   /** Reactive Scissor availability derived from the current accepted target snapshot. */
@@ -753,6 +772,8 @@ export interface RotoTimelineActionsInput {
   getSelectedKeyRail?: () => RotoKeyRailSelection | null;
   /** Selected Loop Rail identities in canonical placement order. */
   getSelectedLoopClipIds?: () => readonly string[];
+  /** Presentation-only selected Rail name; never participates in mutation authorization. */
+  getSelectedLoopRailDisplayName?: (loopId: string) => string | null;
   /** Reconciled session-only exact Loop Clip source-position selection. */
   getRotoSpacingSelection?: () => PhysicsPaintRotoSpacingSelection | null;
   /** Current direct physical navigation frame. */
@@ -1045,6 +1066,13 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const deleteTarget = computed(() => classifyRotoDeleteTarget(readRotoDeleteTargetInput(input)));
   const canDeleteFrame = computed(() => mapRotoDeleteProductReason(deleteTarget.value) === null);
   const deleteDisabledReason = computed(() => mapRotoDeleteProductReason(deleteTarget.value));
+  const deleteScopeLabel = computed(() => {
+    const target = deleteTarget.value;
+    const groupDisplayName = target.kind === 'group'
+      ? input.getSelectedLoopRailDisplayName?.(target.groupId) ?? null
+      : null;
+    return buildRotoDeleteScopeLabel(target, groupDisplayName);
+  });
   const scissorTarget = computed(() => classifyRotoScissorTarget(readRotoScissorTargetInput(input)));
   const canScissor = computed(() => mapRotoScissorProductReason(scissorTarget.value) === null);
   const scissorDisabledReason = computed(() => mapRotoScissorProductReason(scissorTarget.value));
@@ -1806,6 +1834,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     deleteRotoFrame,
     canDeleteFrame,
     deleteDisabledReason,
+    deleteScopeLabel,
     scissorKeyRail,
     canScissor,
     scissorDisabledReason,
@@ -1827,7 +1856,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     addEmptyKeyDisabledReason,
     canSelectAllKeys,
     selectAllKeysDisabledReason,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, scissorKeyRail, canScissor, scissorDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,

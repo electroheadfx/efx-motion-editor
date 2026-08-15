@@ -80,6 +80,7 @@ interface HarnessOptions {
   selectedKeyIds?: readonly string[];
   selectedKeyRail?: Readonly<{ firstKeyId: string; keyIds: readonly string[] }> | null;
   selectedLoopClipIds?: readonly string[];
+  selectedLoopRailDisplayName?: string | null;
   incomingInterpolationBreakKeyIds?: readonly string[];
   capacity?: number;
   parentEndExclusive?: number;
@@ -117,6 +118,7 @@ function createHarness(options: HarnessOptions = {}) {
     getSelectedKeyIds: () => options.selectedKeyIds ?? options.spacingSelection?.selectedSourceKeyIds ?? [],
     getSelectedKeyRail: () => options.selectedKeyRail ?? null,
     getSelectedLoopClipIds: () => options.selectedLoopClipIds ?? [],
+    getSelectedLoopRailDisplayName: () => options.selectedLoopRailDisplayName ?? null,
     getCurrentAppFrame: options.getCurrentAppFrame ?? (() => options.currentAppFrame ?? 3),
     getLaunchContext: () => launch,
     getIncomingInterpolationBreakKeyIds: () => options.incomingInterpolationBreakKeyIds ?? [],
@@ -374,12 +376,14 @@ describe('useRotoTimelineActions selection-scoped Delete activation', () => {
       records,
       loopClips: [lifecycleGroup()],
       selectedLoopClipIds: ['group-1'],
+      selectedLoopRailDisplayName: 'Walk Group',
       currentAppFrame: 20,
       capacity: 30,
       executeGroupLifecycleDelete,
       requestGroupDeleteChoice,
     });
 
+    expect(harness.actions.physicalActions.deleteScopeLabel.value).toBe('Delete Motion Rail — Walk Group');
     expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(true);
     expect(executeGroupLifecycleDelete).toHaveBeenCalledWith({
       operationKind: 'delete-group',
@@ -459,6 +463,7 @@ describe('useRotoTimelineActions selection-scoped Delete activation', () => {
       parentEndExclusive: 20,
     });
 
+    expect(multiple.actions.physicalActions.deleteScopeLabel.value).toBe('Delete Key Rail — frames 2–5, 2 keys.');
     expect(await multiple.actions.physicalActions.deleteRotoFrame()).toBe(true);
     expect(multiple.executePhysicalEdit).toHaveBeenCalledWith(expect.objectContaining({
       operationKind: 'delete-key-rail',
@@ -476,6 +481,7 @@ describe('useRotoTimelineActions selection-scoped Delete activation', () => {
       parentEndExclusive: 20,
     });
 
+    expect(single.actions.physicalActions.deleteScopeLabel.value).toBe('Delete Key Rail — frame 4, 1 key.');
     expect(await single.actions.physicalActions.deleteRotoFrame()).toBe(true);
     expect(single.executePhysicalEdit).toHaveBeenCalledWith(expect.objectContaining({
       operationKind: 'delete-key-rail',
@@ -510,6 +516,7 @@ describe('useRotoTimelineActions selection-scoped Delete activation', () => {
       executeGroupLifecycleDelete,
     });
 
+    expect(harness.actions.physicalActions.deleteScopeLabel.value).toBe('Delete Frame');
     expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(true);
     expect(harness.executePhysicalEdit).toHaveBeenCalledWith(expect.objectContaining({
       operationKind: 'delete-key',

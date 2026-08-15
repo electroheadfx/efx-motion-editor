@@ -782,6 +782,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const physicalInsertDisabledReason = physicalActions?.insertDisabledReason.value ?? null;
   const insertRotoKeyDescription = physicalActions?.insertTooltipDescription.value ?? 'Insert key before';
   const physicalDeleteDisabledReason = physicalActions?.deleteDisabledReason.value ?? null;
+  const deleteRotoScopeLabel = physicalActions?.deleteScopeLabel.value ?? 'Delete Frame';
   const physicalScissorDisabledReason = physicalActions?.scissorDisabledReason.value ?? null;
   const forceSpacingInput = physicalActions?.forceSpacingInput.value ?? '1';
   const forceSpacingAvailable = physicalActions?.canApplyForceSpacing.value ?? false;
@@ -1940,7 +1941,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   <button
                     type="button"
                     class="physics-paint-roto-key-icon-button destructive"
-                    aria-label="Delete key"
+                    aria-label={deleteRotoScopeLabel}
                     aria-disabled={!canDeleteRotoKey ? 'true' : undefined}
                     aria-describedby={!canDeleteRotoKey && deleteRotoKeyDisabledReason ? 'roto-key-action-reason-delete' : undefined}
                     onFocus={deleteKeyTooltip.onFocus}
@@ -1961,7 +1962,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     <span id="roto-key-action-reason-delete" class="physics-paint-sr-only">{deleteRotoKeyDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={deleteKeyTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy('Delete key', deleteRotoKeyDisabledReason)}
+                    {buildGuardedActionTooltipCopy(deleteRotoScopeLabel, deleteRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={selectAllTooltip.onPointerEnter} onPointerLeave={selectAllTooltip.onPointerLeave}>
