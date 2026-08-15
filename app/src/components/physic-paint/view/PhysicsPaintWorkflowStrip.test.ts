@@ -1392,12 +1392,12 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     });
     const presentation = projectPhysicsPaintLoopClipPresentation(context.ranges[0], clip, 'Walk');
 
-    expect(presentation.displayName).toBe('Walk Group');
+    expect(presentation.displayName).toBe('Walk Rail');
     expect(presentation.cycleLabel).toBe('Cycle 5f × 5 = 25f');
     expect(presentation.effectiveLabel).toBe('Effective 25f');
     expect(presentation.mode).toBe('static');
     expect(presentation.modeLabel).toBe('Static');
-    expect(presentation.groupTypeLabel).toBe('Static Group');
+    expect(presentation.groupTypeLabel).toBe('Static Rail');
     expect(presentation.statusLabel).toBe('Synchronized with Action.');
     expect([
       presentation.displayName,
