@@ -300,6 +300,85 @@ describe('transport-safe physical edit intent tracer', () => {
     expect(isPhysicPaintRotoPhysicalEditApplyPayload(payload)).toBe(true);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, intent: undefined })).toBe(false);
   });
+
+  it('round-trips strict move-key-rail and delete-key-rail intents and rejects malformed authorization', () => {
+    const moveIntent = {
+      kind: 'move-key-rail',
+      memberKeyIds: ['B', 'C'],
+      destinationFirstKeyAppFrame: 7,
+    } as unknown as PhysicPaintRotoPhysicalEditIntent;
+    const deleteIntent = {
+      kind: 'delete-key-rail',
+      keyIds: ['B', 'C'],
+    } as unknown as PhysicPaintRotoPhysicalEditIntent;
+
+    expect(parsePhysicalEditIntent(moveIntent)).toEqual({
+      kind: 'move-key-rail',
+      memberKeyIds: ['B', 'C'],
+      destinationFirstKeyAppFrame: 7,
+    });
+    expect(serializePhysicPaintRotoPhysicalEditIntent(moveIntent)).toBe(
+      '{"kind":"move-key-rail","memberKeyIds":["B","C"],"destinationFirstKeyAppFrame":7}',
+    );
+    expect(parsePhysicalEditIntent(deleteIntent)).toEqual({
+      kind: 'delete-key-rail',
+      keyIds: ['B', 'C'],
+    });
+    expect(serializePhysicPaintRotoPhysicalEditIntent(deleteIntent)).toBe(
+      '{"kind":"delete-key-rail","keyIds":["B","C"]}',
+    );
+
+    const malformed = [
+      { kind: 'move-key-rail', memberKeyIds: ['B', 'C'], destinationFirstKeyAppFrame: 7, extra: true },
+      { kind: 'move-key-rail', memberKeyIds: ['B', 'C'] },
+      { kind: 'move-key-rail', destinationFirstKeyAppFrame: 7 },
+      { kind: 'move-key-rail', memberKeyIds: [], destinationFirstKeyAppFrame: 7 },
+      { kind: 'move-key-rail', memberKeyIds: ['B', 'B'], destinationFirstKeyAppFrame: 7 },
+      { kind: 'move-key-rail', memberKeyIds: ['', 'C'], destinationFirstKeyAppFrame: 7 },
+      { kind: 'move-key-rail', memberKeyIds: ['x'.repeat(257)], destinationFirstKeyAppFrame: 7 },
+      { kind: 'move-key-rail', memberKeyIds: ['B', 'C'], destinationFirstKeyAppFrame: -1 },
+      { kind: 'move-key-rail', memberKeyIds: ['B', 'C'], destinationFirstKeyAppFrame: 1.5 },
+      { kind: 'delete-key-rail', keyIds: ['B', 'C'], extra: true },
+      { kind: 'delete-key-rail' },
+      { kind: 'delete-key-rail', keyIds: [] },
+      { kind: 'delete-key-rail', keyIds: ['B', 'B'] },
+      { kind: 'delete-key-rail', keyIds: ['', 'C'] },
+      { kind: 'delete-key-rail', keyIds: ['x'.repeat(257)] },
+    ];
+    for (const value of malformed) expect(isPhysicPaintRotoPhysicalEditIntent(value)).toBe(false);
+  });
+
+  it.each([
+    {
+      operationKind: 'move-key-rail',
+      intent: { kind: 'move-key-rail', memberKeyIds: ['B', 'C'], destinationFirstKeyAppFrame: 7 },
+    },
+    {
+      operationKind: 'delete-key-rail',
+      intent: { kind: 'delete-key-rail', keyIds: ['B', 'C'] },
+    },
+  ])('admits $operationKind as an ordinary physical-edit operation kind', ({ operationKind, intent }) => {
+    const payload = {
+      kind: 'replace-roto-physical-map',
+      operationId: `${operationKind}-1`,
+      operationKind,
+      intent,
+      layerId: 'layer-1',
+      leaseToken: { projectContextId: 'project-1', layerId: 'layer-1', generation: 1, owner: 'exclusive' },
+      startFrame: 0,
+      launchOperationId: 'launch-1',
+      expectedRevision: 'revision-1',
+      records: [],
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      selectedKeyId: null,
+      selectedAppFrame: null,
+      cursorAppFrame: 0,
+    } as const;
+
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(payload)).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, intent: undefined })).toBe(false);
+  });
 });
 
 describe('intentional incoming interpolation breaks', () => {
