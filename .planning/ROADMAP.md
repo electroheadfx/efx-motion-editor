@@ -224,7 +224,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 43.4-01-PLAN.md — Tracer: scissor closed-union intent + resolver break branch + pure Key Rail segment derivation with D-10 copy family + availability/no-op preflight + Scissor toolbar button after Cut (KRAIL-01, SCISSOR-01, SCISSOR-02, GUARD-01)
+- [x] 43.4-01-PLAN.md — Tracer: scissor closed-union intent + resolver break branch + pure Key Rail segment derivation with D-10 copy family + availability/no-op preflight + Scissor toolbar button after Cut (KRAIL-01, SCISSOR-01, SCISSOR-02, GUARD-01)
 - [ ] 43.4-02-PLAN.md — Key Rail drag session hook fork: 4px threshold, pointer capture, Escape cancel, click suppression, presentation-only ghost/preview state via injected ports (KDRAG-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*

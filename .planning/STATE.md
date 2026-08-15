@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.4
 current_phase_name: Derived Key Groups and Scissor Breaks
 status: executing
-stopped_at: Phase 43.4 UI-SPEC approved
-last_updated: "2026-08-15T14:34:35.749Z"
+stopped_at: Completed 43.4-01-PLAN.md
+last_updated: "2026-08-15T15:56:37.134Z"
 last_activity: 2026-08-15
 last_activity_desc: "Native UAT approved for quick task 260815-bmg: Count-free Paint/Physics Paint Undo/Redo controls"
 progress:
   total_phases: 10
   completed_phases: 7
   total_plans: 78
-  completed_plans: 70
+  completed_plans: 71
   percent: 70
 ---
 
@@ -28,14 +28,14 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 ## Current Position
 
-Phase: 43.4 — Derived Key Groups and Scissor Breaks
-Plan: Not started
+Phase: 43.4 (Derived Key Groups and Scissor Breaks) — EXECUTING
+Plan: 2 of 8
 Status: Ready to execute
-Last activity: 2026-08-15 — Native UAT approved for quick task 260815-bmg: Count-free Paint/Physics Paint Undo/Redo controls
+Last activity: 2026-08-15 — Phase 43.4 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
-Progress: [██████████] 99%
+Progress: [█████████░] 91%
 
 ## Performance Metrics
 
@@ -222,6 +222,7 @@ Progress: [██████████] 99%
 | Phase 43.3 P01 | 96 | 3 tasks | 10 files |
 | Phase 43.3 P02 | 17 | 3 tasks | 3 files |
 | Phase 43.3-motion-and-static-group-drag-within-free-space P03 | 24 | 2 tasks | 12 files |
+| Phase 43.4 P01 | 14min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -417,6 +418,9 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: The vacated gap is the Group's original half-open interval [phaseOrigin, resolvedEffectiveEnd), reported only when source-attached; a duplicated placement never moves its shared source keys so vacatedInterval is null (D-07, D-11)
 - [Phase ?]: The duplicated placement arm reports changed when the placement translates (identity key mapping is not a no-change) so duplicated placement drags commit instead of rejecting as 'This move would not change the timeline.' (D-11, Rule 1 fix)
 - [Phase ?]: Commit acceptance publishes through the same .then((accepted) => ...) continuation the strip drag uses, NOT runPhysicalAction whose kind union is a bounded Extract (D-07)
+- [Phase ?]: Key Rails remain a pure derived presentation over ordinary real keys, stable-key incoming breaks, and Group ownership; no durable rail records are introduced.
+- [Phase ?]: Scissor replaces the complete ascending stable-key break-owner collection through the existing finalization authority, and already-broken activation is a pre-runner exact no-op.
+- [Phase ?]: Scissor uses SquareSplitHorizontal without a keyboard shortcut, preserving Scissors as the Cut-only glyph.
 
 ### Pending Todos
 
@@ -617,9 +621,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-15T11:22:44.693Z
-Stopped at: Phase 43.4 UI-SPEC approved
-Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/43.4-derived-key-groups-and-scissor-breaks/43.4-UI-SPEC.md
+Last session: 2026-08-15T15:56:37.120Z
+Stopped at: Completed 43.4-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
