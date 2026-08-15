@@ -1363,6 +1363,11 @@ describe('useRotoTimelineActions Scissor availability and activation', () => {
       keyId: 'A',
       appFrame: 0,
     });
+    expect(classifyRotoScissorTarget({ ...base, selectedKeyId: 'C' })).toEqual({
+      kind: 'ok',
+      keyId: 'A',
+      appFrame: 0,
+    });
   });
 
   it('classifies every guarded arm fail-closed and maps the locked product reason', () => {
@@ -1373,7 +1378,7 @@ describe('useRotoTimelineActions Scissor availability and activation', () => {
       [classifyRotoScissorTarget({ ...base, launchReady: false }), 'Scissor is unavailable.'],
       [classifyRotoScissorTarget({ ...base, currentAppFrame: 2, physicalCells: generatedCells }), 'Scissor is unavailable on a generated frame. Select a real ordinary key.'],
       [classifyRotoScissorTarget({ ...base, currentAppFrame: 2 }), 'Scissor is unavailable on an empty frame. Select a real ordinary key.'],
-      [classifyRotoScissorTarget({ ...base, selectedKeyId: 'C' }), 'Scissor is unavailable on a Motion or Static Group frame.'],
+      [classifyRotoScissorTarget({ ...base, selectedKeyId: 'C', currentAppFrame: 6 }), 'Scissor is unavailable on a Motion or Static Group frame.'],
       [classifyRotoScissorTarget({ ...base, currentAppFrame: 2, frameResolution: { kind: 'linked' } as never }), 'Scissor is unavailable on a linked Group frame.'],
       [classifyRotoScissorTarget({ ...base, incomingInterpolationBreakKeyIds: ['A'] }), 'This key already starts a Key Rail segment.'],
       [classifyRotoScissorTarget(base), null],

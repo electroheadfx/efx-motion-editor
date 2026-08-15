@@ -150,6 +150,103 @@ export function mapRotoInsertProductReason(target: RotoInsertTarget): string | n
   }
 }
 
+export type RotoScissorTarget =
+  | { readonly kind: 'ok'; readonly keyId: string; readonly appFrame: number }
+  | { readonly kind: 'already-owns-break'; readonly keyId: string; readonly appFrame: number }
+  | { readonly kind: 'generated'; readonly appFrame: number }
+  | { readonly kind: 'empty'; readonly appFrame: number }
+  | { readonly kind: 'group-or-linked'; readonly ownership: 'group' | 'linked'; readonly appFrame: number }
+  | { readonly kind: 'edit-in-flight' }
+  | { readonly kind: 'unavailable' };
+
+export interface RotoScissorTargetClassificationInput {
+  readonly launchReady: boolean;
+  readonly pendingOperationId: string | null;
+  readonly selectedKeyId: string | null;
+  readonly selectedLoopClipIds: readonly string[];
+  readonly currentAppFrame: number | null;
+  readonly capacity: number | null;
+  readonly records: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly physicalCells: readonly RotoPhysicalTimelineCell[];
+  readonly frameResolution: PhysicPaintRotoFrameResolution | null;
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
+}
+
+export function classifyRotoScissorTarget(
+  input: RotoScissorTargetClassificationInput,
+): RotoScissorTarget {
+  if (input.pendingOperationId !== null) return Object.freeze({ kind: 'edit-in-flight' });
+  if (!input.launchReady
+    || input.currentAppFrame === null
+    || !Number.isSafeInteger(input.currentAppFrame)
+    || input.currentAppFrame < 0
+    || input.capacity === null
+    || !Number.isSafeInteger(input.capacity)
+    || input.currentAppFrame >= input.capacity) {
+    return Object.freeze({ kind: 'unavailable' });
+  }
+
+  const groupOwnedKeyIds = new Set<string>();
+  for (const loopClip of input.loopClips) {
+    loopClip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+    (loopClip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+  }
+  const breaks = new Set(input.incomingInterpolationBreakKeyIds);
+  const classifyRecord = (record: PhysicPaintRotoRealKeyRecord): RotoScissorTarget => {
+    if (groupOwnedKeyIds.has(record.keyId)) {
+      return Object.freeze({ kind: 'group-or-linked', ownership: 'group', appFrame: record.appFrame });
+    }
+    if (breaks.has(record.keyId)) {
+      return Object.freeze({ kind: 'already-owns-break', keyId: record.keyId, appFrame: record.appFrame });
+    }
+    return Object.freeze({ kind: 'ok', keyId: record.keyId, appFrame: record.appFrame });
+  };
+
+  if (isBoundedKeyId(input.selectedKeyId)) {
+    const selectedMatches = input.records.filter((record) => record.keyId === input.selectedKeyId);
+    if (selectedMatches.length === 1 && !groupOwnedKeyIds.has(selectedMatches[0].keyId)) {
+      return classifyRecord(selectedMatches[0]);
+    }
+  }
+
+  const cursorMatches = input.records.filter((record) => record.appFrame === input.currentAppFrame);
+  if (cursorMatches.length === 1) return classifyRecord(cursorMatches[0]);
+  if (input.physicalCells[input.currentAppFrame]?.kind === 'generated') {
+    return Object.freeze({ kind: 'generated', appFrame: input.currentAppFrame });
+  }
+  if (input.frameResolution !== null && (
+    input.frameResolution.kind === 'linked'
+    || input.frameResolution.kind === 'linked-generated'
+    || input.frameResolution.kind === 'linked-gap'
+    || input.frameResolution.kind === 'linked-unresolved'
+  )) {
+    return Object.freeze({ kind: 'group-or-linked', ownership: 'linked', appFrame: input.currentAppFrame });
+  }
+  return Object.freeze({ kind: 'empty', appFrame: input.currentAppFrame });
+}
+
+export function mapRotoScissorProductReason(target: RotoScissorTarget): string | null {
+  switch (target.kind) {
+    case 'ok':
+      return null;
+    case 'already-owns-break':
+      return 'This key already starts a Key Rail segment.';
+    case 'generated':
+      return 'Scissor is unavailable on a generated frame. Select a real ordinary key.';
+    case 'empty':
+      return 'Scissor is unavailable on an empty frame. Select a real ordinary key.';
+    case 'group-or-linked':
+      return target.ownership === 'group'
+        ? 'Scissor is unavailable on a Motion or Static Group frame.'
+        : 'Scissor is unavailable on a linked Group frame.';
+    case 'edit-in-flight':
+      return 'A Roto physical edit is already in flight.';
+    case 'unavailable':
+      return 'Scissor is unavailable.';
+  }
+}
+
 /**
  * Group-drag product-reason input (43.3-03 Task 2, D-06/D-07). One mapper owns
  * disabled preflight, rejection, and acceptance copy — the single copy owner
@@ -469,6 +566,12 @@ export interface RotoPhysicalTimelineActionBundle {
   readonly canDeleteFrame: ReadonlySignal<boolean>;
   /** Reactive Delete disabled reason, or null when eligible. */
   readonly deleteDisabledReason: ReadonlySignal<string | null>;
+  /** Split the current ordinary Key Rail immediately before its target key. */
+  readonly scissorKeyRail: () => Promise<boolean>;
+  /** Reactive Scissor availability derived from the current accepted target snapshot. */
+  readonly canScissor: ReadonlySignal<boolean>;
+  /** Reactive Scissor disabled reason, or null when eligible. */
+  readonly scissorDisabledReason: ReadonlySignal<string | null>;
   /** Reactive pending physical operation id, or null when idle. */
   readonly pendingOperationId: ReadonlySignal<string | null>;
   /**
@@ -625,7 +728,7 @@ export interface RotoTimelineActionsInput {
 
 type PhysicalActionRunnerKind = Extract<
   PhysicPaintRotoPhysicalEditIntent['kind'],
-  'insert-slot' | 'insert-empty-segment' | 'delete-key' | 'delete-key-group' | 'duplicate-key' | 'paste-key' | 'paste-key-group'
+  'insert-slot' | 'insert-empty-segment' | 'delete-key' | 'delete-key-group' | 'scissor-key-rail' | 'duplicate-key' | 'paste-key' | 'paste-key-group'
 >;
 
 type PhysicalActionRunnerInput = {
@@ -652,6 +755,8 @@ function physicalActionAuthorization(input: PhysicalActionRunnerInput) {
     case 'delete-key':
       return { operationKind: input.operationKind, intent: input.intent };
     case 'delete-key-group':
+      return { operationKind: input.operationKind, intent: input.intent };
+    case 'scissor-key-rail':
       return { operationKind: input.operationKind, intent: input.intent };
     case 'duplicate-key':
       return { operationKind: input.operationKind, intent: input.intent };
@@ -875,6 +980,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const deleteTarget = computed(() => classifyRotoDeleteTarget(readRotoDeleteTargetInput(input)));
   const canDeleteFrame = computed(() => mapRotoDeleteProductReason(deleteTarget.value) === null);
   const deleteDisabledReason = computed(() => mapRotoDeleteProductReason(deleteTarget.value));
+  const scissorTarget = computed(() => classifyRotoScissorTarget(readRotoScissorTargetInput(input)));
+  const canScissor = computed(() => mapRotoScissorProductReason(scissorTarget.value) === null);
+  const scissorDisabledReason = computed(() => mapRotoScissorProductReason(scissorTarget.value));
   const canDragKey = computed(() => computeDragAvailability(input).eligible);
   const dragDisabledReason = computed(() => computeDragAvailability(input).reason);
   const canApplyForceSpacing = computed(() => computeForceSpacingAvailability(input).eligible);
@@ -1037,6 +1145,28 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     }
     return Promise.resolve(false);
   }, [runPhysicalAction, input]);
+
+  const scissorKeyRail = useCallback((): Promise<boolean> => {
+    const target = classifyRotoScissorTarget(readRotoScissorTargetInput(input));
+    if (target.kind === 'already-owns-break') {
+      return Promise.resolve(false);
+    }
+    const rejection = mapRotoScissorProductReason(target);
+    if (rejection !== null) {
+      input.publishStatus?.(rejection);
+      return Promise.resolve(false);
+    }
+    if (target.kind !== 'ok') return Promise.resolve(false);
+    return runPhysicalAction({
+      intent: { kind: 'scissor-key-rail', breakOwnerKeyId: target.keyId },
+      operationKind: 'scissor-key-rail',
+      requiredKeyId: target.keyId,
+      successMessage: `Split Key Rail before frame ${target.appFrame}.`,
+      rejectedCopy: () => mapRotoScissorProductReason(
+        classifyRotoScissorTarget(readRotoScissorTargetInput(input)),
+      ) ?? 'Scissor is unavailable.',
+    });
+  }, [input, runPhysicalAction]);
 
   const duplicateKey = useCallback((sourceKeyId: string): Promise<boolean> => {
     if (!isBoundedKeyId(sourceKeyId)) {
@@ -1600,6 +1730,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     deleteRotoFrame,
     canDeleteFrame,
     deleteDisabledReason,
+    scissorKeyRail,
+    canScissor,
+    scissorDisabledReason,
     pendingOperationId: pendingOperationIdSignal,
     prepareRotoKeyDrag,
     commitRotoKeyDrag,
@@ -1618,7 +1751,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     addEmptyKeyDisabledReason,
     canSelectAllKeys,
     selectAllKeysDisabledReason,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, scissorKeyRail, canScissor, scissorDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,
@@ -1742,6 +1875,39 @@ function readRotoDeleteTargetInput(input: RotoTimelineActionsInput): RotoDeleteT
     loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
     interpolation: input.getRotoInterpolationState?.() ?? { enabled: false, mode: 'duplicate' },
     physicalCells: input.getPhysicalCells?.() ?? [],
+  };
+}
+
+function readRotoScissorTargetInput(input: RotoTimelineActionsInput): RotoScissorTargetClassificationInput {
+  const currentAppFrame = input.getCurrentAppFrame?.() ?? null;
+  const capacity = input.getCapacity?.() ?? null;
+  const records = input.getRotoKeyRecords?.() ?? [];
+  const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
+  let frameResolution: PhysicPaintRotoFrameResolution | null = null;
+  if (currentAppFrame !== null) {
+    frameResolution = input.getFrameResolution?.(currentAppFrame) ?? null;
+    if (frameResolution === null && capacity !== null && loopClips.length > 0) {
+      frameResolution = resolvePhysicPaintRotoLoopFrame(derivePhysicPaintRotoLoopRanges({
+        identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+        loopClips,
+        parentEndExclusive: input.getParentEndExclusive(),
+        capacity,
+        interpolationEnabled: input.getRotoInterpolationState?.().enabled ?? false,
+      }), currentAppFrame);
+    }
+  }
+  return {
+    launchReady: (input.getLaunchContext?.() ?? null) !== null,
+    pendingOperationId: input.pendingOperationId?.value ?? null,
+    selectedKeyId: input.getSelectedKeyId?.() ?? null,
+    selectedLoopClipIds: input.getSelectedLoopClipIds?.() ?? [],
+    currentAppFrame,
+    capacity,
+    records,
+    loopClips,
+    physicalCells: input.getPhysicalCells?.() ?? [],
+    frameResolution,
+    incomingInterpolationBreakKeyIds: input.getIncomingInterpolationBreakKeyIds?.() ?? [],
   };
 }
 
