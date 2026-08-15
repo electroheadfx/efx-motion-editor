@@ -2190,6 +2190,36 @@ export function clampPhysicPaintKeyRailDragDestination(
   return { ok: false };
 }
 
+function deriveDeleteKeyRailIncomingInterpolationBreakKeyIds(input: {
+  readonly memberKeyIds: readonly string[];
+  readonly lastKeyFrame: number;
+  readonly groupOwnedKeyIds: ReadonlySet<string>;
+  readonly mapping: ReadonlyMap<string, number>;
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
+}): readonly string[] {
+  const removedKeyIds = new Set(input.memberKeyIds);
+  const owners = new Set(
+    input.incomingInterpolationBreakKeyIds.filter((keyId) => !removedKeyIds.has(keyId)),
+  );
+  const vacatedEndExclusive = input.lastKeyFrame + 1;
+  let successor: string | null = null;
+  let successorFrame = Number.POSITIVE_INFINITY;
+  for (const [keyId, frame] of input.mapping) {
+    if (input.groupOwnedKeyIds.has(keyId)) continue;
+    if (frame >= vacatedEndExclusive && frame < successorFrame) {
+      successor = keyId;
+      successorFrame = frame;
+    }
+  }
+  if (successor !== null) owners.add(successor);
+
+  return [...owners].sort((left, right) => {
+    const frameLeft = input.mapping.get(left) ?? Number.POSITIVE_INFINITY;
+    const frameRight = input.mapping.get(right) ?? Number.POSITIVE_INFINITY;
+    return frameLeft - frameRight || left.localeCompare(right);
+  });
+}
+
 function deriveMoveKeyRailIncomingInterpolationBreakKeyIds(input: {
   readonly memberKeyIds: readonly string[];
   readonly firstKeyFrame: number;
@@ -2898,6 +2928,10 @@ function buildStatusText(
     if (removedKeyIds.length === 0) return 'No change';
     return 'Deleted key';
   }
+  if (operationKind === 'delete-key-rail') {
+    if (removedKeyIds.length === 0) return 'No change';
+    return 'Key Rail deleted';
+  }
   if (operationKind === 'delete-key-group') {
     if (removedKeyIds.length === 0) return 'No change';
     return 'Keys deleted';
@@ -3288,6 +3322,90 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       ),
       nextIncomingInterpolationBreakKeyIds: Object.freeze(
         incomingInterpolationBreakKeyIds.filter((keyId) => keyId !== intent.selectedKeyId),
+      ),
+    };
+    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
+    if (!finalized.ok) return finalized.resolution;
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'delete-key-rail') {
+    if (!Array.isArray(intent.keyIds) || intent.keyIds.length === 0) {
+      return fail('malformed-identity', operationKind, 'Key Rail delete requires a non-empty keyIds array.');
+    }
+    const seenKeyIds = new Set<string>();
+    for (const keyId of intent.keyIds) {
+      if (!isBoundedKeyId(keyId)) {
+        return fail('malformed-identity', operationKind, 'Key Rail delete requires bounded keyIds.');
+      }
+      if (seenKeyIds.has(keyId)) {
+        return fail('duplicate-id', operationKind, `Duplicate keyId "${keyId}".`);
+      }
+      seenKeyIds.add(keyId);
+      if (!identities.keyIds.has(keyId)) {
+        return fail('unknown-operation-identity', operationKind, `Key Rail delete targets unknown identity "${keyId}".`);
+      }
+      const referencingLoops = countLoopsReferencingSourceKey(loopClips, keyId);
+      if (referencingLoops > 0) {
+        return fail('loop-source-key-delete-rejected', operationKind, loopSourceKeyDeleteRejectedText(referencingLoops));
+      }
+    }
+
+    const groupOwnedKeyIds = new Set<string>();
+    for (const clip of loopClips) {
+      clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+      (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+    }
+    if (intent.keyIds.some((keyId) => groupOwnedKeyIds.has(keyId))) {
+      return fail('malformed-target', operationKind, 'Key Rail delete requires ordinary real-key members outside Group ownership.');
+    }
+
+    const segments = deriveKeyRailSegments({
+      orderedRealKeys: identities.ordered,
+      incomingInterpolationBreakKeyIds: new Set(incomingInterpolationBreakKeyIds),
+      groupOwnedKeyIds,
+    });
+    const matchingSegment = segments.find((segment) => (
+      segment.keyIds.length === intent.keyIds.length
+      && segment.keyIds.every((keyId, index) => keyId === intent.keyIds[index])
+    ));
+    if (!matchingSegment) {
+      return fail('malformed-target', operationKind, 'Key Rail delete members must match exactly one current derived segment.');
+    }
+
+    const removalSet = new Set(intent.keyIds);
+    const mapping = new Map<string, number>();
+    const expectedKeyIds = new Set<string>();
+    let successorKeyId: string | null = null;
+    let previousKeyId: string | null = null;
+    for (const identity of identities.ordered) {
+      if (removalSet.has(identity.keyId)) continue;
+      mapping.set(identity.keyId, identity.appFrame);
+      expectedKeyIds.add(identity.keyId);
+      if (successorKeyId === null && identity.appFrame > matchingSegment.lastKeyFrame) {
+        successorKeyId = identity.keyId;
+      }
+      if (identity.appFrame < matchingSegment.firstKeyFrame) previousKeyId = identity.keyId;
+    }
+
+    const candidate: Candidate = {
+      mapping,
+      expectedKeyIds,
+      removedKeyId: null,
+      removedKeyIds: Object.freeze([...intent.keyIds]),
+      selectedKeyId: successorKeyId ?? previousKeyId,
+      operationKind: 'delete-key-rail',
+      changed: true,
+      roleByKeyId: new Map(),
+      drag: null,
+      nextIncomingInterpolationBreakKeyIds: Object.freeze(
+        deriveDeleteKeyRailIncomingInterpolationBreakKeyIds({
+          memberKeyIds: intent.keyIds,
+          lastKeyFrame: matchingSegment.lastKeyFrame,
+          groupOwnedKeyIds,
+          mapping,
+          incomingInterpolationBreakKeyIds,
+        }),
       ),
     };
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
