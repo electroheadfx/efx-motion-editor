@@ -12,6 +12,7 @@ import {
   projectPhysicsPaintLoopClipGeometry,
   projectPhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
+import { buildRotoDeleteScopeLabel, type RotoDeleteTarget } from '../hooks/useRotoTimelineActions';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const legacyLanePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintLoopClipLane.tsx');
@@ -36,9 +37,9 @@ function getActionRowBlock(code: string): string {
   return code.slice(rowStart, rowEnd === -1 ? code.length : rowEnd);
 }
 function getActionAriaLabelToken(ariaLabel: string): string {
-  return ariaLabel === 'Insert key before'
-    ? 'aria-label={insertRotoKeyDescription}'
-    : `aria-label="${ariaLabel}"`;
+  if (ariaLabel === 'Insert key before') return 'aria-label={insertRotoKeyDescription}';
+  if (ariaLabel === 'Delete Frame') return 'aria-label={deleteRotoScopeLabel}';
+  return `aria-label="${ariaLabel}"`;
 }
 function getButtonBlock(code: string, ariaLabel: string): string {
   const labelIndex = code.indexOf(getActionAriaLabelToken(ariaLabel));
@@ -62,6 +63,46 @@ function countOccurrences(code: string, literal: string): number {
   return code.split(literal).length - 1;
 }
 
+describe('Delete scope copy', () => {
+  const groupTarget = (
+    mode: 'progressive' | 'static',
+  ): Extract<RotoDeleteTarget, { kind: 'group' }> => ({
+    kind: 'group',
+    groupId: `${mode}-rail`,
+    appFrame: 10,
+    mode,
+    phaseOrigin: 10,
+    onlyOccurrence: false,
+  });
+
+  it('maps physical, Motion Rail, and Static Rail selection to one exact live scope', () => {
+    expect(buildRotoDeleteScopeLabel({ kind: 'ordinary-key', keyId: 'frame-key' })).toBe('Delete Frame');
+    expect(buildRotoDeleteScopeLabel(groupTarget('progressive'), 'Walk Cycle')).toBe(
+      'Delete Motion Rail — Walk Cycle',
+    );
+    expect(buildRotoDeleteScopeLabel(groupTarget('static'), 'Held Pose')).toBe(
+      'Delete Static Rail — Held Pose',
+    );
+  });
+
+  it('maps multiple-key and single-key Key Rails with bounded frame/count copy', () => {
+    expect(buildRotoDeleteScopeLabel({
+      kind: 'key-rail',
+      firstKeyId: 'rail-a',
+      keyIds: ['rail-a', 'rail-b', 'rail-c'],
+      firstKeyFrame: 2,
+      lastKeyFrame: 8,
+    })).toBe('Delete Key Rail — frames 2–8, 3 keys.');
+    expect(buildRotoDeleteScopeLabel({
+      kind: 'key-rail',
+      firstKeyId: 'only-rail',
+      keyIds: ['only-rail'],
+      firstKeyFrame: 4,
+      lastKeyFrame: 4,
+    })).toBe('Delete Key Rail — frame 4, 1 key.');
+  });
+});
+
 const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: string }> = [
   { label: 'Add key', guard: 'canAddRotoKey', handler: 'props.onAddRotoKey?.()' },
   { label: 'Insert key before', guard: 'canInsertRotoKey', handler: 'props.onInsertRotoFrame?.()' },
@@ -70,7 +111,7 @@ const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: s
   { label: 'Cut key', guard: 'canCutRotoKey', handler: 'props.onCutRotoFrame?.()' },
   { label: 'Split Key Rail', guard: 'canScissorRotoKey', handler: 'props.onScissorKeyRail?.()' },
   { label: 'Paste key', guard: 'canPasteRotoKey', handler: 'props.onPasteRotoFrame?.()' },
-  { label: 'Delete key', guard: 'canDeleteRotoKey', handler: 'props.onDeleteRotoFrame?.()' },
+  { label: 'Delete Frame', guard: 'canDeleteRotoKey', handler: 'props.onDeleteRotoFrame?.()' },
 ];
 
 describe('PhysicsPaintWorkflowStrip source contract', () => {
@@ -95,11 +136,23 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   });
 
   it('routes visible Delete through the shared activation callback without inferring Group ownership', () => {
-    const block = getButtonBlock(getActionRowBlock(source()), 'Delete key');
+    const block = getButtonBlock(getActionRowBlock(source()), 'Delete Frame');
     expect(countOccurrences(block, 'props.onDeleteRotoFrame?.()')).toBe(1);
     for (const forbidden of ['loopId', 'visibleRanges', 'group-choice', 'classifyRotoDeleteTarget']) {
       expect(block).not.toContain(forbidden);
     }
+  });
+
+  it('uses the same dynamic Delete scope for the accessible name and guarded tooltip while keeping the compact label', () => {
+    const code = source();
+    const row = getActionRowBlock(code);
+    const block = getButtonBlock(row, 'Delete Frame');
+
+    expect(code).toContain("const deleteRotoScopeLabel = physicalActions?.deleteScopeLabel.value ?? 'Delete Frame';");
+    expect(block).toContain('aria-label={deleteRotoScopeLabel}');
+    expect(code).toContain('buildGuardedActionTooltipCopy(deleteRotoScopeLabel, deleteRotoKeyDisabledReason)');
+    expect(block).toContain('<span class="physics-paint-roto-key-icon-label">Delete</span>');
+    expect(block).not.toContain('Delete key');
   });
 
   it('keeps interpolation, onion, and key utility controls', () => {
@@ -244,7 +297,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       { action: 'Cut key', icon: 'Scissors', label: 'Cut' },
       { action: 'Split Key Rail', icon: 'SquareSplitHorizontal', label: 'Scissor' },
       { action: 'Paste key', icon: 'ClipboardPaste', label: 'Paste' },
-      { action: 'Delete key', icon: 'Trash2', label: 'Delete' },
+      { action: 'Delete Frame', icon: 'Trash2', label: 'Delete' },
     ];
     for (const { action, icon, label } of labeledActions) {
       const block = getButtonBlock(row, action);
@@ -384,7 +437,7 @@ describe('PhysicsPaintWorkflowStrip Cut key contract (quick 260731-9l0)', () => 
     const cutIndex = row.indexOf('aria-label="Cut key"');
     const scissorIndex = row.indexOf('aria-label="Split Key Rail"');
     const pasteIndex = row.indexOf('aria-label="Paste key"');
-    const deleteIndex = row.indexOf('aria-label="Delete key"');
+    const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
     expect(copyIndex).toBeGreaterThanOrEqual(0);
     expect(cutIndex).toBeGreaterThan(copyIndex);
     expect(scissorIndex).toBeGreaterThan(cutIndex);
@@ -952,7 +1005,7 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     const duplicateIndex = row.indexOf('aria-label="Duplicate key"');
     const copyIndex = row.indexOf('aria-label="Copy key"');
     const pasteIndex = row.indexOf('aria-label="Paste key"');
-    const deleteIndex = row.indexOf('aria-label="Delete key"');
+    const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
     const spacingIndex = row.indexOf('physics-paint-pill--apply-spacing');
     for (const index of [layerIndex, chipIndex, addIndex, insertIndex, duplicateIndex, copyIndex, pasteIndex, deleteIndex, spacingIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
