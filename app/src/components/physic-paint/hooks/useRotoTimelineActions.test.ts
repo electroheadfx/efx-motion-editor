@@ -32,6 +32,7 @@ import {
   mapRotoGroupDragProductReason,
   mapRotoInsertProductReason,
   mapRotoScissorProductReason,
+  mapRotoKeyRailDragProductReason,
   buildKeyRailDragProposalVersion,
   useRotoTimelineActions,
   type RotoDeleteTarget,
@@ -1258,6 +1259,75 @@ describe('useRotoTimelineActions Key Rail drag prepare/commit publication pair',
     expect(dispatched.intent).toBe(preparation.publication.intent);
     expect(dispatched.selectedKeyId).toBe(preparation.publication.proposal.selectedKeyId);
     expect(dispatched.selectedAppFrame).toBe(preparation.publication.proposal.selectedAppFrame);
+  });
+});
+
+describe('useRotoTimelineActions Key Rail drag status and post-commit stability', () => {
+  const railRecords = [
+    realKeyRecord('A', 0),
+    realKeyRecord('B', 3),
+    realKeyRecord('C', 6),
+    realKeyRecord('D', 10),
+  ];
+
+  it('maps the exact accepted no-gap and inclusive-gap product copy', () => {
+    expect(mapRotoKeyRailDragProductReason({
+      kind: 'accepted',
+      destinationFirstKeyAppFrame: 12,
+      vacatedInterval: null,
+    })).toBe('Moved Key Rail to frame 12.');
+    expect(mapRotoKeyRailDragProductReason({
+      kind: 'accepted',
+      destinationFirstKeyAppFrame: 3,
+      vacatedInterval: { phaseOrigin: 0, effectiveEnd: 3 },
+    })).toBe('Moved Key Rail to frame 3. Gap left at frames 0–2.');
+  });
+
+  it('reuses the shared no-space product copy without exposing resolver diagnostics', () => {
+    const { actions, executePhysicalEdit, publishStatus } = createHarness({ records: railRecords, capacity: 16 });
+    const preparation = actions.physicalActions.prepareKeyRailDrag('A', 0);
+
+    expect(preparation.ok).toBe(false);
+    if (preparation.ok) throw new Error('No-space Key Rail drag must reject');
+    expect(preparation.reason).toBe('No empty space in that direction.');
+    expect(preparation.reason).not.toContain('no free space');
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+    expect(publishStatus).not.toHaveBeenCalled();
+  });
+
+  it('publishes accepted destination and gap only after acknowledged commit', async () => {
+    const { actions, executePhysicalEdit, publishStatus, publishDiagnostic } = createHarness({
+      records: railRecords,
+      capacity: 16,
+    });
+    const preparation = actions.physicalActions.prepareKeyRailDrag('A', 3);
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Key Rail drag must prepare');
+
+    expect(preparation.publication.destinationFirstKeyAppFrame).toBe(3);
+    expect(preparation.publication.vacatedInterval).toEqual({ phaseOrigin: 0, effectiveEnd: 3 });
+    expect(await actions.physicalActions.commitKeyRailDrag(preparation.publication)).toBe(true);
+
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as {
+      selectedKeyId: string | null;
+      selectedAppFrame: number | null;
+    };
+    expect(dispatched.selectedKeyId).toBe(preparation.publication.proposal.selectedKeyId);
+    expect(dispatched.selectedAppFrame).toBe(preparation.publication.proposal.selectedAppFrame);
+    expect(publishStatus).toHaveBeenCalledTimes(1);
+    expect(publishStatus).toHaveBeenCalledWith('Moved Key Rail to frame 3. Gap left at frames 0–2.');
+    expect(publishDiagnostic).not.toHaveBeenCalled();
+  });
+
+  it('publishes no accepted status when the parent rejects the retained transaction', async () => {
+    const { actions, executePhysicalEdit, publishStatus } = createHarness({ records: railRecords, capacity: 16 });
+    executePhysicalEdit.mockResolvedValue(false);
+    const preparation = actions.physicalActions.prepareKeyRailDrag('A', 3);
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Key Rail drag must prepare');
+
+    expect(await actions.physicalActions.commitKeyRailDrag(preparation.publication)).toBe(false);
+    expect(publishStatus).not.toHaveBeenCalled();
   });
 });
 
