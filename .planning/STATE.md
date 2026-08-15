@@ -6,9 +6,9 @@ current_phase: 44
 current_phase_name: Integrated UAT + Signed Release
 status: planning
 stopped_at: Completed 43.3-03-PLAN.md
-last_updated: "2026-08-13T19:46:31.518Z"
-last_activity: 2026-08-13
-last_activity_desc: Phase 43.2 complete, transitioned to Phase 44
+last_updated: "2026-08-15T05:56:16Z"
+last_activity: 2026-08-15
+last_activity_desc: "Completed quick task 260815-ala: Group timing defaults and Max checkbox"
 progress:
   total_phases: 9
   completed_phases: 7
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: 44 — Integrated UAT + Signed Release
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-13 — Phase 43.3 complete, transitioned to Phase 44
+Last activity: 2026-08-15 — Completed quick task 260815-ala: Group timing defaults and Max checkbox
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -463,6 +463,7 @@ None yet.
 | 260801-sp2 | Refresh README.md for v0.8.1 Standalone Physics Paint release | 2026-08-01 | 821daff3 | Verified | [260801-sp2-refresh-readme-md-for-v0-8-1-standalone-](./quick/260801-sp2-refresh-readme-md-for-v0-8-1-standalone-/) |
 | 260805-ht3 | Phase 41 remediation: CR-01 orphaned audio guard, WR-07 efxasset range underflow, WR-08 efxasset path scoping | 2026-08-05 | b3a83841 | Verified | [260805-ht3-phase-41-remediation-cr-01-orphaned-audi](./quick/260805-ht3-phase-41-remediation-cr-01-orphaned-audi/) |
 | 260809-aac | Make Select All clear prior real/empty frame highlights without breaking normal empty-frame Add key targeting | 2026-08-09 | 39fe1895 | Verified | [260809-aac-when-select-all-keyframes-is-used-clear-](./quick/260809-aac-when-select-all-keyframes-is-used-clear-/) |
+| 260815-ala | In paint app, make Group Edit timing default to 3 frames and expose Max as an unchecked Infinity-style checkbox | 2026-08-15 | 4aa958a4 | Verified | [260815-ala-in-paint-app-make-group-edit-with-timing](./quick/260815-ala-in-paint-app-make-group-edit-with-timing/) |
 
 ### Roadmap Evolution
 
