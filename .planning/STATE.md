@@ -4,15 +4,15 @@ milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.4
 current_phase_name: Derived Key Groups and Scissor Breaks
-status: planning
-stopped_at: Phase 43.4 context gathered
-last_updated: "2026-08-15T10:36:51.232Z"
+status: executing
+stopped_at: Phase 43.4 UI-SPEC approved
+last_updated: "2026-08-15T14:34:35.749Z"
 last_activity: 2026-08-15
 last_activity_desc: "Native UAT approved for quick task 260815-bmg: Count-free Paint/Physics Paint Undo/Redo controls"
 progress:
   total_phases: 10
   completed_phases: 7
-  total_plans: 70
+  total_plans: 78
   completed_plans: 70
   percent: 70
 ---
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 Phase: 43.4 — Derived Key Groups and Scissor Breaks
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-08-15 — Native UAT approved for quick task 260815-bmg: Count-free Paint/Physics Paint Undo/Redo controls
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
@@ -617,9 +617,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-15T10:36:51.201Z
-Stopped at: Phase 43.4 context gathered
-Resume file: .planning/phases/43.4-derived-key-groups-and-scissor-breaks/43.4-CONTEXT.md
+Last session: 2026-08-15T11:22:44.693Z
+Stopped at: Phase 43.4 UI-SPEC approved
+Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/43.4-derived-key-groups-and-scissor-breaks/43.4-UI-SPEC.md
 
 ## Operator Next Steps
 
