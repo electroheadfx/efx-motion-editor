@@ -1287,6 +1287,156 @@ describe('useRotoPhysicalEditHistory retained Action ownership', () => {
   });
 });
 
+describe('useRotoPhysicalEditHistory Key Rail atomic commands (43.4-08)', () => {
+  const cases = [
+    {
+      operationKind: 'scissor-key-rail' as const,
+      operationId: 'scissor-key-rail-accepted',
+      before: snapshot([record('A', 0), record('B', 2), record('C', 4)], 'B', 2, []),
+      after: snapshot([record('A', 0), record('B', 2), record('C', 4)], 'B', 2, ['B']),
+    },
+    {
+      operationKind: 'move-key-rail' as const,
+      operationId: 'move-key-rail-accepted',
+      before: snapshot([record('A', 0), record('B', 2), record('C', 6)], 'A', 0, ['C']),
+      after: snapshot([record('A', 2), record('B', 4), record('C', 6)], 'A', 2, ['C']),
+    },
+    {
+      operationKind: 'delete-key-rail' as const,
+      operationId: 'delete-key-rail-accepted',
+      before: snapshot([record('A', 0), record('B', 2), record('C', 6), record('D', 8)], 'B', 2, ['C']),
+      after: snapshot([record('C', 6), record('D', 8)], 'C', 6, ['C']),
+    },
+  ];
+
+  it.each(cases)('records one accepted $operationKind command and restores exact keys, breaks, selection, and cursor through Undo/Redo', async ({ operationKind, operationId, before, after }) => {
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    let current = after;
+    let replayNumber = 0;
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      const source = current;
+      current = target;
+      replayNumber += 1;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: target.stagedRevision,
+        operationId: `${operationKind}-replay-${replayNumber}`,
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+    const history = useRotoPhysicalEditHistory({
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10 },
+      availability,
+      coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => current.records,
+        getInterpolation: () => current.interpolation,
+        getCapacity: () => current.capacity,
+        getLoopClips: () => current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => current,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: after.stagedRevision,
+      operationId,
+      operationKind,
+      historyProvenance: null,
+    };
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+
+    acceptedOutput.value = { ...acceptedOutput.value };
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+
+    expect(await history.undo()).toBe(true);
+    expect(current).toEqual(before);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    expect(await history.redo()).toBe(true);
+    expect(current).toEqual(after);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(executePhysicalEdit.mock.calls.map(([input]) => input.operationKind)).toEqual(['undo', 'redo']);
+  });
+
+  it('truncates Redo after Undo followed by a new accepted Key Rail edit', async () => {
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    let current = cases[0].after;
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      const source = current;
+      current = target;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: target.stagedRevision,
+        operationId: 'branch-undo-replay',
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+    const history = useRotoPhysicalEditHistory({
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 10 },
+      availability,
+      coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId: signal(null), acceptedOutput },
+      recordsPort: {
+        getRecords: () => current.records,
+        getInterpolation: () => current.interpolation,
+        getCapacity: () => current.capacity,
+        getLoopClips: () => current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => current,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before: cases[0].before,
+      after: cases[0].after,
+      acceptedRevision: cases[0].after.stagedRevision,
+      operationId: cases[0].operationId,
+      operationKind: cases[0].operationKind,
+      historyProvenance: null,
+    };
+    expect(await history.undo()).toBe(true);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    const branchAfter = snapshot([record('A', 0), record('B', 2), record('C', 4)], 'C', 4, ['C']);
+    current = branchAfter;
+    acceptedOutput.value = {
+      before: cases[0].before,
+      after: branchAfter,
+      acceptedRevision: branchAfter.stagedRevision,
+      operationId: 'branch-delete-key-rail',
+      operationKind: 'delete-key-rail',
+      historyProvenance: null,
+    };
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(await history.redo()).toBe(false);
+  });
+});
+
 describe('useRotoPhysicalEditHistory complete live replay preflight', () => {
   it.each([
     {
