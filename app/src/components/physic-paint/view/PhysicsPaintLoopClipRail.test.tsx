@@ -944,6 +944,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const segment = findOne(railTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-segment'));
     expect(anchor.props.style).toEqual({ left: '36px', width: '180px' });
     expect(target.props['aria-pressed']).toBe(true);
+    expect(target.props['data-rail-first-frame']).toBe(10);
+    expect(hasClass(target, 'physics-paint-rail-target')).toBe(true);
     expect(hasClass(target, 'mode-progressive')).toBe(true);
     expect(hasClass(target, 'boundary-start')).toBe(true);
     expect(hasClass(target, 'boundary-end')).toBe(false);

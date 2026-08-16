@@ -168,6 +168,10 @@ describe('PhysicsPaintKeyRail', () => {
       { left: '36px', width: '72px' },
       { left: '108px', width: '18px' },
     ]);
+    // 43.4 defect 9: the canonical first-key frame feeds the shared rail
+    // roving group's cross-type ordering.
+    const railTargets = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-rail-target'));
+    expect(railTargets.map((target) => target.props['data-rail-first-frame'])).toEqual([2, 6]);
     expect(PhysicsPaintKeyRail({
       segments: [],
       visibleFrameWindow: { startFrame: 0, endFrameExclusive: 12 },

@@ -1,9 +1,12 @@
 import type { PhysicsPaintWorkflowStripFrameMarker } from './PhysicsPaintWorkflowStrip';
+import { RAIL_TARGET_SELECTOR } from './physicsPaintRailKeyboardNavigation';
 
 export interface PhysicsPaintStudioKeyboardState {
   currentFrame: number;
   isPlaying: boolean;
   mutationLocked: boolean;
+  /** True when a real key is in the primary selection (43.4 defect 9 gate). */
+  hasSelectedRotoKey: boolean;
 }
 
 export interface PhysicsPaintStudioKeyboardActions {
@@ -20,6 +23,9 @@ export interface PhysicsPaintStudioKeyboardActions {
   deleteRotoKey?: () => void;
   selectAllRotoKeys?: () => void;
   collapseRotoSelection?: () => void;
+  /** 43.4 defect 9: with a real key selected, jump to the adjacent REAL KEY
+   *  frame (never generated/interpolated/empty); no wrap at the first/last. */
+  selectAdjacentRotoKey?: (direction: -1 | 1) => void;
 }
 
 export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
@@ -156,6 +162,17 @@ export function dispatchPhysicsPaintStudioKeyDown(
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault();
       const direction = event.key === 'ArrowLeft' ? -1 : 1;
+      // 43.4 defect 9: a focused rail target owns its Arrow/Tab cycling in the
+      // shared roving rail group, so frame navigation never starts from a rail
+      // (belt-and-suspenders behind the rail handler's stopPropagation).
+      if (event.target instanceof Element && event.target.closest(RAIL_TARGET_SELECTOR)) return;
+      if (state.hasSelectedRotoKey && actions.selectAdjacentRotoKey) {
+        // Selection-gated real-key cycling: the landing frame becomes the new
+        // selection/focus through navigation, so repeated presses chain across
+        // every real key in canonical order.
+        actions.selectAdjacentRotoKey(direction);
+        return;
+      }
       const nextFrame = event.shiftKey
         ? findAdjacentSavedFrame(savedRotoFrames, state.currentFrame, direction)
         : Math.max(0, state.currentFrame + direction);
@@ -177,6 +194,24 @@ export function dispatchPhysicsPaintStudioKeyDown(
       actions.adjustOnionCount(event.key === ']' ? 1 : -1);
       return;
     }
+}
+
+export function findAdjacentRealKeyFrame(
+  realKeyFrames: readonly number[],
+  currentFrame: number,
+  direction: -1 | 1,
+): number | null {
+  if (direction < 0) {
+    for (let index = realKeyFrames.length - 1; index >= 0; index -= 1) {
+      const frame = realKeyFrames[index]!;
+      if (frame < currentFrame) return frame;
+    }
+    return null;
+  }
+  for (const frame of realKeyFrames) {
+    if (frame > currentFrame) return frame;
+  }
+  return null;
 }
 
 function findAdjacentSavedFrame(markers: PhysicsPaintWorkflowStripFrameMarker[], currentFrame: number, direction: -1 | 1): number | null {

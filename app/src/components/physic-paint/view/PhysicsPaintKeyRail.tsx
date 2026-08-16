@@ -18,6 +18,11 @@ import {
   type KeyRailSegment,
   type SelectedKeyRailCopyAvailability,
 } from './physicsPaintKeyRailPresentation';
+import {
+  dispatchRailTargetKeyDown,
+  RAIL_LANE_SELECTOR,
+  roveRailTargetFocus,
+} from './physicsPaintRailKeyboardNavigation';
 
 export interface PhysicsPaintKeyRailGeometry {
   readonly left: number;
@@ -80,6 +85,8 @@ interface RailMouseEvent {
 
 interface RailKeyboardEvent {
   readonly key: string;
+  readonly shiftKey?: boolean;
+  readonly currentTarget?: EventTarget | null;
   stopPropagation(): void;
   preventDefault(): void;
 }
@@ -169,6 +176,11 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
     props.onSelectKeyRail(selection());
   };
   const handleKeyDown = (event: RailKeyboardEvent) => {
+    // 43.4 defect 9: the shared rail roving group owns ArrowLeft/ArrowRight/
+    // Tab on every rail family; per-type Escape/Space handling continues below.
+    const current = event.currentTarget as HTMLElement | null;
+    const lane = current?.closest ? current.closest(RAIL_LANE_SELECTOR) : null;
+    if (current && lane && dispatchRailTargetKeyDown(event, lane, current)) return;
     if (event.key === 'Escape') {
       event.stopPropagation();
       tooltip.hide();
@@ -197,12 +209,16 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
         aria-label={copy}
         aria-pressed={props.selected}
         aria-busy={props.busy ? 'true' : undefined}
+        data-rail-first-frame={segment.firstKeyFrame}
         onPointerDown={drag.onPointerDown}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
         onFocus={(event) => {
           tooltip.onFocus();
-          props.onRailFocus?.(event.currentTarget as HTMLElement);
+          const current = event?.currentTarget as HTMLElement | null;
+          const lane = current?.closest ? current.closest(RAIL_LANE_SELECTOR) : null;
+          if (current && lane) roveRailTargetFocus(lane, current);
+          props.onRailFocus?.(event?.currentTarget as HTMLElement);
         }}
         onBlur={tooltip.onBlur}
       >

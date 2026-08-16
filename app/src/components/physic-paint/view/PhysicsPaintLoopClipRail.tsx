@@ -18,6 +18,11 @@ import {
   projectPhysicsPaintLoopClipGeometry,
   type PhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
+import {
+  dispatchRailTargetKeyDown,
+  RAIL_LANE_SELECTOR,
+  roveRailTargetFocus,
+} from './physicsPaintRailKeyboardNavigation';
 
 export const LOOP_CLIP_FAST_DOUBLE_CLICK_MS = 220;
 export const LOOP_CLIP_SINGLE_CLICK_DELAY_MS = 250;
@@ -70,6 +75,8 @@ interface RailMouseEvent {
 
 interface RailKeyboardEvent {
   readonly key: string;
+  readonly shiftKey?: boolean;
+  readonly currentTarget?: EventTarget | null;
   stopPropagation(): void;
   preventDefault(): void;
 }
@@ -174,6 +181,11 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     }, LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
   };
   const handleKeyDown = (event: RailKeyboardEvent) => {
+    // 43.4 defect 9: the shared rail roving group owns ArrowLeft/ArrowRight/
+    // Tab on every rail family; per-type Escape/Enter/Space handling continues.
+    const current = event.currentTarget as HTMLElement | null;
+    const lane = current?.closest ? current.closest(RAIL_LANE_SELECTOR) : null;
+    if (current && lane && dispatchRailTargetKeyDown(event, lane, current)) return;
     if (event.key === 'Escape') {
       event.stopPropagation();
       tooltip.hide();
@@ -201,10 +213,16 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
         class={`physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${presentation.mode}${props.selected ? ' selected' : ''}${props.actionLinked ? ' action-linked' : ''}${props.showStartBoundary ? ' boundary-start' : ''}${props.showEndBoundary ? ' boundary-end' : ''}${range.truncated ? ' truncated' : ''}${range.unresolved ? ' unresolved' : ''}`}
         aria-label={presentation.accessibleName}
         aria-pressed={props.selected}
+        data-rail-first-frame={range.placementStart}
         onPointerDown={onPointerDown}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
-        onFocus={tooltip.onFocus}
+        onFocus={(event) => {
+          tooltip.onFocus();
+          const current = event?.currentTarget as HTMLElement | null;
+          const lane = current?.closest ? current.closest(RAIL_LANE_SELECTOR) : null;
+          if (current && lane) roveRailTargetFocus(lane, current);
+        }}
         onBlur={tooltip.onBlur}
       >
         <span class="physics-paint-loop-clip-rail-segment" aria-hidden="true" />

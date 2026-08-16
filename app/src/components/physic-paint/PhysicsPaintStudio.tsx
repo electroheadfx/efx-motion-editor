@@ -20,6 +20,7 @@ import {
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
+import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
 import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyboard';
 import { createIdentityMemo, usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
 import { useRotoTimelineActions, type RotoGroupLifecycleDeleteTarget, type RotoKeyRailSelection } from './hooks/useRotoTimelineActions';
@@ -1650,11 +1651,31 @@ export function PhysicsPaintStudio() {
     },
   };
   const handlePhysicsPaintKeyDown = usePhysicsPaintStudioKeyboard({
-    state: { currentFrame, isPlaying, mutationLocked },
+    state: {
+      currentFrame,
+      isPlaying,
+      mutationLocked,
+      // 43.4 defect 9: selection-gated real-key cycling activates only when a
+      // real key is in the primary selection.
+      hasSelectedRotoKey: selectedKeyId.value !== null,
+    },
     savedRotoFrames: timelineSavedRotoFrames,
     actions: {
       undo,
       redo,
+      selectAdjacentRotoKey: (direction) => {
+        const layerId = launchContext?.layerId;
+        const currentKeyId = selectedKeyId.peek();
+        if (!layerId || currentKeyId === null) return;
+        const currentRecord = physicPaintStore.getRotoRealKeyRecord(layerId, currentKeyId);
+        if (!currentRecord) return;
+        const adjacent = findAdjacentRealKeyFrame(
+          physicPaintStore.getRotoRealKeyRecords(layerId).map((record) => record.appFrame),
+          currentRecord.appFrame,
+          direction,
+        );
+        if (adjacent !== null) void requestRotoFrameNavigation(adjacent);
+      },
       copyRotoKey: copyRotoFrame,
       cutRotoKey: cutRotoFrame,
       pasteRotoKey: pasteRotoFrame,

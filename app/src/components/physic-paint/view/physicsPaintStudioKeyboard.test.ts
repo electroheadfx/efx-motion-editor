@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { dispatchPhysicsPaintStudioKeyDown, isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
+import {
+  dispatchPhysicsPaintStudioKeyDown,
+  findAdjacentRealKeyFrame,
+  isPhysicsPaintShortcutTarget,
+} from './physicsPaintStudioKeyboard';
 
 interface TestTargetOptions {
   contentEditable?: boolean;
@@ -43,6 +47,7 @@ function actions() {
     navigateRotoFrame: vi.fn(),
     toggleOnion: vi.fn(),
     adjustOnionCount: vi.fn(),
+    selectAdjacentRotoKey: vi.fn(),
   };
 }
 
@@ -64,12 +69,17 @@ function eventFor(key: string, target: EventTarget | null = null, overrides: Rec
   };
 }
 
-function dispatch(key: string, target: EventTarget | null = null, overrides: Record<string, unknown> = {}) {
+function dispatch(
+  key: string,
+  target: EventTarget | null = null,
+  overrides: Record<string, unknown> = {},
+  stateOverrides: Record<string, unknown> = {},
+) {
   const handlers = actions();
   const keyboardEvent = eventFor(key, target, overrides);
   dispatchPhysicsPaintStudioKeyDown(
     keyboardEvent.event,
-    { currentFrame: 4, isPlaying: false, mutationLocked: false },
+    { currentFrame: 4, isPlaying: false, mutationLocked: false, hasSelectedRotoKey: false, ...stateOverrides },
     handlers,
     [{ frame: 1 }, { frame: 3 }, { frame: 7 }],
   );
@@ -195,7 +205,7 @@ describe('Physics Paint Roto delete shortcuts', () => {
 
     dispatchPhysicsPaintStudioKeyDown(
       keyboardEvent.event,
-      { currentFrame: 4, isPlaying: false, mutationLocked: false },
+      { currentFrame: 4, isPlaying: false, mutationLocked: false, hasSelectedRotoKey: false },
       handlersWithoutDelete,
       [],
     );
@@ -234,7 +244,7 @@ describe('Physics Paint Roto copy/paste shortcuts', () => {
     const keyboardEvent = eventFor(key, new TestHTMLElement('canvas') as unknown as EventTarget, { metaKey: true });
     dispatchPhysicsPaintStudioKeyDown(
       keyboardEvent.event,
-      { currentFrame: 4, isPlaying: false, mutationLocked: true },
+      { currentFrame: 4, isPlaying: false, mutationLocked: true, hasSelectedRotoKey: false },
       handlers,
       [],
     );
@@ -281,7 +291,7 @@ describe('Physics Paint Roto cut shortcut (quick 260731-9l0)', () => {
     const keyboardEvent = eventFor('x', new TestHTMLElement('canvas') as unknown as EventTarget, { metaKey: true });
     dispatchPhysicsPaintStudioKeyDown(
       keyboardEvent.event,
-      { currentFrame: 4, isPlaying: false, mutationLocked: true },
+      { currentFrame: 4, isPlaying: false, mutationLocked: true, hasSelectedRotoKey: false },
       handlers,
       [],
     );
@@ -295,7 +305,7 @@ describe('Physics Paint Roto cut shortcut (quick 260731-9l0)', () => {
     const keyboardEvent = eventFor('x', new TestHTMLElement('canvas') as unknown as EventTarget, { metaKey: true });
     dispatchPhysicsPaintStudioKeyDown(
       keyboardEvent.event,
-      { currentFrame: 4, isPlaying: false, mutationLocked: false },
+      { currentFrame: 4, isPlaying: false, mutationLocked: false, hasSelectedRotoKey: false },
       handlers,
       [],
     );
@@ -366,6 +376,40 @@ describe('Physics Paint established shortcuts', () => {
     if (expectedArgument !== undefined) expect(handler).toHaveBeenCalledWith(expectedArgument);
     expect(handlers.deleteRotoKey).not.toHaveBeenCalled();
     expect(preventDefault).toHaveBeenCalledOnce();
+  });
+});
+
+describe('Physics Paint selection-gated real-key frame cycling (43.4 defect 9)', () => {
+  it('finds the adjacent REAL KEY frame, skipping generated/interpolated/empty frames, with no wrap', () => {
+    expect(findAdjacentRealKeyFrame([2, 6, 10], 6, 1)).toBe(10);
+    expect(findAdjacentRealKeyFrame([2, 6, 10], 6, -1)).toBe(2);
+    expect(findAdjacentRealKeyFrame([2, 6, 10], 10, 1)).toBeNull();
+    expect(findAdjacentRealKeyFrame([2, 6, 10], 2, -1)).toBeNull();
+    expect(findAdjacentRealKeyFrame([], 4, 1)).toBeNull();
+  });
+
+  it('with a real key selected, ArrowLeft/Right chain to the adjacent real key instead of raw cursor movement', () => {
+    const { handlers } = dispatch('ArrowRight', null, {}, { hasSelectedRotoKey: true });
+    expect(handlers.selectAdjacentRotoKey).toHaveBeenCalledWith(1);
+    expect(handlers.navigateRotoFrame).not.toHaveBeenCalled();
+
+    const { handlers: left } = dispatch('ArrowLeft', null, {}, { hasSelectedRotoKey: true });
+    expect(left.selectAdjacentRotoKey).toHaveBeenCalledWith(-1);
+    expect(left.navigateRotoFrame).not.toHaveBeenCalled();
+  });
+
+  it('preserves plain cursor arrow movement when no key is selected', () => {
+    const { handlers, preventDefault } = dispatch('ArrowRight');
+    expect(handlers.navigateRotoFrame).toHaveBeenCalledWith(5);
+    expect(handlers.selectAdjacentRotoKey).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('never starts frame navigation from a rail target (the roving rail group owns arrows)', () => {
+    const target = new TestHTMLElement('div', { closestSelectors: ['.physics-paint-rail-target'] });
+    const { handlers } = dispatch('ArrowRight', target as unknown as EventTarget);
+    expect(handlers.navigateRotoFrame).not.toHaveBeenCalled();
+    expect(handlers.selectAdjacentRotoKey).not.toHaveBeenCalled();
   });
 });
 
