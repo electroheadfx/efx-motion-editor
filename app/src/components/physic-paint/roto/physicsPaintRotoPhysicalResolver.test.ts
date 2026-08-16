@@ -452,7 +452,7 @@ describe('intentional incoming interpolation breaks', () => {
       },
       records[1],
     ]);
-    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['blank-3']);
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
     expect(resolution.proposal.nextLoopClips).toBeNull();
     expect(resolution.proposal.semanticDelta).toEqual({
       kind: 'insert-empty-segment',

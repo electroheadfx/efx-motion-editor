@@ -616,10 +616,7 @@ describe('useRotoTimelineActions contextual Insert', () => {
     const inserted = dispatched.proposal.nextRecords.find((record) => record.keyId === dispatched.proposal.selectedKeyId);
     expect(inserted?.payload.dataUrl).toBe(BLANK_PNG_DATA_URL);
     expect(inserted?.payload.dataUrl).not.toBe(predecessorDataUrl);
-    expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([
-      'key-after',
-      dispatched.proposal.selectedKeyId,
-    ]);
+    expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['key-after']);
   });
 
   it('publishes the exact empty-segment acceptance message', async () => {
@@ -632,7 +629,7 @@ describe('useRotoTimelineActions contextual Insert', () => {
     expect(await actions.physicalActions.insertRotoFrame()).toBe(true);
     expect(publishStatus).toHaveBeenCalledTimes(1);
     expect(publishStatus).toHaveBeenCalledWith(
-      'Inserted empty key at frame 3. New interpolation segment started.',
+      'Inserted empty key at frame 3. Connected to the previous segment.',
     );
   });
 
@@ -738,6 +735,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
         mapping: ReadonlyMap<string, number>;
         selectedAppFrame: number | null;
         nextRecords: readonly PhysicPaintRotoRealKeyRecord[] | null;
+        nextIncomingInterpolationBreakKeyIds: readonly string[] | null;
       };
       operationKind: string;
     };
@@ -748,6 +746,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
     expect(dispatched.proposal.selectedAppFrame).toBe(3);
     expect(dispatched.proposal.nextRecords).toHaveLength(1);
     expect(dispatched.proposal.nextRecords?.[0].payload.dataUrl).toBe(BLANK_PNG_DATA_URL);
+    expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
     expect(publishStatus).toHaveBeenCalledWith('Added an empty Roto key.');
   });
 
