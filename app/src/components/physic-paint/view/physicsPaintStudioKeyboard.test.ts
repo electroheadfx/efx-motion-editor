@@ -405,6 +405,12 @@ describe('Physics Paint selection-gated real-key frame cycling (43.4 defect 9)',
     expect(preventDefault).toHaveBeenCalledOnce();
   });
 
+  it('keeps the validated Shift+Arrow saved-frame jump even with a key selected', () => {
+    const { handlers } = dispatch('ArrowRight', null, { shiftKey: true }, { hasSelectedRotoKey: true });
+    expect(handlers.navigateRotoFrame).toHaveBeenCalledWith(7);
+    expect(handlers.selectAdjacentRotoKey).not.toHaveBeenCalled();
+  });
+
   it('never starts frame navigation from a rail target (the roving rail group owns arrows)', () => {
     const target = new TestHTMLElement('div', { closestSelectors: ['.physics-paint-rail-target'] });
     const { handlers } = dispatch('ArrowRight', target as unknown as EventTarget);

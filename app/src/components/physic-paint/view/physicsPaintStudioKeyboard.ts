@@ -166,10 +166,11 @@ export function dispatchPhysicsPaintStudioKeyDown(
       // shared roving rail group, so frame navigation never starts from a rail
       // (belt-and-suspenders behind the rail handler's stopPropagation).
       if (event.target instanceof Element && event.target.closest(RAIL_TARGET_SELECTOR)) return;
-      if (state.hasSelectedRotoKey && actions.selectAdjacentRotoKey) {
-        // Selection-gated real-key cycling: the landing frame becomes the new
-        // selection/focus through navigation, so repeated presses chain across
-        // every real key in canonical order.
+      if (!event.shiftKey && state.hasSelectedRotoKey && actions.selectAdjacentRotoKey) {
+        // Selection-gated real-key cycling on plain arrows: the landing frame
+        // becomes the new selection/focus through navigation, so repeated
+        // presses chain across every real key in canonical order. Shift+Arrow
+        // keeps its validated saved-frame jump below.
         actions.selectAdjacentRotoKey(direction);
         return;
       }
