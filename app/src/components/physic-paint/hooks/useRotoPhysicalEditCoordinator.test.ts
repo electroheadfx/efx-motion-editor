@@ -44,6 +44,7 @@ import {
   useRotoPhysicalEditCoordinator,
 } from './useRotoPhysicalEditCoordinator';
 import { useRotoPhysicalEditHistory } from './useRotoPhysicalEditHistory';
+import { useRotoTimelineActions } from './useRotoTimelineActions';
 
 const INTERPOLATION: PhysicPaintRotoInterpolationState = { enabled: false, mode: 'duplicate' };
 
@@ -1746,6 +1747,117 @@ describe('Phase 43.4 Key Rail coordinator/history integration', () => {
     expect(test.coordinator.acknowledgePhysicalEditSettlement(redoOperationId, 'release')).toBe(true);
     expect(test.getCanonicalDocument()).toEqual(after);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+});
+
+describe('Phase 43.4 Key Rail actions-hook → coordinator → history full path (43.4 defect 1)', () => {
+  it('records one Scissor command through the real actions hook and restores/reapplies via Undo/Redo', async () => {
+    const test = harness();
+    const before = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 30,
+      realKeyRecords: [record('A', 0), record('B', 1), record('C', 2)],
+      groupOverrideRecords: [],
+      interpolation: INTERPOLATION,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: 'B',
+      cursorAppFrame: 1,
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        [record('A', 0), record('B', 1), record('C', 2)],
+        INTERPOLATION,
+        [],
+        [],
+        [],
+      ),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    test.seedGroupDocument(before);
+
+    const availability = signal({ undo: 0, redo: 0 });
+    const history = useRotoPhysicalEditHistory({
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 30 },
+      availability,
+      coordinator: test.coordinator,
+      recordsPort: {
+        getRecords: () => test.getCanonicalDocument().realKeyRecords,
+        getInterpolation: () => test.getCanonicalDocument().interpolation,
+        getCapacity: () => 30,
+        getLoopClips: () => test.getCanonicalDocument().loopClips,
+        getIncomingInterpolationBreakKeyIds: () => test.getCanonicalDocument().incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => {
+        const doc = test.getCanonicalDocument();
+        const selectedRecord = doc.selectedKeyId === null
+          ? null
+          : doc.realKeyRecords.find((entry) => entry.keyId === doc.selectedKeyId) ?? null;
+        return {
+          launchOperationId: 'launch-1',
+          layerId: 'layer-1',
+          projectContextId: 'project-1',
+          records: doc.realKeyRecords,
+          groupOverrideRecords: doc.groupOverrideRecords ?? [],
+          interpolation: doc.interpolation,
+          loopClips: doc.loopClips,
+          incomingInterpolationBreakKeyIds: doc.incomingInterpolationBreakKeyIds,
+          capacity: doc.capacity,
+          selectedKeyId: selectedRecord?.keyId ?? null,
+          selectedAppFrame: selectedRecord?.appFrame ?? null,
+          currentAppFrame: doc.cursorAppFrame,
+        };
+      },
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    const actions = useRotoTimelineActions({
+      getModel: () => ({ settings: {}, realSourceFrames: [] }) as never,
+      getRotoKeyRecords: () => test.getCanonicalDocument().realKeyRecords,
+      getRotoInterpolationState: () => test.getCanonicalDocument().interpolation,
+      getCapacity: () => 30,
+      getParentEndExclusive: () => 30,
+      getRotoLoopClips: () => test.getCanonicalDocument().loopClips,
+      getIncomingInterpolationBreakKeyIds: () => test.getCanonicalDocument().incomingInterpolationBreakKeyIds,
+      getSelectedKeyId: () => test.getCanonicalDocument().selectedKeyId,
+      getSelectedKeyIds: () => [],
+      getSelectedKeyRail: () => null,
+      getSelectedLoopClipIds: () => [],
+      getCurrentAppFrame: () => test.getCanonicalDocument().cursorAppFrame,
+      getLaunchContext: () => ({ operationId: 'launch-1', layerId: 'layer-1' }) as never,
+      getPhysicalCells: () => [],
+      getFrameResolution: () => ({ kind: 'empty' }),
+      executePhysicalEdit: test.coordinator.executePhysicalEdit as never,
+      pendingOperationId: test.coordinator.pendingOperationId,
+      publishStatus: () => {},
+      publishDiagnostic: () => {},
+    });
+
+    expect(await actions.physicalActions.scissorKeyRail()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const scissorAccepted = test.coordinator.acceptedOutput.value;
+    if (!scissorAccepted) throw new Error('Expected accepted Scissor operation.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(scissorAccepted.operationId, 'release')).toBe(true);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(test.getCanonicalDocument().incomingInterpolationBreakKeyIds).toEqual(['B']);
+
+    expect(await history.undo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const undoAccepted = test.coordinator.acceptedOutput.value;
+    if (!undoAccepted) throw new Error('Expected accepted Undo operation.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(undoAccepted.operationId, 'release')).toBe(true);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+    expect(test.getCanonicalDocument().incomingInterpolationBreakKeyIds).toEqual([]);
+
+    expect(await history.redo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const redoAccepted = test.coordinator.acceptedOutput.value;
+    if (!redoAccepted) throw new Error('Expected accepted Redo operation.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(redoAccepted.operationId, 'release')).toBe(true);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(test.getCanonicalDocument().incomingInterpolationBreakKeyIds).toEqual(['B']);
   });
 });
 

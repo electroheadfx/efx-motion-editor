@@ -2149,7 +2149,14 @@ export function clampPhysicPaintKeyRailDragDestination(
   }
   const groupIntervals = input.loopRanges.map((range) => ({
     start: range.placementStart,
-    end: range.effectiveEnd,
+    // An Infinity group's derived range extends to the next boundary / parent
+    // end (the 43.3 Infinity fix). For the Key Rail free-space clamp that
+    // unbounded claim must not hard-block a Key Rail positioned to its LEFT
+    // from moving rightward into genuinely empty space before the group's
+    // placement start — only the group's committed first occurrence is a
+    // boundary (43.3 D-15/D-16 direct-drag collision rules). Finite groups
+    // keep their full authored extent.
+    end: range.repeat === 'infinity' ? range.placementStart + 1 : range.effectiveEnd,
   }));
 
   const intervalFree = (destination: number): boolean => {

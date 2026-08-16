@@ -1030,6 +1030,48 @@ describe('useRotoTimelineActions rail-owned multi-capsule Force Spacing', () => 
   });
 });
 
+describe('useRotoTimelineActions Key Rail Force Spacing (43.4 defect 2)', () => {
+  const railRecords = [
+    realKeyRecord('A', 0),
+    realKeyRecord('B', 1),
+    realKeyRecord('C', 2),
+  ];
+
+  it('spaces a rail-only selection rigidly through the canonical edit path', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: railRecords,
+      selectedKeyRail: { firstKeyId: 'A', keyIds: ['A', 'B', 'C'] as readonly string[] },
+      capacity: 30,
+    });
+    actions.physicalActions.setForceSpacingInput('2');
+
+    expect(await actions.physicalActions.applyForceSpacing()).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      operationKind: string;
+      intent: { scopeKeyIds: readonly string[] | null };
+      proposal: { mapping: ReadonlyMap<string, number> };
+    };
+    expect(dispatched.operationKind).toBe('force-spacing');
+    expect(dispatched.intent.scopeKeyIds).toEqual(['A', 'B', 'C']);
+    expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ A: 0, B: 3, C: 6 });
+  });
+
+  it('rejects a conflicting physical key selection alongside a Key Rail selection', async () => {
+    const { actions, executePhysicalEdit, publishStatus } = createHarness({
+      records: railRecords,
+      selectedKeyRail: { firstKeyId: 'A', keyIds: ['A', 'B', 'C'] as readonly string[] },
+      selectedKeyIds: ['A'],
+      capacity: 30,
+    });
+    actions.physicalActions.setForceSpacingInput('2');
+
+    expect(await actions.physicalActions.applyForceSpacing()).toBe(false);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+    expect(publishStatus).toHaveBeenCalledWith('Rail and physical Key Spacing selections conflict. Select the Loop Rails again.');
+  });
+});
+
 describe('useRotoTimelineActions rigid group-drag settlement', () => {
   it('commits the exact retained A@5/B@6/D@7 proposal once', async () => {
     const { actions, executePhysicalEdit } = createHarness({

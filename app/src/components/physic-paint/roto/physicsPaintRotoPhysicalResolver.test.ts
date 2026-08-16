@@ -2543,6 +2543,103 @@ describe('clampPhysicPaintKeyRailDragDestination and move-key-rail', () => {
     expect(lastRail.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['M1']);
   });
 
+  it('clamps a Key Rail left of an Infinity Group into the free space before its placement (43.4 defect 3a)', () => {
+    const infinityGroup = Object.freeze({
+      loopId: 'loop-inf',
+      placementStart: 20,
+      sourceKeyIds: Object.freeze(['G']),
+      repeat: 'infinity',
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 20,
+      originalEndExclusive: 21,
+      visibleRanges: Object.freeze([Object.freeze({ start: 20, endExclusive: 21 })]),
+      frameOverrides: Object.freeze([]),
+    }) as PhysicPaintRotoLoopClip;
+
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'M1', appFrame: 10 },
+        { keyId: 'M2', appFrame: 11 },
+        { keyId: 'G', appFrame: 20 },
+      ],
+      intent: {
+        kind: 'move-key-rail',
+        memberKeyIds: ['M1', 'M2'],
+        destinationFirstKeyAppFrame: 20,
+      },
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: [],
+      loopClips: [infinityGroup],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Key Rail move must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ M1: 18, M2: 19, G: 20 });
+  });
+
+  it('rejects rightward drag when a real occupied key is immediately adjacent (43.4 defect 3b)', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'M1', appFrame: 10 },
+        { keyId: 'M2', appFrame: 11 },
+        { keyId: 'S', appFrame: 12 },
+      ],
+      intent: {
+        kind: 'move-key-rail',
+        memberKeyIds: ['M1', 'M2'],
+        destinationFirstKeyAppFrame: 12,
+      },
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['S'],
+      loopClips: [],
+    });
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Adjacent occupied key must reject');
+    expect(resolution.failure.code).toBe('no-free-space-in-direction');
+  });
+
+  it('keeps symmetric leftward drag working when an Infinity Group sits to the right (43.4 defect 3c)', () => {
+    const infinityGroup = Object.freeze({
+      loopId: 'loop-inf',
+      placementStart: 20,
+      sourceKeyIds: Object.freeze(['G']),
+      repeat: 'infinity',
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 20,
+      originalEndExclusive: 21,
+      visibleRanges: Object.freeze([Object.freeze({ start: 20, endExclusive: 21 })]),
+      frameOverrides: Object.freeze([]),
+    }) as PhysicPaintRotoLoopClip;
+
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'M1', appFrame: 10 },
+        { keyId: 'M2', appFrame: 11 },
+        { keyId: 'G', appFrame: 20 },
+      ],
+      intent: {
+        kind: 'move-key-rail',
+        memberKeyIds: ['M1', 'M2'],
+        destinationFirstKeyAppFrame: 6,
+      },
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: [],
+      loopClips: [infinityGroup],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Leftward Key Rail move must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ M1: 6, M2: 7, G: 20 });
+  });
+
   it('fails closed for stale membership, malformed identities, Group ownership, over-range translation, and no movement space', () => {
     const cases = [
       resolveMove({ memberKeyIds: ['M1', 'missing'] }),

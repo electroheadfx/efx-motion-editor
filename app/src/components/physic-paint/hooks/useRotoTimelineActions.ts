@@ -953,6 +953,7 @@ function deriveForceSpacingScope(input: {
   readonly selectedLoopClipIds: readonly string[];
   readonly selectedKeyIds: readonly string[];
   readonly spacingSelection: PhysicsPaintRotoSpacingSelection | null;
+  readonly selectedKeyRail?: RotoKeyRailSelection | null;
 }): ForceSpacingScopeResult {
   const currentKeyIds = new Set(input.records.map((record) => record.keyId));
   const orderedLoopClips = [...input.loopClips]
@@ -1000,6 +1001,29 @@ function deriveForceSpacingScope(input: {
       value: Object.freeze({
         scopeKeyIds: Object.freeze(scopes.flatMap((scope) => scope.selectedSourceKeyIds)),
         linkedSourceSpacingScopes: Object.freeze(scopes),
+      }),
+    };
+  }
+
+  if (input.selectedKeyRail !== null && input.selectedKeyRail !== undefined) {
+    if (input.selectedKeyIds.length > 0 || input.spacingSelection !== null) {
+      return { ok: false, message: 'Rail and physical Key Spacing selections conflict. Select the Loop Rails again.' };
+    }
+    const rail = input.selectedKeyRail;
+    const railIsWellFormed = isBoundedKeyId(rail.firstKeyId)
+      && rail.keyIds.length > 0
+      && rail.keyIds[0] === rail.firstKeyId
+      && rail.keyIds.every(isBoundedKeyId)
+      && new Set(rail.keyIds).size === rail.keyIds.length
+      && rail.keyIds.every((keyId) => currentKeyIds.has(keyId));
+    if (!railIsWellFormed) {
+      return { ok: false, message: 'Key Rail selection is stale. Select the Key Rail again.' };
+    }
+    return {
+      ok: true,
+      value: Object.freeze({
+        scopeKeyIds: Object.freeze([...rail.keyIds]),
+        linkedSourceSpacingScopes: null,
       }),
     };
   }
@@ -1974,6 +1998,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       selectedLoopClipIds: input.getSelectedLoopClipIds?.() ?? [],
       selectedKeyIds: input.getSelectedKeyIds?.() ?? [],
       spacingSelection: input.getRotoSpacingSelection?.() ?? null,
+      selectedKeyRail: input.getSelectedKeyRail?.() ?? null,
     });
     if (!scopeResult.ok) {
       input.publishStatus?.(scopeResult.message);
