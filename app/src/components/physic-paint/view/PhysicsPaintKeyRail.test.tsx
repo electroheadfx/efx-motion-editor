@@ -264,14 +264,19 @@ describe('PhysicsPaintKeyRail', () => {
     expect(cssRule('.physics-paint-key-rail-target {')).toContain('height: 12px');
     expect(cssRule('.physics-paint-key-rail-target:hover:not(.selected) .physics-paint-key-rail-segment,')).toContain('background: #a7b0b9');
     expect(cssRule('.physics-paint-key-rail-target.selected .physics-paint-key-rail-segment {')).toContain('background: #f59e0b');
-    // 43.4 defect 6: the designed focus token (2px #F2F5F7 ring, 1px offset)
-    // must apply to BOTH :focus and :focus-visible so a mouse-clicked rail
-    // never falls back to the UA default white outline.
-    const focusRule = cssRule('.physics-paint-key-rail-target:focus,');
-    expect(focusRule).toContain('outline: 2px solid #f2f5f7');
-    expect(focusRule).toContain('outline-offset: 1px');
-    expect(cssRule('.physics-paint-key-rail-target:focus-visible {')).toContain('outline: 2px solid #f2f5f7');
-    expect(cssRule('.physics-paint-key-rail-target:focus-visible {')).toContain('outline-offset: 1px');
+    // 43.4 defect 6 + defect 8: the shared rail focus ring (2px #F2F5F7, full
+    // row) applies to BOTH :focus and :focus-visible through the shared
+    // physics-paint-rail-target class, so a mouse-clicked Key Rail never
+    // falls back to the UA default outline and renders the same rectangle as
+    // the Motion/Static Rails.
+    expect(hasClass(target, 'physics-paint-rail-target')).toBe(true);
+    const focusRule = cssRule('.physics-paint-rail-target:focus,');
+    expect(focusRule).toContain('.physics-paint-rail-target:focus,\n.physics-paint-rail-target:focus-visible {');
+    expect(focusRule).toContain('outline: none');
+    const ringRule = cssRule('.physics-paint-rail-target:focus-visible::after {');
+    expect(ringRule).toContain('border: 2px solid #f2f5f7');
+    expect(ringRule).toContain('top: -2px');
+    expect(ringRule).toContain('bottom: -24px');
     expect(cssRule('.physics-paint-key-rail-target.busy {')).toContain('opacity: 0.55');
     expect(cssRule('.physics-paint-key-rail-ghost {')).toContain('opacity: 0.55');
     expect(cssRule('.physics-paint-key-rail-ghost {')).toContain('pointer-events: none');

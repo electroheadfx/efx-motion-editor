@@ -446,11 +446,12 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
     expect(studio).toContain("target.operationKind === 'delete-group'\n      ? deletedGroupMode === 'static'\n        ? `Deleted Static Rail at F${target.phaseOrigin}.`\n        : `Deleted Motion Rail at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`");
   });
 
-  it('pins the designed Key Rail focus token on both :focus and :focus-visible (43.4 defect 6)', () => {
-    const focusRule = css.slice(css.indexOf('.physics-paint-key-rail-target:focus,'));
-    expect(focusRule).toContain('.physics-paint-key-rail-target:focus,\n.physics-paint-key-rail-target:focus-visible {');
-    expect(focusRule).toContain('outline: 2px solid #f2f5f7');
-    expect(focusRule).toContain('outline-offset: 1px');
+  it('pins the shared full-row rail focus ring on both :focus and :focus-visible (43.4 defect 6/8)', () => {
+    const focusRule = css.slice(css.indexOf('.physics-paint-rail-target:focus,'));
+    expect(focusRule).toContain('.physics-paint-rail-target:focus,\n.physics-paint-rail-target:focus-visible {');
+    expect(focusRule).toContain('outline: none');
+    expect(css).toContain('.physics-paint-rail-target:focus-visible::after');
+    expect(css).not.toContain('.physics-paint-key-rail-target:focus,');
     expect(css).not.toContain('.physics-paint-key-rail-target:focus-visible {\n  outline: 2px solid #2d5be3');
   });
 });

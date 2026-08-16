@@ -1544,7 +1544,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
       .toContain('background: #f59e0b');
     expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-target.boundary-start .physics-paint-loop-clip-rail-segment::before,')).toContain('height: 3px');
     expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-lifecycle-dot {')).toContain('width: 6px');
-    expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-target:focus-visible {')).toContain('outline: 2px solid #f2f5f7');
+    expect(getCssRuleBlock(styles, '.physics-paint-rail-target:focus-visible::after {')).toContain('border: 2px solid #f2f5f7');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
     expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 38px');
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('height: 161px');

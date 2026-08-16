@@ -791,9 +791,13 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(cssRule('.physics-paint-loop-clip-rail-segment {')).toContain('height: 3px');
     expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 12px');
     expect(cssRule('.physics-paint-loop-clip-rail-anchor {')).toContain('min-width: 12px');
-    const focusRule = cssRule('.physics-paint-loop-clip-rail-target:focus-visible {');
-    expect(focusRule).toContain('outline: 2px solid #f2f5f7');
-    expect(focusRule).toContain('outline-offset: 2px');
+    const focusRule = cssRule('.physics-paint-rail-target:focus,');
+    expect(focusRule).toContain('.physics-paint-rail-target:focus,\n.physics-paint-rail-target:focus-visible {');
+    expect(focusRule).toContain('outline: none');
+    const ringRule = cssRule('.physics-paint-rail-target:focus-visible::after {');
+    expect(ringRule).toContain('border: 2px solid #f2f5f7');
+    expect(ringRule).toContain('top: -2px');
+    expect(ringRule).toContain('bottom: -24px');
     expect(cssRule('.physics-paint-workflow-strip {')).toContain('height: 161px');
     expect(cssRule('.physics-paint-lane {')).toContain('height: 38px');
     expect(cssRule('.physics-paint-roto-action-row {')).toContain('height: 34px');
@@ -959,6 +963,9 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(railTargetHoverRule).toContain('box-shadow: none');
     expect(cssRule('.physics-paint-loop-clip-rail-anchor {')).toContain('min-width: 12px');
     expect(physicsPaintStudioCss).not.toContain('.physics-paint-loop-clip-rail-target::after');
+    // 43.4 defect 8: the shared full-row focus ring is the target's only
+    // pseudo — the same ::after rule serves the Key Rail target too.
+    expect(physicsPaintStudioCss).toContain('.physics-paint-rail-target:focus-visible::after');
 
     (anchor.props.onPointerEnter as () => void)();
     expect(typeof target.props.onfocusin).toBe('function');

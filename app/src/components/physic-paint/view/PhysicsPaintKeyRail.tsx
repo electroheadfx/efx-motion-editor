@@ -193,7 +193,7 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
         type="button"
         role="button"
         tabIndex={0}
-        class={`physics-paint-key-rail-target${props.selected ? ' selected' : ''}${geometry.showStartBoundary ? ' boundary-start boundary-cell-start' : ''}${geometry.showEndBoundary ? ' boundary-end boundary-cell-end' : ''}${drag.ghost.active ? ' dragging' : ''}${props.busy ? ' busy' : ''}`}
+        class={`physics-paint-rail-target physics-paint-key-rail-target${props.selected ? ' selected' : ''}${geometry.showStartBoundary ? ' boundary-start boundary-cell-start' : ''}${geometry.showEndBoundary ? ' boundary-end boundary-cell-end' : ''}${drag.ghost.active ? ' dragging' : ''}${props.busy ? ' busy' : ''}`}
         aria-label={copy}
         aria-pressed={props.selected}
         aria-busy={props.busy ? 'true' : undefined}

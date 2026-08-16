@@ -2858,9 +2858,29 @@ button.destructive {
   right: 0;
 }
 
-.physics-paint-loop-clip-rail-target:focus-visible {
-  outline: 2px solid #f2f5f7;
-  outline-offset: 2px;
+/* Shared rail focus ring (43.4 defect 8): ONE full-row rectangle for every
+   rail family (Motion/Static/Key Rail). The 2px #F2F5F7 ring is drawn on the
+   focused target's ::after so it wraps the whole 38px lane (3px band + full
+   24px cell row) at a 2px offset instead of only the 12px hit target, and no
+   container clips it; pointer-events none keeps the 12px hit target
+   unchanged. :focus draws the ring too so a mouse-clicked rail never falls
+   back to the UA default outline (Defect 6). */
+.physics-paint-rail-target:focus,
+.physics-paint-rail-target:focus-visible {
+  outline: none;
+}
+
+.physics-paint-rail-target:focus::after,
+.physics-paint-rail-target:focus-visible::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -24px;
+  z-index: 2;
+  border: 2px solid #f2f5f7;
+  pointer-events: none;
 }
 
 /* 43.3 G2 ghost rail: presentation-only destination proposal. Painted above
@@ -2986,13 +3006,6 @@ button.destructive {
 
 .physics-paint-key-rail-target.boundary-cell-end {
   border-right: 1px solid #f8fafc;
-}
-
-.physics-paint-key-rail-target:focus,
-.physics-paint-key-rail-target:focus-visible {
-  z-index: 2;
-  outline: 2px solid #f2f5f7;
-  outline-offset: 1px;
 }
 
 .physics-paint-key-rail-target.busy {
