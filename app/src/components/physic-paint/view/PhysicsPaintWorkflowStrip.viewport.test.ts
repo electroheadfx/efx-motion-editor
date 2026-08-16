@@ -447,7 +447,6 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
     const loopResolutionContext = derivePhysicPaintRotoLoopRanges({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       loopClips,
-      parentEndExclusive: 240,
       capacity: 240,
       interpolationEnabled: false,
     });

@@ -2119,7 +2119,6 @@ export interface PhysicPaintRotoKeyRailDragClampInput {
   readonly proposedDestinationFirstKeyAppFrame: number;
   readonly identities: readonly PhysicPaintRotoKeyIdentity[];
   readonly loopRanges: readonly PhysicPaintRotoLoopRange[];
-  readonly parentEndExclusive: number;
   readonly capacity: number;
 }
 
@@ -2138,7 +2137,9 @@ export function clampPhysicPaintKeyRailDragDestination(
   const current = input.firstKeyFrame;
   const proposed = input.proposedDestinationFirstKeyAppFrame;
   const span = input.lastKeyFrame - input.firstKeyFrame + 1;
-  const endExclusive = Math.min(input.capacity, input.parentEndExclusive);
+  // The child document's single end authority is the physical capacity
+  // (43.4 defect 1); the stale main-editor display outFrame never clamps.
+  const endExclusive = input.capacity;
   if (span <= 0 || endExclusive <= 0) return { ok: false };
 
   const memberKeyIds = new Set(input.memberKeyIds);
@@ -2152,24 +2153,14 @@ export function clampPhysicPaintKeyRailDragDestination(
     end: range.effectiveEnd,
   }));
 
-  const debugRightward = proposed > current;
   const intervalFree = (destination: number): boolean => {
     const end = destination + span;
-    if (destination < 0 || end > endExclusive) {
-      if (debugRightward) console.log(`[DEBUG-KRCLAMP] reject dest=${destination} endExclusive bound: capacity=${input.capacity} parentEndExclusive=${input.parentEndExclusive} endExclusive=${endExclusive} end=${end}`);
-      return false;
-    }
+    if (destination < 0 || end > endExclusive) return false;
     for (const frame of boundaryKeyFrames) {
-      if (frame >= destination && frame < end) {
-        if (debugRightward) console.log(`[DEBUG-KRCLAMP] reject dest=${destination} boundaryKeyFrames hit frame=${frame}`);
-        return false;
-      }
+      if (frame >= destination && frame < end) return false;
     }
     for (const interval of groupIntervals) {
-      if (destination < interval.end && interval.start < end) {
-        if (debugRightward) console.log(`[DEBUG-KRCLAMP] reject dest=${destination} groupIntervals overlap interval=[${interval.start},${interval.end}) loopId=${input.loopRanges.find((range) => range.placementStart === interval.start && range.effectiveEnd === interval.end)?.loopId ?? 'unknown'}`);
-        return false;
-      }
+      if (destination < interval.end && interval.start < end) return false;
     }
     return true;
   };
@@ -2179,10 +2170,7 @@ export function clampPhysicPaintKeyRailDragDestination(
     for (const identity of input.identities) {
       if (!memberKeyIds.has(identity.keyId)) continue;
       const next = identity.appFrame + delta;
-      if (next < 0 || next >= endExclusive || boundaryKeyFrames.has(next)) {
-        if (debugRightward) console.log(`[DEBUG-KRCLAMP] reject dest=${destination} keysLandFree hit key=${identity.keyId} next=${next} endExclusive=${endExclusive}`);
-        return false;
-      }
+      if (next < 0 || next >= endExclusive || boundaryKeyFrames.has(next)) return false;
     }
     return true;
   };
@@ -3276,7 +3264,6 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       const loopContext = derivePhysicPaintRotoLoopRanges({
         identities: identities.ordered,
         loopClips,
-        parentEndExclusive: input.parentEndExclusive,
         capacity: input.capacity,
         interpolationEnabled: input.interpolationEnabled,
       });
@@ -3718,7 +3705,6 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       identities: identities.ordered,
       loopClips,
       capacity: input.capacity,
-      parentEndExclusive: input.parentEndExclusive,
       interpolationEnabled: input.interpolationEnabled,
     });
     const clampResult = clampPhysicPaintKeyRailDragDestination({
@@ -3728,7 +3714,6 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       proposedDestinationFirstKeyAppFrame: intent.destinationFirstKeyAppFrame,
       identities: identities.ordered,
       loopRanges: loopRangeContext.ranges,
-      parentEndExclusive: input.parentEndExclusive,
       capacity: input.capacity,
     });
     if (!clampResult.ok || clampResult.destinationFirstKeyAppFrame === matchingSegment.firstKeyFrame) {
@@ -3840,7 +3825,6 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       identities: identities.ordered,
       loopClips,
       capacity: input.capacity,
-      parentEndExclusive: input.parentEndExclusive,
       interpolationEnabled: input.interpolationEnabled,
     });
     const draggedRanges = derivation.ranges.filter((range) => range.loopId === clip.loopId);
@@ -4156,13 +4140,12 @@ export type PhysicPaintRotoFrameResolution =
 
 /**
  * Immutable derivation input: the same-authority physical identities, the
- * parsed Loop Clip collection, the parent sequence end (exclusive, may exceed
- * the physical capacity on the main timeline), and the physical capacity.
+ * parsed Loop Clip collection, and the physical capacity — the single end
+ * authority for the standalone child document (43.4 defect 1).
  */
 export interface PhysicPaintRotoLoopDerivationInput {
   readonly identities: readonly PhysicPaintRotoKeyIdentity[];
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
-  readonly parentEndExclusive: number;
   readonly capacity: number;
   /** Whether strict interiors between physical source positions render generated frames or gaps. */
   readonly interpolationEnabled: boolean;
@@ -4205,9 +4188,6 @@ export function derivePhysicPaintRotoLoopRanges(
   if (!validateCapacity(input.capacity)) {
     throw new Error('PhysicPaintRotoLoopRanges: capacity must be an integer from 1 through PHYSIC_PAINT_MAX_APPLY_FRAMES.');
   }
-  if (!isNonNegativeInteger(input.parentEndExclusive)) {
-    throw new Error('PhysicPaintRotoLoopRanges: parentEndExclusive must be a nonnegative integer.');
-  }
   if (!Array.isArray(input.identities) || !input.identities.every(isPhysicPaintRotoKeyIdentity)) {
     throw new Error('PhysicPaintRotoLoopRanges: identities must be valid physical identities.');
   }
@@ -4233,9 +4213,10 @@ export function derivePhysicPaintRotoLoopRanges(
     existingKeyIds.add(identity.keyId);
   }
 
-  // Q4: an infinity loop's natural end tracks the parent end dynamically and
-  // is bounded by the physical capacity; the clamp folds into 'parent-end'.
-  const infinityNaturalEnd = Math.min(input.parentEndExclusive, input.capacity);
+  // Q4: an infinity loop's natural end tracks the child document's single end
+  // authority — the physical capacity (43.4 defect 1). The stale main-editor
+  // display outFrame must never truncate physics-paint content.
+  const infinityNaturalEnd = input.capacity;
 
   const ranges = input.loopClips.flatMap((clip) => {
     const sourceFrameCount = clip.sourceKeyIds.length;
@@ -4282,7 +4263,7 @@ export function derivePhysicPaintRotoLoopRanges(
     const sharesGroupBoundary = lifecycleAvailable && !finite;
     const deriveBoundary = (scanStart: number): PhysicPaintRotoLoopBoundary => {
       let kind: PhysicPaintRotoLoopBoundaryKind = 'parent-end';
-      let frame = finite ? input.parentEndExclusive : infinityNaturalEnd;
+      let frame = finite ? input.capacity : infinityNaturalEnd;
       const consider = (candidateKind: PhysicPaintRotoLoopBoundaryKind, candidateFrame: number): void => {
         if (
           candidateFrame < frame

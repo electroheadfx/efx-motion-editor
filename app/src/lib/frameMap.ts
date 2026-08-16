@@ -184,7 +184,6 @@ function deriveMainEditorLoopRanges(layer: Layer, seq: Sequence): PhysicPaintRot
   return derivePhysicPaintRotoLoopRanges({
     identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
     loopClips,
-    parentEndExclusive: timelineRange.localEndExclusive,
     capacity: physicPaintStore.getRotoPhysicalCapacity(layerId),
     interpolationEnabled: physicPaintStore.getRotoPhysicalInterpolationState(layerId).enabled,
   });

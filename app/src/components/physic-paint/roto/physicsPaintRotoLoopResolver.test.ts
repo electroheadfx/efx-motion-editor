@@ -54,13 +54,11 @@ const SOURCE_KEY_IDS = ['A', 'B', 'C', 'D', 'E'] as const;
 function deriveBaseline(
   loopClips: readonly PhysicPaintRotoLoopClip[],
   identities: readonly PhysicPaintRotoKeyIdentity[] = SOURCE_KEYS,
-  parentEndExclusive = CAPACITY,
   interpolationEnabled = false,
 ) {
   return derivePhysicPaintRotoLoopRanges({
     identities,
     loopClips,
-    parentEndExclusive,
     capacity: CAPACITY,
     interpolationEnabled,
   });
@@ -95,7 +93,7 @@ describe('derivePhysicPaintRotoLoopRanges — compact interval derivation (D-32)
       ['B', 13],
       ['C', 16],
     ]);
-    const finite = deriveBaseline([loop('LS', 20, ['A', 'B', 'C'], 3)], spaced, 100, true);
+    const finite = deriveBaseline([loop('LS', 20, ['A', 'B', 'C'], 3)], spaced, true);
 
     expect(finite.ranges[0]).toMatchObject({
       sourceFrameCount: 3,
@@ -106,18 +104,17 @@ describe('derivePhysicPaintRotoLoopRanges — compact interval derivation (D-32)
       partialCycle: false,
     });
 
-    const infinity = deriveBaseline([loop('LI', 20, ['A', 'B', 'C'], 'infinity')], spaced, 39, true);
+    const infinity = deriveBaseline([loop('LI', 20, ['A', 'B', 'C'], 'infinity')], spaced, true);
     expect(infinity.ranges[0]).toMatchObject({
       cycleLength: 7,
       requestedEnd: 'infinity',
-      effectiveEnd: 39,
+      effectiveEnd: 600,
       partialCycle: true,
     });
 
     const truncated = deriveBaseline(
       [loop('LT', 20, ['A', 'B', 'C'], 4)],
       [...spaced, { keyId: 'X', appFrame: 35 }],
-      100,
       true,
     );
     expect(truncated.ranges[0]).toMatchObject({
@@ -132,7 +129,6 @@ describe('derivePhysicPaintRotoLoopRanges — compact interval derivation (D-32)
     const hugeFinite = derivePhysicPaintRotoLoopRanges({
       identities: SOURCE_KEYS,
       loopClips: [loop('LH', 10, SOURCE_KEY_IDS, 100000)],
-      parentEndExclusive: 500010,
       capacity: CAPACITY,
       interpolationEnabled: false,
     });
@@ -140,17 +136,16 @@ describe('derivePhysicPaintRotoLoopRanges — compact interval derivation (D-32)
     expect(hugeFinite.ranges[0]).toMatchObject({
       loopId: 'LH',
       requestedEnd: 500010,
-      effectiveEnd: 500010,
-      truncated: false,
+      effectiveEnd: 600,
+      truncated: true,
     });
 
-    const infinite = deriveBaseline([loop('LI', 10, SOURCE_KEY_IDS, 'infinity')], SOURCE_KEYS, 300);
+    const infinite = deriveBaseline([loop('LI', 10, SOURCE_KEY_IDS, 'infinity')], SOURCE_KEYS);
     expect(infinite.ranges).toHaveLength(1);
 
     const combined = deriveBaseline(
       [loop('L1', 10, SOURCE_KEY_IDS, 100000), loop('L2', 40, SOURCE_KEY_IDS, 'infinity'), loop('L3', 60, SOURCE_KEY_IDS, 2)],
       SOURCE_KEYS,
-      500010,
     );
     expect(combined.ranges).toHaveLength(3);
 
@@ -179,17 +174,17 @@ describe('derivePhysicPaintRotoLoopRanges — compact interval derivation (D-32)
       expect(range.strictInteriorPolicy).toBe('gap');
     }
 
-    // A distant frame deep inside the huge repeat resolves correctly without
-    // materializing intermediate frames.
-    const distant = resolvePhysicPaintRotoLoopFrame(hugeFinite, 499995);
+    // A distant frame inside the capacity-truncated repeat resolves correctly
+    // without materializing intermediate frames (43.4 defect 1).
+    const distant = resolvePhysicPaintRotoLoopFrame(hugeFinite, 599);
     expect(distant).toEqual({
       kind: 'linked',
       loopId: 'LH',
-      appFrame: 499995,
-      sourceKeyId: 'A',
-      sourceIndex: 0,
-      cycleOffset: 0,
-      repeatInstance: 99997,
+      appFrame: 599,
+      sourceKeyId: 'E',
+      sourceIndex: 4,
+      cycleOffset: 4,
+      repeatInstance: 117,
     });
   });
 
@@ -248,7 +243,7 @@ describe('resolvePhysicPaintRotoLoopFrame — lazy per-frame typed contract (D-2
       ['B', 3],
       ['C', 6],
     ]);
-    const generated = deriveBaseline([loop('LG', 10, ['A', 'B', 'C'], 2)], spaced, 100, true);
+    const generated = deriveBaseline([loop('LG', 10, ['A', 'B', 'C'], 2)], spaced, true);
 
     expect(resolvePhysicPaintRotoLoopFrame(generated, 13)).toEqual({
       kind: 'linked',
@@ -273,7 +268,7 @@ describe('resolvePhysicPaintRotoLoopFrame — lazy per-frame typed contract (D-2
       repeatInstance: 1,
     });
 
-    const gaps = deriveBaseline([loop('LP', 10, ['A', 'B', 'C'], 2)], spaced, 100, false);
+    const gaps = deriveBaseline([loop('LP', 10, ['A', 'B', 'C'], 2)], spaced, false);
     expect(resolvePhysicPaintRotoLoopFrame(gaps, 18)).toEqual({
       kind: 'linked-gap',
       loopId: 'LP',
@@ -502,25 +497,20 @@ describe('derivePhysicPaintRotoLoopRanges — D-14 loop-loop priority', () => {
 });
 
 describe('derivePhysicPaintRotoLoopRanges — Infinity loops (D-25, Q4)', () => {
-  it('tracks parentEndExclusive dynamically and reports requestedEnd as infinity', () => {
+  it('extends Infinity loops to the child document capacity end (43.4 defect 1)', () => {
     const clips = [loop('L1', 10, SOURCE_KEY_IDS, 'infinity')];
 
-    const at300 = deriveBaseline(clips, SOURCE_KEYS, 300);
-    expect(at300.ranges[0]).toMatchObject({
+    const context = deriveBaseline(clips, SOURCE_KEYS);
+    expect(context.ranges[0]).toMatchObject({
       requestedEnd: 'infinity',
-      effectiveEnd: 300,
+      effectiveEnd: 600,
       truncated: false,
-      boundary: { kind: 'parent-end', frame: 300 },
+      boundary: { kind: 'parent-end', frame: 600 },
     });
-
-    // Extending the parent grows the effective range; shrinking shortens it —
-    // pure re-derivation, no regeneration (D-25).
-    const at100 = deriveBaseline(clips, SOURCE_KEYS, 100);
-    expect(at100.ranges[0]).toMatchObject({ effectiveEnd: 100 });
   });
 
   it('bounds the effective range at min(parent end, PHYSIC_PAINT_MAX_APPLY_FRAMES)', () => {
-    const context = deriveBaseline([loop('L1', 10, SOURCE_KEY_IDS, 'infinity')], SOURCE_KEYS, 5000);
+    const context = deriveBaseline([loop('L1', 10, SOURCE_KEY_IDS, 'infinity')], SOURCE_KEYS);
 
     expect(context.ranges[0]).toMatchObject({
       effectiveEnd: CAPACITY,
@@ -540,7 +530,6 @@ describe('derivePhysicPaintRotoLoopRanges — Infinity loops (D-25, Q4)', () => 
     const context = deriveBaseline(
       [loop('LA', 10, SOURCE_KEY_IDS, 'infinity'), loop('LB', 40, SOURCE_KEY_IDS, 2)],
       SOURCE_KEYS,
-      300,
     );
 
     expect(context.ranges.find((range) => range.loopId === 'LA')).toMatchObject({
@@ -617,7 +606,7 @@ describe('resolvePhysicPaintRotoLoopFrame — typed unresolved contract (D-31, a
     const context = deriveBaseline([
       loop('invalid-order', 10, ['A', 'C', 'B'], 2),
       loop('valid-sibling', 30, ['A', 'B', 'C'], 1),
-    ], spaced, 100, true);
+    ], spaced, true);
 
     expect(context.ranges.find((range) => range.loopId === 'invalid-order')).toMatchObject({
       sourceFrameCount: 3,

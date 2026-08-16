@@ -324,7 +324,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         cycleDuration = derivePhysicPaintRotoLoopRanges({
           identities: snapshot.identities,
           loopClips: currentLoopClips(),
-          parentEndExclusive: snapshot.parentEndExclusive,
           capacity: snapshot.capacity,
           interpolationEnabled: snapshot.interpolationEnabled,
         }).ranges.find((range) => range.loopId === target.loopId)?.cycleLength ?? cycleDuration;
@@ -345,7 +344,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const preflight = derivePhysicPaintRotoLoopShortenPreflight({
       identities: snapshot.identities,
       loopClips,
-      parentEndExclusive: snapshot.parentEndExclusive,
       capacity: snapshot.capacity,
       destinationStart: start,
       destinationCount: count,
@@ -368,7 +366,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const context = derivePhysicPaintRotoLoopRanges({
         identities: snapshot.identities,
         loopClips,
-        parentEndExclusive: snapshot.parentEndExclusive,
         capacity: snapshot.capacity,
         interpolationEnabled: snapshot.interpolationEnabled,
       });
@@ -953,7 +950,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       ? derivePhysicPaintRotoLoopRanges({
           identities: snapshot.identities,
           loopClips: currentLoops,
-          parentEndExclusive: snapshot.parentEndExclusive,
           capacity: snapshot.capacity,
           interpolationEnabled: snapshot.interpolationEnabled,
         }).ranges.find((range) => range.loopId === target.loopId)?.cycleLength ?? target.sourceKeyIds.length
@@ -971,7 +967,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
             const targetRanges = derivePhysicPaintRotoLoopRanges({
               identities: snapshot.identities,
               loopClips: draftLoops,
-              parentEndExclusive: snapshot.parentEndExclusive,
               capacity: snapshot.capacity,
               interpolationEnabled: snapshot.interpolationEnabled,
             }).ranges.filter((range) => range.loopId === target.loopId);
@@ -1042,7 +1037,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         const context = derivePhysicPaintRotoLoopRanges({
           identities: authority.physicalRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
           loopClips: clips,
-          parentEndExclusive: authority.layerEndExclusive,
           capacity: authority.physicalCapacity,
           interpolationEnabled: authority.interpolationEnabled,
         });

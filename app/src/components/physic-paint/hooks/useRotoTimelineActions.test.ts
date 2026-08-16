@@ -950,7 +950,6 @@ describe('useRotoTimelineActions rail-owned multi-capsule Force Spacing', () => 
     const ranges = derivePhysicPaintRotoLoopRanges({
       identities: mappedRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       loopClips: dispatched.proposal.nextLoopClips ?? [group],
-      parentEndExclusive: 100,
       capacity: 100,
       interpolationEnabled: false,
     }).ranges;
@@ -1446,7 +1445,7 @@ describe('useRotoTimelineActions Group-drag prepare/commit publication pair', ()
     expect(preparation.reason).toBe('This move would not change the timeline.');
   });
 
-  it('prepares and publishes Infinity Group movement against parent end rather than physical capacity', async () => {
+  it('prepares and publishes Infinity Group movement against the child document capacity (43.4 defect 1)', async () => {
     const infinityRecords = [realKeyRecord('A', 10), realKeyRecord('B', 12)];
     const infinityGroup = lifecycleGroup({
       placementStart: 10,
@@ -1471,8 +1470,8 @@ describe('useRotoTimelineActions Group-drag prepare/commit publication pair', ()
     expect(preparation.publication.proposal.nextLoopClips?.[0]).toMatchObject({
       placementStart: 16,
       phaseOrigin: 16,
-      originalEndExclusive: 40,
-      visibleRanges: [{ start: 16, endExclusive: 40 }],
+      originalEndExclusive: 600,
+      visibleRanges: [{ start: 16, endExclusive: 600 }],
     });
 
     expect(await actions.physicalActions.commitRotoGroupDrag(preparation.publication)).toBe(true);
@@ -1643,7 +1642,7 @@ describe('useRotoTimelineActions Group-drag status, busy gate, and post-commit s
     expect(publishStatus).toHaveBeenCalledWith('Moved Motion Rail to frame 2. Gap left at frames 1–8.');
   });
 
-  it('publishes the shared Infinity boundary when deleted tail fragments end before the parent boundary', () => {
+  it('publishes the shared Infinity boundary when deleted tail fragments end before the child document capacity (43.4 defect 1)', () => {
     const infinityGroup = lifecycleGroup({
       placementStart: 10,
       sourceKeyIds: Object.freeze(['A', 'B']),
@@ -1667,7 +1666,7 @@ describe('useRotoTimelineActions Group-drag status, busy gate, and post-commit s
 
     expect(preparation.ok).toBe(true);
     if (!preparation.ok) throw new Error('Fragmented Infinity Group drag must prepare');
-    expect(preparation.publication.vacatedInterval).toEqual({ phaseOrigin: 10, effectiveEnd: 30 });
+    expect(preparation.publication.vacatedInterval).toEqual({ phaseOrigin: 10, effectiveEnd: 40 });
   });
 
   it('routes disabled, rejection, and acceptance copy through the single Group-drag mapper', () => {

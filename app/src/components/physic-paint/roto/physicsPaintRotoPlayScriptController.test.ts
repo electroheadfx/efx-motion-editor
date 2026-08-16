@@ -947,12 +947,10 @@ describe('createRotoPlayScriptController D-06 loop-shorten preflight', () => {
     records: readonly PhysicPaintRotoRealKeyRecord[],
     loopClips: readonly PhysicPaintRotoLoopClip[],
     loopId: string,
-    parentEndExclusive: number,
   ): number => {
     const context = derivePhysicPaintRotoLoopRanges({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       loopClips,
-      parentEndExclusive,
       capacity: 600,
       interpolationEnabled: false,
     });
@@ -1082,7 +1080,7 @@ describe('createRotoPlayScriptController D-06 loop-shorten preflight', () => {
     const beforeSnapshot = snapshot(SOURCE_KEY_IDS.map((keyId, index) => toRecord(physicalRecord(keyId, index, `src-${keyId}`))), null, 6);
     const afterSnapshot = snapshot(publication.records, publication.selectedKeyId, publication.selectedAppFrame);
     // The committed generation truncated the loop at frame 6 (derived).
-    expect(effectiveEndOf(afterSnapshot.records, loops, 'L1', 40)).toBe(6);
+    expect(effectiveEndOf(afterSnapshot.records, loops, 'L1', )).toBe(6);
 
     const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
     const pendingOperationId = signal<string | null>(null);
@@ -1142,12 +1140,12 @@ describe('createRotoPlayScriptController D-06 loop-shorten preflight', () => {
     expect(await history.undo()).toBe(true);
     expect(current.records.map((entry) => entry.keyId)).toEqual([...SOURCE_KEY_IDS]);
     // The loop re-expands automatically with the generated keys gone.
-    expect(effectiveEndOf(current.records, current.loopClips, 'L1', 40)).toBe(30);
+    expect(effectiveEndOf(current.records, current.loopClips, 'L1', )).toBe(30);
     expect(availability.value).toEqual({ undo: 0, redo: 1 });
 
     expect(await history.redo()).toBe(true);
     expect(current.records).toEqual(afterSnapshot.records);
-    expect(effectiveEndOf(current.records, current.loopClips, 'L1', 40)).toBe(6);
+    expect(effectiveEndOf(current.records, current.loopClips, 'L1', )).toBe(6);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
     expect(executePhysicalEdit.mock.calls.map(([input]) => input.operationKind)).toEqual(['undo', 'redo']);
   });
@@ -1226,12 +1224,10 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
     records: readonly PhysicPaintRotoRealKeyRecord[],
     loopClips: readonly PhysicPaintRotoLoopClip[],
     loopId: string,
-    parentEndExclusive = 40,
   ) => {
     const context = derivePhysicPaintRotoLoopRanges({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       loopClips,
-      parentEndExclusive,
       capacity: 600,
       interpolationEnabled: false,
     });
@@ -1420,10 +1416,10 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.loopReadout.value).toBe('Requested: 28f (7f × 4) · Effective: 28f');
     });
 
-    it('derives the infinity readout from the shared derivation bounded by the parent end', async () => {
+    it('derives the infinity readout from the shared derivation bounded by the child document capacity (43.4 defect 1)', async () => {
       const test = loopOpHarness([loopClip('L1', 10, 'infinity')]);
       await test.controller.openLoopEdit('L1');
-      expect(test.controller.loopReadout.value).toBe('Cycle 5f × ∞ · Effective: 30f');
+      expect(test.controller.loopReadout.value).toBe('Cycle 5f × ∞ · Effective: 590f');
     });
 
     it('rejects an unknown loopId with a reason and never opens the dialog', async () => {
@@ -1599,7 +1595,6 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       const context = derivePhysicPaintRotoLoopRanges({
         identities: publication.records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
         loopClips: publication.loopClips ?? [],
-        parentEndExclusive: 40,
         capacity: 600,
         interpolationEnabled: false,
       });
@@ -1634,7 +1629,6 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       const context = derivePhysicPaintRotoLoopRanges({
         identities: publication.records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
         loopClips: publication.loopClips ?? [],
-        parentEndExclusive: 40,
         capacity: 600,
         interpolationEnabled: false,
       });
@@ -1835,7 +1829,6 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         const context = derivePhysicPaintRotoLoopRanges({
           identities: [...moved.proposal.mapping].map(([keyId, appFrame]) => ({ keyId, appFrame })),
           loopClips: moved.proposal.nextLoopClips ?? loopClips,
-          parentEndExclusive: 60,
           capacity: 60,
           interpolationEnabled: false,
         });
@@ -1963,7 +1956,6 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         const context = derivePhysicPaintRotoLoopRanges({
           identities: currentRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
           loopClips: currentLoopClips,
-          parentEndExclusive: 40,
           capacity: 40,
           interpolationEnabled: true,
         });
@@ -2407,7 +2399,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect([...repairedLoop!.sourceKeyIds]).toEqual(repairedIds); // retargeted in the SAME commit
       expect(repairedLoop!.sourceKeyIds).not.toContain('MISSING');
       // The repaired loop resolves: no dangling references remain.
-      expect(deriveRange(publication.records, publication.loopClips ?? [], 'LU', 60).unresolved).toBeNull();
+      expect(deriveRange(publication.records, publication.loopClips ?? [], 'LU', ).unresolved).toBeNull();
 
       const beforeRecords = asRealKeyRecords(loopAuthority(repairAuthority).physicalRecords);
       const driver = driveLoopHistory({ beforeRecords, beforeLoopClips: [loop], publication });
@@ -2415,10 +2407,10 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       // The unresolved record returns byte-identically — dangling reference verbatim.
       expect(JSON.stringify(driver.getCurrent().loopClips)).toBe(JSON.stringify([loop]));
       expect(driver.getCurrent().loopClips[0].sourceKeyIds).toContain('MISSING');
-      expect(deriveRange(driver.getCurrent().records, driver.getCurrent().loopClips, 'LU', 60).unresolved?.missingSourceKeyIds).toEqual(['MISSING']);
+      expect(deriveRange(driver.getCurrent().records, driver.getCurrent().loopClips, 'LU').unresolved?.missingSourceKeyIds).toEqual(['MISSING']);
       expect(await driver.history.redo()).toBe(true);
       expect(driver.getCurrent().loopClips[0].sourceKeyIds).toEqual(repairedIds);
-      expect(deriveRange(driver.getCurrent().records, driver.getCurrent().loopClips, 'LU', 60).unresolved).toBeNull();
+      expect(deriveRange(driver.getCurrent().records, driver.getCurrent().loopClips, 'LU').unresolved).toBeNull();
     });
   });
 
@@ -2436,7 +2428,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(publication.loopClips?.find((entry) => entry.loopId === 'LU')?.sourceKeyIds).toEqual([...CYCLE_IDS]);
       expect(JSON.stringify(publication.records)).toBe(JSON.stringify(asRealKeyRecords(loopAuthority().physicalRecords)));
       // The relinked loop re-derives cycle length (5) and requested duration (10f).
-      const range = deriveRange(publication.records, publication.loopClips ?? [], 'LU', 40);
+      const range = deriveRange(publication.records, publication.loopClips ?? [], 'LU', );
       expect(range.unresolved).toBeNull();
       expect(range.cycleLength).toBe(5);
       expect(range.requestedEnd).toBe(60);
@@ -2782,8 +2774,8 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(publication.records.some((record) => record.appFrame === 1 || record.appFrame === 2)).toBe(false);
       expect(publication.semanticDelta.freshKeyIds).toEqual([]);
       for (const loop of publication.loopClips ?? []) expect(loop.sourceKeyIds).toEqual([...sourceKeyIds]);
-      expect(deriveRange(publication.records, publication.loopClips ?? [], 'L1', 100).cycleLength).toBe(7);
-      expect(deriveRange(publication.records, publication.loopClips ?? [], 'L2', 100).cycleLength).toBe(7);
+      expect(deriveRange(publication.records, publication.loopClips ?? [], 'L1', ).cycleLength).toBe(7);
+      expect(deriveRange(publication.records, publication.loopClips ?? [], 'L2', ).cycleLength).toBe(7);
     });
 
     it('regenerates via the existing staged commit and retargets EVERY linked loop when the cycle length changes', async () => {
@@ -2806,8 +2798,8 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       // S4/S5 at 13/14 survive as ordinary real keys.
       expect(publication.records.map((record) => record.keyId)).toEqual(['S1', 'S2', 'S3', 'S4', 'S5']);
       // Derived state recomputes from the committed collection: cycle 3, resolved.
-      expect(deriveRange(publication.records, publication.loopClips ?? [], 'L2', 40).cycleLength).toBe(3);
-      expect(deriveRange(publication.records, publication.loopClips ?? [], 'L2', 40).unresolved).toBeNull();
+      expect(deriveRange(publication.records, publication.loopClips ?? [], 'L2', ).cycleLength).toBe(3);
+      expect(deriveRange(publication.records, publication.loopClips ?? [], 'L2', ).unresolved).toBeNull();
     });
 
     it('regeneration is one history command — Undo restores keys AND loop references, Redo re-applies', async () => {

@@ -1452,7 +1452,7 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(redoLease)).toBe(true);
   });
 
-  it('parent-recomputes Infinity Group movement against a non-first content Sequence local end', async () => {
+  it('recomputes Infinity Group movement against the child document capacity (43.4 defect 1)', async () => {
     const layer = physicLayer();
     mockLayers([layer], null);
     sequenceStore.sequences.value = [{
@@ -1536,8 +1536,8 @@ describe('physicPaintBridge', () => {
     expect(nextLoopClips[0]).toMatchObject({
       placementStart: 16,
       phaseOrigin: 16,
-      originalEndExclusive: 30,
-      visibleRanges: [{ start: 16, endExclusive: 30 }],
+      originalEndExclusive: 600,
+      visibleRanges: [{ start: 16, endExclusive: 600 }],
     });
     const proposedRecords = proposal.orderedKeyIds.map((keyId) => {
       const current = records.find((record) => record.keyId === keyId);
@@ -1574,8 +1574,8 @@ describe('physicPaintBridge', () => {
     expect(result.ok, result.ok ? undefined : result.error).toBe(true);
     expect(physicPaintStore.getRotoPhysicalDocument(layer.id)?.loopClips[0]).toMatchObject({
       placementStart: 16,
-      originalEndExclusive: 30,
-      visibleRanges: [{ start: 16, endExclusive: 30 }],
+      originalEndExclusive: 600,
+      visibleRanges: [{ start: 16, endExclusive: 600 }],
     });
     expect(replace).toHaveBeenCalledTimes(1);
     expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).not.toEqual(beforeDocument);

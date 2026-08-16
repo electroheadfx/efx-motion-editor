@@ -344,7 +344,6 @@ function renderGeneratedPresentationDocument(document: PhysicPaintRotoPhysicalDo
   const loopContext = derivePhysicPaintRotoLoopRanges({
     identities,
     loopClips: document.loopClips,
-    parentEndExclusive: 4,
     capacity: document.capacity,
     interpolationEnabled: document.interpolation.enabled,
   });
@@ -478,7 +477,6 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const loopContext = derivePhysicPaintRotoLoopRanges({
       identities,
       loopClips: clips,
-      parentEndExclusive: 600,
       capacity: 600,
       interpolationEnabled: false,
     });
@@ -553,7 +551,6 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const loopContext = derivePhysicPaintRotoLoopRanges({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       loopClips: [infinityClip, nextClip],
-      parentEndExclusive: 40,
       capacity: 40,
       interpolationEnabled: false,
     });
@@ -826,7 +823,6 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
         appFrame: clip.placementStart + index,
       }))),
       loopClips: clips,
-      parentEndExclusive: 12,
       capacity: 120,
       interpolationEnabled: false,
     });
@@ -901,7 +897,6 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const loopContext = derivePhysicPaintRotoLoopRanges({
       identities: sourceKeyIds.map((keyId, appFrame) => ({ keyId, appFrame })),
       loopClips: [clip],
-      parentEndExclusive: 40,
       capacity: 120,
       interpolationEnabled: false,
     });
@@ -1203,7 +1198,6 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const context = derivePhysicPaintRotoLoopRanges({
       identities: clip.sourceKeyIds.map((keyId, appFrame) => ({ keyId, appFrame })),
       loopClips: [clip],
-      parentEndExclusive: 6,
       capacity: 120,
       interpolationEnabled: false,
     });
@@ -1253,7 +1247,6 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
         { keyId: 'C', appFrame: 6 },
       ],
       loopClips: [clip],
-      parentEndExclusive: 14,
       capacity: 120,
       interpolationEnabled: true,
     });
@@ -1842,7 +1835,6 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       const context = derivePhysicPaintRotoLoopRanges({
         identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
         loopClips: [clip],
-        parentEndExclusive: 20,
         capacity: 24,
         interpolationEnabled: false,
       });
@@ -1874,7 +1866,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       hooks.rewind();
       const movedTree = render();
       const ghost = findOne(movedTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-ghost'));
-      expect(ghost.props.style).toEqual({ left: '36px', width: '108px' });
+      expect(ghost.props.style).toEqual({ left: '36px', width: '180px' });
 
       mockWindow.dispatch('pointerup', createPointerUp(100 + 2 * 18, 50));
       await Promise.resolve();
@@ -1885,10 +1877,10 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
         placementStart: 14,
         phaseOrigin: 14,
         repeat: 'infinity',
-        originalEndExclusive: 20,
+        originalEndExclusive: 24,
         visibleRanges: [
           { start: 14, endExclusive: 17 },
-          { start: 19, endExclusive: 20 },
+          { start: 19, endExclusive: 24 },
         ],
       });
     });

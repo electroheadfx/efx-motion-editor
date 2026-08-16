@@ -1326,23 +1326,22 @@ describe('PhysicsPaintWorkflowStrip loop resolution wiring (43-02, Pitfall 7)', 
         repeat: 100000,
         mode: 'static',
       }],
-      parentEndExclusive: 500010,
       capacity: 600,
       interpolationEnabled: false,
     });
-    // A bounded 120-frame query sample inside a 500000-frame effective range
-    // issues exactly one lazy query per requested physical frame.
-    const visibleWindow = Array.from({ length: 120 }, (_, index) => 250000 + index);
+    // A bounded 120-frame query sample inside the capacity-truncated repeat
+    // issues exactly one lazy query per requested physical frame (43.4 defect 1).
+    const visibleWindow = Array.from({ length: 120 }, (_, index) => 480 + index);
     const query = vi.fn(resolvePhysicPaintRotoLoopFrame);
     const resolutions = resolveRotoVisibleFrameResolutions(context, visibleWindow, query);
 
     expect(query).toHaveBeenCalledTimes(visibleWindow.length);
     expect(resolutions.size).toBe(visibleWindow.length);
-    expect(resolutions.get(250000)).toMatchObject({
+    expect(resolutions.get(480)).toMatchObject({
       kind: 'linked',
       loopId: 'L1',
-      sourceIndex: (250000 - 10) % 5,
-      repeatInstance: Math.floor((250000 - 10) / 5),
+      sourceIndex: (480 - 10) % 5,
+      repeatInstance: Math.floor((480 - 10) / 5),
     });
   });
 });
@@ -1386,7 +1385,6 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     const context = derivePhysicPaintRotoLoopRanges({
       identities: Array.from({ length: 5 }, (_, index) => ({ keyId: `source-${index}`, appFrame: index })),
       loopClips: [clip],
-      parentEndExclusive: 25,
       capacity: 120,
       interpolationEnabled: false,
     });
@@ -1425,7 +1423,6 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
         { keyId: 'C', appFrame: 6 },
       ],
       loopClips: [clip],
-      parentEndExclusive: 40,
       capacity: 120,
       interpolationEnabled: true,
     });
@@ -1445,7 +1442,6 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
         repeat: 5,
         mode: 'progressive',
       }],
-      parentEndExclusive: 40,
       capacity: 120,
       interpolationEnabled: false,
     });

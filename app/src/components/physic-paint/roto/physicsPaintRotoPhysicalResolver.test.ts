@@ -1544,7 +1544,6 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
         { keyId: 'B', appFrame: 11 },
       ],
       loopClips: [clip],
-      parentEndExclusive: 30,
       capacity: 120,
       interpolationEnabled: false,
     });
@@ -1553,9 +1552,10 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
     if (!range) return;
     // Repeat authority preserved.
     expect(range.repeat).toBe('infinity');
-    // The Infinity range must extend through the parent end (30), not stop at
-    // the stale source-cycle end (12).
-    expect(range.effectiveEnd).toBe(30);
+    // The Infinity range must extend through the child document's single end
+    // authority — the physical capacity (120) — not stop at the stale
+    // source-cycle end (12) or a stale main-editor outFrame (43.4 defect 1).
+    expect(range.effectiveEnd).toBe(120);
     // Derived occurrences resolve through the accepted boundary.
     expect(resolvePhysicPaintRotoLoopFrame(context, 20).kind).not.toBe('empty');
     expect(resolvePhysicPaintRotoLoopFrame(context, 29).kind).not.toBe('empty');
@@ -1585,7 +1585,6 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
         { keyId: 'B', appFrame: 12 },
       ],
       loopClips: [clip],
-      parentEndExclusive: 20,
       capacity: 20,
       interpolationEnabled: true,
     });
@@ -1657,7 +1656,6 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
         { keyId: 'B', appFrame: 12 },
       ],
       loopClips: [clip],
-      parentEndExclusive: 20,
       capacity: 20,
       interpolationEnabled,
     });
@@ -1687,7 +1685,6 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
         ],
         frameOverrides: [],
       }],
-      parentEndExclusive: 20,
       capacity: 20,
       interpolationEnabled: true,
     });
@@ -1711,7 +1708,6 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
         visibleRanges: [{ start: 10, endExclusive: 14 }],
         frameOverrides: [],
       }],
-      parentEndExclusive: 20,
       capacity: 20,
       interpolationEnabled: true,
     });
@@ -1754,7 +1750,6 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
         { keyId: 'O', appFrame: 31 },
       ],
       loopClips: [clip, nextGroup],
-      parentEndExclusive: 60,
       capacity: 60,
       interpolationEnabled: false,
     });
@@ -1803,7 +1798,6 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
     const derivation = derivePhysicPaintRotoLoopRanges({
       identities,
       loopClips,
-      parentEndExclusive: 50,
       capacity: 50,
       interpolationEnabled: false,
     });
@@ -1846,7 +1840,6 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
     const committed = derivePhysicPaintRotoLoopRanges({
       identities: [...resolution.proposal.mapping].map(([keyId, appFrame]) => ({ keyId, appFrame })),
       loopClips: resolution.proposal.nextLoopClips ?? loopClips,
-      parentEndExclusive: 50,
       capacity: 50,
       interpolationEnabled: false,
     }).ranges.filter((range) => range.loopId === clip.loopId);
@@ -1913,7 +1906,6 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
     const committed = derivePhysicPaintRotoLoopRanges({
       identities: [...resolution.proposal.mapping].map(([keyId, appFrame]) => ({ keyId, appFrame })),
       loopClips: resolution.proposal.nextLoopClips,
-      parentEndExclusive: 40,
       capacity: 40,
       interpolationEnabled: false,
     });
@@ -2039,7 +2031,6 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
     const derivation = derivePhysicPaintRotoLoopRanges({
       identities,
       loopClips: [clip],
-      parentEndExclusive: 40,
       capacity: 40,
       interpolationEnabled: false,
     });
@@ -2078,7 +2069,6 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
     const committed = derivePhysicPaintRotoLoopRanges({
       identities: [...resolution.proposal.mapping].map(([keyId, appFrame]) => ({ keyId, appFrame })),
       loopClips: resolution.proposal.nextLoopClips ?? [clip],
-      parentEndExclusive: 40,
       capacity: 40,
       interpolationEnabled: false,
     }).ranges.filter((range) => range.loopId === clip.loopId);
@@ -2086,7 +2076,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
     expect(committed.every((range) => range.repeat === 'infinity' && range.boundary.frame === 40)).toBe(true);
   });
 
-  it('keeps Infinity move commit at the authoritative parent end when physical capacity is larger', () => {
+  it('keeps Infinity move commit at the child document capacity end when the stale parent end is smaller (43.4 defect 1)', () => {
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'loop-parent-before-capacity',
       placementStart: 10,
@@ -2117,12 +2107,12 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
     });
 
     expect(resolution.ok).toBe(true);
-    if (!resolution.ok) throw new Error('Parent-bounded Infinity move must resolve');
+    if (!resolution.ok) throw new Error('Capacity-bounded Infinity move must resolve');
     expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
       placementStart: 16,
       phaseOrigin: 16,
-      originalEndExclusive: 40,
-      visibleRanges: [{ start: 16, endExclusive: 40 }],
+      originalEndExclusive: 600,
+      visibleRanges: [{ start: 16, endExclusive: 600 }],
     });
   });
 
@@ -2237,7 +2227,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group duplicated shared-so
     expect(ownerClip?.originalEndExclusive).toBe(9);
   });
 
-  it('pins a detached Infinity placement move to the shared parent boundary while source keys stay put', () => {
+  it('pins a detached Infinity placement move to the child document capacity boundary while source keys stay put (43.4 defect 1)', () => {
     const detachedInfinity = Object.freeze([
       Object.freeze({
         loopId: 'loop-infinity-detached',
@@ -2281,10 +2271,10 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group duplicated shared-so
       placementStart: 14,
       phaseOrigin: 14,
       repeat: 'infinity',
-      originalEndExclusive: 20,
+      originalEndExclusive: 24,
       visibleRanges: [
         { start: 14, endExclusive: 17 },
-        { start: 19, endExclusive: 20 },
+        { start: 19, endExclusive: 24 },
       ],
     });
   });
@@ -2412,7 +2402,6 @@ describe('clampPhysicPaintKeyRailDragDestination and move-key-rail', () => {
         { keyId: 'S', appFrame: 10 },
       ],
       loopRanges: [],
-      parentEndExclusive: 16,
       capacity: 16,
       ...overrides,
     })
@@ -2423,10 +2412,12 @@ describe('clampPhysicPaintKeyRailDragDestination and move-key-rail', () => {
       ok: true,
       destinationFirstKeyAppFrame: 2,
     });
+    // A genuinely smaller child document feeds a smaller capacity as its end
+    // authority; the clamp respects it (43.4 defect 1).
     expect(clamp({
       identities: [{ keyId: 'M1', appFrame: 4 }, { keyId: 'M2', appFrame: 6 }],
       proposedDestinationFirstKeyAppFrame: 15,
-      parentEndExclusive: 12,
+      capacity: 12,
     })).toEqual({ ok: true, destinationFirstKeyAppFrame: 9 });
     expect(clamp()).toEqual({ ok: true, destinationFirstKeyAppFrame: 7 });
     expect(clamp({
@@ -2441,7 +2432,6 @@ describe('clampPhysicPaintKeyRailDragDestination and move-key-rail', () => {
         { keyId: 'G', appFrame: 9 },
       ],
       loopClips: [{ ...group, placementStart: 9, phaseOrigin: 9, originalEndExclusive: 14, visibleRanges: [{ start: 9, endExclusive: 14 }] }],
-      parentEndExclusive: 20,
       capacity: 20,
       interpolationEnabled: false,
     }).ranges;
@@ -2453,7 +2443,6 @@ describe('clampPhysicPaintKeyRailDragDestination and move-key-rail', () => {
       ],
       loopRanges: groupRanges,
       proposedDestinationFirstKeyAppFrame: 8,
-      parentEndExclusive: 20,
       capacity: 20,
     })).toEqual({ ok: true, destinationFirstKeyAppFrame: 6 });
   });
@@ -2704,6 +2693,21 @@ describe('clampPhysicPaintKeyRailDragDestination and move-key-rail', () => {
     const blocked = cases[cases.length - 1];
     if (!blocked || blocked.ok) throw new Error('Blocked Key Rail move must reject');
     expect(blocked.failure.code).toBe('no-free-space-in-direction');
+  });
+
+  it('accepts a rightward Key Rail drag into genuine free space when the stale main-editor outFrame is smaller than capacity (43.4 defect 1)', () => {
+    const resolution = resolveMove({
+      identities: [{ keyId: 'M1', appFrame: 99 }],
+      memberKeyIds: ['M1'],
+      destination: 102,
+      parentEndExclusive: 100,
+      capacity: 600,
+      loopClips: [],
+      breaks: [],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Key Rail move into genuine free space must resolve');
+    expect(resolution.proposal.mapping.get('M1')).toBe(102);
   });
 });
 
@@ -3854,7 +3858,6 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
     const context = derivePhysicPaintRotoLoopRanges({
       identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       loopClips: document.loopClips,
-      parentEndExclusive: 30,
       capacity: 30,
       interpolationEnabled: true,
     });

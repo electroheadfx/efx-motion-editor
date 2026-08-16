@@ -154,12 +154,11 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
     mode: 'static' as const,
   };
 
-  function buildLoopContext(repeat: number | 'infinity' = 5, parentEndExclusive = 600) {
+  function buildLoopContext(repeat: number | 'infinity' = 5, capacity = 600) {
     return derivePhysicPaintRotoLoopRanges({
       identities: LOOP_SOURCE_KEYS,
       loopClips: [{ ...LOOP_CLIP, repeat }],
-      parentEndExclusive,
-      capacity: 600,
+      capacity,
       interpolationEnabled: false,
     });
   }
@@ -186,7 +185,6 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
     const unresolvedContext = derivePhysicPaintRotoLoopRanges({
       identities: LOOP_SOURCE_KEYS.slice(0, 3),
       loopClips: [LOOP_CLIP],
-      parentEndExclusive: 600,
       capacity: 600,
       interpolationEnabled: false,
     });
@@ -268,7 +266,7 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
   });
 
   it('resolves visible spacing proxies at exact real and linked source positions only', () => {
-    const context = buildLoopContext(5, 40);
+    const context = buildLoopContext(5);
     const proxies = resolveRotoVisibleSpacingProxies(context, [10, 11, 15, 16, 18, 40]);
 
     expect(proxies.get(10)).toMatchObject({ sourceKeyId: 'A', sourceIndex: 0 });
@@ -282,7 +280,7 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
   it.each([0, -5, Number.MIN_VALUE, 0.5, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
     'fails closed without source occurrences or spacing proxies when a cycle length is malformed (%s)',
     (cycleLength) => {
-      const baseContext = buildLoopContext(5, 40);
+      const baseContext = buildLoopContext(5);
       const context = {
         ...baseContext,
         ranges: baseContext.ranges.map((range) => ({ ...range, cycleLength })),
@@ -316,7 +314,7 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
     ['source offset', { sourceOffsets: [0, Number.POSITIVE_INFINITY, 3, 4, 5] }],
     ['source offset', { sourceOffsets: [0, Number.NEGATIVE_INFINITY, 3, 4, 5] }],
   ] as const)('fails closed when a %s cannot produce bounded source occurrences', (_label, patch) => {
-    const baseContext = buildLoopContext(5, 40);
+    const baseContext = buildLoopContext(5);
     const context = {
       ...baseContext,
       ranges: baseContext.ranges.map((range) => ({ ...range, ...patch })),
@@ -355,7 +353,7 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
 
   it('keeps a finite Group that extends beyond the 600-cell projection and indexes only that projection', () => {
     const projectedCapacity = 600;
-    const context = buildLoopContext(239, 1205);
+    const context = buildLoopContext(239);
     const projectedFrames = Array.from({ length: projectedCapacity }, (_, appFrame) => appFrame);
     const resolutions = resolveRotoVisibleFrameResolutions(context, projectedFrames);
     const sourceOccurrenceByAppFrame = buildRotoSpacingProxySourceIndex(context, projectedCapacity);
@@ -372,7 +370,7 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
   });
 
   it('resolveRotoVisibleFrameResolutions issues exactly one lazy query per visible frame — never range-proportional (D-32)', () => {
-    const context = buildLoopContext(100000, 500010);
+    const context = buildLoopContext(100000);
     const visibleFrames = Array.from({ length: 120 }, (_, index) => index + 10);
     const query = vi.fn(resolvePhysicPaintRotoLoopFrame);
 
@@ -381,12 +379,12 @@ describe('Phase 43-02 loop resolution consumers (Pitfall 7 exhaustiveness)', () 
     expect(query).toHaveBeenCalledTimes(visibleFrames.length);
     expect(resolutions.size).toBe(visibleFrames.length);
     expect(resolutions.get(18)).toMatchObject({ kind: 'linked', loopId: 'L1' });
-    // A visible window deep inside the huge repeat resolves without any
-    // intermediate-frame querying.
-    const distantWindow = [499990, 499991, 499992];
+    // A visible window deep inside the capacity-truncated repeat resolves
+    // without any intermediate-frame querying (43.4 defect 1).
+    const distantWindow = [590, 591, 592];
     const distantQuery = vi.fn(resolvePhysicPaintRotoLoopFrame);
     const distant = resolveRotoVisibleFrameResolutions(context, distantWindow, distantQuery);
     expect(distantQuery).toHaveBeenCalledTimes(3);
-    expect(distant.get(499991)).toMatchObject({ kind: 'linked', sourceIndex: 1, repeatInstance: 99996 });
+    expect(distant.get(591)).toMatchObject({ kind: 'linked', sourceIndex: 1, repeatInstance: 116 });
   });
 });

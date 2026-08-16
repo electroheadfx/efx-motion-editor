@@ -324,7 +324,6 @@ export function selectRotoPhysicalTimelineStructuralView(input: {
       loopResolution: derivePhysicPaintRotoLoopRanges({
         identities: [],
         loopClips: [],
-        parentEndExclusive: 0,
         capacity: 1,
         interpolationEnabled: interpolation.enabled,
       }),
@@ -343,7 +342,6 @@ export function selectRotoPhysicalTimelineStructuralView(input: {
     loopResolution: derivePhysicPaintRotoLoopRanges({
       identities,
       loopClips: input.loopClips ?? [],
-      parentEndExclusive: input.parentEndExclusive,
       capacity,
       interpolationEnabled: interpolation.enabled,
     }),

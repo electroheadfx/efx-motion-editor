@@ -962,7 +962,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     lastKeyFrame: segment.lastKeyFrame,
     identities: rotoKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
     loopRanges: loopResolutionContext?.ranges ?? [],
-    parentEndExclusive: props.rotoParentEndExclusive ?? currentPhysicalCells.length,
     capacity: currentPhysicalCells.length,
   }), [rotoKeyRecords, loopResolutionContext, props.rotoParentEndExclusive, currentPhysicalCells.length]);
   // Key Rail gap preview is presentation-only. The retained publication owns

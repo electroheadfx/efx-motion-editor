@@ -287,7 +287,6 @@ function _resolveRotoPhysicalStructural(layerId: string): RotoPhysicalStructural
     loopResolution: derivePhysicPaintRotoLoopRanges({
       identities,
       loopClips,
-      parentEndExclusive: capacity,
       capacity,
       interpolationEnabled: interpolation.enabled,
     }),

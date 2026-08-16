@@ -83,7 +83,6 @@ const realKey = (keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord 
 const MAIN_CYCLE = ['A', 'B', 'C'];
 const SIBLING_CYCLE = ['D', 'E'];
 const SIBLING_START = 30;
-const PARENT_END_EXCLUSIVE = 40;
 
 interface ParityCombo {
   readonly placementStart: number;
@@ -166,7 +165,6 @@ describe('Group parity matrix (placementStart × Repeat)', () => {
       const context = derivePhysicPaintRotoLoopRanges({
         identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
         loopClips: document.loopClips,
-        parentEndExclusive: PARENT_END_EXCLUSIVE,
         capacity: 600,
         interpolationEnabled: false,
       });

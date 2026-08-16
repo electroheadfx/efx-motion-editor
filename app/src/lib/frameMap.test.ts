@@ -175,7 +175,7 @@ describe('frameMap solid/transparent entries', () => {
     expect(resolveSequenceTimelineRange({ ...sequence, inFrame: undefined }, [])).toBeNull();
   });
 
-  it('keeps a second content Infinity Group bounded to its local 30-frame span at global F100', () => {
+  it('keeps a second content Infinity Group extending to the child document capacity at global F100 (43.4 defect 1)', () => {
     const layerId = 'content-infinity-layer';
     const leading = makeSequence({
       id: 'leading-content',
@@ -196,7 +196,7 @@ describe('frameMap solid/transparent entries', () => {
       globalEndExclusive: 130,
       localEndExclusive: 30,
     });
-    expect(frameMap.value).toHaveLength(130);
+    expect(frameMap.value).toHaveLength(220);
     expect(frameMap.value[100]).toEqual(expect.objectContaining({
       globalFrame: 100,
       sequenceId: sequence.id,
@@ -457,7 +457,7 @@ describe('Motion Editor passive Loop Clip markers (D-33R)', () => {
     ]);
   });
 
-  it('keeps Infinity parent-bounded and marker frames layer-local', () => {
+  it('keeps Infinity capacity-bounded and marker frames layer-local (43.4 defect 1)', () => {
     const layerId = 'infinity-loop-layer';
     const sequence = {
       ...makeFxSequence('infinity-loop-sequence', 'Infinity Loop', makePhysicPaintLayer(layerId)),
@@ -468,7 +468,7 @@ describe('Motion Editor passive Loop Clip markers (D-33R)', () => {
     installRotoDocument(layerId, [0, 1, 2, 3, 4], [makeLoopClip('loop-infinity', 10, 'infinity')]);
 
     expect(fxTrackLayouts.value[0].repeatDurationMarkers).toEqual([
-      { startFrame: 10, frameCount: 22, mode: 'progressive' },
+      { startFrame: 10, frameCount: 110, mode: 'progressive' },
     ]);
   });
 

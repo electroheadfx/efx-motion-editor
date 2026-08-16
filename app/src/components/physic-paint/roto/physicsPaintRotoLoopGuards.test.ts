@@ -142,7 +142,6 @@ function derive(
   return derivePhysicPaintRotoLoopRanges({
     identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
     loopClips,
-    parentEndExclusive: CAPACITY,
     capacity: CAPACITY,
     interpolationEnabled: false,
   });

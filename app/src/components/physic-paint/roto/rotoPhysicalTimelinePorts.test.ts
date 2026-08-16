@@ -52,7 +52,6 @@ function buildLoopContext() {
       repeat: 5,
       mode: 'static',
     }],
-    parentEndExclusive: 600,
     capacity: 600,
     interpolationEnabled: false,
   });
@@ -75,7 +74,6 @@ describe('getRotoPhysicalSelectableKeyId — virtual occurrence exclusion (D-23/
         repeat: 5,
         mode: 'static',
       }],
-      parentEndExclusive: 600,
       capacity: 600,
       interpolationEnabled: false,
     });
@@ -127,9 +125,9 @@ describe('resolvePhysicPaintRotoSpacingProxy — exact source positions only', (
       { keyId: 'OUTSIDE', appFrame: 80 },
     ];
     const clip = [{ loopId: 'L1', placementStart: 10, sourceKeyIds: ['A', 'B', 'C'], repeat: 3, mode: 'static' as const }];
-    const generatedContext = derivePhysicPaintRotoLoopRanges({ identities: spacedIdentities, loopClips: clip, parentEndExclusive: 100, capacity: 100, interpolationEnabled: true });
-    const gapContext = derivePhysicPaintRotoLoopRanges({ identities: spacedIdentities, loopClips: clip, parentEndExclusive: 100, capacity: 100, interpolationEnabled: false });
-    const unresolvedContext = derivePhysicPaintRotoLoopRanges({ identities: spacedIdentities.slice(0, 2), loopClips: clip, parentEndExclusive: 100, capacity: 100, interpolationEnabled: false });
+    const generatedContext = derivePhysicPaintRotoLoopRanges({ identities: spacedIdentities, loopClips: clip, capacity: 100, interpolationEnabled: true });
+    const gapContext = derivePhysicPaintRotoLoopRanges({ identities: spacedIdentities, loopClips: clip, capacity: 100, interpolationEnabled: false });
+    const unresolvedContext = derivePhysicPaintRotoLoopRanges({ identities: spacedIdentities.slice(0, 2), loopClips: clip, capacity: 100, interpolationEnabled: false });
 
     expect(resolvePhysicPaintRotoLoopFrame(generatedContext, 11).kind).toBe('linked-generated');
     expect(resolvePhysicPaintRotoSpacingProxy(generatedContext, 11)).toBeNull();
