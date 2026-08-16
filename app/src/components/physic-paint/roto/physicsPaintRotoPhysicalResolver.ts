@@ -2152,14 +2152,24 @@ export function clampPhysicPaintKeyRailDragDestination(
     end: range.effectiveEnd,
   }));
 
+  const debugRightward = proposed > current;
   const intervalFree = (destination: number): boolean => {
     const end = destination + span;
-    if (destination < 0 || end > endExclusive) return false;
+    if (destination < 0 || end > endExclusive) {
+      if (debugRightward) console.log(`[DEBUG-KRCLAMP] reject dest=${destination} endExclusive bound: capacity=${input.capacity} parentEndExclusive=${input.parentEndExclusive} endExclusive=${endExclusive} end=${end}`);
+      return false;
+    }
     for (const frame of boundaryKeyFrames) {
-      if (frame >= destination && frame < end) return false;
+      if (frame >= destination && frame < end) {
+        if (debugRightward) console.log(`[DEBUG-KRCLAMP] reject dest=${destination} boundaryKeyFrames hit frame=${frame}`);
+        return false;
+      }
     }
     for (const interval of groupIntervals) {
-      if (destination < interval.end && interval.start < end) return false;
+      if (destination < interval.end && interval.start < end) {
+        if (debugRightward) console.log(`[DEBUG-KRCLAMP] reject dest=${destination} groupIntervals overlap interval=[${interval.start},${interval.end}) loopId=${input.loopRanges.find((range) => range.placementStart === interval.start && range.effectiveEnd === interval.end)?.loopId ?? 'unknown'}`);
+        return false;
+      }
     }
     return true;
   };
@@ -2169,7 +2179,10 @@ export function clampPhysicPaintKeyRailDragDestination(
     for (const identity of input.identities) {
       if (!memberKeyIds.has(identity.keyId)) continue;
       const next = identity.appFrame + delta;
-      if (next < 0 || next >= endExclusive || boundaryKeyFrames.has(next)) return false;
+      if (next < 0 || next >= endExclusive || boundaryKeyFrames.has(next)) {
+        if (debugRightward) console.log(`[DEBUG-KRCLAMP] reject dest=${destination} keysLandFree hit key=${identity.keyId} next=${next} endExclusive=${endExclusive}`);
+        return false;
+      }
     }
     return true;
   };

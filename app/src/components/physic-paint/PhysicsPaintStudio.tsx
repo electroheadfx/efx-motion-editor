@@ -299,7 +299,8 @@ export function PhysicsPaintStudio() {
     selectedRotoKeyRail.value,
     keyRailSegments,
   );
-  if (selectedRotoKeyRail.peek() !== null && effectiveSelectedRotoKeyRail === null) {
+  if (selectedRotoKeyRail.peek() !== null
+    && (effectiveSelectedRotoKeyRail === null || selectedKeyId.value !== null || selectedKeyIds.value.length > 0)) {
     selectedRotoKeyRail.value = null;
   }
   const orderedRotoLoopClipIds = useMemo(() => [...rotoLoopClips]

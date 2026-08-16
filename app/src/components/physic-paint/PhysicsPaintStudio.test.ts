@@ -421,8 +421,19 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
     expect(studio).toContain('selection.firstKeyId === segment.firstKeyId');
     expect(studio).toContain('selection.keyIds.length === segment.keyIds.length');
     expect(studio).toContain('selection.keyIds.every((keyId, index) => keyId === segment.keyIds[index])');
-    expect(studio).toContain('if (selectedRotoKeyRail.peek() !== null && effectiveSelectedRotoKeyRail === null) {\n    selectedRotoKeyRail.value = null;\n  }');
+    expect(studio).toContain('if (selectedRotoKeyRail.peek() !== null\n    && (effectiveSelectedRotoKeyRail === null || selectedKeyId.value !== null || selectedKeyIds.value.length > 0)) {\n    selectedRotoKeyRail.value = null;\n  }');
     expect(studio).not.toContain('keyRailSegments[0]');
+  });
+
+  it('clears Key Rail selection when any physical key is selected (43.4 defect 3)', () => {
+    const reconcileStart = studio.indexOf('const effectiveSelectedRotoKeyRail = reconcileRotoKeyRailSelection(');
+    const reconcileEnd = studio.indexOf('const orderedRotoLoopClipIds', reconcileStart);
+    const reconcile = studio.slice(reconcileStart, reconcileEnd);
+    expect(reconcileStart).toBeGreaterThanOrEqual(0);
+    expect(reconcile).toContain('selectedRotoKeyRail.peek() !== null');
+    expect(reconcile).toContain('selectedKeyId.value !== null');
+    expect(reconcile).toContain('selectedKeyIds.value.length > 0');
+    expect(reconcile).toContain('selectedRotoKeyRail.value = null;');
   });
 
   it('feeds classifier and strip paint from the reconciled selection with mode-resolved Rail deletion copy', () => {
