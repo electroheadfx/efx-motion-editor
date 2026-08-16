@@ -281,6 +281,7 @@ describe('PhysicsPaintKeyRail', () => {
     expect(ringRule).toContain('border: 2px solid #f2f5f7');
     expect(ringRule).toContain('top: -2px');
     expect(ringRule).toContain('bottom: -24px');
+    expect(ringRule).toContain('border-radius: 8px');
     expect(cssRule('.physics-paint-key-rail-target.busy {')).toContain('opacity: 0.55');
     expect(cssRule('.physics-paint-key-rail-ghost {')).toContain('opacity: 0.55');
     expect(cssRule('.physics-paint-key-rail-ghost {')).toContain('pointer-events: none');

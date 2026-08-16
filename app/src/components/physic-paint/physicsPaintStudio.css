@@ -2880,6 +2880,10 @@ button.destructive {
   bottom: -24px;
   z-index: 2;
   border: 2px solid #f2f5f7;
+  /* Capsule-ish rounding on the full-row ring (8px reads rounded on the
+     ~38px-tall rectangle without going full pill); identical across every
+     rail family via the shared class. */
+  border-radius: 8px;
   pointer-events: none;
 }
 

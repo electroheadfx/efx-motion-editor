@@ -41,6 +41,7 @@ describe('shared rail focus ring (43.4 defect 8)', () => {
     expect(ringRule).toContain('left: -2px');
     expect(ringRule).toContain('right: -2px');
     expect(ringRule).toContain('bottom: -24px');
+    expect(ringRule).toContain('border-radius: 8px');
     expect(ringRule).toContain('pointer-events: none');
   });
 

@@ -798,6 +798,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(ringRule).toContain('border: 2px solid #f2f5f7');
     expect(ringRule).toContain('top: -2px');
     expect(ringRule).toContain('bottom: -24px');
+    expect(ringRule).toContain('border-radius: 8px');
     expect(cssRule('.physics-paint-workflow-strip {')).toContain('height: 161px');
     expect(cssRule('.physics-paint-lane {')).toContain('height: 38px');
     expect(cssRule('.physics-paint-roto-action-row {')).toContain('height: 34px');
