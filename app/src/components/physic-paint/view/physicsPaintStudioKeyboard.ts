@@ -35,6 +35,11 @@ function isPhysicsPaintRotoDeleteTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return true;
   if (target.ownerDocument.querySelector('[role="dialog"], [aria-modal="true"]')) return false;
   if (target.closest('.physics-paint-roto-cell.current')) return true;
+  // A selected Key Rail or Motion/Static Rail button is a valid delete target:
+  // the selection-scope classifier (classifyRotoDeleteTarget) decides the
+  // exact scope (43.4 defect 5). Unselected rail buttons stay protected so
+  // Delete/Backspace never fires while a plain rail button merely has focus.
+  if (target.closest('.physics-paint-key-rail-target.selected, .physics-paint-loop-clip-rail-target.selected')) return true;
   return !Boolean(target.closest([
     'button',
     'a[href]',

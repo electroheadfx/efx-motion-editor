@@ -473,6 +473,7 @@ describe('useRotoTimelineActions selection-scoped Delete activation', () => {
 
     expect(multiple.actions.physicalActions.deleteScopeLabel.value).toBe('Delete Key Rail — frames 2–5, 2 keys.');
     expect(await multiple.actions.physicalActions.deleteRotoFrame()).toBe(true);
+    expect(multiple.executePhysicalEdit).toHaveBeenCalledTimes(1);
     expect(multiple.executePhysicalEdit).toHaveBeenCalledWith(expect.objectContaining({
       operationKind: 'delete-key-rail',
       intent: { kind: 'delete-key-rail', keyIds: ['rail-a', 'rail-b'] },

@@ -164,6 +164,30 @@ describe('Physics Paint Roto delete shortcuts', () => {
     expect(preventDefault).toHaveBeenCalledOnce();
   });
 
+  it.each(['Backspace', 'Delete'])('allows deletion from a selected Key Rail button (%s)', (key) => {
+    const target = new TestHTMLElement('button', { closestSelectors: ['.physics-paint-key-rail-target.selected', 'button'] });
+    const { handlers, preventDefault } = dispatch(key, target as unknown as EventTarget);
+
+    expect(handlers.deleteRotoKey).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it.each(['Backspace', 'Delete'])('allows deletion from a selected Motion/Static Rail button (%s)', (key) => {
+    const target = new TestHTMLElement('button', { closestSelectors: ['.physics-paint-loop-clip-rail-target.selected', 'button'] });
+    const { handlers, preventDefault } = dispatch(key, target as unknown as EventTarget);
+
+    expect(handlers.deleteRotoKey).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it.each(['Backspace', 'Delete'])('protects an unselected Key Rail button from deletion (%s)', (key) => {
+    const target = new TestHTMLElement('button', { closestSelectors: ['.physics-paint-key-rail-target', 'button'] });
+    const { handlers, preventDefault } = dispatch(key, target as unknown as EventTarget);
+
+    expect(handlers.deleteRotoKey).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
   it('does not prevent deletion when no delete action is installed', () => {
     const handlers = actions();
     const { deleteRotoKey: _deleteRotoKey, ...handlersWithoutDelete } = handlers;
