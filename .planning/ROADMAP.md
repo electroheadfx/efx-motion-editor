@@ -219,7 +219,7 @@ Plans:
 **Goal:** Ordinary real Roto keys not owned by a Motion/Static Group present as derived mid-gray Key Rails segmented by persistent 43.1 breaks — with a Scissor toolbar action splitting a rail via one stable-key-owned break, selection-scoped direct Delete Key Rail leaving a persistent intentional gap, and 43.3 clamp-and-commit Key Rail drag — each operation one atomic parent-acknowledged history command with one Undo/Redo, surviving save/reopen and Interpolation Off/On, under the coherent Motion Rail / Static Rail / Key Rail user-facing vocabulary.
 **Requirements**: KRAIL-01, KRAIL-02, SCISSOR-01, SCISSOR-02, KDEL-01, KDEL-02, KDRAG-01, KDRAG-02, HIST-01, TERM-01, GUARD-01, REG-01 (planning-local; do not add to REQUIREMENTS.md)
 **Depends on:** Phase 43.3
-**Plans:** 8 plans
+**Plans:** 8/8 plans complete
 
 Plans:
 **Wave 1**
@@ -246,7 +246,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 43.4-08-PLAN.md — History/persistence integration proofs (one-command Undo/Redo, Redo truncation, save/reopen parity) + blocking frozen-session native UAT (HIST-01, REG-01)
+- [x] 43.4-08-PLAN.md — History/persistence integration proofs (one-command Undo/Redo, Redo truncation, save/reopen parity) + blocking frozen-session native UAT (HIST-01, REG-01)
 
 ### Phase 43.3: Motion and Static Group Drag Within Free Space (INSERTED)
 

@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-current_phase: 43.4
-current_phase_name: Derived Key Groups and Scissor Breaks
-status: executing
-stopped_at: Completed 43.4-07-PLAN.md
-last_updated: "2026-08-15T17:39:18.397Z"
-last_activity: 2026-08-15
-last_activity_desc: "Native UAT approved for quick task 260815-bmg: Count-free Paint/Physics Paint Undo/Redo controls"
+current_phase: 44
+current_phase_name: Integrated UAT + Signed Release
+status: planning
+stopped_at: Completed 43.4-08-PLAN.md
+last_updated: "2026-08-16T19:04:54.000Z"
+last_activity: 2026-08-16
+last_activity_desc: "Phase 43.4 complete, transitioned to Phase 44"
 progress:
   total_phases: 10
   completed_phases: 7
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 43.4 — Derived Key Groups and Scissor Breaks
+**Current focus:** Phase 44 — Integrated UAT + Signed Release
 
 ## Current Position
 
-Phase: 43.4 (Derived Key Groups and Scissor Breaks) — EXECUTING
-Plan: 8 of 8
-Status: Ready to execute
-Last activity: 2026-08-15 — Phase 43.4 execution started
+Phase: 44 — Integrated UAT + Signed Release
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-16 — Phase 43.4 complete, transitioned to Phase 44
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -41,7 +41,7 @@ Progress: [██████████] 99%
 
 **Velocity:**
 
-- Total plans completed: 151 for v0.8.0
+- Total plans completed: 159 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -75,6 +75,7 @@ Progress: [██████████] 99%
 | 43.1 | 12 | - | - |
 | 43.2 | 25 | - | - |
 | 43.3 | 4 | - | - |
+| 43.4 | 8 | - | - |
 
 **Recent Trend:**
 
@@ -229,6 +230,7 @@ Progress: [██████████] 99%
 | Phase 43.4 P05 | 8min | 2 tasks | 2 files |
 | Phase 43.4 P06 | 17min | 3 tasks | 8 files |
 | Phase 43.4 P07 | 8min | 2 tasks | 9 files |
+| Phase 43.4 P08 | 2 tasks | 27 commits | history/persistence proofs + approved native UAT |
 
 ## Accumulated Context
 
@@ -645,8 +647,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-15T17:39:18.382Z
-Stopped at: Completed 43.4-07-PLAN.md
+Last session: 2026-08-16T19:04:54.000Z
+Stopped at: Completed 43.4-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
