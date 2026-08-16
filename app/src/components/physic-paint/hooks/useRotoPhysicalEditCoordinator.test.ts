@@ -195,6 +195,7 @@ function harness(options: {
   failFirstLoopReplace?: boolean;
   transportRejects?: boolean;
   flushLivePixels?: (appFrame?: number) => Promise<void>;
+  launchRotoPhysical?: { selectedKeyId: string | null; cursorAppFrame: number };
 } = {}) {
   const initial = fixture();
   let records: readonly PhysicPaintRotoRealKeyRecord[] = initial.records;
@@ -386,6 +387,9 @@ function harness(options: {
         operationId: 'launch-1',
         layerId: 'layer-1',
         project: { contextId: 'project-1' },
+        ...(options.launchRotoPhysical
+          ? { rotoPhysical: options.launchRotoPhysical }
+          : {}),
       }) as never,
       setLaunchContextStartFrame: (frame) => { currentFrame = frame; },
       setLaunchContextCachedFrames: vi.fn(),
@@ -481,6 +485,15 @@ function harness(options: {
   const setStudioSelection = (keyId: string | null, appFrame: number) => {
     selectedKeyId = keyId;
     currentFrame = appFrame;
+  };
+  // Simulates handleSelectRotoKeyRail's setRotoPhysicalSelection(layerId,
+  // null, currentFrame): the child document's selection is cleared locally
+  // while the parent document retains the last accepted selection (43.4
+  // defect 4). The replay snapshot must use the last accepted selection, not
+  // this locally-cleared document selection.
+  const clearCanonicalSelection = (appFrame: number) => {
+    canonicalSelectedKeyId = null;
+    canonicalCursorAppFrame = appFrame;
   };
   const publishCanonicalGroupSelection = (appFrame: number) => {
     selectedKeyId = null;
@@ -669,6 +682,7 @@ function harness(options: {
     executePlayScript,
     seedGroupDocument,
     setStudioSelection,
+    clearCanonicalSelection,
     publishCanonicalGroupSelection,
     seedCacheFrames,
     accept,
@@ -1673,19 +1687,27 @@ describe('Phase 43.4 Key Rail coordinator/history integration', () => {
     {
       operationKind: 'scissor-key-rail' as const,
       intent: { kind: 'scissor-key-rail' as const, breakOwnerKeyId: 'B' },
+      // Scissor/Delete are triggered from a clicked Key Rail, which clears the
+      // child document's selection locally (handleSelectRotoKeyRail) while the
+      // parent document retains the last accepted selection (43.4 defect 4).
+      clearsDocumentSelection: true,
     },
     {
       operationKind: 'move-key-rail' as const,
       intent: { kind: 'move-key-rail' as const, memberKeyIds: ['A', 'B'], destinationFirstKeyAppFrame: 1 },
+      // A Key Rail drag starts on pointer-down without a prior click, so the
+      // child document's selection is NOT locally cleared for move.
+      clearsDocumentSelection: false,
     },
     {
       operationKind: 'delete-key-rail' as const,
       intent: { kind: 'delete-key-rail' as const, keyIds: ['A', 'B'] },
+      clearsDocumentSelection: true,
     },
   ];
 
-  it.each(operations)('settles $operationKind once through executePhysicalEdit and replays its complete document as one command', async ({ operationKind, intent }) => {
-    const test = harness();
+  it.each(operations)('settles $operationKind once through executePhysicalEdit and replays its complete document as one command', async ({ operationKind, intent, clearsDocumentSelection }) => {
+    const test = harness({ launchRotoPhysical: { selectedKeyId: 'B', cursorAppFrame: 2 } });
     const records = [record('A', 0), record('B', 2), record('C', 6), record('D', 8)];
     const before = parsePhysicPaintRotoPhysicalDocument({
       capacity: 30,
@@ -1706,6 +1728,11 @@ describe('Phase 43.4 Key Rail coordinator/history integration', () => {
     // snapshot must use the document's authority (43.4 defect 2), not the
     // cleared live signal.
     test.setStudioSelection(null, 2);
+    // 43.4 defect 4: for click-triggered Scissor/Delete, handleSelectRotoKeyRail
+    // ALSO clears the child document's selection locally. The replay snapshot
+    // must use the last accepted selection ('B'), not this cleared document
+    // selection, or the parent replay-target check rejects the Undo.
+    if (clearsDocumentSelection) test.clearCanonicalSelection(2);
     const { history, availability } = attachGroupReplayHistory(test);
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: before.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),

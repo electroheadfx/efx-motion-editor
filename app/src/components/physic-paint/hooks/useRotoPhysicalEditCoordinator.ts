@@ -809,6 +809,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
   const pendingRef = useRef<PendingPhysicalEditContext | null>(null);
   const beforeRef = useRef<RotoPhysicalEditSnapshot<EngineState> | null>(null);
   const afterRef = useRef<RotoPhysicalEditSnapshot<EngineState> | null>(null);
+  // The last parent-accepted selection/cursor (43.4 defect 4). A Key Rail
+  // selection clears the child document's selection locally
+  // (handleSelectRotoKeyRail) while the parent document retains the last
+  // accepted selection. The replay snapshot must use this accepted authority,
+  // not the locally-cleared document selection, or the parent replay-target
+  // check rejects the Undo/Redo.
+  const lastAcceptedSelectionRef = useRef<{ selectedKeyId: string | null; cursorAppFrame: number } | null>(null);
   const timeoutRef = useRef<number | null>(null);
   const leaseRef = useRef<PhysicPaintRotoPhysicalOperationLeaseToken | null>(null);
   const settledLeaseRef = useRef<{
@@ -858,16 +865,22 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       const interpolation = portsRef.current.records.getInterpolation(launch.layerId);
       const capacity = portsRef.current.records.getCapacity(launch.layerId);
       // The replay snapshot must use the same authority as the parent's
-      // accepted-command before/after snapshot: the accepted document's
-      // selection and cursor (43.4 defect 2). The live selection signal can
-      // desync from the document after a commit, which made the parent replay
-      // target snapshot mismatch for Key Rail operations.
-      const documentSelection = portsRef.current.records.getDocument(launch.layerId)?.selectedKeyId
-        ?? portsRef.current.selection.getSelectedKeyId();
-      const documentCursorAppFrame = portsRef.current.records.getDocument(launch.layerId)?.cursorAppFrame
-        ?? portsRef.current.selection.getCurrentAppFrame();
-      const selectedKeyId = documentSelection;
-      const currentAppFrame = documentCursorAppFrame;
+      // accepted-command before/after snapshot: the last parent-accepted
+      // selection and cursor (43.4 defect 2 + defect 4). The live selection
+      // signal can desync from the document after a commit, and a Key Rail
+      // selection clears the child document's selection locally while the
+      // parent document retains the last accepted selection — either desync
+      // made the parent replay target snapshot mismatch for Key Rail ops.
+      if (lastAcceptedSelectionRef.current === null) {
+        const document = portsRef.current.records.getDocument(launch.layerId);
+        const launchRoto = launch.rotoPhysical;
+        lastAcceptedSelectionRef.current = {
+          selectedKeyId: document?.selectedKeyId ?? launchRoto?.selectedKeyId ?? null,
+          cursorAppFrame: document?.cursorAppFrame ?? launchRoto?.cursorAppFrame ?? 0,
+        };
+      }
+      const selectedKeyId = lastAcceptedSelectionRef.current.selectedKeyId;
+      const currentAppFrame = lastAcceptedSelectionRef.current.cursorAppFrame;
       const buffer = portsRef.current.buffer;
       const reference = portsRef.current.reference.getCachedReference();
       return {
@@ -914,6 +927,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
     if (!leaseToken) return { ok: false, error: 'Physical edit lease became unavailable before child publication.' };
     const result = portsRef.current.records.replaceDocument(layerId, document, leaseToken);
     if (!result.ok) return result;
+    lastAcceptedSelectionRef.current = {
+      selectedKeyId: document.selectedKeyId,
+      cursorAppFrame: document.cursorAppFrame,
+    };
     portsRef.current.selection.setSelectedKeyId(document.selectedKeyId);
     portsRef.current.selection.setCurrentAppFrame(document.cursorAppFrame);
     portsRef.current.launch.setLaunchContextStartFrame(document.cursorAppFrame);

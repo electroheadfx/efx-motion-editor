@@ -1579,6 +1579,141 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(undoLease)).toBe(true);
   });
 
+  it.each([
+    {
+      name: 'scissor',
+      intent: { kind: 'scissor-key-rail' as const, breakOwnerKeyId: 'B' },
+      operationKind: 'scissor-key-rail' as const,
+      operationId: 'scissor-key-rail-commit',
+      undoOperationId: 'scissor-key-rail-undo',
+    },
+    {
+      name: 'delete',
+      intent: { kind: 'delete-key-rail' as const, keyIds: ['A', 'B'] },
+      operationKind: 'delete-key-rail' as const,
+      operationId: 'delete-key-rail-commit',
+      undoOperationId: 'delete-key-rail-undo',
+    },
+  ])('accepts and replays a $name Key Rail through the parent replay-target snapshot (43.4 defect 4)', async ({ intent, operationKind, operationId, undoOperationId }) => {
+    const layer = physicLayer();
+    mockLayers([layer], null);
+    sequenceStore.add({
+      id: `bridge-${operationKind}-sequence`,
+      kind: 'fx',
+      name: `Bridge ${operationKind} authority`,
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: 100,
+    });
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const records = [
+      makePhysicalRecord('A', 0),
+      makePhysicalRecord('B', 2),
+      makePhysicalRecord('C', 6),
+      makePhysicalRecord('D', 8),
+    ];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, {
+      capacity: 50,
+      realKeyRecords: records,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: 'B',
+      cursorAppFrame: 2,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, [], ['C'], []),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: ['C'],
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
+    if (!launch.ok || !launch.data.rotoPhysical) throw new Error('Expected physical launch authority.');
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent,
+      parentEndExclusive: 50,
+      capacity: 50,
+      interpolationEnabled: false,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: ['C'],
+    });
+    if (!resolution.ok) throw new Error('Expected canonical Key Rail proposal.');
+    const proposal = resolution.proposal;
+    const proposedRecords = proposal.orderedKeyIds.map((keyId) => {
+      const current = records.find((record) => record.keyId === keyId);
+      const appFrame = proposal.mapping.get(keyId);
+      if (!current || appFrame === undefined) throw new Error(`Missing record ${keyId}.`);
+      return movePhysicalRecord(current, appFrame);
+    });
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!beforeDocument) throw new Error('Expected pre-edit physical document.');
+    const leaseToken = acquirePhysicalLease(layer.id);
+    const result = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId,
+      operationKind,
+      intent,
+      layerId: layer.id,
+      leaseToken,
+      startFrame: proposal.selectedAppFrame ?? beforeDocument.cursorAppFrame,
+      cursorAppFrame: proposal.selectedAppFrame ?? beforeDocument.cursorAppFrame,
+      launchOperationId: launch.data.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: launch.data.rotoPhysical.revision,
+      records: proposedRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: [],
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      loopClips: proposal.nextLoopClips ?? [],
+      incomingInterpolationBreakKeyIds: proposal.nextIncomingInterpolationBreakKeyIds ?? [],
+      selectedKeyId: proposal.selectedKeyId,
+      selectedAppFrame: proposal.selectedAppFrame,
+    });
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!acceptedDocument || !result.ok) throw new Error('Expected accepted document.');
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
+
+    const undoLease = acquirePhysicalLease(layer.id);
+    const undo = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: undoOperationId,
+      operationKind: 'undo',
+      layerId: layer.id,
+      leaseToken: undoLease,
+      startFrame: beforeDocument.cursorAppFrame,
+      cursorAppFrame: beforeDocument.cursorAppFrame,
+      launchOperationId: launch.data.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: acceptedDocument.revision,
+      records: beforeDocument.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (beforeDocument.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: beforeDocument.interpolation.enabled,
+      interpolationMode: beforeDocument.interpolation.mode,
+      loopClips: beforeDocument.loopClips,
+      incomingInterpolationBreakKeyIds: beforeDocument.incomingInterpolationBreakKeyIds,
+      // The replay must submit the document's pre-commit selection (the same
+      // authority the parent's before snapshot captured) — 43.4 defect 4.
+      selectedKeyId: beforeDocument.selectedKeyId,
+      selectedAppFrame: beforeDocument.selectedKeyId === null ? null : beforeDocument.cursorAppFrame,
+      historyProvenance: {
+        historyCommandId: operationId,
+        historyDirection: 'undo',
+        sourceRevision: acceptedDocument.revision,
+        targetRevision: beforeDocument.revision,
+      },
+    });
+    expect(undo.ok, undo.ok ? undefined : undo.error).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(beforeDocument);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(undoLease)).toBe(true);
+  });
+
   it('recomputes Infinity Group movement against the child document capacity (43.4 defect 1)', async () => {
     const layer = physicLayer();
     mockLayers([layer], null);
