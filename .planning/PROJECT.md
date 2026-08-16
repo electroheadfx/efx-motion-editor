@@ -279,4 +279,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-13 after Phase 43.3 verification closure — Motion/Static Group Rail drag within free space verified (10/10 must-haves, native UAT approved; rightward-ghost defect fixed in-phase; Infinity repeat-resolution failure documented as pre-existing transferred baseline debt with a separate debug); milestone v0.9.0 (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
+*Last updated: 2026-08-16 after Phase 43.4 verification closure — Derived Key Groups and Scissor Breaks verified (12/12 must-haves, native UAT approved on fee76030; Debug Rounds 1-5 fixed defects 1-10 in-phase including shared rail focus ring, roving keyboard navigation, and direct-click focus parity); milestone v0.9.0 (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
