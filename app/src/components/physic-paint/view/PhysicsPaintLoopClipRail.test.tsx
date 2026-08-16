@@ -449,6 +449,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(hasClass(target, 'selected')).toBe(true);
     expect(hasClass(target, 'boundary-start')).toBe(true);
     expect(hasClass(target, 'boundary-end')).toBe(true);
+    expect(hasClass(target, 'boundary-cell-start')).toBe(true);
+    expect(hasClass(target, 'boundary-cell-end')).toBe(true);
     expect(textOf(tree)).not.toContain('Fragment');
     expect(textOf(tree)).not.toContain('Range F');
 
@@ -515,6 +517,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     for (const target of targets) {
       expect(hasClass(target, 'boundary-start')).toBe(true);
       expect(hasClass(target, 'boundary-end')).toBe(true);
+      expect(hasClass(target, 'boundary-cell-start')).toBe(true);
+      expect(hasClass(target, 'boundary-cell-end')).toBe(true);
     }
   });
 
@@ -950,7 +954,14 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(hasClass(target, 'mode-progressive')).toBe(true);
     expect(hasClass(target, 'boundary-start')).toBe(true);
     expect(hasClass(target, 'boundary-end')).toBe(false);
+    // A Motion Rail exposes the same full-height cell edges as a Key Rail:
+    // the boundary-cell classes ride the shared rail-target base, and the
+    // shared rule paints the 1px #f8fafc edge borders.
+    expect(hasClass(target, 'boundary-cell-start')).toBe(true);
+    expect(hasClass(target, 'boundary-cell-end')).toBe(false);
     expect(segment).toBeTruthy();
+    expect(cssRule('.physics-paint-rail-target.boundary-cell-start {')).toContain('border-left: 1px solid #f8fafc');
+    expect(cssRule('.physics-paint-rail-target.boundary-cell-end {')).toContain('border-right: 1px solid #f8fafc');
     const railSegmentRule = cssRule('.physics-paint-loop-clip-rail-segment {');
     expect(railSegmentRule).toContain('height: 3px');
     expect(railSegmentRule).toContain('background: #8b5cf6');
@@ -1298,15 +1309,23 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(hasClass(target, 'mode-static')).toBe(true);
     expect(hasClass(target, 'boundary-start')).toBe(true);
     expect(hasClass(target, 'boundary-end')).toBe(true);
+    // Static Rails draw the identical full-height cell edges as Key Rails via
+    // the shared boundary treatment (band cap + cell edge on one rule set).
+    expect(hasClass(target, 'boundary-cell-start')).toBe(true);
+    expect(hasClass(target, 'boundary-cell-end')).toBe(true);
     expect(`${String(target.props['aria-label'])} ${textOf(tree)}`).toContain('Type: Static');
     expect(cssRule('.physics-paint-loop-clip-rail-target.mode-static .physics-paint-loop-clip-rail-segment {'))
       .toContain('background: #06b6d4');
     expect(cssRule('.physics-paint-loop-clip-rail-target.mode-static:hover:not(.selected) .physics-paint-loop-clip-rail-segment,'))
       .toContain('background: #67e8f9');
-    expect(cssRule('.physics-paint-loop-clip-rail-target.boundary-start .physics-paint-loop-clip-rail-segment::before,'))
+    expect(cssRule('.physics-paint-rail-target.boundary-start .physics-paint-rail-segment::before,'))
       .toContain('background: #f8fafc');
-    expect(cssRule('.physics-paint-loop-clip-rail-target.boundary-end .physics-paint-loop-clip-rail-segment::after {'))
+    expect(cssRule('.physics-paint-rail-target.boundary-end .physics-paint-rail-segment::after {'))
       .toContain('background: #f8fafc');
+    expect(cssRule('.physics-paint-rail-target.boundary-cell-start {'))
+      .toContain('border-left: 1px solid #f8fafc');
+    expect(cssRule('.physics-paint-rail-target.boundary-cell-end {'))
+      .toContain('border-right: 1px solid #f8fafc');
   });
 
   it('renders source-cycle generated cells blue and their repeated counterparts dark', () => {

@@ -2840,8 +2840,14 @@ button.destructive {
   background: #6b7280;
 }
 
-.physics-paint-loop-clip-rail-target.boundary-start .physics-paint-loop-clip-rail-segment::before,
-.physics-paint-loop-clip-rail-target.boundary-end .physics-paint-loop-clip-rail-segment::after {
+/* Shared rail boundary treatment (43.4 follow-up): every rail family
+   (Motion/Static Loop Clip and Key Rail) draws the same boundary edges on its
+   first and last covered cells — the 2px x 3px band cap on the rail segment
+   plus the 1px #F8FAFC full-height cell edge. One rule set consumed by both
+   hosts via the shared physics-paint-rail-target / physics-paint-rail-segment
+   classes; per-family base colors stay untouched. */
+.physics-paint-rail-target.boundary-start .physics-paint-rail-segment::before,
+.physics-paint-rail-target.boundary-end .physics-paint-rail-segment::after {
   position: absolute;
   top: 0;
   width: 2px;
@@ -2850,12 +2856,20 @@ button.destructive {
   content: '';
 }
 
-.physics-paint-loop-clip-rail-target.boundary-start .physics-paint-loop-clip-rail-segment::before {
+.physics-paint-rail-target.boundary-start .physics-paint-rail-segment::before {
   left: 0;
 }
 
-.physics-paint-loop-clip-rail-target.boundary-end .physics-paint-loop-clip-rail-segment::after {
+.physics-paint-rail-target.boundary-end .physics-paint-rail-segment::after {
   right: 0;
+}
+
+.physics-paint-rail-target.boundary-cell-start {
+  border-left: 1px solid #f8fafc;
+}
+
+.physics-paint-rail-target.boundary-cell-end {
+  border-right: 1px solid #f8fafc;
 }
 
 /* Shared rail focus ring (43.4 defect 8): ONE full-row rectangle for every
@@ -2986,31 +3000,9 @@ button.destructive {
   background: #f59e0b;
 }
 
-.physics-paint-key-rail-target.boundary-start .physics-paint-key-rail-segment::before,
-.physics-paint-key-rail-target.boundary-end .physics-paint-key-rail-segment::after {
-  position: absolute;
-  top: 0;
-  width: 2px;
-  height: 3px;
-  background: #f8fafc;
-  content: '';
-}
-
-.physics-paint-key-rail-target.boundary-start .physics-paint-key-rail-segment::before {
-  left: 0;
-}
-
-.physics-paint-key-rail-target.boundary-end .physics-paint-key-rail-segment::after {
-  right: 0;
-}
-
-.physics-paint-key-rail-target.boundary-cell-start {
-  border-left: 1px solid #f8fafc;
-}
-
-.physics-paint-key-rail-target.boundary-cell-end {
-  border-right: 1px solid #f8fafc;
-}
+/* The Key Rail draws its boundary band caps and full-height cell edges from
+   the shared physics-paint-rail-target / physics-paint-rail-segment block
+   above; no per-family boundary rules are needed here. */
 
 .physics-paint-key-rail-target.busy {
   opacity: 0.55;

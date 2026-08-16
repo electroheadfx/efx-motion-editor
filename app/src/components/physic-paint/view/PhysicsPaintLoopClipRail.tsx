@@ -215,7 +215,7 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     >
       <button
         type="button"
-        class={`physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${presentation.mode}${props.selected ? ' selected' : ''}${props.actionLinked ? ' action-linked' : ''}${props.showStartBoundary ? ' boundary-start' : ''}${props.showEndBoundary ? ' boundary-end' : ''}${range.truncated ? ' truncated' : ''}${range.unresolved ? ' unresolved' : ''}`}
+        class={`physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${presentation.mode}${props.selected ? ' selected' : ''}${props.actionLinked ? ' action-linked' : ''}${props.showStartBoundary ? ' boundary-start boundary-cell-start' : ''}${props.showEndBoundary ? ' boundary-end boundary-cell-end' : ''}${range.truncated ? ' truncated' : ''}${range.unresolved ? ' unresolved' : ''}`}
         aria-label={presentation.accessibleName}
         aria-pressed={props.selected}
         data-rail-first-frame={range.placementStart}
@@ -230,7 +230,7 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
         }}
         onBlur={tooltip.onBlur}
       >
-        <span class="physics-paint-loop-clip-rail-segment" aria-hidden="true" />
+        <span class="physics-paint-rail-segment physics-paint-loop-clip-rail-segment" aria-hidden="true" />
         {presentation.synchronizationDot ? (
           <span class={`physics-paint-loop-clip-lifecycle-dot ${presentation.synchronizationDot}`} aria-hidden="true" />
         ) : null}

@@ -227,7 +227,7 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
         }}
         onBlur={tooltip.onBlur}
       >
-        <span class="physics-paint-key-rail-segment" aria-hidden="true" />
+        <span class="physics-paint-rail-segment physics-paint-key-rail-segment" aria-hidden="true" />
       </button>
       {drag.ghost.active ? (
         <span

@@ -261,12 +261,24 @@ describe('PhysicsPaintKeyRail', () => {
       expect(hasClass(target, 'boundary-cell-start')).toBe(true);
       expect(hasClass(target, 'boundary-cell-end')).toBe(true);
     }
+    // The Key Rail draws its band cap from the shared segment class, so a
+    // regression that drops it would silently remove the endpoint caps.
+    const segments = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-key-rail-segment'));
+    expect(segments.length).toBeGreaterThan(0);
+    for (const segment of segments) {
+      expect(hasClass(segment, 'physics-paint-rail-segment')).toBe(true);
+    }
+    expect(cssRule('.physics-paint-rail-target.boundary-start .physics-paint-rail-segment::before,'))
+      .toContain('background: #f8fafc');
+    expect(cssRule('.physics-paint-rail-target.boundary-cell-start {')).toContain('border-left: 1px solid #f8fafc');
     const clipped = findOne(render({
       segments: [{ firstKeyId: 'A', keyIds: ['A', 'B'], firstKeyFrame: 2, lastKeyFrame: 8 }],
       visibleFrameWindow: { startFrame: 4, endFrameExclusive: 7 },
     }), (vnode) => hasClass(vnode, 'physics-paint-key-rail-target'));
     expect(hasClass(clipped, 'boundary-start')).toBe(false);
     expect(hasClass(clipped, 'boundary-end')).toBe(false);
+    expect(hasClass(clipped, 'boundary-cell-start')).toBe(false);
+    expect(hasClass(clipped, 'boundary-cell-end')).toBe(false);
   });
 
   it('renders a clamped paint-only ghost and blocked edge without moving or dimming the accepted rail', () => {
