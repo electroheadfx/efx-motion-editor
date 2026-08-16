@@ -59,6 +59,29 @@ export function roveRailTargetFocus(scope: RailNavigationScope, current: RailTar
   applyRailRovingTabIndex(getRailsInCanonicalOrder(scope), current);
 }
 
+export interface RailPointerClickEventLike {
+  readonly currentTarget?: EventTarget | null;
+}
+
+export interface RailLaneLike extends RailNavigationScope, RailTargetLike {}
+
+/**
+ * 43.4 defect 10: a direct pointer click on ANY rail family must move DOM
+ * focus to that rail's target button so the shared :focus ring paints
+ * immediately — identical for Key/Motion/Static through one click→select→focus
+ * path. The clicked rail becomes the roving group's single tab stop (same
+ * result as keyboard focus), and programmatic non-pointer focus (restoration,
+ * the scroller) stays ring-free via the unchanged :focus-visible rules.
+ */
+export function focusRailTargetOnPointerSelection(event: RailPointerClickEventLike): void {
+  const current = event.currentTarget as unknown as (RailTargetLike & { closest(selector: string): RailLaneLike | null }) | null;
+  if (!current) return;
+  const lane = current.closest(RAIL_LANE_SELECTOR);
+  if (!lane) return;
+  roveRailTargetFocus(lane, current);
+  current.focus();
+}
+
 /**
  * Handles ArrowLeft/ArrowRight/Tab on a focused rail target. Returns true when
  * the event was consumed (cycle to an adjacent rail, or exit the group at the

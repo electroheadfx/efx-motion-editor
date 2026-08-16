@@ -202,6 +202,33 @@ describe('PhysicsPaintKeyRail', () => {
     expect(textOf(tree)).toContain('Selected Key Rail — frames 2–5, 2 keys.');
   });
 
+  // 43.4 defect 10: a direct click is a focus-worthy activation for every rail
+  // family — the clicked Key Rail button must hold DOM focus so the shared
+  // :focus ring paints immediately (identical to Motion/Static Rails).
+  it('moves DOM focus to the clicked rail button so the shared focus ring applies', () => {
+    const clicked = {
+      tabIndex: 0,
+      focused: false,
+      focus() { this.focused = true; },
+      getAttribute: (name: string) => (name === 'data-rail-first-frame' ? '2' : null),
+      closest: (selector: string) => (selector === '.physics-paint-lane' ? lane : null),
+    };
+    const lane = {
+      querySelectorAll: () => [clicked],
+      closest: () => null,
+    };
+    const target = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-key-rail-target'))[0];
+    (target.props.onClick as (event: { currentTarget: unknown; stopPropagation(): void; preventDefault(): void }) => void)({
+      currentTarget: clicked,
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+    });
+    expect(clicked.focused).toBe(true);
+    expect(clicked.tabIndex).toBe(0);
+    // A focused rail target draws the ring through the shared :focus rule.
+    expect(cssRule('.physics-paint-rail-target:focus::after,')).toContain('border: 2px solid #f2f5f7');
+  });
+
   it('supports Space selection, leaves Enter inert, and hides the tooltip on Escape', () => {
     const onSelectKeyRail = vi.fn();
     const target = findAll(render({ onSelectKeyRail }), (vnode) => hasClass(vnode, 'physics-paint-key-rail-target'))[0];

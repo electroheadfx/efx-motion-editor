@@ -20,6 +20,7 @@ import {
 } from './physicsPaintLoopClipPresentation';
 import {
   dispatchRailTargetKeyDown,
+  focusRailTargetOnPointerSelection,
   RAIL_LANE_SELECTOR,
   roveRailTargetFocus,
 } from './physicsPaintRailKeyboardNavigation';
@@ -69,6 +70,7 @@ interface RailMouseEvent {
   readonly metaKey: boolean;
   readonly ctrlKey: boolean;
   readonly shiftKey: boolean;
+  readonly currentTarget?: EventTarget | null;
   stopPropagation(): void;
   preventDefault(): void;
 }
@@ -151,6 +153,9 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     // so it cannot re-fire selection or the Edit Group timer (Pitfall 2).
     if (consumeClickSuppression()) return;
     tooltip.hide();
+    // 43.4 defect 10: an explicit click is a focus-worthy activation for every
+    // rail family — move DOM focus to this target so the shared ring paints.
+    focusRailTargetOnPointerSelection(event);
     const gesture: PhysicsPaintRotoSpacingSelectionGesture = event.shiftKey
       ? 'range'
       : event.metaKey || event.ctrlKey

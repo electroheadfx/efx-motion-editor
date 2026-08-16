@@ -20,6 +20,7 @@ import {
 } from './physicsPaintKeyRailPresentation';
 import {
   dispatchRailTargetKeyDown,
+  focusRailTargetOnPointerSelection,
   RAIL_LANE_SELECTOR,
   roveRailTargetFocus,
 } from './physicsPaintRailKeyboardNavigation';
@@ -79,6 +80,7 @@ export interface PhysicsPaintKeyRailProps extends SelectedKeyRailCopyAvailabilit
 }
 
 interface RailMouseEvent {
+  readonly currentTarget?: EventTarget | null;
   stopPropagation(): void;
   preventDefault(): void;
 }
@@ -173,6 +175,9 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
     event.stopPropagation();
     if (drag.consumeClickSuppression()) return;
     tooltip.hide();
+    // 43.4 defect 10: an explicit click is a focus-worthy activation for every
+    // rail family — move DOM focus to this target so the shared ring paints.
+    focusRailTargetOnPointerSelection(event);
     props.onSelectKeyRail(selection());
   };
   const handleKeyDown = (event: RailKeyboardEvent) => {

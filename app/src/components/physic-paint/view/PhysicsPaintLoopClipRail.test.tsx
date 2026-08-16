@@ -1197,6 +1197,73 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     vi.useRealTimers();
   });
 
+  // 43.4 defect 10: a direct click is a focus-worthy activation for every rail
+  // family — the clicked Motion/Static (Loop Clip) Rail button must hold DOM
+  // focus so the shared :focus ring paints immediately, identical to Key Rails.
+  it('moves DOM focus to the clicked Motion/Static rail button so the shared focus ring applies', () => {
+    const rawLoopId = '0f65c808-defect-10';
+    const sourceKeyIds = Array.from({ length: 5 }, (_, index) => `source-${index}`);
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: rawLoopId,
+      placementStart: 10,
+      sourceKeyIds,
+      repeat: 5,
+      mode: 'progressive',
+      scriptId: 'script-walk',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+    };
+    const loopContext = derivePhysicPaintRotoLoopRanges({
+      identities: sourceKeyIds.map((keyId, appFrame) => ({ keyId, appFrame })),
+      loopClips: [clip],
+      capacity: 120,
+      interpolationEnabled: false,
+    });
+    const presentation = projectPhysicsPaintLoopClipPresentation(loopContext.ranges[0], clip, 'Walk');
+    const presentations = new Map([[rawLoopId, presentation]]);
+    const onSelectLoopClip = vi.fn();
+    const onOpenLoopEdit = vi.fn(async () => {});
+
+    vi.useFakeTimers();
+    hooks.reset();
+    const railTree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: loopContext.ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 8, endFrameExclusive: 20 },
+      framePitch: 18,
+      selectedLoopClipIds: [],
+      onSelectLoopClip,
+      onOpenLoopEdit,
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    const target = findOne(railTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+    const clicked = {
+      tabIndex: 0,
+      focused: false,
+      focus() { this.focused = true; },
+      getAttribute: (name: string) => (name === 'data-rail-first-frame' ? '10' : null),
+      closest: (selector: string) => (selector === '.physics-paint-lane' ? lane : null),
+    };
+    const lane = { querySelectorAll: () => [clicked], closest: () => null };
+
+    (target.props.onClick as (event: { currentTarget: unknown; timeStamp: number; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; stopPropagation(): void; preventDefault(): void }) => void)({
+      currentTarget: clicked,
+      timeStamp: 100,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+    });
+    expect(clicked.focused).toBe(true);
+    expect(clicked.tabIndex).toBe(0);
+    // A focused rail target draws the ring through the shared :focus rule.
+    expect(cssRule('.physics-paint-rail-target:focus::after,')).toContain('border: 2px solid #f2f5f7');
+    vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
+    expect(onSelectLoopClip).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
   it('uses a cyan Static Group Rail theme with visible cuts at both Group endpoints', () => {
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'hold-loop',

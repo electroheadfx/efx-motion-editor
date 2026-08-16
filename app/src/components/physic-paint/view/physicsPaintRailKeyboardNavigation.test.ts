@@ -3,6 +3,7 @@ import {
   applyRailRovingTabIndex,
   dispatchRailTargetKeyDown,
   findAdjacentRail,
+  focusRailTargetOnPointerSelection,
   getRailsInCanonicalOrder,
   roveRailTargetFocus,
 } from './physicsPaintRailKeyboardNavigation';
@@ -14,6 +15,7 @@ interface FakeRail {
   focused: boolean;
   focus(): void;
   getAttribute(name: string): string | null;
+  closest(selector: string): FakeScope | null;
 }
 
 function rail(firstFrame: number, id: string): FakeRail {
@@ -28,6 +30,7 @@ function rail(firstFrame: number, id: string): FakeRail {
     getAttribute(name: string) {
       return name === 'data-rail-first-frame' ? String(this.firstFrame) : null;
     },
+    closest: () => null,
   };
 }
 
@@ -147,5 +150,38 @@ describe('shared rail roving keyboard navigation (43.4 defect 9)', () => {
     expect(statik.tabIndex).toBe(0);
     expect(keyA.tabIndex).toBe(-1);
     expect(motion.tabIndex).toBe(-1);
+  });
+});
+
+// 43.4 defect 10: a direct pointer click on ANY rail family must move DOM
+// focus to the clicked rail's target button (identical for Key/Motion/Static),
+// so the shared :focus ring paints immediately instead of depending on the
+// browser's native button-click-focus behavior.
+describe('pointer-click focus on every rail family (43.4 defect 10)', () => {
+  it('moves DOM focus to the clicked rail target and roves the tab stop onto it', () => {
+    const keyA = rail(2, 'key-a');
+    const motion = rail(4, 'motion');
+    const scope = lane([keyA, motion]);
+    const clicked = Object.assign(keyA, {
+      closest: (selector: string) => (selector === '.physics-paint-lane' ? scope : null),
+    });
+    focusRailTargetOnPointerSelection({ currentTarget: clicked as unknown as EventTarget });
+    expect(keyA.focused).toBe(true);
+    expect(keyA.tabIndex).toBe(0);
+    expect(motion.tabIndex).toBe(-1);
+  });
+
+  it('leaves focus untouched when the click target has no rail-lane ancestor', () => {
+    const keyA = rail(2, 'key-a');
+    focusRailTargetOnPointerSelection({
+      currentTarget: Object.assign(keyA, { closest: () => null }) as unknown as EventTarget,
+    });
+    expect(keyA.focused).toBe(false);
+  });
+
+  it('leaves focus untouched for programmatic dispatches without a currentTarget', () => {
+    const keyA = rail(2, 'key-a');
+    focusRailTargetOnPointerSelection({ currentTarget: null });
+    expect(keyA.focused).toBe(false);
   });
 });
