@@ -1829,6 +1829,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     const capacity = input.getCapacity();
     const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
     const incomingInterpolationBreakKeyIds = input.getIncomingInterpolationBreakKeyIds?.() ?? [];
+    console.log(`[DEBUG-KRDRAG] prepare firstKeyId=${firstKeyId} dest=${destinationFirstKeyAppFrame} intent=move-key-rail railSelection=${JSON.stringify(input.getSelectedKeyRail?.() ?? null)} selectedKeyId=${input.getSelectedKeyId?.() ?? null} selectedKeyIds=${JSON.stringify(input.getSelectedKeyIds?.() ?? [])} capacity=${capacity} parentEndExclusive=${input.getParentEndExclusive()} loopClips=${loopClips.length} records=${records.length}`);
     const groupOwnedKeyIds = new Set<string>();
     for (const loopClip of loopClips) {
       loopClip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));

@@ -130,6 +130,9 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
             proposedDestinationFirstKeyAppFrame: proposedDestination,
           })
         : { ok: true as const, destinationFirstKeyAppFrame: proposedDestination };
+      if (!result.ok && clampInput) {
+        console.log(`[DEBUG-KRCLAMP] clampInput first=${clampInput.firstKeyFrame} last=${clampInput.lastKeyFrame} proposed=${proposedDestination} parentEndExclusive=${clampInput.parentEndExclusive} capacity=${clampInput.capacity} loopRanges=${JSON.stringify(clampInput.loopRanges)} identities=${JSON.stringify(clampInput.identities)}`);
+      }
       const destination = result.ok
         ? result.destinationFirstKeyAppFrame
         : segment.firstKeyFrame;
