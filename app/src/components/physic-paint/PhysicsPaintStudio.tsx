@@ -971,7 +971,10 @@ export function PhysicsPaintStudio() {
     const accepted = await dispatchAndWaitForAcceptedRotoPhysicalEdit(
       physicalEditCoordinator.pendingOperationId,
       physicalEditCoordinator.acceptedOutput,
-      () => rotoTimelineActions.physicalKeyUtilities.pasteKey(
+      // Quick 260816-tv7: paint-on-empty promotion routes through addEmptyKey
+      // so the new key owns a persistent incoming interpolation break
+      // (broken-key contract) instead of a connected key.
+      () => rotoTimelineActions.physicalKeyUtilities.addEmptyKey(
         source.appFrame,
         {
           frameIndex: blank.frameIndex,
@@ -980,7 +983,6 @@ export function PhysicsPaintStudio() {
           ...(blank.width !== undefined ? { width: blank.width } : {}),
           ...(blank.height !== undefined ? { height: blank.height } : {}),
         },
-        null,
       ),
     );
     if (

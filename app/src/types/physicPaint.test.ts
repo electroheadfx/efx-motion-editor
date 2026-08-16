@@ -256,6 +256,25 @@ describe('physic paint payload contracts', () => {
     expect(serializePhysicPaintRotoPhysicalEditIntent(intents[6])).toBe('{"kind":"force-spacing","emptyFrames":1,"selectedKeyId":"key-A","scopeKeyIds":["key-A","key-B"],"linkedSourceSpacingScopes":[{"sourceCycleId":"5:key-A|5:key-B|5:key-C","sourceKeyIds":["key-A","key-B","key-C"],"selectedSourceKeyIds":["key-A","key-B"]}]}');
   });
 
+  it('round-trips paste-key startsNewSegment and rejects a non-boolean flag', () => {
+    const payload = { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 };
+    const broken = { kind: 'paste-key', destinationAppFrame: 8, destinationKeyId: null, newKeyId: 'key-paint', clipboardPayload: payload, startsNewSegment: true } as const;
+
+    expect(isPhysicPaintRotoPhysicalEditIntent(broken)).toBe(true);
+    const serialized = serializePhysicPaintRotoPhysicalEditIntent(broken);
+    expect(serialized).toBe('{"kind":"paste-key","destinationAppFrame":8,"destinationKeyId":null,"newKeyId":"key-paint","clipboardPayload":{"frameIndex":0,"appFrame":8,"dataUrl":"data:image/png;base64,AAAA","width":2,"height":2},"startsNewSegment":true}');
+    const parsed: unknown = JSON.parse(serialized);
+    expect(isPhysicPaintRotoPhysicalEditIntent(parsed)).toBe(true);
+    if (!isPhysicPaintRotoPhysicalEditIntent(parsed)) throw new Error('Canonical broken paste must parse');
+    expect(serializePhysicPaintRotoPhysicalEditIntent(parsed)).toBe(serialized);
+
+    const connected = { kind: 'paste-key', destinationAppFrame: 8, destinationKeyId: null, newKeyId: 'key-paste', clipboardPayload: payload } as const;
+    expect(serializePhysicPaintRotoPhysicalEditIntent(connected)).not.toContain('startsNewSegment');
+
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...broken, startsNewSegment: 'yes' })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...broken, startsNewSegment: 1 })).toBe(false);
+  });
+
   it('rejects malformed, duplicate, reordered, and ambiguous ordinary intent authorization', () => {
     const payload = { frameIndex: 0, appFrame: 3, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 };
     const oversizedId = 'x'.repeat(257);

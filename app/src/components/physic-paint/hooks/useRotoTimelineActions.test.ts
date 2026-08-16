@@ -596,7 +596,7 @@ describe('useRotoTimelineActions contextual Insert', () => {
 
     expect(empty.actions.physicalActions.canInsertFrame.value).toBe(true);
     expect(empty.actions.physicalActions.insertTooltipDescription.value).toBe(
-      'Insert an empty key and start a new interpolation segment.',
+      'Insert an empty key connected to the previous segment.',
     );
     const emptyAccepted = await empty.actions.physicalActions.insertRotoFrame();
     expect(emptyAccepted, JSON.stringify({ status: empty.publishStatus.mock.calls, diagnostic: empty.publishDiagnostic.mock.calls })).toBe(true);

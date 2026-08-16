@@ -430,6 +430,8 @@ export type PhysicPaintRotoPhysicalEditIntent =
       readonly destinationKeyId: string | null;
       readonly newKeyId: string | null;
       readonly clipboardPayload: PhysicPaintRotoRealKeyPayload;
+      /** Quick 260816-tv7: when true, the pasted key owns a persistent incoming interpolation break (Paint-on-empty / + Key broken-key contract). Absent for ordinary Copy/Paste. */
+      readonly startsNewSegment?: boolean;
     }
   | {
       readonly kind: 'paste-key-group';
@@ -567,10 +569,11 @@ export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is Ph
       && value.sourceKeyId !== value.newKeyId;
   }
   if (value.kind === 'paste-key') {
-    if (!hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload'])) return false;
+    if (!hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload', 'startsNewSegment'])) return false;
     if (!isNonNegativeInteger(value.destinationAppFrame) || !isPhysicPaintRotoRealKeyPayload(value.clipboardPayload)) return false;
     if (value.destinationKeyId !== null && !isBoundedPhysicalKeyId(value.destinationKeyId)) return false;
     if (value.newKeyId !== null && !isBoundedPhysicalKeyId(value.newKeyId)) return false;
+    if (value.startsNewSegment !== undefined && typeof value.startsNewSegment !== 'boolean') return false;
     return (value.destinationKeyId === null) !== (value.newKeyId === null);
   }
   if (value.kind === 'paste-key-group') {
@@ -633,8 +636,17 @@ export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRo
     }
     case 'duplicate-key':
       return JSON.stringify({ kind: intent.kind, sourceKeyId: intent.sourceKeyId, newKeyId: intent.newKeyId });
-    case 'paste-key':
-      return JSON.stringify({ kind: intent.kind, destinationAppFrame: intent.destinationAppFrame, destinationKeyId: intent.destinationKeyId, newKeyId: intent.newKeyId, clipboardPayload: canonicalPhysicalEditPayload(intent.clipboardPayload) });
+    case 'paste-key': {
+      const canonical: Record<string, unknown> = {
+        kind: intent.kind,
+        destinationAppFrame: intent.destinationAppFrame,
+        destinationKeyId: intent.destinationKeyId,
+        newKeyId: intent.newKeyId,
+        clipboardPayload: canonicalPhysicalEditPayload(intent.clipboardPayload),
+      };
+      if (intent.startsNewSegment === true) canonical.startsNewSegment = true;
+      return JSON.stringify(canonical);
+    }
     case 'paste-key-group':
       return JSON.stringify({
         kind: intent.kind,

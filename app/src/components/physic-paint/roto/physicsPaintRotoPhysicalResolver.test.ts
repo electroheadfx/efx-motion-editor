@@ -654,6 +654,87 @@ describe('incoming interpolation break lifecycle', () => {
     expect(group.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['C']);
   });
 
+  // --- Quick 260816-tv7: swapped Insert-connects / Paint-breaks semantics ---
+
+  it('paste-to-empty with startsNewSegment makes the new key own an incoming break', () => {
+    const records = buildBaselineRecords();
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: {
+        kind: 'paste-key',
+        destinationAppFrame: 7,
+        destinationKeyId: null,
+        newKeyId: 'painted-X',
+        clipboardPayload: records[0].payload,
+        startsNewSegment: true,
+      },
+      parentEndExclusive: 16,
+      capacity: 16,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['A'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Broken paste-to-empty must resolve');
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['A', 'painted-X']);
+    expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'painted-X')).toBe(false);
+  });
+
+  it('paste-to-empty without startsNewSegment stays connected (Copy/Paste regression)', () => {
+    const records = buildBaselineRecords();
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: {
+        kind: 'paste-key',
+        destinationAppFrame: 7,
+        destinationKeyId: null,
+        newKeyId: 'pasted-X',
+        clipboardPayload: records[0].payload,
+      },
+      parentEndExclusive: 16,
+      capacity: 16,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['A'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Connected paste-to-empty must resolve');
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+    expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'pasted-X')).toBe(true);
+  });
+
+  it('insert-empty-segment inside an intentional gap connects left and preserves the right break', () => {
+    const records = buildBaselineRecords();
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: {
+        kind: 'insert-empty-segment',
+        destinationAppFrame: 7,
+        insertedKeyId: 'blank-7',
+        blankPayload: {
+          frameIndex: 0,
+          appFrame: 7,
+          dataUrl: 'data:image/png;base64,AAAA',
+          width: 2,
+          height: 2,
+        },
+      },
+      parentEndExclusive: 16,
+      capacity: 16,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['D'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Gap insert must resolve');
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['D']);
+    expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'blank-7')).toBe(true);
+    expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'D')).toBe(false);
+  });
+
   // --- Task 3 (plan 02): stable-key-owned break derivation for move-group (D-09..D-13) ---
 
   /** Source-attached Group over A@1/C@5 with lifecycle extent [1,9). */

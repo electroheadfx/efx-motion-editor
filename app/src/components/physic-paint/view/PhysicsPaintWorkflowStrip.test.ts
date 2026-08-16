@@ -425,7 +425,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(countOccurrences(row, '<span class="physics-paint-roto-key-icon-label">Insert</span>')).toBe(1);
     expect(code).toContain("physicalActions?.insertTooltipDescription.value ?? 'Insert key before'");
     expect(code).toContain('buildGuardedActionTooltipCopy(insertRotoKeyDescription, insertRotoKeyDisabledReason)');
-    expect(actions).toContain("? 'Insert an empty key and start a new interpolation segment.'");
+    expect(actions).toContain("? 'Insert an empty key connected to the previous segment.'");
     expect(actions).toContain(": 'Insert key before'");
   });
 });

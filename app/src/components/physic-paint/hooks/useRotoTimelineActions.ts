@@ -1142,7 +1142,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const canInsertFrame = computed(() => mapRotoInsertProductReason(insertTarget.value) === null);
   const insertDisabledReason = computed(() => mapRotoInsertProductReason(insertTarget.value));
   const insertTooltipDescription = computed(() => insertTarget.value.kind === 'genuinely-empty'
-    ? 'Insert an empty key and start a new interpolation segment.'
+    ? 'Insert an empty key connected to the previous segment.'
     : 'Insert key before');
   const deleteTarget = computed(() => classifyRotoDeleteTarget(readRotoDeleteTargetInput(input)));
   const canDeleteFrame = computed(() => mapRotoDeleteProductReason(deleteTarget.value) === null);
@@ -1258,7 +1258,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       },
       operationKind: 'insert-empty-segment',
       requiredKeyId: null,
-      successMessage: `Inserted empty key at frame ${target.appFrame}. New interpolation segment started.`,
+      successMessage: `Inserted empty key at frame ${target.appFrame}. Connected to the previous segment.`,
       rejectedCopy: (failure) => mapRotoInsertProductReason(mapRotoInsertFailureTarget(failure, input))
         ?? 'Choose a valid timeline frame before inserting.',
     });
@@ -1444,8 +1444,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       // + Key promotion reuses the paste-to-empty physical edit machinery with
       // an empty payload — the same path the script-target promotion uses — so
       // the resolver, coordinator, settlement, and history stay unchanged.
+      // Quick 260816-tv7: startsNewSegment makes the new key own a persistent
+      // incoming interpolation break (broken-key contract), matching Paint on
+      // an empty frame.
       return runPhysicalAction({
-        intent: createPhysicPaintRotoPasteKeyIntent(destinationAppFrame, emptyPayload, null),
+        intent: createPhysicPaintRotoPasteKeyIntent(destinationAppFrame, emptyPayload, null, true),
         operationKind: 'paste-key',
         requiredKeyId: null,
         successMessage: ADD_KEY_SUCCESS_MESSAGE,

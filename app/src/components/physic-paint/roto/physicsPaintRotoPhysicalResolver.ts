@@ -518,6 +518,7 @@ export function createPhysicPaintRotoPasteKeyIntent(
   destinationAppFrame: number,
   clipboardPayload: PhysicPaintRotoRealKeyPayload,
   destinationKeyId: string | null,
+  startsNewSegment = false,
 ): Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key' }> {
   if (!isNonNegativeInteger(destinationAppFrame)) throw new Error('Paste requires a nonnegative destination frame.');
   if (destinationKeyId !== null && !isBoundedKeyId(destinationKeyId)) throw new Error('Paste destination identity is malformed.');
@@ -529,6 +530,7 @@ export function createPhysicPaintRotoPasteKeyIntent(
     destinationKeyId,
     newKeyId,
     clipboardPayload: clonePayloadAtFrame(clipboardPayload, clipboardPayload.appFrame),
+    ...(startsNewSegment ? { startsNewSegment: true } : {}),
   });
 }
 
@@ -1144,10 +1146,11 @@ function buildInsertEmptySegmentCandidate(
     roleByKeyId: new Map(),
     drag: null,
     nextRecords: Object.freeze(nextRecords),
-    nextIncomingInterpolationBreakKeyIds: Object.freeze([
-      ...incomingInterpolationBreakKeyIds,
-      intent.insertedKeyId,
-    ]),
+    // Quick 260816-tv7: Insert always connects — the inserted key joins the
+    // nearest left segment and adds no incoming break, so the collection is
+    // passed through unchanged and any existing break on the right segment
+    // survives.
+    nextIncomingInterpolationBreakKeyIds: Object.freeze([...incomingInterpolationBreakKeyIds]),
     semanticDelta: Object.freeze({
       kind: 'insert-empty-segment',
       insertedKeyId: intent.insertedKeyId,
@@ -1339,6 +1342,7 @@ function buildPasteCandidate(
   identities: ValidatedIdentities,
   records: readonly PhysicPaintRotoRealKeyRecord[],
   intent: Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key' }>,
+  incomingInterpolationBreakKeyIds: readonly string[],
 ): Candidate {
   const selectedKeyId = intent.destinationKeyId ?? (intent.newKeyId as string);
   const nextRecords = records.map((record) => {
@@ -1378,6 +1382,13 @@ function buildPasteCandidate(
     roleByKeyId: new Map(),
     drag: null,
     nextRecords: Object.freeze(nextRecords),
+    // Quick 260816-tv7: paste-to-empty with startsNewSegment (Paint-on-empty /
+    // + Key) makes the new key own a persistent incoming interpolation break,
+    // starting a new segment and its own Key Rail. Ordinary Copy/Paste leaves
+    // the collection unset so the pasted key stays connected.
+    ...(intent.startsNewSegment === true && intent.destinationKeyId === null
+      ? { nextIncomingInterpolationBreakKeyIds: Object.freeze([...incomingInterpolationBreakKeyIds, intent.newKeyId as string]) }
+      : {}),
     semanticDelta: Object.freeze({
       kind: 'paste-key',
       destinationAppFrame: intent.destinationAppFrame,
@@ -3531,7 +3542,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
         return fail('unknown-operation-identity', operationKind, 'Paste-to-existing destination identity and frame disagree.');
       }
     }
-    const candidate = buildPasteCandidate(identities, recordsResult.records, intent);
+    const candidate = buildPasteCandidate(identities, recordsResult.records, intent, incomingInterpolationBreakKeyIds);
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
