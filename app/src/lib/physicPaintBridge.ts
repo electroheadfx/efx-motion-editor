@@ -1388,7 +1388,6 @@ function applyPhysicPaintRotoPhysicalMap(
       ? replayEntry.after
       : replayEntry.before;
     if (!sameAcceptedPhysicalCommandSnapshot(liveSourceSnapshot, expectedSourceSnapshot)) {
-      console.log(`[DEBUG-KRUNDO] bridge snapshot mismatch kind=${payload.operationKind} live=${JSON.stringify(liveSourceSnapshot)} expected=${JSON.stringify(expectedSourceSnapshot)}`);
       return reject('Roto physical replay source snapshot does not match the original accepted command.');
     }
   }

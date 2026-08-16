@@ -857,8 +857,17 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
       const records = portsRef.current.records.getRecords(launch.layerId);
       const interpolation = portsRef.current.records.getInterpolation(launch.layerId);
       const capacity = portsRef.current.records.getCapacity(launch.layerId);
-      const selectedKeyId = portsRef.current.selection.getSelectedKeyId();
-      const currentAppFrame = portsRef.current.selection.getCurrentAppFrame();
+      // The replay snapshot must use the same authority as the parent's
+      // accepted-command before/after snapshot: the accepted document's
+      // selection and cursor (43.4 defect 2). The live selection signal can
+      // desync from the document after a commit, which made the parent replay
+      // target snapshot mismatch for Key Rail operations.
+      const documentSelection = portsRef.current.records.getDocument(launch.layerId)?.selectedKeyId
+        ?? portsRef.current.selection.getSelectedKeyId();
+      const documentCursorAppFrame = portsRef.current.records.getDocument(launch.layerId)?.cursorAppFrame
+        ?? portsRef.current.selection.getCurrentAppFrame();
+      const selectedKeyId = documentSelection;
+      const currentAppFrame = documentCursorAppFrame;
       const buffer = portsRef.current.buffer;
       const reference = portsRef.current.reference.getCachedReference();
       return {
@@ -1324,7 +1333,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         return false;
       }
       if (isReplay && (!proposal || !replayTarget || !replayProposalMatchesTarget(proposal, replayTarget))) {
-        console.log(`[DEBUG-KRUNDO] replay barrier rejected kind=${input.operationKind} proposal=${proposal ? JSON.stringify({ mapping: Object.fromEntries(proposal.mapping), selectedKeyId: proposal.selectedKeyId, selectedAppFrame: proposal.selectedAppFrame }) : 'null'} replayTarget=${replayTarget ? JSON.stringify({ records: replayTarget.records.map((r) => [r.keyId, r.appFrame]), selectedKeyId: replayTarget.selectedKeyId, selectedAppFrame: replayTarget.selectedAppFrame }) : 'null'}`);
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }

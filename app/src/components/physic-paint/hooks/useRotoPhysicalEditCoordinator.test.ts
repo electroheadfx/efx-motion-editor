@@ -1701,6 +1701,11 @@ describe('Phase 43.4 Key Rail coordinator/history integration', () => {
       incomingInterpolationBreakKeyIds: ['C'],
     });
     test.seedGroupDocument(before);
+    // Key Rail selection clears the live selection signal while the accepted
+    // document still carries its pre-commit selection ('B'). The replay
+    // snapshot must use the document's authority (43.4 defect 2), not the
+    // cleared live signal.
+    test.setStudioSelection(null, 2);
     const { history, availability } = attachGroupReplayHistory(test);
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: before.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
@@ -1728,6 +1733,10 @@ describe('Phase 43.4 Key Rail coordinator/history integration', () => {
     if (!accepted) throw new Error('Expected accepted Key Rail operation.');
     const after = test.getCanonicalDocument();
     expect(accepted.operationKind).toBe(operationKind);
+    // 43.4 defect 2: the replay snapshot must use the same authority as the
+    // parent's accepted-command snapshot — the accepted document's selection,
+    // not the live selection signal (which Key Rail selection clears to null).
+    expect(accepted.before.selectedKeyId).toBe('B');
     expect(test.historyCommands).toEqual([accepted.operationId]);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
     expect(test.coordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release')).toBe(true);
