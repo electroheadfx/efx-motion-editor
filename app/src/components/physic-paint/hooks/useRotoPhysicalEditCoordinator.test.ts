@@ -1011,7 +1011,7 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
 
     expect(test.accept()).toBe('accepted');
     expect(test.getRecords().map(({ keyId, appFrame }) => [keyId, appFrame])).toContainEqual(['blank-14', 14]);
-    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C', 'blank-14']);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
     expect(test.getSelectedKeyId()).toBe('blank-14');
     expect(test.getCurrentFrame()).toBe(14);
     expect(test.reconcileCurrentFrame).toHaveBeenCalledTimes(1);
@@ -1043,16 +1043,16 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
         height: 2,
       },
     });
-    expect(test.getPayload()?.incomingInterpolationBreakKeyIds).toEqual(['C', 'blank-14']);
+    expect(test.getPayload()?.incomingInterpolationBreakKeyIds).toEqual(['C']);
     expect(test.getPayload()?.incomingInterpolationBreakKeyIds).not.toBe(
       test.getIncomingInterpolationBreakKeyIds(),
     );
 
     expect(test.accept()).toBe('accepted');
     expect(test.getRecords().map(({ keyId, appFrame }) => [keyId, appFrame])).toContainEqual(['blank-14', 14]);
-    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C', 'blank-14']);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
     expect(test.coordinator.acceptedOutput.value?.before.incomingInterpolationBreakKeyIds).toEqual(['C']);
-    expect(test.coordinator.acceptedOutput.value?.after.incomingInterpolationBreakKeyIds).toEqual(['C', 'blank-14']);
+    expect(test.coordinator.acceptedOutput.value?.after.incomingInterpolationBreakKeyIds).toEqual(['C']);
     expect(test.coordinator.acceptedOutput.value?.before.incomingInterpolationBreakKeyIds).not.toBe(
       test.coordinator.acceptedOutput.value?.after.incomingInterpolationBreakKeyIds,
     );

@@ -2347,7 +2347,7 @@ describe('physicPaintBridge', () => {
       records,
       interpolationEnabled: false,
       interpolationMode: 'duplicate',
-      incomingInterpolationBreakKeyIds: ['key-10', 'key-5'],
+      incomingInterpolationBreakKeyIds: ['key-10'],
       selectedKeyId: 'key-5',
       selectedAppFrame: 5,
       cursorAppFrame: 5,
@@ -2361,7 +2361,7 @@ describe('physicPaintBridge', () => {
     expect(result).toMatchObject({
       ok: true,
       operationId: 'insert-empty-segment-valid',
-      incomingInterpolationBreakKeyIds: ['key-10', 'key-5'],
+      incomingInterpolationBreakKeyIds: ['key-10'],
     });
     const accepted = physicPaintStore.getRotoPhysicalDocument(layer.id);
     expect(accepted).toMatchObject({
@@ -2369,7 +2369,7 @@ describe('physicPaintBridge', () => {
       cursorAppFrame: 5,
       interpolation: { enabled: false, mode: 'duplicate' },
       loopClips: [],
-      incomingInterpolationBreakKeyIds: ['key-10', 'key-5'],
+      incomingInterpolationBreakKeyIds: ['key-10'],
     });
     expect(result.ok && 'acceptedRevision' in result ? result.acceptedRevision : null).toBe(accepted?.revision);
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);

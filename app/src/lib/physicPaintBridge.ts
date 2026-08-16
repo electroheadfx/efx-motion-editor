@@ -846,10 +846,12 @@ function validateInsertEmptySegmentPhysicalDelta(input: {
     !== stableSerialize(currentLoopClips, new WeakSet<object>())) {
     return 'Empty-segment insert must preserve Loop Clips exactly.';
   }
-  const expectedBreaks = [...currentIncomingInterpolationBreakKeyIds, delta.insertedKeyId];
-  if (proposedIncomingInterpolationBreakKeyIds.length !== expectedBreaks.length
-    || proposedIncomingInterpolationBreakKeyIds.some((keyId, index) => keyId !== expectedBreaks[index])) {
-    return 'Empty-segment insert must add exactly its fresh identity to incoming interpolation breaks.';
+  // Quick 260816-tv7: Insert connects — the inserted key adds no incoming break
+  // and any existing break on the right segment survives, so the collection
+  // must be preserved exactly.
+  if (proposedIncomingInterpolationBreakKeyIds.length !== currentIncomingInterpolationBreakKeyIds.length
+    || proposedIncomingInterpolationBreakKeyIds.some((keyId, index) => keyId !== currentIncomingInterpolationBreakKeyIds[index])) {
+    return 'Empty-segment insert must preserve incoming interpolation breaks exactly.';
   }
   const projectedTarget = physicPaintStore.getRotoCacheFrames(payload.layerId)
     .find((frame) => frame.appFrame === delta.destinationAppFrame);
