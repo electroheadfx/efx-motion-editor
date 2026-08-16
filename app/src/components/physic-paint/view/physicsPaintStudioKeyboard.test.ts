@@ -330,6 +330,23 @@ describe('Physics Paint established shortcuts', () => {
   });
 
   it.each([
+    [{ metaKey: true, shiftKey: true, key: 'z' }, 'redo'],
+    [{ metaKey: true, key: 'z' }, 'undo'],
+  ])('routes the history shortcut from a plain Studio container target', (init, expected) => {
+    // 43.4 defect 7: after Delete Key Rail the focused rail is removed and the
+    // Defect 6 restoration refocuses the plain timeline container; Cmd+Z must
+    // reach the same physical authority the visible buttons use, independent
+    // of which Studio element holds DOM focus. A plain div target is that case.
+    const container = new TestHTMLElement('div') as unknown as EventTarget;
+    const { handlers, preventDefault } = dispatch(String(init.key), container, init);
+
+    expect(handlers[expected as 'undo' | 'redo']).toHaveBeenCalledOnce();
+    expect(handlers[expected === 'undo' ? 'redo' : 'undo']).not.toHaveBeenCalled();
+    expect(handlers.deleteRotoKey).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it.each([
     ['?', {}, 'toggleShortcuts', undefined],
     ['/', { shiftKey: true }, 'toggleShortcuts', undefined],
     [' ', {}, 'toggleRotoPlayback', undefined],

@@ -934,6 +934,20 @@ describe('PhysicsPaintWorkflowStrip fixed band stack contract (36.15-06 task 2)'
     expect(code.slice(scrollIndex, scrollEnd)).toContain('physics-paint-roto-cells');
   });
 
+  it('makes the timeline scroll container focusable so Cmd+Z/Cmd+Shift+Z routing survives rail commits (43.4 defect 7)', () => {
+    const code = source();
+    const scrollIndex = code.indexOf('class="physics-paint-timeline-scroll"');
+    expect(scrollIndex).toBeGreaterThanOrEqual(0);
+    const openingTagStart = code.lastIndexOf('<div', scrollIndex);
+    const openingTagEnd = code.indexOf('>', openingTagStart);
+    const openingTag = code.slice(openingTagStart, openingTagEnd + 1);
+    // After Delete Key Rail the focused rail button is removed and focus would
+    // fall to body, where keydown never bubbles through the Studio section's
+    // undo/redo handler. tabIndex={-1} makes the Defect 6 restoration succeed
+    // and keeps focus on a Studio element for one shared routing path.
+    expect(openingTag).toContain('tabIndex={-1}');
+  });
+
   it('removes the 860px responsive collapse and declares D-18 horizontal scroll on the strip shell', () => {
     const styles = css();
     const query = getMediaQueryBlock(styles, '@media (max-width: 860px)');

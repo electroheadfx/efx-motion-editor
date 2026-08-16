@@ -1628,7 +1628,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       />
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">
-        <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" onScroll={updateScrollbar}>
+        <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
           <div class="physics-paint-ruler" style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }} aria-hidden="true">
             {rotoRulerTicks.map(frame => (
               <span key={frame} class="physics-paint-ruler-tick">{frame}</span>
