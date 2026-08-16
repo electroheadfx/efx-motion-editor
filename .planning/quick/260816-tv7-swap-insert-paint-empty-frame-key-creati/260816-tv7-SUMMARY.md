@@ -204,6 +204,11 @@ The six native acceptance rows from the spec are reported for user verification:
 5. **Undo/Redo atomic for both gestures; save/reopen reproduces the exact segments and rails.**
 6. **43.1/43.4 derivation, Scissor, drag, delete, and spacing behaviors unchanged.**
 
+## Native UAT Approval
+
+- All six native acceptance rows passed live visual verification on 2026-08-16; quick task closed as Verified in STATE.md.
+- Follow-up (presentation only, approved with the quick): Motion/Static Rails now draw the shared full-height Key Rail boundary edges — the 2px x 3px band cap plus the 1px #f8fafc full-height cell edge — through one shared `physics-paint-rail-target` / `physics-paint-rail-segment` rule set instead of per-family rules. Fragmented Group (Delete Frame holes) edges appear only at the Group's true outer boundaries, not at internal fragment edges. Committed `b1617e1c`.
+
 ## User Setup Required
 
 None - no external service configuration required.

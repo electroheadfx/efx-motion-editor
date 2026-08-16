@@ -495,7 +495,7 @@ None yet.
 | 260809-aac | Make Select All clear prior real/empty frame highlights without breaking normal empty-frame Add key targeting | 2026-08-09 | 39fe1895 | Verified | [260809-aac-when-select-all-keyframes-is-used-clear-](./quick/260809-aac-when-select-all-keyframes-is-used-clear-/) |
 | 260815-ala | In paint app, make Group Edit timing default to 3 frames and expose Max as an unchecked Infinity-style checkbox | 2026-08-15 | 4aa958a4 | Verified | [260815-ala-in-paint-app-make-group-edit-with-timing](./quick/260815-ala-in-paint-app-make-group-edit-with-timing/) |
 | 260815-bmg | Remove numeric Undo/Redo counts from Paint and Physics Paint Studio controls | 2026-08-15 | 357965a1 | Verified | [260815-bmg-remove-numeric-undo-redo-counts-from-pai](./quick/260815-bmg-remove-numeric-undo-redo-counts-from-pai/) |
-| 260816-tv7 | Swap Insert/Paint empty-frame key-creation break semantics per SPECS/milestone-v0.9.0-new-phases/quick-insert-connects-paint-breaks-prompt.md | 2026-08-16 | 09f1d864 |  | [260816-tv7-swap-insert-paint-empty-frame-key-creati](./quick/260816-tv7-swap-insert-paint-empty-frame-key-creati/) |
+| 260816-tv7 | Swap Insert/Paint empty-frame key-creation break semantics per SPECS/milestone-v0.9.0-new-phases/quick-insert-connects-paint-breaks-prompt.md | 2026-08-16 | 09f1d864 | Verified | [260816-tv7-swap-insert-paint-empty-frame-key-creati](./quick/260816-tv7-swap-insert-paint-empty-frame-key-creati/) |
 
 ### Roadmap Evolution
 
