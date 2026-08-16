@@ -57,6 +57,7 @@ import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts
 import { PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
 import { PhysicsPaintKeyRail } from './PhysicsPaintKeyRail';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
+import { shouldRestoreOrphanedKeyRailFocus } from './physicsPaintKeyRailFocus';
 import type { GroupRailDragPreviewState } from '../hooks/usePhysicsPaintGroupRailDrag';
 import type { KeyRailDragPreviewState } from '../hooks/usePhysicsPaintKeyRailDrag';
 import {
@@ -663,6 +664,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const rotoCellDerivationCacheRef = useRef<RotoCellDerivationCache | null>(null);
   const suppressNextRotoClickRef = useRef(false);
   const mountedRef = useRef(true);
+  // 43.4 defect 6: the last focused Key Rail button and its timeline container,
+  // so a Delete/Undo/Redo commit that removes the button can restore focus to
+  // the stable container instead of leaving it orphaned on body.
+  const lastFocusedKeyRailRef = useRef<{ element: HTMLElement; container: HTMLElement | null } | null>(null);
   const currentFrameSignal = useSignal(props.currentFrame);
   if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
   const interpolationEnabled = props.rotoInterpolationEnabled === true;
@@ -711,6 +716,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     incomingInterpolationBreakKeyIds: new Set(props.rotoIncomingInterpolationBreakKeyIds ?? []),
     groupOwnedKeyIds: keyRailGroupOwnedKeyIds,
   }), [rotoKeyRecords, props.rotoIncomingInterpolationBreakKeyIds, keyRailGroupOwnedKeyIds]);
+  // 43.4 defect 6: record the focused Key Rail button so a commit that removes
+  // it (Delete/Undo/Redo) can restore focus to the stable timeline container.
+  const handleKeyRailFocus = useCallback((element: HTMLElement) => {
+    lastFocusedKeyRailRef.current = { element, container: timelineScrollRef.current };
+  }, []);
+  useEffect(() => {
+    const lastFocused = lastFocusedKeyRailRef.current;
+    if (lastFocused && shouldRestoreOrphanedKeyRailFocus(lastFocused.element, document.activeElement)) {
+      lastFocused.container?.focus();
+      lastFocusedKeyRailRef.current = null;
+    }
+  }, [keyRailSegments]);
   const visibleFrameResolutions = useMemo(
     () => loopResolutionContext === null
       ? null
@@ -1644,6 +1661,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     : undefined}
                   deleteUnavailableReason={deleteRotoKeyDisabledReason}
                   busy={keyUtilitiesDisabledByBusyState}
+                  onRailFocus={handleKeyRailFocus}
                 />
               ) : null}
               {loopResolutionContext !== null

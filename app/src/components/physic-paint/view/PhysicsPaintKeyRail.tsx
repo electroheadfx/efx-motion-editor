@@ -70,6 +70,7 @@ export interface PhysicsPaintKeyRailProps extends SelectedKeyRailCopyAvailabilit
   ) => void;
   readonly busy?: boolean;
   readonly windowLike?: KeyRailDragWindowLike;
+  readonly onRailFocus?: (element: HTMLElement) => void;
 }
 
 interface RailMouseEvent {
@@ -97,6 +98,7 @@ interface PhysicsPaintKeyRailTargetProps extends SelectedKeyRailCopyAvailability
   readonly onPreviewChange?: PhysicsPaintKeyRailProps['onPreviewChange'];
   readonly busy: boolean;
   readonly windowLike?: KeyRailDragWindowLike;
+  readonly onRailFocus?: (element: HTMLElement) => void;
 }
 
 function sameKeyRailSelection(
@@ -198,7 +200,10 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
         onPointerDown={drag.onPointerDown}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
-        onFocus={tooltip.onFocus}
+        onFocus={(event) => {
+          tooltip.onFocus();
+          props.onRailFocus?.(event.currentTarget as HTMLElement);
+        }}
         onBlur={tooltip.onBlur}
       >
         <span class="physics-paint-key-rail-segment" aria-hidden="true" />
@@ -263,6 +268,7 @@ export function PhysicsPaintKeyRail(props: PhysicsPaintKeyRailProps) {
           deleteUnavailableReason={props.deleteUnavailableReason}
           busy={props.busy ?? false}
           windowLike={props.windowLike}
+          onRailFocus={props.onRailFocus}
         />
       ))}
     </div>
