@@ -1324,6 +1324,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         return false;
       }
       if (isReplay && (!proposal || !replayTarget || !replayProposalMatchesTarget(proposal, replayTarget))) {
+        console.log(`[DEBUG-KRUNDO] replay barrier rejected kind=${input.operationKind} proposal=${proposal ? JSON.stringify({ mapping: Object.fromEntries(proposal.mapping), selectedKeyId: proposal.selectedKeyId, selectedAppFrame: proposal.selectedAppFrame }) : 'null'} replayTarget=${replayTarget ? JSON.stringify({ records: replayTarget.records.map((r) => [r.keyId, r.appFrame]), selectedKeyId: replayTarget.selectedKeyId, selectedAppFrame: replayTarget.selectedAppFrame }) : 'null'}`);
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
