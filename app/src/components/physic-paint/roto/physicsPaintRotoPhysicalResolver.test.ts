@@ -2603,6 +2603,43 @@ describe('clampPhysicPaintKeyRailDragDestination and move-key-rail', () => {
     expect(resolution.failure.code).toBe('no-free-space-in-direction');
   });
 
+  it('rejects a Key Rail past an Infinity Group start from dragging into its occupied range (43.4 defect 3d)', () => {
+    const infinityGroup = Object.freeze({
+      loopId: 'loop-inf',
+      placementStart: 5,
+      sourceKeyIds: Object.freeze(['G']),
+      repeat: 'infinity',
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 5,
+      originalEndExclusive: 6,
+      visibleRanges: Object.freeze([Object.freeze({ start: 5, endExclusive: 6 })]),
+      frameOverrides: Object.freeze([]),
+    }) as PhysicPaintRotoLoopClip;
+
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G', appFrame: 5 },
+        { keyId: 'M1', appFrame: 20 },
+        { keyId: 'M2', appFrame: 21 },
+      ],
+      intent: {
+        kind: 'move-key-rail',
+        memberKeyIds: ['M1', 'M2'],
+        destinationFirstKeyAppFrame: 10,
+      },
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: [],
+      loopClips: [infinityGroup],
+    });
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Key Rail must not drag into the Infinity Group occupied range');
+    expect(resolution.failure.code).toBe('no-free-space-in-direction');
+  });
+
   it('keeps symmetric leftward drag working when an Infinity Group sits to the right (43.4 defect 3c)', () => {
     const infinityGroup = Object.freeze({
       loopId: 'loop-inf',
