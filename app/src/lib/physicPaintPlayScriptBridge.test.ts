@@ -55,7 +55,7 @@ function batch(overrides: Record<string, unknown> = {}) {
   if (!authority.ok || authority.frames.length === 0) throw new Error('authority must expose the seeded physical keys');
   return {
     kind: 'replace-roto-key-frames' as const, operationId: `commit-${crypto.randomUUID()}`, projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', startFrame: 4,
-    frameCount: 2, expectedLayerEndExclusive: 10, expectedRotoRevision: authority.rotoRevision,
+    frameCount: 2, expectedLayerEndExclusive: 600, expectedRotoRevision: authority.rotoRevision,
     frames: [authority.frames[0], frame(4, 'data:image/png;base64,new-4'), frame(5, 'data:image/png;base64,new-5')],
     rotoBackground: { background: 'canvas2' as const, paperGrain: 'canvas3', grainStrength: 0.65 },
     rotoInterpolationSettings: { enabled: true, inBetweenCount: 1, mode: 'duplicate' as const, deform: 0, position: 0 },
@@ -69,7 +69,9 @@ describe('Play Script parent authority and complete-set bridge', () => {
 
   it('returns current operation-correlated capacity, real keys, and revision', () => {
     const result = getPhysicPaintRotoAuthority({ operationId: 'authority-1', projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1', canonicalStart: 4 });
-    expect(result).toMatchObject({ operationId: 'authority-1', ok: true, canonicalStart: 4, layerEndExclusive: 10, capacity: 6, projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1' });
+    // 43.4 defect 1: the authority remaining is the child document capacity,
+    // never the stale main-editor display outFrame (10 here).
+    expect(result).toMatchObject({ operationId: 'authority-1', ok: true, canonicalStart: 4, layerEndExclusive: 600, capacity: 596, projectContextId: '11111111-1111-4111-8111-111111111111', layerId: 'layer-1' });
     expect(result.rotoRevision).not.toBe('');
     expect(result.frames).toEqual([expect.objectContaining({ appFrame: 1, source: 'real-key' })]);
   });
@@ -99,8 +101,11 @@ describe('Play Script parent authority and complete-set bridge', () => {
 
     sequenceStore.sequences.value = [];
     sequenceStore.add({ id: 'seq-boundary', kind: 'fx', name: 'FX', fps: 24, width: 100, height: 100, keyPhotos: [], layers: [layer()], inFrame: 0, outFrame: 10 });
-    expect(authority('at-boundary', 10)).toMatchObject({ ok: false, capacity: 0 });
-    expect(authority('beyond-boundary', 11)).toMatchObject({ ok: false, capacity: 0 });
+    // 43.4 defect 1: a start at or past the stale display outFrame is genuine
+    // free space under the child document's capacity authority — it no longer
+    // fails closed.
+    expect(authority('at-boundary', 10)).toMatchObject({ ok: true, capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES - 10, layerEndExclusive: PHYSIC_PAINT_MAX_APPLY_FRAMES });
+    expect(authority('beyond-boundary', 11)).toMatchObject({ ok: true, capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES - 11, layerEndExclusive: PHYSIC_PAINT_MAX_APPLY_FRAMES });
 
     sequenceStore.sequences.value = [];
     sequenceStore.add({ id: 'seq-large', kind: 'fx', name: 'FX', fps: 24, width: 100, height: 100, keyPhotos: [], layers: [layer()], inFrame: 0, outFrame: PHYSIC_PAINT_MAX_APPLY_FRAMES + 100 });
@@ -115,7 +120,7 @@ describe('Play Script parent authority and complete-set bridge', () => {
     expect(applyPhysicPaintPayload(batch({ expectedRotoRevision: 'stale' }))).toMatchObject({ ok: false });
     expect(applyPhysicPaintPayload(batch({ frames: [frame(1), frame(4), frame(4)] }))).toMatchObject({ ok: false, error: 'Play Script batch contains duplicate real keys.' });
     expect(applyPhysicPaintPayload(batch({ frames: [frame(1), frame(4)] }))).toMatchObject({ ok: false, error: 'Play Script batch is incomplete.' });
-    expect(applyPhysicPaintPayload(batch({ frameCount: 7 }))).toMatchObject({ ok: false, error: 'Play Script exceeds the current layer capacity.' });
+    expect(applyPhysicPaintPayload(batch({ frameCount: PHYSIC_PAINT_MAX_APPLY_FRAMES }))).toMatchObject({ ok: false, error: 'Play Script exceeds the current layer capacity.' });
   });
 
   it('rejects omission, modification, and injection outside the affected destination range', () => {

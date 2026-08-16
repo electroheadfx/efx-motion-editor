@@ -21,10 +21,15 @@ vi.mock('preact/hooks', () => ({
   useRef: <Value>(value: Value) => ({ current: value }),
 }));
 
-import type { PhysicPaintRotoRealKeyRecord, PhysicPaintRotoLoopClip } from './physicsPaintRotoPhysicalModel';
+import type {
+  PhysicPaintRotoRealKeyPayload,
+  PhysicPaintRotoRealKeyRecord,
+  PhysicPaintRotoLoopClip,
+} from './physicsPaintRotoPhysicalModel';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
+  PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
 } from './physicsPaintRotoPhysicalModel';
 import {
   derivePhysicPaintRotoLoopRanges,
@@ -46,6 +51,12 @@ import {
 
 const rendered = vi.hoisted(() => vi.fn());
 vi.mock('./physicsPaintRotoPlayScriptRenderer', () => ({ renderRotoPlayScriptFrames: rendered }));
+
+import { getPhysicPaintRotoAuthority } from '../../../lib/physicPaintBridge';
+import { physicPaintStore } from '../../../stores/physicPaintStore';
+import { layerStore } from '../../../stores/layerStore';
+import { sequenceStore } from '../../../stores/sequenceStore';
+import { projectStore } from '../../../stores/projectStore';
 
 /** Minimal valid PNG data URL (real signature bytes) for canonical payloads. */
 const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
@@ -3028,5 +3039,89 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.phase.value).toBe('complete');
       expect(test.controller.confirmationOpen.value).toBe(false);
     });
+  });
+});
+
+// 43.4 regression guard: the Create Group (Motion/Static Rail) modal must
+// remain available and open with a valid real-key selection exactly as it did
+// before 33f4beeb (capacity-as-single-end-authority). Wired through the REAL
+// store, the REAL parent authority computation, and the REAL controller.
+describe('createRotoPlayScriptController Create Group modal availability (43.4 regression)', () => {
+  const LAYER_ID = 'phys-layer-1';
+  const CONTEXT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  function blankPayload(appFrame: number): PhysicPaintRotoRealKeyPayload {
+    return { frameIndex: 0, appFrame, dataUrl: pngDataUrl(`k${appFrame}`), width: 1, height: 1 };
+  }
+
+  function seedStoreWithKeys(): void {
+    physicPaintStore.reset();
+    projectStore.projectContextId.value = CONTEXT_ID;
+    const layer = {
+      id: LAYER_ID,
+      name: 'Physics Paint',
+      type: 'physic-paint' as const,
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: { x: 0, y: 0, scale: 1, rotation: 0 },
+      source: { type: 'physic-paint' as const, layerId: LAYER_ID },
+    };
+    vi.spyOn(layerStore.layers, 'peek').mockReturnValue([layer] as never);
+    vi.spyOn(layerStore.overlayLayers, 'peek').mockReturnValue([] as never);
+    sequenceStore.sequences.value = [{
+      id: 'parent-seq',
+      kind: 'fx',
+      name: 'Parent sequence',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer as never],
+      inFrame: 0,
+      outFrame: 100,
+    } as never];
+    const realKeyRecords: PhysicPaintRotoRealKeyRecord[] = [];
+    for (let frame = 0; frame <= 99; frame += 4) {
+      realKeyRecords.push({ kind: 'real-key', keyId: `k${frame}`, appFrame: frame, payload: blankPayload(frame) });
+    }
+    // A real key past the stale display outFrame (100) — the exact spot the
+    // 43.4 Defect 1 drag fix lets keys occupy.
+    realKeyRecords.push({ kind: 'real-key', keyId: 'k104', appFrame: 104, payload: blankPayload(104) });
+    const revision = buildPhysicPaintRotoPhysicalRevision(
+      realKeyRecords,
+      { enabled: false, mode: 'duplicate' },
+      [],
+      PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+    );
+    const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER_ID, {
+      capacity: 600,
+      realKeyRecords,
+      interpolation: { enabled: false, mode: 'duplicate' },
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision,
+      incomingInterpolationBreakKeyIds: PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+    });
+    expect(result.ok).toBe(true);
+  }
+
+  it('stays available and opens its modal on a real key past the stale display outFrame (pre-33f4beeb behavior)', async () => {
+    seedStoreWithKeys();
+    const test = harness({
+      getRotoLoopClips: () => physicPaintStore.getRotoPhysicalLoopClips(LAYER_ID),
+      getPhysicalDocument: () => physicPaintStore.getRotoPhysicalDocument(LAYER_ID),
+      requestAuthority: vi.fn(async (operationId: string, start: number) => (
+        getPhysicPaintRotoAuthority({ operationId, projectContextId: CONTEXT_ID, layerId: LAYER_ID, canonicalStart: start })
+      )),
+    });
+    test.setSelection({ kind: 'real-key', keyId: 'k104', appFrame: 104 });
+
+    expect(test.controller.disabledReason.value).toBeNull();
+    await test.controller.openConfirmation();
+    expect(test.controller.confirmationOpen.value).toBe(true);
+    expect(test.controller.phase.value).toBe('idle');
   });
 });

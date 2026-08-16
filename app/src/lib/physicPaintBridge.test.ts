@@ -520,11 +520,13 @@ describe('physicPaintBridge', () => {
       canonicalStart: 5,
     });
 
+    // 43.4 defect 1: the authority remaining is the child document capacity,
+    // never the stale main-editor display outFrame.
     expect(authority).toMatchObject({
       ok: true,
       canonicalStart: 5,
-      layerEndExclusive: 30,
-      capacity: 25,
+      layerEndExclusive: 600,
+      capacity: 595,
       physicalCapacity: 600,
     });
   });
@@ -2336,7 +2338,9 @@ describe('physicPaintBridge', () => {
         affectedStartAppFrame: 0,
         affectedEndAppFrame: 4,
         expectedLayerCapacity: launch.data.rotoPhysical.capacity,
-        expectedLayerEndExclusive: 30,
+        // 43.4 defect 1: the play-script expected end is the child document
+        // capacity, never the stale main-editor display outFrame.
+        expectedLayerEndExclusive: 600,
         proposedRecords: records,
         freshKeyIds: records.map((record) => record.keyId),
       },

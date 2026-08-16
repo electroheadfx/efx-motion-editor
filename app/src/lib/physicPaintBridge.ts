@@ -460,10 +460,13 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
   if (!layer || layer.type !== 'physic-paint') return failure('Physics Paint layer is unavailable.');
   if (!Number.isInteger(request.canonicalStart) || request.canonicalStart < 0) return failure('Canonical Roto start is invalid.');
   const physicalCapacity = physicPaintStore.getRotoPhysicalCapacity(request.layerId);
-  const remainingCapacity = getTimelineRangeFrameCount(layer, request.canonicalStart);
+  // The child document's single end authority is the physical capacity
+  // (43.4 defect 1): the stale main-editor display outFrame never clamps
+  // physics-paint content, so the authority remaining is capacity-based.
+  const parentTimelineRange = getLayerLocalTimelineRange(layer);
   const physicalRemaining = physicalCapacity - request.canonicalStart;
-  if (remainingCapacity === null || physicalRemaining <= 0) return failure('No remaining Physics Paint sequence capacity is available.');
-  const capacity = Math.min(remainingCapacity, physicalRemaining, PHYSIC_PAINT_MAX_APPLY_FRAMES);
+  if (parentTimelineRange === null || physicalRemaining <= 0) return failure('No remaining Physics Paint sequence capacity is available.');
+  const capacity = Math.min(physicalRemaining, PHYSIC_PAINT_MAX_APPLY_FRAMES);
   const records = physicPaintStore.getRotoRealKeyRecords(request.layerId);
   const groupOverrideRecords = physicPaintStore.getRotoGroupOverrideRecords(request.layerId);
   const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(request.layerId);
@@ -872,7 +875,13 @@ function validatePlayScriptPhysicalDelta(input: {
   // selection (source-edit/repair open from a Loop Clip, not a selection).
   const loopOnly = delta.loopOnly === true;
   const preserveSelection = loopOnly || delta.preserveSelection === true;
-  const remainingCapacity = getTimelineRangeFrameCount(layer, delta.affectedStartAppFrame);
+  // Same capacity authority as getPhysicPaintRotoAuthority (43.4 defect 1):
+  // the play-script expected end derives from the child document capacity,
+  // never the stale main-editor display outFrame.
+  const parentTimelineRange = getLayerLocalTimelineRange(layer);
+  const remainingCapacity = parentTimelineRange === null
+    ? null
+    : capacity - delta.affectedStartAppFrame;
   const expectedLayerEndExclusive = remainingCapacity === null
     ? null
     : delta.affectedStartAppFrame + Math.min(remainingCapacity, capacity - delta.affectedStartAppFrame, PHYSIC_PAINT_MAX_APPLY_FRAMES);
@@ -2717,13 +2726,6 @@ function getLayerLocalTimelineRange(layer: Layer) {
 
 function getTimelineRangeEndExclusive(layer: Layer): number | null {
   return getLayerLocalTimelineRange(layer)?.localEndExclusive ?? null;
-}
-
-function getTimelineRangeFrameCount(layer: Layer, localFrame: number): number | null {
-  const localEndExclusive = getTimelineRangeEndExclusive(layer);
-  if (localEndExclusive === null || !Number.isInteger(localFrame) || localFrame < 0) return null;
-  const remaining = localEndExclusive - localFrame;
-  return remaining > 0 ? remaining : null;
 }
 
 function openBrowserFallback(context: PhysicPaintLaunchContext): Result<null> {
