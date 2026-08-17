@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.5
 current_phase_name: timeline-toolbox-and-directional-push-tools
 status: executing
-stopped_at: Completed 43.5-03-PLAN.md
-last_updated: "2026-08-17T19:55:43.862Z"
+stopped_at: Completed 43.5-04-PLAN.md
+last_updated: "2026-08-17T20:26:08.106Z"
 last_activity: 2026-08-17
 last_activity_desc: Phase 43.5 execution started
 progress:
   total_phases: 11
   completed_phases: 8
   total_plans: 84
-  completed_plans: 81
+  completed_plans: 82
   percent: 73
 ---
 
@@ -29,7 +29,7 @@ stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-16
 last_activity_desc: "Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics"
-progress:[██████████] 96%
+progress:[██████████] 98%
   total_phases: 10
   completed_phases: 7
   total_plans: 78
@@ -49,7 +49,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.5 (timeline-toolbox-and-directional-push-tools) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-08-17 — Phase 43.5 execution started
 
@@ -254,6 +254,7 @@ Progress: [██████████] 99%
 | Phase 43.5-timeline-toolbox-and-directional-push-tools P01 | 75 | 3 tasks | 4 files |
 | Phase 43.5 P02 | 4h49m | 2 tasks | 6 files |
 | Phase 43.5-timeline-toolbox-and-directional-push-tools P03 | 22 | 2 tasks | 4 files |
+| Phase 43.5 P04 | 21min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -488,6 +489,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: commitRotoPush revalidates the CURRENT break-aware proposal version and fails closed with zero mutation on any mismatch (T-43.5-01) — the stale-authority guard proves the same intent resolves to the same proposal before dispatch
 - [Phase ?]: The accepted copy is published from the .then(accepted => ...) continuation of input.executePhysicalEdit — a bounded Extract that does not re-run physical actions
 - [Phase ?]: Push Left's live mirror uses U+2212 MINUS SIGN (Push Left -12) for typographic consistency with the U+2013 en-dashes already in the locked copy family
+- [Phase ?]: 43.5-04: The push drag hook accepts the caller-resolved anchor and never derives canonical facts itself (D-07) — the caller binds the resolved anchor (keyId or loopId) and direction into the prepareAtDestination closure
+- [Phase ?]: 43.5-04: clampDestination result is consumed for paint AND forwarded to prepare — preview-is-the-commit (D-14); the clamp authority is the resolver's exported pure clamp wired by the caller, never reimplemented in the hook
+- [Phase ?]: 43.5-04: Click suppression arms only when a drag session actually started past the threshold (beginDrag) — the D-09 deviation from the key-rail hook; a sub-threshold release never arms it, so the click passes through unsuppressed
+- [Phase ?]: 43.5-04: Every cancel vector (Escape, pointercancel, lostpointercapture) clears the preview signal and removes listeners exactly once via the active-flag-guarded cleanup; cancelSession restores focus and reports onCancel only when a session had started
 
 ### Pending Todos
 
@@ -690,8 +695,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-17T19:55:43.844Z
-Stopped at: Completed 43.5-03-PLAN.md
+Last session: 2026-08-17T20:26:00.472Z
+Stopped at: Completed 43.5-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
