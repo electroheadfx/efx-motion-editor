@@ -398,7 +398,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 43.5-03-PLAN.md — push prepare/commit pair + product-reason mapper + atomic one-Undo/one-Redo history
+- [x] 43.5-03-PLAN.md — push prepare/commit pair + product-reason mapper + atomic one-Undo/one-Redo history
 - [ ] 43.5-04-PLAN.md — usePhysicsPaintPushDrag armed gesture session hook (new, port-injected)
 
 **Wave 3** *(blocked on Wave 2 completion)*

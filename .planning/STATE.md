@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.5
 current_phase_name: timeline-toolbox-and-directional-push-tools
 status: executing
-stopped_at: Completed 43.5-02-PLAN.md
-last_updated: "2026-08-17T19:18:13.806Z"
+stopped_at: Completed 43.5-03-PLAN.md
+last_updated: "2026-08-17T19:55:43.862Z"
 last_activity: 2026-08-17
 last_activity_desc: Phase 43.5 execution started
 progress:
   total_phases: 11
   completed_phases: 8
   total_plans: 84
-  completed_plans: 80
+  completed_plans: 81
   percent: 73
 ---
 
@@ -29,7 +29,7 @@ stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-16
 last_activity_desc: "Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics"
-progress:[██████████] 95%
+progress:[██████████] 96%
   total_phases: 10
   completed_phases: 7
   total_plans: 78
@@ -49,7 +49,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.5 (timeline-toolbox-and-directional-push-tools) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-08-17 — Phase 43.5 execution started
 
@@ -253,6 +253,7 @@ Progress: [██████████] 99%
 | Phase 43.4 P08 | 2 tasks | 27 commits | history/persistence proofs + approved native UAT |
 | Phase 43.5-timeline-toolbox-and-directional-push-tools P01 | 75 | 3 tasks | 4 files |
 | Phase 43.5 P02 | 4h49m | 2 tasks | 6 files |
+| Phase 43.5-timeline-toolbox-and-directional-push-tools P03 | 22 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -483,6 +484,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: The Blend badge is a pure projection of props.interpolationEnabled (props.rotoInterpolationEnabled === true) — paint-only, aria-hidden, absent when off, never a second authority (D-04)
 - [Phase ?]: Popover panel uses the liquid-glass surface with blur/saturate on an empty ::before so the panel never becomes a containing block for the relocated position:fixed interpolation tooltip (smoke fix 3)
 - [Phase ?]: Escape and outside-pointerdown dismissal are self-contained in window capture-phase listeners registered only while open; one Escape handles at most one layer (popover before selection collapse), no focus trap, no backdrop (D-01, D-02)
+- [Phase ?]: prepareRotoPush consumes the shared derivePhysicPaintPushSet export (D-17) for moved-set presentation facts — prepare does NO set math itself, so presentation and the resolver commit can never disagree (Pitfall 4)
+- [Phase ?]: commitRotoPush revalidates the CURRENT break-aware proposal version and fails closed with zero mutation on any mismatch (T-43.5-01) — the stale-authority guard proves the same intent resolves to the same proposal before dispatch
+- [Phase ?]: The accepted copy is published from the .then(accepted => ...) continuation of input.executePhysicalEdit — a bounded Extract that does not re-run physical actions
+- [Phase ?]: Push Left's live mirror uses U+2212 MINUS SIGN (Push Left -12) for typographic consistency with the U+2013 en-dashes already in the locked copy family
 
 ### Pending Todos
 
@@ -685,8 +690,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-17T19:18:06.649Z
-Stopped at: Completed 43.5-02-PLAN.md
+Last session: 2026-08-17T19:55:43.844Z
+Stopped at: Completed 43.5-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
