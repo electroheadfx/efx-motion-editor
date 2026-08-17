@@ -6,7 +6,9 @@ import type {
 import {
   clampPhysicPaintGroupDragDestination,
   clampPhysicPaintKeyRailDragDestination,
+  clampPhysicPaintPushDestination,
   createPhysicPaintRotoPasteKeyGroupIntent,
+  derivePhysicPaintPushSet,
   projectPhysicPaintRotoPhysicalTimeline,
   resolvePhysicPaintRotoPhysicalEdit,
   validatePhysicPaintRotoPhysicalEditSemanticDelta,
@@ -41,6 +43,7 @@ import {
   serializePhysicPaintRotoPhysicalEditIntent,
 } from '../../../types/physicPaint';
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
+import { getPhysicsPaintRotoSourceCycleId } from './physicsPaintRotoSpacingSelection';
 
 /**
  * Group-operation regression anchors. Group Drag uses the current rigid
@@ -4142,6 +4145,39 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
   });
 });
 
+/** loop-G is source-attached owner of the [g0,g1] cycle at [20,28); loop-D is a
+ * duplicated placement of the SAME source cycle at [2,10) — never attached. */
+function buildPushGroupClips(): readonly PhysicPaintRotoLoopClip[] {
+  return Object.freeze([
+    Object.freeze({
+      loopId: 'loop-G',
+      placementStart: 20,
+      sourceKeyIds: ['g0', 'g1'],
+      repeat: 4,
+      mode: 'static',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 20,
+      originalEndExclusive: 28,
+      visibleRanges: Object.freeze([Object.freeze({ start: 20, endExclusive: 28 })]),
+      frameOverrides: Object.freeze([]),
+    }) as PhysicPaintRotoLoopClip,
+    Object.freeze({
+      loopId: 'loop-D',
+      placementStart: 2,
+      sourceKeyIds: ['g0', 'g1'],
+      repeat: 4,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 2,
+      originalEndExclusive: 10,
+      visibleRanges: Object.freeze([Object.freeze({ start: 2, endExclusive: 10 })]),
+      frameOverrides: Object.freeze([]),
+    }) as PhysicPaintRotoLoopClip,
+  ]);
+}
+
 describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix translation)', () => {
   const buildTwoKeyRails = (): readonly PhysicPaintRotoKeyIdentity[] => Object.freeze([
     { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
@@ -4154,15 +4190,54 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     { keyId: 'b9', appFrame: 29 },
   ]);
 
+  /** A [5,15), B [20,30): room to push A left without hitting frame 0. */
+  const buildStaggeredKeyRails = (): readonly PhysicPaintRotoKeyIdentity[] => Object.freeze([
+    { keyId: 'a0', appFrame: 5 }, { keyId: 'a1', appFrame: 6 }, { keyId: 'a2', appFrame: 7 },
+    { keyId: 'a3', appFrame: 8 }, { keyId: 'a4', appFrame: 9 }, { keyId: 'a5', appFrame: 10 },
+    { keyId: 'a6', appFrame: 11 }, { keyId: 'a7', appFrame: 12 }, { keyId: 'a8', appFrame: 13 },
+    { keyId: 'a9', appFrame: 14 },
+    { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 21 }, { keyId: 'b2', appFrame: 22 },
+    { keyId: 'b3', appFrame: 23 }, { keyId: 'b4', appFrame: 24 }, { keyId: 'b5', appFrame: 25 },
+    { keyId: 'b6', appFrame: 26 }, { keyId: 'b7', appFrame: 27 }, { keyId: 'b8', appFrame: 28 },
+    { keyId: 'b9', appFrame: 29 },
+  ]);
+
+  /** A [0,10), B [30,40): the moved set's last end sits exactly at capacity 40. */
+  const buildFlushAtCapacity = (): readonly PhysicPaintRotoKeyIdentity[] => Object.freeze([
+    { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
+    { keyId: 'a3', appFrame: 3 }, { keyId: 'a4', appFrame: 4 }, { keyId: 'a5', appFrame: 5 },
+    { keyId: 'a6', appFrame: 6 }, { keyId: 'a7', appFrame: 7 }, { keyId: 'a8', appFrame: 8 },
+    { keyId: 'a9', appFrame: 9 },
+    { keyId: 'b0', appFrame: 30 }, { keyId: 'b1', appFrame: 31 }, { keyId: 'b2', appFrame: 32 },
+    { keyId: 'b3', appFrame: 33 }, { keyId: 'b4', appFrame: 34 }, { keyId: 'b5', appFrame: 35 },
+    { keyId: 'b6', appFrame: 36 }, { keyId: 'b7', appFrame: 37 }, { keyId: 'b8', appFrame: 38 },
+    { keyId: 'b9', appFrame: 39 },
+  ]);
+
+  const resolvePush = (
+    identities: readonly PhysicPaintRotoKeyIdentity[],
+    direction: 'right' | 'left',
+    anchor: { readonly anchorKeyId?: string; readonly anchorLoopId?: string },
+    deltaFrames: number,
+    extra: {
+      readonly incomingInterpolationBreakKeyIds?: readonly string[];
+      readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+      readonly capacity?: number;
+    } = {},
+  ): PhysicPaintRotoPhysicalEditResolution => resolvePhysicPaintRotoPhysicalEdit({
+    identities,
+    intent: { kind: 'push-rails', direction, ...anchor, deltaFrames },
+    parentEndExclusive: extra.capacity ?? 40,
+    capacity: extra.capacity ?? 40,
+    interpolationEnabled: false,
+    ...(extra.incomingInterpolationBreakKeyIds !== undefined
+      ? { incomingInterpolationBreakKeyIds: extra.incomingInterpolationBreakKeyIds }
+      : {}),
+    ...(extra.loopClips !== undefined ? { loopClips: extra.loopClips } : {}),
+  });
+
   it('Push Right from the first key of Key Rail B translates B to 25-34 and keeps Key Rail A byte-position fixed', () => {
-    const resolution = resolvePhysicPaintRotoPhysicalEdit({
-      identities: buildTwoKeyRails(),
-      intent: { kind: 'push-rails', direction: 'right', anchorKeyId: 'b0', deltaFrames: 5 },
-      parentEndExclusive: 40,
-      capacity: 40,
-      interpolationEnabled: false,
-      // The b0 break separates Key Rail B from Key Rail A (deriveKeyRailSegments
-      // splits on breaks, not on empty frames).
+    const resolution = resolvePush(buildTwoKeyRails(), 'right', { anchorKeyId: 'b0' }, 5, {
       incomingInterpolationBreakKeyIds: ['b0'],
     });
 
@@ -4181,5 +4256,302 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
       a0: 0, a1: 1, a2: 2, a3: 3, a4: 4, a5: 5, a6: 6, a7: 7, a8: 8, a9: 9,
       b0: 25, b1: 26, b2: 27, b3: 28, b4: 29, b5: 30, b6: 31, b7: 32, b8: 33, b9: 34,
     });
+  });
+
+  it('Push Left from the last key of Key Rail A translates A to 2-11 and keeps Key Rail B byte-position fixed (PUSH-01 prefix)', () => {
+    const resolution = resolvePush(buildStaggeredKeyRails(), 'left', { anchorKeyId: 'a9' }, 3, {
+      incomingInterpolationBreakKeyIds: ['b0'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Push Left must resolve ok');
+    const { proposal } = resolution;
+    expect(proposal.status.operationKind).toBe('push-rails');
+    expect(proposal.status.changed).toBe(true);
+    // Key Rail A translated by -3.
+    expect(proposal.mapping.get('a0')).toBe(2);
+    expect(proposal.mapping.get('a9')).toBe(11);
+    // Key Rail B byte-position fixed (PUSH-01).
+    expect(proposal.mapping.get('b0')).toBe(20);
+    expect(proposal.mapping.get('b9')).toBe(29);
+    expect(Object.fromEntries(proposal.mapping)).toEqual({
+      a0: 2, a1: 3, a2: 4, a3: 5, a4: 6, a5: 7, a6: 8, a7: 9, a8: 10, a9: 11,
+      b0: 20, b1: 21, b2: 22, b3: 23, b4: 24, b5: 25, b6: 26, b7: 27, b8: 28, b9: 29,
+    });
+  });
+
+  it('clamps a Push Left at frame 0 — the moved set stops at the boundary (directional nearest-free search)', () => {
+    // A [5,15): pushing left by 8 wants delta -8 but frame 0 stops at -5.
+    const resolution = resolvePush(buildStaggeredKeyRails(), 'left', { anchorKeyId: 'a9' }, 8, {
+      incomingInterpolationBreakKeyIds: ['b0'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Push Left clamp must resolve ok');
+    const { proposal } = resolution;
+    expect(proposal.status.changed).toBe(true);
+    expect(proposal.mapping.get('a0')).toBe(0);
+    expect(proposal.mapping.get('a9')).toBe(9);
+    expect(proposal.mapping.get('b0')).toBe(20);
+    expect(proposal.mapping.get('b9')).toBe(29);
+  });
+
+  it('clamps a Push Right at capacity/parent end (single end authority)', () => {
+    // Push Right from a0 moves A AND B (the suffix set). B ends at 30 and
+    // capacity 40 bounds the committed delta at 10 — preview-is-the-commit.
+    const resolution = resolvePush(buildTwoKeyRails(), 'right', { anchorKeyId: 'a0' }, 15, {
+      incomingInterpolationBreakKeyIds: ['b0'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Push Right clamp must resolve ok');
+    const { proposal } = resolution;
+    expect(proposal.status.changed).toBe(true);
+    expect(proposal.mapping.get('a0')).toBe(10);
+    expect(proposal.mapping.get('a9')).toBe(19);
+    expect(proposal.mapping.get('b0')).toBe(30);
+    expect(proposal.mapping.get('b9')).toBe(39);
+  });
+
+  it('fails closed with no-free-space-in-direction when the moved set is flush at capacity', () => {
+    const resolution = resolvePush(buildFlushAtCapacity(), 'right', { anchorKeyId: 'a0' }, 5, {
+      incomingInterpolationBreakKeyIds: ['b0'],
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Flush-at-capacity push must reject');
+    expect(resolution.failure.code).toBe('no-free-space-in-direction');
+    expect('proposal' in resolution).toBe(false);
+  });
+
+  it('fails closed with no-free-space-in-direction when the moved set is flush at frame 0', () => {
+    const resolution = resolvePush(buildTwoKeyRails(), 'left', { anchorKeyId: 'a0' }, 3, {
+      incomingInterpolationBreakKeyIds: ['b0'],
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Flush-at-frame-0 push must reject');
+    expect(resolution.failure.code).toBe('no-free-space-in-direction');
+    expect('proposal' in resolution).toBe(false);
+  });
+
+  it('D-16: fails closed when a source-attached Group in the moved set shares its source cycle with a fixed-side Group', () => {
+    const identities = [
+      { keyId: 'g0', appFrame: 20 },
+      { keyId: 'g1', appFrame: 21 },
+    ] as const;
+    const resolution = resolvePush(identities, 'right', { anchorLoopId: 'loop-G' }, 5, {
+      loopClips: buildPushGroupClips(),
+      capacity: 40,
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Straddled push must reject');
+    expect(resolution.failure.code).toBe('push-source-straddle');
+    expect('proposal' in resolution).toBe(false);
+  });
+
+  it('D-16/43.3: a duplicated (shared-source) placement in the moved set moves placement-only and never straddles', () => {
+    const identities = [
+      { keyId: 'g0', appFrame: 20 },
+      { keyId: 'g1', appFrame: 21 },
+    ] as const;
+    const resolution = resolvePush(identities, 'left', { anchorLoopId: 'loop-D' }, 2, {
+      loopClips: buildPushGroupClips(),
+      capacity: 40,
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Duplicated placement push must resolve ok');
+    const { proposal } = resolution;
+    // Shared source keys never move (placement-only, 43.3 algebra).
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ g0: 20, g1: 21 });
+    // The duplicated placement interval translates; a placement-only set is a
+    // real change, never a no-change (Pitfall 5).
+    expect(proposal.status.changed).toBe(true);
+    expect(proposal.status.code).toBe('ok');
+    expect(proposal.nextLoopClips).not.toBeNull();
+    if (!proposal.nextLoopClips) throw new Error('nextLoopClips must be present');
+    const movedClip = proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-D');
+    expect(movedClip?.placementStart).toBe(0);
+    expect(movedClip?.phaseOrigin).toBe(0);
+    expect(movedClip?.originalEndExclusive).toBe(8);
+    expect(movedClip?.visibleRanges).toEqual([{ start: 0, endExclusive: 8 }]);
+    const ownerClip = proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-G');
+    expect(ownerClip?.placementStart).toBe(20);
+    expect(ownerClip?.originalEndExclusive).toBe(28);
+  });
+
+  it('PUSH-03: Push Right opens the gap break on the moved set first key; Push Left on the fixed right side first key', () => {
+    // Push Right from the first rail: the whole content moves; a0 owns the head gap.
+    const pushRight = resolvePush(buildTwoKeyRails(), 'right', { anchorKeyId: 'a0' }, 5);
+    expect(pushRight.ok).toBe(true);
+    if (!pushRight.ok) throw new Error('Push Right must resolve');
+    expect(pushRight.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['a0']);
+
+    // Push Left from A: the vacated tail gap is owned by the fixed right side's
+    // first key (b0 — the separating break, reused).
+    const pushLeft = resolvePush(buildStaggeredKeyRails(), 'left', { anchorKeyId: 'a9' }, 3, {
+      incomingInterpolationBreakKeyIds: ['b0'],
+    });
+    expect(pushLeft.ok).toBe(true);
+    if (!pushLeft.ok) throw new Error('Push Left must resolve');
+    expect(pushLeft.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['b0']);
+  });
+
+  it('PUSH-03: existing breaks are reused, never duplicated', () => {
+    // The opened-gap owner already holds the break: reused byte-identical.
+    const reusesOwned = resolvePush(buildTwoKeyRails(), 'right', { anchorKeyId: 'b0' }, 5, {
+      incomingInterpolationBreakKeyIds: ['a0', 'b0'],
+    });
+    expect(reusesOwned.ok).toBe(true);
+    if (!reusesOwned.ok) throw new Error('Reuse must resolve');
+    expect(reusesOwned.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['a0', 'b0']);
+
+    // A break on a moved key travels (43.1 D-14) and the opened-gap break is
+    // added without duplicating the existing collection.
+    const travels = resolvePush(buildTwoKeyRails(), 'right', { anchorKeyId: 'b0' }, 5, {
+      incomingInterpolationBreakKeyIds: ['b0', 'b1'],
+    });
+    expect(travels.ok).toBe(true);
+    if (!travels.ok) throw new Error('Travel must resolve');
+    expect(travels.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['b0', 'b1']);
+  });
+
+  it('PUSH-03: a reverse push closing the gap normalizes the break collection', () => {
+    // Forward Push Right from the first rail opens gap [0,5) with break on a0.
+    const forward = resolvePush(buildTwoKeyRails(), 'right', { anchorKeyId: 'a0' }, 5);
+    expect(forward.ok).toBe(true);
+    if (!forward.ok) throw new Error('Forward push must resolve');
+    expect(forward.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['a0']);
+
+    // The reverse push resolves against the forwarded state (records shifted +5).
+    const shifted = [...forward.proposal.mapping.entries()].map(([keyId, appFrame]) => ({ keyId, appFrame }));
+    const reverse = resolvePush(shifted, 'left', { anchorKeyId: 'a0' }, 5, {
+      incomingInterpolationBreakKeyIds: forward.proposal.nextIncomingInterpolationBreakKeyIds,
+    });
+    expect(reverse.ok).toBe(true);
+    if (!reverse.ok) throw new Error('Reverse push must resolve');
+    expect(reverse.proposal.mapping.get('a0')).toBe(0);
+    expect(reverse.proposal.mapping.get('b0')).toBe(20);
+    expect(reverse.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
+  });
+
+  it('43.1 D-14: a break owned by a moved key travels with stable identity', () => {
+    const resolution = resolvePush(buildStaggeredKeyRails(), 'left', { anchorKeyId: 'a9' }, 3, {
+      incomingInterpolationBreakKeyIds: ['a5', 'b0'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Identity-travel push must resolve');
+    const { proposal } = resolution;
+    expect(proposal.mapping.get('a5')).toBe(7);
+    // a5's break survives the move and the fixed right side's first key (b0)
+    // owns/reuses the vacated-gap break.
+    expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['a5', 'b0']);
+  });
+});
+
+describe('derivePhysicPaintPushSet and clampPhysicPaintPushDestination (exported pure authorities)', () => {
+  const buildTwoKeyRails = (): readonly PhysicPaintRotoKeyIdentity[] => Object.freeze([
+    { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
+    { keyId: 'a3', appFrame: 3 }, { keyId: 'a4', appFrame: 4 }, { keyId: 'a5', appFrame: 5 },
+    { keyId: 'a6', appFrame: 6 }, { keyId: 'a7', appFrame: 7 }, { keyId: 'a8', appFrame: 8 },
+    { keyId: 'a9', appFrame: 9 },
+    { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 21 }, { keyId: 'b2', appFrame: 22 },
+    { keyId: 'b3', appFrame: 23 }, { keyId: 'b4', appFrame: 24 }, { keyId: 'b5', appFrame: 25 },
+    { keyId: 'b6', appFrame: 26 }, { keyId: 'b7', appFrame: 27 }, { keyId: 'b8', appFrame: 28 },
+    { keyId: 'b9', appFrame: 29 },
+  ]);
+
+  it('derives the directional suffix set with byte-position-fixed opposite side and no straddle', () => {
+    const identities = buildTwoKeyRails();
+    const loopRangeContext = derivePhysicPaintRotoLoopRanges({
+      identities,
+      loopClips: [],
+      capacity: 40,
+      interpolationEnabled: false,
+    });
+    const set = derivePhysicPaintPushSet({
+      anchorKeyId: 'b0',
+      direction: 'right',
+      identities,
+      loopRanges: loopRangeContext.ranges,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: ['b0'],
+    });
+
+    expect(set.ok).toBe(true);
+    if (!set.ok) throw new Error('Set derivation must resolve');
+    expect(set.anchorRail.kind).toBe('key-rail');
+    expect(set.movedRails.map((rail) => rail.id)).toEqual(['b0']);
+    expect(set.fixedRails.map((rail) => rail.id)).toEqual(['a0']);
+    expect([...set.movedKeyIds].sort()).toEqual(['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9']);
+    expect(set.movedSetBounds).toEqual({ firstFrame: 20, lastEndExclusive: 30 });
+    expect(set.straddle).toBeNull();
+  });
+
+  it('reports a straddle verdict when a moved attached Group shares its source cycle with a fixed-side Group', () => {
+    const identities = [
+      { keyId: 'g0', appFrame: 20 },
+      { keyId: 'g1', appFrame: 21 },
+    ] as const;
+    const loopRangeContext = derivePhysicPaintRotoLoopRanges({
+      identities,
+      loopClips: buildPushGroupClips(),
+      capacity: 40,
+      interpolationEnabled: false,
+    });
+    const set = derivePhysicPaintPushSet({
+      anchorLoopId: 'loop-G',
+      direction: 'right',
+      identities,
+      loopRanges: loopRangeContext.ranges,
+      loopClips: buildPushGroupClips(),
+      incomingInterpolationBreakKeyIds: [],
+    });
+
+    expect(set.ok).toBe(true);
+    if (!set.ok) throw new Error('Straddled set must derive');
+    expect(set.straddle).toEqual({
+      straddled: true,
+      movedGroupLoopId: 'loop-G',
+      fixedGroupLoopId: 'loop-D',
+      sourceCycleId: getPhysicsPaintRotoSourceCycleId(['g0', 'g1']),
+    });
+  });
+
+  it('scans the directional nearest-free delta toward zero and fails on zero valid movement', () => {
+    expect(clampPhysicPaintPushDestination({
+      direction: 'left',
+      proposedDeltaFrames: -8,
+      movedSetBounds: { firstFrame: 5, lastEndExclusive: 15 },
+      capacity: 40,
+    })).toEqual({ ok: true, deltaFrames: -5 });
+    expect(clampPhysicPaintPushDestination({
+      direction: 'right',
+      proposedDeltaFrames: 15,
+      movedSetBounds: { firstFrame: 0, lastEndExclusive: 30 },
+      capacity: 40,
+    })).toEqual({ ok: true, deltaFrames: 10 });
+    expect(clampPhysicPaintPushDestination({
+      direction: 'left',
+      proposedDeltaFrames: -3,
+      movedSetBounds: { firstFrame: 0, lastEndExclusive: 10 },
+      capacity: 40,
+    })).toEqual({ ok: false });
+    expect(clampPhysicPaintPushDestination({
+      direction: 'right',
+      proposedDeltaFrames: 5,
+      movedSetBounds: { firstFrame: 0, lastEndExclusive: 40 },
+      capacity: 40,
+    })).toEqual({ ok: false });
+    // Zero-delta is a valid no-change, never a failure (Task 3 channel).
+    expect(clampPhysicPaintPushDestination({
+      direction: 'left',
+      proposedDeltaFrames: 0,
+      movedSetBounds: { firstFrame: 5, lastEndExclusive: 15 },
+      capacity: 40,
+    })).toEqual({ ok: true, deltaFrames: 0 });
   });
 });
