@@ -137,6 +137,38 @@ function spacingSnapshot(
   };
 }
 
+/** Push-command snapshot carrying records, Loop Clip placements, the incoming
+ * break collection, selection, and cursor at the given physical capacity. */
+function pushSnapshot(
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  incomingInterpolationBreakKeyIds: readonly string[],
+  selectedKeyId: string | null,
+  selectedAppFrame: number | null,
+  capacity: number,
+): RotoPhysicalEditSnapshot<null> {
+  const interpolation = { enabled: false, mode: 'duplicate' as const };
+  const revision = buildPhysicPaintRotoPhysicalRevision(
+    records,
+    interpolation,
+    loopClips,
+    incomingInterpolationBreakKeyIds,
+  );
+  return {
+    ...snapshot(records, selectedKeyId ?? 'A', selectedAppFrame ?? 0),
+    records,
+    interpolation,
+    loopClips,
+    incomingInterpolationBreakKeyIds: [...incomingInterpolationBreakKeyIds],
+    capacity,
+    expectedRevision: revision,
+    stagedRevision: revision,
+    selectedKeyId,
+    selectedAppFrame,
+    currentAppFrame: selectedAppFrame ?? 0,
+  };
+}
+
 describe('useRotoPhysicalEditHistory ordinary-key delete beside Groups', () => {
   const deleteBesideGroupsClips = (): PhysicPaintRotoLoopClip[] => [{
     ...lifecycleLoopClip(),
@@ -1559,5 +1591,126 @@ describe('useRotoPhysicalEditHistory complete live replay preflight', () => {
     };
 
     expect(availability.value).toEqual({ undo: 0, redo: 0 });
+  });
+});
+
+describe('useRotoPhysicalEditHistory push atomic command (43.5-03 Task 2)', () => {
+  const pushLoopClip = (placementStart: number): PhysicPaintRotoLoopClip => ({
+    loopId: 'loop-1',
+    placementStart,
+    sourceKeyIds: ['D'],
+    repeat: 2,
+    mode: 'progressive',
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: placementStart,
+    originalEndExclusive: placementStart + 7,
+    visibleRanges: [{ start: placementStart, endExclusive: placementStart + 7 }],
+    frameOverrides: [],
+  });
+
+  it('restores the complete pre-push state — records, Loop Clip placement, break collection, selection, and cursor — through one Undo and one Redo (PUSH-06, 43.4 D-24)', async () => {
+    // Compute the committed push outcome through the pure resolver so the
+    // history round-trips exactly what a push commit publishes: an opened gap
+    // with its movement-created break, the translated Loop Clip placement, and
+    // the deterministic selection on the anchor Rail's first key.
+    const beforeRecords = [record('A', 0), record('B', 1), record('D', 7)];
+    const beforeLoopClips = [pushLoopClip(7)];
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: beforeRecords.map((entry) => ({ keyId: entry.keyId, appFrame: entry.appFrame })),
+      intent: { kind: 'push-rails', direction: 'right', anchorKeyId: 'A', deltaFrames: 2 },
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: false,
+      loopClips: beforeLoopClips,
+      incomingInterpolationBreakKeyIds: [],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Push fixture must resolve');
+    const proposal = resolution.proposal;
+    expect(proposal.status.changed).toBe(true);
+    expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['A']);
+    expect(proposal.selectedKeyId).toBe('A');
+    expect(proposal.selectedAppFrame).toBe(2);
+    const afterRecords = [...proposal.mapping.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([keyId, appFrame]) => record(keyId, appFrame));
+    const afterLoopClips = proposal.nextLoopClips ?? [];
+    const afterBreaks = proposal.nextIncomingInterpolationBreakKeyIds ?? [];
+    expect(afterLoopClips[0]?.placementStart).toBe(9);
+
+    const before = pushSnapshot(beforeRecords, beforeLoopClips, [], 'A', 0, 30);
+    const after = pushSnapshot(afterRecords, afterLoopClips, afterBreaks, 'A', 2, 30);
+
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    let current = after;
+    let replayNumber = 0;
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      const source = current;
+      current = target;
+      replayNumber += 1;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: target.stagedRevision,
+        operationId: `push-rails-replay-${replayNumber}`,
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+    const history = useRotoPhysicalEditHistory({
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity: 30 },
+      availability,
+      coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => current.records,
+        getInterpolation: () => current.interpolation,
+        getCapacity: () => current.capacity,
+        getLoopClips: () => current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => current,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: after.stagedRevision,
+      operationId: 'push-rails-accepted',
+      operationKind: 'push-rails',
+      historyProvenance: null,
+    };
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+
+    // One Undo restores the complete pre-push state.
+    expect(await history.undo()).toBe(true);
+    expect(current).toEqual(before);
+    expect(current.records).toEqual(beforeRecords);
+    expect(current.loopClips[0]?.placementStart).toBe(7);
+    expect(current.incomingInterpolationBreakKeyIds).toEqual([]);
+    expect(current.selectedKeyId).toBe('A');
+    expect(current.selectedAppFrame).toBe(0);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    // One Redo reapplies it exactly — including the movement-created break.
+    expect(await history.redo()).toBe(true);
+    expect(current).toEqual(after);
+    expect(current.records).toEqual(afterRecords);
+    expect(current.loopClips[0]?.placementStart).toBe(9);
+    expect(current.incomingInterpolationBreakKeyIds).toEqual(['A']);
+    expect(current.selectedKeyId).toBe('A');
+    expect(current.selectedAppFrame).toBe(2);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(executePhysicalEdit.mock.calls.map(([input]) => input.operationKind)).toEqual(['undo', 'redo']);
   });
 });

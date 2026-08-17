@@ -2148,3 +2148,115 @@ describe('useRotoTimelineActions Push prepare + locked copy family (43.5-03 Task
     })).toBe('Pushed 1 Rail left by 2 frames — moved set now frames 0–4. Gap opened at frames 5–6.');
   });
 });
+
+describe('useRotoTimelineActions Push commit + stale authority (43.5-03 Task 2)', () => {
+  it('commits the exact retained push-rails publication once and publishes accepted copy from the continuation', async () => {
+    const { actions, executePhysicalEdit, publishStatus } = createHarness({
+      records: [realKeyRecord('A', 0), realKeyRecord('B', 1)],
+      capacity: 14,
+    });
+    const preparation = actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'A',
+      deltaFrames: 2,
+    });
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Push must prepare');
+
+    const accepted = await actions.physicalActions.commitRotoPush(preparation.publication);
+
+    expect(accepted).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: unknown;
+      expectedLaunch: unknown;
+      operationKind: string;
+      intent: unknown;
+      selectedKeyId: string | null;
+      selectedAppFrame: number | null;
+    };
+    expect(dispatched.proposal).toBe(preparation.publication.proposal);
+    expect(dispatched.expectedLaunch).toBe(preparation.publication.expectedLaunch);
+    expect(dispatched.operationKind).toBe('push-rails');
+    expect(dispatched.intent).toBe(preparation.publication.intent);
+    expect(dispatched.selectedKeyId).toBe(preparation.publication.proposal.selectedKeyId);
+    expect(dispatched.selectedAppFrame).toBe(preparation.publication.proposal.selectedAppFrame);
+    // Accepted copy publishes from the .then continuation — never runPhysicalAction.
+    expect(publishStatus).toHaveBeenCalledWith(
+      'Pushed 1 Rail right by 2 frames — moved set now frames 2–3. Gap opened at frames 0–1.',
+    );
+  });
+
+  it('rejects a mismatched or empty-launch publication without dispatching (wrapper coherence)', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: [realKeyRecord('A', 0), realKeyRecord('B', 1)],
+      capacity: 14,
+    });
+    const preparation = actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'A',
+      deltaFrames: 2,
+    });
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Push must prepare');
+    const publication = preparation.publication;
+
+    const kindMismatch = {
+      ...publication,
+      proposal: {
+        ...publication.proposal,
+        status: { ...publication.proposal.status, operationKind: 'move-group' as const },
+      },
+    };
+    expect(await actions.physicalActions.commitRotoPush(kindMismatch)).toBe(false);
+
+    const intentMismatch = { ...publication, intent: { ...publication.intent, kind: 'move-group' as const } };
+    expect(await actions.physicalActions.commitRotoPush(intentMismatch)).toBe(false);
+
+    const emptyLaunch = { ...publication, expectedLaunch: { operationId: '', layerId: '' } };
+    expect(await actions.physicalActions.commitRotoPush(emptyLaunch)).toBe(false);
+
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale break-aware proposal version with zero mutation (T-43.5-01)', async () => {
+    const records = [realKeyRecord('A', 0), realKeyRecord('B', 1)];
+    const breaks = ['B'];
+    const { actions, executePhysicalEdit } = createHarness({
+      records,
+      capacity: 14,
+      getIncomingInterpolationBreakKeyIds: () => breaks,
+    });
+    const preparation = actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'A',
+      deltaFrames: 2,
+    });
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Push must prepare');
+
+    // A concurrent Scissor edit changes ONLY the break collection after prepare.
+    breaks.push('A');
+
+    expect(await actions.physicalActions.commitRotoPush(preparation.publication)).toBe(false);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+    expect(breaks).toEqual(['B', 'A']);
+  });
+
+  it('rejects a stale structural authority with zero mutation (concurrent key edit)', async () => {
+    const records = [realKeyRecord('A', 0), realKeyRecord('B', 1)];
+    const { actions, executePhysicalEdit } = createHarness({ records, capacity: 14 });
+    const preparation = actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'A',
+      deltaFrames: 2,
+    });
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Push must prepare');
+
+    records.push(realKeyRecord('new-authority', 12));
+
+    expect(await actions.physicalActions.commitRotoPush(preparation.publication)).toBe(false);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+});
