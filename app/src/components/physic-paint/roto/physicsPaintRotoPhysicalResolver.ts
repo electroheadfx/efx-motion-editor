@@ -4422,7 +4422,10 @@ export function resolvePhysicPaintRotoPhysicalEdit(
           clipPlacementChanged = true;
         }
       }
-      nextLoopClips = current;
+      // A zero-delta (no-change) push publishes NO clip translation: keep the
+      // collection null so the prepare layer's changed === false maps to the
+      // no-publish result (Task 3). Only a real placement delta commits one.
+      if (clipPlacementChanged) nextLoopClips = current;
     }
 
     // Pitfall 5: changed must account for clip placement deltas, not only the
