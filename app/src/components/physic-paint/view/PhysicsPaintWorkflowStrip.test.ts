@@ -1721,3 +1721,72 @@ describe('PhysicsPaintWorkflowStrip Key Rail integration (43.4-06)', () => {
     expect(css()).not.toContain('key-rail-gap-preview');
   });
 });
+
+describe('Directional Push tool smoke-fix source contract (43.5-05)', () => {
+  it('A1: gates the Push tools on busy/lock state only — never on a selected key', () => {
+    const code = source();
+    const gateStart = code.indexOf('const pushToolDisabled =');
+    const gate = code.slice(gateStart, code.indexOf(';', gateStart));
+    expect(gate).toContain('keyUtilitiesDisabledByBusyState');
+    expect(gate).toContain('!physicalActions');
+    // Smoke bug 1: the gate must NOT require a selected key (canDragKey /
+    // physicalDragAvailable) — Push is a toolbar tool usable with no selection.
+    expect(gate).not.toContain('physicalDragAvailable');
+    expect(gate).not.toContain('canDragKey');
+  });
+
+  it('A2: rejects pointer-downs that did not land on a valid push anchor (ruler/empty/gap)', () => {
+    const code = source();
+    const handlerStart = code.indexOf('const handleLanePushPointerDownCapture');
+    const handler = code.slice(handlerStart, code.indexOf('const handleLanePushClickCapture', handlerStart));
+    // Smoke bug 2: the pointer must land INSIDE the lane (never the sibling
+    // ruler) and on a non-empty physical cell or rail band — empty/gap frames
+    // resolve no anchor and never start a drag.
+    expect(handler).toContain('event.target');
+    expect(handler).toContain('closest');
+    expect(handler).toContain('resolvePushAnchor(frame)');
+    expect(handler).toContain('if (anchor === null) return;');
+  });
+
+  it('A3: projects pointer travel in FRAMES, not raw pixels (4px drag = 1 frame)', () => {
+    const code = source();
+    const projectStart = code.indexOf('projectDestination:');
+    const project = code.slice(projectStart, code.indexOf('clampDestination:', projectStart));
+    // Smoke bug 3: the resolver clamp consumes FRAME deltas; raw CSS-pixel
+    // travel must be converted by the 18px frame pitch before clamping.
+    expect(project).toContain('ROTO_CELL_WIDTH_PX');
+    expect(project).toContain('Math.round');
+  });
+
+  it('A4: Push Left projects negative FRAME deltas (pixels converted, sign preserved)', () => {
+    const code = source();
+    const projectStart = code.indexOf('projectDestination:');
+    const project = code.slice(projectStart, code.indexOf('clampDestination:', projectStart));
+    expect(project).toContain("direction === 'right'");
+    expect(project).toContain('Math.min(0,');
+    expect(project).toContain('ROTO_CELL_WIDTH_PX');
+  });
+
+  it('A5: while armed, the lane pointer-down capture stops propagation so cell/rail drags and selection never fire', () => {
+    const code = source();
+    const handlerStart = code.indexOf('const handleLanePushPointerDownCapture');
+    const handler = code.slice(handlerStart, code.indexOf('const handleLanePushClickCapture', handlerStart));
+    // Smoke contract revision: while armed, ALL other lane interactivity is
+    // suspended — the push gesture owns the lane. stopPropagation in the
+    // capture phase keeps cell/rail pointer-down handlers (selection, drags,
+    // Scissor arming) from ever firing.
+    expect(handler).toContain('event.stopPropagation()');
+  });
+
+  it('A5: while armed, a plain click moves the playback cursor only — never selection', () => {
+    const code = source();
+    const handlerStart = code.indexOf('const handleLanePushClickCapture');
+    const handler = code.slice(handlerStart, code.indexOf('// Controller-owned selection set', handlerStart));
+    // Smoke contract revision: a sub-threshold plain click while armed must
+    // navigate the playback cursor and swallow the click so cell/rail click
+    // handlers (selection gestures) never fire.
+    expect(handler).toContain('getArmedPushToolDirection()');
+    expect(handler).toContain('onNavigateToSyncedFrame');
+    expect(handler).toContain('event.stopPropagation()');
+  });
+});
