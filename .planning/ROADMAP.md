@@ -391,12 +391,22 @@ Plans:
 **Plans:** 6 plans
 
 Plans:
+**Wave 1**
 
 - [ ] 43.5-01-PLAN.md — push-rails intent transport + resolver directional authority (set derivation, clamp, straddle guard, gap break derivation)
 - [ ] 43.5-02-PLAN.md — ToolCase toolbox popover relocation + keyboard routing refinement (Interpolation + Key Spacing, live Blend badge)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 43.5-03-PLAN.md — push prepare/commit pair + product-reason mapper + atomic one-Undo/one-Redo history
 - [ ] 43.5-04-PLAN.md — usePhysicsPaintPushDrag armed gesture session hook (new, port-injected)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 43.5-05-PLAN.md — strip wiring: Push pill, armed lifecycle/disarm rules, hover pre-highlight + straddle preflight, ghost/gap/blocked-edge preview paint
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 43.5-06-PLAN.md — automated gate freeze + native visual UAT (13 prompt steps + UI-SPEC matrix, fully restarted frozen session)
 
 **Scope boundaries:** No push behavior on direct Group drag; no multiple internal Paint tracks; no Motion Editor timeline changes; no replacement of the physical authority/history architecture; no new dependencies without separate approval; no Phase 44 signing/release work. The 161px workflow-strip height is preserved and Push buttons never cover cells or Group Rails.

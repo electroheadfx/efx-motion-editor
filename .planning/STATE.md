@@ -4,15 +4,15 @@ milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 44
 current_phase_name: Integrated UAT + Signed Release
-status: planning
+status: executing
 stopped_at: Phase 43.5 UI-SPEC approved
-last_updated: "2026-08-17T10:57:14.897Z"
+last_updated: "2026-08-17T12:18:11.423Z"
 last_activity: 2026-08-16
 last_activity_desc: "Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics"
 progress:
   total_phases: 11
   completed_phases: 8
-  total_plans: 78
+  total_plans: 84
   completed_plans: 78
   percent: 73
 ---
@@ -24,7 +24,7 @@ milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 44
 current_phase_name: Integrated UAT + Signed Release
-status: planning
+status: Ready to execute
 stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-16
@@ -50,7 +50,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 Phase: 44 — Integrated UAT + Signed Release
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-08-16 — Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
