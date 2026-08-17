@@ -183,7 +183,8 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'force-spacing'
   | 'duplicate-key'
   | 'paste-key'
-  | 'paste-key-group';
+  | 'paste-key-group'
+  | 'push-rails';
 
 /**
  * Immutable resolver input: stable identities, optional complete records,
@@ -829,7 +830,8 @@ function isResolverOperationKind(value: unknown): value is PhysicPaintRotoPhysic
     || value === 'force-spacing'
     || value === 'duplicate-key'
     || value === 'paste-key'
-    || value === 'paste-key-group';
+    || value === 'paste-key-group'
+    || value === 'push-rails';
 }
 
 function fail(
@@ -1069,6 +1071,28 @@ interface Candidate {
   readonly nextLoopClips?: readonly PhysicPaintRotoLoopClip[] | null;
   /** Complete next incoming-break collection when ownership changes; absent otherwise. */
   readonly nextIncomingInterpolationBreakKeyIds?: readonly string[];
+}
+
+/**
+ * One unified directional-push Rail: either a Key Rail segment (ordinary real
+ * keys) or a derived Group range (Motion/Static Rail). The anchor Rail's
+ * interval is the pivot for the directional cut (RESEARCH A3); empty physical
+ * space belongs to neither side.
+ */
+interface PushRail {
+  readonly kind: 'key-rail' | 'group';
+  /** firstKeyId for a Key Rail, loopId for a Group Rail. */
+  readonly id: string;
+  readonly intervalStart: number;
+  readonly intervalEndExclusive: number;
+  /** Member keys (Key Rail) or source keys (Group). */
+  readonly keyIds: readonly string[];
+  /** Group-only: canonical source-cycle identity for the straddle guard (Task 2). */
+  readonly sourceCycleId?: string;
+  /** Group-only: canonical attachment test — first source key frame equals placementStart. */
+  readonly attached?: boolean;
+  /** Group-only: the persisted Loop Clip record. */
+  readonly clip?: PhysicPaintRotoLoopClip;
 }
 
 /**
@@ -2981,6 +3005,12 @@ function buildStatusText(
       ? 'Split Key Rail'
       : `Split Key Rail before frame ${selectedAppFrame}`;
   }
+  if (operationKind === 'push-rails') {
+    if (!changed) return 'No change';
+    return selectedAppFrame === null
+      ? 'Rails pushed'
+      : `Rails pushed to frame ${selectedAppFrame}`;
+  }
   return 'No change';
 }
 
@@ -3977,6 +4007,171 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       input.interpolationEnabled,
       incomingInterpolationBreakKeyIds,
     );
+    if (!finalized.ok) return finalized.resolution;
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'push-rails') {
+    if (intent.direction !== 'right' && intent.direction !== 'left') {
+      return fail('malformed-target', operationKind, 'Push requires a direction literal.');
+    }
+    if (!isNonNegativeInteger(intent.deltaFrames)) {
+      return fail('malformed-target', operationKind, 'Push requires a nonnegative integer deltaFrames.');
+    }
+    const hasAnchorKeyId = intent.anchorKeyId !== undefined;
+    const hasAnchorLoopId = intent.anchorLoopId !== undefined;
+    if (hasAnchorKeyId === hasAnchorLoopId) {
+      return fail('malformed-target', operationKind, 'Push requires exactly one anchor (keyId or loopId).');
+    }
+    if (hasAnchorKeyId && !isBoundedKeyId(intent.anchorKeyId)) {
+      return fail('malformed-identity', operationKind, 'Push anchor keyId must be bounded.');
+    }
+    if (hasAnchorLoopId && !isBoundedKeyId(intent.anchorLoopId)) {
+      return fail('malformed-identity', operationKind, 'Push anchor loopId must be bounded.');
+    }
+    if (identities.ordered.length === 0) {
+      return fail('empty-key-set', operationKind, 'Push requires at least one real key.');
+    }
+
+    const groupOwnedKeyIds = new Set<string>();
+    for (const clip of loopClips) {
+      clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+      (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+    }
+
+    const segments = deriveKeyRailSegments({
+      orderedRealKeys: identities.ordered,
+      incomingInterpolationBreakKeyIds: new Set(incomingInterpolationBreakKeyIds),
+      groupOwnedKeyIds,
+    });
+    const loopRangeContext = derivePhysicPaintRotoLoopRanges({
+      identities: identities.ordered,
+      loopClips,
+      capacity: input.capacity,
+      interpolationEnabled: input.interpolationEnabled,
+    });
+
+    // Unified ordered Rail list: Key Rail segments plus derived Group ranges.
+    // The anchor Rail's interval is the pivot (RESEARCH A3); empty physical
+    // space belongs to neither side of the directional cut.
+    const rails: PushRail[] = [];
+    for (const segment of segments) {
+      rails.push({
+        kind: 'key-rail',
+        id: segment.firstKeyId,
+        intervalStart: segment.firstKeyFrame,
+        intervalEndExclusive: segment.lastKeyFrame + 1,
+        keyIds: segment.keyIds,
+      });
+    }
+    for (const range of loopRangeContext.ranges) {
+      const clip = loopClips.find((candidate) => candidate.loopId === range.loopId);
+      if (clip === undefined) continue;
+      const firstSourceFrame = identities.framesByKeyId.get(clip.sourceKeyIds[0]);
+      rails.push({
+        kind: 'group',
+        id: range.loopId,
+        intervalStart: range.placementStart,
+        intervalEndExclusive: range.effectiveEnd,
+        keyIds: range.sourceKeyIds,
+        sourceCycleId: range.sourceCycleId,
+        // Canonical attachment test (Pitfall 4): the clip's first source key
+        // must exist and its placement must coincide with that key's pre-move
+        // frame. Never a caller-supplied attachment flag (Pitfall 6).
+        attached: firstSourceFrame !== undefined && firstSourceFrame === clip.placementStart,
+        clip,
+      });
+    }
+    rails.sort((left, right) => (
+      left.intervalStart - right.intervalStart || left.id.localeCompare(right.id)
+    ));
+
+    const anchorRail = hasAnchorKeyId
+      ? rails.find((rail) => rail.kind === 'key-rail' && rail.keyIds.includes(intent.anchorKeyId as string))
+      : rails.find((rail) => rail.kind === 'group' && rail.id === intent.anchorLoopId);
+    if (anchorRail === undefined) {
+      return fail('unknown-operation-identity', operationKind, hasAnchorKeyId
+        ? `Push anchor key "${intent.anchorKeyId}" is not a member of any Rail.`
+        : `Push anchor loop "${intent.anchorLoopId}" is not a derived Group Rail.`);
+    }
+
+    // Directional suffix/prefix set (PUSH-01): Push Right moves the anchor Rail
+    // and every Rail whose interval starts at/after the anchor's start; Push
+    // Left moves every Rail whose interval ends at/before the anchor's end plus
+    // the anchor. The opposite side is byte-position fixed.
+    const movedRails = rails.filter((rail) => (
+      intent.direction === 'right'
+        ? rail.intervalStart >= anchorRail.intervalStart
+        : rail.intervalEndExclusive <= anchorRail.intervalEndExclusive
+    ));
+
+    // Moved keys: Key Rail members plus source keys of source-attached Groups.
+    // Duplicated placements contribute NO moved keys (their source keys stay).
+    const movedKeyIds = new Set<string>();
+    for (const rail of movedRails) {
+      if (rail.kind === 'key-rail') {
+        rail.keyIds.forEach((keyId) => movedKeyIds.add(keyId));
+      } else if (rail.attached) {
+        rail.keyIds.forEach((keyId) => movedKeyIds.add(keyId));
+      }
+    }
+
+    const signedDelta = intent.direction === 'right' ? intent.deltaFrames : -intent.deltaFrames;
+    const mapping = new Map(identities.ordered.map((identity) => [identity.keyId, identity.appFrame] as const));
+    const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+    for (const identity of identities.ordered) {
+      if (!movedKeyIds.has(identity.keyId)) continue;
+      const destination = identity.appFrame + signedDelta;
+      if (destination < 0 || destination >= input.capacity) {
+        return fail('over-capacity', operationKind, `Push destination frame ${destination} is outside capacity ${input.capacity}.`);
+      }
+      mapping.set(identity.keyId, destination);
+      roleByKeyId.set(identity.keyId, 'moved');
+    }
+
+    // Translate every moved source-attached Group's lifecycle fields with the
+    // buildMoveGroupNextLoopClips pattern (phaseOrigin, originalEndExclusive,
+    // EVERY visibleRanges entry, EVERY frameOverrides appFrame, infinity
+    // pinning). Chained across moved clips so each clip translates once.
+    let nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null = null;
+    let clipPlacementChanged = false;
+    const movedClips = movedRails
+      .filter((rail): rail is PushRail & { kind: 'group'; clip: PhysicPaintRotoLoopClip } => (
+        rail.kind === 'group' && rail.attached === true && rail.clip !== undefined
+      ))
+      .map((rail) => rail.clip);
+    if (movedClips.length > 0) {
+      let current = loopClips;
+      for (const clip of movedClips) {
+        const next = buildMoveGroupNextLoopClips(current, clip, signedDelta);
+        if (next !== null) {
+          current = next;
+          clipPlacementChanged = true;
+        }
+      }
+      nextLoopClips = current;
+    }
+
+    // Pitfall 5: changed must account for clip placement deltas, not only the
+    // key mapping — a moved set whose only movable content is duplicated
+    // placements still reports changed from the placement delta.
+    const changed = computeChanged(identities, mapping) || clipPlacementChanged;
+    const candidate: Candidate = {
+      mapping,
+      expectedKeyIds: identities.keyIds,
+      removedKeyId: null,
+      removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+      selectedKeyId: anchorRail.kind === 'key-rail' ? anchorRail.id : null,
+      operationKind: 'push-rails',
+      changed,
+      roleByKeyId,
+      drag: null,
+      ...(nextLoopClips !== null ? { nextLoopClips } : {}),
+      // Task 1 happy path: the complete break collection echoes unchanged
+      // (break open/close derivation lands in Task 2).
+      nextIncomingInterpolationBreakKeyIds: Object.freeze([...incomingInterpolationBreakKeyIds]),
+    };
+    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }

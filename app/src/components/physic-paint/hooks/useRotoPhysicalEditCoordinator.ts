@@ -361,6 +361,8 @@ function createAuthorizedPhysicalEditPayload(
       return intent?.kind === 'paste-key' ? { ...base, operationKind, intent } : null;
     case 'paste-key-group':
       return intent?.kind === 'paste-key-group' ? { ...base, operationKind, intent } : null;
+    case 'push-rails':
+      return intent?.kind === 'push-rails' ? { ...base, operationKind, intent } : null;
     case 'play-script':
     case 'paint-group-frame':
     case 'delete-group-frame':

@@ -442,6 +442,15 @@ export type PhysicPaintRotoPhysicalEditIntent =
         readonly sourceKeyId: string;
         readonly newKeyId: string;
       }[];
+    }
+  | {
+      readonly kind: 'push-rails';
+      readonly direction: 'right' | 'left';
+      /** Ordinary key or Key Rail member anchor; XOR with anchorLoopId. */
+      readonly anchorKeyId?: string;
+      /** Motion/Static Rail anchor; XOR with anchorKeyId. */
+      readonly anchorLoopId?: string;
+      readonly deltaFrames: number;
     };
 
 function hasUniqueBoundedPhysicalKeyIds(value: unknown, minimumLength = 1): value is readonly string[] {
@@ -581,6 +590,17 @@ export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is Ph
       && isNonNegativeInteger(value.destinationAppFrame)
       && isPhysicPaintRotoPasteKeyGroupEntries(value.entries);
   }
+  if (value.kind === 'push-rails') {
+    if (!hasOnlyKeys(value, ['kind', 'direction', 'anchorKeyId', 'anchorLoopId', 'deltaFrames'])) return false;
+    if (value.direction !== 'right' && value.direction !== 'left') return false;
+    if (!isNonNegativeInteger(value.deltaFrames)) return false;
+    const hasAnchorKeyId = value.anchorKeyId !== undefined;
+    const hasAnchorLoopId = value.anchorLoopId !== undefined;
+    if (hasAnchorKeyId === hasAnchorLoopId) return false;
+    return hasAnchorKeyId
+      ? isBoundedPhysicalKeyId(value.anchorKeyId)
+      : isBoundedPhysicalKeyId(value.anchorLoopId);
+  }
   return false;
 }
 
@@ -658,6 +678,14 @@ export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRo
           newKeyId: entry.newKeyId,
         })),
       });
+    case 'push-rails':
+      return JSON.stringify({
+        kind: intent.kind,
+        direction: intent.direction,
+        ...(intent.anchorKeyId !== undefined ? { anchorKeyId: intent.anchorKeyId } : {}),
+        ...(intent.anchorLoopId !== undefined ? { anchorLoopId: intent.anchorLoopId } : {}),
+        deltaFrames: intent.deltaFrames,
+      });
   }
 }
 
@@ -712,6 +740,7 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'duplicate-key'
   | 'paste-key'
   | 'paste-key-group'
+  | 'push-rails'
   | 'play-script'
   | 'paint-group-frame'
   | 'delete-group-frame'
@@ -995,6 +1024,7 @@ function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is Ph
     || value === 'duplicate-key'
     || value === 'paste-key'
     || value === 'paste-key-group'
+    || value === 'push-rails'
     || value === 'play-script'
     || value === 'paint-group-frame'
     || value === 'delete-group-frame'
@@ -1024,7 +1054,8 @@ function isPhysicPaintRotoOrdinaryOperationKind(
     || value === 'force-spacing'
     || value === 'duplicate-key'
     || value === 'paste-key'
-    || value === 'paste-key-group';
+    || value === 'paste-key-group'
+    || value === 'push-rails';
 }
 
 function isPhysicPaintRotoPhysicalEditPayload(value: unknown): value is PhysicPaintRotoPhysicalEditRecord['payload'] {

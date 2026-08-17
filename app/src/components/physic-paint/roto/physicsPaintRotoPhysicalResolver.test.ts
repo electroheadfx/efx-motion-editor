@@ -4161,6 +4161,9 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
       parentEndExclusive: 40,
       capacity: 40,
       interpolationEnabled: false,
+      // The b0 break separates Key Rail B from Key Rail A (deriveKeyRailSegments
+      // splits on breaks, not on empty frames).
+      incomingInterpolationBreakKeyIds: ['b0'],
     });
 
     expect(resolution.ok).toBe(true);
