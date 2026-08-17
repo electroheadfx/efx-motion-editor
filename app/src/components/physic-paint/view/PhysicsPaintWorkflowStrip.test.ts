@@ -1743,7 +1743,7 @@ describe('Directional Push tool smoke-fix source contract (43.5-05)', () => {
     // ruler) and on a non-empty physical cell or rail band — empty/gap frames
     // resolve no anchor and never start a drag.
     expect(handler).toContain('event.target');
-    expect(handler).toContain('closest');
+    expect(handler).toContain('laneElement.contains(event.target)');
     expect(handler).toContain('resolvePushAnchor(frame)');
     expect(handler).toContain('if (anchor === null) return;');
   });

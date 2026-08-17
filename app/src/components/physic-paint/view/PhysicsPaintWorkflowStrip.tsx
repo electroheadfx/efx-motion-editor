@@ -1187,8 +1187,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       ? ROTO_KEY_BUSY_STATUS_TEMPLATE
       : physicalActions?.selectAllKeysDisabledReason.value ?? 'Select all keys is unavailable.';
   // Directional Push tools (43.5-05, D-18): disabled under mutation lock /
-      // busy states — the existing mapped key-tool lock reason verbatim.
-  const pushToolDisabled = keyUtilitiesDisabledByBusyState || !physicalActions || !physicalDragAvailable;
+      // busy states — the existing mapped key-tool lock reason verbatim. The
+      // gate NEVER requires a selected key (smoke bug 1): Push is a toolbar
+      // tool usable with no selection — the anchor is chosen by the drag
+      // pointer-down, not by the current selection.
+  const pushToolDisabled = keyUtilitiesDisabledByBusyState || !physicalActions;
   const pushToolDisabledReason = pushToolDisabled ? ROTO_KEY_BUSY_STATUS_TEMPLATE : null;
   const pushRightArmedClass = getArmedPushToolDirection() === 'right' ? ' physics-paint-push-tool-armed' : '';
   const pushLeftArmedClass = getArmedPushToolDirection() === 'left' ? ' physics-paint-push-tool-armed' : '';
@@ -1250,9 +1253,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     projectDestination: ({ originClientX, clientX }) => {
       const direction = pushSessionRef.current?.direction ?? 'right';
       const raw = clientX - originClientX;
-      // Directional-only projection: reverse travel yields 0, never a
-      // reverse-sign clamp failure (the resolver clamp scans toward 0).
-      return direction === 'right' ? Math.max(0, raw) : Math.min(0, raw);
+      // Directional-only projection in FRAMES (smoke bug 3): the resolver clamp
+      // consumes frame deltas, never raw CSS pixels — divide by the 18px frame
+      // pitch and round. Reverse travel yields 0, never a reverse-sign clamp
+      // failure (the resolver clamp scans toward 0). Push Left keeps its
+      // negative sign so the clamp scans toward 0 correctly (smoke bug 4).
+      const rawFrames = Math.round(raw / ROTO_CELL_WIDTH_PX);
+      return direction === 'right' ? Math.max(0, rawFrames) : Math.min(0, rawFrames);
     },
     clampDestination: (proposedDeltaFrames) => {
       const session = pushSessionRef.current;
@@ -1322,8 +1329,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     const direction = getArmedPushToolDirection();
     if (direction === null) return;
     if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+    // Smoke contract revision: while armed, the push gesture owns the lane —
+    // stop propagation so cell/rail pointer-down handlers (selection, drags,
+    // Scissor arming) never fire. Plain clicks still navigate via the click
+    // capture handler below.
+    event.stopPropagation();
     const laneElement = timelineContentRef.current;
     if (!laneElement || frameCells.length === 0) return;
+    // Smoke bug 2: the pointer must have landed INSIDE the lane — never the
+    // sibling ruler or any chrome above it. A pointer-down on the ruler must
+    // never resolve a frame and start a push.
+    if (!(event.target instanceof Element) || !laneElement.contains(event.target)) return;
     const relativeX = event.clientX - laneElement.getBoundingClientRect().left;
     const frame = Math.floor(relativeX / ROTO_CELL_WIDTH_PX);
     if (frame < 0 || frame >= frameCells.length) return;
@@ -1353,15 +1369,27 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }, [frameCells, resolvePushAnchor, rotoKeyRecords, loopResolutionContext, props.rotoLoopClips, incomingInterpolationBreakKeyIds]);
 
   const handleLanePushClickCapture = useCallback((event: MouseEvent) => {
-    // Swallow the browser click that follows a committed push drop. The
-    // session hook's suppression arms only past the 4px threshold, so a
-    // sub-threshold plain click passes through unsuppressed and normal frame
-    // navigation proceeds with the tool still armed (D-09).
-    if (pushDragApiRef.current?.consumeClickSuppression()) {
-      event.preventDefault();
-      event.stopPropagation();
+    const armed = getArmedPushToolDirection() !== null;
+    const suppressed = pushDragApiRef.current?.consumeClickSuppression() ?? false;
+    if (!armed && !suppressed) return;
+    event.preventDefault();
+    event.stopPropagation();
+    // Smoke contract revision: while armed, a plain click moves the playback
+    // cursor ONLY — never selection. The click is swallowed so cell/rail click
+    // handlers (selection gestures) never fire; the cursor navigates to the
+    // clicked frame. A post-drop click (suppression armed past the 4px
+    // threshold) is swallowed without navigation (D-09).
+    if (armed && !suppressed) {
+      const laneElement = timelineContentRef.current;
+      if (laneElement && frameCells.length > 0) {
+        const relativeX = event.clientX - laneElement.getBoundingClientRect().left;
+        const frame = Math.floor(relativeX / ROTO_CELL_WIDTH_PX);
+        if (frame >= 0 && frame < frameCells.length) {
+          props.onNavigateToSyncedFrame?.(frame);
+        }
+      }
     }
-  }, []);
+  }, [frameCells, props.onNavigateToSyncedFrame]);
   // Controller-owned selection set (37-02; D-05): read-only here, never
   // reordered, never derived from frames or DOM order.
   const rotoSelectedKeyIdSet = useMemo(() => new Set(props.rotoSelectedKeyIds ?? []), [props.rotoSelectedKeyIds]);
