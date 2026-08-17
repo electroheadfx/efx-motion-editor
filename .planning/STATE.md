@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.5
 current_phase_name: timeline-toolbox-and-directional-push-tools
 status: executing
-stopped_at: "43.5-02 smoke fix round: awaiting native UAT re-verify (fixes 1-4 committed)"
-last_updated: "2026-08-17T16:03:44.764Z"
+stopped_at: Completed 43.5-02-PLAN.md
+last_updated: "2026-08-17T19:18:13.806Z"
 last_activity: 2026-08-17
 last_activity_desc: Phase 43.5 execution started
 progress:
   total_phases: 11
   completed_phases: 8
   total_plans: 84
-  completed_plans: 79
+  completed_plans: 80
   percent: 73
 ---
 
@@ -29,7 +29,7 @@ stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-16
 last_activity_desc: "Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics"
-progress:[█████████░] 94%
+progress:[██████████] 95%
   total_phases: 10
   completed_phases: 7
   total_plans: 78
@@ -49,7 +49,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.5 (timeline-toolbox-and-directional-push-tools) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-08-17 — Phase 43.5 execution started
 
@@ -252,6 +252,7 @@ Progress: [██████████] 99%
 | Phase 43.4 P07 | 8min | 2 tasks | 9 files |
 | Phase 43.4 P08 | 2 tasks | 27 commits | history/persistence proofs + approved native UAT |
 | Phase 43.5-timeline-toolbox-and-directional-push-tools P01 | 75 | 3 tasks | 4 files |
+| Phase 43.5 P02 | 4h49m | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -477,6 +478,11 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43.5-02 smoke fix 2: toolbox popover right-aligns to the Tools button right edge and clamps 8px inside the strip so it never covers the Actions sidebar lane.
 - [Phase ?]: 43.5-02 smoke fix 4: styled tooltips fire on hover only, or keyboard focus carrying a relatedTarget; programmatic/mouse focus never pops a pill; interpolation tooltip is suppressed across the popover open/close transition.
 - [Phase ?]: 43.5-02 smoke fix 3: toolbox popover uses the Apple liquid-glass surface (translucent dark bg + ::before backdrop blur/saturate, subtle light border, 12px radius, soft shadow), overriding the UI-SPEC T2 flat #20262D card; the panel stays filter-free so the relocated fixed interpolation tooltip keeps the viewport containing block.
+- [Phase ?]: Relocated spacing controls enter the memoized static chrome as flat props + useCallback'd handlers, preserving the memo optimization with byte-identical rendered markup (D-03)
+- [Phase ?]: The Key Spacing section heading always renders; the form renders only when forceSpacingControlsPresent — mirror of the original physicalActions guard, no partial second section
+- [Phase ?]: The Blend badge is a pure projection of props.interpolationEnabled (props.rotoInterpolationEnabled === true) — paint-only, aria-hidden, absent when off, never a second authority (D-04)
+- [Phase ?]: Popover panel uses the liquid-glass surface with blur/saturate on an empty ::before so the panel never becomes a containing block for the relocated position:fixed interpolation tooltip (smoke fix 3)
+- [Phase ?]: Escape and outside-pointerdown dismissal are self-contained in window capture-phase listeners registered only while open; one Escape handles at most one layer (popover before selection collapse), no focus trap, no backdrop (D-01, D-02)
 
 ### Pending Todos
 
@@ -679,8 +685,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-17T16:03:44.734Z
-Stopped at: 43.5-02 smoke fix round: awaiting native UAT re-verify (fixes 1-4 committed)
+Last session: 2026-08-17T19:18:06.649Z
+Stopped at: Completed 43.5-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
