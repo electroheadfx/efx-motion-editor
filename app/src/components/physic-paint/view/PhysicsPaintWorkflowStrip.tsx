@@ -493,50 +493,121 @@ interface PhysicsPaintWorkflowStaticChromeProps {
 }
 
 /**
+ * 43.5-02 smoke fix 1 (BLOCKER): a surface whose subtree must never trigger
+ * popover dismissal. Structural type (contains method) so plain node-testable
+ * objects can stand in for live DOM elements.
+ */
+export interface ToolboxPopoverDismissSurface {
+  contains(target: EventTarget | null): boolean;
+}
+
+/**
+ * True when `target` sits outside the document tree — a native WKWebView select
+ * popup artifact: the OS-drawn listbox delivers pointerdown targets that are no
+ * longer attached to the document. Such a target can never be proved inside a
+ * popover surface, so dismissing on it would swallow the selection apply.
+ */
+export function defaultIsDetachedTarget(target: EventTarget | null): boolean {
+  return typeof Node !== 'undefined'
+    && target instanceof Node
+    && typeof document !== 'undefined'
+    && !document.contains(target);
+}
+
+/**
+ * Classifies an outside-pointerdown dismissal (43.5-02 smoke fix 1). The popover
+ * is portaled to document.body, so `anchor.contains` alone cannot prove an
+ * interior hit — the panel and every surface portaled out of it (e.g. the native
+ * select's detached popup) must be listed as surfaces too. Dismisses only when
+ * the target is provably outside every registered surface; a detached target
+ * never dismisses (its containment cannot be proved).
+ */
+export function shouldDismissToolboxPopover(
+  target: EventTarget | null,
+  surfaces: readonly (ToolboxPopoverDismissSurface | null)[],
+  isDetached: (target: EventTarget | null) => boolean = defaultIsDetachedTarget,
+): boolean {
+  if (target === null) return true;
+  if (isDetached(target)) return false;
+  return !surfaces.some((surface) => surface !== null && surface.contains(target));
+}
+
+export interface ToolboxPopoverPlacement {
+  left: number;
+  top: number;
+}
+
+/**
+ * Pure viewport placement for the toolbox popover (43.5-02 smoke fix 2): the
+ * panel right-aligns to the anchor button's right edge and extends LEFT over the
+ * strip, clamped 8px inside the strip's horizontal bounds so it never covers the
+ * Actions sidebar lane (Studio grid column 3). The bottom edge sits
+ * `gapAboveStrip` (4px) above the strip top.
+ */
+export function computeToolboxPopoverPlacement(options: {
+  anchorRect: DOMRect;
+  stripRect: DOMRect;
+  panelSize: { width: number; height: number };
+  gapAboveStrip?: number;
+  viewportMargin?: number;
+}): ToolboxPopoverPlacement {
+  const margin = options.viewportMargin ?? 8;
+  const gap = options.gapAboveStrip ?? 4;
+  const minLeft = Math.max(margin, options.stripRect.left + margin);
+  const maxRight = Math.max(
+    minLeft + options.panelSize.width,
+    options.stripRect.right - margin,
+  );
+  const left = Math.max(
+    minLeft,
+    Math.min(
+      options.anchorRect.right - options.panelSize.width,
+      maxRight - options.panelSize.width,
+    ),
+  );
+  const top = Math.max(margin, options.stripRect.top - gap - options.panelSize.height);
+  return { left, top };
+}
+
+/**
  * 43.5-02 (D-01/D-05): the ToolCase toolbox popover — a Studio-local, non-modal
  * dialog portaled to document.body so the shared horizontal scroller can never
  * clip it (RESEARCH Open Question 3). Renders entirely above the workflow strip
- * with its bottom edge 4px above the strip top, left edge aligned to the anchor
- * button and clamped 8px inside the timeline viewport. No focus trap, no
- * backdrop, no automatic focus move; dismissal is handled by the owning chrome
- * (outside pointerdown / Escape window capture listeners) so the dispatcher
- * keeps its layering guarantee. Must stay transform/filter-free: the relocated
- * interpolation tooltip is position:fixed and must keep the viewport as its
- * containing block.
+ * with its bottom edge 4px above the strip top, right edge aligned to the anchor
+ * button's right edge and clamped 8px inside the strip so it never covers the
+ * Actions sidebar lane (43.5-02 smoke fix 2). The owning chrome passes its own
+ * panel ref so dismissal classification can prove interior hits through the
+ * portal (43.5-02 smoke fix 1). No focus trap, no backdrop, no automatic focus
+ * move; dismissal is handled by the owning chrome (outside pointerdown / Escape
+ * window capture listeners) so the dispatcher keeps its layering guarantee. Must
+ * stay transform/filter-free: the relocated interpolation tooltip is
+ * position:fixed and must keep the viewport as its containing block.
  */
 function PhysicsPaintToolboxPopover(props: {
   anchorRef: RefObject<HTMLSpanElement>;
+  panelRef: RefObject<HTMLDivElement>;
   open: boolean;
   ariaLabel: string;
   children: ComponentChildren;
 }) {
-  const panelRef = useRef<HTMLDivElement | null>(null);
-
   useLayoutEffect(() => {
-    const panel = panelRef.current;
+    const panel = props.panelRef.current;
     const anchor = props.anchorRef.current;
     if (!props.open || !panel || !anchor) return;
     const panelSize = { width: panel.offsetWidth, height: panel.offsetHeight };
     const anchorRect = anchor.getBoundingClientRect();
     const strip = anchor.closest('.physics-paint-workflow-strip');
     const stripRect = strip ? strip.getBoundingClientRect() : anchorRect;
-    const viewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth;
-    const viewportMargin = 8;
-    const gapAboveStrip = 4;
-    const left = Math.min(
-      Math.max(anchorRect.left, viewportMargin),
-      Math.max(viewportMargin, viewportWidth - panelSize.width - viewportMargin),
-    );
-    const top = Math.max(viewportMargin, stripRect.top - gapAboveStrip - panelSize.height);
-    panel.style.left = `${left}px`;
-    panel.style.top = `${top}px`;
+    const placement = computeToolboxPopoverPlacement({ anchorRect, stripRect, panelSize });
+    panel.style.left = `${placement.left}px`;
+    panel.style.top = `${placement.top}px`;
     panel.style.visibility = 'visible';
   });
 
   if (!props.open) return null;
   const panel = (
     <div
-      ref={panelRef}
+      ref={props.panelRef}
       id="physics-paint-toolbox-popover"
       class="physics-paint-toolbox-popover"
       role="dialog"
@@ -565,13 +636,29 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
   // (Pitfall 2: one Escape handles at most one layer).
   const [toolboxOpen, setToolboxOpen] = useState(false);
   const toolboxAnchorRef = useRef<HTMLSpanElement | null>(null);
-  const closeToolboxPopover = useCallback(() => setToolboxOpen(false), []);
+  // 43.5-02 smoke fix 1: the owning chrome keeps the portaled panel ref so the
+  // outside-pointerdown classifier can prove interior hits through the portal.
+  const toolboxPanelRef = useRef<HTMLDivElement>(null);
+  // 43.5-02 smoke fix 4: opening/closing the popover suppresses the relocated
+  // interpolation tooltip — a tooltip left visible across the open transition
+  // would measure the panel at its unpositioned end-of-body location (bottom-left
+  // of the window) and float disconnected from any hovered control.
+  const closeToolboxPopover = useCallback(() => {
+    interpolationTooltip.hide();
+    setToolboxOpen(false);
+  }, []);
   useEffect(() => {
     if (!toolboxOpen) return;
     const onPointerDown = (event: PointerEvent) => {
-      const anchor = toolboxAnchorRef.current;
-      if (anchor && event.target instanceof Node && anchor.contains(event.target)) return;
-      closeToolboxPopover();
+      // 43.5-02 smoke fix 1 (BLOCKER): the popover is portaled to document.body
+      // and the native select popup is detached from it, so a lone
+      // anchor.contains check dismisses on interior/portaled hits. Every surface
+      // that must never dismiss (anchor wrapper, panel, portaled listbox
+      // surfaces) is registered and a detached target is treated as unprovable.
+      if (shouldDismissToolboxPopover(
+        event.target,
+        [toolboxAnchorRef.current, toolboxPanelRef.current],
+      )) closeToolboxPopover();
     };
     const onEscapeKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
@@ -647,7 +734,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
           aria-controls={toolboxOpen ? 'physics-paint-toolbox-popover' : undefined}
           onFocus={toolboxTooltip.onFocus}
           onBlur={toolboxTooltip.onBlur}
-          onClick={() => { toolboxTooltip.hide(); setToolboxOpen((open) => !open); }}
+          onClick={() => { toolboxTooltip.hide(); interpolationTooltip.hide(); setToolboxOpen((open) => !open); }}
         >
           <ToolCase size={18} aria-hidden="true" />
           <span class="physics-paint-roto-key-icon-label">Tools</span>
@@ -657,7 +744,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         </PhysicsPaintStyledTooltip>
       </span>
       {props.onInterpolationEnabledChange ? (
-        <PhysicsPaintToolboxPopover anchorRef={toolboxAnchorRef} open={toolboxOpen} ariaLabel="Timeline tools">
+        <PhysicsPaintToolboxPopover anchorRef={toolboxAnchorRef} panelRef={toolboxPanelRef} open={toolboxOpen} ariaLabel="Timeline tools">
           <div class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls" role="group" aria-label="Roto interpolation settings" data-enabled={props.interpolationEnabled ? 'true' : 'false'} data-pending={props.interpolationPending ? 'true' : 'false'} onPointerEnter={interpolationTooltip.onPointerEnter} onPointerLeave={interpolationTooltip.onPointerLeave}>
             <button type="button" class={`physics-paint-roto-interpolation-toggle ${props.interpolationEnabled ? 'active' : ''}`} aria-label={props.interpolationEnabled ? 'Disable generated in-betweens' : 'Enable generated in-betweens'} aria-pressed={props.interpolationEnabled} aria-busy={props.interpolationPending ? 'true' : undefined} disabled={props.interpolationControlsDisabled} onClick={() => { if (props.mutationLocked || props.interpolationPending) return; props.onInterpolationEnabledChange?.(!props.interpolationEnabled); }}><Blend size={15} aria-hidden="true" /></button>
             <label class="physics-paint-roto-interpolation-mode"><select class="physics-paint-roto-interpolation-select" value={props.interpolationMode} aria-label="Interpolation mode" disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange} onChange={handleInterpolationModeChange}><option value="duplicate">Frame duplicate</option><option value="blend">Frame blending</option></select></label>
