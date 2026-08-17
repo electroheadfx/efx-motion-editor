@@ -24,6 +24,7 @@ import {
   createPhysicPaintRotoPasteKeyGroupIntent,
   createPhysicPaintRotoPasteKeyIntent,
   derivePhysicPaintRotoLoopRanges,
+  derivePhysicPaintPushSet,
   resolvePhysicPaintRotoGroupEffectiveEnd,
   resolvePhysicPaintRotoLoopFrame,
   resolvePhysicPaintRotoPhysicalEdit,
@@ -320,6 +321,125 @@ export function mapRotoKeyRailDragProductReason(input: RotoKeyRailDragProductRea
   }
   if (input.kind === 'disabled') return input.reason;
   return mapRotoGroupDragProductReason(input);
+}
+
+/**
+ * Push preparation descriptor: direction + exactly one anchor (keyId or loopId)
+ * + nonnegative frame delta. The resolver owns set derivation, clamp, straddle,
+ * and breaks; prepare validates well-formedness and freezes the publication.
+ */
+export type RotoPushIntentDescriptor = Readonly<{
+  readonly direction: 'right' | 'left';
+  readonly anchorKeyId?: string;
+  readonly anchorLoopId?: string;
+  readonly deltaFrames: number;
+}>;
+
+/**
+ * Immutable versioned Push publication (43.5-03). Carries the exact resolver
+ * proposal, the frozen intent, the break-aware proposalVersion (Pitfall 3), the
+ * expected launch tuple, and the presentation facts the locked copy family
+ * needs (D-15/D-17): moved Rail count, clamped signed delta, and the inclusive
+ * product before/after ranges plus the opened-gap interval.
+ *
+ * The view retains this opaquely and submits it unchanged to
+ * {@link RotoPhysicalTimelineActionBundle.commitRotoPush}. No cloning,
+ * normalization, or recomputation is permitted.
+ */
+export interface RotoPushPublication {
+  readonly proposal: PhysicPaintRotoPhysicalEditProposal;
+  readonly intent: Extract<PhysicPaintRotoPhysicalEditIntent, { readonly kind: 'push-rails' }>;
+  readonly proposalVersion: string;
+  readonly expectedLaunch: { readonly operationId: string; readonly layerId: string };
+  /** Number of Rails in the moved set — the shared set authority's count (D-17). */
+  readonly movedRailCount: number;
+  /** Signed clamped delta: positive for Push Right, negative for Push Left (D-14). */
+  readonly clampedDeltaFrames: number;
+  /** Inclusive product frame range of the moved set before the push (43.2 presentation rule). */
+  readonly beforeRange: { readonly firstFrame: number; readonly lastFrame: number };
+  /** Inclusive product frame range of the moved set after the push. */
+  readonly afterRange: { readonly firstFrame: number; readonly lastFrame: number };
+  /** Inclusive opened-gap interval, or null when no gap would open (D-15). */
+  readonly gapInterval: { readonly firstFrame: number; readonly lastFrame: number } | null;
+}
+
+export type RotoPushPreparationResult =
+  | { readonly ok: true; readonly publication: RotoPushPublication }
+  | { readonly ok: false; readonly reason: string; readonly detail?: string };
+
+export type RotoPushProductReasonInput =
+  | { readonly kind: 'disabled'; readonly reason: string }
+  | {
+      readonly kind: 'rejected';
+      readonly failureCode: PhysicPaintRotoPhysicalEditFailureCode;
+      readonly failureText: string;
+    }
+  | {
+      readonly kind: 'live';
+      readonly direction: 'right' | 'left';
+      /** Signed clamped delta: positive for Push Right, negative for Push Left. */
+      readonly signedDeltaFrames: number;
+      readonly beforeRange: { readonly firstFrame: number; readonly lastFrame: number };
+      readonly afterRange: { readonly firstFrame: number; readonly lastFrame: number };
+      readonly gapInterval: { readonly firstFrame: number; readonly lastFrame: number } | null;
+    }
+  | {
+      readonly kind: 'accepted';
+      readonly direction: 'right' | 'left';
+      readonly movedRailCount: number;
+      /** Signed clamped delta; the copy renders its absolute magnitude. */
+      readonly signedDeltaFrames: number;
+      readonly afterRange: { readonly firstFrame: number; readonly lastFrame: number };
+      readonly gapInterval: { readonly firstFrame: number; readonly lastFrame: number } | null;
+    };
+
+/**
+ * Single deterministic Push copy owner (D-15/D-16/D-17, UI-SPEC T6): live drag
+ * readout, accepted status (singular/plural with the conditional gap sentence),
+ * disabled pass-through, no-space delegated to the Group mapper so the sentence
+ * has one literal source (43.4 precedent), the locked straddle sentence, and
+ * the empty-anchor sentence. Raw resolver diagnostics never enter product copy —
+ * the detail channel only (T-43.3-03-03 pattern).
+ */
+export function mapRotoPushProductReason(input: RotoPushProductReasonInput): string {
+  switch (input.kind) {
+    case 'disabled':
+      return input.reason;
+    case 'rejected':
+      // D-16 locked copy: a moved attached Group sharing its source cycle with
+      // a fixed-side Group fails closed with the verbatim straddle sentence.
+      if (input.failureCode === 'push-source-straddle') {
+        return 'Can\'t push: a Group in the moved set shares its source with a fixed Group.';
+      }
+      // D-07/D-17: a bounded anchor that resolves to no Rail means the pointer
+      // landed on an empty/gap frame — the dedicated empty-anchor sentence.
+      if (input.failureCode === 'unknown-operation-identity') {
+        return 'Push is unavailable on an empty frame. Drag from a key or rail.';
+      }
+      // D-14: the zero-space code delegates to the Group mapper (one literal
+      // no-space sentence across all rail kinds). Any other resolver failure
+      // keeps its diagnostic text (preflight guards make those unreachable).
+      return mapRotoGroupDragProductReason(input);
+    case 'live': {
+      const sign = input.direction === 'right' ? '+' : '−';
+      const magnitude = Math.abs(input.signedDeltaFrames);
+      const directionLabel = input.direction === 'right' ? 'Right' : 'Left';
+      const readout = `Push ${directionLabel} ${sign}${magnitude} — frames `
+        + `${input.beforeRange.firstFrame}–${input.beforeRange.lastFrame} → `
+        + `${input.afterRange.firstFrame}–${input.afterRange.lastFrame}`;
+      if (input.gapInterval === null) return readout;
+      return `${readout}, gap ${input.gapInterval.firstFrame}–${input.gapInterval.lastFrame}`;
+    }
+    case 'accepted': {
+      const railLabel = input.movedRailCount === 1 ? '1 Rail' : `${input.movedRailCount} Rails`;
+      const directionLabel = input.direction === 'right' ? 'right' : 'left';
+      const magnitude = Math.abs(input.signedDeltaFrames);
+      const accepted = `Pushed ${railLabel} ${directionLabel} by ${magnitude} frames — moved set now frames `
+        + `${input.afterRange.firstFrame}–${input.afterRange.lastFrame}.`;
+      if (input.gapInterval === null) return accepted;
+      return `${accepted} Gap opened at frames ${input.gapInterval.firstFrame}–${input.gapInterval.lastFrame}.`;
+    }
+  }
 }
 
 export interface RotoGroupLifecycleDeleteTarget {
@@ -776,6 +896,18 @@ export interface RotoPhysicalTimelineActionBundle {
   ) => RotoKeyRailDragPreparationResult;
   /** Commit the exact retained Key Rail publication after coherence and staleness checks. */
   readonly commitKeyRailDrag: (publication: RotoKeyRailDragPublication) => Promise<boolean>;
+  /**
+   * Prepare one versioned directional Push publication (43.5-03). Mirrors the
+   * Group-drag guard order (launch → ports → in-flight → well-formed identity),
+   * reads one coherent current physical snapshot, builds the 'push-rails'
+   * intent, invokes the pure resolver with the incoming interpolation break
+   * collection threaded into BOTH the resolver input and a break-aware proposal
+   * fingerprint (Pitfall 3), rejects no-change results, and returns one
+   * immutable publication carrying the exact proposal, the break-aware
+   * proposalVersion, the expected launch tuple, and the presentation facts the
+   * locked copy family needs (moved Rail count, clamped delta, ranges, gap).
+   */
+  readonly prepareRotoPush: (descriptor: RotoPushIntentDescriptor) => RotoPushPreparationResult;
   /** Reactive Drag availability derived from selection + pending authority. */
   readonly canDragKey: ReadonlySignal<boolean>;
   /** Reactive Drag disabled reason, or null when eligible. */
@@ -1964,6 +2096,114 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     return accepted;
   }, [input]);
 
+  const prepareRotoPush = useCallback((descriptor: RotoPushIntentDescriptor): RotoPushPreparationResult => {
+    const launch = input.getLaunchContext?.() ?? null;
+    if (!launch) {
+      return { ok: false, reason: mapRotoPushProductReason({ kind: 'disabled', reason: 'Select a real Roto key before editing the timeline.' }) };
+    }
+    if (!input.executePhysicalEdit || !input.getRotoKeyRecords || !input.getRotoInterpolationState || !input.getCapacity) {
+      return { ok: false, reason: mapRotoPushProductReason({ kind: 'disabled', reason: 'Timeline editing is unavailable.' }) };
+    }
+    if (input.pendingOperationId && input.pendingOperationId.value !== null) {
+      return { ok: false, reason: mapRotoPushProductReason({ kind: 'disabled', reason: 'A Roto physical edit is already in flight.' }) };
+    }
+    // Identity well-formed: exactly one bounded anchor and a nonnegative delta.
+    // Malformed descriptors fail closed here with clean product copy instead of
+    // leaking raw resolver diagnostics into the status line.
+    const hasAnchorKeyId = descriptor.anchorKeyId !== undefined;
+    const hasAnchorLoopId = descriptor.anchorLoopId !== undefined;
+    if (hasAnchorKeyId === hasAnchorLoopId) {
+      return { ok: false, reason: mapRotoPushProductReason({ kind: 'disabled', reason: 'The push anchor identity is malformed.' }) };
+    }
+    if ((hasAnchorKeyId && !isBoundedKeyId(descriptor.anchorKeyId)) || (hasAnchorLoopId && !isBoundedKeyId(descriptor.anchorLoopId))) {
+      return { ok: false, reason: mapRotoPushProductReason({ kind: 'disabled', reason: 'The push anchor identity is malformed.' }) };
+    }
+    if (!Number.isSafeInteger(descriptor.deltaFrames) || descriptor.deltaFrames < 0) {
+      return { ok: false, reason: mapRotoPushProductReason({ kind: 'disabled', reason: 'The push delta is malformed.' }) };
+    }
+
+    const records = input.getRotoKeyRecords();
+    const interpolation = input.getRotoInterpolationState();
+    const capacity = input.getCapacity();
+    const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
+    const incomingInterpolationBreakKeyIds = input.getIncomingInterpolationBreakKeyIds?.() ?? [];
+    const identities = records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
+    const intent = Object.freeze({
+      kind: 'push-rails',
+      direction: descriptor.direction,
+      ...(descriptor.anchorKeyId !== undefined ? { anchorKeyId: descriptor.anchorKeyId } : {}),
+      ...(descriptor.anchorLoopId !== undefined ? { anchorLoopId: descriptor.anchorLoopId } : {}),
+      deltaFrames: descriptor.deltaFrames,
+    }) as Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'push-rails' }>;
+    const resolution: PhysicPaintRotoPhysicalEditResolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      intent,
+      parentEndExclusive: input.getParentEndExclusive(),
+      capacity,
+      interpolationEnabled: interpolation.enabled,
+      loopClips,
+      // Pitfall 3: the incoming break collection reaches BOTH the resolver input
+      // and the break-aware proposal fingerprint below.
+      incomingInterpolationBreakKeyIds,
+    });
+    if (!resolution.ok) {
+      // D-14/D-16/D-17: straddle, no-space, and empty-anchor map to the locked
+      // copy via the single mapper; the raw resolver text stays in `detail`.
+      return {
+        ok: false,
+        reason: mapRotoPushProductReason({
+          kind: 'rejected',
+          failureCode: resolution.failure.code,
+          failureText: resolution.failure.text,
+        }),
+        detail: resolution.failure.text,
+      };
+    }
+    const proposal = resolution.proposal;
+    if (!proposal.status.changed) {
+      // D-15: zero-delta push publishes nothing and creates no history entry.
+      return { ok: false, reason: 'This move would not change the timeline.' };
+    }
+    // D-17: presentation facts come from the shared pure set authority — the
+    // same export the resolver branch commits with, so movedRailCount and the
+    // moved-set bounds always agree with the committed set (preflight and
+    // commit can never disagree). Prepare does NO set math itself.
+    const facts = deriveRotoPushPresentationFacts({
+      descriptor,
+      proposal,
+      records,
+      interpolation,
+      loopClips,
+      capacity,
+      incomingInterpolationBreakKeyIds,
+    });
+    if (!facts.ok) {
+      return {
+        ok: false,
+        reason: mapRotoPushProductReason({
+          kind: 'rejected',
+          failureCode: facts.code,
+          failureText: facts.text,
+        }),
+        detail: facts.text,
+      };
+    }
+    return {
+      ok: true,
+      publication: Object.freeze({
+        proposal,
+        intent,
+        proposalVersion: buildPushProposalVersion(records, interpolation, loopClips, incomingInterpolationBreakKeyIds, launch),
+        expectedLaunch: { operationId: launch.operationId, layerId: launch.layerId },
+        movedRailCount: facts.movedRailCount,
+        clampedDeltaFrames: facts.clampedDeltaFrames,
+        beforeRange: facts.beforeRange,
+        afterRange: facts.afterRange,
+        gapInterval: facts.gapInterval,
+      }) as RotoPushPublication,
+    };
+  }, [input]);
+
   const setForceSpacingInput = useCallback((value: string) => {
     forceSpacingInput.value = value;
   }, [forceSpacingInput]);
@@ -2090,6 +2330,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     commitRotoGroupDrag,
     prepareKeyRailDrag,
     commitKeyRailDrag,
+    prepareRotoPush,
     canDragKey,
     dragDisabledReason,
     forceSpacingInput,
@@ -2101,7 +2342,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     addEmptyKeyDisabledReason,
     canSelectAllKeys,
     selectAllKeysDisabledReason,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,
@@ -2178,6 +2419,108 @@ export function buildKeyRailDragProposalVersion(
     incomingInterpolationBreakKeyIds,
   );
   return `${revision}:${launch.operationId}:${launch.layerId}`;
+}
+
+/**
+ * Break-aware staleness fingerprint for Push publications (Pitfall 3). Shares
+ * the Group-drag fingerprint's exact field set — records, interpolation,
+ * loopClips, incomingInterpolationBreakKeyIds, launch — so a concurrent
+ * Scissor/break edit invalidates a prepared push at commit (stale ⇒ fail
+ * closed, zero mutation).
+ */
+function buildPushProposalVersion(
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  interpolation: PhysicPaintRotoInterpolationState,
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  incomingInterpolationBreakKeyIds: readonly string[],
+  launch: PhysicPaintLaunchContext,
+): string {
+  return buildGroupDragProposalVersion(records, interpolation, loopClips, incomingInterpolationBreakKeyIds, launch);
+}
+
+/**
+ * D-15/D-17 presentation facts for a Push publication: the moved Rail count,
+ * the clamped signed delta, and the inclusive product before/after ranges plus
+ * the opened-gap interval. The moved Rail count and set bounds come from the
+ * shared pure set authority {@link derivePhysicPaintPushSet} — the same export
+ * the resolver branch commits with — so prepare's presentation facts and the
+ * committed set can never disagree. The clamped delta is read from the proposal
+ * changes (every moved key translates identically); a moved set owning no
+ * physical keys (duplicated-placement-only, Pitfall 5) falls back to the first
+ * moved Group clip's placement delta. Ranges are derived from canonical
+ * half-open intervals at presentation time only (43.2 presentation rule).
+ */
+function deriveRotoPushPresentationFacts(input: {
+  readonly descriptor: RotoPushIntentDescriptor;
+  readonly proposal: PhysicPaintRotoPhysicalEditProposal;
+  readonly records: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly interpolation: PhysicPaintRotoInterpolationState;
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly capacity: number;
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
+}):
+  | {
+      readonly ok: true;
+      readonly movedRailCount: number;
+      readonly clampedDeltaFrames: number;
+      readonly beforeRange: { readonly firstFrame: number; readonly lastFrame: number };
+      readonly afterRange: { readonly firstFrame: number; readonly lastFrame: number };
+      readonly gapInterval: { readonly firstFrame: number; readonly lastFrame: number } | null;
+    }
+  | { readonly ok: false; readonly code: PhysicPaintRotoPhysicalEditFailureCode; readonly text: string } {
+  const identities = input.records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
+  const loopRangeContext = derivePhysicPaintRotoLoopRanges({
+    identities,
+    loopClips: input.loopClips,
+    capacity: input.capacity,
+    interpolationEnabled: input.interpolation.enabled,
+  });
+  const setResult = derivePhysicPaintPushSet({
+    anchorKeyId: input.descriptor.anchorKeyId,
+    anchorLoopId: input.descriptor.anchorLoopId,
+    direction: input.descriptor.direction,
+    identities,
+    loopRanges: loopRangeContext.ranges,
+    loopClips: input.loopClips,
+    incomingInterpolationBreakKeyIds: input.incomingInterpolationBreakKeyIds,
+  });
+  if (!setResult.ok) return { ok: false, code: setResult.code, text: setResult.text };
+  const { movedRails, movedSetBounds } = setResult;
+  const movedRailCount = movedRails.length;
+  const { firstFrame, lastEndExclusive } = movedSetBounds;
+
+  let clampedDeltaFrames = 0;
+  const movedChange = input.proposal.changes.find((change) => change.role === 'moved');
+  if (movedChange !== undefined) {
+    clampedDeltaFrames = movedChange.afterAppFrame - movedChange.beforeAppFrame;
+  } else {
+    const movedGroupClips = movedRails.flatMap((rail) => (
+      rail.kind === 'group' && rail.clip !== undefined ? [rail.clip] : []
+    ));
+    const firstMovedClip = movedGroupClips[0];
+    if (firstMovedClip !== undefined) {
+      const nextMovedClip = input.proposal.nextLoopClips?.find((clip) => clip.loopId === firstMovedClip.loopId);
+      if (nextMovedClip !== undefined) {
+        clampedDeltaFrames = nextMovedClip.placementStart - firstMovedClip.placementStart;
+      }
+    }
+  }
+
+  const beforeRange = Object.freeze({ firstFrame, lastFrame: lastEndExclusive - 1 });
+  const afterRange = Object.freeze({
+    firstFrame: firstFrame + clampedDeltaFrames,
+    lastFrame: lastEndExclusive - 1 + clampedDeltaFrames,
+  });
+  let gapInterval: { readonly firstFrame: number; readonly lastFrame: number } | null = null;
+  if (clampedDeltaFrames > 0) {
+    gapInterval = Object.freeze({ firstFrame, lastFrame: firstFrame + clampedDeltaFrames - 1 });
+  } else if (clampedDeltaFrames < 0) {
+    gapInterval = Object.freeze({
+      firstFrame: lastEndExclusive + clampedDeltaFrames,
+      lastFrame: lastEndExclusive - 1,
+    });
+  }
+  return { ok: true, movedRailCount, clampedDeltaFrames, beforeRange, afterRange, gapInterval };
 }
 
 interface ActionAvailability {

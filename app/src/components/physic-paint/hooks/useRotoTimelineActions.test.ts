@@ -1984,7 +1984,11 @@ describe('useRotoTimelineActions Push prepare + locked copy family (43.5-03 Task
       anchorKeyId: 'a0',
       deltaFrames: 2,
     });
-    expect(preparation).toEqual({ ok: false, reason: 'No empty space in that direction.' });
+    expect(preparation).toEqual({
+      ok: false,
+      reason: 'No empty space in that direction.',
+      detail: expect.any(String),
+    });
   });
 
   it('fails closed with the straddle copy when a moved attached Group shares its source with a fixed-side Group (D-16)', () => {
@@ -2015,6 +2019,7 @@ describe('useRotoTimelineActions Push prepare + locked copy family (43.5-03 Task
     expect(preparation).toEqual({
       ok: false,
       reason: 'Can\'t push: a Group in the moved set shares its source with a fixed Group.',
+      detail: expect.any(String),
     });
   });
 
@@ -2028,6 +2033,7 @@ describe('useRotoTimelineActions Push prepare + locked copy family (43.5-03 Task
     expect(preparation).toEqual({
       ok: false,
       reason: 'Push is unavailable on an empty frame. Drag from a key or rail.',
+      detail: expect.any(String),
     });
   });
 
@@ -2101,13 +2107,19 @@ describe('useRotoTimelineActions Push prepare + locked copy family (43.5-03 Task
   });
 
   it('prepares a Push Left publication whose presentation facts feed the locked mirror copy', () => {
+    // The break on D splits D into its own fixed Key Rail; [A,B,C] stays one
+    // moved Rail (deriveKeyRailSegments splits on breaks/group ownership only).
     const records = [
       realKeyRecord('A', 2),
       realKeyRecord('B', 3),
       realKeyRecord('C', 6),
       realKeyRecord('D', 10),
     ];
-    const { actions } = createHarness({ records, capacity: 14 });
+    const { actions } = createHarness({
+      records,
+      capacity: 14,
+      incomingInterpolationBreakKeyIds: ['D'],
+    });
     const preparation = actions.physicalActions.prepareRotoPush({
       direction: 'left',
       anchorKeyId: 'C',
@@ -2118,7 +2130,7 @@ describe('useRotoTimelineActions Push prepare + locked copy family (43.5-03 Task
     if (!preparation.ok) throw new Error('Push Left must prepare');
     const pub = preparation.publication;
     expect(Object.fromEntries(pub.proposal.mapping)).toEqual({ A: 0, B: 1, C: 4, D: 10 });
-    expect(pub.movedRailCount).toBe(2);
+    expect(pub.movedRailCount).toBe(1);
     expect(pub.clampedDeltaFrames).toBe(-2);
     expect(pub.beforeRange).toEqual({ firstFrame: 2, lastFrame: 6 });
     expect(pub.afterRange).toEqual({ firstFrame: 0, lastFrame: 4 });
@@ -2133,6 +2145,6 @@ describe('useRotoTimelineActions Push prepare + locked copy family (43.5-03 Task
       signedDeltaFrames: pub.clampedDeltaFrames,
       afterRange: pub.afterRange,
       gapInterval: pub.gapInterval,
-    })).toBe('Pushed 2 Rails left by 2 frames — moved set now frames 0–4. Gap opened at frames 5–6.');
+    })).toBe('Pushed 1 Rail left by 2 frames — moved set now frames 0–4. Gap opened at frames 5–6.');
   });
 });
