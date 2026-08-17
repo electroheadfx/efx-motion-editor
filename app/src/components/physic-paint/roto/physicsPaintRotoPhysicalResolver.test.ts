@@ -4428,7 +4428,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     // The reverse push resolves against the forwarded state (records shifted +5).
     const shifted = [...forward.proposal.mapping.entries()].map(([keyId, appFrame]) => ({ keyId, appFrame }));
     const reverse = resolvePush(shifted, 'left', { anchorKeyId: 'a0' }, 5, {
-      incomingInterpolationBreakKeyIds: forward.proposal.nextIncomingInterpolationBreakKeyIds,
+      incomingInterpolationBreakKeyIds: forward.proposal.nextIncomingInterpolationBreakKeyIds ?? undefined,
     });
     expect(reverse.ok).toBe(true);
     if (!reverse.ok) throw new Error('Reverse push must resolve');

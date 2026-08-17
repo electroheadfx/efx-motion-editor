@@ -361,7 +361,8 @@ export type PhysicPaintRotoPhysicalEditFailureCode =
   | 'invalid-linked-source-spacing-scope'
   | 'linked-source-spacing-order-rejected'
   | 'linked-frame-delete-rejected'
-  | 'no-free-space-in-direction';
+  | 'no-free-space-in-direction'
+  | 'push-source-straddle';
 
 /**
  * Discriminated failure result. The failure branch cannot carry a partial
@@ -2226,6 +2227,316 @@ export function clampPhysicPaintKeyRailDragDestination(
   return { ok: false };
 }
 
+// ---------------------------------------------------------------------------
+// Push-rails directional set / straddle / clamp / break authorities (43.5
+// Task 2). All three derive exclusively from canonical records/loopClips —
+// never from caller-supplied attachment or set flags (Pitfall 6). The set
+// derivation and the clamp are exported so the strip hover preflight port
+// (plan 05) consumes the SAME authority the resolver branch commits with:
+// preflight and rejection can never disagree (D-17, Pitfall 4).
+// ---------------------------------------------------------------------------
+
+/**
+ * One straddle verdict (D-16): a source-attached Group inside the moved set
+ * shares its source cycle with a Group on the fixed side. The push fails
+ * closed — zero mutation, zero partial proposal, no silent set expansion.
+ */
+export interface PhysicPaintPushStraddleVerdict {
+  readonly straddled: true;
+  readonly movedGroupLoopId: string;
+  readonly fixedGroupLoopId: string;
+  readonly sourceCycleId: string;
+}
+
+export interface PhysicPaintPushSetInput {
+  readonly anchorKeyId?: string;
+  readonly anchorLoopId?: string;
+  readonly direction: 'right' | 'left';
+  /** Ordered real keys (the resolver's validated identity order). */
+  readonly identities: readonly PhysicPaintRotoKeyIdentity[];
+  /** Derived Group ranges — the same projection the rail strip draws. */
+  readonly loopRanges: readonly PhysicPaintRotoLoopRange[];
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
+}
+
+export type PhysicPaintPushSetResult =
+  | {
+      readonly ok: true;
+      readonly anchorRail: PushRail;
+      readonly movedRails: readonly PushRail[];
+      readonly fixedRails: readonly PushRail[];
+      readonly movedKeyIds: ReadonlySet<string>;
+      readonly movedSetBounds: { readonly firstFrame: number; readonly lastEndExclusive: number };
+      readonly straddle: PhysicPaintPushStraddleVerdict | null;
+    }
+  | {
+      readonly ok: false;
+      readonly code: PhysicPaintRotoPhysicalEditFailureCode;
+      readonly text: string;
+    };
+
+/**
+ * Shared pure directional-set derivation (D-17): maps the anchor descriptor
+ * (keyId or loopId), direction, ordered real keys, derived loop ranges, and
+ * clips to the directional Rail set plus a straddle verdict. The anchor Rail's
+ * interval is the pivot (RESEARCH A3); empty physical space belongs to neither
+ * side. A frame inside a Group resolves to the complete Group — never an
+ * implicit cut (D-07). Duplicated (shared-source) placements contribute no
+ * moved keys and never straddle (43.3 algebra); only source-attached
+ * straddles reject (D-16). Consumed by the resolver branch now and by the
+ * strip hover preflight port in plan 05.
+ */
+export function derivePhysicPaintPushSet(input: PhysicPaintPushSetInput): PhysicPaintPushSetResult {
+  const { identities, direction, loopRanges, loopClips, incomingInterpolationBreakKeyIds } = input;
+
+  const groupOwnedKeyIds = new Set<string>();
+  for (const clip of loopClips) {
+    clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+    (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+  }
+  const framesByKeyId = new Map(identities.map((identity) => [identity.keyId, identity.appFrame] as const));
+
+  const segments = deriveKeyRailSegments({
+    orderedRealKeys: identities,
+    incomingInterpolationBreakKeyIds: new Set(incomingInterpolationBreakKeyIds),
+    groupOwnedKeyIds,
+  });
+
+  // Unified ordered Rail list: Key Rail segments plus derived Group ranges.
+  const rails: PushRail[] = [];
+  for (const segment of segments) {
+    rails.push({
+      kind: 'key-rail',
+      id: segment.firstKeyId,
+      intervalStart: segment.firstKeyFrame,
+      intervalEndExclusive: segment.lastKeyFrame + 1,
+      keyIds: segment.keyIds,
+    });
+  }
+  for (const range of loopRanges) {
+    const clip = loopClips.find((candidate) => candidate.loopId === range.loopId);
+    if (clip === undefined) continue;
+    const firstSourceFrame = framesByKeyId.get(clip.sourceKeyIds[0]);
+    rails.push({
+      kind: 'group',
+      id: range.loopId,
+      intervalStart: range.placementStart,
+      intervalEndExclusive: range.effectiveEnd,
+      keyIds: range.sourceKeyIds,
+      sourceCycleId: range.sourceCycleId,
+      // Canonical attachment test (Pitfall 4): the clip's first source key
+      // must exist and its placement must coincide with that key's pre-move
+      // frame. Never a caller-supplied attachment flag (Pitfall 6).
+      attached: firstSourceFrame !== undefined && firstSourceFrame === clip.placementStart,
+      clip,
+    });
+  }
+  rails.sort((left, right) => (
+    left.intervalStart - right.intervalStart || left.id.localeCompare(right.id)
+  ));
+
+  // D-07: anchor resolution accepts either a keyId (ordinary/Key Rail member)
+  // or a loopId (Motion/Static Rail). A frame inside a Group resolves to the
+  // complete Group — never an implicit cut.
+  const anchorRail = input.anchorKeyId !== undefined
+    ? rails.find((rail) => rail.kind === 'key-rail' && rail.keyIds.includes(input.anchorKeyId as string))
+      ?? rails.find((rail) => rail.kind === 'group' && rail.keyIds.includes(input.anchorKeyId as string))
+    : input.anchorLoopId !== undefined
+      ? rails.find((rail) => rail.kind === 'group' && rail.id === input.anchorLoopId)
+      : undefined;
+  if (anchorRail === undefined) {
+    const descriptor = input.anchorKeyId !== undefined
+      ? `Push anchor key "${input.anchorKeyId}"`
+      : `Push anchor loop "${input.anchorLoopId ?? ''}"`;
+    return { ok: false, code: 'unknown-operation-identity', text: `${descriptor} is not a member of any Rail.` };
+  }
+
+  // Directional suffix/prefix set (PUSH-01): Push Right moves the anchor Rail
+  // and every Rail whose interval starts at/after the anchor's start; Push
+  // Left moves every Rail whose interval ends at/before the anchor's end plus
+  // the anchor. The opposite side is byte-position fixed.
+  const movedRails = rails.filter((rail) => (
+    direction === 'right'
+      ? rail.intervalStart >= anchorRail.intervalStart
+      : rail.intervalEndExclusive <= anchorRail.intervalEndExclusive
+  ));
+  const movedIds = new Set(movedRails.map((rail) => rail.id));
+  const fixedRails = rails.filter((rail) => !movedIds.has(rail.id));
+
+  // Moved keys: Key Rail members plus source keys of source-attached Groups.
+  // Duplicated placements contribute NO moved keys (their source keys stay).
+  const movedKeyIds = new Set<string>();
+  for (const rail of movedRails) {
+    if (rail.kind === 'key-rail') {
+      rail.keyIds.forEach((keyId) => movedKeyIds.add(keyId));
+    } else if (rail.attached) {
+      rail.keyIds.forEach((keyId) => movedKeyIds.add(keyId));
+    }
+  }
+
+  // The moved set's byte interval bounds — the clamp's boundary input.
+  let firstFrame = Number.POSITIVE_INFINITY;
+  let lastEndExclusive = Number.NEGATIVE_INFINITY;
+  for (const rail of movedRails) {
+    firstFrame = Math.min(firstFrame, rail.intervalStart);
+    lastEndExclusive = Math.max(lastEndExclusive, rail.intervalEndExclusive);
+  }
+
+  // D-16 straddle: a source-attached Group in the moved set sharing its source
+  // cycle with a Group on the fixed side fails closed. Duplicated (shared
+  // source) placements in the moved set own no source keys, so no straddle
+  // arises (43.3 algebra) — only source-attached straddles reject.
+  let straddle: PhysicPaintPushStraddleVerdict | null = null;
+  for (const movedRail of movedRails) {
+    if (movedRail.kind !== 'group' || movedRail.attached !== true || movedRail.sourceCycleId === undefined) continue;
+    for (const fixedRail of fixedRails) {
+      if (fixedRail.kind !== 'group' || fixedRail.sourceCycleId === undefined) continue;
+      if (fixedRail.sourceCycleId === movedRail.sourceCycleId) {
+        straddle = {
+          straddled: true,
+          movedGroupLoopId: movedRail.id,
+          fixedGroupLoopId: fixedRail.id,
+          sourceCycleId: movedRail.sourceCycleId,
+        };
+        break;
+      }
+    }
+    if (straddle !== null) break;
+  }
+
+  return {
+    ok: true,
+    anchorRail,
+    movedRails,
+    fixedRails,
+    movedKeyIds,
+    movedSetBounds: { firstFrame, lastEndExclusive },
+    straddle,
+  };
+}
+
+/**
+ * Pure directional push clamp (PUSH-05). The moved set translates rigidly as
+ * one byte interval, so the only boundaries are frame 0 (Push Left) and the
+ * physical capacity / parent end (Push Right — the child document's single end
+ * authority, never the main-editor display outFrame, 43.4 defect 1). Proposed
+ * delta 0 is a valid no-change (never a failure); otherwise the directional
+ * nearest-free search scans from the proposed signed delta toward 0 and
+ * returns the first delta that keeps the set in bounds, or ok:false when zero
+ * valid movement exists. The dispatch branch commits this clamped delta
+ * (preview-is-the-commit, D-14).
+ */
+export interface PhysicPaintPushClampInput {
+  readonly direction: 'right' | 'left';
+  /** Signed proposal: positive for Push Right, negative for Push Left. */
+  readonly proposedDeltaFrames: number;
+  readonly movedSetBounds: { readonly firstFrame: number; readonly lastEndExclusive: number };
+  readonly capacity: number;
+}
+
+export type PhysicPaintPushClampResult =
+  | { readonly ok: true; readonly deltaFrames: number }
+  | { readonly ok: false };
+
+export function clampPhysicPaintPushDestination(
+  input: PhysicPaintPushClampInput,
+): PhysicPaintPushClampResult {
+  if (input.proposedDeltaFrames === 0) return { ok: true, deltaFrames: 0 };
+  if (input.direction === 'right') {
+    for (let delta = input.proposedDeltaFrames; delta > 0; delta -= 1) {
+      if (input.movedSetBounds.lastEndExclusive + delta <= input.capacity) {
+        return { ok: true, deltaFrames: delta };
+      }
+    }
+    return { ok: false };
+  }
+  for (let delta = input.proposedDeltaFrames; delta < 0; delta += 1) {
+    if (input.movedSetBounds.firstFrame + delta >= 0) {
+      return { ok: true, deltaFrames: delta };
+    }
+  }
+  return { ok: false };
+}
+
+/**
+ * PUSH-03: derive the complete next incoming-interpolation-break collection
+ * for a directional push — a complete-collection replacement, never a delta.
+ * Rules: Push Right — the moved set's first key (min pre-move frame) owns the
+ * opened-gap break (travels with the set, 43.1 D-14); Push Left — the fixed
+ * right side's first real key at/after the moved set's vacated end owns/reuses
+ * it (43.1 rule (a) successor semantics; never when content ends, D-12); a
+ * reverse push that returns the moved set to frame 0 closes the head gap and
+ * normalizes the collection by removing the break on the moved set's first key.
+ * Every existing break is reused, never duplicated. Duplicated placements move
+ * placement-only and manufacture no physical-key breaks (D-11). Deterministic
+ * ascending post-move-frame sort.
+ */
+function derivePhysicPaintPushIncomingInterpolationBreakKeyIds(input: {
+  readonly direction: 'right' | 'left';
+  /** Signed, clamped delta: positive for Push Right, negative for Push Left. */
+  readonly deltaFrames: number;
+  readonly movedKeyIds: ReadonlySet<string>;
+  readonly movedSetBounds: { readonly firstFrame: number; readonly lastEndExclusive: number };
+  readonly preMoveFramesByKeyId: ReadonlyMap<string, number>;
+  readonly mapping: ReadonlyMap<string, number>;
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
+}): readonly string[] {
+  const {
+    direction,
+    deltaFrames,
+    movedKeyIds,
+    movedSetBounds,
+    preMoveFramesByKeyId,
+    mapping,
+    incomingInterpolationBreakKeyIds,
+  } = input;
+  const owners = new Set(incomingInterpolationBreakKeyIds);
+
+  if (deltaFrames !== 0 && movedKeyIds.size > 0) {
+    let firstMovedKey: string | null = null;
+    let firstMovedFrame = Number.POSITIVE_INFINITY;
+    for (const keyId of movedKeyIds) {
+      const frame = preMoveFramesByKeyId.get(keyId) ?? Number.POSITIVE_INFINITY;
+      if (frame < firstMovedFrame) {
+        firstMovedKey = keyId;
+        firstMovedFrame = frame;
+      }
+    }
+
+    if (direction === 'right' && firstMovedKey !== null) {
+      owners.add(firstMovedKey);
+    } else if (direction === 'left' && firstMovedKey !== null) {
+      // Vacated-gap successor (pre-move fact): the fixed right side's first
+      // real key at/after the moved set's vacated end. Fixed keys never move,
+      // so their pre-move and post-move frames coincide.
+      let successor: string | null = null;
+      let successorFrame = Number.POSITIVE_INFINITY;
+      for (const [keyId, frame] of preMoveFramesByKeyId) {
+        if (movedKeyIds.has(keyId)) continue;
+        if (frame >= movedSetBounds.lastEndExclusive && frame < successorFrame) {
+          successor = keyId;
+          successorFrame = frame;
+        }
+      }
+      if (successor !== null) owners.add(successor);
+
+      // Reverse-close normalization: when the reverse push returns the moved
+      // set to frame 0 (leftmost content — provably no fixed predecessor), the
+      // head-gap break on the moved set's first key is moot and is removed.
+      if (movedSetBounds.firstFrame + deltaFrames === 0) {
+        owners.delete(firstMovedKey);
+      }
+    }
+  }
+
+  return [...owners].sort((left, right) => {
+    const frameLeft = mapping.get(left) ?? Number.POSITIVE_INFINITY;
+    const frameRight = mapping.get(right) ?? Number.POSITIVE_INFINITY;
+    return frameLeft - frameRight || left.localeCompare(right);
+  });
+}
+
 function deriveDeleteKeyRailIncomingInterpolationBreakKeyIds(input: {
   readonly memberKeyIds: readonly string[];
   readonly lastKeyFrame: number;
@@ -4033,17 +4344,6 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       return fail('empty-key-set', operationKind, 'Push requires at least one real key.');
     }
 
-    const groupOwnedKeyIds = new Set<string>();
-    for (const clip of loopClips) {
-      clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
-      (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
-    }
-
-    const segments = deriveKeyRailSegments({
-      orderedRealKeys: identities.ordered,
-      incomingInterpolationBreakKeyIds: new Set(incomingInterpolationBreakKeyIds),
-      groupOwnedKeyIds,
-    });
     const loopRangeContext = derivePhysicPaintRotoLoopRanges({
       identities: identities.ordered,
       loopClips,
@@ -4051,93 +4351,66 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       interpolationEnabled: input.interpolationEnabled,
     });
 
-    // Unified ordered Rail list: Key Rail segments plus derived Group ranges.
-    // The anchor Rail's interval is the pivot (RESEARCH A3); empty physical
-    // space belongs to neither side of the directional cut.
-    const rails: PushRail[] = [];
-    for (const segment of segments) {
-      rails.push({
-        kind: 'key-rail',
-        id: segment.firstKeyId,
-        intervalStart: segment.firstKeyFrame,
-        intervalEndExclusive: segment.lastKeyFrame + 1,
-        keyIds: segment.keyIds,
-      });
+    // One shared pure authority derives the directional set AND the straddle
+    // verdict from canonical records/loopClips only (Pitfall 6). The strip
+    // hover preflight port (plan 05) consumes the same export, so preflight
+    // and rejection can never disagree (D-17).
+    const setResult = derivePhysicPaintPushSet({
+      anchorKeyId: intent.anchorKeyId,
+      anchorLoopId: intent.anchorLoopId,
+      direction: intent.direction,
+      identities: identities.ordered,
+      loopRanges: loopRangeContext.ranges,
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+    });
+    if (!setResult.ok) {
+      return fail(setResult.code, operationKind, setResult.text);
     }
-    for (const range of loopRangeContext.ranges) {
-      const clip = loopClips.find((candidate) => candidate.loopId === range.loopId);
-      if (clip === undefined) continue;
-      const firstSourceFrame = identities.framesByKeyId.get(clip.sourceKeyIds[0]);
-      rails.push({
-        kind: 'group',
-        id: range.loopId,
-        intervalStart: range.placementStart,
-        intervalEndExclusive: range.effectiveEnd,
-        keyIds: range.sourceKeyIds,
-        sourceCycleId: range.sourceCycleId,
-        // Canonical attachment test (Pitfall 4): the clip's first source key
-        // must exist and its placement must coincide with that key's pre-move
-        // frame. Never a caller-supplied attachment flag (Pitfall 6).
-        attached: firstSourceFrame !== undefined && firstSourceFrame === clip.placementStart,
-        clip,
-      });
-    }
-    rails.sort((left, right) => (
-      left.intervalStart - right.intervalStart || left.id.localeCompare(right.id)
-    ));
-
-    const anchorRail = hasAnchorKeyId
-      ? rails.find((rail) => rail.kind === 'key-rail' && rail.keyIds.includes(intent.anchorKeyId as string))
-      : rails.find((rail) => rail.kind === 'group' && rail.id === intent.anchorLoopId);
-    if (anchorRail === undefined) {
-      return fail('unknown-operation-identity', operationKind, hasAnchorKeyId
-        ? `Push anchor key "${intent.anchorKeyId}" is not a member of any Rail.`
-        : `Push anchor loop "${intent.anchorLoopId}" is not a derived Group Rail.`);
+    const { anchorRail, movedRails, movedKeyIds, movedSetBounds, straddle } = setResult;
+    if (straddle !== null) {
+      return fail('push-source-straddle', operationKind,
+        `Push ${intent.direction} would move source keys shared with the fixed Group "${straddle.fixedGroupLoopId}".`);
     }
 
-    // Directional suffix/prefix set (PUSH-01): Push Right moves the anchor Rail
-    // and every Rail whose interval starts at/after the anchor's start; Push
-    // Left moves every Rail whose interval ends at/before the anchor's end plus
-    // the anchor. The opposite side is byte-position fixed.
-    const movedRails = rails.filter((rail) => (
-      intent.direction === 'right'
-        ? rail.intervalStart >= anchorRail.intervalStart
-        : rail.intervalEndExclusive <= anchorRail.intervalEndExclusive
-    ));
-
-    // Moved keys: Key Rail members plus source keys of source-attached Groups.
-    // Duplicated placements contribute NO moved keys (their source keys stay).
-    const movedKeyIds = new Set<string>();
-    for (const rail of movedRails) {
-      if (rail.kind === 'key-rail') {
-        rail.keyIds.forEach((keyId) => movedKeyIds.add(keyId));
-      } else if (rail.attached) {
-        rail.keyIds.forEach((keyId) => movedKeyIds.add(keyId));
-      }
+    // Clamp-and-commit: the committed delta IS the clamped delta, so the
+    // preview is the commit (D-14). ok:false maps to the dedicated zero-space
+    // code. This exported clamp is the ONLY push delta authority — no second
+    // clamp math anywhere (preview-is-the-commit).
+    const proposedSignedDelta = intent.direction === 'right' ? intent.deltaFrames : -intent.deltaFrames;
+    const clampResult = clampPhysicPaintPushDestination({
+      direction: intent.direction,
+      proposedDeltaFrames: proposedSignedDelta,
+      movedSetBounds,
+      capacity: input.capacity,
+    });
+    if (!clampResult.ok) {
+      return fail('no-free-space-in-direction', operationKind,
+        `No empty space in the ${intent.direction} direction to push the selected set.`);
     }
+    const signedDelta = clampResult.deltaFrames;
 
-    const signedDelta = intent.direction === 'right' ? intent.deltaFrames : -intent.deltaFrames;
     const mapping = new Map(identities.ordered.map((identity) => [identity.keyId, identity.appFrame] as const));
     const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
     for (const identity of identities.ordered) {
       if (!movedKeyIds.has(identity.keyId)) continue;
-      const destination = identity.appFrame + signedDelta;
-      if (destination < 0 || destination >= input.capacity) {
-        return fail('over-capacity', operationKind, `Push destination frame ${destination} is outside capacity ${input.capacity}.`);
-      }
-      mapping.set(identity.keyId, destination);
+      // The clamp already proved the moved byte interval lands in bounds;
+      // finalizeProposal re-validates every final frame.
+      mapping.set(identity.keyId, identity.appFrame + signedDelta);
       roleByKeyId.set(identity.keyId, 'moved');
     }
 
-    // Translate every moved source-attached Group's lifecycle fields with the
+    // Translate EVERY moved Group's lifecycle fields with the
     // buildMoveGroupNextLoopClips pattern (phaseOrigin, originalEndExclusive,
     // EVERY visibleRanges entry, EVERY frameOverrides appFrame, infinity
-    // pinning). Chained across moved clips so each clip translates once.
+    // pinning) — source-attached AND duplicated placements move placement-only
+    // per the 43.3 algebra. Chained across moved clips so each clip translates
+    // once.
     let nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null = null;
     let clipPlacementChanged = false;
     const movedClips = movedRails
       .filter((rail): rail is PushRail & { kind: 'group'; clip: PhysicPaintRotoLoopClip } => (
-        rail.kind === 'group' && rail.attached === true && rail.clip !== undefined
+        rail.kind === 'group' && rail.clip !== undefined
       ))
       .map((rail) => rail.clip);
     if (movedClips.length > 0) {
@@ -4156,6 +4429,15 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     // key mapping — a moved set whose only movable content is duplicated
     // placements still reports changed from the placement delta.
     const changed = computeChanged(identities, mapping) || clipPlacementChanged;
+    const nextBreaks = derivePhysicPaintPushIncomingInterpolationBreakKeyIds({
+      direction: intent.direction,
+      deltaFrames: signedDelta,
+      movedKeyIds,
+      movedSetBounds,
+      preMoveFramesByKeyId: identities.framesByKeyId,
+      mapping,
+      incomingInterpolationBreakKeyIds,
+    });
     const candidate: Candidate = {
       mapping,
       expectedKeyIds: identities.keyIds,
@@ -4167,9 +4449,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       roleByKeyId,
       drag: null,
       ...(nextLoopClips !== null ? { nextLoopClips } : {}),
-      // Task 1 happy path: the complete break collection echoes unchanged
-      // (break open/close derivation lands in Task 2).
-      nextIncomingInterpolationBreakKeyIds: Object.freeze([...incomingInterpolationBreakKeyIds]),
+      nextIncomingInterpolationBreakKeyIds: Object.freeze(nextBreaks),
     };
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
