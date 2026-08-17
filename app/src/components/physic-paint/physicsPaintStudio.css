@@ -2335,6 +2335,32 @@ button.destructive {
   opacity: 1;
 }
 
+/* 43.5-05 armed Push tint (D-06): rgba(184,199,255,0.2) background /
+   #B8C7FF border / #DBE4FF icon+label, mirroring the established
+   roto-interpolation-toggle active family. aria-pressed=true drives it. */
+.physics-paint-push-tool-button.physics-paint-push-tool-armed {
+  border-color: #b8c7ff;
+  background: rgba(184, 199, 255, 0.2);
+  color: #dbe4ff;
+}
+
+.physics-paint-push-tool-button.physics-paint-push-tool-armed:hover:not([aria-disabled="true"]),
+.physics-paint-push-tool-button.physics-paint-push-tool-armed:focus-visible:not([aria-disabled="true"]) {
+  border-color: #c6d2ff;
+  background: rgba(184, 199, 255, 0.28);
+  color: #e6ecff;
+}
+
+/* 43.5-05 directional cursor while armed: e-resize for Push Right, w-resize
+   for Push Left over the whole strip (UI-SPEC T3). */
+.physics-paint-workflow-strip.physics-paint-push-armed-right {
+  cursor: e-resize;
+}
+
+.physics-paint-workflow-strip.physics-paint-push-armed-left {
+  cursor: w-resize;
+}
+
 .physics-paint-roto-key-icon-button.destructive:not([aria-disabled="true"]) {
   border-color: rgba(255, 102, 102, 0.45);
   background: #503238;

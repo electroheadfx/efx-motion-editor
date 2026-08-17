@@ -31,6 +31,11 @@ export interface PhysicsPaintStudioKeyboardActions {
   /** 43.4 defect 9: with a real key selected, jump to the adjacent REAL KEY
    *  frame (never generated/interpolated/empty); no wrap at the first/last. */
   selectAdjacentRotoKey?: (direction: -1 | 1) => void;
+  /** 43.5-05: disarm the armed Push tool. Returns true ONLY when a tool was
+   *  actually armed, so the Escape layer consumes at most one layer (Pitfall 2).
+   *  Select All also disarms via this action (D-20). No Push key binding
+   *  exists — activation is toolbar-only (D-10). */
+  disarmPushTool?: () => boolean;
 }
 
 export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
@@ -135,10 +140,14 @@ export function dispatchPhysicsPaintStudioKeyDown(
 
   if (meta && !event.shiftKey && !event.altKey && key === 'a') {
     // Select All (D-03): strip-focus scoped so LOG text selection keeps its
-    // native select-all (Pitfall 5); blocked while mutations are locked.
+    // native select-all (Pitfall 5); blocked while mutations are locked. An
+    // armed Push tool is any-other-toolbar-action disarmed here (D-20); it
+    // stays armed only when the Select All itself was blocked (locked / not a
+    // strip target) — a blocked action never disarms.
     if (!actions.selectAllRotoKeys || state.mutationLocked) return;
     if (!(event.target instanceof Element) || event.target.closest('.physics-paint-workflow-strip') === null) return;
     event.preventDefault();
+    actions.disarmPushTool?.();
     actions.selectAllRotoKeys();
     return;
   }
@@ -160,6 +169,13 @@ export function dispatchPhysicsPaintStudioKeyDown(
     if (state.toolboxPopoverOpen && actions.closeToolboxPopover) {
       event.preventDefault();
       actions.closeToolboxPopover();
+      return;
+    }
+    // Armed Push disarm layer (43.5-05, D-06): consumes the Escape only when a
+    // tool was actually armed — and never also collapses the selection
+    // (Pitfall 2). One Escape handles at most one layer.
+    if (actions.disarmPushTool?.()) {
+      event.preventDefault();
       return;
     }
     if (!actions.collapseRotoSelection) return;

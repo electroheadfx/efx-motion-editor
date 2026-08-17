@@ -21,6 +21,7 @@ import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
+import { disarmPushTool } from './view/physicsPaintPushArmedTool';
 import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyboard';
 import { createIdentityMemo, usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
 import { useRotoTimelineActions, type RotoGroupLifecycleDeleteTarget, type RotoKeyRailSelection } from './hooks/useRotoTimelineActions';
@@ -566,6 +567,15 @@ export function PhysicsPaintStudio() {
     () => rotoScript.mutationLocked.peek() || !physicalMutationAvailable.peek(),
     [physicalMutationAvailable, rotoScript.mutationLocked],
   );
+  // 43.5-05 (D-18): entering a mutation-locked state disarms an armed Push
+  // tool; the unmount cleanup guarantees the session-only armed state never
+  // survives a Studio reopen (D-19).
+  useEffect(() => {
+    if (mutationLocked) disarmPushTool();
+    return () => {
+      disarmPushTool();
+    };
+  }, [mutationLocked]);
   // Navigation already locks the engine input and navigation coordinator. Keep
   // the static Studio controls keyed only to real script mutations so the
   // navigation lock's true/false pulse cannot invalidate their memo props.
@@ -1683,6 +1693,7 @@ export function PhysicsPaintStudio() {
       pasteRotoKey: pasteRotoFrame,
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,
       selectAllRotoKeys,
+      disarmPushTool,
       collapseRotoSelection: () => {
         // D-02: collapse only an active multi-selection; a single-key
         // selection is already collapsed and stays untouched.
@@ -1804,6 +1815,11 @@ export function PhysicsPaintStudio() {
   }, []);
   const handleRotoKeyRailDragRejected = useCallback((reason?: string, detail?: string) => {
     const message = reason ?? 'Key Rail move unavailable.';
+    setApplyMessage(message);
+    console.error('[PhysicsPaintStudio] physical edit:', detail ?? message);
+  }, []);
+  const handleRotoPushDragRejected = useCallback((reason?: string, detail?: string) => {
+    const message = reason ?? 'Push unavailable.';
     setApplyMessage(message);
     console.error('[PhysicsPaintStudio] physical edit:', detail ?? message);
   }, []);
@@ -2147,6 +2163,9 @@ export function PhysicsPaintStudio() {
         // full resolver detail to the surviving diagnostic channel, mirroring
         // the coordinator's logDiagnostic console style.
         onRotoGroupDragRejected: handleRotoGroupDragRejected,
+        // 43.5-05: push rejection copy publisher — the same status channel the
+        // Key Rail / Group rejections use.
+        onRotoPushDragRejected: handleRotoPushDragRejected,
         rotoScript,
         statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
         onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,

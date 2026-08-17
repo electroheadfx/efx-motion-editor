@@ -62,6 +62,7 @@ function actions() {
     toggleOnion: vi.fn(),
     adjustOnionCount: vi.fn(),
     selectAdjacentRotoKey: vi.fn(),
+    selectAllRotoKeys: vi.fn(),
     collapseRotoSelection: vi.fn(),
     closeToolboxPopover: vi.fn(),
     disarmPushTool: vi.fn(),
@@ -106,6 +107,9 @@ function dispatch(
 beforeEach(() => {
   vi.stubGlobal('HTMLElement', TestHTMLElement);
   vi.stubGlobal('Element', TestHTMLElement);
+  // Reset the session-only armed-Push module so every test starts disarmed
+  // (D-19 — armed state never persists between tests either).
+  disarmPushTool();
 });
 
 afterEach(() => {

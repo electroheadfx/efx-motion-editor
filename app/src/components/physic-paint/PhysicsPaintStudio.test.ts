@@ -162,8 +162,9 @@ describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)'
     for (const deferredSurface of [
       'Update Action from Group Frame',
       'Relink Group',
-      'Push Right',
-      'Push Left',
+      // 'Push Right' / 'Push Left' were removed from this deferred list by
+      // 43.5-05 — the directional Push tools are now an accepted armed-tool
+      // surface in the strip's bottom action row.
       'Key Group',
       'Scissor Group',
       'Action Content Editor',

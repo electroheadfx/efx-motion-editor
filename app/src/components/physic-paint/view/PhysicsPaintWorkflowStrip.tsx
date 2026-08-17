@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, ArrowLeftFromLine, ArrowRightFromLine, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
 
 import type { ComponentChildren, RefObject } from 'preact';
 import { createPortal, memo } from 'preact/compat';
@@ -38,6 +38,8 @@ import {
   type PhysicPaintRotoGroupFrameTarget,
 } from '../roto/physicsPaintRotoGroupLifecycle';
 import {
+  clampPhysicPaintPushDestination,
+  derivePhysicPaintPushSet,
   resolvePhysicPaintRotoGroupEffectiveEnd,
   type PhysicPaintRotoGroupDragClampInput,
   type PhysicPaintRotoKeyRailDragClampInput,
@@ -57,10 +59,20 @@ import type {
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import { PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
 import { PhysicsPaintKeyRail } from './PhysicsPaintKeyRail';
+import {
+  disarmPushTool,
+  getArmedPushToolDirection,
+  togglePushTool,
+  type PushToolDirection,
+} from './physicsPaintPushArmedTool';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 import { shouldRestoreOrphanedKeyRailFocus } from './physicsPaintKeyRailFocus';
 import type { GroupRailDragPreviewState } from '../hooks/usePhysicsPaintGroupRailDrag';
 import type { KeyRailDragPreviewState } from '../hooks/usePhysicsPaintKeyRailDrag';
+import {
+  usePhysicsPaintPushDrag,
+  type PushDragSessionApi,
+} from '../hooks/usePhysicsPaintPushDrag';
 import {
   projectPhysicsPaintGroupProductReason,
   type PhysicsPaintLoopClipPresentation,
@@ -73,6 +85,8 @@ import type {
   RotoKeyRailDragPublication,
   RotoKeyRailSelection,
   RotoPhysicalTimelineActionBundle,
+  RotoPushIntentDescriptor,
+  RotoPushPublication,
 } from '../hooks/useRotoTimelineActions';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
@@ -81,6 +95,13 @@ const GENERATED_ROTO_DISABLED_STATUS_TEMPLATE = 'Generated frame {frame} is rend
 const INTERPOLATION_ENABLED_STATUS = 'Generated in-betweens on — render-only frames refresh from real keys.';
 const INTERPOLATION_DISABLED_STATUS = 'Generated in-betweens off — real Roto keys only.';
 const ROTO_KEY_BUSY_STATUS_TEMPLATE = 'Finish the current key action before using key tools.';
+/**
+ * Internal zero-delta drop sentinel (43.5-05, D-15): a release that returned
+ * to the origin publishes NOTHING — the onRejected port filters it silently.
+ * Never surfaced as product copy; the resolver's mapped no-space copy owns the
+ * real rejection strings.
+ */
+const PUSH_DROP_NOOP = 'push-drop-noop';
 type RotoKeyUtilityAction = 'insert' | 'duplicate' | 'copy' | 'paste' | 'delete';
 export interface PhysicsPaintWorkflowRotoKeyState {
   actionAvailability: RotoKeyUtilityActionState;
@@ -228,6 +249,10 @@ export interface PhysicsPaintWorkflowStripProps {
   onSelectRotoKeyRail?: (selection: RotoKeyRailSelection) => void;
   /** Key Rail rejection copy publisher for the shared status capsule. */
   onRotoKeyRailDragRejected?: (reason?: string, detail?: string) => void;
+  /** 43.5-05: Push rejection copy publisher (status channel). Fires on a
+   *  release-time resolver rejection; zero-delta no-op drops are filtered
+   *  inside the strip (D-15) and never reach this channel. */
+  onRotoPushDragRejected?: (reason?: string, detail?: string) => void;
   /** Accepted parent boundary used by the canonical Key Rail clamp. */
   rotoParentEndExclusive?: number;
   /** Existing Studio-local Loop Edit controller port (D-37/D-39). */
@@ -1161,6 +1186,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     : keyUtilitiesDisabledByBusyState && physicalActions?.canSelectAllKeys.value
       ? ROTO_KEY_BUSY_STATUS_TEMPLATE
       : physicalActions?.selectAllKeysDisabledReason.value ?? 'Select all keys is unavailable.';
+  // Directional Push tools (43.5-05, D-18): disabled under mutation lock /
+      // busy states — the existing mapped key-tool lock reason verbatim.
+  const pushToolDisabled = keyUtilitiesDisabledByBusyState || !physicalActions || !physicalDragAvailable;
+  const pushToolDisabledReason = pushToolDisabled ? ROTO_KEY_BUSY_STATUS_TEMPLATE : null;
+  const pushRightArmedClass = getArmedPushToolDirection() === 'right' ? ' physics-paint-push-tool-armed' : '';
+  const pushLeftArmedClass = getArmedPushToolDirection() === 'left' ? ' physics-paint-push-tool-armed' : '';
   const insertKeyTooltip = useStyledTooltip();
   const addKeyTooltip = useStyledTooltip();
   const duplicateKeyTooltip = useStyledTooltip();
@@ -1170,11 +1201,167 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const pasteKeyTooltip = useStyledTooltip();
   const deleteKeyTooltip = useStyledTooltip();
   const selectAllTooltip = useStyledTooltip();
+  const pushRightTooltip = useStyledTooltip();
+  const pushLeftTooltip = useStyledTooltip();
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
     for (const record of rotoKeyRecords) map.set(record.appFrame, record.keyId);
     return map;
   }, [rotoKeyRecords]);
+  // ── 43.5-05 directional Push armed-tool session wiring ─────────────────────
+  // The push session is gesture + presentation only; resolver/store/model enter
+  // exclusively through the session hook's injected ports (T-43.5-02). Armed
+  // state lives in the sibling session-only module (D-19). pushPaintTick
+  // re-renders the strip so the hook's internal presentation Signals are read
+  // fresh — the hook returns .value reads, and the tick subscribes the
+  // component to their changes (CLAUDE.md Preact rule: no useEffect-mirrored
+  // state).
+  const pushPaintTick = useSignal(0);
+  const pushSessionRef = useRef<{
+    direction: PushToolDirection;
+    anchor: { readonly kind: 'key' | 'loop'; readonly id: string } | null;
+    movedSetBounds: { readonly firstFrame: number; readonly lastEndExclusive: number };
+    proposedSignedDelta: number;
+    clampFailed: boolean;
+  } | null>(null);
+  const pushDragApiRef = useRef<PushDragSessionApi<RotoPushPublication> | null>(null);
+  // Frames inside any Group fragment map to the containing Group — a frame
+  // inside a Group targets the complete Group, never an implicit cut (D-07).
+  const pushLoopIdByAppFrame = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const range of loopResolutionContext?.ranges ?? []) {
+      for (let frame = range.placementStart; frame < range.effectiveEnd; frame += 1) {
+        if (!map.has(frame)) map.set(frame, range.loopId);
+      }
+    }
+    return map;
+  }, [loopResolutionContext]);
+  const resolvePushAnchor = useCallback(
+    (frame: number): { readonly kind: 'key' | 'loop'; readonly id: string } | null => {
+      const keyId = keyIdByAppFrame.get(frame) ?? null;
+      if (keyId !== null) return { kind: 'key', id: keyId };
+      const loopId = pushLoopIdByAppFrame.get(frame) ?? null;
+      if (loopId !== null) return { kind: 'loop', id: loopId };
+      return null;
+    },
+    [keyIdByAppFrame, pushLoopIdByAppFrame],
+  );
+  const pushDragApi = usePhysicsPaintPushDrag<RotoPushPublication>({
+    projectDestination: ({ originClientX, clientX }) => {
+      const direction = pushSessionRef.current?.direction ?? 'right';
+      const raw = clientX - originClientX;
+      // Directional-only projection: reverse travel yields 0, never a
+      // reverse-sign clamp failure (the resolver clamp scans toward 0).
+      return direction === 'right' ? Math.max(0, raw) : Math.min(0, raw);
+    },
+    clampDestination: (proposedDeltaFrames) => {
+      const session = pushSessionRef.current;
+      if (!session || session.anchor === null) return { deltaFrames: 0, blockedEdge: null };
+      const outer: 'right' | 'left' = session.direction === 'right' ? 'right' : 'left';
+      const clampResult = clampPhysicPaintPushDestination({
+        direction: session.direction,
+        proposedDeltaFrames,
+        movedSetBounds: session.movedSetBounds,
+        capacity: frameCells.length,
+      });
+      session.proposedSignedDelta = proposedDeltaFrames;
+      if (!clampResult.ok) {
+        // Zero valid movement: forward the PROPOSED (nonzero) delta to prepare
+        // so the resolver produces the no-space copy — never the D-15
+        // zero-delta no-change copy. preview-is-the-commit (D-14) still holds:
+        // the resolver clamp is the single delta authority.
+        session.clampFailed = true;
+        return { deltaFrames: 0, blockedEdge: outer };
+      }
+      session.clampFailed = false;
+      return {
+        deltaFrames: clampResult.deltaFrames,
+        blockedEdge: clampResult.deltaFrames === proposedDeltaFrames ? null : outer,
+      };
+    },
+    prepareAtDestination: (clampedDeltaFrames) => {
+      const session = pushSessionRef.current;
+      if (!session || session.anchor === null) return { ok: false, reason: 'push-unavailable' };
+      const deltaToPrepare = session.clampFailed
+        ? Math.abs(session.proposedSignedDelta)
+        : Math.abs(clampedDeltaFrames);
+      // Release returned to the origin: publish nothing (D-15). The no-op
+      // sentinel is filtered by onRejected below and never surfaces as copy.
+      if (!session.clampFailed && deltaToPrepare === 0) return { ok: false, reason: PUSH_DROP_NOOP };
+      const anchor = session.anchor;
+      const descriptor: RotoPushIntentDescriptor = {
+        direction: session.direction,
+        deltaFrames: deltaToPrepare,
+        ...(anchor.kind === 'key' ? { anchorKeyId: anchor.id } : { anchorLoopId: anchor.id }),
+      };
+      return physicalActions?.prepareRotoPush(descriptor) ?? { ok: false, reason: 'push-unavailable' };
+    },
+    onDropCommit: (publication) => physicalActions?.commitRotoPush(publication) ?? Promise.resolve(false),
+    onCancel: () => {
+      // A cancelled drag (Escape/pointercancel/lostpointercapture) disarms the
+      // tool; a rejected drop keeps it armed (UI-SPEC).
+      disarmPushTool();
+    },
+    onRejected: (reason, detail) => {
+      if (reason === PUSH_DROP_NOOP) return;
+      props.onRotoPushDragRejected?.(reason, detail);
+    },
+    onPreviewChange: () => {
+      pushPaintTick.value += 1;
+    },
+    clearClickSequence: () => {},
+    windowLike: undefined,
+  });
+  pushDragApiRef.current = pushDragApi;
+  // Lane capture-phase pointer-down: the armed push session wins over the
+  // cell/rail drag handlers below it (PUSH-08 — push originates exclusively
+  // from armed state). Resolution is UI-derived anchor only; set membership,
+  // attachment, and straddle derive from canonical facts in the resolver
+  // (T-43.5-02, Pitfall 4/6).
+  const handleLanePushPointerDownCapture = useCallback((event: PointerEvent) => {
+    const direction = getArmedPushToolDirection();
+    if (direction === null) return;
+    if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+    const laneElement = timelineContentRef.current;
+    if (!laneElement || frameCells.length === 0) return;
+    const relativeX = event.clientX - laneElement.getBoundingClientRect().left;
+    const frame = Math.floor(relativeX / ROTO_CELL_WIDTH_PX);
+    if (frame < 0 || frame >= frameCells.length) return;
+    const anchor = resolvePushAnchor(frame);
+    if (anchor === null) return;
+    const setResult = derivePhysicPaintPushSet({
+      ...(anchor.kind === 'key' ? { anchorKeyId: anchor.id } : { anchorLoopId: anchor.id }),
+      direction,
+      // Canonical order — mirror the strip's keyRailSegments derivation so the
+      // preflight and the resolver branch agree on the same ordered identities.
+      identities: [...rotoKeyRecords]
+        .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId)),
+      loopRanges: loopResolutionContext?.ranges ?? [],
+      loopClips: props.rotoLoopClips ?? [],
+      incomingInterpolationBreakKeyIds,
+    });
+    // Empty/gap anchor or a straddled anchor never starts a drag (D-16).
+    if (!setResult.ok || setResult.straddle !== null) return;
+    pushSessionRef.current = {
+      direction,
+      anchor,
+      movedSetBounds: setResult.movedSetBounds,
+      proposedSignedDelta: 0,
+      clampFailed: false,
+    };
+    pushDragApiRef.current?.onPointerDown(event);
+  }, [frameCells, resolvePushAnchor, rotoKeyRecords, loopResolutionContext, props.rotoLoopClips, incomingInterpolationBreakKeyIds]);
+
+  const handleLanePushClickCapture = useCallback((event: MouseEvent) => {
+    // Swallow the browser click that follows a committed push drop. The
+    // session hook's suppression arms only past the 4px threshold, so a
+    // sub-threshold plain click passes through unsuppressed and normal frame
+    // navigation proceeds with the tool still armed (D-09).
+    if (pushDragApiRef.current?.consumeClickSuppression()) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, []);
   // Controller-owned selection set (37-02; D-05): read-only here, never
   // reordered, never derived from frames or DOM order.
   const rotoSelectedKeyIdSet = useMemo(() => new Set(props.rotoSelectedKeyIds ?? []), [props.rotoSelectedKeyIds]);
@@ -1863,8 +2050,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     target.addEventListener('pointercancel', handlePointerUp);
   }
 
+  const armedPushDirection = getArmedPushToolDirection();
   return (
-    <section class="physics-paint-workflow-strip" aria-label="Physics Paint workflow strip">
+    <section
+      class={`physics-paint-workflow-strip${armedPushDirection === 'right' ? ' physics-paint-push-armed-right' : armedPushDirection === 'left' ? ' physics-paint-push-armed-left' : ''}`}
+      data-push-paint-tick={pushPaintTick.value}
+      aria-label="Physics Paint workflow strip"
+    >
       <PhysicsPaintWorkflowStaticChrome
         currentFrame={currentFrameSignal}
         capsuleText={capsuleTextSignal}
@@ -1912,6 +2104,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             <div
               ref={timelineContentRef}
               class="physics-paint-lane"
+              onPointerDownCapture={handleLanePushPointerDownCapture}
+              onClickCapture={handleLanePushClickCapture}
               style={{
                 width: `${rotoLaneWidthPx}px`,
                 minWidth: `${rotoLaneWidthPx}px`,
@@ -2114,7 +2308,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               </div>
             </div>
         </div>
-        <div class="physics-paint-roto-action-row">
+        <div
+          class="physics-paint-roto-action-row"
+          onClickCapture={(event) => {
+            // D-06/D-20: ANY other toolbar action disarms an armed Push tool —
+            // except the Push buttons themselves, which own the arm/disarm
+            // toggle. The Push pill lives in this row, so the guard is scoped
+            // to the push-button class only.
+            if (event.target instanceof Element && !event.target.closest('.physics-paint-push-tool-button')) {
+              disarmPushTool();
+            }
+          }}
+        >
               <div class="physics-paint-roto-key-identity" role="group" aria-label={`Roto layer ${props.workflowLabel ?? 'PPaint'} key ${props.currentFrame}`}>
                 <span class="physics-paint-roto-key-layer">{props.workflowLabel ?? 'PPaint'}</span>
                 <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
@@ -2370,6 +2575,66 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={selectAllTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy('Select all keys', selectAllDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+              </div>
+              <div class="physics-paint-push-tool-group" role="group" aria-label="Directional Push tools">
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={pushRightTooltip.onPointerEnter} onPointerLeave={pushRightTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class={`physics-paint-roto-key-icon-button physics-paint-push-tool-button${pushRightArmedClass}`}
+                    aria-label="Push Right"
+                    aria-pressed={getArmedPushToolDirection() === 'right' ? 'true' : 'false'}
+                    aria-disabled={pushToolDisabled ? 'true' : undefined}
+                    aria-describedby={pushToolDisabled ? 'roto-key-action-reason-push-right' : undefined}
+                    onFocus={pushRightTooltip.onFocus}
+                    onBlur={pushRightTooltip.onBlur}
+                    onClick={() => {
+                      pushRightTooltip.hide();
+                      if (pushToolDisabled) return;
+                      togglePushTool('right');
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && pushToolDisabled) event.preventDefault();
+                    }}
+                  >
+                    <ArrowRightFromLine size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Push Right</span>
+                  </button>
+                  {pushToolDisabled ? (
+                    <span id="roto-key-action-reason-push-right" class="physics-paint-sr-only">{ROTO_KEY_BUSY_STATUS_TEMPLATE}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={pushRightTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy('Push the anchor Rail and everything after it to the right.', pushToolDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={pushLeftTooltip.onPointerEnter} onPointerLeave={pushLeftTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class={`physics-paint-roto-key-icon-button physics-paint-push-tool-button${pushLeftArmedClass}`}
+                    aria-label="Push Left"
+                    aria-pressed={getArmedPushToolDirection() === 'left' ? 'true' : 'false'}
+                    aria-disabled={pushToolDisabled ? 'true' : undefined}
+                    aria-describedby={pushToolDisabled ? 'roto-key-action-reason-push-left' : undefined}
+                    onFocus={pushLeftTooltip.onFocus}
+                    onBlur={pushLeftTooltip.onBlur}
+                    onClick={() => {
+                      pushLeftTooltip.hide();
+                      if (pushToolDisabled) return;
+                      togglePushTool('left');
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && pushToolDisabled) event.preventDefault();
+                    }}
+                  >
+                    <ArrowLeftFromLine size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Push Left</span>
+                  </button>
+                  {pushToolDisabled ? (
+                    <span id="roto-key-action-reason-push-left" class="physics-paint-sr-only">{ROTO_KEY_BUSY_STATUS_TEMPLATE}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={pushLeftTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy('Push everything before the anchor Rail, and the anchor, to the left.', pushToolDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
               </div>
