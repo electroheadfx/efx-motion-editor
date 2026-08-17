@@ -2210,7 +2210,10 @@ describe('useRotoTimelineActions Push commit + stale authority (43.5-03 Task 2)'
     };
     expect(await actions.physicalActions.commitRotoPush(kindMismatch)).toBe(false);
 
-    const intentMismatch = { ...publication, intent: { ...publication.intent, kind: 'move-group' as const } };
+    const intentMismatch = {
+      ...publication,
+      intent: { ...publication.intent, kind: 'move-group' as const },
+    } as unknown as import('./useRotoTimelineActions').RotoPushPublication;
     expect(await actions.physicalActions.commitRotoPush(intentMismatch)).toBe(false);
 
     const emptyLaunch = { ...publication, expectedLaunch: { operationId: '', layerId: '' } };

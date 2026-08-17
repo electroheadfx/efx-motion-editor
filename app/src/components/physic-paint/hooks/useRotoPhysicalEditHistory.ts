@@ -213,6 +213,7 @@ function isOrdinaryOperationKind(
     || kind === 'delete-key-rail'
     || kind === 'scissor-key-rail'
     || kind === 'move-key-rail'
+    || kind === 'push-rails'
     || kind === 'play-script'
     || kind === 'paint-group-frame'
     || kind === 'delete-group-frame'

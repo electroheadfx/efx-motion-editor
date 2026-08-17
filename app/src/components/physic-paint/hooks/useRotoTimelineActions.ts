@@ -908,6 +908,16 @@ export interface RotoPhysicalTimelineActionBundle {
    * locked copy family needs (moved Rail count, clamped delta, ranges, gap).
    */
   readonly prepareRotoPush: (descriptor: RotoPushIntentDescriptor) => RotoPushPreparationResult;
+  /**
+   * Submit the exact retained Push publication to the acknowledged physical
+   * coordinator (T-43.5-01). Verifies wrapper coherence (operation kind, intent
+   * kind, non-empty launch tuple) and the break-aware proposal version against
+   * current state — stale authority fails closed with zero mutation — then
+   * passes the same proposal object plus captured expected launch tuple to
+   * `executePhysicalEdit` without resolver or mapping recomputation, publishing
+   * the accepted copy from the .then continuation.
+   */
+  readonly commitRotoPush: (publication: RotoPushPublication) => Promise<boolean>;
   /** Reactive Drag availability derived from selection + pending authority. */
   readonly canDragKey: ReadonlySignal<boolean>;
   /** Reactive Drag disabled reason, or null when eligible. */
@@ -2204,6 +2214,54 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     };
   }, [input]);
 
+  const commitRotoPush = useCallback(async (publication: RotoPushPublication): Promise<boolean> => {
+    if (!input.executePhysicalEdit || !input.getRotoKeyRecords || !input.getRotoInterpolationState) return false;
+    // Wrapper coherence (T-43.5-01): operation kind, intent kind, and a
+    // non-empty launch tuple. No resolver or mapping recomputation — the exact
+    // retained objects pass through (D-09).
+    const intent = publication.intent;
+    if (publication.proposal.status.operationKind !== 'push-rails' || intent.kind !== 'push-rails') return false;
+    if (publication.expectedLaunch.operationId.length === 0 || publication.expectedLaunch.layerId.length === 0) return false;
+    const currentLaunch = input.getLaunchContext?.() ?? null;
+    if (!currentLaunch) return false;
+    try {
+      const currentProposalVersion = buildPushProposalVersion(
+        input.getRotoKeyRecords(),
+        input.getRotoInterpolationState(),
+        input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+        input.getIncomingInterpolationBreakKeyIds?.() ?? [],
+        currentLaunch,
+      );
+      if (currentProposalVersion !== publication.proposalVersion) return false;
+    } catch {
+      return false;
+    }
+    // Publish the accepted copy through the single mapper from the .then
+    // continuation — the same pattern the Group-drag commit uses, NOT
+    // runPhysicalAction (its kind union is a bounded Extract that excludes
+    // push-rails). Post-commit stability: the deterministic anchor selection
+    // and the cursor are forwarded unchanged from the publication.
+    const accepted = await input.executePhysicalEdit({
+      proposal: publication.proposal,
+      expectedLaunch: publication.expectedLaunch,
+      operationKind: 'push-rails',
+      intent,
+      selectedKeyId: publication.proposal.selectedKeyId,
+      selectedAppFrame: publication.proposal.selectedAppFrame,
+    });
+    if (accepted) {
+      input.publishStatus?.(mapRotoPushProductReason({
+        kind: 'accepted',
+        direction: publication.intent.direction,
+        movedRailCount: publication.movedRailCount,
+        signedDeltaFrames: publication.clampedDeltaFrames,
+        afterRange: publication.afterRange,
+        gapInterval: publication.gapInterval,
+      }));
+    }
+    return accepted;
+  }, [input]);
+
   const setForceSpacingInput = useCallback((value: string) => {
     forceSpacingInput.value = value;
   }, [forceSpacingInput]);
@@ -2331,6 +2389,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     prepareKeyRailDrag,
     commitKeyRailDrag,
     prepareRotoPush,
+    commitRotoPush,
     canDragKey,
     dragDisabledReason,
     forceSpacingInput,
@@ -2342,7 +2401,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     addEmptyKeyDisabledReason,
     canSelectAllKeys,
     selectAllKeysDisabledReason,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,
