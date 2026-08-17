@@ -393,7 +393,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 43.5-01-PLAN.md — push-rails intent transport + resolver directional authority (set derivation, clamp, straddle guard, gap break derivation)
+- [x] 43.5-01-PLAN.md — push-rails intent transport + resolver directional authority (set derivation, clamp, straddle guard, gap break derivation)
 - [ ] 43.5-02-PLAN.md — ToolCase toolbox popover relocation + keyboard routing refinement (Interpolation + Key Spacing, live Blend badge)
 
 **Wave 2** *(blocked on Wave 1 completion)*

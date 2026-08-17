@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-current_phase: 44
-current_phase_name: Integrated UAT + Signed Release
+current_phase: 43.5
+current_phase_name: timeline-toolbox-and-directional-push-tools
 status: executing
-stopped_at: Phase 43.5 UI-SPEC approved
-last_updated: "2026-08-17T12:18:11.423Z"
-last_activity: 2026-08-16
-last_activity_desc: "Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics"
+stopped_at: Completed 43.5-01-PLAN.md
+last_updated: "2026-08-17T14:05:15.784Z"
+last_activity: 2026-08-17
+last_activity_desc: Phase 43.5 execution started
 progress:
   total_phases: 11
   completed_phases: 8
   total_plans: 84
-  completed_plans: 78
+  completed_plans: 79
   percent: 73
 ---
 
@@ -29,7 +29,7 @@ stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-16
 last_activity_desc: "Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics"
-progress:
+progress:[█████████░] 94%
   total_phases: 10
   completed_phases: 7
   total_plans: 78
@@ -44,14 +44,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 44 — Integrated UAT + Signed Release
+**Current focus:** Phase 43.5 — timeline-toolbox-and-directional-push-tools
 
 ## Current Position
 
-Phase: 44 — Integrated UAT + Signed Release
-Plan: Not started
+Phase: 43.5 (timeline-toolbox-and-directional-push-tools) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-08-16 — Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics
+Last activity: 2026-08-17 — Phase 43.5 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -251,6 +251,7 @@ Progress: [██████████] 99%
 | Phase 43.4 P06 | 17min | 3 tasks | 8 files |
 | Phase 43.4 P07 | 8min | 2 tasks | 9 files |
 | Phase 43.4 P08 | 2 tasks | 27 commits | history/persistence proofs + approved native UAT |
+| Phase 43.5-timeline-toolbox-and-directional-push-tools P01 | 75 | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -467,6 +468,11 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: Plan 43.4-07: Preserve internal Group/loopClip architecture while migrating only enumerated shared Rail copy.
 - [Phase ?]: Plan 43.4-07: Resolve deletion status mode from canonical rotoLoopClips rather than widening the mode-free lifecycle execution seam.
 - [Phase ?]: Plan 43.4-07: Preserve the UI-SPEC-locked Scissor Group-domain sentence because it is not a Rail type label.
+- [Phase ?]: derivePhysicPaintPushSet is one shared pure export consumed by the resolver branch now and by the strip hover preflight port in plan 05, so preflight and rejection can never disagree (D-17, Pitfall 4)
+- [Phase ?]: clampPhysicPaintPushDestination is the ONLY push delta authority; the dispatch branch commits its clamped delta (preview-is-the-commit, D-14), and ok:false maps to no-free-space-in-direction
+- [Phase ?]: Push translates EVERY moved Group rail's clip (source-attached AND duplicated placements move placement-only per 43.3 algebra) so changed reflects placement deltas (Pitfall 5)
+- [Phase ?]: A zero-delta push publishes no clip translation: nextLoopClips stays null so the prepare layer's changed === false maps to the no-publish result
+- [Phase ?]: Straddle verdict derives from canonical attachment (frameByKeyId.get(sourceKeyIds[0]) === placementStart) and sourceCycleId only — never caller-supplied flags (Pitfall 6); duplicated placements never straddle (D-16, 43.3)
 
 ### Pending Todos
 
@@ -669,9 +675,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-17T10:57:14.867Z
-Stopped at: Phase 43.5 UI-SPEC approved
-Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/43.5-timeline-toolbox-and-directional-push-tools/43.5-UI-SPEC.md
+Last session: 2026-08-17T14:05:01.686Z
+Stopped at: Completed 43.5-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
