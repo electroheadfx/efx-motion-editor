@@ -1,6 +1,7 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
 
-import { memo } from 'preact/compat';
+import type { ComponentChildren, RefObject } from 'preact';
+import { createPortal, memo } from 'preact/compat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useSignal, type Signal } from '@preact/signals';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
@@ -491,11 +492,99 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   mutationLocked: boolean;
 }
 
+/**
+ * 43.5-02 (D-01/D-05): the ToolCase toolbox popover — a Studio-local, non-modal
+ * dialog portaled to document.body so the shared horizontal scroller can never
+ * clip it (RESEARCH Open Question 3). Renders entirely above the workflow strip
+ * with its bottom edge 4px above the strip top, left edge aligned to the anchor
+ * button and clamped 8px inside the timeline viewport. No focus trap, no
+ * backdrop, no automatic focus move; dismissal is handled by the owning chrome
+ * (outside pointerdown / Escape window capture listeners) so the dispatcher
+ * keeps its layering guarantee. Must stay transform/filter-free: the relocated
+ * interpolation tooltip is position:fixed and must keep the viewport as its
+ * containing block.
+ */
+function PhysicsPaintToolboxPopover(props: {
+  anchorRef: RefObject<HTMLSpanElement>;
+  open: boolean;
+  ariaLabel: string;
+  children: ComponentChildren;
+}) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    const anchor = props.anchorRef.current;
+    if (!props.open || !panel || !anchor) return;
+    const panelSize = { width: panel.offsetWidth, height: panel.offsetHeight };
+    const anchorRect = anchor.getBoundingClientRect();
+    const strip = anchor.closest('.physics-paint-workflow-strip');
+    const stripRect = strip ? strip.getBoundingClientRect() : anchorRect;
+    const viewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth;
+    const viewportMargin = 8;
+    const gapAboveStrip = 4;
+    const left = Math.min(
+      Math.max(anchorRect.left, viewportMargin),
+      Math.max(viewportMargin, viewportWidth - panelSize.width - viewportMargin),
+    );
+    const top = Math.max(viewportMargin, stripRect.top - gapAboveStrip - panelSize.height);
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+    panel.style.visibility = 'visible';
+  });
+
+  if (!props.open) return null;
+  const panel = (
+    <div
+      ref={panelRef}
+      id="physics-paint-toolbox-popover"
+      class="physics-paint-toolbox-popover"
+      role="dialog"
+      aria-modal="false"
+      aria-label={props.ariaLabel}
+      style={{ visibility: 'hidden' }}
+    >
+      {props.children}
+    </div>
+  );
+  if (typeof document !== 'undefined') return createPortal(panel, document.body);
+  return panel;
+}
+
 function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticChromeProps) {
   recordPhysicsPaintPerformanceCounter('render.workflowStaticChrome');
   const closeTooltip = useStyledTooltip();
   const interpolationTooltip = useStyledTooltip();
   const audioPreviewTooltip = useStyledTooltip();
+  const toolboxTooltip = useStyledTooltip();
+  // 43.5-02 (D-01/D-02): toolbox popover toggle + self-contained dismissal.
+  // Outside pointerdown and Escape dismiss it via window capture-phase listeners
+  // registered ONLY while open; no focus trap, no backdrop, no automatic focus
+  // move. The Escape listener calls stopImmediatePropagation so popover dismissal
+  // wins over the Studio bubble-phase dispatcher's collapseRotoSelection
+  // (Pitfall 2: one Escape handles at most one layer).
+  const [toolboxOpen, setToolboxOpen] = useState(false);
+  const toolboxAnchorRef = useRef<HTMLSpanElement | null>(null);
+  const closeToolboxPopover = useCallback(() => setToolboxOpen(false), []);
+  useEffect(() => {
+    if (!toolboxOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const anchor = toolboxAnchorRef.current;
+      if (anchor && event.target instanceof Node && anchor.contains(event.target)) return;
+      closeToolboxPopover();
+    };
+    const onEscapeKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopImmediatePropagation();
+      closeToolboxPopover();
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onEscapeKeyDown, true);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onEscapeKeyDown, true);
+    };
+  }, [toolboxOpen]);
   function handleRotoPlaybackFpsInput(event: Event) {
     const value = Number((event.currentTarget as HTMLInputElement).value);
     if (Number.isFinite(value)) props.onPlaybackFpsChange?.(value);
@@ -543,12 +632,38 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         <label class="physics-paint-roto-fps-control"><span>fps</span><input type="number" min="1" max="60" step="0.5" value={props.playbackFps || props.projectFps || 1} aria-label="Cached Roto playback frames per second" disabled={!props.ready} onInput={handleRotoPlaybackFpsInput} /></label>
       </div>
       <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} />
+      <span
+        class="physics-paint-roto-key-icon-action physics-paint-toolbox-button-anchor"
+        ref={toolboxAnchorRef}
+        onPointerEnter={toolboxTooltip.onPointerEnter}
+        onPointerLeave={toolboxTooltip.onPointerLeave}
+      >
+        <button
+          type="button"
+          class="physics-paint-roto-key-icon-button physics-paint-toolbox-toggle"
+          aria-label="Timeline tools"
+          aria-haspopup="dialog"
+          aria-expanded={toolboxOpen}
+          aria-controls={toolboxOpen ? 'physics-paint-toolbox-popover' : undefined}
+          onFocus={toolboxTooltip.onFocus}
+          onBlur={toolboxTooltip.onBlur}
+          onClick={() => { toolboxTooltip.hide(); setToolboxOpen((open) => !open); }}
+        >
+          <ToolCase size={18} aria-hidden="true" />
+          <span class="physics-paint-roto-key-icon-label">Tools</span>
+        </button>
+        <PhysicsPaintStyledTooltip visible={toolboxTooltip.visible} region="bottom">
+          {buildGuardedActionTooltipCopy('Open timeline tools — Interpolation and Key Spacing.', null)}
+        </PhysicsPaintStyledTooltip>
+      </span>
       {props.onInterpolationEnabledChange ? (
-        <div class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls" role="group" aria-label="Roto interpolation settings" data-enabled={props.interpolationEnabled ? 'true' : 'false'} data-pending={props.interpolationPending ? 'true' : 'false'} onPointerEnter={interpolationTooltip.onPointerEnter} onPointerLeave={interpolationTooltip.onPointerLeave}>
-          <button type="button" class={`physics-paint-roto-interpolation-toggle ${props.interpolationEnabled ? 'active' : ''}`} aria-label={props.interpolationEnabled ? 'Disable generated in-betweens' : 'Enable generated in-betweens'} aria-pressed={props.interpolationEnabled} aria-busy={props.interpolationPending ? 'true' : undefined} disabled={props.interpolationControlsDisabled} onClick={() => { if (props.mutationLocked || props.interpolationPending) return; props.onInterpolationEnabledChange?.(!props.interpolationEnabled); }}><Blend size={15} aria-hidden="true" /></button>
-          <label class="physics-paint-roto-interpolation-mode"><select class="physics-paint-roto-interpolation-select" value={props.interpolationMode} aria-label="Interpolation mode" disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange} onChange={handleInterpolationModeChange}><option value="duplicate">Frame duplicate</option><option value="blend">Frame blending</option></select></label>
-          <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} region="top">{props.interpolationStatus}</PhysicsPaintStyledTooltip>
-        </div>
+        <PhysicsPaintToolboxPopover anchorRef={toolboxAnchorRef} open={toolboxOpen} ariaLabel="Timeline tools">
+          <div class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls" role="group" aria-label="Roto interpolation settings" data-enabled={props.interpolationEnabled ? 'true' : 'false'} data-pending={props.interpolationPending ? 'true' : 'false'} onPointerEnter={interpolationTooltip.onPointerEnter} onPointerLeave={interpolationTooltip.onPointerLeave}>
+            <button type="button" class={`physics-paint-roto-interpolation-toggle ${props.interpolationEnabled ? 'active' : ''}`} aria-label={props.interpolationEnabled ? 'Disable generated in-betweens' : 'Enable generated in-betweens'} aria-pressed={props.interpolationEnabled} aria-busy={props.interpolationPending ? 'true' : undefined} disabled={props.interpolationControlsDisabled} onClick={() => { if (props.mutationLocked || props.interpolationPending) return; props.onInterpolationEnabledChange?.(!props.interpolationEnabled); }}><Blend size={15} aria-hidden="true" /></button>
+            <label class="physics-paint-roto-interpolation-mode"><select class="physics-paint-roto-interpolation-select" value={props.interpolationMode} aria-label="Interpolation mode" disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange} onChange={handleInterpolationModeChange}><option value="duplicate">Frame duplicate</option><option value="blend">Frame blending</option></select></label>
+            <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} region="top">{props.interpolationStatus}</PhysicsPaintStyledTooltip>
+          </div>
+        </PhysicsPaintToolboxPopover>
       ) : null}
       <div class="physics-paint-state-actions">
         <span class="physics-paint-roto-key-icon-action" onPointerEnter={closeTooltip.onPointerEnter} onPointerLeave={closeTooltip.onPointerLeave}>

@@ -3697,3 +3697,32 @@ button.destructive {
     flex-wrap: wrap;
   }
 }
+
+/* ============================================================
+   43.5-02 — ToolCase toolbox popover (strictly additive)
+   D-01/D-05: Studio-local non-modal dialog portaled to
+   document.body, rendered entirely above the workflow strip
+   (bottom edge 4px above the strip top) so it never covers
+   rails/cells/spacing proxies. Must stay transform/filter/
+   perspective/contain-free: the relocated interpolation tooltip
+   is position:fixed and must keep the viewport as its
+   containing block (the panel's overflow never clips it).
+   ============================================================ */
+.physics-paint-toolbox-popover {
+  position: fixed;
+  z-index: 60;
+  min-width: 232px;
+  max-width: 280px;
+  max-height: 240px;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 16px;
+  border: 1px solid #58616b;
+  border-radius: 8px;
+  background: #20262d;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}

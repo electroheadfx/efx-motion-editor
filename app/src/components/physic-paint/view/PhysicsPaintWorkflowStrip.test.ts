@@ -553,7 +553,9 @@ describe('localized render contract', () => {
 describe('localized static and live Workflow regions', () => {
   it('isolates private static chrome behind compat memo and keeps live status narrow', () => {
     const code = source();
-    expect(code).toContain("import { memo } from 'preact/compat';");
+    // 43.5-02: the static chrome now also portals the toolbox popover to
+    // document.body, so createPortal shares the compat import line.
+    expect(code).toContain("import { createPortal, memo } from 'preact/compat';");
     expect(code).toContain('function PhysicsPaintWorkflowStaticChromeImpl(');
     expect(code).toContain('const PhysicsPaintWorkflowStaticChrome = memo(PhysicsPaintWorkflowStaticChromeImpl);');
     expect(code).toContain('function PhysicsPaintWorkflowLiveStatus(');

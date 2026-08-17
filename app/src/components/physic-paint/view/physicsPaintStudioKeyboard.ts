@@ -7,6 +7,8 @@ export interface PhysicsPaintStudioKeyboardState {
   mutationLocked: boolean;
   /** True when a real key is in the primary selection (43.4 defect 9 gate). */
   hasSelectedRotoKey: boolean;
+  /** True while the toolbox popover is open (role="dialog" aria-modal="false"). */
+  toolboxPopoverOpen?: boolean;
 }
 
 export interface PhysicsPaintStudioKeyboardActions {
@@ -23,6 +25,9 @@ export interface PhysicsPaintStudioKeyboardActions {
   deleteRotoKey?: () => void;
   selectAllRotoKeys?: () => void;
   collapseRotoSelection?: () => void;
+  /** Dismiss the toolbox popover; handled on Escape before collapseRotoSelection
+   *  so one Escape closes at most one layer (Pitfall 2). */
+  closeToolboxPopover?: () => void;
   /** 43.4 defect 9: with a real key selected, jump to the adjacent REAL KEY
    *  frame (never generated/interpolated/empty); no wrap at the first/last. */
   selectAdjacentRotoKey?: (direction: -1 | 1) => void;
@@ -39,7 +44,9 @@ export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolea
 function isPhysicsPaintRotoDeleteTarget(target: EventTarget | null): boolean {
   if (!isPhysicsPaintShortcutTarget(target)) return false;
   if (!(target instanceof Element)) return true;
-  if (target.ownerDocument.querySelector('[role="dialog"], [aria-modal="true"]')) return false;
+  // 43.5-02 (Pitfall 1): only a real modal suspends Delete/Backspace. The toolbox
+  // popover is role="dialog" aria-modal="false", so it must NOT suspend routing.
+  if (target.ownerDocument.querySelector('[aria-modal="true"]')) return false;
   if (target.closest('.physics-paint-roto-cell.current')) return true;
   // A selected Key Rail or Motion/Static Rail button is a valid delete target:
   // the selection-scope classifier (classifyRotoDeleteTarget) decides the
@@ -144,10 +151,17 @@ export function dispatchPhysicsPaintStudioKeyDown(
     && !event.altKey
     && !event.shiftKey
   ) {
-    // Escape-collapse (D-02): no modifiers, bubble-phase only. No new
-    // window-level or capture-phase listener — the drag session's existing
-    // capture listener already wins during gestures via
-    // stopImmediatePropagation, so drag-cancel keeps precedence (Pitfall 4).
+    // Escape layering (Pitfall 2): popover dismiss before collapseRotoSelection —
+    // one Escape handles at most one layer. No new window-level or capture-phase
+    // listener — the drag session's existing capture listener already wins during
+    // gestures via stopImmediatePropagation, so drag-cancel keeps precedence
+    // (Pitfall 4); the toolbox popover registers its own capture listener only
+    // while open, so the ordering here never competes with a live drag.
+    if (state.toolboxPopoverOpen && actions.closeToolboxPopover) {
+      event.preventDefault();
+      actions.closeToolboxPopover();
+      return;
+    }
     if (!actions.collapseRotoSelection) return;
     event.preventDefault();
     actions.collapseRotoSelection();

@@ -3,12 +3,16 @@ import {
   dispatchPhysicsPaintStudioKeyDown,
   findAdjacentRealKeyFrame,
   isPhysicsPaintShortcutTarget,
+  type PhysicsPaintStudioKeyboardState,
 } from './physicsPaintStudioKeyboard';
 
 interface TestTargetOptions {
   contentEditable?: boolean;
   closestSelectors?: string[];
+  /** A real modal (aria-modal="true") is present in the document. */
   modalOpen?: boolean;
+  /** The toolbox popover (role="dialog" aria-modal="false") is present. */
+  popoverOpen?: boolean;
 }
 
 class TestHTMLElement {
@@ -22,7 +26,11 @@ class TestHTMLElement {
     this.isContentEditable = options.contentEditable ?? false;
     this.closestSelectors = new Set(options.closestSelectors ?? []);
     this.ownerDocument = {
-      querySelector: () => options.modalOpen ? this as unknown as Element : null,
+      querySelector: (selector: string) => {
+        if (options.modalOpen && selector === '[aria-modal="true"]') return this as unknown as Element;
+        if (options.popoverOpen && selector === '[role="dialog"]') return this as unknown as Element;
+        return null;
+      },
     };
   }
 
@@ -48,6 +56,8 @@ function actions() {
     toggleOnion: vi.fn(),
     adjustOnionCount: vi.fn(),
     selectAdjacentRotoKey: vi.fn(),
+    collapseRotoSelection: vi.fn(),
+    closeToolboxPopover: vi.fn(),
   };
 }
 
@@ -73,7 +83,7 @@ function dispatch(
   key: string,
   target: EventTarget | null = null,
   overrides: Record<string, unknown> = {},
-  stateOverrides: Record<string, unknown> = {},
+  stateOverrides: Partial<PhysicsPaintStudioKeyboardState> = {},
 ) {
   const handlers = actions();
   const keyboardEvent = eventFor(key, target, overrides);
@@ -211,6 +221,77 @@ describe('Physics Paint Roto delete shortcuts', () => {
     );
 
     expect(keyboardEvent.preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe('Physics Paint toolbox popover shortcut routing (43.5-02)', () => {
+  it('routes Delete from a selected key while the non-modal popover is open', () => {
+    const target = new TestHTMLElement('button', {
+      closestSelectors: ['.physics-paint-roto-cell.current', 'button'],
+      popoverOpen: true,
+    });
+    const { handlers, preventDefault } = dispatch(
+      'Delete',
+      target as unknown as EventTarget,
+      {},
+      { toolboxPopoverOpen: true },
+    );
+
+    expect(handlers.deleteRotoKey).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it.each(['Backspace', 'Delete'])('keeps %s routing while the popover is open', (key) => {
+    const target = new TestHTMLElement('div', { popoverOpen: true });
+    const { handlers, preventDefault } = dispatch(
+      key,
+      target as unknown as EventTarget,
+      {},
+      { toolboxPopoverOpen: true },
+    );
+
+    expect(handlers.deleteRotoKey).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('still suspends Delete while a real modal (aria-modal=true) is open', () => {
+    const target = new TestHTMLElement('button', {
+      closestSelectors: ['.physics-paint-roto-cell.current', 'button'],
+      modalOpen: true,
+    });
+    const { handlers, preventDefault } = dispatch('Delete', target as unknown as EventTarget);
+
+    expect(handlers.deleteRotoKey).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('routes Cmd+Z undo while the popover is open', () => {
+    const target = new TestHTMLElement('div', { popoverOpen: true });
+    const { handlers, preventDefault } = dispatch(
+      'z',
+      target as unknown as EventTarget,
+      { metaKey: true },
+      { toolboxPopoverOpen: true },
+    );
+
+    expect(handlers.undo).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('Escape dismisses the popover before collapsing the selection (one Escape, one layer)', () => {
+    const { handlers, preventDefault } = dispatch('Escape', null, {}, { toolboxPopoverOpen: true });
+
+    expect(handlers.closeToolboxPopover).toHaveBeenCalledOnce();
+    expect(handlers.collapseRotoSelection).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('with the popover closed, Escape still collapses the selection', () => {
+    const { handlers, preventDefault } = dispatch('Escape');
+
+    expect(handlers.collapseRotoSelection).toHaveBeenCalledOnce();
+    expect(handlers.closeToolboxPopover).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledOnce();
   });
 });
 
