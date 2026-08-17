@@ -5,8 +5,8 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.5
 current_phase_name: timeline-toolbox-and-directional-push-tools
 status: executing
-stopped_at: Completed 43.5-01-PLAN.md
-last_updated: "2026-08-17T14:05:15.784Z"
+stopped_at: "43.5-02 smoke fix round: awaiting native UAT re-verify (fixes 1-4 committed)"
+last_updated: "2026-08-17T16:03:44.764Z"
 last_activity: 2026-08-17
 last_activity_desc: Phase 43.5 execution started
 progress:
@@ -473,6 +473,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: Push translates EVERY moved Group rail's clip (source-attached AND duplicated placements move placement-only per 43.3 algebra) so changed reflects placement deltas (Pitfall 5)
 - [Phase ?]: A zero-delta push publishes no clip translation: nextLoopClips stays null so the prepare layer's changed === false maps to the no-publish result
 - [Phase ?]: Straddle verdict derives from canonical attachment (frameByKeyId.get(sourceKeyIds[0]) === placementStart) and sourceCycleId only — never caller-supplied flags (Pitfall 6); duplicated placements never straddle (D-16, 43.3)
+- [Phase ?]: 43.5-02 smoke fix 1: outside-pointerdown dismiss classifies through every registered popover surface (anchor wrapper, portaled panel, portaled listbox); detached native-select targets never dismiss (BLOCKER).
+- [Phase ?]: 43.5-02 smoke fix 2: toolbox popover right-aligns to the Tools button right edge and clamps 8px inside the strip so it never covers the Actions sidebar lane.
+- [Phase ?]: 43.5-02 smoke fix 4: styled tooltips fire on hover only, or keyboard focus carrying a relatedTarget; programmatic/mouse focus never pops a pill; interpolation tooltip is suppressed across the popover open/close transition.
+- [Phase ?]: 43.5-02 smoke fix 3: toolbox popover uses the Apple liquid-glass surface (translucent dark bg + ::before backdrop blur/saturate, subtle light border, 12px radius, soft shadow), overriding the UI-SPEC T2 flat #20262D card; the panel stays filter-free so the relocated fixed interpolation tooltip keeps the viewport containing block.
 
 ### Pending Todos
 
@@ -675,8 +679,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-17T14:05:01.686Z
-Stopped at: Completed 43.5-01-PLAN.md
+Last session: 2026-08-17T16:03:44.734Z
+Stopped at: 43.5-02 smoke fix round: awaiting native UAT re-verify (fixes 1-4 committed)
 Resume file: None
 
 ## Operator Next Steps
