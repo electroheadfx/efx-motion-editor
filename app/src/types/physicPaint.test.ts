@@ -256,6 +256,30 @@ describe('physic paint payload contracts', () => {
     expect(serializePhysicPaintRotoPhysicalEditIntent(intents[6])).toBe('{"kind":"force-spacing","emptyFrames":1,"selectedKeyId":"key-A","scopeKeyIds":["key-A","key-B"],"linkedSourceSpacingScopes":[{"sourceCycleId":"5:key-A|5:key-B|5:key-C","sourceKeyIds":["key-A","key-B","key-C"],"selectedSourceKeyIds":["key-A","key-B"]}]}');
   });
 
+  it('strictly parses and canonically serializes the push-rails intent with XOR anchor and bounded delta', () => {
+    const intent = { kind: 'push-rails', direction: 'right', anchorKeyId: 'b0', deltaFrames: 5 } as const;
+    expect(isPhysicPaintRotoPhysicalEditIntent(intent)).toBe(true);
+    const serialized = serializePhysicPaintRotoPhysicalEditIntent(intent);
+    expect(serialized).toBe('{"kind":"push-rails","direction":"right","anchorKeyId":"b0","deltaFrames":5}');
+    const parsed: unknown = JSON.parse(serialized);
+    expect(isPhysicPaintRotoPhysicalEditIntent(parsed)).toBe(true);
+    if (!isPhysicPaintRotoPhysicalEditIntent(parsed)) throw new Error('Canonical push-rails intent must parse');
+    expect(serializePhysicPaintRotoPhysicalEditIntent(parsed)).toBe(serialized);
+
+    const loopIntent = { kind: 'push-rails', direction: 'left', anchorLoopId: 'loop-A', deltaFrames: 3 } as const;
+    expect(isPhysicPaintRotoPhysicalEditIntent(loopIntent)).toBe(true);
+    expect(serializePhysicPaintRotoPhysicalEditIntent(loopIntent)).toBe('{"kind":"push-rails","direction":"left","anchorLoopId":"loop-A","deltaFrames":3}');
+
+    // Extra key, unbounded ID, both anchors, neither anchor, negative/non-integer delta, unknown direction.
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, unknown: true })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, anchorKeyId: 'x'.repeat(257) })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, anchorLoopId: 'loop-A' })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'push-rails', direction: 'right', deltaFrames: 5 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, deltaFrames: -1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, deltaFrames: 1.5 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, direction: 'up' })).toBe(false);
+  });
+
   it('round-trips paste-key startsNewSegment and rejects a non-boolean flag', () => {
     const payload = { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 };
     const broken = { kind: 'paste-key', destinationAppFrame: 8, destinationKeyId: null, newKeyId: 'key-paint', clipboardPayload: payload, startsNewSegment: true } as const;

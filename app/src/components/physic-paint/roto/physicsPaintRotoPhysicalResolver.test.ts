@@ -4141,3 +4141,42 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
     });
   });
 });
+
+describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix translation)', () => {
+  const buildTwoKeyRails = (): readonly PhysicPaintRotoKeyIdentity[] => Object.freeze([
+    { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
+    { keyId: 'a3', appFrame: 3 }, { keyId: 'a4', appFrame: 4 }, { keyId: 'a5', appFrame: 5 },
+    { keyId: 'a6', appFrame: 6 }, { keyId: 'a7', appFrame: 7 }, { keyId: 'a8', appFrame: 8 },
+    { keyId: 'a9', appFrame: 9 },
+    { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 21 }, { keyId: 'b2', appFrame: 22 },
+    { keyId: 'b3', appFrame: 23 }, { keyId: 'b4', appFrame: 24 }, { keyId: 'b5', appFrame: 25 },
+    { keyId: 'b6', appFrame: 26 }, { keyId: 'b7', appFrame: 27 }, { keyId: 'b8', appFrame: 28 },
+    { keyId: 'b9', appFrame: 29 },
+  ]);
+
+  it('Push Right from the first key of Key Rail B translates B to 25-34 and keeps Key Rail A byte-position fixed', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: buildTwoKeyRails(),
+      intent: { kind: 'push-rails', direction: 'right', anchorKeyId: 'b0', deltaFrames: 5 },
+      parentEndExclusive: 40,
+      capacity: 40,
+      interpolationEnabled: false,
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Push Right must resolve ok');
+    const { proposal } = resolution;
+    expect(proposal.status.operationKind).toBe('push-rails');
+    expect(proposal.status.changed).toBe(true);
+    // Key Rail A byte-position fixed (PUSH-01).
+    expect(proposal.mapping.get('a0')).toBe(0);
+    expect(proposal.mapping.get('a9')).toBe(9);
+    // Key Rail B translated by +5.
+    expect(proposal.mapping.get('b0')).toBe(25);
+    expect(proposal.mapping.get('b9')).toBe(34);
+    expect(Object.fromEntries(proposal.mapping)).toEqual({
+      a0: 0, a1: 1, a2: 2, a3: 3, a4: 4, a5: 5, a6: 6, a7: 7, a8: 8, a9: 9,
+      b0: 25, b1: 26, b2: 27, b3: 28, b4: 29, b5: 30, b6: 31, b7: 32, b8: 33, b9: 34,
+    });
+  });
+});
