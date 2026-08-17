@@ -307,10 +307,14 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       expect(labelIndex).toBeGreaterThan(iconIndex);
     }
     expect(row).not.toContain('size={16}');
-    // The Set Key Space form carries its own short label after the icon
-    // (renamed 'Space' → 'Key spacing' in 36.15-09, UAT Gap E-2).
-    const spacingIndex = row.indexOf('physics-paint-pill--apply-spacing');
-    const form = row.slice(spacingIndex, row.indexOf('</form>', spacingIndex));
+    // 43.5-02 Task 2: the Set Key Space form relocated from the bottom row
+    // into the toolbox popover (header block), carrying its own short label
+    // after the icon (renamed 'Space' → 'Key spacing' in 36.15-09, UAT Gap
+    // E-2) with the same 18px icon and label ordering.
+    expect(row).not.toContain('physics-paint-pill--apply-spacing');
+    const header = getHeaderBlock(source());
+    const spacingIndex = header.indexOf('physics-paint-pill--apply-spacing');
+    const form = header.slice(spacingIndex, header.indexOf('</form>', spacingIndex));
     const spacingIconIndex = form.indexOf('<AlignHorizontalSpaceAround size={18}');
     expect(spacingIconIndex).toBeGreaterThanOrEqual(0);
     expect(form.indexOf('<span class="physics-paint-roto-key-icon-label">Key spacing</span>')).toBeGreaterThan(spacingIconIndex);
@@ -675,13 +679,19 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
     const navigationBlock = getCssRuleBlock(styles, '.physics-paint-pill--navigation {');
     expect(navigationBlock).toContain('#34383c');
     expect(navigationBlock).toContain('#575e66');
+    // 43.5-02 final polish: the relocated interpolation and Key Spacing pills
+    // live inside the liquid-glass popover, where their tonal backgrounds read
+    // as a double surface — the background is removed, the border stays.
     const interpolationBlock = getCssRuleBlock(styles, '.physics-paint-pill--interpolation {');
-    expect(interpolationBlock).toContain('#323a43');
+    expect(interpolationBlock).not.toContain('#323a43');
+    expect(interpolationBlock).not.toContain('background:');
     expect(interpolationBlock).toContain('#596775');
     const playbackBlock = getCssRuleBlock(styles, '.physics-paint-pill--playback {');
     expect(playbackBlock).toContain('#34383c');
     expect(playbackBlock).toContain('#59616a');
-    expect(getCssRuleBlock(styles, '.physics-paint-pill--apply-spacing {')).not.toBe('');
+    const applySpacingBlock = getCssRuleBlock(styles, '.physics-paint-pill--apply-spacing {');
+    expect(applySpacingBlock).not.toBe('');
+    expect(applySpacingBlock).not.toContain('background:');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-playback-controls {')).not.toContain('border-left');
     const toggleBlock = getCssRuleBlock(styles, '.physics-paint-roto-interpolation-toggle {');
     expect(toggleBlock).not.toMatch(/border(-color|-left|-right|-top|-bottom)?:/);
@@ -985,7 +995,13 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     expect(capsuleIndex).toBeGreaterThan(playbackIndex);
     expect(interpolationIndex).toBeGreaterThan(capsuleIndex);
     expect(closeIndex).toBeGreaterThan(interpolationIndex);
-    for (const removed of ['aria-label="Tools"', 'physics-paint-tools-menu', 'physics-paint-tools-trigger', 'physics-paint-tools-dropdown', 'aria-label="Add key"', 'aria-label="Duplicate key"', 'physics-paint-pill--apply-spacing', 'physics-paint-mode-label']) {
+    // 43.5-02: the ToolCase button (dynamic aria-label carrying live
+    // interpolation state) and the relocated Key Spacing form now live in the
+    // header block inside the toolbox popover, so the apply-spacing pill is
+    // expected present there — no legacy Tools dropdown machinery remains.
+    expect(header).toContain('physics-paint-pill--apply-spacing');
+    expect(header).toContain('physics-paint-toolbox-section-heading');
+    for (const removed of ['aria-label="Tools"', 'physics-paint-tools-menu', 'physics-paint-tools-trigger', 'physics-paint-tools-dropdown', 'aria-label="Add key"', 'aria-label="Duplicate key"', 'physics-paint-mode-label']) {
       expect(header).not.toContain(removed);
     }
   });
@@ -1012,7 +1028,7 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     expect(code).not.toContain('<option value="blend">Blend</option>');
   });
 
-  it('orders the bottom action row as layer, Key chip, Add key, Insert, Duplicate, Copy, Paste, Delete, Set Key Space', () => {
+  it('orders the bottom action row as layer, Key chip, Add key, Insert, Duplicate, Copy, Paste, Delete (Key Spacing relocated to the popover)', () => {
     const row = getActionRowBlock(source());
     const layerIndex = row.indexOf('physics-paint-roto-key-layer');
     const chipIndex = row.indexOf('physics-paint-roto-key-context');
@@ -1022,8 +1038,7 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     const copyIndex = row.indexOf('aria-label="Copy key"');
     const pasteIndex = row.indexOf('aria-label="Paste key"');
     const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
-    const spacingIndex = row.indexOf('physics-paint-pill--apply-spacing');
-    for (const index of [layerIndex, chipIndex, addIndex, insertIndex, duplicateIndex, copyIndex, pasteIndex, deleteIndex, spacingIndex]) {
+    for (const index of [layerIndex, chipIndex, addIndex, insertIndex, duplicateIndex, copyIndex, pasteIndex, deleteIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
     expect(chipIndex).toBeGreaterThan(layerIndex);
@@ -1033,7 +1048,10 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     expect(copyIndex).toBeGreaterThan(duplicateIndex);
     expect(pasteIndex).toBeGreaterThan(copyIndex);
     expect(deleteIndex).toBeGreaterThan(pasteIndex);
-    expect(spacingIndex).toBeGreaterThan(deleteIndex);
+    // 43.5-02 Task 2: the Set Key Space form moved into the toolbox popover,
+    // so it no longer terminates the bottom action row.
+    expect(row).not.toContain('physics-paint-pill--apply-spacing');
+    expect(getHeaderBlock(source())).toContain('physics-paint-pill--apply-spacing');
   });
 
   it('guards the relocated Add key and Duplicate actions with the empty-key/duplicate ports', () => {
@@ -1046,19 +1064,19 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
   });
 
   it('converts the relocated Set Key Space form to the guarded pattern with a styled tooltip and no native disabled/title', () => {
-    const row = getActionRowBlock(source());
-    const spacingIndex = row.indexOf('physics-paint-pill--apply-spacing');
+    const header = getHeaderBlock(source());
+    const spacingIndex = header.indexOf('physics-paint-pill--apply-spacing');
     expect(spacingIndex).toBeGreaterThanOrEqual(0);
-    const formEnd = row.indexOf('</form>', spacingIndex);
-    const form = row.slice(spacingIndex, formEnd === -1 ? row.length : formEnd);
+    const formEnd = header.indexOf('</form>', spacingIndex);
+    const form = header.slice(spacingIndex, formEnd === -1 ? header.length : formEnd);
     expect(form.replace(/aria-disabled/g, '')).not.toContain('disabled=');
     expect(form).not.toContain('title=');
-    expect(form).toContain('aria-disabled={!canApplyForceSpacingAction');
+    expect(form).toContain('aria-disabled={!props.canApplyForceSpacing');
     expect(form).toContain('aria-label="Empty frames between real keys"');
     expect(form).toContain('aria-label="Apply force spacing"');
     expect(form).toContain('>Apply</button>');
-    expect(row).toContain("buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys'");
-    expect(row).toContain('PhysicsPaintStyledTooltip');
+    expect(header).toContain("buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys'");
+    expect(header).toContain('PhysicsPaintStyledTooltip');
     // The submit handler keeps its verbatim mutation-lock guard.
     expect(source()).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
   });
@@ -1093,10 +1111,10 @@ describe('PhysicsPaintWorkflowStrip clipping guard contract (36.15-08, UAT Gap B
 });
 
 describe('PhysicsPaintWorkflowStrip Gap E cosmetic contract (36.15-09, UAT Gap E)', () => {
-  it('renames the Set Key Space bottom-row label to Key spacing', () => {
-    const row = getActionRowBlock(source());
-    expect(row).toContain('<span class="physics-paint-roto-key-icon-label">Key spacing</span>');
-    expect(row).not.toContain('<span class="physics-paint-roto-key-icon-label">Space</span>');
+  it('renames the Set Key Space label to Key spacing in the relocated popover form', () => {
+    const header = getHeaderBlock(source());
+    expect(header).toContain('<span class="physics-paint-roto-key-icon-label">Key spacing</span>');
+    expect(header).not.toContain('<span class="physics-paint-roto-key-icon-label">Space</span>');
   });
 
   it('removes the doubled ring artifact from the Apply submit by dropping its 999px pill radius', () => {
@@ -1123,25 +1141,24 @@ describe('PhysicsPaintWorkflowStrip Gap E cosmetic contract (36.15-09, UAT Gap E
 });
 
 describe('PhysicsPaintWorkflowStrip Gap F grouping and casing contract (36.15-10, UAT Gap F)', () => {
-  it('renders three visually separated bottom-row groups in order: identity, tools, key spacing', () => {
+  it('renders two visually separated bottom-row groups in order: identity, tools (Key Spacing relocated to the popover)', () => {
     const row = getActionRowBlock(source());
     const identityIndex = row.indexOf('physics-paint-roto-key-identity');
     const utilitiesIndex = row.indexOf('physics-paint-roto-key-utilities');
-    const spacingIndex = row.indexOf('physics-paint-pill--apply-spacing');
-    for (const index of [identityIndex, utilitiesIndex, spacingIndex]) {
+    for (const index of [identityIndex, utilitiesIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
     expect(utilitiesIndex).toBeGreaterThan(identityIndex);
-    expect(spacingIndex).toBeGreaterThan(utilitiesIndex);
     // The identity group is its OWN group: it closes before the tools group
     // opens, so the layer name + Key chip are not fused with the tool icons.
     const identityCloseIndex = row.indexOf('</div>', identityIndex);
     expect(identityCloseIndex).toBeGreaterThanOrEqual(0);
     expect(identityCloseIndex).toBeLessThan(utilitiesIndex);
-    // The Key spacing form is likewise outside the tools group.
-    const utilitiesCloseIndex = row.lastIndexOf('</div>', spacingIndex);
-    expect(utilitiesCloseIndex).toBeGreaterThan(utilitiesIndex);
-    expect(utilitiesCloseIndex).toBeLessThan(spacingIndex);
+    // 43.5-02 Task 2: the Key Spacing form moved into the toolbox popover,
+    // so the bottom row holds exactly the identity and tools groups; the
+    // form lives in the header block behind the ToolCase button.
+    expect(row).not.toContain('physics-paint-pill--apply-spacing');
+    expect(getHeaderBlock(source())).toContain('physics-paint-pill--apply-spacing');
     // The identity group carries the layer name and the Key chip.
     const identity = row.slice(identityIndex, identityCloseIndex);
     expect(identity).toContain('physics-paint-roto-key-layer');
@@ -1177,9 +1194,9 @@ describe('PhysicsPaintWorkflowStrip Gap F grouping and casing contract (36.15-10
   });
 
   it("renders the Key spacing submit as 'Apply' (not 'APPLY')", () => {
-    const row = getActionRowBlock(source());
-    expect(row).toContain('>Apply</button>');
-    expect(row).not.toContain('>APPLY</button>');
+    const header = getHeaderBlock(source());
+    expect(header).toContain('>Apply</button>');
+    expect(header).not.toContain('>APPLY</button>');
     const styles = css();
     const apply = getCssRuleBlock(styles, '.physics-paint-roto-force-spacing-apply {');
     expect(apply).toContain('text-transform: none');

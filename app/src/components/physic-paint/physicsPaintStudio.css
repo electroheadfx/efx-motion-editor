@@ -2051,9 +2051,11 @@ button.destructive {
   background: #34383c;
 }
 
+/* 43.5-02 final polish: inside the liquid-glass toolbox popover the pill's
+   own tonal background reads as a double surface; the border and the inner
+   control hover/focus/disabled states stay unchanged. */
 .physics-paint-pill--interpolation {
   border-color: #596775;
-  background: #323a43;
 }
 
 .physics-paint-pill--playback {
@@ -2063,7 +2065,6 @@ button.destructive {
 
 .physics-paint-pill--apply-spacing {
   border-color: #575e66;
-  background: #34383c;
 }
 
 .physics-paint-state-actions {
@@ -3745,5 +3746,59 @@ button.destructive {
   background: rgba(10, 12, 15, 0.28);
   -webkit-backdrop-filter: blur(20px) saturate(1.8);
   backdrop-filter: blur(20px) saturate(1.8);
+  pointer-events: none;
+}
+
+/* ============================================================
+   43.5-02 Task 2 — popover section layout (UI-SPEC T2) + ToolCase
+   Blend-state badge (D-04). Strictly additive: the panel chrome adds
+   only the two section headings and the 1px divider; the relocated
+   controls keep their exact classes/geometry.
+   ============================================================ */
+.physics-paint-toolbox-section {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.physics-paint-toolbox-divider {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 1px;
+  background: #3f4851;
+}
+
+/* Micro role (10px/600, 1.2), title case, letter-spacing 0.04em. */
+.physics-paint-toolbox-section-heading {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #9ca3af;
+  letter-spacing: 0.04em;
+  /* Opt out of the global button/heading text-transform: uppercase so the
+     headings keep their literal title case (Interpolation / Key Spacing). */
+  text-transform: none;
+}
+
+/* Blend-state badge (D-04): 6px filled dot pinned at the icon's top-right
+   corner (2px insets), read-only projection of the timeline-owned
+   interpolation state — never interactive, never a second authority. */
+.physics-paint-toolbox-badge-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.physics-paint-toolbox-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #dbe4ff;
+  box-shadow: 0 0 0 1px #37393a;
   pointer-events: none;
 }

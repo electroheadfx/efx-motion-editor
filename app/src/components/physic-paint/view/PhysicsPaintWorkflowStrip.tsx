@@ -490,6 +490,16 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   onGoToLastFrame: () => void;
   onClose?: () => void;
   mutationLocked: boolean;
+  /** 43.5-02 Task 2: relocated Key Spacing form ports (bottom-row verbatim).
+   *  The form renders inside the toolbox popover's second section with the
+   *  exact guards/pending/disabled idioms; state authority stays in the
+   *  timeline — the static chrome never mirrors interpolation or spacing. */
+  forceSpacingInput: string;
+  forceSpacingControlsPresent: boolean;
+  canApplyForceSpacing: boolean;
+  forceSpacingActionDisabledReason: string | null;
+  onForceSpacingInput?: (event: Event) => void;
+  onForceSpacingSubmit?: (event: Event) => void;
 }
 
 /**
@@ -628,6 +638,9 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
   const interpolationTooltip = useStyledTooltip();
   const audioPreviewTooltip = useStyledTooltip();
   const toolboxTooltip = useStyledTooltip();
+  // 43.5-02 Task 2: the relocated Key Spacing form owns its tooltip here,
+  // beside the other popover-internal tooltips.
+  const forceSpacingTooltip = useStyledTooltip();
   // 43.5-02 (D-01/D-02): toolbox popover toggle + self-contained dismissal.
   // Outside pointerdown and Escape dismiss it via window capture-phase listeners
   // registered ONLY while open; no focus trap, no backdrop, no automatic focus
@@ -728,7 +741,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         <button
           type="button"
           class="physics-paint-roto-key-icon-button physics-paint-toolbox-toggle"
-          aria-label="Timeline tools"
+          aria-label={props.interpolationEnabled ? 'Timeline tools, interpolation on' : 'Timeline tools, interpolation off'}
           aria-haspopup="dialog"
           aria-expanded={toolboxOpen}
           aria-controls={toolboxOpen ? 'physics-paint-toolbox-popover' : undefined}
@@ -736,7 +749,10 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
           onBlur={toolboxTooltip.onBlur}
           onClick={() => { toolboxTooltip.hide(); interpolationTooltip.hide(); setToolboxOpen((open) => !open); }}
         >
-          <ToolCase size={18} aria-hidden="true" />
+          <span class="physics-paint-toolbox-badge-anchor">
+            <ToolCase size={18} aria-hidden="true" />
+            {props.interpolationEnabled ? <span class="physics-paint-toolbox-badge" aria-hidden="true" /> : null}
+          </span>
           <span class="physics-paint-roto-key-icon-label">Tools</span>
         </button>
         <PhysicsPaintStyledTooltip visible={toolboxTooltip.visible} region="bottom">
@@ -745,10 +761,58 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
       </span>
       {props.onInterpolationEnabledChange ? (
         <PhysicsPaintToolboxPopover anchorRef={toolboxAnchorRef} panelRef={toolboxPanelRef} open={toolboxOpen} ariaLabel="Timeline tools">
-          <div class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls" role="group" aria-label="Roto interpolation settings" data-enabled={props.interpolationEnabled ? 'true' : 'false'} data-pending={props.interpolationPending ? 'true' : 'false'} onPointerEnter={interpolationTooltip.onPointerEnter} onPointerLeave={interpolationTooltip.onPointerLeave}>
-            <button type="button" class={`physics-paint-roto-interpolation-toggle ${props.interpolationEnabled ? 'active' : ''}`} aria-label={props.interpolationEnabled ? 'Disable generated in-betweens' : 'Enable generated in-betweens'} aria-pressed={props.interpolationEnabled} aria-busy={props.interpolationPending ? 'true' : undefined} disabled={props.interpolationControlsDisabled} onClick={() => { if (props.mutationLocked || props.interpolationPending) return; props.onInterpolationEnabledChange?.(!props.interpolationEnabled); }}><Blend size={15} aria-hidden="true" /></button>
-            <label class="physics-paint-roto-interpolation-mode"><select class="physics-paint-roto-interpolation-select" value={props.interpolationMode} aria-label="Interpolation mode" disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange} onChange={handleInterpolationModeChange}><option value="duplicate">Frame duplicate</option><option value="blend">Frame blending</option></select></label>
-            <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} region="top">{props.interpolationStatus}</PhysicsPaintStyledTooltip>
+          <div class="physics-paint-toolbox-section">
+            <div class="physics-paint-toolbox-section-heading">Interpolation</div>
+            <div class="physics-paint-pill physics-paint-pill--interpolation physics-paint-roto-interpolation-controls" role="group" aria-label="Roto interpolation settings" data-enabled={props.interpolationEnabled ? 'true' : 'false'} data-pending={props.interpolationPending ? 'true' : 'false'} onPointerEnter={interpolationTooltip.onPointerEnter} onPointerLeave={interpolationTooltip.onPointerLeave}>
+              <button type="button" class={`physics-paint-roto-interpolation-toggle ${props.interpolationEnabled ? 'active' : ''}`} aria-label={props.interpolationEnabled ? 'Disable generated in-betweens' : 'Enable generated in-betweens'} aria-pressed={props.interpolationEnabled} aria-busy={props.interpolationPending ? 'true' : undefined} disabled={props.interpolationControlsDisabled} onClick={() => { if (props.mutationLocked || props.interpolationPending) return; props.onInterpolationEnabledChange?.(!props.interpolationEnabled); }}><Blend size={15} aria-hidden="true" /></button>
+              <label class="physics-paint-roto-interpolation-mode"><select class="physics-paint-roto-interpolation-select" value={props.interpolationMode} aria-label="Interpolation mode" disabled={props.interpolationControlsDisabled || !props.onInterpolationModeChange} onChange={handleInterpolationModeChange}><option value="duplicate">Frame duplicate</option><option value="blend">Frame blending</option></select></label>
+              <PhysicsPaintStyledTooltip visible={interpolationTooltip.visible} region="top">{props.interpolationStatus}</PhysicsPaintStyledTooltip>
+            </div>
+          </div>
+          <div class="physics-paint-toolbox-divider" />
+          <div class="physics-paint-toolbox-section">
+            <div class="physics-paint-toolbox-section-heading">Key Spacing</div>
+            {props.forceSpacingControlsPresent ? (
+              <span class="physics-paint-roto-key-icon-action" onPointerEnter={forceSpacingTooltip.onPointerEnter} onPointerLeave={forceSpacingTooltip.onPointerLeave}>
+                <form
+                  class="physics-paint-pill physics-paint-pill--apply-spacing physics-paint-roto-force-spacing-controls"
+                  aria-label="Set Key Space"
+                  onSubmit={props.onForceSpacingSubmit}
+                >
+                  <AlignHorizontalSpaceAround size={18} aria-hidden="true" />
+                  <span class="physics-paint-roto-key-icon-label">Key spacing</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={props.forceSpacingInput}
+                    aria-label="Empty frames between real keys"
+                    aria-disabled={!props.canApplyForceSpacing ? 'true' : undefined}
+                    aria-describedby={!props.canApplyForceSpacing && props.forceSpacingActionDisabledReason ? 'roto-key-action-reason-spacing' : undefined}
+                    onFocus={forceSpacingTooltip.onFocus}
+                    onBlur={forceSpacingTooltip.onBlur}
+                    onInput={(event) => {
+                      if (!props.canApplyForceSpacing) return;
+                      props.onForceSpacingInput?.(event);
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    class="physics-paint-roto-force-spacing-apply"
+                    aria-label="Apply force spacing"
+                    aria-disabled={!props.canApplyForceSpacing ? 'true' : undefined}
+                    onFocus={forceSpacingTooltip.onFocus}
+                    onBlur={forceSpacingTooltip.onBlur}
+                  >Apply</button>
+                </form>
+                {!props.canApplyForceSpacing && props.forceSpacingActionDisabledReason ? (
+                  <span id="roto-key-action-reason-spacing" class="physics-paint-sr-only">{props.forceSpacingActionDisabledReason}</span>
+                ) : null}
+                <PhysicsPaintStyledTooltip visible={forceSpacingTooltip.visible} region="bottom">
+                  {buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys', props.forceSpacingActionDisabledReason)}
+                </PhysicsPaintStyledTooltip>
+              </span>
+            ) : null}
           </div>
         </PhysicsPaintToolboxPopover>
       ) : null}
@@ -1106,7 +1170,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const pasteKeyTooltip = useStyledTooltip();
   const deleteKeyTooltip = useStyledTooltip();
   const selectAllTooltip = useStyledTooltip();
-  const forceSpacingTooltip = useStyledTooltip();
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
     for (const record of rotoKeyRecords) map.set(record.appFrame, record.keyId);
@@ -1234,15 +1297,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   });
   const capsuleTextSignal = useSignal(capsuleText);
   if (capsuleTextSignal.peek() !== capsuleText) capsuleTextSignal.value = capsuleText;
-  function handleForceSpacingInput(event: Event) {
+  // 43.5-02 Task 2: the relocated Key Spacing form lives inside the memoized
+  // static chrome, so the handlers it wires must keep stable identity (same
+  // guard bodies as the bottom-row version — byte-identical behavior).
+  const handleForceSpacingInput = useCallback((event: Event) => {
     physicalActions?.setForceSpacingInput((event.currentTarget as HTMLInputElement).value);
-  }
+  }, [physicalActions]);
 
-  function handleForceSpacingSubmit(event: Event) {
+  const handleForceSpacingSubmit = useCallback((event: Event) => {
     event.preventDefault();
     if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;
     void physicalActions?.applyForceSpacing();
-  }
+  }, [physicalActions, forceSpacingAvailable, props.ready, props.mutationLocked]);
 
   const rotoCellClickStateRef = useRef({
     keyIdByAppFrame,
@@ -1827,6 +1893,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         onGoToLastFrame={props.onGoToLastFrame}
         onClose={props.onClose}
         mutationLocked={Boolean(props.mutationLocked)}
+        forceSpacingInput={forceSpacingInput}
+        forceSpacingControlsPresent={Boolean(physicalActions)}
+        canApplyForceSpacing={canApplyForceSpacingAction}
+        forceSpacingActionDisabledReason={forceSpacingActionDisabledReason}
+        onForceSpacingInput={handleForceSpacingInput}
+        onForceSpacingSubmit={handleForceSpacingSubmit}
       />
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">
@@ -2301,47 +2373,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   </PhysicsPaintStyledTooltip>
                 </span>
               </div>
-              {physicalActions ? (
-                <span class="physics-paint-roto-key-icon-action" onPointerEnter={forceSpacingTooltip.onPointerEnter} onPointerLeave={forceSpacingTooltip.onPointerLeave}>
-                    <form
-                      class="physics-paint-pill physics-paint-pill--apply-spacing physics-paint-roto-force-spacing-controls"
-                      aria-label="Set Key Space"
-                      onSubmit={handleForceSpacingSubmit}
-                    >
-                      <AlignHorizontalSpaceAround size={18} aria-hidden="true" />
-                      <span class="physics-paint-roto-key-icon-label">Key spacing</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={forceSpacingInput}
-                        aria-label="Empty frames between real keys"
-                        aria-disabled={!canApplyForceSpacingAction ? 'true' : undefined}
-                        aria-describedby={!canApplyForceSpacingAction && forceSpacingActionDisabledReason ? 'roto-key-action-reason-spacing' : undefined}
-                        onFocus={forceSpacingTooltip.onFocus}
-                        onBlur={forceSpacingTooltip.onBlur}
-                        onInput={(event) => {
-                          if (!canApplyForceSpacingAction) return;
-                          handleForceSpacingInput(event);
-                        }}
-                      />
-                      <button
-                        type="submit"
-                        class="physics-paint-roto-force-spacing-apply"
-                        aria-label="Apply force spacing"
-                        aria-disabled={!canApplyForceSpacingAction ? 'true' : undefined}
-                        onFocus={forceSpacingTooltip.onFocus}
-                        onBlur={forceSpacingTooltip.onBlur}
-                      >Apply</button>
-                    </form>
-                    {!canApplyForceSpacingAction && forceSpacingActionDisabledReason ? (
-                      <span id="roto-key-action-reason-spacing" class="physics-paint-sr-only">{forceSpacingActionDisabledReason}</span>
-                    ) : null}
-                    <PhysicsPaintStyledTooltip visible={forceSpacingTooltip.visible} region="bottom">
-                      {buildGuardedActionTooltipCopy('Set empty physical frames between real Roto keys', forceSpacingActionDisabledReason)}
-                    </PhysicsPaintStyledTooltip>
-                </span>
-              ) : null}
             </div>
         <div class="physics-paint-timeline-scrollbar" onPointerDown={(event) => handleTimelineScrollbarPointerDown(event as unknown as PointerEvent)}>
           {scrollbar.visible ? (
