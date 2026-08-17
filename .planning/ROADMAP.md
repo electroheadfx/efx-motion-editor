@@ -386,13 +386,18 @@ Plans:
 ### Phase 43.5: Timeline Toolbox and Directional Push Tools (INSERTED)
 
 **Goal:** Free space in the EFX Paint/Roto bottom toolbar by consolidating Interpolation and Key Spacing into one compact toolbox button (Lucide `ToolCase`, export verified against the installed Lucide version) opening a Studio-local modal/anchored surface with every accepted behavior, value, shortcut, guard, selection scope, accessibility label, Undo/Redo contract, and error message preserved and no second state authority — and add two explicit directional Push tools: Push Right translates the selected Motion/Static/Key Group plus every object after it, Push Left translates every object before the selected Group plus the selected Group, both as one rigid set preserving relative timing, internal spacing, Action provenance, synchronization status, source sharing, and Group membership, with opened intervals recorded as intentional persistent Phase 43.1 interpolation-break gaps (Interpolation On never generates across them; Off/On restores them exactly), preview/drag feedback showing direction, boundary, affected set, delta, resulting range, gap, and capacity/collision status before commit, frame-0/capacity/collision/stale-authority rejection leaving project and history untouched, and the complete movement landing as one atomic parent-acknowledged transaction with one Undo/Redo surviving save/reopen, playback, preview, and export. Direct Group drag from Phases 43.3 and 43.4 remains local and never pushes neighbors; Phase 43.5 exclusively owns every multi-object movement. Spec: SPECS/milestone-v0.9.0-new-phases/phase-43.5-timeline-toolbox-directional-push-prompt.md
-**Requirements**: TBD (derive during /gsd-plan-phase 43.5; planning-local, do not add to REQUIREMENTS.md)
+**Requirements**: TBX-01, TBX-02, TBX-03, TBX-04, TBX-05, PUSH-01, PUSH-02, PUSH-03, PUSH-04, PUSH-05, PUSH-06, PUSH-07, PUSH-08 (planning-local; not added to REQUIREMENTS.md)
 **Depends on:** Phase 43.4
-**Plans:** 0 plans
+**Plans:** 6 plans
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 43.5 to break down)
+- [ ] 43.5-01-PLAN.md — push-rails intent transport + resolver directional authority (set derivation, clamp, straddle guard, gap break derivation)
+- [ ] 43.5-02-PLAN.md — ToolCase toolbox popover relocation + keyboard routing refinement (Interpolation + Key Spacing, live Blend badge)
+- [ ] 43.5-03-PLAN.md — push prepare/commit pair + product-reason mapper + atomic one-Undo/one-Redo history
+- [ ] 43.5-04-PLAN.md — usePhysicsPaintPushDrag armed gesture session hook (new, port-injected)
+- [ ] 43.5-05-PLAN.md — strip wiring: Push pill, armed lifecycle/disarm rules, hover pre-highlight + straddle preflight, ghost/gap/blocked-edge preview paint
+- [ ] 43.5-06-PLAN.md — automated gate freeze + native visual UAT (13 prompt steps + UI-SPEC matrix, fully restarted frozen session)
 
 **Scope boundaries:** No push behavior on direct Group drag; no multiple internal Paint tracks; no Motion Editor timeline changes; no replacement of the physical authority/history architecture; no new dependencies without separate approval; no Phase 44 signing/release work. The 161px workflow-strip height is preserved and Push buttons never cover cells or Group Rails.
 
