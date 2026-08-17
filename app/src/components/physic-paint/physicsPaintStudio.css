@@ -3707,6 +3707,12 @@ button.destructive {
    perspective/contain-free: the relocated interpolation tooltip
    is position:fixed and must keep the viewport as its
    containing block (the panel's overflow never clips it).
+   43.5-02 smoke fix 3: liquid-glass surface — translucent dark
+   background, 1px subtle light border, soft shadow, rounded
+   corners. The backdrop blur/saturate live ONLY on the ::before
+   glass layer (empty of descendants) so the panel itself stays
+   containing-block-free; a backdrop-filter on the panel would
+   trap the position:fixed interpolation tooltip.
    ============================================================ */
 .physics-paint-toolbox-popover {
   position: fixed;
@@ -3717,12 +3723,27 @@ button.destructive {
   overflow-y: auto;
   box-sizing: border-box;
   padding: 16px;
-  border: 1px solid #58616b;
-  border-radius: 8px;
-  background: #20262d;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: rgba(28, 30, 34, 0.66);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
+}
+
+/* Liquid-glass backdrop layer (43.5-02 smoke fix 3): the blur/saturate tint
+   sits on an empty ::before so the panel itself never creates a containing
+   block for the relocated position:fixed interpolation tooltip. */
+.physics-paint-toolbox-popover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(10, 12, 15, 0.28);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  backdrop-filter: blur(20px) saturate(1.8);
+  pointer-events: none;
 }
