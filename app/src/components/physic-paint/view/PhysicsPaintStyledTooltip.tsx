@@ -8,7 +8,7 @@ export interface StyledTooltipController {
   visible: boolean;
   onPointerEnter: () => void;
   onPointerLeave: () => void;
-  onFocus: () => void;
+  onFocus: (event?: FocusEvent) => void;
   onBlur: () => void;
   hide: () => void;
 }
@@ -18,8 +18,12 @@ export interface StyledTooltipController {
  *
  * - Pointer hover shows the tooltip only after exactly `delayMs` (1000ms) —
  *   never instantly; pointerleave cancels a pending show and dismisses.
- * - Keyboard focus shows immediately (guarded reasons must be reachable
- *   without a pointer); blur hides.
+ * - Keyboard focus (a focus event carrying a relatedTarget — i.e. focus moved
+ *   from a previously focused element by Tab/arrow navigation) shows immediately
+ *   so guarded reasons stay reachable without a pointer. Programmatic focus and
+ *   mouse-click focus both carry a null/absent relatedTarget and NEVER show a
+ *   pill — a focus left over from an opening surface must not pop a
+ *   stale-anchored tooltip (43.5 smoke fix 4); blur hides.
  * - Escape hides; the window keydown listener is registered only while the
  *   tooltip is visible (same listener discipline as the strip drag session:
  *   idempotent cleanup plus a mountedRef guard).
@@ -72,8 +76,13 @@ export function useStyledTooltip(delayMs: number = STYLED_TOOLTIP_DELAY_MS): Sty
     hide();
   }
 
-  function onFocus() {
+  function onFocus(event?: FocusEvent) {
     clearTimer();
+    // Tooltips fire on hover, or on keyboard focus only. A focus whose
+    // relatedTarget is null/absent is programmatic or mouse-click focus and
+    // must not show a pill (43.5 smoke fix 4: an opening surface that focuses a
+    // relocated control must not pop a tooltip anchored at a stale position).
+    if (!event?.relatedTarget) return;
     show();
   }
 

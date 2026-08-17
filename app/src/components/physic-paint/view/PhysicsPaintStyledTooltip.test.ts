@@ -154,12 +154,30 @@ describe('useStyledTooltip', () => {
   it('shows immediately on keyboard focus and hides on blur (D-14)', () => {
     const harness = createHarness();
     const initial = harness.render();
-    initial.onFocus();
+    initial.onFocus({ relatedTarget: {} } as FocusEvent);
     expect(harness.render().visible).toBe(true);
     expect(windowStub.keydownListenerCount()).toBe(1);
     harness.render().onBlur();
     expect(harness.render().visible).toBe(false);
     expect(windowStub.keydownListenerCount()).toBe(0);
+  });
+
+  it('never shows on programmatic focus (no relatedTarget) — 43.5 smoke fix 4', () => {
+    const harness = createHarness();
+    const initial = harness.render();
+    initial.onFocus({ relatedTarget: null } as FocusEvent);
+    expect(harness.render().visible).toBe(false);
+    expect(windowStub.keydownListenerCount()).toBe(0);
+  });
+
+  it('never shows on focus without a focus event (programmatic open transition) and still shows on hover', () => {
+    const harness = createHarness();
+    const initial = harness.render();
+    initial.onFocus();
+    expect(harness.render().visible).toBe(false);
+    initial.onPointerEnter();
+    vi.advanceTimersByTime(1000);
+    expect(harness.render().visible).toBe(true);
   });
 
   it('hides on Escape while visible and never appears when the pointer leaves before 1000ms', () => {
@@ -181,7 +199,7 @@ describe('useStyledTooltip', () => {
 
   it('hides via the imperative hide() used on activation', () => {
     const harness = createHarness();
-    harness.render().onFocus();
+    harness.render().onFocus({ relatedTarget: {} } as FocusEvent);
     expect(harness.render().visible).toBe(true);
     harness.render().hide();
     expect(harness.render().visible).toBe(false);
@@ -214,7 +232,7 @@ describe('useStyledTooltip — real effect lifecycle (WR-03)', () => {
 
   it('removes the Escape listener when unmounted while visible', () => {
     const harness = createHarness();
-    harness.render().onFocus();
+    harness.render().onFocus({ relatedTarget: {} } as FocusEvent);
     expect(harness.render().visible).toBe(true);
     expect(windowStub.keydownListenerCount()).toBe(1);
     hookRuntime.unmount();
@@ -227,7 +245,7 @@ describe('useStyledTooltip — real effect lifecycle (WR-03)', () => {
   it('never accumulates Escape listeners across repeated show/hide cycles', () => {
     const harness = createHarness();
     for (let cycle = 0; cycle < 3; cycle += 1) {
-      harness.render().onFocus();
+      harness.render().onFocus({ relatedTarget: {} } as FocusEvent);
       expect(harness.render().visible).toBe(true);
       expect(windowStub.keydownListenerCount()).toBe(1);
       harness.render().onBlur();
