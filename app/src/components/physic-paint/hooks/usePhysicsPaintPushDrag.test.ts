@@ -291,4 +291,129 @@ describe('usePhysicsPaintPushDrag', () => {
     harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
     expect(harness.source.captured).toEqual([7]);
   });
+
+  it('passes a sub-threshold click through unsuppressed so navigation proceeds (D-09)', () => {
+    const harness = createHarness();
+    const api = harness.render();
+    api.onPointerDown(pointerEvent(harness.source));
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 104 }));
+    harness.windowLike.emit('pointerup', pointerEvent(harness.source, { clientX: 104 }));
+
+    expect(harness.source.captured).toEqual([]);
+    expect(harness.prepareAtDestination).not.toHaveBeenCalled();
+    expect(api.consumeClickSuppression()).toBe(false);
+  });
+
+  it('cancels on Escape without committing, clears session paint, and stops propagation', () => {
+    const harness = createHarness();
+    const api = harness.render();
+    api.onPointerDown(pointerEvent(harness.source));
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
+
+    const stopImmediatePropagation = vi.fn();
+    harness.windowLike.emit('keydown', {
+      key: 'Escape',
+      preventDefault: vi.fn(),
+      stopImmediatePropagation,
+    });
+
+    expect(harness.onDropCommit).not.toHaveBeenCalled();
+    expect(harness.onCancel).toHaveBeenCalledTimes(1);
+    expect(stopImmediatePropagation).toHaveBeenCalledTimes(1);
+    expect(harness.render().ghost.active).toBe(false);
+    expect(harness.render().preview).toBeNull();
+    expect(harness.source.focus).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels on pointercancel, clears preview, and removes every listener exactly once', () => {
+    const harness = createHarness();
+    const api = harness.render();
+    api.onPointerDown(pointerEvent(harness.source));
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
+
+    harness.windowLike.emit('pointercancel', pointerEvent(harness.source, { clientX: 105 }));
+
+    expect(harness.render().ghost.active).toBe(false);
+    expect(harness.render().preview).toBeNull();
+    expect(harness.windowLike.removedCount).toBe(4);
+    expect(harness.source.removedCount).toBe(1);
+    expect(harness.onDropCommit).not.toHaveBeenCalled();
+  });
+
+  it('cancels on lostpointercapture and clears session paint', () => {
+    const harness = createHarness();
+    const api = harness.render();
+    api.onPointerDown(pointerEvent(harness.source));
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
+
+    harness.source.emit('lostpointercapture', {});
+
+    expect(harness.render().ghost.active).toBe(false);
+    expect(harness.render().preview).toBeNull();
+    expect(harness.windowLike.removedCount).toBe(4);
+    expect(harness.source.removedCount).toBe(1);
+    expect(harness.onDropCommit).not.toHaveBeenCalled();
+  });
+
+  it('routes a drop with no retained publication to onRejected with zero mutation', () => {
+    const prepareAtDestination = vi.fn(() => ({
+      ok: false as const,
+      reason: 'no-free-space-in-direction',
+      detail: 'No empty space in that direction.',
+    }));
+    const harness = createHarness({ prepareAtDestination });
+    const api = harness.render();
+    api.onPointerDown(pointerEvent(harness.source));
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
+    harness.windowLike.emit('pointerup', pointerEvent(harness.source, { clientX: 105 }));
+
+    expect(harness.onDropCommit).not.toHaveBeenCalled();
+    expect(harness.onRejected).toHaveBeenCalledWith('no-free-space-in-direction', 'No empty space in that direction.');
+    expect(harness.render().ghost.active).toBe(false);
+    expect(harness.render().preview).toBeNull();
+    expect(harness.source.focus).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores focus and leaves zero mutation when the commit port resolves false', async () => {
+    const harness = createHarness({
+      onDropCommit: async () => false,
+    });
+    const api = harness.render();
+    api.onPointerDown(pointerEvent(harness.source));
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
+    harness.windowLike.emit('pointerup', pointerEvent(harness.source, { clientX: 105 }));
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(harness.source.focus).toHaveBeenCalledTimes(1);
+    expect(harness.render().ghost.active).toBe(false);
+    expect(harness.render().preview).toBeNull();
+  });
+
+  it('restores focus when the commit port rejects', async () => {
+    const harness = createHarness({
+      onDropCommit: async () => { throw new Error('transport failed'); },
+    });
+    const api = harness.render();
+    api.onPointerDown(pointerEvent(harness.source));
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
+    harness.windowLike.emit('pointerup', pointerEvent(harness.source, { clientX: 105 }));
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(harness.render().ghost.active).toBe(false);
+    expect(harness.render().preview).toBeNull();
+    expect(harness.source.focus).toHaveBeenCalledTimes(1);
+  });
+
+  it('suppresses the trailing post-drop click exactly once', () => {
+    const harness = createHarness();
+    const api = harness.render();
+    api.onPointerDown(pointerEvent(harness.source));
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
+    harness.windowLike.emit('pointerup', pointerEvent(harness.source, { clientX: 105 }));
+
+    expect(api.consumeClickSuppression()).toBe(true);
+    expect(api.consumeClickSuppression()).toBe(false);
+  });
 });
