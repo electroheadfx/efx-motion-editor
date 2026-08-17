@@ -5,6 +5,12 @@ import {
   isPhysicsPaintShortcutTarget,
   type PhysicsPaintStudioKeyboardState,
 } from './physicsPaintStudioKeyboard';
+import {
+  disarmPushTool,
+  getArmedPushToolDirection,
+  isPushToolArmed,
+  togglePushTool,
+} from './physicsPaintPushArmedTool';
 
 interface TestTargetOptions {
   contentEditable?: boolean;
@@ -58,6 +64,7 @@ function actions() {
     selectAdjacentRotoKey: vi.fn(),
     collapseRotoSelection: vi.fn(),
     closeToolboxPopover: vi.fn(),
+    disarmPushTool: vi.fn(),
   };
 }
 
@@ -292,6 +299,113 @@ describe('Physics Paint toolbox popover shortcut routing (43.5-02)', () => {
     expect(handlers.collapseRotoSelection).toHaveBeenCalledOnce();
     expect(handlers.closeToolboxPopover).not.toHaveBeenCalled();
     expect(preventDefault).toHaveBeenCalledOnce();
+  });
+});
+
+describe('Physics Paint armed Push tool disarm routing (43.5-05)', () => {
+  it('Select All disarms an armed tool (D-20)', () => {
+    const strip = new TestHTMLElement('div', { closestSelectors: ['.physics-paint-workflow-strip'] });
+    const { handlers, preventDefault } = dispatch('a', strip as unknown as EventTarget, { metaKey: true });
+
+    expect(handlers.disarmPushTool).toHaveBeenCalledOnce();
+    expect(handlers.selectAllRotoKeys).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('does not disarm on Select All when mutations are locked (D-18)', () => {
+    const strip = new TestHTMLElement('div', { closestSelectors: ['.physics-paint-workflow-strip'] });
+    const { handlers } = dispatch('a', strip as unknown as EventTarget, { metaKey: true }, { mutationLocked: true });
+
+    expect(handlers.disarmPushTool).not.toHaveBeenCalled();
+    expect(handlers.selectAllRotoKeys).not.toHaveBeenCalled();
+  });
+
+  it('does not disarm on Select All from a non-strip target (Pitfall 5)', () => {
+    const { handlers } = dispatch('a', null, { metaKey: true });
+
+    expect(handlers.disarmPushTool).not.toHaveBeenCalled();
+    expect(handlers.selectAllRotoKeys).not.toHaveBeenCalled();
+  });
+
+  it('Escape disarms an armed tool without collapsing the selection (Pitfall 2)', () => {
+    const handlers = actions();
+    handlers.disarmPushTool.mockReturnValue(true);
+    const keyboardEvent = eventFor('Escape');
+    dispatchPhysicsPaintStudioKeyDown(
+      keyboardEvent.event,
+      { currentFrame: 4, isPlaying: false, mutationLocked: false, hasSelectedRotoKey: false },
+      handlers,
+      [],
+    );
+
+    expect(handlers.disarmPushTool).toHaveBeenCalledOnce();
+    expect(handlers.collapseRotoSelection).not.toHaveBeenCalled();
+    expect(keyboardEvent.preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('Escape falls through to collapseRotoSelection when no tool is armed', () => {
+    const handlers = actions();
+    handlers.disarmPushTool.mockReturnValue(false);
+    const keyboardEvent = eventFor('Escape');
+    dispatchPhysicsPaintStudioKeyDown(
+      keyboardEvent.event,
+      { currentFrame: 4, isPlaying: false, mutationLocked: false, hasSelectedRotoKey: false },
+      handlers,
+      [],
+    );
+
+    expect(handlers.disarmPushTool).toHaveBeenCalledOnce();
+    expect(handlers.collapseRotoSelection).toHaveBeenCalledOnce();
+    expect(keyboardEvent.preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('Escape dismisses the toolbox popover before consulting the armed tool', () => {
+    const handlers = actions();
+    handlers.disarmPushTool.mockReturnValue(true);
+    const keyboardEvent = eventFor('Escape');
+    dispatchPhysicsPaintStudioKeyDown(
+      keyboardEvent.event,
+      {
+        currentFrame: 4,
+        isPlaying: false,
+        mutationLocked: false,
+        hasSelectedRotoKey: false,
+        toolboxPopoverOpen: true,
+      },
+      handlers,
+      [],
+    );
+
+    expect(handlers.closeToolboxPopover).toHaveBeenCalledOnce();
+    expect(handlers.disarmPushTool).not.toHaveBeenCalled();
+    expect(handlers.collapseRotoSelection).not.toHaveBeenCalled();
+  });
+});
+
+describe('Physics Paint armed Push tool module (43.5-05 lock-transition primitive)', () => {
+  it('starts disarmed every session — armed state is never persisted (D-19)', () => {
+    expect(isPushToolArmed()).toBe(false);
+    expect(getArmedPushToolDirection()).toBeNull();
+  });
+
+  it('togglePushTool arms the given direction and re-toggle disarms (D-06)', () => {
+    expect(togglePushTool('right')).toBe(true);
+    expect(getArmedPushToolDirection()).toBe('right');
+    expect(togglePushTool('right')).toBe(true);
+    expect(isPushToolArmed()).toBe(false);
+  });
+
+  it('togglePushTool switches direction in one click when the other direction is armed', () => {
+    togglePushTool('right');
+    expect(togglePushTool('left')).toBe(true);
+    expect(getArmedPushToolDirection()).toBe('left');
+  });
+
+  it('disarmPushTool returns true when armed and false when disarmed (lock transition, D-18)', () => {
+    expect(disarmPushTool()).toBe(false);
+    togglePushTool('right');
+    expect(disarmPushTool()).toBe(true);
+    expect(isPushToolArmed()).toBe(false);
   });
 });
 
