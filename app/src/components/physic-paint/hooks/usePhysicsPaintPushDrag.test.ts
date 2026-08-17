@@ -134,7 +134,7 @@ function createHarness(options: {
     ({ originClientX, clientX }: { originClientX: number; clientX: number }) => clientX - originClientX,
   );
   const clampDestination = vi.fn(
-    options.clampDestination ?? ((deltaFrames: number) => ({ deltaFrames, blockedEdge: null as const })),
+    options.clampDestination ?? ((deltaFrames: number): PushDragClampResult => ({ deltaFrames, blockedEdge: null })),
   );
   const prepareAtDestination = vi.fn(
     options.prepareAtDestination ?? ((deltaFrames: number) => ({
@@ -213,7 +213,7 @@ describe('usePhysicsPaintPushDrag', () => {
   });
 
   it('projects the pointer delta, clamps it, and prepares the retained publication', () => {
-    const clampDestination = vi.fn((deltaFrames: number): PushDragClampResult => ({
+    const clampDestination = vi.fn((_deltaFrames: number): PushDragClampResult => ({
       deltaFrames: 3,
       blockedEdge: 'right',
     }));
