@@ -278,6 +278,9 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, deltaFrames: -1 })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, deltaFrames: 1.5 })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, direction: 'up' })).toBe(false);
+    // Task 3: the loopId anchor is bounded too, and deltaFrames is mandatory.
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...loopIntent, anchorLoopId: 'x'.repeat(257) })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'push-rails', direction: 'right', anchorKeyId: 'b0' })).toBe(false);
   });
 
   it('round-trips paste-key startsNewSegment and rejects a non-boolean flag', () => {

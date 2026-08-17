@@ -4450,6 +4450,46 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     // owns/reuses the vacated-gap break.
     expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['a5', 'b0']);
   });
+
+  it('Task 3: a zero-delta push resolves as a valid no-change, never a failure', () => {
+    const resolution = resolvePush(buildTwoKeyRails(), 'right', { anchorKeyId: 'b0' }, 0, {
+      incomingInterpolationBreakKeyIds: ['b0'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Zero-delta push must resolve');
+    const { proposal } = resolution;
+    expect(proposal.status.changed).toBe(false);
+    expect(proposal.status.code).toBe('ok-no-change');
+    expect(Object.fromEntries(proposal.mapping)).toEqual({
+      a0: 0, a1: 1, a2: 2, a3: 3, a4: 4, a5: 5, a6: 6, a7: 7, a8: 8, a9: 9,
+      b0: 20, b1: 21, b2: 22, b3: 23, b4: 24, b5: 25, b6: 26, b7: 27, b8: 28, b9: 29,
+    });
+    // The break collection echoes unchanged (complete-collection identity).
+    expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['b0']);
+    // No lifecycle translation: no clip delta, no nextLoopClips publication.
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('Task 3: a zero-delta placement-only push is a valid no-change', () => {
+    const identities = [
+      { keyId: 'g0', appFrame: 20 },
+      { keyId: 'g1', appFrame: 21 },
+    ] as const;
+    const resolution = resolvePush(identities, 'left', { anchorLoopId: 'loop-D' }, 0, {
+      loopClips: buildPushGroupClips(),
+      capacity: 40,
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Zero-delta placement-only push must resolve');
+    const { proposal } = resolution;
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ g0: 20, g1: 21 });
+    expect(proposal.status.changed).toBe(false);
+    expect(proposal.status.code).toBe('ok-no-change');
+    expect(proposal.nextLoopClips).toBeNull();
+    expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
+  });
 });
 
 describe('derivePhysicPaintPushSet and clampPhysicPaintPushDestination (exported pure authorities)', () => {
