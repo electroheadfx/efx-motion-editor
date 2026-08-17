@@ -155,9 +155,16 @@ export function usePhysicsPaintPushDrag<Publication>(
   input: PushDragSessionInput<Publication>,
 ): PushDragSessionApi<Publication> {
   const sessionRef = useRef<PushDragSession<Publication> | null>(null);
+  const suppressNextClickRef = useRef(false);
   const ghost = useSignal<PushDragGhostState>(PUSH_GHOST_INACTIVE);
   const preview = useSignal<PushDragPreviewState<Publication> | null>(null);
   const win = input.windowLike ?? (typeof window !== 'undefined' ? window : undefined);
+
+  const consumeClickSuppression = () => {
+    if (!suppressNextClickRef.current) return false;
+    suppressNextClickRef.current = false;
+    return true;
+  };
 
   const onPointerDown = (event: PointerEvent) => {
     event.stopPropagation();
@@ -178,6 +185,18 @@ export function usePhysicsPaintPushDrag<Publication>(
       cleanup: () => {},
     };
 
+    const clearSuppressionSoon = () => {
+      win.setTimeout(() => {
+        suppressNextClickRef.current = false;
+      }, 0);
+    };
+    const restoreSourceFocus = () => {
+      try {
+        sourceElement.focus();
+      } catch {
+        // The source target may have unmounted while the session was active.
+      }
+    };
     const clearPaint = () => {
       ghost.value = PUSH_GHOST_INACTIVE;
       preview.value = null;
@@ -238,6 +257,10 @@ export function usePhysicsPaintPushDrag<Publication>(
         session.priorCursor = sourceElement.style.cursor;
         sourceElement.style.cursor = 'grabbing';
       }
+      // Suppression arms only when a drag session actually started past the
+      // threshold — a sub-threshold plain click never arms it, so the click
+      // passes through unsuppressed and normal frame navigation proceeds (D-09).
+      suppressNextClickRef.current = true;
       input.clearClickSequence();
       return true;
     };
@@ -260,12 +283,33 @@ export function usePhysicsPaintPushDrag<Publication>(
       }
       upEvent.preventDefault();
       const retainedPublication = session.publication;
+      const retainedRejection = session.rejection;
       cleanup();
-      if (retainedPublication === null) return;
-      void input.onDropCommit(retainedPublication);
+      clearSuppressionSoon();
+      if (retainedPublication === null) {
+        restoreSourceFocus();
+        input.onRejected?.(retainedRejection?.reason, retainedRejection?.detail);
+        return;
+      }
+      void input.onDropCommit(retainedPublication)
+        .then((accepted) => {
+          if (!accepted) restoreSourceFocus();
+        })
+        .catch(() => {
+          // Transport or coordinator failures reject the commit port. The
+          // accepted rail remains authoritative; restore keyboard focus and
+          // leave no session paint behind.
+          restoreSourceFocus();
+        });
     };
     const cancelSession = () => {
+      const started = session.started;
       cleanup();
+      if (started) {
+        clearSuppressionSoon();
+        input.onCancel?.();
+      }
+      restoreSourceFocus();
     };
     const handlePointerCancel = (cancelEvent: PointerEvent) => {
       if (cancelEvent.pointerId !== session.pointerId || sessionRef.current !== session) return;
@@ -299,8 +343,6 @@ export function usePhysicsPaintPushDrag<Publication>(
     onPointerDown,
     ghost: ghost.value,
     preview: preview.value,
-    // Task 2 wires the click-suppression ref. Until then a sub-threshold
-    // release can never arm suppression, so the click passes through (D-09).
-    consumeClickSuppression: () => false,
+    consumeClickSuppression,
   };
 }
