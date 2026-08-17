@@ -33,6 +33,7 @@ import {
   mapRotoInsertProductReason,
   mapRotoScissorProductReason,
   mapRotoKeyRailDragProductReason,
+  mapRotoPushProductReason,
   buildKeyRailDragProposalVersion,
   useRotoTimelineActions,
   type RotoDeleteTarget,
@@ -1838,5 +1839,300 @@ describe('useRotoTimelineActions Scissor availability and activation', () => {
       intent: { kind: 'scissor-key-rail', breakOwnerKeyId: 'B' },
     }));
     expect(publishStatus).toHaveBeenCalledWith('Split Key Rail before frame 3.');
+  });
+});
+
+describe('useRotoTimelineActions Push prepare + locked copy family (43.5-03 Task 1)', () => {
+  it('rejects in the same guard order as prepareRotoGroupDrag', () => {
+    const noLaunch = createHarness({ launch: null });
+    expect(noLaunch.actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'A',
+      deltaFrames: 2,
+    })).toEqual({ ok: false, reason: 'Select a real Roto key before editing the timeline.' });
+
+    const noPorts = createHarness({ omitPhysicalEditPorts: true });
+    expect(noPorts.actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'A',
+      deltaFrames: 2,
+    })).toEqual({ ok: false, reason: 'Timeline editing is unavailable.' });
+
+    const inFlight = createHarness({ pendingOperationId: 'op-busy' });
+    expect(inFlight.actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'A',
+      deltaFrames: 2,
+    })).toEqual({ ok: false, reason: 'A Roto physical edit is already in flight.' });
+  });
+
+  it('rejects a malformed anchor descriptor and a malformed delta before resolution', () => {
+    const { actions } = createHarness({ records: [realKeyRecord('A', 0)], capacity: 10 });
+    // XOR anchor violated: no anchor.
+    expect(actions.physicalActions.prepareRotoPush({ direction: 'right', deltaFrames: 2 }))
+      .toEqual({ ok: false, reason: 'The push anchor identity is malformed.' });
+    // XOR anchor violated: both anchors.
+    expect(actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'A',
+      anchorLoopId: 'loop-1',
+      deltaFrames: 2,
+    })).toEqual({ ok: false, reason: 'The push anchor identity is malformed.' });
+    // Unbounded anchor keyId.
+    expect(actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'x'.repeat(300),
+      deltaFrames: 2,
+    })).toEqual({ ok: false, reason: 'The push anchor identity is malformed.' });
+    // Negative delta.
+    expect(actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'A',
+      deltaFrames: -1,
+    })).toEqual({ ok: false, reason: 'The push delta is malformed.' });
+  });
+
+  it('threads the incoming break collection into a break-aware proposalVersion (Pitfall 3 regression)', () => {
+    const records = [realKeyRecord('A', 0), realKeyRecord('B', 1), realKeyRecord('C', 10)];
+    const base = { records, capacity: 14 };
+    const withoutBreaks = createHarness({ ...base });
+    const withBreaks = createHarness({ ...base, incomingInterpolationBreakKeyIds: ['B'] });
+
+    const plain = withoutBreaks.actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'A',
+      deltaFrames: 2,
+    });
+    const broken = withBreaks.actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'A',
+      deltaFrames: 2,
+    });
+
+    expect(plain.ok).toBe(true);
+    expect(broken.ok).toBe(true);
+    if (!plain.ok || !broken.ok) throw new Error('Both push preparations must succeed');
+    // Identical physical content except break authority produce different
+    // proposalVersions — the break collection reaches the fingerprint (Pitfall 3).
+    expect(plain.publication.proposalVersion).not.toBe(broken.publication.proposalVersion);
+    // The added break (splitting the A/B rail) does not change the committed
+    // mapping, so the version difference is attributable to break authority alone.
+    expect(Object.fromEntries(plain.publication.proposal.mapping))
+      .toEqual(Object.fromEntries(broken.publication.proposal.mapping));
+  });
+
+  it('rejects a zero-delta push with the no-change reason and no publication (D-15)', () => {
+    const { actions } = createHarness({
+      records: [realKeyRecord('A', 0), realKeyRecord('B', 10)],
+      capacity: 14,
+    });
+    const preparation = actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'A',
+      deltaFrames: 0,
+    });
+    expect(preparation).toEqual({ ok: false, reason: 'This move would not change the timeline.' });
+  });
+
+  it('prepares a break-aware publication carrying proposal, intent, version, launch tuple, and presentation facts', () => {
+    const records = [realKeyRecord('A', 0), realKeyRecord('B', 1)];
+    const group = lifecycleGroup({
+      loopId: 'group-1',
+      placementStart: 0,
+      sourceKeyIds: Object.freeze(['A', 'B']),
+      phaseOrigin: 0,
+      originalEndExclusive: 2,
+      visibleRanges: Object.freeze([Object.freeze({ start: 0, endExclusive: 2 })]),
+    });
+    const { actions } = createHarness({ records, loopClips: [group], capacity: 14 });
+    const preparation = actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorLoopId: 'group-1',
+      deltaFrames: 2,
+    });
+
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Single-Group push must prepare');
+    const pub = preparation.publication;
+    expect(pub.proposal.status.operationKind).toBe('push-rails');
+    expect(pub.proposal.status.changed).toBe(true);
+    expect(pub.intent).toEqual({ kind: 'push-rails', direction: 'right', anchorLoopId: 'group-1', deltaFrames: 2 });
+    expect(pub.expectedLaunch).toEqual({ operationId: 'op-1', layerId: 'layer-1' });
+    expect(typeof pub.proposalVersion).toBe('string');
+    expect(pub.proposalVersion.length).toBeGreaterThan(0);
+    // The clamped +2 delta commits (preview-is-the-commit, D-14).
+    expect(Object.fromEntries(pub.proposal.mapping)).toEqual({ A: 2, B: 3 });
+    // Presentation facts: one moved Rail, clamped +2, moved set [0,2) → [2,4), gap [0,1].
+    expect(pub.movedRailCount).toBe(1);
+    expect(pub.clampedDeltaFrames).toBe(2);
+    expect(pub.beforeRange).toEqual({ firstFrame: 0, lastFrame: 1 });
+    expect(pub.afterRange).toEqual({ firstFrame: 2, lastFrame: 3 });
+    expect(pub.gapInterval).toEqual({ firstFrame: 0, lastFrame: 1 });
+    // The opened-gap break is recorded on the moved set's first key (PUSH-03).
+    expect(pub.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['A']);
+    // The moved Group clip translates with its lifecycle fields.
+    expect(pub.proposal.nextLoopClips?.[0]).toMatchObject({ placementStart: 2, phaseOrigin: 2 });
+  });
+
+  it('fails closed with the no-space copy when the moved set is flush at capacity', () => {
+    const records: PhysicPaintRotoRealKeyRecord[] = [];
+    for (let index = 0; index < 10; index += 1) records.push(realKeyRecord(`a${index}`, index));
+    for (let index = 0; index < 10; index += 1) records.push(realKeyRecord(`b${index}`, 30 + index));
+    const { actions } = createHarness({ records, capacity: 40 });
+    const preparation = actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'a0',
+      deltaFrames: 2,
+    });
+    expect(preparation).toEqual({ ok: false, reason: 'No empty space in that direction.' });
+  });
+
+  it('fails closed with the straddle copy when a moved attached Group shares its source with a fixed-side Group (D-16)', () => {
+    const records = [realKeyRecord('g0', 20), realKeyRecord('g1', 21)];
+    const loopG = lifecycleGroup({
+      loopId: 'loop-G',
+      placementStart: 20,
+      sourceKeyIds: Object.freeze(['g0', 'g1']),
+      phaseOrigin: 20,
+      originalEndExclusive: 28,
+      visibleRanges: Object.freeze([Object.freeze({ start: 20, endExclusive: 28 })]),
+    });
+    const loopD = lifecycleGroup({
+      loopId: 'loop-D',
+      placementStart: 2,
+      sourceKeyIds: Object.freeze(['g0', 'g1']),
+      mode: 'static',
+      phaseOrigin: 2,
+      originalEndExclusive: 10,
+      visibleRanges: Object.freeze([Object.freeze({ start: 2, endExclusive: 10 })]),
+    });
+    const { actions } = createHarness({ records, loopClips: [loopD, loopG], capacity: 40 });
+    const preparation = actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorLoopId: 'loop-G',
+      deltaFrames: 2,
+    });
+    expect(preparation).toEqual({
+      ok: false,
+      reason: 'Can\'t push: a Group in the moved set shares its source with a fixed Group.',
+    });
+  });
+
+  it('fails closed with the empty-anchor copy when the anchor is not a member of any Rail (D-07/D-17)', () => {
+    const { actions } = createHarness({ records: [realKeyRecord('A', 0), realKeyRecord('B', 1)], capacity: 10 });
+    const preparation = actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: 'nonexistent',
+      deltaFrames: 2,
+    });
+    expect(preparation).toEqual({
+      ok: false,
+      reason: 'Push is unavailable on an empty frame. Drag from a key or rail.',
+    });
+  });
+
+  it('maps the entire locked copy family verbatim (D-15/D-16/D-17, UI-SPEC T6)', () => {
+    // Live readout, Push Right with gap — UI-SPEC T6 example verbatim.
+    expect(mapRotoPushProductReason({
+      kind: 'live',
+      direction: 'right',
+      signedDeltaFrames: 12,
+      beforeRange: { firstFrame: 40, lastFrame: 87 },
+      afterRange: { firstFrame: 52, lastFrame: 99 },
+      gapInterval: { firstFrame: 40, lastFrame: 51 },
+    })).toBe('Push Right +12 — frames 40–87 → 52–99, gap 40–51');
+    // Live readout, Push Left mirror.
+    expect(mapRotoPushProductReason({
+      kind: 'live',
+      direction: 'left',
+      signedDeltaFrames: -12,
+      beforeRange: { firstFrame: 52, lastFrame: 99 },
+      afterRange: { firstFrame: 40, lastFrame: 87 },
+      gapInterval: { firstFrame: 88, lastFrame: 99 },
+    })).toBe('Push Left −12 — frames 52–99 → 40–87, gap 88–99');
+    // Live readout with no gap: no gap sentence.
+    expect(mapRotoPushProductReason({
+      kind: 'live',
+      direction: 'right',
+      signedDeltaFrames: 2,
+      beforeRange: { firstFrame: 0, lastFrame: 1 },
+      afterRange: { firstFrame: 2, lastFrame: 3 },
+      gapInterval: null,
+    })).toBe('Push Right +2 — frames 0–1 → 2–3');
+    // Accepted plural with gap.
+    expect(mapRotoPushProductReason({
+      kind: 'accepted',
+      direction: 'right',
+      movedRailCount: 2,
+      signedDeltaFrames: 2,
+      afterRange: { firstFrame: 2, lastFrame: 12 },
+      gapInterval: { firstFrame: 0, lastFrame: 1 },
+    })).toBe('Pushed 2 Rails right by 2 frames — moved set now frames 2–12. Gap opened at frames 0–1.');
+    // Accepted singular without gap.
+    expect(mapRotoPushProductReason({
+      kind: 'accepted',
+      direction: 'right',
+      movedRailCount: 1,
+      signedDeltaFrames: 2,
+      afterRange: { firstFrame: 2, lastFrame: 3 },
+      gapInterval: null,
+    })).toBe('Pushed 1 Rail right by 2 frames — moved set now frames 2–3.');
+    // Accepted plural left mirror with gap.
+    expect(mapRotoPushProductReason({
+      kind: 'accepted',
+      direction: 'left',
+      movedRailCount: 2,
+      signedDeltaFrames: -2,
+      afterRange: { firstFrame: 0, lastFrame: 4 },
+      gapInterval: { firstFrame: 5, lastFrame: 6 },
+    })).toBe('Pushed 2 Rails left by 2 frames — moved set now frames 0–4. Gap opened at frames 5–6.');
+    // Disabled pass-through.
+    expect(mapRotoPushProductReason({ kind: 'disabled', reason: 'A Roto physical edit is already in flight.' }))
+      .toBe('A Roto physical edit is already in flight.');
+    // Straddle verbatim (D-16).
+    expect(mapRotoPushProductReason({ kind: 'rejected', failureCode: 'push-source-straddle', failureText: 'x' }))
+      .toBe('Can\'t push: a Group in the moved set shares its source with a fixed Group.');
+    // Empty anchor verbatim (D-07/D-17).
+    expect(mapRotoPushProductReason({ kind: 'rejected', failureCode: 'unknown-operation-identity', failureText: 'y' }))
+      .toBe('Push is unavailable on an empty frame. Drag from a key or rail.');
+    // No-space delegates to the Group mapper — one literal source (43.4 precedent).
+    expect(mapRotoPushProductReason({ kind: 'rejected', failureCode: 'no-free-space-in-direction', failureText: 'z' }))
+      .toBe('No empty space in that direction.');
+  });
+
+  it('prepares a Push Left publication whose presentation facts feed the locked mirror copy', () => {
+    const records = [
+      realKeyRecord('A', 2),
+      realKeyRecord('B', 3),
+      realKeyRecord('C', 6),
+      realKeyRecord('D', 10),
+    ];
+    const { actions } = createHarness({ records, capacity: 14 });
+    const preparation = actions.physicalActions.prepareRotoPush({
+      direction: 'left',
+      anchorKeyId: 'C',
+      deltaFrames: 2,
+    });
+
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Push Left must prepare');
+    const pub = preparation.publication;
+    expect(Object.fromEntries(pub.proposal.mapping)).toEqual({ A: 0, B: 1, C: 4, D: 10 });
+    expect(pub.movedRailCount).toBe(2);
+    expect(pub.clampedDeltaFrames).toBe(-2);
+    expect(pub.beforeRange).toEqual({ firstFrame: 2, lastFrame: 6 });
+    expect(pub.afterRange).toEqual({ firstFrame: 0, lastFrame: 4 });
+    expect(pub.gapInterval).toEqual({ firstFrame: 5, lastFrame: 6 });
+    // The vacated tail gap is owned by the fixed right side's first key (PUSH-03).
+    expect(pub.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['D']);
+    // The mapped accepted copy from the retained facts.
+    expect(mapRotoPushProductReason({
+      kind: 'accepted',
+      direction: pub.intent.direction,
+      movedRailCount: pub.movedRailCount,
+      signedDeltaFrames: pub.clampedDeltaFrames,
+      afterRange: pub.afterRange,
+      gapInterval: pub.gapInterval,
+    })).toBe('Pushed 2 Rails left by 2 frames — moved set now frames 0–4. Gap opened at frames 5–6.');
   });
 });
