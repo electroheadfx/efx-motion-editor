@@ -2335,20 +2335,22 @@ button.destructive {
   opacity: 1;
 }
 
-/* 43.5-05 armed Push tint (D-06): rgba(184,199,255,0.2) background /
-   #B8C7FF border / #DBE4FF icon+label, mirroring the established
-   roto-interpolation-toggle active family. aria-pressed=true drives it. */
+/* 43.5-05 armed Push tint (D-06, UX7 smoke revision): the armed Push button
+   uses the ORANGE selection language (#F59E0B family — the same family as rail
+   selection), not the generic blue active-toggle tint. The user's native smoke
+   feedback overrode the UI-SPEC's rgba(184,199,255,0.2) tint. aria-pressed=true
+   drives it. */
 .physics-paint-push-tool-button.physics-paint-push-tool-armed {
-  border-color: #b8c7ff;
-  background: rgba(184, 199, 255, 0.2);
-  color: #dbe4ff;
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
 }
 
 .physics-paint-push-tool-button.physics-paint-push-tool-armed:hover:not([aria-disabled="true"]),
 .physics-paint-push-tool-button.physics-paint-push-tool-armed:focus-visible:not([aria-disabled="true"]) {
-  border-color: #c6d2ff;
-  background: rgba(184, 199, 255, 0.28);
-  color: #e6ecff;
+  border-color: #fbbf24;
+  background: rgba(245, 158, 11, 0.28);
+  color: #fcd34d;
 }
 
 /* 43.5-05 directional cursor while armed: e-resize for Push Right, w-resize
@@ -2359,6 +2361,114 @@ button.destructive {
 
 .physics-paint-workflow-strip.physics-paint-push-armed-left {
   cursor: w-resize;
+}
+
+/* 43.5-05 Task 2 (UX4 smoke): the directional cursor must show over the ENTIRE
+   lane while armed — ruler, cells, rails, gaps. The strip-level cursor only
+   reaches the ruler and empty chrome; cells/rails declare their own pointer
+   cursors, so the armed cursor is forced on every lane descendant. The lane's
+   own cursor stays class-driven (no !important) so the drag session's inline
+   `grabbing` still wins during a drag (pointer capture follows the lane). */
+.physics-paint-lane[data-push-armed="right"] * {
+  cursor: e-resize !important;
+}
+
+.physics-paint-lane[data-push-armed="left"] * {
+  cursor: w-resize !important;
+}
+
+/* Over an invalid anchor (empty/gap frame or a straddled anchor) the cursor is
+   not-allowed (D-07/D-16). Higher specificity than the armed-direction rules. */
+.physics-paint-lane[data-push-armed="right"][data-push-hover-invalid="true"] *,
+.physics-paint-lane[data-push-armed="left"][data-push-hover-invalid="true"] * {
+  cursor: not-allowed !important;
+}
+
+/* 43.5-05 Task 2 hover pre-highlight layer (T4): paint-only brightening on the
+   prospective moved set's 3px rail geometry plus the 2x8px pivot tick. Layer 7
+   per UI-SPEC — above the rail containers (z-index 4) and cells. */
+.physics-paint-push-hover-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+}
+
+.physics-paint-push-hover-rail {
+  position: absolute;
+  top: 0;
+  height: 3px;
+  background: #c4b5fd;
+  pointer-events: none;
+}
+
+.physics-paint-push-hover-rail.mode-static {
+  background: #67e8f9;
+}
+
+.physics-paint-push-hover-rail.key-rail {
+  background: #a7b0b9;
+}
+
+.physics-paint-push-pivot-tick {
+  position: absolute;
+  top: 4px;
+  width: 2px;
+  height: 8px;
+  background: #f2f5f7;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* 43.5-05 Task 2 push ghost layer (T5): per-rail kind-colored ghosts at 55%
+   opacity at the clamped destination plus the 2x12px #FF6B6B blocked-edge bar.
+   Between layers 7 and 8 per UI-SPEC. */
+.physics-paint-push-ghost-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+}
+
+.physics-paint-push-ghost {
+  position: absolute;
+  top: 0;
+  height: 3px;
+  background: #8b5cf6;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.physics-paint-push-ghost.mode-static {
+  background: #06b6d4;
+}
+
+.physics-paint-push-ghost.key-rail {
+  background: #8a939c;
+}
+
+.physics-paint-push-blocked-edge {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 12px;
+  background: #ff6b6b;
+  pointer-events: none;
+}
+
+/* 43.5-05 Task 2 (UX6 smoke): the ToolCase button shows the orange active
+   state while its popover is open; back to normal when closed. */
+.physics-paint-toolbox-toggle.physics-paint-toolbox-toggle-open {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.physics-paint-toolbox-toggle.physics-paint-toolbox-toggle-open:hover:not([aria-disabled="true"]),
+.physics-paint-toolbox-toggle.physics-paint-toolbox-toggle-open:focus-visible:not([aria-disabled="true"]) {
+  border-color: #fbbf24;
+  background: rgba(245, 158, 11, 0.28);
+  color: #fcd34d;
 }
 
 .physics-paint-roto-key-icon-button.destructive:not([aria-disabled="true"]) {
