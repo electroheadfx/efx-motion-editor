@@ -5,6 +5,26 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 44
 current_phase_name: Integrated UAT + Signed Release
 status: planning
+stopped_at: Phase 43.5 context gathered
+last_updated: "2026-08-17T10:32:21.531Z"
+last_activity: 2026-08-16
+last_activity_desc: "Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics"
+progress:
+  total_phases: 11
+  completed_phases: 8
+  total_plans: 78
+  completed_plans: 78
+  percent: 73
+---
+
+Total Phases: 8
+---
+gsd_state_version: 1.0
+milestone: v0.9.0
+milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
+current_phase: 44
+current_phase_name: Integrated UAT + Signed Release
+status: planning
 stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-16
@@ -519,6 +539,7 @@ None yet.
 - Phase 43.2 inserted after Phase 43: Motion and Static Group Stabilization and Action Lifecycle — use SPECS/milestone-v0.9.0-new-phases/phase-43.2-motion-static-group-stabilization-action-lifecycle-prompt.md (URGENT)
 - Phase 43.3 inserted after Phase 43: Motion and Static Group Drag Within Free Space — intent source: SPECS/milestone-v0.9.0-new-phases/phase-43.3-group-drag-free-space-prompt.md (URGENT)
 - Phase 43.4 inserted after Phase 43: Derived Key Groups and Scissor Breaks — intent source: SPECS/milestone-v0.9.0-new-phases/phase-43.4-derived-key-groups-scissor-prompt.md (URGENT)
+- Phase 43.5 inserted after Phase 43.4: Timeline Toolbox and Directional Push Tools (spec: SPECS/milestone-v0.9.0-new-phases/phase-43.5-timeline-toolbox-directional-push-prompt.md)
 
 ## Deferred Items
 
@@ -648,9 +669,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-16T19:04:54.000Z
-Stopped at: Completed 43.4-08-PLAN.md
-Resume file: None
+Last session: 2026-08-17T10:32:21.500Z
+Stopped at: Phase 43.5 context gathered
+Resume file: .planning/phases/43.5-timeline-toolbox-and-directional-push-tools/43.5-CONTEXT.md
 
 ## Operator Next Steps
 
