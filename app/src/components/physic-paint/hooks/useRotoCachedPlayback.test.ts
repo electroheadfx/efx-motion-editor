@@ -68,7 +68,28 @@ vi.mock('../audio/efxPaintAudioOwnership', () => ({
   },
 }));
 
+// The navigation coordinator's key utilities are irrelevant to the solo
+// playback seam tests — stub the hook so the coordinator renders with a
+// minimal harness.
+vi.mock('./useRotoKeyUtilities', () => ({
+  useRotoKeyUtilities: () => ({
+    session: { actionAvailability: { value: {} } },
+    keyActionInFlight: false,
+    resetSession: vi.fn(),
+    executeSessionEffects: vi.fn(),
+    runSessionResult: vi.fn(),
+    duplicateKey: vi.fn(),
+    copyKey: vi.fn(),
+    cutKey: vi.fn(),
+    pasteKey: vi.fn(),
+    addKey: vi.fn(),
+  }),
+}));
+
 import { clampRotoPlaybackFps, useRotoCachedPlayback, type UseRotoCachedPlaybackInput } from './useRotoCachedPlayback';
+import { useRotoNavigationCoordinator } from './useRotoNavigationCoordinator';
+import { findCachedRotoDisplayFrame } from './useRotoReferenceController';
+import type { SoloPlaybackWindow } from '../roto/physicsPaintRotoSoloWindow';
 import type { EfxPaintAudioPreviewContext } from '../../../types/physicPaint';
 
 type Frame = { id: string };
@@ -419,5 +440,207 @@ describe('useRotoCachedPlayback', () => {
       expect(audioMocks.prepare).not.toHaveBeenCalled();
       expect(audioMocks.playAtCursor).not.toHaveBeenCalled();
     });
+  });
+});
+
+/**
+ * Solo playback filter seam (D-17/D-19, Pitfall 3). The ONLY place the solo
+ * filter lives is the navigation coordinator's getFrames enumeration; the
+ * stopped-canvas display lookup (findCachedRotoDisplayFrame) must stay
+ * untouched (D-18). These tests drive the coordinator's getFrames through
+ * useRotoCachedPlayback and assert the enumeration shapes.
+ */
+describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', () => {
+  type Preview = { appFrame: number; id: string };
+
+  interface CoordinatorPlaybackInput {
+    getEndFrame: () => number | null;
+    getFrame: (appFrame: number) => Preview | null;
+    getSoloWindow?: () => SoloPlaybackWindow | null;
+  }
+
+  function createCoordinatorHarness(playback: CoordinatorPlaybackInput) {
+    hookRuntime.reset();
+    const onStart = vi.fn();
+    const onFrame = vi.fn();
+    const setIsPlaying = vi.fn();
+    let current = playback;
+    const render = () => {
+      hookRuntime.cursor = 0;
+      return useRotoNavigationCoordinator({
+        workflowMode: 'roto',
+        keyUtilities: {
+          currentFrame: 0,
+          currentKeyId: null,
+          physicalKeyUtilities: {} as never,
+          getSelectedKeyIds: () => [],
+          getRotoKeyRecords: () => [],
+          realKeyFrames: [],
+          dirtyFrames: new Set(),
+          canvasSize: { width: 1, height: 1 },
+          applyStatus: 'idle',
+          flushInFlight: false,
+          buildBlankRotoFrame: () => ({}) as never,
+          setDirtyFrames: () => {},
+          syncPendingRotoFrames: () => {},
+          showCachedReference: () => {},
+          clearGeneratedFrame: () => {},
+          clearDeletedFrame: () => {},
+          setApplyMessage: () => {},
+          setApplyStatus: () => {},
+          setLastError: () => {},
+        },
+        playback: {
+          initialSettings: { loop: true, fps: 2 },
+          getEndFrame: () => current.getEndFrame(),
+          getFrame: (appFrame) => current.getFrame(appFrame),
+          ...(current.getSoloWindow !== undefined
+            ? { getSoloWindow: () => current.getSoloWindow!() }
+            : {}),
+          onStart,
+          onFrame,
+          setIsPlaying,
+        },
+      });
+    };
+    return {
+      render,
+      update: (next: Partial<CoordinatorPlaybackInput>) => {
+        current = { ...current, ...next };
+        return render();
+      },
+      onStart,
+      onFrame,
+      setIsPlaying,
+    };
+  }
+
+  function installWindowTimers() {
+    vi.stubGlobal('window', {
+      clearInterval,
+      setInterval,
+    });
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it('disarmed enumeration is byte-identical to the pre-solo enumeration (same length, same frame references)', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const harness = createCoordinatorHarness({
+      getEndFrame: () => 10,
+      getFrame: (appFrame) => ({ appFrame, id: `f${appFrame}` }),
+    });
+
+    const coordinator = harness.render();
+    coordinator.playback.start();
+    const next = harness.render();
+
+    expect(next.playback.isActive).toBe(true);
+    expect(harness.onStart).toHaveBeenCalledWith(10);
+    expect(next.playback.frame).toEqual({ appFrame: 0, id: 'f0' });
+    expect(harness.onFrame).toHaveBeenLastCalledWith(0, 0);
+
+    // Walk the full enumeration: appFrames 0..9 in order, every frame present.
+    for (let tick = 1; tick < 10; tick += 1) {
+      vi.advanceTimersByTime(500);
+      expect(harness.onFrame).toHaveBeenLastCalledWith(tick, tick);
+    }
+    vi.useRealTimers();
+  });
+
+  it('armed enumeration is restricted to the solo window with unattributed frames nulled', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const harness = createCoordinatorHarness({
+      getEndFrame: () => 50,
+      getFrame: (appFrame) => ({ appFrame, id: `f${appFrame}` }),
+      getSoloWindow: () => ({
+        start: 12,
+        endExclusive: 40,
+        includesFrame: (appFrame) => appFrame % 2 === 0,
+      }),
+    });
+
+    const coordinator = harness.render();
+    coordinator.playback.start();
+    const next = harness.render();
+
+    expect(next.playback.isActive).toBe(true);
+    expect(harness.onStart).toHaveBeenCalledWith(28); // 40 - 12
+    // First tick: appFrame 12, unattributed (odd) -> frame null.
+    expect(next.playback.frame).toBeNull();
+    expect(harness.onFrame).toHaveBeenLastCalledWith(0, 12);
+
+    vi.advanceTimersByTime(500);
+    expect(harness.onFrame).toHaveBeenLastCalledWith(1, 13);
+    expect(next.playback.frame).toBeNull();
+
+    vi.advanceTimersByTime(500);
+    expect(harness.onFrame).toHaveBeenLastCalledWith(2, 14);
+    expect(next.playback.frame).toEqual({ appFrame: 14, id: 'f14' });
+
+    // The enumeration never leaves the window: after 28 ticks it wraps to 12.
+    vi.advanceTimersByTime(500 * 25);
+    expect(harness.onFrame).toHaveBeenLastCalledWith(0, 12);
+    vi.useRealTimers();
+  });
+
+  it('armed with an empty window intersection yields an empty list (no start)', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const harness = createCoordinatorHarness({
+      getEndFrame: () => 10,
+      getFrame: (appFrame) => ({ appFrame, id: `f${appFrame}` }),
+      getSoloWindow: () => ({
+        start: 12,
+        endExclusive: 40,
+        includesFrame: () => true,
+      }),
+    });
+
+    const coordinator = harness.render();
+    coordinator.playback.start();
+    const next = harness.render();
+
+    expect(next.playback.isActive).toBe(false);
+    expect(next.playback.status).toBe('No cached Roto frames yet. Missing frames play transparent/background.');
+    expect(harness.onStart).not.toHaveBeenCalled();
+    expect(harness.setIsPlaying).not.toHaveBeenCalled();
+  });
+
+  it('Pitfall 3 regression: armed solo does not alter the stopped-canvas display lookup (D-18)', () => {
+    // The stopped canvas renders everything at any cursor position:
+    // findCachedRotoDisplayFrame has no solo input and returns the physical
+    // frame for frames inside AND outside the solo window.
+    const soloWindow: SoloPlaybackWindow = {
+      start: 12,
+      endExclusive: 40,
+      includesFrame: (appFrame) => appFrame >= 12 && appFrame < 40,
+    };
+    const pngDataUrl = (label: string) => `data:image/png;base64,${btoa(`${String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)}${label}`)}`;
+    const physical = (appFrame: number) => ({
+      kind: 'real' as const,
+      layerId: 'layer-1',
+      appFrame,
+      keyId: `k${appFrame}`,
+      contentRevision: 'rev-1',
+      cacheRevision: `rev-1:real:k${appFrame}`,
+      renderedFrame: { frameIndex: appFrame, appFrame, dataUrl: pngDataUrl(`k${appFrame}`) },
+    });
+    const display = (appFrame: number) => findCachedRotoDisplayFrame(appFrame, {
+      getPhysicalRenderSource: (frame) => physical(frame),
+    });
+
+    // Inside the solo window: still rendered on the stopped canvas.
+    expect(display(20)).toMatchObject({ appFrame: 20, keyId: 'k20' });
+    // Outside the solo window: still rendered on the stopped canvas.
+    expect(display(5)).toMatchObject({ appFrame: 5, keyId: 'k5' });
+    expect(display(50)).toMatchObject({ appFrame: 50, keyId: 'k50' });
+    expect(soloWindow.includesFrame(20)).toBe(true);
+    expect(soloWindow.includesFrame(5)).toBe(false);
   });
 });
