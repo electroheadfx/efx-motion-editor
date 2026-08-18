@@ -65,6 +65,7 @@ function actions() {
     collapseRotoSelection: vi.fn(),
     closeToolboxPopover: vi.fn(),
     disarmPushTool: vi.fn(),
+    disarmSolo: vi.fn(),
   };
 }
 
@@ -382,6 +383,60 @@ describe('Physics Paint armed Push tool disarm routing (43.5-05)', () => {
     expect(handlers.closeToolboxPopover).toHaveBeenCalledOnce();
     expect(handlers.disarmPushTool).not.toHaveBeenCalled();
     expect(handlers.collapseRotoSelection).not.toHaveBeenCalled();
+  });
+});
+
+describe('Physics Paint armed Solo disarm routing (43.6-06, D-04)', () => {
+  it('Escape disarms solo after the push layer and before selection collapse', () => {
+    const handlers = actions();
+    handlers.disarmPushTool.mockReturnValue(false);
+    handlers.disarmSolo.mockReturnValue(true);
+    const keyboardEvent = eventFor('Escape');
+    dispatchPhysicsPaintStudioKeyDown(
+      keyboardEvent.event,
+      { currentFrame: 4, isPlaying: false, mutationLocked: false, hasSelectedRotoKey: false },
+      handlers,
+      [],
+    );
+
+    expect(handlers.disarmPushTool).toHaveBeenCalledOnce();
+    expect(handlers.disarmSolo).toHaveBeenCalledOnce();
+    expect(handlers.collapseRotoSelection).not.toHaveBeenCalled();
+    expect(keyboardEvent.preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('Escape consumes the push layer before consulting solo (one Escape, one layer)', () => {
+    const handlers = actions();
+    handlers.disarmPushTool.mockReturnValue(true);
+    const keyboardEvent = eventFor('Escape');
+    dispatchPhysicsPaintStudioKeyDown(
+      keyboardEvent.event,
+      { currentFrame: 4, isPlaying: false, mutationLocked: false, hasSelectedRotoKey: false },
+      handlers,
+      [],
+    );
+
+    expect(handlers.disarmPushTool).toHaveBeenCalledOnce();
+    expect(handlers.disarmSolo).not.toHaveBeenCalled();
+    expect(handlers.collapseRotoSelection).not.toHaveBeenCalled();
+  });
+
+  it('Escape falls through to selection collapse when neither tool is armed', () => {
+    const handlers = actions();
+    handlers.disarmPushTool.mockReturnValue(false);
+    handlers.disarmSolo.mockReturnValue(false);
+    const keyboardEvent = eventFor('Escape');
+    dispatchPhysicsPaintStudioKeyDown(
+      keyboardEvent.event,
+      { currentFrame: 4, isPlaying: false, mutationLocked: false, hasSelectedRotoKey: false },
+      handlers,
+      [],
+    );
+
+    expect(handlers.disarmPushTool).toHaveBeenCalledOnce();
+    expect(handlers.disarmSolo).toHaveBeenCalledOnce();
+    expect(handlers.collapseRotoSelection).toHaveBeenCalledOnce();
+    expect(keyboardEvent.preventDefault).toHaveBeenCalledOnce();
   });
 });
 

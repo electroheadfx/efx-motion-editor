@@ -317,6 +317,40 @@ describe('getRotoStatusCapsuleViewModel — idle-context contract (38-08, D-08/D
   });
 
 
+  it('projects the persistent solo line while armed and nothing when disarmed (43.6-06, D-20)', () => {
+    // Armed: the locked solo line outranks the idle ambient context.
+    expect(getRotoStatusCapsuleViewModel({
+      soloLine: 'Solo - 3 Rails, frames 12-88.',
+      ambient: 'Real Roto key · Frame 5',
+    })).toBe('Solo - 3 Rails, frames 12-88.');
+    // Singular form.
+    expect(getRotoStatusCapsuleViewModel({
+      soloLine: 'Solo - 1 Rail, frames 12-40.',
+      ambient: 'Real Roto key · Frame 5',
+    })).toBe('Solo - 1 Rail, frames 12-40.');
+    // Transient feedback still outranks the persistent solo line.
+    expect(getRotoStatusCapsuleViewModel({
+      soloLine: 'Solo - 3 Rails, frames 12-88.',
+      feedback: [{ text: 'Frame inserted' }],
+    })).toBe('Frame inserted');
+    // The solo line outranks the persistent set copy (armed solo is the
+    // highest-priority persistent term).
+    expect(getRotoStatusCapsuleViewModel({
+      soloLine: 'Solo - 3 Rails, frames 12-88.',
+      setCopy: '3 Rails selected — frames 12–88 (1 Motion, 2 Key).',
+    })).toBe('Solo - 3 Rails, frames 12-88.');
+    // Disarmed: no solo line — the capsule returns to its resting state.
+    expect(getRotoStatusCapsuleViewModel({
+      soloLine: null,
+      ambient: 'Real Roto key · Frame 5',
+    })).toBe('Real Roto key · Frame 5');
+    expect(getRotoStatusCapsuleViewModel({
+      soloLine: '   ',
+      ambient: 'Real Roto key · Frame 5',
+    })).toBe('Real Roto key · Frame 5');
+  });
+
+
   it('resolves simultaneous guard-class lines most-recent-wins', () => {
     expect(getRotoStatusCapsuleViewModel({
       feedback: [

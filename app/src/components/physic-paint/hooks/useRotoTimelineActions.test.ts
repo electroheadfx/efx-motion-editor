@@ -28,6 +28,7 @@ import {
 } from '../roto/physicsPaintRotoSpacingSelection';
 import {
   buildRailSetCopy,
+  buildRailSetSoloCopy,
   buildRailSetTooltipSentence,
   classifyRotoDeleteTarget,
   classifyRotoInsertTarget,
@@ -3218,5 +3219,45 @@ describe('useRotoTimelineActions set-copy mapper family (43.6-01 Task 3, D-27)',
     expect(buildRailSetTooltipSentence(3, false)).toBe(' One of 3 selected Rails — drag moves the set, Delete removes the set.');
     expect(buildRailSetTooltipSentence(3, true)).toBe(' Range anchor. One of 3 selected Rails — drag moves the set, Delete removes the set.');
     expect(buildRailSetTooltipSentence(0, false)).toBeNull();
+  });
+});
+
+describe('useRotoTimelineActions solo capsule mapper (43.6-06 Task 3, D-20/D-27)', () => {
+  const keyRail = (firstFrame: number, effectiveEndExclusive: number) => ({
+    kind: 'key-rail' as const,
+    firstFrame,
+    effectiveEndExclusive,
+  });
+  const motionLoop = (firstFrame: number, effectiveEndExclusive: number) => ({
+    kind: 'loop' as const,
+    firstFrame,
+    effectiveEndExclusive,
+    mode: 'progressive' as const,
+  });
+
+  it('produces the locked mixed solo line with the ASCII-hyphen range', () => {
+    expect(buildRailSetSoloCopy([
+      motionLoop(12, 40),
+      keyRail(50, 70),
+      keyRail(75, 89),
+    ])).toBe('Solo - 3 Rails, frames 12-88.');
+  });
+
+  it('produces the locked singular solo line for a set of one', () => {
+    expect(buildRailSetSoloCopy([
+      keyRail(12, 41),
+    ])).toBe('Solo - 1 Rail, frames 12-40.');
+  });
+
+  it('derives the inclusive frame range from canonical half-open intervals', () => {
+    // A = first member first frame; B = last member effective end minus 1.
+    expect(buildRailSetSoloCopy([
+      keyRail(4, 9),
+      keyRail(12, 17),
+    ])).toBe('Solo - 2 Rails, frames 4-16.');
+  });
+
+  it('produces no solo line for the empty set', () => {
+    expect(buildRailSetSoloCopy([])).toBeNull();
   });
 });
