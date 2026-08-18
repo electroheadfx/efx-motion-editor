@@ -26,6 +26,8 @@ import {
   type PhysicsPaintRotoSpacingSelection,
 } from '../roto/physicsPaintRotoSpacingSelection';
 import {
+  buildRailSetCopy,
+  buildRailSetTooltipSentence,
   classifyRotoDeleteTarget,
   classifyRotoInsertTarget,
   classifyRotoScissorTarget,
@@ -2344,5 +2346,88 @@ describe('useRotoTimelineActions Push from cell anchors (43.5-05 smoke RED)', ()
     const accepted = await actions.physicalActions.commitRotoPush(preparation.publication);
     expect(accepted).toBe(true);
     expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useRotoTimelineActions set-copy mapper family (43.6-01 Task 3, D-27)', () => {
+  const keyRail = (firstFrame: number, effectiveEndExclusive: number) => ({
+    kind: 'key-rail' as const,
+    firstFrame,
+    effectiveEndExclusive,
+  });
+  const motionLoop = (firstFrame: number, effectiveEndExclusive: number) => ({
+    kind: 'loop' as const,
+    firstFrame,
+    effectiveEndExclusive,
+    mode: 'progressive' as const,
+  });
+  const staticLoop = (firstFrame: number, effectiveEndExclusive: number) => ({
+    kind: 'loop' as const,
+    firstFrame,
+    effectiveEndExclusive,
+    mode: 'static' as const,
+  });
+
+  it('produces the locked homogeneous copy with the type name and en-dash range', () => {
+    expect(buildRailSetCopy([
+      keyRail(12, 20),
+      keyRail(30, 41),
+    ])).toBe('2 Key Rails selected — frames 12–40.');
+  });
+
+  it('produces the locked mixed copy with the type breakdown in first-frame order', () => {
+    expect(buildRailSetCopy([
+      motionLoop(12, 40),
+      keyRail(50, 70),
+      keyRail(75, 89),
+    ])).toBe('3 Rails selected — frames 12–88 (1 Motion, 2 Key).');
+  });
+
+  it('produces the locked set-of-one copy without a type breakdown', () => {
+    expect(buildRailSetCopy([
+      staticLoop(12, 41),
+    ])).toBe('1 Rail selected — frames 12–40.');
+  });
+
+  it('produces no copy for the empty set', () => {
+    expect(buildRailSetCopy([])).toBeNull();
+  });
+
+  it('names homogeneous Motion and Static loop sets by their rail type', () => {
+    expect(buildRailSetCopy([
+      motionLoop(12, 20),
+      motionLoop(30, 41),
+    ])).toBe('2 Motion Rails selected — frames 12–40.');
+    expect(buildRailSetCopy([
+      staticLoop(12, 20),
+      staticLoop(30, 41),
+    ])).toBe('2 Static Rails selected — frames 12–40.');
+  });
+
+  it('derives the inclusive frame range from canonical half-open intervals', () => {
+    // A = first member first frame; B = last member effective end minus 1.
+    expect(buildRailSetCopy([
+      keyRail(4, 9),
+      keyRail(12, 17),
+    ])).toBe('2 Key Rails selected — frames 4–16.');
+  });
+
+  it('uses correct singular/plural type terms in the mixed breakdown', () => {
+    expect(buildRailSetCopy([
+      staticLoop(12, 40),
+      keyRail(50, 70),
+      keyRail(75, 89),
+    ])).toBe('3 Rails selected — frames 12–88 (1 Static, 2 Key).');
+    expect(buildRailSetCopy([
+      motionLoop(12, 40),
+      staticLoop(50, 70),
+      keyRail(75, 89),
+    ])).toBe('3 Rails selected — frames 12–88 (1 Motion, 1 Static, 1 Key).');
+  });
+
+  it('builds the M1 tooltip set sentences with the anchor prefix', () => {
+    expect(buildRailSetTooltipSentence(3, false)).toBe(' One of 3 selected Rails — drag moves the set, Delete removes the set.');
+    expect(buildRailSetTooltipSentence(3, true)).toBe(' Range anchor. One of 3 selected Rails — drag moves the set, Delete removes the set.');
+    expect(buildRailSetTooltipSentence(0, false)).toBeNull();
   });
 });

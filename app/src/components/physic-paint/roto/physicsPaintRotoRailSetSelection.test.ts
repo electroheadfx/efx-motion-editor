@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  clearRailSetSnapshots,
   deriveRailSetOrder,
   reconcileRailSetSelection,
+  recordRailSetSnapshot,
+  resolveRailSetPostAcceptance,
   updatePhysicsPaintRotoRailSetSelection,
   type RailSetIdentity,
   type RailSetSelectionState,
@@ -298,5 +301,89 @@ describe('reconcileRailSetSelection', () => {
     expect(Object.isFrozen(reconciled)).toBe(true);
     if (reconciled === null) throw new Error('Expected a reconciled rail-set selection.');
     expect(Object.isFrozen(reconciled.members)).toBe(true);
+  });
+});
+
+describe('rail-set post-acceptance snapshot side-channel (43.6-01 Task 3, D-06 carrier)', () => {
+  const beforeSet = (): RailSetSelectionState => ({
+    members: Object.freeze([keyRail('key-a'), loop('loop-b')]),
+    anchor: keyRail('key-a'),
+  });
+  const afterSet = (): RailSetSelectionState => ({
+    members: Object.freeze([keyRail('key-a'), loop('loop-b'), keyRail('key-c')]),
+    anchor: keyRail('key-a'),
+  });
+
+  it('restores the recorded before set exactly on undo', () => {
+    clearRailSetSnapshots();
+    recordRailSetSnapshot('op-1', beforeSet(), afterSet());
+    const resolved = resolveRailSetPostAcceptance({
+      operationKind: 'undo',
+      operationId: 'op-1',
+      current: afterSet(),
+    });
+    expect(resolved).toEqual(beforeSet());
+  });
+
+  it('restores the recorded after set exactly on redo', () => {
+    clearRailSetSnapshots();
+    recordRailSetSnapshot('op-1', beforeSet(), afterSet());
+    const resolved = resolveRailSetPostAcceptance({
+      operationKind: 'redo',
+      operationId: 'op-1',
+      current: beforeSet(),
+    });
+    expect(resolved).toEqual(afterSet());
+  });
+
+  it('keeps the current set on move-rails (identities are move-stable)', () => {
+    clearRailSetSnapshots();
+    const current = afterSet();
+    expect(resolveRailSetPostAcceptance({
+      operationKind: 'move-rails',
+      operationId: 'op-1',
+      current,
+    })).toBe(current);
+  });
+
+  it('returns null on delete-rails', () => {
+    clearRailSetSnapshots();
+    expect(resolveRailSetPostAcceptance({
+      operationKind: 'delete-rails',
+      operationId: 'op-1',
+      current: afterSet(),
+    })).toBeNull();
+  });
+
+  it('leaves the set unchanged for unlisted kinds (Pitfall 6 — no default collapse)', () => {
+    clearRailSetSnapshots();
+    const current = afterSet();
+    expect(resolveRailSetPostAcceptance({
+      operationKind: 'force-spacing',
+      operationId: 'op-1',
+      current,
+    })).toBe(current);
+  });
+
+  it('leaves the set unchanged for undo/redo without a recorded snapshot (reconcile stays the stale authority)', () => {
+    clearRailSetSnapshots();
+    const current = afterSet();
+    expect(resolveRailSetPostAcceptance({
+      operationKind: 'undo',
+      operationId: 'unrecorded-op',
+      current,
+    })).toBe(current);
+  });
+
+  it('prunes all snapshots on clearRailSetSnapshots (launch replacement)', () => {
+    clearRailSetSnapshots();
+    recordRailSetSnapshot('op-1', beforeSet(), afterSet());
+    clearRailSetSnapshots();
+    const current = afterSet();
+    expect(resolveRailSetPostAcceptance({
+      operationKind: 'undo',
+      operationId: 'op-1',
+      current,
+    })).toBe(current);
   });
 });

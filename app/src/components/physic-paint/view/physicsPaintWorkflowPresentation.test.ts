@@ -294,6 +294,29 @@ describe('getRotoStatusCapsuleViewModel — idle-context contract (38-08, D-08/D
   });
 
 
+  it('shows the persistent set copy while a set is active and nothing for the empty set (43.6 D-27)', () => {
+    // The set copy outranks the idle ambient context.
+    expect(getRotoStatusCapsuleViewModel({
+      setCopy: '3 Rails selected — frames 12–88 (1 Motion, 2 Key).',
+      ambient: 'Real Roto key · Frame 5',
+    })).toBe('3 Rails selected — frames 12–88 (1 Motion, 2 Key).');
+    // Transient feedback still outranks the persistent set copy.
+    expect(getRotoStatusCapsuleViewModel({
+      setCopy: '3 Rails selected — frames 12–88 (1 Motion, 2 Key).',
+      feedback: [{ text: 'Frame inserted' }],
+    })).toBe('Frame inserted');
+    // The empty set contributes nothing — the capsule returns to its resting state.
+    expect(getRotoStatusCapsuleViewModel({
+      setCopy: null,
+      ambient: 'Real Roto key · Frame 5',
+    })).toBe('Real Roto key · Frame 5');
+    expect(getRotoStatusCapsuleViewModel({
+      setCopy: '   ',
+      ambient: 'Real Roto key · Frame 5',
+    })).toBe('Real Roto key · Frame 5');
+  });
+
+
   it('resolves simultaneous guard-class lines most-recent-wins', () => {
     expect(getRotoStatusCapsuleViewModel({
       feedback: [
