@@ -5501,3 +5501,281 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-rails (explicit-set rigid 
     })).toMatchObject({ ok: false, failure: { code: 'malformed-target' } });
   });
 });
+
+describe('resolvePhysicPaintRotoPhysicalEdit — spacing-on-set (per-rail anchors, D-24/D-25)', () => {
+  /** Rail A [0,7) at 0,3,6 and Rail B [20,25) at 20,23 — the plan's two-Key-Rail example. */
+  const buildTwoKeyRails = (): readonly PhysicPaintRotoKeyIdentity[] => Object.freeze([
+    { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 3 }, { keyId: 'a2', appFrame: 6 },
+    { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 23 },
+  ]);
+
+  /** One source-attached Group with no unselected Group sharing its source cycle. */
+  const buildSingleAttachedGroupClips = (): readonly PhysicPaintRotoLoopClip[] => Object.freeze([
+    Object.freeze({
+      loopId: 'loop-G',
+      placementStart: 20,
+      sourceKeyIds: ['g0', 'g1'],
+      repeat: 4,
+      mode: 'static',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 20,
+      originalEndExclusive: 28,
+      visibleRanges: Object.freeze([Object.freeze({ start: 20, endExclusive: 28 })]),
+      frameOverrides: Object.freeze([]),
+    }) as PhysicPaintRotoLoopClip,
+  ]);
+
+  const keyRailA = (): PhysicPaintRailSetMoveMember => ({
+    kind: 'key-rail',
+    firstKeyId: 'a0',
+    keyIds: ['a0', 'a1', 'a2'],
+  });
+  const keyRailB = (): PhysicPaintRailSetMoveMember => ({
+    kind: 'key-rail',
+    firstKeyId: 'b0',
+    keyIds: ['b0', 'b1'],
+  });
+
+  const resolveSpacingOnSet = (input: {
+    readonly identities: readonly PhysicPaintRotoKeyIdentity[];
+    readonly members: readonly PhysicPaintRailSetMoveMember[];
+    readonly emptyFrames: number;
+    readonly breaks?: readonly string[];
+    readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+    readonly capacity?: number;
+  }): PhysicPaintRotoPhysicalEditResolution => resolvePhysicPaintRotoPhysicalEdit({
+    identities: input.identities,
+    intent: { kind: 'spacing-on-set', members: input.members, emptyFrames: input.emptyFrames },
+    parentEndExclusive: input.capacity ?? 40,
+    capacity: input.capacity ?? 40,
+    interpolationEnabled: true,
+    ...(input.breaks !== undefined ? { incomingInterpolationBreakKeyIds: input.breaks } : {}),
+    ...(input.loopClips !== undefined ? { loopClips: input.loopClips } : {}),
+  });
+
+  it('respaces two Key Rails with each rail keeping its OWN first key as anchor (D-24)', () => {
+    const resolution = resolveSpacingOnSet({
+      identities: buildTwoKeyRails(),
+      members: [keyRailA(), keyRailB()],
+      emptyFrames: 1,
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Two-Key-Rail spacing must resolve');
+    const { proposal } = resolution;
+    expect(proposal.status.operationKind).toBe('spacing-on-set');
+    expect(proposal.status.changed).toBe(true);
+    expect(proposal.semanticDelta).toBeNull();
+    // A anchors at a0@0 -> 0,2,4; B anchors at b0@20 -> 20,22. Both anchors verbatim.
+    expect(Object.fromEntries(proposal.mapping)).toEqual({
+      a0: 0, a1: 2, a2: 4,
+      b0: 20, b1: 22,
+    });
+    expect(proposal.status.affectedKeyIds).toEqual(['a1', 'a2', 'b1']);
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('respaces a source-attached Loop member source cycle with the placement unchanged', () => {
+    const resolution = resolveSpacingOnSet({
+      identities: [
+        { keyId: 'g0', appFrame: 20 },
+        { keyId: 'g1', appFrame: 21 },
+      ],
+      members: [{ kind: 'loop', loopId: 'loop-G' }],
+      emptyFrames: 1,
+      loopClips: buildSingleAttachedGroupClips(),
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Loop-member spacing must resolve');
+    const { proposal } = resolution;
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ g0: 20, g1: 22 });
+    expect(proposal.status.affectedKeyIds).toEqual(['g1']);
+    // placementStart === first source key frame 20, unchanged: no clip translation.
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('rejects atomically when a computed destination collides with an unselected key frame', () => {
+    // c0@4 is unselected; A's a2 lands at 4.
+    const resolution = resolveSpacingOnSet({
+      identities: [
+        { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 3 }, { keyId: 'a2', appFrame: 6 },
+        { keyId: 'c0', appFrame: 4 },
+      ],
+      members: [keyRailA()],
+      emptyFrames: 1,
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Unselected-wall spacing must fail');
+    expect(resolution.failure.code).toBe('duplicate-destination-frame');
+    expect(resolution.failure.operationKind).toBe('spacing-on-set');
+    expect(resolution.failure.conflictingAppFrames).toEqual([4]);
+  });
+
+  it('rejects atomically when two selected rails collide on a computed destination', () => {
+    // B anchors at b0@4; A's a2 lands at 4 — the common finalizer rejects once.
+    const resolution = resolveSpacingOnSet({
+      identities: [
+        { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 3 }, { keyId: 'a2', appFrame: 6 },
+        { keyId: 'b0', appFrame: 4 }, { keyId: 'b1', appFrame: 7 },
+      ],
+      members: [keyRailA(), { kind: 'key-rail', firstKeyId: 'b0', keyIds: ['b0', 'b1'] }],
+      emptyFrames: 1,
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Selected-selected collision must fail');
+    expect(resolution.failure.code).toBe('duplicate-destination-frame');
+  });
+
+  it('rejects over-capacity destinations via the common finalizer', () => {
+    const resolution = resolveSpacingOnSet({
+      identities: buildTwoKeyRails(),
+      members: [keyRailA()],
+      emptyFrames: 1,
+      capacity: 4,
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Over-capacity spacing must fail');
+    expect(resolution.failure.code).toBe('over-capacity');
+  });
+
+  it('rejects a straddle with the dedicated code and zero partial proposal (D-10)', () => {
+    const resolution = resolveSpacingOnSet({
+      identities: [
+        { keyId: 'g0', appFrame: 20 },
+        { keyId: 'g1', appFrame: 21 },
+      ],
+      members: [{ kind: 'loop', loopId: 'loop-G' }],
+      emptyFrames: 1,
+      loopClips: buildPushGroupClips(),
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Straddled spacing must fail');
+    expect(resolution.failure.code).toBe('rails-spacing-source-straddle');
+    expect(resolution.failure.operationKind).toBe('spacing-on-set');
+    expect(resolution.failure.text).toContain('loop-D');
+  });
+
+  it('rejects a duplicated placement whose source cycle is owned by an unselected attached Group (D-10)', () => {
+    const resolution = resolveSpacingOnSet({
+      identities: [
+        { keyId: 'g0', appFrame: 20 },
+        { keyId: 'g1', appFrame: 21 },
+      ],
+      members: [{ kind: 'loop', loopId: 'loop-D' }],
+      emptyFrames: 1,
+      loopClips: buildPushGroupClips(),
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Duplicated-placement straddle must fail');
+    expect(resolution.failure.code).toBe('rails-spacing-source-straddle');
+  });
+
+  it('never straddles when the whole shared-source family is selected', () => {
+    const resolution = resolveSpacingOnSet({
+      identities: [
+        { keyId: 'g0', appFrame: 20 },
+        { keyId: 'g1', appFrame: 21 },
+      ],
+      members: [{ kind: 'loop', loopId: 'loop-G' }, { kind: 'loop', loopId: 'loop-D' }],
+      emptyFrames: 1,
+      loopClips: buildPushGroupClips(),
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Fully-selected family must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ g0: 20, g1: 22 });
+    expect(resolution.proposal.nextLoopClips).toBeNull();
+  });
+
+  it('fails closed on stale members', () => {
+    const identities = buildTwoKeyRails();
+    expect(resolveSpacingOnSet({
+      identities,
+      members: [{ kind: 'key-rail', firstKeyId: 'zzz', keyIds: ['zzz'] }],
+      emptyFrames: 1,
+    })).toMatchObject({ ok: false, failure: { code: 'unknown-operation-identity' } });
+    expect(resolveSpacingOnSet({
+      identities,
+      members: [{ kind: 'key-rail', firstKeyId: 'a0', keyIds: ['a0', 'a1'] }],
+      emptyFrames: 1,
+    })).toMatchObject({ ok: false, failure: { code: 'malformed-target' } });
+  });
+
+  it('accepts an already-exact request as a valid no-change proposal', () => {
+    const resolution = resolveSpacingOnSet({
+      identities: [
+        { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 2 }, { keyId: 'a2', appFrame: 4 },
+      ],
+      members: [keyRailA()],
+      emptyFrames: 1,
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Exact spacing must resolve');
+    const { proposal } = resolution;
+    expect(proposal.status.changed).toBe(false);
+    expect(proposal.status.code).toBe('ok-no-change');
+    expect(proposal.status.affectedKeyIds).toEqual([]);
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('carries breaks with moved key identity and keeps unmoved-key breaks (43.4 D-19)', () => {
+    const resolution = resolveSpacingOnSet({
+      identities: [
+        { keyId: 'g0', appFrame: 20 },
+        { keyId: 'g1', appFrame: 21 },
+      ],
+      members: [{ kind: 'loop', loopId: 'loop-G' }],
+      emptyFrames: 1,
+      breaks: ['g1', 'g0'],
+      loopClips: buildSingleAttachedGroupClips(),
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Break-travel spacing must resolve');
+    // g1 moved 21 -> 22; its break travels with its identity; g0's break stays.
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['g0', 'g1']);
+  });
+
+  it('rejects when a computed destination crosses the left-to-right order of an unselected key', () => {
+    // c0@5 is unselected; a2 moves 6 -> 4, crossing over c0@5.
+    const resolution = resolveSpacingOnSet({
+      identities: [
+        { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 3 }, { keyId: 'a2', appFrame: 6 },
+        { keyId: 'c0', appFrame: 5 },
+      ],
+      members: [keyRailA()],
+      emptyFrames: 1,
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Crossing spacing must fail');
+    expect(resolution.failure.code).toBe('duplicate-destination-frame');
+    expect(resolution.failure.conflictingAppFrames).toEqual([5]);
+  });
+
+  it('round-trips a valid spacing-on-set intent through the strict parser and rejects malformed payloads', () => {
+    const intent = {
+      kind: 'spacing-on-set',
+      members: [keyRailA(), keyRailB()],
+      emptyFrames: 1,
+    } as const;
+    const parsed = parsePhysicalEditIntent(intent);
+    expect(parsed).toEqual(intent);
+    expect(serializePhysicPaintRotoPhysicalEditIntent(parsed)).toBe(serializePhysicPaintRotoPhysicalEditIntent(intent));
+
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'spacing-on-set', members: [], emptyFrames: 1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'spacing-on-set', members: [keyRailA()], emptyFrames: -1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'spacing-on-set', members: [keyRailA()], emptyFrames: 1.5 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'spacing-on-set', members: [{ kind: 'key-rail', firstKeyId: 'a0', keyIds: ['a1', 'a0'] }], emptyFrames: 1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'spacing-on-set', members: [{ kind: 'key-rail', firstKeyId: 'a0', keyIds: ['a0', 'a0'] }], emptyFrames: 1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'spacing-on-set', members: [{ kind: 'loop', loopId: 'loop-G' }, { kind: 'loop', loopId: 'loop-G' }], emptyFrames: 1 })).toBe(false);
+  });
+});
