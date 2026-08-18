@@ -29,6 +29,7 @@ import {
   proposePhysicPaintRotoActionGroupLifecycle,
   proposePhysicPaintRotoDeleteGroup,
   proposePhysicPaintRotoDeleteGroupFrame,
+  proposePhysicPaintRotoDeleteRails,
   proposePhysicPaintRotoGroupFramePaint,
   proposePhysicPaintRotoRegenerateGroup,
 } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
@@ -3179,7 +3180,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
   });
 
   async function lifecycleHarness(
-    operationKind: 'delete-group-frame' | 'delete-group' | 'regenerate-group' | 'detach-action-groups' | 'delete-action-groups',
+    operationKind: 'delete-group-frame' | 'delete-group' | 'delete-rails' | 'regenerate-group' | 'detach-action-groups' | 'delete-action-groups',
     operationId: string,
   ) {
     const layer = physicLayer();
@@ -3281,13 +3282,21 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
                 }),
               });
             })()
-          : proposePhysicPaintRotoActionGroupLifecycle({
-              document: parentDocument,
-              actionId: 'action-1',
-              expectedActionRevision: 'action-revision-1',
-              currentActionRevision: 'action-revision-1',
-              mode: operationKind === 'detach-action-groups' ? 'detach' : 'delete',
-            });
+          : operationKind === 'delete-rails'
+            ? proposePhysicPaintRotoDeleteRails({
+                document: current,
+                members: [
+                  { kind: 'loop', loopId: 'group-1' },
+                  { kind: 'key-rail', firstKeyId: 'ordinary', keyIds: ['ordinary'] },
+                ],
+              })
+            : proposePhysicPaintRotoActionGroupLifecycle({
+                document: parentDocument,
+                actionId: 'action-1',
+                expectedActionRevision: 'action-revision-1',
+                currentActionRevision: 'action-revision-1',
+                mode: operationKind === 'detach-action-groups' ? 'detach' : 'delete',
+              });
     if (!proposed.ok) throw new Error(proposed.reason);
     const leaseToken = acquirePhysicalLease(layer.id, projectContextId);
     const payload = {
@@ -3707,6 +3716,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
   it.each([
     'delete-group-frame',
     'delete-group',
+    'delete-rails',
     'regenerate-group',
     'detach-action-groups',
     'delete-action-groups',
@@ -4119,6 +4129,111 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       const result = applyPhysicPaintPayload(mutate(test.payload) as PhysicPaintApplyPayload);
 
       expect(result.ok).toBe(false);
+      expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(before);
+      expect(physicPaintVersion.peek()).toBe(beforeVersion);
+      expect(replace).not.toHaveBeenCalled();
+      expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('rejects stale, malformed, and semantically mismatched delete-rails candidates with distinct errors and zero publication', async () => {
+    const variants: {
+      name: string;
+      mutate: (payload: Awaited<ReturnType<typeof lifecycleHarness>>['payload']) => Record<string, unknown>;
+      error: string;
+    }[] = [
+      {
+        name: 'stale revision',
+        mutate: (payload) => ({ ...payload, expectedRevision: 'stale-revision' }),
+        error: 'Roto physical revision became stale before commit.',
+      },
+      {
+        name: 'divergent members',
+        mutate: (payload) => ({
+          ...payload,
+          semanticDelta: {
+            ...payload.semanticDelta,
+            members: [...payload.semanticDelta.members, { kind: 'loop', loopId: 'group-extra' }],
+          },
+        }),
+        error: 'Delete Rails semantic impact does not match parent recomputation.',
+      },
+      {
+        name: 'divergent cleanupKeyIds',
+        mutate: (payload) => ({
+          ...payload,
+          semanticDelta: { ...payload.semanticDelta, cleanupKeyIds: ['source-A'] },
+        }),
+        error: 'Delete Rails semantic impact does not match parent recomputation.',
+      },
+      {
+        name: 'divergent records',
+        mutate: (payload) => ({
+          ...payload,
+          records: payload.records.map((record) => (
+            record.keyId === 'ordinary' ? { ...record, appFrame: 21 } : record
+          )),
+        }),
+        error: 'Delete Rails target document does not match parent recomputation.',
+      },
+      {
+        name: 'divergent loopClips',
+        mutate: (payload) => ({
+          ...payload,
+          loopClips: payload.loopClips.map((group) => ({ ...group, syncState: 'synchronized' as const })),
+        }),
+        error: 'Delete Rails target document does not match parent recomputation.',
+      },
+      {
+        name: 'divergent breaks',
+        mutate: (payload) => ({
+          ...payload,
+          incomingInterpolationBreakKeyIds: ['source-A'],
+        }),
+        error: 'Delete Rails target document does not match parent recomputation.',
+      },
+      {
+        name: 'divergent selection',
+        mutate: (payload) => ({ ...payload, selectedKeyId: 'source-A' }),
+        error: 'Delete Rails target document does not match parent recomputation.',
+      },
+      {
+        name: 'divergent cursor',
+        mutate: (payload) => ({ ...payload, cursorAppFrame: 7 }),
+        error: 'Delete Rails target document does not match parent recomputation.',
+      },
+      {
+        name: 'empty members',
+        mutate: (payload) => ({
+          ...payload,
+          semanticDelta: { ...payload.semanticDelta, members: [] },
+        }),
+        error: 'Delete Rails semantic delta does not match the operation kind.',
+      },
+      {
+        name: 'stale member',
+        mutate: (payload) => ({
+          ...payload,
+          semanticDelta: {
+            ...payload.semanticDelta,
+            members: [{ kind: 'key-rail', firstKeyId: 'source-A', keyIds: ['source-A'] }],
+          },
+        }),
+        error: 'Delete Rails proposal rejected: stale-member.',
+      },
+    ];
+
+    for (const [index, variant] of variants.entries()) {
+      const test = await lifecycleHarness('delete-rails', `delete-rails-rejected-${index}`);
+      const before = physicPaintStore.getRotoPhysicalDocument(test.layer.id);
+      const beforeVersion = physicPaintVersion.peek();
+      const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
+
+      const result = applyPhysicPaintPayload(variant.mutate(test.payload) as PhysicPaintApplyPayload);
+
+      expect(result.ok, `${variant.name}: ${result.ok ? 'accepted' : result.error}`).toBe(false);
+      expect(result.ok ? null : result.error).toBe(variant.error);
       expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id)).toEqual(before);
       expect(physicPaintVersion.peek()).toBe(beforeVersion);
       expect(replace).not.toHaveBeenCalled();

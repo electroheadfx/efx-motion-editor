@@ -480,6 +480,15 @@ describe('physic paint payload contracts', () => {
       kind: 'delete-group', groupId: 'loop-1', cleanupKeyIds: ['override-1'],
       previousRevision: 'revision-1', nextRevision: 'revision-2',
     }],
+    ['delete-rails', {
+      kind: 'delete-rails',
+      members: [
+        { kind: 'key-rail', firstKeyId: 'key-0', keyIds: ['key-0'] },
+        { kind: 'loop', loopId: 'loop-1' },
+      ],
+      cleanupKeyIds: ['key-0', 'override-1'],
+      previousRevision: 'revision-1', nextRevision: 'revision-2',
+    }],
     ['regenerate-group', {
       kind: 'regenerate-group', groupId: 'loop-1', expectedActionRevision: 'action-revision-1',
       cleanupKeyIds: ['override-1'], previousRevision: 'revision-1', nextRevision: 'revision-2',
@@ -496,6 +505,39 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintRotoPhysicalEditApplyPayload(groupLifecycleApplyPayload({
       operationId: `${operationKind}-1`, operationKind, semanticDelta,
     }))).toBe(true);
+  });
+
+  it('round-trips a valid delete-rails payload and rejects malformed member descriptors', () => {
+    const base = {
+      kind: 'delete-rails',
+      members: [{ kind: 'loop', loopId: 'loop-1' }],
+      cleanupKeyIds: [],
+      previousRevision: 'revision-1',
+      nextRevision: 'revision-2',
+    };
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(groupLifecycleApplyPayload({
+      operationId: 'delete-rails-1', operationKind: 'delete-rails', semanticDelta: base,
+    }))).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(groupLifecycleApplyPayload({
+      operationId: 'delete-rails-2', operationKind: 'delete-rails',
+      semanticDelta: { ...base, members: [] },
+    }))).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(groupLifecycleApplyPayload({
+      operationId: 'delete-rails-3', operationKind: 'delete-rails',
+      semanticDelta: { ...base, members: [{ kind: 'key-rail', firstKeyId: 'key-0', keyIds: [] }] },
+    }))).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(groupLifecycleApplyPayload({
+      operationId: 'delete-rails-4', operationKind: 'delete-rails',
+      semanticDelta: { ...base, members: [{ kind: 'unknown', loopId: 'loop-1' }] },
+    }))).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(groupLifecycleApplyPayload({
+      operationId: 'delete-rails-5', operationKind: 'delete-rails',
+      semanticDelta: { ...base, members: [{ kind: 'loop', loopId: 'loop-1' }, { kind: 'loop', loopId: 'loop-1' }] },
+    }))).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(groupLifecycleApplyPayload({
+      operationId: 'delete-rails-6', operationKind: 'delete-rails',
+      semanticDelta: { ...base, members: [{ kind: 'key-rail', firstKeyId: 'key-0', keyIds: ['key-1'] }] },
+    }))).toBe(false);
   });
 
   it('rejects omitted, unknown, malformed, duplicate, and operation-mismatched Group lifecycle facts', () => {

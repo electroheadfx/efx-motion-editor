@@ -17,6 +17,7 @@ import type {
   PhysicPaintRotoAuthorityResult,
   PhysicPaintRotoPhysicalEditApplyPayload,
   PhysicPaintRotoPhysicalEditApplyResult,
+  RailSetDeleteMember,
 } from '../../../types/physicPaint';
 import {
   buildPhysicPaintRotoPhysicalRevision,
@@ -521,6 +522,11 @@ function harness(options: {
     groupId: 'group-1',
     appFrame: currentFrame,
   });
+  const executeDeleteRails = (members: readonly RailSetDeleteMember[]) => coordinator.executePhysicalEdit({
+    operationKind: 'delete-rails',
+    expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+    members,
+  });
   const executeMoveGroup = (loopId: string, destinationPlacementStart: number) => {
     const intent = { kind: 'move-group', loopId, destinationPlacementStart } as const;
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
@@ -670,6 +676,7 @@ function harness(options: {
     error: 'Parent rejected empty segment.',
   }));
   const mismatch = () => coordinator.consumePhysicalEditResult(makeResult({ selectedAppFrame: 15 }));
+  const mismatchDelta = (semanticDelta: unknown) => coordinator.consumePhysicalEditResult(makeResult({ semanticDelta }));
   return {
     coordinator,
     execute,
@@ -677,6 +684,7 @@ function harness(options: {
     executeGroupPaint,
     executeDeleteGroupFrame,
     executeDeleteGroup,
+    executeDeleteRails,
     executeMoveGroup,
     executeRegenerateGroup,
     executePlayScript,
@@ -688,6 +696,7 @@ function harness(options: {
     accept,
     reject,
     mismatch,
+    mismatchDelta,
     initial,
     replaceRecords,
     replaceLoopClips,
@@ -2754,6 +2763,79 @@ describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
     expect(test.coordinator.acknowledgePhysicalEditSettlement(test.getPayload()!.operationId, 'release')).toBe(true);
     expect(test.releaseLease).toHaveBeenCalledTimes(2);
     unsubscribe();
+  });
+
+  it('accepts Delete Rails as one parent-authority command with no child intent', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument();
+    test.seedGroupDocument(before);
+    const acceptedEvents: unknown[] = [];
+    const unsubscribe = test.coordinator.acceptedOutput.subscribe((value) => {
+      if (value) acceptedEvents.push(value);
+    });
+
+    expect(await test.executeDeleteRails([{ kind: 'loop', loopId: 'group-1' }])).toBe(true);
+    expect(test.getPayload()).toMatchObject({
+      operationKind: 'delete-rails',
+      startFrame: 4,
+      expectedRevision: before.revision,
+      selectedKeyId: null,
+      selectedAppFrame: null,
+      semanticDelta: {
+        kind: 'delete-rails',
+        members: [{ kind: 'loop', loopId: 'group-1' }],
+        cleanupKeyIds: [],
+      },
+    });
+    expect(test.accept()).toBe('accepted');
+    expect(test.getRecords().map((entry) => entry.keyId)).toEqual(['A', 'B']);
+    expect(test.getLoopClips()).toEqual([
+      expect.objectContaining({ loopId: 'group-shared' }),
+    ]);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(4);
+    expect(acceptedEvents).toHaveLength(1);
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(test.getPayload()!.operationId, 'release')).toBe(true);
+    expect(test.releaseLease).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
+  it('rejects a stale Delete Rails set fail-closed before staging or transport', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument();
+    test.seedGroupDocument(before);
+
+    expect(await test.executeDeleteRails([{ kind: 'key-rail', firstKeyId: 'A', keyIds: ['A'] }])).toBe(false);
+    expect(test.sendPhysicalEditPayload).not.toHaveBeenCalled();
+    expect(test.getRecords()).toEqual(before.realKeyRecords);
+    expect(test.getLoopClips()).toEqual(before.loopClips);
+    expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['B']);
+    expect(test.getCanonicalSelection()).toEqual({ selectedKeyId: null, cursorAppFrame: 4 });
+    expect(test.releaseLease).toHaveBeenCalledTimes(1);
+    expect(test.coordinator.pendingOperationId.value).toBeNull();
+    expect(test.coordinator.failureOutput.value).toBeNull();
+  });
+
+  it('leaves a Delete Rails settlement with a divergent semantic delta pending without success', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument();
+    test.seedGroupDocument(before);
+
+    expect(await test.executeDeleteRails([{ kind: 'loop', loopId: 'group-1' }])).toBe(true);
+    expect(test.mismatchDelta({
+      kind: 'delete-rails',
+      members: [
+        { kind: 'loop', loopId: 'group-1' },
+        { kind: 'loop', loopId: 'group-extra' },
+      ],
+      cleanupKeyIds: [],
+      previousRevision: before.revision,
+      nextRevision: 'revision-other',
+    })).toBe('mismatch');
+    expect(test.coordinator.acceptedOutput.value).toBeNull();
+    expect(test.coordinator.failureOutput.value).toBeNull();
+    expect(test.reconcileCurrentFrame).not.toHaveBeenCalled();
+    test.coordinator.cancelPhysicalEdit('disposal');
   });
 
   it('deletes one repeated source phase only after acknowledgement and holds the lease through settlement', async () => {
