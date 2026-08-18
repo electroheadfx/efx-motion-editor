@@ -37,6 +37,7 @@ import {
   mapRotoScissorProductReason,
   mapRotoKeyRailDragProductReason,
   mapRotoPushProductReason,
+  mapRotoRailSetMoveProductReason,
   buildKeyRailDragProposalVersion,
   useRotoTimelineActions,
   type RotoDeleteTarget,
@@ -207,6 +208,28 @@ function lifecycleGroup(overrides: Partial<PhysicPaintRotoLoopClip> = {}): Physi
     visibleRanges: Object.freeze([Object.freeze({ start: 10, endExclusive: 16 })]),
     frameOverrides: Object.freeze([]),
     ...overrides,
+  });
+}
+
+/** `count` contiguous real keys named `<firstKeyId><index>` starting at `startFrame`. */
+function keyRailRecords(firstKeyId: string, startFrame: number, count: number): PhysicPaintRotoRealKeyRecord[] {
+  const records: PhysicPaintRotoRealKeyRecord[] = [];
+  for (let index = 0; index < count; index += 1) {
+    records.push(realKeyRecord(`${firstKeyId}${index}`, startFrame + index));
+  }
+  return records;
+}
+
+/** One exact-match Key Rail set member over `count` contiguous keys. */
+function keyRailMember(firstKeyId: string, count: number): Readonly<{
+  kind: 'key-rail';
+  firstKeyId: string;
+  keyIds: readonly string[];
+}> {
+  return Object.freeze({
+    kind: 'key-rail',
+    firstKeyId,
+    keyIds: Object.freeze(Array.from({ length: count }, (_, index) => `${firstKeyId}${index}`)),
   });
 }
 
@@ -2264,6 +2287,442 @@ describe('useRotoTimelineActions Push commit + stale authority (43.5-03 Task 2)'
     records.push(realKeyRecord('new-authority', 12));
 
     expect(await actions.physicalActions.commitRotoPush(preparation.publication)).toBe(false);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+});
+
+describe('useRotoTimelineActions batch Move prepare + locked copy family (43.6-03 Task 2)', () => {
+  it('rejects in the same guard order as prepareRotoPush', () => {
+    const noLaunch = createHarness({ launch: null });
+    expect(noLaunch.actions.physicalActions.prepareRailSetMove({
+      members: [keyRailMember('a0', 12)],
+      delta: 2,
+    })).toEqual({ ok: false, reason: 'Select a real Roto key before editing the timeline.' });
+
+    const noPorts = createHarness({ omitPhysicalEditPorts: true });
+    expect(noPorts.actions.physicalActions.prepareRailSetMove({
+      members: [keyRailMember('a0', 12)],
+      delta: 2,
+    })).toEqual({ ok: false, reason: 'Timeline editing is unavailable.' });
+
+    const inFlight = createHarness({ pendingOperationId: 'op-busy' });
+    expect(inFlight.actions.physicalActions.prepareRailSetMove({
+      members: [keyRailMember('a0', 12)],
+      delta: 2,
+    })).toEqual({ ok: false, reason: 'A Roto physical edit is already in flight.' });
+  });
+
+  it('rejects a malformed members descriptor and a malformed delta before resolution', () => {
+    const { actions } = createHarness({ records: [realKeyRecord('A', 0), realKeyRecord('B', 1)], capacity: 10 });
+    // Empty members array.
+    expect(actions.physicalActions.prepareRailSetMove({ members: [], delta: 2 }))
+      .toEqual({ ok: false, reason: 'The rail set move members are malformed.' });
+    // Key Rail member with an empty keyIds array.
+    expect(actions.physicalActions.prepareRailSetMove({
+      members: [{ kind: 'key-rail', firstKeyId: 'A', keyIds: [] }],
+      delta: 2,
+    })).toEqual({ ok: false, reason: 'The rail set move members are malformed.' });
+    // Unbounded loopId.
+    expect(actions.physicalActions.prepareRailSetMove({
+      members: [{ kind: 'loop', loopId: 'x'.repeat(300) }],
+      delta: 2,
+    })).toEqual({ ok: false, reason: 'The rail set move members are malformed.' });
+    // Non-integer delta.
+    expect(actions.physicalActions.prepareRailSetMove({
+      members: [keyRailMember('a0', 12)],
+      delta: 1.5,
+    })).toEqual({ ok: false, reason: 'The rail set move delta is malformed.' });
+  });
+
+  it('threads the incoming break collection into a break-aware proposalVersion (Pitfall 3 regression)', () => {
+    const records = [realKeyRecord('A', 0), realKeyRecord('B', 1), realKeyRecord('C', 10), realKeyRecord('D', 11)];
+    const base = { records, capacity: 14 };
+    const withoutBreaks = createHarness({ ...base });
+    const withBreaks = createHarness({ ...base, incomingInterpolationBreakKeyIds: ['D'] });
+
+    const plain = withoutBreaks.actions.physicalActions.prepareRailSetMove({
+      members: [{ kind: 'key-rail', firstKeyId: 'A', keyIds: ['A', 'B'] }],
+      delta: 2,
+    });
+    const broken = withBreaks.actions.physicalActions.prepareRailSetMove({
+      members: [{ kind: 'key-rail', firstKeyId: 'A', keyIds: ['A', 'B'] }],
+      delta: 2,
+    });
+
+    expect(plain.ok).toBe(true);
+    expect(broken.ok).toBe(true);
+    if (!plain.ok || !broken.ok) throw new Error('Both move preparations must succeed');
+    // Identical physical content except break authority produce different
+    // proposalVersions — the break collection reaches the fingerprint (Pitfall 3).
+    expect(plain.publication.proposalVersion).not.toBe(broken.publication.proposalVersion);
+    // The added break (splitting the C/D rail) does not change the committed
+    // mapping, so the version difference is attributable to break authority alone.
+    expect(Object.fromEntries(plain.publication.proposal.mapping))
+      .toEqual(Object.fromEntries(broken.publication.proposal.mapping));
+  });
+
+  it('rejects a zero-delta move with the no-change reason and no publication (D-13)', () => {
+    const { actions } = createHarness({
+      records: [realKeyRecord('A', 0), realKeyRecord('B', 10)],
+      capacity: 14,
+    });
+    const preparation = actions.physicalActions.prepareRailSetMove({
+      members: [{ kind: 'key-rail', firstKeyId: 'A', keyIds: ['A'] }],
+      delta: 0,
+    });
+    expect(preparation).toEqual({ ok: false, reason: 'This move would not change the timeline.' });
+  });
+
+  it('prepares a break-aware publication carrying proposal, intent, version, launch tuple, and presentation facts', () => {
+    // A [12,24), B [24,40), C [40,89): three flush Key Rails split by the
+    // breaks on b0 and c0 (deriveKeyRailSegments never splits on gaps).
+    const records = [
+      ...keyRailRecords('a', 12, 12),
+      ...keyRailRecords('b', 24, 16),
+      ...keyRailRecords('c', 40, 49),
+    ];
+    const { actions } = createHarness({
+      records,
+      capacity: 120,
+      incomingInterpolationBreakKeyIds: ['b0', 'c0'],
+    });
+    const preparation = actions.physicalActions.prepareRailSetMove({
+      members: [keyRailMember('a0', 12), keyRailMember('b0', 16), keyRailMember('c0', 49)],
+      delta: 12,
+    });
+
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Three-rail move must prepare');
+    const pub = preparation.publication;
+    expect(pub.proposal.status.operationKind).toBe('move-rails');
+    expect(pub.proposal.status.changed).toBe(true);
+    expect(pub.intent).toEqual({
+      kind: 'move-rails',
+      members: [keyRailMember('a0', 12), keyRailMember('b0', 16), keyRailMember('c0', 49)],
+      delta: 12,
+    });
+    expect(pub.expectedLaunch).toEqual({ operationId: 'op-1', layerId: 'layer-1' });
+    expect(typeof pub.proposalVersion).toBe('string');
+    expect(pub.proposalVersion.length).toBeGreaterThan(0);
+    // The clamped +12 delta commits (preview-is-the-commit, D-17).
+    expect(Object.fromEntries(pub.proposal.mapping)).toMatchObject({
+      a0: 24, a11: 35, b0: 36, b15: 51, c0: 52, c48: 100,
+    });
+    // Presentation facts: three moved Rails, clamped +12, set [12,89) → [24,100), gap [12,24).
+    expect(pub.movedRailCount).toBe(3);
+    expect(pub.clampedDeltaFrames).toBe(12);
+    expect(pub.beforeRange).toEqual({ firstFrame: 12, lastFrame: 88 });
+    expect(pub.afterRange).toEqual({ firstFrame: 24, lastFrame: 100 });
+    expect(pub.gapIntervals).toEqual([{ start: 12, end: 24 }]);
+    // Internal breaks travel with moved key identity (D-11).
+    expect(pub.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['b0', 'c0']);
+  });
+
+  it('prepares a leftward publication whose presentation facts feed the locked mirror copy', () => {
+    const records = [
+      ...keyRailRecords('a', 12, 12),
+      ...keyRailRecords('b', 24, 16),
+      ...keyRailRecords('c', 40, 49),
+    ];
+    const { actions } = createHarness({
+      records,
+      capacity: 120,
+      incomingInterpolationBreakKeyIds: ['b0', 'c0'],
+    });
+    const preparation = actions.physicalActions.prepareRailSetMove({
+      members: [keyRailMember('a0', 12), keyRailMember('b0', 16), keyRailMember('c0', 49)],
+      delta: -12,
+    });
+
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Leftward move must prepare');
+    const pub = preparation.publication;
+    expect(Object.fromEntries(pub.proposal.mapping)).toMatchObject({
+      a0: 0, a11: 11, b0: 12, b15: 27, c0: 28, c48: 76,
+    });
+    expect(pub.movedRailCount).toBe(3);
+    expect(pub.clampedDeltaFrames).toBe(-12);
+    expect(pub.beforeRange).toEqual({ firstFrame: 12, lastFrame: 88 });
+    expect(pub.afterRange).toEqual({ firstFrame: 0, lastFrame: 76 });
+    expect(pub.gapIntervals).toEqual([{ start: 77, end: 89 }]);
+    // The mapped accepted copy from the retained facts.
+    expect(mapRotoRailSetMoveProductReason({
+      kind: 'accepted',
+      movedRailCount: pub.movedRailCount,
+      signedDeltaFrames: pub.clampedDeltaFrames,
+      afterRange: pub.afterRange,
+      gapIntervals: pub.gapIntervals,
+    })).toBe('Moved 3 Rails by 12 frames — set now frames 0–76. Gap left at frames 77–88.');
+  });
+
+  it('prepares a duplicated-placement-only publication with no gap intervals (D-11)', () => {
+    const records = [realKeyRecord('g0', 20), realKeyRecord('g1', 21)];
+    const loopG = lifecycleGroup({
+      loopId: 'loop-G',
+      placementStart: 20,
+      sourceKeyIds: Object.freeze(['g0', 'g1']),
+      phaseOrigin: 20,
+      originalEndExclusive: 28,
+      visibleRanges: Object.freeze([Object.freeze({ start: 20, endExclusive: 28 })]),
+    });
+    const loopD = lifecycleGroup({
+      loopId: 'loop-D',
+      placementStart: 2,
+      sourceKeyIds: Object.freeze(['g0', 'g1']),
+      mode: 'static',
+      phaseOrigin: 2,
+      originalEndExclusive: 10,
+      visibleRanges: Object.freeze([Object.freeze({ start: 2, endExclusive: 10 })]),
+    });
+    const { actions } = createHarness({ records, loopClips: [loopD, loopG], capacity: 40 });
+    const preparation = actions.physicalActions.prepareRailSetMove({
+      members: [{ kind: 'loop', loopId: 'loop-D' }],
+      delta: 5,
+    });
+
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Duplicated placement move must prepare');
+    const pub = preparation.publication;
+    // No physical keys move; the placement translates by the clamped delta.
+    expect(Object.fromEntries(pub.proposal.mapping)).toEqual({ g0: 20, g1: 21 });
+    expect(pub.proposal.status.changed).toBe(true);
+    expect(pub.movedRailCount).toBe(1);
+    expect(pub.clampedDeltaFrames).toBe(5);
+    expect(pub.beforeRange).toEqual({ firstFrame: 2, lastFrame: 9 });
+    expect(pub.afterRange).toEqual({ firstFrame: 7, lastFrame: 14 });
+    // A duplicated placement opens no gap: its source keys stay (D-11).
+    expect(pub.gapIntervals).toEqual([]);
+    const moved = pub.proposal.nextLoopClips?.find((clip) => clip.loopId === 'loop-D');
+    expect(moved?.placementStart).toBe(7);
+  });
+
+  it('fails closed with the no-space copy when the set is flush at capacity', () => {
+    const { actions } = createHarness({
+      records: keyRailRecords('k', 0, 10),
+      capacity: 10,
+    });
+    const preparation = actions.physicalActions.prepareRailSetMove({
+      members: [keyRailMember('k0', 10)],
+      delta: 2,
+    });
+    expect(preparation).toEqual({
+      ok: false,
+      reason: 'No empty space in that direction.',
+      detail: expect.any(String),
+    });
+  });
+
+  it('fails closed with the straddle copy when a selected Group shares its source with an unselected Group (D-10)', () => {
+    const records = [realKeyRecord('g0', 20), realKeyRecord('g1', 21)];
+    const loopG = lifecycleGroup({
+      loopId: 'loop-G',
+      placementStart: 20,
+      sourceKeyIds: Object.freeze(['g0', 'g1']),
+      phaseOrigin: 20,
+      originalEndExclusive: 28,
+      visibleRanges: Object.freeze([Object.freeze({ start: 20, endExclusive: 28 })]),
+    });
+    const loopD = lifecycleGroup({
+      loopId: 'loop-D',
+      placementStart: 2,
+      sourceKeyIds: Object.freeze(['g0', 'g1']),
+      mode: 'static',
+      phaseOrigin: 2,
+      originalEndExclusive: 10,
+      visibleRanges: Object.freeze([Object.freeze({ start: 2, endExclusive: 10 })]),
+    });
+    const { actions } = createHarness({ records, loopClips: [loopD, loopG], capacity: 40 });
+    const preparation = actions.physicalActions.prepareRailSetMove({
+      members: [{ kind: 'loop', loopId: 'loop-G' }],
+      delta: 5,
+    });
+    expect(preparation).toEqual({
+      ok: false,
+      reason: 'Can\'t move the selected Rails: a selected Group shares its source with an unselected Group.',
+      detail: expect.any(String),
+    });
+  });
+
+  it('maps the entire locked copy family verbatim (D-09/D-10/D-12, UI-SPEC M3/M6)', () => {
+    // Live readout, rightward with gap — UI-SPEC M3 example shape.
+    expect(mapRotoRailSetMoveProductReason({
+      kind: 'live',
+      signedDeltaFrames: 12,
+      beforeRange: { firstFrame: 12, lastFrame: 88 },
+      afterRange: { firstFrame: 24, lastFrame: 100 },
+      gapIntervals: [{ start: 12, end: 24 }],
+    })).toBe('Move Rails +12 — set frames 12–88 → 24–100, gap 12–23');
+    // Live readout, leftward mirror (U+2212 MINUS SIGN).
+    expect(mapRotoRailSetMoveProductReason({
+      kind: 'live',
+      signedDeltaFrames: -8,
+      beforeRange: { firstFrame: 8, lastFrame: 17 },
+      afterRange: { firstFrame: 0, lastFrame: 9 },
+      gapIntervals: [{ start: 8, end: 16 }],
+    })).toBe('Move Rails −8 — set frames 8–17 → 0–9, gap 8–15');
+    // Live readout with no gap: no gap sentence.
+    expect(mapRotoRailSetMoveProductReason({
+      kind: 'live',
+      signedDeltaFrames: 5,
+      beforeRange: { firstFrame: 2, lastFrame: 9 },
+      afterRange: { firstFrame: 7, lastFrame: 14 },
+      gapIntervals: [],
+    })).toBe('Move Rails +5 — set frames 2–9 → 7–14');
+    // Accepted plural with gap.
+    expect(mapRotoRailSetMoveProductReason({
+      kind: 'accepted',
+      movedRailCount: 3,
+      signedDeltaFrames: 12,
+      afterRange: { firstFrame: 24, lastFrame: 100 },
+      gapIntervals: [{ start: 12, end: 24 }],
+    })).toBe('Moved 3 Rails by 12 frames — set now frames 24–100. Gap left at frames 12–23.');
+    // Accepted singular with gap.
+    expect(mapRotoRailSetMoveProductReason({
+      kind: 'accepted',
+      movedRailCount: 1,
+      signedDeltaFrames: 8,
+      afterRange: { firstFrame: 8, lastFrame: 17 },
+      gapIntervals: [{ start: 0, end: 8 }],
+    })).toBe('Moved 1 Rail by 8 frames — set now frames 8–17. Gap left at frames 0–7.');
+    // Accepted without gap (duplicated-placement-only set opens no gap).
+    expect(mapRotoRailSetMoveProductReason({
+      kind: 'accepted',
+      movedRailCount: 1,
+      signedDeltaFrames: 5,
+      afterRange: { firstFrame: 7, lastFrame: 14 },
+      gapIntervals: [],
+    })).toBe('Moved 1 Rail by 5 frames — set now frames 7–14.');
+    // Disabled pass-through.
+    expect(mapRotoRailSetMoveProductReason({ kind: 'disabled', reason: 'A Roto physical edit is already in flight.' }))
+      .toBe('A Roto physical edit is already in flight.');
+    // Straddle verbatim (D-10).
+    expect(mapRotoRailSetMoveProductReason({ kind: 'rejected', failureCode: 'move-rails-source-straddle', failureText: 'x' }))
+      .toBe('Can\'t move the selected Rails: a selected Group shares its source with an unselected Group.');
+    // No-space delegates to the Group mapper — one literal source (43.4 precedent).
+    expect(mapRotoRailSetMoveProductReason({ kind: 'rejected', failureCode: 'no-free-space-in-direction', failureText: 'z' }))
+      .toBe('No empty space in that direction.');
+  });
+});
+
+describe('useRotoTimelineActions batch Move commit + stale authority (43.6-03 Task 2)', () => {
+  it('commits the exact retained move-rails publication once and publishes accepted copy from the continuation', async () => {
+    const records = [
+      ...keyRailRecords('a', 12, 12),
+      ...keyRailRecords('b', 24, 16),
+      ...keyRailRecords('c', 40, 49),
+    ];
+    const { actions, executePhysicalEdit, publishStatus } = createHarness({
+      records,
+      capacity: 120,
+      incomingInterpolationBreakKeyIds: ['b0', 'c0'],
+    });
+    const preparation = actions.physicalActions.prepareRailSetMove({
+      members: [keyRailMember('a0', 12), keyRailMember('b0', 16), keyRailMember('c0', 49)],
+      delta: 12,
+    });
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Three-rail move must prepare');
+
+    const accepted = await actions.physicalActions.commitRailSetMove(preparation.publication);
+
+    expect(accepted).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: unknown;
+      expectedLaunch: unknown;
+      operationKind: string;
+      intent: unknown;
+      selectedKeyId: string | null;
+      selectedAppFrame: number | null;
+    };
+    expect(dispatched.proposal).toBe(preparation.publication.proposal);
+    expect(dispatched.expectedLaunch).toBe(preparation.publication.expectedLaunch);
+    expect(dispatched.operationKind).toBe('move-rails');
+    expect(dispatched.intent).toBe(preparation.publication.intent);
+    expect(dispatched.selectedKeyId).toBe(preparation.publication.proposal.selectedKeyId);
+    expect(dispatched.selectedAppFrame).toBe(preparation.publication.proposal.selectedAppFrame);
+    // Accepted copy publishes from the .then continuation — never runPhysicalAction.
+    expect(publishStatus).toHaveBeenCalledWith(
+      'Moved 3 Rails by 12 frames — set now frames 24–100. Gap left at frames 12–23.',
+    );
+  });
+
+  it('rejects a mismatched or empty-launch publication without dispatching (wrapper coherence)', async () => {
+    const records = [
+      ...keyRailRecords('a', 12, 12),
+      ...keyRailRecords('b', 24, 16),
+      ...keyRailRecords('c', 40, 49),
+    ];
+    const { actions, executePhysicalEdit } = createHarness({
+      records,
+      capacity: 120,
+      incomingInterpolationBreakKeyIds: ['b0', 'c0'],
+    });
+    const preparation = actions.physicalActions.prepareRailSetMove({
+      members: [keyRailMember('a0', 12), keyRailMember('b0', 16), keyRailMember('c0', 49)],
+      delta: 12,
+    });
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Three-rail move must prepare');
+    const publication = preparation.publication;
+
+    const kindMismatch = {
+      ...publication,
+      proposal: {
+        ...publication.proposal,
+        status: { ...publication.proposal.status, operationKind: 'move-group' as const },
+      },
+    };
+    expect(await actions.physicalActions.commitRailSetMove(kindMismatch)).toBe(false);
+
+    const intentMismatch = {
+      ...publication,
+      intent: { ...publication.intent, kind: 'move-group' as const },
+    } as unknown as import('./useRotoTimelineActions').RotoRailSetMovePublication;
+    expect(await actions.physicalActions.commitRailSetMove(intentMismatch)).toBe(false);
+
+    const emptyLaunch = { ...publication, expectedLaunch: { operationId: '', layerId: '' } };
+    expect(await actions.physicalActions.commitRailSetMove(emptyLaunch)).toBe(false);
+
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale break-aware proposal version with zero mutation (T-43.6-02)', async () => {
+    const records = [realKeyRecord('A', 0), realKeyRecord('B', 1), realKeyRecord('C', 10), realKeyRecord('D', 11)];
+    const breaks = ['D'];
+    const { actions, executePhysicalEdit } = createHarness({
+      records,
+      capacity: 14,
+      getIncomingInterpolationBreakKeyIds: () => breaks,
+    });
+    const preparation = actions.physicalActions.prepareRailSetMove({
+      members: [{ kind: 'key-rail', firstKeyId: 'A', keyIds: ['A', 'B'] }],
+      delta: 2,
+    });
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Move must prepare');
+
+    // A concurrent Scissor edit changes ONLY the break collection after prepare.
+    breaks.push('A');
+
+    expect(await actions.physicalActions.commitRailSetMove(preparation.publication)).toBe(false);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+    expect(breaks).toEqual(['D', 'A']);
+  });
+
+  it('rejects a stale structural authority with zero mutation (concurrent key edit)', async () => {
+    const records = [realKeyRecord('A', 0), realKeyRecord('B', 1)];
+    const { actions, executePhysicalEdit } = createHarness({ records, capacity: 14 });
+    const preparation = actions.physicalActions.prepareRailSetMove({
+      members: [{ kind: 'key-rail', firstKeyId: 'A', keyIds: ['A', 'B'] }],
+      delta: 2,
+    });
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Move must prepare');
+
+    records.push(realKeyRecord('new-authority', 12));
+
+    expect(await actions.physicalActions.commitRailSetMove(preparation.publication)).toBe(false);
     expect(executePhysicalEdit).not.toHaveBeenCalled();
   });
 });
