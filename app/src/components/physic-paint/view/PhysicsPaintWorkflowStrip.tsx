@@ -1291,6 +1291,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     frame: number;
     direction: PushToolDirection;
     set: PhysicPaintPushSetResult | null;
+    /** Zero-valid-movement verdict (locked preflight): the set is flush at the
+     *  boundary (frame 0 for Push Left, capacity for Push Right) so no drag can
+     *  ever commit. Knowable at hover time exactly like the straddle verdict —
+     *  the pre-highlight/ghost must never imply a commit that cannot happen. */
+    blocked: boolean;
   } | null>(null);
   const pushHoverGuardTooltip = useStyledTooltip();
   const handleLanePushPointerMove = useCallback((event: PointerEvent) => {
@@ -1333,11 +1338,21 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           loopClips: props.rotoLoopClips ?? [],
           incomingInterpolationBreakKeyIds,
         });
-    pushHoverState.value = { frame, direction, set };
-    // Guard tooltip: empty/gap anchor or a straddled anchor shows the mapped
-    // reason (D-16/D-17); a valid anchor hides it. The drag never starts on a
-    // straddled anchor (preflight blocks it in the pointer-down handler too).
-    const invalid = anchor === null || set === null || !set.ok || set.straddle !== null;
+    // Locked preflight (zero-valid-movement): the set is flush at the boundary
+    // — frame 0 for Push Left, capacity for Push Right — so no drag can ever
+    // commit. Knowable at hover time exactly like the straddle verdict; the
+    // pre-highlight/ghost must never imply a commit that cannot happen.
+    const blocked = set !== null && set.ok && (
+      direction === 'left'
+        ? set.movedSetBounds.firstFrame === 0
+        : set.movedSetBounds.lastEndExclusive === frameCells.length
+    );
+    pushHoverState.value = { frame, direction, set, blocked };
+    // Guard tooltip: empty/gap anchor, a straddled anchor, or a boundary-blocked
+    // set shows the mapped reason (D-16/D-17); a valid anchor hides it. The drag
+    // never starts on a straddled or blocked anchor (preflight blocks it in the
+    // pointer-down handler too).
+    const invalid = anchor === null || set === null || !set.ok || set.straddle !== null || blocked;
     if (invalid) {
       pushHoverGuardTooltip.onPointerEnter();
     } else {
@@ -1499,8 +1514,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       loopClips: props.rotoLoopClips ?? [],
       incomingInterpolationBreakKeyIds,
     });
-    // Empty/gap anchor or a straddled anchor never starts a drag (D-16).
-    if (!setResult.ok || setResult.straddle !== null) return;
+    // Empty/gap anchor, a straddled anchor, or a boundary-blocked set never
+    // starts a drag (D-16, locked preflight) — the drag would only no-op.
+    if (!setResult.ok) return;
+    const blocked = direction === 'left'
+      ? setResult.movedSetBounds.firstFrame === 0
+      : setResult.movedSetBounds.lastEndExclusive === frameCells.length;
+    if (setResult.straddle !== null || blocked) return;
     pushSessionRef.current = {
       direction,
       anchor,
@@ -2231,10 +2251,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const pushHover = pushHoverState.value;
   const pushHoverSet = pushHover?.set ?? null;
   const pushHoverInvalid = pushHover !== null
-    && (pushHoverSet === null || !pushHoverSet.ok || pushHoverSet.straddle !== null);
+    && (pushHoverSet === null || !pushHoverSet.ok || pushHoverSet.straddle !== null || pushHover.blocked);
   const pushHoverGuardCopy = pushHoverSet !== null && pushHoverSet.ok && pushHoverSet.straddle !== null
     ? mapRotoPushProductReason({ kind: 'rejected', failureCode: 'push-source-straddle', failureText: '' })
-    : mapRotoPushProductReason({ kind: 'rejected', failureCode: 'unknown-operation-identity', failureText: '' });
+    : pushHover !== null && pushHover.blocked
+      ? mapRotoPushProductReason({ kind: 'rejected', failureCode: 'no-free-space-in-direction', failureText: '' })
+      : mapRotoPushProductReason({ kind: 'rejected', failureCode: 'unknown-operation-identity', failureText: '' });
   const isSelectedPushRail = (rail: PushPreviewRail): boolean => {
     if (rail.kind === 'key-rail') {
       return props.selectedRotoKeyRail?.firstKeyId === rail.id;
@@ -2517,7 +2539,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   plus the 2x8px pivot tick at the set's boundary edge. The
                   fixed side shows nothing; selected rails never inherit hover
                   or pivot state (UI-SPEC state precedence). */}
-              {pushHover !== null && pushHoverSet !== null && pushHoverSet.ok && pushHoverSet.straddle === null ? (
+              {pushHover !== null && pushHoverSet !== null && pushHoverSet.ok && pushHoverSet.straddle === null && !pushHover.blocked ? (
                 <div class="physics-paint-push-hover-layer" aria-hidden="true">
                   {pushHoverSet.movedRails.map((rail) => {
                     if (isSelectedPushRail(rail)) return null;

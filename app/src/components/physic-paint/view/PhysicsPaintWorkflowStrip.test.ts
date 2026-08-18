@@ -1821,4 +1821,25 @@ describe('Directional Push tool smoke-fix source contract (43.5-05)', () => {
     expect(deleteIndex).toBeGreaterThan(-1);
     expect(deleteIndex).toBeGreaterThan(allIndex);
   });
+
+  it('A9: locked preflight — a boundary-blocked set shows not-allowed + no-space tooltip and never a movable pre-highlight/ghost', () => {
+    const code = source();
+    // The hover preflight derives a zero-valid-movement verdict (frame 0 for
+    // Push Left, capacity for Push Right) exactly like the straddle verdict.
+    const moveStart = code.indexOf('const handleLanePushPointerMove');
+    const move = code.slice(moveStart, code.indexOf('const handleLanePushPointerLeave', moveStart));
+    expect(move).toContain('blocked');
+    expect(move).toContain('set.movedSetBounds.firstFrame === 0');
+    expect(move).toContain('set.movedSetBounds.lastEndExclusive === frameCells.length');
+    // The not-allowed cursor and the no-space guard copy key off the blocked flag.
+    expect(code).toContain('pushHover.blocked');
+    expect(code).toContain("failureCode: 'no-free-space-in-direction'");
+    // The pre-highlight layer never paints a blocked set.
+    expect(code).toContain('!pushHover.blocked');
+    // The pointer-down handler never starts a drag on a blocked set.
+    const downStart = code.indexOf('const handleLanePushPointerDownCapture');
+    const down = code.slice(downStart, code.indexOf('const handleLanePushClickCapture', downStart));
+    expect(down).toContain('blocked');
+    expect(down).toContain('setResult.straddle !== null || blocked');
+  });
 });

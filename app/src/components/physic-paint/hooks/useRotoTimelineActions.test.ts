@@ -2311,4 +2311,37 @@ describe('useRotoTimelineActions Push from cell anchors (43.5-05 smoke RED)', ()
     expect(accepted).toBe(true);
     expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
   });
+
+  it('commits a Push Left with empty space at frame 0 through the real pipeline (discrimination case B)', async () => {
+    // A [5,15), B [20,30), C [40,50): frames 0-4 are empty, so the prefix set
+    // (A + B) has room to cross toward frame 0. Push Left 5 must prepare and
+    // commit — proving the left clamp scans the correct direction and the
+    // negative delta sign survives prepare.
+    const records = [
+      realKeyRecord('a0', 5), realKeyRecord('a1', 6), realKeyRecord('a2', 7), realKeyRecord('a3', 8),
+      realKeyRecord('a4', 9), realKeyRecord('a5', 10), realKeyRecord('a6', 11), realKeyRecord('a7', 12),
+      realKeyRecord('a8', 13), realKeyRecord('a9', 14),
+      realKeyRecord('b0', 20), realKeyRecord('b1', 21), realKeyRecord('b2', 22), realKeyRecord('b3', 23),
+      realKeyRecord('b4', 24), realKeyRecord('b5', 25), realKeyRecord('b6', 26), realKeyRecord('b7', 27),
+      realKeyRecord('b8', 28), realKeyRecord('b9', 29),
+      realKeyRecord('c0', 40), realKeyRecord('c1', 41), realKeyRecord('c2', 42), realKeyRecord('c3', 43),
+      realKeyRecord('c4', 44), realKeyRecord('c5', 45), realKeyRecord('c6', 46), realKeyRecord('c7', 47),
+      realKeyRecord('c8', 48), realKeyRecord('c9', 49),
+    ];
+    const { actions, executePhysicalEdit } = createHarness({
+      records,
+      capacity: 60,
+      getIncomingInterpolationBreakKeyIds: () => ['b0', 'c0'],
+    });
+    const preparation = actions.physicalActions.prepareRotoPush({
+      direction: 'left',
+      anchorKeyId: 'b0',
+      deltaFrames: 5,
+    });
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Push Left with empty frame 0 must prepare');
+    const accepted = await actions.physicalActions.commitRotoPush(preparation.publication);
+    expect(accepted).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+  });
 });
