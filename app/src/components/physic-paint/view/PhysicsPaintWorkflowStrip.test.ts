@@ -1893,17 +1893,18 @@ describe('Directional Push tool source contract (43.5-05 design revision: ONE to
     expect(css()).toContain('z-index: 9');
   });
 
-  it('A15: a successful push commit keeps the tool armed and re-binds the anchor to its new position (smoke 3)', () => {
+  it('A15: a successful push commit keeps the tool armed and re-selects the moved anchor rail (smoke 3)', () => {
     const code = source();
     const commitStart = code.indexOf('onDropCommit: (publication) => {');
     const commit = code.slice(commitStart, code.indexOf('onCancel:', commitStart));
     // The commit marks the push in flight (exempting the Studio mutation-lock
-    // disarm) and re-binds the anchor on acceptance.
+    // disarm), captures the anchor, and on acceptance re-selects the moved
+    // anchor rail so the tool stays armed and the anchor stays selected.
     expect(commit).toContain('setPushCommitInFlight(true)');
-    expect(commit).toContain('armedAnchorRef.current = next');
-    // The disarm-on-selection effect re-binds instead of disarming right after a
-    // commit.
-    expect(code).toContain('justCommittedRef.current && pushAnchor !== null');
+    expect(commit).toContain('committedAnchorRef.current = armedAnchorRef.current');
+    expect(commit).toContain('props.onSelectRotoKeyRail');
+    expect(commit).toContain('armedAnchorRef.current = anchor');
+    expect(commit).toContain('togglePushTool()');
     // The Studio's disarm-on-mutation effect is guarded by the commit-in-flight
     // flag.
     expect(studioSource()).toContain('isPushCommitInFlight()');
@@ -1913,14 +1914,19 @@ describe('Directional Push tool source contract (43.5-05 design revision: ONE to
     expect(armedTool).toContain('isPushCommitInFlight');
   });
 
-  it('A16: disarm vectors stay locked (selection change, toolbar action, cancel, Escape) — a commit re-bind is the only exemption', () => {
+  it('A16: disarm vectors stay locked (selection change, toolbar action, cancel, Escape) — the commit re-select is the only exemption', () => {
     const code = source();
-    // Selection change while armed still disarms (A10) unless we JUST committed.
+    // A selection change while armed still disarms via the disarm effect (A10).
     expect(code).toContain('disarmPushTool()');
-    expect(code).toContain('justCommittedRef.current && pushAnchor !== null');
+    expect(code).toContain('pushAnchor.kind !== armedAnchor.kind');
     // A cancel (Escape / pointercancel / lostpointercapture) still disarms.
     const cancelStart = code.indexOf('onCancel: () => {');
     const cancel = code.slice(cancelStart, code.indexOf('onRejected:', cancelStart));
     expect(cancel).toContain('disarmPushTool()');
+    // The re-select exemption lives ONLY in the commit continuation, never in
+    // the disarm effect.
+    const disarmStart = code.indexOf('const armedAnchor = armedAnchorRef.current');
+    const disarm = code.slice(disarmStart, code.indexOf('}, [pushAnchor, pushArmed]);', disarmStart));
+    expect(disarm).not.toContain('togglePushTool');
   });
 });

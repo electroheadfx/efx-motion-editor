@@ -1238,19 +1238,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // ARM time (not re-resolved at drag position). Captured here so the drag
   // session and the pre-highlight always use the exact rail that armed the tool.
   const armedAnchorRef = useRef<{ readonly kind: 'key' | 'loop'; readonly id: string } | null>(null);
-  // Tracks the latest anchor so the commit continuation can re-bind without a
-  // stale closure, and marks a push commit in flight so the disarm-on-selection
-  // effect re-binds instead of disarming when the selection is re-established
-  // on the moved anchor (smoke 3: chained pushes keep the tool armed).
-  const pushAnchorRef = useRef(pushAnchor);
-  pushAnchorRef.current = pushAnchor;
-  const justCommittedRef = useRef(false);
+  // Holds the anchor captured at commit start so the commit continuation can
+  // re-bind it even after the disarm-on-selection effect clears armedAnchorRef.
+  // After an accepted push the store re-establishes the anchor KEY selection,
+  // which clears the RAIL selection (Studio exclusivity) and momentarily nulls
+  // pushAnchor; the commit continuation re-selects the moved anchor rail so the
+  // tool stays armed and the anchor stays selected for chained pushes (smoke 3).
+  const committedAnchorRef = useRef<{ readonly kind: 'key' | 'loop'; readonly id: string } | null>(null);
   // If the selection is cleared or changes type while armed, disarm — the tool
   // must never push a stale anchor. The effect also clears the captured anchor
   // whenever the tool is disarmed through any path (Escape, cancel, other
-  // toolbar action, re-click). A push that just committed is exempt: it
-  // re-established the selection on the moved anchor, so re-bind to keep the
-  // tool armed for the next push.
+  // toolbar action, re-click).
   useEffect(() => {
     if (!pushArmed) {
       armedAnchorRef.current = null;
@@ -1259,10 +1257,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     const armedAnchor = armedAnchorRef.current;
     if (armedAnchor === null) return;
     if (pushAnchor === null || pushAnchor.kind !== armedAnchor.kind || pushAnchor.id !== armedAnchor.id) {
-      if (justCommittedRef.current && pushAnchor !== null) {
-        armedAnchorRef.current = pushAnchor;
-        return;
-      }
       armedAnchorRef.current = null;
       disarmPushTool();
     }
@@ -1424,24 +1418,36 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     },
     onDropCommit: (publication) => {
       // Smoke 3: a successful push must not disarm the tool (chained pushes).
-      // Exempt the commit's own mutation-lock disarm (Studio) and let the
-      // disarm-on-selection effect re-bind to the moved anchor instead of
-      // disarming, then re-bind the anchor to its new position on acceptance.
+      // The commit's own mutation-lock disarm is exempted (push-commit-in-flight
+      // guard). On acceptance the store re-establishes the anchor KEY selection,
+      // which clears the RAIL selection and momentarily nulls pushAnchor; the
+      // continuation re-selects the moved anchor rail and re-arms so the tool
+      // stays armed and the anchor stays selected at its new position.
       setPushCommitInFlight(true);
-      justCommittedRef.current = true;
+      committedAnchorRef.current = armedAnchorRef.current;
       return (physicalActions?.commitRotoPush(publication) ?? Promise.resolve(false))
         .then((accepted) => {
           setPushCommitInFlight(false);
           if (accepted) {
-            const next = pushAnchorRef.current;
-            if (next !== null) armedAnchorRef.current = next;
+            const anchor = committedAnchorRef.current;
+            if (anchor !== null) {
+              if (anchor.kind === 'key') {
+                // The anchor rail's key set is unchanged by the rigid
+                // translation, so the pre-commit segment identifies the moved
+                // rail; re-selecting it keeps the capsule and pushAnchor valid.
+                const segment = keyRailSegments.find((s) => s.firstKeyId === anchor.id);
+                if (segment) {
+                  props.onSelectRotoKeyRail?.({ firstKeyId: segment.firstKeyId, keyIds: segment.keyIds });
+                }
+              }
+              armedAnchorRef.current = anchor;
+            }
+            if (!isPushToolArmed()) togglePushTool();
           }
-          justCommittedRef.current = false;
           return accepted;
         })
         .catch((error: unknown) => {
           setPushCommitInFlight(false);
-          justCommittedRef.current = false;
           throw error;
         });
     },
