@@ -27,7 +27,7 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 - [x] **Phase 43: Hold Loop Clips + Integrated Loop Rail** — Deterministic static/hold rendering with linked Loop Clips (cycle × repeat 1..∞), an EFX-local integrated rail/contextual inspector, and one passive Motion Editor PPaint FX-bar duration marker per effective interval with zero Loop Clip-specific interaction (completed 2026-08-08)
 - [x] **Phase 43.1: Intentional Gap Insert and Local Interpolation Breaks** — Existing Insert context-dispatches a genuinely empty cursor into one atomic empty-key-plus-stable-break transaction, preserving local interpolation, persistence, history, and accepted physical-strip geometry (completed 2026-08-10)
 - [x] **Phase 43.2: Motion and Static Group Stabilization and Action Lifecycle** — Durable Groups, exact local lifecycle edits, leased bidirectional Action deletion history, and canonical save/playback/preview/export parity (completed 2026-08-13)
-- [ ] **Phase 43.5: Timeline Toolbox and Directional Push Tools** — Compact toolbox button relocating Interpolation/Key Spacing into a Studio-local surface, plus Push Right/Push Left tools translating the selected Group and its directional side as one rigid atomic set with persistent intentional gaps (INSERTED; spec: SPECS/milestone-v0.9.0-new-phases/phase-43.5-timeline-toolbox-directional-push-prompt.md)
+- [x] **Phase 43.5: Timeline Toolbox and Directional Push Tools** — Compact toolbox button relocating Interpolation/Key Spacing into a Studio-local surface, plus Push Right/Push Left tools translating the selected Group and its directional side as one rigid atomic set with persistent intentional gaps (INSERTED; spec: SPECS/milestone-v0.9.0-new-phases/phase-43.5-timeline-toolbox-directional-push-prompt.md) (completed 2026-08-18)
 - [ ] **Phase 44: Integrated UAT + Signed Release** — All automated gates, packaged native UAT per spec, signed/notarized downloaded-artifact verification, publish 2026-08-31
 
 ## Phase Details
@@ -388,7 +388,7 @@ Plans:
 **Goal:** Free space in the EFX Paint/Roto bottom toolbar by consolidating Interpolation and Key Spacing into one compact toolbox button (Lucide `ToolCase`, export verified against the installed Lucide version) opening a Studio-local modal/anchored surface with every accepted behavior, value, shortcut, guard, selection scope, accessibility label, Undo/Redo contract, and error message preserved and no second state authority — and add two explicit directional Push tools: Push Right translates the selected Motion/Static/Key Group plus every object after it, Push Left translates every object before the selected Group plus the selected Group, both as one rigid set preserving relative timing, internal spacing, Action provenance, synchronization status, source sharing, and Group membership, with opened intervals recorded as intentional persistent Phase 43.1 interpolation-break gaps (Interpolation On never generates across them; Off/On restores them exactly), preview/drag feedback showing direction, boundary, affected set, delta, resulting range, gap, and capacity/collision status before commit, frame-0/capacity/collision/stale-authority rejection leaving project and history untouched, and the complete movement landing as one atomic parent-acknowledged transaction with one Undo/Redo surviving save/reopen, playback, preview, and export. Direct Group drag from Phases 43.3 and 43.4 remains local and never pushes neighbors; Phase 43.5 exclusively owns every multi-object movement. Spec: SPECS/milestone-v0.9.0-new-phases/phase-43.5-timeline-toolbox-directional-push-prompt.md
 **Requirements**: TBX-01, TBX-02, TBX-03, TBX-04, TBX-05, PUSH-01, PUSH-02, PUSH-03, PUSH-04, PUSH-05, PUSH-06, PUSH-07, PUSH-08 (planning-local; not added to REQUIREMENTS.md)
 **Depends on:** Phase 43.4
-**Plans:** 6 plans
+**Plans:** 6/6 plans complete
 
 Plans:
 **Wave 1**
@@ -403,11 +403,11 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 43.5-05-PLAN.md — strip wiring: Push pill, armed lifecycle/disarm rules, hover pre-highlight + straddle preflight, ghost/gap/blocked-edge preview paint
+- [x] 43.5-05-PLAN.md — strip wiring: Push pill, armed lifecycle/disarm rules, hover pre-highlight + straddle preflight, ghost/gap/blocked-edge preview paint
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 43.5-06-PLAN.md — automated gate freeze + native visual UAT (13 prompt steps + UI-SPEC matrix, fully restarted frozen session)
+- [x] 43.5-06-PLAN.md — automated gate freeze + native visual UAT (13 prompt steps + UI-SPEC matrix, fully restarted frozen session)
 
 **Scope boundaries:** No push behavior on direct Group drag; no multiple internal Paint tracks; no Motion Editor timeline changes; no replacement of the physical authority/history architecture; no new dependencies without separate approval; no Phase 44 signing/release work. The 161px workflow-strip height is preserved and Push buttons never cover cells or Group Rails.
 
