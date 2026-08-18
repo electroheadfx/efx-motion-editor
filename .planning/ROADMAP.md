@@ -414,13 +414,18 @@ Plans:
 ### Phase 43.6: Multi-Rail Selection and Batch Operations (INSERTED)
 
 **Goal:** Let the user select multiple Rails of any type — Key Rail, Motion Rail, Static Rail — in one shared selection set ordered by canonical first-key frame, then apply batch operations to the whole set: Delete Rails, Move Rails, Key Spacing, and selection-scoped (solo) playback. Multi-selection is a new explicit selection scope alongside single-rail and physical-frame selections; the 43.4 mutual-exclusion and selection-authority rules extend to the set. All invariants from Phases 43.3/43.4/43.5 remain binding: persistent intentional gaps, break ownership by stable key identity, capacity as the single end authority, atomic Undo/Redo through the canonical physical history, replay snapshots read from the accepted document authority, and one shared rail behavior with no per-type forks. Spec: SPECS/milestone-v0.9.0-new-phases/phase-43.6-multi-rail-selection-batch-operations-prompt.md
-**Requirements**: TBD
+**Requirements**: RSET-01, RSET-02, RSET-03, RSET-04, BMOV-01, BMOV-02, BMOV-03, BMOV-04, BMOV-05, BMOV-06, BDEL-01, BDEL-02, BSPC-01, BSPC-02, BSPC-03, SOLO-01, SOLO-02, SOLO-03, SOLO-04, SOLO-05, SOLO-06 (planning-local IDs derived in 43.6-RESEARCH.md; REQUIREMENTS.md holds no 43.6 rows)
 **Depends on:** Phase 43.5
-**Plans:** 0 plans
+**Plans:** 6 plans
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 43.6 to break down)
+- [ ] 43.6-01-PLAN.md — Rail-set selection foundation: pure reducer (plain/toggle/range/union, empty set allowed), unified cross-type ordering, Studio session signals, gesture routing in both rail components, anchor tick + orange set paint, one set-copy mapper, D-06 aftermath scaffolding
+- [ ] 43.6-02-PLAN.md — move-rails resolver intent: exported pure set-derivation + clamp authority, generalized straddle guard, rigid translation with break travel, transport union + coordinator authorization
+- [ ] 43.6-03-PLAN.md — Batch Move drag end-to-end: set pointer-session hook, per-member ghosts/gap/blocked-edge paint, live readout, prepare/commit ports, D-06 stay-selected + Undo/Redo restore
+- [ ] 43.6-04-PLAN.md — Delete Rails: composed pure proposer (43.2 Group semantics + Key Rail removal + break normalization), transport/coordinator/bridge exact-match validation, classifier rail-set branch, direct no-modal atomic command
+- [ ] 43.6-05-PLAN.md — Key Spacing on a set: spacing-on-set intent (per-rail fixed anchors, all-or-nothing), scope-aware ToolCase popover with one scope line, locked copy
+- [ ] 43.6-06-PLAN.md — Solo playback: session arm signal, pure range/attribution derivation, getFrames presentation filter (stopped canvas untouched), strip toggle button, capsule line, layered exits
 
 ### Phase 44: Integrated UAT + Signed Release
 
