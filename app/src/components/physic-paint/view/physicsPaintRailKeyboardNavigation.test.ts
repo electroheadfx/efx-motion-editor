@@ -151,6 +151,39 @@ describe('shared rail roving keyboard navigation (43.4 defect 9)', () => {
     expect(keyA.tabIndex).toBe(-1);
     expect(motion.tabIndex).toBe(-1);
   });
+
+  // 43.6 matrix row 8: with an active rail set the shared machinery already
+  // visits set members in canonical first-frame order and falls through to
+  // non-member rails and the scroller exit — no set-aware focus code exists.
+  it('visits set members in canonical first-frame order and falls through outside the set', () => {
+    const r2 = rail(2, 'r2');
+    const r4 = rail(4, 'r4');
+    const r6 = rail(6, 'r6');
+    const r8 = rail(8, 'r8');
+    const r10 = rail(10, 'r10');
+    const scroller = rail(-1, 'scroller');
+    const scope = lane([r2, r4, r6, r8, r10], scroller);
+    const all = [r2, r4, r6, r8, r10, scroller];
+    const resetFocus = () => { all.forEach((candidate) => { candidate.focused = false; }); };
+    const walk = (from: FakeRail, key: string): FakeRail | null => {
+      resetFocus();
+      const { event } = keyEvent(key);
+      dispatchRailTargetKeyDown(event, scope, from);
+      return all.find((candidate) => candidate.focused) ?? null;
+    };
+
+    // Members at frames 2, 6, 10; non-members at 4 and 8 interleave.
+    expect(walk(r2, 'ArrowRight')).toBe(r4);
+    expect(walk(r4, 'ArrowRight')).toBe(r6);
+    expect(walk(r6, 'ArrowRight')).toBe(r8);
+    expect(walk(r8, 'ArrowRight')).toBe(r10);
+    // Past the last member the cycle falls through to the ordinary scroller
+    // exit with no wrap.
+    const { event } = keyEvent('ArrowRight');
+    dispatchRailTargetKeyDown(event, scope, r10);
+    expect(r10.focused).toBe(false);
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+  });
 });
 
 // 43.4 defect 10: a direct pointer click on ANY rail family must move DOM

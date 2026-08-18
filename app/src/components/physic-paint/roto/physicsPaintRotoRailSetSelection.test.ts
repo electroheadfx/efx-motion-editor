@@ -7,6 +7,7 @@ import {
   type RailSetSelectionState,
 } from './physicsPaintRotoRailSetSelection';
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
+import { getRailsInCanonicalOrder } from '../view/physicsPaintRailKeyboardNavigation';
 
 const loop = (loopId: string): RailSetIdentity => ({ kind: 'loop', loopId });
 const keyRail = (firstKeyId: string): RailSetIdentity => ({ kind: 'key-rail', firstKeyId });
@@ -88,13 +89,62 @@ describe('Physics Paint Roto rail-set selection reducer', () => {
     expect(next).toBe(first);
   });
 
-  it('leaves state unchanged for range and union gestures (Task 2 scope)', () => {
+});
+
+describe('range and union gestures (Task 2)', () => {
+  it('Shift range replaces the set with the ordered anchor-to-target slice and keeps the anchor', () => {
     const first = updatePhysicsPaintRotoRailSetSelection(null, ORDERED, keyRail('key-a'), 'plain');
     const ranged = updatePhysicsPaintRotoRailSetSelection(first, ORDERED, loop('loop-d'), 'range');
-    const unioned = updatePhysicsPaintRotoRailSetSelection(first, ORDERED, loop('loop-d'), 'union');
+
+    expect(ranged).toEqual({
+      members: [keyRail('key-a'), loop('loop-b'), keyRail('key-c'), loop('loop-d')],
+      anchor: keyRail('key-a'),
+    });
+  });
+
+  it('Shift range from a later anchor selects the slice in canonical order', () => {
+    const first = updatePhysicsPaintRotoRailSetSelection(null, ORDERED, loop('loop-d'), 'plain');
+    const ranged = updatePhysicsPaintRotoRailSetSelection(first, ORDERED, keyRail('key-a'), 'range');
+
+    expect(ranged).toEqual({
+      members: [keyRail('key-a'), loop('loop-b'), keyRail('key-c'), loop('loop-d')],
+      anchor: loop('loop-d'),
+    });
+  });
+
+  it('Cmd+Shift union adds the anchor-to-target slice to the current set and keeps the anchor', () => {
+    const first = updatePhysicsPaintRotoRailSetSelection(null, ORDERED, keyRail('key-a'), 'plain');
+    const toggled = updatePhysicsPaintRotoRailSetSelection(first, ORDERED, loop('loop-d'), 'toggle');
+    const unioned = updatePhysicsPaintRotoRailSetSelection(toggled, ORDERED, keyRail('key-c'), 'union');
+
+    expect(unioned).toEqual({
+      members: [keyRail('key-a'), loop('loop-b'), keyRail('key-c'), loop('loop-d')],
+      anchor: keyRail('key-a'),
+    });
+  });
+
+  it('union is idempotent on already-selected members', () => {
+    const first = updatePhysicsPaintRotoRailSetSelection(null, ORDERED, keyRail('key-a'), 'plain');
+    const unioned = updatePhysicsPaintRotoRailSetSelection(first, ORDERED, keyRail('key-a'), 'union');
+
+    expect(unioned).toEqual(first);
+  });
+
+  it('range and union are fail-closed on an unknown target identity', () => {
+    const first = updatePhysicsPaintRotoRailSetSelection(null, ORDERED, keyRail('key-a'), 'plain');
+    const ranged = updatePhysicsPaintRotoRailSetSelection(first, ORDERED, loop('loop-unknown'), 'range');
+    const unioned = updatePhysicsPaintRotoRailSetSelection(first, ORDERED, loop('loop-unknown'), 'union');
 
     expect(ranged).toBe(first);
     expect(unioned).toBe(first);
+  });
+
+  it('range and union leave state unchanged with no valid anchor', () => {
+    const ranged = updatePhysicsPaintRotoRailSetSelection(null, ORDERED, loop('loop-d'), 'range');
+    const unioned = updatePhysicsPaintRotoRailSetSelection(null, ORDERED, loop('loop-d'), 'union');
+
+    expect(ranged).toBeNull();
+    expect(unioned).toBeNull();
   });
 });
 
@@ -173,6 +223,39 @@ describe('deriveRailSetOrder', () => {
       keyRail('key-b'),
       loop('loop-d'),
     ]);
+  });
+
+  it('agrees with getRailsInCanonicalOrder on the same mixed-timeline fixture (one ordering authority)', () => {
+    const fakes = [
+      { id: 'loop-d', firstFrame: 8 },
+      { id: 'key-a', firstFrame: 2 },
+      { id: 'loop-b', firstFrame: 4 },
+      { id: 'key-c', firstFrame: 6 },
+    ];
+    const scope = {
+      querySelectorAll: () => fakes.map((fake) => ({
+        getAttribute: (name: string) => (name === 'data-rail-first-frame' ? String(fake.firstFrame) : null),
+      })),
+    };
+    const focusOrder = getRailsInCanonicalOrder(scope as never)
+      .map((rail) => Number(rail.getAttribute('data-rail-first-frame')));
+    const setOrder = deriveRailSetOrder({
+      keyRailSegments: [
+        { firstKeyId: 'key-a', firstKeyFrame: 2 },
+        { firstKeyId: 'key-c', firstKeyFrame: 6 },
+      ],
+      loopRanges: [
+        { loopId: 'loop-b', placementStart: 4 },
+        { loopId: 'loop-d', placementStart: 8 },
+      ],
+    });
+    const setFrames = setOrder.map((identity) => (
+      identity.kind === 'loop'
+        ? fakes.find((fake) => fake.id === identity.loopId)!.firstFrame
+        : fakes.find((fake) => fake.id === identity.firstKeyId)!.firstFrame
+    ));
+
+    expect(setFrames).toEqual(focusOrder);
   });
 });
 
