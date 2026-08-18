@@ -319,13 +319,15 @@ describe('deriveSoloPlaybackWindow — A3 single-attribution fixtures', () => {
     ]);
     const members: RailSetIdentity[] = [keyRail('k1'), loop('g1'), keyRail('k4'), loop('g2')];
 
-    // All rails selected: every frame in the union window is included.
+    // All rails selected: every frame in the union window is included except
+    // frame 5 — a real gap outside every selected rail's span (Key Rail A ends
+    // at 5 exclusive, Group G1 starts at 6), which plays transparent.
     const all = derive({ members, keyRailSegments: segments, loopRanges: ranges, cells, capacity });
     expect(all).not.toBeNull();
     expect(all!.start).toBe(0);
     expect(all!.endExclusive).toBe(24);
     for (let frame = 0; frame < capacity; frame += 1) {
-      expect(all!.includesFrame(frame), `frame ${frame} with all rails selected`).toBe(true);
+      expect(all!.includesFrame(frame), `frame ${frame} with all rails selected`).toBe(frame !== 5);
     }
 
     // Per-rail windows: every content-bearing frame attributes to at most one
