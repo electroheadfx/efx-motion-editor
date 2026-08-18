@@ -889,6 +889,101 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     vi.useRealTimers();
   });
 
+  it('registers its click-sequence canceller with the batch registry (WR-01) and clears the pending single-click timer on drag begin', () => {
+    vi.useFakeTimers();
+    const clips: PhysicPaintRotoLoopClip[] = [
+      {
+        loopId: 'loop-a',
+        placementStart: 0,
+        sourceKeyIds: ['A1', 'A2', 'A3'],
+        repeat: 1,
+        mode: 'progressive',
+      },
+    ];
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: clips.flatMap((clip) => clip.sourceKeyIds.map((keyId, index) => ({
+        keyId,
+        appFrame: clip.placementStart + index,
+      }))),
+      loopClips: clips,
+      capacity: 120,
+      interpolationEnabled: false,
+    });
+    const presentations = new Map(context.ranges.map((range) => {
+      const clip = clips.find((candidate) => candidate.loopId === range.loopId)!;
+      return [range.loopId, projectPhysicsPaintLoopClipPresentation(range, clip, null)] as const;
+    }));
+    const onSelectLoopClip = vi.fn();
+    const onOpenLoopEdit = vi.fn(async () => {});
+    const onRailSetDragPointerDown = vi.fn();
+    const registerClickSequenceCanceller = vi.fn();
+
+    hooks.reset();
+    const tree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: context.ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 0, endFrameExclusive: 12 },
+      framePitch: 18,
+      selectedLoopClipIds: [],
+      railSetMemberLoopIds: ['loop-a'],
+      onSelectLoopClip,
+      onOpenLoopEdit,
+      onRailSetDragPointerDown,
+      registerClickSequenceCanceller,
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+    expect(registerClickSequenceCanceller).toHaveBeenCalledOnce();
+
+    // A set member's pointer-down routes to the batch session (D-08), so the
+    // rail's own drag hook never starts and never clears the timer itself.
+    const pointerEvent = { pointerId: 1, clientX: 0, clientY: 0 };
+    (target.props.onPointerDown as (event: unknown) => void)(pointerEvent);
+    expect(onRailSetDragPointerDown).toHaveBeenCalledWith(pointerEvent);
+
+    // The click arms the 250 ms single-click timer.
+    (target.props.onClick as (event: unknown) => void)({
+      timeStamp: 100,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+    });
+
+    // The batch session's clearClickSequence (drag-begin threshold crossing)
+    // reaches this rail through the registry and cancels the pending timer.
+    const canceller = registerClickSequenceCanceller.mock.calls[0]![0] as () => void;
+    canceller();
+    vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS + 1);
+    expect(onSelectLoopClip).not.toHaveBeenCalled();
+
+    // Control: without the canceller the timer fires the single click.
+    hooks.reset();
+    const controlTree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: context.ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 0, endFrameExclusive: 12 },
+      framePitch: 18,
+      selectedLoopClipIds: [],
+      railSetMemberLoopIds: ['loop-a'],
+      onSelectLoopClip,
+      onOpenLoopEdit,
+      onRailSetDragPointerDown,
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    const controlTarget = findOne(controlTree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+    (controlTarget.props.onClick as (event: unknown) => void)({
+      timeStamp: 100,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+    });
+    vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS + 1);
+    expect(onSelectLoopClip).toHaveBeenCalledWith('loop-a', 'plain');
+    vi.useRealTimers();
+  });
+
   it('integrates Loop Clip ownership through all nine tracer checks', async () => {
     vi.useFakeTimers();
     const rawLoopId = '0f65c808-raw-loop-uuid';

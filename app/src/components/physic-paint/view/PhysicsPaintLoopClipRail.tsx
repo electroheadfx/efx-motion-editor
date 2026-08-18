@@ -76,6 +76,12 @@ export interface PhysicsPaintLoopClipRailProps {
   readonly onRailSetDragPointerDown?: (event: PointerEvent) => void;
   /** 43.6-03 D-08: batch rail-set trailing-click suppression consumer. */
   readonly onRailSetDragClickSuppressed?: () => boolean;
+  /** 43.6 WR-01: registers this rail's click-sequence canceller so the batch
+   *  drag session can clear the pending single-click timer on drag begin —
+   *  a set-member click arms the timer, and dragging within the delay window
+   *  must not collapse or mutate the set mid-drag. Returns the unregister
+   *  function. */
+  readonly registerClickSequenceCanceller?: (canceller: () => void) => () => void;
 }
 
 interface RailMouseEvent {
@@ -131,6 +137,7 @@ interface RailTargetProps {
   readonly windowLike?: GroupRailDragWindowLike;
   readonly onRailSetDragPointerDown?: (event: PointerEvent) => void;
   readonly onRailSetDragClickSuppressed?: () => boolean;
+  readonly registerClickSequenceCanceller?: (canceller: () => void) => () => void;
 }
 
 function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
@@ -157,7 +164,21 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     clearPendingSingleClick();
     lastClickTimestampRef.current = null;
   };
-  useEffect(() => clearClickSequence, []);
+  // 43.6 WR-01: expose this rail's canceller to the strip-owned batch-drag
+  // registry so a drag begin clears the pending single-click timer (a
+  // set-member click arms the timer; dragging within the delay window must
+  // not collapse or mutate the set mid-drag). Mount-once via a ref guard —
+  // the closure only reads refs, so the first-render capture is safe; the
+  // unmount effect below unregisters. The ref guard also makes the
+  // registration idempotent under re-render.
+  const registrationRef = useRef<(() => void) | null>(null);
+  if (registrationRef.current === null && props.registerClickSequenceCanceller) {
+    registrationRef.current = props.registerClickSequenceCanceller(clearClickSequence);
+  }
+  useEffect(() => {
+    clearClickSequence();
+    return () => registrationRef.current?.();
+  }, []);
 
   const { onPointerDown, ghost, consumeClickSuppression } = usePhysicsPaintGroupRailDrag({
     loopId: range.loopId,
@@ -390,6 +411,7 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
           windowLike={props.windowLike}
           onRailSetDragPointerDown={props.onRailSetDragPointerDown}
           onRailSetDragClickSuppressed={props.onRailSetDragClickSuppressed}
+          registerClickSequenceCanceller={props.registerClickSequenceCanceller}
         />
       ))}
     </div>

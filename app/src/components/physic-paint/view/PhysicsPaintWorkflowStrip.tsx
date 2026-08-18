@@ -1555,6 +1555,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // path (UI-SPEC M3: "Release with zero valid movement | rejection").
   const railSetPaintTick = useSignal(0);
   const railSetDragApiRef = useRef<RailSetDragSessionApi | null>(null);
+  // 43.6 WR-01: registry of mounted Loop Clip rail click-sequence cancellers.
+  // A set-member click arms a 250 ms single-click timer; the batch session's
+  // clearClickSequence (called on threshold crossing) must reach every rail's
+  // canceller so a click-then-drag cannot collapse or mutate the set mid-drag.
+  const railClickSequenceCancellersRef = useRef(new Set<() => void>());
   const railSetDragApi = usePhysicsPaintRailSetDrag<RotoRailSetMovePublication>({
     projectDelta: ({ originClientX, clientX }) => (
       Math.round((clientX - originClientX) / ROTO_CELL_WIDTH_PX)
@@ -1607,7 +1612,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     onPreviewChange: () => {
       railSetPaintTick.value += 1;
     },
-    clearClickSequence: () => {},
+    clearClickSequence: () => {
+      for (const cancel of railClickSequenceCancellersRef.current) cancel();
+    },
     windowLike: undefined,
   });
   railSetDragApiRef.current = railSetDragApi;
@@ -2743,6 +2750,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   onPreviewChange={setRotoGroupDragPreview}
                   onRailSetDragPointerDown={railSetDragApiRef.current?.onPointerDown}
                   onRailSetDragClickSuppressed={railSetDragApiRef.current?.consumeClickSuppression}
+                  registerClickSequenceCanceller={(canceller) => {
+                    railClickSequenceCancellersRef.current.add(canceller);
+                    return () => {
+                      railClickSequenceCancellersRef.current.delete(canceller);
+                    };
+                  }}
                 />
               ) : null}
               <div
