@@ -5012,7 +5012,7 @@ describe('derivePhysicPaintRailSetMove and clampPhysicPaintRailSetMoveDelta (exp
       identities,
       loopRanges: loopRangeContext.ranges,
       loopClips: [],
-      incomingInterpolationBreakKeyIds: [],
+      incomingInterpolationBreakKeyIds: ['b0'],
     };
 
     // Unknown key-rail firstKeyId.
@@ -5045,7 +5045,7 @@ describe('derivePhysicPaintRailSetMove and clampPhysicPaintRailSetMoveDelta (exp
       identities,
       loopRanges: loopRangeContext.ranges,
       loopClips: [],
-      incomingInterpolationBreakKeyIds: [],
+      incomingInterpolationBreakKeyIds: ['b0'],
       proposedDelta: -15,
       capacity: 40,
     })).toEqual({ ok: true, delta: -10, blockedEdge: 'left', collidingMemberId: 'b0' });
@@ -5059,7 +5059,7 @@ describe('derivePhysicPaintRailSetMove and clampPhysicPaintRailSetMoveDelta (exp
       identities,
       loopRanges: loopRangeContext.ranges,
       loopClips: [],
-      incomingInterpolationBreakKeyIds: [],
+      incomingInterpolationBreakKeyIds: ['b0'],
       proposedDelta: 15,
       capacity: 40,
     })).toEqual({ ok: true, delta: 10, blockedEdge: 'right', collidingMemberId: 'b0' });
@@ -5073,24 +5073,35 @@ describe('derivePhysicPaintRailSetMove and clampPhysicPaintRailSetMoveDelta (exp
       identities,
       loopRanges: loopRangeContext.ranges,
       loopClips: [],
-      incomingInterpolationBreakKeyIds: [],
+      incomingInterpolationBreakKeyIds: ['b0'],
       proposedDelta: 15,
       capacity: 40,
     })).toEqual({ ok: true, delta: 10, blockedEdge: 'right', collidingMemberId: 'a0' });
   });
 
   it('clamps a leftward move at frame 0', () => {
-    const identities = buildTwoKeyRails();
+    // A [5,15) selected, B [20,30) unselected: a -10 proposal pulls A back to
+    // land flush at frame 0 (delta -5), never below it.
+    const identities = Object.freeze([
+      { keyId: 'a0', appFrame: 5 }, { keyId: 'a1', appFrame: 6 }, { keyId: 'a2', appFrame: 7 },
+      { keyId: 'a3', appFrame: 8 }, { keyId: 'a4', appFrame: 9 }, { keyId: 'a5', appFrame: 10 },
+      { keyId: 'a6', appFrame: 11 }, { keyId: 'a7', appFrame: 12 }, { keyId: 'a8', appFrame: 13 },
+      { keyId: 'a9', appFrame: 14 },
+      { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 21 }, { keyId: 'b2', appFrame: 22 },
+      { keyId: 'b3', appFrame: 23 }, { keyId: 'b4', appFrame: 24 }, { keyId: 'b5', appFrame: 25 },
+      { keyId: 'b6', appFrame: 26 }, { keyId: 'b7', appFrame: 27 }, { keyId: 'b8', appFrame: 28 },
+      { keyId: 'b9', appFrame: 29 },
+    ]);
     const loopRangeContext = deriveRanges(identities, []);
     expect(clampPhysicPaintRailSetMoveDelta({
       members: [keyRailA()],
       identities,
       loopRanges: loopRangeContext.ranges,
       loopClips: [],
-      incomingInterpolationBreakKeyIds: [],
-      proposedDelta: -5,
+      incomingInterpolationBreakKeyIds: ['b0'],
+      proposedDelta: -10,
       capacity: 40,
-    })).toEqual({ ok: true, delta: 0, blockedEdge: 'left', collidingMemberId: 'a0' });
+    })).toEqual({ ok: true, delta: -5, blockedEdge: 'left', collidingMemberId: 'a0' });
   });
 
   it('clamps a leftward move at an unselected Group occupancy end', () => {
@@ -5112,7 +5123,6 @@ describe('derivePhysicPaintRailSetMove and clampPhysicPaintRailSetMoveDelta (exp
 
   it('fails closed when zero valid movement exists (set flush against an obstruction)', () => {
     const identities = buildTwoKeyRails();
-    const loopRangeContext = deriveRanges(identities, []);
     // A [0,10) selected, B [10,20) unselected flush: any rightward step collides.
     const flushIdentities = Object.freeze([
       { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
@@ -5130,7 +5140,7 @@ describe('derivePhysicPaintRailSetMove and clampPhysicPaintRailSetMoveDelta (exp
       identities: flushIdentities,
       loopRanges: flushRanges.ranges,
       loopClips: [],
-      incomingInterpolationBreakKeyIds: [],
+      incomingInterpolationBreakKeyIds: ['b0'],
       proposedDelta: 5,
       capacity: 40,
     })).toEqual({ ok: false });
@@ -5141,7 +5151,7 @@ describe('derivePhysicPaintRailSetMove and clampPhysicPaintRailSetMoveDelta (exp
       identities,
       loopRanges: capacityRanges.ranges,
       loopClips: [],
-      incomingInterpolationBreakKeyIds: [],
+      incomingInterpolationBreakKeyIds: ['b0'],
       proposedDelta: 5,
       capacity: 30,
     })).toEqual({ ok: false });
@@ -5155,7 +5165,7 @@ describe('derivePhysicPaintRailSetMove and clampPhysicPaintRailSetMoveDelta (exp
       identities,
       loopRanges: loopRangeContext.ranges,
       loopClips: [],
-      incomingInterpolationBreakKeyIds: [],
+      incomingInterpolationBreakKeyIds: ['b0'],
       proposedDelta: 0,
       capacity: 40,
     })).toEqual({ ok: true, delta: 0, blockedEdge: null, collidingMemberId: null });

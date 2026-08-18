@@ -2472,6 +2472,337 @@ export function clampPhysicPaintPushDestination(
   return { ok: false };
 }
 
+// ---------------------------------------------------------------------------
+// Explicit rail-set move authorities (43.6-02 Task 1). The explicit set is a
+// NEW selection scope (43.6-01): members are exact Key Rail segments or Loop
+// Clip ids — never directional suffixes. derivePhysicPaintRailSetMove validates
+// the member list against freshly derived segments/ranges and computes the
+// moved keys, set bounds, and the generalized straddle verdict (D-10);
+// clampPhysicPaintRailSetMoveDelta scans the signed proposal toward 0 and
+// returns the first delta keeping every moved member clear of unselected key
+// frames, unselected Group occupancy (including linked occurrences from loop
+// ranges), frame 0, and capacity. Both are exported so the Plan 03 drag
+// preview consumes the SAME authority the resolver branch commits with
+// (D-17 pattern): preflight and rejection can never disagree. Push never
+// consumes the set (D-20): the push set is directional, the rail set is
+// explicit.
+// ---------------------------------------------------------------------------
+
+/**
+ * One explicit rail-set member (43.6-01): a Key Rail segment matched exactly
+ * by firstKeyId + ordered keyIds, or a Group Rail matched by loopId.
+ */
+export type PhysicPaintRailSetMoveMember =
+  | { readonly kind: 'key-rail'; readonly firstKeyId: string; readonly keyIds: readonly string[] }
+  | { readonly kind: 'loop'; readonly loopId: string };
+
+export interface PhysicPaintRailSetMoveInput {
+  readonly members: readonly PhysicPaintRailSetMoveMember[];
+  /** Ordered real keys (the resolver's validated identity order). */
+  readonly identities: readonly PhysicPaintRotoKeyIdentity[];
+  /** Derived Group ranges — the same projection the rail strip draws. */
+  readonly loopRanges: readonly PhysicPaintRotoLoopRange[];
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
+}
+
+export type PhysicPaintRailSetMoveResult =
+  | {
+      readonly ok: true;
+      /** The validated member list (exact-match membership). */
+      readonly members: readonly PhysicPaintRailSetMoveMember[];
+      readonly movedKeyIds: ReadonlySet<string>;
+      readonly movedSetBounds: { readonly firstFrame: number; readonly lastEndExclusive: number };
+      readonly straddle: PhysicPaintPushStraddleVerdict | null;
+    }
+  | {
+      readonly ok: false;
+      readonly code: PhysicPaintRotoPhysicalEditFailureCode;
+      readonly text: string;
+    };
+
+/**
+ * Pure explicit-set derivation (D-07/D-10): validates the member list against
+ * freshly derived Key Rail segments + loop ranges (exact-match membership,
+ * fail-closed on stale or unknown members), computes the moved keys (Key Rail
+ * members plus source keys of source-attached Groups; duplicated placements
+ * contribute NO moved keys — 43.3 algebra), the set's byte bounds, and the
+ * generalized straddle verdict: a source-attached selected Group sharing its
+ * source cycle with an UNSELECTED Group fails closed; duplicated placements
+ * never straddle. Consumed by the resolver branch now and by the Plan 03 drag
+ * preview.
+ */
+export function derivePhysicPaintRailSetMove(input: PhysicPaintRailSetMoveInput): PhysicPaintRailSetMoveResult {
+  const { members, identities, loopRanges, loopClips, incomingInterpolationBreakKeyIds } = input;
+  if (!Array.isArray(members) || members.length === 0) {
+    return { ok: false, code: 'malformed-identity', text: 'Rail set move requires a non-empty members array.' };
+  }
+
+  const groupOwnedKeyIds = new Set<string>();
+  for (const clip of loopClips) {
+    clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+    (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+  }
+  const framesByKeyId = new Map(identities.map((identity) => [identity.keyId, identity.appFrame] as const));
+
+  const segments = deriveKeyRailSegments({
+    orderedRealKeys: identities,
+    incomingInterpolationBreakKeyIds: new Set(incomingInterpolationBreakKeyIds),
+    groupOwnedKeyIds,
+  });
+
+  // Resolve every member to exactly one rail (exact-match membership).
+  const resolved: { readonly member: PhysicPaintRailSetMoveMember; readonly rail: PushRail }[] = [];
+  const seenRailIds = new Set<string>();
+  for (const member of members) {
+    if (member.kind === 'key-rail') {
+      if (!isBoundedKeyId(member.firstKeyId) || !Array.isArray(member.keyIds) || member.keyIds.length === 0) {
+        return { ok: false, code: 'malformed-identity', text: 'Key Rail set members require a bounded firstKeyId and a non-empty keyIds array.' };
+      }
+      if (member.keyIds.some((keyId: string) => !identities.some((identity) => identity.keyId === keyId))) {
+        return { ok: false, code: 'unknown-operation-identity', text: `Key Rail set member "${member.firstKeyId}" targets an unknown identity.` };
+      }
+      const segment = segments.find((candidate) => (
+        candidate.firstKeyId === member.firstKeyId
+        && candidate.keyIds.length === member.keyIds.length
+        && candidate.keyIds.every((keyId, index) => keyId === member.keyIds[index])
+      ));
+      if (segment === undefined) {
+        return { ok: false, code: 'malformed-target', text: `Key Rail set member "${member.firstKeyId}" must match exactly one current derived segment.` };
+      }
+      if (seenRailIds.has(segment.firstKeyId)) {
+        return { ok: false, code: 'duplicate-id', text: `Duplicate Key Rail set member "${segment.firstKeyId}".` };
+      }
+      seenRailIds.add(segment.firstKeyId);
+      resolved.push({
+        member,
+        rail: {
+          kind: 'key-rail',
+          id: segment.firstKeyId,
+          intervalStart: segment.firstKeyFrame,
+          intervalEndExclusive: segment.lastKeyFrame + 1,
+          keyIds: segment.keyIds,
+        },
+      });
+    } else {
+      if (!isBoundedKeyId(member.loopId)) {
+        return { ok: false, code: 'malformed-identity', text: 'Loop set members require a bounded loopId.' };
+      }
+      const range = loopRanges.find((candidate) => candidate.loopId === member.loopId);
+      const clip = loopClips.find((candidate) => candidate.loopId === member.loopId);
+      if (range === undefined || clip === undefined) {
+        return { ok: false, code: 'unknown-operation-identity', text: `Loop set member "${member.loopId}" is not a member of any Group Rail.` };
+      }
+      if (seenRailIds.has(member.loopId)) {
+        return { ok: false, code: 'duplicate-id', text: `Duplicate Loop set member "${member.loopId}".` };
+      }
+      seenRailIds.add(member.loopId);
+      const firstSourceFrame = framesByKeyId.get(clip.sourceKeyIds[0]);
+      resolved.push({
+        member,
+        rail: {
+          kind: 'group',
+          id: range.loopId,
+          intervalStart: range.placementStart,
+          intervalEndExclusive: range.effectiveEnd,
+          keyIds: range.sourceKeyIds,
+          sourceCycleId: range.sourceCycleId,
+          // Canonical attachment test (Pitfall 4): the clip's first source key
+          // must exist and its placement must coincide with that key's pre-move
+          // frame. Never a caller-supplied attachment flag (Pitfall 6).
+          attached: firstSourceFrame !== undefined && firstSourceFrame === clip.placementStart,
+          clip,
+        },
+      });
+    }
+  }
+
+  // Moved keys: Key Rail members plus source keys of source-attached Groups.
+  // Duplicated placements contribute NO moved keys (their source keys stay).
+  const movedKeyIds = new Set<string>();
+  for (const { rail } of resolved) {
+    if (rail.kind === 'key-rail') {
+      rail.keyIds.forEach((keyId) => movedKeyIds.add(keyId));
+    } else if (rail.attached) {
+      rail.keyIds.forEach((keyId) => movedKeyIds.add(keyId));
+    }
+  }
+
+  // The moved set's byte interval bounds — the clamp's boundary input.
+  let firstFrame = Number.POSITIVE_INFINITY;
+  let lastEndExclusive = Number.NEGATIVE_INFINITY;
+  for (const { rail } of resolved) {
+    firstFrame = Math.min(firstFrame, rail.intervalStart);
+    lastEndExclusive = Math.max(lastEndExclusive, rail.intervalEndExclusive);
+  }
+
+  // D-10 straddle: a source-attached selected Group sharing its source cycle
+  // with an UNSELECTED Group fails closed. Duplicated (shared-source)
+  // placements in the set own no source keys, so no straddle arises (43.3
+  // algebra) — only source-attached straddles reject.
+  const selectedLoopIds = new Set(
+    resolved.filter(({ rail }) => rail.kind === 'group').map(({ rail }) => rail.id),
+  );
+  let straddle: PhysicPaintPushStraddleVerdict | null = null;
+  for (const { rail } of resolved) {
+    if (rail.kind !== 'group' || rail.attached !== true || rail.sourceCycleId === undefined) continue;
+    for (const range of loopRanges) {
+      if (selectedLoopIds.has(range.loopId) || range.sourceCycleId === undefined) continue;
+      if (range.sourceCycleId === rail.sourceCycleId) {
+        straddle = {
+          straddled: true,
+          movedGroupLoopId: rail.id,
+          fixedGroupLoopId: range.loopId,
+          sourceCycleId: rail.sourceCycleId,
+        };
+        break;
+      }
+    }
+    if (straddle !== null) break;
+  }
+
+  return {
+    ok: true,
+    members,
+    movedKeyIds,
+    movedSetBounds: { firstFrame, lastEndExclusive },
+    straddle,
+  };
+}
+
+export interface PhysicPaintRailSetMoveClampInput {
+  readonly members: readonly PhysicPaintRailSetMoveMember[];
+  readonly identities: readonly PhysicPaintRotoKeyIdentity[];
+  readonly loopRanges: readonly PhysicPaintRotoLoopRange[];
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
+  /** Signed proposal: positive moves right, negative moves left. */
+  readonly proposedDelta: number;
+  readonly capacity: number;
+}
+
+export type PhysicPaintRailSetMoveClampResult =
+  | {
+      readonly ok: true;
+      readonly delta: number;
+      /** Which edge of the set is flush against the obstruction ('left'|'right'), or null for a no-change. */
+      readonly blockedEdge: 'left' | 'right' | null;
+      /** The member whose edge is flush against the obstruction (rightmost for rightward, leftmost for leftward). */
+      readonly collidingMemberId: string | null;
+    }
+  | { readonly ok: false };
+
+/**
+ * Pure explicit-set clamp (D-07): the set translates rigidly as one unit, so
+ * the scan checks every moved member against unselected key frames, unselected
+ * Group occupancy intervals (including linked occurrences from loop ranges),
+ * frame 0, and capacity. Proposed delta 0 is a valid no-change (never a
+ * failure); otherwise the scan moves from the proposed signed delta toward 0
+ * and returns the first delta keeping every member clear, or ok:false when
+ * zero valid movement exists. The dispatch branch commits this clamped delta
+ * (preview-is-the-commit, D-17).
+ */
+export function clampPhysicPaintRailSetMoveDelta(input: PhysicPaintRailSetMoveClampInput): PhysicPaintRailSetMoveClampResult {
+  const { members, identities, loopRanges, loopClips, proposedDelta, capacity } = input;
+  if (proposedDelta === 0) return { ok: true, delta: 0, blockedEdge: null, collidingMemberId: null };
+  if (!Number.isInteger(proposedDelta)) return { ok: false };
+
+  const groupOwnedKeyIds = new Set<string>();
+  for (const clip of loopClips) {
+    clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+    (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+  }
+  const framesByKeyId = new Map(identities.map((identity) => [identity.keyId, identity.appFrame] as const));
+  const segments = deriveKeyRailSegments({
+    orderedRealKeys: identities,
+    incomingInterpolationBreakKeyIds: new Set(input.incomingInterpolationBreakKeyIds),
+    groupOwnedKeyIds,
+  });
+
+  // Resolve member intervals + moved keys with the same canonical rules as the
+  // derivation authority. The resolver validates members via derive first, so
+  // malformed members here fail closed.
+  const intervals: { readonly memberId: string; readonly start: number; readonly endExclusive: number }[] = [];
+  const movedKeyIds = new Set<string>();
+  const selectedLoopIds = new Set<string>();
+  for (const member of members) {
+    if (member.kind === 'key-rail') {
+      const segment = segments.find((candidate) => (
+        candidate.firstKeyId === member.firstKeyId
+        && candidate.keyIds.length === member.keyIds.length
+        && candidate.keyIds.every((keyId, index) => keyId === member.keyIds[index])
+      ));
+      if (segment === undefined) return { ok: false };
+      intervals.push({
+        memberId: segment.firstKeyId,
+        start: segment.firstKeyFrame,
+        endExclusive: segment.lastKeyFrame + 1,
+      });
+      segment.keyIds.forEach((keyId) => movedKeyIds.add(keyId));
+    } else {
+      const range = loopRanges.find((candidate) => candidate.loopId === member.loopId);
+      const clip = loopClips.find((candidate) => candidate.loopId === member.loopId);
+      if (range === undefined || clip === undefined) return { ok: false };
+      selectedLoopIds.add(member.loopId);
+      intervals.push({
+        memberId: member.loopId,
+        start: range.placementStart,
+        endExclusive: range.effectiveEnd,
+      });
+      const firstSourceFrame = framesByKeyId.get(clip.sourceKeyIds[0]);
+      if (firstSourceFrame !== undefined && firstSourceFrame === clip.placementStart) {
+        range.sourceKeyIds.forEach((keyId) => movedKeyIds.add(keyId));
+      }
+    }
+  }
+
+  // Unselected key frames and unselected Group occupancy intervals (the full
+  // derived visible extent, including linked occurrences).
+  const unselectedKeyFrames = identities
+    .filter((identity) => !movedKeyIds.has(identity.keyId))
+    .map((identity) => identity.appFrame)
+    .sort((left, right) => left - right);
+  const unselectedGroupIntervals = loopRanges
+    .filter((range) => !selectedLoopIds.has(range.loopId))
+    .map((range) => ({ start: range.placementStart, endExclusive: range.effectiveEnd }));
+
+  const isClear = (delta: number): boolean => {
+    for (const interval of intervals) {
+      const start = interval.start + delta;
+      const endExclusive = interval.endExclusive + delta;
+      if (start < 0 || endExclusive > capacity) return false;
+      for (const frame of unselectedKeyFrames) {
+        if (frame >= start && frame < endExclusive) return false;
+      }
+      for (const group of unselectedGroupIntervals) {
+        if (group.start < endExclusive && group.endExclusive > start) return false;
+      }
+    }
+    return true;
+  };
+
+  if (proposedDelta > 0) {
+    for (let delta = proposedDelta; delta > 0; delta -= 1) {
+      if (isClear(delta)) {
+        const rightmost = intervals.reduce((candidate, interval) => (
+          interval.endExclusive > candidate.endExclusive ? interval : candidate
+        ));
+        return { ok: true, delta, blockedEdge: 'right', collidingMemberId: rightmost.memberId };
+      }
+    }
+    return { ok: false };
+  }
+  for (let delta = proposedDelta; delta < 0; delta += 1) {
+    if (isClear(delta)) {
+      const leftmost = intervals.reduce((candidate, interval) => (
+        interval.start < candidate.start ? interval : candidate
+      ));
+      return { ok: true, delta, blockedEdge: 'left', collidingMemberId: leftmost.memberId };
+    }
+  }
+  return { ok: false };
+}
+
 /**
  * PUSH-03: derive the complete next incoming-interpolation-break collection
  * for a directional push — a complete-collection replacement, never a delta.
