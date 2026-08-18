@@ -5559,6 +5559,9 @@ describe('resolvePhysicPaintRotoPhysicalEdit — spacing-on-set (per-rail anchor
       identities: buildTwoKeyRails(),
       members: [keyRailA(), keyRailB()],
       emptyFrames: 1,
+      // The break on b0 (b0 starts a new segment) splits the single derived
+      // segment into Rail A and Rail B.
+      breaks: ['b0'],
     });
 
     expect(resolution.ok).toBe(true);
@@ -5597,14 +5600,16 @@ describe('resolvePhysicPaintRotoPhysicalEdit — spacing-on-set (per-rail anchor
   });
 
   it('rejects atomically when a computed destination collides with an unselected key frame', () => {
-    // c0@4 is unselected; A's a2 lands at 4.
+    // c0@4 is unselected; A's a2 lands at 4. The break on c0 (c0 starts a new
+    // segment) keeps c0 out of Rail A's derived segment.
     const resolution = resolveSpacingOnSet({
       identities: [
-        { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 3 }, { keyId: 'a2', appFrame: 6 },
+        { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
         { keyId: 'c0', appFrame: 4 },
       ],
       members: [keyRailA()],
       emptyFrames: 1,
+      breaks: ['c0'],
     });
 
     expect(resolution.ok).toBe(false);
@@ -5618,11 +5623,12 @@ describe('resolvePhysicPaintRotoPhysicalEdit — spacing-on-set (per-rail anchor
     // B anchors at b0@4; A's a2 lands at 4 — the common finalizer rejects once.
     const resolution = resolveSpacingOnSet({
       identities: [
-        { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 3 }, { keyId: 'a2', appFrame: 6 },
-        { keyId: 'b0', appFrame: 4 }, { keyId: 'b1', appFrame: 7 },
+        { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
+        { keyId: 'b0', appFrame: 4 }, { keyId: 'b1', appFrame: 5 },
       ],
       members: [keyRailA(), { kind: 'key-rail', firstKeyId: 'b0', keyIds: ['b0', 'b1'] }],
       emptyFrames: 1,
+      breaks: ['b0'],
     });
 
     expect(resolution.ok).toBe(false);
@@ -5631,8 +5637,11 @@ describe('resolvePhysicPaintRotoPhysicalEdit — spacing-on-set (per-rail anchor
   });
 
   it('rejects over-capacity destinations via the common finalizer', () => {
+    // a2 lands at 4 === capacity 4: the finalizer's over-capacity check fires.
     const resolution = resolveSpacingOnSet({
-      identities: buildTwoKeyRails(),
+      identities: [
+        { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
+      ],
       members: [keyRailA()],
       emptyFrames: 1,
       capacity: 4,
@@ -5745,14 +5754,17 @@ describe('resolvePhysicPaintRotoPhysicalEdit — spacing-on-set (per-rail anchor
   });
 
   it('rejects when a computed destination crosses the left-to-right order of an unselected key', () => {
-    // c0@5 is unselected; a2 moves 6 -> 4, crossing over c0@5.
+    // c0@5 is unselected; a3 moves 3 -> 6, crossing over c0@5. The break on
+    // c0 (c0 starts a new segment) keeps c0 out of Rail A's derived segment.
     const resolution = resolveSpacingOnSet({
       identities: [
-        { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 3 }, { keyId: 'a2', appFrame: 6 },
+        { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
+        { keyId: 'a3', appFrame: 3 },
         { keyId: 'c0', appFrame: 5 },
       ],
-      members: [keyRailA()],
+      members: [{ kind: 'key-rail', firstKeyId: 'a0', keyIds: ['a0', 'a1', 'a2', 'a3'] }],
       emptyFrames: 1,
+      breaks: ['c0'],
     });
 
     expect(resolution.ok).toBe(false);

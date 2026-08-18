@@ -457,6 +457,12 @@ export type PhysicPaintRotoPhysicalEditIntent =
       readonly members: readonly PhysicPaintRotoRailSetMoveMember[];
       /** Signed integer delta: positive moves right, negative moves left. */
       readonly delta: number;
+    }
+  | {
+      readonly kind: 'spacing-on-set';
+      readonly members: readonly PhysicPaintRotoRailSetMoveMember[];
+      /** Finite non-negative integer: empty frames between keys per rail (N = 0 adjacent). */
+      readonly emptyFrames: number;
     };
 
 /**
@@ -642,6 +648,31 @@ export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is Ph
     }
     return true;
   }
+  if (value.kind === 'spacing-on-set') {
+    if (!hasOnlyKeys(value, ['kind', 'members', 'emptyFrames'])) return false;
+    if (!isNonNegativeInteger(value.emptyFrames)) return false;
+    if (!Array.isArray(value.members) || value.members.length === 0) return false;
+    const seenRailIds = new Set<string>();
+    for (const member of value.members) {
+      if (!isRecord(member)) return false;
+      if (member.kind === 'key-rail') {
+        if (!hasOnlyKeys(member, ['kind', 'firstKeyId', 'keyIds'])) return false;
+        if (!isBoundedPhysicalKeyId(member.firstKeyId)) return false;
+        if (!hasUniqueBoundedPhysicalKeyIds(member.keyIds)) return false;
+        if (member.keyIds[0] !== member.firstKeyId) return false;
+        if (seenRailIds.has(member.firstKeyId)) return false;
+        seenRailIds.add(member.firstKeyId);
+      } else if (member.kind === 'loop') {
+        if (!hasOnlyKeys(member, ['kind', 'loopId'])) return false;
+        if (!isBoundedPhysicalKeyId(member.loopId)) return false;
+        if (seenRailIds.has(member.loopId)) return false;
+        seenRailIds.add(member.loopId);
+      } else {
+        return false;
+      }
+    }
+    return true;
+  }
   return false;
 }
 
@@ -737,6 +768,16 @@ export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRo
         )),
         delta: intent.delta,
       });
+    case 'spacing-on-set':
+      return JSON.stringify({
+        kind: intent.kind,
+        members: intent.members.map((member) => (
+          member.kind === 'key-rail'
+            ? { kind: member.kind, firstKeyId: member.firstKeyId, keyIds: [...member.keyIds] }
+            : { kind: member.kind, loopId: member.loopId }
+        )),
+        emptyFrames: intent.emptyFrames,
+      });
   }
 }
 
@@ -793,6 +834,7 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'paste-key-group'
   | 'push-rails'
   | 'move-rails'
+  | 'spacing-on-set'
   | 'play-script'
   | 'paint-group-frame'
   | 'delete-group-frame'
@@ -1096,6 +1138,7 @@ function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is Ph
     || value === 'paste-key-group'
     || value === 'push-rails'
     || value === 'move-rails'
+    || value === 'spacing-on-set'
     || value === 'play-script'
     || value === 'paint-group-frame'
     || value === 'delete-group-frame'
@@ -1128,7 +1171,8 @@ function isPhysicPaintRotoOrdinaryOperationKind(
     || value === 'paste-key'
     || value === 'paste-key-group'
     || value === 'push-rails'
-    || value === 'move-rails';
+    || value === 'move-rails'
+    || value === 'spacing-on-set';
 }
 
 function isPhysicPaintRotoPhysicalEditPayload(value: unknown): value is PhysicPaintRotoPhysicalEditRecord['payload'] {

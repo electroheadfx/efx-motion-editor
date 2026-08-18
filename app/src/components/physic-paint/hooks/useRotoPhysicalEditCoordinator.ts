@@ -379,6 +379,8 @@ function createAuthorizedPhysicalEditPayload(
       return intent?.kind === 'push-rails' ? { ...base, operationKind, intent } : null;
     case 'move-rails':
       return intent?.kind === 'move-rails' ? { ...base, operationKind, intent } : null;
+    case 'spacing-on-set':
+      return intent?.kind === 'spacing-on-set' ? { ...base, operationKind, intent } : null;
     case 'play-script':
     case 'paint-group-frame':
     case 'delete-group-frame':

@@ -185,7 +185,8 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'paste-key'
   | 'paste-key-group'
   | 'push-rails'
-  | 'move-rails';
+  | 'move-rails'
+  | 'spacing-on-set';
 
 /**
  * Immutable resolver input: stable identities, optional complete records,
@@ -364,7 +365,8 @@ export type PhysicPaintRotoPhysicalEditFailureCode =
   | 'linked-frame-delete-rejected'
   | 'no-free-space-in-direction'
   | 'push-source-straddle'
-  | 'move-rails-source-straddle';
+  | 'move-rails-source-straddle'
+  | 'rails-spacing-source-straddle';
 
 /**
  * Discriminated failure result. The failure branch cannot carry a partial
@@ -835,7 +837,8 @@ function isResolverOperationKind(value: unknown): value is PhysicPaintRotoPhysic
     || value === 'paste-key'
     || value === 'paste-key-group'
     || value === 'push-rails'
-    || value === 'move-rails';
+    || value === 'move-rails'
+    || value === 'spacing-on-set';
 }
 
 function fail(
@@ -3737,6 +3740,10 @@ function buildStatusText(
     if (!changed) return 'No change';
     return 'Rails moved';
   }
+  if (operationKind === 'spacing-on-set') {
+    if (!changed) return 'No change';
+    return 'Key Spacing applied';
+  }
   return 'No change';
 }
 
@@ -4642,6 +4649,178 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       roleByKeyId,
       drag: null,
       ...(nextLoopClips !== null ? { nextLoopClips } : {}),
+      nextIncomingInterpolationBreakKeyIds: Object.freeze(nextBreaks),
+    };
+    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
+    if (!finalized.ok) return finalized.resolution;
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'spacing-on-set') {
+    if (!Array.isArray(intent.members) || intent.members.length === 0) {
+      return fail('malformed-identity', operationKind, 'Key Spacing on a rail set requires a non-empty members array.');
+    }
+    if (!isNonNegativeInteger(intent.emptyFrames)) {
+      return fail('malformed-target', operationKind, 'Key Spacing on a rail set requires a finite non-negative emptyFrames integer.');
+    }
+
+    const loopRangeContext = derivePhysicPaintRotoLoopRanges({
+      identities: identities.ordered,
+      loopClips,
+      capacity: input.capacity,
+      interpolationEnabled: input.interpolationEnabled,
+    });
+
+    // Exact-match membership validation (move-rails precedent): stale or
+    // unknown members fail closed before any destination is computed.
+    const setResult = derivePhysicPaintRailSetMove({
+      members: intent.members,
+      identities: identities.ordered,
+      loopRanges: loopRangeContext.ranges,
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+    });
+    if (!setResult.ok) {
+      return fail(setResult.code, operationKind, setResult.text);
+    }
+
+    // D-10 straddle: a selected Loop member (source-attached OR duplicated)
+    // whose source cycle is referenced by an UNSELECTED Group rejects the
+    // whole intent — the family is never silently affected. Spacing resolves
+    // the source cycle keys for BOTH attachment kinds (duplicated placements
+    // keep placement and resolve the same source keys), so the move-rails
+    // attached-only verdict does not apply here.
+    const selectedLoopIds = new Set(
+      setResult.members.filter((member) => member.kind === 'loop').map((member) => member.loopId),
+    );
+    let straddledLoopId: string | null = null;
+    let fixedGroupLoopId: string | null = null;
+    for (const member of setResult.members) {
+      if (member.kind !== 'loop') continue;
+      const range = loopRangeContext.ranges.find((candidate) => candidate.loopId === member.loopId);
+      if (range === undefined) continue;
+      for (const other of loopRangeContext.ranges) {
+        if (selectedLoopIds.has(other.loopId) || other.sourceCycleId === undefined) continue;
+        if (other.sourceCycleId === range.sourceCycleId) {
+          straddledLoopId = member.loopId;
+          fixedGroupLoopId = other.loopId;
+          break;
+        }
+      }
+      if (straddledLoopId !== null) break;
+    }
+    if (straddledLoopId !== null) {
+      return fail('rails-spacing-source-straddle', operationKind,
+        `Key Spacing would move source keys shared with the fixed Group "${fixedGroupLoopId}".`);
+    }
+
+    // D-24 per-rail fixed anchors: each rail anchors at its OWN first key's
+    // CURRENT frame; member key i maps to anchor + i * (emptyFrames + 1). For
+    // a Loop member the scope is its source cycle keys anchored at the first
+    // source key's frame (placementStart === first source key frame for
+    // attached Groups; duplicated placements keep placement and resolve the
+    // same source keys).
+    const step = intent.emptyFrames + 1;
+    const mapping = new Map(identities.ordered.map((identity) => [identity.keyId, identity.appFrame]));
+    const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+    const selectedKeyIds = new Set<string>();
+    const destinations: number[] = [];
+    for (const member of setResult.members) {
+      if (member.kind === 'key-rail') {
+        const anchor = identities.framesByKeyId.get(member.firstKeyId);
+        if (anchor === undefined) {
+          return fail('unknown-operation-identity', operationKind, `Key Rail set member "${member.firstKeyId}" targets an unknown identity.`);
+        }
+        member.keyIds.forEach((keyId) => selectedKeyIds.add(keyId));
+        member.keyIds.forEach((keyId, index) => {
+          const next = anchor + index * step;
+          mapping.set(keyId, next);
+          destinations.push(next);
+          if (next !== identities.framesByKeyId.get(keyId)) {
+            roleByKeyId.set(keyId, 'reanchored');
+          }
+        });
+      } else {
+        const range = loopRangeContext.ranges.find((candidate) => candidate.loopId === member.loopId);
+        if (range === undefined) {
+          return fail('unknown-operation-identity', operationKind, `Loop set member "${member.loopId}" is not a member of any Group Rail.`);
+        }
+        const anchor = identities.framesByKeyId.get(range.sourceKeyIds[0]);
+        if (anchor === undefined) {
+          return fail('unknown-operation-identity', operationKind, `Loop set member "${member.loopId}" targets an unknown source identity.`);
+        }
+        range.sourceKeyIds.forEach((keyId) => selectedKeyIds.add(keyId));
+        range.sourceKeyIds.forEach((keyId, index) => {
+          const next = anchor + index * step;
+          mapping.set(keyId, next);
+          destinations.push(next);
+          if (next !== identities.framesByKeyId.get(keyId)) {
+            roleByKeyId.set(keyId, 'reanchored');
+          }
+        });
+      }
+    }
+
+    // Hard walls (D-25): unselected keys keep their frames. Any computed
+    // destination equal to an unselected key frame, or any moved key crossing
+    // the left-to-right order of an unselected key, rejects the WHOLE intent
+    // with zero partial proposal. Selected-selected collisions and
+    // over-capacity are caught once by the common finalizer (all destinations
+    // compose into ONE map — all-or-nothing by construction, Pitfall 5).
+    const conflicts: number[] = [];
+    for (const destination of destinations) {
+      for (const identity of identities.ordered) {
+        if (!selectedKeyIds.has(identity.keyId) && identity.appFrame === destination) {
+          conflicts.push(destination);
+          break;
+        }
+      }
+    }
+    for (const member of setResult.members) {
+      const keyIds = member.kind === 'key-rail'
+        ? member.keyIds
+        : loopRangeContext.ranges.find((candidate) => candidate.loopId === member.loopId)!.sourceKeyIds;
+      for (const keyId of keyIds) {
+        const from = identities.framesByKeyId.get(keyId);
+        const to = mapping.get(keyId);
+        if (from === undefined || to === undefined || from === to) continue;
+        for (const identity of identities.ordered) {
+          if (selectedKeyIds.has(identity.keyId)) continue;
+          if ((from < identity.appFrame && to > identity.appFrame)
+            || (from > identity.appFrame && to < identity.appFrame)) {
+            conflicts.push(identity.appFrame);
+          }
+        }
+      }
+    }
+    if (conflicts.length > 0) {
+      const uniqueConflicts = [...new Set(conflicts)].sort((left, right) => left - right);
+      return fail('duplicate-destination-frame', operationKind,
+        `Key Spacing destination frame ${uniqueConflicts[0]} is occupied by an unselected real key.`,
+        uniqueConflicts);
+    }
+
+    // Break ownership travels with moved key identity (43.4 D-19). The
+    // move-rails vacated-successor/landing-gap rules do NOT apply: spacing
+    // never vacates the set's boundary as a block, and the landing-gap rule
+    // would split respaced rails (a respaced interior key lands more than one
+    // frame after its predecessor by design).
+    const nextBreaks = [...incomingInterpolationBreakKeyIds].sort((left, right) => {
+      const frameLeft = mapping.get(left) ?? Number.POSITIVE_INFINITY;
+      const frameRight = mapping.get(right) ?? Number.POSITIVE_INFINITY;
+      return frameLeft - frameRight || left.localeCompare(right);
+    });
+
+    const candidate: Candidate = {
+      mapping,
+      expectedKeyIds: identities.keyIds,
+      removedKeyId: null,
+      removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+      selectedKeyId: null,
+      operationKind: 'spacing-on-set',
+      changed: computeChanged(identities, mapping),
+      roleByKeyId,
+      drag: null,
       nextIncomingInterpolationBreakKeyIds: Object.freeze(nextBreaks),
     };
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
