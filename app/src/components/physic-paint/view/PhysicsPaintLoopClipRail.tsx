@@ -37,6 +37,9 @@ export interface PhysicsPaintLoopClipRailProps {
   };
   readonly framePitch: number;
   readonly selectedLoopClipIds: readonly string[];
+  /** Loop Rails that are members of the session rail-set (43.6 D-01); they
+   *  paint the same orange selection line as single selection — no new color. */
+  readonly railSetMemberLoopIds?: readonly string[];
   readonly linkedLoopClipIds?: readonly string[];
   readonly linkedActionName?: string | null;
   readonly onSelectLoopClip: (
@@ -324,7 +327,8 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
           presentation={presentation}
           left={geometry.left}
           width={geometry.width}
-          selected={props.selectedLoopClipIds.includes(range.loopId)}
+          selected={props.selectedLoopClipIds.includes(range.loopId)
+            || (props.railSetMemberLoopIds?.includes(range.loopId) ?? false)}
           actionLinked={actionLinked}
           showStartBoundary={showStartBoundary}
           showEndBoundary={showEndBoundary}

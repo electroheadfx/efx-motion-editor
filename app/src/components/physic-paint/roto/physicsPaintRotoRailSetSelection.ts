@@ -137,9 +137,13 @@ export function deriveRailSetOrder(input: DeriveRailSetOrderInput): readonly Rai
     const rightFrame = frameByIdentity.get(identityKey(right)) ?? Number.POSITIVE_INFINITY;
     if (leftFrame !== rightFrame) return leftFrame - rightFrame;
     if (left.kind !== right.kind) return left.kind === 'key-rail' ? -1 : 1;
-    return left.kind === 'loop'
-      ? left.loopId.localeCompare(right.loopId)
-      : left.firstKeyId.localeCompare(right.firstKeyId);
+    if (left.kind === 'loop' && right.kind === 'loop') {
+      return left.loopId.localeCompare(right.loopId);
+    }
+    if (left.kind === 'key-rail' && right.kind === 'key-rail') {
+      return left.firstKeyId.localeCompare(right.firstKeyId);
+    }
+    return 0;
   })) as readonly RailSetIdentity[];
 }
 

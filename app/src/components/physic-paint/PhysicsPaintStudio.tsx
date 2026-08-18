@@ -17,6 +17,12 @@ import {
   type PhysicsPaintRotoSpacingSelection,
   type PhysicsPaintRotoSpacingSelectionGesture,
 } from './roto/physicsPaintRotoSpacingSelection';
+import {
+  deriveRailSetOrder,
+  updatePhysicsPaintRotoRailSetSelection,
+  type RailSetIdentity,
+  type RailSetSelectionState,
+} from './roto/physicsPaintRotoRailSetSelection';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
@@ -137,6 +143,10 @@ export function PhysicsPaintStudio() {
   const selectedKeyIds = useSignal<readonly string[]>([]);
   const selectionAnchorKeyId = useSignal<string | null>(null);
   const rotoSpacingSelection = useSignal<PhysicsPaintRotoSpacingSelection | null>(null);
+  // Session-local multi-rail selection SET (Pattern 5; D-01/D-05): cross-type
+  // identities only, never persisted, never sent across the bridge — null when
+  // empty (an empty set is a valid no-rail-selection scope).
+  const railSetSelection = useSignal<RailSetSelectionState | null>(null);
   const [soleOccurrenceDeleteTarget, setSoleOccurrenceDeleteTarget] = useState<SoleOccurrenceDeleteTarget | null>(null);
   const [soleOccurrenceDeleteError, setSoleOccurrenceDeleteError] = useState<string | null>(null);
   const soleOccurrenceDeleteCancelRef = useRef<HTMLButtonElement>(null);
@@ -157,6 +167,7 @@ export function PhysicsPaintStudio() {
         selectedKeyIds.value = selectedKeyId.value === null ? [] : [selectedKeyId.value];
         selectionAnchorKeyId.value = selectedKeyId.value;
         rotoSpacingSelection.value = null;
+        railSetSelection.value = null;
         selectedLoopClipId.value = null;
         selectedLoopClipIds.value = [];
         selectedRotoKeyRail.value = null;
@@ -487,6 +498,16 @@ export function PhysicsPaintStudio() {
     rotoLoopClips,
     rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0,
   });
+  const loopResolutionContext = rotoTimelineModel.loopResolutionContext.value;
+  // The single canonical cross-type rail ordering authority (D-01): gestures,
+  // copy, and focus all consume this same ordered identity list.
+  const orderedRailSetIdentities = useMemo(
+    () => deriveRailSetOrder({
+      keyRailSegments,
+      loopRanges: loopResolutionContext?.ranges ?? [],
+    }),
+    [keyRailSegments, loopResolutionContext],
+  );
   const timelineOccupiedRotoFrames = rotoTimelineModel.occupiedRotoFrames.value;
   const timelineSavedRotoFrames = rotoTimelineModel.savedRotoFrames.value;
   const timelineCachedRotoFrames = rotoTimelineModel.cachedRotoFrames.value;
@@ -1193,8 +1214,42 @@ export function PhysicsPaintStudio() {
   ) => {
     if (loopId === null) {
       clearRotoLoopSelection();
+      railSetSelection.value = null;
       return;
     }
+    if (gesture === 'toggle') {
+      // Cmd/Ctrl+click routes through the rail-set reducer (D-01): the set is
+      // the active scope while non-null; the single-rail signals stay clear.
+      const target: RailSetIdentity = { kind: 'loop', loopId };
+      const next = updatePhysicsPaintRotoRailSetSelection(
+        railSetSelection.peek(),
+        orderedRailSetIdentities,
+        target,
+        'toggle',
+      );
+      if (next === null) {
+        clearRotoLoopSelection();
+        railSetSelection.value = null;
+        return;
+      }
+      clearRotoLoopSelection();
+      selectedRotoKeyRail.value = null;
+      selectedKeyId.value = null;
+      selectedKeyIds.value = [];
+      selectionAnchorKeyId.value = null;
+      rotoSpacingSelection.value = null;
+      if (launchContext) {
+        physicPaintStore.setRotoPhysicalSelection(
+          launchContext.layerId,
+          null,
+          currentFrame,
+        );
+      }
+      railSetSelection.value = next;
+      return;
+    }
+    // Plain click collapses the set into the single-rail path (D-04).
+    railSetSelection.value = null;
     const currentIds = selectedLoopClipIds.peek();
     const currentAnchor = loopSelectionAnchorId.peek();
     const currentPrimary = selectedLoopClipId.peek();
@@ -1234,7 +1289,7 @@ export function PhysicsPaintStudio() {
       rotoScriptLibrary.select(selectedGroup.scriptId);
       activeLinkedLoopClipId.value = selectedGroup.loopId;
     }
-  }, [clearRotoLoopSelection, currentFrame, launchContext, loopScriptRows, orderedRotoLoopClipIds, rotoLoopClips, rotoScriptLibrary]);
+  }, [clearRotoLoopSelection, currentFrame, launchContext, loopScriptRows, orderedRailSetIdentities, orderedRotoLoopClipIds, rotoLoopClips, rotoScriptLibrary]);
   const handleOpenRotoLoopEdit = useCallback(
     (loopId: string) => {
       selectedLoopClipId.value = loopId;
@@ -1245,7 +1300,6 @@ export function PhysicsPaintStudio() {
   const handleCloseRotoLoopClip = useCallback(() => {
     clearRotoLoopSelection();
   }, [clearRotoLoopSelection]);
-  const loopResolutionContext = rotoTimelineModel.loopResolutionContext.value;
   const loopPresentations = useMemo(() => {
     const clipsById = new Map(rotoLoopClips.map((clip) => [clip.loopId, clip]));
     const scriptsById = new Map(loopScriptRows.map((row) => [row.id, row]));
@@ -2142,7 +2196,9 @@ export function PhysicsPaintStudio() {
         // intent routes through the monitor funnel for immediate effect.
         audioPreviewEnabled: audioPreviewEnabled.value, onAudioPreviewToggle: handleAudioPreviewToggle,
         onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange, onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
-        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
+        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: railSetSelection.value?.members
+          .filter((member): member is { kind: 'loop'; loopId: string } => member.kind === 'loop')
+          .map((member) => member.loopId) ?? [], selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).
