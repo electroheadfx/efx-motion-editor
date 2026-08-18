@@ -582,6 +582,11 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   forceSpacingControlsPresent: boolean;
   canApplyForceSpacing: boolean;
   forceSpacingActionDisabledReason: string | null;
+  /** 43.6-05 D-26/D-27: the D-27 set copy rendered as ONE Body-role scope line
+   *  under the Key Spacing heading when a rail set is active; null renders
+   *  nothing (popover byte-identical to 43.5). The popover never creates or
+   *  modifies the set — this is a pure read of the Plan 01 mapper output. */
+  forceSpacingScopeLine: string | null;
   onForceSpacingInput?: (event: Event) => void;
   onForceSpacingSubmit?: (event: Event) => void;
 }
@@ -856,6 +861,9 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
           <div class="physics-paint-toolbox-divider" />
           <div class="physics-paint-toolbox-section">
             <div class="physics-paint-toolbox-section-heading">Key Spacing</div>
+            {props.forceSpacingScopeLine ? (
+              <div class="physics-paint-toolbox-scope-line">{props.forceSpacingScopeLine}</div>
+            ) : null}
             {props.forceSpacingControlsPresent ? (
               <span class="physics-paint-roto-key-icon-action" onPointerEnter={forceSpacingTooltip.onPointerEnter} onPointerLeave={forceSpacingTooltip.onPointerLeave}>
                 <form
@@ -2582,6 +2590,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         forceSpacingControlsPresent={Boolean(physicalActions)}
         canApplyForceSpacing={canApplyForceSpacingAction}
         forceSpacingActionDisabledReason={forceSpacingActionDisabledReason}
+        forceSpacingScopeLine={railSetCopy}
         onForceSpacingInput={handleForceSpacingInput}
         onForceSpacingSubmit={handleForceSpacingSubmit}
       />

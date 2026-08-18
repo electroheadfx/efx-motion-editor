@@ -3980,6 +3980,18 @@ button.destructive {
   text-transform: none;
 }
 
+/* 43.6-05 M5 scope line: ONE Body-role (11px/400) line under the Key Spacing
+   heading carrying the D-27 set copy verbatim; tabular-nums keeps the fixed
+   frame ranges aligned. Rendered only when a rail set is active — with no set
+   the popover is byte-identical to 43.5 (D-26). */
+.physics-paint-toolbox-scope-line {
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: #9ca3af;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Blend-state badge (D-04): 6px filled dot pinned at the icon's top-right
    corner (2px insets), read-only projection of the timeline-owned
    interpolation state — never interactive, never a second authority. */

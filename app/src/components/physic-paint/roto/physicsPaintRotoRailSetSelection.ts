@@ -288,8 +288,9 @@ export interface ResolveRailSetPostAcceptanceInput {
 }
 
 /**
- * D-06 aftermath resolver with EXPLICIT branches: 'move-rails' keeps the
- * current set (identities are move-stable by construction); 'delete-rails'
+ * D-06 aftermath resolver with EXPLICIT branches: 'move-rails' and
+ * 'spacing-on-set' keep the current set (identities are move-stable by
+ * construction; respacing never changes rail membership); 'delete-rails'
  * returns null; 'undo'/'redo' with a recorded snapshot restore the before/after
  * set exactly; every other kind (including 'undo'/'redo' without a recorded
  * snapshot) returns the current set unchanged so reconcile-on-revision (Task 2)
@@ -298,7 +299,7 @@ export interface ResolveRailSetPostAcceptanceInput {
 export function resolveRailSetPostAcceptance(
   input: ResolveRailSetPostAcceptanceInput,
 ): RailSetSelectionState | null {
-  if (input.operationKind === 'move-rails') {
+  if (input.operationKind === 'move-rails' || input.operationKind === 'spacing-on-set') {
     return input.current;
   }
   if (input.operationKind === 'delete-rails') {

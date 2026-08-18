@@ -1377,6 +1377,8 @@ const INVALID_FORCE_SPACING_MESSAGE = 'Enter a whole number of empty frames (0 o
 interface ForceSpacingScopeSnapshot {
   readonly scopeKeyIds: readonly string[] | null;
   readonly linkedSourceSpacingScopes: readonly PhysicPaintRotoLinkedSourceSpacingScope[] | null;
+  /** 43.6-05: per-rail member descriptors of the active rail set; null when no set is active. */
+  readonly railSetMembers: readonly PhysicPaintRailSetMoveMember[] | null;
 }
 
 type ForceSpacingScopeResult =
@@ -1389,6 +1391,22 @@ function sameOrderedIds(left: readonly string[], right: readonly string[]): bool
 
 function isBoundedSelectionId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 256;
+}
+
+function isBoundedRailSetIdentity(value: unknown): value is RailSetIdentity {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as { readonly kind?: unknown; readonly loopId?: unknown; readonly firstKeyId?: unknown };
+  if (candidate.kind === 'loop') {
+    return isBoundedSelectionId(candidate.loopId);
+  }
+  if (candidate.kind === 'key-rail') {
+    return isBoundedSelectionId(candidate.firstKeyId);
+  }
+  return false;
+}
+
+function railSetIdentityKey(identity: RailSetIdentity): string {
+  return identity.kind === 'loop' ? `loop:${identity.loopId}` : `key-rail:${identity.firstKeyId}`;
 }
 
 function freezeLinkedSpacingScope(
@@ -1410,6 +1428,9 @@ function deriveForceSpacingScope(input: {
   readonly selectedKeyIds: readonly string[];
   readonly spacingSelection: PhysicsPaintRotoSpacingSelection | null;
   readonly selectedKeyRail?: RotoKeyRailSelection | null;
+  /** Session rail-set identities (Plan 01 authority); the set branch runs FIRST. */
+  readonly railSetMembers?: readonly RailSetIdentity[] | null;
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }): ForceSpacingScopeResult {
   const currentKeyIds = new Set(input.records.map((record) => record.keyId));
   const orderedLoopClips = [...input.loopClips]
@@ -1418,6 +1439,52 @@ function deriveForceSpacingScope(input: {
     && sourceKeyIds.every(isBoundedSelectionId)
     && new Set(sourceKeyIds).size === sourceKeyIds.length
     && sourceKeyIds.every((keyId) => currentKeyIds.has(keyId));
+
+  // 43.6-05 D-26: the rail-set branch runs FIRST — an active non-empty set is
+  // the session authority and yields per-rail member descriptors; a stale set
+  // fails closed with the mapped stale message; the branch never invents
+  // fallback scope. The resolver revalidates membership exactly against fresh
+  // derivation, so the descriptors must match the current segments/ranges.
+  if (input.railSetMembers !== undefined && input.railSetMembers !== null && input.railSetMembers.length > 0) {
+    const members = input.railSetMembers;
+    if (!members.every(isBoundedRailSetIdentity) || new Set(members.map(railSetIdentityKey)).size !== members.length) {
+      return { ok: false, message: 'Rail set selection is stale. Select the Rails again.' };
+    }
+    const groupOwnedKeyIds = new Set<string>();
+    for (const clip of input.loopClips) {
+      clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+      (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+    }
+    const segments = deriveKeyRailSegments({
+      orderedRealKeys: [...input.records]
+        .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId)),
+      incomingInterpolationBreakKeyIds: new Set(input.incomingInterpolationBreakKeyIds ?? []),
+      groupOwnedKeyIds,
+    });
+    const descriptors: PhysicPaintRailSetMoveMember[] = [];
+    for (const identity of members) {
+      if (identity.kind === 'key-rail') {
+        const segment = segments.find((candidate) => candidate.firstKeyId === identity.firstKeyId);
+        if (segment === undefined) {
+          return { ok: false, message: 'Rail set selection is stale. Select the Rails again.' };
+        }
+        descriptors.push({ kind: 'key-rail', firstKeyId: segment.firstKeyId, keyIds: segment.keyIds });
+      } else {
+        if (!input.loopClips.some((clip) => clip.loopId === identity.loopId)) {
+          return { ok: false, message: 'Rail set selection is stale. Select the Rails again.' };
+        }
+        descriptors.push({ kind: 'loop', loopId: identity.loopId });
+      }
+    }
+    return {
+      ok: true,
+      value: Object.freeze({
+        scopeKeyIds: null,
+        linkedSourceSpacingScopes: null,
+        railSetMembers: Object.freeze(descriptors),
+      }),
+    };
+  }
 
   if (input.selectedLoopClipIds.length > 0) {
     if (input.selectedKeyIds.length > 0 || input.spacingSelection !== null) {
@@ -1457,6 +1524,7 @@ function deriveForceSpacingScope(input: {
       value: Object.freeze({
         scopeKeyIds: Object.freeze(scopes.flatMap((scope) => scope.selectedSourceKeyIds)),
         linkedSourceSpacingScopes: Object.freeze(scopes),
+        railSetMembers: null,
       }),
     };
   }
@@ -1480,6 +1548,7 @@ function deriveForceSpacingScope(input: {
       value: Object.freeze({
         scopeKeyIds: Object.freeze([...rail.keyIds]),
         linkedSourceSpacingScopes: null,
+        railSetMembers: null,
       }),
     };
   }
@@ -1513,6 +1582,7 @@ function deriveForceSpacingScope(input: {
       value: Object.freeze({
         scopeKeyIds: scope.selectedSourceKeyIds,
         linkedSourceSpacingScopes: Object.freeze([scope]),
+        railSetMembers: null,
       }),
     };
   }
@@ -1543,6 +1613,7 @@ function deriveForceSpacingScope(input: {
       value: Object.freeze({
         scopeKeyIds: scope.selectedSourceKeyIds,
         linkedSourceSpacingScopes: Object.freeze([scope]),
+        railSetMembers: null,
       }),
     };
   }
@@ -1555,6 +1626,7 @@ function deriveForceSpacingScope(input: {
     value: Object.freeze({
       scopeKeyIds: input.selectedKeyIds.length >= 2 ? Object.freeze([...input.selectedKeyIds]) : null,
       linkedSourceSpacingScopes: null,
+      railSetMembers: null,
     }),
   };
 }
@@ -2796,12 +2868,14 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       selectedKeyIds: input.getSelectedKeyIds?.() ?? [],
       spacingSelection: input.getRotoSpacingSelection?.() ?? null,
       selectedKeyRail: input.getSelectedKeyRail?.() ?? null,
+      railSetMembers: input.getRailSetMembers?.() ?? null,
+      incomingInterpolationBreakKeyIds: input.getIncomingInterpolationBreakKeyIds?.(),
     });
     if (!scopeResult.ok) {
       input.publishStatus?.(scopeResult.message);
       return false;
     }
-    const { scopeKeyIds, linkedSourceSpacingScopes } = scopeResult.value;
+    const { scopeKeyIds, linkedSourceSpacingScopes, railSetMembers } = scopeResult.value;
     const interpolation = input.getRotoInterpolationState();
     const capacity = input.getCapacity();
     const expectedLaunch = {
@@ -2812,6 +2886,60 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       keyId: record.keyId,
       appFrame: record.appFrame,
     }));
+
+    // 43.6-05 D-24/D-25: an active rail set dispatches the spacing-on-set
+    // intent — per-rail fixed anchors, whole-set all-or-nothing validation in
+    // the resolver, ONE atomic history command. The set stays selected after
+    // acceptance (resolveRailSetPostAcceptance 'spacing-on-set' keeps it).
+    if (railSetMembers !== null) {
+      const setIntent = Object.freeze({
+        kind: 'spacing-on-set',
+        members: railSetMembers,
+        emptyFrames,
+      }) as Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'spacing-on-set' }>;
+      const setResolution = resolvePhysicPaintRotoPhysicalEdit({
+        identities,
+        intent: setIntent,
+        parentEndExclusive: input.getParentEndExclusive(),
+        capacity,
+        interpolationEnabled: interpolation.enabled,
+        loopClips,
+        // The set branch derives segments from the same break collection, so
+        // the resolver must revalidate membership against the identical
+        // authority — otherwise a break-split segment fails exact-match.
+        incomingInterpolationBreakKeyIds: input.getIncomingInterpolationBreakKeyIds?.(),
+      });
+      if (!setResolution.ok) {
+        input.publishStatus?.(
+          `Can't apply Key Spacing to the selected Rails: ${mapSpacingOnSetProductReason(setResolution.failure.code, setResolution.failure.text)}.`,
+        );
+        input.publishDiagnostic?.('spacing-on-set rejected: ' + setResolution.failure.code + ' — ' + setResolution.failure.text);
+        return false;
+      }
+      const setProposal = setResolution.proposal;
+      if (!setProposal.status.changed) {
+        // Already-exact spacing ends here without coordinator execution.
+        input.publishStatus?.(setProposal.status.text);
+        return false;
+      }
+      const setAccepted = await input.executePhysicalEdit({
+        proposal: setProposal,
+        expectedLaunch,
+        operationKind: 'spacing-on-set',
+        intent: setIntent,
+        selectedKeyId: setProposal.selectedKeyId,
+        selectedAppFrame: setProposal.selectedAppFrame,
+      });
+      if (setAccepted) {
+        input.publishStatus?.(
+          railSetMembers.length === 1
+            ? 'Key Spacing applied to 1 Rail.'
+            : `Key Spacing applied to ${railSetMembers.length} Rails.`,
+        );
+      }
+      return setAccepted;
+    }
+
     const intent = Object.freeze({
       kind: 'force-spacing',
       emptyFrames,
@@ -2931,6 +3059,21 @@ function targetSignatureOf(target: RotoDragTarget): RotoDragTargetSignature {
 
 function isBoundedKeyId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 256;
+}
+
+/**
+ * 43.6-05 M5: maps a spacing-on-set resolver failure to the {reason} slot of
+ * 'Can't apply Key Spacing to the selected Rails: {reason}.' — the existing
+ * force-spacing reason family (duplicate-destination-frame / over-capacity
+ * collapse to the not-enough-room voice; other codes carry the resolver text
+ * with its trailing period stripped, since the locked copy adds the period).
+ */
+function mapSpacingOnSetProductReason(code: string, text: string): string {
+  if (code === 'duplicate-destination-frame' || code === 'over-capacity') {
+    return 'Spacing rejected — not enough room';
+  }
+  const reason = text.replace(/\.$/, '');
+  return reason.length > 0 ? reason : 'Spacing rejected — not enough room';
 }
 
 function buildProposalVersion(

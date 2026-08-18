@@ -33,6 +33,9 @@ function getRotoMapBlock(code: string): string {
 function getWorkflowStripPropsInterface(code: string): string {
   return code.slice(code.indexOf('export interface PhysicsPaintWorkflowStripProps'), code.indexOf('const RULER_STEP'));
 }
+function getStaticChromePropsInterface(code: string): string {
+  return code.slice(code.indexOf('interface PhysicsPaintWorkflowStaticChromeProps'), code.indexOf('function PhysicsPaintWorkflowStaticChromeImpl'));
+}
 function getActionRowBlock(code: string): string {
   // Anchored at the action-row band (not the tools group) so the block spans
   // all three Gap F groups: identity → tools → key spacing (36.15-10).
@@ -1101,8 +1104,9 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     // shows, fed through the static-chrome prop (one mapper authority).
     expect(code).toContain('forceSpacingScopeLine={railSetCopy}');
     expect(code).toContain('props.forceSpacingScopeLine ? (');
-    // With no set the line is absent — no placeholder, no reserved space.
-    expect(getWorkflowStripPropsInterface(code)).toContain('forceSpacingScopeLine: string | null');
+    // The static chrome declares the nullable scope-line port; with no set the
+    // line is absent — no placeholder, no reserved space.
+    expect(getStaticChromePropsInterface(code)).toContain('forceSpacingScopeLine: string | null');
     const styles = css();
     const scopeLineRule = getCssRuleBlock(styles, '.physics-paint-toolbox-scope-line {');
     expect(scopeLineRule).toContain('color: #9ca3af');
