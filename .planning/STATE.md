@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-current_phase: 44
-current_phase_name: Integrated UAT + Signed Release
+current_phase: 43.6
+current_phase_name: Multi-Rail Selection and Batch Operations
 status: planning
 stopped_at: Completed 43.5-04-PLAN.md
-last_updated: "2026-08-18T11:44:48.399Z"
+last_updated: "2026-08-18T12:00:20.023Z"
 last_activity: 2026-08-18
-last_activity_desc: Phase 43.5 complete, transitioned to Phase 44
+last_activity_desc: Phase 43.6 inserted after Phase 43.5 (urgent), before Phase 44
 progress:
-  total_phases: 11
+  total_phases: 12
   completed_phases: 9
   total_plans: 84
   completed_plans: 84
-  percent: 82
+  percent: 75
 ---
 
 Total Phases: 8
@@ -44,14 +44,14 @@ progress:[██████████] 98%
 See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 43.5 — timeline-toolbox-and-directional-push-tools
+**Current focus:** Phase 43.6 — multi-rail-selection-and-batch-operations
 
 ## Current Position
 
-Phase: 44 — Integrated UAT + Signed Release
+Phase: 43.6 — Multi-Rail Selection and Batch Operations
 Plan: Not started
-Status: Ready to execute
-Last activity: 2026-08-18 — Phase 43.5 complete, transitioned to Phase 44
+Status: Ready to plan
+Last activity: 2026-08-18 — Phase 43.6 inserted after Phase 43.5 (urgent), before Phase 44
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -567,6 +567,7 @@ None yet.
 - Phase 43.3 inserted after Phase 43: Motion and Static Group Drag Within Free Space — intent source: SPECS/milestone-v0.9.0-new-phases/phase-43.3-group-drag-free-space-prompt.md (URGENT)
 - Phase 43.4 inserted after Phase 43: Derived Key Groups and Scissor Breaks — intent source: SPECS/milestone-v0.9.0-new-phases/phase-43.4-derived-key-groups-scissor-prompt.md (URGENT)
 - Phase 43.5 inserted after Phase 43.4: Timeline Toolbox and Directional Push Tools (spec: SPECS/milestone-v0.9.0-new-phases/phase-43.5-timeline-toolbox-directional-push-prompt.md)
+- Phase 43.6 inserted after Phase 43.5: Multi-Rail Selection and Batch Operations (URGENT)
 
 ## Deferred Items
 

@@ -411,6 +411,17 @@ Plans:
 
 **Scope boundaries:** No push behavior on direct Group drag; no multiple internal Paint tracks; no Motion Editor timeline changes; no replacement of the physical authority/history architecture; no new dependencies without separate approval; no Phase 44 signing/release work. The 161px workflow-strip height is preserved and Push buttons never cover cells or Group Rails.
 
+### Phase 43.6: Multi-Rail Selection and Batch Operations (INSERTED)
+
+**Goal:** Let the user select multiple Rails of any type — Key Rail, Motion Rail, Static Rail — in one shared selection set ordered by canonical first-key frame, then apply batch operations to the whole set: Delete Rails, Move Rails, Key Spacing, and selection-scoped (solo) playback. Multi-selection is a new explicit selection scope alongside single-rail and physical-frame selections; the 43.4 mutual-exclusion and selection-authority rules extend to the set. All invariants from Phases 43.3/43.4/43.5 remain binding: persistent intentional gaps, break ownership by stable key identity, capacity as the single end authority, atomic Undo/Redo through the canonical physical history, replay snapshots read from the accepted document authority, and one shared rail behavior with no per-type forks. Spec: SPECS/milestone-v0.9.0-new-phases/phase-43.6-multi-rail-selection-batch-operations-prompt.md
+**Requirements**: TBD
+**Depends on:** Phase 43.5
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 43.6 to break down)
+
 ### Phase 44: Integrated UAT + Signed Release
 
 **Goal**: v0.9.0 ships as a signed, notarized macOS release on 2026-08-31 with every automated gate and native packaged-app UAT step green and no release stop condition active.
