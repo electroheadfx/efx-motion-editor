@@ -451,7 +451,23 @@ export type PhysicPaintRotoPhysicalEditIntent =
       /** Motion/Static Rail anchor; XOR with anchorKeyId. */
       readonly anchorLoopId?: string;
       readonly deltaFrames: number;
+    }
+  | {
+      readonly kind: 'move-rails';
+      readonly members: readonly PhysicPaintRotoRailSetMoveMember[];
+      /** Signed integer delta: positive moves right, negative moves left. */
+      readonly delta: number;
     };
+
+/**
+ * One explicit rail-set member crossing the bridge (43.6-01): a Key Rail
+ * segment matched exactly by firstKeyId + ordered keyIds, or a Group Rail
+ * matched by loopId. Structurally identical to the resolver's
+ * PhysicPaintRailSetMoveMember; the transport stays dependency-safe.
+ */
+export type PhysicPaintRotoRailSetMoveMember =
+  | { readonly kind: 'key-rail'; readonly firstKeyId: string; readonly keyIds: readonly string[] }
+  | { readonly kind: 'loop'; readonly loopId: string };
 
 function hasUniqueBoundedPhysicalKeyIds(value: unknown, minimumLength = 1): value is readonly string[] {
   return Array.isArray(value)
@@ -601,6 +617,31 @@ export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is Ph
       ? isBoundedPhysicalKeyId(value.anchorKeyId)
       : isBoundedPhysicalKeyId(value.anchorLoopId);
   }
+  if (value.kind === 'move-rails') {
+    if (!hasOnlyKeys(value, ['kind', 'members', 'delta'])) return false;
+    if (!Number.isInteger(value.delta)) return false;
+    if (!Array.isArray(value.members) || value.members.length === 0) return false;
+    const seenRailIds = new Set<string>();
+    for (const member of value.members) {
+      if (!isRecord(member)) return false;
+      if (member.kind === 'key-rail') {
+        if (!hasOnlyKeys(member, ['kind', 'firstKeyId', 'keyIds'])) return false;
+        if (!isBoundedPhysicalKeyId(member.firstKeyId)) return false;
+        if (!hasUniqueBoundedPhysicalKeyIds(member.keyIds)) return false;
+        if (member.keyIds[0] !== member.firstKeyId) return false;
+        if (seenRailIds.has(member.firstKeyId)) return false;
+        seenRailIds.add(member.firstKeyId);
+      } else if (member.kind === 'loop') {
+        if (!hasOnlyKeys(member, ['kind', 'loopId'])) return false;
+        if (!isBoundedPhysicalKeyId(member.loopId)) return false;
+        if (seenRailIds.has(member.loopId)) return false;
+        seenRailIds.add(member.loopId);
+      } else {
+        return false;
+      }
+    }
+    return true;
+  }
   return false;
 }
 
@@ -686,6 +727,16 @@ export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRo
         ...(intent.anchorLoopId !== undefined ? { anchorLoopId: intent.anchorLoopId } : {}),
         deltaFrames: intent.deltaFrames,
       });
+    case 'move-rails':
+      return JSON.stringify({
+        kind: intent.kind,
+        members: intent.members.map((member) => (
+          member.kind === 'key-rail'
+            ? { kind: member.kind, firstKeyId: member.firstKeyId, keyIds: [...member.keyIds] }
+            : { kind: member.kind, loopId: member.loopId }
+        )),
+        delta: intent.delta,
+      });
   }
 }
 
@@ -741,6 +792,7 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'paste-key'
   | 'paste-key-group'
   | 'push-rails'
+  | 'move-rails'
   | 'play-script'
   | 'paint-group-frame'
   | 'delete-group-frame'
@@ -1025,6 +1077,7 @@ function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is Ph
     || value === 'paste-key'
     || value === 'paste-key-group'
     || value === 'push-rails'
+    || value === 'move-rails'
     || value === 'play-script'
     || value === 'paint-group-frame'
     || value === 'delete-group-frame'
@@ -1055,7 +1108,8 @@ function isPhysicPaintRotoOrdinaryOperationKind(
     || value === 'duplicate-key'
     || value === 'paste-key'
     || value === 'paste-key-group'
-    || value === 'push-rails';
+    || value === 'push-rails'
+    || value === 'move-rails';
 }
 
 function isPhysicPaintRotoPhysicalEditPayload(value: unknown): value is PhysicPaintRotoPhysicalEditRecord['payload'] {

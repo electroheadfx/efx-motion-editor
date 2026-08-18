@@ -1108,6 +1108,53 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.coordinator.failureOutput.value).toBeNull();
   });
 
+  it('authorizes a matched move-rails intent and rejects a mismatched one before staging', async () => {
+    const test = harness();
+    const intent = {
+      kind: 'move-rails',
+      members: [{ kind: 'loop', loopId: 'loop-b' }],
+      delta: 2,
+    } as const;
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: test.initial.records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      intent,
+      loopClips: test.initial.loopClips,
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: false,
+      incomingInterpolationBreakKeyIds: ['C'],
+    });
+    if (!resolution.ok) throw new Error(resolution.failure.text);
+
+    expect(await test.coordinator.executePhysicalEdit({
+      proposal: resolution.proposal,
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      operationKind: 'move-rails',
+      intent,
+      selectedKeyId: resolution.proposal.selectedKeyId,
+      selectedAppFrame: resolution.proposal.selectedAppFrame,
+    })).toBe(true);
+    expect(test.getPayload()?.operationKind).toBe('move-rails');
+    expect(test.getPayload()?.intent).toEqual(intent);
+    expect(test.getPayload()?.loopClips?.find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(8);
+    expect(test.getPayload()?.loopClips?.find((clip) => clip.loopId === 'loop-a')?.placementStart).toBe(0);
+
+    // A mismatched intent for the same operation kind fails closed before staging.
+    const mismatched = harness();
+    expect(await mismatched.coordinator.executePhysicalEdit({
+      proposal: mismatched.initial.proposal,
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      operationKind: 'move-rails',
+      intent: { kind: 'delete-key', selectedKeyId: 'A' },
+      selectedKeyId: null,
+      selectedAppFrame: null,
+    } as never)).toBe(false);
+    expect(mismatched.sendPhysicalEditPayload).not.toHaveBeenCalled();
+    expect(mismatched.coordinator.acceptedOutput.value).toBeNull();
+    expect(mismatched.coordinator.failureOutput.value).toBeNull();
+    mismatched.coordinator.cancelPhysicalEdit('disposal');
+  });
+
   it('preserves Play Script accepted reconciliation through the shared funnel', async () => {
     const test = harness();
 

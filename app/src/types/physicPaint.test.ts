@@ -283,6 +283,57 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'push-rails', direction: 'right', anchorKeyId: 'b0' })).toBe(false);
   });
 
+  it('strictly parses and canonically serializes the move-rails intent with exact member shapes and integer delta', () => {
+    const intent = {
+      kind: 'move-rails',
+      members: [
+        { kind: 'key-rail', firstKeyId: 'a0', keyIds: ['a0', 'a1', 'a2'] },
+        { kind: 'loop', loopId: 'loop-A' },
+      ],
+      delta: 5,
+    } as const;
+    expect(isPhysicPaintRotoPhysicalEditIntent(intent)).toBe(true);
+    const serialized = serializePhysicPaintRotoPhysicalEditIntent(intent);
+    expect(serialized).toBe('{"kind":"move-rails","members":[{"kind":"key-rail","firstKeyId":"a0","keyIds":["a0","a1","a2"]},{"kind":"loop","loopId":"loop-A"}],"delta":5}');
+    const parsed: unknown = JSON.parse(serialized);
+    expect(isPhysicPaintRotoPhysicalEditIntent(parsed)).toBe(true);
+    if (!isPhysicPaintRotoPhysicalEditIntent(parsed)) throw new Error('Canonical move-rails intent must parse');
+    expect(serializePhysicPaintRotoPhysicalEditIntent(parsed)).toBe(serialized);
+
+    const negativeDelta = { kind: 'move-rails', members: [{ kind: 'loop', loopId: 'loop-B' }], delta: -3 } as const;
+    expect(isPhysicPaintRotoPhysicalEditIntent(negativeDelta)).toBe(true);
+    expect(serializePhysicPaintRotoPhysicalEditIntent(negativeDelta)).toBe('{"kind":"move-rails","members":[{"kind":"loop","loopId":"loop-B"}],"delta":-3}');
+
+    // Extra key, empty members, non-integer delta, firstKeyId not the first keyId,
+    // duplicate rails, unknown member kind, unbounded ids.
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, unknown: true })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, members: [] })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, delta: 1.5 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({
+      kind: 'move-rails',
+      members: [{ kind: 'key-rail', firstKeyId: 'a0', keyIds: ['a1', 'a0'] }],
+      delta: 5,
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({
+      kind: 'move-rails',
+      members: [
+        { kind: 'key-rail', firstKeyId: 'a0', keyIds: ['a0'] },
+        { kind: 'key-rail', firstKeyId: 'a0', keyIds: ['a0'] },
+      ],
+      delta: 5,
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({
+      kind: 'move-rails',
+      members: [{ kind: 'bogus', loopId: 'loop-A' }],
+      delta: 5,
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({
+      kind: 'move-rails',
+      members: [{ kind: 'key-rail', firstKeyId: 'x'.repeat(257), keyIds: ['x'.repeat(257)] }],
+      delta: 5,
+    })).toBe(false);
+  });
+
   it('round-trips paste-key startsNewSegment and rejects a non-boolean flag', () => {
     const payload = { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,AAAA', width: 2, height: 2 };
     const broken = { kind: 'paste-key', destinationAppFrame: 8, destinationKeyId: null, newKeyId: 'key-paint', clipboardPayload: payload, startsNewSegment: true } as const;

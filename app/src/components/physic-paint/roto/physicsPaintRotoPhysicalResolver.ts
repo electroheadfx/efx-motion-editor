@@ -184,7 +184,8 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'duplicate-key'
   | 'paste-key'
   | 'paste-key-group'
-  | 'push-rails';
+  | 'push-rails'
+  | 'move-rails';
 
 /**
  * Immutable resolver input: stable identities, optional complete records,
@@ -362,7 +363,8 @@ export type PhysicPaintRotoPhysicalEditFailureCode =
   | 'linked-source-spacing-order-rejected'
   | 'linked-frame-delete-rejected'
   | 'no-free-space-in-direction'
-  | 'push-source-straddle';
+  | 'push-source-straddle'
+  | 'move-rails-source-straddle';
 
 /**
  * Discriminated failure result. The failure branch cannot carry a partial
@@ -832,7 +834,8 @@ function isResolverOperationKind(value: unknown): value is PhysicPaintRotoPhysic
     || value === 'duplicate-key'
     || value === 'paste-key'
     || value === 'paste-key-group'
-    || value === 'push-rails';
+    || value === 'push-rails'
+    || value === 'move-rails';
 }
 
 function fail(
@@ -2944,6 +2947,80 @@ function deriveMoveKeyRailIncomingInterpolationBreakKeyIds(input: {
 }
 
 /**
+ * D-11: derive the complete incoming-interpolation-break collection after an
+ * explicit-set rigid move. Follows the move-key-rail authority (43.3 D-12 /
+ * 43.4 D-19) generalized to the set: (a) internal breaks travel with moved key
+ * identity; (b) when the set vacates its interval, the first surviving key at
+ * or after the vacated end owns the opened-gap break; (c) when the set's first
+ * key (minimum pre-move frame) lands more than one frame after its new
+ * predecessor, it owns a new landing-gap break — landing adjacent to a
+ * fixed-side neighbor (gap 1) never merges and never manufactures a break.
+ * Group-owned keys never own key-owned breaks. Reuse-never-duplicate: the
+ * output is a complete collection replacement, never a delta.
+ */
+function derivePhysicPaintRailSetMoveIncomingInterpolationBreakKeyIds(input: {
+  readonly delta: number;
+  readonly movedKeyIds: ReadonlySet<string>;
+  readonly movedSetBounds: { readonly firstFrame: number; readonly lastEndExclusive: number };
+  readonly groupOwnedKeyIds: ReadonlySet<string>;
+  readonly preMoveFramesByKeyId: ReadonlyMap<string, number>;
+  readonly mapping: ReadonlyMap<string, number>;
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
+}): readonly string[] {
+  const owners = new Set(input.incomingInterpolationBreakKeyIds);
+  if (input.delta === 0 || input.movedKeyIds.size === 0) {
+    return [...owners].sort((left, right) => {
+      const frameLeft = input.mapping.get(left) ?? Number.POSITIVE_INFINITY;
+      const frameRight = input.mapping.get(right) ?? Number.POSITIVE_INFINITY;
+      return frameLeft - frameRight || left.localeCompare(right);
+    });
+  }
+
+  // Vacated-successor rule (43.3 D-12): the first surviving key at or after
+  // the vacated set end owns the opened-gap break.
+  const vacatedEndExclusive = input.movedSetBounds.lastEndExclusive;
+  let successor: string | null = null;
+  let successorFrame = Number.POSITIVE_INFINITY;
+  for (const [keyId, frame] of input.preMoveFramesByKeyId) {
+    if (input.movedKeyIds.has(keyId) || input.groupOwnedKeyIds.has(keyId)) continue;
+    if (frame >= vacatedEndExclusive && frame < successorFrame) {
+      successor = keyId;
+      successorFrame = frame;
+    }
+  }
+  if (successor !== null) owners.add(successor);
+
+  // Landing-gap rule: the set's first key (minimum pre-move frame) owns a new
+  // break when it lands more than one frame after its new predecessor.
+  let firstKeyId: string | null = null;
+  let firstMovedFrame = Number.POSITIVE_INFINITY;
+  for (const keyId of input.movedKeyIds) {
+    const frame = input.preMoveFramesByKeyId.get(keyId) ?? Number.POSITIVE_INFINITY;
+    if (frame < firstMovedFrame) {
+      firstKeyId = keyId;
+      firstMovedFrame = frame;
+    }
+  }
+  if (firstKeyId !== null) {
+    const firstDestination = input.mapping.get(firstKeyId);
+    if (firstDestination !== undefined) {
+      let predecessorFrame = -1;
+      for (const [keyId, frame] of input.mapping) {
+        if (input.movedKeyIds.has(keyId) || input.groupOwnedKeyIds.has(keyId)) continue;
+        if (frame < firstDestination && frame > predecessorFrame) predecessorFrame = frame;
+      }
+      if (predecessorFrame !== -1 && firstDestination - predecessorFrame > 1) owners.add(firstKeyId);
+    }
+  }
+
+  return [...owners].sort((left, right) => {
+    const frameLeft = input.mapping.get(left) ?? Number.POSITIVE_INFINITY;
+    const frameRight = input.mapping.get(right) ?? Number.POSITIVE_INFINITY;
+    return frameLeft - frameRight || left.localeCompare(right);
+  });
+}
+
+/**
  * D-09..D-13: derive the complete incoming-interpolation-break collection after
  * a Group drag. Stable-key-owned breaks only, under exact 43.1 semantics:
  * (a) the next real key at or after the vacated interval's end owns (or reuses)
@@ -3655,6 +3732,10 @@ function buildStatusText(
     return selectedAppFrame === null
       ? 'Rails pushed'
       : `Rails pushed to frame ${selectedAppFrame}`;
+  }
+  if (operationKind === 'move-rails') {
+    if (!changed) return 'No change';
+    return 'Rails moved';
   }
   return 'No change';
 }
@@ -4435,6 +4516,133 @@ export function resolvePhysicPaintRotoPhysicalEdit(
           incomingInterpolationBreakKeyIds,
         }),
       ),
+    };
+    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
+    if (!finalized.ok) return finalized.resolution;
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'move-rails') {
+    if (!Array.isArray(intent.members) || intent.members.length === 0) {
+      return fail('malformed-identity', operationKind, 'Rail set move requires a non-empty members array.');
+    }
+    if (!Number.isInteger(intent.delta)) {
+      return fail('malformed-target', operationKind, 'Rail set move requires an integer delta.');
+    }
+
+    const loopRangeContext = derivePhysicPaintRotoLoopRanges({
+      identities: identities.ordered,
+      loopClips,
+      capacity: input.capacity,
+      interpolationEnabled: input.interpolationEnabled,
+    });
+
+    // One shared pure authority validates the explicit set (exact-match
+    // membership, fail-closed on stale members) AND derives the straddle
+    // verdict from canonical attachment + sourceCycleId only (D-10). The Plan
+    // 03 drag preview consumes the same exports, so preview-is-the-commit
+    // holds (D-17).
+    const setResult = derivePhysicPaintRailSetMove({
+      members: intent.members,
+      identities: identities.ordered,
+      loopRanges: loopRangeContext.ranges,
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+    });
+    if (!setResult.ok) {
+      return fail(setResult.code, operationKind, setResult.text);
+    }
+    const { movedKeyIds, movedSetBounds, straddle } = setResult;
+    if (straddle !== null) {
+      return fail('move-rails-source-straddle', operationKind,
+        `Rail set move would move source keys shared with the fixed Group "${straddle.fixedGroupLoopId}".`);
+    }
+
+    // Clamp-and-commit: the committed delta IS the clamped delta, so the
+    // preview is the commit (D-17). ok:false maps to the dedicated zero-space
+    // code. This exported clamp is the ONLY set-delta authority — no second
+    // clamp math anywhere.
+    const clampResult = clampPhysicPaintRailSetMoveDelta({
+      members: intent.members,
+      identities: identities.ordered,
+      loopRanges: loopRangeContext.ranges,
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+      proposedDelta: intent.delta,
+      capacity: input.capacity,
+    });
+    if (!clampResult.ok) {
+      return fail('no-free-space-in-direction', operationKind,
+        'No empty space in the requested direction to move the selected set.');
+    }
+    const signedDelta = clampResult.delta;
+
+    const mapping = new Map(identities.ordered.map((identity) => [identity.keyId, identity.appFrame] as const));
+    const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+    for (const identity of identities.ordered) {
+      if (!movedKeyIds.has(identity.keyId)) continue;
+      // The clamp already proved every moved member interval lands in bounds;
+      // finalizeProposal re-validates every final frame.
+      mapping.set(identity.keyId, identity.appFrame + signedDelta);
+      roleByKeyId.set(identity.keyId, 'moved');
+    }
+
+    // Translate EVERY selected Group's lifecycle fields with the
+    // buildMoveGroupNextLoopClips pattern (phaseOrigin, originalEndExclusive,
+    // EVERY visibleRanges entry, EVERY frameOverrides appFrame, infinity
+    // pinning) — source-attached AND duplicated placements move placement-only
+    // per the 43.3 algebra. Chained across moved clips so each clip translates
+    // once.
+    let nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null = null;
+    let clipPlacementChanged = false;
+    const movedClips = loopClips.filter((clip) => (
+      setResult.members.some((member) => member.kind === 'loop' && member.loopId === clip.loopId)
+    ));
+    if (movedClips.length > 0) {
+      let current = loopClips;
+      for (const clip of movedClips) {
+        const next = buildMoveGroupNextLoopClips(current, clip, signedDelta);
+        if (next !== null) {
+          current = next;
+          clipPlacementChanged = true;
+        }
+      }
+      // A zero-delta (no-change) move publishes NO clip translation: keep the
+      // collection null so the prepare layer's changed === false maps to the
+      // no-publish result. Only a real placement delta commits one.
+      if (clipPlacementChanged) nextLoopClips = current;
+    }
+
+    // Pitfall 5: changed must account for clip placement deltas, not only the
+    // key mapping — a moved set whose only movable content is duplicated
+    // placements still reports changed from the placement delta.
+    const changed = computeChanged(identities, mapping) || clipPlacementChanged;
+    const groupOwnedKeyIds = new Set<string>();
+    for (const clip of loopClips) {
+      clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+      (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+    }
+    const nextBreaks = derivePhysicPaintRailSetMoveIncomingInterpolationBreakKeyIds({
+      delta: signedDelta,
+      movedKeyIds,
+      movedSetBounds,
+      groupOwnedKeyIds,
+      preMoveFramesByKeyId: identities.framesByKeyId,
+      mapping,
+      incomingInterpolationBreakKeyIds,
+    });
+    const candidate: Candidate = {
+      mapping,
+      expectedKeyIds: identities.keyIds,
+      removedKeyId: null,
+      removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+      selectedKeyId: null,
+      operationKind: 'move-rails',
+      changed,
+      roleByKeyId,
+      drag: null,
+      ...(nextLoopClips !== null ? { nextLoopClips } : {}),
+      nextIncomingInterpolationBreakKeyIds: Object.freeze(nextBreaks),
     };
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;

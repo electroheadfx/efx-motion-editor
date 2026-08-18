@@ -5199,6 +5199,62 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-rails (explicit-set rigid 
     { keyId: 'c9', appFrame: 39 },
   ]);
 
+  /**
+   * A [0,10), B [20,30), group-owned G [31,35), C [40,50): C is a distinct
+   * segment split by group ownership (no break on c0), so the vacated-successor
+   * rule can manufacture a NEW break on c0.
+   */
+  const buildWithGroupGapSuccessor = (): readonly PhysicPaintRotoKeyIdentity[] => Object.freeze([
+    { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
+    { keyId: 'a3', appFrame: 3 }, { keyId: 'a4', appFrame: 4 }, { keyId: 'a5', appFrame: 5 },
+    { keyId: 'a6', appFrame: 6 }, { keyId: 'a7', appFrame: 7 }, { keyId: 'a8', appFrame: 8 },
+    { keyId: 'a9', appFrame: 9 },
+    { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 21 }, { keyId: 'b2', appFrame: 22 },
+    { keyId: 'b3', appFrame: 23 }, { keyId: 'b4', appFrame: 24 }, { keyId: 'b5', appFrame: 25 },
+    { keyId: 'b6', appFrame: 26 }, { keyId: 'b7', appFrame: 27 }, { keyId: 'b8', appFrame: 28 },
+    { keyId: 'b9', appFrame: 29 },
+    { keyId: 'g0', appFrame: 31 }, { keyId: 'g1', appFrame: 32 }, { keyId: 'g2', appFrame: 33 },
+    { keyId: 'g3', appFrame: 34 },
+    { keyId: 'c0', appFrame: 40 }, { keyId: 'c1', appFrame: 41 }, { keyId: 'c2', appFrame: 42 },
+    { keyId: 'c3', appFrame: 43 }, { keyId: 'c4', appFrame: 44 }, { keyId: 'c5', appFrame: 45 },
+    { keyId: 'c6', appFrame: 46 }, { keyId: 'c7', appFrame: 47 }, { keyId: 'c8', appFrame: 48 },
+    { keyId: 'c9', appFrame: 49 },
+  ]);
+
+  /** The unselected Group owning g0-g3 at [31,35) in buildWithGroupGapSuccessor. */
+  const buildGapGroupClips = (): readonly PhysicPaintRotoLoopClip[] => Object.freeze([
+    Object.freeze({
+      loopId: 'loop-G',
+      placementStart: 31,
+      sourceKeyIds: ['g0', 'g1', 'g2', 'g3'],
+      repeat: 1,
+      mode: 'static',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 31,
+      originalEndExclusive: 35,
+      visibleRanges: Object.freeze([Object.freeze({ start: 31, endExclusive: 35 })]),
+      frameOverrides: Object.freeze([]),
+    }) as PhysicPaintRotoLoopClip,
+  ]);
+
+  /** One source-attached Group with no unselected Group sharing its source cycle. */
+  const buildSingleAttachedGroupClips = (): readonly PhysicPaintRotoLoopClip[] => Object.freeze([
+    Object.freeze({
+      loopId: 'loop-G',
+      placementStart: 20,
+      sourceKeyIds: ['g0', 'g1'],
+      repeat: 4,
+      mode: 'static',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 20,
+      originalEndExclusive: 28,
+      visibleRanges: Object.freeze([Object.freeze({ start: 20, endExclusive: 28 })]),
+      frameOverrides: Object.freeze([]),
+    }) as PhysicPaintRotoLoopClip,
+  ]);
+
   const keyRailA = (): PhysicPaintRailSetMoveMember => ({
     kind: 'key-rail',
     firstKeyId: 'a0',
@@ -5255,14 +5311,17 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-rails (explicit-set rigid 
   });
 
   it('lands a break on the first surviving successor when a gap opens at the set edge', () => {
-    // B [20,30) moves left to [10,20) flush against A's end; C@30 (flush at the
-    // vacated end 30) becomes the first surviving successor of the vacated
-    // interval [20,30) and owns the opened-gap break (43.3 D-12).
+    // B [20,30) moves left to [10,20) flush against A's end. The vacated
+    // interval [20,30) leaves c0@40 (the first surviving key at/after 30,
+    // skipping the unselected group-owned g0-g3) as the successor, so c0 owns
+    // a NEW opened-gap break (43.3 D-12). b0's segment break travels with B.
     const resolution = resolveMoveRails({
-      identities: buildWithSuccessor(),
+      identities: buildWithGroupGapSuccessor(),
       members: [keyRailB()],
       delta: -10,
-      breaks: [],
+      breaks: ['b0'],
+      loopClips: buildGapGroupClips(),
+      capacity: 60,
     });
 
     expect(resolution.ok).toBe(true);
@@ -5270,25 +5329,32 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-rails (explicit-set rigid 
     expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
       a0: 0, a1: 1, a2: 2, a3: 3, a4: 4, a5: 5, a6: 6, a7: 7, a8: 8, a9: 9,
       b0: 10, b1: 11, b2: 12, b3: 13, b4: 14, b5: 15, b6: 16, b7: 17, b8: 18, b9: 19,
-      c0: 30, c1: 31, c2: 32, c3: 33, c4: 34, c5: 35, c6: 36, c7: 37, c8: 38, c9: 39,
+      g0: 31, g1: 32, g2: 33, g3: 34,
+      c0: 40, c1: 41, c2: 42, c3: 43, c4: 44, c5: 45, c6: 46, c7: 47, c8: 48, c9: 49,
     });
-    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['c0']);
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['b0', 'c0']);
   });
 
-  it('carries internal breaks with moved key identity and opens a landing-gap break on the first key', () => {
-    // b2 owns an internal break; B moves right, so b2's break travels with its
-    // identity while the landing gap before b0 (25 - 9 = 16 > 1) adds a new
-    // break on b0.
+  it('carries breaks owned by moved keys and opens a landing-gap break on the set first key', () => {
+    // g1 owns an internal break; the source-attached Group moves right, so g1's
+    // break travels with its identity (43.4 D-19) while the landing gap before
+    // g0 (25 - 0 = 25 > 1) adds a NEW break on g0 (D-10 landing-gap rule).
     const resolution = resolveMoveRails({
-      identities: buildTwoKeyRails(),
-      members: [keyRailB()],
+      identities: [
+        { keyId: 'P', appFrame: 0 },
+        { keyId: 'g0', appFrame: 20 },
+        { keyId: 'g1', appFrame: 21 },
+      ],
+      members: [{ kind: 'loop', loopId: 'loop-G' }],
       delta: 5,
-      breaks: ['b2'],
+      breaks: ['g1'],
+      loopClips: buildSingleAttachedGroupClips(),
     });
 
     expect(resolution.ok).toBe(true);
     if (!resolution.ok) throw new Error('Internal-break move must resolve');
-    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['b0', 'b2']);
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ P: 0, g0: 25, g1: 26 });
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['g0', 'g1']);
   });
 
   it('never merges on adjacent landing: the moved break travels and no new break is manufactured', () => {
@@ -5350,7 +5416,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-rails (explicit-set rigid 
       identities,
       members: [{ kind: 'loop', loopId: 'loop-G' }],
       delta: 5,
-      loopClips: buildPushGroupClips(),
+      loopClips: buildSingleAttachedGroupClips(),
     });
 
     expect(resolution.ok).toBe(true);
@@ -5364,8 +5430,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-rails (explicit-set rigid 
     expect(moved?.phaseOrigin).toBe(25);
     expect(moved?.originalEndExclusive).toBe(33);
     expect(moved?.visibleRanges).toEqual([{ start: 25, endExclusive: 33 }]);
-    const untouched = proposal.nextLoopClips?.find((clip) => clip.loopId === 'loop-D');
-    expect(untouched?.placementStart).toBe(2);
+    expect(proposal.nextLoopClips).toHaveLength(1);
   });
 
   it('rejects a straddle with the dedicated code and zero partial proposal (D-10)', () => {
