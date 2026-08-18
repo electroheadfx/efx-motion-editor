@@ -148,14 +148,20 @@ export function deriveRailSetOrder(input: DeriveRailSetOrderInput): readonly Rai
 }
 
 /**
- * D-01/D-04/D-05 gesture reducer, fail-closed on unknown/malformed identities
- * and non-unique orderings:
+ * D-01/D-03/D-04/D-05 gesture reducer, fail-closed on unknown/malformed
+ * identities and non-unique orderings:
  * - 'plain': returns a fresh one-member set with the clicked identity as anchor.
  * - 'toggle': adds an absent identity (anchor unchanged) or removes a present
  *   one (anchor falls back to the first ordered member when the anchor was
  *   removed); toggling off the last member returns null (empty = no rail
  *   selection scope, D-05).
- * - 'range'/'union': Task 2 scope — leave the state unchanged.
+ * - 'range': replaces the set with the ordered anchor-to-target slice; anchor
+ *   unchanged (D-01/D-02).
+ * - 'union': adds the ordered anchor-to-target slice to the current set,
+ *   de-duplicated; anchor unchanged; already-selected members stay selected
+ *   (D-03).
+ * 'range'/'union' with no valid anchor (null selection, null/unknown anchor)
+ * leave the state unchanged — matching the Phase 37 range precedent.
  */
 export function updatePhysicsPaintRotoRailSetSelection(
   selection: RailSetSelectionState | null,
@@ -188,6 +194,24 @@ export function updatePhysicsPaintRotoRailSetSelection(
       ? current.anchor
       : members[0];
     return freezeRailSetSelection(members, anchor);
+  }
+  if (gesture === 'range' || gesture === 'union') {
+    const current = reconcileRailSetSelection(selection, orderedIdentities);
+    if (current === null || current.anchor === null) return selection;
+    const anchorIndex = orderedIdentities.findIndex((identity) => sameIdentity(identity, current.anchor as RailSetIdentity));
+    if (anchorIndex === -1) return selection;
+    const targetIndex = orderedIdentities.findIndex((identity) => sameIdentity(identity, target));
+    const from = Math.min(anchorIndex, targetIndex);
+    const to = Math.max(anchorIndex, targetIndex);
+    const slice = orderedIdentities.slice(from, to + 1);
+    if (gesture === 'range') {
+      return freezeRailSetSelection(slice, current.anchor);
+    }
+    const members = orderedIdentities.filter((identity) => (
+      slice.some((member) => sameIdentity(member, identity))
+      || current.members.some((member) => sameIdentity(member, identity))
+    ));
+    return freezeRailSetSelection(members, current.anchor);
   }
   return selection;
 }

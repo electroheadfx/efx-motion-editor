@@ -179,6 +179,7 @@ describe('shared rail roving keyboard navigation (43.4 defect 9)', () => {
     expect(walk(r8, 'ArrowRight')).toBe(r10);
     // Past the last member the cycle falls through to the ordinary scroller
     // exit with no wrap.
+    resetFocus();
     const { event } = keyEvent('ArrowRight');
     dispatchRailTargetKeyDown(event, scope, r10);
     expect(r10.focused).toBe(false);
