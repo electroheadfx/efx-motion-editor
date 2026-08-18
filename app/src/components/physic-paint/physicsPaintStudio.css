@@ -2353,34 +2353,27 @@ button.destructive {
   color: #fcd34d;
 }
 
-/* 43.5-05 directional cursor while armed: e-resize for Push Right, w-resize
-   for Push Left over the whole strip (UI-SPEC T3). */
-.physics-paint-workflow-strip.physics-paint-push-armed-right {
-  cursor: e-resize;
+/* 43.5-05 design revision: ONE Push tool, direction from the drag. While armed
+   the whole strip carries a generic grab cursor (the direction is chosen by
+   the drag, not at arm time). */
+.physics-paint-workflow-strip.physics-paint-push-armed {
+  cursor: grab;
 }
 
-.physics-paint-workflow-strip.physics-paint-push-armed-left {
-  cursor: w-resize;
+/* The armed cursor must show over the ENTIRE lane while armed — ruler, cells,
+   rails, gaps. The strip-level cursor only reaches the ruler and empty chrome;
+   cells/rails declare their own pointer cursors, so the armed cursor is forced
+   on every lane descendant. The lane's own cursor stays class-driven (no
+   !important) so the drag session's inline `grabbing` still wins during a drag
+   (pointer capture follows the lane). */
+.physics-paint-lane[data-push-armed="true"] * {
+  cursor: grab !important;
 }
 
-/* 43.5-05 Task 2 (UX4 smoke): the directional cursor must show over the ENTIRE
-   lane while armed — ruler, cells, rails, gaps. The strip-level cursor only
-   reaches the ruler and empty chrome; cells/rails declare their own pointer
-   cursors, so the armed cursor is forced on every lane descendant. The lane's
-   own cursor stays class-driven (no !important) so the drag session's inline
-   `grabbing` still wins during a drag (pointer capture follows the lane). */
-.physics-paint-lane[data-push-armed="right"] * {
-  cursor: e-resize !important;
-}
-
-.physics-paint-lane[data-push-armed="left"] * {
-  cursor: w-resize !important;
-}
-
-/* Over an invalid anchor (empty/gap frame or a straddled anchor) the cursor is
-   not-allowed (D-07/D-16). Higher specificity than the armed-direction rules. */
-.physics-paint-lane[data-push-armed="right"][data-push-hover-invalid="true"] *,
-.physics-paint-lane[data-push-armed="left"][data-push-hover-invalid="true"] * {
+/* While a drag is live in a blocked direction (frame-0/capacity flush or
+   straddle) the cursor is not-allowed for that direction only. Higher
+   specificity than the armed-grab rule. */
+.physics-paint-lane[data-push-armed="true"][data-push-hover-invalid="true"] * {
   cursor: not-allowed !important;
 }
 

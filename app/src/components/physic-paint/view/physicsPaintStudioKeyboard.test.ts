@@ -7,7 +7,6 @@ import {
 } from './physicsPaintStudioKeyboard';
 import {
   disarmPushTool,
-  getArmedPushToolDirection,
   isPushToolArmed,
   togglePushTool,
 } from './physicsPaintPushArmedTool';
@@ -389,25 +388,18 @@ describe('Physics Paint armed Push tool disarm routing (43.5-05)', () => {
 describe('Physics Paint armed Push tool module (43.5-05 lock-transition primitive)', () => {
   it('starts disarmed every session — armed state is never persisted (D-19)', () => {
     expect(isPushToolArmed()).toBe(false);
-    expect(getArmedPushToolDirection()).toBeNull();
   });
 
-  it('togglePushTool arms the given direction and re-toggle disarms (D-06)', () => {
-    expect(togglePushTool('right')).toBe(true);
-    expect(getArmedPushToolDirection()).toBe('right');
-    expect(togglePushTool('right')).toBe(true);
+  it('togglePushTool arms and re-toggle disarms (D-06)', () => {
+    expect(togglePushTool()).toBe(true);
+    expect(isPushToolArmed()).toBe(true);
+    expect(togglePushTool()).toBe(true);
     expect(isPushToolArmed()).toBe(false);
-  });
-
-  it('togglePushTool switches direction in one click when the other direction is armed', () => {
-    togglePushTool('right');
-    expect(togglePushTool('left')).toBe(true);
-    expect(getArmedPushToolDirection()).toBe('left');
   });
 
   it('disarmPushTool returns true when armed and false when disarmed (lock transition, D-18)', () => {
     expect(disarmPushTool()).toBe(false);
-    togglePushTool('right');
+    togglePushTool();
     expect(disarmPushTool()).toBe(true);
     expect(isPushToolArmed()).toBe(false);
   });

@@ -94,21 +94,27 @@ export type PushDragPreparationResult<Publication> =
   | Readonly<{ ok: true; publication: Publication }>
   | Readonly<{ ok: false; reason?: string; detail?: string }>;
 
+/** The push drag direction, chosen by the drag sign and locked on drag start. */
+export type PushToolDirection = 'right' | 'left';
+
 export interface PushDragSessionInput<Publication> {
-  /** Projects horizontal pointer travel to the armed direction's signed frame delta. */
+  /** Projects horizontal pointer travel to a SIGNED frame delta (positive = right, negative = left). */
   readonly projectDestination: (input: PushDragProjectionInput) => number;
-  /** Clamps the proposed signed delta; the result is consumed for paint AND forwarded to prepare. */
-  readonly clampDestination: (proposedDeltaFrames: number) => PushDragClampResult;
+  /** Clamps the proposed signed delta for the locked drag direction; the result is consumed for paint AND forwarded to prepare. */
+  readonly clampDestination: (proposedDeltaFrames: number, direction: PushToolDirection) => PushDragClampResult;
   /**
-   * Prepares the retained publication for the clamped signed delta. The caller
-   * binds the resolved anchor (keyId or loopId) and direction into this closure
-   * (D-07) — the hook accepts the resolved anchor from its caller and never
-   * derives canonical facts itself.
+   * Prepares the retained publication for the clamped signed delta and the
+   * locked drag direction. The caller binds the resolved anchor (the selected
+   * Rail) into this closure (D-07) — the hook accepts the resolved anchor from
+   * its caller and never derives canonical facts itself.
    */
-  readonly prepareAtDestination: (deltaFrames: number) => PushDragPreparationResult<Publication>;
+  readonly prepareAtDestination: (deltaFrames: number, direction: PushToolDirection) => PushDragPreparationResult<Publication>;
   readonly onDropCommit: (publication: Publication) => Promise<boolean>;
   readonly onCancel?: () => void;
   readonly onRejected?: (reason?: string, detail?: string) => void;
+  /** Called while the drag is live when prepare rejects (e.g. a blocked
+   *  direction) — the caller shows the guarded tooltip for that direction. */
+  readonly onBlocked?: (reason?: string, detail?: string) => void;
   readonly onPreviewChange?: (preview: PushDragPreviewState<Publication> | null) => void;
   /** Cancels any pending cell/rail click work when the pointer crosses the threshold. */
   readonly clearClickSequence: () => void;
@@ -129,6 +135,8 @@ interface PushDragSession<Publication> {
   readonly originX: number;
   latestX: number;
   started: boolean;
+  /** Locked on drag start from the drag sign; null until the drag begins. */
+  direction: PushToolDirection | null;
   publication: Publication | null;
   rejection: { readonly reason?: string; readonly detail?: string } | null;
   priorCursor: string | null;
@@ -179,6 +187,7 @@ export function usePhysicsPaintPushDrag<Publication>(
       originX: event.clientX,
       latestX: event.clientX,
       started: false,
+      direction: null,
       publication: null,
       rejection: null,
       priorCursor: null,
@@ -220,16 +229,20 @@ export function usePhysicsPaintPushDrag<Publication>(
       if (session.started) clearPaint();
     };
     const prepareAtPointer = () => {
-      const proposedDeltaFrames = input.projectDestination({
+      const rawDelta = input.projectDestination({
         originClientX: session.originX,
         clientX: session.latestX,
       });
-      const clamped = input.clampDestination(proposedDeltaFrames);
-      const preparation = input.prepareAtDestination(clamped.deltaFrames);
+      const direction = session.direction ?? 'right';
+      // Clamp the raw delta to the locked direction — reverse travel no-ops.
+      const delta = direction === 'right' ? Math.max(0, rawDelta) : Math.min(0, rawDelta);
+      const clamped = input.clampDestination(delta, direction);
+      const preparation = input.prepareAtDestination(clamped.deltaFrames, direction);
       if (!preparation.ok) {
         session.publication = null;
         session.rejection = { reason: preparation.reason, detail: preparation.detail };
         clearPaint();
+        input.onBlocked?.(preparation.reason, preparation.detail);
         return;
       }
       session.publication = preparation.publication;
@@ -246,6 +259,8 @@ export function usePhysicsPaintPushDrag<Publication>(
     const beginDrag = () => {
       if (session.started) return false;
       session.started = true;
+      // Lock the direction from the drag sign (right if the pointer moved right).
+      session.direction = session.latestX >= session.originX ? 'right' : 'left';
       try {
         sourceElement.setPointerCapture(session.pointerId);
       } catch {

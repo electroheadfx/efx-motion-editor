@@ -4394,6 +4394,45 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     expect(mapping.c9).toBe(51);
   });
 
+  it('Push Left is blocked at frame 0 while Push Right still works (blocked-left + free-right)', () => {
+    // A [0,10) flush at frame 0, B [20,30), C [40,50). Anchor B. Push Left's
+    // prefix set (A+B) can't cross frame 0 → no valid movement → rejection.
+    // Push Right's suffix set (B+C) has room → resolves. The blocked direction
+    // must never poison the other direction.
+    const identities = Object.freeze([
+      { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
+      { keyId: 'a3', appFrame: 3 }, { keyId: 'a4', appFrame: 4 }, { keyId: 'a5', appFrame: 5 },
+      { keyId: 'a6', appFrame: 6 }, { keyId: 'a7', appFrame: 7 }, { keyId: 'a8', appFrame: 8 },
+      { keyId: 'a9', appFrame: 9 },
+      { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 21 }, { keyId: 'b2', appFrame: 22 },
+      { keyId: 'b3', appFrame: 23 }, { keyId: 'b4', appFrame: 24 }, { keyId: 'b5', appFrame: 25 },
+      { keyId: 'b6', appFrame: 26 }, { keyId: 'b7', appFrame: 27 }, { keyId: 'b8', appFrame: 28 },
+      { keyId: 'b9', appFrame: 29 },
+      { keyId: 'c0', appFrame: 40 }, { keyId: 'c1', appFrame: 41 }, { keyId: 'c2', appFrame: 42 },
+      { keyId: 'c3', appFrame: 43 }, { keyId: 'c4', appFrame: 44 }, { keyId: 'c5', appFrame: 45 },
+      { keyId: 'c6', appFrame: 46 }, { keyId: 'c7', appFrame: 47 }, { keyId: 'c8', appFrame: 48 },
+      { keyId: 'c9', appFrame: 49 },
+    ]);
+    const left = resolvePush(identities, 'left', { anchorKeyId: 'b0' }, 2, {
+      capacity: 60,
+      incomingInterpolationBreakKeyIds: ['b0', 'c0'],
+    });
+    expect(left.ok).toBe(false);
+    if (left.ok) throw new Error('Push Left must be blocked at frame 0');
+    expect(left.failure.code).toBe('no-free-space-in-direction');
+
+    const right = resolvePush(identities, 'right', { anchorKeyId: 'b0' }, 2, {
+      capacity: 60,
+      incomingInterpolationBreakKeyIds: ['b0', 'c0'],
+    });
+    expect(right.ok).toBe(true);
+    if (!right.ok) throw new Error('Push Right must resolve');
+    const mapping = Object.fromEntries(right.proposal.mapping);
+    expect(mapping.a0).toBe(0);
+    expect(mapping.b0).toBe(22);
+    expect(mapping.c0).toBe(42);
+  });
+
   it('clamps a Push Left at frame 0 — the moved set stops at the boundary (directional nearest-free search)', () => {
     // A [5,15): pushing left by 8 wants delta -8 but frame 0 stops at -5.
     const resolution = resolvePush(buildStaggeredKeyRails(), 'left', { anchorKeyId: 'a9' }, 8, {

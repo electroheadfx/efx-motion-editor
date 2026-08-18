@@ -1,38 +1,31 @@
 import { signal } from '@preact/signals';
 
-export type PushToolDirection = 'right' | 'left';
-
 /**
- * Session-only armed Push tool state (D-19, 43.4-02 precedent). The armed
- * direction lives in a focused sibling module so armed state never enters
+ * Session-only armed Push tool state (D-19, 43.4-02 precedent). The armed flag
+ * lives in a focused sibling module so armed state never enters
  * PhysicsPaintStudio.tsx logic and is NEVER persisted, serialized, or part of
  * any document/history snapshot — save/reopen always starts disarmed. The
- * strip consumes the signal for paint only (armed tint, directional cursor).
+ * strip consumes the signal for paint only (armed tint, cursor).
+ *
+ * 43.5-05 design revision: ONE Push tool, selection-first, direction from the
+ * drag. The armed state is a plain boolean — no direction is chosen at arm
+ * time. The selected Rail is the explicit anchor; the drag direction (right or
+ * left) chooses the moved set on drag start.
  */
-const armedDirection = signal<PushToolDirection | null>(null);
+const armed = signal(false);
 
 /** Subscribing read (D-19): components that render armed state re-render on
  *  arm/disarm changes — used by the strip tint, aria-pressed, and cursor. */
 export function isPushToolArmed(): boolean {
-  return armedDirection.value !== null;
-}
-
-/** Subscribing read — the directional cursor and armed tint render from this. */
-export function getArmedPushToolDirection(): PushToolDirection | null {
-  return armedDirection.value;
+  return armed.value;
 }
 
 /**
- * Arm/disarm toggle (D-06): click arms; re-click disarms; arming the other
- * Push tool switches direction in one click. Returns true whenever the armed
- * state changed.
+ * Arm/disarm toggle (D-06): click arms; re-click disarms. Returns true whenever
+ * the armed state changed.
  */
-export function togglePushTool(direction: PushToolDirection): boolean {
-  if (armedDirection.peek() === direction) {
-    armedDirection.value = null;
-    return true;
-  }
-  armedDirection.value = direction;
+export function togglePushTool(): boolean {
+  armed.value = !armed.peek();
   return true;
 }
 
@@ -42,7 +35,7 @@ export function togglePushTool(direction: PushToolDirection): boolean {
  * Escape/transition handles at most one layer (Pitfall 2, D-18).
  */
 export function disarmPushTool(): boolean {
-  if (armedDirection.peek() === null) return false;
-  armedDirection.value = null;
+  if (!armed.peek()) return false;
+  armed.value = false;
   return true;
 }

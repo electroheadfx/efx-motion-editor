@@ -38,6 +38,7 @@ import {
   type PushDragPreparationResult,
   type PushDragSourceElement,
   type PushDragWindowLike,
+  type PushToolDirection,
 } from './usePhysicsPaintPushDrag';
 
 type Publication = Readonly<{ deltaFrames: number }>;
@@ -123,8 +124,8 @@ function pointerEvent(source: SourceDouble, overrides: Partial<PointerEvent> = {
 }
 
 function createHarness(options: {
-  readonly clampDestination?: (proposedDeltaFrames: number) => PushDragClampResult;
-  readonly prepareAtDestination?: (deltaFrames: number) => PushDragPreparationResult<Publication>;
+  readonly clampDestination?: (proposedDeltaFrames: number, direction: PushToolDirection) => PushDragClampResult;
+  readonly prepareAtDestination?: (deltaFrames: number, direction: PushToolDirection) => PushDragPreparationResult<Publication>;
   readonly onDropCommit?: (publication: Publication) => Promise<boolean>;
 } = {}) {
   hookRuntime.reset();
@@ -134,10 +135,10 @@ function createHarness(options: {
     ({ originClientX, clientX }: { originClientX: number; clientX: number }) => clientX - originClientX,
   );
   const clampDestination = vi.fn(
-    options.clampDestination ?? ((deltaFrames: number): PushDragClampResult => ({ deltaFrames, blockedEdge: null })),
+    options.clampDestination ?? ((deltaFrames: number, _direction: PushToolDirection): PushDragClampResult => ({ deltaFrames, blockedEdge: null })),
   );
   const prepareAtDestination = vi.fn(
-    options.prepareAtDestination ?? ((deltaFrames: number) => ({
+    options.prepareAtDestination ?? ((deltaFrames: number, _direction: PushToolDirection) => ({
       ok: true as const,
       publication: Object.freeze({ deltaFrames }),
     })),
@@ -212,8 +213,8 @@ describe('usePhysicsPaintPushDrag', () => {
     expect(harness.source.style.cursor).toBe('pointer');
   });
 
-  it('projects the pointer delta, clamps it, and prepares the retained publication', () => {
-    const clampDestination = vi.fn((_deltaFrames: number): PushDragClampResult => ({
+  it('projects the pointer delta, locks the direction from the drag sign, clamps it, and prepares the retained publication', () => {
+    const clampDestination = vi.fn((_deltaFrames: number, _direction: PushToolDirection): PushDragClampResult => ({
       deltaFrames: 3,
       blockedEdge: 'right',
     }));
@@ -223,8 +224,10 @@ describe('usePhysicsPaintPushDrag', () => {
     harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
 
     expect(harness.projectDestination).toHaveBeenCalledWith({ originClientX: 100, clientX: 105 });
-    expect(clampDestination).toHaveBeenCalledWith(5);
-    expect(harness.prepareAtDestination).toHaveBeenCalledWith(3);
+    // The drag moved right (105 > 100), so the direction locks to 'right' and
+    // both clamp and prepare receive it.
+    expect(clampDestination).toHaveBeenCalledWith(5, 'right');
+    expect(harness.prepareAtDestination).toHaveBeenCalledWith(3, 'right');
     expect(harness.onPreviewChange).toHaveBeenCalledTimes(1);
     expect(harness.render().ghost).toEqual({ active: true, deltaFrames: 3, blockedEdge: 'right' });
   });
