@@ -7,12 +7,15 @@ import {
   clampPhysicPaintGroupDragDestination,
   clampPhysicPaintKeyRailDragDestination,
   clampPhysicPaintPushDestination,
+  clampPhysicPaintRailSetMoveDelta,
   createPhysicPaintRotoPasteKeyGroupIntent,
   derivePhysicPaintPushSet,
+  derivePhysicPaintRailSetMove,
   projectPhysicPaintRotoPhysicalTimeline,
   resolvePhysicPaintRotoPhysicalEdit,
   validatePhysicPaintRotoPhysicalEditSemanticDelta,
 } from './physicsPaintRotoPhysicalResolver';
+import type { PhysicPaintRailSetMoveMember } from './physicsPaintRotoPhysicalResolver';
 import type {
   PhysicPaintRotoKeyIdentity,
   PhysicPaintRotoLoopClip,
@@ -4869,5 +4872,292 @@ describe('derivePhysicPaintPushSet and clampPhysicPaintPushDestination (exported
       leftBoundary: 10,
       capacity: 40,
     })).toEqual({ ok: false });
+  });
+});
+
+describe('derivePhysicPaintRailSetMove and clampPhysicPaintRailSetMoveDelta (exported pure authorities)', () => {
+  // A [0,10) ordinary Key Rail, loop-G source-attached [20,28) over [g0,g1],
+  // C [30,40) ordinary Key Rail. loop-D is a duplicated placement [2,10) of the
+  // SAME [g0,g1] source cycle — never attached (43.3 algebra).
+  const buildMixedIdentities = (): readonly PhysicPaintRotoKeyIdentity[] => Object.freeze([
+    { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
+    { keyId: 'a3', appFrame: 3 }, { keyId: 'a4', appFrame: 4 }, { keyId: 'a5', appFrame: 5 },
+    { keyId: 'a6', appFrame: 6 }, { keyId: 'a7', appFrame: 7 }, { keyId: 'a8', appFrame: 8 },
+    { keyId: 'a9', appFrame: 9 },
+    { keyId: 'g0', appFrame: 20 }, { keyId: 'g1', appFrame: 21 },
+    { keyId: 'c0', appFrame: 30 }, { keyId: 'c1', appFrame: 31 }, { keyId: 'c2', appFrame: 32 },
+    { keyId: 'c3', appFrame: 33 }, { keyId: 'c4', appFrame: 34 }, { keyId: 'c5', appFrame: 35 },
+    { keyId: 'c6', appFrame: 36 }, { keyId: 'c7', appFrame: 37 }, { keyId: 'c8', appFrame: 38 },
+    { keyId: 'c9', appFrame: 39 },
+  ]);
+
+  const buildMixedLoopClips = (): readonly PhysicPaintRotoLoopClip[] => Object.freeze([
+    Object.freeze({
+      loopId: 'loop-G',
+      placementStart: 20,
+      sourceKeyIds: ['g0', 'g1'],
+      repeat: 4,
+      mode: 'static',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 20,
+      originalEndExclusive: 28,
+      visibleRanges: Object.freeze([Object.freeze({ start: 20, endExclusive: 28 })]),
+      frameOverrides: Object.freeze([]),
+    }) as PhysicPaintRotoLoopClip,
+  ]);
+
+  const buildTwoKeyRails = (): readonly PhysicPaintRotoKeyIdentity[] => Object.freeze([
+    { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
+    { keyId: 'a3', appFrame: 3 }, { keyId: 'a4', appFrame: 4 }, { keyId: 'a5', appFrame: 5 },
+    { keyId: 'a6', appFrame: 6 }, { keyId: 'a7', appFrame: 7 }, { keyId: 'a8', appFrame: 8 },
+    { keyId: 'a9', appFrame: 9 },
+    { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 21 }, { keyId: 'b2', appFrame: 22 },
+    { keyId: 'b3', appFrame: 23 }, { keyId: 'b4', appFrame: 24 }, { keyId: 'b5', appFrame: 25 },
+    { keyId: 'b6', appFrame: 26 }, { keyId: 'b7', appFrame: 27 }, { keyId: 'b8', appFrame: 28 },
+    { keyId: 'b9', appFrame: 29 },
+  ]);
+
+  const deriveRanges = (
+    identities: readonly PhysicPaintRotoKeyIdentity[],
+    loopClips: readonly PhysicPaintRotoLoopClip[],
+  ) => derivePhysicPaintRotoLoopRanges({
+    identities,
+    loopClips,
+    capacity: 40,
+    interpolationEnabled: false,
+  });
+
+  const keyRailA = (): PhysicPaintRailSetMoveMember => ({
+    kind: 'key-rail',
+    firstKeyId: 'a0',
+    keyIds: ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9'],
+  });
+  const keyRailB = (): PhysicPaintRailSetMoveMember => ({
+    kind: 'key-rail',
+    firstKeyId: 'b0',
+    keyIds: ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9'],
+  });
+
+  it('derives the explicit set from mixed Key Rail + source-attached Group members with no straddle', () => {
+    const identities = buildMixedIdentities();
+    const loopRangeContext = deriveRanges(identities, buildMixedLoopClips());
+    const set = derivePhysicPaintRailSetMove({
+      members: [keyRailA(), { kind: 'loop', loopId: 'loop-G' }],
+      identities,
+      loopRanges: loopRangeContext.ranges,
+      loopClips: buildMixedLoopClips(),
+      incomingInterpolationBreakKeyIds: [],
+    });
+
+    expect(set.ok).toBe(true);
+    if (!set.ok) throw new Error('Set derivation must resolve');
+    expect(set.members).toEqual([keyRailA(), { kind: 'loop', loopId: 'loop-G' }]);
+    expect([...set.movedKeyIds].sort()).toEqual([
+      'a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'g0', 'g1',
+    ]);
+    expect(set.movedSetBounds).toEqual({ firstFrame: 0, lastEndExclusive: 28 });
+    expect(set.straddle).toBeNull();
+  });
+
+  it('reports a straddle verdict when a selected attached Group shares its source cycle with an unselected Group', () => {
+    const identities = [
+      { keyId: 'g0', appFrame: 20 },
+      { keyId: 'g1', appFrame: 21 },
+    ] as const;
+    const loopRangeContext = deriveRanges(identities, buildPushGroupClips());
+    const set = derivePhysicPaintRailSetMove({
+      members: [{ kind: 'loop', loopId: 'loop-G' }],
+      identities,
+      loopRanges: loopRangeContext.ranges,
+      loopClips: buildPushGroupClips(),
+      incomingInterpolationBreakKeyIds: [],
+    });
+
+    expect(set.ok).toBe(true);
+    if (!set.ok) throw new Error('Straddled set must derive');
+    expect(set.straddle).toEqual({
+      straddled: true,
+      movedGroupLoopId: 'loop-G',
+      fixedGroupLoopId: 'loop-D',
+      sourceCycleId: getPhysicsPaintRotoSourceCycleId(['g0', 'g1']),
+    });
+  });
+
+  it('excludes duplicated-placement source keys from the moved set and never straddles', () => {
+    const identities = [
+      { keyId: 'g0', appFrame: 20 },
+      { keyId: 'g1', appFrame: 21 },
+    ] as const;
+    const loopRangeContext = deriveRanges(identities, buildPushGroupClips());
+    const set = derivePhysicPaintRailSetMove({
+      members: [{ kind: 'loop', loopId: 'loop-D' }],
+      identities,
+      loopRanges: loopRangeContext.ranges,
+      loopClips: buildPushGroupClips(),
+      incomingInterpolationBreakKeyIds: [],
+    });
+
+    expect(set.ok).toBe(true);
+    if (!set.ok) throw new Error('Duplicated-placement set must derive');
+    expect([...set.movedKeyIds]).toEqual([]);
+    expect(set.movedSetBounds).toEqual({ firstFrame: 2, lastEndExclusive: 10 });
+    expect(set.straddle).toBeNull();
+  });
+
+  it('fails closed on stale or unknown members', () => {
+    const identities = buildTwoKeyRails();
+    const loopRangeContext = deriveRanges(identities, []);
+    const base = {
+      identities,
+      loopRanges: loopRangeContext.ranges,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    };
+
+    // Unknown key-rail firstKeyId.
+    expect(derivePhysicPaintRailSetMove({
+      ...base,
+      members: [{ kind: 'key-rail', firstKeyId: 'zzz', keyIds: ['zzz'] }],
+    })).toEqual({ ok: false, code: 'unknown-operation-identity', text: expect.any(String) });
+    // Key-rail member whose keyIds do not match exactly one derived segment.
+    expect(derivePhysicPaintRailSetMove({
+      ...base,
+      members: [{ kind: 'key-rail', firstKeyId: 'a0', keyIds: ['a0', 'a2'] }],
+    })).toEqual({ ok: false, code: 'malformed-target', text: expect.any(String) });
+    // Unknown loop member.
+    expect(derivePhysicPaintRailSetMove({
+      ...base,
+      members: [{ kind: 'loop', loopId: 'loop-unknown' }],
+    })).toEqual({ ok: false, code: 'unknown-operation-identity', text: expect.any(String) });
+    // Duplicate members resolving to the same rail.
+    expect(derivePhysicPaintRailSetMove({
+      ...base,
+      members: [keyRailA(), keyRailA()],
+    })).toEqual({ ok: false, code: 'duplicate-id', text: expect.any(String) });
+  });
+
+  it('clamps a leftward move at the unselected Key Rail boundary and reports the left blocked edge', () => {
+    const identities = buildTwoKeyRails();
+    const loopRangeContext = deriveRanges(identities, []);
+    expect(clampPhysicPaintRailSetMoveDelta({
+      members: [keyRailB()],
+      identities,
+      loopRanges: loopRangeContext.ranges,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      proposedDelta: -15,
+      capacity: 40,
+    })).toEqual({ ok: true, delta: -10, blockedEdge: 'left', collidingMemberId: 'b0' });
+  });
+
+  it('clamps a rightward move at capacity and reports the right blocked edge', () => {
+    const identities = buildTwoKeyRails();
+    const loopRangeContext = deriveRanges(identities, []);
+    expect(clampPhysicPaintRailSetMoveDelta({
+      members: [keyRailB()],
+      identities,
+      loopRanges: loopRangeContext.ranges,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      proposedDelta: 15,
+      capacity: 40,
+    })).toEqual({ ok: true, delta: 10, blockedEdge: 'right', collidingMemberId: 'b0' });
+  });
+
+  it('clamps a rightward move at an unselected Key Rail start', () => {
+    const identities = buildTwoKeyRails();
+    const loopRangeContext = deriveRanges(identities, []);
+    expect(clampPhysicPaintRailSetMoveDelta({
+      members: [keyRailA()],
+      identities,
+      loopRanges: loopRangeContext.ranges,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      proposedDelta: 15,
+      capacity: 40,
+    })).toEqual({ ok: true, delta: 10, blockedEdge: 'right', collidingMemberId: 'a0' });
+  });
+
+  it('clamps a leftward move at frame 0', () => {
+    const identities = buildTwoKeyRails();
+    const loopRangeContext = deriveRanges(identities, []);
+    expect(clampPhysicPaintRailSetMoveDelta({
+      members: [keyRailA()],
+      identities,
+      loopRanges: loopRangeContext.ranges,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      proposedDelta: -5,
+      capacity: 40,
+    })).toEqual({ ok: true, delta: 0, blockedEdge: 'left', collidingMemberId: 'a0' });
+  });
+
+  it('clamps a leftward move at an unselected Group occupancy end', () => {
+    const identities = [
+      { keyId: 'g0', appFrame: 20 },
+      { keyId: 'g1', appFrame: 21 },
+    ] as const;
+    const loopRangeContext = deriveRanges(identities, buildPushGroupClips());
+    expect(clampPhysicPaintRailSetMoveDelta({
+      members: [{ kind: 'loop', loopId: 'loop-G' }],
+      identities,
+      loopRanges: loopRangeContext.ranges,
+      loopClips: buildPushGroupClips(),
+      incomingInterpolationBreakKeyIds: [],
+      proposedDelta: -15,
+      capacity: 40,
+    })).toEqual({ ok: true, delta: -10, blockedEdge: 'left', collidingMemberId: 'loop-G' });
+  });
+
+  it('fails closed when zero valid movement exists (set flush against an obstruction)', () => {
+    const identities = buildTwoKeyRails();
+    const loopRangeContext = deriveRanges(identities, []);
+    // A [0,10) selected, B [10,20) unselected flush: any rightward step collides.
+    const flushIdentities = Object.freeze([
+      { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
+      { keyId: 'a3', appFrame: 3 }, { keyId: 'a4', appFrame: 4 }, { keyId: 'a5', appFrame: 5 },
+      { keyId: 'a6', appFrame: 6 }, { keyId: 'a7', appFrame: 7 }, { keyId: 'a8', appFrame: 8 },
+      { keyId: 'a9', appFrame: 9 },
+      { keyId: 'b0', appFrame: 10 }, { keyId: 'b1', appFrame: 11 }, { keyId: 'b2', appFrame: 12 },
+      { keyId: 'b3', appFrame: 13 }, { keyId: 'b4', appFrame: 14 }, { keyId: 'b5', appFrame: 15 },
+      { keyId: 'b6', appFrame: 16 }, { keyId: 'b7', appFrame: 17 }, { keyId: 'b8', appFrame: 18 },
+      { keyId: 'b9', appFrame: 19 },
+    ]);
+    const flushRanges = deriveRanges(flushIdentities, []);
+    expect(clampPhysicPaintRailSetMoveDelta({
+      members: [keyRailA()],
+      identities: flushIdentities,
+      loopRanges: flushRanges.ranges,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      proposedDelta: 5,
+      capacity: 40,
+    })).toEqual({ ok: false });
+    // B [20,30) selected flush against capacity 30: any rightward step overflows.
+    const capacityRanges = deriveRanges(identities, []);
+    expect(clampPhysicPaintRailSetMoveDelta({
+      members: [keyRailB()],
+      identities,
+      loopRanges: capacityRanges.ranges,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      proposedDelta: 5,
+      capacity: 30,
+    })).toEqual({ ok: false });
+  });
+
+  it('treats delta 0 as a valid no-change input, never a failure', () => {
+    const identities = buildTwoKeyRails();
+    const loopRangeContext = deriveRanges(identities, []);
+    expect(clampPhysicPaintRailSetMoveDelta({
+      members: [keyRailB()],
+      identities,
+      loopRanges: loopRangeContext.ranges,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      proposedDelta: 0,
+      capacity: 40,
+    })).toEqual({ ok: true, delta: 0, blockedEdge: null, collidingMemberId: null });
   });
 });
