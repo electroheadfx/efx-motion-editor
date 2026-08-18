@@ -36,6 +36,11 @@ export interface PhysicsPaintStudioKeyboardActions {
    *  Select All also disarms via this action (D-20). No Push key binding
    *  exists — activation is toolbar-only (D-10). */
   disarmPushTool?: () => boolean;
+  /** 43.6-06: disarm the armed Solo arm. Returns true ONLY when solo was
+   *  actually armed, so the Escape layer consumes at most one layer (D-04) —
+   *  the solo layer sits between the push disarm layer and selection collapse.
+   *  No Solo key binding exists — activation is toolbar-only. */
+  disarmSolo?: () => boolean;
 }
 
 export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
@@ -175,6 +180,13 @@ export function dispatchPhysicsPaintStudioKeyDown(
     // tool was actually armed — and never also collapses the selection
     // (Pitfall 2). One Escape handles at most one layer.
     if (actions.disarmPushTool?.()) {
+      event.preventDefault();
+      return;
+    }
+    // Armed Solo disarm layer (43.6-06, D-04): consumes the Escape only when
+    // solo was actually armed — between the push disarm layer and selection
+    // collapse. One Escape handles at most one layer.
+    if (actions.disarmSolo?.()) {
       event.preventDefault();
       return;
     }

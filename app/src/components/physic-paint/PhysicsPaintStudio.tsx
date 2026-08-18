@@ -33,6 +33,8 @@ import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPain
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
 import { disarmPushTool, isPushCommitInFlight } from './view/physicsPaintPushArmedTool';
+import { disarmSolo } from './view/physicsPaintSoloArm';
+import { deriveSoloPlaybackWindow } from './roto/physicsPaintRotoSoloWindow';
 import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyboard';
 import { createIdentityMemo, usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
 import { useRotoTimelineActions, type RotoGroupLifecycleDeleteTarget, type RotoKeyRailSelection } from './hooks/useRotoTimelineActions';
@@ -177,6 +179,9 @@ export function PhysicsPaintStudio() {
         selectionAnchorKeyId.value = selectedKeyId.value;
         rotoSpacingSelection.value = null;
         railSetSelection.value = null;
+        // 43.6-06 (D-14): a replaced launch starts solo disarmed — the
+        // session-only arm never survives a launch replacement.
+        disarmSolo();
         // 43.6 D-06: a replaced launch prunes the session-only snapshot
         // side-channel alongside the set itself (T-43.6-03).
         clearRailSetSnapshots();
@@ -376,6 +381,8 @@ export function PhysicsPaintStudio() {
     rotoSpacingSelection.value = null;
     // 43.6 D-04: Select All is a key selection — it clears the rail set.
     railSetSelection.value = null;
+    // 43.6-06 (D-14): Select All is a rail-selection change — it disarms solo.
+    disarmSolo();
     selectedLoopClipIds.value = [];
     loopSelectionAnchorId.value = null;
     selectedLoopClipId.value = null;
@@ -637,10 +644,15 @@ export function PhysicsPaintStudio() {
   // survives a Studio reopen (D-19). A push tool mid-commit is exempt (smoke
   // 3): its own mutation must not disarm it, so the tool stays armed for the
   // next chained push.
+  // 43.6-06 (D-14): mutation-lock entry also disarms an armed Solo — solo
+  // never gates mutations, disarm-on-lock only. No commit-in-flight guard:
+  // solo is not a mutation tool.
   useEffect(() => {
     if (mutationLocked && !isPushCommitInFlight()) disarmPushTool();
+    if (mutationLocked) disarmSolo();
     return () => {
       if (!isPushCommitInFlight()) disarmPushTool();
+      disarmSolo();
     };
   }, [mutationLocked]);
   // Navigation already locks the engine input and navigation coordinator. Keep
@@ -1127,6 +1139,29 @@ export function PhysicsPaintStudio() {
       initialSettings: initialRotoPlaybackSettings,
       getEndFrame: () => launchContext ? physicPaintStore.getRotoPhysicalEndFrame(launchContext.layerId) : null,
       getFrame: findCachedRotoDisplayFrame,
+      // 43.6-06 (D-19): the solo window derives from the Plan 01 set, or the
+      // single-rail selection as a set of one (D-15), through the Task 1 pure
+      // derivation — the ONLY solo filter seam (the getFrames enumeration).
+      // Wiring only: no derivation logic lives in the Studio body.
+      getSoloWindow: () => {
+        const members: RailSetIdentity[] = [];
+        for (const member of effectiveRailSetSelection?.members ?? []) members.push(member);
+        if (members.length === 0) {
+          if (effectiveSelectedRotoKeyRail) {
+            members.push({ kind: 'key-rail', firstKeyId: effectiveSelectedRotoKeyRail.firstKeyId });
+          }
+          for (const loopId of effectiveSelectedLoopClipIds) members.push({ kind: 'loop', loopId });
+        }
+        if (members.length === 0) return null;
+        const cells = rotoTimelineModel.physicalCells.value;
+        return deriveSoloPlaybackWindow({
+          members,
+          keyRailSegments,
+          loopRanges: loopResolutionContext?.ranges ?? [],
+          cells,
+          capacity: cells.length,
+        });
+      },
       onStart: (frameCount) => { rotoPlaybackFrameCount.value = frameCount; },
       onFrame: (frameIndex) => {
         rotoPlaybackFrameIndex.value = frameIndex;
@@ -1251,6 +1286,9 @@ export function PhysicsPaintStudio() {
     log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
   }, bridgeMode);
   const clearRotoLoopSelection = useCallback(() => {
+    // 43.6-06 (D-14): every rail-selection setter routes through this clear —
+    // ANY rail-selection change/clear disarms an armed Solo.
+    disarmSolo();
     selectedLoopClipIds.value = [];
     loopSelectionAnchorId.value = null;
     selectedLoopClipId.value = null;
@@ -1871,13 +1909,18 @@ export function PhysicsPaintStudio() {
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,
       selectAllRotoKeys,
       disarmPushTool,
+      // 43.6-06 (D-04): the solo disarm layer sits between the push disarm
+      // layer and selection collapse in the Escape chain.
+      disarmSolo,
       collapseRotoSelection: () => {
         // 43.6 D-04: the rail-set is the top selection layer — one Escape
         // collapses the set without touching the key selection (Pitfall 2).
         // Chain order (43.5 one-Escape-one-layer): popover dismiss, push
-        // disarm, set collapse, key-selection collapse.
+        // disarm, solo disarm, set collapse, key-selection collapse.
         if (railSetSelection.value !== null) {
           railSetSelection.value = null;
+          // 43.6-06 (D-14): collapsing the set is a rail-selection change.
+          disarmSolo();
           return;
         }
         // D-02: collapse only an active multi-selection; a single-key

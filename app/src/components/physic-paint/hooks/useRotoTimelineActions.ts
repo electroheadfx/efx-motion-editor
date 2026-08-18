@@ -961,6 +961,22 @@ export function buildRailSetCopy(members: readonly RailSetCopyMember[]): string 
 }
 
 /**
+ * The locked M6 armed-solo capsule line (43.6-06, D-20/D-27): 'Solo - {N}
+ * Rails, frames {A}-{B}.' (singular 'Solo - 1 Rail, ...'). Same canonical
+ * half-open interval range derivation as the set copy (A = first member first
+ * frame; B = last member effective end minus 1); the empty set produces no
+ * line. ASCII hyphens per the plan acceptance criteria (43.6-04 precedent).
+ */
+export function buildRailSetSoloCopy(members: readonly RailSetCopyMember[]): string | null {
+  if (members.length === 0) return null;
+  const ordered = [...members].sort((left, right) => left.firstFrame - right.firstFrame);
+  const firstFrame = ordered[0].firstFrame;
+  const lastFrame = Math.max(...ordered.map((member) => member.effectiveEndExclusive)) - 1;
+  const railWord = ordered.length === 1 ? 'Rail' : 'Rails';
+  return `Solo - ${ordered.length} ${railWord}, frames ${firstFrame}-${lastFrame}.`;
+}
+
+/**
  * The M1 rail-tooltip set sentence appended to a member's existing Selected
  * form. The anchor member carries the ' Range anchor.' prefix; the empty set
  * produces no sentence. Leading space matches the "existing Selected form,

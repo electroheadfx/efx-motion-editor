@@ -511,7 +511,9 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
     const collapseEnd = studio.indexOf('toggleShortcuts:', collapseStart);
     const collapse = studio.slice(collapseStart, collapseEnd);
     expect(collapseStart).toBeGreaterThanOrEqual(0);
-    expect(collapse).toContain('if (railSetSelection.value !== null) {\n          railSetSelection.value = null;\n          return;\n        }');
+    // 43.6-06 (D-14): collapsing the set also disarms an armed Solo — the
+    // set collapse is a rail-selection change.
+    expect(collapse).toContain('if (railSetSelection.value !== null) {\n          railSetSelection.value = null;\n          // 43.6-06 (D-14): collapsing the set is a rail-selection change.\n          disarmSolo();\n          return;\n        }');
     expect(collapse).toContain('if (selectedKeyIds.value.length <= 1) return;');
   });
 

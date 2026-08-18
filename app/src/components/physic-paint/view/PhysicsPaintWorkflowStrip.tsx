@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
 
 import type { ComponentChildren, RefObject } from 'preact';
 import { createPortal, memo } from 'preact/compat';
@@ -67,6 +67,7 @@ import {
   setPushCommitInFlight,
   togglePushTool,
 } from './physicsPaintPushArmedTool';
+import { isSoloArmed, toggleSolo } from './physicsPaintSoloArm';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 import { shouldRestoreOrphanedKeyRailFocus } from './physicsPaintKeyRailFocus';
 import type { GroupRailDragPreviewState } from '../hooks/usePhysicsPaintGroupRailDrag';
@@ -94,6 +95,7 @@ import type {
 } from '../hooks/useRotoTimelineActions';
 import {
   buildRailSetCopy,
+  buildRailSetSoloCopy,
   mapRotoPushProductReason,
   mapRotoRailSetMoveProductReason,
   type RailSetCopyMember,
@@ -1319,6 +1321,23 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const deleteKeyTooltip = useStyledTooltip();
   const selectAllTooltip = useStyledTooltip();
   const pushTooltip = useStyledTooltip();
+  // 43.6-06 Solo arm (D-14/D-15/D-20): a mode toggle enabled whenever ANY rail
+  // selection exists (a single selected Rail is a set of one) and editing
+  // isn't mutation-locked. Armed state lives in the sibling session-only
+  // module; the .value read subscribes this render to arm/disarm changes.
+  const soloArmed = isSoloArmed();
+  const soloArmedClass = soloArmed ? ' physics-paint-push-tool-armed' : '';
+  const hasAnyRailSelection = (props.railSetMemberLoopIds?.length ?? 0)
+    + (props.railSetMemberKeyRailIds?.length ?? 0)
+    + (props.selectedRotoLoopClipIds?.length ?? 0)
+    + (props.selectedRotoKeyRail ? 1 : 0) > 0;
+  const soloToolDisabled = keyUtilitiesDisabledByBusyState || !physicalActions || !hasAnyRailSelection;
+  const soloToolDisabledReason = soloToolDisabled
+    ? !hasAnyRailSelection
+      ? 'Select a Rail to solo.'
+      : ROTO_KEY_BUSY_STATUS_TEMPLATE
+    : null;
+  const soloTooltip = useStyledTooltip();
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
     for (const record of rotoKeyRecords) map.set(record.appFrame, record.keyId);
@@ -1934,6 +1953,64 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     }
     return buildRailSetCopy(members);
   }, [keyRailSegments, loopResolutionContext, props.railSetMemberKeyRailIds, props.railSetMemberLoopIds, props.rotoLoopClips]);
+  // 43.6-06 D-20: the armed-solo capsule line projects render-time from the
+  // arm signal + the Plan 01 solo mapper — never a status event stream
+  // (Pitfall 7). Members are the active set, or the single-rail selection as a
+  // set of one (D-15); disarmed contributes nothing (capsule resting state).
+  const soloCapsuleLine = useMemo(() => {
+    if (!soloArmed) return null;
+    const members: RailSetCopyMember[] = [];
+    const setLoopIds = props.railSetMemberLoopIds ?? [];
+    const setKeyRailIds = props.railSetMemberKeyRailIds ?? [];
+    if (setLoopIds.length === 0 && setKeyRailIds.length === 0) {
+      const segment = props.selectedRotoKeyRail
+        ? keyRailSegments.find((candidate) => candidate.firstKeyId === props.selectedRotoKeyRail!.firstKeyId)
+        : null;
+      if (segment) {
+        members.push({
+          kind: 'key-rail',
+          firstFrame: segment.firstKeyFrame,
+          effectiveEndExclusive: segment.lastKeyFrame + 1,
+        });
+      }
+      for (const loopId of props.selectedRotoLoopClipIds ?? []) {
+        const range = loopResolutionContext?.ranges.find((candidate) => candidate.loopId === loopId);
+        const clip = props.rotoLoopClips?.find((candidate) => candidate.loopId === loopId);
+        if (range && clip) {
+          members.push({
+            kind: 'loop',
+            firstFrame: range.placementStart,
+            effectiveEndExclusive: range.effectiveEnd,
+            mode: clip.mode,
+          });
+        }
+      }
+    } else {
+      for (const firstKeyId of setKeyRailIds) {
+        const segment = keyRailSegments.find((candidate) => candidate.firstKeyId === firstKeyId);
+        if (segment) {
+          members.push({
+            kind: 'key-rail',
+            firstFrame: segment.firstKeyFrame,
+            effectiveEndExclusive: segment.lastKeyFrame + 1,
+          });
+        }
+      }
+      for (const loopId of setLoopIds) {
+        const range = loopResolutionContext?.ranges.find((candidate) => candidate.loopId === loopId);
+        const clip = props.rotoLoopClips?.find((candidate) => candidate.loopId === loopId);
+        if (range && clip) {
+          members.push({
+            kind: 'loop',
+            firstFrame: range.placementStart,
+            effectiveEndExclusive: range.effectiveEnd,
+            mode: clip.mode,
+          });
+        }
+      }
+    }
+    return buildRailSetSoloCopy(members);
+  }, [soloArmed, keyRailSegments, loopResolutionContext, props.railSetMemberKeyRailIds, props.railSetMemberLoopIds, props.rotoLoopClips, props.selectedRotoKeyRail, props.selectedRotoLoopClipIds]);
   const railSetSize = (props.railSetMemberLoopIds?.length ?? 0) + (props.railSetMemberKeyRailIds?.length ?? 0);
   const capsuleText = getRotoStatusCapsuleViewModel({
     pendingOperation: pushDragFeedback ?? railSetDragFeedback ?? rotoDragFeedback ?? (keyUtilitiesDisabledByBusyState ? getRotoKeyBusyStatus(props.currentFrame) : null),
@@ -1943,6 +2020,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       { text: scriptStatus, recency: 1 },
       { text: generatedGuardStatus, recency: 0 },
     ],
+    soloLine: soloCapsuleLine,
     setCopy: railSetCopy,
     ambient: getRotoStatusCapsuleIdleContext({
       cellKind: currentSemanticCell?.kind ?? null,
@@ -3222,6 +3300,48 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={pushTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy('Push mode: drag any Rail to select it and move it (and everything after it) right or left. Escape or another tool leaves push mode.', pushToolDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+              </div>
+              {/* 43.6-06 Solo arm (UI-SPEC M2): ONE compact icon button in its
+                  own group immediately after the Push group — a mode toggle
+                  enabled whenever ANY rail selection exists (single rail = set
+                  of one, D-15). Armed paint reuses the 43.5 armed-tool classes
+                  byte-for-byte (no new color literal); aria-pressed reflects
+                  armed state; the guarded tooltip idiom matches the sibling
+                  key tools. */}
+              <div class="physics-paint-solo-tool-group" role="group" aria-label="Solo playback">
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={soloTooltip.onPointerEnter} onPointerLeave={soloTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class={`physics-paint-roto-key-icon-button${soloArmedClass}`}
+                    aria-label="Solo selected Rails"
+                    aria-pressed={soloArmed ? 'true' : 'false'}
+                    aria-disabled={soloToolDisabled ? 'true' : undefined}
+                    aria-describedby={soloToolDisabled ? 'roto-key-action-reason-solo' : undefined}
+                    onFocus={soloTooltip.onFocus}
+                    onBlur={soloTooltip.onBlur}
+                    onClick={() => {
+                      soloTooltip.hide();
+                      if (soloToolDisabled) return;
+                      // Mode toggle: arming never starts or stops transport
+                      // (D-16); re-click disarms.
+                      toggleSolo();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && soloToolDisabled) event.preventDefault();
+                    }}
+                  >
+                    <Focus size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Solo</span>
+                  </button>
+                  {soloToolDisabled ? (
+                    <span id="roto-key-action-reason-solo" class="physics-paint-sr-only">{soloToolDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={soloTooltip.visible} region="bottom">
+                    {soloArmed
+                      ? 'Exit solo playback.'
+                      : buildGuardedActionTooltipCopy('Solo the selected Rails - play only their content within their frame range. Click again or press Escape to exit.', soloToolDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
               </div>
