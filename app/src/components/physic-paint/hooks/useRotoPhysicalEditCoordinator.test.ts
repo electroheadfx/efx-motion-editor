@@ -17,6 +17,7 @@ import type {
   PhysicPaintRotoAuthorityResult,
   PhysicPaintRotoPhysicalEditApplyPayload,
   PhysicPaintRotoPhysicalEditApplyResult,
+  PhysicPaintRotoPhysicalEditSemanticDelta,
   RailSetDeleteMember,
 } from '../../../types/physicPaint';
 import {
@@ -676,7 +677,9 @@ function harness(options: {
     error: 'Parent rejected empty segment.',
   }));
   const mismatch = () => coordinator.consumePhysicalEditResult(makeResult({ selectedAppFrame: 15 }));
-  const mismatchDelta = (semanticDelta: unknown) => coordinator.consumePhysicalEditResult(makeResult({ semanticDelta }));
+  const mismatchDelta = (semanticDelta: unknown) => coordinator.consumePhysicalEditResult(makeResult({
+    semanticDelta: semanticDelta as PhysicPaintRotoPhysicalEditSemanticDelta,
+  }));
   return {
     coordinator,
     execute,
@@ -2767,7 +2770,7 @@ describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
 
   it('accepts Delete Rails as one parent-authority command with no child intent', async () => {
     const test = harness();
-    const before = groupLifecycleDocument();
+    const before = groupLifecycleDocument({ sharedSourceOwner: true });
     test.seedGroupDocument(before);
     const acceptedEvents: unknown[] = [];
     const unsubscribe = test.coordinator.acceptedOutput.subscribe((value) => {
@@ -2796,7 +2799,7 @@ describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
     expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(4);
     expect(acceptedEvents).toHaveLength(1);
     expect(test.coordinator.acknowledgePhysicalEditSettlement(test.getPayload()!.operationId, 'release')).toBe(true);
-    expect(test.releaseLease).toHaveBeenCalledTimes(2);
+    expect(test.releaseLease).toHaveBeenCalledTimes(1);
     unsubscribe();
   });
 

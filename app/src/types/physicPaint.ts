@@ -802,6 +802,7 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'delete-action-groups'
   | 'set-interpolation-enabled'
   | 'set-interpolation-mode'
+  | 'delete-rails'
   | 'undo'
   | 'redo';
 
@@ -1104,6 +1105,7 @@ function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is Ph
     || value === 'delete-action-groups'
     || value === 'set-interpolation-enabled'
     || value === 'set-interpolation-mode'
+    || value === 'delete-rails'
     || value === 'undo'
     || value === 'redo';
 }
@@ -1269,6 +1271,31 @@ export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): valu
       && isUniqueBoundedPhysicalKeyIdCollection(value.cleanupKeyIds)
       && hasValidPhysicalRevisionTransition(value);
   }
+  if (value.kind === 'delete-rails') {
+    if (!hasOnlyKeys(value, ['kind', 'members', 'cleanupKeyIds', 'previousRevision', 'nextRevision'])) return false;
+    if (!Array.isArray(value.members) || value.members.length === 0) return false;
+    const seenRailIds = new Set<string>();
+    for (const member of value.members) {
+      if (!isRecord(member)) return false;
+      if (member.kind === 'key-rail') {
+        if (!hasOnlyKeys(member, ['kind', 'firstKeyId', 'keyIds'])) return false;
+        if (!isBoundedPhysicalKeyId(member.firstKeyId)) return false;
+        if (!hasUniqueBoundedPhysicalKeyIds(member.keyIds)) return false;
+        if (member.keyIds[0] !== member.firstKeyId) return false;
+        if (seenRailIds.has(member.firstKeyId)) return false;
+        seenRailIds.add(member.firstKeyId);
+      } else if (member.kind === 'loop') {
+        if (!hasOnlyKeys(member, ['kind', 'loopId'])) return false;
+        if (!isBoundedPhysicalKeyId(member.loopId)) return false;
+        if (seenRailIds.has(member.loopId)) return false;
+        seenRailIds.add(member.loopId);
+      } else {
+        return false;
+      }
+    }
+    return isUniqueBoundedPhysicalKeyIdCollection(value.cleanupKeyIds)
+      && hasValidPhysicalRevisionTransition(value);
+  }
   if (value.kind === 'regenerate-group') {
     return hasOnlyKeys(value, ['kind', 'groupId', 'expectedActionRevision', 'cleanupKeyIds', 'previousRevision', 'nextRevision'])
       && isBoundedPhysicalKeyId(value.groupId)
@@ -1300,6 +1327,7 @@ function operationSemanticDeltaIsValid(
     || operationKind === 'paint-group-frame'
     || operationKind === 'delete-group-frame'
     || operationKind === 'delete-group'
+    || operationKind === 'delete-rails'
     || operationKind === 'regenerate-group'
     || operationKind === 'detach-action-groups'
     || operationKind === 'delete-action-groups') {

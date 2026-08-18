@@ -31,6 +31,7 @@ import {
   proposePhysicPaintRotoActionGroupLifecycle,
   proposePhysicPaintRotoDeleteGroup,
   proposePhysicPaintRotoDeleteGroupFrame,
+  proposePhysicPaintRotoDeleteRails,
   proposePhysicPaintRotoGroupFramePaint,
   proposePhysicPaintRotoRegenerateGroup,
   type PhysicPaintRotoActionGroupLifecycleImpact,
@@ -1039,6 +1040,7 @@ const GROUP_LIFECYCLE_OPERATION_KINDS = new Set<PhysicPaintRotoPhysicalEditOpera
   'paint-group-frame',
   'delete-group-frame',
   'delete-group',
+  'delete-rails',
   'regenerate-group',
   'detach-action-groups',
   'delete-action-groups',
@@ -1209,13 +1211,15 @@ function validateCanonicalGroupLifecycleEdit(input: {
 }): string | null {
   const { payload, currentDocument } = input;
   if (!GROUP_LIFECYCLE_OPERATION_KINDS.has(payload.operationKind)) return null;
-  if (!currentDocument) return 'Group lifecycle edit requires one current physical document.';
+  const isDeleteRails = payload.operationKind === 'delete-rails';
+  const operationLabel = isDeleteRails ? 'Delete Rails' : 'Group lifecycle';
+  if (!currentDocument) return `${operationLabel} edit requires one current physical document.`;
   const delta = payload.semanticDelta;
   if (!delta || delta.kind !== payload.operationKind) {
-    return 'Group lifecycle semantic delta does not match the operation kind.';
+    return `${operationLabel} semantic delta does not match the operation kind.`;
   }
   if (payload.intent !== undefined || payload.historyProvenance !== undefined) {
-    return 'Group lifecycle edits cannot carry ordinary intent or replay provenance.';
+    return `${operationLabel} edits cannot carry ordinary intent or replay provenance.`;
   }
   const targetDocument: PhysicPaintRotoPhysicalDocument = Object.freeze({
     ...currentDocument,
@@ -1227,6 +1231,7 @@ function validateCanonicalGroupLifecycleEdit(input: {
     | ReturnType<typeof proposePhysicPaintRotoGroupFramePaint>
     | ReturnType<typeof proposePhysicPaintRotoDeleteGroupFrame>
     | ReturnType<typeof proposePhysicPaintRotoDeleteGroup>
+    | ReturnType<typeof proposePhysicPaintRotoDeleteRails>
     | ReturnType<typeof proposePhysicPaintRotoRegenerateGroup>
     | ReturnType<typeof proposePhysicPaintRotoActionGroupLifecycle>;
   if (delta.kind === 'paint-group-frame') {
@@ -1259,6 +1264,11 @@ function validateCanonicalGroupLifecycleEdit(input: {
       document: targetDocument,
       groupId: delta.groupId,
     });
+  } else if (delta.kind === 'delete-rails') {
+    recomputed = proposePhysicPaintRotoDeleteRails({
+      document: targetDocument,
+      members: delta.members,
+    });
   } else if (delta.kind === 'regenerate-group') {
     const aggregate = recomputeCanonicalGroupRegenerate({
       currentDocument,
@@ -1278,12 +1288,12 @@ function validateCanonicalGroupLifecycleEdit(input: {
       mode: delta.kind === 'detach-action-groups' ? 'detach' : 'delete',
     });
   } else {
-    return 'Group lifecycle semantic delta is not supported.';
+    return `${operationLabel} semantic delta is not supported.`;
   }
-  if (!recomputed.ok) return `Group lifecycle proposal rejected: ${recomputed.reason}.`;
+  if (!recomputed.ok) return `${operationLabel} proposal rejected: ${recomputed.reason}.`;
   if (stableSerialize(recomputed.impact, new WeakSet<object>())
       !== stableSerialize(delta as PhysicPaintRotoPhysicalEditSemanticDelta, new WeakSet<object>())) {
-    return 'Group lifecycle semantic impact does not match parent recomputation.';
+    return `${operationLabel} semantic impact does not match parent recomputation.`;
   }
   const proposal = recomputed.proposal;
   if (!sameCompletePhysicalRecords(proposal.realKeyRecords, input.proposedRecords)
@@ -1297,7 +1307,7 @@ function validateCanonicalGroupLifecycleEdit(input: {
     || proposal.selectedKeyId !== payload.selectedKeyId
     || proposal.cursorAppFrame !== input.cursorAppFrame
     || proposal.revision !== input.stagedRevision) {
-    return 'Group lifecycle target document does not match parent recomputation.';
+    return `${operationLabel} target document does not match parent recomputation.`;
   }
   return null;
 }

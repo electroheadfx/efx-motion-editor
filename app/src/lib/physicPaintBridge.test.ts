@@ -3286,7 +3286,6 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
             ? proposePhysicPaintRotoDeleteRails({
                 document: current,
                 members: [
-                  { kind: 'loop', loopId: 'group-1' },
                   { kind: 'key-rail', firstKeyId: 'ordinary', keyIds: ['ordinary'] },
                 ],
               })
@@ -4146,7 +4145,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       {
         name: 'stale revision',
         mutate: (payload) => ({ ...payload, expectedRevision: 'stale-revision' }),
-        error: 'Roto physical revision became stale before commit.',
+        error: 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. Roto physical revision became stale before commit.',
       },
       {
         name: 'divergent members',
@@ -4154,10 +4153,10 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
           ...payload,
           semanticDelta: {
             ...payload.semanticDelta,
-            members: [...payload.semanticDelta.members, { kind: 'loop', loopId: 'group-extra' }],
+            members: [{ kind: 'loop', loopId: 'group-1' }],
           },
         }),
-        error: 'Delete Rails semantic impact does not match parent recomputation.',
+        error: 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. Delete Rails semantic impact does not match parent recomputation.',
       },
       {
         name: 'divergent cleanupKeyIds',
@@ -4165,25 +4164,41 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
           ...payload,
           semanticDelta: { ...payload.semanticDelta, cleanupKeyIds: ['source-A'] },
         }),
-        error: 'Delete Rails semantic impact does not match parent recomputation.',
+        error: 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. Delete Rails semantic impact does not match parent recomputation.',
       },
       {
         name: 'divergent records',
         mutate: (payload) => ({
           ...payload,
-          records: payload.records.map((record) => (
-            record.keyId === 'ordinary' ? { ...record, appFrame: 21 } : record
-          )),
+          records: [...payload.records, (() => {
+            const { kind: _kind, ...record } = makePhysicalRecord('extra', 29);
+            return record;
+          })()],
         }),
-        error: 'Delete Rails target document does not match parent recomputation.',
+        error: 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. Delete Rails target document does not match parent recomputation.',
       },
       {
         name: 'divergent loopClips',
         mutate: (payload) => ({
           ...payload,
-          loopClips: payload.loopClips.map((group) => ({ ...group, syncState: 'synchronized' as const })),
+          loopClips: [...payload.loopClips, {
+            loopId: 'group-extra',
+            placementStart: 0,
+            sourceKeyIds: ['source-A'],
+            repeat: 1 as const,
+            mode: 'progressive' as const,
+            scriptId: 'action-1',
+            motion: { deformation: 0, position: 0 },
+            overrideColor: null,
+            syncState: 'synchronized' as const,
+            provenanceState: 'attached' as const,
+            phaseOrigin: 0,
+            originalEndExclusive: 3,
+            visibleRanges: [{ start: 0, endExclusive: 3 }],
+            frameOverrides: [],
+          }],
         }),
-        error: 'Delete Rails target document does not match parent recomputation.',
+        error: 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. Delete Rails target document does not match parent recomputation.',
       },
       {
         name: 'divergent breaks',
@@ -4191,17 +4206,17 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
           ...payload,
           incomingInterpolationBreakKeyIds: ['source-A'],
         }),
-        error: 'Delete Rails target document does not match parent recomputation.',
+        error: 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. Delete Rails target document does not match parent recomputation.',
       },
       {
         name: 'divergent selection',
-        mutate: (payload) => ({ ...payload, selectedKeyId: 'source-A' }),
-        error: 'Delete Rails target document does not match parent recomputation.',
+        mutate: (payload) => ({ ...payload, selectedKeyId: 'source-A', selectedAppFrame: 0 }),
+        error: 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. Delete Rails target document does not match parent recomputation.',
       },
       {
         name: 'divergent cursor',
         mutate: (payload) => ({ ...payload, cursorAppFrame: 7 }),
-        error: 'Delete Rails target document does not match parent recomputation.',
+        error: 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. Delete Rails target document does not match parent recomputation.',
       },
       {
         name: 'empty members',
@@ -4209,7 +4224,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
           ...payload,
           semanticDelta: { ...payload.semanticDelta, members: [] },
         }),
-        error: 'Delete Rails semantic delta does not match the operation kind.',
+        error: 'Invalid physics paint apply payload',
       },
       {
         name: 'stale member',
@@ -4220,7 +4235,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
             members: [{ kind: 'key-rail', firstKeyId: 'source-A', keyIds: ['source-A'] }],
           },
         }),
-        error: 'Delete Rails proposal rejected: stale-member.',
+        error: 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. Delete Rails proposal rejected: stale-member.',
       },
     ];
 
@@ -4230,7 +4245,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       const beforeVersion = physicPaintVersion.peek();
       const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalDocument');
 
-      const result = applyPhysicPaintPayload(variant.mutate(test.payload) as PhysicPaintApplyPayload);
+      const result = applyPhysicPaintPayload(variant.mutate(test.payload) as unknown as PhysicPaintApplyPayload);
 
       expect(result.ok, `${variant.name}: ${result.ok ? 'accepted' : result.error}`).toBe(false);
       expect(result.ok ? null : result.error).toBe(variant.error);
