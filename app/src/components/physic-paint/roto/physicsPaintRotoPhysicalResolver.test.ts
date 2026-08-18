@@ -5171,3 +5171,268 @@ describe('derivePhysicPaintRailSetMove and clampPhysicPaintRailSetMoveDelta (exp
     })).toEqual({ ok: true, delta: 0, blockedEdge: null, collidingMemberId: null });
   });
 });
+
+describe('resolvePhysicPaintRotoPhysicalEdit — move-rails (explicit-set rigid translation)', () => {
+  const buildTwoKeyRails = (): readonly PhysicPaintRotoKeyIdentity[] => Object.freeze([
+    { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
+    { keyId: 'a3', appFrame: 3 }, { keyId: 'a4', appFrame: 4 }, { keyId: 'a5', appFrame: 5 },
+    { keyId: 'a6', appFrame: 6 }, { keyId: 'a7', appFrame: 7 }, { keyId: 'a8', appFrame: 8 },
+    { keyId: 'a9', appFrame: 9 },
+    { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 21 }, { keyId: 'b2', appFrame: 22 },
+    { keyId: 'b3', appFrame: 23 }, { keyId: 'b4', appFrame: 24 }, { keyId: 'b5', appFrame: 25 },
+    { keyId: 'b6', appFrame: 26 }, { keyId: 'b7', appFrame: 27 }, { keyId: 'b8', appFrame: 28 },
+    { keyId: 'b9', appFrame: 29 },
+  ]);
+
+  const buildWithSuccessor = (): readonly PhysicPaintRotoKeyIdentity[] => Object.freeze([
+    { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
+    { keyId: 'a3', appFrame: 3 }, { keyId: 'a4', appFrame: 4 }, { keyId: 'a5', appFrame: 5 },
+    { keyId: 'a6', appFrame: 6 }, { keyId: 'a7', appFrame: 7 }, { keyId: 'a8', appFrame: 8 },
+    { keyId: 'a9', appFrame: 9 },
+    { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 21 }, { keyId: 'b2', appFrame: 22 },
+    { keyId: 'b3', appFrame: 23 }, { keyId: 'b4', appFrame: 24 }, { keyId: 'b5', appFrame: 25 },
+    { keyId: 'b6', appFrame: 26 }, { keyId: 'b7', appFrame: 27 }, { keyId: 'b8', appFrame: 28 },
+    { keyId: 'b9', appFrame: 29 },
+    { keyId: 'c0', appFrame: 30 }, { keyId: 'c1', appFrame: 31 }, { keyId: 'c2', appFrame: 32 },
+    { keyId: 'c3', appFrame: 33 }, { keyId: 'c4', appFrame: 34 }, { keyId: 'c5', appFrame: 35 },
+    { keyId: 'c6', appFrame: 36 }, { keyId: 'c7', appFrame: 37 }, { keyId: 'c8', appFrame: 38 },
+    { keyId: 'c9', appFrame: 39 },
+  ]);
+
+  const keyRailA = (): PhysicPaintRailSetMoveMember => ({
+    kind: 'key-rail',
+    firstKeyId: 'a0',
+    keyIds: ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9'],
+  });
+  const keyRailB = (): PhysicPaintRailSetMoveMember => ({
+    kind: 'key-rail',
+    firstKeyId: 'b0',
+    keyIds: ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9'],
+  });
+
+  const resolveMoveRails = (input: {
+    readonly identities: readonly PhysicPaintRotoKeyIdentity[];
+    readonly members: readonly PhysicPaintRailSetMoveMember[];
+    readonly delta: number;
+    readonly breaks?: readonly string[];
+    readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+    readonly capacity?: number;
+  }): PhysicPaintRotoPhysicalEditResolution => resolvePhysicPaintRotoPhysicalEdit({
+    identities: input.identities,
+    intent: { kind: 'move-rails', members: input.members, delta: input.delta },
+    parentEndExclusive: input.capacity ?? 40,
+    capacity: input.capacity ?? 40,
+    interpolationEnabled: true,
+    ...(input.breaks !== undefined ? { incomingInterpolationBreakKeyIds: input.breaks } : {}),
+    ...(input.loopClips !== undefined ? { loopClips: input.loopClips } : {}),
+  });
+
+  it('translates a mixed explicit set rigidly by one signed delta, preserving relative offsets and internal gaps', () => {
+    const resolution = resolveMoveRails({
+      identities: buildTwoKeyRails(),
+      members: [keyRailA(), keyRailB()],
+      delta: 5,
+      breaks: ['b0'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Mixed-set move must resolve');
+    const { proposal } = resolution;
+    expect(proposal.status.operationKind).toBe('move-rails');
+    expect(proposal.status.changed).toBe(true);
+    expect(proposal.semanticDelta).toBeNull();
+    // A [0,10) -> [5,15), B [20,30) -> [25,35): the internal gap [10,20) is
+    // preserved as [15,25).
+    expect(Object.fromEntries(proposal.mapping)).toEqual({
+      a0: 5, a1: 6, a2: 7, a3: 8, a4: 9, a5: 10, a6: 11, a7: 12, a8: 13, a9: 14,
+      b0: 25, b1: 26, b2: 27, b3: 28, b4: 29, b5: 30, b6: 31, b7: 32, b8: 33, b9: 34,
+    });
+    expect(proposal.status.affectedKeyIds).toHaveLength(20);
+    expect(proposal.nextLoopClips).toBeNull();
+    // No successor after the vacated interval and no landing gap before the
+    // first key: the input break is carried unchanged.
+    expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['b0']);
+  });
+
+  it('lands a break on the first surviving successor when a gap opens at the set edge', () => {
+    // B [20,30) moves left to [10,20) flush against A's end; C@30 (flush at the
+    // vacated end 30) becomes the first surviving successor of the vacated
+    // interval [20,30) and owns the opened-gap break (43.3 D-12).
+    const resolution = resolveMoveRails({
+      identities: buildWithSuccessor(),
+      members: [keyRailB()],
+      delta: -10,
+      breaks: [],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Edge-gap move must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      a0: 0, a1: 1, a2: 2, a3: 3, a4: 4, a5: 5, a6: 6, a7: 7, a8: 8, a9: 9,
+      b0: 10, b1: 11, b2: 12, b3: 13, b4: 14, b5: 15, b6: 16, b7: 17, b8: 18, b9: 19,
+      c0: 30, c1: 31, c2: 32, c3: 33, c4: 34, c5: 35, c6: 36, c7: 37, c8: 38, c9: 39,
+    });
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['c0']);
+  });
+
+  it('carries internal breaks with moved key identity and opens a landing-gap break on the first key', () => {
+    // b2 owns an internal break; B moves right, so b2's break travels with its
+    // identity while the landing gap before b0 (25 - 9 = 16 > 1) adds a new
+    // break on b0.
+    const resolution = resolveMoveRails({
+      identities: buildTwoKeyRails(),
+      members: [keyRailB()],
+      delta: 5,
+      breaks: ['b2'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Internal-break move must resolve');
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['b0', 'b2']);
+  });
+
+  it('never merges on adjacent landing: the moved break travels and no new break is manufactured', () => {
+    // B lands at [10,20) flush against A's end 10 (gap 1): no landing-gap
+    // break, and the existing break on b0 travels unchanged (43.4 D-19).
+    const resolution = resolveMoveRails({
+      identities: buildTwoKeyRails(),
+      members: [keyRailB()],
+      delta: -10,
+      breaks: ['b0'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Adjacent-landing move must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      a0: 0, a1: 1, a2: 2, a3: 3, a4: 4, a5: 5, a6: 6, a7: 7, a8: 8, a9: 9,
+      b0: 10, b1: 11, b2: 12, b3: 13, b4: 14, b5: 15, b6: 16, b7: 17, b8: 18, b9: 19,
+    });
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['b0']);
+  });
+
+  it('moves a duplicated placement placement-only: source keys stay and the clip translates by delta', () => {
+    const identities = [
+      { keyId: 'g0', appFrame: 20 },
+      { keyId: 'g1', appFrame: 21 },
+    ] as const;
+    const resolution = resolveMoveRails({
+      identities,
+      members: [{ kind: 'loop', loopId: 'loop-D' }],
+      delta: 5,
+      loopClips: buildPushGroupClips(),
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Duplicated placement move must resolve');
+    const { proposal } = resolution;
+    // No physical keys move.
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ g0: 20, g1: 21 });
+    expect(proposal.status.affectedKeyIds).toEqual([]);
+    expect(proposal.status.changed).toBe(true);
+    expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
+    // loop-D placementStart 2 -> 7; loop-G untouched.
+    expect(proposal.nextLoopClips).not.toBeNull();
+    const moved = proposal.nextLoopClips?.find((clip) => clip.loopId === 'loop-D');
+    expect(moved?.placementStart).toBe(7);
+    expect(moved?.phaseOrigin).toBe(7);
+    expect(moved?.originalEndExclusive).toBe(15);
+    expect(moved?.visibleRanges).toEqual([{ start: 7, endExclusive: 15 }]);
+    const untouched = proposal.nextLoopClips?.find((clip) => clip.loopId === 'loop-G');
+    expect(untouched?.placementStart).toBe(20);
+  });
+
+  it('moves a source-attached Group with identity: source keys translate and placementStart follows', () => {
+    const identities = [
+      { keyId: 'g0', appFrame: 20 },
+      { keyId: 'g1', appFrame: 21 },
+    ] as const;
+    const resolution = resolveMoveRails({
+      identities,
+      members: [{ kind: 'loop', loopId: 'loop-G' }],
+      delta: 5,
+      loopClips: buildPushGroupClips(),
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Source-attached move must resolve');
+    const { proposal } = resolution;
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ g0: 25, g1: 26 });
+    expect(proposal.status.affectedKeyIds).toEqual(['g0', 'g1']);
+    expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
+    const moved = proposal.nextLoopClips?.find((clip) => clip.loopId === 'loop-G');
+    expect(moved?.placementStart).toBe(25);
+    expect(moved?.phaseOrigin).toBe(25);
+    expect(moved?.originalEndExclusive).toBe(33);
+    expect(moved?.visibleRanges).toEqual([{ start: 25, endExclusive: 33 }]);
+    const untouched = proposal.nextLoopClips?.find((clip) => clip.loopId === 'loop-D');
+    expect(untouched?.placementStart).toBe(2);
+  });
+
+  it('rejects a straddle with the dedicated code and zero partial proposal (D-10)', () => {
+    const identities = [
+      { keyId: 'g0', appFrame: 20 },
+      { keyId: 'g1', appFrame: 21 },
+    ] as const;
+    const resolution = resolveMoveRails({
+      identities,
+      members: [{ kind: 'loop', loopId: 'loop-G' }],
+      delta: 5,
+      loopClips: buildPushGroupClips(),
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Straddled move must fail');
+    expect(resolution.failure.code).toBe('move-rails-source-straddle');
+    expect(resolution.failure.operationKind).toBe('move-rails');
+    expect(resolution.failure.text).toContain('loop-D');
+  });
+
+  it('rejects a collision as a hard wall with the no-free-space code', () => {
+    // C@30 is flush against B's end 30: any rightward step collides.
+    const resolution = resolveMoveRails({
+      identities: buildWithSuccessor(),
+      members: [keyRailB()],
+      delta: 5,
+      breaks: ['b0', 'c0'],
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Colliding move must fail');
+    expect(resolution.failure.code).toBe('no-free-space-in-direction');
+  });
+
+  it('accepts a zero delta as a valid no-change proposal (changed === false)', () => {
+    const resolution = resolveMoveRails({
+      identities: buildTwoKeyRails(),
+      members: [keyRailB()],
+      delta: 0,
+      breaks: ['b0'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Zero-delta move must resolve');
+    const { proposal } = resolution;
+    expect(proposal.status.changed).toBe(false);
+    expect(proposal.status.code).toBe('ok-no-change');
+    expect(proposal.nextLoopClips).toBeNull();
+    expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['b0']);
+    expect(Object.fromEntries(proposal.mapping)).toEqual({
+      a0: 0, a1: 1, a2: 2, a3: 3, a4: 4, a5: 5, a6: 6, a7: 7, a8: 8, a9: 9,
+      b0: 20, b1: 21, b2: 22, b3: 23, b4: 24, b5: 25, b6: 26, b7: 27, b8: 28, b9: 29,
+    });
+  });
+
+  it('fails closed on malformed members and non-integer deltas', () => {
+    const identities = buildTwoKeyRails();
+    expect(resolveMoveRails({
+      identities,
+      members: [{ kind: 'key-rail', firstKeyId: 'zzz', keyIds: ['zzz'] }],
+      delta: 5,
+    })).toMatchObject({ ok: false, failure: { code: 'unknown-operation-identity' } });
+    expect(resolveMoveRails({
+      identities,
+      members: [keyRailB()],
+      delta: 1.5,
+    })).toMatchObject({ ok: false, failure: { code: 'malformed-target' } });
+  });
+});
