@@ -1233,6 +1233,26 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     : null;
   const pushArmed = isPushToolArmed();
   const pushArmedClass = pushArmed ? ' physics-paint-push-tool-armed' : '';
+  // 43.5-05 Defect 1: the anchor is bound to the selected Rail's identity at
+  // ARM time (not re-resolved at drag position). Captured here so the drag
+  // session and the pre-highlight always use the exact rail that armed the tool.
+  const armedAnchorRef = useRef<{ readonly kind: 'key' | 'loop'; readonly id: string } | null>(null);
+  // If the selection is cleared or changes type while armed, disarm — the tool
+  // must never push a stale anchor. The effect also clears the captured anchor
+  // whenever the tool is disarmed through any path (Escape, cancel, other
+  // toolbar action, re-click).
+  useEffect(() => {
+    if (!pushArmed) {
+      armedAnchorRef.current = null;
+      return;
+    }
+    const armedAnchor = armedAnchorRef.current;
+    if (armedAnchor === null) return;
+    if (pushAnchor === null || pushAnchor.kind !== armedAnchor.kind || pushAnchor.id !== armedAnchor.id) {
+      armedAnchorRef.current = null;
+      disarmPushTool();
+    }
+  }, [pushAnchor, pushArmed]);
   const insertKeyTooltip = useStyledTooltip();
   const addKeyTooltip = useStyledTooltip();
   const duplicateKeyTooltip = useStyledTooltip();
@@ -1262,6 +1282,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // straddle) — the guarded tooltip shows for that direction only and the other
   // direction stays available (the tool stays armed).
   const pushDragBlocked = useSignal<{ readonly reason?: string; readonly detail?: string } | null>(null);
+  // 43.5-05 Defect 2: the blocked-direction tooltip anchors to the pointer
+  // position (viewport coords captured by the hook's onBlocked) — never to an
+  // unrelated panel element. A zero-size anchor span is positioned here and the
+  // tooltip's layout effect reads its rect.
+  const pushBlockedPointer = useSignal<{ readonly x: number; readonly y: number } | null>(null);
+  const pushBlockedAnchorRef = useRef<HTMLSpanElement | null>(null);
   const pushSessionRef = useRef<{
     /** Locked by the drag direction on drag start; null until then. */
     direction: PushToolDirection | null;
@@ -1346,6 +1372,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         direction,
         proposedDeltaFrames,
         movedSetBounds: setResult.movedSetBounds,
+        leftBoundary: setResult.leftBoundary,
         capacity: frameCells.length,
       });
       session.proposedSignedDelta = proposedDeltaFrames;
@@ -1386,21 +1413,28 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       // A cancelled drag (Escape/pointercancel/lostpointercapture) disarms the
       // tool; a rejected drop keeps it armed (UI-SPEC).
       pushDragBlocked.value = null;
+      pushBlockedPointer.value = null;
       disarmPushTool();
     },
     onRejected: (reason, detail) => {
       pushDragBlocked.value = null;
+      pushBlockedPointer.value = null;
       if (reason === PUSH_DROP_NOOP) return;
       props.onRotoPushDragRejected?.(reason, detail);
     },
-    onBlocked: (reason, detail) => {
+    onBlocked: (reason, detail, pointer) => {
       // Blocked direction while the drag is live: show the guarded tooltip for
-      // that direction only. The other direction stays available (tool armed).
+      // that direction only, anchored to the pointer (43.5-05 Defect 2). The
+      // other direction stays available (tool armed).
       pushDragBlocked.value = { reason, detail };
+      pushBlockedPointer.value = pointer ? { x: pointer.clientX, y: pointer.clientY } : null;
       pushPaintTick.value += 1;
     },
     onPreviewChange: (preview) => {
-      if (preview === null) pushDragBlocked.value = null;
+      if (preview === null) {
+        pushDragBlocked.value = null;
+        pushBlockedPointer.value = null;
+      }
       pushPaintTick.value += 1;
     },
     clearClickSequence: () => {},
@@ -1457,19 +1491,22 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     // The pointer must have landed INSIDE the lane — never the sibling ruler or
     // any chrome above it. A pointer-down on the ruler must never start a push.
     if (!(event.target instanceof Element) || !laneElement.contains(event.target)) return;
-    // The anchor is the selected Rail (explicit at arm time) — no per-frame
-    // resolution. The direction is chosen by the drag on drag start.
-    if (pushAnchor === null) return;
+    // The anchor is the selected Rail bound at arm time (43.5-05 Defect 1) —
+    // no per-frame resolution. The direction is chosen by the drag on drag
+    // start. If the selection was cleared while armed, the effect disarmed the
+    // tool, so the captured anchor is always the rail that armed it.
+    const anchor = armedAnchorRef.current;
+    if (anchor === null) return;
     pushSessionRef.current = {
       direction: null,
-      anchor: pushAnchor,
+      anchor,
       movedRails: [],
       movedSetBounds: { firstFrame: 0, lastEndExclusive: 0 },
       proposedSignedDelta: 0,
       clampFailed: false,
     };
     pushDragApiRef.current?.onPointerDown(event);
-  }, [isPushToolArmed, pushAnchor, frameCells]);
+  }, [isPushToolArmed, armedAnchorRef, frameCells]);
 
   const handleLanePushClickCapture = useCallback((event: MouseEvent) => {
     const armed = isPushToolArmed();
@@ -2798,6 +2835,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     onClick={() => {
                       pushTooltip.hide();
                       if (pushToolDisabled) return;
+                      // Bind the anchor to the selected Rail at arm time
+                      // (43.5-05 Defect 1) — never re-resolved at drag position.
+                      if (!isPushToolArmed()) armedAnchorRef.current = pushAnchor;
                       togglePushTool();
                     }}
                     onKeyDown={(event) => {
@@ -2810,7 +2850,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     <span id="roto-key-action-reason-push" class="physics-paint-sr-only">{pushToolDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={pushTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy('Push the selected Rail. Drag right to push it and everything after; drag left to push everything before and it.', pushToolDisabledReason)}
+                    {buildGuardedActionTooltipCopy('Push the selected Rail and everything after it. Drag right to move them right; drag left to move them left.', pushToolDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
               </div>
@@ -2828,9 +2868,22 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       {/* 43.5-05 design revision: blocked-direction guard tooltip — while a
           drag is live in a blocked direction (frame-0/capacity flush or
           straddle) the mapped reason shows verbatim (one copy owner —
-          mapRotoPushProductReason). Portaled to document.body so the timeline
+          mapRotoPushProductReason). Anchored to the pointer position
+          (43.5-05 Defect 2) via a zero-size viewport-fixed span, never to an
+          unrelated panel element. Portaled to document.body so the timeline
           scroller cannot clip it. */}
-      <PhysicsPaintStyledTooltip visible={pushDragBlocked.value !== null} region="bottom" anchorRef={timelineContentRef} topmost>
+      <span
+        ref={pushBlockedAnchorRef}
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          left: `${pushBlockedPointer.value?.x ?? 0}px`,
+          top: `${pushBlockedPointer.value?.y ?? 0}px`,
+          width: 0,
+          height: 0,
+        }}
+      />
+      <PhysicsPaintStyledTooltip visible={pushDragBlocked.value !== null} region="bottom" anchorRef={pushBlockedAnchorRef} topmost>
         {pushHoverGuardCopy}
       </PhysicsPaintStyledTooltip>
    </section>

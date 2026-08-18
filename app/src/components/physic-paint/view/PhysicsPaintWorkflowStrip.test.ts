@@ -1737,15 +1737,17 @@ describe('Directional Push tool source contract (43.5-05 design revision: ONE to
     expect(gate).not.toContain('canDragKey');
   });
 
-  it('A2: pointer-down uses the selected Rail as the anchor and rejects ruler/empty-lane targets', () => {
+  it('A2: pointer-down uses the armed Rail as the anchor and rejects ruler/empty-lane targets', () => {
     const code = source();
     const handlerStart = code.indexOf('const handleLanePushPointerDownCapture');
     const handler = code.slice(handlerStart, code.indexOf('const handleLanePushClickCapture', handlerStart));
     // The pointer must land INSIDE the lane (never the sibling ruler); the
-    // anchor is the selected Rail (explicit at arm time), not a hovered frame.
+    // anchor is the Rail bound at arm time (43.5-05 Defect 1), not a hovered
+    // frame and never re-resolved at drag position.
     expect(handler).toContain('event.target');
     expect(handler).toContain('laneElement.contains(event.target)');
-    expect(handler).toContain('pushAnchor === null');
+    expect(handler).toContain('const anchor = armedAnchorRef.current');
+    expect(handler).toContain('if (anchor === null) return;');
     expect(handler).toContain('pushSessionRef.current = {');
   });
 
@@ -1829,5 +1831,26 @@ describe('Directional Push tool source contract (43.5-05 design revision: ONE to
     expect(code).toContain('pushHoverInvalid = pushDragBlocked.value !== null');
     // The other direction stays available: a rejected drop keeps the tool armed.
     expect(code).toContain('pushDragBlocked.value = null');
+  });
+
+  it('A10: the anchor is bound to the selected Rail at ARM time and the tool disarms if the selection changes while armed (43.5-05 Defect 1)', () => {
+    const code = source();
+    // The armed anchor is captured at arm time (button onClick) and used by the
+    // pointer-down handler — never re-resolved at drag position.
+    expect(code).toContain('armedAnchorRef.current = pushAnchor');
+    expect(code).toContain('const anchor = armedAnchorRef.current');
+    // A selection change while armed disarms the tool (stale anchor never pushed).
+    expect(code).toContain('disarmPushTool()');
+    expect(code).toContain('pushAnchor.kind !== armedAnchor.kind');
+  });
+
+  it('A11: the blocked-direction tooltip anchors to the pointer position, never an unrelated panel element (43.5-05 Defect 2)', () => {
+    const code = source();
+    // The hook passes pointer viewport coords to onBlocked; the strip stores
+    // them and positions a zero-size anchor span the tooltip reads.
+    expect(code).toContain('pushBlockedPointer');
+    expect(code).toContain('pointer.clientX');
+    expect(code).toContain('pushBlockedAnchorRef');
+    expect(code).toContain('position: \'fixed\'');
   });
 });

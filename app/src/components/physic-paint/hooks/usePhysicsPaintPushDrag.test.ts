@@ -146,6 +146,7 @@ function createHarness(options: {
   const onDropCommit = vi.fn(options.onDropCommit ?? (async (_publication: Publication) => true));
   const onCancel = vi.fn();
   const onRejected = vi.fn();
+  const onBlocked = vi.fn();
   const onPreviewChange = vi.fn();
   const clearClickSequence = vi.fn();
   const render = () => {
@@ -158,6 +159,7 @@ function createHarness(options: {
       onDropCommit,
       onCancel,
       onRejected,
+      onBlocked,
       onPreviewChange,
       clearClickSequence,
     });
@@ -171,6 +173,7 @@ function createHarness(options: {
     onDropCommit,
     onCancel,
     onRejected,
+    onBlocked,
     onPreviewChange,
     clearClickSequence,
     render,
@@ -407,6 +410,24 @@ describe('usePhysicsPaintPushDrag', () => {
     expect(harness.render().ghost.active).toBe(false);
     expect(harness.render().preview).toBeNull();
     expect(harness.source.focus).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes the pointer viewport coords to onBlocked when a destination is rejected (43.5-05 Defect 2)', () => {
+    const prepareAtDestination = vi.fn(() => ({
+      ok: false as const,
+      reason: 'no-free-space-in-direction',
+      detail: 'No empty space in that direction.',
+    }));
+    const harness = createHarness({ prepareAtDestination });
+    const api = harness.render();
+    api.onPointerDown(pointerEvent(harness.source));
+    harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105, clientY: 40 }));
+
+    expect(harness.onBlocked).toHaveBeenCalledWith(
+      'no-free-space-in-direction',
+      'No empty space in that direction.',
+      { clientX: 105, clientY: 40 },
+    );
   });
 
   it('suppresses the trailing post-drop click exactly once', () => {

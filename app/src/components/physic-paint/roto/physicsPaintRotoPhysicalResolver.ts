@@ -2268,6 +2268,8 @@ export type PhysicPaintPushSetResult =
       readonly fixedRails: readonly PushRail[];
       readonly movedKeyIds: ReadonlySet<string>;
       readonly movedSetBounds: { readonly firstFrame: number; readonly lastEndExclusive: number };
+      /** Nearest fixed boundary on the left (max end of fixed rails, or frame 0). */
+      readonly leftBoundary: number;
       readonly straddle: PhysicPaintPushStraddleVerdict | null;
     }
   | {
@@ -2288,7 +2290,7 @@ export type PhysicPaintPushSetResult =
  * strip hover preflight port in plan 05.
  */
 export function derivePhysicPaintPushSet(input: PhysicPaintPushSetInput): PhysicPaintPushSetResult {
-  const { identities, direction, loopRanges, loopClips, incomingInterpolationBreakKeyIds } = input;
+  const { identities, loopRanges, loopClips, incomingInterpolationBreakKeyIds } = input;
 
   const groupOwnedKeyIds = new Set<string>();
   for (const clip of loopClips) {
@@ -2352,19 +2354,24 @@ export function derivePhysicPaintPushSet(input: PhysicPaintPushSetInput): Physic
     return { ok: false, code: 'unknown-operation-identity', text: `${descriptor} is not a member of any Rail.` };
   }
 
-  // Directional suffix/prefix set (PUSH-01): Push Right moves the anchor Rail
-  // and every Rail whose interval starts at/after the anchor's start; Push
-  // Left moves the PREFIX set — the anchor Rail plus every Rail whose interval
-  // starts at/before the anchor's start (pivot rule). Rails starting after the
-  // anchor are the fixed side and never move. The opposite side is
-  // byte-position fixed.
-  const movedRails = rails.filter((rail) => (
-    direction === 'right'
-      ? rail.intervalStart >= anchorRail.intervalStart
-      : rail.intervalStart <= anchorRail.intervalStart
-  ));
+  // Directional set (43.5-05 revised contract): the moved set is THE SAME for
+  // both drag directions — the anchor Rail plus every Rail whose interval
+  // starts at/after the anchor's start (suffix set). The drag direction only
+  // sets the movement direction; it never changes set membership. Rails
+  // starting before the anchor are the fixed side and never move. The opposite
+  // side is byte-position fixed.
+  const movedRails = rails.filter((rail) => rail.intervalStart >= anchorRail.intervalStart);
   const movedIds = new Set(movedRails.map((rail) => rail.id));
   const fixedRails = rails.filter((rail) => !movedIds.has(rail.id));
+
+  // Nearest fixed boundary on the left (43.5-05 revised contract): the max end
+  // of the fixed rails, or frame 0 when the anchor is the leftmost content.
+  // Push Left clamps at this boundary — never at frame 0 when a fixed rail
+  // precedes the anchor.
+  let leftBoundary = 0;
+  for (const rail of fixedRails) {
+    leftBoundary = Math.max(leftBoundary, rail.intervalEndExclusive);
+  }
 
   // Moved keys: Key Rail members plus source keys of source-attached Groups.
   // Duplicated placements contribute NO moved keys (their source keys stay).
@@ -2414,26 +2421,30 @@ export function derivePhysicPaintPushSet(input: PhysicPaintPushSetInput): Physic
     fixedRails,
     movedKeyIds,
     movedSetBounds: { firstFrame, lastEndExclusive },
+    leftBoundary,
     straddle,
   };
 }
 
 /**
  * Pure directional push clamp (PUSH-05). The moved set translates rigidly as
- * one byte interval, so the only boundaries are frame 0 (Push Left) and the
- * physical capacity / parent end (Push Right — the child document's single end
- * authority, never the main-editor display outFrame, 43.4 defect 1). Proposed
- * delta 0 is a valid no-change (never a failure); otherwise the directional
- * nearest-free search scans from the proposed signed delta toward 0 and
- * returns the first delta that keeps the set in bounds, or ok:false when zero
- * valid movement exists. The dispatch branch commits this clamped delta
- * (preview-is-the-commit, D-14).
+ * one byte interval, so the only boundaries are the nearest fixed boundary on
+ * the left (leftBoundary — the previous rail/key end, or frame 0) for Push
+ * Left and the physical capacity / parent end for Push Right (the child
+ * document's single end authority, never the main-editor display outFrame,
+ * 43.4 defect 1). Proposed delta 0 is a valid no-change (never a failure);
+ * otherwise the directional nearest-free search scans from the proposed signed
+ * delta toward 0 and returns the first delta that keeps the set in bounds, or
+ * ok:false when zero valid movement exists. The dispatch branch commits this
+ * clamped delta (preview-is-the-commit, D-14).
  */
 export interface PhysicPaintPushClampInput {
   readonly direction: 'right' | 'left';
   /** Signed proposal: positive for Push Right, negative for Push Left. */
   readonly proposedDeltaFrames: number;
   readonly movedSetBounds: { readonly firstFrame: number; readonly lastEndExclusive: number };
+  /** Nearest fixed boundary on the left (max end of fixed rails, or frame 0). */
+  readonly leftBoundary: number;
   readonly capacity: number;
 }
 
@@ -2454,7 +2465,7 @@ export function clampPhysicPaintPushDestination(
     return { ok: false };
   }
   for (let delta = input.proposedDeltaFrames; delta < 0; delta += 1) {
-    if (input.movedSetBounds.firstFrame + delta >= 0) {
+    if (input.movedSetBounds.firstFrame + delta >= input.leftBoundary) {
       return { ok: true, deltaFrames: delta };
     }
   }
@@ -2465,14 +2476,14 @@ export function clampPhysicPaintPushDestination(
  * PUSH-03: derive the complete next incoming-interpolation-break collection
  * for a directional push — a complete-collection replacement, never a delta.
  * Rules: Push Right — the moved set's first key (min pre-move frame) owns the
- * opened-gap break (travels with the set, 43.1 D-14); Push Left — the fixed
- * right side's first real key at/after the moved set's vacated end owns/reuses
- * it (43.1 rule (a) successor semantics; never when content ends, D-12); a
- * reverse push that returns the moved set to frame 0 closes the head gap and
- * normalizes the collection by removing the break on the moved set's first key.
- * Every existing break is reused, never duplicated. Duplicated placements move
- * placement-only and manufacture no physical-key breaks (D-11). Deterministic
- * ascending post-move-frame sort.
+ * opened-gap break (travels with the set, 43.1 D-14); Push Left — the anchor's
+ * incoming break travels with its identity (43.4 D-19, never a silent merge
+ * with the previous segment) and no successor break is manufactured because the
+ * moved set is the suffix; a reverse push that returns the moved set to frame 0
+ * closes the head gap and normalizes the collection by removing the break on
+ * the moved set's first key. Every existing break is reused, never duplicated.
+ * Duplicated placements move placement-only and manufacture no physical-key
+ * breaks (D-11). Deterministic ascending post-move-frame sort.
  */
 function derivePhysicPaintPushIncomingInterpolationBreakKeyIds(input: {
   readonly direction: 'right' | 'left';
@@ -2509,23 +2520,13 @@ function derivePhysicPaintPushIncomingInterpolationBreakKeyIds(input: {
     if (direction === 'right' && firstMovedKey !== null) {
       owners.add(firstMovedKey);
     } else if (direction === 'left' && firstMovedKey !== null) {
-      // Vacated-gap successor (pre-move fact): the fixed right side's first
-      // real key at/after the moved set's vacated end. Fixed keys never move,
-      // so their pre-move and post-move frames coincide.
-      let successor: string | null = null;
-      let successorFrame = Number.POSITIVE_INFINITY;
-      for (const [keyId, frame] of preMoveFramesByKeyId) {
-        if (movedKeyIds.has(keyId)) continue;
-        if (frame >= movedSetBounds.lastEndExclusive && frame < successorFrame) {
-          successor = keyId;
-          successorFrame = frame;
-        }
-      }
-      if (successor !== null) owners.add(successor);
-
-      // Reverse-close normalization: when the reverse push returns the moved
-      // set to frame 0 (leftmost content — provably no fixed predecessor), the
-      // head-gap break on the moved set's first key is moot and is removed.
+      // The anchor's incoming break travels with its identity (43.4 D-19) —
+      // never a silent merge with the previous segment. The moved set is the
+      // suffix, so the fixed side is before it and no successor break is
+      // manufactured. Reverse-close normalization: when the reverse push
+      // returns the moved set to frame 0 (leftmost content — provably no fixed
+      // predecessor), the head-gap break on the moved set's first key is moot
+      // and is removed.
       if (movedSetBounds.firstFrame + deltaFrames === 0) {
         owners.delete(firstMovedKey);
       }
@@ -4369,7 +4370,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (!setResult.ok) {
       return fail(setResult.code, operationKind, setResult.text);
     }
-    const { anchorRail, movedRails, movedKeyIds, movedSetBounds, straddle } = setResult;
+    const { anchorRail, movedRails, movedKeyIds, movedSetBounds, leftBoundary, straddle } = setResult;
     if (straddle !== null) {
       return fail('push-source-straddle', operationKind,
         `Push ${intent.direction} would move source keys shared with the fixed Group "${straddle.fixedGroupLoopId}".`);
@@ -4384,6 +4385,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       direction: intent.direction,
       proposedDeltaFrames: proposedSignedDelta,
       movedSetBounds,
+      leftBoundary,
       capacity: input.capacity,
     });
     if (!clampResult.ok) {

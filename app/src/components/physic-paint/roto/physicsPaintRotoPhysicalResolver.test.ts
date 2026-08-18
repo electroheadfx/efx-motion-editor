@@ -4258,7 +4258,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     });
   });
 
-  it('Push Left from the last key of Key Rail A translates A to 2-11 and keeps Key Rail B byte-position fixed (PUSH-01 prefix)', () => {
+  it('Push Left from the last key of Key Rail A translates the suffix set (A and B) left by 3 (43.5-05 revised contract)', () => {
     const resolution = resolvePush(buildStaggeredKeyRails(), 'left', { anchorKeyId: 'a9' }, 3, {
       incomingInterpolationBreakKeyIds: ['b0'],
     });
@@ -4268,21 +4268,21 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     const { proposal } = resolution;
     expect(proposal.status.operationKind).toBe('push-rails');
     expect(proposal.status.changed).toBe(true);
-    // Key Rail A translated by -3.
+    // The moved set is the suffix (anchor + everything at/after its start):
+    // A AND B translate left by 3.
     expect(proposal.mapping.get('a0')).toBe(2);
     expect(proposal.mapping.get('a9')).toBe(11);
-    // Key Rail B byte-position fixed (PUSH-01).
-    expect(proposal.mapping.get('b0')).toBe(20);
-    expect(proposal.mapping.get('b9')).toBe(29);
+    expect(proposal.mapping.get('b0')).toBe(17);
+    expect(proposal.mapping.get('b9')).toBe(26);
     expect(Object.fromEntries(proposal.mapping)).toEqual({
       a0: 2, a1: 3, a2: 4, a3: 5, a4: 6, a5: 7, a6: 8, a7: 9, a8: 10, a9: 11,
-      b0: 20, b1: 21, b2: 22, b3: 23, b4: 24, b5: 25, b6: 26, b7: 27, b8: 28, b9: 29,
+      b0: 17, b1: 18, b2: 19, b3: 20, b4: 21, b5: 22, b6: 23, b7: 24, b8: 25, b9: 26,
     });
   });
 
-  it('Push Left from the middle rail moves the PREFIX set only — C stays byte-position fixed (pivot rule)', () => {
-    // A [5,15), B [20,30), C [40,50). Anchor B. Push Left 5 → A and B translate
-    // left by 5; C (starting after the anchor) is the fixed side and must NOT move.
+  it('Push Left from the middle rail moves the SUFFIX set — B and C translate, A stays byte-position fixed (43.5-05 revised contract)', () => {
+    // A [5,15), B [20,30), C [40,50). Anchor B. Push Left 5 → B and C translate
+    // left by 5; A (starting before the anchor) is the fixed side and must NOT move.
     const identities = Object.freeze([
       { keyId: 'a0', appFrame: 5 }, { keyId: 'a1', appFrame: 6 }, { keyId: 'a2', appFrame: 7 },
       { keyId: 'a3', appFrame: 8 }, { keyId: 'a4', appFrame: 9 }, { keyId: 'a5', appFrame: 10 },
@@ -4303,17 +4303,17 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     });
     if (!resolution.ok) throw new Error('Push Left must resolve ok');
     const mapping = Object.fromEntries(resolution.proposal.mapping);
-    // A and B translate left by 5.
-    expect(mapping.a0).toBe(0);
-    expect(mapping.a9).toBe(9);
+    // A stays byte-position fixed (fixed side before the anchor).
+    expect(mapping.a0).toBe(5);
+    expect(mapping.a9).toBe(14);
+    // B and C translate left by 5.
     expect(mapping.b0).toBe(15);
     expect(mapping.b9).toBe(24);
-    // C stays byte-position fixed.
-    expect(mapping.c0).toBe(40);
-    expect(mapping.c9).toBe(49);
+    expect(mapping.c0).toBe(35);
+    expect(mapping.c9).toBe(44);
   });
 
-  it('Push Left from the leftmost rail moves the anchor rail only — B and C stay fixed (pivot rule)', () => {
+  it('Push Left from the leftmost rail moves the whole set — A, B, and C translate (43.5-05 revised contract)', () => {
     const identities = Object.freeze([
       { keyId: 'a0', appFrame: 5 }, { keyId: 'a1', appFrame: 6 }, { keyId: 'a2', appFrame: 7 },
       { keyId: 'a3', appFrame: 8 }, { keyId: 'a4', appFrame: 9 }, { keyId: 'a5', appFrame: 10 },
@@ -4334,13 +4334,14 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     });
     if (!resolution.ok) throw new Error('Push Left from leftmost must resolve ok');
     const mapping = Object.fromEntries(resolution.proposal.mapping);
+    // The suffix set from the leftmost rail is the whole content — all move left 2.
     expect(mapping.a0).toBe(3);
     expect(mapping.a9).toBe(12);
-    expect(mapping.b0).toBe(20);
-    expect(mapping.c0).toBe(40);
+    expect(mapping.b0).toBe(18);
+    expect(mapping.c0).toBe(38);
   });
 
-  it('Push Left from the rightmost rail moves the whole set — A, B, and C translate (pivot rule)', () => {
+  it('Push Left from the rightmost rail moves the anchor rail only — A and B stay fixed (43.5-05 revised contract)', () => {
     const identities = Object.freeze([
       { keyId: 'a0', appFrame: 5 }, { keyId: 'a1', appFrame: 6 }, { keyId: 'a2', appFrame: 7 },
       { keyId: 'a3', appFrame: 8 }, { keyId: 'a4', appFrame: 9 }, { keyId: 'a5', appFrame: 10 },
@@ -4361,8 +4362,9 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     });
     if (!resolution.ok) throw new Error('Push Left from rightmost must resolve ok');
     const mapping = Object.fromEntries(resolution.proposal.mapping);
-    expect(mapping.a0).toBe(3);
-    expect(mapping.b0).toBe(18);
+    // The suffix set from the rightmost rail is C only — A and B stay fixed.
+    expect(mapping.a0).toBe(5);
+    expect(mapping.b0).toBe(20);
     expect(mapping.c0).toBe(38);
     expect(mapping.c9).toBe(47);
   });
@@ -4394,11 +4396,10 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     expect(mapping.c9).toBe(51);
   });
 
-  it('Push Left is blocked at frame 0 while Push Right still works (blocked-left + free-right)', () => {
-    // A [0,10) flush at frame 0, B [20,30), C [40,50). Anchor B. Push Left's
-    // prefix set (A+B) can't cross frame 0 → no valid movement → rejection.
-    // Push Right's suffix set (B+C) has room → resolves. The blocked direction
-    // must never poison the other direction.
+  it('Push Left from the middle rail moves the SAME suffix set as Push Right — A byte-fixed, B and C translate (43.5-05 revised contract)', () => {
+    // A [0,10), B [20,30), C [40,50). Anchor B. Drag left 5 → A byte-fixed,
+    // B→15-24, C→35-44, freed space at the right end. The moved set is the
+    // suffix (anchor + everything at/after its start) for BOTH directions.
     const identities = Object.freeze([
       { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
       { keyId: 'a3', appFrame: 3 }, { keyId: 'a4', appFrame: 4 }, { keyId: 'a5', appFrame: 5 },
@@ -4413,12 +4414,48 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
       { keyId: 'c6', appFrame: 46 }, { keyId: 'c7', appFrame: 47 }, { keyId: 'c8', appFrame: 48 },
       { keyId: 'c9', appFrame: 49 },
     ]);
+    const resolution = resolvePush(identities, 'left', { anchorKeyId: 'b0' }, 5, {
+      capacity: 60,
+      incomingInterpolationBreakKeyIds: ['b0', 'c0'],
+    });
+    if (!resolution.ok) throw new Error('Push Left must resolve ok');
+    const mapping = Object.fromEntries(resolution.proposal.mapping);
+    // A byte-position fixed (fixed side before the anchor).
+    expect(mapping.a0).toBe(0);
+    expect(mapping.a9).toBe(9);
+    // B and C translate left by 5.
+    expect(mapping.b0).toBe(15);
+    expect(mapping.b9).toBe(24);
+    expect(mapping.c0).toBe(35);
+    expect(mapping.c9).toBe(44);
+  });
+
+  it('Push Left is blocked when the anchor is flush against the previous rail while Push Right still works (blocked-left + free-right)', () => {
+    // A [0,10), B [10,20) flush at A's end, C [40,50). Anchor B. Push Left's
+    // suffix set (B+C) is flush against A's end (leftBoundary = 10, B starts at
+    // 10) → zero valid movement → rejection. Push Right's suffix set (B+C) has
+    // room → resolves. The blocked direction must never poison the other
+    // direction.
+    const identities = Object.freeze([
+      { keyId: 'a0', appFrame: 0 }, { keyId: 'a1', appFrame: 1 }, { keyId: 'a2', appFrame: 2 },
+      { keyId: 'a3', appFrame: 3 }, { keyId: 'a4', appFrame: 4 }, { keyId: 'a5', appFrame: 5 },
+      { keyId: 'a6', appFrame: 6 }, { keyId: 'a7', appFrame: 7 }, { keyId: 'a8', appFrame: 8 },
+      { keyId: 'a9', appFrame: 9 },
+      { keyId: 'b0', appFrame: 10 }, { keyId: 'b1', appFrame: 11 }, { keyId: 'b2', appFrame: 12 },
+      { keyId: 'b3', appFrame: 13 }, { keyId: 'b4', appFrame: 14 }, { keyId: 'b5', appFrame: 15 },
+      { keyId: 'b6', appFrame: 16 }, { keyId: 'b7', appFrame: 17 }, { keyId: 'b8', appFrame: 18 },
+      { keyId: 'b9', appFrame: 19 },
+      { keyId: 'c0', appFrame: 40 }, { keyId: 'c1', appFrame: 41 }, { keyId: 'c2', appFrame: 42 },
+      { keyId: 'c3', appFrame: 43 }, { keyId: 'c4', appFrame: 44 }, { keyId: 'c5', appFrame: 45 },
+      { keyId: 'c6', appFrame: 46 }, { keyId: 'c7', appFrame: 47 }, { keyId: 'c8', appFrame: 48 },
+      { keyId: 'c9', appFrame: 49 },
+    ]);
     const left = resolvePush(identities, 'left', { anchorKeyId: 'b0' }, 2, {
       capacity: 60,
       incomingInterpolationBreakKeyIds: ['b0', 'c0'],
     });
     expect(left.ok).toBe(false);
-    if (left.ok) throw new Error('Push Left must be blocked at frame 0');
+    if (left.ok) throw new Error('Push Left must be blocked at A\'s end');
     expect(left.failure.code).toBe('no-free-space-in-direction');
 
     const right = resolvePush(identities, 'right', { anchorKeyId: 'b0' }, 2, {
@@ -4429,12 +4466,13 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     if (!right.ok) throw new Error('Push Right must resolve');
     const mapping = Object.fromEntries(right.proposal.mapping);
     expect(mapping.a0).toBe(0);
-    expect(mapping.b0).toBe(22);
+    expect(mapping.b0).toBe(12);
     expect(mapping.c0).toBe(42);
   });
 
   it('clamps a Push Left at frame 0 — the moved set stops at the boundary (directional nearest-free search)', () => {
-    // A [5,15): pushing left by 8 wants delta -8 but frame 0 stops at -5.
+    // A [5,15), B [20,30): pushing left by 8 wants delta -8 but frame 0 stops
+    // at -5. The suffix set (A+B) translates rigidly by the clamped delta.
     const resolution = resolvePush(buildStaggeredKeyRails(), 'left', { anchorKeyId: 'a9' }, 8, {
       incomingInterpolationBreakKeyIds: ['b0'],
     });
@@ -4445,8 +4483,8 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     expect(proposal.status.changed).toBe(true);
     expect(proposal.mapping.get('a0')).toBe(0);
     expect(proposal.mapping.get('a9')).toBe(9);
-    expect(proposal.mapping.get('b0')).toBe(20);
-    expect(proposal.mapping.get('b9')).toBe(29);
+    expect(proposal.mapping.get('b0')).toBe(15);
+    expect(proposal.mapping.get('b9')).toBe(24);
   });
 
   it('clamps a Push Right at capacity/parent end (single end authority)', () => {
@@ -4505,12 +4543,30 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
   });
 
   it('D-16/43.3: a duplicated (shared-source) placement in the moved set moves placement-only and never straddles', () => {
+    // loop-G (owner) at [2,10), loop-D (duplicated) at [20,28). Anchor loop-D.
+    // Under the suffix set the moved set is loop-D only (loop-G is before it
+    // and fixed). loop-D is a duplicated placement: its source keys stay with
+    // the fixed owner loop-G, so it moves placement-only and never straddles.
     const identities = [
-      { keyId: 'g0', appFrame: 20 },
-      { keyId: 'g1', appFrame: 21 },
+      { keyId: 'g0', appFrame: 2 },
+      { keyId: 'g1', appFrame: 3 },
+    ] as const;
+    const loopClips = [
+      {
+        loopId: 'loop-G', placementStart: 2, sourceKeyIds: ['g0', 'g1'], repeat: 4,
+        mode: 'static', syncState: 'synchronized', provenanceState: 'attached',
+        phaseOrigin: 2, originalEndExclusive: 10,
+        visibleRanges: [{ start: 2, endExclusive: 10 }], frameOverrides: [],
+      },
+      {
+        loopId: 'loop-D', placementStart: 20, sourceKeyIds: ['g0', 'g1'], repeat: 4,
+        mode: 'progressive', syncState: 'synchronized', provenanceState: 'attached',
+        phaseOrigin: 20, originalEndExclusive: 28,
+        visibleRanges: [{ start: 20, endExclusive: 28 }], frameOverrides: [],
+      },
     ] as const;
     const resolution = resolvePush(identities, 'left', { anchorLoopId: 'loop-D' }, 2, {
-      loopClips: buildPushGroupClips(),
+      loopClips,
       capacity: 40,
     });
 
@@ -4518,7 +4574,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     if (!resolution.ok) throw new Error('Duplicated placement push must resolve ok');
     const { proposal } = resolution;
     // Shared source keys never move (placement-only, 43.3 algebra).
-    expect(Object.fromEntries(proposal.mapping)).toEqual({ g0: 20, g1: 21 });
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ g0: 2, g1: 3 });
     // The duplicated placement interval translates; a placement-only set is a
     // real change, never a no-change (Pitfall 5).
     expect(proposal.status.changed).toBe(true);
@@ -4526,24 +4582,25 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     expect(proposal.nextLoopClips).not.toBeNull();
     if (!proposal.nextLoopClips) throw new Error('nextLoopClips must be present');
     const movedClip = proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-D');
-    expect(movedClip?.placementStart).toBe(0);
-    expect(movedClip?.phaseOrigin).toBe(0);
-    expect(movedClip?.originalEndExclusive).toBe(8);
-    expect(movedClip?.visibleRanges).toEqual([{ start: 0, endExclusive: 8 }]);
+    expect(movedClip?.placementStart).toBe(18);
+    expect(movedClip?.phaseOrigin).toBe(18);
+    expect(movedClip?.originalEndExclusive).toBe(26);
+    expect(movedClip?.visibleRanges).toEqual([{ start: 18, endExclusive: 26 }]);
     const ownerClip = proposal.nextLoopClips.find((clip) => clip.loopId === 'loop-G');
-    expect(ownerClip?.placementStart).toBe(20);
-    expect(ownerClip?.originalEndExclusive).toBe(28);
+    expect(ownerClip?.placementStart).toBe(2);
+    expect(ownerClip?.originalEndExclusive).toBe(10);
   });
 
-  it('PUSH-03: Push Right opens the gap break on the moved set first key; Push Left on the fixed right side first key', () => {
+  it('PUSH-03: Push Right opens the gap break on the moved set first key; Push Left keeps the anchor\'s incoming break (43.5-05 revised contract)', () => {
     // Push Right from the first rail: the whole content moves; a0 owns the head gap.
     const pushRight = resolvePush(buildTwoKeyRails(), 'right', { anchorKeyId: 'a0' }, 5);
     expect(pushRight.ok).toBe(true);
     if (!pushRight.ok) throw new Error('Push Right must resolve');
     expect(pushRight.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['a0']);
 
-    // Push Left from A: the vacated tail gap is owned by the fixed right side's
-    // first key (b0 — the separating break, reused).
+    // Push Left from A: the moved set is the suffix (A+B). b0 is now a moved
+    // key, so its existing break travels with it (43.4 D-19) — no successor
+    // break is manufactured.
     const pushLeft = resolvePush(buildStaggeredKeyRails(), 'left', { anchorKeyId: 'a9' }, 3, {
       incomingInterpolationBreakKeyIds: ['b0'],
     });
@@ -4591,7 +4648,9 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
   });
 
   it('43.1 D-14: a break owned by a moved key travels with stable identity', () => {
-    const resolution = resolvePush(buildStaggeredKeyRails(), 'left', { anchorKeyId: 'a9' }, 3, {
+    // Anchor a0 (A's first key). The suffix set is A+B; a5 and b0 are both
+    // moved keys, so their breaks travel with them.
+    const resolution = resolvePush(buildStaggeredKeyRails(), 'left', { anchorKeyId: 'a0' }, 3, {
       incomingInterpolationBreakKeyIds: ['a5', 'b0'],
     });
 
@@ -4599,8 +4658,8 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     if (!resolution.ok) throw new Error('Identity-travel push must resolve');
     const { proposal } = resolution;
     expect(proposal.mapping.get('a5')).toBe(7);
-    // a5's break survives the move and the fixed right side's first key (b0)
-    // owns/reuses the vacated-gap break.
+    // a5's break survives the move; b0 is now a moved key (suffix set), so its
+    // break travels with it too — no successor break is manufactured.
     expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['a5', 'b0']);
   });
 
@@ -4684,8 +4743,8 @@ describe('derivePhysicPaintPushSet and clampPhysicPaintPushDestination (exported
     expect(set.straddle).toBeNull();
   });
 
-  it('derives the PREFIX set for Push Left from a middle rail — C stays fixed (pivot rule)', () => {
-    // A [5,15), B [20,30), C [40,50). Anchor B. Push Left must move A + B only.
+  it('derives the SUFFIX set for Push Left from a middle rail — A stays fixed (43.5-05 revised contract)', () => {
+    // A [5,15), B [20,30), C [40,50). Anchor B. Push Left must move B + C only.
     const identities = Object.freeze([
       { keyId: 'a0', appFrame: 5 }, { keyId: 'a1', appFrame: 6 }, { keyId: 'a2', appFrame: 7 },
       { keyId: 'a3', appFrame: 8 }, { keyId: 'a4', appFrame: 9 }, { keyId: 'a5', appFrame: 10 },
@@ -4717,8 +4776,10 @@ describe('derivePhysicPaintPushSet and clampPhysicPaintPushDestination (exported
 
     expect(set.ok).toBe(true);
     if (!set.ok) throw new Error('Set derivation must resolve');
-    expect(set.movedRails.map((rail) => rail.id)).toEqual(['a0', 'b0']);
-    expect(set.fixedRails.map((rail) => rail.id)).toEqual(['c0']);
+    expect(set.movedRails.map((rail) => rail.id)).toEqual(['b0', 'c0']);
+    expect(set.fixedRails.map((rail) => rail.id)).toEqual(['a0']);
+    // The nearest fixed boundary on the left is A's end (15).
+    expect(set.leftBoundary).toBe(15);
   });
 
   it('reports a straddle verdict when a moved attached Group shares its source cycle with a fixed-side Group', () => {
@@ -4756,24 +4817,28 @@ describe('derivePhysicPaintPushSet and clampPhysicPaintPushDestination (exported
       direction: 'left',
       proposedDeltaFrames: -8,
       movedSetBounds: { firstFrame: 5, lastEndExclusive: 15 },
+      leftBoundary: 0,
       capacity: 40,
     })).toEqual({ ok: true, deltaFrames: -5 });
     expect(clampPhysicPaintPushDestination({
       direction: 'right',
       proposedDeltaFrames: 15,
       movedSetBounds: { firstFrame: 0, lastEndExclusive: 30 },
+      leftBoundary: 0,
       capacity: 40,
     })).toEqual({ ok: true, deltaFrames: 10 });
     expect(clampPhysicPaintPushDestination({
       direction: 'left',
       proposedDeltaFrames: -3,
       movedSetBounds: { firstFrame: 0, lastEndExclusive: 10 },
+      leftBoundary: 0,
       capacity: 40,
     })).toEqual({ ok: false });
     expect(clampPhysicPaintPushDestination({
       direction: 'right',
       proposedDeltaFrames: 5,
       movedSetBounds: { firstFrame: 0, lastEndExclusive: 40 },
+      leftBoundary: 0,
       capacity: 40,
     })).toEqual({ ok: false });
     // Zero-delta is a valid no-change, never a failure (Task 3 channel).
@@ -4781,7 +4846,28 @@ describe('derivePhysicPaintPushSet and clampPhysicPaintPushDestination (exported
       direction: 'left',
       proposedDeltaFrames: 0,
       movedSetBounds: { firstFrame: 5, lastEndExclusive: 15 },
+      leftBoundary: 0,
       capacity: 40,
     })).toEqual({ ok: true, deltaFrames: 0 });
+  });
+
+  it('clamps Push Left at the nearest fixed boundary on the left, not frame 0 (43.5-05 revised contract)', () => {
+    // A ends at 10, B starts at 20. leftBoundary = 10. Push Left 15 wants -15
+    // but the boundary stops at -10 (B lands at 10, flush against A's end).
+    expect(clampPhysicPaintPushDestination({
+      direction: 'left',
+      proposedDeltaFrames: -15,
+      movedSetBounds: { firstFrame: 20, lastEndExclusive: 30 },
+      leftBoundary: 10,
+      capacity: 40,
+    })).toEqual({ ok: true, deltaFrames: -10 });
+    // A flush against the anchor's start → zero valid movement → blocked.
+    expect(clampPhysicPaintPushDestination({
+      direction: 'left',
+      proposedDeltaFrames: -2,
+      movedSetBounds: { firstFrame: 10, lastEndExclusive: 20 },
+      leftBoundary: 10,
+      capacity: 40,
+    })).toEqual({ ok: false });
   });
 });

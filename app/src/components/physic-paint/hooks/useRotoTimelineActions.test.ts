@@ -2108,8 +2108,9 @@ describe('useRotoTimelineActions Push prepare + locked copy family (43.5-03 Task
   });
 
   it('prepares a Push Left publication whose presentation facts feed the locked mirror copy', () => {
-    // The break on D splits D into its own fixed Key Rail; [A,B,C] stays one
-    // moved Rail (deriveKeyRailSegments splits on breaks/group ownership only).
+    // The break on D splits D into its own Key Rail; [A,B,C] stays one Rail.
+    // Under the 43.5-05 suffix set, anchoring C moves BOTH rails (everything at
+    ///after C's start) — [A,B,C] and [D] translate left by 2.
     const records = [
       realKeyRecord('A', 2),
       realKeyRecord('B', 3),
@@ -2130,13 +2131,13 @@ describe('useRotoTimelineActions Push prepare + locked copy family (43.5-03 Task
     expect(preparation.ok).toBe(true);
     if (!preparation.ok) throw new Error('Push Left must prepare');
     const pub = preparation.publication;
-    expect(Object.fromEntries(pub.proposal.mapping)).toEqual({ A: 0, B: 1, C: 4, D: 10 });
-    expect(pub.movedRailCount).toBe(1);
+    expect(Object.fromEntries(pub.proposal.mapping)).toEqual({ A: 0, B: 1, C: 4, D: 8 });
+    expect(pub.movedRailCount).toBe(2);
     expect(pub.clampedDeltaFrames).toBe(-2);
-    expect(pub.beforeRange).toEqual({ firstFrame: 2, lastFrame: 6 });
-    expect(pub.afterRange).toEqual({ firstFrame: 0, lastFrame: 4 });
-    expect(pub.gapInterval).toEqual({ firstFrame: 5, lastFrame: 6 });
-    // The vacated tail gap is owned by the fixed right side's first key (PUSH-03).
+    expect(pub.beforeRange).toEqual({ firstFrame: 2, lastFrame: 10 });
+    expect(pub.afterRange).toEqual({ firstFrame: 0, lastFrame: 8 });
+    expect(pub.gapInterval).toEqual({ firstFrame: 9, lastFrame: 10 });
+    // D is now a moved key, so its break travels with it (43.4 D-19).
     expect(pub.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['D']);
     // The mapped accepted copy from the retained facts.
     expect(mapRotoPushProductReason({
@@ -2146,7 +2147,7 @@ describe('useRotoTimelineActions Push prepare + locked copy family (43.5-03 Task
       signedDeltaFrames: pub.clampedDeltaFrames,
       afterRange: pub.afterRange,
       gapInterval: pub.gapInterval,
-    })).toBe('Pushed 1 Rail left by 2 frames — moved set now frames 0–4. Gap opened at frames 5–6.');
+    })).toBe('Pushed 2 Rails left by 2 frames — moved set now frames 0–8. Gap opened at frames 9–10.');
   });
 });
 
@@ -2313,10 +2314,10 @@ describe('useRotoTimelineActions Push from cell anchors (43.5-05 smoke RED)', ()
   });
 
   it('commits a Push Left with empty space at frame 0 through the real pipeline (discrimination case B)', async () => {
-    // A [5,15), B [20,30), C [40,50): frames 0-4 are empty, so the prefix set
-    // (A + B) has room to cross toward frame 0. Push Left 5 must prepare and
-    // commit — proving the left clamp scans the correct direction and the
-    // negative delta sign survives prepare.
+    // A [5,15), B [20,30), C [40,50): the suffix set (B + C) has room to move
+    // left, clamped at A's end (15). Push Left 5 must prepare and commit —
+    // proving the left clamp scans the correct direction and the negative delta
+    // sign survives prepare.
     const records = [
       realKeyRecord('a0', 5), realKeyRecord('a1', 6), realKeyRecord('a2', 7), realKeyRecord('a3', 8),
       realKeyRecord('a4', 9), realKeyRecord('a5', 10), realKeyRecord('a6', 11), realKeyRecord('a7', 12),

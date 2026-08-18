@@ -113,8 +113,14 @@ export interface PushDragSessionInput<Publication> {
   readonly onCancel?: () => void;
   readonly onRejected?: (reason?: string, detail?: string) => void;
   /** Called while the drag is live when prepare rejects (e.g. a blocked
-   *  direction) — the caller shows the guarded tooltip for that direction. */
-  readonly onBlocked?: (reason?: string, detail?: string) => void;
+   *  direction) — the caller shows the guarded tooltip for that direction.
+   *  The pointer's viewport coordinates let the caller anchor the tooltip to
+   *  the cursor (43.5-05 Defect 2) instead of an unrelated panel element. */
+  readonly onBlocked?: (
+    reason?: string,
+    detail?: string,
+    pointer?: { readonly clientX: number; readonly clientY: number },
+  ) => void;
   readonly onPreviewChange?: (preview: PushDragPreviewState<Publication> | null) => void;
   /** Cancels any pending cell/rail click work when the pointer crosses the threshold. */
   readonly clearClickSequence: () => void;
@@ -134,6 +140,7 @@ interface PushDragSession<Publication> {
   readonly sourceElement: PushDragSourceElement;
   readonly originX: number;
   latestX: number;
+  latestY: number;
   started: boolean;
   /** Locked on drag start from the drag sign; null until the drag begins. */
   direction: PushToolDirection | null;
@@ -186,6 +193,7 @@ export function usePhysicsPaintPushDrag<Publication>(
       sourceElement,
       originX: event.clientX,
       latestX: event.clientX,
+      latestY: event.clientY,
       started: false,
       direction: null,
       publication: null,
@@ -242,7 +250,11 @@ export function usePhysicsPaintPushDrag<Publication>(
         session.publication = null;
         session.rejection = { reason: preparation.reason, detail: preparation.detail };
         clearPaint();
-        input.onBlocked?.(preparation.reason, preparation.detail);
+        input.onBlocked?.(
+          preparation.reason,
+          preparation.detail,
+          { clientX: session.latestX, clientY: session.latestY },
+        );
         return;
       }
       session.publication = preparation.publication;
@@ -282,6 +294,7 @@ export function usePhysicsPaintPushDrag<Publication>(
     const handlePointerMove = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== session.pointerId || sessionRef.current !== session) return;
       session.latestX = moveEvent.clientX;
+      session.latestY = moveEvent.clientY;
       if (!session.started && Math.abs(session.latestX - session.originX) > PUSH_DRAG_THRESHOLD_PX) {
         if (!beginDrag()) return;
       }
