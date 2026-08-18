@@ -571,12 +571,13 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
 
     expect(next.playback.isActive).toBe(true);
     expect(harness.onStart).toHaveBeenCalledWith(28); // 40 - 12
-    // First tick: appFrame 12, unattributed (odd) -> frame null.
-    expect(next.playback.frame).toBeNull();
+    // First tick: appFrame 12, attributed (even) -> frame present.
+    expect(next.playback.frame).toEqual({ appFrame: 12, id: 'f12' });
     expect(harness.onFrame).toHaveBeenLastCalledWith(0, 12);
 
     vi.advanceTimersByTime(500);
     expect(harness.onFrame).toHaveBeenLastCalledWith(1, 13);
+    // Unattributed in-range frame (odd) -> frame null (transparent).
     expect(next.playback.frame).toBeNull();
 
     vi.advanceTimersByTime(500);
@@ -584,7 +585,7 @@ describe('solo playback filter seam (useRotoNavigationCoordinator getFrames)', (
     expect(next.playback.frame).toEqual({ appFrame: 14, id: 'f14' });
 
     // The enumeration never leaves the window: after 28 ticks it wraps to 12.
-    vi.advanceTimersByTime(500 * 25);
+    vi.advanceTimersByTime(500 * 26);
     expect(harness.onFrame).toHaveBeenLastCalledWith(0, 12);
     vi.useRealTimers();
   });
