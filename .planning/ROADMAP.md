@@ -438,7 +438,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 43.6-06-PLAN.md — Solo playback: session arm signal, pure range/attribution derivation, getFrames presentation filter (stopped canvas untouched), strip toggle button, capsule line, layered exits
+- [x] 43.6-06-PLAN.md — Solo playback: session arm signal, pure range/attribution derivation, getFrames presentation filter (stopped canvas untouched), strip toggle button, capsule line, layered exits
 
 ### Phase 44: Integrated UAT + Signed Release
 
