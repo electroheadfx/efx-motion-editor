@@ -21,7 +21,7 @@ import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
-import { disarmPushTool } from './view/physicsPaintPushArmedTool';
+import { disarmPushTool, isPushCommitInFlight } from './view/physicsPaintPushArmedTool';
 import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyboard';
 import { createIdentityMemo, usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
 import { useRotoTimelineActions, type RotoGroupLifecycleDeleteTarget, type RotoKeyRailSelection } from './hooks/useRotoTimelineActions';
@@ -569,11 +569,13 @@ export function PhysicsPaintStudio() {
   );
   // 43.5-05 (D-18): entering a mutation-locked state disarms an armed Push
   // tool; the unmount cleanup guarantees the session-only armed state never
-  // survives a Studio reopen (D-19).
+  // survives a Studio reopen (D-19). A push tool mid-commit is exempt (smoke
+  // 3): its own mutation must not disarm it, so the tool stays armed for the
+  // next chained push.
   useEffect(() => {
-    if (mutationLocked) disarmPushTool();
+    if (mutationLocked && !isPushCommitInFlight()) disarmPushTool();
     return () => {
-      disarmPushTool();
+      if (!isPushCommitInFlight()) disarmPushTool();
     };
   }, [mutationLocked]);
   // Navigation already locks the engine input and navigation coordinator. Keep

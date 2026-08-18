@@ -14,10 +14,30 @@ import { signal } from '@preact/signals';
  */
 const armed = signal(false);
 
+/**
+ * Commit-in-flight guard (43.5-05 smoke 3): a successful push must NOT disarm
+ * the tool — the user chains consecutive pushes. While a push commit is in
+ * flight the mutation-lock disarm path (PhysicsPaintStudio) and the strip's
+ * disarm-on-selection-change effect skip, so the armed state survives the
+ * commit and the anchor re-binds to the rail's new position.
+ */
+const commitInFlight = signal(false);
+
 /** Subscribing read (D-19): components that render armed state re-render on
  *  arm/disarm changes — used by the strip tint, aria-pressed, and cursor. */
 export function isPushToolArmed(): boolean {
   return armed.value;
+}
+
+/** One-shot read of the commit-in-flight guard (peek: no subscription — the
+ *  Studio effect consumes it synchronously, never re-renders from it). */
+export function isPushCommitInFlight(): boolean {
+  return commitInFlight.peek();
+}
+
+/** Set/reset the commit-in-flight guard around a push commit. */
+export function setPushCommitInFlight(value: boolean): void {
+  commitInFlight.value = value;
 }
 
 /**

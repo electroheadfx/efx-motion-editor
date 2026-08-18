@@ -62,6 +62,7 @@ import { PhysicsPaintKeyRail } from './PhysicsPaintKeyRail';
 import {
   disarmPushTool,
   isPushToolArmed,
+  setPushCommitInFlight,
   togglePushTool,
 } from './physicsPaintPushArmedTool';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
@@ -1237,10 +1238,19 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // ARM time (not re-resolved at drag position). Captured here so the drag
   // session and the pre-highlight always use the exact rail that armed the tool.
   const armedAnchorRef = useRef<{ readonly kind: 'key' | 'loop'; readonly id: string } | null>(null);
+  // Tracks the latest anchor so the commit continuation can re-bind without a
+  // stale closure, and marks a push commit in flight so the disarm-on-selection
+  // effect re-binds instead of disarming when the selection is re-established
+  // on the moved anchor (smoke 3: chained pushes keep the tool armed).
+  const pushAnchorRef = useRef(pushAnchor);
+  pushAnchorRef.current = pushAnchor;
+  const justCommittedRef = useRef(false);
   // If the selection is cleared or changes type while armed, disarm — the tool
   // must never push a stale anchor. The effect also clears the captured anchor
   // whenever the tool is disarmed through any path (Escape, cancel, other
-  // toolbar action, re-click).
+  // toolbar action, re-click). A push that just committed is exempt: it
+  // re-established the selection on the moved anchor, so re-bind to keep the
+  // tool armed for the next push.
   useEffect(() => {
     if (!pushArmed) {
       armedAnchorRef.current = null;
@@ -1249,6 +1259,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     const armedAnchor = armedAnchorRef.current;
     if (armedAnchor === null) return;
     if (pushAnchor === null || pushAnchor.kind !== armedAnchor.kind || pushAnchor.id !== armedAnchor.id) {
+      if (justCommittedRef.current && pushAnchor !== null) {
+        armedAnchorRef.current = pushAnchor;
+        return;
+      }
       armedAnchorRef.current = null;
       disarmPushTool();
     }
@@ -1408,7 +1422,29 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       };
       return physicalActions?.prepareRotoPush(descriptor) ?? { ok: false, reason: 'push-unavailable' };
     },
-    onDropCommit: (publication) => physicalActions?.commitRotoPush(publication) ?? Promise.resolve(false),
+    onDropCommit: (publication) => {
+      // Smoke 3: a successful push must not disarm the tool (chained pushes).
+      // Exempt the commit's own mutation-lock disarm (Studio) and let the
+      // disarm-on-selection effect re-bind to the moved anchor instead of
+      // disarming, then re-bind the anchor to its new position on acceptance.
+      setPushCommitInFlight(true);
+      justCommittedRef.current = true;
+      return (physicalActions?.commitRotoPush(publication) ?? Promise.resolve(false))
+        .then((accepted) => {
+          setPushCommitInFlight(false);
+          if (accepted) {
+            const next = pushAnchorRef.current;
+            if (next !== null) armedAnchorRef.current = next;
+          }
+          justCommittedRef.current = false;
+          return accepted;
+        })
+        .catch((error: unknown) => {
+          setPushCommitInFlight(false);
+          justCommittedRef.current = false;
+          throw error;
+        });
+    },
     onCancel: () => {
       // A cancelled drag (Escape/pointercancel/lostpointercapture) disarms the
       // tool; a rejected drop keeps it armed (UI-SPEC).
@@ -1423,6 +1459,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       props.onRotoPushDragRejected?.(reason, detail);
     },
     onBlocked: (reason, detail, pointer) => {
+      // A zero-delta no-op drop is internal only (D-15): it must never surface
+      // as a tooltip or status. Same filter onRejected applies below.
+      if (reason === PUSH_DROP_NOOP) {
+        pushDragBlocked.value = null;
+        pushBlockedPointer.value = null;
+        return;
+      }
       // Blocked direction while the drag is live: show the guarded tooltip for
       // that direction only, anchored to the pointer (43.5-05 Defect 2). The
       // other direction stays available (tool armed).
@@ -2223,12 +2266,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // that direction only, and the other direction stays available (tool armed).
   const pushHoverInvalid = pushDragBlocked.value !== null;
   const pushHoverGuardCopy = pushDragBlocked.value?.reason ?? '';
-  const isSelectedPushRail = (rail: PushPreviewRail): boolean => {
-    if (rail.kind === 'key-rail') {
-      return props.selectedRotoKeyRail?.firstKeyId === rail.id;
-    }
-    return (props.selectedRotoLoopClipIds ?? []).includes(rail.id);
-  };
   const pushHoverRailKindClass = (rail: PushPreviewRail): string => {
     if (rail.kind === 'key-rail') return ' key-rail';
     return rail.clip?.mode === 'static' ? ' mode-static' : '';
@@ -2524,7 +2561,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               {pushDragGhost.active ? (
                 <div class="physics-paint-push-ghost-layer" aria-hidden="true">
                   {pushSessionRef.current?.movedRails.map((rail) => {
-                    if (isSelectedPushRail(rail)) return null;
                     const left = (rail.intervalStart + pushDragGhost.deltaFrames - frameCells[0]) * ROTO_CELL_WIDTH_PX;
                     const width = Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX);
                     return (
@@ -2549,6 +2585,22 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     />
                   ) : null}
                 </div>
+              ) : null}
+              {/* 43.5-05 smoke revision: the anchor Rail's orange capsule always
+                  renders ABOVE the hover pre-highlight (7) and the ghosts (8),
+                  so the anchor reference stays fully visible while armed and
+                  during the whole drag. Pre-highlight and ghosts complement it;
+                  they never replace the anchor's selection visual. On commit
+                  the anchor re-binds to its new position and stays selected. */}
+              {pushArmedAnchorRail !== null ? (
+                <span
+                  class="physics-paint-push-anchor-capsule"
+                  aria-hidden="true"
+                  style={{
+                    left: `${(pushArmedAnchorRail.intervalStart - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
+                    width: `${Math.max(ROTO_CELL_WIDTH_PX, (pushArmedAnchorRail.intervalEndExclusive - pushArmedAnchorRail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
+                  }}
+                />
               ) : null}
             </div>
         </div>

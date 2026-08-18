@@ -21,6 +21,10 @@ const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPain
 const css = () => readFileSync(cssPath, 'utf8');
 const timelineActionsPath = resolve(dirname(fileURLToPath(import.meta.url)), '../hooks/useRotoTimelineActions.ts');
 const timelineActionsSource = () => readFileSync(timelineActionsPath, 'utf8');
+const armedToolPath = resolve(dirname(fileURLToPath(import.meta.url)), './physicsPaintPushArmedTool.ts');
+const armedToolSource = () => readFileSync(armedToolPath, 'utf8');
+const studioSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../PhysicsPaintStudio.tsx');
+const studioSource = () => readFileSync(studioSourcePath, 'utf8');
 
 function getRotoMapBlock(code: string): string {
   const mapStart = code.indexOf('{frameCells.map(frame =>');
@@ -1852,5 +1856,71 @@ describe('Directional Push tool source contract (43.5-05 design revision: ONE to
     expect(code).toContain('pointer.clientX');
     expect(code).toContain('pushBlockedAnchorRef');
     expect(code).toContain('position: \'fixed\'');
+  });
+
+  it('A12: the ghost paints EVERY moved-set rail (including the anchor) at the clamped destination — painted range == readout range for both directions (smoke 1)', () => {
+    const code = source();
+    // The anchor is never skipped: the whole moved set ghosts at the destination,
+    // so the painted range equals the readout range for Push Right AND Push Left.
+    expect(code).not.toContain('isSelectedPushRail');
+    // Ghost left is the destination interval (original + the clamped signed
+    // delta), never the original position — preview-is-the-commit (D-14).
+    expect(code).toContain('rail.intervalStart + pushDragGhost.deltaFrames');
+  });
+
+  it('A13: no raw internal reason code surfaces — a zero-delta/no-op drop filters PUSH_DROP_NOOP in onBlocked (smoke 1)', () => {
+    const code = source();
+    const onBlockedStart = code.indexOf('onBlocked: (reason, detail, pointer)');
+    const onBlocked = code.slice(onBlockedStart, code.indexOf('onPreviewChange:', onBlockedStart));
+    // A no-op drop must show no tooltip and no status — the internal sentinel
+    // clears the blocked state instead of surfacing as copy.
+    expect(onBlocked).toContain('reason === PUSH_DROP_NOOP');
+    expect(onBlocked).toContain('pushDragBlocked.value = null');
+    expect(onBlocked).toContain('pushBlockedPointer.value = null');
+  });
+
+  it('A14: the anchor keeps its orange capsule above the hover/ghost layers through armed→drag→commit (smoke 2)', () => {
+    const code = source();
+    // A dedicated anchor-capsule element renders whenever an anchor rail exists
+    // (armed OR dragging) — never gated on drag state, so it persists across
+    // armed→drag→commit and the reference is never lost.
+    expect(code).toContain('physics-paint-push-anchor-capsule');
+    expect(code).toContain('pushArmedAnchorRail !== null ? (');
+    // The capsule paints the anchor's ORIGINAL interval as the reference.
+    expect(code).toContain('pushArmedAnchorRail.intervalStart');
+    // CSS: the capsule layer sits ABOVE the hover (7) and ghost (8).
+    expect(css()).toContain('.physics-paint-push-anchor-capsule');
+    expect(css()).toContain('z-index: 9');
+  });
+
+  it('A15: a successful push commit keeps the tool armed and re-binds the anchor to its new position (smoke 3)', () => {
+    const code = source();
+    const commitStart = code.indexOf('onDropCommit: (publication) => {');
+    const commit = code.slice(commitStart, code.indexOf('onCancel:', commitStart));
+    // The commit marks the push in flight (exempting the Studio mutation-lock
+    // disarm) and re-binds the anchor on acceptance.
+    expect(commit).toContain('setPushCommitInFlight(true)');
+    expect(commit).toContain('armedAnchorRef.current = next');
+    // The disarm-on-selection effect re-binds instead of disarming right after a
+    // commit.
+    expect(code).toContain('justCommittedRef.current && pushAnchor !== null');
+    // The Studio's disarm-on-mutation effect is guarded by the commit-in-flight
+    // flag.
+    expect(studioSource()).toContain('isPushCommitInFlight()');
+    // The armed-tool module owns the commit-in-flight guard.
+    const armedTool = armedToolSource();
+    expect(armedTool).toContain('setPushCommitInFlight');
+    expect(armedTool).toContain('isPushCommitInFlight');
+  });
+
+  it('A16: disarm vectors stay locked (selection change, toolbar action, cancel, Escape) — a commit re-bind is the only exemption', () => {
+    const code = source();
+    // Selection change while armed still disarms (A10) unless we JUST committed.
+    expect(code).toContain('disarmPushTool()');
+    expect(code).toContain('justCommittedRef.current && pushAnchor !== null');
+    // A cancel (Escape / pointercancel / lostpointercapture) still disarms.
+    const cancelStart = code.indexOf('onCancel: () => {');
+    const cancel = code.slice(cancelStart, code.indexOf('onRejected:', cancelStart));
+    expect(cancel).toContain('disarmPushTool()');
   });
 });
