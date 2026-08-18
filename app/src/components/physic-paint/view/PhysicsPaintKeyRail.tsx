@@ -89,6 +89,11 @@ export interface PhysicsPaintKeyRailProps extends SelectedKeyRailCopyAvailabilit
   readonly busy?: boolean;
   readonly windowLike?: KeyRailDragWindowLike;
   readonly onRailFocus?: (element: HTMLElement) => void;
+  /** 43.6-03 D-08: batch rail-set session pointer-down routing for set
+   *  members; absent means no batch session (pre-43.6 behavior). */
+  readonly onRailSetDragPointerDown?: (event: PointerEvent) => void;
+  /** 43.6-03 D-08: batch rail-set trailing-click suppression consumer. */
+  readonly onRailSetDragClickSuppressed?: () => boolean;
 }
 
 interface RailMouseEvent {
@@ -126,6 +131,8 @@ interface PhysicsPaintKeyRailTargetProps extends SelectedKeyRailCopyAvailability
   readonly busy: boolean;
   readonly windowLike?: KeyRailDragWindowLike;
   readonly onRailFocus?: (element: HTMLElement) => void;
+  readonly onRailSetDragPointerDown?: (event: PointerEvent) => void;
+  readonly onRailSetDragClickSuppressed?: () => boolean;
 }
 
 function sameKeyRailSelection(
@@ -196,6 +203,10 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
 
   const handleClick = (event: RailMouseEvent) => {
     event.stopPropagation();
+    // 43.6-03 D-08: a set member's trailing click after a batch drag is
+    // suppressed by the batch session (never the own-drag suppression, which
+    // is never armed for set members).
+    if (props.isSetMember && props.onRailSetDragClickSuppressed?.()) return;
     if (drag.consumeClickSuppression()) return;
     tooltip.hide();
     // 43.4 defect 10: an explicit click is a focus-worthy activation for every
@@ -248,7 +259,16 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
         aria-pressed={props.selected}
         aria-busy={props.busy ? 'true' : undefined}
         data-rail-first-frame={segment.firstKeyFrame}
-        onPointerDown={drag.onPointerDown}
+        onPointerDown={(event) => {
+          // 43.6-03 D-08: a set member hands the pointer-down to the batch
+          // session; a non-member runs its own 43.3/43.4 drag unchanged (the
+          // collapse-first selection side-effect happens at click time).
+          if (props.isSetMember && props.onRailSetDragPointerDown) {
+            props.onRailSetDragPointerDown(event);
+            return;
+          }
+          drag.onPointerDown(event);
+        }}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
         onFocus={(event) => {
@@ -330,6 +350,8 @@ export function PhysicsPaintKeyRail(props: PhysicsPaintKeyRailProps) {
           busy={props.busy ?? false}
           windowLike={props.windowLike}
           onRailFocus={props.onRailFocus}
+          onRailSetDragPointerDown={props.onRailSetDragPointerDown}
+          onRailSetDragClickSuppressed={props.onRailSetDragClickSuppressed}
         />
       ))}
     </div>

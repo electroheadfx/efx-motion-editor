@@ -21,10 +21,13 @@ import {
   clearRailSetSnapshots,
   deriveRailSetOrder,
   reconcileRailSetSelection,
+  recordRailSetSnapshot,
+  resolveRailSetPostAcceptance,
   updatePhysicsPaintRotoRailSetSelection,
   type RailSetIdentity,
   type RailSetSelectionState,
 } from './roto/physicsPaintRotoRailSetSelection';
+import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysicalResolver';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
@@ -527,6 +530,24 @@ export function PhysicsPaintStudio() {
   if (railSetSelection.peek() !== null && effectiveRailSetSelection === null) {
     railSetSelection.value = null;
   }
+  // 43.6-03: the explicit set members in Plan 01 canonical order, resolved to
+  // the exact segment keyIds the resolver validates (D-17 — membership is
+  // never re-derived in the view; the strip consumes this list opaquely).
+  const railSetMoveMembers = useMemo<readonly PhysicPaintRailSetMoveMember[]>(() => {
+    const members = effectiveRailSetSelection?.members ?? [];
+    const resolved: PhysicPaintRailSetMoveMember[] = [];
+    for (const member of members) {
+      if (member.kind === 'key-rail') {
+        const segment = keyRailSegments.find((candidate) => candidate.firstKeyId === member.firstKeyId);
+        if (segment) {
+          resolved.push({ kind: 'key-rail', firstKeyId: segment.firstKeyId, keyIds: segment.keyIds });
+        }
+      } else {
+        resolved.push({ kind: 'loop', loopId: member.loopId });
+      }
+    }
+    return resolved;
+  }, [effectiveRailSetSelection, keyRailSegments]);
   const timelineOccupiedRotoFrames = rotoTimelineModel.occupiedRotoFrames.value;
   const timelineSavedRotoFrames = rotoTimelineModel.savedRotoFrames.value;
   const timelineCachedRotoFrames = rotoTimelineModel.cachedRotoFrames.value;
@@ -1746,6 +1767,22 @@ export function PhysicsPaintStudio() {
         selectedKeyIds.value = nextSelection.keySelection.selectedKeyIds;
         selectionAnchorKeyId.value = nextSelection.keySelection.anchorKeyId;
       }
+      if (transition === 'accepted' && accepted) {
+        // 43.6-03 D-06/RSET-03: the rail-set aftermath. The pre-command set is
+        // recorded keyed by the accepted operationId BEFORE the resolver runs,
+        // so undo/redo can restore the exact before/after set (identities are
+        // move-stable, so before and after are the same identity list);
+        // 'move-rails' keeps the current set, 'delete-rails' clears it, and
+        // every other kind leaves it unchanged (Pitfall 6 — reconcile stays
+        // the stale authority). Undo/redo lookups use the ORIGINAL command id
+        // from the replay provenance, never the replay command's own id.
+        recordRailSetSnapshot(accepted.operationId, railSetSelection.peek(), railSetSelection.peek());
+        railSetSelection.value = resolveRailSetPostAcceptance({
+          operationKind: accepted.operationKind,
+          operationId: accepted.historyProvenance?.historyCommandId ?? accepted.operationId,
+          current: railSetSelection.peek(),
+        });
+      }
       const currentLaunch = launchContextRef.current;
       const currentEngine = engineRef.current;
       const selectedKeyId = accepted?.after.selectedKeyId ?? null;
@@ -1940,6 +1977,11 @@ export function PhysicsPaintStudio() {
   }, []);
   const handleRotoPushDragRejected = useCallback((reason?: string, detail?: string) => {
     const message = reason ?? 'Push unavailable.';
+    setApplyMessage(message);
+    console.error('[PhysicsPaintStudio] physical edit:', detail ?? message);
+  }, []);
+  const handleRotoRailSetMoveRejected = useCallback((reason?: string, detail?: string) => {
+    const message = reason ?? 'Rail set move unavailable.';
     setApplyMessage(message);
     console.error('[PhysicsPaintStudio] physical edit:', detail ?? message);
   }, []);
@@ -2290,6 +2332,11 @@ export function PhysicsPaintStudio() {
         // 43.5-05: push rejection copy publisher — the same status channel the
         // Key Rail / Group rejections use.
         onRotoPushDragRejected: handleRotoPushDragRejected,
+        // 43.6-03: batch Move rejection copy publisher + the explicit set
+        // members in Plan 01 canonical order (D-17 — the strip never re-derives
+        // membership).
+        onRotoRailSetMoveRejected: handleRotoRailSetMoveRejected,
+        railSetMoveMembers,
         rotoScript,
         statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
         onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,

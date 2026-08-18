@@ -2449,6 +2449,43 @@ button.destructive {
   pointer-events: none;
 }
 
+/* 43.6-03 Task 2 batch Move ghost layer (UI-SPEC M3): every set member ghosts
+   at 55% kind-color opacity at the clamped destination plus the 2x12px #FF6B6B
+   blocked-edge bar on the colliding member's ghost blocked edge. Between
+   layers 7 and 8 per UI-SPEC. */
+.physics-paint-rail-set-ghost-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+}
+
+.physics-paint-rail-set-ghost {
+  position: absolute;
+  top: 0;
+  height: 3px;
+  background: #8b5cf6;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.physics-paint-rail-set-ghost.mode-static {
+  background: #06b6d4;
+}
+
+.physics-paint-rail-set-ghost.key-rail {
+  background: #8a939c;
+}
+
+.physics-paint-rail-set-blocked-edge {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 12px;
+  background: #ff6b6b;
+  pointer-events: none;
+}
+
 /* 43.5-05 smoke revision: the anchor Rail keeps its full visible selection
    treatment (orange capsule) while armed and during the whole drag — ghosts
    and pre-highlight complement it but never replace it. Rendered as a dedicated

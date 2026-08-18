@@ -299,6 +299,55 @@ describe('PhysicsPaintKeyRail', () => {
     expect(edge.props.style).toEqual({ left: '124px' });
   });
 
+  // 43.6-03 D-08: a set member hands its pointer-down to the batch session
+  // (never the own 43.3/43.4 drag); a non-member runs its own drag unchanged.
+  // The batch session's own hook guard (L140 verbatim) rejects modifier
+  // pointer-downs, so selection gestures keep working during an active set.
+  it('routes set-member pointer-down to the batch session and keeps the own drag for non-members (D-08)', () => {
+    const onRailSetDragPointerDown = vi.fn();
+    const onRailSetDragClickSuppressed = vi.fn(() => true);
+    const tree = render({
+      railSetMemberKeyRailIds: ['A'],
+      onRailSetDragPointerDown,
+      onRailSetDragClickSuppressed,
+    });
+    const targets = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-key-rail-target'));
+    const pointerDown = { stopPropagation: vi.fn(), preventDefault: vi.fn() };
+
+    // Set member (A): the pointer-down routes to the batch session, never the
+    // own drag hook.
+    (targets[0].props.onPointerDown as (event: typeof pointerDown) => void)(pointerDown);
+    expect(onRailSetDragPointerDown).toHaveBeenCalledWith(pointerDown);
+    expect(drag.onPointerDown).not.toHaveBeenCalled();
+
+    // Non-member (C): the own 43.3/43.4 drag runs unchanged.
+    (targets[1].props.onPointerDown as (event: typeof pointerDown) => void)(pointerDown);
+    expect(drag.onPointerDown).toHaveBeenCalledWith(pointerDown);
+    expect(onRailSetDragPointerDown).toHaveBeenCalledTimes(1);
+
+    // A set member's trailing click consumes the batch suppression first —
+    // never the own-drag suppression, which is never armed for set members.
+    const click = { stopPropagation: vi.fn(), preventDefault: vi.fn(), shiftKey: false, metaKey: false, ctrlKey: false };
+    (targets[0].props.onClick as (event: typeof click) => void)(click);
+    expect(onRailSetDragClickSuppressed).toHaveBeenCalledOnce();
+    expect(drag.consumeClickSuppression).not.toHaveBeenCalled();
+  });
+
+  // 43.6-03 UI-SPEC M3: batch Move ghosts carry exactly 55% opacity kind
+  // colors (Motion #8B5CF6 / Static #06B6D4 / Key Rail #8A939C) and the
+  // 2x12px #FF6B6B blocked-edge bar, on a layer between 7 and 8.
+  it('paints batch Move ghosts at 55% kind colors and the 2x12px blocked-edge bar (UI-SPEC M3)', () => {
+    expect(cssRule('.physics-paint-rail-set-ghost {')).toContain('opacity: 0.55');
+    expect(cssRule('.physics-paint-rail-set-ghost {')).toContain('pointer-events: none');
+    expect(cssRule('.physics-paint-rail-set-ghost {')).toContain('background: #8b5cf6');
+    expect(cssRule('.physics-paint-rail-set-ghost.mode-static {')).toContain('background: #06b6d4');
+    expect(cssRule('.physics-paint-rail-set-ghost.key-rail {')).toContain('background: #8a939c');
+    expect(cssRule('.physics-paint-rail-set-blocked-edge {')).toContain('background: #ff6b6b');
+    expect(cssRule('.physics-paint-rail-set-blocked-edge {')).toContain('width: 2px');
+    expect(cssRule('.physics-paint-rail-set-blocked-edge {')).toContain('height: 12px');
+    expect(cssRule('.physics-paint-rail-set-ghost-layer {')).toContain('z-index: 8');
+  });
+
   it('marks only controller-busy accepted rails busy and pins additive paint geometry', () => {
     const target = findOne(render({ busy: true, segments: [segments[0]] }), (vnode) => hasClass(vnode, 'physics-paint-key-rail-target'));
     expect(target.props['aria-busy']).toBe('true');

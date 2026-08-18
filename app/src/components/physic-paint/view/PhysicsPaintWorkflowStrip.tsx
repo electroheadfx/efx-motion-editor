@@ -39,11 +39,13 @@ import {
 } from '../roto/physicsPaintRotoGroupLifecycle';
 import {
   clampPhysicPaintPushDestination,
+  clampPhysicPaintRailSetMoveDelta,
   derivePhysicPaintPushSet,
   resolvePhysicPaintRotoGroupEffectiveEnd,
   type PhysicPaintRotoGroupDragClampInput,
   type PhysicPaintRotoKeyRailDragClampInput,
   type PhysicPaintRotoLoopResolutionContext,
+  type PhysicPaintRailSetMoveMember,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import {
   getRotoFrameKeyInteraction,
@@ -90,7 +92,17 @@ import type {
   RotoPushIntentDescriptor,
   RotoPushPublication,
 } from '../hooks/useRotoTimelineActions';
-import { buildRailSetCopy, mapRotoPushProductReason, type RailSetCopyMember } from '../hooks/useRotoTimelineActions';
+import {
+  buildRailSetCopy,
+  mapRotoPushProductReason,
+  mapRotoRailSetMoveProductReason,
+  type RailSetCopyMember,
+  type RotoRailSetMovePublication,
+} from '../hooks/useRotoTimelineActions';
+import {
+  usePhysicsPaintRailSetDrag,
+  type RailSetDragSessionApi,
+} from '../hooks/usePhysicsPaintRailSetDrag';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
@@ -290,6 +302,14 @@ export interface PhysicsPaintWorkflowStripProps {
    *  release-time resolver rejection; zero-delta no-op drops are filtered
    *  inside the strip (D-15) and never reach this channel. */
   onRotoPushDragRejected?: (reason?: string, detail?: string) => void;
+  /** 43.6-03: batch Move rejection copy publisher (status channel). Fires on
+   *  a release-time resolver rejection; zero-delta no-op drops are filtered
+   *  inside the hook (D-13) and never reach this channel. */
+  onRotoRailSetMoveRejected?: (reason?: string, detail?: string) => void;
+  /** 43.6-03: the explicit set members in Plan 01 canonical order — the exact
+   *  list the resolver validates (D-17: set membership is never re-derived in
+   *  the view). */
+  railSetMoveMembers?: readonly PhysicPaintRailSetMoveMember[];
   /** Accepted parent boundary used by the canonical Key Rail clamp. */
   rotoParentEndExclusive?: number;
   /** Existing Studio-local Loop Edit controller port (D-37/D-39). */
@@ -316,6 +336,8 @@ const EMPTY_LOOP_PRESENTATIONS: ReadonlyMap<string, PhysicsPaintLoopClipPresenta
 const EMPTY_SPACING_PROXIES: ReadonlyMap<number, PhysicsPaintRotoSpacingProxy> = new Map();
 const EMPTY_CACHED_ROTO_FRAMES: readonly PhysicPaintRotoCacheFrame[] = [];
 const EMPTY_STRING_IDS: readonly string[] = [];
+const EMPTY_RAIL_SET_MOVE_MEMBERS: readonly PhysicPaintRailSetMoveMember[] = [];
+const EMPTY_RAIL_SET_GAP_PREVIEW_FRAMES: ReadonlySet<number> = new Set<number>();
 const NOOP_KEY_RAIL_SELECTION = (_selection: RotoKeyRailSelection): void => {};
 
 function buildRulerTicks(frameCells: number[]): number[] {
@@ -1044,6 +1066,16 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     incomingInterpolationBreakKeyIds: new Set(props.rotoIncomingInterpolationBreakKeyIds ?? []),
     groupOwnedKeyIds: keyRailGroupOwnedKeyIds,
   }), [rotoKeyRecords, props.rotoIncomingInterpolationBreakKeyIds, keyRailGroupOwnedKeyIds]);
+  // 43.6-03: the explicit set members in Plan 01 canonical order, passed
+  // through from the Studio's set authority (D-17 — membership is never
+  // re-derived in the view). The ref keeps the session ports reading the
+  // current set without re-creating the hook on every selection change.
+  const railSetMoveMembers = useMemo<readonly PhysicPaintRailSetMoveMember[]>(
+    () => props.railSetMoveMembers ?? EMPTY_RAIL_SET_MOVE_MEMBERS,
+    [props.railSetMoveMembers],
+  );
+  const railSetMoveMembersRef = useRef(railSetMoveMembers);
+  railSetMoveMembersRef.current = railSetMoveMembers;
   // 43.4 defect 6: record the focused Key Rail button so a commit that removes
   // it (Delete/Undo/Redo) can restore focus to the stable timeline container.
   const handleKeyRailFocus = useCallback((element: HTMLElement) => {
@@ -1486,6 +1518,72 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     windowLike: undefined,
   });
   pushDragApiRef.current = pushDragApi;
+  // ── 43.6-03 batch rail-set Move session wiring ───────────────────────────
+  // The batch session is gesture + presentation only; resolver/store/model
+  // enter exclusively through the hook's injected ports (T-43.6-02).
+  // railSetPaintTick re-renders the strip so the hook's internal presentation
+  // Signals are read fresh (same pattern as pushPaintTick). The clamp port
+  // forwards the PROPOSED delta for the no-space case so prepare fails with
+  // the resolver's no-space rejection — never the D-13 zero-delta no-change
+  // path (UI-SPEC M3: "Release with zero valid movement | rejection").
+  const railSetPaintTick = useSignal(0);
+  const railSetDragApiRef = useRef<RailSetDragSessionApi | null>(null);
+  const railSetDragApi = usePhysicsPaintRailSetDrag<RotoRailSetMovePublication>({
+    projectDelta: ({ originClientX, clientX }) => (
+      Math.round((clientX - originClientX) / ROTO_CELL_WIDTH_PX)
+    ),
+    clampDelta: (proposedDelta) => {
+      const members = railSetMoveMembersRef.current;
+      if (members.length === 0) return { delta: 0, blockedEdge: null, collidingMemberId: null };
+      const result = clampPhysicPaintRailSetMoveDelta({
+        members,
+        identities: rotoKeyRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+        loopRanges: loopResolutionContext?.ranges ?? [],
+        loopClips: props.rotoLoopClips ?? [],
+        incomingInterpolationBreakKeyIds,
+        proposedDelta,
+        capacity: frameCells.length,
+      });
+      if (!result.ok) {
+        // Zero valid movement: forward the PROPOSED (nonzero) delta to prepare
+        // so the resolver produces the no-space copy — never the D-13
+        // zero-delta no-change path. preview-is-the-commit (D-17) still holds:
+        // the resolver clamp is the single delta authority.
+        return {
+          delta: proposedDelta,
+          blockedEdge: proposedDelta > 0 ? 'right' : 'left',
+          collidingMemberId: null,
+        };
+      }
+      return {
+        delta: result.delta,
+        // The resolver reports the blocked edge even when unclamped; the strip
+        // normalizes to null so the bar paints only on an actual clamp.
+        blockedEdge: result.delta === proposedDelta ? null : result.blockedEdge,
+        collidingMemberId: result.delta === proposedDelta ? null : result.collidingMemberId,
+      };
+    },
+    prepareAtDelta: (delta) => {
+      if (keyUtilitiesDisabledByBusyState) return { ok: false, reason: ROTO_KEY_BUSY_STATUS_TEMPLATE };
+      const members = railSetMoveMembersRef.current;
+      if (members.length === 0) return { ok: false, reason: 'Rail set move unavailable.' };
+      return physicalActions?.prepareRailSetMove({ members, delta })
+        ?? { ok: false, reason: 'Rail set move unavailable.' };
+    },
+    onDropCommit: (publication) => (
+      physicalActions?.commitRailSetMove(publication) ?? Promise.resolve(false)
+    ),
+    onCancel: () => {},
+    onRejected: (reason, detail) => {
+      props.onRotoRailSetMoveRejected?.(reason, detail);
+    },
+    onPreviewChange: () => {
+      railSetPaintTick.value += 1;
+    },
+    clearClickSequence: () => {},
+    windowLike: undefined,
+  });
+  railSetDragApiRef.current = railSetDragApi;
   // ── 43.5-05 Task 2 drag preview reads (T5/T6) ─────────────────────────────
   // The hook's ghost/preview Signals are read fresh on every render; the
   // pushPaintTick signal (bumped in onPreviewChange) subscribes the component
@@ -1517,6 +1615,101 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         beforeRange: pushDragPreview.publication.beforeRange,
         afterRange: pushDragPreview.publication.afterRange,
         gapInterval: pushDragPreview.publication.gapInterval,
+      })
+    : null;
+  // ── 43.6-03 Task 2 drag preview reads ────────────────────────────────────
+  // The hook's set-level preview is read fresh on every render; railSetPaintTick
+  // (bumped in onPreviewChange) subscribes the component to its changes.
+  // Per-member ghost geometry is derived here from the member intervals + the
+  // hook's clamped delta — the hook owns the set-level result only (D-09).
+  const railSetDragPreview = railSetDragApiRef.current?.preview ?? null;
+  // Per-member ghost geometry (UI-SPEC M3): every set member ghosts at the
+  // clamped destination with its exact geometry, in its kind base color at
+  // 55% opacity. Derived from the same canonical segments/ranges the rails
+  // paint — never re-derived membership (D-17).
+  const railSetMoveGhostRails = useMemo(() => {
+    const rails: {
+      readonly id: string;
+      readonly kind: 'key-rail' | 'loop';
+      readonly mode: 'motion' | 'static' | 'progressive' | null;
+      readonly intervalStart: number;
+      readonly intervalEndExclusive: number;
+    }[] = [];
+    for (const member of railSetMoveMembers) {
+      if (member.kind === 'key-rail') {
+        const segment = keyRailSegments.find((candidate) => candidate.firstKeyId === member.firstKeyId);
+        if (segment === undefined) continue;
+        rails.push({
+          id: segment.firstKeyId,
+          kind: 'key-rail',
+          mode: null,
+          intervalStart: segment.firstKeyFrame,
+          intervalEndExclusive: segment.lastKeyFrame + 1,
+        });
+      } else {
+        const range = loopResolutionContext?.ranges.find((candidate) => candidate.loopId === member.loopId);
+        if (range === undefined) continue;
+        const clip = props.rotoLoopClips?.find((candidate) => candidate.loopId === member.loopId);
+        rails.push({
+          id: member.loopId,
+          kind: 'loop',
+          mode: clip?.mode ?? 'motion',
+          intervalStart: range.placementStart,
+          intervalEndExclusive: range.effectiveEnd,
+        });
+      }
+    }
+    return rails;
+  }, [railSetMoveMembers, keyRailSegments, loopResolutionContext, props.rotoLoopClips]);
+  // The set's inclusive product before-range for the live readout, derived
+  // from the member intervals + the same canonical segments/ranges the rails
+  // paint (the hook preview carries only the set-level result; the
+  // publication's facts are retained for commit, never read here).
+  const railSetMoveBeforeRange = useMemo(() => {
+    if (railSetMoveMembers.length === 0) return null;
+    let firstFrame = Number.POSITIVE_INFINITY;
+    let lastEndExclusive = Number.NEGATIVE_INFINITY;
+    for (const member of railSetMoveMembers) {
+      if (member.kind === 'key-rail') {
+        const segment = keyRailSegments.find((candidate) => candidate.firstKeyId === member.firstKeyId);
+        if (segment === undefined) continue;
+        firstFrame = Math.min(firstFrame, segment.firstKeyFrame);
+        lastEndExclusive = Math.max(lastEndExclusive, segment.lastKeyFrame + 1);
+      } else {
+        const range = loopResolutionContext?.ranges.find((candidate) => candidate.loopId === member.loopId);
+        if (range === undefined) continue;
+        firstFrame = Math.min(firstFrame, range.placementStart);
+        lastEndExclusive = Math.max(lastEndExclusive, range.effectiveEnd);
+      }
+    }
+    if (!Number.isFinite(firstFrame)) return null;
+    return { firstFrame, lastFrame: lastEndExclusive - 1 };
+  }, [railSetMoveMembers, keyRailSegments, loopResolutionContext]);
+  // Gap preview (UI-SPEC M3): the would-open gap intervals preview as ordinary
+  // roto-fill-empty cells, byte-identical to the 43.2-43.5 gap treatment.
+  // Class application only — no new DOM nodes.
+  const railSetGapPreviewAppFrames = useMemo(() => {
+    const preview = railSetDragApiRef.current?.preview ?? null;
+    if (preview === null) return EMPTY_RAIL_SET_GAP_PREVIEW_FRAMES;
+    const frames = new Set<number>();
+    for (const interval of preview.gapIntervals) {
+      for (let frame = interval.start; frame < interval.end; frame += 1) frames.add(frame);
+    }
+    return frames;
+  }, [railSetPaintTick.value]);
+  // Live drag readout (D-09): the single product-reason mapper owns the string
+  // (D-15) — no copy literal duplicated in the strip. Published to the status
+  // capsule ONLY during the drag; hover produces no status-line change (D-13).
+  const railSetDragFeedback = railSetDragPreview !== null && railSetMoveBeforeRange !== null
+    ? mapRotoRailSetMoveProductReason({
+        kind: 'live',
+        signedDeltaFrames: railSetDragPreview.delta,
+        beforeRange: railSetMoveBeforeRange,
+        afterRange: {
+          firstFrame: railSetMoveBeforeRange.firstFrame + railSetDragPreview.delta,
+          lastFrame: railSetMoveBeforeRange.lastFrame + railSetDragPreview.delta,
+        },
+        gapIntervals: railSetDragPreview.gapIntervals,
       })
     : null;
   // Lane capture-phase pointer-down: the armed push session wins over the
@@ -1735,7 +1928,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }, [keyRailSegments, loopResolutionContext, props.railSetMemberKeyRailIds, props.railSetMemberLoopIds, props.rotoLoopClips]);
   const railSetSize = (props.railSetMemberLoopIds?.length ?? 0) + (props.railSetMemberKeyRailIds?.length ?? 0);
   const capsuleText = getRotoStatusCapsuleViewModel({
-    pendingOperation: pushDragFeedback ?? rotoDragFeedback ?? (keyUtilitiesDisabledByBusyState ? getRotoKeyBusyStatus(props.currentFrame) : null),
+    pendingOperation: pushDragFeedback ?? railSetDragFeedback ?? rotoDragFeedback ?? (keyUtilitiesDisabledByBusyState ? getRotoKeyBusyStatus(props.currentFrame) : null),
     savingIndicator: props.statusMessage ?? null,
     feedback: [
       { text: props.rotoCachedPlaybackStatus ?? null, recency: 2 },
@@ -2329,10 +2522,32 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (rail.kind === 'key-rail') return ' key-rail';
     return rail.clip?.mode === 'static' ? ' mode-static' : '';
   };
+  // 43.6-03: batch Move ghost kind class — Key Rail gray, Static cyan,
+  // Motion purple (UI-SPEC M3 kind base colors at 55% opacity).
+  const railSetGhostRailKindClass = (rail: {
+    readonly kind: 'key-rail' | 'loop';
+    readonly mode: 'motion' | 'static' | 'progressive' | null;
+  }): string => {
+    if (rail.kind === 'key-rail') return ' key-rail';
+    return rail.mode === 'static' ? ' mode-static' : '';
+  };
+  // 43.6-03: the blocked-edge bar paints on the colliding member's ghost
+  // blocked edge — left edge of the leftmost blocked ghost for leftward,
+  // right edge of the rightmost for rightward (UI-SPEC M3 direction rule).
+  const railSetBlockedEdgeLeftPx = ((): number | null => {
+    const preview = railSetDragPreview;
+    if (preview === null || preview.blockedEdge === null || preview.collidingMemberId === null) return null;
+    const rail = railSetMoveGhostRails.find((candidate) => candidate.id === preview.collidingMemberId);
+    if (rail === undefined) return null;
+    const ghostLeft = (rail.intervalStart + preview.delta - frameCells[0]) * ROTO_CELL_WIDTH_PX;
+    const ghostWidth = Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX);
+    return preview.blockedEdge === 'left' ? ghostLeft : ghostLeft + ghostWidth - 2;
+  })();
   return (
     <section
       class={`physics-paint-workflow-strip${pushArmed ? ' physics-paint-push-armed' : ''}`}
       data-push-paint-tick={pushPaintTick.value}
+      data-rail-set-paint-tick={railSetPaintTick.value}
       aria-label="Physics Paint workflow strip"
     >
       <PhysicsPaintWorkflowStaticChrome
@@ -2413,6 +2628,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   deleteUnavailableReason={deleteRotoKeyDisabledReason}
                   busy={keyUtilitiesDisabledByBusyState}
                   onRailFocus={handleKeyRailFocus}
+                  onRailSetDragPointerDown={railSetDragApiRef.current?.onPointerDown}
+                  onRailSetDragClickSuppressed={railSetDragApiRef.current?.consumeClickSuppression}
                 />
               ) : null}
               {loopResolutionContext !== null
@@ -2437,6 +2654,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   getClampInput={getRotoGroupDragClampInput}
                   onRotoGroupDragRejected={(reason, detail) => props.onRotoGroupDragRejected?.(reason, detail ?? '')}
                   onPreviewChange={setRotoGroupDragPreview}
+                  onRailSetDragPointerDown={railSetDragApiRef.current?.onPointerDown}
+                  onRailSetDragClickSuppressed={railSetDragApiRef.current?.consumeClickSuppression}
                 />
               ) : null}
               <div
@@ -2574,7 +2793,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   // ordinary roto-fill-empty cells, byte-identical to the
                   // 43.2/43.3/43.4 gap treatment (D-12 preview obligation).
                   const isPushGapPreview = pushGapPreviewAppFrames.has(frame);
-                  const effectiveFillClass = isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview || isPushGapPreview
+                  // 43.6-03 (UI-SPEC M3): the batch Move would-open gaps
+                  // preview as ordinary roto-fill-empty cells, byte-identical
+                  // to the 43.2-43.5 gap treatment (D-09).
+                  const isRailSetGapPreview = railSetGapPreviewAppFrames.has(frame);
+                  const effectiveFillClass = isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview || isPushGapPreview || isRailSetGapPreview
                     ? 'roto-fill-empty' : fillClass;
                   const cellClass = `physics-paint-roto-cell ${effectiveFillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${cellPresentation.startsInterpolationSegment ? 'starts-interpolation-segment' : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${hasCurrentTreatment ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
                   return (
@@ -2643,6 +2866,33 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                           - (pushDragGhost.blockedEdge === 'right' ? 2 : 0)
                           - frameCells[0] * ROTO_CELL_WIDTH_PX}px`,
                       }}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+              {/* 43.6-03 Task 2 batch Move ghost layer (UI-SPEC M3): every set
+                  member ghosts at 55% kind-color opacity at the clamped
+                  destination (original interval + the hook's clamped delta —
+                  rigid translation, never recomputed here); the clamped
+                  blocked edge paints the 2x12px #FF6B6B bar on the colliding
+                  member's ghost blocked edge. Originals stay at 100% with
+                  their orange selection lines for the whole drag. */}
+              {railSetDragPreview !== null ? (
+                <div class="physics-paint-rail-set-ghost-layer" aria-hidden="true">
+                  {railSetMoveGhostRails.map((rail) => (
+                    <span
+                      key={rail.id}
+                      class={`physics-paint-rail-set-ghost${railSetGhostRailKindClass(rail)}`}
+                      style={{
+                        left: `${(rail.intervalStart + railSetDragPreview.delta - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
+                        width: `${Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
+                      }}
+                    />
+                  ))}
+                  {railSetBlockedEdgeLeftPx !== null ? (
+                    <span
+                      class="physics-paint-rail-set-blocked-edge"
+                      style={{ left: `${railSetBlockedEdgeLeftPx}px` }}
                     />
                   ) : null}
                 </div>

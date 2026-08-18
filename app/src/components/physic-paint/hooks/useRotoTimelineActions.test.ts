@@ -220,16 +220,16 @@ function keyRailRecords(firstKeyId: string, startFrame: number, count: number): 
   return records;
 }
 
-/** One exact-match Key Rail set member over `count` contiguous keys. */
-function keyRailMember(firstKeyId: string, count: number): Readonly<{
+/** One exact-match Key Rail set member over `count` contiguous keys named `<prefix><index>`. */
+function keyRailMember(prefix: string, count: number): Readonly<{
   kind: 'key-rail';
   firstKeyId: string;
   keyIds: readonly string[];
 }> {
   return Object.freeze({
     kind: 'key-rail',
-    firstKeyId,
-    keyIds: Object.freeze(Array.from({ length: count }, (_, index) => `${firstKeyId}${index}`)),
+    firstKeyId: `${prefix}0`,
+    keyIds: Object.freeze(Array.from({ length: count }, (_, index) => `${prefix}${index}`)),
   });
 }
 
@@ -2295,19 +2295,19 @@ describe('useRotoTimelineActions batch Move prepare + locked copy family (43.6-0
   it('rejects in the same guard order as prepareRotoPush', () => {
     const noLaunch = createHarness({ launch: null });
     expect(noLaunch.actions.physicalActions.prepareRailSetMove({
-      members: [keyRailMember('a0', 12)],
+      members: [keyRailMember('a', 12)],
       delta: 2,
     })).toEqual({ ok: false, reason: 'Select a real Roto key before editing the timeline.' });
 
     const noPorts = createHarness({ omitPhysicalEditPorts: true });
     expect(noPorts.actions.physicalActions.prepareRailSetMove({
-      members: [keyRailMember('a0', 12)],
+      members: [keyRailMember('a', 12)],
       delta: 2,
     })).toEqual({ ok: false, reason: 'Timeline editing is unavailable.' });
 
     const inFlight = createHarness({ pendingOperationId: 'op-busy' });
     expect(inFlight.actions.physicalActions.prepareRailSetMove({
-      members: [keyRailMember('a0', 12)],
+      members: [keyRailMember('a', 12)],
       delta: 2,
     })).toEqual({ ok: false, reason: 'A Roto physical edit is already in flight.' });
   });
@@ -2329,23 +2329,37 @@ describe('useRotoTimelineActions batch Move prepare + locked copy family (43.6-0
     })).toEqual({ ok: false, reason: 'The rail set move members are malformed.' });
     // Non-integer delta.
     expect(actions.physicalActions.prepareRailSetMove({
-      members: [keyRailMember('a0', 12)],
+      members: [keyRailMember('a', 12)],
       delta: 1.5,
     })).toEqual({ ok: false, reason: 'The rail set move delta is malformed.' });
   });
 
   it('threads the incoming break collection into a break-aware proposalVersion (Pitfall 3 regression)', () => {
-    const records = [realKeyRecord('A', 0), realKeyRecord('B', 1), realKeyRecord('C', 10), realKeyRecord('D', 11)];
-    const base = { records, capacity: 14 };
+    // Group-owned keys g0/g1 split the derived segments without any break; a
+    // break on a group-owned key reaches the fingerprint without splitting
+    // (deriveKeyRailSegments skips group-owned keys before the break check).
+    const records = [
+      realKeyRecord('A', 0), realKeyRecord('B', 1), realKeyRecord('C', 10), realKeyRecord('D', 11),
+      realKeyRecord('g0', 20), realKeyRecord('g1', 21),
+    ];
+    const loopG = lifecycleGroup({
+      loopId: 'loop-G',
+      placementStart: 20,
+      sourceKeyIds: Object.freeze(['g0', 'g1']),
+      phaseOrigin: 20,
+      originalEndExclusive: 28,
+      visibleRanges: Object.freeze([Object.freeze({ start: 20, endExclusive: 28 })]),
+    });
+    const base = { records, loopClips: [loopG], capacity: 30 };
     const withoutBreaks = createHarness({ ...base });
-    const withBreaks = createHarness({ ...base, incomingInterpolationBreakKeyIds: ['D'] });
+    const withBreaks = createHarness({ ...base, incomingInterpolationBreakKeyIds: ['g0'] });
 
     const plain = withoutBreaks.actions.physicalActions.prepareRailSetMove({
-      members: [{ kind: 'key-rail', firstKeyId: 'A', keyIds: ['A', 'B'] }],
+      members: [{ kind: 'key-rail', firstKeyId: 'A', keyIds: ['A', 'B', 'C', 'D'] }],
       delta: 2,
     });
     const broken = withBreaks.actions.physicalActions.prepareRailSetMove({
-      members: [{ kind: 'key-rail', firstKeyId: 'A', keyIds: ['A', 'B'] }],
+      members: [{ kind: 'key-rail', firstKeyId: 'A', keyIds: ['A', 'B', 'C', 'D'] }],
       delta: 2,
     });
 
@@ -2355,7 +2369,7 @@ describe('useRotoTimelineActions batch Move prepare + locked copy family (43.6-0
     // Identical physical content except break authority produce different
     // proposalVersions — the break collection reaches the fingerprint (Pitfall 3).
     expect(plain.publication.proposalVersion).not.toBe(broken.publication.proposalVersion);
-    // The added break (splitting the C/D rail) does not change the committed
+    // The added break on a group-owned key does not change the committed
     // mapping, so the version difference is attributable to break authority alone.
     expect(Object.fromEntries(plain.publication.proposal.mapping))
       .toEqual(Object.fromEntries(broken.publication.proposal.mapping));
@@ -2365,6 +2379,9 @@ describe('useRotoTimelineActions batch Move prepare + locked copy family (43.6-0
     const { actions } = createHarness({
       records: [realKeyRecord('A', 0), realKeyRecord('B', 10)],
       capacity: 14,
+      // The break on B splits the derived segments into [A] and [B] so the
+      // single-key member {A,[A]} matches exactly one segment.
+      incomingInterpolationBreakKeyIds: ['B'],
     });
     const preparation = actions.physicalActions.prepareRailSetMove({
       members: [{ kind: 'key-rail', firstKeyId: 'A', keyIds: ['A'] }],
@@ -2387,7 +2404,7 @@ describe('useRotoTimelineActions batch Move prepare + locked copy family (43.6-0
       incomingInterpolationBreakKeyIds: ['b0', 'c0'],
     });
     const preparation = actions.physicalActions.prepareRailSetMove({
-      members: [keyRailMember('a0', 12), keyRailMember('b0', 16), keyRailMember('c0', 49)],
+      members: [keyRailMember('a', 12), keyRailMember('b', 16), keyRailMember('c', 49)],
       delta: 12,
     });
 
@@ -2398,7 +2415,7 @@ describe('useRotoTimelineActions batch Move prepare + locked copy family (43.6-0
     expect(pub.proposal.status.changed).toBe(true);
     expect(pub.intent).toEqual({
       kind: 'move-rails',
-      members: [keyRailMember('a0', 12), keyRailMember('b0', 16), keyRailMember('c0', 49)],
+      members: [keyRailMember('a', 12), keyRailMember('b', 16), keyRailMember('c', 49)],
       delta: 12,
     });
     expect(pub.expectedLaunch).toEqual({ operationId: 'op-1', layerId: 'layer-1' });
@@ -2430,7 +2447,7 @@ describe('useRotoTimelineActions batch Move prepare + locked copy family (43.6-0
       incomingInterpolationBreakKeyIds: ['b0', 'c0'],
     });
     const preparation = actions.physicalActions.prepareRailSetMove({
-      members: [keyRailMember('a0', 12), keyRailMember('b0', 16), keyRailMember('c0', 49)],
+      members: [keyRailMember('a', 12), keyRailMember('b', 16), keyRailMember('c', 49)],
       delta: -12,
     });
 
@@ -2502,7 +2519,7 @@ describe('useRotoTimelineActions batch Move prepare + locked copy family (43.6-0
       capacity: 10,
     });
     const preparation = actions.physicalActions.prepareRailSetMove({
-      members: [keyRailMember('k0', 10)],
+      members: [keyRailMember('k', 10)],
       delta: 2,
     });
     expect(preparation).toEqual({
@@ -2617,7 +2634,7 @@ describe('useRotoTimelineActions batch Move commit + stale authority (43.6-03 Ta
       incomingInterpolationBreakKeyIds: ['b0', 'c0'],
     });
     const preparation = actions.physicalActions.prepareRailSetMove({
-      members: [keyRailMember('a0', 12), keyRailMember('b0', 16), keyRailMember('c0', 49)],
+      members: [keyRailMember('a', 12), keyRailMember('b', 16), keyRailMember('c', 49)],
       delta: 12,
     });
     expect(preparation.ok).toBe(true);
@@ -2659,7 +2676,7 @@ describe('useRotoTimelineActions batch Move commit + stale authority (43.6-03 Ta
       incomingInterpolationBreakKeyIds: ['b0', 'c0'],
     });
     const preparation = actions.physicalActions.prepareRailSetMove({
-      members: [keyRailMember('a0', 12), keyRailMember('b0', 16), keyRailMember('c0', 49)],
+      members: [keyRailMember('a', 12), keyRailMember('b', 16), keyRailMember('c', 49)],
       delta: 12,
     });
     expect(preparation.ok).toBe(true);
@@ -2689,7 +2706,9 @@ describe('useRotoTimelineActions batch Move commit + stale authority (43.6-03 Ta
 
   it('rejects a stale break-aware proposal version with zero mutation (T-43.6-02)', async () => {
     const records = [realKeyRecord('A', 0), realKeyRecord('B', 1), realKeyRecord('C', 10), realKeyRecord('D', 11)];
-    const breaks = ['D'];
+    // The break on C splits the derived segments into [A,B] and [C,D] so the
+    // member {A,[A,B]} matches exactly one segment.
+    const breaks = ['C'];
     const { actions, executePhysicalEdit } = createHarness({
       records,
       capacity: 14,
@@ -2707,7 +2726,7 @@ describe('useRotoTimelineActions batch Move commit + stale authority (43.6-03 Ta
 
     expect(await actions.physicalActions.commitRailSetMove(preparation.publication)).toBe(false);
     expect(executePhysicalEdit).not.toHaveBeenCalled();
-    expect(breaks).toEqual(['D', 'A']);
+    expect(breaks).toEqual(['C', 'A']);
   });
 
   it('rejects a stale structural authority with zero mutation (concurrent key edit)', async () => {

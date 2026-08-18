@@ -71,6 +71,11 @@ export interface PhysicsPaintLoopClipRailProps {
   readonly onPreviewChange?: (preview: GroupRailDragPreviewState | null) => void;
   /** Injectable window surface for node-environment session tests. */
   readonly windowLike?: GroupRailDragWindowLike;
+  /** 43.6-03 D-08: batch rail-set session pointer-down routing for set
+   *  members; absent means no batch session (pre-43.6 behavior). */
+  readonly onRailSetDragPointerDown?: (event: PointerEvent) => void;
+  /** 43.6-03 D-08: batch rail-set trailing-click suppression consumer. */
+  readonly onRailSetDragClickSuppressed?: () => boolean;
 }
 
 interface RailMouseEvent {
@@ -124,6 +129,8 @@ interface RailTargetProps {
   readonly onRotoGroupDragRejected?: (reason: string, detail?: string) => void;
   readonly onPreviewChange?: (preview: GroupRailDragPreviewState | null) => void;
   readonly windowLike?: GroupRailDragWindowLike;
+  readonly onRailSetDragPointerDown?: (event: PointerEvent) => void;
+  readonly onRailSetDragClickSuppressed?: () => boolean;
 }
 
 function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
@@ -168,6 +175,10 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   });
   const handleClick = (event: RailMouseEvent) => {
     event.stopPropagation();
+    // 43.6-03 D-08: a set member's trailing click after a batch drag is
+    // suppressed by the batch session (never the own-drag suppression, which
+    // is never armed for set members).
+    if (props.isSetMember && props.onRailSetDragClickSuppressed?.()) return;
     // A completed drag drops a trailing `click` event; consume the suppression
     // so it cannot re-fire selection or the Edit Group timer (Pitfall 2).
     if (consumeClickSuppression()) return;
@@ -242,7 +253,16 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
         aria-label={presentation.accessibleName}
         aria-pressed={props.selected}
         data-rail-first-frame={range.placementStart}
-        onPointerDown={onPointerDown}
+        onPointerDown={(event) => {
+          // 43.6-03 D-08: a set member hands the pointer-down to the batch
+          // session; a non-member runs its own 43.3/43.4 drag unchanged (the
+          // collapse-first selection side-effect happens at click time).
+          if (props.isSetMember && props.onRailSetDragPointerDown) {
+            props.onRailSetDragPointerDown(event);
+            return;
+          }
+          onPointerDown(event);
+        }}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
         onFocus={(event) => {
@@ -368,6 +388,8 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
           onRotoGroupDragRejected={props.onRotoGroupDragRejected}
           onPreviewChange={props.onPreviewChange}
           windowLike={props.windowLike}
+          onRailSetDragPointerDown={props.onRailSetDragPointerDown}
+          onRailSetDragClickSuppressed={props.onRailSetDragClickSuppressed}
         />
       ))}
     </div>
