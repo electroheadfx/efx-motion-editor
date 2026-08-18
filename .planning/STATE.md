@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.6
 current_phase_name: multi-rail-selection-and-batch-operations
 status: executing
-stopped_at: Completed 43.6-04-PLAN.md
-last_updated: "2026-08-18T20:30:00.000Z"
+stopped_at: Completed 43.6-05-PLAN.md
+last_updated: "2026-08-18T19:55:15.381Z"
 last_activity: 2026-08-18
 last_activity_desc: Phase 43.6 inserted after Phase 43.5 (urgent), before Phase 44
 progress:
   total_phases: 12
   completed_phases: 9
   total_plans: 90
-  completed_plans: 87
+  completed_plans: 89
   percent: 75
 ---
 
@@ -29,7 +29,7 @@ stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-16
 last_activity_desc: "Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics"
-progress:[██████████] 96%
+progress:[██████████] 99%
   total_phases: 10
   completed_phases: 7
   total_plans: 78
@@ -49,7 +49,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.6 (multi-rail-selection-and-batch-operations) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-08-18 — Phase 43.6 execution started
 
@@ -260,6 +260,7 @@ Progress: [██████████] 99%
 | Phase 43.6 P02 | 90min | 2 tasks | 6 files |
 | Phase 43.6 P03 | 2h 30m | 2 tasks | 10 files |
 | Phase 43.6 P04 | 3h | 3 tasks | 11 files |
+| Phase 43.6 P05 | 2h30m | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -522,6 +523,7 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.6]: 43.6-04: Direct no-modal dispatch (D-23) — deleteRotoFrame's 'rail-set' branch calls the executeRailSetDelete port (no runPhysicalAction, no confirmation/warning call at any set size); the accepted copy publishes through the one mapper; a port rejection reclassifies and publishes the mapped reason
 - [Phase 43.6]: 43.6-04: Redo-clears requires after = null — the Plan 03 move-stable recording (before == after == current) would have restored the pre-delete set on redo; the delete-rails snapshot records before = pre-delete set, after = null so Undo restores the exact set and Redo clears it again (D-06)
 - [Phase 43.6]: 43.6-04: Copy strings follow the plan's verbatim acceptance criteria (ASCII hyphens: 'Deleted 3 Rails - frames 12-88. The intervals stay intentional gaps.'); the UI-SPEC M4 table renders em/en dashes — noted for phase-level reconciliation
+- [Phase ?]: spacing-on-set resolver intent with per-rail fixed anchors and all-or-nothing validation; set-branch-first scope derivation; locked M5 copy; popover scope line
 
 ### Pending Todos
 
@@ -725,8 +727,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-18T20:30:00.000Z
-Stopped at: Completed 43.6-04-PLAN.md
+Last session: 2026-08-18T19:55:15.361Z
+Stopped at: Completed 43.6-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

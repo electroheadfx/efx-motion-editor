@@ -434,7 +434,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 43.6-05-PLAN.md — Key Spacing on a set: spacing-on-set intent (per-rail fixed anchors, all-or-nothing), scope-aware ToolCase popover with one scope line, locked copy
+- [x] 43.6-05-PLAN.md — Key Spacing on a set: spacing-on-set intent (per-rail fixed anchors, all-or-nothing), scope-aware ToolCase popover with one scope line, locked copy
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
