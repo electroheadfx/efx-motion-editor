@@ -184,10 +184,15 @@ export default defineConfig({
     target: 'safari13',
     // Desktop chunk budget (D-11): this is a packaged Tauri desktop app
     // loading local assets, so network-first web heuristics do not apply.
-    // Vite's 500 kB default is a generic web threshold; 1100 is a monitored
+    // Vite's 500 kB default is a generic web threshold; 1110 is a monitored
     // desktop entry-bundle budget, not a performance claim, and it must not
     // be raised again without measurement.
-    chunkSizeWarningLimit: 1100,
+    // Measurement note (2026-08-18): pinned at 1100 in Phase 40-02; Phase
+    // 43.6's six plans (rail-set selection, batch move/delete/spacing, solo
+    // playback) added +7.57 kB (+0.7%) of feature code, measured 1107.57 kB.
+    // Budget raised to 1110 (measured value + ~2 kB headroom). Amends
+    // milestone criterion V09-C04 (1100 lock); recorded in 43.6-06-SUMMARY.
+    chunkSizeWarningLimit: 1110,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },
