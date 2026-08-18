@@ -5,8 +5,8 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.6
 current_phase_name: multi-rail-selection-and-batch-operations
 status: executing
-stopped_at: Completed 43.6-03-PLAN.md
-last_updated: "2026-08-18T22:00:00.000Z"
+stopped_at: Completed 43.6-04-PLAN.md
+last_updated: "2026-08-18T20:30:00.000Z"
 last_activity: 2026-08-18
 last_activity_desc: Phase 43.6 inserted after Phase 43.5 (urgent), before Phase 44
 progress:
@@ -49,7 +49,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.6 (multi-rail-selection-and-batch-operations) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-08-18 — Phase 43.6 execution started
 
@@ -259,6 +259,7 @@ Progress: [██████████] 99%
 | Phase 43.6 P01 | 3h 10m | 3 tasks | 17 files |
 | Phase 43.6 P02 | 90min | 2 tasks | 6 files |
 | Phase 43.6 P03 | 2h 30m | 2 tasks | 10 files |
+| Phase 43.6 P04 | 3h | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -515,6 +516,12 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.6]: 43.6-03: Progressive mode widening — loop clip mode includes 'progressive'; the ghost kind class treats non-static as purple (kind class 'key-rail' for key rails, 'mode-static' for static, default purple for motion/progressive)
 - [Phase 43.6]: 43.6-03: One mapper (D-27) — mapRotoRailSetMoveProductReason with kinds disabled/rejected/live/accepted; straddle sentence verbatim (Group-domain vocabulary); no-space delegates to mapRotoGroupDragProductReason; the resolver status text stays concise and internal
 - [Phase 43.6]: 43.6-03: Live readout gate (Pitfall 7) — the drag feedback publishes through the capsule pendingOperation chain only (pushDragFeedback ?? railSetDragFeedback ?? rotoDragFeedback ?? busy status); hover alone never changes the capsule
+- [Phase 43.6]: 43.6-04: ONE shared pure proposer (Research Open Question 1) — proposePhysicPaintRotoDeleteRails composes per-Group 43.2 semantics + Key Rail record removal + 43.4 break normalization; the child coordinator AND the parent bridge recompute call the SAME proposer, then exact-match every complete-state field with distinct error strings (T-43.6-01) — the 43.2 Group lifecycle authority is reused, never forked
+- [Phase 43.6]: 43.6-04: Specialized execute input with NO child intent — RotoRailSetDeleteExecuteInput { operationKind, expectedLaunch, members }; the parent recomputes; the child proposes complete state (Group-lifecycle discipline)
+- [Phase 43.6]: 43.6-04: Classifier set branch FIRST — classifyRotoDeleteTarget evaluates the 'rail-set' branch before the loop/key-rail branches it supersedes; an active non-empty set validates every member against current segments + loopClips and yields { kind: 'rail-set', members, firstFrame, lastFrame }; ANY stale member fails the whole set closed on the existing 'stale-key-rail' mapping (T-43.6-02)
+- [Phase 43.6]: 43.6-04: Direct no-modal dispatch (D-23) — deleteRotoFrame's 'rail-set' branch calls the executeRailSetDelete port (no runPhysicalAction, no confirmation/warning call at any set size); the accepted copy publishes through the one mapper; a port rejection reclassifies and publishes the mapped reason
+- [Phase 43.6]: 43.6-04: Redo-clears requires after = null — the Plan 03 move-stable recording (before == after == current) would have restored the pre-delete set on redo; the delete-rails snapshot records before = pre-delete set, after = null so Undo restores the exact set and Redo clears it again (D-06)
+- [Phase 43.6]: 43.6-04: Copy strings follow the plan's verbatim acceptance criteria (ASCII hyphens: 'Deleted 3 Rails - frames 12-88. The intervals stay intentional gaps.'); the UI-SPEC M4 table renders em/en dashes — noted for phase-level reconciliation
 
 ### Pending Todos
 
@@ -718,8 +725,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-18T22:00:00.000Z
-Stopped at: Completed 43.6-03-PLAN.md
+Last session: 2026-08-18T20:30:00.000Z
+Stopped at: Completed 43.6-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

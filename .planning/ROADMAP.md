@@ -430,7 +430,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 43.6-04-PLAN.md — Delete Rails: composed pure proposer (43.2 Group semantics + Key Rail removal + break normalization), transport/coordinator/bridge exact-match validation, classifier rail-set branch, direct no-modal atomic command
+- [x] 43.6-04-PLAN.md — Delete Rails: composed pure proposer (43.2 Group semantics + Key Rail removal + break normalization), transport/coordinator/bridge exact-match validation, classifier rail-set branch, direct no-modal atomic command
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
