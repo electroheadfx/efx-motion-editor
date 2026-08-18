@@ -426,7 +426,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 43.6-03-PLAN.md — Batch Move drag end-to-end: set pointer-session hook, per-member ghosts/gap/blocked-edge paint, live readout, prepare/commit ports, D-06 stay-selected + Undo/Redo restore
+- [x] 43.6-03-PLAN.md — Batch Move drag end-to-end: set pointer-session hook, per-member ghosts/gap/blocked-edge paint, live readout, prepare/commit ports, D-06 stay-selected + Undo/Redo restore
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

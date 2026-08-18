@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.6
 current_phase_name: multi-rail-selection-and-batch-operations
 status: executing
-stopped_at: Completed 43.6-02-PLAN.md
-last_updated: "2026-08-18T17:15:24.628Z"
+stopped_at: Completed 43.6-03-PLAN.md
+last_updated: "2026-08-18T22:00:00.000Z"
 last_activity: 2026-08-18
 last_activity_desc: Phase 43.6 inserted after Phase 43.5 (urgent), before Phase 44
 progress:
   total_phases: 12
   completed_phases: 9
   total_plans: 90
-  completed_plans: 86
+  completed_plans: 87
   percent: 75
 ---
 
@@ -49,7 +49,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.6 (multi-rail-selection-and-batch-operations) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-08-18 — Phase 43.6 execution started
 
@@ -258,6 +258,7 @@ Progress: [██████████] 99%
 | Phase 43.5 P04 | 21min | 2 tasks | 2 files |
 | Phase 43.6 P01 | 3h 10m | 3 tasks | 17 files |
 | Phase 43.6 P02 | 90min | 2 tasks | 6 files |
+| Phase 43.6 P03 | 2h 30m | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -506,6 +507,14 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase 43.6]: 43.6-02: D-11 break travel — internal breaks travel with moved key identity; the vacated-successor rule manufactures a NEW break only when the first surviving key at/after the vacated end follows group-owned keys; the landing-gap rule manufactures only when the set's first key does not already own a break (group source key case); landing adjacent to a fixed-side neighbor never merges — 43.3 D-12 / 43.4 D-19 authority generalized to the explicit set
 - [Phase 43.6]: 43.6-02: Delta 0 is valid — a no-change input to the clamp is never a failure; the no-commit discipline lives in Plan 03 (D-13) — Zero-delta resolves a valid no-change proposal (changed === false)
 - [Phase 43.6]: 43.6-02: Mapping-only edit — semanticDelta null, selectedKeyId null, status carries operationKind 'move-rails', changed, affectedKeyIds, and a concise internal text (product copy is the Plan 03 mapper's job) — Same status discipline as move-key-rail; product copy lands in Plan 03 via the one mapper
+- [Phase 43.6]: 43.6-03: Set-level preview state (D-17) — the hook's preview carries only { delta, blockedEdge, collidingMemberId, gapIntervals }; per-member ghost geometry and beforeRange/afterRange are derived by the strip from member intervals + delta — the hook owns NO member geometry and imports nothing from the resolver, store, or Studio (ports only)
+- [Phase 43.6]: 43.6-03: No-space clamp forwarding — the strip's clampDelta port forwards the PROPOSED delta for the no-space case (clamp ok:false) so prepare fails with the no-space rejection; the hook's D-13 zero-delta skip is reserved for origin return; blockedEdge/collidingMemberId are normalized to null when unclamped
+- [Phase 43.6]: 43.6-03: D-08 collapse-first routing — a set member's pointer-down hands the event to the batch session (never the own 43.3/43.4 drag); a non-member runs its own drag unchanged; collapse is a click-time selection side-effect already in the Studio (plain click clears railSetSelection)
+- [Phase 43.6]: 43.6-03: D-06 aftermath keying — recordRailSetSnapshot keyed by the accepted operationId before dispatch; undo/redo lookups use accepted.historyProvenance?.historyCommandId ?? accepted.operationId — the ORIGINAL command id, never the replay command's own id (verified via rotoCoordinatorPorts.ts L180-186 and the PhysicPaintRotoPhysicalEditReplayProvenance type)
+- [Phase 43.6]: 43.6-03: Member resolution — RailSetIdentity (no keyIds) is NOT assignable to PhysicPaintRailSetMoveMember (requires keyIds); the Studio resolves members against freshly derived keyRailSegments in a memo (key-rail -> { kind: 'key-rail', firstKeyId, keyIds }, loop -> { kind: 'loop', loopId })
+- [Phase 43.6]: 43.6-03: Progressive mode widening — loop clip mode includes 'progressive'; the ghost kind class treats non-static as purple (kind class 'key-rail' for key rails, 'mode-static' for static, default purple for motion/progressive)
+- [Phase 43.6]: 43.6-03: One mapper (D-27) — mapRotoRailSetMoveProductReason with kinds disabled/rejected/live/accepted; straddle sentence verbatim (Group-domain vocabulary); no-space delegates to mapRotoGroupDragProductReason; the resolver status text stays concise and internal
+- [Phase 43.6]: 43.6-03: Live readout gate (Pitfall 7) — the drag feedback publishes through the capsule pendingOperation chain only (pushDragFeedback ?? railSetDragFeedback ?? rotoDragFeedback ?? busy status); hover alone never changes the capsule
 
 ### Pending Todos
 
@@ -709,8 +718,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-18T17:15:24.614Z
-Stopped at: Completed 43.6-02-PLAN.md
+Last session: 2026-08-18T22:00:00.000Z
+Stopped at: Completed 43.6-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
