@@ -143,7 +143,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     }
   });
 
-  it('uses the same dynamic Delete scope for the accessible name and guarded tooltip while keeping the compact label', () => {
+  it('uses the same dynamic Delete scope for the accessible name and guarded tooltip while keeping the button icon-only', () => {
     const code = source();
     const row = getActionRowBlock(code);
     const block = getButtonBlock(row, 'Delete Frame');
@@ -151,7 +151,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain("const deleteRotoScopeLabel = physicalActions?.deleteScopeLabel.value ?? 'Delete Frame';");
     expect(block).toContain('aria-label={deleteRotoScopeLabel}');
     expect(code).toContain('buildGuardedActionTooltipCopy(deleteRotoScopeLabel, deleteRotoKeyDisabledReason)');
-    expect(block).toContain('<span class="physics-paint-roto-key-icon-label">Delete</span>');
+    // 43.5-05 smoke UX5: the Delete button is icon-only — the dynamic scope
+    // copy lives in tooltip/aria/status, never a visible text label.
+    expect(block).not.toContain('<span class="physics-paint-roto-key-icon-label">Delete</span>');
     expect(block).not.toContain('Delete key');
   });
 
@@ -297,7 +299,6 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       { action: 'Cut key', icon: 'Scissors', label: 'Cut' },
       { action: 'Split Key Rail', icon: 'SquareSplitHorizontal', label: 'Scissor' },
       { action: 'Paste key', icon: 'ClipboardPaste', label: 'Paste' },
-      { action: 'Delete Frame', icon: 'Trash2', label: 'Delete' },
     ];
     for (const { action, icon, label } of labeledActions) {
       const block = getButtonBlock(row, action);
@@ -1186,9 +1187,10 @@ describe('PhysicsPaintWorkflowStrip Gap F grouping and casing contract (36.15-10
     // rendered the short labels as CAPS; the bottom-row icon buttons opt out.
     const button = getCssRuleBlock(styles, '.physics-paint-roto-key-icon-button {');
     expect(button).toContain('text-transform: none');
-    // Source labels stay lowercase single words.
+    // Source labels stay lowercase single words. Delete is icon-only (43.5-05
+    // smoke UX5) so it carries no visible label here.
     const row = getActionRowBlock(source());
-    for (const label of ['Key', 'Duplicate', 'Insert', 'Copy', 'Paste', 'Delete']) {
+    for (const label of ['Key', 'Duplicate', 'Insert', 'Copy', 'Paste']) {
       expect(row).toContain(`<span class="physics-paint-roto-key-icon-label">${label}</span>`);
     }
   });
@@ -1788,5 +1790,35 @@ describe('Directional Push tool smoke-fix source contract (43.5-05)', () => {
     expect(handler).toContain('getArmedPushToolDirection()');
     expect(handler).toContain('onNavigateToSyncedFrame');
     expect(handler).toContain('event.stopPropagation()');
+  });
+
+  it('A6: resolves ANY non-empty cell to its containing rail via the shared pure anchor resolver', () => {
+    const code = source();
+    // The strip must import and delegate to the pure resolver so generated
+    // in-between frames and Key Rail members resolve to their containing rail
+    // (smoke bugs 2+3) — never a frame-only keyId/loopId lookup.
+    expect(code).toContain('resolvePhysicPaintPushAnchor');
+    const resolveStart = code.indexOf('const resolvePushAnchor = useCallback');
+    const resolve = code.slice(resolveStart, code.indexOf('// ── 43.5-05 Task 2 hover pre-highlight state', resolveStart));
+    expect(resolve).toContain('resolvePhysicPaintPushAnchor(frame');
+    expect(resolve).toContain('keyRailSegments');
+  });
+
+  it('A7: Push and Delete buttons are icon-only (no visible text label)', () => {
+    const code = source();
+    // Push Left / Push Right / Delete keep their guarded tooltip + aria copy
+    // but drop the visible text label (smoke UX 4+5).
+    expect(code).not.toContain('>Push Left</span>');
+    expect(code).not.toContain('>Push Right</span>');
+    expect(code).not.toContain('>Delete</span>');
+  });
+
+  it('A8: Delete renders AFTER the All button in the action row', () => {
+    const code = source();
+    const allIndex = code.indexOf('aria-label="Select all keys"');
+    const deleteIndex = code.indexOf('aria-label={deleteRotoScopeLabel}');
+    expect(allIndex).toBeGreaterThan(-1);
+    expect(deleteIndex).toBeGreaterThan(-1);
+    expect(deleteIndex).toBeGreaterThan(allIndex);
   });
 });

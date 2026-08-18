@@ -19,6 +19,7 @@ import {
   type PhysicPaintRotoPhysicalCell,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import { projectPhysicsPaintLoopClipGeometry } from '../view/physicsPaintLoopClipPresentation';
+import { resolvePhysicPaintPushAnchor } from '../view/physicsPaintKeyRailPresentation';
 import {
   getPhysicsPaintRotoSourceCycleId,
   togglePhysicsPaintRotoSpacingProxy,
@@ -2261,5 +2262,53 @@ describe('useRotoTimelineActions Push commit + stale authority (43.5-03 Task 2)'
 
     expect(await actions.physicalActions.commitRotoPush(preparation.publication)).toBe(false);
     expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+});
+
+describe('useRotoTimelineActions Push from cell anchors (43.5-05 smoke RED)', () => {
+  it('commits a Push Left from a generated-frame cell anchor through the real pipeline', async () => {
+    // A@2, B@5: generated in-between frames 3-4. Frame 3 is a NON-EMPTY cell
+    // (generated) that must resolve to its containing Key Rail's first key (A).
+    const records = [realKeyRecord('A', 2), realKeyRecord('B', 5)];
+    const { actions, executePhysicalEdit } = createHarness({ records, capacity: 10 });
+    const anchor = resolvePhysicPaintPushAnchor(3, {
+      keyIdByAppFrame: new Map([[2, 'A'], [5, 'B']]),
+      loopIdByAppFrame: new Map(),
+      keyRailSegments: [{ firstKeyId: 'A', keyIds: ['A', 'B'], firstKeyFrame: 2, lastKeyFrame: 5 }],
+    });
+    expect(anchor).toEqual({ kind: 'key', id: 'A' });
+
+    const preparation = actions.physicalActions.prepareRotoPush({
+      direction: 'left',
+      anchorKeyId: anchor!.id,
+      deltaFrames: 1,
+    });
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Push Left from generated cell must prepare');
+    const accepted = await actions.physicalActions.commitRotoPush(preparation.publication);
+    expect(accepted).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it('commits a Push Right from a Key Rail member anchor through the real pipeline', async () => {
+    const records = [realKeyRecord('A', 0), realKeyRecord('B', 1), realKeyRecord('C', 2)];
+    const { actions, executePhysicalEdit } = createHarness({ records, capacity: 10 });
+    const anchor = resolvePhysicPaintPushAnchor(1, {
+      keyIdByAppFrame: new Map([[0, 'A'], [1, 'B'], [2, 'C']]),
+      loopIdByAppFrame: new Map(),
+      keyRailSegments: [{ firstKeyId: 'A', keyIds: ['A', 'B', 'C'], firstKeyFrame: 0, lastKeyFrame: 2 }],
+    });
+    expect(anchor).toEqual({ kind: 'key', id: 'B' });
+
+    const preparation = actions.physicalActions.prepareRotoPush({
+      direction: 'right',
+      anchorKeyId: anchor!.id,
+      deltaFrames: 1,
+    });
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Push Right from Key Rail member must prepare');
+    const accepted = await actions.physicalActions.commitRotoPush(preparation.publication);
+    expect(accepted).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
   });
 });

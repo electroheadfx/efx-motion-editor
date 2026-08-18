@@ -3,6 +3,7 @@ import {
   buildKeyRailBaseCopy,
   buildSelectedKeyRailCopy,
   deriveKeyRailSegments,
+  resolvePhysicPaintPushAnchor,
 } from './physicsPaintKeyRailPresentation';
 
 describe('deriveKeyRailSegments', () => {
@@ -44,6 +45,44 @@ describe('deriveKeyRailSegments', () => {
       { firstKeyId: 'left', keyIds: ['left', 'right'], firstKeyFrame: 2, lastKeyFrame: 8 },
     ]);
     expect(segments[0].lastKeyFrame + 1).toBe(9);
+  });
+});
+
+describe('resolvePhysicPaintPushAnchor (43.5-05 smoke RED: cell → containing rail)', () => {
+  const keyIdByAppFrame = new Map<number, string>([
+    [0, 'A'],
+    [3, 'B'],
+    [5, 'C'],
+  ]);
+  const loopIdByAppFrame = new Map<number, string>();
+  const keyRailSegments = [
+    { firstKeyId: 'A', keyIds: ['A', 'B'], firstKeyFrame: 0, lastKeyFrame: 3 },
+    { firstKeyId: 'C', keyIds: ['C'], firstKeyFrame: 5, lastKeyFrame: 5 },
+  ];
+
+  it('resolves a real key to its own keyId (Key Rail member included)', () => {
+    expect(resolvePhysicPaintPushAnchor(0, { keyIdByAppFrame, loopIdByAppFrame, keyRailSegments }))
+      .toEqual({ kind: 'key', id: 'A' });
+    expect(resolvePhysicPaintPushAnchor(3, { keyIdByAppFrame, loopIdByAppFrame, keyRailSegments }))
+      .toEqual({ kind: 'key', id: 'B' });
+  });
+
+  it('resolves a generated in-between frame to its containing Key Rail first key', () => {
+    expect(resolvePhysicPaintPushAnchor(1, { keyIdByAppFrame, loopIdByAppFrame, keyRailSegments }))
+      .toEqual({ kind: 'key', id: 'A' });
+    expect(resolvePhysicPaintPushAnchor(2, { keyIdByAppFrame, loopIdByAppFrame, keyRailSegments }))
+      .toEqual({ kind: 'key', id: 'A' });
+  });
+
+  it('resolves a linked occurrence inside a Group to the Group loopId', () => {
+    const withLoop = new Map<number, string>([[1, 'loop-G']]);
+    expect(resolvePhysicPaintPushAnchor(1, { keyIdByAppFrame, loopIdByAppFrame: withLoop, keyRailSegments }))
+      .toEqual({ kind: 'loop', id: 'loop-G' });
+  });
+
+  it('returns null for an empty/gap frame', () => {
+    expect(resolvePhysicPaintPushAnchor(4, { keyIdByAppFrame, loopIdByAppFrame, keyRailSegments }))
+      .toBeNull();
   });
 });
 

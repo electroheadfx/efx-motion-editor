@@ -66,7 +66,7 @@ import {
   togglePushTool,
   type PushToolDirection,
 } from './physicsPaintPushArmedTool';
-import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
+import { deriveKeyRailSegments, resolvePhysicPaintPushAnchor, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 import { shouldRestoreOrphanedKeyRailFocus } from './physicsPaintKeyRailFocus';
 import type { GroupRailDragPreviewState } from '../hooks/usePhysicsPaintGroupRailDrag';
 import type { KeyRailDragPreviewState } from '../hooks/usePhysicsPaintKeyRailDrag';
@@ -1273,14 +1273,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     return map;
   }, [loopResolutionContext]);
   const resolvePushAnchor = useCallback(
-    (frame: number): { readonly kind: 'key' | 'loop'; readonly id: string } | null => {
-      const keyId = keyIdByAppFrame.get(frame) ?? null;
-      if (keyId !== null) return { kind: 'key', id: keyId };
-      const loopId = pushLoopIdByAppFrame.get(frame) ?? null;
-      if (loopId !== null) return { kind: 'loop', id: loopId };
-      return null;
-    },
-    [keyIdByAppFrame, pushLoopIdByAppFrame],
+    (frame: number): { readonly kind: 'key' | 'loop'; readonly id: string } | null =>
+      resolvePhysicPaintPushAnchor(frame, {
+        keyIdByAppFrame,
+        loopIdByAppFrame: pushLoopIdByAppFrame,
+        keyRailSegments,
+      }),
+    [keyIdByAppFrame, pushLoopIdByAppFrame, keyRailSegments],
   );
   // ── 43.5-05 Task 2 hover pre-highlight state (T4) ─────────────────────────
   // Session-only presentation signal: the hovered frame, the armed direction,
@@ -2797,34 +2796,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {buildGuardedActionTooltipCopy('Paste key', pasteRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
-                <span class="physics-paint-roto-key-icon-action" onPointerEnter={deleteKeyTooltip.onPointerEnter} onPointerLeave={deleteKeyTooltip.onPointerLeave}>
-                  <button
-                    type="button"
-                    class="physics-paint-roto-key-icon-button destructive"
-                    aria-label={deleteRotoScopeLabel}
-                    aria-disabled={!canDeleteRotoKey ? 'true' : undefined}
-                    aria-describedby={!canDeleteRotoKey && deleteRotoKeyDisabledReason ? 'roto-key-action-reason-delete' : undefined}
-                    onFocus={deleteKeyTooltip.onFocus}
-                    onBlur={deleteKeyTooltip.onBlur}
-                    onClick={() => {
-                      deleteKeyTooltip.hide();
-                      if (!canDeleteRotoKey) return;
-                      props.onDeleteRotoFrame?.();
-                    }}
-                    onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && !canDeleteRotoKey) event.preventDefault();
-                    }}
-                  >
-                    <Trash2 size={18} aria-hidden="true" />
-                    <span class="physics-paint-roto-key-icon-label">Delete</span>
-                  </button>
-                  {!canDeleteRotoKey && deleteRotoKeyDisabledReason ? (
-                    <span id="roto-key-action-reason-delete" class="physics-paint-sr-only">{deleteRotoKeyDisabledReason}</span>
-                  ) : null}
-                  <PhysicsPaintStyledTooltip visible={deleteKeyTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy(deleteRotoScopeLabel, deleteRotoKeyDisabledReason)}
-                  </PhysicsPaintStyledTooltip>
-                </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={selectAllTooltip.onPointerEnter} onPointerLeave={selectAllTooltip.onPointerLeave}>
                   <button
                     type="button"
@@ -2853,6 +2824,33 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {buildGuardedActionTooltipCopy('Select all keys', selectAllDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={deleteKeyTooltip.onPointerEnter} onPointerLeave={deleteKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button destructive"
+                    aria-label={deleteRotoScopeLabel}
+                    aria-disabled={!canDeleteRotoKey ? 'true' : undefined}
+                    aria-describedby={!canDeleteRotoKey && deleteRotoKeyDisabledReason ? 'roto-key-action-reason-delete' : undefined}
+                    onFocus={deleteKeyTooltip.onFocus}
+                    onBlur={deleteKeyTooltip.onBlur}
+                    onClick={() => {
+                      deleteKeyTooltip.hide();
+                      if (!canDeleteRotoKey) return;
+                      props.onDeleteRotoFrame?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canDeleteRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <Trash2 size={18} aria-hidden="true" />
+                  </button>
+                  {!canDeleteRotoKey && deleteRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-delete" class="physics-paint-sr-only">{deleteRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={deleteKeyTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy(deleteRotoScopeLabel, deleteRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
               </div>
               <div class="physics-paint-push-tool-group" role="group" aria-label="Directional Push tools">
                 {/* UX5 (smoke): Push Left renders BEFORE Push Right — reading
@@ -2877,7 +2875,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     }}
                   >
                     <ArrowLeftFromLine size={18} aria-hidden="true" />
-                    <span class="physics-paint-roto-key-icon-label">Push Left</span>
                   </button>
                   {pushToolDisabled ? (
                     <span id="roto-key-action-reason-push-left" class="physics-paint-sr-only">{ROTO_KEY_BUSY_STATUS_TEMPLATE}</span>
@@ -2906,7 +2903,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     }}
                   >
                     <ArrowRightFromLine size={18} aria-hidden="true" />
-                    <span class="physics-paint-roto-key-icon-label">Push Right</span>
                   </button>
                   {pushToolDisabled ? (
                     <span id="roto-key-action-reason-push-right" class="physics-paint-sr-only">{ROTO_KEY_BUSY_STATUS_TEMPLATE}</span>

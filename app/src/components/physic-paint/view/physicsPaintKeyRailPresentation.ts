@@ -98,3 +98,33 @@ export function buildSelectedKeyRailCopy(
       : 'Delete removes all keys in this rail.');
   return `${buildKeyRailIdentityCopy(segment, true)} ${dragCopy} ${deleteCopy}`;
 }
+
+export interface ResolvePhysicPaintPushAnchorInput {
+  readonly keyIdByAppFrame: ReadonlyMap<number, string>;
+  readonly loopIdByAppFrame: ReadonlyMap<number, string>;
+  readonly keyRailSegments: readonly KeyRailSegment[];
+}
+
+/**
+ * 43.5-05 smoke fix: resolve ANY non-empty cell to its containing Rail anchor.
+ * A real key resolves to its own keyId (which derivePhysicPaintPushSet then
+ * maps to its containing Key Rail or Group); a linked occurrence inside a Group
+ * resolves to the Group loopId; a generated in-between frame resolves to the
+ * first key of the Key Rail segment that spans it (so the resolver derives the
+ * SAME segment from that anchorKeyId). Empty/gap frames resolve null — the
+ * not-allowed cursor and the no-drag preflight both key off this.
+ */
+export function resolvePhysicPaintPushAnchor(
+  frame: number,
+  input: ResolvePhysicPaintPushAnchorInput,
+): { readonly kind: 'key' | 'loop'; readonly id: string } | null {
+  const keyId = input.keyIdByAppFrame.get(frame) ?? null;
+  if (keyId !== null) return { kind: 'key', id: keyId };
+  const loopId = input.loopIdByAppFrame.get(frame) ?? null;
+  if (loopId !== null) return { kind: 'loop', id: loopId };
+  const segment = input.keyRailSegments.find(
+    (candidate) => frame >= candidate.firstKeyFrame && frame <= candidate.lastKeyFrame,
+  );
+  if (segment !== undefined) return { kind: 'key', id: segment.firstKeyId };
+  return null;
+}
