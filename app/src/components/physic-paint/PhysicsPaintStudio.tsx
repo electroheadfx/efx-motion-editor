@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useComputed, useSignal } from '@preact/signals';
 import type { CompletedPaintMutation, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample, SerializedProject } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings } from '../../types/physicPaint';
+import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { collectDiscardableRotoGroupOwnedFrames, rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
@@ -41,7 +41,7 @@ import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelec
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
 import { resolveRotoCompletedGroupPaintTarget, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
 import { useRotoFrameEditingController } from './hooks/useRotoFrameEditingController';
-import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, type RotoGroupLifecycleDeleteExecuteInput, type RotoPhysicalEditCoordinatorExecuteInput } from './hooks/useRotoPhysicalEditCoordinator';
+import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, type RotoGroupLifecycleDeleteExecuteInput, type RotoPhysicalEditCoordinatorExecuteInput, type RotoRailSetDeleteExecuteInput } from './hooks/useRotoPhysicalEditCoordinator';
 import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize } from './engine/physicsPaintCanvasSizing';
 import { usePhysicsPaintEngineLifecycle } from './engine/usePhysicsPaintEngineLifecycle';
 import { usePhysicsPaintEngineActions } from './engine/usePhysicsPaintEngineActions';
@@ -158,6 +158,10 @@ export function PhysicsPaintStudio() {
   const soleOccurrenceDeleteDialogRef = useRef<HTMLDivElement>(null);
   const soleOccurrenceDeleteReturnFocusRef = useRef<HTMLElement | null>(null);
   const groupLifecycleDeleteExecuteRef = useRef<(target: GroupLifecycleDeleteTarget) => Promise<boolean>>(async () => false);
+  const railSetDeleteExecuteRef = useRef<(target: Readonly<{
+    operationKind: 'delete-rails';
+    members: readonly RailSetDeleteMember[];
+  }>) => Promise<boolean>>(async () => false);
   const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(launchContext?.cachedRotoFrames ?? []);
   const setLaunchContext = useCallback((update: PhysicPaintLaunchContext | null | ((current: PhysicPaintLaunchContext | null) => PhysicPaintLaunchContext | null)) => {
     setLaunchContextState((current) => {
@@ -959,6 +963,24 @@ export function PhysicsPaintStudio() {
       : `Deleted F${target.appFrame} from Group at F${target.phaseOrigin}.`);
     return accepted !== null;
   };
+  railSetDeleteExecuteRef.current = async (target) => {
+    const launch = launchContextRef.current;
+    if (!launch) return false;
+    const executeInput: RotoRailSetDeleteExecuteInput = {
+      operationKind: 'delete-rails',
+      expectedLaunch: {
+        operationId: launch.operationId,
+        layerId: launch.layerId,
+      },
+      members: target.members,
+    };
+    const accepted = await dispatchAndWaitForAcceptedRotoPhysicalEdit(
+      physicalEditCoordinator.pendingOperationId,
+      physicalEditCoordinator.acceptedOutput,
+      () => physicalEditCoordinator.executePhysicalEdit(executeInput),
+    );
+    return accepted !== null;
+  };
 
   const rotoTimelineActions = useRotoTimelineActions({
     getModel: () => rotoTimelineModel.view.value.model,
@@ -979,6 +1001,7 @@ export function PhysicsPaintStudio() {
     getSelectedKeyIds: () => selectedKeyIds.value,
     getSelectedKeyRail: () => effectiveSelectedRotoKeyRail,
     getSelectedLoopClipIds: () => effectiveRotoLoopClipSelection?.selectedLoopClipIds ?? [],
+    getRailSetMembers: () => railSetSelection.value?.members ?? [],
     getSelectedLoopRailDisplayName: (loopId) => {
       const range = rotoTimelineModel.loopResolutionContext.value?.ranges.find((candidate) => candidate.loopId === loopId);
       const clip = rotoLoopClips.find((candidate) => candidate.loopId === loopId);
@@ -1017,6 +1040,7 @@ export function PhysicsPaintStudio() {
     executePhysicalEdit: (executeInput) => physicalEditCoordinator.executePhysicalEdit(executeInput as RotoPhysicalEditCoordinatorExecuteInput<SerializedProject>),
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     executeGroupLifecycleDelete: (target) => groupLifecycleDeleteExecuteRef.current(target),
+    executeRailSetDelete: (target) => railSetDeleteExecuteRef.current(target),
     requestSoleOccurrenceDeleteWarning: handleRequestSoleOccurrenceDeleteWarning,
     publishStatus: (message) => { setApplyMessage(message); },
     publishDiagnostic: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
@@ -1772,11 +1796,17 @@ export function PhysicsPaintStudio() {
         // recorded keyed by the accepted operationId BEFORE the resolver runs,
         // so undo/redo can restore the exact before/after set (identities are
         // move-stable, so before and after are the same identity list);
-        // 'move-rails' keeps the current set, 'delete-rails' clears it, and
+        // 'move-rails' keeps the current set, 'delete-rails' clears it (and
+        // records an EMPTY after set so redo clears it again — D-06), and
         // every other kind leaves it unchanged (Pitfall 6 — reconcile stays
         // the stale authority). Undo/redo lookups use the ORIGINAL command id
         // from the replay provenance, never the replay command's own id.
-        recordRailSetSnapshot(accepted.operationId, railSetSelection.peek(), railSetSelection.peek());
+        const beforeSet = railSetSelection.peek();
+        recordRailSetSnapshot(
+          accepted.operationId,
+          beforeSet,
+          accepted.operationKind === 'delete-rails' ? null : beforeSet,
+        );
         railSetSelection.value = resolveRailSetPostAcceptance({
           operationKind: accepted.operationKind,
           operationId: accepted.historyProvenance?.historyCommandId ?? accepted.operationId,

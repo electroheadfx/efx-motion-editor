@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'preact/hooks';
 import { computed, signal, type ReadonlySignal } from '@preact/signals';
-import type { PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
+import type { PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, RailSetDeleteMember } from '../../../types/physicPaint';
 import { getSourceRotoFrameForDisplayFrame } from '../roto/physicsPaintRotoWorkflow';
 import {
   updateRotoInterpolationSettingsTransaction,
@@ -52,6 +52,7 @@ import type {
 } from '../roto/rotoCoordinatorPorts';
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 import type { RailSetDragGapInterval } from './usePhysicsPaintRailSetDrag';
+import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 
 /**
  * Stable physical timeline action bundle exposed by {@link useRotoTimelineActions}.
@@ -590,6 +591,12 @@ export type RotoDeleteTarget =
     lastKeyFrame: number;
   }>
   | Readonly<{ kind: 'stale-key-rail' }>
+  | Readonly<{
+    kind: 'rail-set';
+    members: readonly RailSetDeleteMember[];
+    firstFrame: number;
+    lastFrame: number;
+  }>
   | Readonly<RotoGroupLifecycleDeleteTarget & { kind: 'group-frame' }>
   | Readonly<RotoGroupLifecycleDeleteTarget & { kind: 'group' }>
   | Readonly<{ kind: 'group-gap'; groupId: string; appFrame: number }>
@@ -607,6 +614,8 @@ export interface RotoDeleteTargetClassificationInput {
   readonly selectedKeyIds: readonly string[];
   readonly selectedKeyRail?: RotoKeyRailSelection | null;
   readonly selectedLoopClipIds: readonly string[];
+  /** Session rail-set identities (Plan 01 authority); the set branch runs FIRST. */
+  readonly railSetMembers?: readonly RailSetIdentity[];
   readonly currentAppFrame: number | null;
   readonly capacity: number | null;
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
@@ -633,6 +642,22 @@ export function classifyRotoDeleteTarget(
     || !Number.isSafeInteger(input.capacity)
     || input.currentAppFrame >= input.capacity) {
     return Object.freeze({ kind: 'unavailable' });
+  }
+
+  // 43.6-04 D-21/D-22: the rail-set branch runs FIRST, before the loop/key-rail
+  // branches it supersedes. An active non-empty set classifies as 'rail-set'
+  // with every member validated against the current derivation (segments +
+  // loopClips); a stale set fails closed on the existing stale mapping — never
+  // delete on stale authority (T-43.6-02).
+  if (input.railSetMembers !== undefined && input.railSetMembers.length > 0) {
+    const derived = deriveRailSetDeleteMembers(input);
+    if (derived === null) return Object.freeze({ kind: 'stale-key-rail' });
+    return Object.freeze({
+      kind: 'rail-set',
+      members: derived.members,
+      firstFrame: derived.firstFrame,
+      lastFrame: derived.lastFrame,
+    });
   }
 
   if (input.selectedLoopClipIds.length > 0) {
@@ -762,10 +787,65 @@ export function classifyRotoDeleteTarget(
   return Object.freeze({ kind: 'no-target' });
 }
 
+/**
+ * 43.6-04 D-21: validate every session rail-set identity against the current
+ * accepted derivation and produce the exact delete members. A key-rail member
+ * must match exactly one derived segment (firstKeyId + ordered keyIds); a loop
+ * member must resolve to a valid Group (phaseOrigin + visibleRanges). Any
+ * mismatch makes the WHOLE set stale — fail closed, never delete on stale
+ * authority. The inclusive product range {A}-{B} derives from canonical
+ * half-open intervals only at presentation time (UI-SPEC M4).
+ */
+function deriveRailSetDeleteMembers(input: RotoDeleteTargetClassificationInput): Readonly<{
+  readonly members: readonly RailSetDeleteMember[];
+  readonly firstFrame: number;
+  readonly lastFrame: number;
+}> | null {
+  const groupOwnedKeyIds = new Set<string>();
+  for (const loopClip of input.loopClips) {
+    loopClip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+    (loopClip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+  }
+  const segments = deriveKeyRailSegments({
+    orderedRealKeys: [...input.records]
+      .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId))
+      .map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+    incomingInterpolationBreakKeyIds: new Set(input.incomingInterpolationBreakKeyIds ?? []),
+    groupOwnedKeyIds,
+  });
+  const members: RailSetDeleteMember[] = [];
+  let firstFrame = Number.POSITIVE_INFINITY;
+  let lastEndExclusive = Number.NEGATIVE_INFINITY;
+  for (const identity of input.railSetMembers ?? []) {
+    if (identity.kind === 'loop') {
+      const group = input.loopClips.find((candidate) => candidate.loopId === identity.loopId);
+      if (group?.phaseOrigin === undefined || group.visibleRanges === undefined) return null;
+      members.push({ kind: 'loop', loopId: identity.loopId });
+      firstFrame = Math.min(firstFrame, group.phaseOrigin);
+      lastEndExclusive = Math.max(lastEndExclusive, ...group.visibleRanges.map((range) => range.endExclusive));
+    } else {
+      const matches = segments.filter((segment) => segment.firstKeyId === identity.firstKeyId);
+      if (matches.length !== 1) return null;
+      const segment = matches[0];
+      members.push({ kind: 'key-rail', firstKeyId: segment.firstKeyId, keyIds: segment.keyIds });
+      firstFrame = Math.min(firstFrame, segment.firstKeyFrame);
+      lastEndExclusive = Math.max(lastEndExclusive, segment.lastKeyFrame + 1);
+    }
+  }
+  return Object.freeze({
+    members: Object.freeze(members),
+    firstFrame,
+    lastFrame: lastEndExclusive - 1,
+  });
+}
+
 export function buildRotoDeleteScopeLabel(
   target: RotoDeleteTarget,
   groupDisplayName: string | null = null,
 ): string {
+  if (target.kind === 'rail-set') {
+    return target.members.length === 1 ? 'Delete 1 Rail' : `Delete ${target.members.length} Rails`;
+  }
   if (target.kind === 'key-rail') {
     return target.keyIds.length === 1
       ? `Delete Key Rail — frame ${target.firstKeyFrame}, 1 key.`
@@ -787,11 +867,22 @@ export function buildDeleteKeyRailSuccessMessage(
     : `Deleted Key Rail — frames ${target.firstKeyFrame}–${target.lastKeyFrame}, ${target.keyIds.length} keys. The interval stays an intentional gap.`;
 }
 
+/** The locked M4 accepted Delete Rails copy (43.6-04). */
+export function buildDeleteRailSetSuccessMessage(
+  target: Extract<RotoDeleteTarget, { kind: 'rail-set' }>,
+): string {
+  const range = `frames ${target.firstFrame}-${target.lastFrame}`;
+  return target.members.length === 1
+    ? `Deleted 1 Rail - ${range}. The interval stays an intentional gap.`
+    : `Deleted ${target.members.length} Rails - ${range}. The intervals stay intentional gaps.`;
+}
+
 export function mapRotoDeleteProductReason(target: RotoDeleteTarget): string | null {
   switch (target.kind) {
     case 'ordinary-key':
     case 'ordinary-key-group':
     case 'key-rail':
+    case 'rail-set':
     case 'group-frame':
     case 'group':
       return null;
@@ -1189,6 +1280,8 @@ export interface RotoTimelineActionsInput {
   getSelectedLoopClipIds?: () => readonly string[];
   /** Presentation-only selected Rail name; never participates in mutation authorization. */
   getSelectedLoopRailDisplayName?: (loopId: string) => string | null;
+  /** Session rail-set identities (Plan 01 authority) for the shared Delete classifier. */
+  getRailSetMembers?: () => readonly RailSetIdentity[];
   /** Reconciled session-only exact Loop Clip source-position selection. */
   getRotoSpacingSelection?: () => PhysicsPaintRotoSpacingSelection | null;
   /** Current direct physical navigation frame. */
@@ -1210,6 +1303,11 @@ export interface RotoTimelineActionsInput {
   /** Direct acknowledged Group lifecycle Delete seam. */
   executeGroupLifecycleDelete?: (target: Readonly<Omit<RotoGroupLifecycleDeleteTarget, 'mode'> & {
     operationKind: 'delete-group-frame' | 'delete-group';
+  }>) => Promise<boolean>;
+  /** Direct acknowledged rail-set Delete seam (43.6-04 D-23; parent-authority execute). */
+  executeRailSetDelete?: (target: Readonly<{
+    operationKind: 'delete-rails';
+    members: readonly RailSetDeleteMember[];
   }>) => Promise<boolean>;
   /** Focused warning request for deleting a Group's sole visible occurrence. */
   requestSoleOccurrenceDeleteWarning?: (target: Readonly<Omit<RotoGroupLifecycleDeleteTarget, 'mode'> & {
@@ -1658,6 +1756,30 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         phaseOrigin: target.phaseOrigin,
         onlyOccurrence: target.onlyOccurrence,
       }));
+    }
+    if (target.kind === 'rail-set') {
+      // 43.6-04 D-23: one direct parent-authority execute — no runPhysicalAction,
+      // no confirmation modal at any set size. The accepted copy publishes
+      // through the one mapper; a port rejection reclassifies and publishes the
+      // mapped reason (never a success status on a rejected path).
+      if (!input.executeRailSetDelete) {
+        input.publishStatus?.('Rail set deletion is unavailable.');
+        return Promise.resolve(false);
+      }
+      return input.executeRailSetDelete(Object.freeze({
+        operationKind: 'delete-rails',
+        members: target.members,
+      })).then((accepted) => {
+        if (accepted) {
+          input.publishStatus?.(buildDeleteRailSetSuccessMessage(target));
+          return true;
+        }
+        const rejection = mapRotoDeleteProductReason(
+          classifyRotoDeleteTarget(readRotoDeleteTargetInput(input)),
+        );
+        if (rejection !== null) input.publishStatus?.(rejection);
+        return false;
+      });
     }
     if (target.kind === 'key-rail') {
       return runPhysicalAction({
@@ -3117,6 +3239,7 @@ function readRotoDeleteTargetInput(input: RotoTimelineActionsInput): RotoDeleteT
     selectedKeyIds: input.getSelectedKeyIds?.() ?? [],
     selectedKeyRail: input.getSelectedKeyRail?.() ?? null,
     selectedLoopClipIds: input.getSelectedLoopClipIds?.() ?? [],
+    railSetMembers: input.getRailSetMembers?.() ?? [],
     currentAppFrame: input.getCurrentAppFrame?.() ?? null,
     capacity: input.getCapacity?.() ?? null,
     records: input.getRotoKeyRecords?.() ?? [],
