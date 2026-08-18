@@ -2354,12 +2354,14 @@ export function derivePhysicPaintPushSet(input: PhysicPaintPushSetInput): Physic
 
   // Directional suffix/prefix set (PUSH-01): Push Right moves the anchor Rail
   // and every Rail whose interval starts at/after the anchor's start; Push
-  // Left moves every Rail whose interval ends at/before the anchor's end plus
-  // the anchor. The opposite side is byte-position fixed.
+  // Left moves the PREFIX set — the anchor Rail plus every Rail whose interval
+  // starts at/before the anchor's start (pivot rule). Rails starting after the
+  // anchor are the fixed side and never move. The opposite side is
+  // byte-position fixed.
   const movedRails = rails.filter((rail) => (
     direction === 'right'
       ? rail.intervalStart >= anchorRail.intervalStart
-      : rail.intervalEndExclusive <= anchorRail.intervalEndExclusive
+      : rail.intervalStart <= anchorRail.intervalStart
   ));
   const movedIds = new Set(movedRails.map((rail) => rail.id));
   const fixedRails = rails.filter((rail) => !movedIds.has(rail.id));

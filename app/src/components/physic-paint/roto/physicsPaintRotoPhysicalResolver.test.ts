@@ -4280,6 +4280,120 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     });
   });
 
+  it('Push Left from the middle rail moves the PREFIX set only — C stays byte-position fixed (pivot rule)', () => {
+    // A [5,15), B [20,30), C [40,50). Anchor B. Push Left 5 → A and B translate
+    // left by 5; C (starting after the anchor) is the fixed side and must NOT move.
+    const identities = Object.freeze([
+      { keyId: 'a0', appFrame: 5 }, { keyId: 'a1', appFrame: 6 }, { keyId: 'a2', appFrame: 7 },
+      { keyId: 'a3', appFrame: 8 }, { keyId: 'a4', appFrame: 9 }, { keyId: 'a5', appFrame: 10 },
+      { keyId: 'a6', appFrame: 11 }, { keyId: 'a7', appFrame: 12 }, { keyId: 'a8', appFrame: 13 },
+      { keyId: 'a9', appFrame: 14 },
+      { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 21 }, { keyId: 'b2', appFrame: 22 },
+      { keyId: 'b3', appFrame: 23 }, { keyId: 'b4', appFrame: 24 }, { keyId: 'b5', appFrame: 25 },
+      { keyId: 'b6', appFrame: 26 }, { keyId: 'b7', appFrame: 27 }, { keyId: 'b8', appFrame: 28 },
+      { keyId: 'b9', appFrame: 29 },
+      { keyId: 'c0', appFrame: 40 }, { keyId: 'c1', appFrame: 41 }, { keyId: 'c2', appFrame: 42 },
+      { keyId: 'c3', appFrame: 43 }, { keyId: 'c4', appFrame: 44 }, { keyId: 'c5', appFrame: 45 },
+      { keyId: 'c6', appFrame: 46 }, { keyId: 'c7', appFrame: 47 }, { keyId: 'c8', appFrame: 48 },
+      { keyId: 'c9', appFrame: 49 },
+    ]);
+    const resolution = resolvePush(identities, 'left', { anchorKeyId: 'b0' }, 5, {
+      capacity: 60,
+      incomingInterpolationBreakKeyIds: ['b0', 'c0'],
+    });
+    if (!resolution.ok) throw new Error('Push Left must resolve ok');
+    const mapping = Object.fromEntries(resolution.proposal.mapping);
+    // A and B translate left by 5.
+    expect(mapping.a0).toBe(0);
+    expect(mapping.a9).toBe(9);
+    expect(mapping.b0).toBe(15);
+    expect(mapping.b9).toBe(24);
+    // C stays byte-position fixed.
+    expect(mapping.c0).toBe(40);
+    expect(mapping.c9).toBe(49);
+  });
+
+  it('Push Left from the leftmost rail moves the anchor rail only — B and C stay fixed (pivot rule)', () => {
+    const identities = Object.freeze([
+      { keyId: 'a0', appFrame: 5 }, { keyId: 'a1', appFrame: 6 }, { keyId: 'a2', appFrame: 7 },
+      { keyId: 'a3', appFrame: 8 }, { keyId: 'a4', appFrame: 9 }, { keyId: 'a5', appFrame: 10 },
+      { keyId: 'a6', appFrame: 11 }, { keyId: 'a7', appFrame: 12 }, { keyId: 'a8', appFrame: 13 },
+      { keyId: 'a9', appFrame: 14 },
+      { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 21 }, { keyId: 'b2', appFrame: 22 },
+      { keyId: 'b3', appFrame: 23 }, { keyId: 'b4', appFrame: 24 }, { keyId: 'b5', appFrame: 25 },
+      { keyId: 'b6', appFrame: 26 }, { keyId: 'b7', appFrame: 27 }, { keyId: 'b8', appFrame: 28 },
+      { keyId: 'b9', appFrame: 29 },
+      { keyId: 'c0', appFrame: 40 }, { keyId: 'c1', appFrame: 41 }, { keyId: 'c2', appFrame: 42 },
+      { keyId: 'c3', appFrame: 43 }, { keyId: 'c4', appFrame: 44 }, { keyId: 'c5', appFrame: 45 },
+      { keyId: 'c6', appFrame: 46 }, { keyId: 'c7', appFrame: 47 }, { keyId: 'c8', appFrame: 48 },
+      { keyId: 'c9', appFrame: 49 },
+    ]);
+    const resolution = resolvePush(identities, 'left', { anchorKeyId: 'a0' }, 2, {
+      capacity: 60,
+      incomingInterpolationBreakKeyIds: ['b0', 'c0'],
+    });
+    if (!resolution.ok) throw new Error('Push Left from leftmost must resolve ok');
+    const mapping = Object.fromEntries(resolution.proposal.mapping);
+    expect(mapping.a0).toBe(3);
+    expect(mapping.a9).toBe(12);
+    expect(mapping.b0).toBe(20);
+    expect(mapping.c0).toBe(40);
+  });
+
+  it('Push Left from the rightmost rail moves the whole set — A, B, and C translate (pivot rule)', () => {
+    const identities = Object.freeze([
+      { keyId: 'a0', appFrame: 5 }, { keyId: 'a1', appFrame: 6 }, { keyId: 'a2', appFrame: 7 },
+      { keyId: 'a3', appFrame: 8 }, { keyId: 'a4', appFrame: 9 }, { keyId: 'a5', appFrame: 10 },
+      { keyId: 'a6', appFrame: 11 }, { keyId: 'a7', appFrame: 12 }, { keyId: 'a8', appFrame: 13 },
+      { keyId: 'a9', appFrame: 14 },
+      { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 21 }, { keyId: 'b2', appFrame: 22 },
+      { keyId: 'b3', appFrame: 23 }, { keyId: 'b4', appFrame: 24 }, { keyId: 'b5', appFrame: 25 },
+      { keyId: 'b6', appFrame: 26 }, { keyId: 'b7', appFrame: 27 }, { keyId: 'b8', appFrame: 28 },
+      { keyId: 'b9', appFrame: 29 },
+      { keyId: 'c0', appFrame: 40 }, { keyId: 'c1', appFrame: 41 }, { keyId: 'c2', appFrame: 42 },
+      { keyId: 'c3', appFrame: 43 }, { keyId: 'c4', appFrame: 44 }, { keyId: 'c5', appFrame: 45 },
+      { keyId: 'c6', appFrame: 46 }, { keyId: 'c7', appFrame: 47 }, { keyId: 'c8', appFrame: 48 },
+      { keyId: 'c9', appFrame: 49 },
+    ]);
+    const resolution = resolvePush(identities, 'left', { anchorKeyId: 'c0' }, 2, {
+      capacity: 60,
+      incomingInterpolationBreakKeyIds: ['b0', 'c0'],
+    });
+    if (!resolution.ok) throw new Error('Push Left from rightmost must resolve ok');
+    const mapping = Object.fromEntries(resolution.proposal.mapping);
+    expect(mapping.a0).toBe(3);
+    expect(mapping.b0).toBe(18);
+    expect(mapping.c0).toBe(38);
+    expect(mapping.c9).toBe(47);
+  });
+
+  it('Push Right from the middle rail moves the SUFFIX set — B and C translate, A stays fixed (mirror)', () => {
+    const identities = Object.freeze([
+      { keyId: 'a0', appFrame: 5 }, { keyId: 'a1', appFrame: 6 }, { keyId: 'a2', appFrame: 7 },
+      { keyId: 'a3', appFrame: 8 }, { keyId: 'a4', appFrame: 9 }, { keyId: 'a5', appFrame: 10 },
+      { keyId: 'a6', appFrame: 11 }, { keyId: 'a7', appFrame: 12 }, { keyId: 'a8', appFrame: 13 },
+      { keyId: 'a9', appFrame: 14 },
+      { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 21 }, { keyId: 'b2', appFrame: 22 },
+      { keyId: 'b3', appFrame: 23 }, { keyId: 'b4', appFrame: 24 }, { keyId: 'b5', appFrame: 25 },
+      { keyId: 'b6', appFrame: 26 }, { keyId: 'b7', appFrame: 27 }, { keyId: 'b8', appFrame: 28 },
+      { keyId: 'b9', appFrame: 29 },
+      { keyId: 'c0', appFrame: 40 }, { keyId: 'c1', appFrame: 41 }, { keyId: 'c2', appFrame: 42 },
+      { keyId: 'c3', appFrame: 43 }, { keyId: 'c4', appFrame: 44 }, { keyId: 'c5', appFrame: 45 },
+      { keyId: 'c6', appFrame: 46 }, { keyId: 'c7', appFrame: 47 }, { keyId: 'c8', appFrame: 48 },
+      { keyId: 'c9', appFrame: 49 },
+    ]);
+    const resolution = resolvePush(identities, 'right', { anchorKeyId: 'b0' }, 2, {
+      capacity: 60,
+      incomingInterpolationBreakKeyIds: ['b0', 'c0'],
+    });
+    if (!resolution.ok) throw new Error('Push Right from middle must resolve ok');
+    const mapping = Object.fromEntries(resolution.proposal.mapping);
+    expect(mapping.a0).toBe(5);
+    expect(mapping.b0).toBe(22);
+    expect(mapping.c0).toBe(42);
+    expect(mapping.c9).toBe(51);
+  });
+
   it('clamps a Push Left at frame 0 — the moved set stops at the boundary (directional nearest-free search)', () => {
     // A [5,15): pushing left by 8 wants delta -8 but frame 0 stops at -5.
     const resolution = resolvePush(buildStaggeredKeyRails(), 'left', { anchorKeyId: 'a9' }, 8, {
@@ -4529,6 +4643,43 @@ describe('derivePhysicPaintPushSet and clampPhysicPaintPushDestination (exported
     expect([...set.movedKeyIds].sort()).toEqual(['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9']);
     expect(set.movedSetBounds).toEqual({ firstFrame: 20, lastEndExclusive: 30 });
     expect(set.straddle).toBeNull();
+  });
+
+  it('derives the PREFIX set for Push Left from a middle rail — C stays fixed (pivot rule)', () => {
+    // A [5,15), B [20,30), C [40,50). Anchor B. Push Left must move A + B only.
+    const identities = Object.freeze([
+      { keyId: 'a0', appFrame: 5 }, { keyId: 'a1', appFrame: 6 }, { keyId: 'a2', appFrame: 7 },
+      { keyId: 'a3', appFrame: 8 }, { keyId: 'a4', appFrame: 9 }, { keyId: 'a5', appFrame: 10 },
+      { keyId: 'a6', appFrame: 11 }, { keyId: 'a7', appFrame: 12 }, { keyId: 'a8', appFrame: 13 },
+      { keyId: 'a9', appFrame: 14 },
+      { keyId: 'b0', appFrame: 20 }, { keyId: 'b1', appFrame: 21 }, { keyId: 'b2', appFrame: 22 },
+      { keyId: 'b3', appFrame: 23 }, { keyId: 'b4', appFrame: 24 }, { keyId: 'b5', appFrame: 25 },
+      { keyId: 'b6', appFrame: 26 }, { keyId: 'b7', appFrame: 27 }, { keyId: 'b8', appFrame: 28 },
+      { keyId: 'b9', appFrame: 29 },
+      { keyId: 'c0', appFrame: 40 }, { keyId: 'c1', appFrame: 41 }, { keyId: 'c2', appFrame: 42 },
+      { keyId: 'c3', appFrame: 43 }, { keyId: 'c4', appFrame: 44 }, { keyId: 'c5', appFrame: 45 },
+      { keyId: 'c6', appFrame: 46 }, { keyId: 'c7', appFrame: 47 }, { keyId: 'c8', appFrame: 48 },
+      { keyId: 'c9', appFrame: 49 },
+    ]);
+    const loopRangeContext = derivePhysicPaintRotoLoopRanges({
+      identities,
+      loopClips: [],
+      capacity: 60,
+      interpolationEnabled: false,
+    });
+    const set = derivePhysicPaintPushSet({
+      anchorKeyId: 'b0',
+      direction: 'left',
+      identities,
+      loopRanges: loopRangeContext.ranges,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: ['b0', 'c0'],
+    });
+
+    expect(set.ok).toBe(true);
+    if (!set.ok) throw new Error('Set derivation must resolve');
+    expect(set.movedRails.map((rail) => rail.id)).toEqual(['a0', 'b0']);
+    expect(set.fixedRails.map((rail) => rail.id)).toEqual(['c0']);
   });
 
   it('reports a straddle verdict when a moved attached Group shares its source cycle with a fixed-side Group', () => {
