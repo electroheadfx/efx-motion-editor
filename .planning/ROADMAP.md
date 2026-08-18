@@ -416,7 +416,7 @@ Plans:
 **Goal:** Let the user select multiple Rails of any type — Key Rail, Motion Rail, Static Rail — in one shared selection set ordered by canonical first-key frame, then apply batch operations to the whole set: Delete Rails, Move Rails, Key Spacing, and selection-scoped (solo) playback. Multi-selection is a new explicit selection scope alongside single-rail and physical-frame selections; the 43.4 mutual-exclusion and selection-authority rules extend to the set. All invariants from Phases 43.3/43.4/43.5 remain binding: persistent intentional gaps, break ownership by stable key identity, capacity as the single end authority, atomic Undo/Redo through the canonical physical history, replay snapshots read from the accepted document authority, and one shared rail behavior with no per-type forks. Spec: SPECS/milestone-v0.9.0-new-phases/phase-43.6-multi-rail-selection-batch-operations-prompt.md
 **Requirements**: RSET-01, RSET-02, RSET-03, RSET-04, BMOV-01, BMOV-02, BMOV-03, BMOV-04, BMOV-05, BMOV-06, BDEL-01, BDEL-02, BSPC-01, BSPC-02, BSPC-03, SOLO-01, SOLO-02, SOLO-03, SOLO-04, SOLO-05, SOLO-06 (planning-local IDs derived in 43.6-RESEARCH.md; REQUIREMENTS.md holds no 43.6 rows)
 **Depends on:** Phase 43.5
-**Plans:** 6 plans
+**Plans:** 6/6 plans complete
 
 Plans:
 **Wave 1**

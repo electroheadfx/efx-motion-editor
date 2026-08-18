@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
-current_phase: 43.6
-current_phase_name: multi-rail-selection-and-batch-operations
-status: verifying
+current_phase: 44
+current_phase_name: Integrated UAT + Signed Release
+status: planning
 stopped_at: Completed 43.6-05-PLAN.md
-last_updated: "2026-08-18T20:24:32.814Z"
+last_updated: "2026-08-18T21:09:20.023Z"
 last_activity: 2026-08-18
 last_activity_desc: Phase 43.6 inserted after Phase 43.5 (urgent), before Phase 44
 progress:
   total_phases: 12
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 90
-  completed_plans: 89
-  percent: 75
+  completed_plans: 90
+  percent: 83
 ---
 
 Total Phases: 8
@@ -24,7 +24,7 @@ milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 44
 current_phase_name: Integrated UAT + Signed Release
-status: Phase complete — ready for verification
+status: Ready to plan
 stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-16
@@ -48,10 +48,10 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 ## Current Position
 
-Phase: 43.6 (multi-rail-selection-and-batch-operations) — EXECUTING
-Plan: 6 of 6
+Phase: 44 — Integrated UAT + Signed Release
+Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-08-18 — Phase 43.6 execution started
+Last activity: 2026-08-18 — Phase 43.6 complete, transitioned to Phase 44
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -61,7 +61,7 @@ Progress: [██████████] 99%
 
 **Velocity:**
 
-- Total plans completed: 165 for v0.8.0
+- Total plans completed: 171 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -97,6 +97,7 @@ Progress: [██████████] 99%
 | 43.3 | 4 | - | - |
 | 43.4 | 8 | - | - |
 | 43.5 | 6 | - | - |
+| 43.6 | 6 | - | - |
 
 **Recent Trend:**
 
