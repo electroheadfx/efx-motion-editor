@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.6
 current_phase_name: multi-rail-selection-and-batch-operations
 status: executing
-stopped_at: Completed 43.6-01-PLAN.md
-last_updated: "2026-08-18T16:24:50.803Z"
+stopped_at: Completed 43.6-02-PLAN.md
+last_updated: "2026-08-18T17:15:24.628Z"
 last_activity: 2026-08-18
 last_activity_desc: Phase 43.6 inserted after Phase 43.5 (urgent), before Phase 44
 progress:
   total_phases: 12
   completed_phases: 9
   total_plans: 90
-  completed_plans: 85
+  completed_plans: 86
   percent: 75
 ---
 
@@ -29,7 +29,7 @@ stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-16
 last_activity_desc: "Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics"
-progress:[█████████░] 94%
+progress:[██████████] 96%
   total_phases: 10
   completed_phases: 7
   total_plans: 78
@@ -49,7 +49,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.6 (multi-rail-selection-and-batch-operations) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-08-18 — Phase 43.6 execution started
 
@@ -257,6 +257,7 @@ Progress: [██████████] 99%
 | Phase 43.5-timeline-toolbox-and-directional-push-tools P03 | 22 | 2 tasks | 4 files |
 | Phase 43.5 P04 | 21min | 2 tasks | 2 files |
 | Phase 43.6 P01 | 3h 10m | 3 tasks | 17 files |
+| Phase 43.6 P02 | 90min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -499,6 +500,12 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43.6-01: Union-first modifier routing — Cmd+Shift+click checked BEFORE plain Shift so the union combination cannot collapse into the range branch (Pitfall 1)
 - [Phase ?]: 43.6-01: resolveRailSetPostAcceptance has EXPLICIT operationKind branches; unlisted kinds return the current set unchanged — no default collapse (Pitfall 6)
 - [Phase ?]: 43.6-01: Roving focus needs no set-aware code — the existing shared 43.4 machinery already orders every rail target by data-rail-first-frame
+- [Phase 43.6]: 43.6-02: Exact-match membership (T-43.6-02) — the explicit member list is validated against freshly derived Key Rail segments + loop ranges at resolution time (firstKeyId + ordered keyIds for Key Rails, loopId for Groups); stale or unknown members fail closed with 'malformed-identity' — Stale-authority guard: intent membership can never diverge from the canonical document
+- [Phase 43.6]: 43.6-02: One-unit clamp/reject (D-07) — the set clamps or rejects as ONE unit at the first collision with any unselected key, unselected Group occupancy (including linked occurrences), frame 0, or capacity; the committed delta IS the clamped delta (D-17 preview-is-the-commit) — Rigid translation: relative offsets, internal gaps, and internal breaks preserved exactly; unselected objects never move
+- [Phase 43.6]: 43.6-02: Generalized straddle verdict (D-10) — a source-attached selected Group sharing sourceCycleId with an UNSELECTED Group rejects the whole move fail-closed with the dedicated 'move-rails-source-straddle' code; duplicated placements never straddle; the family is never silently pulled in — Straddle verdict derives from canonical attachment + sourceCycleId only, never caller flags (T-43.6-04)
+- [Phase 43.6]: 43.6-02: D-11 break travel — internal breaks travel with moved key identity; the vacated-successor rule manufactures a NEW break only when the first surviving key at/after the vacated end follows group-owned keys; the landing-gap rule manufactures only when the set's first key does not already own a break (group source key case); landing adjacent to a fixed-side neighbor never merges — 43.3 D-12 / 43.4 D-19 authority generalized to the explicit set
+- [Phase 43.6]: 43.6-02: Delta 0 is valid — a no-change input to the clamp is never a failure; the no-commit discipline lives in Plan 03 (D-13) — Zero-delta resolves a valid no-change proposal (changed === false)
+- [Phase 43.6]: 43.6-02: Mapping-only edit — semanticDelta null, selectedKeyId null, status carries operationKind 'move-rails', changed, affectedKeyIds, and a concise internal text (product copy is the Plan 03 mapper's job) — Same status discipline as move-key-rail; product copy lands in Plan 03 via the one mapper
 
 ### Pending Todos
 
@@ -702,8 +709,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-18T16:24:50.789Z
-Stopped at: Completed 43.6-01-PLAN.md
+Last session: 2026-08-18T17:15:24.614Z
+Stopped at: Completed 43.6-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

@@ -422,7 +422,7 @@ Plans:
 **Wave 1**
 
 - [x] 43.6-01-PLAN.md — Rail-set selection foundation: pure reducer (plain/toggle/range/union, empty set allowed), unified cross-type ordering, Studio session signals, gesture routing in both rail components, anchor tick + orange set paint, one set-copy mapper, D-06 aftermath scaffolding
-- [ ] 43.6-02-PLAN.md — move-rails resolver intent: exported pure set-derivation + clamp authority, generalized straddle guard, rigid translation with break travel, transport union + coordinator authorization
+- [x] 43.6-02-PLAN.md — move-rails resolver intent: exported pure set-derivation + clamp authority, generalized straddle guard, rigid translation with break travel, transport union + coordinator authorization
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
