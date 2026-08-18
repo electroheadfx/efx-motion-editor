@@ -280,4 +280,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-18 after Phase 43.5 verification closure — Timeline Toolbox + Directional Push Tools verified (10/10 must-haves, native UAT approved on 05c5fd4e; mode-toggle Push tool with pointer-resolved anchor, re-arm watchdog for chained pushes); milestone v0.9.0 (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
+*Last updated: 2026-08-18 after Phase 43.6 verification closure — Multi-Rail Selection and Batch Operations verified (16/16 must-haves; rail-set selection scope, batch Move/Delete/Key Spacing, Solo playback; WR-01 click-timer cancellation fixed in review+verification; desktop bundle budget raised 1100 → 1110 measured, amends V09-C04); milestone v0.9.0 (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
