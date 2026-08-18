@@ -259,7 +259,7 @@ function renderWorkflowStrip(
   loopContext: ReturnType<typeof derivePhysicPaintRotoLoopRanges> | null,
   presentations: ReadonlyMap<string, PhysicsPaintLoopClipPresentation>,
   selectedLoopClipIds: readonly string[],
-  onSelectLoopClip: (loopId: string | null, gesture?: 'plain' | 'toggle' | 'range') => void,
+  onSelectLoopClip: (loopId: string | null, gesture?: 'plain' | 'toggle' | 'range' | 'union') => void,
   onOpenLoopEdit: (loopId: string) => Promise<unknown>,
   cellProps: Partial<Pick<Parameters<typeof PhysicsPaintWorkflowStrip>[0], 'rotoPhysicalCells' | 'cachedRotoFrames' | 'rotoSpacingSelection' | 'rotoKeyRecords' | 'rotoLoopClips'>> = {},
 ): unknown {
@@ -1595,7 +1595,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       mockWindow: MockWindow,
       prepareRotoGroupDrag: (loopId: string, destinationPlacementStart: number) => RotoGroupDragPreparationResult,
       commitRotoGroupDrag: (publication: RotoGroupDragPublication) => Promise<boolean>,
-      onSelectLoopClip: (loopId: string, gesture: 'plain' | 'toggle' | 'range') => void,
+      onSelectLoopClip: (loopId: string, gesture: 'plain' | 'toggle' | 'range' | 'union') => void,
       onOpenLoopEdit: (loopId: string) => Promise<unknown>,
       options: {
         getClampInput?: (loopId: string) => Omit<PhysicPaintRotoGroupDragClampInput, 'proposedDestinationPlacementStart'> | null;

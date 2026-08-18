@@ -11,6 +11,7 @@ import type {
   RotoKeyRailDragPublication,
   RotoKeyRailSelection,
 } from '../hooks/useRotoTimelineActions';
+import type { PhysicsPaintRotoSpacingSelectionGesture } from '../roto/physicsPaintRotoSpacingSelection';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
   buildKeyRailBaseCopy,
@@ -61,7 +62,15 @@ export interface PhysicsPaintKeyRailProps extends SelectedKeyRailCopyAvailabilit
   };
   readonly framePitch: number;
   readonly selectedKeyRail: RotoKeyRailSelection | null;
-  readonly onSelectKeyRail: (selection: RotoKeyRailSelection) => void;
+  /** Key Rails that are members of the session rail-set (43.6 D-01); they
+   *  paint the same orange selection line as single selection — no new color. */
+  readonly railSetMemberKeyRailIds?: readonly string[];
+  /** The set anchor Key Rail identity, if any — carries the anchor tick. */
+  readonly railSetAnchorKeyRailId?: string | null;
+  readonly onSelectKeyRail: (
+    selection: RotoKeyRailSelection,
+    gesture: PhysicsPaintRotoSpacingSelectionGesture,
+  ) => void;
   readonly prepareKeyRailDrag?: (
     firstKeyId: string,
     destinationFirstKeyAppFrame: number,
@@ -80,6 +89,9 @@ export interface PhysicsPaintKeyRailProps extends SelectedKeyRailCopyAvailabilit
 }
 
 interface RailMouseEvent {
+  readonly metaKey: boolean;
+  readonly ctrlKey: boolean;
+  readonly shiftKey: boolean;
   readonly currentTarget?: EventTarget | null;
   stopPropagation(): void;
   preventDefault(): void;
@@ -99,6 +111,7 @@ interface PhysicsPaintKeyRailTargetProps extends SelectedKeyRailCopyAvailability
   readonly visibleFrameWindow: PhysicsPaintKeyRailProps['visibleFrameWindow'];
   readonly framePitch: number;
   readonly selected: boolean;
+  readonly isSetAnchor: boolean;
   readonly onSelectKeyRail: PhysicsPaintKeyRailProps['onSelectKeyRail'];
   readonly prepareKeyRailDrag?: PhysicsPaintKeyRailProps['prepareKeyRailDrag'];
   readonly commitKeyRailDrag?: PhysicsPaintKeyRailProps['commitKeyRailDrag'];
@@ -178,7 +191,16 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
     // 43.4 defect 10: an explicit click is a focus-worthy activation for every
     // rail family — move DOM focus to this target so the shared ring paints.
     focusRailTargetOnPointerSelection(event);
-    props.onSelectKeyRail(selection());
+    // 43.6 Pitfall 1: the union combination (Cmd+Shift) is checked FIRST so it
+    // cannot collapse into the plain Shift range branch.
+    const gesture: PhysicsPaintRotoSpacingSelectionGesture = event.shiftKey && (event.metaKey || event.ctrlKey)
+      ? 'union'
+      : event.shiftKey
+        ? 'range'
+        : event.metaKey || event.ctrlKey
+          ? 'toggle'
+          : 'plain';
+    props.onSelectKeyRail(selection(), gesture);
   };
   const handleKeyDown = (event: RailKeyboardEvent) => {
     // 43.4 defect 9: the shared rail roving group owns ArrowLeft/ArrowRight/
@@ -195,7 +217,8 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
     event.stopPropagation();
     event.preventDefault();
     tooltip.hide();
-    props.onSelectKeyRail(selection());
+    // Space on a focused member plain-selects it and collapses the set (D-04).
+    props.onSelectKeyRail(selection(), 'plain');
   };
 
   return (
@@ -228,6 +251,9 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
         onBlur={tooltip.onBlur}
       >
         <span class="physics-paint-rail-segment physics-paint-key-rail-segment" aria-hidden="true" />
+        {props.isSetAnchor ? (
+          <span class="physics-paint-rail-anchor-tick" aria-hidden="true" />
+        ) : null}
       </button>
       {drag.ghost.active ? (
         <span
@@ -278,7 +304,9 @@ export function PhysicsPaintKeyRail(props: PhysicsPaintKeyRailProps) {
           geometry={geometry}
           visibleFrameWindow={props.visibleFrameWindow}
           framePitch={props.framePitch}
-          selected={sameKeyRailSelection(props.selectedKeyRail, segment)}
+          selected={sameKeyRailSelection(props.selectedKeyRail, segment)
+            || (props.railSetMemberKeyRailIds?.includes(segment.firstKeyId) ?? false)}
+          isSetAnchor={props.railSetAnchorKeyRailId === segment.firstKeyId}
           onSelectKeyRail={props.onSelectKeyRail}
           prepareKeyRailDrag={props.prepareKeyRailDrag}
           commitKeyRailDrag={props.commitKeyRailDrag}

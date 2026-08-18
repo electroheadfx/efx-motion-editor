@@ -40,6 +40,8 @@ export interface PhysicsPaintLoopClipRailProps {
   /** Loop Rails that are members of the session rail-set (43.6 D-01); they
    *  paint the same orange selection line as single selection — no new color. */
   readonly railSetMemberLoopIds?: readonly string[];
+  /** The set anchor Loop Rail identity, if any — carries the anchor tick. */
+  readonly railSetAnchorLoopId?: string | null;
   readonly linkedLoopClipIds?: readonly string[];
   readonly linkedActionName?: string | null;
   readonly onSelectLoopClip: (
@@ -92,6 +94,7 @@ interface RailTargetProps {
   readonly left: number;
   readonly width: number;
   readonly selected: boolean;
+  readonly isSetAnchor: boolean;
   readonly actionLinked: boolean;
   readonly showStartBoundary: boolean;
   readonly showEndBoundary: boolean;
@@ -159,11 +162,15 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
     // 43.4 defect 10: an explicit click is a focus-worthy activation for every
     // rail family — move DOM focus to this target so the shared ring paints.
     focusRailTargetOnPointerSelection(event);
-    const gesture: PhysicsPaintRotoSpacingSelectionGesture = event.shiftKey
-      ? 'range'
-      : event.metaKey || event.ctrlKey
-        ? 'toggle'
-        : 'plain';
+    // 43.6 Pitfall 1: the union combination (Cmd+Shift) is checked FIRST so it
+    // cannot collapse into the plain Shift range branch.
+    const gesture: PhysicsPaintRotoSpacingSelectionGesture = event.shiftKey && (event.metaKey || event.ctrlKey)
+      ? 'union'
+      : event.shiftKey
+        ? 'range'
+        : event.metaKey || event.ctrlKey
+          ? 'toggle'
+          : 'plain';
     const previousTimestamp = lastClickTimestampRef.current;
     const elapsed = previousTimestamp === null
       ? Number.POSITIVE_INFINITY
@@ -234,6 +241,9 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
         onBlur={tooltip.onBlur}
       >
         <span class="physics-paint-rail-segment physics-paint-loop-clip-rail-segment" aria-hidden="true" />
+        {props.isSetAnchor ? (
+          <span class="physics-paint-rail-anchor-tick" aria-hidden="true" />
+        ) : null}
         {presentation.synchronizationDot ? (
           <span class={`physics-paint-loop-clip-lifecycle-dot ${presentation.synchronizationDot}`} aria-hidden="true" />
         ) : null}
@@ -329,6 +339,7 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
           width={geometry.width}
           selected={props.selectedLoopClipIds.includes(range.loopId)
             || (props.railSetMemberLoopIds?.includes(range.loopId) ?? false)}
+          isSetAnchor={props.railSetAnchorLoopId === range.loopId}
           actionLinked={actionLinked}
           showStartBoundary={showStartBoundary}
           showEndBoundary={showEndBoundary}

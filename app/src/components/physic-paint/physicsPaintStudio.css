@@ -3045,6 +3045,23 @@ button.destructive {
   pointer-events: none;
 }
 
+/* 43.6 D-01 anchor tick: painted on the set anchor rail's leading edge so the
+   user can always identify which member anchors the range/union expansion.
+   2px wide x 8px high #F2F5F7 at 70% opacity, top: 4px inside the 12px band;
+   aria-hidden in markup and pointer-events none here so the 12px hit target
+   stays unchanged. Shared across every rail family via the shared class. */
+.physics-paint-rail-anchor-tick {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  z-index: 1;
+  width: 2px;
+  height: 8px;
+  background: #f2f5f7;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
 /* 43.3 G2 ghost rail: presentation-only destination proposal. Painted above
    the accepted 3px rail paint (layer 7) and below the rail focus ring and
    styled tooltip (layer 8); pointer-events none so the rail target owns all

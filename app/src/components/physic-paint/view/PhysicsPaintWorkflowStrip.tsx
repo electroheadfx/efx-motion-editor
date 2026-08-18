@@ -265,6 +265,12 @@ export interface PhysicsPaintWorkflowStripProps {
   /** Loop Rails that are members of the session rail-set (43.6 D-01); they
    *  paint the same orange selection line as single selection — no new color. */
   railSetMemberLoopIds?: readonly string[];
+  /** The set anchor Loop Rail identity, if any — carries the anchor tick. */
+  railSetAnchorLoopId?: string | null;
+  /** Key Rails that are members of the session rail-set (43.6 D-01). */
+  railSetMemberKeyRailIds?: readonly string[];
+  /** The set anchor Key Rail identity, if any — carries the anchor tick. */
+  railSetAnchorKeyRailId?: string | null;
   /** Passive Groups linked to the active Action; never operation scope. */
   linkedRotoLoopClipIds?: readonly string[];
   /** Product name used only by passive linked-rail accessibility copy. */
@@ -2357,6 +2363,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
                   framePitch={ROTO_CELL_WIDTH_PX}
                   selectedKeyRail={props.selectedRotoKeyRail ?? null}
+                  railSetMemberKeyRailIds={props.railSetMemberKeyRailIds ?? []}
+                  railSetAnchorKeyRailId={props.railSetAnchorKeyRailId ?? null}
                   onSelectKeyRail={props.onSelectRotoKeyRail ?? NOOP_KEY_RAIL_SELECTION}
                   prepareKeyRailDrag={physicalActions?.prepareKeyRailDrag}
                   commitKeyRailDrag={physicalActions?.commitKeyRailDrag}
@@ -2382,6 +2390,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   framePitch={ROTO_CELL_WIDTH_PX}
                   selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}
                   railSetMemberLoopIds={props.railSetMemberLoopIds ?? []}
+                  railSetAnchorLoopId={props.railSetAnchorLoopId ?? null}
                   linkedLoopClipIds={props.linkedRotoLoopClipIds ?? []}
                   linkedActionName={props.linkedRotoActionName ?? null}
                   onSelectLoopClip={props.onSelectRotoLoopClip}

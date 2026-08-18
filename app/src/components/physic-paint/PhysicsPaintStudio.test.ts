@@ -457,6 +457,84 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
   });
 });
 
+describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
+  it('owns the session-only rail-set Signal and clears it on launch replacement', () => {
+    expect(studio).toContain('const railSetSelection = useSignal<RailSetSelectionState | null>(null);');
+    const launchStart = studio.indexOf('if (next?.operationId !== current?.operationId || next?.layerId !== current?.layerId) {');
+    const launchEnd = studio.indexOf('} else if (next && next.startFrame !== current?.startFrame)', launchStart);
+    expect(studio.slice(launchStart, launchEnd)).toContain('railSetSelection.value = null;');
+  });
+
+  it('derives one canonical cross-type ordering authority for gestures and reconcile', () => {
+    expect(studio).toContain('const orderedRailSetIdentities = useMemo(\n    () => deriveRailSetOrder({');
+    expect(studio).toContain('keyRailSegments,');
+    expect(studio).toContain('loopRanges: loopResolutionContext?.ranges ?? [],');
+  });
+
+  it('reconciles the set against fresh ordering on every render and clears invalid sets (Pitfall 2)', () => {
+    const reconcileStart = studio.indexOf('const effectiveRailSetSelection = reconcileRailSetSelection(');
+    const reconcileEnd = studio.indexOf('const timelineOccupiedRotoFrames', reconcileStart);
+    const reconcile = studio.slice(reconcileStart, reconcileEnd);
+    expect(reconcileStart).toBeGreaterThanOrEqual(0);
+    expect(reconcile).toContain('railSetSelection.value,');
+    expect(reconcile).toContain('orderedRailSetIdentities,');
+    expect(reconcile).toContain('railSetSelection.peek() !== null && effectiveRailSetSelection === null');
+    expect(reconcile).toContain('railSetSelection.value = null;');
+  });
+
+  it('routes Loop Rail modifier gestures through the set reducer and collapses on plain (D-04)', () => {
+    const selectionStart = studio.indexOf('const handleSelectRotoLoopClip = useCallback((');
+    const selectionEnd = studio.indexOf('const handleOpenRotoLoopEdit', selectionStart);
+    const selection = studio.slice(selectionStart, selectionEnd);
+    expect(selectionStart).toBeGreaterThanOrEqual(0);
+    expect(selection).toContain("gesture === 'toggle' || gesture === 'range' || gesture === 'union'");
+    expect(selection).toContain('updatePhysicsPaintRotoRailSetSelection(');
+    expect(selection).toContain('railSetSelection.peek(),');
+    expect(selection).toContain('orderedRailSetIdentities,');
+    expect(selection).toContain('railSetSelection.value = next;');
+    expect(selection).toContain('railSetSelection.value = null;');
+  });
+
+  it('routes Key Rail modifier gestures through the set reducer and collapses on plain (D-04)', () => {
+    const selectionStart = studio.indexOf('const handleSelectRotoKeyRail = useCallback((');
+    const selectionEnd = studio.indexOf('const handleSelectRotoLoopClip', selectionStart);
+    const selection = studio.slice(selectionStart, selectionEnd);
+    expect(selectionStart).toBeGreaterThanOrEqual(0);
+    expect(selection).toContain("gesture === 'toggle' || gesture === 'range' || gesture === 'union'");
+    expect(selection).toContain('updatePhysicsPaintRotoRailSetSelection(');
+    expect(selection).toContain('railSetSelection.value = next;');
+    expect(selection).toContain('railSetSelection.value = null;');
+  });
+
+  it('collapses the set as its own Escape layer before key-selection collapse (D-04)', () => {
+    const collapseStart = studio.indexOf('collapseRotoSelection: () => {');
+    const collapseEnd = studio.indexOf('toggleShortcuts:', collapseStart);
+    const collapse = studio.slice(collapseStart, collapseEnd);
+    expect(collapseStart).toBeGreaterThanOrEqual(0);
+    expect(collapse).toContain('if (railSetSelection.value !== null) {\n          railSetSelection.value = null;\n          return;\n        }');
+    expect(collapse).toContain('if (selectedKeyIds.value.length <= 1) return;');
+  });
+
+  it('clears the set on Select All and spacing selection (D-04 key selection)', () => {
+    const selectAllStart = studio.indexOf('const selectAllRotoKeys = useCallback(() => {');
+    const selectAllEnd = studio.indexOf('const [, setLastError]', selectAllStart);
+    expect(studio.slice(selectAllStart, selectAllEnd)).toContain('railSetSelection.value = null;');
+    const spacingStart = studio.indexOf('const handleSelectRotoSpacingProxy = useCallback((');
+    const spacingEnd = studio.indexOf('const handleClearRotoSpacingSelection', spacingStart);
+    expect(studio.slice(spacingStart, spacingEnd)).toContain('railSetSelection.value = null;');
+  });
+
+  it('paints the shared anchor tick with the D-01 geometry and pointer-events none', () => {
+    const tickRule = css.slice(css.indexOf('.physics-paint-rail-anchor-tick {'));
+    expect(tickRule).toContain('width: 2px;');
+    expect(tickRule).toContain('height: 8px;');
+    expect(tickRule).toContain('background: #f2f5f7;');
+    expect(tickRule).toContain('opacity: 0.7;');
+    expect(tickRule).toContain('top: 4px;');
+    expect(tickRule).toContain('pointer-events: none;');
+  });
+});
+
 describe('Physics Paint selection-scoped Group deletion (43.2-17)', () => {
   it('wires direct Group lifecycle deletion and removes the routine scope-choice modal', () => {
     expect(studio).toContain('executeGroupLifecycleDelete:');

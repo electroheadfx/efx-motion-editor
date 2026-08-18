@@ -17,7 +17,7 @@ export interface PhysicsPaintRotoSpacingCycle {
   readonly sourceKeyIds: readonly string[];
 }
 
-export type PhysicsPaintRotoSpacingSelectionGesture = 'plain' | 'toggle' | 'range';
+export type PhysicsPaintRotoSpacingSelectionGesture = 'plain' | 'toggle' | 'range' | 'union';
 
 export interface PhysicsPaintRotoLoopClipSelection {
   readonly selectedLoopClipIds: readonly string[];

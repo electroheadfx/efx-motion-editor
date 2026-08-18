@@ -19,6 +19,7 @@ import {
 } from './roto/physicsPaintRotoSpacingSelection';
 import {
   deriveRailSetOrder,
+  reconcileRailSetSelection,
   updatePhysicsPaintRotoRailSetSelection,
   type RailSetIdentity,
   type RailSetSelectionState,
@@ -362,6 +363,8 @@ export function PhysicsPaintStudio() {
       null,
     );
     rotoSpacingSelection.value = null;
+    // 43.6 D-04: Select All is a key selection — it clears the rail set.
+    railSetSelection.value = null;
     selectedLoopClipIds.value = [];
     loopSelectionAnchorId.value = null;
     selectedLoopClipId.value = null;
@@ -508,6 +511,18 @@ export function PhysicsPaintStudio() {
     }),
     [keyRailSegments, loopResolutionContext],
   );
+  // 43.6 D-01 Pitfall 2: the set reconciles against the fresh canonical
+  // ordering on every render — an accepted physical revision, the
+  // Interpolation Off/On toggle, or any external edit that deletes/retimes a
+  // member clears the invalid set instead of inventing a fallback scope
+  // (UI-SPEC M1 error). Same render-phase pattern as effectiveSelectedRotoKeyRail.
+  const effectiveRailSetSelection = reconcileRailSetSelection(
+    railSetSelection.value,
+    orderedRailSetIdentities,
+  );
+  if (railSetSelection.peek() !== null && effectiveRailSetSelection === null) {
+    railSetSelection.value = null;
+  }
   const timelineOccupiedRotoFrames = rotoTimelineModel.occupiedRotoFrames.value;
   const timelineSavedRotoFrames = rotoTimelineModel.savedRotoFrames.value;
   const timelineCachedRotoFrames = rotoTimelineModel.cachedRotoFrames.value;
@@ -1193,7 +1208,42 @@ export function PhysicsPaintStudio() {
   }, []);
   const handleSelectRotoKeyRail = useCallback((
     selection: RotoKeyRailSelection,
+    gesture: PhysicsPaintRotoSpacingSelectionGesture = 'plain',
   ) => {
+    if (gesture === 'toggle' || gesture === 'range' || gesture === 'union') {
+      // Modifier gestures route through the rail-set reducer (D-01): a Key Rail
+      // can join, anchor, and leave the set exactly like a Loop Rail.
+      const target: RailSetIdentity = { kind: 'key-rail', firstKeyId: selection.firstKeyId };
+      const next = updatePhysicsPaintRotoRailSetSelection(
+        railSetSelection.peek(),
+        orderedRailSetIdentities,
+        target,
+        gesture,
+      );
+      if (next === null) {
+        clearRotoLoopSelection();
+        railSetSelection.value = null;
+        selectedRotoKeyRail.value = null;
+        return;
+      }
+      clearRotoLoopSelection();
+      selectedRotoKeyRail.value = null;
+      selectedKeyId.value = null;
+      selectedKeyIds.value = [];
+      selectionAnchorKeyId.value = null;
+      rotoSpacingSelection.value = null;
+      if (launchContext) {
+        physicPaintStore.setRotoPhysicalSelection(
+          launchContext.layerId,
+          null,
+          currentFrame,
+        );
+      }
+      railSetSelection.value = next;
+      return;
+    }
+    // Plain click collapses the set into the single-rail path (D-04).
+    railSetSelection.value = null;
     clearRotoLoopSelection();
     selectedKeyId.value = null;
     selectedKeyIds.value = [];
@@ -1207,7 +1257,7 @@ export function PhysicsPaintStudio() {
       );
     }
     selectedRotoKeyRail.value = selection;
-  }, [clearRotoLoopSelection, currentFrame, launchContext]);
+  }, [clearRotoLoopSelection, currentFrame, launchContext, orderedRailSetIdentities]);
   const handleSelectRotoLoopClip = useCallback((
     loopId: string | null,
     gesture: PhysicsPaintRotoSpacingSelectionGesture = 'plain',
@@ -1217,15 +1267,15 @@ export function PhysicsPaintStudio() {
       railSetSelection.value = null;
       return;
     }
-    if (gesture === 'toggle') {
-      // Cmd/Ctrl+click routes through the rail-set reducer (D-01): the set is
+    if (gesture === 'toggle' || gesture === 'range' || gesture === 'union') {
+      // Modifier gestures route through the rail-set reducer (D-01): the set is
       // the active scope while non-null; the single-rail signals stay clear.
       const target: RailSetIdentity = { kind: 'loop', loopId };
       const next = updatePhysicsPaintRotoRailSetSelection(
         railSetSelection.peek(),
         orderedRailSetIdentities,
         target,
-        'toggle',
+        gesture,
       );
       if (next === null) {
         clearRotoLoopSelection();
@@ -1751,6 +1801,14 @@ export function PhysicsPaintStudio() {
       selectAllRotoKeys,
       disarmPushTool,
       collapseRotoSelection: () => {
+        // 43.6 D-04: the rail-set is the top selection layer — one Escape
+        // collapses the set without touching the key selection (Pitfall 2).
+        // Chain order (43.5 one-Escape-one-layer): popover dismiss, push
+        // disarm, set collapse, key-selection collapse.
+        if (railSetSelection.value !== null) {
+          railSetSelection.value = null;
+          return;
+        }
         // D-02: collapse only an active multi-selection; a single-key
         // selection is already collapsed and stays untouched.
         if (selectedKeyIds.value.length <= 1) return;
@@ -1812,6 +1870,8 @@ export function PhysicsPaintStudio() {
     gesture: PhysicsPaintRotoSpacingSelectionGesture,
   ) => {
     selectedRotoKeyRail.value = null;
+    // 43.6 D-04: spacing selection is a key selection — it clears the set.
+    railSetSelection.value = null;
     clearRotoLoopSelection();
     const current = rotoSpacingSelection.peek();
     const next = gesture === 'toggle'
@@ -2198,7 +2258,9 @@ export function PhysicsPaintStudio() {
         onRotoInterpolationEnabledChange: handleRotoInterpolationEnabledChange, onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
         onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: railSetSelection.value?.members
           .filter((member): member is { kind: 'loop'; loopId: string } => member.kind === 'loop')
-          .map((member) => member.loopId) ?? [], selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
+          .map((member) => member.loopId) ?? [], railSetAnchorLoopId: railSetSelection.value?.anchor?.kind === 'loop' ? railSetSelection.value.anchor.loopId : null, railSetMemberKeyRailIds: railSetSelection.value?.members
+          .filter((member): member is { kind: 'key-rail'; firstKeyId: string } => member.kind === 'key-rail')
+          .map((member) => member.firstKeyId) ?? [], railSetAnchorKeyRailId: railSetSelection.value?.anchor?.kind === 'key-rail' ? railSetSelection.value.anchor.firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext?.rotoPhysical?.layerEndExclusive ?? 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).

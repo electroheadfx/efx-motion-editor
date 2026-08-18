@@ -198,7 +198,8 @@ describe('PhysicsPaintKeyRail', () => {
     const click = { stopPropagation: vi.fn(), preventDefault: vi.fn(), shiftKey: true, metaKey: true, ctrlKey: false };
     (targets[1].props.onClick as (event: typeof click) => void)(click);
     expect(click.stopPropagation).toHaveBeenCalledOnce();
-    expect(onSelectKeyRail).toHaveBeenCalledWith({ firstKeyId: 'C', keyIds: ['C'] });
+    // 43.6 Pitfall 1: Cmd+Shift is the union gesture, checked FIRST.
+    expect(onSelectKeyRail).toHaveBeenCalledWith({ firstKeyId: 'C', keyIds: ['C'] }, 'union');
     expect(textOf(tree)).toContain('Selected Key Rail — frames 2–5, 2 keys.');
   });
 
@@ -238,7 +239,8 @@ describe('PhysicsPaintKeyRail', () => {
     const space = { key: ' ', stopPropagation: vi.fn(), preventDefault: vi.fn() };
     (target.props.onKeyDown as (event: typeof space) => void)(space);
     expect(space.preventDefault).toHaveBeenCalledOnce();
-    expect(onSelectKeyRail).toHaveBeenCalledWith({ firstKeyId: 'A', keyIds: ['A', 'B'] });
+    // 43.6 D-04: Space on a focused member plain-selects it (collapses the set).
+    expect(onSelectKeyRail).toHaveBeenCalledWith({ firstKeyId: 'A', keyIds: ['A', 'B'] }, 'plain');
 
     onSelectKeyRail.mockClear();
     const enter = { key: 'Enter', stopPropagation: vi.fn(), preventDefault: vi.fn() };
