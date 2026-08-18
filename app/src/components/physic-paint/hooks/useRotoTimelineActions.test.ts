@@ -1293,6 +1293,122 @@ describe('useRotoTimelineActions Key Rail Force Spacing (43.4 defect 2)', () => 
   });
 });
 
+describe('useRotoTimelineActions rail-set Key Spacing (43.6-05, D-24/D-25/D-26)', () => {
+  const setRecords = [
+    realKeyRecord('A', 0),
+    realKeyRecord('B', 1),
+    realKeyRecord('C', 2),
+    realKeyRecord('X', 20),
+    realKeyRecord('Y', 21),
+  ];
+  const setLoopClips: readonly PhysicPaintRotoLoopClip[] = [
+    {
+      loopId: 'loop-G',
+      placementStart: 20,
+      sourceKeyIds: ['X', 'Y'],
+      repeat: 4,
+      mode: 'static',
+    },
+  ];
+  const mixedSet: readonly RailSetIdentity[] = [
+    { kind: 'key-rail', firstKeyId: 'A' },
+    { kind: 'loop', loopId: 'loop-G' },
+  ];
+
+  it('derives per-rail member descriptors from an active mixed set and dispatches spacing-on-set', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: setRecords,
+      loopClips: setLoopClips,
+      railSetMembers: mixedSet,
+      capacity: 40,
+    });
+    actions.physicalActions.setForceSpacingInput('1');
+
+    expect(await actions.physicalActions.applyForceSpacing()).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      operationKind: string;
+      intent: {
+        kind: string;
+        members: readonly { kind: string; firstKeyId?: string; keyIds?: readonly string[]; loopId?: string }[];
+        emptyFrames: number;
+      };
+      proposal: { mapping: ReadonlyMap<string, number> };
+    };
+    expect(dispatched.operationKind).toBe('spacing-on-set');
+    expect(dispatched.intent.kind).toBe('spacing-on-set');
+    expect(dispatched.intent.emptyFrames).toBe(1);
+    // The set branch expands the Plan 01 identities into per-rail member
+    // descriptors (key-rail firstKeyId + keyIds / loop loopId).
+    expect(dispatched.intent.members).toEqual([
+      { kind: 'key-rail', firstKeyId: 'A', keyIds: ['A', 'B', 'C'] },
+      { kind: 'loop', loopId: 'loop-G' },
+    ]);
+    // Per-rail anchors: A@0 -> 0,2,4; X@20 -> 20,22 (D-24).
+    expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ A: 0, B: 2, C: 4, X: 20, Y: 22 });
+  });
+
+  it('fails closed on a stale rail set with the mapped stale message', async () => {
+    const { actions, executePhysicalEdit, publishStatus } = createHarness({
+      records: setRecords,
+      loopClips: setLoopClips,
+      railSetMembers: [{ kind: 'key-rail', firstKeyId: 'ZZZ' }],
+      capacity: 40,
+    });
+    actions.physicalActions.setForceSpacingInput('1');
+
+    expect(await actions.physicalActions.applyForceSpacing()).toBe(false);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+    expect(publishStatus).toHaveBeenCalledWith('Rail set selection is stale. Select the Rails again.');
+  });
+
+  it('publishes the locked whole-set preflight rejection copy on collision (D-25)', async () => {
+    // c0@4 is unselected; C lands at 4 — the whole command rejects.
+    const { actions, executePhysicalEdit, publishStatus } = createHarness({
+      records: [
+        realKeyRecord('A', 0),
+        realKeyRecord('B', 1),
+        realKeyRecord('C', 2),
+        realKeyRecord('c0', 4),
+      ],
+      incomingInterpolationBreakKeyIds: ['c0'],
+      railSetMembers: [{ kind: 'key-rail', firstKeyId: 'A' }],
+      capacity: 40,
+    });
+    actions.physicalActions.setForceSpacingInput('1');
+
+    expect(await actions.physicalActions.applyForceSpacing()).toBe(false);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+    expect(publishStatus).toHaveBeenCalledWith('Can\'t apply Key Spacing to the selected Rails: Spacing rejected — not enough room.');
+  });
+
+  it('publishes the locked accepted copy for a multi-rail set', async () => {
+    const { actions, executePhysicalEdit, publishStatus } = createHarness({
+      records: setRecords,
+      loopClips: setLoopClips,
+      railSetMembers: mixedSet,
+      capacity: 40,
+    });
+    actions.physicalActions.setForceSpacingInput('1');
+
+    expect(await actions.physicalActions.applyForceSpacing()).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    expect(publishStatus).toHaveBeenCalledWith('Key Spacing applied to 2 Rails.');
+  });
+
+  it('publishes the singular accepted copy for a one-rail set', async () => {
+    const { actions, publishStatus } = createHarness({
+      records: [realKeyRecord('A', 0), realKeyRecord('B', 1)],
+      railSetMembers: [{ kind: 'key-rail', firstKeyId: 'A' }],
+      capacity: 40,
+    });
+    actions.physicalActions.setForceSpacingInput('1');
+
+    expect(await actions.physicalActions.applyForceSpacing()).toBe(true);
+    expect(publishStatus).toHaveBeenCalledWith('Key Spacing applied to 1 Rail.');
+  });
+});
+
 describe('useRotoTimelineActions rigid group-drag settlement', () => {
   it('commits the exact retained A@5/B@6/D@7 proposal once', async () => {
     const { actions, executePhysicalEdit } = createHarness({

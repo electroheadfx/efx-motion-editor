@@ -346,6 +346,16 @@ describe('rail-set post-acceptance snapshot side-channel (43.6-01 Task 3, D-06 c
     })).toBe(current);
   });
 
+  it('keeps the current set on spacing-on-set (identities survive respacing)', () => {
+    clearRailSetSnapshots();
+    const current = afterSet();
+    expect(resolveRailSetPostAcceptance({
+      operationKind: 'spacing-on-set',
+      operationId: 'op-1',
+      current,
+    })).toBe(current);
+  });
+
   it('returns null on delete-rails', () => {
     clearRailSetSnapshots();
     expect(resolveRailSetPostAcceptance({

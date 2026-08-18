@@ -1085,6 +1085,29 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     // The submit handler keeps its verbatim mutation-lock guard.
     expect(source()).toContain('if (props.ready === false || props.mutationLocked || !forceSpacingAvailable) return;');
   });
+
+  it('renders one Key Spacing scope line under the heading only when a rail set is active (43.6-05 M5, D-26)', () => {
+    const code = source();
+    const header = getHeaderBlock(code);
+    const headingIndex = header.indexOf('<div class="physics-paint-toolbox-section-heading">Key Spacing</div>');
+    expect(headingIndex).toBeGreaterThanOrEqual(0);
+    // The scope line sits directly under the Key Spacing heading and above the
+    // relocated controls — one Body-role line, no panel or divider.
+    const scopeLineIndex = header.indexOf('physics-paint-toolbox-scope-line', headingIndex);
+    expect(scopeLineIndex).toBeGreaterThan(headingIndex);
+    const controlsIndex = header.indexOf('physics-paint-pill--apply-spacing', headingIndex);
+    expect(controlsIndex).toBeGreaterThan(scopeLineIndex);
+    // The line is the D-27 set copy verbatim — the same string the capsule
+    // shows, fed through the static-chrome prop (one mapper authority).
+    expect(code).toContain('forceSpacingScopeLine={railSetCopy}');
+    expect(code).toContain('props.forceSpacingScopeLine ? (');
+    // With no set the line is absent — no placeholder, no reserved space.
+    expect(getWorkflowStripPropsInterface(code)).toContain('forceSpacingScopeLine: string | null');
+    const styles = css();
+    const scopeLineRule = getCssRuleBlock(styles, '.physics-paint-toolbox-scope-line {');
+    expect(scopeLineRule).toContain('color: #9ca3af');
+    expect(scopeLineRule).toContain('font-variant-numeric: tabular-nums');
+  });
 });
 
 describe('PhysicsPaintWorkflowStrip clipping guard contract (36.15-08, UAT Gap B)', () => {
