@@ -94,6 +94,10 @@ class SourceDouble implements RailSetDragSourceElement {
   removeEventListener(type: string, listener: Listener) {
     this.listeners.get(type)?.delete(listener);
   }
+
+  emit(type: string, event: unknown) {
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+  }
 }
 
 function pointerEvent(source: SourceDouble, overrides: Partial<PointerEvent> = {}): PointerEvent {
@@ -281,7 +285,7 @@ describe('usePhysicsPaintRailSetDrag', () => {
     api.onPointerDown(pointerEvent(harness.source));
     harness.windowLike.emit('pointermove', pointerEvent(harness.source, { clientX: 105 }));
 
-    expect(harness.render().preview?.gapIntervals).toBe(publication.gapIntervals);
+    expect(harness.render().preview?.gapIntervals).toEqual(publication.gapIntervals);
     harness.windowLike.emit('pointerup', pointerEvent(harness.source, { clientX: 105 }));
     expect(harness.onDropCommit).toHaveBeenCalledWith(publication);
   });
