@@ -1898,15 +1898,15 @@ describe('Directional Push tool source contract (43.5-05 design revision: ONE to
     const commitStart = code.indexOf('onDropCommit: (publication) => {');
     const commit = code.slice(commitStart, code.indexOf('onCancel:', commitStart));
     // The commit marks the push in flight (exempting the Studio mutation-lock
-    // disarm), captures the anchor, and on acceptance DEFERS the re-select +
-    // re-arm to the next animation frame so it runs after the commit's
-    // selection propagation settles.
+    // disarm) and records the anchor for the re-arm watchdog.
     expect(commit).toContain('setPushCommitInFlight(true)');
-    expect(commit).toContain('justCommittedRef.current = true');
-    expect(commit).toContain('committedAnchorRef.current = armedAnchorRef.current');
-    expect(commit).toContain('requestAnimationFrame');
-    expect(commit).toContain('props.onSelectRotoKeyRail');
-    expect(commit).toContain('armedAnchorRef.current = anchor');
+    expect(commit).toContain('rearmAnchorRef.current = anchor');
+    // A re-arm watchdog re-selects the moved anchor rail and re-arms once when
+    // the async settlement disarms the tool.
+    expect(code).toContain('const pushArmedNow = isPushToolArmed();');
+    expect(code).toContain('rearmAnchorRef.current = null');
+    expect(code).toContain('props.onSelectRotoKeyRail');
+    expect(code).toContain('togglePushTool()');
     // The Studio's disarm-on-mutation effect is guarded by the commit-in-flight
     // flag.
     expect(studioSource()).toContain('isPushCommitInFlight()');
@@ -1916,7 +1916,7 @@ describe('Directional Push tool source contract (43.5-05 design revision: ONE to
     expect(armedTool).toContain('isPushCommitInFlight');
   });
 
-  it('A16: disarm vectors stay locked (selection change, toolbar action, cancel, Escape) — the commit is the only exemption', () => {
+  it('A16: disarm vectors stay locked (selection change, toolbar action, cancel, Escape) — a single re-arm watchdog is the only exemption', () => {
     const code = source();
     // A selection change while armed still disarms via the disarm effect (A10).
     expect(code).toContain('disarmPushTool()');
@@ -1925,11 +1925,14 @@ describe('Directional Push tool source contract (43.5-05 design revision: ONE to
     const cancelStart = code.indexOf('onCancel: () => {');
     const cancel = code.slice(cancelStart, code.indexOf('onRejected:', cancelStart));
     expect(cancel).toContain('disarmPushTool()');
-    // The only exemption is a push commit still settling: the disarm effect
-    // holds (returns) while justCommitted, never toggles or re-selects.
+    // The disarm effect itself never toggles/re-selects — it only disarms. The
+    // re-arm lives solely in the watchdog, which clears its pending ref so a
+    // LATER Escape/another-tool disarm is not undone.
     const disarmStart = code.indexOf('const armedAnchor = armedAnchorRef.current');
     const disarm = code.slice(disarmStart, code.indexOf('}, [pushAnchor, pushArmed]);', disarmStart));
-    expect(disarm).toContain('if (justCommittedRef.current) return;');
     expect(disarm).not.toContain('togglePushTool');
+    expect(disarm).not.toContain('onSelectRotoKeyRail');
+    // The watchdog clears its pending ref before re-arming (single re-arm).
+    expect(code).toContain('rearmAnchorRef.current = null');
   });
 });
