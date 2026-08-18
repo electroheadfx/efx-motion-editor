@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v0.9.0
 milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.6
-current_phase_name: Multi-Rail Selection and Batch Operations
+current_phase_name: multi-rail-selection-and-batch-operations
 status: executing
-stopped_at: Phase 43.6 UI-SPEC approved
-last_updated: "2026-08-18T15:23:47.333Z"
+stopped_at: Completed 43.6-01-PLAN.md
+last_updated: "2026-08-18T16:24:50.803Z"
 last_activity: 2026-08-18
 last_activity_desc: Phase 43.6 inserted after Phase 43.5 (urgent), before Phase 44
 progress:
   total_phases: 12
   completed_phases: 9
   total_plans: 90
-  completed_plans: 84
+  completed_plans: 85
   percent: 75
 ---
 
@@ -29,7 +29,7 @@ stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-16
 last_activity_desc: "Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics"
-progress:[██████████] 98%
+progress:[█████████░] 94%
   total_phases: 10
   completed_phases: 7
   total_plans: 78
@@ -48,10 +48,10 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 
 ## Current Position
 
-Phase: 43.6 — Multi-Rail Selection and Batch Operations
-Plan: Not started
+Phase: 43.6 (multi-rail-selection-and-batch-operations) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-08-18 — Phase 43.6 inserted after Phase 43.5 (urgent), before Phase 44
+Last activity: 2026-08-18 — Phase 43.6 execution started
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -256,6 +256,7 @@ Progress: [██████████] 99%
 | Phase 43.5 P02 | 4h49m | 2 tasks | 6 files |
 | Phase 43.5-timeline-toolbox-and-directional-push-tools P03 | 22 | 2 tasks | 4 files |
 | Phase 43.5 P04 | 21min | 2 tasks | 2 files |
+| Phase 43.6 P01 | 3h 10m | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -494,6 +495,10 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43.5-04: clampDestination result is consumed for paint AND forwarded to prepare — preview-is-the-commit (D-14); the clamp authority is the resolver's exported pure clamp wired by the caller, never reimplemented in the hook
 - [Phase ?]: 43.5-04: Click suppression arms only when a drag session actually started past the threshold (beginDrag) — the D-09 deviation from the key-rail hook; a sub-threshold release never arms it, so the click passes through unsuppressed
 - [Phase ?]: 43.5-04: Every cancel vector (Escape, pointercancel, lostpointercapture) clears the preview signal and removes listeners exactly once via the active-flag-guarded cleanup; cancelSession restores focus and reports onCancel only when a session had started
+- [Phase ?]: 43.6-01: Add-alongside (D-01..D-05) — the rail set is a NEW session scope; single-rail selection remains the primary degenerate path; plain click collapses the set into it
+- [Phase ?]: 43.6-01: Union-first modifier routing — Cmd+Shift+click checked BEFORE plain Shift so the union combination cannot collapse into the range branch (Pitfall 1)
+- [Phase ?]: 43.6-01: resolveRailSetPostAcceptance has EXPLICIT operationKind branches; unlisted kinds return the current set unchanged — no default collapse (Pitfall 6)
+- [Phase ?]: 43.6-01: Roving focus needs no set-aware code — the existing shared 43.4 machinery already orders every rail target by data-rail-first-frame
 
 ### Pending Todos
 
@@ -697,9 +702,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-18T13:10:47.703Z
-Stopped at: Phase 43.6 UI-SPEC approved
-Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/43.6-multi-rail-selection-and-batch-operations/43.6-UI-SPEC.md
+Last session: 2026-08-18T16:24:50.789Z
+Stopped at: Completed 43.6-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
