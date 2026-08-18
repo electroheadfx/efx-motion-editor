@@ -24,6 +24,7 @@ import {
   RAIL_LANE_SELECTOR,
   roveRailTargetFocus,
 } from './physicsPaintRailKeyboardNavigation';
+import { buildRailSetTooltipSentence } from '../hooks/useRotoTimelineActions';
 
 export const LOOP_CLIP_FAST_DOUBLE_CLICK_MS = 220;
 export const LOOP_CLIP_SINGLE_CLICK_DELAY_MS = 250;
@@ -42,6 +43,8 @@ export interface PhysicsPaintLoopClipRailProps {
   readonly railSetMemberLoopIds?: readonly string[];
   /** The set anchor Loop Rail identity, if any — carries the anchor tick. */
   readonly railSetAnchorLoopId?: string | null;
+  /** Total rail-set size (all kinds) for the M1 tooltip set sentence. */
+  readonly railSetSize?: number;
   readonly linkedLoopClipIds?: readonly string[];
   readonly linkedActionName?: string | null;
   readonly onSelectLoopClip: (
@@ -94,7 +97,9 @@ interface RailTargetProps {
   readonly left: number;
   readonly width: number;
   readonly selected: boolean;
+  readonly isSetMember: boolean;
   readonly isSetAnchor: boolean;
+  readonly railSetSize?: number;
   readonly actionLinked: boolean;
   readonly showStartBoundary: boolean;
   readonly showEndBoundary: boolean;
@@ -127,6 +132,14 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   const pendingSingleClickRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastClickTimestampRef = useRef<number | null>(null);
   const { range, presentation } = props;
+  // 43.6 M1: a set member appends the set sentence (anchor form prefixed
+  // ' Range anchor.') as a new tooltip line via the one mapper.
+  const setSentence = props.isSetMember
+    ? buildRailSetTooltipSentence(props.railSetSize ?? 0, props.isSetAnchor)
+    : null;
+  const tooltipLines = setSentence
+    ? [...presentation.tooltipLines, setSentence.trim()]
+    : presentation.tooltipLines;
 
   const clearPendingSingleClick = () => {
     if (pendingSingleClickRef.current === null) return;
@@ -264,7 +277,7 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
       ) : null}
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom" anchorRef={anchorRef} topmost>
         <span class="physics-paint-loop-clip-tooltip-copy">
-          {presentation.tooltipLines.map((line, index) => index === 0
+          {tooltipLines.map((line, index) => index === 0
             ? <strong key={line}>{line}</strong>
             : <span key={`${index}:${line}`}>{line}</span>)}
         </span>
@@ -339,7 +352,9 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
           width={geometry.width}
           selected={props.selectedLoopClipIds.includes(range.loopId)
             || (props.railSetMemberLoopIds?.includes(range.loopId) ?? false)}
+          isSetMember={props.railSetMemberLoopIds?.includes(range.loopId) ?? false}
           isSetAnchor={props.railSetAnchorLoopId === range.loopId}
+          railSetSize={props.railSetSize}
           actionLinked={actionLinked}
           showStartBoundary={showStartBoundary}
           showEndBoundary={showEndBoundary}

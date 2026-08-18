@@ -247,3 +247,68 @@ export function reconcileRailSetSelection(
     : members[0];
   return freezeRailSetSelection(members, anchor);
 }
+
+// ---------------------------------------------------------------------------
+// 43.6 D-06 carrier: session-only post-acceptance snapshot side-channel.
+//
+// Keyed by command operationId in a module-scope Map — never persisted, never
+// crosses the bridge, pruned on launch replacement. Plans 03/04 wire the batch
+// operation kinds to record/resolve; this plan proves the round-trip.
+// ---------------------------------------------------------------------------
+
+interface RailSetSnapshot {
+  readonly before: RailSetSelectionState | null;
+  readonly after: RailSetSelectionState | null;
+}
+
+const railSetSnapshots = new Map<string, RailSetSnapshot>();
+
+/** Record the before/after set for one command operationId (D-06). */
+export function recordRailSetSnapshot(
+  operationId: string,
+  beforeSet: RailSetSelectionState | null,
+  afterSet: RailSetSelectionState | null,
+): void {
+  if (!isBoundedKeyId(operationId)) return;
+  railSetSnapshots.set(operationId, {
+    before: beforeSet,
+    after: afterSet,
+  });
+}
+
+/** Prune every snapshot on launch replacement (session-only lifetime). */
+export function clearRailSetSnapshots(): void {
+  railSetSnapshots.clear();
+}
+
+export interface ResolveRailSetPostAcceptanceInput {
+  readonly operationKind: string;
+  readonly operationId: string;
+  readonly current: RailSetSelectionState | null;
+}
+
+/**
+ * D-06 aftermath resolver with EXPLICIT branches: 'move-rails' keeps the
+ * current set (identities are move-stable by construction); 'delete-rails'
+ * returns null; 'undo'/'redo' with a recorded snapshot restore the before/after
+ * set exactly; every other kind (including 'undo'/'redo' without a recorded
+ * snapshot) returns the current set unchanged so reconcile-on-revision (Task 2)
+ * remains the stale authority — never collapse by default (Pitfall 6).
+ */
+export function resolveRailSetPostAcceptance(
+  input: ResolveRailSetPostAcceptanceInput,
+): RailSetSelectionState | null {
+  if (input.operationKind === 'move-rails') {
+    return input.current;
+  }
+  if (input.operationKind === 'delete-rails') {
+    return null;
+  }
+  if (input.operationKind === 'undo' || input.operationKind === 'redo') {
+    const snapshot = railSetSnapshots.get(input.operationId);
+    if (snapshot) {
+      return input.operationKind === 'undo' ? snapshot.before : snapshot.after;
+    }
+  }
+  return input.current;
+}

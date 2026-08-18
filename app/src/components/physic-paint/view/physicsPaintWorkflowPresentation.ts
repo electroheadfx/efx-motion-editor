@@ -206,6 +206,8 @@ export interface RotoStatusCapsuleInput {
   savingIndicator?: string | null;
   /** Guard/action feedback lines with recency metadata. */
   feedback?: readonly RotoStatusCapsuleFeedbackCandidate[];
+  /** Persistent multi-rail set copy (43.6 D-27); shows while a set is active. */
+  setCopy?: string | null;
   /** Ambient current-cell context line; when absent/blank the capsule is empty. */
   ambient?: string | null;
 }
@@ -227,6 +229,10 @@ export function getRotoStatusCapsuleViewModel(input: RotoStatusCapsuleInput = {}
     }
   });
   if (winnerText !== null) return winnerText;
+  // The set copy is a persistent projection: it outranks the idle ambient
+  // context while a set is active, and the empty set contributes nothing.
+  const setCopy = trimCapsuleLine(input.setCopy);
+  if (setCopy !== null) return setCopy;
   const ambient = trimCapsuleLine(input.ambient);
   return ambient ?? '';
 }

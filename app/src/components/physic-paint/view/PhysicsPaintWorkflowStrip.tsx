@@ -90,7 +90,7 @@ import type {
   RotoPushIntentDescriptor,
   RotoPushPublication,
 } from '../hooks/useRotoTimelineActions';
-import { mapRotoPushProductReason } from '../hooks/useRotoTimelineActions';
+import { buildRailSetCopy, mapRotoPushProductReason, type RailSetCopyMember } from '../hooks/useRotoTimelineActions';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
@@ -1700,6 +1700,40 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const generatedGuardStatus = !resolverApprovedGeneratedTarget && (currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false)
     ? getGeneratedRotoDisabledStatus(currentRotoCell.frame)
     : null;
+  // 43.6 D-27: the persistent set copy is derived render-time from the set
+  // membership + the same canonical segments/ranges the rails paint — one
+  // mapper owns the wording, no per-component string assembly. The empty set
+  // contributes nothing (capsule returns to its resting state).
+  const railSetCopy = useMemo(() => {
+    const memberLoopIds = props.railSetMemberLoopIds ?? [];
+    const memberKeyRailIds = props.railSetMemberKeyRailIds ?? [];
+    if (memberLoopIds.length === 0 && memberKeyRailIds.length === 0) return null;
+    const members: RailSetCopyMember[] = [];
+    for (const firstKeyId of memberKeyRailIds) {
+      const segment = keyRailSegments.find((candidate) => candidate.firstKeyId === firstKeyId);
+      if (segment) {
+        members.push({
+          kind: 'key-rail',
+          firstFrame: segment.firstKeyFrame,
+          effectiveEndExclusive: segment.lastKeyFrame + 1,
+        });
+      }
+    }
+    for (const loopId of memberLoopIds) {
+      const range = loopResolutionContext?.ranges.find((candidate) => candidate.loopId === loopId);
+      const clip = props.rotoLoopClips?.find((candidate) => candidate.loopId === loopId);
+      if (range && clip) {
+        members.push({
+          kind: 'loop',
+          firstFrame: range.placementStart,
+          effectiveEndExclusive: range.effectiveEnd,
+          mode: clip.mode,
+        });
+      }
+    }
+    return buildRailSetCopy(members);
+  }, [keyRailSegments, loopResolutionContext, props.railSetMemberKeyRailIds, props.railSetMemberLoopIds, props.rotoLoopClips]);
+  const railSetSize = (props.railSetMemberLoopIds?.length ?? 0) + (props.railSetMemberKeyRailIds?.length ?? 0);
   const capsuleText = getRotoStatusCapsuleViewModel({
     pendingOperation: pushDragFeedback ?? rotoDragFeedback ?? (keyUtilitiesDisabledByBusyState ? getRotoKeyBusyStatus(props.currentFrame) : null),
     savingIndicator: props.statusMessage ?? null,
@@ -1708,6 +1742,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       { text: scriptStatus, recency: 1 },
       { text: generatedGuardStatus, recency: 0 },
     ],
+    setCopy: railSetCopy,
     ambient: getRotoStatusCapsuleIdleContext({
       cellKind: currentSemanticCell?.kind ?? null,
       frame: props.currentFrame,
@@ -2365,6 +2400,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   selectedKeyRail={props.selectedRotoKeyRail ?? null}
                   railSetMemberKeyRailIds={props.railSetMemberKeyRailIds ?? []}
                   railSetAnchorKeyRailId={props.railSetAnchorKeyRailId ?? null}
+                  railSetSize={railSetSize}
                   onSelectKeyRail={props.onSelectRotoKeyRail ?? NOOP_KEY_RAIL_SELECTION}
                   prepareKeyRailDrag={physicalActions?.prepareKeyRailDrag}
                   commitKeyRailDrag={physicalActions?.commitKeyRailDrag}
@@ -2391,6 +2427,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}
                   railSetMemberLoopIds={props.railSetMemberLoopIds ?? []}
                   railSetAnchorLoopId={props.railSetAnchorLoopId ?? null}
+                  railSetSize={railSetSize}
                   linkedLoopClipIds={props.linkedRotoLoopClipIds ?? []}
                   linkedActionName={props.linkedRotoActionName ?? null}
                   onSelectLoopClip={props.onSelectRotoLoopClip}

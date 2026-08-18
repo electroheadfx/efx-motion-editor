@@ -11,6 +11,7 @@ import type {
   RotoKeyRailDragPublication,
   RotoKeyRailSelection,
 } from '../hooks/useRotoTimelineActions';
+import { buildRailSetTooltipSentence } from '../hooks/useRotoTimelineActions';
 import type { PhysicsPaintRotoSpacingSelectionGesture } from '../roto/physicsPaintRotoSpacingSelection';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
@@ -67,6 +68,8 @@ export interface PhysicsPaintKeyRailProps extends SelectedKeyRailCopyAvailabilit
   readonly railSetMemberKeyRailIds?: readonly string[];
   /** The set anchor Key Rail identity, if any — carries the anchor tick. */
   readonly railSetAnchorKeyRailId?: string | null;
+  /** Total rail-set size (all kinds) for the M1 tooltip set sentence. */
+  readonly railSetSize?: number;
   readonly onSelectKeyRail: (
     selection: RotoKeyRailSelection,
     gesture: PhysicsPaintRotoSpacingSelectionGesture,
@@ -111,7 +114,9 @@ interface PhysicsPaintKeyRailTargetProps extends SelectedKeyRailCopyAvailability
   readonly visibleFrameWindow: PhysicsPaintKeyRailProps['visibleFrameWindow'];
   readonly framePitch: number;
   readonly selected: boolean;
+  readonly isSetMember: boolean;
   readonly isSetAnchor: boolean;
+  readonly railSetSize?: number;
   readonly onSelectKeyRail: PhysicsPaintKeyRailProps['onSelectKeyRail'];
   readonly prepareKeyRailDrag?: PhysicsPaintKeyRailProps['prepareKeyRailDrag'];
   readonly commitKeyRailDrag?: PhysicsPaintKeyRailProps['commitKeyRailDrag'];
@@ -177,11 +182,16 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
     clearClickSequence,
     windowLike: props.windowLike,
   });
+  // 43.6 M1: a set member appends the set sentence (anchor form prefixed
+  // ' Range anchor.') to its existing Selected form via the one mapper.
+  const setSentence = props.isSetMember
+    ? buildRailSetTooltipSentence(props.railSetSize ?? 0, props.isSetAnchor)
+    : null;
   const copy = props.selected
     ? buildSelectedKeyRailCopy(segment, {
         dragUnavailableReason: props.dragUnavailableReason,
         deleteUnavailableReason: props.deleteUnavailableReason,
-      })
+      }, setSentence)
     : buildKeyRailBaseCopy(segment);
 
   const handleClick = (event: RailMouseEvent) => {
@@ -306,7 +316,9 @@ export function PhysicsPaintKeyRail(props: PhysicsPaintKeyRailProps) {
           framePitch={props.framePitch}
           selected={sameKeyRailSelection(props.selectedKeyRail, segment)
             || (props.railSetMemberKeyRailIds?.includes(segment.firstKeyId) ?? false)}
+          isSetMember={props.railSetMemberKeyRailIds?.includes(segment.firstKeyId) ?? false}
           isSetAnchor={props.railSetAnchorKeyRailId === segment.firstKeyId}
+          railSetSize={props.railSetSize}
           onSelectKeyRail={props.onSelectKeyRail}
           prepareKeyRailDrag={props.prepareKeyRailDrag}
           commitKeyRailDrag={props.commitKeyRailDrag}

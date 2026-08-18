@@ -691,6 +691,76 @@ export function mapRotoDeleteProductReason(target: RotoDeleteTarget): string | n
 }
 
 /**
+ * 43.6 D-27 set-copy mapper family: ONE deterministic mapper owns ALL set copy
+ * (capsule, tooltips, accessibility names) with locked UI-SPEC M6 wording.
+ * No per-component string assembly anywhere.
+ */
+
+/** One ordered set member descriptor for the copy mapper (canonical order). */
+export interface RailSetCopyMember {
+  readonly kind: 'loop' | 'key-rail';
+  /** Canonical first frame of the member's visible interval. */
+  readonly firstFrame: number;
+  /** Half-open effective end of the member's visible interval. */
+  readonly effectiveEndExclusive: number;
+  /** Loop members carry their rail type; key-rail members are always 'Key'. */
+  readonly mode?: 'progressive' | 'static';
+}
+
+type RailSetCopyType = 'Motion' | 'Static' | 'Key';
+
+function railSetCopyType(member: RailSetCopyMember): RailSetCopyType {
+  if (member.kind === 'key-rail') return 'Key';
+  return member.mode === 'static' ? 'Static' : 'Motion';
+}
+
+/**
+ * The locked M6 set copy. {A}–{B} is the inclusive product frame range derived
+ * from canonical half-open intervals only at presentation time (A = first
+ * member first frame; B = last member effective end minus 1). Homogeneous sets
+ * are type-named; mixed sets carry the type breakdown in canonical first-frame
+ * order; a set of one omits the breakdown; the empty set produces no copy.
+ */
+export function buildRailSetCopy(members: readonly RailSetCopyMember[]): string | null {
+  if (members.length === 0) return null;
+  const ordered = [...members].sort((left, right) => left.firstFrame - right.firstFrame);
+  const firstFrame = ordered[0].firstFrame;
+  const lastFrame = Math.max(...ordered.map((member) => member.effectiveEndExclusive)) - 1;
+  const range = `frames ${firstFrame}–${lastFrame}`;
+  if (ordered.length === 1) {
+    return `1 Rail selected — ${range}.`;
+  }
+  const counts: { type: RailSetCopyType; count: number }[] = [];
+  for (const member of ordered) {
+    const type = railSetCopyType(member);
+    const existing = counts.find((entry) => entry.type === type);
+    if (existing) existing.count += 1;
+    else counts.push({ type, count: 1 });
+  }
+  if (counts.length === 1) {
+    const { type, count } = counts[0];
+    return `${count} ${type} Rails selected — ${range}.`;
+  }
+  const breakdown = counts.map(({ type, count }) => `${count} ${type}`).join(', ');
+  return `${ordered.length} Rails selected — ${range} (${breakdown}).`;
+}
+
+/**
+ * The M1 rail-tooltip set sentence appended to a member's existing Selected
+ * form. The anchor member carries the ' Range anchor.' prefix; the empty set
+ * produces no sentence. Leading space matches the "existing Selected form,
+ * then:" append contract (UI-SPEC M1).
+ */
+export function buildRailSetTooltipSentence(
+  setSize: number,
+  isAnchor: boolean,
+): string | null {
+  if (!Number.isInteger(setSize) || setSize <= 0) return null;
+  const memberSentence = `One of ${setSize} selected Rails — drag moves the set, Delete removes the set.`;
+  return isAnchor ? ` Range anchor. ${memberSentence}` : ` ${memberSentence}`;
+}
+
+/**
  * Deterministic signature of a Drag target, captured at preparation time and
  * re-checked at pointer-up so a different release target cannot commit an
  * unseen proposal (D-09).

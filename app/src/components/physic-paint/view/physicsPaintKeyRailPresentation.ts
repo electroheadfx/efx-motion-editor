@@ -90,13 +90,16 @@ export interface SelectedKeyRailCopyAvailability {
 export function buildSelectedKeyRailCopy(
   segment: KeyRailSegment,
   availability: SelectedKeyRailCopyAvailability = {},
+  setSentence: string | null = null,
 ): string {
   const dragCopy = availability.dragUnavailableReason ?? 'Drag to move.';
   const deleteCopy = availability.deleteUnavailableReason
     ?? (segment.keyIds.length === 1
       ? 'Delete removes this rail.'
       : 'Delete removes all keys in this rail.');
-  return `${buildKeyRailIdentityCopy(segment, true)} ${dragCopy} ${deleteCopy}`;
+  // 43.6 M1: the set sentence (with its leading space) appends to the existing
+  // Selected form when this rail is a set member.
+  return `${buildKeyRailIdentityCopy(segment, true)} ${dragCopy} ${deleteCopy}${setSentence ?? ''}`;
 }
 
 export interface ResolvePhysicPaintPushAnchorInput {
