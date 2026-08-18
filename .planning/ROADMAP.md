@@ -419,12 +419,25 @@ Plans:
 **Plans:** 6 plans
 
 Plans:
+**Wave 1**
 
 - [ ] 43.6-01-PLAN.md — Rail-set selection foundation: pure reducer (plain/toggle/range/union, empty set allowed), unified cross-type ordering, Studio session signals, gesture routing in both rail components, anchor tick + orange set paint, one set-copy mapper, D-06 aftermath scaffolding
 - [ ] 43.6-02-PLAN.md — move-rails resolver intent: exported pure set-derivation + clamp authority, generalized straddle guard, rigid translation with break travel, transport union + coordinator authorization
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 43.6-03-PLAN.md — Batch Move drag end-to-end: set pointer-session hook, per-member ghosts/gap/blocked-edge paint, live readout, prepare/commit ports, D-06 stay-selected + Undo/Redo restore
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 43.6-04-PLAN.md — Delete Rails: composed pure proposer (43.2 Group semantics + Key Rail removal + break normalization), transport/coordinator/bridge exact-match validation, classifier rail-set branch, direct no-modal atomic command
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 43.6-05-PLAN.md — Key Spacing on a set: spacing-on-set intent (per-rail fixed anchors, all-or-nothing), scope-aware ToolCase popover with one scope line, locked copy
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 43.6-06-PLAN.md — Solo playback: session arm signal, pure range/attribution derivation, getFrames presentation filter (stopped canvas untouched), strip toggle button, capsule line, layered exits
 
 ### Phase 44: Integrated UAT + Signed Release
