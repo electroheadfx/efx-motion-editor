@@ -1728,29 +1728,32 @@ describe('PhysicsPaintWorkflowStrip Key Rail integration (43.4-06)', () => {
   });
 });
 
-describe('Directional Push tool source contract (43.5-05 design revision: ONE tool, selection-first)', () => {
-  it('A1: gates the Push tool on busy/lock state AND exactly one selected Rail — key selection alone does not enable', () => {
+describe('Directional Push tool source contract (43.5-05: ONE mode-toggle Push tool, anchor resolved per-drag)', () => {
+  it('A1: gates the Push tool on busy/lock state ONLY — arming needs no selection (mode toggle)', () => {
     const code = source();
     const gateStart = code.indexOf('const pushToolDisabled =');
     const gate = code.slice(gateStart, code.indexOf(';', gateStart));
     expect(gate).toContain('keyUtilitiesDisabledByBusyState');
     expect(gate).toContain('!physicalActions');
-    expect(gate).toContain('pushAnchor === null');
-    // The anchor is the selected Rail — key/cell selection alone does NOT enable.
+    // No selection requirement: the button arms freely, and the anchor is
+    // resolved from the rail under the pointer on drag.
+    expect(gate).not.toContain('pushAnchor');
     expect(gate).not.toContain('physicalDragAvailable');
     expect(gate).not.toContain('canDragKey');
   });
 
-  it('A2: pointer-down uses the armed Rail as the anchor and rejects ruler/empty-lane targets', () => {
+  it('A2: pointer-down resolves the anchor from the Rail under the pointer and rejects ruler/empty-lane targets', () => {
     const code = source();
     const handlerStart = code.indexOf('const handleLanePushPointerDownCapture');
     const handler = code.slice(handlerStart, code.indexOf('const handleLanePushClickCapture', handlerStart));
     // The pointer must land INSIDE the lane (never the sibling ruler); the
-    // anchor is the Rail bound at arm time (43.5-05 Defect 1), not a hovered
-    // frame and never re-resolved at drag position.
-    expect(handler).toContain('event.target');
+    // anchor is resolved from the rail under the pointer via its data attribute,
+    // and only a rail target starts a push (empty/gap frames are inert).
     expect(handler).toContain('laneElement.contains(event.target)');
-    expect(handler).toContain('const anchor = armedAnchorRef.current');
+    expect(handler).toContain('closest(\'.physics-paint-key-rail-target\')');
+    expect(handler).toContain('closest(\'.physics-paint-loop-clip-rail-target\')');
+    expect(handler).toContain('data-rail-first-frame');
+    expect(handler).toContain('armedAnchorRef.current = anchor');
     expect(handler).toContain('if (anchor === null) return;');
     expect(handler).toContain('pushSessionRef.current = {');
   });
@@ -1797,13 +1800,14 @@ describe('Directional Push tool source contract (43.5-05 design revision: ONE to
     expect(handler).toContain('event.stopPropagation()');
   });
 
-  it('A6: the push anchor is the selected Rail — derived from the selection, not the hovered frame', () => {
+  it('A6: the anchor is NOT selection-derived — the tool arms freely and resolves the anchor per-drag (mode toggle)', () => {
     const code = source();
-    const anchorStart = code.indexOf('const pushAnchor = useMemo');
-    const anchor = code.slice(anchorStart, code.indexOf('const pushToolDisabled =', anchorStart));
-    expect(anchor).toContain('selectedRotoKeyRail');
-    expect(anchor).toContain('selectedRotoLoopClipIds');
-    expect(anchor).toContain('firstKeyId');
+    // No selection-derived `pushAnchor` gate/arm-binding remains.
+    expect(code).not.toContain('const pushAnchor = useMemo');
+    expect(code).not.toContain('armedAnchorRef.current = pushAnchor');
+    // The armed capsule still derives from the selected rail for display.
+    expect(code).toContain('pushArmedAnchorRail');
+    expect(code).toContain('selectedRotoKeyRail');
   });
 
   it('A7: the single Push button and Delete are icon-only (no visible text label)', () => {
@@ -1837,15 +1841,17 @@ describe('Directional Push tool source contract (43.5-05 design revision: ONE to
     expect(code).toContain('pushDragBlocked.value = null');
   });
 
-  it('A10: the anchor is bound to the selected Rail at ARM time and the tool disarms if the selection changes while armed (43.5-05 Defect 1)', () => {
+  it('A10: arming is a pure mode toggle — no arm-time anchor binding, no selection-derived disarm', () => {
     const code = source();
-    // The armed anchor is captured at arm time (button onClick) and used by the
-    // pointer-down handler — never re-resolved at drag position.
-    expect(code).toContain('armedAnchorRef.current = pushAnchor');
-    expect(code).toContain('const anchor = armedAnchorRef.current');
-    // A selection change while armed disarms the tool (stale anchor never pushed).
+    // The button only toggles the mode; the anchor is resolved per-drag.
+    expect(code).not.toContain('armedAnchorRef.current = pushAnchor');
+    expect(code).not.toContain('const pushAnchor = useMemo');
+    // The anchor is resolved in the pointer-down handler.
+    expect(code).toContain('armedAnchorRef.current = anchor');
+    // The captured anchor is cleared only when the tool is actually disarmed.
+    expect(code).toContain('if (!pushArmed) armedAnchorRef.current = null;');
+    // Escape / other tool / re-click still disarm via the shared vectors.
     expect(code).toContain('disarmPushTool()');
-    expect(code).toContain('pushAnchor.kind !== armedAnchor.kind');
   });
 
   it('A11: the blocked-direction tooltip anchors to the pointer position, never an unrelated panel element (43.5-05 Defect 2)', () => {
@@ -1916,23 +1922,18 @@ describe('Directional Push tool source contract (43.5-05 design revision: ONE to
     expect(armedTool).toContain('isPushCommitInFlight');
   });
 
-  it('A16: disarm vectors stay locked (selection change, toolbar action, cancel, Escape) — a single re-arm watchdog is the only exemption', () => {
+  it('A16: disarm vectors stay locked (cancel, Escape, toolbar) — a single re-arm watchdog is the only exemption', () => {
     const code = source();
-    // A selection change while armed still disarms via the disarm effect (A10).
-    expect(code).toContain('disarmPushTool()');
-    expect(code).toContain('pushAnchor.kind !== armedAnchor.kind');
     // A cancel (Escape / pointercancel / lostpointercapture) still disarms.
     const cancelStart = code.indexOf('onCancel: () => {');
     const cancel = code.slice(cancelStart, code.indexOf('onRejected:', cancelStart));
     expect(cancel).toContain('disarmPushTool()');
-    // The disarm effect itself never toggles/re-selects — it only disarms. The
-    // re-arm lives solely in the watchdog, which clears its pending ref so a
-    // LATER Escape/another-tool disarm is not undone.
-    const disarmStart = code.indexOf('const armedAnchor = armedAnchorRef.current');
-    const disarm = code.slice(disarmStart, code.indexOf('}, [pushAnchor, pushArmed]);', disarmStart));
-    expect(disarm).not.toContain('togglePushTool');
-    expect(disarm).not.toContain('onSelectRotoKeyRail');
-    // The watchdog clears its pending ref before re-arming (single re-arm).
+    // The toolbar onClickCapture still disarms on any non-Push action (D-20).
+    expect(code).toContain('disarmPushTool()');
+    // The armed anchor is cleared whenever the tool is actually disarmed.
+    expect(code).toContain('if (!pushArmed) armedAnchorRef.current = null;');
+    // The re-arm lives solely in the watchdog, which clears its pending ref so
+    // a LATER Escape/another-tool disarm is not undone.
     expect(code).toContain('rearmAnchorRef.current = null');
   });
 });

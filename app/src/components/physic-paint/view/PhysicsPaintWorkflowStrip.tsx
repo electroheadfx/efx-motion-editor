@@ -1214,53 +1214,31 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     : keyUtilitiesDisabledByBusyState && physicalActions?.canSelectAllKeys.value
       ? ROTO_KEY_BUSY_STATUS_TEMPLATE
       : physicalActions?.selectAllKeysDisabledReason.value ?? 'Select all keys is unavailable.';
-  // Directional Push tool (43.5-05 design revision): ONE Push tool,
-  // selection-first. The explicit anchor is the selected Rail (Key/Motion/
-  // Static) — key/cell selection alone does NOT enable it. The button is
-  // enabled only when exactly one Rail is selected and the strip is not
-  // mutation-locked; otherwise disabled with a guarded tooltip.
-  const pushAnchor = useMemo(() => {
-    if (props.selectedRotoKeyRail) {
-      return { kind: 'key' as const, id: props.selectedRotoKeyRail.firstKeyId };
-    }
-    if (props.selectedRotoLoopClipIds && props.selectedRotoLoopClipIds.length === 1) {
-      return { kind: 'loop' as const, id: props.selectedRotoLoopClipIds[0] };
-    }
-    return null;
-  }, [props.selectedRotoKeyRail, props.selectedRotoLoopClipIds]);
-  const pushToolDisabled = keyUtilitiesDisabledByBusyState || !physicalActions || pushAnchor === null;
-  const pushToolDisabledReason = pushToolDisabled
-    ? (pushAnchor === null ? 'Select a Rail to push.' : ROTO_KEY_BUSY_STATUS_TEMPLATE)
-    : null;
+  // Directional Push tool (43.5-05): ONE Push tool as a mode toggle — no
+  // selection requirement. The anchor is resolved from the rail under the
+  // pointer on drag (which selects it and moves its set); the button is enabled
+  // whenever editing isn't mutation-locked.
+  const pushToolDisabled = keyUtilitiesDisabledByBusyState || !physicalActions;
+  const pushToolDisabledReason = pushToolDisabled ? ROTO_KEY_BUSY_STATUS_TEMPLATE : null;
   const pushArmed = isPushToolArmed();
   const pushArmedClass = pushArmed ? ' physics-paint-push-tool-armed' : '';
-  // 43.5-05 Defect 1: the anchor is bound to the selected Rail's identity at
-  // ARM time (not re-resolved at drag position). Captured here so the drag
-  // session and the pre-highlight always use the exact rail that armed the tool.
+  // The anchor is resolved per-drag from the rail under the pointer (mode
+  // toggle — no selection requirement), so it is set in the pointer-down
+  // handler, not at arm time.
   const armedAnchorRef = useRef<{ readonly kind: 'key' | 'loop'; readonly id: string } | null>(null);
   // The anchor to re-arm after a successful push (smoke 3). The push commit's
   // settlement is asynchronous: the parent engine acknowledges the edit and THEN
   // the store re-establishes the anchor KEY selection (clearing the RAIL) and
-  // releases the mutation lease — both of which disarm the tool AFTER the
-  // commit continuation has already run. A re-arm watchdog fires on that
-  // settlement disarm, re-selects the moved anchor rail, and re-arms once.
+  // releases the mutation lease — which disarms the tool AFTER the commit
+  // continuation has already run. A re-arm watchdog fires on that settlement
+  // disarm, re-selects the moved anchor rail, and re-arms once.
   const rearmAnchorRef = useRef<{ readonly kind: 'key' | 'loop'; readonly id: string } | null>(null);
-  // If the selection is cleared or changes while armed, disarm — the tool must
-  // never push a stale anchor. The effect also clears the captured anchor
-  // whenever the tool is disarmed through any path (Escape, cancel, other
-  // toolbar action, re-click).
+  // Clear the captured anchor whenever the tool is disarmed (Escape, another
+  // tool, re-click, lock). With pointer-resolution a selection change no longer
+  // invalidates the anchor, so this only clears on an actual disarm.
   useEffect(() => {
-    if (!pushArmed) {
-      armedAnchorRef.current = null;
-      return;
-    }
-    const armedAnchor = armedAnchorRef.current;
-    if (armedAnchor === null) return;
-    if (pushAnchor === null || pushAnchor.kind !== armedAnchor.kind || pushAnchor.id !== armedAnchor.id) {
-      armedAnchorRef.current = null;
-      disarmPushTool();
-    }
-  }, [pushAnchor, pushArmed]);
+    if (!pushArmed) armedAnchorRef.current = null;
+  }, [pushArmed]);
   // Re-arm watchdog (smoke 3): the push settlement disarms the tool async (rail
   // selection cleared + mutation lease released). When the tool is found
   // disarmed with a pending re-arm anchor, re-select the moved anchor rail and
@@ -1549,12 +1527,30 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     // The pointer must have landed INSIDE the lane — never the sibling ruler or
     // any chrome above it. A pointer-down on the ruler must never start a push.
     if (!(event.target instanceof Element) || !laneElement.contains(event.target)) return;
-    // The anchor is the selected Rail bound at arm time (43.5-05 Defect 1) —
-    // no per-frame resolution. The direction is chosen by the drag on drag
-    // start. If the selection was cleared while armed, the effect disarmed the
-    // tool, so the captured anchor is always the rail that armed it.
-    const anchor = armedAnchorRef.current;
+    // Mode toggle: the anchor is resolved from the rail under the pointer (any
+    // rail — no selection requirement). The direction is chosen by the drag on
+    // drag start.
+    const keyRailTarget = event.target.closest('.physics-paint-key-rail-target');
+    const loopRailTarget = event.target.closest('.physics-paint-loop-clip-rail-target');
+    let anchor: { readonly kind: 'key' | 'loop'; readonly id: string } | null = null;
+    if (keyRailTarget) {
+      const firstFrame = Number(keyRailTarget.getAttribute('data-rail-first-frame'));
+      const segment = keyRailSegments.find((s) => s.firstKeyFrame === firstFrame);
+      if (segment) anchor = { kind: 'key', id: segment.firstKeyId };
+    } else if (loopRailTarget) {
+      const firstFrame = Number(loopRailTarget.getAttribute('data-rail-first-frame'));
+      const range = loopResolutionContext?.ranges.find((r) => r.placementStart === firstFrame);
+      if (range) anchor = { kind: 'loop', id: range.loopId };
+    }
     if (anchor === null) return;
+    armedAnchorRef.current = anchor;
+    // Select the anchor rail so it reads as the reference (capsule + highlight).
+    if (anchor.kind === 'key') {
+      const segment = keyRailSegments.find((s) => s.firstKeyId === anchor.id);
+      if (segment) props.onSelectRotoKeyRail?.({ firstKeyId: segment.firstKeyId, keyIds: segment.keyIds });
+    } else {
+      props.onSelectRotoLoopClip?.(anchor.id, 'plain');
+    }
     pushSessionRef.current = {
       direction: null,
       anchor,
@@ -1564,7 +1560,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       clampFailed: false,
     };
     pushDragApiRef.current?.onPointerDown(event);
-  }, [isPushToolArmed, armedAnchorRef, frameCells]);
+  }, [isPushToolArmed, armedAnchorRef, frameCells, keyRailSegments, loopResolutionContext, props.onSelectRotoKeyRail, props.onSelectRotoLoopClip]);
 
   const handleLanePushClickCapture = useCallback((event: MouseEvent) => {
     const armed = isPushToolArmed();
@@ -2902,9 +2898,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     onClick={() => {
                       pushTooltip.hide();
                       if (pushToolDisabled) return;
-                      // Bind the anchor to the selected Rail at arm time
-                      // (43.5-05 Defect 1) — never re-resolved at drag position.
-                      if (!isPushToolArmed()) armedAnchorRef.current = pushAnchor;
+                      // Mode toggle: the anchor is resolved from the rail under
+                      // the pointer on drag — no selection is required to arm.
                       togglePushTool();
                     }}
                     onKeyDown={(event) => {
@@ -2917,7 +2912,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     <span id="roto-key-action-reason-push" class="physics-paint-sr-only">{pushToolDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={pushTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy('Push the selected Rail and everything after it. Drag right to move them right; drag left to move them left.', pushToolDisabledReason)}
+                    {buildGuardedActionTooltipCopy('Push mode: drag any Rail to select it and move it (and everything after it) right or left. Escape or another tool leaves push mode.', pushToolDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
               </div>
