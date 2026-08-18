@@ -58,6 +58,7 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoLoopClip,
+  type PhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
 import {
@@ -389,9 +390,9 @@ describe('proposePhysicPaintRotoDeleteRails', () => {
       background: null,
       selectedKeyId: selection.selectedKeyId,
       cursorAppFrame: selection.cursorAppFrame,
-      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips),
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, ['F']),
       loopClips,
-      incomingInterpolationBreakKeyIds: [],
+      incomingInterpolationBreakKeyIds: ['F'],
     });
   };
 
@@ -538,9 +539,9 @@ describe('proposePhysicPaintRotoDeleteRails', () => {
       background: null,
       selectedKeyId: null,
       cursorAppFrame: 0,
-      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips),
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, ['F']),
       loopClips,
-      incomingInterpolationBreakKeyIds: [],
+      incomingInterpolationBreakKeyIds: ['F'],
     });
 
     const composed = proposePhysicPaintRotoDeleteRails({
@@ -566,10 +567,12 @@ describe('proposePhysicPaintRotoDeleteRails', () => {
   it('normalizes the complete break collection: removed owners drop, survivors keep, successor added, no dangling references', () => {
     const records = [
       realKey('A', 1), realKey('B', 4), realKey('C', 6),
+      realKey('X', 8),
       realKey('D', 10), realKey('E', 14),
       realKey('F', 20), realKey('G', 21),
     ];
     const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const loopClips = [lifecycleGroup('group-x', 8, ['X'], 1, 'action-x')];
     const document = parsePhysicPaintRotoPhysicalDocument({
       capacity: 600,
       realKeyRecords: records,
@@ -578,8 +581,8 @@ describe('proposePhysicPaintRotoDeleteRails', () => {
       background: null,
       selectedKeyId: null,
       cursorAppFrame: 0,
-      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, [], ['B', 'E', 'F']),
-      loopClips: [],
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, ['B', 'E', 'F']),
+      loopClips,
       incomingInterpolationBreakKeyIds: ['B', 'E', 'F'],
     });
 
@@ -593,7 +596,8 @@ describe('proposePhysicPaintRotoDeleteRails', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.proposal.incomingInterpolationBreakKeyIds).toEqual(['D', 'E']);
-    expect(result.proposal.realKeyRecords.map((record) => record.keyId)).toEqual(['A', 'D', 'E']);
+    expect(result.proposal.realKeyRecords.map((record) => record.keyId)).toEqual(['A', 'X', 'D', 'E']);
+    expect(result.proposal.loopClips.map((clip) => clip.loopId)).toEqual(['group-x']);
     expect(result.proposal.selectedKeyId).toBe('E');
     expect(result.impact.cleanupKeyIds).toEqual(['B', 'C', 'F', 'G']);
     for (const keyId of result.proposal.incomingInterpolationBreakKeyIds) {

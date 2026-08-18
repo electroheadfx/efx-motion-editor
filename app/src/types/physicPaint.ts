@@ -806,6 +806,16 @@ export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'redo';
 
 /**
+ * One explicit rail-set delete member (43.6-04): a Key Rail segment matched
+ * exactly by firstKeyId + ordered keyIds, or a Group Rail matched by loopId.
+ * The same descriptor shape as the move-rails member; the delete-rails
+ * semantic delta carries the ordered member list verbatim.
+ */
+export type RailSetDeleteMember =
+  | { readonly kind: 'key-rail'; readonly firstKeyId: string; readonly keyIds: readonly string[] }
+  | { readonly kind: 'loop'; readonly loopId: string };
+
+/**
  * Declared semantic delta for ordinary identity/payload-changing edits.
  * The parent validates this declaration against its authoritative current
  * records and the submitted complete next records before mutation.
@@ -887,6 +897,13 @@ export type PhysicPaintRotoPhysicalEditSemanticDelta =
   | {
       readonly kind: 'delete-group';
       readonly groupId: string;
+      readonly cleanupKeyIds: readonly string[];
+      readonly previousRevision: string;
+      readonly nextRevision: string;
+    }
+  | {
+      readonly kind: 'delete-rails';
+      readonly members: readonly RailSetDeleteMember[];
       readonly cleanupKeyIds: readonly string[];
       readonly previousRevision: string;
       readonly nextRevision: string;

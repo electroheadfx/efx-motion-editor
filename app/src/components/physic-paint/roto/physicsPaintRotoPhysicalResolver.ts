@@ -2874,7 +2874,7 @@ function derivePhysicPaintPushIncomingInterpolationBreakKeyIds(input: {
   });
 }
 
-function deriveDeleteKeyRailIncomingInterpolationBreakKeyIds(input: {
+export function deriveDeleteKeyRailIncomingInterpolationBreakKeyIds(input: {
   readonly memberKeyIds: readonly string[];
   readonly lastKeyFrame: number;
   readonly groupOwnedKeyIds: ReadonlySet<string>;

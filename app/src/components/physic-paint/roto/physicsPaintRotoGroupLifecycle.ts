@@ -7,6 +7,9 @@ import {
   type PhysicPaintRotoRealKeyPayload,
   type PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
+import { deriveDeleteKeyRailIncomingInterpolationBreakKeyIds } from './physicsPaintRotoPhysicalResolver';
+import { deriveKeyRailSegments, type KeyRailSegment } from '../view/physicsPaintKeyRailPresentation';
+import type { RailSetDeleteMember } from '../../../types/physicPaint';
 
 export type PhysicPaintRotoGroupPaintFailureReason =
   | 'group-not-found'
@@ -749,4 +752,216 @@ export function proposePhysicPaintRotoActionGroupLifecycle(
   } catch {
     return rejectLifecycle('malformed-proposal');
   }
+}
+
+export interface PhysicPaintRotoDeleteRailsInput {
+  readonly document: PhysicPaintRotoPhysicalDocument;
+  readonly members: readonly RailSetDeleteMember[];
+}
+
+export interface PhysicPaintRotoDeleteRailsImpact {
+  readonly kind: 'delete-rails';
+  /** The validated member descriptors in deterministic composition order. */
+  readonly members: readonly RailSetDeleteMember[];
+  readonly cleanupKeyIds: readonly string[];
+  readonly previousRevision: string;
+  readonly nextRevision: string;
+}
+
+export type PhysicPaintRotoDeleteRailsFailureReason =
+  | 'empty-member-set'
+  | 'malformed-member'
+  | 'duplicate-member'
+  | 'unknown-member'
+  | 'stale-member'
+  | 'malformed-proposal';
+
+export type PhysicPaintRotoDeleteRailsResult =
+  | Readonly<{ ok: true; proposal: PhysicPaintRotoPhysicalDocument; impact: PhysicPaintRotoDeleteRailsImpact }>
+  | Readonly<{ ok: false; reason: PhysicPaintRotoDeleteRailsFailureReason }>;
+
+function rejectDeleteRails(reason: PhysicPaintRotoDeleteRailsFailureReason): PhysicPaintRotoDeleteRailsResult {
+  return Object.freeze({ ok: false, reason });
+}
+
+function isBoundedKeyId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 256;
+}
+
+function groupOwnedKeyIdsOf(document: PhysicPaintRotoPhysicalDocument): ReadonlySet<string> {
+  const owned = new Set<string>();
+  for (const clip of document.loopClips) {
+    clip.sourceKeyIds.forEach((keyId) => owned.add(keyId));
+    (clip.frameOverrides ?? []).forEach((override) => owned.add(override.keyId));
+  }
+  return owned;
+}
+
+function matchingKeyRailSegment(
+  document: PhysicPaintRotoPhysicalDocument,
+  member: Extract<RailSetDeleteMember, { kind: 'key-rail' }>,
+): KeyRailSegment | null {
+  const segments = deriveKeyRailSegments({
+    orderedRealKeys: document.realKeyRecords,
+    incomingInterpolationBreakKeyIds: new Set(document.incomingInterpolationBreakKeyIds),
+    groupOwnedKeyIds: groupOwnedKeyIdsOf(document),
+  });
+  return segments.find((candidate) => (
+    candidate.firstKeyId === member.firstKeyId
+    && candidate.keyIds.length === member.keyIds.length
+    && candidate.keyIds.every((keyId, index) => keyId === member.keyIds[index])
+  )) ?? null;
+}
+
+/**
+ * Apply one Key Rail member's deletion to the accumulating document with the
+ * EXACT 43.4 delete-key-rail semantics: remove the member records, re-select
+ * the nearest surviving key (successor first, then previous), and normalize
+ * the complete break collection (breaks owned by removed keys drop; the first
+ * surviving non-group key at/after the vacated end owns the successor break).
+ * The segment is re-derived against the accumulating state so a member that
+ * became stale mid-composition fails closed — parity with the sequential
+ * single-authority path.
+ */
+function applyKeyRailDeletion(
+  document: PhysicPaintRotoPhysicalDocument,
+  member: Extract<RailSetDeleteMember, { kind: 'key-rail' }>,
+): { ok: true; proposal: PhysicPaintRotoPhysicalDocument } | { ok: false } {
+  const segment = matchingKeyRailSegment(document, member);
+  if (segment === null) return { ok: false };
+  const removalSet = new Set(member.keyIds);
+  const mapping = new Map<string, number>();
+  let successorKeyId: string | null = null;
+  let previousKeyId: string | null = null;
+  for (const record of document.realKeyRecords) {
+    if (removalSet.has(record.keyId)) continue;
+    mapping.set(record.keyId, record.appFrame);
+    if (successorKeyId === null && record.appFrame > segment.lastKeyFrame) {
+      successorKeyId = record.keyId;
+    }
+    if (record.appFrame < segment.firstKeyFrame) previousKeyId = record.keyId;
+  }
+  const nextIncomingInterpolationBreakKeyIds = deriveDeleteKeyRailIncomingInterpolationBreakKeyIds({
+    memberKeyIds: member.keyIds,
+    lastKeyFrame: segment.lastKeyFrame,
+    groupOwnedKeyIds: groupOwnedKeyIdsOf(document),
+    mapping,
+    incomingInterpolationBreakKeyIds: document.incomingInterpolationBreakKeyIds,
+  });
+  const selectedKeyId = successorKeyId ?? previousKeyId;
+  const selectedAppFrame = selectedKeyId === null ? null : mapping.get(selectedKeyId) ?? null;
+  const realKeyRecords = document.realKeyRecords.filter((record) => !removalSet.has(record.keyId));
+  try {
+    const revision = buildPhysicPaintRotoPhysicalRevision(
+      realKeyRecords,
+      document.interpolation,
+      document.loopClips,
+      nextIncomingInterpolationBreakKeyIds,
+      document.groupOverrideRecords ?? [],
+    );
+    const proposal = parsePhysicPaintRotoPhysicalDocument({
+      ...document,
+      realKeyRecords,
+      loopClips: document.loopClips,
+      incomingInterpolationBreakKeyIds: nextIncomingInterpolationBreakKeyIds,
+      selectedKeyId,
+      cursorAppFrame: selectedAppFrame ?? document.cursorAppFrame,
+      revision,
+    });
+    return { ok: true, proposal };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/**
+ * One pure proposer for the atomic mixed-set Delete Rails operation (43.6-04).
+ *
+ * Input: the accepted physical document + the ordered member list (Group Rail
+ * loopIds + Key Rail firstKeyId/keyIds). Output: ONE complete proposal
+ * (records, overrides, loopClips, breaks, interpolation, selection, cursor,
+ * revision) + a 'delete-rails' impact, or a fail-closed rejection — never a
+ * partial proposal.
+ *
+ * Composition contract (D-23): every member is validated against the input
+ * document first (all-or-nothing — a stale loopId or stale segment rejects the
+ * WHOLE set), then the deletions compose sequentially over the accumulating
+ * document state in deterministic order (placementStart asc, then loopId asc).
+ * Group members apply the EXACT 43.2 Delete Group semantics through the
+ * existing exported proposer (visibleRanges/provenance/sync/Action-retention
+ * cannot fork); Key Rail members apply the EXACT 43.4 delete-key-rail rules.
+ * cleanupKeyIds collects every removed key except those still referenced by
+ * surviving Groups. The referenced Action library and script-library authority
+ * are never touched.
+ */
+export function proposePhysicPaintRotoDeleteRails(
+  input: PhysicPaintRotoDeleteRailsInput,
+): PhysicPaintRotoDeleteRailsResult {
+  const { document, members } = input;
+  if (!Array.isArray(members) || members.length === 0) {
+    return rejectDeleteRails('empty-member-set');
+  }
+
+  interface ResolvedMember {
+    readonly member: RailSetDeleteMember;
+    readonly placementStart: number;
+    readonly loopId: string;
+  }
+  const resolved: ResolvedMember[] = [];
+  const seenRailIds = new Set<string>();
+  for (const member of members) {
+    if (member.kind === 'key-rail') {
+      if (!isBoundedKeyId(member.firstKeyId)
+        || !Array.isArray(member.keyIds)
+        || member.keyIds.length === 0
+        || member.keyIds.some((keyId: string) => !isBoundedKeyId(keyId))) {
+        return rejectDeleteRails('malformed-member');
+      }
+      if (member.keyIds.some((keyId: string) => !document.realKeyRecords.some((record) => record.keyId === keyId))) {
+        return rejectDeleteRails('unknown-member');
+      }
+      const segment = matchingKeyRailSegment(document, member);
+      if (segment === null) return rejectDeleteRails('stale-member');
+      if (seenRailIds.has(segment.firstKeyId)) return rejectDeleteRails('duplicate-member');
+      seenRailIds.add(segment.firstKeyId);
+      resolved.push({ member, placementStart: segment.firstKeyFrame, loopId: member.firstKeyId });
+    } else {
+      if (!isBoundedKeyId(member.loopId)) return rejectDeleteRails('malformed-member');
+      const group = document.loopClips.find((candidate) => candidate.loopId === member.loopId);
+      if (!group) return rejectDeleteRails('unknown-member');
+      if (!isLifecycleGroup(group)) return rejectDeleteRails('malformed-member');
+      if (seenRailIds.has(member.loopId)) return rejectDeleteRails('duplicate-member');
+      seenRailIds.add(member.loopId);
+      resolved.push({ member, placementStart: group.placementStart, loopId: member.loopId });
+    }
+  }
+
+  const ordered = [...resolved].sort((left, right) => (
+    left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId)
+  ));
+
+  let current = document;
+  const cleanupKeyIds = new Set<string>();
+  for (const { member } of ordered) {
+    if (member.kind === 'loop') {
+      const deleted = proposePhysicPaintRotoDeleteGroup({ document: current, groupId: member.loopId });
+      if (!deleted.ok) return rejectDeleteRails('malformed-proposal');
+      deleted.impact.cleanupKeyIds.forEach((keyId) => cleanupKeyIds.add(keyId));
+      current = deleted.proposal;
+    } else {
+      const step = applyKeyRailDeletion(current, member);
+      if (!step.ok) return rejectDeleteRails('stale-member');
+      member.keyIds.forEach((keyId) => cleanupKeyIds.add(keyId));
+      current = step.proposal;
+    }
+  }
+
+  const impact = Object.freeze<PhysicPaintRotoDeleteRailsImpact>({
+    kind: 'delete-rails',
+    members: Object.freeze(ordered.map(({ member }) => member)),
+    cleanupKeyIds: Object.freeze([...cleanupKeyIds].sort()),
+    previousRevision: document.revision,
+    nextRevision: current.revision,
+  });
+  return Object.freeze({ ok: true, proposal: current, impact });
 }
