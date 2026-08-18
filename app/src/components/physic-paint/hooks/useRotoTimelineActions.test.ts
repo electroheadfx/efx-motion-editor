@@ -6,13 +6,14 @@ vi.mock('preact/hooks', () => ({
   useMemo: <Value>(factory: () => Value) => factory(),
 }));
 
-import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
+import type { PhysicPaintLaunchContext, RailSetDeleteMember } from '../../../types/physicPaint';
 import type {
   PhysicPaintRotoInterpolationState,
   PhysicPaintRotoLoopClip,
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
+import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
   derivePhysicPaintRotoLoopRanges,
   type PhysicPaintRotoFrameResolution,
@@ -101,6 +102,11 @@ interface HarnessOptions {
   executeGroupLifecycleDelete?: (activation: GroupDeleteActivation) => Promise<boolean>;
   requestSoleOccurrenceDeleteWarning?: (activation: GroupDeleteActivation) => void;
   requestGroupDeleteChoice?: (target: Extract<RotoDeleteTarget, { kind: 'group-choice' }>) => void;
+  railSetMembers?: readonly RailSetIdentity[];
+  executeRailSetDelete?: (target: Readonly<{
+    operationKind: 'delete-rails';
+    members: readonly RailSetDeleteMember[];
+  }>) => Promise<boolean>;
 }
 
 function createHarness(options: HarnessOptions = {}) {
@@ -131,6 +137,7 @@ function createHarness(options: HarnessOptions = {}) {
     getSelectedKeyRail: () => options.selectedKeyRail ?? null,
     getSelectedLoopClipIds: () => options.selectedLoopClipIds ?? [],
     getSelectedLoopRailDisplayName: () => options.selectedLoopRailDisplayName ?? null,
+    getRailSetMembers: () => options.railSetMembers ?? [],
     getCurrentAppFrame: options.getCurrentAppFrame ?? (() => options.currentAppFrame ?? 3),
     getLaunchContext: () => launch,
     getIncomingInterpolationBreakKeyIds: options.getIncomingInterpolationBreakKeyIds
@@ -149,6 +156,7 @@ function createHarness(options: HarnessOptions = {}) {
     executeGroupLifecycleDelete: options.executeGroupLifecycleDelete,
     requestSoleOccurrenceDeleteWarning: options.requestSoleOccurrenceDeleteWarning,
     requestGroupDeleteChoice: options.requestGroupDeleteChoice,
+    executeRailSetDelete: options.executeRailSetDelete,
   } as RotoTimelineActionsInput & {
     executeGroupLifecycleDelete?: (activation: GroupDeleteActivation) => Promise<boolean>;
     requestSoleOccurrenceDeleteWarning?: (activation: GroupDeleteActivation) => void;
@@ -579,6 +587,193 @@ describe('useRotoTimelineActions selection-scoped Delete activation', () => {
     expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
     expect(harness.publishStatus).toHaveBeenCalledTimes(1);
     expect(harness.publishStatus).toHaveBeenCalledWith('Delete is unavailable on an intentional Group gap.');
+  });
+
+  it('classifies an active mixed rail set as Delete Rails before any single-rail branch', () => {
+    const group = lifecycleGroup({
+      placementStart: 12,
+      sourceKeyIds: Object.freeze(['A', 'B', 'C']),
+      repeat: 10,
+      phaseOrigin: 12,
+      originalEndExclusive: 42,
+      visibleRanges: Object.freeze([Object.freeze({ start: 12, endExclusive: 41 })]),
+    });
+    const target = classifyRotoDeleteTarget({
+      launchReady: true,
+      pendingOperationId: null,
+      selectedKeyId: null,
+      selectedKeyIds: [] as readonly string[],
+      selectedKeyRail: null,
+      selectedLoopClipIds: ['group-1'] as readonly string[],
+      railSetMembers: [
+        { kind: 'loop', loopId: 'group-1' },
+        { kind: 'key-rail', firstKeyId: 'rail-a' },
+        { kind: 'key-rail', firstKeyId: 'rail-c' },
+      ] as readonly RailSetIdentity[],
+      currentAppFrame: 12,
+      capacity: 100,
+      records: [
+        realKeyRecord('rail-a', 12),
+        realKeyRecord('rail-b', 15),
+        realKeyRecord('rail-c', 20),
+        realKeyRecord('rail-d', 88),
+      ],
+      loopClips: [group],
+      interpolation: { enabled: true, mode: 'duplicate' as const },
+      incomingInterpolationBreakKeyIds: ['rail-c'] as readonly string[],
+      physicalCells: [] as readonly PhysicPaintRotoPhysicalCell[],
+    });
+
+    expect(target).toEqual({
+      kind: 'rail-set',
+      members: [
+        { kind: 'loop', loopId: 'group-1' },
+        { kind: 'key-rail', firstKeyId: 'rail-a', keyIds: ['rail-a', 'rail-b'] },
+        { kind: 'key-rail', firstKeyId: 'rail-c', keyIds: ['rail-c', 'rail-d'] },
+      ],
+      firstFrame: 12,
+      lastFrame: 88,
+    });
+    expect(mapRotoDeleteProductReason(target)).toBeNull();
+  });
+
+  it('fails closed when a rail set key-rail member no longer matches the accepted derivation', () => {
+    const target = classifyRotoDeleteTarget({
+      launchReady: true,
+      pendingOperationId: null,
+      selectedKeyId: null,
+      selectedKeyIds: [] as readonly string[],
+      selectedKeyRail: null,
+      selectedLoopClipIds: [] as readonly string[],
+      railSetMembers: [{ kind: 'key-rail', firstKeyId: 'rail-a' }] as readonly RailSetIdentity[],
+      currentAppFrame: 5,
+      capacity: 20,
+      records: [realKeyRecord('rail-b', 5), realKeyRecord('rail-c', 9)],
+      loopClips: [] as readonly PhysicPaintRotoLoopClip[],
+      interpolation: { enabled: true, mode: 'duplicate' as const },
+      incomingInterpolationBreakKeyIds: [] as readonly string[],
+      physicalCells: [] as readonly PhysicPaintRotoPhysicalCell[],
+    });
+
+    expect(target).toEqual({ kind: 'stale-key-rail' });
+    expect(mapRotoDeleteProductReason(target)).toBe('The selected Key Rail is no longer available.');
+  });
+
+  it('fails closed when a rail set loop member is gone', () => {
+    const target = classifyRotoDeleteTarget({
+      launchReady: true,
+      pendingOperationId: null,
+      selectedKeyId: null,
+      selectedKeyIds: [] as readonly string[],
+      selectedKeyRail: null,
+      selectedLoopClipIds: [] as readonly string[],
+      railSetMembers: [{ kind: 'loop', loopId: 'group-1' }] as readonly RailSetIdentity[],
+      currentAppFrame: 5,
+      capacity: 20,
+      records: [realKeyRecord('rail-a', 2)],
+      loopClips: [] as readonly PhysicPaintRotoLoopClip[],
+      interpolation: { enabled: true, mode: 'duplicate' as const },
+      incomingInterpolationBreakKeyIds: [] as readonly string[],
+      physicalCells: [] as readonly PhysicPaintRotoPhysicalCell[],
+    });
+
+    expect(target).toEqual({ kind: 'stale-key-rail' });
+  });
+
+  it('dispatches Delete Rails directly through the executeRailSetDelete port with the locked acceptance copy', async () => {
+    const executeRailSetDelete = vi.fn(async () => true);
+    const requestGroupDeleteChoice = vi.fn();
+    const requestSoleOccurrenceDeleteWarning = vi.fn();
+    const harness = createHarness({
+      records: [
+        realKeyRecord('rail-a', 12),
+        realKeyRecord('rail-b', 15),
+        realKeyRecord('rail-c', 20),
+        realKeyRecord('rail-d', 88),
+      ],
+      loopClips: [lifecycleGroup({
+        placementStart: 12,
+        sourceKeyIds: Object.freeze(['A', 'B', 'C']),
+        repeat: 10,
+        phaseOrigin: 12,
+        originalEndExclusive: 42,
+        visibleRanges: Object.freeze([Object.freeze({ start: 12, endExclusive: 41 })]),
+      })],
+      railSetMembers: [
+        { kind: 'loop', loopId: 'group-1' },
+        { kind: 'key-rail', firstKeyId: 'rail-a' },
+        { kind: 'key-rail', firstKeyId: 'rail-c' },
+      ],
+      incomingInterpolationBreakKeyIds: ['rail-c'],
+      currentAppFrame: 12,
+      capacity: 100,
+      executeRailSetDelete,
+      requestGroupDeleteChoice,
+      requestSoleOccurrenceDeleteWarning,
+    });
+
+    expect(harness.actions.physicalActions.deleteScopeLabel.value).toBe('Delete 3 Rails');
+    expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(true);
+    expect(executeRailSetDelete).toHaveBeenCalledWith({
+      operationKind: 'delete-rails',
+      members: [
+        { kind: 'loop', loopId: 'group-1' },
+        { kind: 'key-rail', firstKeyId: 'rail-a', keyIds: ['rail-a', 'rail-b'] },
+        { kind: 'key-rail', firstKeyId: 'rail-c', keyIds: ['rail-c', 'rail-d'] },
+      ],
+    });
+    expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
+    expect(requestGroupDeleteChoice).not.toHaveBeenCalled();
+    expect(requestSoleOccurrenceDeleteWarning).not.toHaveBeenCalled();
+    expect(harness.publishStatus).toHaveBeenCalledWith(
+      'Deleted 3 Rails - frames 12-88. The intervals stay intentional gaps.',
+    );
+  });
+
+  it('deletes a one-member rail set with the singular locked copy', async () => {
+    const executeRailSetDelete = vi.fn(async () => true);
+    const harness = createHarness({
+      records: [realKeyRecord('rail-a', 12)],
+      loopClips: [lifecycleGroup({
+        placementStart: 12,
+        sourceKeyIds: Object.freeze(['A', 'B', 'C']),
+        repeat: 10,
+        phaseOrigin: 12,
+        originalEndExclusive: 42,
+        visibleRanges: Object.freeze([Object.freeze({ start: 12, endExclusive: 41 })]),
+      })],
+      railSetMembers: [{ kind: 'loop', loopId: 'group-1' }],
+      currentAppFrame: 12,
+      capacity: 100,
+      executeRailSetDelete,
+    });
+
+    expect(harness.actions.physicalActions.deleteScopeLabel.value).toBe('Delete 1 Rail');
+    expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(true);
+    expect(executeRailSetDelete).toHaveBeenCalledWith({
+      operationKind: 'delete-rails',
+      members: [{ kind: 'loop', loopId: 'group-1' }],
+    });
+    expect(harness.publishStatus).toHaveBeenCalledWith(
+      'Deleted 1 Rail - frames 12-40. The interval stays an intentional gap.',
+    );
+  });
+
+  it('rejects a stale rail set before mutation or success publication', async () => {
+    const executeRailSetDelete = vi.fn(async () => true);
+    const harness = createHarness({
+      records: [realKeyRecord('rail-b', 5), realKeyRecord('rail-c', 9)],
+      railSetMembers: [{ kind: 'key-rail', firstKeyId: 'rail-a' }],
+      currentAppFrame: 5,
+      capacity: 20,
+      executeRailSetDelete,
+    });
+
+    expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(false);
+    expect(executeRailSetDelete).not.toHaveBeenCalled();
+    expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
+    expect(harness.publishStatus).toHaveBeenCalledTimes(1);
+    expect(harness.publishStatus).toHaveBeenCalledWith('The selected Key Rail is no longer available.');
   });
 });
 

@@ -355,6 +355,21 @@ describe('rail-set post-acceptance snapshot side-channel (43.6-01 Task 3, D-06 c
     })).toBeNull();
   });
 
+  it('records delete-rails with an empty after set so redo clears it again (D-06)', () => {
+    clearRailSetSnapshots();
+    recordRailSetSnapshot('op-1', beforeSet(), null);
+    expect(resolveRailSetPostAcceptance({
+      operationKind: 'redo',
+      operationId: 'op-1',
+      current: null,
+    })).toBeNull();
+    expect(resolveRailSetPostAcceptance({
+      operationKind: 'undo',
+      operationId: 'op-1',
+      current: null,
+    })).toEqual(beforeSet());
+  });
+
   it('leaves the set unchanged for unlisted kinds (Pitfall 6 — no default collapse)', () => {
     clearRailSetSnapshots();
     const current = afterSet();
