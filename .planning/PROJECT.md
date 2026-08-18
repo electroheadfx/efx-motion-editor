@@ -124,6 +124,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ EFX Paint audio preview monitoring: read-only main-editor audio in the child window, frame-synchronized (anchor model, silent scrub, loop-wrap re-seek, 40ms drift correction), revisioned launch payload + push updates, doubled-audio ownership guard with auto-resume, session-local toggle, engine release on close, D-04-proven single-token CSP grant; native packaged UAT approved — v0.9.0 Phase 41
 - ✓ PlayScript application modes + color override: progressive vs static/hold modes generating one source cycle of real keys, application-time color-only override fed live from the brush color (read-only, snapshot at Generate, erase strokes excluded), application-time Motion, Hold Loop repeat/infinity as Phase 43 loop intent (Requested/Effective readout only — never materialized), two-line success-only Scripts panel summary, compact dark draggable modal (approved playscript-proposal direction); native UAT approved — v0.9.0 Phase 42
 - ✓ Linked Hold Loop Clips (cycle × repeat 1..∞) with filmstrip timeline visualization, no duplicated source assets — v0.9.0 Phase 43 (Validated in Phase 43: Hold Loop Clips + Integrated Loop Rail)
+- ✓ Timeline toolbox + directional Push tool: ToolCase popover relocating Interpolation + Key Spacing (zero behavior change), and a mode-toggle Push tool (anchor resolved from the rail under the pointer, moved set = anchor + everything at/after its start, one rigid atomic transaction with one Undo/Redo, nearest-boundary/capacity clamp, straddle guard, persistent 43.1 gap breaks, full drag preview); native UAT approved — v0.9.0 Phase 43.5 (Validated in Phase 43.5: Timeline Toolbox + Directional Push Tools)
 
 ### Active
 
@@ -279,4 +280,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-16 after Phase 43.4 verification closure — Derived Key Groups and Scissor Breaks verified (12/12 must-haves, native UAT approved on fee76030; Debug Rounds 1-5 fixed defects 1-10 in-phase including shared rail focus ring, roving keyboard navigation, and direct-click focus parity); milestone v0.9.0 (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
+*Last updated: 2026-08-18 after Phase 43.5 verification closure — Timeline Toolbox + Directional Push Tools verified (10/10 must-haves, native UAT approved on 05c5fd4e; mode-toggle Push tool with pointer-resolved anchor, re-arm watchdog for chained pushes); milestone v0.9.0 (target release 2026-08-31; spec SPECS/milestone-v0.9.0-plan.md)*
