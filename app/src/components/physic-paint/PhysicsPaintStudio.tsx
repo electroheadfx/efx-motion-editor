@@ -18,6 +18,7 @@ import {
   type PhysicsPaintRotoSpacingSelectionGesture,
 } from './roto/physicsPaintRotoSpacingSelection';
 import {
+  clearRailSetSnapshots,
   deriveRailSetOrder,
   reconcileRailSetSelection,
   updatePhysicsPaintRotoRailSetSelection,
@@ -169,6 +170,9 @@ export function PhysicsPaintStudio() {
         selectionAnchorKeyId.value = selectedKeyId.value;
         rotoSpacingSelection.value = null;
         railSetSelection.value = null;
+        // 43.6 D-06: a replaced launch prunes the session-only snapshot
+        // side-channel alongside the set itself (T-43.6-03).
+        clearRailSetSnapshots();
         selectedLoopClipId.value = null;
         selectedLoopClipIds.value = [];
         selectedRotoKeyRail.value = null;
