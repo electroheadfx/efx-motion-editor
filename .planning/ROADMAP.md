@@ -448,7 +448,7 @@ Plans:
 
 **Wave 7** *(gap closure after 43.6-VERIFICATION.md confirmed WR-01/WR-02; native UAT re-run for G-43.6-1/-3/-4/-8 follows execution)*
 
-- [ ] 43.6-10-PLAN.md — Cross-type seed + gesture-aware gate: both Studio handlers derive the seed from whichever single-rail signal is live (WR-01, M1 cross-type carry); the Loop Clip double-click gate fires for plain gestures only so in-window modifier clicks commit set membership synchronously (WR-02; G-43.6-1/3/4/8 code-level closure)
+- [x] 43.6-10-PLAN.md — Cross-type seed + gesture-aware gate: both Studio handlers derive the seed from whichever single-rail signal is live (WR-01, M1 cross-type carry); the Loop Clip double-click gate fires for plain gestures only so in-window modifier clicks commit set membership synchronously (WR-02; G-43.6-1/3/4/8 code-level closure)
 
 ### Phase 44: Integrated UAT + Signed Release
 
