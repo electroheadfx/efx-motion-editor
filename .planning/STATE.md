@@ -51,7 +51,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: 44 — Integrated UAT + Signed Release
 Plan: Not started
 Status: Ready to execute
-Last activity: 2026-08-19 - Completed quick task 260819-wzi: Fix addEmptyKey to join an existing Key Rail when destination is strictly inside a derived Key Rail segment span
+Last activity: 2026-08-20 - Completed quick task 260820-0kg: Scissor on generated frames: split a Key Rail mid-interpolation (revise locked 43.4 decision per spec)
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -594,6 +594,7 @@ None yet.
 | 260815-ala | In paint app, make Group Edit timing default to 3 frames and expose Max as an unchecked Infinity-style checkbox | 2026-08-15 | 4aa958a4 | Verified | [260815-ala-in-paint-app-make-group-edit-with-timing](./quick/260815-ala-in-paint-app-make-group-edit-with-timing/) |
 | 260815-bmg | Remove numeric Undo/Redo counts from Paint and Physics Paint Studio controls | 2026-08-15 | 357965a1 | Verified | [260815-bmg-remove-numeric-undo-redo-counts-from-pai](./quick/260815-bmg-remove-numeric-undo-redo-counts-from-pai/) |
 | 260816-tv7 | Swap Insert/Paint empty-frame key-creation break semantics per SPECS/milestone-v0.9.0-new-phases/quick-insert-connects-paint-breaks-prompt.md | 2026-08-16 | 09f1d864 | Verified | [260816-tv7-swap-insert-paint-empty-frame-key-creati](./quick/260816-tv7-swap-insert-paint-empty-frame-key-creati/) |
+| 260820-0kg | Scissor on generated frames: split a Key Rail mid-interpolation (revise locked 43.4 decision per spec) | 2026-08-20 | ed1332e8 |  | [260820-0kg-scissor-on-generated-frames-split-a-key-](./quick/260820-0kg-scissor-on-generated-frames-split-a-key-/) |
 
 ### Roadmap Evolution
 
