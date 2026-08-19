@@ -12,23 +12,27 @@ import { createRotoReferenceLoader } from './useRotoReferenceController';
 
 interface MockEngine {
   applied: string | null;
-  listeners: Array<(dataUrl: string, outcome: 'applied' | 'dropped') => void>;
+  appliedGeneration: number | null;
+  listeners: Array<(dataUrl: string, outcome: 'applied' | 'dropped', generation?: number) => void>;
   getAppliedPreviewBaseDataUrl: () => string | null;
-  onPreviewBaseSettled: (listener: (dataUrl: string, outcome: 'applied' | 'dropped') => void) => () => void;
+  getAppliedPreviewBaseGeneration: () => number | null;
+  onPreviewBaseSettled: (listener: (dataUrl: string, outcome: 'applied' | 'dropped', generation?: number) => void) => () => void;
   settle: (dataUrl: string, outcome: 'applied' | 'dropped') => void;
 }
 
-function makeMockEngine(applied: string | null = null): MockEngine {
+function makeMockEngine(applied: string | null = null, appliedGeneration: number | null = null): MockEngine {
   const engine: MockEngine = {
     applied,
+    appliedGeneration,
     listeners: [],
     getAppliedPreviewBaseDataUrl() { return engine.applied; },
+    getAppliedPreviewBaseGeneration() { return engine.appliedGeneration; },
     onPreviewBaseSettled(listener) {
       engine.listeners.push(listener);
       return () => { engine.listeners = engine.listeners.filter((entry) => entry !== listener); };
     },
     settle(dataUrl, outcome) {
-      if (outcome === 'applied') engine.applied = dataUrl;
+      if (outcome === 'applied') { engine.applied = dataUrl; }
       for (const listener of [...engine.listeners]) listener(dataUrl, outcome);
     },
   };
@@ -79,7 +83,7 @@ describe('armRotoCompletionPaintGuard', () => {
 
     engine.settle(INTENDED, 'dropped');
     expect(reload).toHaveBeenCalledTimes(1);
-    expect(reload).toHaveBeenCalledWith(8);
+    expect(reload).toHaveBeenCalledWith(8, INTENDED, 0);
     expect(log).toHaveBeenCalledTimes(1);
     expect(engine.listeners.length, 'the guard disarms after the repair lands').toBe(0);
 
@@ -149,6 +153,29 @@ describe('armRotoCompletionPaintGuard', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
+  it('does not repair when a NEWER generation already settled over the guard (inverted-race smoking gun)', () => {
+    // The correct (newest-generation) completion paint is VISIBLE — the
+    // applied generation (12) is newer than the guarded intent (7). A dropped
+    // settle of the guarded dataUrl must NOT fire the repair: the repair would
+    // re-apply a stale cache-hit over the correct paint.
+    const engine = makeMockEngine('data:image/png;base64,newest-render', 12);
+    const log = vi.fn();
+    const reload = vi.fn();
+    armRotoCompletionPaintGuard({
+      engine,
+      appFrame: 8,
+      intendedDataUrl: INTENDED,
+      intendedGeneration: 7,
+      getCurrentAppFrame: () => 8,
+      reload,
+      log,
+    });
+    engine.settle(INTENDED, 'dropped');
+    expect(reload).not.toHaveBeenCalled();
+    expect(log, 'the repair log must not fire while the newest paint is visible').not.toHaveBeenCalled();
+    expect(engine.listeners.length).toBe(0);
+  });
+
   it('bounds repairs and logs when the paint cannot converge', () => {
     const engine = makeMockEngine();
     const log = vi.fn();
@@ -191,6 +218,8 @@ describe('completion paint through the reference loader (integration)', () => {
       previewBackgroundRequestId: 0,
       appliedPreviewBaseDataUrl: null,
       previewBaseSettledListeners: null,
+      previewBaseGenerationCounter: 0,
+      appliedPreviewBaseGeneration: null,
       bgData: null,
       lastResetBackgroundData: null,
       lastResetBackgroundInputs: null,

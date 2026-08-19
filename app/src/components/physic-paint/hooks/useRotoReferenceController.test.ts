@@ -142,7 +142,7 @@ describe('Roto reference controller', () => {
     expect(setRepaintBaseFrame).toHaveBeenLastCalledWith(cached);
     expect(engine.setBgMode).toHaveBeenCalledWith('white');
     expect(engine.clear).toHaveBeenCalledTimes(1);
-    expect(engine.setPreviewBaseImageUrl).toHaveBeenCalledWith(cached.dataUrl);
+    expect(engine.setPreviewBaseImageUrl).toHaveBeenCalledWith(cached.dataUrl, undefined);
     expect(syncPending).toHaveBeenCalledTimes(1);
     expect(setApplyMessage).toHaveBeenCalledWith('Cached physical base loaded for frame 4. Add paint to update this key.');
   });
@@ -170,7 +170,7 @@ describe('Roto reference controller', () => {
     expect(dirtyFrames.has(4)).toBe(false);
     expect(liveOverlayActionCounts.has(4)).toBe(false);
     expect(engine.clear).toHaveBeenCalledOnce();
-    expect(engine.setPreviewBaseImageUrl).toHaveBeenCalledWith('data:accepted');
+    expect(engine.setPreviewBaseImageUrl).toHaveBeenCalledWith('data:accepted', undefined);
     expect(syncPending).toHaveBeenCalledOnce();
   });
 

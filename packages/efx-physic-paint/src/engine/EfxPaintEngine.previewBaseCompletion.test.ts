@@ -38,6 +38,8 @@ function makeEngine(overrides: Record<string, unknown> = {}) {
     previewBackgroundRequestId: 0,
     appliedPreviewBaseDataUrl: null,
     previewBaseSettledListeners: null,
+    previewBaseGenerationCounter: 0,
+    appliedPreviewBaseGeneration: null,
     bgData: null,
     lastResetBackgroundData: null,
     lastResetBackgroundInputs: null,
@@ -161,5 +163,77 @@ describe('EfxPaintEngine preview base completion contract (regression-refresh-mu
     engine.destroyed = true;
     images[0].onload!();
     expect(engine.previewBaseImageCache.size, 'destroyed engines never retain dropped decodes').toBe(0);
+  });
+
+  it('never paints an OLDER generation over a newer settled paint (late onload with current requestId)', () => {
+    const engine = makeEngine();
+    const settled: Array<[string, string, number | undefined]> = [];
+    engine.onPreviewBaseSettled((dataUrl, outcome, generation) => { settled.push([dataUrl, outcome, generation]); });
+
+    // New-generation B lands first.
+    engine.setPreviewBaseImageUrl('data:image/png;base64,B', 2);
+    images[0].onload!();
+    expect(engine.getAppliedPreviewBaseDataUrl()).toBe('data:image/png;base64,B');
+    expect(engine.getAppliedPreviewBaseGeneration()).toBe(2);
+
+    // The stale writer re-issues OLD generation A AFTER B: A's requestId is now
+    // CURRENT when its (uncached) decode completes, but its generation is older.
+    engine.setPreviewBaseImageUrl('data:image/png;base64,A', 1);
+    images[1].onload!();
+    expect(
+      engine.getAppliedPreviewBaseDataUrl(),
+      'a stale-generation decode must never paint over the newer settled paint',
+    ).toBe('data:image/png;base64,B');
+    expect(engine.getAppliedPreviewBaseGeneration()).toBe(2);
+    expect(settled).toContainEqual(['data:image/png;base64,A', 'dropped', 1]);
+  });
+
+  it('never paints a stale-generation cache-hit re-issue over a newer settled paint', () => {
+    const engine = makeEngine();
+    engine.setPreviewBaseImageUrl('data:image/png;base64,A', 1);
+    images[0].onload!();
+    engine.setPreviewBaseImageUrl('data:image/png;base64,B', 2);
+    images[1].onload!();
+    expect(engine.getAppliedPreviewBaseDataUrl()).toBe('data:image/png;base64,B');
+
+    // The inverted-race writer: the repair re-issues the STALE image A as a
+    // synchronous cache-hit. Generation 1 < applied generation 2 → no-op.
+    engine.setPreviewBaseImageUrl('data:image/png;base64,A', 1);
+    expect(
+      engine.getAppliedPreviewBaseDataUrl(),
+      'a stale-generation cache-hit re-issue must not paint over B',
+    ).toBe('data:image/png;base64,B');
+    expect(engine.getAppliedPreviewBaseGeneration()).toBe(2);
+  });
+
+  it('interleaves explicit and auto-assigned generations monotonically', () => {
+    const engine = makeEngine();
+    // Auto-assigned paint (navigation) lands first.
+    engine.setPreviewBaseImageUrl('data:image/png;base64,nav');
+    images[0].onload!();
+    expect(engine.getAppliedPreviewBaseGeneration()).toBe(1);
+    // A completion reconcile passes an explicit generation above the applied one.
+    engine.setPreviewBaseImageUrl('data:image/png;base64,reconcile', 2);
+    images[1].onload!();
+    expect(engine.getAppliedPreviewBaseDataUrl()).toBe('data:image/png;base64,reconcile');
+    expect(engine.getAppliedPreviewBaseGeneration()).toBe(2);
+    // A later auto-issued paint must still be above the explicit generation.
+    engine.setPreviewBaseImageUrl('data:image/png;base64,next');
+    images[2].onload!();
+    expect(engine.getAppliedPreviewBaseGeneration()).toBe(3);
+  });
+
+  it('treats a paint after clearPreviewBaseImage as a fresh generation', () => {
+    const engine = makeEngine();
+    engine.setPreviewBaseImageUrl('data:image/png;base64,A', 1);
+    images[0].onload!();
+    engine.setPreviewBaseImageUrl('data:image/png;base64,B', 2);
+    images[1].onload!();
+    engine.clearPreviewBaseImage();
+    expect(engine.getAppliedPreviewBaseGeneration()).toBeNull();
+
+    // A cleared canvas holds no preview base — the next paint applies.
+    engine.setPreviewBaseImageUrl('data:image/png;base64,B', 2);
+    expect(engine.getAppliedPreviewBaseDataUrl()).toBe('data:image/png;base64,B');
   });
 });

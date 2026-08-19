@@ -139,6 +139,11 @@ export function PhysicsPaintStudio() {
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
+  // regression-refresh-multi-paint: monotonic generation for the preview-base
+  // paint of each completion reconcile. Every reconcile is a NEWER generation
+  // than any earlier progressive paint, so the engine's generation gate makes a
+  // stale async apply (older generation) a canvas no-op even if it lands last.
+  const rotoPreviewBaseGenerationRef = useRef(0);
   const selectedKeyId = useSignal<string | null>(launchContext?.rotoPhysical?.selectedKeyId ?? null);
   const selectedLoopClipId = useSignal<string | null>(null);
   const selectedLoopClipIds = useSignal<readonly string[]>([]);
@@ -895,24 +900,40 @@ export function PhysicsPaintStudio() {
         setCachedRotoRepaintBaseFrame(reference.cachedRepaintBase);
       },
       reconcileCurrentFrame: (appFrame) => {
+        // regression-refresh-multi-paint: the acceptance paint is the FINAL
+        // preview-base paint of the completion. It is tagged with a monotonic
+        // generation (every reconcile is a newer generation than earlier
+        // progressive paints), so a stale async decode/apply can never paint
+        // over it. Its cache-miss decode can still be superseded inside the
+        // decode window (wide for many-stroke PNGs) with no later paint issued
+        // — the canvas would keep the pre-apply image until an unrelated
+        // repaint. The generation-aware guard repairs exactly that outcome,
+        // and ONLY while the newest generation has not landed.
+        // The reconcile generation is always strictly above the last applied
+        // paint generation (so it can never be dropped as stale), and monotonic
+        // across the session via the ref even when the canvas is cleared.
+        const currentAppliedGeneration = engineRef.current?.getAppliedPreviewBaseGeneration?.() ?? null;
+        const generation = Math.max(rotoPreviewBaseGenerationRef.current, currentAppliedGeneration ?? 0) + 1;
+        rotoPreviewBaseGenerationRef.current = generation;
         loadCachedRotoReferenceFrame(
           appFrame,
           engineRef.current as PreviewBackgroundEngine | null,
           undefined,
           true,
+          generation,
         );
-        // regression-refresh-multi-paint: the acceptance paint is the FINAL
-        // preview-base paint of the completion. Its cache-miss decode can be
-        // superseded inside the decode window (wide for many-stroke PNGs), and
-        // no later paint is issued — the canvas then keeps the pre-apply image
-        // until an unrelated repaint. The guard repairs exactly that outcome.
         armRotoCompletionPaintGuard({
           engine: engineRef.current as PreviewBackgroundEngine | null,
           appFrame,
           intendedDataUrl: findAcceptedRotoReferenceFrame(appFrame)?.dataUrl ?? null,
+          intendedGeneration: generation,
           getCurrentAppFrame: () => launchContextRef.current?.startFrame ?? 0,
-          reload: (frame) => {
-            loadCachedRotoReferenceFrame(frame, engineRef.current as PreviewBackgroundEngine | null, undefined, true);
+          reload: (frame, dataUrl, paintGeneration) => {
+            // Repair re-applies ONLY the intended (newest) image at its own
+            // generation — never whatever the frame lookup resolves to later.
+            // The engine generation gate turns this into a no-op if a newer
+            // generation painted between arm and repair.
+            loadCachedRotoReferenceFrame(frame, engineRef.current as PreviewBackgroundEngine | null, undefined, true, paintGeneration, dataUrl);
           },
           log: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
         });

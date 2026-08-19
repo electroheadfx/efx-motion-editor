@@ -193,7 +193,17 @@ export class EfxPaintEngine {
   // valid for the dataUrl — so a repair re-request is a synchronous cache-hit
   // apply instead of a second decode window.
   private appliedPreviewBaseDataUrl: string | null = null
-  private previewBaseSettledListeners: Set<(dataUrl: string, outcome: 'applied' | 'dropped') => void> | null = null
+  private previewBaseSettledListeners: Set<(dataUrl: string, outcome: 'applied' | 'dropped', generation?: number) => void> | null = null
+  // regression-refresh-multi-paint (generation ordering): monotonic generation
+  // tokens on the preview-base apply seam. Every request carries a generation;
+  // a request settling with an OLDER generation than the last APPLIED paint is
+  // a canvas NO-OP (it may populate the cache, it never paints). This stops a
+  // stale async decode/apply — a late onload or a repair re-issue resolving
+  // older content — from painting over a NEWER generation's settled paint.
+  // Callers that do not pass a generation get one auto-assigned from the engine
+  // counter (monotonic with respect to any explicit generation already seen).
+  private previewBaseGenerationCounter: number = 0
+  private appliedPreviewBaseGeneration: number | null = null
   // 38.1-07: resetBackground skip memo — an unchanged background (same bgData
   // identity AND same input tuple) performs no drawBg/redraw work. Every other
   // background writer REPLACES this.bgData, so the identity half covers them
@@ -548,13 +558,27 @@ export class EfxPaintEngine {
     }
   }
 
-  setPreviewBaseImageUrl(dataUrl: string): void {
+  setPreviewBaseImageUrl(dataUrl: string, generation?: number): void {
     const requestId = ++this.previewBaseRequestId
+    const requestGeneration = generation ?? this.nextPreviewBaseGeneration()
+    // Keep the auto-assignment counter above any explicit generation this
+    // engine has seen, so a later auto-issued paint (navigation/editing) is
+    // never gated by an older explicit completion generation.
+    if (generation !== undefined) {
+      this.previewBaseGenerationCounter = Math.max(this.previewBaseGenerationCounter ?? 0, generation)
+    }
     const cached = this.previewBaseImageCache.get(dataUrl)
     if (cached) {
       // Cache hit: the image is already decoded — apply synchronously under
-      // the identical guards (the approved revisit timing win).
-      this.applyPreviewBaseImage(cached, requestId, dataUrl)
+      // the identical guards (the approved revisit timing win), PLUS the
+      // generation ordering guard: a stale-generation re-issue (e.g. a repair
+      // reload resolving older content) must never paint over a newer settled
+      // generation's paint.
+      if (requestGeneration < (this.appliedPreviewBaseGeneration ?? 0)) {
+        this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestGeneration)
+        return
+      }
+      this.applyPreviewBaseImage(cached, requestId, dataUrl, requestGeneration)
       return
     }
     const image = new Image()
@@ -562,8 +586,8 @@ export class EfxPaintEngine {
       // Cache the decoded pixels even when the apply guard below drops this
       // request: the decode is valid for the dataUrl, and caching converts any
       // later repair re-request into a synchronous cache-hit apply. Without
-      // this a superseded completion paint is lost silently until an unrelated
-      // repaint (regression-refresh-multi-paint).
+      // this a superseded completion-published paint is lost silently until an
+      // unrelated repaint (regression-refresh-multi-paint).
       if (!this.destroyed) {
         this.previewBaseImageCache.set(dataUrl, image)
         if (this.previewBaseImageCache.size > EfxPaintEngine.PREVIEW_BASE_IMAGE_CACHE_CAP) {
@@ -572,14 +596,21 @@ export class EfxPaintEngine {
         }
       }
       if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) {
-        this.notifyPreviewBaseSettled(dataUrl, 'dropped')
+        this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestGeneration)
         return
       }
-      this.applyPreviewBaseImage(image, requestId, dataUrl)
-      this.notifyPreviewBaseSettled(dataUrl, 'applied')
+      if (requestGeneration < (this.appliedPreviewBaseGeneration ?? 0)) {
+        // Generation regression: a decode completing with an OLDER generation
+        // than the last settled paint must never touch the canvas, even when
+        // its requestId is current (a stale-content re-issue).
+        this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestGeneration)
+        return
+      }
+      this.applyPreviewBaseImage(image, requestId, dataUrl, requestGeneration)
+      this.notifyPreviewBaseSettled(dataUrl, 'applied', requestGeneration)
     }
     image.onerror = () => {
-      this.notifyPreviewBaseSettled(dataUrl, 'dropped')
+      this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestGeneration)
     }
     image.src = dataUrl
   }
@@ -589,29 +620,43 @@ export class EfxPaintEngine {
     return this.appliedPreviewBaseDataUrl
   }
 
+  /** The generation of the last preview base paint actually applied to the canvas, or null. */
+  getAppliedPreviewBaseGeneration(): number | null {
+    return this.appliedPreviewBaseGeneration
+  }
+
   /**
    * Subscribe to preview-base request settlements. Fires once per cache-miss
-   * decode ('applied' or 'dropped') and on decode failure ('dropped');
-   * synchronous cache-hit applies do not notify — read
-   * getAppliedPreviewBaseDataUrl() for the current state.
+   * decode ('applied' or 'dropped') and on decode failure ('dropped') with the
+   * request's generation; synchronous cache-hit applies do not notify — read
+   * getAppliedPreviewBaseDataUrl()/getAppliedPreviewBaseGeneration() for the
+   * current state.
    */
-  onPreviewBaseSettled(listener: (dataUrl: string, outcome: 'applied' | 'dropped') => void): () => void {
+  onPreviewBaseSettled(listener: (dataUrl: string, outcome: 'applied' | 'dropped', generation?: number) => void): () => void {
     if (!this.previewBaseSettledListeners) this.previewBaseSettledListeners = new Set()
     this.previewBaseSettledListeners.add(listener)
     return () => { this.previewBaseSettledListeners?.delete(listener) }
   }
 
-  private notifyPreviewBaseSettled(dataUrl: string, outcome: 'applied' | 'dropped'): void {
+  private notifyPreviewBaseSettled(dataUrl: string, outcome: 'applied' | 'dropped', generation?: number): void {
     if (!this.previewBaseSettledListeners || this.previewBaseSettledListeners.size === 0) return
-    for (const listener of [...this.previewBaseSettledListeners]) listener(dataUrl, outcome)
+    for (const listener of [...this.previewBaseSettledListeners]) listener(dataUrl, outcome, generation)
   }
 
-  private applyPreviewBaseImage(image: HTMLImageElement, requestId: number, dataUrl?: string): void {
+  private nextPreviewBaseGeneration(): number {
+    const floor = Math.max(this.previewBaseGenerationCounter ?? 0, this.appliedPreviewBaseGeneration ?? 0)
+    this.previewBaseGenerationCounter = floor + 1
+    return this.previewBaseGenerationCounter
+  }
+
+  private applyPreviewBaseImage(image: HTMLImageElement, requestId: number, dataUrl?: string, generation = 0): void {
     if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) return
+    if (generation < (this.appliedPreviewBaseGeneration ?? 0)) return
     this.previewBaseImage = image
     this.previewBaseEnabled = true
     this.previewBackgroundSeparated = true
     this.appliedPreviewBaseDataUrl = dataUrl ?? null
+    this.appliedPreviewBaseGeneration = generation
     this.redrawPreviewBase()
     this.redrawAll()
   }
@@ -622,6 +667,9 @@ export class EfxPaintEngine {
     this.previewBackgroundSeparated = false
     this.previewBaseImage = null
     this.appliedPreviewBaseDataUrl = null
+    // The canvas no longer holds any preview base — the next paint is a fresh
+    // generation again (the applied-generation gate resets with the canvas).
+    this.appliedPreviewBaseGeneration = null
     this.dualCanvas.previewBaseCtx.clearRect(0, 0, this.width, this.height)
     this.redrawAll()
   }

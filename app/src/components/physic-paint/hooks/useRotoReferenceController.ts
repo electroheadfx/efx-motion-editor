@@ -14,7 +14,7 @@ export type RotoReferenceFrame = PhysicPaintRenderedFrame & {
 export interface RotoReferenceEngine {
   setBgMode: (mode: BgMode) => void;
   clear: () => void;
-  setPreviewBaseImageUrl: (dataUrl: string) => void;
+  setPreviewBaseImageUrl: (dataUrl: string, generation?: number) => void;
   clearPreviewBaseImage: () => void;
   resetBackground: () => void;
 }
@@ -107,6 +107,13 @@ export interface RotoReferenceLoaderInput<Frame extends RotoReferenceFrame> {
   syncPending: () => void;
   setApplyMessage: (message: string) => void;
   replaceDirtyFrame?: boolean;
+  /** regression-refresh-multi-paint: monotonic generation token carried by the
+   * preview-base paint — the engine's apply seam uses it to no-op stale writes. */
+  generation?: number;
+  /** Overrides the dataUrl painted by this load. Used by the completion guard's
+   * repair so it re-applies ONLY the intended (newest) image — never whatever
+   * the frame lookup happens to resolve to at repair time. */
+  explicitDataUrl?: string | null;
 }
 
 export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(input: RotoReferenceLoaderInput<Frame>) {
@@ -126,8 +133,9 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
     input.setRepaintBaseFrame(cachedFrame);
     engine.setBgMode(input.getSettingsBackground());
     engine.clear();
-    if (cachedFrame?.dataUrl) {
-      engine.setPreviewBaseImageUrl(cachedFrame.dataUrl);
+    const paintDataUrl = input.explicitDataUrl ?? cachedFrame?.dataUrl ?? null;
+    if (paintDataUrl) {
+      engine.setPreviewBaseImageUrl(paintDataUrl, input.generation);
       const wasDirty = input.dirtyFrames.delete(appFrame);
       const hadLiveOverlay = input.liveOverlayActionCounts.delete(appFrame);
       if (wasDirty || hadLiveOverlay) input.syncPending();
@@ -136,7 +144,7 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
       engine.clearPreviewBaseImage();
       engine.resetBackground();
     }
-    return Boolean(cachedFrame);
+    return Boolean(cachedFrame || paintDataUrl);
   };
 
   return { load };
@@ -167,7 +175,7 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
   const findDisplayFrame = useCallback((appFrame: number) => findCachedRotoDisplayFrame(appFrame, getLookup()), []);
   const findReferenceFrame = useCallback((appFrame: number) => findCachedRotoReferenceFrame(appFrame, getLookup()), []);
   const findAcceptedReferenceFrame = useCallback((appFrame: number) => findAcceptedRotoReferenceFrame(appFrame, getLookup()), []);
-  const loadCachedRotoReferenceFrame = useCallback((appFrame: number, engine: RotoReferenceEngine | null, refreshedFrame?: Frame | null, replaceDirtyFrame = false) => {
+  const loadCachedRotoReferenceFrame = useCallback((appFrame: number, engine: RotoReferenceEngine | null, refreshedFrame?: Frame | null, replaceDirtyFrame = false, generation?: number, explicitDataUrl?: string | null) => {
     const currentInput = inputRef.current;
     if (refreshedFrame !== undefined) explicitRestorationRef.current = { appFrame, frame: refreshedFrame };
     else if (explicitRestorationRef.current?.appFrame !== appFrame) explicitRestorationRef.current = null;
@@ -187,6 +195,8 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
       syncPending: currentInput.syncPending,
       setApplyMessage: currentInput.setApplyMessage,
       replaceDirtyFrame,
+      generation,
+      explicitDataUrl,
     }).load(appFrame, engine);
   }, [findAcceptedReferenceFrame, findReferenceFrame]);
   const clearCachedRotoReferenceUrl = useCallback(() => setCachedRotoReferenceUrl(null), []);
