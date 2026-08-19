@@ -1897,6 +1897,59 @@ describe('useRotoPhysicalEditHistory batch operations on a rail set (43.6 gap cl
     });
   });
 
+  it("records one accepted delete-rails command restoring the exact pre-delete selection set (G-43.6-2)", async () => {
+    // Same mixed set as the null-selection round-trip above, but the pre-delete
+    // selection is NON-NULL and lives INSIDE the deleted Key Rail [F,G] — the
+    // coordinator's captureSnapshot authority must carry 'F' into the before
+    // snapshot and the undo replay must submit it (never the post-delete
+    // selection).
+    const beforeRecords = [
+      batchRealKey('A', 0), batchRealKey('B', 1),
+      batchRealKey('D', 10), batchRealKey('E', 11),
+      batchRealKey('F', 20), batchRealKey('G', 21),
+    ];
+    const beforeLoopClips = [
+      batchLifecycleGroup('group-main', 0, ['A', 'B'], 1),
+      batchLifecycleGroup('group-sibling', 10, ['D', 'E'], 1),
+    ];
+    const beforeBreaks = ['F'];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const beforeDocument = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 600,
+      realKeyRecords: beforeRecords,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: 'F',
+      cursorAppFrame: 20,
+      revision: buildPhysicPaintRotoPhysicalRevision(beforeRecords, interpolation, beforeLoopClips, beforeBreaks),
+      loopClips: beforeLoopClips,
+      incomingInterpolationBreakKeyIds: beforeBreaks,
+    });
+
+    const result = proposePhysicPaintRotoDeleteRails({
+      document: beforeDocument,
+      members: [
+        { kind: 'key-rail', firstKeyId: 'F', keyIds: ['F', 'G'] },
+        { kind: 'loop', loopId: 'group-sibling' },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Mixed-set delete must resolve');
+    // The post-delete selection differs from the pre-delete selection 'F'.
+    expect(result.proposal.selectedKeyId).not.toBe('F');
+
+    // The round-trip helper asserts the undo-restored state equals the before
+    // snapshot INCLUDING selectedKeyId 'F' (snapshots carry the selection
+    // fields), and the redo-restored state equals the after snapshot.
+    await expectBatchUndoRedoRoundTrip({
+      operationKind: 'delete-rails',
+      operationId: 'delete-rails-set-selection-accepted',
+      before: snapshotFromDocument(beforeDocument),
+      after: snapshotFromDocument(result.proposal),
+    });
+  });
+
   it("records one accepted 'move-rails' command on a two-member set and replays the exact before/after documents", async () => {
     // Two Key Rails — A [0,3) and D [10,12) (segment split by the break on D) —
     // translate rigidly by one unit through the REAL resolver intent.
