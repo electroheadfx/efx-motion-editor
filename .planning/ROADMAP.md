@@ -442,7 +442,7 @@ Plans:
 
 **Wave 6** *(gap closure after 43.6 native UAT root causes RC-A/RC-B/RC-C/RC-D)*
 
-- [ ] 43.6-07-PLAN.md — History allowlist: record 'move-rails'/'spacing-on-set'/'delete-rails' in isOrdinaryOperationKind so one batch acceptance -> one applied command -> Cmd+Z / Cmd+Shift+Z replay before/after snapshots (RC-A; G-43.6-3/4/6/8 undo-redo parts)
+- [x] 43.6-07-PLAN.md — History allowlist: record 'move-rails'/'spacing-on-set'/'delete-rails' in isOrdinaryOperationKind so one batch acceptance -> one applied command -> Cmd+Z / Cmd+Shift+Z replay before/after snapshots (RC-A; G-43.6-3/4/6/8 undo-redo parts)
 - [ ] 43.6-08-PLAN.md — Selection bridging: seedRailSetSelection carries a plain-selected rail into the rail set as anchor on the first modifier gesture (RC-B/RC-D, spec M1), synchronous Loop Clip modifier commit so Delete right after routes to Delete Rails (G-43.6-1/3/4/8)
 - [ ] 43.6-09-PLAN.md — Solo armed visual: add the .physics-paint-push-tool-button base class to the Solo template so the compound selector renders the orange armed tint, blocking human-verify (RC-C; G-43.6-2/7)
 
