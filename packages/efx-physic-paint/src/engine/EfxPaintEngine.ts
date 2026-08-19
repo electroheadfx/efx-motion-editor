@@ -1470,7 +1470,20 @@ export class EfxPaintEngine {
       this.hasPendingInput()
     ) return
     this.strokeFinalizationScheduled = false
-    this.runStrokeFinalizationTurn()
+    // regression-refresh-multi-paint Layer 3: a continuous stroke sequence
+    // (Action/Play generating many strokes inside the inactivity window) is
+    // coalesced into ONE post-idle drain — every queued stroke finalizes in the
+    // same turn and the canvas shows a single completed render, never
+    // intermediate per-stroke physics renders ('the last strokes missing until
+    // a click' amplifier). The pending queue INCLUDES the active stroke, so a
+    // single stroke keeps the cooperative one-safe-step-per-visual-frame pacing
+    // and only a real burst (2+ strokes awaiting finalization) drains at once.
+    // The lifecycle flush path (flushPendingStrokeFinalizations) is unchanged.
+    if (this.pendingStrokeFinalizations.length > 1) {
+      this.runStrokeFinalizationTurn(true)
+    } else {
+      this.runStrokeFinalizationTurn()
+    }
     if (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization) {
       this.strokeFinalizationScheduled = true
     }

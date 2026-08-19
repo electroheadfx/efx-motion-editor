@@ -700,6 +700,33 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     expect(engine.activeStrokeFinalization.steps).toBe(1)
   })
 
+  it('Layer 3: coalesces a continuous multi-stroke sequence into ONE post-idle drain (single render, no intermediate per-stroke finalizations)', () => {
+    const { engine, finalized, enqueue } = createHarness()
+    let now = 1_000
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    // A continuous Action/Play sequence: every stroke enqueued inside the
+    // inactivity window — live outlines are the only feedback while drawing.
+    enqueue('brush-1')
+    enqueue('brush-2')
+    enqueue('brush-3')
+    engine.lastPointerInputTime = now
+    engine.scheduleStrokeFinalization()
+
+    // The single idle rule: exactly ONE post-idle drain publishes the WHOLE
+    // sequence — the canvas must never show intermediate per-stroke renders
+    // (the 'last strokes missing until a click' regression-amplifier).
+    now = 1_500
+    engine.runScheduledStrokeFinalizationFrame()
+    expect(finalized).toEqual(['brush-1', 'brush-2', 'brush-3'])
+    expect(engine.pendingStrokeFinalizations).toHaveLength(0)
+    expect(engine.activeStrokeFinalization).toBeNull()
+
+    // Nothing is re-scheduled: the next visual frame is a no-op (single render).
+    now = 1_600
+    engine.runScheduledStrokeFinalizationFrame()
+    expect(finalized).toEqual(['brush-1', 'brush-2', 'brush-3'])
+  })
+
   it('resumes queued FIFO work on the first visual frame after the inactivity window', () => {
     const { engine, enqueue } = createHarness()
     let now = 1_000
