@@ -9,9 +9,14 @@ vi.mock('preact/hooks', () => ({
 
 import type {
   PhysicPaintRotoLoopClip,
+  PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
-import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
+import {
+  buildPhysicPaintRotoPhysicalRevision,
+  parsePhysicPaintRotoPhysicalDocument,
+} from '../roto/physicsPaintRotoPhysicalModel';
+import { proposePhysicPaintRotoDeleteRails } from '../roto/physicsPaintRotoGroupLifecycle';
 import { resolvePhysicPaintRotoPhysicalEdit } from '../roto/physicsPaintRotoPhysicalResolver';
 import { getPhysicsPaintRotoSourceCycleId } from '../roto/physicsPaintRotoSpacingSelection';
 import type {
@@ -1712,5 +1717,269 @@ describe('useRotoPhysicalEditHistory push atomic command (43.5-03 Task 2)', () =
     expect(current.selectedAppFrame).toBe(2);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
     expect(executePhysicalEdit.mock.calls.map(([input]) => input.operationKind)).toEqual(['undo', 'redo']);
+  });
+});
+
+describe('useRotoPhysicalEditHistory batch operations on a rail set (43.6 gap closure)', () => {
+  // Lifecycle-complete Group fixture idiom shared with the 43.6-04 parity suite
+  // (physicsPaintRotoGroupParity.test.ts): the delete-rails proposer validates
+  // lifecycle facts through isLifecycleGroup, so Group members must carry all
+  // six durable lifecycle fields.
+  const batchPngDataUrl = (label: string) => `data:image/png;base64,${btoa(`batch-${label}`)}`;
+  const batchRealKey = (keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord => ({
+    kind: 'real-key',
+    keyId,
+    appFrame,
+    payload: { frameIndex: 0, appFrame, dataUrl: batchPngDataUrl(keyId), width: 10, height: 10 },
+  });
+  const batchLifecycleGroup = (
+    loopId: string,
+    placementStart: number,
+    sourceKeyIds: readonly string[],
+    repeat: number,
+  ): PhysicPaintRotoLoopClip => {
+    const endExclusive = placementStart + sourceKeyIds.length * repeat;
+    return {
+      loopId,
+      placementStart,
+      sourceKeyIds: Object.freeze([...sourceKeyIds]),
+      repeat,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: placementStart,
+      originalEndExclusive: endExclusive,
+      visibleRanges: Object.freeze([Object.freeze({ start: placementStart, endExclusive })]),
+      frameOverrides: Object.freeze([]),
+    };
+  };
+
+  /** Project a parsed delete-rails document onto the history snapshot shape. */
+  const snapshotFromDocument = (
+    document: PhysicPaintRotoPhysicalDocument,
+  ): RotoPhysicalEditSnapshot<null> => pushSnapshot(
+    document.realKeyRecords,
+    document.loopClips,
+    document.incomingInterpolationBreakKeyIds,
+    document.selectedKeyId,
+    document.selectedKeyId === null ? 0 : document.cursorAppFrame,
+    document.capacity,
+  );
+
+  /**
+   * The same push-rails harness shape (43.5-03 Task 2): the replay seam swaps
+   * `current` to the exact target snapshot and publishes the accepted output
+   * carrying the replay provenance.
+   */
+  const createBatchHarness = (capacity: number, after: RotoPhysicalEditSnapshot<null>) => {
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const state = { current: after };
+    let replayNumber = 0;
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      const source = state.current;
+      state.current = target;
+      replayNumber += 1;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: target.stagedRevision,
+        operationId: `batch-replay-${replayNumber}`,
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+    const history = useRotoPhysicalEditHistory({
+      identity: { launchOperationId: 'launch-1', layerId: 'layer-1', projectContextId: 'project-1', capacity },
+      availability,
+      coordinator: { executePhysicalEdit: executePhysicalEdit as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => state.current.records,
+        getInterpolation: () => state.current.interpolation,
+        getCapacity: () => state.current.capacity,
+        getLoopClips: () => state.current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => state.current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => state.current,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+    return { acceptedOutput, availability, executePhysicalEdit, history, state };
+  };
+
+  const expectBatchUndoRedoRoundTrip = async (input: {
+    readonly operationKind: 'delete-rails' | 'move-rails' | 'spacing-on-set';
+    readonly operationId: string;
+    readonly before: RotoPhysicalEditSnapshot<null>;
+    readonly after: RotoPhysicalEditSnapshot<null>;
+  }) => {
+    const { operationKind, operationId, before, after } = input;
+    const harness = createBatchHarness(after.capacity, after);
+
+    // One coordinator acceptance of the batch kind appends exactly one applied
+    // history command.
+    harness.acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: after.stagedRevision,
+      operationId,
+      operationKind,
+      historyProvenance: null,
+    };
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    // Undo replays the exact pre-operation document snapshot.
+    expect(await harness.history.undo()).toBe(true);
+    expect(harness.state.current).toEqual(before);
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
+
+    // Redo reapplies the exact post-operation document snapshot.
+    expect(await harness.history.redo()).toBe(true);
+    expect(harness.state.current).toEqual(after);
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(harness.executePhysicalEdit.mock.calls.map(([call]) => call.operationKind)).toEqual(['undo', 'redo']);
+  };
+
+  it("records one accepted 'delete-rails' command on a mixed set and replays the exact before/after documents", async () => {
+    // TRUE multi-member mixed set: Key Rail [F,G] (segment opened by the break
+    // on F) + Group Rail group-sibling, with Group Rail group-main surviving.
+    const beforeRecords = [
+      batchRealKey('A', 0), batchRealKey('B', 1),
+      batchRealKey('D', 10), batchRealKey('E', 11),
+      batchRealKey('F', 20), batchRealKey('G', 21),
+    ];
+    const beforeLoopClips = [
+      batchLifecycleGroup('group-main', 0, ['A', 'B'], 1),
+      batchLifecycleGroup('group-sibling', 10, ['D', 'E'], 1),
+    ];
+    const beforeBreaks = ['F'];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const beforeDocument = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 600,
+      realKeyRecords: beforeRecords,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(beforeRecords, interpolation, beforeLoopClips, beforeBreaks),
+      loopClips: beforeLoopClips,
+      incomingInterpolationBreakKeyIds: beforeBreaks,
+    });
+
+    // The shared pure proposer (43.6-04) computes the complete next document —
+    // the exact post-delete state the coordinator publishes.
+    const result = proposePhysicPaintRotoDeleteRails({
+      document: beforeDocument,
+      members: [
+        { kind: 'key-rail', firstKeyId: 'F', keyIds: ['F', 'G'] },
+        { kind: 'loop', loopId: 'group-sibling' },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Mixed-set delete must resolve');
+    expect(result.proposal.realKeyRecords.map((entry) => entry.keyId)).toEqual(['A', 'B']);
+    expect(result.proposal.loopClips.map((clip) => clip.loopId)).toEqual(['group-main']);
+    expect(result.proposal.incomingInterpolationBreakKeyIds).toEqual([]);
+
+    await expectBatchUndoRedoRoundTrip({
+      operationKind: 'delete-rails',
+      operationId: 'delete-rails-accepted',
+      before: snapshotFromDocument(beforeDocument),
+      after: snapshotFromDocument(result.proposal),
+    });
+  });
+
+  it("records one accepted 'move-rails' command on a two-member set and replays the exact before/after documents", async () => {
+    // Two Key Rails — A [0,3) and D [10,12) (segment split by the break on D) —
+    // translate rigidly by one unit through the REAL resolver intent.
+    const beforeRecords = [
+      record('A', 0), record('B', 1), record('C', 2),
+      record('D', 10), record('E', 11),
+    ];
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: beforeRecords.map((entry) => ({ keyId: entry.keyId, appFrame: entry.appFrame })),
+      intent: {
+        kind: 'move-rails',
+        members: [
+          { kind: 'key-rail', firstKeyId: 'A', keyIds: ['A', 'B', 'C'] },
+          { kind: 'key-rail', firstKeyId: 'D', keyIds: ['D', 'E'] },
+        ],
+        delta: 1,
+      },
+      parentEndExclusive: 40,
+      capacity: 40,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['D'],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Two-rail move must resolve');
+    const { proposal } = resolution;
+    expect(proposal.status.operationKind).toBe('move-rails');
+    expect(proposal.status.changed).toBe(true);
+    const afterRecords = [...proposal.mapping.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([keyId, appFrame]) => record(keyId, appFrame));
+    const afterBreaks = proposal.nextIncomingInterpolationBreakKeyIds ?? ['D'];
+    expect(afterRecords.map((entry) => entry.appFrame)).toEqual([1, 2, 3, 11, 12]);
+
+    await expectBatchUndoRedoRoundTrip({
+      operationKind: 'move-rails',
+      operationId: 'move-rails-accepted',
+      before: pushSnapshot(beforeRecords, [], ['D'], 'A', 0, 40),
+      after: pushSnapshot(afterRecords, [], afterBreaks, proposal.selectedKeyId, proposal.selectedAppFrame, 40),
+    });
+  });
+
+  it("records one accepted 'spacing-on-set' command on a two-member set and replays the exact before/after documents", async () => {
+    // The plan's two-Key-Rail spacing example (43.6-05): Rail A at 0,3,6 and
+    // Rail B at 20,23 respace with one empty frame through the REAL resolver
+    // intent — each rail keeps its own first key as anchor.
+    const beforeRecords = [
+      record('a0', 0), record('a1', 3), record('a2', 6),
+      record('b0', 20), record('b1', 23),
+    ];
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: beforeRecords.map((entry) => ({ keyId: entry.keyId, appFrame: entry.appFrame })),
+      intent: {
+        kind: 'spacing-on-set',
+        members: [
+          { kind: 'key-rail', firstKeyId: 'a0', keyIds: ['a0', 'a1', 'a2'] },
+          { kind: 'key-rail', firstKeyId: 'b0', keyIds: ['b0', 'b1'] },
+        ],
+        emptyFrames: 1,
+      },
+      parentEndExclusive: 40,
+      capacity: 40,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['b0'],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Two-rail spacing must resolve');
+    const { proposal } = resolution;
+    expect(proposal.status.operationKind).toBe('spacing-on-set');
+    expect(proposal.status.changed).toBe(true);
+    const afterRecords = [...proposal.mapping.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([keyId, appFrame]) => record(keyId, appFrame));
+    const afterBreaks = proposal.nextIncomingInterpolationBreakKeyIds ?? ['b0'];
+    expect(Object.fromEntries(proposal.mapping)).toEqual({
+      a0: 0, a1: 2, a2: 4,
+      b0: 20, b1: 22,
+    });
+
+    await expectBatchUndoRedoRoundTrip({
+      operationKind: 'spacing-on-set',
+      operationId: 'spacing-on-set-accepted',
+      before: pushSnapshot(beforeRecords, [], ['b0'], 'a0', 0, 40),
+      after: pushSnapshot(afterRecords, [], afterBreaks, proposal.selectedKeyId, proposal.selectedAppFrame, 40),
+    });
   });
 });
