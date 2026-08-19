@@ -14,9 +14,16 @@ export type RotoReferenceFrame = PhysicPaintRenderedFrame & {
 export interface RotoReferenceEngine {
   setBgMode: (mode: BgMode) => void;
   clear: () => void;
-  setPreviewBaseImageUrl: (dataUrl: string, generation?: number) => void;
+  setPreviewBaseImageUrl: (dataUrl: string, generation?: number, appFrame?: number) => void;
   clearPreviewBaseImage: () => void;
   resetBackground: () => void;
+  /** regression-refresh-multi-paint (3rd rejection): the applied preview base's
+   * origin, used to no-op a plain effect-driven reload that would re-issue
+   * different (stale/partial) content over a completion-settled accepted render. */
+  getAppliedPreviewBaseDataUrl?: () => string | null;
+  getAppliedPreviewBaseAppFrame?: () => number | null;
+  getAppliedPreviewBaseExplicit?: () => boolean;
+  getAppliedPreviewBaseGeneration?: () => number | null;
 }
 
 interface RotoPhysicalLookupInput<Frame extends RotoReferenceFrame> {
@@ -129,13 +136,41 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
       return false;
     }
     const cachedFrame = input.getReferenceFrame(appFrame);
+    const paintDataUrl = input.explicitDataUrl ?? cachedFrame?.dataUrl ?? null;
+    // regression-refresh-multi-paint (3rd rejection): a PLAIN effect-driven
+    // reload (no explicit generation, no replaceDirtyFrame, no explicitDataUrl)
+    // must never clobber a completion-settled preview base. The reconcile paints
+    // the ACCEPTED (full) render for this appFrame at an EXPLICIT session-
+    // monotonic generation; the frame-editing effect re-fires later with NO
+    // generation, so the engine auto-assigns a generation ABOVE the explicit
+    // one (issue-monotonic but content-agnostic) and would paint a stale cached
+    // PARTIAL render over the settled full render. When the engine already holds
+    // an EXPLICIT (authoritative) paint for THIS appFrame, a plain refresh is
+    // redundant (same content) or stale (different/partial content) — either way
+    // it must NOT re-issue a paint. Navigation/editing legitimately supersede by
+    // calling clearPreviewBaseImage first (applied dataUrl becomes null) or by
+    // painting a DIFFERENT appFrame — both escape this guard.
+    const appliedDataUrl = engine.getAppliedPreviewBaseDataUrl?.() ?? null;
+    const appliedAppFrame = engine.getAppliedPreviewBaseAppFrame?.() ?? null;
+    const appliedExplicit = engine.getAppliedPreviewBaseExplicit?.() ?? false;
+    const isPlainRefresh = input.generation === undefined && !input.replaceDirtyFrame && input.explicitDataUrl === undefined;
+    if (
+      isPlainRefresh
+      && appliedExplicit
+      && appliedAppFrame === appFrame
+      && appliedDataUrl !== null
+      && paintDataUrl !== null
+    ) {
+      input.setReferenceUrl(null);
+      input.setRepaintBaseFrame((current) => current?.appFrame === appFrame ? current : null);
+      return false;
+    }
     input.setReferenceUrl(null);
     input.setRepaintBaseFrame(cachedFrame);
     engine.setBgMode(input.getSettingsBackground());
     engine.clear();
-    const paintDataUrl = input.explicitDataUrl ?? cachedFrame?.dataUrl ?? null;
     if (paintDataUrl) {
-      engine.setPreviewBaseImageUrl(paintDataUrl, input.generation);
+      engine.setPreviewBaseImageUrl(paintDataUrl, input.generation, appFrame);
       const wasDirty = input.dirtyFrames.delete(appFrame);
       const hadLiveOverlay = input.liveOverlayActionCounts.delete(appFrame);
       if (wasDirty || hadLiveOverlay) input.syncPending();

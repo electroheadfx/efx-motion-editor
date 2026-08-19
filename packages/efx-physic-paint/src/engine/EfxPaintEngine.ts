@@ -204,6 +204,16 @@ export class EfxPaintEngine {
   // counter (monotonic with respect to any explicit generation already seen).
   private previewBaseGenerationCounter: number = 0
   private appliedPreviewBaseGeneration: number | null = null
+  // regression-refresh-multi-paint (3rd rejection): the generation gate is
+  // issue-monotonic but content-agnostic — a LATER effect-driven paint of stale
+  // content with an AUTO-generation above the explicit reconcile generation
+  // passes the gate. The caller-side loader needs to know WHICH frame the
+  // applied preview base belongs to and whether it was settled EXPLICITLY (a
+  // completion reconcile) vs auto (navigation/editing), so it can no-op a plain
+  // refresh that would re-issue different (older) content over the settled
+  // accepted render for the same frame.
+  private appliedPreviewBaseAppFrame: number | null = null
+  private appliedPreviewBaseExplicit: boolean = false
   // 38.1-07: resetBackground skip memo — an unchanged background (same bgData
   // identity AND same input tuple) performs no drawBg/redraw work. Every other
   // background writer REPLACES this.bgData, so the identity half covers them
@@ -558,9 +568,10 @@ export class EfxPaintEngine {
     }
   }
 
-  setPreviewBaseImageUrl(dataUrl: string, generation?: number): void {
+  setPreviewBaseImageUrl(dataUrl: string, generation?: number, appFrame?: number): void {
     const requestId = ++this.previewBaseRequestId
     const requestGeneration = generation ?? this.nextPreviewBaseGeneration()
+    const requestExplicit = generation !== undefined
     // Keep the auto-assignment counter above any explicit generation this
     // engine has seen, so a later auto-issued paint (navigation/editing) is
     // never gated by an older explicit completion generation.
@@ -578,7 +589,7 @@ export class EfxPaintEngine {
         this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestGeneration)
         return
       }
-      this.applyPreviewBaseImage(cached, requestId, dataUrl, requestGeneration)
+      this.applyPreviewBaseImage(cached, requestId, dataUrl, requestGeneration, appFrame, requestExplicit)
       return
     }
     const image = new Image()
@@ -606,7 +617,7 @@ export class EfxPaintEngine {
         this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestGeneration)
         return
       }
-      this.applyPreviewBaseImage(image, requestId, dataUrl, requestGeneration)
+      this.applyPreviewBaseImage(image, requestId, dataUrl, requestGeneration, appFrame, requestExplicit)
       this.notifyPreviewBaseSettled(dataUrl, 'applied', requestGeneration)
     }
     image.onerror = () => {
@@ -623,6 +634,20 @@ export class EfxPaintEngine {
   /** The generation of the last preview base paint actually applied to the canvas, or null. */
   getAppliedPreviewBaseGeneration(): number | null {
     return this.appliedPreviewBaseGeneration
+  }
+
+  /** The appFrame the applied preview base belongs to (when the caller supplied one), or null. */
+  getAppliedPreviewBaseAppFrame(): number | null {
+    return this.appliedPreviewBaseAppFrame
+  }
+
+  /** True when the applied preview base was settled by an EXPLICIT-generation
+   * paint (a completion reconcile) rather than an auto-assigned one
+   * (navigation/editing refresh). The caller-side loader uses this to no-op a
+   * plain refresh that would re-issue different (older) content over the
+   * settled accepted render for the same frame. */
+  getAppliedPreviewBaseExplicit(): boolean {
+    return this.appliedPreviewBaseExplicit
   }
 
   /**
@@ -649,7 +674,7 @@ export class EfxPaintEngine {
     return this.previewBaseGenerationCounter
   }
 
-  private applyPreviewBaseImage(image: HTMLImageElement, requestId: number, dataUrl?: string, generation = 0): void {
+  private applyPreviewBaseImage(image: HTMLImageElement, requestId: number, dataUrl?: string, generation = 0, appFrame?: number, explicit = false): void {
     if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) return
     if (generation < (this.appliedPreviewBaseGeneration ?? 0)) return
     this.previewBaseImage = image
@@ -657,6 +682,8 @@ export class EfxPaintEngine {
     this.previewBackgroundSeparated = true
     this.appliedPreviewBaseDataUrl = dataUrl ?? null
     this.appliedPreviewBaseGeneration = generation
+    this.appliedPreviewBaseAppFrame = appFrame ?? null
+    this.appliedPreviewBaseExplicit = explicit
     this.redrawPreviewBase()
     this.redrawAll()
   }
@@ -670,6 +697,8 @@ export class EfxPaintEngine {
     // The canvas no longer holds any preview base — the next paint is a fresh
     // generation again (the applied-generation gate resets with the canvas).
     this.appliedPreviewBaseGeneration = null
+    this.appliedPreviewBaseAppFrame = null
+    this.appliedPreviewBaseExplicit = false
     this.dualCanvas.previewBaseCtx.clearRect(0, 0, this.width, this.height)
     this.redrawAll()
   }
@@ -1057,6 +1086,8 @@ export class EfxPaintEngine {
     this.previewBaseImageCache?.clear()
     this.previewBaseSettledListeners?.clear()
     this.appliedPreviewBaseDataUrl = null
+    this.appliedPreviewBaseAppFrame = null
+    this.appliedPreviewBaseExplicit = false
     // Cancel render loop
     if (this.rafId) cancelAnimationFrame(this.rafId)
     // Clear intervals

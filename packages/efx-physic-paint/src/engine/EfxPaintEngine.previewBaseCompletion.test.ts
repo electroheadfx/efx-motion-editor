@@ -40,6 +40,8 @@ function makeEngine(overrides: Record<string, unknown> = {}) {
     previewBaseSettledListeners: null,
     previewBaseGenerationCounter: 0,
     appliedPreviewBaseGeneration: null,
+    appliedPreviewBaseAppFrame: null,
+    appliedPreviewBaseExplicit: false,
     bgData: null,
     lastResetBackgroundData: null,
     lastResetBackgroundInputs: null,
@@ -221,6 +223,47 @@ describe('EfxPaintEngine preview base completion contract (regression-refresh-mu
     engine.setPreviewBaseImageUrl('data:image/png;base64,next');
     images[2].onload!();
     expect(engine.getAppliedPreviewBaseGeneration()).toBe(3);
+  });
+
+  it('tracks the appFrame and explicit-generation origin of the applied preview base', () => {
+    const engine = makeEngine();
+    expect(engine.getAppliedPreviewBaseAppFrame()).toBeNull();
+    expect(engine.getAppliedPreviewBaseExplicit()).toBe(false);
+
+    // A completion reconcile passes an explicit generation + the appFrame.
+    engine.setPreviewBaseImageUrl('data:image/png;base64,reconcile', 2, 4);
+    images[0].onload!();
+    expect(engine.getAppliedPreviewBaseDataUrl()).toBe('data:image/png;base64,reconcile');
+    expect(engine.getAppliedPreviewBaseGeneration()).toBe(2);
+    expect(engine.getAppliedPreviewBaseAppFrame()).toBe(4);
+    expect(engine.getAppliedPreviewBaseExplicit()).toBe(true);
+
+    // An auto-issued paint (navigation) is NOT an explicit settle, even though
+    // it carries the frame it paints.
+    engine.setPreviewBaseImageUrl('data:image/png;base64,nav', undefined, 5);
+    images[1].onload!();
+    expect(engine.getAppliedPreviewBaseAppFrame()).toBe(5);
+    expect(engine.getAppliedPreviewBaseExplicit()).toBe(false);
+
+    // A cleared canvas holds no preview base — origin tracking resets.
+    engine.clearPreviewBaseImage();
+    expect(engine.getAppliedPreviewBaseDataUrl()).toBeNull();
+    expect(engine.getAppliedPreviewBaseAppFrame()).toBeNull();
+    expect(engine.getAppliedPreviewBaseExplicit()).toBe(false);
+  });
+
+  it('keeps the appFrame/explicit origin on the synchronous cache-hit apply path', () => {
+    const engine = makeEngine();
+    engine.setPreviewBaseImageUrl('data:image/png;base64,committed', 3, 4);
+    images[0].onload!();
+    expect(engine.getAppliedPreviewBaseAppFrame()).toBe(4);
+    expect(engine.getAppliedPreviewBaseExplicit()).toBe(true);
+
+    engine.clearPreviewBaseImage();
+    engine.setPreviewBaseImageUrl('data:image/png;base64,committed', 3, 4);
+    expect(images.length, 'cache hit performs no new decode').toBe(1);
+    expect(engine.getAppliedPreviewBaseAppFrame()).toBe(4);
+    expect(engine.getAppliedPreviewBaseExplicit()).toBe(true);
   });
 
   it('treats a paint after clearPreviewBaseImage as a fresh generation', () => {
