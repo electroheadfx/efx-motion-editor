@@ -1310,9 +1310,14 @@ export function PhysicsPaintStudio() {
       // 43.6-08 (M1): a plain-selected rail seeds the set when no set is
       // active, so the first modifier gesture carries it instead of dropping it.
       const target: RailSetIdentity = { kind: 'key-rail', firstKeyId: selection.firstKeyId };
+      // 43.6-10 (WR-01): the seed comes from whichever single-rail signal is
+      // live — a plain click on either type nulls the other type's signal, so
+      // exactly one can be live and the key-rail-first order is deterministic.
       const singleIdentity: RailSetIdentity | null = selectedRotoKeyRail.value !== null
         ? { kind: 'key-rail', firstKeyId: selectedRotoKeyRail.value.firstKeyId }
-        : null;
+        : selectedLoopClipId.value !== null
+          ? { kind: 'loop', loopId: selectedLoopClipId.value }
+          : null;
       const currentSet = seedRailSetSelection(railSetSelection.peek(), singleIdentity);
       const next = updatePhysicsPaintRotoRailSetSelection(currentSet,
         orderedRailSetIdentities,
@@ -1356,7 +1361,7 @@ export function PhysicsPaintStudio() {
       );
     }
     selectedRotoKeyRail.value = selection;
-  }, [clearRotoLoopSelection, currentFrame, launchContext, orderedRailSetIdentities, selectedRotoKeyRail]);
+  }, [clearRotoLoopSelection, currentFrame, launchContext, orderedRailSetIdentities, selectedLoopClipId, selectedRotoKeyRail]);
   const handleSelectRotoLoopClip = useCallback((
     loopId: string | null,
     gesture: PhysicsPaintRotoSpacingSelectionGesture = 'plain',
@@ -1372,9 +1377,14 @@ export function PhysicsPaintStudio() {
       // 43.6-08 (M1): a plain-selected rail seeds the set when no set is
       // active, so the first modifier gesture carries it instead of dropping it.
       const target: RailSetIdentity = { kind: 'loop', loopId };
-      const singleIdentity: RailSetIdentity | null = selectedLoopClipId.value !== null
-        ? { kind: 'loop', loopId: selectedLoopClipId.value }
-        : null;
+      // 43.6-10 (WR-01): the seed comes from whichever single-rail signal is
+      // live — a plain click on either type nulls the other type's signal, so
+      // exactly one can be live and the key-rail-first order is deterministic.
+      const singleIdentity: RailSetIdentity | null = selectedRotoKeyRail.value !== null
+        ? { kind: 'key-rail', firstKeyId: selectedRotoKeyRail.value.firstKeyId }
+        : selectedLoopClipId.value !== null
+          ? { kind: 'loop', loopId: selectedLoopClipId.value }
+          : null;
       const currentSet = seedRailSetSelection(railSetSelection.peek(), singleIdentity);
       const next = updatePhysicsPaintRotoRailSetSelection(currentSet,
         orderedRailSetIdentities,
@@ -1443,7 +1453,7 @@ export function PhysicsPaintStudio() {
       rotoScriptLibrary.select(selectedGroup.scriptId);
       activeLinkedLoopClipId.value = selectedGroup.loopId;
     }
-  }, [clearRotoLoopSelection, currentFrame, launchContext, loopScriptRows, orderedRailSetIdentities, orderedRotoLoopClipIds, rotoLoopClips, rotoScriptLibrary, selectedLoopClipId]);
+  }, [clearRotoLoopSelection, currentFrame, launchContext, loopScriptRows, orderedRailSetIdentities, orderedRotoLoopClipIds, rotoLoopClips, rotoScriptLibrary, selectedLoopClipId, selectedRotoKeyRail]);
   const handleOpenRotoLoopEdit = useCallback(
     (loopId: string) => {
       selectedLoopClipId.value = loopId;
