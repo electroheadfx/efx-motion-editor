@@ -141,7 +141,7 @@ describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)'
     expect(studio).toContain('resolveRotoCompletedGroupPaintTarget(document, appFrame, currentCellKeyId)');
     expect(studio).toContain("completedTarget.kind === 'group-frame'");
     expect(studio).toContain('keyId: keyId ?? undefined');
-    expect(studio).toContain('if (!await capture) {');
+    expect(studio).toContain('if (!await capture && shouldReloadRotoFrameAfterFailedCapture()) {');
     expect(studio).toContain('engineRef.current as PreviewBackgroundEngine | null,\n          undefined,\n          true,');
   });
 

@@ -42,7 +42,7 @@ import { useRotoTimelineActions, type RotoGroupLifecycleDeleteTarget, type RotoK
 import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
 import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
-import { resolveRotoCompletedGroupPaintTarget, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
+import { resolveRotoCompletedGroupPaintTarget, shouldReloadRotoFrameAfterFailedCapture, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
 import { useRotoFrameEditingController } from './hooks/useRotoFrameEditingController';
 import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, type RotoGroupLifecycleDeleteExecuteInput, type RotoPhysicalEditCoordinatorExecuteInput, type RotoRailSetDeleteExecuteInput } from './hooks/useRotoPhysicalEditCoordinator';
 import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize } from './engine/physicsPaintCanvasSizing';
@@ -2367,7 +2367,11 @@ export function PhysicsPaintStudio() {
         mutationId,
       });
       if (profilePerformance) recordPhysicsPaintPerformance({ stage: 'snapshot-handoff', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAt, timestamp: performance.now(), mutationId, sourceFrame: appFrame });
-      if (!await capture) {
+      // Layer 1: a failed/superseded capture must never fall back to reloading the
+      // stale cache — that re-serves a partial over the newer settled base. The
+      // authoritative frame is captured by the sequence's own capture at the settled
+      // revision; the superseded capture is dropped (COW-gated, no stale commit).
+      if (!await capture && shouldReloadRotoFrameAfterFailedCapture()) {
         loadCachedRotoReferenceFrame(
           appFrame,
           engineRef.current as PreviewBackgroundEngine | null,

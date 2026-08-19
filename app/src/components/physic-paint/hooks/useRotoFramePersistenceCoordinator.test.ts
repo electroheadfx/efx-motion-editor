@@ -11,6 +11,7 @@ import {
   resolveRotoCompletedGroupPaintTarget,
   resolveRotoLivePixelIdentityKey,
   routeRotoPhysicalPaintFrame,
+  shouldReloadRotoFrameAfterFailedCapture,
 } from './useRotoFramePersistenceCoordinator';
 
 // Phase 43 Plan 09 Task 3: the frame persistence/cache coordinator explicitly
@@ -518,5 +519,16 @@ describe('Phase 43.2 source-phase copy-on-write persistence contract', () => {
     expect(resolveControlledGroupBytes(repainted, 'motion-1', 4)).toBe('repainted-gap');
     expect(repainted.groups[0].syncState).toBe('modified');
     expect(allocations).toBe(1);
+  });
+});
+
+describe('Roto capture robustness — no stale fallback reload (regression-refresh-multi-paint Layer 1)', () => {
+  it('never falls back to reloading the frame from the stale cache after a failed/superseded capture', () => {
+    // A capture superseded by a mid-sequence revision advance must be dropped
+    // (COW: the transaction's identity gate prevents any stale-document commit).
+    // The caller must NOT then reload the frame from the stale cache — that
+    // re-serves a PARTIAL render over the newer settled base. This helper is the
+    // single gate that makes the stale fallback reload impossible to reach.
+    expect(shouldReloadRotoFrameAfterFailedCapture()).toBe(false);
   });
 });

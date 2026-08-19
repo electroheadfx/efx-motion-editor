@@ -12,6 +12,18 @@ import { useRotoReferenceController } from './useRotoReferenceController';
 import type { RotoGroupFramePaintExecuteInput } from './useRotoPhysicalEditCoordinator';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
 
+/** regression-refresh-multi-paint Layer 1: after a live-pixel capture fails
+ * (superseded by a mid-sequence revision advance, or the frame vanished), the
+ * caller must NOT fall back to reloading the frame from the stale cache — that
+ * reload re-serves a PARTIAL render over the newer settled base. The frame's
+ * authoritative content is captured by the sequence's own capture at the settled
+ * revision; the superseded capture is dropped (the transaction's matchesIdentity
+ * gate prevents any stale-document commit — COW preserved). Returns false always:
+ * the stale fallback reload is removed. */
+export function shouldReloadRotoFrameAfterFailedCapture(): boolean {
+  return false;
+}
+
 interface RotoPersistenceStorePort {
   getRotoPhysicalDocument: (layerId: string) => PhysicPaintRotoPhysicalDocument | null;
   getRotoPhysicalContentRevision: (layerId: string) => string | null;
