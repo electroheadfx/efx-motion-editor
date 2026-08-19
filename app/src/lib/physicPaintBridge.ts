@@ -1635,16 +1635,24 @@ function applyPhysicPaintRotoPhysicalMap(
     // a generation plus its derived loop shrink replays as one Undo/Redo.
     const childBeforeAuthority = payload.operationKind === 'move-group'
       || GROUP_LIFECYCLE_OPERATION_KINDS.has(payload.operationKind);
+    // delete-rails must record the TRUE pre-operation selection from the
+    // current document, not the POST-delete proposal selection the payload
+    // ships — the undo replay submits the pre-delete selection (history
+    // entry.before), so a payload-derived before snapshot fails replay-target
+    // equality and silently no-ops undo (G-43.6-2 single/multi asymmetry).
+    // Group lifecycle deletes keep payload authority because their proposal
+    // preserves the pre-op selection in the common case (buildLifecycleProposal).
+    const beforeSelectionFromPayload = childBeforeAuthority && payload.operationKind !== 'delete-rails';
     const beforeSnapshot = createAcceptedPhysicalCommandSnapshot({
       records: currentRecords,
       groupOverrideRecords: currentGroupOverrideRecords,
       interpolation: currentInterpolation,
       loopClips: currentLoopClips,
       incomingInterpolationBreakKeyIds: currentIncomingInterpolationBreakKeyIds,
-      selectedKeyId: childBeforeAuthority
+      selectedKeyId: beforeSelectionFromPayload
         ? payload.selectedKeyId
         : currentDocument?.selectedKeyId ?? null,
-      cursorAppFrame: childBeforeAuthority
+      cursorAppFrame: beforeSelectionFromPayload
         ? payload.cursorAppFrame
         : currentDocument?.cursorAppFrame ?? payload.cursorAppFrame,
       capacity,

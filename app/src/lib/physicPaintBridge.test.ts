@@ -3989,11 +3989,16 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
       incomingInterpolationBreakKeyIds: ['source-B'],
     });
     if (!seeded.ok) throw new Error(seeded.error);
+    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    // Launching on frame 20 installs 'ordinary' as the live parent selection
+    // through the real launch path (createPhysicPaintLaunchContext selects the
+    // key at the requested frame) — the pre-delete selection under test.
+    const launch = await openPhysicPaintCanvas({ layer, frame: 20 });
+    if (!launch.ok) throw new Error(launch.error);
     const seededDoc = physicPaintStore.getRotoPhysicalDocument(layer.id);
     if (!seededDoc) throw new Error('Expected seeded physical document.');
-    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
-    const launch = await openPhysicPaintCanvas({ layer, frame: 5 });
-    if (!launch.ok) throw new Error(launch.error);
+    expect(seededDoc.selectedKeyId).toBe('ordinary');
+    expect(seededDoc.cursorAppFrame).toBe(20);
 
     const proposed = proposePhysicPaintRotoDeleteRails({
       document: seededDoc,
