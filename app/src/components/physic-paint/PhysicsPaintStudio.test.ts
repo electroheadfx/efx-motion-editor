@@ -489,7 +489,8 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
     expect(selectionStart).toBeGreaterThanOrEqual(0);
     expect(selection).toContain("gesture === 'toggle' || gesture === 'range' || gesture === 'union'");
     expect(selection).toContain('updatePhysicsPaintRotoRailSetSelection(');
-    expect(selection).toContain('railSetSelection.peek(),');
+    expect(selection).toContain('seedRailSetSelection(railSetSelection.peek(),');
+    expect(selection).toContain('updatePhysicsPaintRotoRailSetSelection(currentSet,');
     expect(selection).toContain('orderedRailSetIdentities,');
     expect(selection).toContain('railSetSelection.value = next;');
     expect(selection).toContain('railSetSelection.value = null;');
@@ -502,8 +503,26 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
     expect(selectionStart).toBeGreaterThanOrEqual(0);
     expect(selection).toContain("gesture === 'toggle' || gesture === 'range' || gesture === 'union'");
     expect(selection).toContain('updatePhysicsPaintRotoRailSetSelection(');
+    expect(selection).toContain('seedRailSetSelection(railSetSelection.peek(),');
+    expect(selection).toContain('updatePhysicsPaintRotoRailSetSelection(currentSet,');
     expect(selection).toContain('railSetSelection.value = next;');
     expect(selection).toContain('railSetSelection.value = null;');
+  });
+
+  it('seeds the set from the plain-selected single-rail signals on the first modifier gesture (43.6-08 M1)', () => {
+    const keyRailStart = studio.indexOf('const handleSelectRotoKeyRail = useCallback((');
+    const keyRailEnd = studio.indexOf('const handleSelectRotoLoopClip', keyRailStart);
+    const keyRailHandler = studio.slice(keyRailStart, keyRailEnd);
+    expect(keyRailStart).toBeGreaterThanOrEqual(0);
+    expect(keyRailHandler).toContain("selectedRotoKeyRail.value !== null");
+    expect(keyRailHandler).toContain("{ kind: 'key-rail', firstKeyId: selectedRotoKeyRail.value.firstKeyId }");
+
+    const loopStart = studio.indexOf('const handleSelectRotoLoopClip = useCallback((');
+    const loopEnd = studio.indexOf('const handleOpenRotoLoopEdit', loopStart);
+    const loopHandler = studio.slice(loopStart, loopEnd);
+    expect(loopStart).toBeGreaterThanOrEqual(0);
+    expect(loopHandler).toContain('selectedLoopClipId.value !== null');
+    expect(loopHandler).toContain("{ kind: 'loop', loopId: selectedLoopClipId.value }");
   });
 
   it('collapses the set as its own Escape layer before key-selection collapse (D-04)', () => {

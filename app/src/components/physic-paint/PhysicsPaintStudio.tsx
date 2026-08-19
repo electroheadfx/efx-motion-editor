@@ -23,6 +23,7 @@ import {
   reconcileRailSetSelection,
   recordRailSetSnapshot,
   resolveRailSetPostAcceptance,
+  seedRailSetSelection,
   updatePhysicsPaintRotoRailSetSelection,
   type RailSetIdentity,
   type RailSetSelectionState,
@@ -1300,9 +1301,14 @@ export function PhysicsPaintStudio() {
     if (gesture === 'toggle' || gesture === 'range' || gesture === 'union') {
       // Modifier gestures route through the rail-set reducer (D-01): a Key Rail
       // can join, anchor, and leave the set exactly like a Loop Rail.
+      // 43.6-08 (M1): a plain-selected rail seeds the set when no set is
+      // active, so the first modifier gesture carries it instead of dropping it.
       const target: RailSetIdentity = { kind: 'key-rail', firstKeyId: selection.firstKeyId };
-      const next = updatePhysicsPaintRotoRailSetSelection(
-        railSetSelection.peek(),
+      const singleIdentity: RailSetIdentity | null = selectedRotoKeyRail.value !== null
+        ? { kind: 'key-rail', firstKeyId: selectedRotoKeyRail.value.firstKeyId }
+        : null;
+      const currentSet = seedRailSetSelection(railSetSelection.peek(), singleIdentity);
+      const next = updatePhysicsPaintRotoRailSetSelection(currentSet,
         orderedRailSetIdentities,
         target,
         gesture,
@@ -1344,7 +1350,7 @@ export function PhysicsPaintStudio() {
       );
     }
     selectedRotoKeyRail.value = selection;
-  }, [clearRotoLoopSelection, currentFrame, launchContext, orderedRailSetIdentities]);
+  }, [clearRotoLoopSelection, currentFrame, launchContext, orderedRailSetIdentities, selectedRotoKeyRail]);
   const handleSelectRotoLoopClip = useCallback((
     loopId: string | null,
     gesture: PhysicsPaintRotoSpacingSelectionGesture = 'plain',
@@ -1357,9 +1363,14 @@ export function PhysicsPaintStudio() {
     if (gesture === 'toggle' || gesture === 'range' || gesture === 'union') {
       // Modifier gestures route through the rail-set reducer (D-01): the set is
       // the active scope while non-null; the single-rail signals stay clear.
+      // 43.6-08 (M1): a plain-selected rail seeds the set when no set is
+      // active, so the first modifier gesture carries it instead of dropping it.
       const target: RailSetIdentity = { kind: 'loop', loopId };
-      const next = updatePhysicsPaintRotoRailSetSelection(
-        railSetSelection.peek(),
+      const singleIdentity: RailSetIdentity | null = selectedLoopClipId.value !== null
+        ? { kind: 'loop', loopId: selectedLoopClipId.value }
+        : null;
+      const currentSet = seedRailSetSelection(railSetSelection.peek(), singleIdentity);
+      const next = updatePhysicsPaintRotoRailSetSelection(currentSet,
         orderedRailSetIdentities,
         target,
         gesture,
@@ -1426,7 +1437,7 @@ export function PhysicsPaintStudio() {
       rotoScriptLibrary.select(selectedGroup.scriptId);
       activeLinkedLoopClipId.value = selectedGroup.loopId;
     }
-  }, [clearRotoLoopSelection, currentFrame, launchContext, loopScriptRows, orderedRailSetIdentities, orderedRotoLoopClipIds, rotoLoopClips, rotoScriptLibrary]);
+  }, [clearRotoLoopSelection, currentFrame, launchContext, loopScriptRows, orderedRailSetIdentities, orderedRotoLoopClipIds, rotoLoopClips, rotoScriptLibrary, selectedLoopClipId]);
   const handleOpenRotoLoopEdit = useCallback(
     (loopId: string) => {
       selectedLoopClipId.value = loopId;

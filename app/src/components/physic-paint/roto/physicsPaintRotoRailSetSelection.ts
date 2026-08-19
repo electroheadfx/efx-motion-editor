@@ -217,6 +217,27 @@ export function updatePhysicsPaintRotoRailSetSelection(
 }
 
 /**
+ * 43.6-08 seed bridge (UI-SPEC M1 'plain click moves the anchor to it'):
+ * bridges the two disconnected selection tracks so a plain-selected single
+ * rail becomes the rail-set anchor on the first modifier gesture.
+ * - A non-null current set always wins and is returned unchanged.
+ * - When the set is null but the single-rail identity is valid, returns a
+ *   fresh one-member set anchored on that identity so the first modifier
+ *   gesture has an anchor instead of dropping the plain-selected rail.
+ * - Otherwise returns null so the reducer keeps its fail-closed range/union
+ *   behavior for genuinely anchor-less input.
+ */
+export function seedRailSetSelection(
+  current: RailSetSelectionState | null,
+  singleIdentity: RailSetIdentity | null,
+): RailSetSelectionState | null {
+  if (current !== null) return current;
+  if (singleIdentity === null) return null;
+  if (!isRailSetIdentity(singleIdentity)) return null;
+  return freezeRailSetSelection([singleIdentity], singleIdentity);
+}
+
+/**
  * D-05/Pitfall 2 fail-closed reconcile: returns null when the selection is
  * null, any member is absent from the ordered list, or identities are
  * malformed/duplicated — clear the invalid set, never invent a fallback scope.
