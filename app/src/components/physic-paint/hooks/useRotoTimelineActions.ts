@@ -158,6 +158,7 @@ export function mapRotoInsertProductReason(target: RotoInsertTarget): string | n
 
 export type RotoScissorTarget =
   | { readonly kind: 'ok'; readonly keyId: string; readonly appFrame: number }
+  | { readonly kind: 'generated-ok'; readonly keyId: string; readonly appFrame: number }
   | { readonly kind: 'already-owns-break'; readonly keyId: string; readonly appFrame: number }
   | { readonly kind: 'generated'; readonly appFrame: number }
   | { readonly kind: 'empty'; readonly appFrame: number }
@@ -192,6 +193,7 @@ export function classifyRotoScissorTarget(
     || input.currentAppFrame >= input.capacity) {
     return Object.freeze({ kind: 'unavailable' });
   }
+  const appFrame = input.currentAppFrame;
 
   const groupOwnedKeyIds = new Set<string>();
   for (const loopClip of input.loopClips) {
@@ -216,10 +218,51 @@ export function classifyRotoScissorTarget(
     }
   }
 
-  const cursorMatches = input.records.filter((record) => record.appFrame === input.currentAppFrame);
+  const cursorMatches = input.records.filter((record) => record.appFrame === appFrame);
   if (cursorMatches.length === 1) return classifyRecord(cursorMatches[0]);
-  if (input.physicalCells[input.currentAppFrame]?.kind === 'generated') {
-    return Object.freeze({ kind: 'generated', appFrame: input.currentAppFrame });
+  const generatedCell = input.physicalCells[appFrame];
+  if (generatedCell?.kind === 'generated') {
+    // quick 260820-0kg: a generated in-between is a split target only when it
+    // is a genuine Key Rail in-between. Group/linked guards run AHEAD of
+    // acceptance (RED 3): ownership of the following real key closes the frame
+    // even when the cell also resolves through a linked lifecycle span.
+    if (groupOwnedKeyIds.has(generatedCell.rightKeyId)) {
+      return Object.freeze({ kind: 'group-or-linked', ownership: 'group', appFrame });
+    }
+    if (input.frameResolution !== null && (
+      input.frameResolution.kind === 'linked'
+      || input.frameResolution.kind === 'linked-generated'
+      || input.frameResolution.kind === 'linked-gap'
+      || input.frameResolution.kind === 'linked-unresolved'
+    )) {
+      return Object.freeze({ kind: 'group-or-linked', ownership: 'linked', appFrame });
+    }
+    if (breaks.has(generatedCell.rightKeyId)) {
+      return Object.freeze({
+        kind: 'already-owns-break',
+        keyId: generatedCell.rightKeyId,
+        appFrame,
+      });
+    }
+    const segments = deriveKeyRailSegments({
+      orderedRealKeys: [...input.records]
+        .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId)),
+      incomingInterpolationBreakKeyIds: new Set(input.incomingInterpolationBreakKeyIds),
+      groupOwnedKeyIds,
+    });
+    const containingSegment = segments.find((segment) => (
+      segment.keyIds.includes(generatedCell.rightKeyId)
+      && segment.firstKeyFrame < appFrame
+      && appFrame < segment.lastKeyFrame
+    ));
+    if (containingSegment !== undefined) {
+      return Object.freeze({
+        kind: 'generated-ok',
+        keyId: generatedCell.rightKeyId,
+        appFrame,
+      });
+    }
+    return Object.freeze({ kind: 'generated', appFrame });
   }
   if (input.frameResolution !== null && (
     input.frameResolution.kind === 'linked'
@@ -227,19 +270,20 @@ export function classifyRotoScissorTarget(
     || input.frameResolution.kind === 'linked-gap'
     || input.frameResolution.kind === 'linked-unresolved'
   )) {
-    return Object.freeze({ kind: 'group-or-linked', ownership: 'linked', appFrame: input.currentAppFrame });
+    return Object.freeze({ kind: 'group-or-linked', ownership: 'linked', appFrame });
   }
-  return Object.freeze({ kind: 'empty', appFrame: input.currentAppFrame });
+  return Object.freeze({ kind: 'empty', appFrame });
 }
 
 export function mapRotoScissorProductReason(target: RotoScissorTarget): string | null {
   switch (target.kind) {
     case 'ok':
+    case 'generated-ok':
       return null;
     case 'already-owns-break':
       return 'This key already starts a Key Rail segment.';
     case 'generated':
-      return 'Scissor is unavailable on a generated frame. Select a real ordinary key.';
+      return 'Scissor is unavailable at the edge of a Key Rail segment.';
     case 'empty':
       return 'Scissor is unavailable on an empty frame. Select a real ordinary key.';
     case 'group-or-linked':
@@ -251,6 +295,25 @@ export function mapRotoScissorProductReason(target: RotoScissorTarget): string |
     case 'unavailable':
       return 'Scissor is unavailable.';
   }
+}
+
+export type RotoScissorAcceptedTarget = Extract<
+  RotoScissorTarget,
+  { readonly kind: 'ok' } | { readonly kind: 'generated-ok' }
+>;
+
+/** Enabled Scissor tooltip: generated-frame targets use the split-at-point copy. */
+export function mapRotoScissorTooltip(target: RotoScissorTarget): string {
+  return target.kind === 'generated-ok'
+    ? 'Split the Key Rail at this point.'
+    : 'Split the Key Rail before this key.';
+}
+
+/** Accepted status copy: {N} is the cursor frame for a generated target, the real-key frame otherwise. */
+export function mapRotoScissorAcceptedCopy(target: RotoScissorAcceptedTarget): string {
+  return target.kind === 'generated-ok'
+    ? `Split Key Rail at frame ${target.appFrame}.`
+    : `Split Key Rail before frame ${target.appFrame}.`;
 }
 
 /**
@@ -1123,6 +1186,8 @@ export interface RotoPhysicalTimelineActionBundle {
   readonly canScissor: ReadonlySignal<boolean>;
   /** Reactive Scissor disabled reason, or null when eligible. */
   readonly scissorDisabledReason: ReadonlySignal<string | null>;
+  /** Contextual enabled Scissor tooltip; generated-frame targets use the split-at-point copy. */
+  readonly scissorTooltipDescription: ReadonlySignal<string>;
   /** Reactive pending physical operation id, or null when idle. */
   readonly pendingOperationId: ReadonlySignal<string | null>;
   /**
@@ -1701,6 +1766,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const scissorTarget = computed(() => classifyRotoScissorTarget(readRotoScissorTargetInput(input)));
   const canScissor = computed(() => mapRotoScissorProductReason(scissorTarget.value) === null);
   const scissorDisabledReason = computed(() => mapRotoScissorProductReason(scissorTarget.value));
+  const scissorTooltipDescription = computed(() => mapRotoScissorTooltip(scissorTarget.value));
   const canDragKey = computed(() => computeDragAvailability(input).eligible);
   const dragDisabledReason = computed(() => computeDragAvailability(input).reason);
   const canApplyForceSpacing = computed(() => computeForceSpacingAvailability(input).eligible);
@@ -1909,12 +1975,12 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       input.publishStatus?.(rejection);
       return Promise.resolve(false);
     }
-    if (target.kind !== 'ok') return Promise.resolve(false);
+    if (target.kind !== 'ok' && target.kind !== 'generated-ok') return Promise.resolve(false);
     return runPhysicalAction({
       intent: { kind: 'scissor-key-rail', breakOwnerKeyId: target.keyId },
       operationKind: 'scissor-key-rail',
       requiredKeyId: target.keyId,
-      successMessage: `Split Key Rail before frame ${target.appFrame}.`,
+      successMessage: mapRotoScissorAcceptedCopy(target),
       rejectedCopy: () => mapRotoScissorProductReason(
         classifyRotoScissorTarget(readRotoScissorTargetInput(input)),
       ) ?? 'Scissor is unavailable.',
@@ -3037,6 +3103,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     scissorKeyRail,
     canScissor,
     scissorDisabledReason,
+    scissorTooltipDescription,
     pendingOperationId: pendingOperationIdSignal,
     prepareRotoKeyDrag,
     commitRotoKeyDrag,
@@ -3061,7 +3128,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     addEmptyKeyDisabledReason,
     canSelectAllKeys,
     selectAllKeysDisabledReason,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,

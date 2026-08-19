@@ -3197,7 +3197,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     <span id="roto-key-action-reason-scissor" class="physics-paint-sr-only">{scissorRotoKeyDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={scissorKeyTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy('Split the Key Rail before this key.', scissorRotoKeyDisabledReason)}
+                    {buildGuardedActionTooltipCopy(physicalActions?.scissorTooltipDescription.value ?? 'Split the Key Rail before this key.', scissorRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={pasteKeyTooltip.onPointerEnter} onPointerLeave={pasteKeyTooltip.onPointerLeave}>

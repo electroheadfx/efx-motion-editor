@@ -18,6 +18,7 @@ import {
   derivePhysicPaintRotoLoopRanges,
   type PhysicPaintRotoFrameResolution,
   type PhysicPaintRotoPhysicalCell,
+  type PhysicPaintRotoPhysicalEditProposal,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import { projectPhysicsPaintLoopClipGeometry } from '../view/physicsPaintLoopClipPresentation';
 import { deriveKeyRailSegments, resolvePhysicPaintPushAnchor } from '../view/physicsPaintKeyRailPresentation';
@@ -44,6 +45,7 @@ import {
   useRotoTimelineActions,
   type RotoDeleteTarget,
   type RotoInsertTarget,
+  type RotoScissorTargetClassificationInput,
   type RotoTimelineActionsInput,
 } from './useRotoTimelineActions';
 
@@ -2295,18 +2297,18 @@ describe('useRotoTimelineActions Scissor availability and activation', () => {
       getRotoInterpolationState: () => ({ enabled: true, mode: 'duplicate' }),
     });
 
-    const classificationInput = {
+    const classificationInput: RotoScissorTargetClassificationInput = {
       launchReady: true,
       pendingOperationId: null,
       selectedKeyId: null,
-      selectedLoopClipIds: [] as readonly string[],
+      selectedLoopClipIds: [],
       currentAppFrame: 4,
       capacity: 12,
       records,
-      loopClips: [] as readonly PhysicPaintRotoLoopClip[],
+      loopClips: [],
       physicalCells: generatedCells,
       frameResolution: { kind: 'empty' },
-      incomingInterpolationBreakKeyIds: [] as readonly string[],
+      incomingInterpolationBreakKeyIds: [],
     };
     expect(classifyRotoScissorTarget(classificationInput)).toEqual({
       kind: 'generated-ok',
@@ -2318,7 +2320,11 @@ describe('useRotoTimelineActions Scissor availability and activation', () => {
 
     expect(await actions.physicalActions.scissorKeyRail()).toBe(true);
     expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
-    const dispatched = executePhysicalEdit.mock.calls[0][0];
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as {
+      readonly operationKind: string;
+      readonly intent: { readonly kind: string; readonly breakOwnerKeyId: string };
+      readonly proposal: PhysicPaintRotoPhysicalEditProposal;
+    };
     expect(dispatched).toEqual(expect.objectContaining({
       operationKind: 'scissor-key-rail',
       intent: { kind: 'scissor-key-rail', breakOwnerKeyId: 'k6' },
@@ -2356,15 +2362,15 @@ describe('useRotoTimelineActions Scissor availability and activation', () => {
       capacity: 12,
     });
 
-    const classificationInput = {
+    const classificationInput: RotoScissorTargetClassificationInput = {
       launchReady: true,
       pendingOperationId: null,
       selectedKeyId: null,
-      selectedLoopClipIds: [] as readonly string[],
+      selectedLoopClipIds: [],
       currentAppFrame: 4,
       capacity: 12,
       records,
-      loopClips: [] as readonly PhysicPaintRotoLoopClip[],
+      loopClips: [],
       physicalCells: generatedCells,
       frameResolution: { kind: 'empty' },
       incomingInterpolationBreakKeyIds: ['k6'],
@@ -2394,18 +2400,18 @@ describe('useRotoTimelineActions Scissor availability and activation', () => {
       originalEndExclusive: 8,
       visibleRanges: Object.freeze([Object.freeze({ start: 0, endExclusive: 8 })]),
     });
-    const classificationInput = {
+    const classificationInput: RotoScissorTargetClassificationInput = {
       launchReady: true,
       pendingOperationId: null,
       selectedKeyId: null,
-      selectedLoopClipIds: [] as readonly string[],
+      selectedLoopClipIds: [],
       currentAppFrame: 4,
       capacity: 12,
       records,
-      loopClips: [group] as readonly PhysicPaintRotoLoopClip[],
+      loopClips: [group],
       physicalCells: generatedCells,
       frameResolution: { kind: 'linked-generated' } as never,
-      incomingInterpolationBreakKeyIds: [] as readonly string[],
+      incomingInterpolationBreakKeyIds: [],
     };
     const target = classifyRotoScissorTarget(classificationInput);
     expect(target).toEqual({ kind: 'group-or-linked', ownership: 'group', appFrame: 4 });

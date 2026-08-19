@@ -1344,6 +1344,14 @@ describe('useRotoPhysicalEditHistory Key Rail atomic commands (43.4-08)', () => 
       before: snapshot([record('A', 0), record('B', 2), record('C', 6), record('D', 8)], 'B', 2, ['C']),
       after: snapshot([record('C', 6), record('D', 8)], 'C', 6, ['C']),
     },
+    {
+      // quick 260820-0kg: a generated-origin scissor (keys 0/2/6/8, cursor 4)
+      // stores the same break-ownership byte parity as the real-key scissor.
+      operationKind: 'scissor-key-rail' as const,
+      operationId: 'scissor-key-rail-generated-accepted',
+      before: snapshot([record('k0', 0), record('k2', 2), record('k6', 6), record('k8', 8)], 'k6', 4, []),
+      after: snapshot([record('k0', 0), record('k2', 2), record('k6', 6), record('k8', 8)], 'k6', 4, ['k6']),
+    },
   ];
 
   it.each(cases)('records one accepted $operationKind command and restores exact keys, breaks, selection, and cursor through Undo/Redo', async ({ operationKind, operationId, before, after }) => {

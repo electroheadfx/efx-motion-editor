@@ -505,7 +505,7 @@ describe('PhysicsPaintWorkflowStrip Scissor key-rail contract (43.4-01)', () => 
     expect(block).not.toContain('<Scissors');
     expect(block).toContain('<span class="physics-paint-roto-key-icon-label">Scissor</span>');
     expect(code).toContain('id="roto-key-action-reason-scissor"');
-    expect(code).toContain("buildGuardedActionTooltipCopy('Split the Key Rail before this key.', scissorRotoKeyDisabledReason)");
+    expect(code).toContain("buildGuardedActionTooltipCopy(physicalActions?.scissorTooltipDescription.value ?? 'Split the Key Rail before this key.', scissorRotoKeyDisabledReason)");
     expect(getWorkflowStripPropsInterface(code)).toContain('onScissorKeyRail?: () => void;');
   });
 });
