@@ -416,7 +416,7 @@ Plans:
 **Goal:** Let the user select multiple Rails of any type — Key Rail, Motion Rail, Static Rail — in one shared selection set ordered by canonical first-key frame, then apply batch operations to the whole set: Delete Rails, Move Rails, Key Spacing, and selection-scoped (solo) playback. Multi-selection is a new explicit selection scope alongside single-rail and physical-frame selections; the 43.4 mutual-exclusion and selection-authority rules extend to the set. All invariants from Phases 43.3/43.4/43.5 remain binding: persistent intentional gaps, break ownership by stable key identity, capacity as the single end authority, atomic Undo/Redo through the canonical physical history, replay snapshots read from the accepted document authority, and one shared rail behavior with no per-type forks. Spec: SPECS/milestone-v0.9.0-new-phases/phase-43.6-multi-rail-selection-batch-operations-prompt.md
 **Requirements**: RSET-01, RSET-02, RSET-03, RSET-04, BMOV-01, BMOV-02, BMOV-03, BMOV-04, BMOV-05, BMOV-06, BDEL-01, BDEL-02, BSPC-01, BSPC-02, BSPC-03, SOLO-01, SOLO-02, SOLO-03, SOLO-04, SOLO-05, SOLO-06 (planning-local IDs derived in 43.6-RESEARCH.md; REQUIREMENTS.md holds no 43.6 rows)
 **Depends on:** Phase 43.5
-**Plans:** 9/11 plans complete (6 shipped + 5 gap-closure plans after UAT/verification)
+**Plans:** 13/13 plans complete (6 shipped + 5 gap-closure plans after UAT/verification + 2 gap-closure plans after UAT diagnosis of G-43.6-2)
 
 Plans:
 **Wave 1**
@@ -453,6 +453,11 @@ Plans:
 **Wave 8** *(gap closure after 43.6-VERIFICATION.md re-verification (8/9) confirmed the plain Loop click skips the D-14 Solo disarm — REVIEW-WR-01)*
 
 - [x] 43.6-11-PLAN.md — Solo disarm on plain Loop Rail click: one-line disarmSolo() in the handleSelectRotoLoopClip plain-click success branch before the selection write, plus a Studio source-contract regression test (restores truth 9 / SOLO-03; unblocks native UAT re-runs G-43.6-1/-3/-4/-8)
+
+**Wave 9** *(gap closure after 43.6-UAT.md diagnosed G-43.6-2: two independent defects, both wave 1 of the closure set, run in parallel — zero file overlap)*
+
+- [x] 43.6-12-PLAN.md — Delete Rails undo/redo selection authority (PRIMARY G-43.6-2): bridge childBeforeAuthority records the true pre-op selection for delete-rails (not the POST-delete proposal selection), real-bridge forward+undo+redo regression test, history-seam round-trip pin (restores BDEL-02/RSET-03; one Undo restores the exact pre-delete set)
+- [x] 43.6-13-PLAN.md — Recovery-lease self-heal (SECONDARY G-43.6-2): best-effort releasePhysicalEditRecoveryLease() at the top of executePhysicalEdit so a stale recovery lease never blocks Delete until relaunch, plus a coordinator regression test (restores BDEL-01/BDEL-02; mutationLocked block eliminated)
 
 ### Phase 44: Integrated UAT + Signed Release
 
