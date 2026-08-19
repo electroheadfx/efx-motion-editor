@@ -34,7 +34,7 @@ import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPain
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
 import { disarmPushTool, isPushCommitInFlight } from './view/physicsPaintPushArmedTool';
-import { disarmSolo } from './view/physicsPaintSoloArm';
+import { disarmSolo, isSoloArmed } from './view/physicsPaintSoloArm';
 import { deriveSoloPlaybackWindow } from './roto/physicsPaintRotoSoloWindow';
 import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyboard';
 import { createIdentityMemo, usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
@@ -1145,6 +1145,12 @@ export function PhysicsPaintStudio() {
       // derivation — the ONLY solo filter seam (the getFrames enumeration).
       // Wiring only: no derivation logic lives in the Studio body.
       getSoloWindow: () => {
+        // 43.6-09 (D-14/D-17): the solo filter is active ONLY while armed.
+        // Disarmed must return null before any member derivation so the
+        // playback enumeration stays byte-identical to pre-solo playback even
+        // when a rail is selected — otherwise selecting a rail after disarm
+        // plays only that rail, as if solo were still active.
+        if (!isSoloArmed()) return null;
         const members: RailSetIdentity[] = [];
         for (const member of effectiveRailSetSelection?.members ?? []) members.push(member);
         if (members.length === 0) {
