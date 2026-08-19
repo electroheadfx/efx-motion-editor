@@ -577,6 +577,30 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
     expect(port.indexOf('if (!isSoloArmed()) return null;')).toBeLessThan(port.indexOf('const members: RailSetIdentity[]'));
   });
 
+  it('disarms an armed Solo when a plain Loop Rail click changes the selection (43.6-11)', () => {
+    // REVIEW-WR-01 regression: the plain-click success branch of
+    // handleSelectRotoLoopClip is the only rail-selection change path that used
+    // to skip disarmSolo() — an armed Solo would silently retarget to the newly
+    // plain-clicked Loop rail via the getSoloWindow single-rail fallback.
+    const handlerStart = studio.indexOf('const handleSelectRotoLoopClip = useCallback((');
+    const handlerEnd = studio.indexOf('const handleOpenRotoLoopEdit', handlerStart);
+    const handler = studio.slice(handlerStart, handlerEnd);
+    expect(handlerStart).toBeGreaterThanOrEqual(0);
+    // The plain-click branch runs from the collapse comment (unique inside the
+    // Loop handler slice — the Key Rail handler's identical comment sits
+    // outside it) to the end of the handler.
+    const branchStart = handler.indexOf('// Plain click collapses the set into the single-rail path (D-04).');
+    expect(branchStart).toBeGreaterThanOrEqual(0);
+    const branch = handler.slice(branchStart);
+    // 43.6-06 (D-14): a plain Loop Rail click is a rail-selection change, so an
+    // armed Solo must disarm BEFORE the new selection is written — the armed
+    // getSoloWindow gate (L1153) then returns null for the new selection.
+    expect(branch).toContain('disarmSolo();');
+    expect(branch.indexOf('disarmSolo();')).toBeLessThan(
+      branch.indexOf('selectedLoopClipIds.value = next.selectedLoopClipIds;'),
+    );
+  });
+
   it('clears the set on Select All and spacing selection (D-04 key selection)', () => {
     const selectAllStart = studio.indexOf('const selectAllRotoKeys = useCallback(() => {');
     const selectAllEnd = studio.indexOf('const [, setLastError]', selectAllStart);
