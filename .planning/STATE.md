@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.6
 current_phase_name: multi-rail-selection-and-batch-operations
 status: executing
-stopped_at: Completed 43.6-12-PLAN.md
-last_updated: "2026-08-19T13:37:31.126Z"
+stopped_at: Completed 43.6-13-PLAN.md
+last_updated: "2026-08-19T13:45:13.417Z"
 last_activity: 2026-08-19
 last_activity_desc: Completed 43.6-11-PLAN.md (plain Loop Rail click Solo disarm, REVIEW-WR-01 closed)
 progress:
   total_phases: 12
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 97
-  completed_plans: 96
-  percent: 75
+  completed_plans: 97
+  percent: 83
 ---
 
 Total Phases: 8
@@ -29,7 +29,7 @@ stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-16
 last_activity_desc: "Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics"
-progress:[██████████] 99%
+progress:[██████████] 100%
   total_phases: 10
   completed_phases: 7
   total_plans: 78
@@ -49,7 +49,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.6 (multi-rail-selection-and-batch-operations) — EXECUTING
-Plan: 2 of 13
+Plan: 3 of 13
 Status: Ready to execute
 Last activity: 2026-08-19 — Phase 43.6 execution started
 
@@ -269,6 +269,7 @@ Progress: [██████████] 99%
 | Phase 43.6 P10 | 8min | 3 tasks | 4 files |
 | Phase 43.6 P11 | 3min | 1 tasks | 2 files |
 | Phase 43.6 P12 | 9min | 3 tasks | 3 files |
+| Phase 43.6 P13 | 4min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -542,6 +543,7 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43.6-11: the disarm runs BEFORE the selection write (selectedLoopClipIds.value = next.selectedLoopClipIds), so the armed getSoloWindow gate (L1153) returns null for the new selection and playback/capsule can never silently retarget
 - [Phase ?]: [Phase 43.6]: 43.6-12: delete-rails before snapshot records currentDocument (pre-op) selectedKeyId/cursorAppFrame, not the POST-delete proposal selection the forward payload ships — undo replay submits entry.before so payload-derived recording fails replay-target equality and silently no-ops undo (G-43.6-2); strict equality check preserved (T-43.6-12-02 accepted)
 - [Phase ?]: [Phase 43.6]: 43.6-12: createPhysicPaintLaunchContext installs the key at the launch frame as the live parent selection — real-bridge tests needing a non-null pre-op selection must launch on a key frame
+- [Phase ?]: [Phase 43.6]: 43.6-13: orphaned releasePhysicalEditRecoveryLease wired as best-effort self-heal at the top of executePhysicalEdit (only production caller) before the serialize guard — release routes through ports.lease.release so a stale-token parent refusal still blocks; recoveryLeaseSignal.peek() stays in the guard (G-43.6-2 secondary defect closed)
 
 ### Pending Todos
 
@@ -745,8 +747,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-19T13:37:31.111Z
-Stopped at: Completed 43.6-12-PLAN.md
+Last session: 2026-08-19T13:45:13.401Z
+Stopped at: Completed 43.6-13-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
