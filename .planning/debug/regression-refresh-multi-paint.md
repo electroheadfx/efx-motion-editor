@@ -32,10 +32,10 @@ Build a tight RED feedback loop first (scripted many-stroke generation asserting
 ## Current Focus
 
 ```yaml
-hypothesis: CONFIRMED mechanism — the acceptance reconcile paint (engine.clear + setPreviewBaseImageUrl of the committed frame) is the FINAL paint; if its cache-miss decode is superseded before onload, the engine drops it silently (never cached, never retried) and the canvas keeps the pre-apply image until the next explicit paint. The exact in-production invalidator is not statically identifiable (audit exhausted); count-dependence enters via decode duration. Fix = guaranteed-completion contract: cache-on-drop + applied-state tracking + settle notification in the engine, plus a bounded settlement-aware repair guard armed by the Studio reconcile port.
-test: RED CONFIRMED — 5/6 engine tests fail against the pre-fix engine (stash demo); guard/chain RED = module absent pre-fix → GREEN — engine 73/73 (5 suites), guard+chain 10/10, app hooks 79/79, PhysicsPaintStudio 76/76, tsc clean in both packages
-expecting: native UAT — heavy-stroke Motion Action shows the complete final frame at completion with no click; 2-stroke Action remains correct (control)
-next_action: native human verification with a heavy-stroke Action (watch console for the guard repair log `[PhysicsPaintStudio] physical edit: Completion paint ... was dropped — repairing` to name the racer); on pass, archive session to resolved/
+hypothesis: CONFIRMED (UPDATED after native UAT rejection of 60fb8ca5) — that fix INVERTED the race: the stale async decode/apply (a cache-hit re-issue resolving older content, or the dataUrl-only guard reloading) lands AFTER the correct completion paint and clobbers it. The completion guard checked whether a paint landed, not whether what landed was the NEWEST generation. FIXED with MONOTONIC GENERATION ORDERING at the engine apply seam: every preview-base request carries a monotonic generation; a settle with an older generation than the last applied paint is a canvas NO-OP (may cache, never paints). The Studio reconcile paints with a session-monotonic generation (strictly above the last applied); the completion guard is generation-aware — it repairs ONLY while the newest generation has not landed, re-applies ONLY the intended image at its intended generation, and stands down the moment any generation >= its intent is applied (the smoking-gun "repairing log while the correct paint is visible" can no longer happen).
+test: RED CONFIRMED (stash demo) — 3 new engine tests fail pre-fix (76 engine total, 73 pre-fix; late-onload gen regression, stale cache-hit re-issue, clear resets freshness) + 1 new guard test fails pre-fix (newer-generation-settled is a no-op). GREEN — engine 77/77 (5 suites incl. 7 completion-contract tests), guard 11/11, loader 6/6, PhysicsPaintStudio 76/76, full app suite 2605 passed, tsc --noEmit clean in both packages.
+expecting: native UAT — heavy-stroke Motion Action shows the complete final frame at completion with no click; 2-stroke Action remains correct (control); the console guard repair log must NOT fire while the correct paint is already visible.
+next_action: native human verification with a heavy-stroke Action (and the 2-stroke control); on pass, archive session to resolved/.
 ```
 
 ## Evidence
@@ -64,44 +64,52 @@ next_action: native human verification with a heavy-stroke Action (watch console
 ## Resolution
 
 root_cause: |
-  The acceptance reconcile paint (engine.clear + setPreviewBaseImageUrl of the committed
-  frame) is the FINAL preview-base paint of a multi-stroke completion. On a cache miss the
-  engine decodes via `new Image()`; if any invalidation lands inside the decode window, the
-  onload guard (requestId/destroyed/animationMode/drawing) dropped the decode BEFORE caching
-  it and nothing retried — the canvas kept the pre-apply image until the next explicit
-  repaint (a click). The decode window scales with PNG size, which is why 2-stroke Actions
-  always win the race and many-stroke Actions expose it. The exact in-production invalidator
-  is not statically identifiable (audit exhausted); the fix is a completion-ordering
-  guarantee that repairs the drop regardless of which invalidator fired.
+  The 60fb8ca5 completion-contract fix INVERTED the original race. The engine's
+  preview-base apply seam guarded ONLY on issue-order (requestId === previewBaseRequestId),
+  which a STALE cache-hit re-issue defeats: the repair path re-issued a synchronous
+  cache-hit whose dataUrl resolved to OLDER content (the first stroke's render), and the
+  requestId-only dataUrl guard had no notion of "newest generation" — it reloaded even
+  while the correct completion paint was visible, painting the stale image over it. The
+  requestId guard cannot catch a later-issued-but-older-content write; only a generation
+  token that reflects content newness can. Required invariant: monotonic generation
+  ordering on the preview-base apply path.
 fix: |
-  1. Engine (EfxPaintEngine.ts): cache-on-drop — a decoded image is inserted into
-     previewBaseImageCache even when the apply guard drops the request (unless destroyed),
-     converting any repair re-request into a synchronous cache-hit apply.
-  2. Engine: applied-state tracking (getAppliedPreviewBaseDataUrl) and settle notification
-     (onPreviewBaseSettled, 'applied'|'dropped' per cache-miss decode and on decode error).
-  3. New guard module (rotoCompletionPaintGuard.ts): armRotoCompletionPaintGuard arms after
-     the completion paint; on a dropped settle of the intended dataUrl (or a different frame
-     applying over the guarded frame while the cursor holds) it re-runs the current-frame
-     load — a synchronous cache-hit apply — and disarms. Bounded (default 2 attempts), stands
-     down when the paint landed or the cursor moved.
-  4. Studio wiring (PhysicsPaintStudio.tsx reconcileCurrentFrame port): arms the guard with
-     the accepted reference frame's dataUrl (findAcceptedRotoReferenceFrame exported from
-     useRotoReferenceController) and logs repairs to the console for racer identification.
+  1. Engine (EfxPaintEngine.ts): MONOTONIC GENERATION ordering at the apply seam —
+     setPreviewBaseImageUrl(dataUrl, generation?) with an appliedPreviewBaseGeneration gate
+     on BOTH apply paths (synchronous cache-hit and onload): a request settling with a
+     generation OLDER than the last applied paint is a canvas NO-OP (still cached for
+     repair), so a stale decode/apply can never paint over the newest generation. Auto
+     generations (navigation/editing callers) stay above any explicit generation seen and
+     above the last applied; clearPreviewBaseImage resets the gate (cleared canvas = fresh).
+     getAppliedPreviewBaseGeneration() + generation on settle notifications exposed.
+  2. Guard (rotoCompletionPaintGuard.ts): generation-aware — arms with the intended
+     generation, repairs ONLY while the newest generation has not landed (newestLanded =
+     appliedGeneration >= intended, or the intended dataUrl), re-applies ONLY the intended
+     image at its intended generation, and stands down when a newer generation applied
+     (the smoking-gun "repairing while the correct paint is visible" cannot occur).
+  3. Loader/Studio (useRotoReferenceController.ts, PhysicsPaintStudio.tsx): loader forwards
+     generation and accepts explicitDataUrl (the repair paints the intended image, never
+     whatever the frame lookup resolves to later); reconcileCurrentFrame generates a
+     session-monotonic generation = max(previous ref, engine applied) + 1 for the paint + guard.
+  4. The original cache-on-drop + settle-notification machinery is retained (a dropped
+     completion decode is still cached so a repair is a synchronous cache-hit), but it is
+     now gated by the generation ordering — it repairs, never clobbers.
 verification: |
-  - RED confirmed: 5/6 new engine tests fail against the pre-fix engine (git stash demo);
-    guard/chain RED = module absent pre-fix.
-  - GREEN: engine 73/73 (5 suites, incl. 6 new completion-contract tests);
-    guard + loader/guard/engine chain 10/10; app hooks 79/79 (reference controller,
-    cached playback, physical edit coordinator); PhysicsPaintStudio 76/76.
-  - tsc --noEmit clean in packages/efx-physic-paint and app.
-  - Native UAT PENDING: heavy-stroke Motion Action must show the complete final frame at
-    completion with no click; watch console for the guard repair log line.
+  - RED confirmed (stash demo): engine stash → 3 new tests fail pre-fix (late-onload
+    generation regression, stale cache-hit re-issue, clear-resets-freshness); guard stash →
+    the newer-generation-settled no-op test fails (pre-fix guard reloads over the newest paint).
+  - GREEN: engine 77/77 (5 suites, 7 completion-contract tests); guard 11/11; loader 6/6;
+    PhysicsPaintStudio 76/76; full app suite 2605 passed; tsc --noEmit clean in both packages
+    (efx-physic-paint rebuilt so the app resolves the new d.ts).
+  - Native UAT PENDING: heavy-stroke Motion Action complete final frame at completion with no
+    click; 2-stroke control correct; console repair log must NOT fire while the correct paint is visible.
 files_changed:
   - packages/efx-physic-paint/src/engine/EfxPaintEngine.ts
   - packages/efx-physic-paint/src/engine/EfxPaintEngine.previewBaseCompletion.test.ts
   - app/src/components/physic-paint/hooks/rotoCompletionPaintGuard.ts
   - app/src/components/physic-paint/hooks/rotoCompletionPaintGuard.test.ts
   - app/src/components/physic-paint/hooks/useRotoReferenceController.ts
+  - app/src/components/physic-paint/hooks/useRotoReferenceController.test.ts
   - app/src/components/physic-paint/PhysicsPaintStudio.tsx
 
 ## Evidence (continued — TDD loop, 2026-08-19)
@@ -109,3 +117,21 @@ files_changed:
 - RED demo: `git stash push -- packages/efx-physic-paint/src/engine/EfxPaintEngine.ts` → 5/6 completion-contract tests fail against the pre-fix engine (the destroy-path test passes trivially pre-fix); `git stash pop` restored the fix. Guard/chain RED pre-fix = module absent (import failure).
 - GREEN: engine 73/73 across 5 suites; guard + chain 10/10; app hook suites 79/79; PhysicsPaintStudio 76/76; `tsc --noEmit` clean in both packages. Engine suites run via the established pattern `cd app && pnpm vitest run --root ../packages/efx-physic-paint src/engine` (per 38.1-07-SUMMARY deviation note; no config changes).
 - Prior session-manager turn was interrupted by an API quota error after the static audit; the interrupted debugger turn had already written all three test legs and the full implementation uncommitted. This turn verified RED/GREEN, reviewed the diff, and committed.
+
+## Evidence (continued — native UAT rejection of 60fb8ca5, 2026-08-19)
+
+- timestamp: 2026-08-19 — NATIVE UAT FAILED: the 60fb8ca5 fix did NOT fix the bug — it INVERTED the race. Exact native sequence (user screenshots): (1) strokes drawn, queued outline previews visible; (2) completion → the FINAL render with ALL strokes paints correctly; (3) a LATER re-render overwrites it with a STALE image showing only the FIRST stroke's render; (4) a manual frame refresh restores the correct full render. So a stale async decode/apply now lands AFTER the correct completion paint and clobbers it.
+- timestamp: 2026-08-19 — prime suspect = the 60fb8ca5 changes themselves: dropped decodes are now cached and the repair path re-applies a synchronous cache-hit; if the cache holds the stale first-stroke decode, the repair (or the stale onload itself) paints it over the newer settled paint. The completion guard checks whether a paint landed, not whether what landed is the NEWEST generation.
+- timestamp: 2026-08-19 — required invariant (actual bug class): MONOTONIC GENERATION ORDERING on the preview-base apply path. Every decode/paint request carries a monotonically increasing generation token; an onload/apply completing with an older generation than the last settled paint is a NO-OP for the canvas (may populate cache, may never paint). The completion-repair guard must compare generations — repair only when the NEWEST generation's paint failed to land, and only ever apply the newest generation's image.
+- timestamp: 2026-08-19 — trace the exact ordering that lets the stale image paint last. The user's console may show `[PhysicsPaintStudio] physical edit: Completion paint ... was dropped — repairing` — if the repair fires while the correct paint is visible, that is the smoking gun.
+- timestamp: 2026-08-19 — RED test spec: simulate decode A (stale generation, slow) and completion paint B (new generation) → B lands → A's onload completes → canvas must still show B; and repair-guard-fires-after-B-landed must be a no-op. Implement the generation guard at the engine apply seam; fix or remove the cache-apply repair path if it is the stale writer. Keep the 43.x paintVersion discipline: every real mutation bumps, subscribers re-render — but stale async completions never write.
+- timestamp: 2026-08-19 — status reset to investigating; previous Resolution block below documents the (now rejected) completion-contract approach — the generation-ordering guard is the corrected fix direction.
+
+## Evidence (continued — generation-ordering fix implemented, 2026-08-19)
+
+- timestamp: 2026-08-19 — mechanism of the inverted race pinned: `applyPreviewBaseImage` (EfxPaintEngine.ts) guarded ONLY on requestId === previewBaseRequestId (issue order). A STALE cache-hit re-issue (the repair reload resolving older content) is a NEW issue with a CURRENT requestId, so it painted synchronously over the correct completion paint; the dataUrl-only guard also reloaded while the correct paint was visible (its `verify` had no notion of newest generation). The requestId guard cannot catch a later-issued-but-older-content write — only a generation token that reflects content newness can.
+- timestamp: 2026-08-19 — engine fix (EfxPaintEngine.ts): `setPreviewBaseImageUrl(dataUrl, generation?)`; `appliedPreviewBaseGeneration` gate on BOTH apply paths (cache-hit synchronous and onload) — a settle with generation < applied is a canvas NO-OP but still caches; auto-assigned generations (navigation/editing callers) use a counter that stays above any explicit generation the engine has seen, and above the last applied; `clearPreviewBaseImage` resets the applied generation (a cleared canvas is a fresh generation); `getAppliedPreviewBaseGeneration()` + generation on settle notifications.
+- timestamp: 2026-08-19 — guard fix (rotoCompletionPaintGuard.ts): generation-aware. Arms with `intendedGeneration`; `newestLanded()` = applied generation >= intended (or applied dataUrl === intended) → stands down; repair re-applies ONLY the intended dataUrl at the intended generation — the engine gate turns it into a no-op if a newer generation painted between arm and repair. This is the smoking-gun fix: the "repairing" log can no longer fire while the correct (newest) paint is visible.
+- timestamp: 2026-08-19 — loader/Studio wiring: `createRotoReferenceLoader` forwards `generation` and accepts `explicitDataUrl` (the repair paints the intended image, never whatever the frame lookup resolves to later); `loadCachedRotoReferenceFrame(..., generation?, explicitDataUrl?)`; the reconcileCurrentFrame port generates a session-monotonic generation = max(last ref, engine applied) + 1 and passes it to the paint + guard.
+- timestamp: 2026-08-19 — TDD: RED stash demo — engine stash → 3/76 fail (late-onload gen regression, stale cache-hit re-issue, clear freshness); guard stash → the new generation test fails (pre-fix guard reloads over the newest paint). GREEN — engine 77/77 (5 suites, 7 completion-contract tests incl. explicit/auto interleaving), guard 11/11, loader 6/6, PhysicsPaintStudio 76/76, full app 2605 passed, `tsc --noEmit` clean in both packages (package rebuilt so app sees the new d.ts).
+- timestamp: 2026-08-19 — native UAT PENDING: heavy-stroke Motion Action complete final frame at completion with no click; 2-stroke control; console must NOT show the repair log while the correct paint is visible.
