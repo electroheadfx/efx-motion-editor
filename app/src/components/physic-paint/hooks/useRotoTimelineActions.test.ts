@@ -973,6 +973,64 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
     expect(publishStatus).toHaveBeenCalledWith('Added an empty Roto key.');
   });
 
+  it('joins an existing Key Rail when the destination is strictly inside a segment span', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: [realKeyRecord('k0', 0), realKeyRecord('k4', 4), realKeyRecord('k8', 8)],
+    });
+    const accepted = await actions.physicalKeyUtilities.addEmptyKey(6, blankPayload(6));
+    expect(accepted).toBe(true);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: {
+        nextRecords: readonly PhysicPaintRotoRealKeyRecord[] | null;
+        nextIncomingInterpolationBreakKeyIds: readonly string[] | null;
+      };
+    };
+    // 260819-wzi: a destination strictly inside the 0/4/8 segment span joins the
+    // rail (→ 0/4/6/8) instead of spawning a spurious one-key rail.
+    expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
+    expect(dispatched.proposal.nextRecords).toHaveLength(4);
+  });
+
+  it('keeps a trailing-space destination on its own one-key rail (guard)', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: [realKeyRecord('k0', 0), realKeyRecord('k4', 4), realKeyRecord('k8', 8)],
+      capacity: 20,
+    });
+    await actions.physicalKeyUtilities.addEmptyKey(10, blankPayload(10));
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: {
+        mapping: ReadonlyMap<string, number>;
+        nextIncomingInterpolationBreakKeyIds: readonly string[] | null;
+      };
+    };
+    const newKeyId = [...dispatched.proposal.mapping.entries()]
+      .find(([, frame]) => frame === 10)?.[0];
+    expect(newKeyId).toBeDefined();
+    expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
+  });
+
+  it('keeps a gap destination on its own one-key rail when no segment strictly spans it (guard)', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: [realKeyRecord('k0', 0), realKeyRecord('k4', 4), realKeyRecord('k8', 8)],
+      incomingInterpolationBreakKeyIds: ['k4'],
+    });
+    await actions.physicalKeyUtilities.addEmptyKey(1, blankPayload(1));
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: {
+        mapping: ReadonlyMap<string, number>;
+        nextIncomingInterpolationBreakKeyIds: readonly string[] | null;
+      };
+    };
+    const newKeyId = [...dispatched.proposal.mapping.entries()]
+      .find(([, frame]) => frame === 1)?.[0];
+    expect(newKeyId).toBeDefined();
+    // 43.4 SC-4: frame 1 is NOT strictly inside either derived span ([0] or
+    // [4,8]), so the new key keeps its own one-key rail. The pre-existing break
+    // owning k4 is preserved alongside the new key's own break.
+    expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toContain(newKeyId);
+    expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toContain('k4');
+  });
+
   it('rejects an occupied destination through the resolver without dispatching', async () => {
     const { actions, executePhysicalEdit, publishStatus } = createHarness({
       records: [realKeyRecord('key-a', 3)],
