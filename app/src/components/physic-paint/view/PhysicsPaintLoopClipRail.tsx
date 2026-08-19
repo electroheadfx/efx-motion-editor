@@ -233,6 +233,16 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
       return;
     }
     clearPendingSingleClick();
+    // 43.6-08 (G-43.6-8): a modifier click is never an open-editor
+    // double-click intent — commit set membership synchronously (no 250ms
+    // timer) so the rail is .selected immediately and Delete/Backspace
+    // pressed right after routes through isPhysicsPaintRotoDeleteTarget to
+    // the Delete Rails classifier instead of being swallowed in the window.
+    if (gesture !== 'plain') {
+      lastClickTimestampRef.current = null;
+      props.onSelectLoopClip(range.loopId, gesture);
+      return;
+    }
     lastClickTimestampRef.current = event.timeStamp;
     pendingSingleClickRef.current = setTimeout(() => {
       pendingSingleClickRef.current = null;

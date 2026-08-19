@@ -889,6 +889,76 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     vi.useRealTimers();
   });
 
+  it('commits modifier-click set membership synchronously with no single-click timer (43.6-08 G-43.6-8)', () => {
+    vi.useFakeTimers();
+    const clips: PhysicPaintRotoLoopClip[] = [
+      {
+        loopId: 'loop-a',
+        placementStart: 0,
+        sourceKeyIds: ['A1', 'A2', 'A3'],
+        repeat: 1,
+        mode: 'progressive',
+      },
+    ];
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: clips.flatMap((clip) => clip.sourceKeyIds.map((keyId, index) => ({
+        keyId,
+        appFrame: clip.placementStart + index,
+      }))),
+      loopClips: clips,
+      capacity: 120,
+      interpolationEnabled: false,
+    });
+    const presentations = new Map(context.ranges.map((range) => {
+      const clip = clips.find((candidate) => candidate.loopId === range.loopId)!;
+      return [range.loopId, projectPhysicsPaintLoopClipPresentation(range, clip, null)] as const;
+    }));
+    const onSelectLoopClip = vi.fn();
+
+    hooks.reset();
+    const tree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: context.ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 0, endFrameExclusive: 12 },
+      framePitch: 18,
+      selectedLoopClipIds: [],
+      onSelectLoopClip,
+      onOpenLoopEdit: vi.fn(async () => {}),
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    const targets = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+    // A Cmd+click commits synchronously — before any timer advance.
+    (targets[0].props.onClick as (event: unknown) => void)({
+      timeStamp: 100,
+      metaKey: true,
+      ctrlKey: false,
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+    });
+    expect(onSelectLoopClip.mock.calls).toEqual([['loop-a', 'toggle']]);
+    // Advancing past the single-click delay does not fire a second commit.
+    vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
+    expect(onSelectLoopClip.mock.calls).toEqual([['loop-a', 'toggle']]);
+
+    // A plain click still commits only after the single-click delay.
+    (targets[0].props.onClick as (event: unknown) => void)({
+      timeStamp: 900,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+    });
+    expect(onSelectLoopClip.mock.calls).toEqual([['loop-a', 'toggle']]);
+    vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
+    expect(onSelectLoopClip.mock.calls).toEqual([
+      ['loop-a', 'toggle'],
+      ['loop-a', 'plain'],
+    ]);
+    vi.useRealTimers();
+  });
+
   it('registers its click-sequence canceller with the batch registry (WR-01) and clears the pending single-click timer on drag begin', () => {
     vi.useFakeTimers();
     const clips: PhysicPaintRotoLoopClip[] = [
