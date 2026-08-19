@@ -73,6 +73,7 @@ import type { RotoScriptPhysicalTarget, RotoScriptSourceSnapshot } from './roto/
 import { useRotoPhysicalEditHistory } from './hooks/useRotoPhysicalEditHistory';
 import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryController';
 import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './hooks/rotoUiFlushScheduler';
+import { armRotoCompletionPaintGuard } from './hooks/rotoCompletionPaintGuard';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import './physicsPaintStudio.css';
@@ -572,7 +573,7 @@ export function PhysicsPaintStudio() {
   const currentCellKeyId = currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null;
   const currentFrameIsGeneratedRoto = workflowMode === 'roto' && currentFrameSelectionKind === 'generated-interpolation';
   const [rotoScriptNavigationLocked, setRotoScriptNavigationLocked] = useState(false);
-  const { cachedRotoReferenceUrl, cachedRotoRepaintBaseFrame, setCachedRotoReferenceUrl, setCachedRotoRepaintBaseFrame, clearCachedRotoReferenceUrl, resetCachedRotoReference, findCachedRotoDisplayFrame, loadCachedRotoReferenceFrame } = rotoPersistence.reference;
+  const { cachedRotoReferenceUrl, cachedRotoRepaintBaseFrame, setCachedRotoReferenceUrl, setCachedRotoRepaintBaseFrame, clearCachedRotoReferenceUrl, resetCachedRotoReference, findCachedRotoDisplayFrame, findAcceptedRotoReferenceFrame, loadCachedRotoReferenceFrame } = rotoPersistence.reference;
   const cachedRotoReferenceUrlRef = useRef(cachedRotoReferenceUrl);
   const cachedRotoRepaintBaseFrameRef = useRef(cachedRotoRepaintBaseFrame);
   cachedRotoReferenceUrlRef.current = cachedRotoReferenceUrl;
@@ -900,6 +901,21 @@ export function PhysicsPaintStudio() {
           undefined,
           true,
         );
+        // regression-refresh-multi-paint: the acceptance paint is the FINAL
+        // preview-base paint of the completion. Its cache-miss decode can be
+        // superseded inside the decode window (wide for many-stroke PNGs), and
+        // no later paint is issued — the canvas then keeps the pre-apply image
+        // until an unrelated repaint. The guard repairs exactly that outcome.
+        armRotoCompletionPaintGuard({
+          engine: engineRef.current as PreviewBackgroundEngine | null,
+          appFrame,
+          intendedDataUrl: findAcceptedRotoReferenceFrame(appFrame)?.dataUrl ?? null,
+          getCurrentAppFrame: () => launchContextRef.current?.startFrame ?? 0,
+          reload: (frame) => {
+            loadCachedRotoReferenceFrame(frame, engineRef.current as PreviewBackgroundEngine | null, undefined, true);
+          },
+          log: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
+        });
       },
     },
     engineState: {

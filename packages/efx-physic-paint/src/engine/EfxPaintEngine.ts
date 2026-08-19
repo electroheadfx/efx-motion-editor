@@ -187,6 +187,13 @@ export class EfxPaintEngine {
   // decode-ahead); cleared on destroy.
   private static readonly PREVIEW_BASE_IMAGE_CACHE_CAP = 32
   private previewBaseImageCache: Map<string, HTMLImageElement> = new Map()
+  // regression-refresh-multi-paint: the applied-state tracking and settle
+  // notification backing the caller-side completion-paint guard. A dropped
+  // decode (superseded/flag-guarded onload) is still CACHED — the pixels are
+  // valid for the dataUrl — so a repair re-request is a synchronous cache-hit
+  // apply instead of a second decode window.
+  private appliedPreviewBaseDataUrl: string | null = null
+  private previewBaseSettledListeners: Set<(dataUrl: string, outcome: 'applied' | 'dropped') => void> | null = null
   // 38.1-07: resetBackground skip memo — an unchanged background (same bgData
   // identity AND same input tuple) performs no drawBg/redraw work. Every other
   // background writer REPLACES this.bgData, so the identity half covers them
@@ -547,27 +554,64 @@ export class EfxPaintEngine {
     if (cached) {
       // Cache hit: the image is already decoded — apply synchronously under
       // the identical guards (the approved revisit timing win).
-      this.applyPreviewBaseImage(cached, requestId)
+      this.applyPreviewBaseImage(cached, requestId, dataUrl)
       return
     }
     const image = new Image()
     image.onload = () => {
-      if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) return
-      this.previewBaseImageCache.set(dataUrl, image)
-      if (this.previewBaseImageCache.size > EfxPaintEngine.PREVIEW_BASE_IMAGE_CACHE_CAP) {
-        const oldest = this.previewBaseImageCache.keys().next().value
-        if (oldest !== undefined) this.previewBaseImageCache.delete(oldest)
+      // Cache the decoded pixels even when the apply guard below drops this
+      // request: the decode is valid for the dataUrl, and caching converts any
+      // later repair re-request into a synchronous cache-hit apply. Without
+      // this a superseded completion paint is lost silently until an unrelated
+      // repaint (regression-refresh-multi-paint).
+      if (!this.destroyed) {
+        this.previewBaseImageCache.set(dataUrl, image)
+        if (this.previewBaseImageCache.size > EfxPaintEngine.PREVIEW_BASE_IMAGE_CACHE_CAP) {
+          const oldest = this.previewBaseImageCache.keys().next().value
+          if (oldest !== undefined) this.previewBaseImageCache.delete(oldest)
+        }
       }
-      this.applyPreviewBaseImage(image, requestId)
+      if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) {
+        this.notifyPreviewBaseSettled(dataUrl, 'dropped')
+        return
+      }
+      this.applyPreviewBaseImage(image, requestId, dataUrl)
+      this.notifyPreviewBaseSettled(dataUrl, 'applied')
+    }
+    image.onerror = () => {
+      this.notifyPreviewBaseSettled(dataUrl, 'dropped')
     }
     image.src = dataUrl
   }
 
-  private applyPreviewBaseImage(image: HTMLImageElement, requestId: number): void {
+  /** The dataUrl of the preview base image currently applied to the canvas, or null. */
+  getAppliedPreviewBaseDataUrl(): string | null {
+    return this.appliedPreviewBaseDataUrl
+  }
+
+  /**
+   * Subscribe to preview-base request settlements. Fires once per cache-miss
+   * decode ('applied' or 'dropped') and on decode failure ('dropped');
+   * synchronous cache-hit applies do not notify — read
+   * getAppliedPreviewBaseDataUrl() for the current state.
+   */
+  onPreviewBaseSettled(listener: (dataUrl: string, outcome: 'applied' | 'dropped') => void): () => void {
+    if (!this.previewBaseSettledListeners) this.previewBaseSettledListeners = new Set()
+    this.previewBaseSettledListeners.add(listener)
+    return () => { this.previewBaseSettledListeners?.delete(listener) }
+  }
+
+  private notifyPreviewBaseSettled(dataUrl: string, outcome: 'applied' | 'dropped'): void {
+    if (!this.previewBaseSettledListeners || this.previewBaseSettledListeners.size === 0) return
+    for (const listener of [...this.previewBaseSettledListeners]) listener(dataUrl, outcome)
+  }
+
+  private applyPreviewBaseImage(image: HTMLImageElement, requestId: number, dataUrl?: string): void {
     if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) return
     this.previewBaseImage = image
     this.previewBaseEnabled = true
     this.previewBackgroundSeparated = true
+    this.appliedPreviewBaseDataUrl = dataUrl ?? null
     this.redrawPreviewBase()
     this.redrawAll()
   }
@@ -577,6 +621,7 @@ export class EfxPaintEngine {
     this.previewBaseEnabled = false
     this.previewBackgroundSeparated = false
     this.previewBaseImage = null
+    this.appliedPreviewBaseDataUrl = null
     this.dualCanvas.previewBaseCtx.clearRect(0, 0, this.width, this.height)
     this.redrawAll()
   }
@@ -962,6 +1007,8 @@ export class EfxPaintEngine {
     this.flushPendingStrokeFinalizations()
     this.destroyed = true
     this.previewBaseImageCache?.clear()
+    this.previewBaseSettledListeners?.clear()
+    this.appliedPreviewBaseDataUrl = null
     // Cancel render loop
     if (this.rafId) cancelAnimationFrame(this.rafId)
     // Clear intervals

@@ -204,6 +204,7 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
     resetCachedRotoReference,
     findCachedRotoDisplayFrame: findDisplayFrame,
     findCachedRotoReferenceFrame: findReferenceFrame,
+    findAcceptedRotoReferenceFrame: findAcceptedReferenceFrame,
     loadCachedRotoReferenceFrame,
   };
 }
