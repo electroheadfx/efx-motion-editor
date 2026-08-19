@@ -416,7 +416,7 @@ Plans:
 **Goal:** Let the user select multiple Rails of any type — Key Rail, Motion Rail, Static Rail — in one shared selection set ordered by canonical first-key frame, then apply batch operations to the whole set: Delete Rails, Move Rails, Key Spacing, and selection-scoped (solo) playback. Multi-selection is a new explicit selection scope alongside single-rail and physical-frame selections; the 43.4 mutual-exclusion and selection-authority rules extend to the set. All invariants from Phases 43.3/43.4/43.5 remain binding: persistent intentional gaps, break ownership by stable key identity, capacity as the single end authority, atomic Undo/Redo through the canonical physical history, replay snapshots read from the accepted document authority, and one shared rail behavior with no per-type forks. Spec: SPECS/milestone-v0.9.0-new-phases/phase-43.6-multi-rail-selection-batch-operations-prompt.md
 **Requirements**: RSET-01, RSET-02, RSET-03, RSET-04, BMOV-01, BMOV-02, BMOV-03, BMOV-04, BMOV-05, BMOV-06, BDEL-01, BDEL-02, BSPC-01, BSPC-02, BSPC-03, SOLO-01, SOLO-02, SOLO-03, SOLO-04, SOLO-05, SOLO-06 (planning-local IDs derived in 43.6-RESEARCH.md; REQUIREMENTS.md holds no 43.6 rows)
 **Depends on:** Phase 43.5
-**Plans:** 6/6 plans complete
+**Plans:** 9/9 plans complete (6 shipped + 3 gap-closure plans after UAT)
 
 Plans:
 **Wave 1**
@@ -439,6 +439,12 @@ Plans:
 **Wave 5** *(blocked on Wave 4 completion)*
 
 - [x] 43.6-06-PLAN.md — Solo playback: session arm signal, pure range/attribution derivation, getFrames presentation filter (stopped canvas untouched), strip toggle button, capsule line, layered exits
+
+**Wave 6** *(gap closure after 43.6 native UAT root causes RC-A/RC-B/RC-C/RC-D)*
+
+- [ ] 43.6-07-PLAN.md — History allowlist: record 'move-rails'/'spacing-on-set'/'delete-rails' in isOrdinaryOperationKind so one batch acceptance -> one applied command -> Cmd+Z / Cmd+Shift+Z replay before/after snapshots (RC-A; G-43.6-3/4/6/8 undo-redo parts)
+- [ ] 43.6-08-PLAN.md — Selection bridging: seedRailSetSelection carries a plain-selected rail into the rail set as anchor on the first modifier gesture (RC-B/RC-D, spec M1), synchronous Loop Clip modifier commit so Delete right after routes to Delete Rails (G-43.6-1/3/4/8)
+- [ ] 43.6-09-PLAN.md — Solo armed visual: add the .physics-paint-push-tool-button base class to the Solo template so the compound selector renders the orange armed tint, blocking human-verify (RC-C; G-43.6-2/7)
 
 ### Phase 44: Integrated UAT + Signed Release
 
