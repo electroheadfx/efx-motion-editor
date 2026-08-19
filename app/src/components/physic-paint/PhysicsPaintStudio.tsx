@@ -1414,6 +1414,11 @@ export function PhysicsPaintStudio() {
     }
     // Plain click collapses the set into the single-rail path (D-04).
     railSetSelection.value = null;
+    // 43.6-06 (D-14): a plain Loop Rail click is a rail-selection change — an
+    // armed Solo disarms before the new selection is applied. Direct call, NOT
+    // clearRotoLoopSelection(), because that helper would clobber the selection
+    // this branch is about to write.
+    disarmSolo();
     const currentIds = selectedLoopClipIds.peek();
     const currentAnchor = loopSelectionAnchorId.peek();
     const currentPrimary = selectedLoopClipId.peek();
