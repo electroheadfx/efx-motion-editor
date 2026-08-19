@@ -20,7 +20,7 @@ import {
   type PhysicPaintRotoPhysicalCell,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import { projectPhysicsPaintLoopClipGeometry } from '../view/physicsPaintLoopClipPresentation';
-import { resolvePhysicPaintPushAnchor } from '../view/physicsPaintKeyRailPresentation';
+import { deriveKeyRailSegments, resolvePhysicPaintPushAnchor } from '../view/physicsPaintKeyRailPresentation';
 import {
   getPhysicsPaintRotoSourceCycleId,
   togglePhysicsPaintRotoSpacingProxy,
@@ -2190,10 +2190,19 @@ describe('useRotoTimelineActions Scissor availability and activation', () => {
   it('classifies every guarded arm fail-closed and maps the locked product reason', () => {
     const generatedCells = [] as PhysicPaintRotoPhysicalCell[];
     generatedCells[2] = { kind: 'generated', appFrame: 2, leftKeyId: 'A', rightKeyId: 'B' };
+    // Revised 43.4 decision (quick 260820-0kg): a generated in-between strictly
+    // inside a Key Rail is now a genuine split target (generated-ok), so the
+    // mapped reason is null — not the old disabled generated-frame copy.
+    const generatedOkTarget = classifyRotoScissorTarget({
+      ...base,
+      currentAppFrame: 2,
+      physicalCells: generatedCells,
+    });
+    expect(generatedOkTarget).toEqual({ kind: 'generated-ok', keyId: 'B', appFrame: 2 });
+    expect(mapRotoScissorProductReason(generatedOkTarget)).toBeNull();
     const cases = [
       [classifyRotoScissorTarget({ ...base, pendingOperationId: 'busy' }), 'A Roto physical edit is already in flight.'],
       [classifyRotoScissorTarget({ ...base, launchReady: false }), 'Scissor is unavailable.'],
-      [classifyRotoScissorTarget({ ...base, currentAppFrame: 2, physicalCells: generatedCells }), 'Scissor is unavailable on a generated frame. Select a real ordinary key.'],
       [classifyRotoScissorTarget({ ...base, currentAppFrame: 2 }), 'Scissor is unavailable on an empty frame. Select a real ordinary key.'],
       [classifyRotoScissorTarget({ ...base, selectedKeyId: 'C', currentAppFrame: 6 }), 'Scissor is unavailable on a Motion or Static Group frame.'],
       [classifyRotoScissorTarget({ ...base, currentAppFrame: 2, frameResolution: { kind: 'linked' } as never }), 'Scissor is unavailable on a linked Group frame.'],
@@ -2204,6 +2213,30 @@ describe('useRotoTimelineActions Scissor availability and activation', () => {
     for (const [target, reason] of cases) {
       expect(mapRotoScissorProductReason(target)).toBe(reason);
     }
+  });
+
+  it('classifies a generated in-between at the edge of a Key Rail segment as disabled with the new mapped reason', () => {
+    // Group ownership of the left key closes the segment, so the generated frame
+    // beyond that boundary has no following real key inside its own segment.
+    const edgeCells = [] as PhysicPaintRotoPhysicalCell[];
+    edgeCells[2] = { kind: 'generated', appFrame: 2, leftKeyId: 'A', rightKeyId: 'B' };
+    const edgeGroup = lifecycleGroup({
+      placementStart: 0,
+      sourceKeyIds: Object.freeze(['A']),
+      repeat: 1,
+      mode: 'static',
+      phaseOrigin: 0,
+      originalEndExclusive: 12,
+      visibleRanges: Object.freeze([Object.freeze({ start: 0, endExclusive: 12 })]),
+    });
+    const target = classifyRotoScissorTarget({
+      ...base,
+      loopClips: [edgeGroup],
+      currentAppFrame: 2,
+      physicalCells: edgeCells,
+    });
+    expect(target).toEqual({ kind: 'generated', appFrame: 2 });
+    expect(mapRotoScissorProductReason(target)).toBe('Scissor is unavailable at the edge of a Key Rail segment.');
   });
 
   it('returns an exact silent no-op when the target already owns a break', async () => {
@@ -2237,6 +2270,146 @@ describe('useRotoTimelineActions Scissor availability and activation', () => {
       intent: { kind: 'scissor-key-rail', breakOwnerKeyId: 'B' },
     }));
     expect(publishStatus).toHaveBeenCalledWith('Split Key Rail before frame 3.');
+  });
+
+  // ---- quick 260820-0kg: Scissor on generated frames (revised 43.4 decision) ----
+
+  function generatedRotoScissorRecords(): PhysicPaintRotoRealKeyRecord[] {
+    return [realKeyRecord('k0', 0), realKeyRecord('k2', 2), realKeyRecord('k6', 6), realKeyRecord('k8', 8)];
+  }
+
+  function generatedRotoScissorCells(rightKeyId: string): PhysicPaintRotoPhysicalCell[] {
+    const cells = [] as PhysicPaintRotoPhysicalCell[];
+    cells[4] = { kind: 'generated', appFrame: 4, leftKeyId: 'k2', rightKeyId };
+    return cells;
+  }
+
+  it('RED 1: splits mid-interpolation — a generated in-between resolves to the next real key and leaves a persistent gap', async () => {
+    const records = generatedRotoScissorRecords();
+    const generatedCells = generatedRotoScissorCells('k6');
+    const { actions, executePhysicalEdit, publishStatus } = createHarness({
+      records,
+      currentAppFrame: 4,
+      physicalCells: generatedCells,
+      capacity: 12,
+      getRotoInterpolationState: () => ({ enabled: true, mode: 'duplicate' }),
+    });
+
+    const classificationInput = {
+      launchReady: true,
+      pendingOperationId: null,
+      selectedKeyId: null,
+      selectedLoopClipIds: [] as readonly string[],
+      currentAppFrame: 4,
+      capacity: 12,
+      records,
+      loopClips: [] as readonly PhysicPaintRotoLoopClip[],
+      physicalCells: generatedCells,
+      frameResolution: { kind: 'empty' },
+      incomingInterpolationBreakKeyIds: [] as readonly string[],
+    };
+    expect(classifyRotoScissorTarget(classificationInput)).toEqual({
+      kind: 'generated-ok',
+      keyId: 'k6',
+      appFrame: 4,
+    });
+    expect(actions.physicalActions.canScissor.value).toBe(true);
+    expect(actions.physicalActions.scissorDisabledReason.value).toBeNull();
+
+    expect(await actions.physicalActions.scissorKeyRail()).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0];
+    expect(dispatched).toEqual(expect.objectContaining({
+      operationKind: 'scissor-key-rail',
+      intent: { kind: 'scissor-key-rail', breakOwnerKeyId: 'k6' },
+    }));
+    // The proposal is the exact canonical snapshot history/persistence stores.
+    const proposal = dispatched.proposal;
+    expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['k6']);
+    expect(proposal.mapping).toEqual(new Map([['k0', 0], ['k2', 2], ['k6', 6], ['k8', 8]]));
+    const segments = deriveKeyRailSegments({
+      orderedRealKeys: [...proposal.mapping.entries()]
+        .map(([keyId, appFrame]) => ({ keyId, appFrame }))
+        .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId)),
+      incomingInterpolationBreakKeyIds: new Set(proposal.nextIncomingInterpolationBreakKeyIds ?? []),
+      groupOwnedKeyIds: new Set(),
+    });
+    expect(segments).toEqual([
+      { firstKeyId: 'k0', keyIds: ['k0', 'k2'], firstKeyFrame: 0, lastKeyFrame: 2 },
+      { firstKeyId: 'k6', keyIds: ['k6', 'k8'], firstKeyFrame: 6, lastKeyFrame: 8 },
+    ]);
+    const generatedAppFrames = proposal.generatedCells.map((cell) => cell.appFrame);
+    expect(generatedAppFrames).not.toContain(3);
+    expect(generatedAppFrames).not.toContain(4);
+    expect(generatedAppFrames).not.toContain(5);
+    expect(publishStatus).toHaveBeenLastCalledWith('Split Key Rail at frame 4.');
+  });
+
+  it('RED 2: silently no-ops when the generated frame next real key already owns a break', async () => {
+    const records = generatedRotoScissorRecords();
+    const generatedCells = generatedRotoScissorCells('k6');
+    const { actions, executePhysicalEdit, publishStatus } = createHarness({
+      records,
+      currentAppFrame: 4,
+      physicalCells: generatedCells,
+      incomingInterpolationBreakKeyIds: ['k6'],
+      capacity: 12,
+    });
+
+    const classificationInput = {
+      launchReady: true,
+      pendingOperationId: null,
+      selectedKeyId: null,
+      selectedLoopClipIds: [] as readonly string[],
+      currentAppFrame: 4,
+      capacity: 12,
+      records,
+      loopClips: [] as readonly PhysicPaintRotoLoopClip[],
+      physicalCells: generatedCells,
+      frameResolution: { kind: 'empty' },
+      incomingInterpolationBreakKeyIds: ['k6'],
+    };
+    expect(classifyRotoScissorTarget(classificationInput)).toEqual({
+      kind: 'already-owns-break',
+      keyId: 'k6',
+      appFrame: 4,
+    });
+    expect(actions.physicalActions.canScissor.value).toBe(false);
+    expect(actions.physicalActions.scissorDisabledReason.value).toBe('This key already starts a Key Rail segment.');
+    expect(await actions.physicalActions.scissorKeyRail()).toBe(false);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+    expect(publishStatus).not.toHaveBeenCalled();
+  });
+
+  it('RED 3: disables Scissor on a generated frame inside a Motion or Static Group', () => {
+    const records = generatedRotoScissorRecords();
+    const generatedCells = generatedRotoScissorCells('k6');
+    const group = lifecycleGroup({
+      loopId: 'g1',
+      placementStart: 0,
+      sourceKeyIds: Object.freeze(['k6']),
+      repeat: 1,
+      mode: 'static',
+      phaseOrigin: 0,
+      originalEndExclusive: 8,
+      visibleRanges: Object.freeze([Object.freeze({ start: 0, endExclusive: 8 })]),
+    });
+    const classificationInput = {
+      launchReady: true,
+      pendingOperationId: null,
+      selectedKeyId: null,
+      selectedLoopClipIds: [] as readonly string[],
+      currentAppFrame: 4,
+      capacity: 12,
+      records,
+      loopClips: [group] as readonly PhysicPaintRotoLoopClip[],
+      physicalCells: generatedCells,
+      frameResolution: { kind: 'linked-generated' } as never,
+      incomingInterpolationBreakKeyIds: [] as readonly string[],
+    };
+    const target = classifyRotoScissorTarget(classificationInput);
+    expect(target).toEqual({ kind: 'group-or-linked', ownership: 'group', appFrame: 4 });
+    expect(mapRotoScissorProductReason(target)).toBe('Scissor is unavailable on a Motion or Static Group frame.');
   });
 });
 
