@@ -959,6 +959,74 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     vi.useRealTimers();
   });
 
+  it('commits an in-window Cmd+click synchronously and never opens the editor (43.6-10 WR-02)', () => {
+    vi.useFakeTimers();
+    const clips: PhysicPaintRotoLoopClip[] = [
+      {
+        loopId: 'loop-a',
+        placementStart: 0,
+        sourceKeyIds: ['A1', 'A2', 'A3'],
+        repeat: 1,
+        mode: 'progressive',
+      },
+    ];
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: clips.flatMap((clip) => clip.sourceKeyIds.map((keyId, index) => ({
+        keyId,
+        appFrame: clip.placementStart + index,
+      }))),
+      loopClips: clips,
+      capacity: 120,
+      interpolationEnabled: false,
+    });
+    const presentations = new Map(context.ranges.map((range) => {
+      const clip = clips.find((candidate) => candidate.loopId === range.loopId)!;
+      return [range.loopId, projectPhysicsPaintLoopClipPresentation(range, clip, null)] as const;
+    }));
+    const onSelectLoopClip = vi.fn();
+    const onOpenLoopEdit = vi.fn(async () => {});
+
+    hooks.reset();
+    const tree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: context.ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 0, endFrameExclusive: 12 },
+      framePitch: 18,
+      selectedLoopClipIds: [],
+      onSelectLoopClip,
+      onOpenLoopEdit,
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    const targets = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+    // A plain click arms the pending single-click timer.
+    (targets[0].props.onClick as (event: unknown) => void)({
+      timeStamp: 100,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+    });
+    // A Cmd+click inside the pending window is a set-membership gesture, never
+    // an open-editor double-click intent: it must commit 'toggle' synchronously
+    // and must not route to the editor branch.
+    (targets[0].props.onClick as (event: unknown) => void)({
+      timeStamp: 200,
+      metaKey: true,
+      ctrlKey: false,
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+    });
+    expect(onSelectLoopClip.mock.calls).toEqual([['loop-a', 'toggle']]);
+    expect(onOpenLoopEdit).not.toHaveBeenCalled();
+    // Advancing past the single-click delay does not fire a second commit.
+    vi.advanceTimersByTime(LOOP_CLIP_SINGLE_CLICK_DELAY_MS);
+    expect(onSelectLoopClip.mock.calls).toEqual([['loop-a', 'toggle']]);
+    expect(onOpenLoopEdit).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it('registers its click-sequence canceller with the batch registry (WR-01) and clears the pending single-click timer on drag begin', () => {
     vi.useFakeTimers();
     const clips: PhysicPaintRotoLoopClip[] = [

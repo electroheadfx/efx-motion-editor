@@ -525,6 +525,34 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
     expect(loopHandler).toContain("{ kind: 'loop', loopId: selectedLoopClipId.value }");
   });
 
+  it('seeds the set from the live cross-type single-rail signal with key-rail-first ordering (43.6-10 WR-01)', () => {
+    // Cross-type, key-rail-first direction: the Key Rail handler must also read
+    // the Loop rail's live signal so a plain-selected Loop rail is carried into
+    // the set when the first modifier gesture lands on a Key rail.
+    const keyRailStart = studio.indexOf('const handleSelectRotoKeyRail = useCallback((');
+    const keyRailEnd = studio.indexOf('const handleSelectRotoLoopClip', keyRailStart);
+    const keyRailHandler = studio.slice(keyRailStart, keyRailEnd);
+    expect(keyRailStart).toBeGreaterThanOrEqual(0);
+    expect(keyRailHandler).toContain('selectedRotoKeyRail.value !== null');
+    expect(keyRailHandler).toContain('selectedLoopClipId.value !== null');
+    // Key-rail-first derivation order inside the Key Rail handler.
+    expect(keyRailHandler.indexOf('selectedRotoKeyRail.value !== null'))
+      .toBeLessThan(keyRailHandler.indexOf('selectedLoopClipId.value !== null'));
+
+    // Cross-type, loop-first direction: the Loop Rail handler must also read
+    // the Key rail's live signal so a plain-selected Key rail is carried into
+    // the set when the first modifier gesture lands on a Loop rail.
+    const loopStart = studio.indexOf('const handleSelectRotoLoopClip = useCallback((');
+    const loopEnd = studio.indexOf('const handleOpenRotoLoopEdit', loopStart);
+    const loopHandler = studio.slice(loopStart, loopEnd);
+    expect(loopStart).toBeGreaterThanOrEqual(0);
+    expect(loopHandler).toContain('selectedRotoKeyRail.value !== null');
+    expect(loopHandler).toContain('selectedLoopClipId.value !== null');
+    // Key-rail-first derivation order inside the Loop Rail handler.
+    expect(loopHandler.indexOf('selectedRotoKeyRail.value !== null'))
+      .toBeLessThan(loopHandler.indexOf('selectedLoopClipId.value !== null'));
+  });
+
   it('collapses the set as its own Escape layer before key-selection collapse (D-04)', () => {
     const collapseStart = studio.indexOf('collapseRotoSelection: () => {');
     const collapseEnd = studio.indexOf('toggleShortcuts:', collapseStart);
