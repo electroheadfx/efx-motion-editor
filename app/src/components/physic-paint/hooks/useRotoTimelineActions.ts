@@ -2014,9 +2014,26 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       // the resolver, coordinator, settlement, and history stay unchanged.
       // Quick 260816-tv7: startsNewSegment makes the new key own a persistent
       // incoming interpolation break (broken-key contract), matching Paint on
-      // an empty frame.
+      // an empty frame. Quick 260819-wzi: a destination strictly INSIDE a
+      // derived Key Rail segment span instead joins the existing rail — the
+      // rail re-derives over it (0/4/6/8) — while trailing-space, intentional
+      // gap, and any position outside a span keep the own-one-key-rail break.
+      const groupOwnedKeyIds = new Set<string>();
+      for (const clip of input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY) {
+        clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+        (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+      }
+      const segments = deriveKeyRailSegments({
+        orderedRealKeys: [...(input.getRotoKeyRecords?.() ?? [])]
+          .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId)),
+        incomingInterpolationBreakKeyIds: new Set(input.getIncomingInterpolationBreakKeyIds?.() ?? []),
+        groupOwnedKeyIds,
+      });
+      const startsNewSegment = !segments.some(
+        (segment) => segment.firstKeyFrame < destinationAppFrame && destinationAppFrame < segment.lastKeyFrame,
+      );
       return runPhysicalAction({
-        intent: createPhysicPaintRotoPasteKeyIntent(destinationAppFrame, emptyPayload, null, true),
+        intent: createPhysicPaintRotoPasteKeyIntent(destinationAppFrame, emptyPayload, null, startsNewSegment),
         operationKind: 'paste-key',
         requiredKeyId: null,
         successMessage: ADD_KEY_SUCCESS_MESSAGE,

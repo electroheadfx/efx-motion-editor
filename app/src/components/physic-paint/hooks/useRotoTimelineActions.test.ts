@@ -986,8 +986,10 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       };
     };
     // 260819-wzi: a destination strictly inside the 0/4/8 segment span joins the
-    // rail (→ 0/4/6/8) instead of spawning a spurious one-key rail.
-    expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
+    // rail (→ 0/4/6/8) instead of spawning a spurious one-key rail. The resolver
+    // reports an unchanged-empty break collection as null (no-change marker),
+    // so the new key owns no incoming break.
+    expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
     expect(dispatched.proposal.nextRecords).toHaveLength(4);
   });
 
