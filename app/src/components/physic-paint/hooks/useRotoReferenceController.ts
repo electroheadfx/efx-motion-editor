@@ -117,6 +117,14 @@ export interface RotoReferenceLoaderInput<Frame extends RotoReferenceFrame> {
   /** regression-refresh-multi-paint: monotonic generation token carried by the
    * preview-base paint — the engine's apply seam uses it to no-op stale writes. */
   generation?: number;
+  /** regression-refresh-multi-paint Layer 2: resolve the CONTENT token of a
+   * content revision (monotonic, content-derived). When NO explicit `generation`
+   * is passed, the loader threads the frame's CONTENT token into the engine so
+   * the preview-base seam orders paints by CONTENT newness — a stale frame
+   * (older content revision) stays inert even though its request is issued
+   * later. This replaces the content-agnostic auto-assignment fallback for every
+   * loader paint (navigation, frame-editing effect, pixel-cache retry). */
+  resolveContentToken?: (contentRevision: string | null | undefined) => number;
   /** Overrides the dataUrl painted by this load. Used by the completion guard's
    * repair so it re-applies ONLY the intended (newest) image — never whatever
    * the frame lookup happens to resolve to at repair time. */
@@ -168,12 +176,21 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
       input.setRepaintBaseFrame((current) => current?.appFrame === appFrame ? current : null);
       return false;
     }
+    // regression-refresh-multi-paint Layer 2: the token threaded into the
+    // engine is the frame's CONTENT token unless the caller passed an explicit
+    // generation (the completion reconcile / guard repair). Content-derived
+    // ordering is what makes a stale frame (older revision) inert: its paint
+    // carries an OLDER token than the settled accepted render and the engine
+    // drops it — even though the request is issued later.
+    const paintContentToken = input.generation !== undefined
+      ? input.generation
+      : input.resolveContentToken?.(cachedFrame?.contentRevision);
     input.setReferenceUrl(null);
     input.setRepaintBaseFrame(cachedFrame);
     engine.setBgMode(input.getSettingsBackground());
     engine.clear();
     if (paintDataUrl) {
-      engine.setPreviewBaseImageUrl(paintDataUrl, input.generation, appFrame);
+      engine.setPreviewBaseImageUrl(paintDataUrl, paintContentToken, appFrame);
       const wasDirty = input.dirtyFrames.delete(appFrame);
       const hadLiveOverlay = input.liveOverlayActionCounts.delete(appFrame);
       if (wasDirty || hadLiveOverlay) input.syncPending();
@@ -197,6 +214,11 @@ export interface UseRotoReferenceControllerInput<Frame extends RotoReferenceFram
   getLiveOverlayActionCounts: () => Map<number, number>;
   syncPending: () => void;
   setApplyMessage: (message: string) => void;
+  /** regression-refresh-multi-paint Layer 2: resolve the CONTENT token of a
+   * content revision. Forwarded into every loader load so non-explicit paints
+   * (navigation, frame-editing effect, pixel-cache retry) are ordered by
+   * CONTENT newness rather than issue/session order. */
+  resolveContentToken?: (contentRevision: string | null | undefined) => number;
 }
 
 export function useRotoReferenceController<Frame extends RotoReferenceFrame>(input: UseRotoReferenceControllerInput<Frame>) {
@@ -234,6 +256,7 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
       setApplyMessage: currentInput.setApplyMessage,
       replaceDirtyFrame,
       generation,
+      resolveContentToken: currentInput.resolveContentToken,
       explicitDataUrl,
     }).load(appFrame, engine);
   }, [findAcceptedReferenceFrame, findReferenceFrame]);

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { useComputed, useSignal } from '@preact/signals';
 import type { CompletedPaintMutation, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample, SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { collectDiscardableRotoGroupOwnedFrames, rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoStudioSelection } from './roto/physicsPaintRotoMultiSelection';
@@ -139,11 +139,16 @@ export function PhysicsPaintStudio() {
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
-  // regression-refresh-multi-paint: monotonic generation for the preview-base
-  // paint of each completion reconcile. Every reconcile is a NEWER generation
-  // than any earlier progressive paint, so the engine's generation gate makes a
-  // stale async apply (older generation) a canvas no-op even if it lands last.
-  const rotoPreviewBaseGenerationRef = useRef(0);
+  // regression-refresh-multi-paint Layer 2: the completion reconcile paints at
+  // the ACCEPTED document's CONTENT token (monotonic, content-derived) instead
+  // of a content-agnostic session generation. The reconcile ceiling keeps the
+  // engine's applied gate in the content-token space so a stale frame (older
+  // content revision — e.g. the pixel-cache retry or the frame-editing effect
+  // re-issuing a PARTIAL render) is dropped by the engine's preview-base seam.
+  // Navigation still supersedes by clearing the base first, and the reconcile
+  // itself always paints: max(acceptedToken, applied) is never below the applied
+  // gate, and the accepted token is the newest content-derived token assigned.
+  const rotoPreviewBaseContentToken = () => physicPaintStore.getContentToken(launchContextRef.current?.layerId ?? '');
   const selectedKeyId = useSignal<string | null>(launchContext?.rotoPhysical?.selectedKeyId ?? null);
   const selectedLoopClipId = useSignal<string | null>(null);
   const selectedLoopClipIds = useSignal<readonly string[]>([]);
@@ -436,6 +441,7 @@ export function PhysicsPaintStudio() {
     store: {
       getRotoPhysicalDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId),
       getRotoPhysicalContentRevision: (layerId) => physicPaintStore.getRotoPhysicalContentRevision(layerId),
+      resolveContentToken: (contentRevision) => resolveContentToken(contentRevision),
       getRotoRealKeyRecord: (layerId, keyId) => physicPaintStore.getRotoRealKeyRecord(layerId, keyId),
       getRotoRealKeyRecordByAppFrame: (layerId, appFrame) => physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, appFrame),
       getRotoPhysicalRenderSource: (layerId, appFrame) => physicPaintStore.getRotoPhysicalRenderSource(layerId, appFrame),
@@ -901,20 +907,22 @@ export function PhysicsPaintStudio() {
       },
       reconcileCurrentFrame: (appFrame) => {
         // regression-refresh-multi-paint: the acceptance paint is the FINAL
-        // preview-base paint of the completion. It is tagged with a monotonic
-        // generation (every reconcile is a newer generation than earlier
-        // progressive paints), so a stale async decode/apply can never paint
-        // over it. Its cache-miss decode can still be superseded inside the
-        // decode window (wide for many-stroke PNGs) with no later paint issued
-        // — the canvas would keep the pre-apply image until an unrelated
-        // repaint. The generation-aware guard repairs exactly that outcome,
-        // and ONLY while the newest generation has not landed.
-        // The reconcile generation is always strictly above the last applied
-        // paint generation (so it can never be dropped as stale), and monotonic
-        // across the session via the ref even when the canvas is cleared.
-        const currentAppliedGeneration = engineRef.current?.getAppliedPreviewBaseGeneration?.() ?? null;
-        const generation = Math.max(rotoPreviewBaseGenerationRef.current, currentAppliedGeneration ?? 0) + 1;
-        rotoPreviewBaseGenerationRef.current = generation;
+        // preview-base paint of the completion. It is tagged with the ACCEPTED
+        // document's CONTENT token (Layer 2), so a stale async decode/apply —
+        // or a later-issued paint of OLDER content (a stale frame) — can never
+        // paint over it: the engine's preview-base seam drops any settle whose
+        // token is below the applied one. Its cache-miss decode can still be
+        // superseded inside the decode window (wide for many-stroke PNGs) with
+        // no later paint issued — the canvas would keep the pre-apply image
+        // until an unrelated repaint. The generation-aware guard repairs
+        // exactly that outcome, and ONLY while the newest token has not landed.
+        // The reconcile ALWAYS paints: max(acceptedToken, applied) is never
+        // below the applied gate, and the accepted token is the newest
+        // content-derived token assigned (equal re-issues re-paint the same
+        // content idempotently).
+        const acceptedContentToken = rotoPreviewBaseContentToken();
+        const currentAppliedGeneration = engineRef.current?.getAppliedPreviewBaseContentToken?.() ?? null;
+        const generation = Math.max(acceptedContentToken, currentAppliedGeneration ?? 0);
         loadCachedRotoReferenceFrame(
           appFrame,
           engineRef.current as PreviewBackgroundEngine | null,

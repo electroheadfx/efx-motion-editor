@@ -5,7 +5,7 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame } from './physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame } from './physicPaintStore';
 
 
 
@@ -1515,6 +1515,54 @@ describe('physicPaintStore', () => {
 
       expect(() => physicPaintStore.loadFromMceOutputs(outputs, lease)).not.toThrow();
       expect(physicPaintStore.getRotoPhysicalDocument('layer-1')?.realKeyRecords[0].payload.dataUrl).toBe('data:image/png;base64,CCCC');
+    });
+  });
+
+  describe('regression-refresh-multi-paint Layer 2: content-token registry', () => {
+    const contentDocument = (dataUrl = 'data:image/png;base64,AAAA') => {
+      const realKeyRecords = [{
+        kind: 'real-key' as const,
+        keyId: 'key-1',
+        appFrame: 1,
+        payload: { frameIndex: 0, appFrame: 1, dataUrl, width: 2, height: 2 },
+      }];
+      const interpolation = { enabled: false, mode: 'duplicate' as const };
+      return parsePhysicPaintRotoPhysicalDocument({
+        capacity: 12,
+        realKeyRecords,
+        interpolation,
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        selectedKeyId: 'key-1',
+        cursorAppFrame: 1,
+        revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, [], []),
+        loopClips: [],
+        incomingInterpolationBreakKeyIds: [],
+      });
+    };
+
+    it('assigns a monotonic CONTENT token per distinct content revision', () => {
+      const tokenA1 = resolveContentToken('rev-A');
+      const tokenA2 = resolveContentToken('rev-A');
+      const tokenB = resolveContentToken('rev-B');
+      expect(tokenA2, 'the same revision maps to the SAME token').toBe(tokenA1);
+      expect(tokenB, 'a newer revision maps to a HIGHER token').toBeGreaterThan(tokenA1);
+      expect(resolveContentToken(null), 'no revision maps to the base token 0').toBe(0);
+      expect(resolveContentToken(undefined)).toBe(0);
+    });
+
+    it('getContentToken follows document replacement and stays monotonic', () => {
+      expect(physicPaintStore.getContentToken('layer-1'), 'no document yet → base token').toBe(0);
+      const docA = contentDocument();
+      expect(physicPaintStore.replaceRotoPhysicalDocument('layer-1', docA).ok).toBe(true);
+      const tokenA = physicPaintStore.getContentToken('layer-1');
+      expect(tokenA, 'an accepted document carries a positive content token').toBeGreaterThan(0);
+      expect(physicPaintStore.getContentToken('layer-1'), 'same document, same token').toBe(tokenA);
+
+      const docB = contentDocument('data:image/png;base64,BBBB');
+      expect(physicPaintStore.replaceRotoPhysicalDocument('layer-1', docB).ok).toBe(true);
+      const tokenB = physicPaintStore.getContentToken('layer-1');
+      expect(tokenB, 'replaced content advances the layer content token').toBeGreaterThan(tokenA);
     });
   });
 });

@@ -279,4 +279,41 @@ describe('EfxPaintEngine preview base completion contract (regression-refresh-mu
     engine.setPreviewBaseImageUrl('data:image/png;base64,B', 2);
     expect(engine.getAppliedPreviewBaseDataUrl()).toBe('data:image/png;base64,B');
   });
+
+  it('Layer 2: exposes the applied CONTENT token (content-derived ordering at the apply seam)', () => {
+    const engine = makeEngine();
+    expect(engine.getAppliedPreviewBaseContentToken()).toBeNull();
+
+    // Content revision N+1 (the accepted completion) settles at token 200.
+    engine.setPreviewBaseImageUrl('data:image/png;base64,N+1', 200);
+    images[0].onload!();
+    expect(engine.getAppliedPreviewBaseContentToken()).toBe(200);
+    // The applied content token tracks the applied paint across a later equal
+    // re-issue (cache-hit synchronous path), like the applied generation.
+    engine.setPreviewBaseImageUrl('data:image/png;base64,N+1', 200);
+    expect(images.length, 'cache hit performs no new decode').toBe(1);
+    expect(engine.getAppliedPreviewBaseContentToken()).toBe(200);
+
+    engine.clearPreviewBaseImage();
+    expect(engine.getAppliedPreviewBaseContentToken(), 'clearing the base resets the ordering gate').toBeNull();
+  });
+
+  it('Layer 2: never paints a render computed from content revision N over settled content revision N+1 (late completion of the older render)', () => {
+    const engine = makeEngine();
+    // The render from content N+1 settles first — the canvas holds the newest content.
+    engine.setPreviewBaseImageUrl('data:image/png;base64,N+1', 200);
+    images[0].onload!();
+    expect(engine.getAppliedPreviewBaseDataUrl()).toBe('data:image/png;base64,N+1');
+
+    // The render computed from OLDER content N completes LATE: its requestId is
+    // current (issued AFTER N+1 settled) but its content token is older. The
+    // issue-monotonic requestId guard cannot catch it — only the content token can.
+    engine.setPreviewBaseImageUrl('data:image/png;base64,N', 100);
+    images[1].onload!();
+    expect(
+      engine.getAppliedPreviewBaseDataUrl(),
+      'a later-issued paint of OLDER content must never overwrite the settled newer content',
+    ).toBe('data:image/png;base64,N+1');
+    expect(engine.getAppliedPreviewBaseContentToken()).toBe(200);
+  });
 });

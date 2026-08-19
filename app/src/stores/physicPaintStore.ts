@@ -145,6 +145,28 @@ let _rotoPhysicalOperationLeaseGeneration = 0;
 export const physicPaintRotoPhysicalOperationLeaseVersion = signal(0);
 export const rotoPhysicalRevision = signal(0);
 
+// regression-refresh-multi-paint Layer 2: CONTENT-REVISION ordering. The preview
+// base apply seam must order paints by CONTENT newness, not request/session
+// order (a render computed from content revision N must never overwrite a paint
+// of content revision N+1). Every distinct physical content revision is assigned
+// a monotonically increasing content token the first time it is resolved; the
+// engine's preview-base seam drops any settle whose token is below the applied
+// one. The registry is session-global and monotonic, so canvas clears never
+// reset the ordering.
+const _rotoPhysicalContentTokens = new Map<string, number>();
+let _rotoPhysicalContentTokenCounter = 0;
+
+export function resolveContentToken(contentRevision: string | null | undefined): number {
+  if (!contentRevision) return 0;
+  let token = _rotoPhysicalContentTokens.get(contentRevision);
+  if (token === undefined) {
+    _rotoPhysicalContentTokenCounter += 1;
+    token = _rotoPhysicalContentTokenCounter;
+    _rotoPhysicalContentTokens.set(contentRevision, token);
+  }
+  return token;
+}
+
 function _notifyRotoPhysicalOperationLeaseChange(): void {
   physicPaintRotoPhysicalOperationLeaseVersion.value += 1;
 }
@@ -1341,6 +1363,8 @@ export const physicPaintStore = {
     _settledRotoPhysicalOperationLeases.clear();
     if (hadActivePhysicalOperationLease) _notifyRotoPhysicalOperationLeaseChange();
     _rotoPhysicalStructuralCache.clear();
+    _rotoPhysicalContentTokens.clear();
+    _rotoPhysicalContentTokenCounter = 0;
     _notifyVisualChange();
   },
 
@@ -1811,6 +1835,15 @@ export const physicPaintStore = {
     const structural = _resolveRotoPhysicalStructural(layerId);
     if (!structural) return null;
     return structural.contentRevision;
+  },
+
+  /** regression-refresh-multi-paint Layer 2: the CONTENT token of the current
+   * physical document (the accepted completion). A paint carrying an OLDER
+   * content token can never overwrite the canvas after this document settles —
+   * the engine's preview-base seam drops a settle whose token is below the
+   * applied one. Monotonic across the session (never reset by canvas clears). */
+  getContentToken(layerId: string): number {
+    return resolveContentToken(this.getRotoPhysicalContentRevision(layerId));
   },
 
   /**

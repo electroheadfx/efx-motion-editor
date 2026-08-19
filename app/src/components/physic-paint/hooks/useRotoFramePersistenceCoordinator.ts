@@ -27,6 +27,10 @@ export function shouldReloadRotoFrameAfterFailedCapture(): boolean {
 interface RotoPersistenceStorePort {
   getRotoPhysicalDocument: (layerId: string) => PhysicPaintRotoPhysicalDocument | null;
   getRotoPhysicalContentRevision: (layerId: string) => string | null;
+  /** regression-refresh-multi-paint Layer 2: resolve the monotonic CONTENT token
+   * of a content revision. Threaded into every reference load so the engine's
+   * preview-base seam orders paints by CONTENT newness, never issue order. */
+  resolveContentToken: (contentRevision: string | null | undefined) => number;
   getRotoRealKeyRecord: (layerId: string, keyId: string) => PhysicPaintRotoRealKeyRecord | null;
   getRotoRealKeyRecordByAppFrame: (layerId: string, appFrame: number) => PhysicPaintRotoRealKeyRecord | null;
   getRotoPhysicalRenderSource: (layerId: string, appFrame: number) => PhysicPaintRotoPhysicalRenderSource | null;
@@ -373,6 +377,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     getLiveOverlayActionCounts: () => editBuffer.bufferRef.current.liveOverlayActionCounts,
     syncPending: () => inputRef.current.syncPending(),
     setApplyMessage: (message) => inputRef.current.setApplyMessage(message),
+    resolveContentToken: (contentRevision) => inputRef.current.store.resolveContentToken(contentRevision),
   });
 
   const upsertCachedFrame = useCallback(async (renderedFrame: RenderedFramePayload, backgroundOnly: boolean, _onionFrame?: RenderedFramePayload | null, _interpolationSettings?: PhysicPaintRotoInterpolationSettings, expectedLayerId?: string, mutationId?: number, expectedOperationId?: string, background?: PhysicPaintRotoBackgroundMetadata, expectedKeyId?: string, expectedContentRevision?: string) => {

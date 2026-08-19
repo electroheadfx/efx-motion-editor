@@ -337,7 +337,62 @@ describe('Roto reference controller', () => {
     expect(engine.setPreviewBaseImageUrl).toHaveBeenCalledWith('data:frame4', undefined, 4);
   });
 
-  it('paints an explicit-generation reconcile (replaceDirtyFrame) even while a settled render is applied', () => {
+  it('Layer 2: threads the frame CONTENT token into the engine when no explicit generation is passed', () => {
+    // regression-refresh-multi-paint Layer 2: a non-explicit loader paint
+    // (navigation, frame-editing effect, pixel-cache retry) must carry the
+    // frame's CONTENT token so the engine orders paints by CONTENT newness —
+    // a stale frame (older content revision) stays inert even though its
+    // request is issued later.
+    const engine = createEngine();
+    const cached = { ...frame(4, 'real-key', 'data:frame4'), contentRevision: 'rev-2' };
+    const resolveContentToken = vi.fn((revision: string | null | undefined) => (revision === 'rev-2' ? 42 : 0));
+    const loader = createRotoReferenceLoader({
+      getWorkflowMode: () => 'roto',
+      getSettingsBackground: () => 'white',
+      dirtyFrames: new Set(),
+      liveOverlayActionCounts: new Map(),
+      getReferenceFrame: () => cached,
+      setReferenceUrl: vi.fn(),
+      setRepaintBaseFrame: vi.fn(),
+      syncPending: vi.fn(),
+      setApplyMessage: vi.fn(),
+      resolveContentToken,
+    });
+
+    expect(loader.load(4, engine)).toBe(true);
+    expect(resolveContentToken).toHaveBeenCalledWith('rev-2');
+    expect(
+      engine.setPreviewBaseImageUrl,
+      'the engine apply seam receives the CONTENT token, not an auto-assigned session generation',
+    ).toHaveBeenCalledWith('data:frame4', 42, 4);
+  });
+
+  it('Layer 2: the completion reconcile keeps the reconcile explicit-generation path and always paints', () => {
+    // The reconcile passes an EXPLICIT content-derived token (the accepted
+    // document's token) — never a plain refresh, never swallowed by the no-op.
+    const engine = createSettledCompletionEngine(4, 'data:old-full', 7);
+    const accepted = { ...frame(4, 'real-key', 'data:new-full'), contentRevision: 'rev-3' };
+    const dirtyFrames = new Set([4]);
+    const loader = createRotoReferenceLoader({
+      getWorkflowMode: () => 'roto',
+      getSettingsBackground: () => 'white',
+      dirtyFrames,
+      liveOverlayActionCounts: new Map([[4, 2]]),
+      getReferenceFrame: () => accepted,
+      setReferenceUrl: vi.fn(),
+      setRepaintBaseFrame: vi.fn(),
+      syncPending: vi.fn(),
+      setApplyMessage: vi.fn(),
+      replaceDirtyFrame: true,
+      generation: 8,
+      resolveContentToken: (revision) => (revision === 'rev-3' ? 8 : 0),
+    });
+
+    expect(loader.load(4, engine), 'the completion reconcile always paints').toBe(true);
+    expect(engine.setPreviewBaseImageUrl).toHaveBeenCalledWith('data:new-full', 8, 4);
+  });
+
+  it('paints an explicit-generation paint (replaceDirtyFrame) even while a settled render is applied', () => {
     const engine = createSettledCompletionEngine(4, 'data:old-full', 7);
     const accepted = frame(4, 'real-key', 'data:new-full');
     const dirtyFrames = new Set([4]);

@@ -568,28 +568,31 @@ export class EfxPaintEngine {
     }
   }
 
-  setPreviewBaseImageUrl(dataUrl: string, generation?: number, appFrame?: number): void {
+  setPreviewBaseImageUrl(dataUrl: string, contentToken?: number, appFrame?: number): void {
     const requestId = ++this.previewBaseRequestId
-    const requestGeneration = generation ?? this.nextPreviewBaseGeneration()
-    const requestExplicit = generation !== undefined
-    // Keep the auto-assignment counter above any explicit generation this
+    const requestContentToken = contentToken ?? this.nextPreviewBaseContentToken()
+    const requestExplicit = contentToken !== undefined
+    // Keep the auto-assignment counter above any explicit content token this
     // engine has seen, so a later auto-issued paint (navigation/editing) is
-    // never gated by an older explicit completion generation.
-    if (generation !== undefined) {
-      this.previewBaseGenerationCounter = Math.max(this.previewBaseGenerationCounter ?? 0, generation)
+    // never gated by an older explicit completion token. Layer 2 callers that
+    // KNOW their content always pass a content-derived token; the auto path is
+    // the fallback for non-content-aware callers.
+    if (contentToken !== undefined) {
+      this.previewBaseGenerationCounter = Math.max(this.previewBaseGenerationCounter ?? 0, contentToken)
     }
     const cached = this.previewBaseImageCache.get(dataUrl)
     if (cached) {
       // Cache hit: the image is already decoded — apply synchronously under
-      // the identical guards (the approved revisit timing win), PLUS the
-      // generation ordering guard: a stale-generation re-issue (e.g. a repair
-      // reload resolving older content) must never paint over a newer settled
-      // generation's paint.
-      if (requestGeneration < (this.appliedPreviewBaseGeneration ?? 0)) {
-        this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestGeneration)
+      // the identical guards (the regression-refresh-multi-paint revisit
+      // timing win), PLUS the content-token ordering guard: a settle carrying
+      // an OLDER content token than the last applied paint (e.g. a repair
+      // reload resolving content from an older revision) must never paint
+      // over the newer settled content.
+      if (requestContentToken < (this.appliedPreviewBaseGeneration ?? 0)) {
+        this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
         return
       }
-      this.applyPreviewBaseImage(cached, requestId, dataUrl, requestGeneration, appFrame, requestExplicit)
+      this.applyPreviewBaseImage(cached, requestId, dataUrl, requestContentToken, appFrame, requestExplicit)
       return
     }
     const image = new Image()
@@ -607,21 +610,21 @@ export class EfxPaintEngine {
         }
       }
       if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) {
-        this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestGeneration)
+        this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
         return
       }
-      if (requestGeneration < (this.appliedPreviewBaseGeneration ?? 0)) {
-        // Generation regression: a decode completing with an OLDER generation
-        // than the last settled paint must never touch the canvas, even when
-        // its requestId is current (a stale-content re-issue).
-        this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestGeneration)
+      if (requestContentToken < (this.appliedPreviewBaseGeneration ?? 0)) {
+        // Content-token regression: a decode completing with an OLDER content
+        // token than the last settled paint must never touch the canvas, even
+        // when its requestId is current (a stale-content re-issue).
+        this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
         return
       }
-      this.applyPreviewBaseImage(image, requestId, dataUrl, requestGeneration, appFrame, requestExplicit)
-      this.notifyPreviewBaseSettled(dataUrl, 'applied', requestGeneration)
+      this.applyPreviewBaseImage(image, requestId, dataUrl, requestContentToken, appFrame, requestExplicit)
+      this.notifyPreviewBaseSettled(dataUrl, 'applied', requestContentToken)
     }
     image.onerror = () => {
-      this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestGeneration)
+      this.notifyPreviewBaseSettled(dataUrl, 'dropped', requestContentToken)
     }
     image.src = dataUrl
   }
@@ -633,6 +636,14 @@ export class EfxPaintEngine {
 
   /** The generation of the last preview base paint actually applied to the canvas, or null. */
   getAppliedPreviewBaseGeneration(): number | null {
+    return this.appliedPreviewBaseGeneration
+  }
+
+  /** regression-refresh-multi-paint Layer 2: the applied CONTENT token — an
+   * alias of the applied generation, which is now CONTENT-derived when the
+   * caller knows its content (loader/Studio/coordinator) and only falls back to
+   * issue-monotonic auto-assignment for content-agnostic callers. */
+  getAppliedPreviewBaseContentToken(): number | null {
     return this.appliedPreviewBaseGeneration
   }
 
@@ -668,7 +679,7 @@ export class EfxPaintEngine {
     for (const listener of [...this.previewBaseSettledListeners]) listener(dataUrl, outcome, generation)
   }
 
-  private nextPreviewBaseGeneration(): number {
+  private nextPreviewBaseContentToken(): number {
     const floor = Math.max(this.previewBaseGenerationCounter ?? 0, this.appliedPreviewBaseGeneration ?? 0)
     this.previewBaseGenerationCounter = floor + 1
     return this.previewBaseGenerationCounter
