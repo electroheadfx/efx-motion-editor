@@ -137,23 +137,26 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
     }
     const cachedFrame = input.getReferenceFrame(appFrame);
     const paintDataUrl = input.explicitDataUrl ?? cachedFrame?.dataUrl ?? null;
-    // regression-refresh-multi-paint (3rd rejection): a PLAIN effect-driven
-    // reload (no explicit generation, no replaceDirtyFrame, no explicitDataUrl)
-    // must never clobber a completion-settled preview base. The reconcile paints
-    // the ACCEPTED (full) render for this appFrame at an EXPLICIT session-
-    // monotonic generation; the frame-editing effect re-fires later with NO
-    // generation, so the engine auto-assigns a generation ABOVE the explicit
-    // one (issue-monotonic but content-agnostic) and would paint a stale cached
-    // PARTIAL render over the settled full render. When the engine already holds
-    // an EXPLICIT (authoritative) paint for THIS appFrame, a plain refresh is
-    // redundant (same content) or stale (different/partial content) — either way
-    // it must NOT re-issue a paint. Navigation/editing legitimately supersede by
-    // calling clearPreviewBaseImage first (applied dataUrl becomes null) or by
-    // painting a DIFFERENT appFrame — both escape this guard.
+    // regression-refresh-multi-paint (3rd+4th rejection): a PLAIN effect-driven
+    // reload — no explicit generation AND no explicitDataUrl, REGARDLESS of
+    // replaceDirtyFrame — must never clobber a completion-settled preview base.
+    // The reconcile paints the ACCEPTED (full) render for this appFrame at an
+    // EXPLICIT session-monotonic generation; a later reload with no explicit
+    // generation (the frame-editing effect, or the pixel-cache fallback retry
+    // with replaceDirtyFrame=true) lets the engine auto-assign a generation ABOVE
+    // the explicit one (issue-monotonic but content-agnostic) and would paint a
+    // stale cached PARTIAL render over the settled full render. replaceDirtyFrame
+    // is NOT a mark of authoritativeness — every authoritative repaint already
+    // passes an explicit generation (reconcile) or clears the base first
+    // (navigation). When the engine already holds an EXPLICIT paint for THIS
+    // appFrame, a plain refresh is redundant or stale — it must NOT re-issue a
+    // paint. Navigation/editing legitimately supersede by calling
+    // clearPreviewBaseImage first (applied dataUrl becomes null) or by painting a
+    // DIFFERENT appFrame — both escape this guard.
     const appliedDataUrl = engine.getAppliedPreviewBaseDataUrl?.() ?? null;
     const appliedAppFrame = engine.getAppliedPreviewBaseAppFrame?.() ?? null;
     const appliedExplicit = engine.getAppliedPreviewBaseExplicit?.() ?? false;
-    const isPlainRefresh = input.generation === undefined && !input.replaceDirtyFrame && input.explicitDataUrl === undefined;
+    const isPlainRefresh = input.generation === undefined && input.explicitDataUrl === undefined;
     if (
       isPlainRefresh
       && appliedExplicit

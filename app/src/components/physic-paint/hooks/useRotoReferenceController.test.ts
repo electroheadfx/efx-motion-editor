@@ -259,6 +259,65 @@ describe('Roto reference controller', () => {
     expect(setReferenceUrl).toHaveBeenLastCalledWith(null);
   });
 
+  it('no-ops the pixel-cache fallback retry (replaceDirtyFrame=true) when a completion render already settled for the same frame (regression-refresh-multi-paint 4th rejection)', () => {
+    // The completion reconcile settled the ACCEPTED (full) render for frame 20
+    // at an explicit generation — the engine holds it as the applied preview base.
+    const engine = createSettledCompletionEngine(20, 'data:full');
+    // The pixel-cache retry re-fires ~13s after completion: captureLivePixels
+    // failed, so it reloads frame 20 with replaceDirtyFrame=true (no explicit
+    // generation, no explicitDataUrl). Its cached source still resolves the
+    // PARTIAL first-stroke render. This must NOT clobber the settled full render.
+    const partial = frame(20, 'real-key', 'data:partial');
+    const setReferenceUrl = vi.fn();
+    const setRepaintBaseFrame = vi.fn();
+    const loader = createRotoReferenceLoader({
+      getWorkflowMode: () => 'roto',
+      getSettingsBackground: () => 'white',
+      dirtyFrames: new Set(), // not dirty: with replaceDirtyFrame the loader would otherwise paint
+      liveOverlayActionCounts: new Map(),
+      getReferenceFrame: () => partial,
+      setReferenceUrl,
+      setRepaintBaseFrame,
+      syncPending: vi.fn(),
+      setApplyMessage: vi.fn(),
+      replaceDirtyFrame: true,
+    });
+
+    const result = loader.load(20, engine);
+    expect(result, 'the stale cache-retry must not paint').toBe(false);
+    expect(engine.setPreviewBaseImageUrl, 'the partial must never reach the engine').not.toHaveBeenCalled();
+    expect(engine.clear, 'the settled full render must stay on the canvas (no clear)').not.toHaveBeenCalled();
+    expect(engine.setBgMode, 'the settled full render must stay on the canvas (no bgMode swap)').not.toHaveBeenCalled();
+  });
+
+  it('does not block a NEW stroke repaint on a settled frame: the authoritative accept (explicit generation) still paints the new render (regression-refresh-multi-paint safety case)', () => {
+    // A completed heavy Action settled the FULL render for frame 4 at gen 7.
+    const engine = createSettledCompletionEngine(4, 'data:full-before', 7);
+    // The user paints a NEW stroke on frame 4: the frame goes dirty and, once
+    // accepted, carries a NEWER render. This is an AUTHORITATIVE repaint — it
+    // passes an explicit generation, so the plain-refresh no-op (added for the
+    // pixel-cache retry) must NOT swallow it.
+    const newRender = frame(4, 'real-key', 'data:full-after-new-stroke');
+    const dirtyFrames = new Set([4]);
+    const loader = createRotoReferenceLoader({
+      getWorkflowMode: () => 'roto',
+      getSettingsBackground: () => 'white',
+      dirtyFrames,
+      liveOverlayActionCounts: new Map([[4, 1]]),
+      getReferenceFrame: () => newRender,
+      setReferenceUrl: vi.fn(),
+      setRepaintBaseFrame: vi.fn(),
+      syncPending: vi.fn(),
+      setApplyMessage: vi.fn(),
+      replaceDirtyFrame: true,
+      generation: 8,
+    });
+
+    expect(loader.load(4, engine), 'the authoritative new-stroke accept must still repaint').toBe(true);
+    expect(engine.setPreviewBaseImageUrl, 'the new render must be painted over the old settled base').toHaveBeenCalledWith('data:full-after-new-stroke', 8, 4);
+    expect(dirtyFrames.has(4), 'the accepted repaint clears the dirty flag').toBe(false);
+  });
+
   it('still paints a plain refresh for a DIFFERENT appFrame than the settled completion render', () => {
     const engine = createSettledCompletionEngine(9, 'data:frame9-full');
     const target = frame(4, 'real-key', 'data:frame4');
