@@ -5,15 +5,15 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.6
 current_phase_name: multi-rail-selection-and-batch-operations
 status: executing
-stopped_at: Completed 43.6-07-PLAN.md
-last_updated: "2026-08-19T07:37:50.390Z"
+stopped_at: Completed 43.6-08-PLAN.md
+last_updated: "2026-08-19T07:50:13.540Z"
 last_activity: 2026-08-19
 last_activity_desc: Phase 43.6 execution started
 progress:
   total_phases: 12
   completed_phases: 9
   total_plans: 93
-  completed_plans: 91
+  completed_plans: 92
   percent: 75
 ---
 
@@ -29,7 +29,7 @@ stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-16
 last_activity_desc: "Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics"
-progress:[██████████] 98%
+progress:[██████████] 99%
   total_phases: 10
   completed_phases: 7
   total_plans: 78
@@ -49,7 +49,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.6 (multi-rail-selection-and-batch-operations) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 Status: Ready to execute
 Last activity: 2026-08-19 — Phase 43.6 execution started
 
@@ -264,6 +264,7 @@ Progress: [██████████] 99%
 | Phase 43.6 P05 | 2h30m | 2 tasks | 11 files |
 | Phase 43.6 P06 | 2h 30m | 3 tasks | 15 files |
 | Phase 43.6 P07 | 5min | 2 tasks | 2 files |
+| Phase 43.6 P08 | 8min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -529,6 +530,8 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: spacing-on-set resolver intent with per-rail fixed anchors and all-or-nothing validation; set-branch-first scope derivation; locked M5 copy; popover scope line
 - [Phase 43.6]: Solo playback is a session-only presentation arm: it filters cached-playback frame enumeration only and never touches document, history, persistence, bridge, preview, export, or the stopped canvas. Solo enables on any rail selection (set members or single key rail / loop clip), its range spans first selected placement start to last selected effective end, and Escape disarms it as its own layer between push disarm and selection collapse. — D-14/D-17 isolation keeps solo out of persistence and export; D-19 derives the range from effective boundaries (loop effectiveEnd includes generated/linked occurrences; Key Rail = lastKeyFrame + 1); D-04 one-Escape-one-layer chain; D-15 set-of-one enablement; D-18 stopped scrubbing stays unrestricted.
 - [Phase ?]: 43.6-07: Batch kinds move-rails/spacing-on-set/delete-rails join the ordinary history allowlist (8751a903 precedent) — allowlist membership only; replay branch, snapshot equality, and D-06 resolver untouched
+- [Phase ?]: 43.6-08: seedRailSetSelection bridges the plain-selected single rail into the rail-set anchor at the reducer input; active set wins, malformed/null fails closed, reducer byte-untouched (M1)
+- [Phase ?]: 43.6-08: Loop Clip modifier clicks commit set membership synchronously with no 250ms timer (G-43.6-8); plain-click timing and WR-02 dead-zone close unchanged
 
 ### Pending Todos
 
@@ -732,8 +735,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-19T07:37:50.374Z
-Stopped at: Completed 43.6-07-PLAN.md
+Last session: 2026-08-19T07:50:13.525Z
+Stopped at: Completed 43.6-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
