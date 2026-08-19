@@ -2633,6 +2633,22 @@ describe('Phase 43.2 accepted source-phase Group Paint settlement', () => {
     expect(test.releaseLease).not.toHaveBeenCalled();
     expect(test.coordinator.recoveryLease.value).toBe(test.recoveryLeaseToken);
   });
+
+  it('self-heals a recovery lease left by a deferred Group publication failure so the next edit proceeds (G-43.6-2)', async () => {
+    const test = harness({ failFirstLoopReplace: true });
+    const before = groupLifecycleDocument({ gapAt: 4 });
+    test.seedGroupDocument(before);
+
+    expect(await test.executeGroupPaint(4, 'override-gap-4')).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    expect(test.transferLeaseToRecovery).toHaveBeenCalledWith(test.leaseToken);
+    expect(test.releaseLease).not.toHaveBeenCalled();
+    expect(test.coordinator.recoveryLease.value).toBe(test.recoveryLeaseToken);
+
+    expect(await test.executeGroupPaint(4, 'override-gap-4')).toBe(true);
+    expect(test.releaseLease).toHaveBeenCalledWith(test.recoveryLeaseToken);
+    expect(test.coordinator.recoveryLease.value).toBeNull();
+  });
 });
 
 describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
