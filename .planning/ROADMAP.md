@@ -452,7 +452,7 @@ Plans:
 
 **Wave 8** *(gap closure after 43.6-VERIFICATION.md re-verification (8/9) confirmed the plain Loop click skips the D-14 Solo disarm — REVIEW-WR-01)*
 
-- [ ] 43.6-11-PLAN.md — Solo disarm on plain Loop Rail click: one-line disarmSolo() in the handleSelectRotoLoopClip plain-click success branch before the selection write, plus a Studio source-contract regression test (restores truth 9 / SOLO-03; unblocks native UAT re-runs G-43.6-1/-3/-4/-8)
+- [x] 43.6-11-PLAN.md — Solo disarm on plain Loop Rail click: one-line disarmSolo() in the handleSelectRotoLoopClip plain-click success branch before the selection write, plus a Studio source-contract regression test (restores truth 9 / SOLO-03; unblocks native UAT re-runs G-43.6-1/-3/-4/-8)
 
 ### Phase 44: Integrated UAT + Signed Release
 

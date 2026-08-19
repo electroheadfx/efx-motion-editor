@@ -5,16 +5,16 @@ milestone_name: PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 current_phase: 43.6
 current_phase_name: multi-rail-selection-and-batch-operations
 status: executing
-stopped_at: Completed 43.6-10-PLAN.md
-last_updated: "2026-08-19T11:41:42.819Z"
+stopped_at: Completed 43.6-11-PLAN.md
+last_updated: "2026-08-19T11:58:24.274Z"
 last_activity: 2026-08-19
-last_activity_desc: Completed 43.6-10-PLAN.md (WR-01/WR-02 gap closure)
+last_activity_desc: Completed 43.6-11-PLAN.md (plain Loop Rail click Solo disarm, REVIEW-WR-01 closed)
 progress:
   total_phases: 12
   completed_phases: 10
   total_plans: 95
-  completed_plans: 94
-  percent: 75
+  completed_plans: 95
+  percent: 83
 ---
 
 Total Phases: 8
@@ -49,9 +49,9 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 ## Current Position
 
 Phase: 43.6 (multi-rail-selection-and-batch-operations) — EXECUTING
-Plan: 10 of 10
-Status: All plans complete — verification re-run pending (native UAT re-runs G-43.6-1/3/4/8 scheduled after 43.6-10 closure)
-Last activity: 2026-08-19 — Completed 43.6-10-PLAN.md (WR-01 cross-type seed, WR-02 gesture-aware double-click gate)
+Plan: 11 of 11
+Status: All plans complete — verification re-run pending (native UAT re-runs G-43.6-1/3/4/8 scheduled after 43.6-11 closure)
+Last activity: 2026-08-19 — Completed 43.6-11-PLAN.md (plain Loop Rail click Solo disarm, REVIEW-WR-01 closed)
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -267,6 +267,7 @@ Progress: [██████████] 99%
 | Phase 43.6 P08 | 8min | 3 tasks | 6 files |
 | Phase 43.6 P09 | 12min | 3 tasks | 4 files |
 | Phase 43.6 P10 | 8min | 3 tasks | 4 files |
+| Phase 43.6 P11 | 3min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -536,6 +537,8 @@ v0.8.0 milestone decisions are closed and logged in PROJECT.md Key Decisions (se
 - [Phase ?]: 43.6-08: Loop Clip modifier clicks commit set membership synchronously with no 250ms timer (G-43.6-8); plain-click timing and WR-02 dead-zone close unchanged
 - [Phase ?]: 43.6-10 WR-01: both Studio rail handlers derive the set seed from whichever single-rail signal is live, key-rail first (plain click nulls the other type's signal, so exactly one is live)
 - [Phase ?]: 43.6-10 WR-02: Loop Clip double-click gate gated on gesture === 'plain'; modifier clicks in the pending/220ms window fall through to the 43.6-08 synchronous-commit branch
+- [Phase ?]: 43.6-11: plain-click success branch of handleSelectRotoLoopClip calls disarmSolo() directly (after the railSetSelection collapse) instead of clearRotoLoopSelection(), which would clobber the selection this branch is about to write (VERIFICATION prohibition)
+- [Phase ?]: 43.6-11: the disarm runs BEFORE the selection write (selectedLoopClipIds.value = next.selectedLoopClipIds), so the armed getSoloWindow gate (L1153) returns null for the new selection and playback/capsule can never silently retarget
 
 ### Pending Todos
 
@@ -739,8 +742,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-19T10:30:36.085Z
-Stopped at: Completed 43.6-10-PLAN.md
+Last session: 2026-08-19T11:58:24.258Z
+Stopped at: Completed 43.6-11-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
