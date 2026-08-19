@@ -5,6 +5,7 @@ import {
   reconcileRailSetSelection,
   recordRailSetSnapshot,
   resolveRailSetPostAcceptance,
+  seedRailSetSelection,
   updatePhysicsPaintRotoRailSetSelection,
   type RailSetIdentity,
   type RailSetSelectionState,
@@ -410,5 +411,52 @@ describe('rail-set post-acceptance snapshot side-channel (43.6-01 Task 3, D-06 c
       operationId: 'op-1',
       current,
     })).toBe(current);
+  });
+});
+
+describe('seedRailSetSelection (43.6-08 seed bridge)', () => {
+  it('returns a non-null current set unchanged (an active set always wins)', () => {
+    const current = updatePhysicsPaintRotoRailSetSelection(null, ORDERED, keyRail('key-a'), 'plain');
+
+    expect(seedRailSetSelection(current, loop('loop-d'))).toBe(current);
+  });
+
+  it('seeds a one-member key-rail set anchored on the plain-selected rail when the set is null', () => {
+    const seeded = seedRailSetSelection(null, keyRail('key-a'));
+
+    expect(seeded).toEqual({ members: [keyRail('key-a')], anchor: keyRail('key-a') });
+    if (seeded === null) throw new Error('Expected a seeded key-rail set.');
+    expect(Object.isFrozen(seeded)).toBe(true);
+    expect(Object.isFrozen(seeded.members)).toBe(true);
+  });
+
+  it('seeds a one-member loop set anchored on the plain-selected rail when the set is null', () => {
+    const seeded = seedRailSetSelection(null, loop('loop-b'));
+
+    expect(seeded).toEqual({ members: [loop('loop-b')], anchor: loop('loop-b') });
+  });
+
+  it('returns null when both the current set and the single identity are null', () => {
+    expect(seedRailSetSelection(null, null)).toBeNull();
+  });
+
+  it('is fail-closed on a malformed single identity (unknown kind, empty id, non-object)', () => {
+    expect(seedRailSetSelection(null, { kind: 'mystery', id: 'x' } as unknown as RailSetIdentity)).toBeNull();
+    expect(seedRailSetSelection(null, { kind: 'loop', loopId: '' } as RailSetIdentity)).toBeNull();
+    expect(seedRailSetSelection(null, 'loop-b' as unknown as RailSetIdentity)).toBeNull();
+  });
+
+  it('carries the plain-selected rail into a Cmd+click toggle (seed {A} then toggle B yields {A, B} anchored on A)', () => {
+    const seeded = seedRailSetSelection(null, keyRail('key-a'));
+    const next = updatePhysicsPaintRotoRailSetSelection(seeded, ORDERED, loop('loop-b'), 'toggle');
+
+    expect(next).toEqual({ members: [keyRail('key-a'), loop('loop-b')], anchor: keyRail('key-a') });
+  });
+
+  it('carries the plain-selected rail into a Shift+click range (seed {A} then range B yields the slice {A, B} anchored on A)', () => {
+    const seeded = seedRailSetSelection(null, keyRail('key-a'));
+    const next = updatePhysicsPaintRotoRailSetSelection(seeded, ORDERED, loop('loop-b'), 'range');
+
+    expect(next).toEqual({ members: [keyRail('key-a'), loop('loop-b')], anchor: keyRail('key-a') });
   });
 });
