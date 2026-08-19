@@ -1266,6 +1266,8 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
 
   const executePhysicalEdit = useCallback(
     async (input: RotoPhysicalEditCoordinatorExecuteInput<EngineState>): Promise<boolean> => {
+      // G-43.6-2: a recovery lease must never permanently block edits — the store's token validation is the real concurrency authority, and this is the only production caller of releasePhysicalEditRecoveryLease. Best-effort release here; if the parent still refuses (stale token), the guard below keeps blocking.
+      releasePhysicalEditRecoveryLease();
       if (
         inFlightRef.current
         || pendingRef.current
@@ -1928,7 +1930,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = SerializedProject>(
         return false;
       }
     },
-    [captureSnapshot, clearTimeoutOnce, finalizeFailed, clearPendingOnce],
+    [captureSnapshot, clearTimeoutOnce, finalizeFailed, clearPendingOnce, releasePhysicalEditRecoveryLease],
   );
 
   useEffect(() => () => {
