@@ -1964,3 +1964,30 @@ describe('Directional Push tool source contract (43.5-05: ONE mode-toggle Push t
     expect(code).toContain('rearmAnchorRef.current = null');
   });
 });
+
+describe('Solo armed orange tint source contract (43.6-09: base class joins the conditional armed class)', () => {
+  it('the Solo button className template carries physics-paint-push-tool-button AND ${soloArmedClass} in the same template literal', () => {
+    const code = source();
+    // Slice the Solo tool group block (the block containing 'Solo selected Rails').
+    const groupStart = code.indexOf('physics-paint-solo-tool-group');
+    expect(groupStart).toBeGreaterThan(-1);
+    const group = code.slice(groupStart, code.indexOf('Solo selected Rails', groupStart));
+    // Root cause RC-C (G-43.6-2 / G-43.6-7): the template reused the
+    // .physics-paint-push-tool-armed class NAME but omitted the sibling
+    // .physics-paint-push-tool-button base class required by the compound CSS
+    // selector .physics-paint-push-tool-button.physics-paint-push-tool-armed
+    // (physicsPaintStudio.css) — so the armed class was inert and the orange
+    // tint never rendered. The template must carry BOTH the base class and the
+    // conditional armed class in the same template literal, mirroring the Push
+    // button exactly.
+    const classStart = group.indexOf('class={`');
+    expect(classStart).toBeGreaterThan(-1);
+    const classTemplate = group.slice(classStart, group.indexOf('}`}', classStart) + 3);
+    expect(classTemplate).toContain('physics-paint-roto-key-icon-button');
+    expect(classTemplate).toContain('physics-paint-push-tool-button');
+    expect(classTemplate).toContain('${soloArmedClass}');
+    // The armed class stays conditional — soloArmedClass is defined from the
+    // soloArmed signal (L1329) and is untouched by this fix.
+    expect(code).toContain("const soloArmedClass = soloArmed ? ' physics-paint-push-tool-armed' : '';");
+  });
+});

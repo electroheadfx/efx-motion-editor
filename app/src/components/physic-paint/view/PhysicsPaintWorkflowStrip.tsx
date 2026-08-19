@@ -3327,7 +3327,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={soloTooltip.onPointerEnter} onPointerLeave={soloTooltip.onPointerLeave}>
                   <button
                     type="button"
-                    class={`physics-paint-roto-key-icon-button${soloArmedClass}`}
+                    class={`physics-paint-roto-key-icon-button physics-paint-push-tool-button${soloArmedClass}`}
                     aria-label="Solo selected Rails"
                     aria-pressed={soloArmed ? 'true' : 'false'}
                     aria-disabled={soloToolDisabled ? 'true' : undefined}
