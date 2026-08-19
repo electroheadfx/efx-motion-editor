@@ -1,6 +1,6 @@
 ---
 slug: regression-refresh-multi-paint
-status: investigating
+status: awaiting_human_verify
 trigger: "At the end of a multi-paint render (Action/Play generating many strokes across frames), the canvas does NOT show the final state — the last strokes are missing until the user clicks anywhere, which forces a repaint. With only 2 strokes the problem never appears; it needs a larger stroke count."
 created: 2026-08-19
 updated: 2026-08-19
@@ -32,10 +32,10 @@ Build a tight RED feedback loop first (scripted many-stroke generation asserting
 ## Current Focus
 
 ```yaml
-hypothesis: CONFIRMED (3rd native rejection, 2026-08-19) — the generation-ordering fix does NOT cover the late useEffect reload. The completion reconcile paints the ACCEPTED (full) render with an EXPLICIT session-monotonic generation G. ~1s later the frame-editing useEffect (useRotoFrameEditingController.ts:187-190, wired to loadCachedRotoReferenceFrame) re-fires on a launchContext/currentFrame/operationId dep change and reloads the SAME frame with AUTO-generation — and the engine auto counter is kept ABOVE any explicit generation seen (EfxPaintEngine.ts:567-568), so the reload's auto-gen > G and PASSES the gate. The reload resolves the frame from the preview/cached frames source (findCachedRotoReferenceFrame), which still holds the PARTIAL first-stroke render, and paints that partial over the correct full render. Cursor stays (user-confirmed) → not navigation. Generation ordering is issue-monotonic but content-agnostic — it cannot stop a NEW effect-driven paint of stale content issued later.
-test: RED to add — simulate (1) reconcile applies full render at gen G; (2) frame-editing-effect reload fires with auto-gen, resolves a cached PARTIAL frame; canvas must stay on the full render. And: the loader/reference source must never resolve a progressive/partial render as a frame's reference image once the accepted (full) render settles.
-expecting: native UAT — heavy-stroke Motion Action: full final frame at completion stays correct ~1s+ later with NO late revert to the partial first-stroke render; 2-stroke control correct.
-next_action: apply the user's two fix directions — (a) never cache a progressive/partial decode as a frame's reference image (overwrite when the accepted/full render settles), and/or (b) make the late reload compare against getAppliedPreviewBaseDataUrl and no-op when the engine already holds the newest content; keep the generation guard. Then native verify.
+hypothesis: CONFIRMED (4th native rejection, named via DEBUG-PAINTGEN instrumentation) — the late writer is the PIXEL-CACHE FALLBACK RETRY (PhysicsPaintStudio canvasCompletedMutation → captureLivePixels fails → loadCachedRotoReferenceFrame(appFrame, engine, undefined, true), site=cache-retry). It fires TWICE after completion (ts 67501, 70099), each with replaceDirtyFrame=true → the 662e82fd isPlainRefresh (which required !replaceDirtyFrame) never fired → it reloads the frame from the stale PARTIAL first-stroke render with a FRESH auto-generation (issue-monotonic but content-agnostic) → clobbers the correct completion render (gen 4, accept-reload ts 54349) with the partial. FIXED at the loader seam: a plain refresh (no explicit generation AND no explicitDataUrl) is plain REGARDLESS of replaceDirtyFrame — replaceDirtyFrame is not a mark of authoritativeness; every authoritative repaint passes an explicit generation (reconcile) or clears the base first (navigation).
+test: RED confirmed (stash demo) — new loader test 'no-ops the pixel-cache fallback retry (replaceDirtyFrame=true) when a completion render already settled for the same frame' failed pre-fix (returned true/painted), passes post-fix. GREEN — engine 79/79, loader 12/12 (incl. cache-retry no-op + new-stroke safety case), full app 2611 passed, tsc --noEmit clean both packages.
+expecting: native UAT — heavy-stroke Motion Action: full final frame at completion stays correct ~1s+ with NO late revert to the partial first-stroke render; 2-stroke control correct; and a NEW stroke painted on the settled frame must still repaint (safety case, explicit-generation accept).
+next_action: native human verification (heavy-stroke Action final frame stays correct; new-stroke repaint works). On pass, archive session to resolved/.
 ```
 
 ## Evidence
@@ -81,16 +81,25 @@ root_cause: |
      paints it over the correct full render. Cursor stays (not navigation). The reload is a
      fresh write of stale content, not a stale settlement of an earlier write — only a
      content-agnostic comparison can reject it.
+  3. (4th rejection — THIS fix, NAMED by instrumentation) The late writer is the PIXEL-CACHE
+     FALLBACK RETRY: on each completed stroke, canvasCompletedMutation captures live pixels;
+     when captureLivePixels FAILS it falls back to loadCachedRotoReferenceFrame(appFrame,
+     engine, undefined, /*replaceDirtyFrame*/ true). replaceDirtyFrame=true defeated the
+     plain-refresh no-op (which required !replaceDirtyFrame), so the retry reloaded the frame
+     from the stale PARTIAL first-stroke render with a FRESH auto-generation (issue-monotonic
+     but content-agnostic) and clobbered the settled full render ~13s after completion
+     (DEBUG-PAINTGEN: accept-reload gen4 ts54349; cache-retry ts67501 + ts70099 → engine-apply
+     gen6 ts70177). The retry fired twice (two failed captures).
 fix: |
-  1. Loader no-op guard (useRotoReferenceController.ts) — direction (b): a PLAIN refresh
-     (no explicit generation, no replaceDirtyFrame, no explicitDataUrl) is a NO-OP when the
-     engine already holds an EXPLICITLY-settled preview base for the SAME appFrame with a
-     non-null applied dataUrl. The reconcile settles at an explicit generation, so a late
-     effect reload of the same frame cannot re-issue the stale cached PARTIAL render. The
-     reference base is preserved for later legit loads. Escaped legitimately: navigation
-     (clearPreviewBaseImage first → applied dataUrl/appFrame null), different-frame loads
-     (appliedAppFrame !== appFrame), and the reconcile/repair path itself (replaceDirtyFrame
-     + explicit generation + explicitDataUrl → not a plain refresh).
+  1. Loader no-op guard (useRotoReferenceController.ts) — direction (b), EXTENDED for the 4th
+     rejection: a PLAIN refresh (no explicit generation AND no explicitDataUrl) is a NO-OP
+     when the engine already holds an EXPLICITLY-settled preview base for the SAME appFrame
+     with a non-null dataUrl — REGARDLESS of replaceDirtyFrame. replaceDirtyFrame is not a
+     mark of authoritativeness: every authoritative repaint already passes an explicit
+     generation (reconcile/repair) or clears the base first (navigation). This makes the
+     pixel-cache fallback retry (replaceDirtyFrame=true) a no-op when a completion render has
+     settled for the frame; the double-fire becomes two inert no-ops. New-stroke repaints are
+     unaffected (they carry an explicit generation via the accept/reconcile path).
   2. Engine origin tracking (EfxPaintEngine.ts): getAppliedPreviewBaseDataUrl,
      getAppliedPreviewBaseAppFrame, getAppliedPreviewBaseExplicit (+ existing
      getAppliedPreviewBaseGeneration) on the applied preview base — set on BOTH apply paths
@@ -99,15 +108,16 @@ fix: |
      orders async decode/apply settlements by issue time; the loader no-op guard adds the
      content-agnostic gap the generation token cannot cover (a fresh write of stale content).
 verification: |
-  - RED (3rd rejection): the loader stale-partial refresh no-op test fails pre-fix (no guard
-    → the partial repaints over the settled full render); the engine origin-tracking tests
-    fail pre-fix (mock getters return undefined; the loader guard is absent).
-  - GREEN: engine 79/79 (5 suites, 9 completion-contract tests incl. appFrame/explicit origin
-    tracking); guard 11/11; loader 10/10; frame-editing 5/5; persistence coordinator 26/26;
-    full app suite 2609 passed; tsc --noEmit clean in both packages (efx-physic-paint rebuilt
-    so the app resolves the new d.ts).
+  - RED (4th rejection): the new loader test 'no-ops the pixel-cache fallback retry
+    (replaceDirtyFrame=true) when a completion render already settled for the same frame'
+    failed pre-fix (returned true, painted the partial over the settled full render); passes
+    post-fix. (3rd-rejection RED was the plain-refresh stale-partial test.)
+  - GREEN: engine 79/79; loader 12/12 (incl. the cache-retry no-op + the new-stroke
+    authoritative-repaint safety case); full app 2611 passed; tsc --noEmit clean in both
+    packages.
   - Native UAT PENDING: heavy-stroke Motion Action full final frame stays correct ~1s+ later
-    with NO late revert to the partial first-stroke render; 2-stroke control correct.
+    with NO late revert to the partial first-stroke render; 2-stroke control correct; a NEW
+    stroke painted on the settled frame must still repaint (safety case).
 files_changed:
   - packages/efx-physic-paint/src/engine/EfxPaintEngine.ts
   - packages/efx-physic-paint/src/engine/EfxPaintEngine.previewBaseCompletion.test.ts
@@ -143,7 +153,13 @@ files_changed:
 - timestamp: 2026-08-19 — 3rd NATIVE REJECTION (user, screenshots + Q&A): the full final render shows correctly at completion, then ~1s later a LAST re-render paints the PREVIOUS render (the PARTIAL first-stroke render of the SAME frame). Cursor stays on the same frame (user-confirmed: NOT navigation). User hypothesis confirmed: the late useEffect reloads the frame from cache, and the cache holds the partial first-stroke render (a decode the previous fix began caching); the generation guard cannot stop it because the reload paints with an AUTO-generation that the engine keeps above the reconcile's explicit generation.
 - timestamp: 2026-08-19 — mechanism pinned (static): frame-editing useEffect (useRotoFrameEditingController.ts:187-190) re-fires ~1s after completion on a launchContext/currentFrame/operationId dep change and reloads `input.currentFrame` via `loadCachedRotoReferenceFrame` with NO explicit generation → engine assigns auto-generation = max(counter, appliedGen)+1 (EfxPaintEngine.ts:646-650), and setPreviewBaseImageUrl bumps the auto counter above any explicit generation seen (EfxPaintEngine.ts:567-568). The reconcile's explicit generation G therefore CANNOT gate the effect's reload (auto-gen > G). The reload resolves the frame from the cached/preview source (findCachedRotoReferenceFrame via replaceDirtyFrame=false), which can still hold the PARTIAL render, and paints it over the correct full render.
 - timestamp: 2026-08-19 — ROOT CAUSE CLASS: generation ordering is ISSUE-monotonic but CONTENT-agnostic. It correctly orders async decode/apply settlements by issue time, but cannot reject a NEW effect-driven paint whose content is stale yet whose generation (auto, later-issued) is higher. The late useEffect is a fresh write of stale content, not a stale settlement of an earlier write.
-- timestamp: 2026-08-19 — FIX DIRECTIONS (from user): (a) never cache a progressive/partial decode as a frame's reference image — or overwrite it when the accepted/full render settles; and/or (b) make the late effect compare against `getAppliedPreviewBaseDataUrl` and no-op when content is unchanged (the engine already holds the newest content). Keep the generation guard.
+- timestamp: 2026-08-19 — FIX DIRECTIONS (from user): (a) never cache a progressive/partial decode as a frame's reference image — or overwrite it when the accepted/full frame settles; and/or (b) make the late effect compare against `getAppliedPreviewBaseDataUrl` and no-op when content is unchanged (the engine already holds the newest content). Keep the generation guard.
+- timestamp: 2026-08-19 — 4th NATIVE REJECTION NAMED via DEBUG-PAINTGEN instrumentation (one tagged line per preview-base write seam, engine/app/Studio). User pasted the decisive pair: LAST engine-apply stage=applied gen=6 at ts=70177 appFrame=20; its caller = site=cache-retry (PhysicsPaintStudio canvasCompletedMutation fallback) at ts=70099 with replaceDirtyFrame=true → loader isPlainRefresh=false → the 662e82fd no-op never fired. It fired TWICE (ts=67501, 70099). The correct completion paint was accept-reload at ts=54180 gen=4 applied ts=54349 — 13s BEFORE the cache-retry writes.
+- timestamp: 2026-08-19 — ROOT CAUSE (4th): the pixel-cache fallback retry is the late writer. canvasCompletedMutation → captureLivePixels fails → loadCachedRotoReferenceFrame(appFrame, engine, undefined, /*replaceDirtyFrame*/ true). replaceDirtyFrame=true defeated the 662e82fd plain-refresh no-op (which required !replaceDirtyFrame), so the retry reloaded the frame from the stale PARTIAL first-stroke render with a fresh AUTO-generation (issue-monotonic but content-agnostic) and clobbered the settled full render. The retry fired twice because two capture attempts failed.
+- timestamp: 2026-08-19 — BYPASS CONFIRMED (answers the earlier question): the 662e82fd no-op fired only when isPlainRefresh = generation===undefined && !replaceDirtyFrame && explicitDataUrl===undefined. It was bypassed by replaceDirtyFrame=true (cache-retry), or by explicitDataUrl:null (strict ===undefined check), or any explicit generation.
+- timestamp: 2026-08-19 — FIX (loader seam, direction a): isPlainRefresh no longer requires !replaceDirtyFrame — a plain refresh = no explicit generation AND no explicitDataUrl, REGARDLESS of replaceDirtyFrame. replaceDirtyFrame is not a mark of authoritativeness; every authoritative repaint already passes an explicit generation (reconcile) or clears the base first (navigation). The cache-retry becomes a no-op when the engine holds an explicit settled base for the same appFrame; the double-fire becomes two inert no-ops.
+- timestamp: 2026-08-19 — SAFETY CASE covered: a NEW stroke painted on an already-settled frame is still repainted — the authoritative accept passes an explicit generation (reconcile), so it is never 'plain' and never swallowed by the no-op. Regression test added (explicit generation 8 over settled gen 7 paints the new render, clears dirty).
+- timestamp: 2026-08-19 — TDD: RED (new cache-retry no-op loader test failed pre-fix, returned true/painted) → GREEN engine 79/79, loader 12/12, full app 2611 passed, tsc --noEmit clean both packages. ALL [DEBUG-PAINTGEN] instrumentation removed before the final commit.
 
 ## Evidence (continued — 3rd-rejection fix implemented, 2026-08-19)
 
