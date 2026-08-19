@@ -536,6 +536,19 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
     expect(collapse).toContain('if (selectedKeyIds.value.length <= 1) return;');
   });
 
+  it('gates the solo playback window on the armed signal so a plain rail selection never filters playback (43.6-09)', () => {
+    const portStart = studio.indexOf('getSoloWindow: () => {');
+    const portEnd = studio.indexOf('onStart: (frameCount)', portStart);
+    const port = studio.slice(portStart, portEnd);
+    expect(portStart).toBeGreaterThanOrEqual(0);
+    // 43.6-09: a disarmed solo must return null BEFORE member derivation so
+    // the playback enumeration stays byte-identical (43.6-06 D-17) even when
+    // a rail is selected — otherwise selecting a rail after disarm plays only
+    // that rail, as if solo were still active.
+    expect(port).toContain('if (!isSoloArmed()) return null;');
+    expect(port.indexOf('if (!isSoloArmed()) return null;')).toBeLessThan(port.indexOf('const members: RailSetIdentity[]'));
+  });
+
   it('clears the set on Select All and spacing selection (D-04 key selection)', () => {
     const selectAllStart = studio.indexOf('const selectAllRotoKeys = useCallback(() => {');
     const selectAllEnd = studio.indexOf('const [, setLastError]', selectAllStart);
