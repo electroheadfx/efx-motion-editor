@@ -37,7 +37,9 @@ import {
   mapRotoDeleteProductReason,
   mapRotoGroupDragProductReason,
   mapRotoInsertProductReason,
+  mapRotoScissorAcceptedCopy,
   mapRotoScissorProductReason,
+  mapRotoScissorTooltip,
   mapRotoKeyRailDragProductReason,
   mapRotoPushProductReason,
   mapRotoRailSetMoveProductReason,
@@ -45,6 +47,7 @@ import {
   useRotoTimelineActions,
   type RotoDeleteTarget,
   type RotoInsertTarget,
+  type RotoScissorAcceptedTarget,
   type RotoScissorTargetClassificationInput,
   type RotoTimelineActionsInput,
 } from './useRotoTimelineActions';
@@ -2416,6 +2419,15 @@ describe('useRotoTimelineActions Scissor availability and activation', () => {
     const target = classifyRotoScissorTarget(classificationInput);
     expect(target).toEqual({ kind: 'group-or-linked', ownership: 'group', appFrame: 4 });
     expect(mapRotoScissorProductReason(target)).toBe('Scissor is unavailable on a Motion or Static Group frame.');
+  });
+
+  it('maps every enabled Scissor copy variant through the one mapper family', () => {
+    const okTarget: RotoScissorAcceptedTarget = { kind: 'ok', keyId: 'B', appFrame: 3 };
+    const generatedOkTarget: RotoScissorAcceptedTarget = { kind: 'generated-ok', keyId: 'k6', appFrame: 4 };
+    expect(mapRotoScissorTooltip(okTarget)).toBe('Split the Key Rail before this key.');
+    expect(mapRotoScissorTooltip(generatedOkTarget)).toBe('Split the Key Rail at this point.');
+    expect(mapRotoScissorAcceptedCopy(okTarget)).toBe('Split Key Rail before frame 3.');
+    expect(mapRotoScissorAcceptedCopy(generatedOkTarget)).toBe('Split Key Rail at frame 4.');
   });
 });
 
