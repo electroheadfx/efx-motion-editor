@@ -3936,6 +3936,168 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', () => {
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(redoLease)).toBe(true);
   });
 
+  it('delete-rails undo/redo restore the exact pre-delete selection set through the real bridge (G-43.6-2)', async () => {
+    const layer = physicLayer();
+    mockLayers([layer], null);
+    projectStore.projectContextId.value = projectContextId;
+    sequenceStore.add({
+      id: 'bridge-delete-rails-sequence',
+      kind: 'fx',
+      name: 'Bridge delete-rails authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: 100,
+    });
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const records = [
+      makePhysicalRecord('source-A', 0),
+      makePhysicalRecord('source-B', 2),
+      makePhysicalRecord('ordinary', 20),
+    ];
+    const interpolation = { enabled: true, mode: 'blend' as const };
+    const loopClips = [{
+      loopId: 'group-1',
+      placementStart: 0,
+      sourceKeyIds: ['source-A', 'source-B'],
+      repeat: 3 as const,
+      mode: 'progressive' as const,
+      scriptId: 'action-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      syncState: 'modified' as const,
+      provenanceState: 'attached' as const,
+      phaseOrigin: 0,
+      originalEndExclusive: 9,
+      visibleRanges: [{ start: 0, endExclusive: 9 }],
+      frameOverrides: [] as { appFrame: number; keyId: string }[],
+    }];
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, {
+      capacity: 30,
+      realKeyRecords: records,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: 'ordinary',
+      cursorAppFrame: 20,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, ['source-B'], []),
+      loopClips,
+      incomingInterpolationBreakKeyIds: ['source-B'],
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    const seededDoc = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!seededDoc) throw new Error('Expected seeded physical document.');
+    registerRotoAlphaCanvasFrame(records[0].payload.dataUrl, { width: 1000, height: 650 } as HTMLCanvasElement);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 5 });
+    if (!launch.ok) throw new Error(launch.error);
+
+    const proposed = proposePhysicPaintRotoDeleteRails({
+      document: seededDoc,
+      members: [{ kind: 'key-rail', firstKeyId: 'ordinary', keyIds: ['ordinary'] }],
+    });
+    expect(proposed.ok).toBe(true);
+    if (!proposed.ok) throw new Error('Expected a delete-rails proposal.');
+    // The POST-delete proposal selection must NOT become the before snapshot.
+    expect(proposed.proposal.selectedKeyId).toBe('source-B');
+    expect(proposed.proposal.cursorAppFrame).toBe(2);
+
+    const leaseToken = acquirePhysicalLease(layer.id, projectContextId);
+    const result = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'delete-rails-accepted',
+      operationKind: 'delete-rails',
+      leaseToken,
+      layerId: layer.id,
+      startFrame: 20,
+      launchOperationId: launch.data.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: seededDoc.revision,
+      records: proposed.proposal.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (proposed.proposal.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: proposed.proposal.interpolation.enabled,
+      interpolationMode: 'blend',
+      loopClips: proposed.proposal.loopClips,
+      incomingInterpolationBreakKeyIds: proposed.proposal.incomingInterpolationBreakKeyIds,
+      selectedKeyId: proposed.proposal.selectedKeyId,
+      selectedAppFrame: proposed.proposal.cursorAppFrame,
+      cursorAppFrame: proposed.proposal.cursorAppFrame,
+      semanticDelta: proposed.impact,
+    });
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(layer.id);
+    if (!acceptedDocument) throw new Error('Expected accepted delete-rails document.');
+    expect(acceptedDocument.selectedKeyId).toBe('source-B');
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
+
+    const undoLease = acquirePhysicalLease(layer.id, projectContextId);
+    const undo = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'undo-delete-rails-accepted',
+      operationKind: 'undo',
+      layerId: layer.id,
+      leaseToken: undoLease,
+      startFrame: seededDoc.cursorAppFrame,
+      launchOperationId: launch.data.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: acceptedDocument.revision,
+      records: seededDoc.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (seededDoc.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: seededDoc.interpolation.enabled,
+      interpolationMode: 'blend',
+      loopClips: seededDoc.loopClips,
+      incomingInterpolationBreakKeyIds: seededDoc.incomingInterpolationBreakKeyIds,
+      // The undo replay submits the TRUE pre-delete selection carried by the
+      // history entry's before snapshot — G-43.6-2.
+      selectedKeyId: seededDoc.selectedKeyId,
+      selectedAppFrame: seededDoc.selectedKeyId === null ? null : seededDoc.cursorAppFrame,
+      cursorAppFrame: seededDoc.cursorAppFrame,
+      historyProvenance: {
+        historyCommandId: 'delete-rails-accepted',
+        historyDirection: 'undo',
+        sourceRevision: acceptedDocument.revision,
+        targetRevision: seededDoc.revision,
+      },
+    });
+    expect(undo.ok, undo.ok ? undefined : undo.error).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(seededDoc);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(undoLease)).toBe(true);
+
+    const redoLease = acquirePhysicalLease(layer.id, projectContextId);
+    const redo = applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      operationId: 'redo-delete-rails-accepted',
+      operationKind: 'redo',
+      layerId: layer.id,
+      leaseToken: redoLease,
+      startFrame: acceptedDocument.cursorAppFrame,
+      launchOperationId: launch.data.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: seededDoc.revision,
+      records: acceptedDocument.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (acceptedDocument.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: acceptedDocument.interpolation.enabled,
+      interpolationMode: 'blend',
+      loopClips: acceptedDocument.loopClips,
+      incomingInterpolationBreakKeyIds: acceptedDocument.incomingInterpolationBreakKeyIds,
+      selectedKeyId: acceptedDocument.selectedKeyId,
+      selectedAppFrame: acceptedDocument.selectedKeyId === null ? null : acceptedDocument.cursorAppFrame,
+      cursorAppFrame: acceptedDocument.cursorAppFrame,
+      historyProvenance: {
+        historyCommandId: 'delete-rails-accepted',
+        historyDirection: 'redo',
+        sourceRevision: seededDoc.revision,
+        targetRevision: acceptedDocument.revision,
+      },
+    });
+    expect(redo.ok, redo.ok ? undefined : redo.error).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id)).toEqual(acceptedDocument);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(redoLease)).toBe(true);
+  });
+
   it('settles a Rust-committed referenced Action deletion exactly once with enriched history facts', async () => {
     const test = await lifecycleHarness('detach-action-groups', 'referenced-action-committed');
     const committed = {
