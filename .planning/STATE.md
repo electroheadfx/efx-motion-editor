@@ -596,6 +596,7 @@ None yet.
 | 260816-tv7 | Swap Insert/Paint empty-frame key-creation break semantics per SPECS/milestone-v0.9.0-new-phases/quick-insert-connects-paint-breaks-prompt.md | 2026-08-16 | 09f1d864 | Verified | [260816-tv7-swap-insert-paint-empty-frame-key-creati](./quick/260816-tv7-swap-insert-paint-empty-frame-key-creati/) |
 | 260820-0kg | Scissor on generated frames: split a Key Rail mid-interpolation (revise locked 43.4 decision per spec) | 2026-08-20 | ed1332e8 |  | [260820-0kg-scissor-on-generated-frames-split-a-key-](./quick/260820-0kg-scissor-on-generated-frames-split-a-key-/) |
 | 260820-bjw | Copy / Duplicate for a multi-rail selection set (43.6 extension) | 2026-08-20 | 288a2257 |  | [260820-bjw-copy-duplicate-for-a-multi-rail-selectio](./quick/260820-bjw-copy-duplicate-for-a-multi-rail-selectio/) |
+| 260820-hq9 | addEmptyKey inside an interpolated segment: force the empty payload to own the display (paste-key reconcile) | 2026-08-20 | 8126e620 | Planned | [260820-hq9-addemptykey-inside-interpolated-segment-](./quick/260820-hq9-addemptykey-inside-interpolated-segment-/) |
 
 ### Roadmap Evolution
 
