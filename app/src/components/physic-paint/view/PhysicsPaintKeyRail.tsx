@@ -66,6 +66,12 @@ export interface PhysicsPaintKeyRailProps extends SelectedKeyRailCopyAvailabilit
   /** Key Rails that are members of the session rail-set (43.6 D-01); they
    *  paint the same orange selection line as single selection — no new color. */
   readonly railSetMemberKeyRailIds?: readonly string[];
+  /** Key Rails that are MOVABLE set members (260820-lwd): derived from the
+   *  explicit railSetMoveMembers in the strip. Only these hand their
+   *  pointer-down (and trailing-click suppression) to the batch set-drag
+   *  session; a plain-selected single rail is a paint member but NOT a move
+   *  member, so it runs its own 43.3/43.4 drag. */
+  readonly railSetMoveMemberKeyRailIds?: readonly string[];
   /** The set anchor Key Rail identity, if any — carries the anchor tick. */
   readonly railSetAnchorKeyRailId?: string | null;
   /** Total rail-set size (all kinds) for the M1 tooltip set sentence. */
@@ -122,6 +128,9 @@ interface PhysicsPaintKeyRailTargetProps extends SelectedKeyRailCopyAvailability
   readonly isSetMember: boolean;
   readonly isSetAnchor: boolean;
   readonly railSetSize?: number;
+  /** Movable set membership (260820-lwd): routes pointer-down / click
+   *  suppression to the batch session; absent for plain-selected single rails. */
+  readonly railSetMoveMemberKeyRailIds?: readonly string[];
   readonly onSelectKeyRail: PhysicsPaintKeyRailProps['onSelectKeyRail'];
   readonly prepareKeyRailDrag?: PhysicsPaintKeyRailProps['prepareKeyRailDrag'];
   readonly commitKeyRailDrag?: PhysicsPaintKeyRailProps['commitKeyRailDrag'];
@@ -148,6 +157,10 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
   const tooltip = useStyledTooltip();
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const { segment, geometry } = props;
+  // 260820-lwd: drag-routing membership (explicit movable set) is separate
+  // from the paint/set-of-one classifier. A plain-selected single rail is a
+  // paint member (isSetMember true) but NOT a move member.
+  const isMoveMember = props.railSetMoveMemberKeyRailIds?.includes(segment.firstKeyId) ?? false;
   const spanFrames = segment.lastKeyFrame - segment.firstKeyFrame + 1;
   const selection = (): RotoKeyRailSelection => ({
     firstKeyId: segment.firstKeyId,
@@ -203,10 +216,11 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
 
   const handleClick = (event: RailMouseEvent) => {
     event.stopPropagation();
-    // 43.6-03 D-08: a set member's trailing click after a batch drag is
+    // 43.6-03 D-08: a move member's trailing click after a batch drag is
     // suppressed by the batch session (never the own-drag suppression, which
-    // is never armed for set members).
-    if (props.isSetMember && props.onRailSetDragClickSuppressed?.()) return;
+    // is never armed for move members). Paint-only set-of-one members fall
+    // through to their own suppression.
+    if (isMoveMember && props.onRailSetDragClickSuppressed?.()) return;
     if (drag.consumeClickSuppression()) return;
     tooltip.hide();
     // 43.4 defect 10: an explicit click is a focus-worthy activation for every
@@ -260,10 +274,12 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
         aria-busy={props.busy ? 'true' : undefined}
         data-rail-first-frame={segment.firstKeyFrame}
         onPointerDown={(event) => {
-          // 43.6-03 D-08: a set member hands the pointer-down to the batch
-          // session; a non-member runs its own 43.3/43.4 drag unchanged (the
-          // collapse-first selection side-effect happens at click time).
-          if (props.isSetMember && props.onRailSetDragPointerDown) {
+          // 43.6-03 D-08: a move member hands the pointer-down to the batch
+          // session; a non-move-member runs its own 43.3/43.4 drag unchanged
+          // (the collapse-first selection side-effect happens at click time).
+          // A plain-selected single rail is a paint member but NOT a move
+          // member, so it keeps its own drag.
+          if (isMoveMember && props.onRailSetDragPointerDown) {
             props.onRailSetDragPointerDown(event);
             return;
           }
@@ -337,6 +353,7 @@ export function PhysicsPaintKeyRail(props: PhysicsPaintKeyRailProps) {
           selected={sameKeyRailSelection(props.selectedKeyRail, segment)
             || (props.railSetMemberKeyRailIds?.includes(segment.firstKeyId) ?? false)}
           isSetMember={props.railSetMemberKeyRailIds?.includes(segment.firstKeyId) ?? false}
+          railSetMoveMemberKeyRailIds={props.railSetMoveMemberKeyRailIds}
           isSetAnchor={props.railSetAnchorKeyRailId === segment.firstKeyId}
           railSetSize={props.railSetSize}
           onSelectKeyRail={props.onSelectKeyRail}

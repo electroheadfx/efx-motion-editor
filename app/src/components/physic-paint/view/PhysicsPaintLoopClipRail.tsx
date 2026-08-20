@@ -41,6 +41,12 @@ export interface PhysicsPaintLoopClipRailProps {
   /** Loop Rails that are members of the session rail-set (43.6 D-01); they
    *  paint the same orange selection line as single selection — no new color. */
   readonly railSetMemberLoopIds?: readonly string[];
+  /** Loop Rails that are MOVABLE set members (260820-lwd): derived from the
+   *  explicit railSetMoveMembers in the strip. Only these hand their
+   *  pointer-down (and trailing-click suppression) to the batch set-drag
+   *  session; a plain-selected single rail is a paint member but NOT a move
+   *  member, so it runs its own 43.3/43.4 drag. */
+  readonly railSetMoveMemberLoopIds?: readonly string[];
   /** The set anchor Loop Rail identity, if any — carries the anchor tick. */
   readonly railSetAnchorLoopId?: string | null;
   /** Total rail-set size (all kinds) for the M1 tooltip set sentence. */
@@ -111,6 +117,9 @@ interface RailTargetProps {
   readonly isSetMember: boolean;
   readonly isSetAnchor: boolean;
   readonly railSetSize?: number;
+  /** Movable set membership (260820-lwd): routes pointer-down / click
+   *  suppression to the batch session; absent for plain-selected single rails. */
+  readonly railSetMoveMemberLoopIds?: readonly string[];
   readonly actionLinked: boolean;
   readonly showStartBoundary: boolean;
   readonly showEndBoundary: boolean;
@@ -146,6 +155,10 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   const pendingSingleClickRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastClickTimestampRef = useRef<number | null>(null);
   const { range, presentation } = props;
+  // 260820-lwd: drag-routing membership (explicit movable set) is separate
+  // from the paint/set-of-one classifier. A plain-selected single rail is a
+  // paint member (isSetMember true) but NOT a move member.
+  const isMoveMember = props.railSetMoveMemberLoopIds?.includes(range.loopId) ?? false;
   // 43.6 M1: a set member appends the set sentence (anchor form prefixed
   // ' Range anchor.') as a new tooltip line via the one mapper.
   const setSentence = props.isSetMember
@@ -196,10 +209,11 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
   });
   const handleClick = (event: RailMouseEvent) => {
     event.stopPropagation();
-    // 43.6-03 D-08: a set member's trailing click after a batch drag is
+    // 43.6-03 D-08: a move member's trailing click after a batch drag is
     // suppressed by the batch session (never the own-drag suppression, which
-    // is never armed for set members).
-    if (props.isSetMember && props.onRailSetDragClickSuppressed?.()) return;
+    // is never armed for move members). Paint-only set-of-one members fall
+    // through to their own suppression.
+    if (isMoveMember && props.onRailSetDragClickSuppressed?.()) return;
     // A completed drag drops a trailing `click` event; consume the suppression
     // so it cannot re-fire selection or the Edit Group timer (Pitfall 2).
     if (consumeClickSuppression()) return;
@@ -288,10 +302,12 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
         aria-pressed={props.selected}
         data-rail-first-frame={range.placementStart}
         onPointerDown={(event) => {
-          // 43.6-03 D-08: a set member hands the pointer-down to the batch
-          // session; a non-member runs its own 43.3/43.4 drag unchanged (the
-          // collapse-first selection side-effect happens at click time).
-          if (props.isSetMember && props.onRailSetDragPointerDown) {
+          // 43.6-03 D-08: a move member hands the pointer-down to the batch
+          // session; a non-move-member runs its own 43.3/43.4 drag unchanged
+          // (the collapse-first selection side-effect happens at click time).
+          // A plain-selected single rail is a paint member but NOT a move
+          // member, so it keeps its own drag.
+          if (isMoveMember && props.onRailSetDragPointerDown) {
             props.onRailSetDragPointerDown(event);
             return;
           }
@@ -407,6 +423,7 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
           selected={props.selectedLoopClipIds.includes(range.loopId)
             || (props.railSetMemberLoopIds?.includes(range.loopId) ?? false)}
           isSetMember={props.railSetMemberLoopIds?.includes(range.loopId) ?? false}
+          railSetMoveMemberLoopIds={props.railSetMoveMemberLoopIds}
           isSetAnchor={props.railSetAnchorLoopId === range.loopId}
           railSetSize={props.railSetSize}
           actionLinked={actionLinked}

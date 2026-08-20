@@ -1089,6 +1089,23 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   );
   const railSetMoveMembersRef = useRef(railSetMoveMembers);
   railSetMoveMembersRef.current = railSetMoveMembers;
+  // 260820-lwd: drag-routing membership is derived from the EXPLICIT movable
+  // set (railSetMoveMembers), NOT the set-of-one paint classifier. Only these
+  // move members hand their pointer-down (and trailing-click suppression) to
+  // the batch session; a plain-selected single rail is a paint member but NOT
+  // a move member, so it runs its own 43.3/43.4 drag.
+  const railSetMoveMemberKeyRailIds = useMemo(
+    () => railSetMoveMembers
+      .filter((member): member is Extract<PhysicPaintRailSetMoveMember, { kind: 'key-rail' }> => member.kind === 'key-rail')
+      .map((member) => member.firstKeyId),
+    [railSetMoveMembers],
+  );
+  const railSetMoveMemberLoopIds = useMemo(
+    () => railSetMoveMembers
+      .filter((member): member is Extract<PhysicPaintRailSetMoveMember, { kind: 'loop' }> => member.kind === 'loop')
+      .map((member) => member.loopId),
+    [railSetMoveMembers],
+  );
   // 43.4 defect 6: record the focused Key Rail button so a commit that removes
   // it (Delete/Undo/Redo) can restore focus to the stable timeline container.
   const handleKeyRailFocus = useCallback((element: HTMLElement) => {
@@ -2714,6 +2731,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   framePitch={ROTO_CELL_WIDTH_PX}
                   selectedKeyRail={props.selectedRotoKeyRail ?? null}
                   railSetMemberKeyRailIds={props.railSetMemberKeyRailIds ?? []}
+                  railSetMoveMemberKeyRailIds={railSetMoveMemberKeyRailIds}
                   railSetAnchorKeyRailId={props.railSetAnchorKeyRailId ?? null}
                   railSetSize={railSetSize}
                   onSelectKeyRail={props.onSelectRotoKeyRail ?? NOOP_KEY_RAIL_SELECTION}
@@ -2743,6 +2761,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   framePitch={ROTO_CELL_WIDTH_PX}
                   selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}
                   railSetMemberLoopIds={props.railSetMemberLoopIds ?? []}
+                  railSetMoveMemberLoopIds={railSetMoveMemberLoopIds}
                   railSetAnchorLoopId={props.railSetAnchorLoopId ?? null}
                   railSetSize={railSetSize}
                   linkedLoopClipIds={props.linkedRotoLoopClipIds ?? []}
