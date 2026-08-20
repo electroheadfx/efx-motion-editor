@@ -108,6 +108,14 @@ Three warnings and five info items were found. The most significant is a frame-c
 **Issue:** `console.error('[PhysicsPaintStudio] Roto cache delivery failed', error)` runs in production on every failed bridge delivery. The failure is already tracked in `parentDeliveryErrorRef`/`failedParentPayloadRef` for retry, so the console noise adds no functional value and can flood the console during a sustained bridge outage.
 **Fix:** Remove the `console.error` (the refs already record the failure) or gate it behind the existing `profiling` flag.
 
+## Pre-release disposition (milestone v0.9.0, final HEAD 832f0c20)
+
+Re-evaluated every warning against the current HEAD on 2026-08-20.
+
+- **WR-01** — **ALREADY-FIXED** by `0c182594` (`fix(43): WR-01 translate export preflight window to layer-local frames`). `findUnresolvedExportLoop` (exportEngine.ts:80-82) translates the global export window to layer-local coords (`seqStart = seq.inFrame ?? 0`, clamped to `>= 0`) before querying `getRotoPhysicalUnresolvedLoops`; the resume case is covered by `exportEngine.loops.test.ts:430` ("does not block a resume window that starts at or beyond the loop effective end"). Both the fail-open-on-resume and over-block-on-initial failure modes are closed.
+- **WR-02** — **ALREADY-FIXED** by `2404bbc4` (`fix(43): WR-02 close Loop Clip rail double-click dead zone`) and refined by `6fa3e28d` (`fix(43.6-10): gate the Loop Clip double-click branch on plain gestures`). `hasPendingSingleClick` (PhysicsPaintLoopClipRail.tsx:231) opens the editor for any second plain click while a single-click timer is pending, closing the `(220, 250]` dead zone.
+- **WR-03** — **ALREADY-FIXED** by `0de760ab` (`fix(43): WR-03 use truncated effectiveEnd for finite loop rail and label`). The presentation (physicsPaintLoopClipPresentation.ts:79) and the rail geometry (PhysicsPaintLoopClipRail.tsx:364-367) now use the resolved `effectiveEnd` for finite loops; `requestedEnd` remains only in the cycle label.
+
 ---
 
 _Reviewed: 2026-08-13T09:53:22Z_
