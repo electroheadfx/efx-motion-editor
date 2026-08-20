@@ -1537,11 +1537,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       pushBlockedPointer.value = pointer ? { x: pointer.clientX, y: pointer.clientY } : null;
       pushPaintTick.value += 1;
     },
-    onPreviewChange: (preview) => {
-      if (preview === null) {
-        pushDragBlocked.value = null;
-        pushBlockedPointer.value = null;
-      }
+    onPreviewChange: (_preview) => {
+      // 43.5 WR-01: a valid (non-null) preview means the drag is no longer
+      // blocked in the locked direction — clear the stale blocked verdict and
+      // pointer anchor so the guarded tooltip / not-allowed cursor do not
+      // linger after a blocked drag becomes valid again.
+      pushDragBlocked.value = null;
+      pushBlockedPointer.value = null;
       pushPaintTick.value += 1;
     },
     clearClickSequence: () => {},

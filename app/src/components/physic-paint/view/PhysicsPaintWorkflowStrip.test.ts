@@ -1912,6 +1912,19 @@ describe('Directional Push tool source contract (43.5-05: ONE mode-toggle Push t
     expect(onBlocked).toContain('pushBlockedPointer.value = null');
   });
 
+  it('A15: a valid preview clears the stale blocked-direction tooltip/cursor (43.5 WR-01)', () => {
+    const code = source();
+    const previewStart = code.indexOf('onPreviewChange: (');
+    const onPreviewChange = code.slice(previewStart, code.indexOf('clearClickSequence:', previewStart));
+    // The blocked verdict must clear whenever a valid (non-null) preview is
+    // produced, not only on a null preview — otherwise the guarded tooltip and
+    // not-allowed cursor linger after a blocked drag becomes valid again.
+    expect(onPreviewChange).not.toContain('if (preview === null)');
+    expect(onPreviewChange).toContain('pushDragBlocked.value = null');
+    expect(onPreviewChange).toContain('pushBlockedPointer.value = null');
+    expect(onPreviewChange).toContain('pushPaintTick.value += 1');
+  });
+
   it('A14: the anchor keeps its orange capsule above the hover/ghost layers through armed→drag→commit (smoke 2)', () => {
     const code = source();
     // A dedicated anchor-capsule element renders whenever an anchor rail exists
