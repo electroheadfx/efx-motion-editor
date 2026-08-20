@@ -28,7 +28,7 @@ status: Ready to plan
 stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
 last_activity: 2026-08-20
-last_activity_desc: "Completed quick task 260820-bjw: Copy / Duplicate for a multi-rail selection set (43.6 extension)"
+last_activity_desc: "Completed quick task 260820-hq9: addEmptyKey inside an interpolated segment must clear to empty payload on commit"
 progress:[██████████] 100%
   total_phases: 10
   completed_phases: 7
@@ -51,7 +51,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: 44 — Integrated UAT + Signed Release
 Plan: Not started
 Status: Ready to execute
-Last activity: 2026-08-20 - Completed quick task 260820-bjw: Copy / Duplicate for a multi-rail selection set (43.6 extension)
+Last activity: 2026-08-20 - Completed quick task 260820-hq9: addEmptyKey inside an interpolated segment must clear to empty payload on commit
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -596,7 +596,7 @@ None yet.
 | 260816-tv7 | Swap Insert/Paint empty-frame key-creation break semantics per SPECS/milestone-v0.9.0-new-phases/quick-insert-connects-paint-breaks-prompt.md | 2026-08-16 | 09f1d864 | Verified | [260816-tv7-swap-insert-paint-empty-frame-key-creati](./quick/260816-tv7-swap-insert-paint-empty-frame-key-creati/) |
 | 260820-0kg | Scissor on generated frames: split a Key Rail mid-interpolation (revise locked 43.4 decision per spec) | 2026-08-20 | ed1332e8 |  | [260820-0kg-scissor-on-generated-frames-split-a-key-](./quick/260820-0kg-scissor-on-generated-frames-split-a-key-/) |
 | 260820-bjw | Copy / Duplicate for a multi-rail selection set (43.6 extension) | 2026-08-20 | 288a2257 |  | [260820-bjw-copy-duplicate-for-a-multi-rail-selectio](./quick/260820-bjw-copy-duplicate-for-a-multi-rail-selectio/) |
-| 260820-hq9 | addEmptyKey inside an interpolated segment: force the empty payload to own the display (paste-key reconcile) | 2026-08-20 | 8126e620 | Planned | [260820-hq9-addemptykey-inside-interpolated-segment-](./quick/260820-hq9-addemptykey-inside-interpolated-segment-/) |
+| 260820-hq9 | addEmptyKey inside an interpolated segment: force the empty payload to own the display (paste-key reconcile) | 2026-08-20 | 076ddc67 |  | [260820-hq9-addemptykey-inside-interpolated-segment-](./quick/260820-hq9-addemptykey-inside-interpolated-segment-/) |
 
 ### Roadmap Evolution
 
