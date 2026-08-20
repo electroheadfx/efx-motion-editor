@@ -20,7 +20,7 @@ actuals:
   tokens: 37500    # chars/4 over the RED+GREEN diff (150110 chars)
   tasks: 2         # Task 1 RED tests + Task 2 GREEN implementation
   commits: 2       # 6565f26a (test) + 288a2257 (feat)
-  uat-fix-cycles: 2  # UAT-1 (eb9a3e1f) + UAT-2 (9b5150e2)
+  uat-fix-cycles: 3  # UAT-1 (eb9a3e1f) + UAT-2 (9b5150e2) + UAT-3 (fdc64c29)
 
 # Tech tracking
 tech-stack:
@@ -89,6 +89,23 @@ coverage:
         ref: "app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.test.ts#rail-set paste (UAT-2 round-trip)"
         status: pass
     human_judgment: false
+  - id: D6
+    description: "UAT-3 native undo + status persistence: (a) paste/duplicate Undo/Redo survives the operation's own post-acceptance selection seeding — selection/cursor excluded from the replay live-gate authority (43.4); (b) the persisted operation-result capsule line outranks the operation's own set-copy selection echo and is replaced only by a NEW explicit gesture or the next operation; (c) Copy/Duplicate/Paste/Delete publish a result and the tool buttons get a pressed/active state"
+    verification:
+      - kind: unit
+        ref: "app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.test.ts#RED (UAT-3)"
+        status: pass
+      - kind: unit
+        ref: "app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts#allows replay after an ordinary selection/cursor-only change (43.4)"
+        status: pass
+      - kind: unit
+        ref: "app/src/components/physic-paint/view/physicsPaintWorkflowPresentation.test.ts#persists the operation-result line over the operation's own selection publication (UAT-3)"
+        status: pass
+      - kind: unit
+        ref: "app/src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts#operation-result capsule copy (UAT-3)"
+        status: pass
+    human_judgment: true
+    rationale: "Native Studio visual confirmation (undo/redo via the actual buttons, the live capsule persisting the operation result until a new gesture, and the button press feedback) is deferred to the user (no browser automation on this machine). The hook-level RED tests drive the real coordinator→history seam + availability signal, and the pure status-priority seam."
 
 # Metrics
 duration: 32min
@@ -217,6 +234,27 @@ Native UAT round 2 passed issues 1 & 2 (rail-boundary fusion and single-rail sco
 **Verification:** full physic-paint suite (1959 pass) + `npx tsc --noEmit` clean.
 **Committed in:** `9b5150e2` (fix UAT-2) — 4 files: `useRotoTimelineActions.ts`, `PhysicsPaintStudio.tsx`, + 2 test files.
 **Deferred:** the remaining live-only native UAT confirmation (visual Duplicate placement, collision rejection, Motion-Rail shared-source copy) stays with the user (no browser automation on this machine).
+
+---
+
+# UAT-3 Fix Cycle (native UAT issues 1–3)
+
+Native UAT round 3 passed Duplicate re-targeting, clipboard independence, and the Duplicate no-op. Three items remained; fixed and committed in `fdc64c29`.
+
+**Issue 1 — Undo/Redo STILL inert natively for paste-set/duplicate-set.** The hook-level replay tests passed but the Studio buttons did nothing. Root cause: `snapshotReplayAuthorityEqual` compared the LIVE studio snapshot's `selectedKeyId`/`selectedAppFrame`/`currentAppFrame` against the recorded `after` snapshot, but the paste/duplicate operation's own post-acceptance aftermath seeds the pasted set as the live selection — diverging the live selection/cursor from the recorded `after`. That made `undo()`/`redo()` fail closed at the live-snapshot gate, so clicking the buttons no-oped even though the command was recorded. The 43.4 lesson ("selection/cursor are absent from the canonical revision") was documented but not actually applied to the live gate.
+- **Fix:** `snapshotReplayAuthorityEqual` now compares only canonical content (records, interpolation, loop clips, breaks, launch identity, capacity) — `selectedKeyId`/`selectedAppFrame`/`currentAppFrame` are excluded. The no-change guard in `recordAcceptedEdit` keeps the strict `snapshotRecordsEqual`.
+- **RED:** `useRotoPhysicalEditCoordinator.test.ts#RED (UAT-3)` drives the REAL `useRotoPhysicalEditHistory` + availability signal through the coordinator, seeds the live selection to the first pasted rail AFTER the duplicate acceptance (mimicking the Studio aftermath), and asserts Undo still removes the duplicated set and restores the exact pre-state. Two stale `useRotoPhysicalEditHistory.test.ts` cases that asserted the opposite (selection/cursor-only change blocks replay) were corrected to the 43.4 contract.
+
+**Issue 2 — Status capsule persistence.** The capsule must show the operation result ('Pasted 2 Rails — frames {A}–{B}.') and keep it until a NEW explicit navigation/selection or the next operation. Today the operation's own selection side-effect (the pasted set becomes the active set → '1 Rail selected — frames …') immediately overwrote it because `statusMessage` is nulled when `applyStatus === 'success'`, so the capsule fell to the set-copy selection echo.
+- **Fix:** a dedicated persisted `operationResult` slot in the capsule view model that outranks `setCopy` and `ambient`; operations publish into it (Paste/Duplicate/Delete on acceptance via the impact identities; Copy on clipboard success via the effective set), and the navigation/selection gesture handlers clear it. A NEW gesture or the next accepted operation replaces it.
+- **Pure RED tests:** `physicsPaintWorkflowPresentation.test.ts#persists the operation-result line over the operation's own selection publication (UAT-3)` proves the operationResult outranks the set copy + ambient; `physicsPaintRotoRailSetCopy.test.ts#operation-result capsule copy (UAT-3)` covers `buildRotoRailSetOperationResult`.
+
+**Issue 3 — Button press feedback.** Copy/Duplicate/Paste/Delete had no visible pressed/active state.
+- **Fix:** added a pressed/active rule (`:active`/`[data-pressed="true"]`) to `.physics-paint-roto-key-icon-button` matching the icon-button blue tint and the cell-key tactile translate.
+
+**Verification:** full physic-paint suite (1962 pass) + `npx tsc --noEmit` clean.
+**Committed in:** `fdc64c29` (fix UAT-3) — 11 files.
+**Deferred:** native visual UAT (undo/redo via the actual Studio buttons, live capsule persistence until a new gesture, button press feedback) stays with the user (no browser automation on this machine).
 
 ---
 *Phase: quick/260820-bjw*
