@@ -1499,7 +1499,7 @@ describe('useRotoPhysicalEditHistory complete live replay preflight', () => {
         currentAppFrame: source.currentAppFrame + 1,
       }),
     },
-  ])('retains the stack after an ordinary $name change but rejects replay before coordinator execution', async ({ mutate }) => {
+  ])('allows replay after an ordinary $name-only change — selection/cursor are not canonical (43.4)', async ({ mutate }) => {
     const before = snapshot([
       record('A', 0),
       record('B', 1),
@@ -1555,8 +1555,12 @@ describe('useRotoPhysicalEditHistory complete live replay preflight', () => {
     liveSource = mutate(after);
 
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
-    expect(await history.undo()).toBe(false);
-    expect(executePhysicalEdit).not.toHaveBeenCalled();
+    // A selection/cursor-only live divergence must NOT fail closed: the stack
+    // is retained (no replay acceptance yet) but Undo proceeds to coordinator
+    // execution with the replay proposal (43.4 — selection/cursor are absent
+    // from the canonical revision).
+    expect(await history.undo()).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
   });
 

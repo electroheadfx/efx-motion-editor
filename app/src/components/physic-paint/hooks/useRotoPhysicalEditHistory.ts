@@ -319,6 +319,85 @@ function snapshotRevision(snapshot: RotoPhysicalEditReplaySourceSnapshot): strin
   );
 }
 
+/**
+ * Canonical-content replay authority: the snapshot's records, interpolation,
+ * loop clips and interpolation breaks compared WITHOUT selection or cursor.
+ * Selection and cursor are intentionally absent from the canonical revision
+ * (43.4 lesson) so an operation's own post-acceptance selection aftermath can
+ * never block Undo/Redo: `undo()`'s live-snapshot gate must not fail closed
+ * because the pasted/duplicated set was seeded as the live selection after
+ * the acceptance recorded its `after` snapshot.
+ */
+function snapshotCanonicalContentEqual(
+  left: RotoPhysicalEditReplaySourceSnapshot,
+  right: RotoPhysicalEditReplaySourceSnapshot,
+): boolean {
+  if (left.records.length !== right.records.length
+    || left.groupOverrideRecords.length !== right.groupOverrideRecords.length
+    || left.incomingInterpolationBreakKeyIds.length !== right.incomingInterpolationBreakKeyIds.length) return false;
+  if (left.interpolation.enabled !== right.interpolation.enabled
+    || left.interpolation.mode !== right.interpolation.mode) return false;
+  if (left.loopClips.length !== right.loopClips.length) return false;
+  for (let index = 0; index < left.records.length; index += 1) {
+    const l = left.records[index];
+    const r = right.records[index];
+    if (l.keyId !== r.keyId || l.appFrame !== r.appFrame) return false;
+    if (l.payload.dataUrl !== r.payload.dataUrl
+      || l.payload.frameIndex !== r.payload.frameIndex
+      || l.payload.appFrame !== r.payload.appFrame
+      || l.payload.width !== r.payload.width
+      || l.payload.height !== r.payload.height) return false;
+  }
+  for (let index = 0; index < left.groupOverrideRecords.length; index += 1) {
+    const l = left.groupOverrideRecords[index];
+    const r = right.groupOverrideRecords[index];
+    if (l.keyId !== r.keyId || l.appFrame !== r.appFrame) return false;
+  }
+  for (let index = 0; index < left.incomingInterpolationBreakKeyIds.length; index += 1) {
+    if (left.incomingInterpolationBreakKeyIds[index] !== right.incomingInterpolationBreakKeyIds[index]) return false;
+  }
+  for (let index = 0; index < left.loopClips.length; index += 1) {
+    const l = left.loopClips[index];
+    const r = right.loopClips[index];
+    if (l.loopId !== r.loopId) return false;
+    if (l.placementStart !== r.placementStart) return false;
+    if (l.repeat !== r.repeat) return false;
+    if (l.mode !== r.mode) return false;
+    if (l.sourceKeyIds.length !== r.sourceKeyIds.length) return false;
+    for (let keyIndex = 0; keyIndex < l.sourceKeyIds.length; keyIndex += 1) {
+      if (l.sourceKeyIds[keyIndex] !== r.sourceKeyIds[keyIndex]) return false;
+    }
+    if (l.scriptId !== r.scriptId) return false;
+    if ((l.motion === undefined) !== (r.motion === undefined)) return false;
+    if (l.motion && r.motion
+      && (l.motion.deformation !== r.motion.deformation || l.motion.position !== r.motion.position)) return false;
+    if ((l.overrideColor ?? null) !== (r.overrideColor ?? null)) return false;
+    if (l.syncState !== r.syncState) return false;
+    if (l.provenanceState !== r.provenanceState) return false;
+    if (l.phaseOrigin !== r.phaseOrigin) return false;
+    if (l.originalEndExclusive !== r.originalEndExclusive) return false;
+    if ((l.visibleRanges === undefined) !== (r.visibleRanges === undefined)) return false;
+    if (l.visibleRanges && r.visibleRanges) {
+      if (l.visibleRanges.length !== r.visibleRanges.length) return false;
+      for (let rangeIndex = 0; rangeIndex < l.visibleRanges.length; rangeIndex += 1) {
+        const lr = l.visibleRanges[rangeIndex];
+        const rr = r.visibleRanges[rangeIndex];
+        if (lr.start !== rr.start || lr.endExclusive !== rr.endExclusive) return false;
+      }
+    }
+    if ((l.frameOverrides === undefined) !== (r.frameOverrides === undefined)) return false;
+    if (l.frameOverrides && r.frameOverrides) {
+      if (l.frameOverrides.length !== r.frameOverrides.length) return false;
+      for (let overrideIndex = 0; overrideIndex < l.frameOverrides.length; overrideIndex += 1) {
+        const lo = l.frameOverrides[overrideIndex];
+        const ro = r.frameOverrides[overrideIndex];
+        if (lo.appFrame !== ro.appFrame || lo.keyId !== ro.keyId) return false;
+      }
+    }
+  }
+  return true;
+}
+
 function snapshotReplayAuthorityEqual(
   actual: RotoPhysicalEditReplaySourceSnapshot,
   expected: RotoPhysicalEditReplaySourceSnapshot,
@@ -327,8 +406,7 @@ function snapshotReplayAuthorityEqual(
     && actual.layerId === expected.layerId
     && actual.projectContextId === expected.projectContextId
     && actual.capacity === expected.capacity
-    && actual.currentAppFrame === expected.currentAppFrame
-    && snapshotRecordsEqual(actual, expected);
+    && snapshotCanonicalContentEqual(actual, expected);
 }
 
 function replayAcceptanceMatchesPending<EngineState>(

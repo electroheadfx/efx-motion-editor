@@ -11,6 +11,7 @@ import { getPhysicsPaintRotoSourceCycleId } from './physicsPaintRotoSpacingSelec
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 import {
   buildRotoRailSetCopyPayload,
+  buildRotoRailSetOperationResult,
   proposeRails,
   type RotoRailSetCopyPayload,
 } from './physicsPaintRotoRailSetCopy';
@@ -69,6 +70,24 @@ function twoKeyRailDocument(): PhysicPaintRotoPhysicalDocument {
     ['k6'],
   );
 }
+
+describe('physicsPaintRotoRailSetCopy — operation-result capsule copy (UAT-3)', () => {
+  it('builds the persisted operation-result line from member intervals', () => {
+    expect(buildRotoRailSetOperationResult('Pasted', [
+      { kind: 'key-rail', firstFrame: 10, effectiveEndExclusive: 14 },
+      { kind: 'key-rail', firstFrame: 16, effectiveEndExclusive: 20 },
+    ])).toBe('Pasted 2 Rails — frames 10–19.');
+    expect(buildRotoRailSetOperationResult('Duplicated', [
+      { kind: 'loop', firstFrame: 6, effectiveEndExclusive: 12 },
+    ])).toBe('Duplicated 1 Rail — frames 6–11.');
+    // Out-of-order members are sorted into canonical first-frame order.
+    expect(buildRotoRailSetOperationResult('Deleted', [
+      { kind: 'key-rail', firstFrame: 20, effectiveEndExclusive: 24 },
+      { kind: 'key-rail', firstFrame: 2, effectiveEndExclusive: 6 },
+    ])).toBe('Deleted 2 Rails — frames 2–23.');
+    expect(buildRotoRailSetOperationResult('Copied', [])).toBeNull();
+  });
+});
 
 describe('physicsPaintRotoRailSetCopy — set copy payload builder (quick 260820-bjw)', () => {
   it('RED 1: builds a frozen payload with relative entries and first-key break flags', () => {

@@ -189,6 +189,9 @@ export interface PhysicsPaintWorkflowStripProps {
   rotoInterpolationMode?: PhysicPaintRotoInterpolationState['mode'];
   rotoInterpolationPending?: boolean;
   statusMessage?: string | null;
+  /** Persisted operation-result line (UAT-3): survives the operation's own
+   *  selection publication until a NEW explicit gesture or the next operation. */
+  operationResult?: string | null;
   rotoMissingFrameStatusKind?: RotoMissingFrameStatusKind | null;
   onion: PhysicsPaintOnionState;
   onionPreviewFrames?: PhysicsPaintWorkflowOnionPreviewFrame[];
@@ -2022,6 +2025,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const capsuleText = getRotoStatusCapsuleViewModel({
     pendingOperation: pushDragFeedback ?? railSetDragFeedback ?? rotoDragFeedback ?? (keyUtilitiesDisabledByBusyState ? getRotoKeyBusyStatus(props.currentFrame) : null),
     savingIndicator: props.statusMessage ?? null,
+    operationResult: props.operationResult ?? null,
     feedback: [
       { text: props.rotoCachedPlaybackStatus ?? null, recency: 2 },
       { text: scriptStatus, recency: 1 },

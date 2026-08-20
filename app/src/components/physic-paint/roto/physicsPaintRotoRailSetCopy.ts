@@ -594,3 +594,30 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
 
   return Object.freeze({ ok: true, proposal, impact });
 }
+
+/** One member's visible interval, the minimal shape the operation-result copy
+ *  needs (same first-frame/effective-end derivation as the strip's set copy). */
+export interface RotoRailSetOperationResultMember {
+  readonly kind: 'loop' | 'key-rail';
+  readonly firstFrame: number;
+  readonly effectiveEndExclusive: number;
+}
+
+/**
+ * Pure operation-result capsule copy (UAT-3): "Pasted 2 Rails — frames {A}–{B}."
+ * Built from the member intervals exactly like the locked M6 set copy — A = first
+ * member first frame; B = last member effective end minus 1. The verb is the
+ * caller-supplied past-tense action ('Copied' | 'Pasted' | 'Duplicated' |
+ * 'Deleted'). The empty set contributes nothing.
+ */
+export function buildRotoRailSetOperationResult(
+  verb: string,
+  members: readonly RotoRailSetOperationResultMember[],
+): string | null {
+  if (members.length === 0) return null;
+  const ordered = [...members].sort((left, right) => left.firstFrame - right.firstFrame);
+  const firstFrame = ordered[0].firstFrame;
+  const lastFrame = Math.max(...ordered.map((member) => member.effectiveEndExclusive)) - 1;
+  const noun = members.length === 1 ? 'Rail' : 'Rails';
+  return `${verb} ${members.length} ${noun} — frames ${firstFrame}–${lastFrame}.`;
+}

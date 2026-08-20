@@ -3296,4 +3296,37 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
     expect(test.getCanonicalDocument()).toEqual(after);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
   });
+
+  it('RED (UAT-3): Duplicate-set Undo survives the operation’s own post-acceptance selection seeding — the first pasted rail becomes the live selection, yet Undo still removes the pasted set (selection/cursor excluded from replay authority)', async () => {
+    const test = harness();
+    const before = twoKeyRailDocument(30);
+    test.seedGroupDocument(before);
+    const { history, availability } = attachGroupReplayHistory(test);
+
+    expect(await test.executePasteRails({ payload: copyPayload(), placementMode: 'duplicate' })).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const accepted = test.coordinator.acceptedOutput.value;
+    if (!accepted) throw new Error('Expected accepted duplicate-set operation.');
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+
+    // Native 43.6 aftermath: the pasted set becomes the active selection
+    // (anchor = first pasted rail). This mutates the live Studio selection
+    // AFTER the paste acceptance recorded its after snapshot (selectedKeyId
+    // null). The 43.4 lesson: selection/cursor are not canonical, so Undo must
+    // still proceed despite the live selection diverging from the recorded
+    // after snapshot.
+    const firstPasted = test.getRecords().find((entry) => entry.appFrame === 10);
+    if (!firstPasted) throw new Error('Expected a fresh pasted key at frame 10.');
+    test.setStudioSelection(firstPasted.keyId, 10);
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release')).toBe(true);
+
+    // Undo removes exactly the duplicated rails and restores the exact pre-state.
+    expect(await history.undo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const undoOperationId = test.getPayload()?.operationId;
+    if (!undoOperationId) throw new Error('Expected Duplicate Undo operation id.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(undoOperationId, 'release')).toBe(true);
+    expect(test.getCanonicalDocument()).toEqual(before);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+  });
 });

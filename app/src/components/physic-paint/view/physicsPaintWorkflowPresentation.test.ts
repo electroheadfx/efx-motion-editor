@@ -317,6 +317,36 @@ describe('getRotoStatusCapsuleViewModel — idle-context contract (38-08, D-08/D
   });
 
 
+  it('persists the operation-result line over the operation’s own selection publication (UAT-3)', () => {
+    // After Copy/Paste/Duplicate/Delete the operation publishes its result
+    // ('Pasted 2 Rails — frames 10–14.'). The same operation also makes the
+    // pasted set the active selection, so its set copy ('1 Rail selected — …')
+    // would otherwise clobber the capsule. The operation result must outrank
+    // both the set copy and the ambient idle context, and persist until a NEW
+    // explicit gesture (or the next operation) supplies a fresh line.
+    expect(getRotoStatusCapsuleViewModel({
+      operationResult: 'Pasted 2 Rails — frames 10–14.',
+      setCopy: '1 Rail selected — frames 10–14.',
+      ambient: 'Real Roto key · Frame 10',
+    })).toBe('Pasted 2 Rails — frames 10–14.');
+    expect(getRotoStatusCapsuleViewModel({
+      operationResult: 'Duplicated 3 Rails — frames 16–30.',
+      ambient: 'Real Roto key · Frame 16',
+    })).toBe('Duplicated 3 Rails — frames 16–30.');
+    // Saving indicator (in-flight/error) still outranks the persisted result.
+    expect(getRotoStatusCapsuleViewModel({
+      savingIndicator: 'Saving frame 10...',
+      operationResult: 'Pasted 2 Rails — frames 10–14.',
+    })).toBe('Saving frame 10...');
+    // An absent/blank operation result falls through to the set copy / ambient.
+    expect(getRotoStatusCapsuleViewModel({
+      operationResult: null,
+      setCopy: '2 Rails selected — frames 10–14.',
+      ambient: 'Real Roto key · Frame 10',
+    })).toBe('2 Rails selected — frames 10–14.');
+  });
+
+
   it('projects the persistent solo line while armed and nothing when disarmed (43.6-06, D-20)', () => {
     // Armed: the locked solo line outranks the idle ambient context.
     expect(getRotoStatusCapsuleViewModel({

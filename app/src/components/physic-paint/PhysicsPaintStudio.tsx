@@ -67,7 +67,13 @@ import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchI
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
 import { isRotoSessionCopiedRailSet } from './roto/physicsPaintRotoSession';
-import type { RotoRailSetCopyPayload, RotoRailSetCopyPlacementMode, RotoRailSetPasteIdentity } from './roto/physicsPaintRotoRailSetCopy';
+import {
+  buildRotoRailSetOperationResult,
+  type RotoRailSetCopyPayload,
+  type RotoRailSetCopyPlacementMode,
+  type RotoRailSetOperationResultMember,
+  type RotoRailSetPasteIdentity,
+} from './roto/physicsPaintRotoRailSetCopy';
 import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkflowIntegration';
 import { useRotoInterpolationController } from './hooks/useRotoInterpolationController';
 import { useRotoPlaybackSettingsController } from './hooks/useRotoPlaybackSettingsController';
@@ -142,6 +148,64 @@ function buildPastedRailSetFromImpact(identities: readonly RotoRailSetPasteIdent
     members: Object.freeze(members),
     anchor: members[0] ?? null,
   });
+}
+
+/** Resolve a set's members to visible intervals for the operation-result copy
+ *  (UAT-3): key-rail via its segment, loop via its resolution range. Mirrors the
+ *  strip's set-copy interval derivation. */
+function resolveSetOperationIntervals(
+  members: readonly RailSetIdentity[],
+  keyRailSegments: readonly { firstKeyId: string; firstKeyFrame: number; lastKeyFrame: number }[],
+  loopRanges: readonly { loopId: string; placementStart: number; effectiveEnd: number }[],
+): RotoRailSetOperationResultMember[] {
+  const intervals: RotoRailSetOperationResultMember[] = [];
+  for (const member of members) {
+    if (member.kind === 'key-rail') {
+      const segment = keyRailSegments.find((candidate) => candidate.firstKeyId === member.firstKeyId);
+      if (segment) {
+        intervals.push({ kind: 'key-rail', firstFrame: segment.firstKeyFrame, effectiveEndExclusive: segment.lastKeyFrame + 1 });
+      }
+    } else {
+      const range = loopRanges.find((candidate) => candidate.loopId === member.loopId);
+      if (range) intervals.push({ kind: 'loop', firstFrame: range.placementStart, effectiveEndExclusive: range.effectiveEnd });
+    }
+  }
+  return intervals;
+}
+
+/** Resolve a delete impact's members to visible intervals from the accepted
+ *  BEFORE snapshot (robust after the rails are gone from the store): key-rail
+ *  members resolve their keyIds to frames; loop members use their clip's source
+ *  key frames, falling back to the placement anchor. */
+function resolveDeleteOperationIntervals(
+  members: readonly RailSetDeleteMember[],
+  before: Readonly<{
+    records: readonly { keyId: string; appFrame: number }[];
+    loopClips: readonly { loopId: string; placementStart: number; sourceKeyIds: readonly string[] }[];
+  }>,
+): RotoRailSetOperationResultMember[] {
+  const frameByKeyId = new Map(before.records.map((record) => [record.keyId, record.appFrame]));
+  const intervals: RotoRailSetOperationResultMember[] = [];
+  for (const member of members) {
+    if (member.kind === 'key-rail') {
+      const frames = member.keyIds
+        .map((keyId) => frameByKeyId.get(keyId))
+        .filter((frame): frame is number => typeof frame === 'number');
+      intervals.push({
+        kind: 'key-rail',
+        firstFrame: frames.length > 0 ? Math.min(...frames) : 0,
+        effectiveEndExclusive: frames.length > 0 ? Math.max(...frames) + 1 : 1,
+      });
+    } else {
+      const clip = before.loopClips.find((candidate) => candidate.loopId === member.loopId);
+      const frames = (clip?.sourceKeyIds ?? [])
+        .map((keyId) => frameByKeyId.get(keyId))
+        .filter((frame): frame is number => typeof frame === 'number');
+      const anchor = frames.length > 0 ? Math.min(...frames) : (clip?.placementStart ?? 0);
+      intervals.push({ kind: 'loop', firstFrame: anchor, effectiveEndExclusive: anchor + 1 });
+    }
+  }
+  return intervals;
 }
 
 export function PhysicsPaintStudio() {
@@ -407,10 +471,18 @@ export function PhysicsPaintStudio() {
   // full signal-graph rebuild on every Studio render.
   const rotoLegacyInterpolationSettings = useMemo(() => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined, [launchContext?.layerId, physicPaintVersion.value]);
   const currentFrame = launchContext?.startFrame ?? 0;
+  // UAT-3: persisted operation-result capsule line. An operation publishes its
+  // outcome here (survives the operation's own selection aftermath); only a NEW
+  // explicit user navigation/selection gesture or the next operation clears it.
+  const operationResult = useSignal<string | null>(null);
+  const publishOperationResult = useCallback((message: string | null) => {
+    operationResult.value = message;
+  }, [operationResult]);
   // Single Select All entry point (D-03): shared by the Cmd/Ctrl+A dispatcher
   // branch and the future strip icon (plan 37-04). Store-ordered real-key
   // identities guarantee physical-frame order and real-key-only membership.
   const selectAllRotoKeys = useCallback(() => {
+    publishOperationResult(null);
     const orderedRealKeyIds = rotoKeyRecords.map((record) => record.keyId);
     if (orderedRealKeyIds.length === 0) return;
     selectedKeyId.value = null;
@@ -442,7 +514,7 @@ export function PhysicsPaintStudio() {
     // D-15 single-owner capsule arbitration). Selection-only gestures
     // (toggle/range/collapse) publish nothing.
     setApplyMessage('All keys selected');
-  }, [currentFrame, launchContext, rotoKeyRecords]);
+  }, [currentFrame, launchContext, rotoKeyRecords, publishOperationResult]);
   const [, setLastError] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
@@ -1332,11 +1404,21 @@ export function PhysicsPaintStudio() {
   }, [hasEffectiveRailSetScope, rotoPhysicalActions, rotoKeyUtilities]);
   const copyRotoFrame = useCallback(() => {
     if (hasEffectiveRailSetScope) {
-      void rotoPhysicalActions.copyRailSet();
+      const copiedMembers = effectiveRailSetMembers;
+      void rotoPhysicalActions.copyRailSet().then((ok) => {
+        if (!ok) return;
+        // UAT-3: persist the Copy operation result (survives the set's own
+        // active-selection projection until the next gesture/operation).
+        const copiedResult = buildRotoRailSetOperationResult(
+          'Copied',
+          resolveSetOperationIntervals(copiedMembers, keyRailSegments, loopResolutionContext?.ranges ?? []),
+        );
+        if (copiedResult !== null) publishOperationResult(copiedResult);
+      });
       return;
     }
     rotoKeyUtilities.copyKey();
-  }, [hasEffectiveRailSetScope, rotoPhysicalActions, rotoKeyUtilities]);
+  }, [hasEffectiveRailSetScope, rotoPhysicalActions, rotoKeyUtilities, effectiveRailSetMembers, keyRailSegments, loopResolutionContext, publishOperationResult]);
   // Cut (quick 260731-9l0): enabled only when BOTH copy and delete
   // availability hold; the delete half is re-checked here so the keyboard
   // entry point enforces the same rule as the strip button.
@@ -1467,6 +1549,7 @@ export function PhysicsPaintStudio() {
     selection: RotoKeyRailSelection,
     gesture: PhysicsPaintRotoSpacingSelectionGesture = 'plain',
   ) => {
+    publishOperationResult(null);
     if (gesture === 'toggle' || gesture === 'range' || gesture === 'union') {
       // Modifier gestures route through the rail-set reducer (D-01): a Key Rail
       // can join, anchor, and leave the set exactly like a Loop Rail.
@@ -1524,11 +1607,12 @@ export function PhysicsPaintStudio() {
       );
     }
     selectedRotoKeyRail.value = selection;
-  }, [clearRotoLoopSelection, currentFrame, launchContext, orderedRailSetIdentities, selectedLoopClipId, selectedRotoKeyRail]);
+  }, [clearRotoLoopSelection, currentFrame, launchContext, orderedRailSetIdentities, publishOperationResult, selectedLoopClipId, selectedRotoKeyRail]);
   const handleSelectRotoLoopClip = useCallback((
     loopId: string | null,
     gesture: PhysicsPaintRotoSpacingSelectionGesture = 'plain',
   ) => {
+    publishOperationResult(null);
     if (loopId === null) {
       clearRotoLoopSelection();
       railSetSelection.value = null;
@@ -1621,7 +1705,7 @@ export function PhysicsPaintStudio() {
       rotoScriptLibrary.select(selectedGroup.scriptId);
       activeLinkedLoopClipId.value = selectedGroup.loopId;
     }
-  }, [clearRotoLoopSelection, currentFrame, launchContext, loopScriptRows, orderedRailSetIdentities, orderedRotoLoopClipIds, rotoLoopClips, rotoScriptLibrary, selectedLoopClipId, selectedRotoKeyRail]);
+  }, [clearRotoLoopSelection, currentFrame, launchContext, loopScriptRows, orderedRailSetIdentities, orderedRotoLoopClipIds, publishOperationResult, rotoLoopClips, rotoScriptLibrary, selectedLoopClipId, selectedRotoKeyRail]);
   const handleOpenRotoLoopEdit = useCallback(
     (loopId: string) => {
       selectedLoopClipId.value = loopId;
@@ -2042,6 +2126,31 @@ export function PhysicsPaintStudio() {
         const pastedSet = accepted.semanticDelta?.kind === 'paste'
           ? buildPastedRailSetFromImpact(accepted.semanticDelta.identities)
           : null;
+        // UAT-3: publish the persisted operation-result line. The operation's
+        // own selection aftermath (below) must not clobber it — it only lands in
+        // the dedicated operationResult slot, cleared by a NEW explicit gesture.
+        if (accepted.semanticDelta?.kind === 'paste') {
+          const pastedResult = buildRotoRailSetOperationResult(
+            accepted.semanticDelta.placementMode === 'duplicate' ? 'Duplicated' : 'Pasted',
+            accepted.semanticDelta.identities.map((identity) => ({
+              kind: identity.kind,
+              firstFrame: identity.firstFrame,
+              effectiveEndExclusive: identity.effectiveEndExclusive,
+            })),
+          );
+          if (pastedResult !== null) publishOperationResult(pastedResult);
+        } else if (accepted.semanticDelta?.kind === 'delete-rails') {
+          const deletedResult = buildRotoRailSetOperationResult(
+            'Deleted',
+            resolveDeleteOperationIntervals(accepted.semanticDelta.members, accepted.before),
+          );
+          if (deletedResult !== null) publishOperationResult(deletedResult);
+        } else {
+          // Any other accepted operation (move/insert/delete-key/undo/redo) is
+          // a new operation: it replaces the persisted result (the capsule falls
+          // back to its selection echo).
+          publishOperationResult(null);
+        }
         recordRailSetSnapshot(
           accepted.operationId,
           beforeSet,
@@ -2185,6 +2294,7 @@ export function PhysicsPaintStudio() {
     proxy: PhysicsPaintRotoSpacingProxy,
     gesture: PhysicsPaintRotoSpacingSelectionGesture,
   ) => {
+    publishOperationResult(null);
     selectedRotoKeyRail.value = null;
     // 43.6 D-04: spacing selection is a key selection — it clears the set.
     railSetSelection.value = null;
@@ -2200,16 +2310,19 @@ export function PhysicsPaintStudio() {
     selectionAnchorKeyId.value = next
       ? next.sourceKeyIds[next.anchorSourceIndex] ?? null
       : null;
-  }, [clearRotoLoopSelection]);
+  }, [clearRotoLoopSelection, publishOperationResult]);
   const handleClearRotoSpacingSelection = useCallback(() => {
+    publishOperationResult(null);
     rotoSpacingSelection.value = null;
-  }, []);
+  }, [publishOperationResult]);
   const handleClearRotoKeySelection = useCallback(() => {
+    publishOperationResult(null);
     selectedKeyIds.value = [];
     selectionAnchorKeyId.value = null;
     clearRotoLoopSelection();
-  }, [clearRotoLoopSelection]);
+  }, [clearRotoLoopSelection, publishOperationResult]);
   const handleToggleRotoKeySelection = useCallback((keyId: string) => {
+    publishOperationResult(null);
     selectedRotoKeyRail.value = null;
     clearRotoLoopSelection();
     const result = toggleRotoKeySelection(
@@ -2221,15 +2334,17 @@ export function PhysicsPaintStudio() {
     selectedKeyIds.value = result.state.selectedKeyIds;
     selectionAnchorKeyId.value = result.state.anchorKeyId;
     selectedKeyId.value = result.currentKeyId;
-  }, [clearRotoLoopSelection]);
+  }, [clearRotoLoopSelection, publishOperationResult]);
   const handleCollapseRotoSelectionToKey = useCallback((keyId: string) => {
+    publishOperationResult(null);
     selectedRotoKeyRail.value = null;
     clearRotoLoopSelection();
     const next = collapseRotoKeySelection(keyId);
     selectedKeyIds.value = next.selectedKeyIds;
     selectionAnchorKeyId.value = next.anchorKeyId;
-  }, [clearRotoLoopSelection]);
+  }, [clearRotoLoopSelection, publishOperationResult]);
   const handleExtendRotoKeySelection = useCallback((keyId: string) => {
+    publishOperationResult(null);
     selectedRotoKeyRail.value = null;
     clearRotoLoopSelection();
     const result = extendRotoKeySelectionRange(
@@ -2240,7 +2355,7 @@ export function PhysicsPaintStudio() {
     selectedKeyIds.value = result.state.selectedKeyIds;
     selectionAnchorKeyId.value = result.state.anchorKeyId;
     if (result.currentKeyId !== null) selectedKeyId.value = result.currentKeyId;
-  }, [clearRotoLoopSelection]);
+  }, [clearRotoLoopSelection, publishOperationResult]);
   const handleRotoGroupDragRejected = useCallback((reason: string, detail: string) => {
     setApplyMessage(reason);
     console.error('[PhysicsPaintStudio] physical edit:', detail);
@@ -2261,8 +2376,9 @@ export function PhysicsPaintStudio() {
     console.error('[PhysicsPaintStudio] physical edit:', detail ?? message);
   }, []);
   const handleNavigateToSyncedFrame = useCallback((frame: number) => {
+    publishOperationResult(null);
     void requestRotoFrameNavigationRef.current(frame);
-  }, []);
+  }, [publishOperationResult]);
   const navigateLinkedGroup = useCallback((targetIndex: number) => {
     if (targetIndex < 0 || targetIndex >= linkedRotoGroups.length) return;
     const target = linkedRotoGroups[targetIndex];
@@ -2288,10 +2404,10 @@ export function PhysicsPaintStudio() {
   });
   const rotoNavigationActionsRef = useRef(rotoNavigationActions);
   rotoNavigationActionsRef.current = rotoNavigationActions;
-  const handleGoToFirstFrame = useCallback(() => { rotoNavigationActionsRef.current.goToFirstFrame(); }, []);
-  const handleGoToPreviousFrame = useCallback(() => { rotoNavigationActionsRef.current.goToPreviousFrame(); }, []);
-  const handleGoToNextFrame = useCallback(() => { rotoNavigationActionsRef.current.goToNextFrame(); }, []);
-  const handleGoToLastFrame = useCallback(() => { rotoNavigationActionsRef.current.goToLastFrame(); }, []);
+  const handleGoToFirstFrame = useCallback(() => { publishOperationResult(null); rotoNavigationActionsRef.current.goToFirstFrame(); }, [publishOperationResult]);
+  const handleGoToPreviousFrame = useCallback(() => { publishOperationResult(null); rotoNavigationActionsRef.current.goToPreviousFrame(); }, [publishOperationResult]);
+  const handleGoToNextFrame = useCallback(() => { publishOperationResult(null); rotoNavigationActionsRef.current.goToNextFrame(); }, [publishOperationResult]);
+  const handleGoToLastFrame = useCallback(() => { publishOperationResult(null); rotoNavigationActionsRef.current.goToLastFrame(); }, [publishOperationResult]);
   // Script Motion (D-04): deform/position remain a separate store/controller
   // contract, never merged into interpolation enabled state.
   // 38-11: stable identity via launchContextRef — launchContext identity
@@ -2638,7 +2754,7 @@ export function PhysicsPaintStudio() {
         onRotoRailSetMoveRejected: handleRotoRailSetMoveRejected,
         railSetMoveMembers,
         rotoScript,
-        statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
+        statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), operationResult: operationResult.peek(), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
         onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
       },
     status: { shortcutsVisible },

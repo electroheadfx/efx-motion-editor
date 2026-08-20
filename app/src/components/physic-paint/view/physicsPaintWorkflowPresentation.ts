@@ -204,6 +204,12 @@ export interface RotoStatusCapsuleInput {
   pendingOperation?: string | null;
   /** Saving indicator line. */
   savingIndicator?: string | null;
+  /** Persisted operation-result line (UAT-3): the outcome of the most recent
+   *  Copy/Paste/Duplicate/Delete, kept until a NEW explicit user navigation/
+   *  selection gesture or the next operation replaces it. Outranks the
+   *  persistent set copy so an operation's own selection publication can never
+   *  clobber its result. */
+  operationResult?: string | null;
   /** Guard/action feedback lines with recency metadata. */
   feedback?: readonly RotoStatusCapsuleFeedbackCandidate[];
   /** Persistent armed-solo line (43.6-06, D-20); the highest-priority
@@ -220,6 +226,8 @@ export function getRotoStatusCapsuleViewModel(input: RotoStatusCapsuleInput = {}
   if (pendingOperation !== null) return pendingOperation;
   const savingIndicator = trimCapsuleLine(input.savingIndicator);
   if (savingIndicator !== null) return savingIndicator;
+  const operationResult = trimCapsuleLine(input.operationResult);
+  if (operationResult !== null) return operationResult;
   let winnerText: string | null = null;
   let winnerRecency = Number.NEGATIVE_INFINITY;
   (input.feedback ?? []).forEach((candidate, index) => {

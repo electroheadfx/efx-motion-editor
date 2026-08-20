@@ -356,7 +356,7 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
     expect(studio).toContain('selectedKeyIds.value = next?.selectedSourceKeyIds ?? [];');
     expect(studio).toContain('onSelectRotoSpacingProxy: handleSelectRotoSpacingProxy');
     expect(studio).toContain('onClearRotoSpacingSelection: handleClearRotoSpacingSelection');
-    expect(studio).toContain('const handleClearRotoKeySelection = useCallback(() => {\n    selectedKeyIds.value = [];\n    selectionAnchorKeyId.value = null;');
+    expect(studio).toContain('const handleClearRotoKeySelection = useCallback(() => {\n    publishOperationResult(null);\n    selectedKeyIds.value = [];\n    selectionAnchorKeyId.value = null;');
     expect(studio).toContain('onClearRotoKeySelection: handleClearRotoKeySelection');
   });
 });
