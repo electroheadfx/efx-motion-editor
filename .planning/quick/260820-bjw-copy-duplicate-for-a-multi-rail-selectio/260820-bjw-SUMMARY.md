@@ -20,6 +20,7 @@ actuals:
   tokens: 37500    # chars/4 over the RED+GREEN diff (150110 chars)
   tasks: 2         # Task 1 RED tests + Task 2 GREEN implementation
   commits: 2       # 6565f26a (test) + 288a2257 (feat)
+  uat-fix-cycles: 2  # UAT-1 (eb9a3e1f) + UAT-2 (9b5150e2)
 
 # Tech tracking
 tech-stack:
@@ -77,7 +78,17 @@ coverage:
     description: "Live UI: Copy → move cursor → Paste with relative layout/internal gaps; Duplicate places the set immediately after the last selected rail end; collision rejects with the mapped status; Motion Rail copy behaves as shared-source duplicate until copy-on-write; Undo/Redo atomic"
     verification: []
     human_judgment: true
-    rationale: "Per the plan, native UI UAT is deferred to the user (no browser automation on this machine)."
+    rationale: "Per the plan, native UI UAT is deferred to the user (no browser automation on this machine). The UAT-2 fix added automated coordinator→history round-trip coverage for both Duplicate and Paste (see D5), so the remaining live-only surface is the visual/manual confirmation."
+  - id: D5
+    description: "UAT-2 duplicate scope + undo/redo: Duplicate builds a FRESH payload from the current effective rail-set selection AT CLICK TIME (never the clipboard, never a memoized set); a Copy never re-targets a later Duplicate; a new selection fully re-targets the next Duplicate; single rail = set of one enables Duplicate without a clipboard; duplicate-set and paste commits each record ONE history command and round-trip Undo/Redo through the real coordinator→history path"
+    verification:
+      - kind: unit
+        ref: "app/src/components/physic-paint/hooks/useRotoTimelineActions.test.ts#rail-set Copy/Paste/Duplicate (UAT-2)"
+        status: pass
+      - kind: unit
+        ref: "app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.test.ts#rail-set paste (UAT-2 round-trip)"
+        status: pass
+    human_judgment: false
 
 # Metrics
 duration: 32min
@@ -188,6 +199,24 @@ None - no external service configuration required.
 ## Next Phase Readiness
 - Batch Copy/Paste/Duplicate over the 43.6 rail-set selection is fully automated-tested (RED + implementation); native UI UAT of mixed-set Copy → move cursor → Paste, Duplicate placement, collision rejection, Motion-Rail shared-source copy, and atomic Undo/Redo is the remaining step for this quick.
 - Subsequent quick/phase work can reuse `proposeRails` as the shared law precedent for any future whole-set operation (insert gap, group edits, script apply onto a set).
+
+---
+
+# UAT-2 Fix Cycle (native UAT issues 3 & 4)
+
+Native UAT round 2 passed issues 1 & 2 (rail-boundary fusion and single-rail scope from UAT-1) but reported:
+
+**Issue 3 — Duplicate is STATEFUL/STALE.** Duplicate sometimes no-oped, then repeatedly duplicated a previous 2-rail set regardless of the current selection (even a single different rail). Root cause: `duplicateRailSet` was `pasteRailSet('duplicate')`, which read the **session rail-set clipboard**. With an empty clipboard a single selected rail no-oped ("Copy a rail set before pasting."); with a stale copied set-A payload it re-duplicated set A every time.
+- **Fix:** `duplicateRailSet` now builds a **FRESH payload** from the current effective selection (`deriveEffectiveRailSetMembers` via `getRailSetMembers`) at click time via `buildRotoRailSetCopyPayload`, then executes `'duplicate'`. It never reads the clipboard and never reuses a memoized set. A Copy to the clipboard never changes what a later Duplicate does; a new selection fully re-targets the next Duplicate. Paste remains clipboard-backed (`pasteRailSet` → frozen clipboard payload).
+- **Availability:** `canPasteRailSet` stays clipboard-gated; new `canDuplicateRailSet` derives from the effective scope (single rail = set of one, 43.6 Solo) so Duplicate never grays out with a rail selected. `computeRailSetDuplicateAvailability` mirrors the Copy/Delete dynamic classifier (no third fork).
+- **RED tests:** (a) select set A Duplicate, re-select rail B only Duplicate → B alone (2 rails → 1 rail); (b) Copy set A to clipboard, select B, Duplicate → duplicates B (not A).
+
+**Issue 4 — Undo/Redo inert after Duplicate (and Paste).** Root cause was a downstream symptom of issue 3: when Duplicate read the clipboard and no-oped, **no history command was ever recorded** → Cmd+Z did nothing. With Duplicate now always building a payload and emitting the `'paste'` command, the history module (already `'paste'`-allowlisted) records one atomic entry and replays it.
+- **RED (through the real coordinator→history path):** duplicate-set commit → Undo restores exact pre-state → Redo re-applies; same for Paste. Added via `attachGroupReplayHistory` (mirroring the Phase 43.4 integration pattern) in `useRotoPhysicalEditCoordinator.test.ts`. Both round-trip the exact before/after document, preserving fresh identities across redo.
+
+**Verification:** full physic-paint suite (1959 pass) + `npx tsc --noEmit` clean.
+**Committed in:** `9b5150e2` (fix UAT-2) — 4 files: `useRotoTimelineActions.ts`, `PhysicsPaintStudio.tsx`, + 2 test files.
+**Deferred:** the remaining live-only native UAT confirmation (visual Duplicate placement, collision rejection, Motion-Rail shared-source copy) stays with the user (no browser automation on this machine).
 
 ---
 *Phase: quick/260820-bjw*
