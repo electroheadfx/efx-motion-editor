@@ -27,8 +27,8 @@ current_phase_name: Integrated UAT + Signed Release
 status: Ready to plan
 stopped_at: Completed 43.4-08-PLAN.md
 last_updated: "2026-08-16T19:04:54.000Z"
-last_activity: 2026-08-16
-last_activity_desc: "Completed quick task 260816-tv7: swap Insert/Paint empty-frame key-creation break semantics"
+last_activity: 2026-08-20
+last_activity_desc: "Completed quick task 260820-bjw: Copy / Duplicate for a multi-rail selection set (43.6 extension)"
 progress:[██████████] 100%
   total_phases: 10
   completed_phases: 7
@@ -51,7 +51,7 @@ See: .planning/PROJECT.md (updated 2026-08-01 after v0.8.0 milestone close)
 Phase: 44 — Integrated UAT + Signed Release
 Plan: Not started
 Status: Ready to execute
-Last activity: 2026-08-20 - Completed quick task 260820-0kg: Scissor on generated frames: split a Key Rail mid-interpolation (revise locked 43.4 decision per spec)
+Last activity: 2026-08-20 - Completed quick task 260820-bjw: Copy / Duplicate for a multi-rail selection set (43.6 extension)
 
 **Phase 44 handoff (audit finding 9 decision):** Phase 43-10 completed an UNSIGNED packaged-app smoke covering the integrated rail, tooltip/sidebar/Edit surface, explicit no-popover boundary, valid preview, unresolved placeholder, valid PNG export, and unresolved export block without accessing signing material. Signed/notarized packaged UAT remains Phase 44 scope and explicitly covers Phase 43 loop preview/export parity (ROADMAP §Phase 44, success criterion 2).
 
@@ -595,6 +595,7 @@ None yet.
 | 260815-bmg | Remove numeric Undo/Redo counts from Paint and Physics Paint Studio controls | 2026-08-15 | 357965a1 | Verified | [260815-bmg-remove-numeric-undo-redo-counts-from-pai](./quick/260815-bmg-remove-numeric-undo-redo-counts-from-pai/) |
 | 260816-tv7 | Swap Insert/Paint empty-frame key-creation break semantics per SPECS/milestone-v0.9.0-new-phases/quick-insert-connects-paint-breaks-prompt.md | 2026-08-16 | 09f1d864 | Verified | [260816-tv7-swap-insert-paint-empty-frame-key-creati](./quick/260816-tv7-swap-insert-paint-empty-frame-key-creati/) |
 | 260820-0kg | Scissor on generated frames: split a Key Rail mid-interpolation (revise locked 43.4 decision per spec) | 2026-08-20 | ed1332e8 |  | [260820-0kg-scissor-on-generated-frames-split-a-key-](./quick/260820-0kg-scissor-on-generated-frames-split-a-key-/) |
+| 260820-bjw | Copy / Duplicate for a multi-rail selection set (43.6 extension) | 2026-08-20 | 288a2257 |  | [260820-bjw-copy-duplicate-for-a-multi-rail-selectio](./quick/260820-bjw-copy-duplicate-for-a-multi-rail-selectio/) |
 
 ### Roadmap Evolution
 
@@ -749,8 +750,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-19T13:45:13.401Z
-Stopped at: Completed 43.6-13-PLAN.md
+Last session: 2026-08-20T09:18:00Z
+Stopped at: Completed quick 260820-bjw (rail-set copy/duplicate)
 Resume file: None
 
 ## Operator Next Steps
